@@ -27,6 +27,7 @@ Development table, which use a `../` prefix.
 | `qa-lead` | Testing |
 | `release-manager` | DevOps, Operations, Release |
 | `content` | Support (`user-guide.md` and `faq-troubleshooting.md` only) |
+| `ai-engineer` | Agentic template (harness docs; implementer, not a spec role — see the note there) |
 | `spec-reviewer` | none (read-only gate over all groups) |
 
 ## Business
@@ -155,6 +156,11 @@ docs and plans, not gated specs.
 | `agentic-template/bootstrap.md` | step-by-step: new repo to first guarded PR |
 | `agentic-template/extraction-plan.md` | options for a standalone template repo + open decision |
 
+Harness docs live in this group (`agentic-template/`) and in the
+harness paths themselves (`.opencode/`, `script/`, `template/`):
+`ai-engineer` owns them and keeps the template and live copies in
+sync in the same change.
+
 ## Standalone template (shipped, Closes #16)
 
 | Path | Purpose |
@@ -162,7 +168,7 @@ docs and plans, not gated specs.
 | `template/README.md` | what the template is, prerequisites, quick start, payload table |
 | `template/ONBOARDING.md` | new-project runbook: install, labels, AO registration, reviewer mode, guardrails, checklist |
 | `template/AGENTS.md` | agent guide with `{{PROJECT_NAME}}`, `{{REPO_SLUG}}`, `{{DEFAULT_BRANCH}}`, `{{DOMAIN}}` placeholders, no project-specific rules |
-| `template/.opencode/` | 11 role files, 5 skills (`project-verify` replaces `hotel-verify`), commands, `opencode.jsonc` deny rules, `project-guard.ts` |
+| `template/.opencode/` | 12 role files, 5 skills (`project-verify` replaces `hotel-verify`), commands, `opencode.jsonc` deny rules, `project-guard.ts` |
 | `template/.github/` | issue form, blank-issue config, PR template |
 | `template/docs/` | document index and taxonomy, role rules, conventions, starter group (extraction plan records the `template/` + AO-assets extraction) |
 | `template/config/ao-project.jsonc` | full AO project config template (pool rules, harness/model examples, reviewers, intake, `autoReview`, `workersRequestReview`); applied with `--config-json` |

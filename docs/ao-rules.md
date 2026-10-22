@@ -1,6 +1,6 @@
 # AO role rules (normative, #350)
 
-Canonical roles (use verbatim): `orchestrator`, `product-owner`, `business-analyst`, `architect`, `qa-lead`, `release-manager`, `spec-reviewer`, `dev`, `dev-peer-review`, `dev-takeover`, `content`, `content-review`.
+Canonical roles (use verbatim): `orchestrator`, `product-owner`, `business-analyst`, `architect`, `qa-lead`, `release-manager`, `spec-reviewer`, `dev`, `dev-peer-review`, `dev-takeover`, `content`, `content-review`, `ai-engineer`.
 Session name: `<role> <target>` (e.g. `dev #12 checkout retry`, `dev-peer-review #13 rate limit`, `content #14 room policy page`).
 
 Commits: `git config --worktree user.name "Ming Chen (<role>)"`, email unchanged. Never rewrite history, change accounts, add bots, or spoof authorship beyond the name suffix.
