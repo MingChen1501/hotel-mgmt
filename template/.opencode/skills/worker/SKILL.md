@@ -54,6 +54,14 @@ Your role string is your session's role (`dev` for code, `content` for
 prose, `dev-takeover` when resuming; full list in `docs/ao-rules.md`).
 Sign every artefact per that file.
 
+## First action: enrich the issue
+
+After spawn, read the assigned issue first and add the missing scope,
+acceptance criteria, constraints, and open questions via an issue
+comment (a body edit is also acceptable) before doing any other work.
+Never widen scope silently: if the work needs more than the issue
+describes, confirm with the orchestrator/owner first.
+
 ## Implement and verify
 
 - Build/verify commands and CI expectations: follow the `project-verify`

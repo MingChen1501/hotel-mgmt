@@ -55,14 +55,26 @@ placeholder — the stack is undecided).
 
 Trigger: the owner describes a new task, bug, or enhancement in chat.
 
+Handoff sequence: owner -> buffer skeleton + suggested role ->
+orchestrator assign -> role worker enrichment -> work.
+
 1. The orchestrator first spawns a dedicated **buffer worker** for issue
    creation only. The buffer worker is exempt from the task-worker pool.
-2. The buffer worker files issue(s) with context, scope, acceptance
-   criteria, a risk label, and an English title/body.
+2. The buffer worker files a skeleton issue from the owner request:
+   context, a short triage note with the suggested owning role, exactly
+   one risk label, and an English title/body. It does NOT write full
+   acceptance detail, and it signs the issue with the content-owner
+   role (or `orchestrator` for process issues) — never
+   `business-analyst` by default.
 3. The buffer worker must not implement, review, or merge.
-4. The orchestrator routes the filed issues into the queue and spawns
-   implementation workers under the normal pool.
-5. The orchestrator must not file owner-task issues itself.
+4. The orchestrator pulls the filed issue, confirms or annotates the
+   owning role, and spawns that role through
+   `script/ao-spawn-worker.sh --issue <n> --role <role> --name <label>`
+   under the normal pool.
+5. The spawned role worker first enriches the issue (scope, acceptance
+   criteria, constraints, open questions) via an issue comment, then
+   does the work; it never widens scope silently.
+6. The orchestrator must not file owner-task issues itself.
 
 ## Spec gate (tiers T0–T4)
 

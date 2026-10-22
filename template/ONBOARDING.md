@@ -224,6 +224,16 @@ follow-up before the first merge.
 
 ## Step 7 — first guarded PR and verification checklist
 
+Owner requests flow through a fixed handoff: the buffer worker files
+a skeleton issue from the owner request (context plus a short triage
+note naming the suggested owning role and risk label, without full
+acceptance detail); the orchestrator pulls the filed issue, confirms
+the owning role, and spawns that role; the role worker first enriches
+the issue (scope, acceptance criteria, constraints, open questions)
+via an issue comment, then does the work. Issue footers name the
+content-owner role — never `business-analyst` by default — or
+`orchestrator` for process issues.
+
 Suggested first issue: a T0 docs-only change (e.g. the project scope
 note) — no gate ceremony, exercises the whole pipeline:
 
