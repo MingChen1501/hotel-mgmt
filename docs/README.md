@@ -48,7 +48,7 @@ Development table, which use a `../` prefix.
 | Roadmap | `product/roadmap.md` | active | `product-owner` | sequenced direction across milestones (Closes #30) |
 | Personas | `product/personas.md` | active | `product-owner` | user archetypes the product serves (Closes #30) |
 | User stories | `product/user-stories.md` | active | `product-owner` | stories expressing user needs per slice (Closes #30) |
-| Acceptance criteria | `product/acceptance-criteria.md` | stub (not needed yet) | `product-owner` | done-conditions per story or slice |
+| Acceptance criteria | `product/acceptance-criteria.md` | active | `product-owner` | done-conditions per slice (Closes #59) |
 | Scope | `product/scope.md` | stub (not needed yet) | `product-owner` | in/out scope statement for the product |
 
 ## Requirements
