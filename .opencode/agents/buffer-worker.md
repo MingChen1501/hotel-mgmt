@@ -30,10 +30,14 @@ guess on scope or facts.
 
 ## Output: the issues
 
-File one issue per small task (one worker = one PR downstream), each
-with: context, clear scope, acceptance criteria, exactly one risk
-label (`risk-low` / `risk-medium` / `risk-high` / `risk-very-high`),
-and an English title/body.
+File one issue per small task (one worker = one PR downstream). Keep
+each issue a skeleton from the owner request: context, a short triage
+note naming the suggested owning role, exactly one risk label
+(`risk-low` / `risk-medium` / `risk-high` / `risk-very-high`), and an
+English title/body. You do NOT need to write full acceptance detail —
+the assigned role worker enriches the issue later (scope, acceptance
+criteria, constraints, open questions; see the `worker` skill) before
+doing the work.
 
 ## Report back
 
@@ -50,6 +54,8 @@ in other sessions under the normal pool.
 
 ## Role signature
 
-This session's role string is `business-analyst` (buffer work files
-issues; see `docs/ao-rules.md`). Sign every artefact per that file
-(`script/ao-role-footer.sh business-analyst [session-id]`).
+Sign every artefact per `docs/ao-rules.md`
+(`script/ao-role-footer.sh <role> [session-id]`). The issue footer
+names the content-owner role for the issue — never
+`business-analyst` by default. For process issues with no content
+owner, sign as `orchestrator`.
