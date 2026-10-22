@@ -80,6 +80,36 @@ The standalone template now lives at `template/` in this repository:
   refuses non-git targets, fails closed on leftover placeholders,
   and prints the next steps.
 
+## AO project assets (addendum — active)
+
+The file copy alone does not set up the AO side: cues are
+project-scoped and the project config must be applied as a full
+object. The template therefore also ships:
+
+- `template/config/ao-project.jsonc`: full AO project config
+  template (`agentRulesFile`, `orchestratorRules` pool rule,
+  worker/orchestrator harness + model examples, `reviewers`,
+  `trackerIntake`, `canonicalRepoURL`, `defaultBranch`, explicit
+  `autoReview: false` / `workersRequestReview: false`). Applied with
+  `ao project set-config <id> --config-json '<full object>'` — a
+  single-field flag replaces the whole object, so the full form is
+  mandatory.
+- `template/cues/*.md`: one file per rule cue with `name`, `date`,
+  and `supersedes:` front-matter plus a one-line prompt body. The
+  newest cue wins at runtime; older conflicting text is marked
+  superseded, never merged
+  (`native-review-broken-manual` 2026-10-16 supersedes
+  `publish-and-review` 2026-10-14 for review mechanics).
+- `template/script/install-cues.sh --project <id> [--dry-run]`:
+  validates front-matter, processes cues oldest-date-first, and per
+  cue skips identical ones, skips differing ones explicitly (desktop
+  app update, never duplicated), or creates what is missing.
+- `template/ONBOARDING.md` documents the cue-import step, the full
+  `--config-json` example, the supersession rule, the manual review
+  fallback as the current mechanism (native reviewer disabled/legacy
+  until the sandbox is fixed AO-side), and the `ao cue list`
+  verification checklist.
+
 ## Open decision (still NOT taken)
 
 > **Create a new repository under the owner's account to host the

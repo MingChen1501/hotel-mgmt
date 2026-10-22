@@ -38,15 +38,17 @@ Preview without writing:
   --dry-run
 ```
 
-Then follow `ONBOARDING.md` (installed as `ONBOARDING.md` only in
-this template directory — see the file list below): labels, AO
-project registration, guardrails, first guarded PR.
+Then follow `ONBOARDING.md` (template documentation, never
+installed): labels, cue import, AO project registration with the full
+`--config-json` object, guardrails, first guarded PR.
 
 ## What gets installed
 
 | Template path | Installed as | Notes |
 |---|---|---|
 | `AGENTS.md` | `AGENTS.md` | Placeholders replaced; no project-specific rules |
+| `config/ao-project.jsonc` | same | Full AO project config template (pool rules, harness/model examples, reviewers, `trackerIntake`, `autoReview`, `workersRequestReview`); apply with `--config-json` |
+| `cues/` | — (project-scoped, via `script/install-cues.sh`) | 16 rule cues with `name`/`date`/`supersedes` front-matter; newest cue wins on conflict |
 | `.opencode/agents/` | `.opencode/agents/` | 11 roles: orchestrator, product-owner, business-analyst, architect, qa-lead, release-manager, spec-reviewer, dev-peer-review, content, content-review, buffer-worker |
 | `.opencode/skills/orchestrator/` | same | Spawn/pool/review/merge rules |
 | `.opencode/skills/worker/` | same | Implementer rules |
@@ -65,8 +67,10 @@ project registration, guardrails, first guarded PR.
 | `script/ao-role-footer.sh` | same | Role footer generator |
 | `script/ao-spawn-worker.sh` | same | Only sanctioned spawn path |
 | `script/orchestrator-merge.sh` | same | Only sanctioned merge path |
-| `script/orchestrator-review.sh` | same | Sanctioned review-trigger path |
-| `script/install-template.sh` | — | Installer itself; not installed |
+| `script/orchestrator-review.sh` | same | Sanctioned review-trigger path (legacy while native review is disabled) |
+| `cues/*.md` | — (via `script/install-cues.sh`) | Source files for the project-scoped cues |
+| `script/install-cues.sh` | — (runs from this checkout) | Cue installer: `--project <id> [--dry-run]`, idempotent, never duplicates |
+| `script/install-template.sh` | — (installer itself; not installed) | File installer |
 
 `README.md` and `ONBOARDING.md` (this directory) are template
 documentation and are **not** installed.

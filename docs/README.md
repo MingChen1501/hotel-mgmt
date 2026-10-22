@@ -163,8 +163,10 @@ docs and plans, not gated specs.
 | `template/AGENTS.md` | agent guide with `{{PROJECT_NAME}}`, `{{REPO_SLUG}}`, `{{DEFAULT_BRANCH}}`, `{{DOMAIN}}` placeholders, no project-specific rules |
 | `template/.opencode/` | 11 role files, 5 skills (`project-verify` replaces `hotel-verify`), commands, `opencode.jsonc` deny rules, `project-guard.ts` |
 | `template/.github/` | issue form, blank-issue config, PR template |
-| `template/docs/` | document index and taxonomy, role rules, conventions, starter group |
-| `template/script/` | sanctioned wrappers plus `install-template.sh` (copy without overwrite unless `--force`, placeholder substitution, `--dry-run`, idempotent, refuses non-git targets) |
+| `template/docs/` | document index and taxonomy, role rules, conventions, starter group (extraction plan records the `template/` + AO-assets extraction) |
+| `template/config/ao-project.jsonc` | full AO project config template (pool rules, harness/model examples, reviewers, intake, `autoReview`, `workersRequestReview`); applied with `--config-json` |
+| `template/cues/` | 16 project-scoped rule cues (`name`/`date`/`supersedes` front-matter; newest cue wins) |
+| `template/script/` | sanctioned wrappers plus `install-template.sh` (copy without overwrite unless `--force`, placeholder substitution, `--dry-run`, idempotent, refuses non-git targets) and `install-cues.sh` (`--project <id> [--dry-run]`, idempotent, never duplicates) |
 
 The `agentic-template/` starter above stays as the in-tree design
 record; `template/` is the installable artefact (its
