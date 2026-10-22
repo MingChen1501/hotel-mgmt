@@ -5,7 +5,7 @@ one place, owned by `business-analyst`. This document invents no new
 policy: every rule traces to an existing FR/NFR, user story, PRD
 statement, or sequence-diagram step, cited in the Trace column. Where
 the sources leave a decision open, the rule points to an open question
-in section 6 (owned by `business-analyst` for requirements wording;
+in requirements section 5 (owned by `business-analyst` for requirements wording;
 product decisions owned by `product-owner` per the
 domain-consistency-audit canonical list). Terminology follows
 `docs/requirements/domain-consistency-audit.md` (one term per
@@ -26,11 +26,11 @@ front-desk staff, manager, or owner account acting within its access
 |---|---|---|
 | BR-1 | A reservation exists in exactly one state at a time: confirmed, checked-in, closed, cancelled, or no-show. The order confirmed to checked-in to closed is never skipped or reordered. | FR-RES-1, FR-FDK-1, FR-FDK-2; state-machine.md; requirements §3.2 |
 | BR-2 | A reservation can be modified (dates, room type, or guest) only before check-in. Every modification recalculates the quoted price from the rate plan in force and records who made the change and when. | FR-RES-2; NFR-AUD-1; US-RES-2 |
-| BR-3 | A reservation can be cancelled only before check-in. Cancellation requires a reason from the hotel's own reason list; the reason is kept and the held availability is released for the cancelled dates. | FR-RES-3; FR-CUS-1 reason list (requirements §3.1); US-RES-3 |
+| BR-3 | A reservation can be cancelled only before check-in. Cancellation requires a reason from the hotel's own reason list; the reason is kept and the held availability is released for the cancelled dates. | FR-RES-3 (reason list, requirements §3.1); US-RES-3 |
 | BR-4 | The hotel's own cancellation wording is the wording shown at booking, cancellation, and on the guest confirmation. | FR-CUS-2; FR-GST-4; PRD Journey A |
 | BR-5 | A reservation whose arrival date has passed without check-in can be marked no-show. Marking no-show follows the hotel's no-show rule (whether any charge is kept and which reason list applies), releases the held room for sale, and keeps the no-show in the reservation history. | FR-RES-6; requirements §3.1; US-RES-6 |
 | BR-6 | A same-day walk-in creates a reservation in the confirmed state, ready for immediate check-in, and places it on today's arrivals list. | FR-RES-4; FR-FDK-5; US-RES-4 |
-| BR-7 | Whether the reservation reason is free text, a fixed list, or both is undecided. Until decided, a modification records the change and a cancellation requires a reason from the hotel's list. | OQ-2 (section 6); FR-RES-2; FR-RES-3 |
+| BR-7 | Whether the reservation reason is free text, a fixed list, or both is undecided. Until decided, a modification records the change and a cancellation requires a reason from the hotel's list. | OQ-2 (requirements section 5); FR-RES-2; FR-RES-3 |
 
 ## 2. Overbooking prevention and availability
 
@@ -69,8 +69,8 @@ front-desk staff, manager, or owner account acting within its access
 | BR-23 | Cash and card are the only payment methods. Each recorded payment shows method and time and decreases the balance by the paid amount. | FR-BIL-3; requirements §3.2; US-BIL-3 |
 | BR-24 | The printed invoice matches the folio lines and balance exactly; each receipt matches one recorded payment. | FR-BIL-4; US-BIL-4 |
 | BR-25 | Tax and fee amounts on folio lines derive from the hotel's tax and fee rules, and the balance includes them. | FR-BIL-5; US-BIL-5 |
-| BR-26 | Day-close produces the totals of charges and of payments per method for the business date, and the totals agree with the folios posted that day. Which totals must balance and who signs them off is undecided. | FR-BIL-6; OQ-3 (section 6); US-BIL-6 |
-| BR-27 | Which payment methods beyond cash and card (for example bank transfer or hotel credit) payment recording must support on day one is undecided. Until decided, payment recording covers cash and card only. | OQ-1 (section 6); FR-BIL-3 |
+| BR-26 | Day-close produces the totals of charges and of payments per method for the business date, and the totals agree with the folios posted that day. Which totals must balance and who signs them off is undecided. | FR-BIL-6; OQ-3 (requirements section 5); US-BIL-6 |
+| BR-27 | Which payment methods beyond cash and card (for example bank transfer or hotel credit) payment recording must support on day one is undecided. Until decided, payment recording covers cash and card only. | OQ-1 (requirements section 5); FR-BIL-3 |
 
 ## 6. Rooms and housekeeping
 
@@ -87,7 +87,7 @@ front-desk staff, manager, or owner account acting within its access
 | BR-31 | One record per guest carries details with every past and upcoming stay linked to it. Saved preferences and notes are shown before a new booking for that guest is confirmed. | FR-GST-1; FR-GST-2; US-GST-1; US-GST-2 |
 | BR-32 | A guest with at least one completed stay is flagged as returning at booking time, with the count of past stays visible. | FR-GST-3; US-GST-3 |
 | BR-33 | Which guest details are mandatory at booking and at check-in is set per hotel. Confirming a booking or check-in without a mandatory field is refused and the missing field is named. | FR-CUS-1; requirements §3.1; US-CUS-1 |
-| BR-34 | Which guest fields, if any, the system must refuse to delete, and the legal minimum retention period if longer than the system floor, are undecided. | OQ-4 (section 6); NFR-RET-1 |
+| BR-34 | Which guest fields, if any, the system must refuse to delete, and the legal minimum retention period if longer than the system floor, are undecided. | OQ-4 (requirements section 5); NFR-RET-1 |
 
 ## 8. Roles, audit, and data protection
 

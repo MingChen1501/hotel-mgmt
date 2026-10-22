@@ -335,7 +335,7 @@ Take a room out of sale for a date range with a recorded reason;
 blocked dates stay out of availability and check-in until the block
 ends.
 
-- Preconditions: the room is vacant (never occupied) for the dates to block.
+- Preconditions: the room is not occupied on the blocked dates.
 - Postconditions: the room shows out of order for the range and takes no reservation or check-in on a blocked date; when the block ends the room returns to a vacant state.
 
 ```mermaid
@@ -374,7 +374,7 @@ also appear on the diagram steps themselves (`[CUS: …]` and
 | 10 | Taxes and fees derived | Hotel tax and fee rules (`FR-BIL-5`) | — |
 | 11 | Payment methods | — (no configuration point) | Cash and card only |
 | 12 | Housekeeping progression | — (no configuration point) | Dirty to clean to inspected; check-out releases vacant-dirty |
-| 13 | Out-of-order reason and range | Blocked reason recorded per block (`FR-RMS-3`) | Vacant states only; blocked dates excluded |
+| 13 | Out-of-order reason and range | Blocked reason recorded per block (`FR-RMS-3`) | Not occupied on the blocked dates; blocked dates excluded |
 
 Owner or manager changes to any §3.1 item apply at once with no code
 changes, and each change records who made it and when (`NFR-AUD-1`,
@@ -390,13 +390,13 @@ per stay; a stay links one room at a time; sellable count excludes
 occupied, blocked, already-reserved), and the FR/NFR wording. No step
 contradicts them except the finding below, which is listed, not hidden:
 
-- F-SEQ-1 (wording, from audit C-5): `NFR-CON-1` in
-  `docs/requirements/mvp-requirements.md` speaks of booking "the last
+- F-SEQ-1 (resolved, wording from audit C-5): `NFR-CON-1` in
+  `docs/requirements/mvp-requirements.md` spoke of booking "the last
   sellable room or bed", but beds exist only as room/room-type
-  attributes — no story or FR sells a bed separately. This document
-  follows the domain model throughout: the sellable unit is the room,
-  and diagrams 2, 3, and 6 check room-type sellability only. Recommended
-  resolution: delete "or bed" from `NFR-CON-1` (audit fix F-5).
+  attributes — no story or FR sells a bed separately. Fixed by
+  deleting "or bed" from `NFR-CON-1`. This document follows the
+  domain model throughout: the sellable unit is the room, and
+  diagrams 2, 3, and 6 check room-type sellability only.
 
 Path note: issue #43 asked for `docs/architecture/sequence-diagrams.md`;
 behaviour content belongs to requirements, so this depiction lives at
