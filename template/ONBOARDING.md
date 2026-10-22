@@ -17,6 +17,8 @@ grep -rE "{{(PROJECT_NAME|REPO_SLUG|DEFAULT_BRANCH|DOMAIN)}}" AGENTS.md config c
 - Your language toolchain installed.
 - An AO (agent orchestrator) installation with permission to spawn
   worker sessions.
+- For diagram viewing in VSCode: install the recommended `bierner.markdown-mermaid`
+  extension, then `Ctrl+Shift+V` markdown preview renders mermaid diagrams.
 
 ## Step 1 — install the template
 
