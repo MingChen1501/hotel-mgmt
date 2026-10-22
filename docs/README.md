@@ -57,6 +57,7 @@ Development table, which use a `../` prefix.
 |---|---|---|---|---|
 | MVP requirements | `requirements/mvp-requirements.md` | active | `business-analyst` | numbered FRs, measurable NFRs, per-hotel workflow customisation, traceability (Closes #10) |
 | Domain consistency audit | `requirements/domain-consistency-audit.md` | active | `business-analyst` | cross-doc audit: scope↔PRD↔stories↔FRs/NFRs, gaps, contradictions, deduped questions, terminology (Closes #41) |
+| Behaviour sequence diagrams | `requirements/sequence-diagrams.md` | active | `business-analyst` | time-ordered booking, check-in/out, folio and housekeeping flows with FR and FR-CUS mapping (Closes #43) |
 | Functional requirements | `requirements/functional-requirements.md` | stub (not needed yet) | `business-analyst` | numbered functional requirements with one guard each |
 | Non-functional requirements | `requirements/non-functional-requirements.md` | stub (not needed yet) | `business-analyst` | measurable NFRs (performance, reliability, usability) |
 | SRD | `requirements/srd.md` | stub (not needed yet) | `business-analyst` | stakeholder requirements definition |
@@ -73,7 +74,7 @@ Development table, which use a `../` prefix.
 | LLD | `architecture/lld.md` | stub (not needed yet) | `architect` | low-level design: modules, interfaces, data flow |
 | System architecture | `architecture/system-architecture.md` | active | `architect` | overall system structure and deployment view (Closes #11) |
 | ERD | `architecture/erd.md` | active | `architect` | entity-relationship model of the domain data (Closes #11) |
-| Sequence diagrams | `architecture/sequence-diagrams.md` | stub (not needed yet) | `architect` | key interaction flows across components |
+| Sequence diagrams | `requirements/sequence-diagrams.md` (see Requirements) | stub (not needed yet) | `architect` | behaviour depiction lives with requirements per #43; no separate architecture diagram |
 | State machine | `architecture/state-machine.md` | active | `architect` | lifecycle states and transitions of core entities (Closes #11) |
 | ADR template | `architecture/decisions/adr-0001-template.md` | stub (not needed yet) | `architect` | decision-record template (the decisions directory holds ADRs) |
 | ADR-0001 monorepo polyglot | `architecture/decisions/adr-0001-monorepo-polyglot.md` | active | `architect` | proposed monorepo with polyglot modules (Closes #11) |
