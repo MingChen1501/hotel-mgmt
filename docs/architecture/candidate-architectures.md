@@ -22,6 +22,32 @@ behaviour; all behaviour stays owned by `product-owner` and
 come from `docs/devops/deployment.md` and
 `docs/operations/runbook.md`.
 
+Constrained on-premise envelope (owner hard constraints, issue #28,
+2026-10-23 — all proposals below fit inside it, ADR-0001 still
+`proposed`, nothing decided here):
+
+- Monorepo is mandatory; every candidate below is a monorepo shape
+  (the ADR-0001 polyrepo option is excluded, not re-evaluated).
+- Minimum host: 2 vCPU / 4 GB RAM / 50 GB disk per host
+  (owner notation `2*4*50`; reading to be owner-confirmed).
+  Single-host default must hold all components; the small-cluster
+  variant spreads the same components across 2–3 such hosts.
+- Backend language pool (menu, not mandate): Java, Python,
+  Node.js, Go, Rust. Every per-module pick below comes from this
+  pool with a footprint note; nothing outside the pool is named.
+- Frontend is free choice (proposed: static SPA served by Nginx,
+  no SSR runtime).
+- Infra menu: Ansible, mini-K8s (k3s/k0s-class), Nginx,
+  Prometheus, Grafana. Minimal-subset rule: a component earns its
+  place only with a written NFR + footprint justification; the
+  default path is Ansible-driven plain containers, mini-K8s only
+  for the cluster variant if the owner confirms it.
+- Network: hotel LAN only; Tailscale for remote access; no inbound
+  internet, no cloud dependency, offline-capable packaging and
+  operation.
+- Data menu: MySQL, PostgreSQL, Redis (or equivalent cache);
+  Kafka only if justified — proposed OUT for the MVP (see section 2).
+
 Downstream note: the system-design output in this document feeds
 DevOps detailing — CI per stack, on-premise packaging, and
 environment inventory (`docs/devops/ci-cd.md`,
@@ -42,6 +68,12 @@ what each candidate will demand from it.
 - One installation serves exactly one property (`NFR-DEP-1`); no
   cloud, no cross-property traffic, working without internet
   (`NFR-AVL-1`).
+- One installation fits on a single 2*4*50 host by default
+  (2 vCPU / 4 GB RAM / 50 GB disk); the cluster variant uses 2–3
+  such hosts. The per-module resource budget in
+  `docs/architecture/system-architecture.md` sums within one host.
+- Monorepo is mandatory for every candidate (owner constraint);
+  no candidate below re-opens the polyrepo question.
 - Per-hotel differences are configuration data, never code forks
   (the recorded sales constraint; requirements section 3.1
   configurable, section 3.2 fixed).
@@ -56,35 +88,103 @@ best, all versioned and built from one repository.
 Structure and module layout: one top-level directory per module plus
 shared contract definitions (API shapes, event schemas, error
 envelope). Each module directory carries its own build, test, and run
-instructions and embeds its own (proposed) runtime. Example stacks,
-illustration only, all `proposed`: Reservations on Python/FastAPI,
-Stay/Rooms/Guests/Admin on TypeScript/Node, Rates on Python/FastAPI,
-Billing on Java/Spring, Reporting on Python/FastAPI — exactly the
-per-module proposals already listed in HLD section 4.
+instructions and embeds its own (proposed) runtime.
+
+Per-module language picks (all `proposed`, all inside the allowed
+pool; footprint notes against a 2*4*50 host — two runtimes total,
+footprint first, team second):
+
+| Module | Proposed language | Footprint note (why it fits 2*4*50) |
+|---|---|---|
+| Reservations | Go | Single static binary, ~30–50 MB RAM; goroutines serve the paired-simultaneous-booking guard (`NFR-CON-1`); no interpreter/JVM overhead |
+| Stay (front desk) | Node.js / TypeScript | Simple CRUD desk flows; container ~100–150 MB; shares one runtime with Rooms, Guests, Admin |
+| Rooms | Node.js / TypeScript | Same runtime as Stay; inventory reads stay in-process-cheap behind `RoomInventoryService` |
+| Rates & Availability | Go | Quote path latency (`NFR-PERF-1`: views within 2 s) in a tiny binary; shares the Go toolchain with Reservations/Billing/Reporting |
+| Guests | Node.js / TypeScript | Profile CRUD; same shared runtime as Stay |
+| Billing | Go | Exact decimal arithmetic via a decimal library; avoids a JVM heap (~300+ MB for Spring) on a 4 GB host |
+| Reporting | Go | Event consumer plus HTTP read API in the same small-binary profile; no Python data stack needed at 50-room / 2-year-report scale |
+| Admin & Config | Node.js / TypeScript | Config CRUD and identity sessions; same shared runtime as Stay |
+
+Two runtimes total (Node.js + Go) keep the installer small and CI to
+two toolchains. Java and Python stay in the pool as named fallbacks
+(see section 8); Rust is unused in this mapping — available if a
+module later proves it needs Rust's profile, not spent upfront.
 
 Data ownership: one logical store per module on the database host(s);
 each module connects only to its own store (HLD section 4, ERD
 ownership notes). Cross-module reads go through the named contracts;
-the Reporting read model subscribes to domain events.
+the Reporting read model subscribes to domain events. Minimal-subset
+data picks (all `proposed`):
 
-Deployment: single host by default — reverse proxy, eight module
-containers, the database host, and the backup staging area on one
-on-premise host. Small-cluster variant — the same containers and the
-database spread across a few on-premise hosts on the hotel LAN;
-inter-component endpoints use configuration/service names so a
-container moves between hosts without image changes
-(`docs/architecture/system-architecture.md` portability rules). The
-on-premise installer bundles every module runtime for one property.
+- One shared database engine (proposed default: PostgreSQL; MySQL
+  kept as the named alternative — open question OQ-C8) holding one
+  dedicated schema per module: dedicated logical stores, one engine
+  process (~256 MB) instead of eight engines. Shared engine,
+  never shared tables.
+- No Kafka in the default path: single-property event volume (tens
+  of events per minute) does not justify Kafka's ~1 GB+ footprint.
+  Domain events travel via a transactional outbox table in each
+  module schema plus a lightweight dispatcher (polling /
+  LISTEN-NOTIFY) that the Reporting consumer reads; cross-module
+  command calls stay synchronous HTTP behind Nginx. Kafka stays a
+  named-but-excluded option (open question OQ-C7).
+- No Redis in the default path: at 50-room scale with 5 concurrent
+  staff, in-process caches plus one tuned engine meet `NFR-PERF-1`
+  without a separate cache process; Redis is re-opened only if
+  measured views miss 2 s (fallback trigger, not a day-one part).
 
-Consequences: follows the recorded owner direction; per-module tool
-fit (transactional desk services versus the reporting read model);
-atomic cross-module change in one commit. Costs: one pipeline builds
-and tests several stacks with a contract-check stage (slower, more
-complex than single-stack); contract discipline is load-bearing;
-hiring and maintenance span more than one ecosystem; packaging must
-bundle and verify heterogeneous runtimes on a small host.
+Deployment: single 2*4*50 host by default — Nginx as the single
+entry point and reverse proxy, eight module containers (two
+runtimes), one database engine, Prometheus + Grafana, and the
+backup staging area on one on-premise host. Small-cluster variant —
+the same containers and the database spread across 2–3 such hosts
+on the hotel LAN; inter-component endpoints use
+configuration/service names so a container moves between hosts
+without image changes (`docs/architecture/system-architecture.md`
+portability rules). Packaging is Ansible-driven and offline: one
+bundle (container images + playbooks + versioned per-hotel config)
+installed from local media with no registry and no internet at
+install time; mini-K8s (k3s-class) is NOT in the default path —
+plain containers via Ansible, with k3s only as the cluster-variant
+option the owner confirms (open question OQ-C6). The full
+per-component RAM/vCPU/disk budget that sums within one host lives
+in `docs/architecture/system-architecture.md` section 3.
+
+Monitoring and network (all `proposed`, all owner-listed tooling):
+
+- Prometheus scrapes module `/healthz` + `/metrics` endpoints and
+  host stats (~150–200 MB); Grafana serves on-prem dashboards and
+  may be stopped to reclaim ~150 MB RAM without losing metric
+  retention. No cloud monitoring, no external push targets.
+- Desk clients reach Nginx over the hotel LAN only; remote access
+  (vendor support, owner review) goes over Tailscale; no inbound
+  internet exposure, no external callbacks, updates applied from
+  local media.
+- Frontend: static single-page app (framework free choice;
+  `proposed`: Vue or React build) served directly by Nginx — zero
+  extra runtime processes on the host.
+
+Consequences: follows the recorded owner direction (Option A
+accepted 2026-10-23: per-module freedom inside the allowed pool);
+per-module tool fit (Go concurrency/decimal paths versus
+Node.js desk CRUD) within only two runtimes; atomic cross-module
+change in one commit; fits the 2*4*50 envelope per the
+system-architecture budget. Costs: one pipeline builds and tests
+two stacks with a contract-check stage (slower, more complex than
+single-stack); contract discipline is load-bearing; hiring and
+maintenance span two ecosystems; packaging must bundle and verify
+two runtimes plus the offline bundle on a small host.
 
 ## 3. Candidate B — modular monolith with strict module boundaries, one stack, extracted later
+
+Status: DEMOTED for the MVP (retained for the record, not
+recommended). It respects the monorepo-mandatory constraint, but it
+contradicts the confirmed owner direction (Option A accepted
+2026-10-23: per-module language freedom), and its single-process
+fault domain puts the whole desk at risk on one constrained host
+until the extraction migration it defers. It is re-opened only if
+the owner explicitly trades per-module freedom for the fastest
+first install.
 
 One deployable process (plus the database) built from strictly
 separated in-repository modules; distribution into services is
@@ -123,29 +223,41 @@ backup target from the application host.
 
 Consequences: simplest CI (one toolchain, fastest builds), simplest
 packaging (one runtime), easiest hiring (one skill profile), lowest
-host sizing bar. Costs: contradicts the owner polyglot direction for
-the MVP; extraction into services later is a deliberate migration
-project (contract names survive, but deployment, config
-distribution, and failure isolation must be re-proven); a single
-process means one module's fault can affect the whole desk until
-extraction; boundary discipline needs constant enforcement because
-in-process shortcuts are always tempting.
+host sizing bar — the smallest 2*4*50 footprint of the three
+candidates. Costs: contradicts the confirmed owner polyglot
+direction for the MVP (the reason for demotion); extraction into
+services later is a deliberate migration project (contract names
+survive, but deployment, config distribution, and failure
+isolation must be re-proven); a single process means one module's
+fault can affect the whole desk until extraction — the sharpest
+risk on a single small host with no spare capacity to absorb it;
+boundary discipline needs constant enforcement because
+in-process shortcuts are always tempting. Data/packaging/
+monitoring/network follow the same minimal-subset picks as
+Candidate A (one shared engine, Ansible + plain containers,
+Nginx entry, Prometheus + Grafana, LAN + Tailscale, no Kafka)
+if B is ever re-opened.
 
-## 4. Candidate C — single shared-stack monorepo with per-module packages
+## 4. Candidate C — single shared-stack monorepo with per-module packages (fallback)
 
-A middle position: deployable modules like Candidate A, but every
-module is built on one shared stack with per-module packages and
-shared platform libraries in the same monorepo.
+A middle position and the named fallback: deployable modules like
+Candidate A, but every module is built on one shared stack with
+per-module packages and shared platform libraries in the same
+monorepo.
 
 Structure and module layout: one monorepo holding eight module
 packages (one directory per module, each with its own build/test/run
 instructions) plus shared platform packages owned centrally
 (contracts, error envelope, identity/RBAC helpers, audit helpers,
 configuration schema, message catalogue for `NFR-I18N-1`). All
-packages use the same stack. Example stack, illustration only,
-`proposed`: TypeScript/Node packages throughout (or Python/FastAPI
-throughout) with one database engine holding one logical store per
-module. Shared libraries may only carry cross-cutting plumbing —
+packages use the same stack. Proposed shared stack (`proposed`,
+inside the allowed pool): Node.js / TypeScript packages throughout
+with one shared database engine holding one logical store per
+module — chosen team-second (single skill profile, the most likely
+team shape) while still fitting 2*4*50 (eight ~100–150 MB
+containers plus one engine; see the system-architecture budget).
+Go-throughout is the recorded alternative if the team leans Go.
+Shared libraries may only carry cross-cutting plumbing —
 never module business logic — and platform changes follow a
 deprecation rule so one module's upgrade never forces the others.
 
@@ -155,11 +267,15 @@ events. The shared stack makes it cheaper to enforce uniform store
 access plumbing (one data-access helper), but the logical ownership
 rule is unchanged.
 
-Deployment: identical placements to Candidate A (single host
-default; small-cluster variant spreading the same containers and the
-database across LAN hosts), but the installer bundles one runtime
-instead of several: smaller image set, faster install/upgrade, lower
-minimum host sizing than Candidate A for the same topology.
+Deployment: identical placements to Candidate A (single 2*4*50
+host default; small-cluster variant spreading the same containers
+and the database across 2–3 such LAN hosts), but the installer
+bundles one runtime instead of two: smaller image set, faster
+install/upgrade, lower minimum host sizing than Candidate A for
+the same topology. Data/packaging/monitoring/network follow the
+same minimal-subset picks as Candidate A (shared engine, no
+Kafka, no Redis day-one, Ansible + plain containers, Nginx
+entry, Prometheus + Grafana, LAN + Tailscale).
 
 Consequences: keeps deployable-module benefits (fault isolation,
 per-module restart, chain-ready extraction path) with single-stack CI
@@ -222,8 +338,8 @@ setup can unlock what the MVP fixes; the L5 config-matrix checks
 Build one thin end-to-end slice before any full module: Admin &
 Config (hotel profile, one user/role, minimal config set) +
 Rooms (room-type setup, one room) + Rates & Availability (one rate
-plan) + Reservations (create one reservation) + reverse proxy + one
-database host + installer packaging + first backup run.
+plan) + Reservations (create one reservation) + Nginx + one shared
+database engine + offline Ansible packaging + first backup run.
 
 The skeleton proves three things before the team commits to breadth:
 
@@ -278,48 +394,94 @@ each later slice extends the runbook only for behaviour it adds
 (day-close totals, export, restore drill results). No slice is done
 while its traceability rows stay TBD or its runbook delta is missing.
 
-## 7. Trade-off table
+## 7. Trade-off table (against the 2*4*50 envelope)
 
-| Dimension | A — polyglot modules, one monorepo | B — modular monolith, extract later | C — shared-stack module packages |
+| Dimension | A — polyglot modules, one monorepo (primary) | B — modular monolith, extract later (DEMOTED) | C — shared-stack module packages (fallback) |
 |---|---|---|---|
-| CI cost | Highest: per-stack jobs plus contract checks; slowest pipeline | Lowest: one toolchain, one build; boundary lint is the only extra | Medium: per-module jobs, one toolchain, plus contract checks |
-| On-prem packaging | Heaviest: heterogeneous runtimes bundled and verified per release; highest minimum host sizing | Lightest: one runtime, smallest installer, lowest host bar | Medium: module containers, one runtime; smaller than A |
-| Hiring | Broadest: several ecosystems across modules | Narrowest: one skill profile | Narrow: one skill profile plus platform-library ownership |
+| Monorepo-mandatory | Yes | Yes | Yes |
+| Allowed-pool compliance | Yes: Node.js + Go per-module picks, Java/Python/Rust available as fallbacks | Yes (single pick from the pool) | Yes: Node.js throughout (Go-throughout alternative) |
+| 2*4*50 single-host fit | Fits per the section 3 budget (two runtimes, one engine, no Kafka/Redis day-one) | Fits with the most headroom (one process, one engine) | Fits (one runtime, one engine) |
+| CI cost | Higher: two-toolchain jobs plus contract checks | Lowest: one toolchain, one build; boundary lint is the only extra | Medium: per-module jobs, one toolchain, plus contract checks |
+| On-prem packaging | Medium: two runtimes in one offline Ansible bundle | Lightest: one runtime, smallest installer | Light: one runtime, module containers |
+| Hiring | Two ecosystems (Node.js + Go) | Narrowest: one skill profile | Narrow: one skill profile plus platform-library ownership |
 | Per-hotel config ease | Event/cache distribution per module; reconciling story needed | Simplest: in-process reads, no distribution story | Shared schema package validates once; distribution as in A |
 | Chain-readiness later | Most ready: deployable modules extend or gain central services | Least ready: extraction migration first | Ready: modules already deployable; platform libs shared across properties |
-| Owner-direction fit | Matches the recorded polyglot direction | Contradicts it for the MVP; needs an explicit direction change | Partial: keeps modules-plus-monorepo, drops per-module stack freedom |
+| Owner-direction fit | Matches the confirmed per-module-freedom direction | Contradicts it for the MVP (reason for demotion) | Partial: keeps modules-plus-monorepo, drops per-module stack freedom |
 
 ## 8. Recommendation (not a decision)
 
-Recommended: Candidate A if the owner confirms per-module technology
-freedom (ADR-0001 OQ-A1), because it matches the recorded owner
-direction, keeps the already-specified HLD boundaries and contracts
-without rework, and leaves the chain direction open without a later
-migration. Fallback: Candidate C if the team is single-stack or host
-sizing comes back tight — it preserves deployable modules and the
-contract investment while cutting CI and packaging cost to near B
-levels. Candidate B fits only if the owner explicitly trades the
-polyglot direction for the fastest first install and accepts a
-planned extraction project later. This recommendation advises; the
-owner decides.
+Primary mapping (Candidate A — two runtimes, minimal subset,
+footprint first):
+
+| Module | Language | Store | Why (footprint first, team second) |
+|---|---|---|---|
+| Reservations | Go | Dedicated schema in the shared engine | Tiny binary; concurrency guard `NFR-CON-1` |
+| Stay | Node.js / TypeScript | Dedicated schema in the shared engine | CRUD fit; shared runtime ×4 modules |
+| Rooms | Node.js / TypeScript | Dedicated schema in the shared engine | Shared runtime; cheap inventory reads |
+| Rates & Availability | Go | Dedicated schema in the shared engine | Quote latency `NFR-PERF-1`; shared Go toolchain |
+| Guests | Node.js / TypeScript | Dedicated schema in the shared engine | CRUD fit; shared runtime |
+| Billing | Go | Dedicated schema in the shared engine | Decimal arithmetic without a JVM heap on 4 GB |
+| Reporting | Go | Own read-model schema, rebuilt from outbox events | No Python data stack needed at this scale |
+| Admin & Config | Node.js / TypeScript | Config schema in the shared engine | Config CRUD + identity; shared runtime |
+
+Plus: Nginx entry; static SPA frontend (no SSR runtime);
+PostgreSQL single shared engine (MySQL alternative open);
+outbox-based events, no Kafka; no Redis day-one;
+Ansible + plain containers offline, no mini-K8s by default;
+Prometheus + Grafana on-prem; LAN + Tailscale, no inbound
+internet. The section 3 budget of
+`docs/architecture/system-architecture.md` shows this fits one
+2*4*50 host with headroom.
+
+Fallback mapping (Candidate C — one runtime, team second): all
+eight modules on Node.js / TypeScript with per-module packages
+and shared platform libraries, same stores, same data/
+packaging/monitoring/network picks as the primary. Take it if
+the team is single-stack Node.js or if the two-toolchain CI cost
+proves too high — it preserves deployable modules and the
+contract investment while cutting packaging cost toward B
+levels. Java/Spring (Billing) and Python/FastAPI (Reporting,
+Rates) stay named per-module fallbacks inside the pool if team
+strength or measured behaviour demands them; neither is spent
+upfront.
+
+Candidate B stays demoted: it fits only if the owner explicitly
+trades the confirmed per-module-freedom direction for the
+fastest first install and accepts a planned extraction project
+later. This recommendation advises; the owner decides, and
+ADR-0001 stays `proposed` until the owner accepts it.
 
 ## 9. Open questions for the owner
 
-- OQ-C1 — Per-module stack freedom or one shared stack for the MVP
-  (restates ADR-0001 OQ-A1 against the three candidates: A versus C)?
+- OQ-C1 — Menu-not-mandate reading: is the minimal-subset rule
+  right (Kafka, mini-K8s, Redis, second engine, Grafana-beyond-
+  basic-metrics only with written NFR + footprint justification)?
 - OQ-C2 — Walking-skeleton scope: is the section 6.1 slice (Admin,
   Rooms, Rates, Reservations plus proxy, store, packaging, backup)
   the right first proof, or should Billing/folio join it?
-- OQ-C3 — Minimum host sizing: what CPU/RAM/disk must the installer
-  support (restates ADR-0001 OQ-A3; decides between A's heavier
-  bundle and C/B's lighter one)?
+- OQ-C3 — 2*4*50 reading: confirm each host is 2 vCPU / 4 GB RAM /
+  50 GB disk and the single-host default must hold the section 3
+  budget (restates answered ADR-0001 OQ-A3; correct the reading
+  here if it is wrong).
 - OQ-C4 — Chain direction: extend these modules or add central
   services later (restates ADR-0001 OQ-A4; affects how much
   chain-readiness should weigh now)?
-- OQ-C5 — Contract style: synchronous calls, asynchronous events, or
-  per-pair choice (open point in `docs/technical/api-spec.md`
+- OQ-C5 — Contract style: synchronous calls, asynchronous events,
+  or per-pair choice (open point in `docs/technical/api-spec.md`
   section 3; the skeleton in section 6.1 should prove the chosen
   style first)?
+- OQ-C6 — Cluster plumbing: plain containers via Ansible on each
+  host, or mini-K8s (k3s-class) once more than one host is used
+  (proposed: plain containers; k3s only with a written reason)?
+- OQ-C7 — Kafka: confirm exclusion (proposed OUT; outbox +
+  dispatcher covers single-property event volume; re-open only
+  on measured need)?
+- OQ-C8 — Default store: PostgreSQL (proposed: JSONB config,
+  LISTEN/NOTIFY, single-engine footprint) or MySQL (fallback:
+  wider hiring pool, simpler ops)?
+- OQ-C9 — Frontend: confirm a static SPA served by Nginx (no SSR
+  runtime), framework chosen at implementation time from the free
+  choice?
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-84

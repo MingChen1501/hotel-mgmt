@@ -29,10 +29,11 @@ on-premise data export/backup (`FR-ADM-5`).
 The installation is composed of the modules in section 4, each a
 separately deployable container (see
 `docs/architecture/system-architecture.md` for the deployable
-topology), plus the database host(s) holding one logical store per
-module, plus a reverse proxy as the single entry point on the hotel
-premises. Modules never share a store; they interact only through the
-named contracts in section 4.
+topology), plus one shared database engine holding one dedicated
+schema per module, plus Nginx as the single entry point and
+reverse proxy on the hotel premises. Modules never share a
+store (never shared tables even inside the shared engine); they
+interact only through the named contracts in section 4.
 
 ## 3. Component view (per module)
 
@@ -62,16 +63,26 @@ Every module has exactly one owning side and one data-store
 ownership statement. Contracts are named. Candidate technologies are
 proposals only.
 
-| Module | Responsibility (FRs served) | Data ownership (one store owner) | Exposed contract | Candidate technology |
+| Module | Responsibility (FRs served) | Data ownership (one store owner) | Exposed contract | Proposed runtime / footprint (envelope note, `proposed`) |
 |---|---|---|---|---|
-| Reservations | Direct reservations, modify/cancel, walk-in, calendar, no-show (`FR-RES-*`) | Owns the reservation store: reservations, holds, cancellation records; no other module writes it | `ReservationService` (HTTP/gRPC); emits `ReservationEvents` | (proposed) Python/FastAPI service |
-| Stay (front desk) | Check-in, check-out, room moves, early/late times, arrivals/departures (`FR-FDK-*`) | Owns the stay store: stays, room assignments, move history; no other module writes it | `StayService` (HTTP/gRPC); emits `StayEvents` | (proposed) TypeScript/Node service |
-| Rooms | Inventory, housekeeping states, out-of-order blocks, room setup (`FR-RMS-*`) | Owns the room store: rooms, room types, status history, blocks; no other module writes it | `RoomInventoryService` (HTTP/gRPC); emits `RoomStateEvents` | (proposed) TypeScript/Node service |
-| Rates & Availability | Rate plans, availability counts, discounts, stay restrictions, price basis (`FR-RTE-*`) | Owns the pricing store: rate plans, restrictions, discount definitions, quoted price bases; no other module writes it | `PricingService` (HTTP/gRPC); emits `RateEvents` | (proposed) Python/FastAPI service |
-| Guests | Profiles, preferences, repeat-guest flag, confirmations (`FR-GST-*`) | Owns the guest store: guest profiles, preferences, stay links; no other module writes it | `GuestService` (HTTP/gRPC); emits `GuestEvents` | (proposed) TypeScript/Node service |
-| Billing | Folios, charges, payments, taxes/fees, day-close, settlement gate (`FR-BIL-*`) | Owns the folio store: folios, folio lines, payments, tax/fee rules, day-close totals; no other module writes it | `BillingService` (HTTP/gRPC); emits `FolioEvents` | (proposed) Java/Spring service |
-| Reporting | Occupancy, revenue, daily sheet, housekeeping reports (`FR-RPT-*`) | Owns the reporting read-model store, rebuilt from domain events; source records stay with their owning modules | `ReportingService` (HTTP read API) | (proposed) Python/FastAPI service |
-| Admin & Config | Hotel profile, users/roles, room/rate setup, export/backup, per-hotel customisation values (`FR-ADM-*`, `FR-CUS-*`) | Owns the config store: hotel profile, users, roles, custom field/policy definitions, backup records; no other module writes it | `AdminService` (HTTP/gRPC); emits `ConfigChangedEvents` | (proposed) TypeScript/Node service |
+| Reservations | Direct reservations, modify/cancel, walk-in, calendar, no-show (`FR-RES-*`) | Owns the reservation store: reservations, holds, cancellation records; no other module writes it | `ReservationService` (HTTP/gRPC); emits `ReservationEvents` | Go service (~30–50 MB RAM): static binary fits 2*4*50; goroutines serve the `NFR-CON-1` paired-booking guard; dedicated schema in the shared engine |
+| Stay (front desk) | Check-in, check-out, room moves, early/late times, arrivals/departures (`FR-FDK-*`) | Owns the stay store: stays, room assignments, move history; no other module writes it | `StayService` (HTTP/gRPC); emits `StayEvents` | Node.js/TypeScript service (~100–150 MB): CRUD fit; shares one runtime with Rooms/Guests/Admin; dedicated schema in the shared engine |
+| Rooms | Inventory, housekeeping states, out-of-order blocks, room setup (`FR-RMS-*`) | Owns the room store: rooms, room types, status history, blocks; no other module writes it | `RoomInventoryService` (HTTP/gRPC); emits `RoomStateEvents` | Node.js/TypeScript service (~100–150 MB): shared runtime with Stay; dedicated schema in the shared engine |
+| Rates & Availability | Rate plans, availability counts, discounts, stay restrictions, price basis (`FR-RTE-*`) | Owns the pricing store: rate plans, restrictions, discount definitions, quoted price bases; no other module writes it | `PricingService` (HTTP/gRPC); emits `RateEvents` | Go service (~30–50 MB): quote latency for `NFR-PERF-1`; shares the Go toolchain; dedicated schema in the shared engine |
+| Guests | Profiles, preferences, repeat-guest flag, confirmations (`FR-GST-*`) | Owns the guest store: guest profiles, preferences, stay links; no other module writes it | `GuestService` (HTTP/gRPC); emits `GuestEvents` | Node.js/TypeScript service (~100–150 MB): CRUD fit; shared runtime; dedicated schema in the shared engine |
+| Billing | Folios, charges, payments, taxes/fees, day-close, settlement gate (`FR-BIL-*`) | Owns the folio store: folios, folio lines, payments, tax/fee rules, day-close totals; no other module writes it | `BillingService` (HTTP/gRPC); emits `FolioEvents` | Go service (~30–50 MB): decimal arithmetic without a JVM heap (~300+ MB for Spring) on a 4 GB host; dedicated schema in the shared engine |
+| Reporting | Occupancy, revenue, daily sheet, housekeeping reports (`FR-RPT-*`) | Owns the reporting read-model store, rebuilt from domain events; source records stay with their owning modules | `ReportingService` (HTTP read API) | Go service (~30–50 MB): event consumer + read API; no Python data stack needed at 50-room scale; own read-model schema in the shared engine |
+| Admin & Config | Hotel profile, users/roles, room/rate setup, export/backup, per-hotel customisation values (`FR-ADM-*`, `FR-CUS-*`) | Owns the config store: hotel profile, users, roles, custom field/policy definitions, backup records; no other module writes it | `AdminService` (HTTP/gRPC); emits `ConfigChangedEvents` | Node.js/TypeScript service (~100–150 MB): config CRUD + identity sessions; shared runtime; dedicated schema in the shared engine |
+
+Store note (shared engine, dedicated stores): the MVP uses one
+shared database engine (proposed default PostgreSQL; MySQL is the
+named alternative — open question OQ-C8 in
+`docs/architecture/candidate-architectures.md`) holding one
+dedicated schema per module. Logical ownership is unchanged —
+never shared tables, never cross-module reads — but a single
+engine process (~256 MB) replaces eight engines to fit 2*4*50.
+No new modules, no boundary changes: this section only records a
+proposed runtime and footprint note per module.
 
 ## 5. Booking/availability path
 
@@ -100,10 +111,14 @@ each change with actor and timestamp (`NFR-AUD-1`).
 
 ## 7. On-premise single-property deployment topology (summary)
 
-One property runs one instance: a reverse proxy, one container per
-module, the database host(s) with one logical store per module, and an
-on-premise backup target. Detail — containers, stores, proxy, backup
-target, and the chain-ready non-MVP direction — lives in
+One property runs one instance: Nginx, one container per module,
+one shared database engine with one dedicated schema per module,
+and an on-premise backup target — all fitting a single 2*4*50
+host by default (per-module resource budget in
+`docs/architecture/system-architecture.md` section 3), with the
+small-cluster variant spreading the same components across 2–3
+such hosts. Detail — containers, stores, proxy, backup target,
+and the chain-ready non-MVP direction — lives in
 `docs/architecture/system-architecture.md`. `NFR-DEP-1` holds: one
 installation serves exactly one property.
 
@@ -112,10 +127,11 @@ installation serves exactly one property.
 - Layout: one top-level directory per module plus shared contract
   definitions; each module carries its own build/test/run
   instructions.
-- CI: one pipeline with per-module jobs for its own stack, a
+- CI: one pipeline with per-module jobs for its own stack (two
+  toolchains in the primary mapping: Node.js and Go), a
   contract-check stage (consumer contracts against provider
   modules), and a packaging stage that bundles the whole system
-  into the on-premise installer. No CI workflow files are added by
+  into the offline on-premise Ansible installer. No CI workflow files are added by
   this change (out of scope); the strategy is recorded here for the
   later pipeline issue.
 - Versioning: one repository tag versions a system release for a
