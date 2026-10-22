@@ -1,0 +1,73 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Shell syntax check (script/*.sh)
+        run: |
+          shopt -s nullglob
+          files=(script/*.sh)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No script/*.sh files found."
+            exit 1
+          fi
+          for f in "${files[@]}"; do
+            echo "Checking $f"
+            bash -n "$f"
+          done
+
+      - name: Required paths exist
+        run: |
+          missing=0
+          for f in \
+            AGENTS.md \
+            README.md \
+            docs/README.md \
+            docs/ao-rules.md \
+            docs/project/issue-conventions.md \
+            .opencode/opencode.jsonc \
+            .github/ISSUE_TEMPLATE/task.yml \
+            .github/PULL_REQUEST_TEMPLATE.md; do
+            if [ -e "$f" ]; then
+              echo "OK $f"
+            else
+              echo "MISSING $f"
+              missing=1
+            fi
+          done
+          exit "$missing"
+
+      - name: No merge-conflict markers in tracked files
+        run: |
+          if git grep -n -E '^(<<<<<<<|=======|>>>>>>>|\|\|\|\|\|\|\|)' -- .; then
+            echo "Merge-conflict markers found."
+            exit 1
+          fi
+          echo "No merge-conflict markers found."
+
+      - name: No secrets-looking strings in tracked files
+        # The workflow file itself is excluded: it necessarily contains
+        # these patterns as search strings.
+        run: |
+          if git grep -n -E 'ghp_|gho_|AKIA|-----BEGIN .*PRIVATE KEY' -- . ':!.github/workflows/ci.yml'; then
+            echo "Secrets-looking strings found."
+            exit 1
+          fi
+          echo "No secrets-looking strings found."
