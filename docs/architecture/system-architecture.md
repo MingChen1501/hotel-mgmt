@@ -22,7 +22,8 @@ keep working without internet (`NFR-AVL-1`):
 - Module containers: one container per HLD module (Reservations,
   Stay, Rooms, Rates & Availability, Guests, Billing, Reporting,
   Admin & Config), each embedding its own
-  (proposed) runtime (primary mapping: Node.js × 4, Go × 4 —
+  (proposed) runtime (primary mapping: Node.js × 4, Go × 3,
+  Java × 1 on Billing —
   `docs/architecture/candidate-architectures.md` section 8).
 - Database host(s): one shared database engine (proposed
   default PostgreSQL; MySQL is the named alternative) holding
@@ -108,7 +109,7 @@ state per component on the default single host:
 | Rooms (Node.js) | ~150 MB | ~0.1 | ~0.1 GB | Shared image layers with Stay |
 | Rates & Availability (Go) | ~50 MB | ~0.1 | ~0.1 GB | Static binary |
 | Guests (Node.js) | ~150 MB | ~0.1 | ~0.1 GB | Shared image layers with Stay |
-| Billing (Go) | ~50 MB | ~0.05 | ~0.1 GB | Static binary; day-close is the only heavy job |
+| Billing (Java 21 on Quarkus, JVM mode) | ~180 MB | ~0.1 | ~0.3 GB | Slim JVM, no Spring context; native `BigDecimal`; GraalVM-native build is the named optimisation |
 | Reporting (Go) | ~50 MB | ~0.05 | ~0.1 GB | Read API + event consumer |
 | Admin & Config (Node.js) | ~150 MB | ~0.05 | ~0.1 GB | Config CRUD + identity sessions |
 | Shared database engine (PostgreSQL/MySQL) | ~512 MB | ~0.4 | ~5 GB + data | One engine, 8 schemas; 2-year data ~2–4 GB at 50-room scale |
@@ -116,17 +117,22 @@ state per component on the default single host:
 | Prometheus | ~200 MB | ~0.1 | ~2 GB retention | 15-day local retention default |
 | Grafana (stoppable) | ~150 MB | ~0.05 | ~0.2 GB | May be stopped to reclaim RAM; metrics kept |
 | Backup staging | — | — (scheduled) | ~10 GB | Nightly dumps + exports; rotated per `docs/operations/backup-dr.md` |
-| Headroom | ~900 MB | ~0.5 | ~20+ GB free | Burst, day-close, restore drills, log growth |
+| Headroom | ~750+ MB | ~0.45 | ~20 GB free | Burst, day-close, restore drills, log growth |
 
-Totals: ~3.1 GB of 4 GB RAM, ~1.6 of 2 vCPU, ~23 GB of 50 GB
-disk — inside one host with headroom in every dimension.
+Totals: ~3.2–3.25 GB of 4 GB RAM, ~1.65 of 2 vCPU, ~23.2 GB of
+50 GB disk — inside one host with headroom in every dimension
+(Billing-on-Java adds ~+130 MB RAM / ~+0.05 vCPU / ~+0.2 GB
+disk versus the previous all-Go billing estimate; a Spring-class
+heap at ~300+ MB is explicitly excluded by the minimal-subset
+rule and NOT in these totals).
 Excluded by the minimal-subset rule and NOT in these totals:
 Kafka (~1 GB+ RAM — excluded, OQ-C7), Redis (re-opened only on
 measured `NFR-PERF-1` miss), mini-K8s control plane (~500 MB+
 — cluster variant only, OQ-C6), second database engine (one
 shared engine suffices). The fallback mapping (Candidate C,
-Node.js throughout) replaces the four Go binaries with four
-more ~150 MB Node.js containers (+~400 MB RAM) and still fits.
+Node.js throughout) replaces the three Go binaries and the one
+Java service with four more ~150 MB Node.js containers
+(+~270–300 MB RAM net versus this primary) and still fits.
 
 ## 4. Chain-ready direction (explicitly non-MVP)
 

@@ -91,7 +91,7 @@ envelope). Each module directory carries its own build, test, and run
 instructions and embeds its own (proposed) runtime.
 
 Per-module language picks (all `proposed`, all inside the allowed
-pool; footprint notes against a 2*4*50 host — two runtimes total,
+pool; footprint notes against a 2*4*50 host — three runtimes total,
 footprint first, team second):
 
 | Module | Proposed language | Footprint note (why it fits 2*4*50) |
@@ -99,16 +99,18 @@ footprint first, team second):
 | Reservations | Go | Single static binary, ~30–50 MB RAM; goroutines serve the paired-simultaneous-booking guard (`NFR-CON-1`); no interpreter/JVM overhead |
 | Stay (front desk) | Node.js / TypeScript | Simple CRUD desk flows; container ~100–150 MB; shares one runtime with Rooms, Guests, Admin |
 | Rooms | Node.js / TypeScript | Same runtime as Stay; inventory reads stay in-process-cheap behind `RoomInventoryService` |
-| Rates & Availability | Go | Quote path latency (`NFR-PERF-1`: views within 2 s) in a tiny binary; shares the Go toolchain with Reservations/Billing/Reporting |
+| Rates & Availability | Go | Quote path latency (`NFR-PERF-1`: views within 2 s) in a tiny binary; shares the Go toolchain with Reservations/Reporting |
 | Guests | Node.js / TypeScript | Profile CRUD; same shared runtime as Stay |
-| Billing | Go | Exact decimal arithmetic via a decimal library; avoids a JVM heap (~300+ MB for Spring) on a 4 GB host |
+| Billing | Java 21 on Quarkus (JVM mode, RESTEasy Reactive) | Exact `BigDecimal` money arithmetic in a slim JVM (~150–180 MB RSS, no Spring heap); folio/day-close logic suits Java's type system; see the section 8 footprint math — still inside one host |
 | Reporting | Go | Event consumer plus HTTP read API in the same small-binary profile; no Python data stack needed at 50-room / 2-year-report scale |
 | Admin & Config | Node.js / TypeScript | Config CRUD and identity sessions; same shared runtime as Stay |
 
-Two runtimes total (Node.js + Go) keep the installer small and CI to
-two toolchains. Java and Python stay in the pool as named fallbacks
-(see section 8); Rust is unused in this mapping — available if a
-module later proves it needs Rust's profile, not spent upfront.
+Three runtimes total (Node.js + Go + one slim Java) keep the installer
+bounded and CI to three toolchains. Python stays in the pool as the
+named fallback (Reporting data jobs — see section 8); Rust is unused
+in this mapping — available if a module later proves it needs
+Rust's profile, not spent upfront. Billing-on-Go stays the named
+revert if the slim-Java measurement misses (see OQ-C10).
 
 Data ownership: one logical store per module on the database host(s);
 each module connects only to its own store (HLD section 4, ERD
@@ -166,14 +168,14 @@ Monitoring and network (all `proposed`, all owner-listed tooling):
 
 Consequences: follows the recorded owner direction (Option A
 accepted 2026-10-23: per-module freedom inside the allowed pool);
-per-module tool fit (Go concurrency/decimal paths versus
-Node.js desk CRUD) within only two runtimes; atomic cross-module
+per-module tool fit (Go concurrency/quote paths, Java money
+arithmetic, versus Node.js desk CRUD) within three slim runtimes; atomic cross-module
 change in one commit; fits the 2*4*50 envelope per the
 system-architecture budget. Costs: one pipeline builds and tests
-two stacks with a contract-check stage (slower, more complex than
+three stacks with a contract-check stage (slower, more complex than
 single-stack); contract discipline is load-bearing; hiring and
-maintenance span two ecosystems; packaging must bundle and verify
-two runtimes plus the offline bundle on a small host.
+maintenance span three ecosystems; packaging must bundle and verify
+three runtimes plus the offline bundle on a small host.
 
 ## 3. Candidate B — modular monolith with strict module boundaries, one stack, extracted later
 
@@ -232,7 +234,10 @@ isolation must be re-proven); a single process means one module's
 fault can affect the whole desk until extraction — the sharpest
 risk on a single small host with no spare capacity to absorb it;
 boundary discipline needs constant enforcement because
-in-process shortcuts are always tempting. Data/packaging/
+in-process shortcuts are always tempting. A single-stack Java
+variant of B is not proposed: a full Spring-class process would
+spend the one-process headroom advantage for no MVP reason.
+Data/packaging/
 monitoring/network follow the same minimal-subset picks as
 Candidate A (one shared engine, Ansible + plain containers,
 Nginx entry, Prometheus + Grafana, LAN + Tailscale, no Kafka)
@@ -399,19 +404,21 @@ while its traceability rows stay TBD or its runbook delta is missing.
 | Dimension | A — polyglot modules, one monorepo (primary) | B — modular monolith, extract later (DEMOTED) | C — shared-stack module packages (fallback) |
 |---|---|---|---|
 | Monorepo-mandatory | Yes | Yes | Yes |
-| Allowed-pool compliance | Yes: Node.js + Go per-module picks, Java/Python/Rust available as fallbacks | Yes (single pick from the pool) | Yes: Node.js throughout (Go-throughout alternative) |
-| 2*4*50 single-host fit | Fits per the section 3 budget (two runtimes, one engine, no Kafka/Redis day-one) | Fits with the most headroom (one process, one engine) | Fits (one runtime, one engine) |
-| CI cost | Higher: two-toolchain jobs plus contract checks | Lowest: one toolchain, one build; boundary lint is the only extra | Medium: per-module jobs, one toolchain, plus contract checks |
-| On-prem packaging | Medium: two runtimes in one offline Ansible bundle | Lightest: one runtime, smallest installer | Light: one runtime, module containers |
-| Hiring | Two ecosystems (Node.js + Go) | Narrowest: one skill profile | Narrow: one skill profile plus platform-library ownership |
+| Allowed-pool compliance | Yes: Node.js + Go + slim Java per-module picks, Python/Rust available as fallbacks | Yes (single pick from the pool) | Yes: Node.js throughout (Go-throughout alternative) |
+| 2*4*50 single-host fit | Fits per the section 3 budget (three slim runtimes, one engine, no Kafka/Redis day-one; Billing Java adds ~+130 MB vs Go, headroom kept) | Fits with the most headroom (one process, one engine) | Fits (one runtime, one engine) |
+| CI cost | Higher: three-toolchain jobs plus contract checks | Lowest: one toolchain, one build; boundary lint is the only extra | Medium: per-module jobs, one toolchain, plus contract checks |
+| On-prem packaging | Medium-high: three runtimes in one offline Ansible bundle | Lightest: one runtime, smallest installer | Light: one runtime, module containers |
+| Hiring | Three ecosystems (Node.js + Go + one Java service) | Narrowest: one skill profile | Narrow: one skill profile plus platform-library ownership |
 | Per-hotel config ease | Event/cache distribution per module; reconciling story needed | Simplest: in-process reads, no distribution story | Shared schema package validates once; distribution as in A |
 | Chain-readiness later | Most ready: deployable modules extend or gain central services | Least ready: extraction migration first | Ready: modules already deployable; platform libs shared across properties |
 | Owner-direction fit | Matches the confirmed per-module-freedom direction | Contradicts it for the MVP (reason for demotion) | Partial: keeps modules-plus-monorepo, drops per-module stack freedom |
 
 ## 8. Recommendation (not a decision)
 
-Primary mapping (Candidate A — two runtimes, minimal subset,
-footprint first):
+Primary mapping (Candidate A — three slim runtimes, minimal subset,
+footprint first; Java placed on Billing per the 2026-10-23 owner
+request — the one module where a JVM earns its place inside
+2*4*50):
 
 | Module | Language | Store | Why (footprint first, team second) |
 |---|---|---|---|
@@ -420,7 +427,7 @@ footprint first):
 | Rooms | Node.js / TypeScript | Dedicated schema in the shared engine | Shared runtime; cheap inventory reads |
 | Rates & Availability | Go | Dedicated schema in the shared engine | Quote latency `NFR-PERF-1`; shared Go toolchain |
 | Guests | Node.js / TypeScript | Dedicated schema in the shared engine | CRUD fit; shared runtime |
-| Billing | Go | Dedicated schema in the shared engine | Decimal arithmetic without a JVM heap on 4 GB |
+| Billing | Java 21 on Quarkus (JVM mode, RESTEasy Reactive) | Dedicated schema in the shared engine | Native `BigDecimal` money arithmetic + folio/day-close type safety; slim JVM (~150–180 MB RSS) — a full Spring-class heap (~300+ MB) is explicitly OUT; footprint math below |
 | Reporting | Go | Own read-model schema, rebuilt from outbox events | No Python data stack needed at this scale |
 | Admin & Config | Node.js / TypeScript | Config schema in the shared engine | Config CRUD + identity; shared runtime |
 
@@ -429,21 +436,42 @@ PostgreSQL single shared engine (MySQL alternative open);
 outbox-based events, no Kafka; no Redis day-one;
 Ansible + plain containers offline, no mini-K8s by default;
 Prometheus + Grafana on-prem; LAN + Tailscale, no inbound
-internet. The section 3 budget of
-`docs/architecture/system-architecture.md` shows this fits one
-2*4*50 host with headroom.
+internet.
+
+Footprint math for Billing-on-Java (why one slim JVM fits where
+a Spring-class heap would not): a Spring Boot service idles at
+~300–400 MB heap/RSS plus a ~200–300 MB layered image, which
+would spend the whole ~900 MB headroom in
+`docs/architecture/system-architecture.md` section 3 on one
+module — rejected for the MVP. The proposed Quarkus JVM-mode
+service (RESTEasy Reactive, no Spring context: ~150–180 MB RSS
+steady state, ~0.05–0.1 vCPU share, ~0.3 GB image with the
+shared base layer) costs only ~+100–130 MB RAM and ~+0.2 GB
+disk versus the previous Billing-on-Go estimate (~50 MB /
+~0.1 GB). The section 3 budget rises from ~3.1 GB to ~3.2–3.25 GB
+of 4 GB RAM, ~1.6–1.65 of 2 vCPU, ~23.2 GB of 50 GB disk —
+still inside one 2*4*50 host with ~750+ MB RAM, ~0.35 vCPU,
+and ~20 GB disk headroom. A GraalVM native build of the same
+service (~60–80 MB RSS) is the named optimisation if the JVM
+measurement misses; the revert is Billing-on-Go (~50 MB),
+which the fallback paragraph keeps available. Reporting batch
+jobs and Admin/config were considered for Java and rejected:
+Reporting's event-consumer-plus-read-API profile needs no JVM
+(Go binary suffices at this scale), and Admin/config is CRUD
+that already shares the Node.js runtime — a second JVM there
+would spend footprint for no tool-fit gain.
 
 Fallback mapping (Candidate C — one runtime, team second): all
 eight modules on Node.js / TypeScript with per-module packages
 and shared platform libraries, same stores, same data/
 packaging/monitoring/network picks as the primary. Take it if
-the team is single-stack Node.js or if the two-toolchain CI cost
+the team is single-stack Node.js or if the three-toolchain CI cost
 proves too high — it preserves deployable modules and the
 contract investment while cutting packaging cost toward B
-levels. Java/Spring (Billing) and Python/FastAPI (Reporting,
-Rates) stay named per-module fallbacks inside the pool if team
-strength or measured behaviour demands them; neither is spent
-upfront.
+levels. Billing-on-Go stays the named revert if the slim-Java
+measurement misses; Python/FastAPI (Reporting) stays the named
+per-module fallback inside the pool if team strength or measured
+behaviour demands it; neither is spent upfront.
 
 Candidate B stays demoted: it fits only if the owner explicitly
 trades the confirmed per-module-freedom direction for the
@@ -482,6 +510,10 @@ ADR-0001 stays `proposed` until the owner accepts it.
 - OQ-C9 — Frontend: confirm a static SPA served by Nginx (no SSR
   runtime), framework chosen at implementation time from the free
   choice?
+- OQ-C10 — Billing-on-Java runtime: confirm Java 21 on Quarkus
+  (JVM mode) for Billing with the section 8 footprint math, the
+  GraalVM-native optimisation, and the Billing-on-Go revert — or
+  direct Billing back to Go and name a different Java entry point?
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-84
