@@ -5,11 +5,13 @@ this project: each row points at its real path with status `active` or
 `stub (not needed yet)`. Every file under `docs/` is in one of the
 tables — no orphans, no dead links. All content is English.
 
-The product scope for the MVP exists (`product/mvp-scope.md`, active).
-The stack and architecture are still undecided, so the remaining spec
-groups below stay stubs. They flip to `active` through the normal
-spec-gated flow (see the `spec-gate` skill) as the owner scopes further
-slices. Do not invent hotel product requirements to fill them early.
+The product scope and the MVP requirements for the MVP exist
+(`product/mvp-scope.md` and `requirements/mvp-requirements.md`,
+both active). The stack and architecture are still undecided, so the
+remaining spec groups below stay stubs. They flip to `active` through
+the normal spec-gated flow (see the `spec-gate` skill) as the owner
+scopes further slices. Do not invent hotel product requirements to
+fill them early.
 
 ## Spec ownership (role -> groups)
 
@@ -27,6 +29,12 @@ slices. Do not invent hotel product requirements to fill them early.
 | Type | Path | Status | Purpose |
 |---|---|---|---|
 | MVP scope | `product/mvp-scope.md` | active | MVP scope for the small-hotel PMS (Closes #9) |
+
+## Requirements
+
+| Type | Path | Status | Purpose |
+|---|---|---|---|
+| MVP requirements | `requirements/mvp-requirements.md` | active | numbered FRs, measurable NFRs, per-hotel workflow customisation, traceability (Closes #10) |
 
 ## Project
 
