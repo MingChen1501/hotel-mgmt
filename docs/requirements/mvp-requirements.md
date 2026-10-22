@@ -57,8 +57,8 @@ FR-RES-4 — Walk-in booking. Staff can create a same-day reservation
 for a guest at the desk.
 Given a guest arrives without a reservation and a room type has
 availability for tonight; when staff create the reservation with
-today as arrival; then the reservation is created in a state ready
-for immediate check-in and appears on today's arrivals list.
+today as arrival; then the reservation is created in the confirmed
+state, ready for immediate check-in, and appears on today's arrivals list.
 
 FR-RES-5 — Reservation calendar. Staff can see reservations across
 dates and room types on one screen.
@@ -85,10 +85,10 @@ room, and the room state becomes occupied.
 
 FR-FDK-2 — Check-out. Staff can close the stay, present the folio,
 and release the room.
-Given an in-house stay with a settled folio (zero balance); when
-staff check the guest out; then the stay is closed, the folio is
-presented as the final bill, and the room state becomes vacant and
-dirty.
+Given an in-house stay with a settled folio (zero balance) or an
+authorised approval recorded under `FR-BIL-7`; when staff check the
+guest out; then the stay is closed, the folio is presented as the
+final invoice, and the room state becomes vacant and dirty.
 
 FR-FDK-3 — Room moves. Staff can move a guest to another room
 mid-stay with the history kept.
@@ -204,16 +204,16 @@ message.
 
 ### 1.6 Billing and folio (`FR-BIL-*`)
 
-FR-BIL-1 — Guest folio. Each stay has one running bill collecting
-room charges and extras.
+FR-BIL-1 — Guest folio. Each stay has one running folio collecting
+room charges and charge items.
 Given a checked-in stay; when staff open its folio; then a single
 folio exists for the stay showing every posted charge and payment
 with a running balance.
 
 FR-BIL-2 — Room and extra charges. Staff can post nightly room
-charges and extra items to the folio.
+charges and charge items to the folio.
 Given an in-house stay; when staff post a nightly room charge or a
-hotel-defined extra item; then the folio line shows the item, amount,
+hotel-defined charge item; then the folio line shows the item, amount,
 and posting time, and the balance increases by the line amount.
 
 FR-BIL-3 — Payment recording. Staff can record cash and card
@@ -222,11 +222,11 @@ Given an open folio with a balance; when staff record a cash or card
 payment with its amount; then the payment appears on the folio with
 method and time, and the balance decreases by the paid amount.
 
-FR-BIL-4 — Invoice and receipt. Staff can produce a printable bill
-and payment receipt for the guest.
-Given a folio with charges and payments; when staff request the bill
-or a receipt; then the printed bill matches the folio lines and
-balance exactly, and each receipt matches one recorded payment.
+FR-BIL-4 — Invoice and receipt. Staff can produce a printable
+invoice and payment receipt for the guest.
+Given a folio with charges and payments; when staff request the
+invoice or a receipt; then the printed invoice matches the folio
+lines and balance exactly, and each receipt matches one recorded payment.
 
 FR-BIL-5 — Configurable taxes and fees. Hotel-set tax and fee rules
 apply to folio lines.
@@ -281,7 +281,7 @@ FR-ADM-1 — Hotel profile setup. The owner can set the hotel's
 identity, contact details, and local settings.
 Given valid hotel identity, contact, and local settings entered by
 the owner; when saved; then the details appear on confirmations,
-bills, and receipts, and the local settings govern dates, times,
+invoices, and receipts, and the local settings govern dates, times,
 and stay policies hotel-wide.
 
 FR-ADM-2 — User accounts and roles. The owner can create accounts for
@@ -309,7 +309,8 @@ those standard times.
 FR-ADM-5 — Data export and backup. The owner can export hotel data
 and keep restorable on-premise copies.
 Given the owner's request; when an export or backup runs; then a
-complete copy of the hotel's data is written to on-premise storage
+complete copy of the hotel's data (reservations, stays, folios, and
+payments, per `NFR-BKP-1`) is written to on-premise storage
 and the system reports success or failure of the run to the owner.
 
 ### 1.9 Per-hotel workflow customisation (`FR-CUS-*`)
@@ -327,10 +328,10 @@ book, check in, or cancel; then the hotel's own times and wording
 are the ones shown and enforced.
 
 FR-CUS-3 — Custom charge items. The manager can define the hotel's
-own billable extras.
-Given an extra item with a name and price defined by the manager;
+own charge items.
+Given a charge item with a name and price defined by the manager;
 when staff post charges; then the hotel's item is available to post
-to any folio and appears on bills under its own name.
+to any folio and appears on invoices under its own name.
 
 ## 2. Non-functional requirements
 
@@ -425,8 +426,9 @@ NFR-RET-1 — Data retention. Closed stays, folios, payments, and
 their audit entries stay retrievable for at least 24 months of
 operating data in the live system, and records newer than the
 hotel's configured retention floor cannot be purged.
-Given the retention floor set for the hotel; when a purge is
-attempted; then records newer than the floor are kept and the purge
+Given the retention floor configured for the hotel (a hotel local
+setting owned by `FR-ADM-1`); when a purge is attempted; then
+records newer than the floor are kept and the purge
 refuses them. Targets: 24 months minimum retrievable history; 0
 records removed from within the floor. (The legal minimum period, if
 longer, is open question OQ-2.)
@@ -443,7 +445,7 @@ records carry an offset and render on the correct local date.
 
 NFR-I18N-1 — Internationalisation readiness. English ships first and
 Vietnamese can follow without code changes to behaviour.
-Given the running system; when any screen, confirmation, bill,
+Given the running system; when any screen, confirmation, invoice,
 receipt, or report is shown; then every user-visible string comes
 from a message catalogue (no behaviour logic depends on English
 wording), and dates, numbers, and currency follow the active locale
@@ -455,7 +457,7 @@ covers readiness only.)
 NFR-AVL-1 — On-premise availability. The desk keeps working through
 an internet outage.
 Given the hotel's internet connection is down; when staff book,
-check in, check out, post charges, record payments, and print bills;
+check in, check out, post charges, record payments, and print invoices;
 then every one of those actions completes on the on-premise
 installation exactly as when connected. Target: 100% of the named
 desk actions succeed with no outside connectivity.
@@ -471,7 +473,7 @@ desk actions succeed with no outside connectivity.
 | Cancellation reasons | The hotel's own list of cancellation reasons (`FR-RES-3`) | Cancelling requires picking one of the hotel's reasons |
 | No-show rules | Whether a no-show keeps any charge and which reason list applies (`FR-RES-6`) | Marking no-show follows the hotel's rule and keeps the reason |
 | Open-balance check-out | Whether check-out with an open balance needs an approval, and which role may approve (`FR-BIL-7`) | Unapproved open-balance check-out is refused; approvals are recorded |
-| Charge items | The hotel's own billable extras with names and prices (`FR-CUS-3`) | Only defined items can be posted; bills show the hotel's names |
+| Charge items | The hotel's own charge items with names and prices (`FR-CUS-3`) | Only defined items can be posted; invoices show the hotel's names |
 | Taxes and fees | The hotel's tax and fee rules (`FR-BIL-5`) | Folio lines derive tax and fee amounts from the hotel's rules |
 | Stay restrictions | Minimum stay and closed-to-arrival days per date range (`FR-RTE-4`) | Violating reservations are refused with the restriction named |
 | Discounts and special rates | Named discounts the manager may apply (`FR-RTE-3`) | Applied discounts are kept by name on the reservation and folio |
@@ -517,7 +519,7 @@ product scope have no FR and are listed in section 6.
 | Reservation calendar | FR-RES-5 | Guard seeds multi-date, multi-type bookings and checks placement and detail drill-down |
 | No-show handling | FR-RES-6 | Guard marks a past-arrival booking no-show and checks state, released room, and history |
 | Check-in | FR-FDK-1 | Guard checks in against a ready room and checks stay link and occupied state |
-| Check-out | FR-FDK-2 | Guard checks out a settled stay and checks closure, final bill, and vacant-dirty state |
+| Check-out | FR-FDK-2, FR-BIL-7 | Guard checks out a settled stay and checks closure, final invoice, and vacant-dirty state; guard attempts open-balance check-out and checks refusal unless an authorised approval is recorded |
 | Room moves | FR-FDK-3 | Guard moves an in-house guest and checks both room states and kept history |
 | Early check-in and late check-out | FR-FDK-4 | Guard records off-hours arrival/departure and checks kept times and list visibility |
 | Arrivals and departures list | FR-FDK-5 | Guard seeds all three groups and checks exactly-once listing with names and states |
@@ -536,7 +538,7 @@ product scope have no FR and are listed in section 6.
 | Guest folio | FR-BIL-1 | Guard opens a stay folio and checks single folio with running balance |
 | Room and extra charges | FR-BIL-2 | Guard posts room and extra lines and checks lines plus balance movement |
 | Payment recording | FR-BIL-3 | Guard records cash and card payments and checks method, time, and balance movement |
-| Invoice and receipt | FR-BIL-4 | Guard prints bill and receipts and checks exact match to folio and payments |
+| Invoice and receipt | FR-BIL-4 | Guard prints the invoice and receipts and checks exact match to folio and payments |
 | Configurable taxes and fees | FR-BIL-5 | Guard sets rules, posts a charge, and checks derived amounts and balance |
 | Day-close totals | FR-BIL-6 | Guard posts a day of activity, closes, and checks per-method totals agree with folios |
 | Occupancy report | FR-RPT-1 | Guard compares per-date counts against seeded bookings |
@@ -550,7 +552,7 @@ product scope have no FR and are listed in section 6.
 | Data export and backup | FR-ADM-5 | Guard runs export/backup and checks completeness plus success/failure report |
 | Customisable required guest fields | FR-CUS-1 | Guard marks fields mandatory and checks refusal names the field |
 | Customisable stay policies | FR-CUS-2 | Guard saves times and wording and checks desk enforcement and display |
-| Custom charge items | FR-CUS-3 | Guard defines an item and checks posting availability and bill naming |
+| Custom charge items | FR-CUS-3 | Guard defines an item and checks posting availability and invoice naming |
 
 Coverage: 40 MVP capabilities mapped, 0 unmapped.
 

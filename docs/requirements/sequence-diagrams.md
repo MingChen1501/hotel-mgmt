@@ -48,12 +48,12 @@ sequenceDiagram
     alt Restriction violated
         Res-->>Staff: Reservation refused, restriction named [FR-RTE-4]
     else Restrictions pass
-        Res->>Res: Atomic overbooking check: confirmed + in-house vs sellable rooms of the type [NFR-CON-1; FIXED §3.2]
+        Res->>Res: Atomic overbooking check: confirmed + in-house vs sellable rooms of the type [NFR-CON-1; states per state-machine]
         alt No sellable unit left or simultaneous booking won first
             Res-->>Staff: Reservation refused, room type and dates named as conflict [NFR-CON-1]
         else Sellable unit available
             Res->>Res: Record reservation with price basis from rate plan in force [FR-RES-1, FR-RTE-5; CUS: FR-RTE-3 discount may adjust, FR-CUS-2 times and wording shown]
-            Res-->>Staff: Reservation exists with unique reference, appears on calendar [FR-RES-1, FR-RES-5; FIXED §3.2: state confirmed]
+            Res-->>Staff: Reservation exists with unique reference, appears on calendar [FR-RES-1, FR-RES-5; state confirmed per state-machine]
             Staff->>GuestRec: Produce confirmation to share with guest [FR-GST-4; CUS: FR-CUS-2 hotel wording]
         end
     end
@@ -86,12 +86,12 @@ sequenceDiagram
     alt Room just taken by a simultaneous check-in
         Rooms-->>Staff: Check-in refused, room conflict named [NFR-CON-2]
     else Room free
-        Staff->>Stay: Check guest in against the room [FR-FDK-1; CUS: FR-CUS-1 check-in fields enforced; FIXED §3.2: confirmed to checked-in]
+        Staff->>Stay: Check guest in against the room [FR-FDK-1; CUS: FR-CUS-1 check-in fields enforced; FIXED §3.2 order, states per state-machine: confirmed to checked-in]
         Stay->>Rooms: Room state becomes occupied [FR-FDK-1]
     end
     opt Room move mid-stay [FR-FDK-3]
         Staff->>Rooms: Pick a vacant, clean, inspected room [FR-FDK-3]
-        Staff->>Stay: Move guest; stay stays in house with history [FR-FDK-3; FIXED §3.2: no state change]
+        Staff->>Stay: Move guest; stay stays in house with history [FR-FDK-3: stay remains in house, no state change]
         Stay->>Rooms: Old room becomes vacant and dirty [FR-FDK-3]
     end
     opt Early arrival or late departure recorded [FR-FDK-4]
@@ -104,7 +104,7 @@ sequenceDiagram
             Folio-->>Staff: Check-out refused until settled or approved [FR-BIL-7]
         end
     end
-    Staff->>Stay: Check guest out; present the invoice [FR-FDK-2, FR-BIL-4; FIXED §3.2: checked-in to closed]
+    Staff->>Stay: Check guest out; present the invoice [FR-FDK-2, FR-BIL-4; FIXED §3.2 order: check-out closes the stay, states per state-machine]
     Stay->>Rooms: Room becomes vacant and dirty [FR-FDK-2]
 ```
 
@@ -150,7 +150,7 @@ sequenceDiagram
     Rooms-->>HK: Dirty rooms visible in housekeeping report [FR-RPT-4]
     HK->>Rooms: Mark room clean when work completes [FR-RMS-2]
     Rooms-->>HK: Clean-but-uninspected rooms visible for inspection [FR-RPT-4]
-    HK->>Rooms: Mark room inspected [FR-RMS-2; FIXED §3.2: dirty to clean to inspected]
+    HK->>Rooms: Mark room inspected [FR-RMS-2: dirty to clean to inspected]
     Rooms-->>Desk: Inspected vacant rooms offered for check-in assignment [FR-RMS-2, FR-FDK-1]
     Desk->>Rooms: Assign inspected room at check-in [FR-FDK-1]
     opt Out-of-order block [FR-RMS-3]
