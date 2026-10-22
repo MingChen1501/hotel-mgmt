@@ -1,0 +1,86 @@
+// AO project config template for {{PROJECT_NAME}}.
+//
+// Apply with the FULL object — setting one field with a flag replaces
+// the whole config object, so a single-field update silently drops
+// every other setting (worker and reviewer settings have been lost
+// this way). Always pass the complete object:
+//
+//   ao project set-config <id> --config-json '<full object>'
+//
+// with {{REPO_SLUG}} and {{DEFAULT_BRANCH}} already replaced by
+// script/install-template.sh, and the example harness/model values
+// below replaced with the choices for the adopting project.
+// Afterwards verify with: ao project get <id> --json
+{
+  // Repo-relative file holding the worker standing instructions.
+  // Every worker session loads this file, so it is the primary
+  // rule channel alongside project cues.
+  "agentRulesFile": "docs/ao-rules.md",
+
+  // Short standing instructions injected into every worker session.
+  // Keep this to the non-negotiables; longer rules live in
+  // agentRulesFile and in project cues (installed separately with
+  // script/install-cues.sh — cues are project-scoped and do NOT
+  // travel with a template file copy unless the installer runs).
+  "agentRules": "WORKER RULES: never merge, never push to the default branch, never force-push; push only your own ao/* session branch; open the PR and end the turn with a done/checkpoint/stuck report containing PR/issue URLs and a test summary, and ping the orchestrator so it wakes.",
+
+  // Standing instructions for orchestrator sessions: the single-task
+  // pool plus the orchestrator-only paths. Mirrors the
+  // single-worker-pool cue so a project without cues still pools.
+  "orchestratorRules": "POOL: exactly ONE task worker at a time, plus one buffer worker for issue creation only (exempt); a reviewer session counts as the task worker; queue further work and spawn the next task only when the slot frees; never batch-spawn. Session create/merge/review are orchestrator-only through script/ao-spawn-worker.sh, script/orchestrator-merge.sh and script/orchestrator-review.sh (marker plus live-orchestrator identity gated). The native AO reviewer is unreliable: do not retrigger stuck runs; follow the newest review cue (reviewer-worker-flow / native-review-broken-manual). Merge only with a recorded verdict plus green CI plus the risk gate; risk-high, risk-very-high, or a missing risk label needs explicit owner approval and the owner merges.",
+
+  // Base branch for new worktrees. Replaced at install time.
+  "defaultBranch": "{{DEFAULT_BRANCH}}",
+
+  // Explicit upstream HTTPS URL for PR claims. Replaced at install time.
+  "canonicalRepoURL": "https://github.com/{{REPO_SLUG}}.git",
+
+  // Worker sessions: replace the example harness and model with the
+  // adopting project's choices.
+  "worker": {
+    "agent": "opencode-v2",
+    "agentConfig": {
+      "model": "example-provider/example-model"
+    }
+  },
+
+  // Orchestrator sessions: replace the example harness and model with
+  // the adopting project's choices.
+  "orchestrator": {
+    "agent": "opencode-v2",
+    "agentConfig": {
+      "model": "example-provider/example-model"
+    }
+  },
+
+  // Native-review harnesses. Kept for the day the reviewer sandbox is
+  // fixed AO-side; until then reviews run through the manual fallback
+  // (reviewer-worker-flow / native-review-broken-manual cues) and
+  // autoReview below stays false. Replace the example model.
+  "reviewers": [
+    {
+      "harness": "opencode-v2",
+      "agentConfig": {
+        "model": "example-provider/example-model"
+      }
+    }
+  ],
+
+  // Issue intake for the adopting repo. Replaced at install time.
+  "trackerIntake": {
+    "repo": "{{REPO_SLUG}}"
+  },
+
+  // Automatic native review of worker PRs. Keep FALSE while the native
+  // reviewer is broken (runs hang with zero output or stall and block
+  // the next head): with autoReview on, every worker PR would queue a
+  // stuck review run. Re-enable only after the reviewer sandbox is
+  // fixed AO-side and a health check passes.
+  "autoReview": false,
+
+  // Whether workers request review themselves. Keep FALSE: reviews are
+  // orchestrator-driven (the orchestrator spawns a separate reviewer
+  // session per the reviewer-worker-flow cue), so a worker must never
+  // trigger or request its own review.
+  "workersRequestReview": false
+}

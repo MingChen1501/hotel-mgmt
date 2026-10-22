@@ -1,0 +1,104 @@
+name: Task
+description: Standard tracked work (feature, fix, docs, CI, perf, and the rest). Uses the title+label convention.
+title: "[type] Imperative summary"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## How this template works
+
+        Every issue uses this form. Pick a **Type** below, write the
+        summary and sections, then after filing add **exactly one type label**
+        matching Type plus **exactly one `risk-*` label** (GitHub issue forms
+        cannot apply a label from a dropdown choice, so this step is manual).
+        Titles follow `[type] Imperative summary`; the full convention lives in
+        `docs/project/issue-conventions.md`.
+
+  - type: dropdown
+    id: type
+    attributes:
+      label: Type
+      description: Lowercase type token. Must match the `[type]` prefix in the issue title and the type label you add after filing.
+      options:
+        - feat
+        - fix
+        - docs
+        - test
+        - ci
+        - perf
+        - a11y
+        - i18n
+        - chore
+        - content
+        - security
+      default: 0
+    validations:
+      required: true
+
+  - type: input
+    id: summary
+    attributes:
+      label: Summary
+      description: One sentence-case sentence, no trailing period. Mirrors the issue title after the `[type]` prefix.
+      placeholder: "Example: Add issue and PR templates with a title and label convention"
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Why this work is needed, with evidence or links (owner note, prior issue, CI run, docs).
+      placeholder: |
+        Example:
+        - Owner note 2026-10-21: backlog titles are inconsistent, hard to scan.
+        - Evidence: open issues mix `docs:`, `Perf:`, `CI:`, or no prefix.
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: What is in and out of scope for this issue.
+      placeholder: |
+        Example:
+        In: `.github/ISSUE_TEMPLATE/task.yml`, `config.yml`, PR template, convention doc.
+        Out: retitling old issues (done separately).
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Testable checkbox list. Each item must be verifiable without guessing.
+      placeholder: |
+        Example:
+        - [ ] The issue form renders with a Type dropdown.
+        - [ ] Blank issues are disabled.
+        - [ ] Convention doc linked from AGENTS.md.
+      render: markdown
+    validations:
+      required: true
+
+  - type: textarea
+    id: risk
+    attributes:
+      label: Risk and rollback
+      description: Risk label chosen (risk-low / risk-medium / risk-high / risk-very-high), why, and how to roll back.
+      placeholder: |
+        Example:
+        Risk: risk-low — docs and `.github/` metadata only, no product output change.
+        Rollback: revert the single PR.
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: |
+        The AO role footer is appended automatically by the worker that files
+        this issue — do not add it yourself:
+
+        `<!-- ao-role: <role> -->`
+        `Role: <role> · AO session <session-id>`

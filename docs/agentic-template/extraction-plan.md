@@ -1,8 +1,6 @@
 # Extraction plan: from starter docs to a real template
 
-Status: active (template starter). How to turn `docs/agentic-template/`
-into a standalone template other projects can instantiate. No new
-repository is created by the change that introduces these docs.
+Status: active (extraction shipped as `template/` + `install-template.sh`, Closes #16). How this starter became the standalone template below. No new repository was created.
 
 ## Goal state
 
@@ -60,10 +58,21 @@ starter docs are sufficient and no template repository should exist.
 Option C becomes worth it only after two adoptions have shown which
 placeholders genuinely vary.
 
-## Open decision (NOT taken here)
+## Extraction record (Closes #16)
+
+Shipped in-repo as `template/` with `template/script/install-template.sh`
+(Option C mechanics on the Option A file set): role files, skills
+(`project-verify` replaces `hotel-verify`), permission config, guard
+plugin, issue/PR templates, document taxonomy, conventions, sanctioned
+scripts, placeholders `{{PROJECT_NAME}}` / `{{REPO_SLUG}}` /
+`{{DEFAULT_BRANCH}}` / `{{DOMAIN}}`, plus `README.md`/`ONBOARDING.md`.
+See `template/docs/agentic-template/extraction-plan.md` for the
+template-side record.
+
+## Open decision (still NOT taken)
 
 > **Create a new repository under the owner's account to host the
-> standalone template?** Explicit owner approval required. Do not create
-> it in the PR that introduces these starter docs; raise it at the next
-> retrospective, with the recommendation above and the cleaning
-> checklist as input.
+> standalone template?** Explicit owner approval required. The in-repo
+> `template/` is sufficient until a second adoption proves otherwise;
+> raise it at the next retrospective, with the recommendation above
+> and the cleaning checklist as input.
