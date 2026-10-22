@@ -36,6 +36,24 @@ doc group.
 - Review the diff read-only before a PR (`dev-peer-review` /
   `content-review`).
 
+## Runtime enforcement (markdown states intent; config + scripts enforce)
+
+- Permissions: `.opencode/opencode.jsonc` keeps the `ask` shell default
+  and adds hard `deny` rules (last match wins) blocking `gh pr merge`,
+  force-push, pushes to the default branch, remote branch deletion, and
+  `gh issue delete`. `.opencode/plugins/project-guard.ts` mirrors that
+  denylist as defense in depth using only the documented permission
+  `evaluate` hook; it never blocks `ao pr merge`, `ao spawn`,
+  `gh pr create/view/edit`, git reads, or session-branch pushes.
+- Orchestrator spawns workers only through
+  `script/ao-spawn-worker.sh --issue <n> --role <role> --name <label>`
+  and merges only through `script/orchestrator-merge.sh <pr-number>`
+  (requires the uncommitted `.ao-orchestrator` marker in the
+  orchestrator worktree; refuses non-open PRs and
+  `risk-high`/`risk-very-high` or missing risk labels).
+- Workers never merge. GitHub-side checks (workflows, branch
+  protection) are a follow-up issue, not this change.
+
 ## Non-negotiables
 
 - Delivery runs through GitHub: origin is

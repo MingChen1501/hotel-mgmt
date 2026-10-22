@@ -25,6 +25,21 @@
     { "action": "shell", "resource": "git branch *", "effect": "allow" },
 
     // Pushing code always needs confirmation, even when a broader allow rule above matches.
-    { "action": "shell", "resource": "git push *", "effect": "ask" }
+    { "action": "shell", "resource": "git push *", "effect": "ask" },
+
+    // Hard denies (last match wins: these sit after every ask/allow
+    // above, so no earlier rule can re-allow them). Workers never merge
+    // and never push to the default branch; merges run only through
+    // script/orchestrator-merge.sh in the orchestrator worktree.
+    // These do NOT block `ao pr merge`, `ao spawn`, `gh pr create/view/edit`,
+    // git reads, or pushing a session branch.
+    { "action": "shell", "resource": "gh pr merge *", "effect": "deny" },
+    { "action": "shell", "resource": "git push --force*", "effect": "deny" },
+    { "action": "shell", "resource": "git push -f *", "effect": "deny" },
+    { "action": "shell", "resource": "git push origin master*", "effect": "deny" },
+    { "action": "shell", "resource": "git push * master*", "effect": "deny" },
+    { "action": "shell", "resource": "git push origin HEAD:master*", "effect": "deny" },
+    { "action": "shell", "resource": "git push * :*", "effect": "deny" },
+    { "action": "shell", "resource": "gh issue delete *", "effect": "deny" }
   ]
 }
