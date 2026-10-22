@@ -45,8 +45,17 @@ rate plans, standard times, and stay policies (`FR-ADM-4`), the
 customisable workflow items (required guest fields, cancellation
 reasons and wording, no-show rules, open-balance check-out rules,
 charge items, tax and fee rules, stay restrictions, named discounts —
-`FR-CUS-1/2/3`, `FR-RTE-3/4`, `FR-BIL-5/7`), and the backup schedule
+`FR-CUS-1/2/3`, `FR-RES-3/6`, `FR-RTE-3/4`, `FR-BIL-5/7`), and the backup schedule
 and retention floor (section 6 and `docs/operations/backup-dr.md`).
+
+First secrets for the three role accounts (`FR-ADM-2`) are
+provisioned per sale at handover: the delivery team sets an initial
+secret for each account and hands it to the matching person, who
+changes it on first sign-in. The exact provisioning mechanism ships
+with the stack decision — until then it stays an open item (see
+`docs/project/risk-register.md`, R-1). `NFR-SEC-2` sets only the
+behavioural targets (lockout after 5 failures, sign-out after 15
+idle minutes) and needs no procedure.
 
 The configuration set is stored as versioned files alongside the
 release bundle, never edited inside container images. After install
@@ -114,6 +123,9 @@ Run before every install and every upgrade; stop on any failure:
   the hotel LAN; desk clients reach the proxy address.
 - The per-hotel configuration set validates against the release
   bundle's configuration schema with no missing required values.
+- First secrets are provisioned and handed over per the handover
+  step in section 2 (initial secret per role account, changed on
+  first sign-in).
 - The database has no running backup or restore job in progress.
 - For upgrades only: the pre-upgrade backup from section 4 step 1
   exists and its success report is confirmed.
