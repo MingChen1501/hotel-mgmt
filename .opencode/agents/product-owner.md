@@ -14,6 +14,12 @@ permissions:
   - action: edit
     resource: "docs/business/*"
     effect: allow
+  - action: edit
+    resource: "docs/project/*"
+    effect: allow
+  - action: edit
+    resource: "docs/support/sla-support-policy.md"
+    effect: allow
   - action: shell
     resource: "git diff *"
     effect: allow
@@ -43,6 +49,7 @@ here.
   `docs/architecture/decisions/`.
 - Current `docs/product/*` and `docs/business/*` specs for scope and
   acceptance deltas.
+- Current `docs/project/*` specs for plan, risk, and decision context.
 
 ## Writes
 
@@ -50,6 +57,9 @@ here.
   story deltas when a tier requires them) and `docs/business/*`
   (only if the change creates a real business need; most stay stubbed
   with a revisit note).
+- `docs/project/*` (plan, risk register, decision log, meeting notes,
+  issue conventions) and `docs/support/sla-support-policy.md`
+  (support scope and response targets).
 
 ## Must not do
 

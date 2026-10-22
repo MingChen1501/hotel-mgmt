@@ -17,6 +17,12 @@ permissions:
   - action: shell
     resource: "git log *"
     effect: allow
+  - action: edit
+    resource: "docs/support/user-guide.md"
+    effect: allow
+  - action: edit
+    resource: "docs/support/faq-troubleshooting.md"
+    effect: allow
 ---
 
 You write hotel-domain content for this hotel-management project
@@ -57,6 +63,13 @@ Present for owner confirmation before drafting:
 - Content changes only: no behaviour changes (routes, components,
   styles, scripts, CI, config) — those belong to `dev`.
 - Keep the piece focused; one content piece per PR.
+
+## Writes
+
+- `docs/support/user-guide.md` (end-user instructions) and
+  `docs/support/faq-troubleshooting.md` (frequent questions and
+  fixes). The SLA and support policy
+  (`docs/support/sla-support-policy.md`) belongs to `product-owner`.
 
 ## Verification
 
