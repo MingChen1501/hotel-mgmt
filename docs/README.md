@@ -44,9 +44,9 @@ Development table, which use a `../` prefix.
 |---|---|---|---|---|
 | MVP scope | `product/mvp-scope.md` | active | `product-owner` | MVP scope for the small-hotel PMS (Closes #9) |
 | PRD | `product/prd.md` | active | `product-owner` | product requirements document for the small-hotel PMS (Closes #29) |
-| Roadmap | `product/roadmap.md` | stub (not needed yet) | `product-owner` | sequenced direction across milestones |
-| Personas | `product/personas.md` | stub (not needed yet) | `product-owner` | user archetypes the product serves |
-| User stories | `product/user-stories.md` | stub (not needed yet) | `product-owner` | stories expressing user needs per slice |
+| Roadmap | `product/roadmap.md` | active | `product-owner` | sequenced direction across milestones (Closes #30) |
+| Personas | `product/personas.md` | active | `product-owner` | user archetypes the product serves (Closes #30) |
+| User stories | `product/user-stories.md` | active | `product-owner` | stories expressing user needs per slice (Closes #30) |
 | Acceptance criteria | `product/acceptance-criteria.md` | stub (not needed yet) | `product-owner` | done-conditions per story or slice |
 | Scope | `product/scope.md` | stub (not needed yet) | `product-owner` | in/out scope statement for the product |
 
