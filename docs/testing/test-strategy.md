@@ -64,7 +64,7 @@ backup run. Install/restore drills run per release and after any
 change to export, backup, or setup behaviour — never assumed from
 FR-level pass alone.
 
-### L5 — Per-hotel configuration (`FR-CUS-1/2/3`, `FR-ADM-1/4`, `FR-BIL-5`, `FR-RTE-3/4`, section 3.1)
+### L5 — Per-hotel configuration (`FR-RES-3/6`, `FR-CUS-1/2/3`, `FR-ADM-1/4`, `FR-BIL-5/7`, `FR-RTE-3/4`, section 3.1)
 
 Config-matrix checks: each item in requirements section 3.1 is set to
 at least two distinct hotel setups and the desk is re-exercised

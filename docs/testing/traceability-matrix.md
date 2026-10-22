@@ -14,10 +14,10 @@ cell reads TBD. Levels L1–L5 are defined in `test-strategy.md`.
 |---|---|---|
 | FR-RES-1 — Create direct reservation | L1 acceptance: book each room type across a season boundary, check quoted price and reference | TBD |
 | FR-RES-2 — Modify reservation | L1 acceptance: change dates/type/guest, check repricing and change record | TBD |
-| FR-RES-3 — Cancel reservation with reason | L1 acceptance: cancel with reason, check state and released availability | TBD |
+| FR-RES-3 — Cancel reservation with reason | L1 acceptance + L5 config-matrix: cancel under each of two hotel reason lists, check the reason comes from the hotel's list plus state and released availability | TBD |
 | FR-RES-4 — Walk-in booking | L1 acceptance: same-day booking, check arrival-state readiness and arrivals-list entry | TBD |
 | FR-RES-5 — Reservation calendar | L1 acceptance: seeded multi-date multi-type bookings, check placement and drill-down | TBD |
-| FR-RES-6 — No-show handling | L1 acceptance: mark past-arrival booking no-show, check state, released room, history | TBD |
+| FR-RES-6 — No-show handling | L1 acceptance + L5 config-matrix: mark past-arrival booking no-show under each of two hotel no-show rules, check state, released room, history and kept reason | TBD |
 | FR-FDK-1 — Check-in | L1 acceptance: check in against a ready room, check stay link and occupied state | TBD |
 | FR-FDK-2 — Check-out | L1 acceptance: check out a settled stay, check closure, final invoice, vacant-dirty state | TBD |
 | FR-FDK-3 — Room moves | L1 acceptance: move an in-house guest, check both room states and kept history | TBD |
@@ -42,7 +42,7 @@ cell reads TBD. Levels L1–L5 are defined in `test-strategy.md`.
 | FR-BIL-4 — Invoice and receipt | L1 acceptance: print invoice and receipts, check exact match to folio and payments | TBD |
 | FR-BIL-5 — Configurable taxes and fees | L1 acceptance + L5 config-matrix: set rules, post a charge, check derived amounts and balance | TBD |
 | FR-BIL-6 — Day-close totals | L1 acceptance: post a day of activity, close, check per-method totals agree with folios | TBD |
-| FR-BIL-7 — Settlement before check-out | L1 acceptance: attempt open-balance check-out, check refusal unless an authorised approval is recorded | TBD |
+| FR-BIL-7 — Settlement before check-out | L1 acceptance + L5 config-matrix: attempt open-balance check-out under each of two hotel approval setups, check refusal unless an authorised approval is recorded | TBD |
 | FR-RPT-1 — Occupancy report | L1 acceptance: compare per-date counts against seeded bookings | TBD |
 | FR-RPT-2 — Revenue summary | L1 acceptance: compare room/extra totals against seeded folios | TBD |
 | FR-RPT-3 — Front-desk daily sheet | L1 acceptance: compare all four groups against underlying records | TBD |
