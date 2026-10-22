@@ -21,7 +21,7 @@ remains (PRD open questions OQ-1–OQ-7).
 
 - US-RES-1 — As front-desk staff, I want to record a
   reservation with dates, room type, guest, and price basis so
-  that the booking holds a room with a confirmed quote.
+  that the reservation holds a room with a confirmed quote.
   Acceptance: given sellable availability for the dates, a
   confirmed entry appears with a unique reference and shows on
   the reservation calendar. Traces to: FR-RES-1, FR-RTE-5.
@@ -69,7 +69,7 @@ remains (PRD open questions OQ-1–OQ-7).
   and present the folio so that the stay closes cleanly and
   the room is freed. Acceptance: given an in-house stay with a
   settled folio, check-out closes the stay, presents the final
-  bill, and leaves the room vacant and dirty. Traces to:
+  invoice, and leaves the room vacant and dirty. Traces to:
   FR-FDK-2, FR-BIL-7.
 - US-FDK-3 — As front-desk staff, I want to move a guest to
   another room mid-stay so that room problems do not force a
@@ -136,7 +136,7 @@ remains (PRD open questions OQ-1–OQ-7).
   violating reservation attempt is refused naming the
   restriction. Traces to: FR-RTE-4.
 - US-RTE-5 — As front-desk staff, I want every reservation to
-  carry its quoted rate basis so that later rate changes do
+  carry its quoted price basis so that later rate changes do
   not silently alter confirmed quotes. Acceptance: given the
   rate plan at booking time, the reservation keeps the plan
   and nightly breakdown until explicitly recalculated. Traces
@@ -168,7 +168,7 @@ remains (PRD open questions OQ-1–OQ-7).
 
 ## 6. Billing and folio (personas: P2 front-desk staff, P3 manager)
 
-- US-BIL-1 — As front-desk staff, I want one running bill per
+- US-BIL-1 — As front-desk staff, I want one running folio per
   stay so that charges and payments stay in a single place.
   Acceptance: given a checked-in stay, exactly one folio shows
   every charge and payment with a running balance. Traces to:
@@ -184,9 +184,9 @@ remains (PRD open questions OQ-1–OQ-7).
   method and time and lowers the balance. Traces to:
   FR-BIL-3. Open question: further payment methods undecided
   (PRD OQ-1).
-- US-BIL-4 — As front-desk staff, I want a printable bill and
+- US-BIL-4 — As front-desk staff, I want a printable invoice and
   receipt so that the guest leaves with proof. Acceptance:
-  given charges and payments, the bill matches folio lines and
+  given charges and payments, the invoice matches folio lines and
   balance and each receipt matches one payment. Traces to:
   FR-BIL-4.
 - US-BIL-5 — As manager, I want hotel-set tax and fee rules
@@ -232,7 +232,7 @@ remains (PRD open questions OQ-1–OQ-7).
 - US-ADM-1 — As owner, I want to set the hotel's identity and
   local settings so that prints and hotel-wide dates follow
   our details. Acceptance: given saved details, they appear
-  on confirmations, bills, and receipts and govern dates and
+  on confirmations, invoices, and receipts and govern dates and
   stay policies. Traces to: FR-ADM-1.
 - US-ADM-2 — As owner, I want accounts for owner, manager, and
   front-desk staff with matching access so that each role
@@ -252,7 +252,7 @@ remains (PRD open questions OQ-1–OQ-7).
 - US-ADM-5 — As owner, I want to export data and keep
   restorable on-premise copies so that the hotel survives host
   failure. Acceptance: given a run request, a complete copy is
-  written on premise with a success-or-failure report. Traces
+  written on-premise with a success-or-failure report. Traces
   to: FR-ADM-5. Open question: minimum operable backup story
   undecided (PRD OQ-5).
 
@@ -268,10 +268,10 @@ remains (PRD open questions OQ-1–OQ-7).
   and shows our policies. Acceptance: given saved times and
   wording, booking, check-in, and cancellation use them.
   Traces to: FR-CUS-2.
-- US-CUS-3 — As manager, I want to define our own billable
-  extras so that the folio sells what we offer. Acceptance:
-  given a named extra with a price, staff can post it to any
-  folio and bills show its name. Traces to: FR-CUS-3. Open
+- US-CUS-3 — As manager, I want to define our own charge
+  items so that the folio sells what we offer. Acceptance:
+  given a named charge item with a price, staff can post it to any
+  folio and invoices show its name. Traces to: FR-CUS-3. Open
   question: which observed variations become standard options
   is undecided (PRD OQ-6).
 
@@ -280,7 +280,9 @@ remains (PRD open questions OQ-1–OQ-7).
 The following Later capabilities (scope sections 4–5; roadmap
 Horizons 2–3) have no FR in the MVP requirements and must not be
 read as requiring one. Each story states this explicitly instead
-of inventing an FR.
+of inventing an FR. This section is a non-exhaustive sample: the
+absence of a Later story for a capability implies nothing about
+its priority or scope.
 
 - US-LATER-1 — As manager, I want guests to book their own
   rooms through the hotel's website so that direct demand is
@@ -291,7 +293,7 @@ of inventing an FR.
   house. No matching FR exists (channel manager and OTA
   integration is Later).
 - US-LATER-3 — As front-desk staff, I want to split one stay's
-  charges across payers so that shared bills are settled
+  charges across payers so that shared folios are settled
   fairly. No matching FR exists (split and shared folios are
   Later).
 - US-LATER-4 — As manager, I want card charging inside the
@@ -316,7 +318,7 @@ of inventing an FR.
 
 ## Traceability summary
 
-40 MVP stories trace to 40 MVP capabilities and their FR ids;
+43 MVP stories trace to 40 MVP capabilities and 43 FR ids;
 coverage follows the requirements traceability table
 (`docs/requirements/mvp-requirements.md`, section 4): every FR
 from FR-RES-1 through FR-CUS-3 has at least one story above,

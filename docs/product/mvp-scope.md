@@ -128,10 +128,10 @@ operator among the three personas above.
 
 | Capability | Description | Scope | Persona |
 |---|---|---|---|
-| Guest folio | One running bill per stay collecting room charges and extras | MVP | Front-desk staff |
+| Guest folio | One running folio per stay collecting room charges and extras | MVP | Front-desk staff |
 | Room and extra charges | Post nightly room charges and extra items to the folio | MVP | Front-desk staff |
 | Payment recording | Record cash and card payments against the folio | MVP | Front-desk staff |
-| Invoice and receipt | A printable bill and payment receipt for the guest | MVP | Front-desk staff |
+| Invoice and receipt | A printable invoice and payment receipt for the guest | MVP | Front-desk staff |
 | Configurable taxes and fees | Hotel-set tax and fee rules applied to folio lines | MVP | Manager |
 | Day-close totals | End-of-day totals of charges and payments taken | MVP | Manager |
 | Split and shared folios | Divide one stay's charges across several payers | Later | Front-desk staff |
@@ -157,7 +157,7 @@ operator among the three personas above.
 | User accounts and roles | Accounts for owner, manager, and front-desk staff with matching access | MVP | Owner |
 | Room and room-type setup | Define the property's rooms, types, and capacity | MVP | Owner |
 | Rate-plan and policy setup | Enter rate plans, check-in and check-out times, and stay policies | MVP | Manager |
-| Data export and backup | Export hotel data and keep restorable copies on premise | MVP | Owner |
+| Data export and backup | Export hotel data and keep restorable copies on-premise | MVP | Owner |
 | Activity and audit log | Who changed what and when across reservations and folios | Later | Owner |
 
 ### 4.9 Per-hotel workflow customisation
@@ -170,8 +170,8 @@ operator among the three personas above.
 |---|---|---|---|
 | Customisable required guest fields | Each hotel chooses which guest details are mandatory at booking and check-in | MVP | Owner |
 | Customisable stay policies | Each hotel sets its own check-in and check-out times and cancellation wording | MVP | Owner |
-| Custom charge items | Each hotel defines its own billable extras (for example parking, breakfast, minibar) | MVP | Manager |
-| Customisable folio layout | Each hotel chooses what appears on its printed bill and receipt | Later | Owner |
+| Custom charge items | Each hotel defines its own charge items (for example parking, breakfast, minibar) | MVP | Manager |
+| Customisable folio layout | Each hotel chooses what appears on its printed invoice and receipt | Later | Owner |
 | Custom roles beyond the defaults | Access setups beyond owner, manager, and front-desk staff | Later | Owner |
 | Automated workflow rules | Event-driven steps such as automatic status changes or reminders | Later | Manager |
 
@@ -213,9 +213,9 @@ instance holding a small fictional hotel (under 50 rooms):
   new reservation prices and constrains itself accordingly.
 - A repeat guest is recognised at booking time with visible stay
   history and preferences.
-- A guest folio collects room charges and a hotel-defined extra,
+- A guest folio collects room charges and a hotel-defined charge item,
   records a part-payment and a final payment, and prints a matching
-  bill and receipt.
+  invoice and receipt.
 - The owner opens the occupancy report, the revenue summary, and the
   daily sheet, and all three agree with the demo hotel's bookings.
 - The owner configures a new room type, a new user, a new charge item,
