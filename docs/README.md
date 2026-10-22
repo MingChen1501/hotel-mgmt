@@ -5,11 +5,11 @@ this project: each row points at its real path with status `active` or
 `stub (not needed yet)`. Every file under `docs/` is in one of the
 tables — no orphans, no dead links. All content is English.
 
-The stack is undecided and no product scope exists yet, so the spec
-groups below are stubs. They flip to `active` through the normal
-spec-gated flow (see the `spec-gate` skill) once the owner scopes the
-first product slice. Do not invent hotel product requirements to fill
-them early.
+The product scope for the MVP exists (`product/mvp-scope.md`, active).
+The stack and architecture are still undecided, so the remaining spec
+groups below stay stubs. They flip to `active` through the normal
+spec-gated flow (see the `spec-gate` skill) as the owner scopes further
+slices. Do not invent hotel product requirements to fill them early.
 
 ## Spec ownership (role -> groups)
 
@@ -21,6 +21,12 @@ them early.
 | `qa-lead` | Testing |
 | `release-manager` | DevOps, Operations, Release |
 | `spec-reviewer` | none (read-only gate over all groups) |
+
+## Product
+
+| Type | Path | Status | Purpose |
+|---|---|---|---|
+| MVP scope | `product/mvp-scope.md` | active | MVP scope for the small-hotel PMS (Closes #9) |
 
 ## Project
 
