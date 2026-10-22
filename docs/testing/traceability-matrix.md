@@ -1,0 +1,82 @@
+# Traceability matrix — FR/NFR-to-guard frame
+
+Status: active. Guard-slot frame for the hotel-mgmt MVP, owned by
+`qa-lead` (Closes #62). Every FR (43) and NFR (14) from
+`docs/requirements/mvp-requirements.md` appears below with its
+required guard type. The guard column reads TBD on all rows:
+implementation slices fill it with the real guard reference (never
+invented here). No FR/NFR may be marked complete while its guard
+cell reads TBD. Levels L1–L5 are defined in `test-strategy.md`.
+
+## 1. Functional requirements (43)
+
+| Requirement | Required guard type | Guard |
+|---|---|---|
+| FR-RES-1 — Create direct reservation | L1 acceptance: book each room type across a season boundary, check quoted price and reference | TBD |
+| FR-RES-2 — Modify reservation | L1 acceptance: change dates/type/guest, check repricing and change record | TBD |
+| FR-RES-3 — Cancel reservation with reason | L1 acceptance: cancel with reason, check state and released availability | TBD |
+| FR-RES-4 — Walk-in booking | L1 acceptance: same-day booking, check arrival-state readiness and arrivals-list entry | TBD |
+| FR-RES-5 — Reservation calendar | L1 acceptance: seeded multi-date multi-type bookings, check placement and drill-down | TBD |
+| FR-RES-6 — No-show handling | L1 acceptance: mark past-arrival booking no-show, check state, released room, history | TBD |
+| FR-FDK-1 — Check-in | L1 acceptance: check in against a ready room, check stay link and occupied state | TBD |
+| FR-FDK-2 — Check-out | L1 acceptance: check out a settled stay, check closure, final invoice, vacant-dirty state | TBD |
+| FR-FDK-3 — Room moves | L1 acceptance: move an in-house guest, check both room states and kept history | TBD |
+| FR-FDK-4 — Early check-in and late check-out | L1 acceptance: record off-hours arrival/departure, check kept times and list visibility | TBD |
+| FR-FDK-5 — Arrivals and departures list | L1 acceptance: seed all three groups, check exactly-once listing with names and states | TBD |
+| FR-RMS-1 — Room inventory with live status | L1 acceptance: set every state, check each room appears once with the right state | TBD |
+| FR-RMS-2 — Housekeeping status updates | L1 acceptance: walk dirty to inspected, check check-in offer and change record | TBD |
+| FR-RMS-3 — Out-of-order and maintenance blocks | L1 acceptance: block a range, check display plus refused booking and check-in on blocked dates | TBD |
+| FR-RMS-4 — Room setup and attributes | L1 acceptance: define floor/bed/features, check inventory and assignment visibility | TBD |
+| FR-RTE-1 — Rate plans per room type | L1 acceptance: set seasonal/day prices, check new quotes follow them | TBD |
+| FR-RTE-2 — Availability overview | L1 acceptance: seed occupancy, blocks, bookings, check per-type per-date counts | TBD |
+| FR-RTE-3 — Manual discounts and special rates | L1 acceptance + L5 config-matrix: apply a named discount, check kept name and folio effect | TBD |
+| FR-RTE-4 — Stay restrictions | L1 acceptance + L5 config-matrix: set each restriction type, check refusal names the restriction | TBD |
+| FR-RTE-5 — Reservation price basis | L1 acceptance: create on a rate plan, change the plan, check the quoted price is unchanged unless recalculated | TBD |
+| FR-GST-1 — Guest profiles with stay history | L1 acceptance: link past and upcoming stays, check profile completeness | TBD |
+| FR-GST-2 — Guest preferences and notes | L1 acceptance: save notes, check they surface before booking confirmation | TBD |
+| FR-GST-3 — Repeat-guest recognition | L1 acceptance: book for a past guest, check the returning flag and stay count | TBD |
+| FR-GST-4 — Booking confirmation record | L1 acceptance: produce a confirmation, check hotel, guest, dates, type, price | TBD |
+| FR-BIL-1 — Guest folio | L1 acceptance: open a stay folio, check single folio with running balance | TBD |
+| FR-BIL-2 — Room and extra charges | L1 acceptance: post room and extra lines, check lines plus balance movement | TBD |
+| FR-BIL-3 — Payment recording | L1 acceptance: record cash and card payments, check method, time, balance movement | TBD |
+| FR-BIL-4 — Invoice and receipt | L1 acceptance: print invoice and receipts, check exact match to folio and payments | TBD |
+| FR-BIL-5 — Configurable taxes and fees | L1 acceptance + L5 config-matrix: set rules, post a charge, check derived amounts and balance | TBD |
+| FR-BIL-6 — Day-close totals | L1 acceptance: post a day of activity, close, check per-method totals agree with folios | TBD |
+| FR-BIL-7 — Settlement before check-out | L1 acceptance: attempt open-balance check-out, check refusal unless an authorised approval is recorded | TBD |
+| FR-RPT-1 — Occupancy report | L1 acceptance: compare per-date counts against seeded bookings | TBD |
+| FR-RPT-2 — Revenue summary | L1 acceptance: compare room/extra totals against seeded folios | TBD |
+| FR-RPT-3 — Front-desk daily sheet | L1 acceptance: compare all four groups against underlying records | TBD |
+| FR-RPT-4 — Housekeeping status report | L1 acceptance: check only rooms needing work appear | TBD |
+| FR-ADM-1 — Hotel profile setup | L1 acceptance + L5 config-matrix: save identity and local settings, check prints and date behaviour | TBD |
+| FR-ADM-2 — User accounts and roles | L1 acceptance: create each role, check sign-in plus exact function reach | TBD |
+| FR-ADM-3 — Room and room-type setup | L1 acceptance: define rooms, check inventory, availability, and calendar uptake | TBD |
+| FR-ADM-4 — Rate-plan and policy setup | L1 acceptance + L5 config-matrix: save plans, times, policies, check pricing and list behaviour | TBD |
+| FR-ADM-5 — Data export and backup | L1 acceptance + L4 install/restore drill: run export/backup, check completeness plus success/failure report | TBD |
+| FR-CUS-1 — Customisable required guest fields | L1 acceptance + L5 config-matrix: mark fields mandatory, check refusal names the field | TBD |
+| FR-CUS-2 — Customisable stay policies | L1 acceptance + L5 config-matrix: save times and wording, check desk enforcement and display | TBD |
+| FR-CUS-3 — Custom charge items | L1 acceptance + L5 config-matrix: define an item, check posting availability and invoice naming | TBD |
+
+## 2. Non-functional requirements (14)
+
+| Requirement | Required guard type | Guard |
+|---|---|---|
+| NFR-DEP-1 — Single-property on-premise installation | L4 install drill: sample records across screens, reports, exports — 100% belong to the installed property | TBD |
+| NFR-BKP-1 — Backup frequency and recovery point | L4 restore drill: restore from latest backup — RPO at most 24 h, success at least 6 days out of 7 | TBD |
+| NFR-BKP-2 — Restore time and verifiability | L4 restore drill: restore on equivalent hardware — RTO at most 4 h, 100% of runs report success or failure with time | TBD |
+| NFR-AUD-1 — Audit trail for reservation, room, and folio changes | L2 sampled-change check: 100% of sampled changes carry an unaltered actor and timestamp | TBD |
+| NFR-CON-1 — No double-booking under simultaneous bookings | L3 paired simultaneous attempts: 0 double-bookings, exactly one succeeds with the conflict named | TBD |
+| NFR-CON-2 — No double room assignment at check-in | L3 paired simultaneous attempts: 0 double assignments, exactly one takes the room with the conflict named | TBD |
+| NFR-PERF-1 — Desk response under a full small hotel | L2 timed desk check: named views within 2 s, named actions within 3 s at stated load | TBD |
+| NFR-PERF-2 — Report response | L2 timed check: each standard report within 5 s on two years of 50-room data | TBD |
+| NFR-SEC-1 — Role-based access | L2 role-matrix check: 100% of out-of-role attempts refused, 0 guest sign-ins | TBD |
+| NFR-SEC-2 — Authentication | L2 sign-in check: lockout after 5 consecutive failures, sign-out after 15 idle minutes | TBD |
+| NFR-RET-1 — Data retention | L2 purge check: 24 months minimum retrievable, 0 records removed from within the floor | TBD |
+| NFR-TZ-1 — Date and timezone handling | L2 record check: 100% of sampled records carry a UTC offset and render on the correct local date | TBD |
+| NFR-I18N-1 — Internationalisation readiness | L2 catalogue check: 100% of user-visible strings from the catalogue, locale formatting, no behaviour on English wording | TBD |
+| NFR-AVL-1 — On-premise availability | L2 offline desk check: 100% of named desk actions succeed with no outside connectivity | TBD |
+
+Coverage: 43 FRs mapped, 14 NFRs mapped, 57 rows total, 0 guards
+filled (all TBD — implementation slices fill them).
+
+<!-- ao-role: qa-lead -->
+Role: qa-lead · AO session hotel-mgmt-77
