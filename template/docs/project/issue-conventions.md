@@ -39,8 +39,14 @@ exactly one type label and exactly one `risk-*` label (`risk-low` /
 
 Issues use `.github/ISSUE_TEMPLATE/task.yml` (blank issues are
 disabled via `config.yml`, so the form is the only path). Required sections:
-Context (with evidence/links), Scope (in/out), Acceptance criteria (checkbox
-list, testable), Risk and rollback.
+Context (with evidence/links), Scope (in/out), Acceptance criteria (testable
+statements — Given/When/Then or numbered), Risk and rollback.
+
+Acceptance criteria are testable statements (Given/When/Then or numbered),
+not a tracking affordance: tick the boxes only to track progress, never as
+a substitute for verifiable criteria. Checkboxes are also the affordance
+for owner-acceptance gates and adoption checklists — those gates are not
+acceptance criteria.
 
 Issue forms cannot apply a label from a dropdown choice, so after
 filing add exactly one type label matching the Type field plus exactly one

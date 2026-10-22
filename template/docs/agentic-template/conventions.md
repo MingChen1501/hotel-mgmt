@@ -51,6 +51,13 @@ never in the repo.
 Worked example (illustrative): public artefacts are English; a second language is
 used only for internal operator reporting.
 
+## Acceptance criteria
+
+Write acceptance criteria as testable statements (Given/When/Then or
+numbered). Tick the boxes only to track progress; do not write vague
+criteria. Checkboxes are also the affordance for owner-acceptance gates
+and adoption checklists — those gates are not acceptance criteria.
+
 ## Merge policy
 
 - Merge only through `script/orchestrator-merge.sh <n>`. The wrapper
