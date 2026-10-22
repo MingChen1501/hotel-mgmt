@@ -16,11 +16,13 @@ implementation worker starts. One rule lives here only; `AGENTS.md`, the
 
 | Role | Owns | May decide |
 |---|---|---|
-| `product-owner` | `docs/product/*`, `docs/business/*` | scope in/out, acceptance criteria, priority order, when a stub may stay stubbed |
+| `product-owner` | `docs/product/*`, `docs/business/*`, `docs/project/*`, `docs/support/sla-support-policy.md` | scope in/out, acceptance criteria, priority order, when a stub may stay stubbed |
 | `business-analyst` | `docs/requirements/*` | FR/NFR wording, data dictionary, business rules, traceability inputs |
 | `architect` (as solution architect) | `docs/architecture/*`, `docs/technical/*` | HLD/LLD, schemas, integration contracts, ADR authorship |
+| `dev` | none (implementer, not a spec role — builds from approved specs) | implementation approach within approved scope; working docs under `development/` and repo-root guides |
 | `qa-lead` | `docs/testing/*` | strategy, plan, cases, data, traceability completeness (every FR/NFR has at least one guard) |
 | `release-manager` | `docs/release/*`, `docs/devops/*`, `docs/operations/*` | release notes, rollback, deployment/env, runbook freshness at merge time |
+| `content` | `docs/support/user-guide.md`, `docs/support/faq-troubleshooting.md` | guest-facing help wording (no behaviour change) |
 | `spec-reviewer` | none (read-only gate) | PASS/FAIL verdict only — never edits specs, never implements |
 
 Role files (`.opencode/agents/*.md`) state per role what it reads, writes,
