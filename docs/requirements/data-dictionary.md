@@ -195,4 +195,4 @@ appears above with a definition, key fields, and owning FRs. Bare
 normative wording, per T-5. No entry introduces behaviour beyond the
 owning FRs.
 
-Counts: 13 dictionary entries covering all 8 audit terminology concepts.
+Counts: 13 dictionary entries covering the 7 entity terminology concepts (T-1..T-7); T-8 is a spelling convention with no entry.

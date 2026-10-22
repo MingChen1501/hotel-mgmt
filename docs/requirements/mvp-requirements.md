@@ -291,7 +291,9 @@ three roles; when the owner saves the account; then the user can
 sign in and can reach exactly the functions its role permits:
 front-desk staff operate the desk, the manager additionally controls
 rates, rooms, and reports, and the owner additionally controls users
-and hotel setup.
+and hotel setup. Room and room-type inventory is co-editable:
+`FR-ADM-3` (owner) and `FR-RMS-4` (manager) edit the same inventory
+with no primary.
 
 FR-ADM-3 — Room and room-type setup. The owner can define the
 property's rooms, types, and capacity.
@@ -304,7 +306,9 @@ plans, check-in and check-out times, and stay policies.
 Given rate plans, standard check-in and check-out times, and stay
 policies entered by the manager; when saved; then new reservations
 price from those rate plans and arrivals and departures lists use
-those standard times.
+those standard times. Standard check-in and check-out times are a
+single shared setting, co-editable here and under `FR-CUS-2`, not
+two separate settings.
 
 FR-ADM-5 — Data export and backup. The owner can export hotel data
 and keep restorable on-premise copies.
@@ -325,7 +329,8 @@ FR-CUS-2 — Customisable stay policies. The owner can set the hotel's
 check-in and check-out times and cancellation wording.
 Given times and cancellation wording saved by the owner; when staff
 book, check in, or cancel; then the hotel's own times and wording
-are the ones shown and enforced.
+are the ones shown and enforced. The standard times are the same
+single shared setting as `FR-ADM-4`.
 
 FR-CUS-3 — Custom charge items. The manager can define the hotel's
 own charge items.
@@ -375,7 +380,7 @@ timestamp. (A dedicated on-screen audit log view is a Later product
 capability; this requirement covers recording only.)
 
 NFR-CON-1 — No double-booking under simultaneous bookings. Two staff
-booking the last sellable room or bed for overlapping dates cannot
+booking the last sellable room for overlapping dates cannot
 both succeed.
 Given one remaining sellable unit for the requested dates; when two
 staff submit bookings for overlapping dates at the same time; then
@@ -431,7 +436,7 @@ setting owned by `FR-ADM-1`); when a purge is attempted; then
 records newer than the floor are kept and the purge
 refuses them. Targets: 24 months minimum retrievable history; 0
 records removed from within the floor. (The legal minimum period, if
-longer, is open question OQ-2.)
+longer, is open question OQ-4.)
 
 NFR-TZ-1 — Date and timezone handling. Every timestamped record
 carries its UTC offset, and every date shown or reported follows the
@@ -556,26 +561,29 @@ product scope have no FR and are listed in section 6.
 
 Coverage: 40 MVP capabilities mapped, 0 unmapped.
 
-## 5. Open questions (owned by `business-analyst`)
+## 5. Open questions (decided by `product-owner`, impact worded by `business-analyst`)
 
 - OQ-1 — Which payment methods beyond cash and card must payment
   recording support on day one (for example bank transfer or hotel
   credit)? Until decided, `FR-BIL-3` covers cash and card only.
-- OQ-2 — Which guest fields, if any, must the system refuse to delete
-  for record-keeping, and what is the legal minimum retention period?
-  Until decided, `NFR-RET-1` holds 24 months retrievable with a
-  hotel-configured floor.
+- OQ-2 — Free text, fixed list, or both for reservation change and
+  cancellation reasons? Until decided, `FR-RES-2` records the change
+  and `FR-RES-3` requires a reason from the hotel's list.
 - OQ-3 — What does day-close mean for a hotel that never fully closes:
   which totals must balance and who signs them off? Until decided,
   `FR-BIL-6` produces per-method totals without a sign-off step.
-- OQ-4 — Free text, fixed list, or both for reservation change and
-  cancellation reasons? Until decided, `FR-RES-2` records the change
-  and `FR-RES-3` requires a reason from the hotel's list.
+- OQ-4 — Which guest fields, if any, must the system refuse to delete
+  for record-keeping, and what is the legal minimum retention period?
+  Until decided, `NFR-RET-1` holds 24 months retrievable with a
+  hotel-configured floor.
 - OQ-5 — What is the minimum backup-and-restore story the hotel can
   actually operate: who triggers a backup and how do they know it
   worked? Until decided, `FR-ADM-5` with `NFR-BKP-1`/`NFR-BKP-2` sets
   daily backups with a visible success-or-failure report as the
   product-level expectation.
+
+OQ-6 and OQ-7 (PRD section 10) are product-owned with no
+requirements wording at stake; see `business-rules.md` section 10.
 
 ## 6. Explicitly not specified here
 

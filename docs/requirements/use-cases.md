@@ -247,6 +247,9 @@ Extensions/exceptions:
 - 2a. The folio has an open balance with neither payment nor
   authorised approval recorded: check-out is refused until the folio
   is settled or approved. [FR-BIL-7]
+- 3a. The hotel's internet connection is down: check-out, payment
+  recording, and invoice printing all complete on the on-premise
+  installation exactly as when connected. [NFR-AVL-1]
 
 Postconditions: the stay is closed with the invoice presented and
 the room vacant and dirty, or check-out was refused and the stay
@@ -395,7 +398,7 @@ records who made it and when. [NFR-AUD-1]
 
 The 12 use cases cover all 43 FRs and the 14 NFRs where they
 constrain behaviour (NFR-CON-1 in UC-1/UC-2/UC-4, NFR-CON-2 in UC-6,
-NFR-AUD-1 wherever a change is recorded, NFR-SEC-1/NFR-SEC-2 and
+NFR-AVL-1 in UC-8, NFR-AUD-1 wherever a change is recorded, NFR-SEC-1/NFR-SEC-2 and
 NFR-RET-1 in UC-12, NFR-DEP-1/NFR-BKP-1/NFR-BKP-2/NFR-TZ-1 in the
 supporting rules). Every step maps to at least one FR id; every FR
 appears in at least one use case:
