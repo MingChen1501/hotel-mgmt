@@ -147,7 +147,7 @@ the capability.
 
 | Capability | Scope | Persona |
 |---|---|---|
-| Guest folio (one running bill per stay) | MVP | Front-desk staff |
+| Guest folio (one running folio per stay) | MVP | Front-desk staff |
 | Room and extra charges posting | MVP | Front-desk staff |
 | Payment recording (cash and card) | MVP | Front-desk staff |
 | Invoice and receipt printing | MVP | Front-desk staff |
@@ -176,7 +176,7 @@ the capability.
 | User accounts and roles (owner, manager, front-desk staff) | MVP | Owner |
 | Room and room-type setup | MVP | Owner |
 | Rate-plan and policy setup | MVP | Manager |
-| Data export and backup on premise | MVP | Owner |
+| Data export and backup on-premise | MVP | Owner |
 | Activity and audit log view | Later | Owner |
 
 ### 5.9 Per-hotel workflow customisation
@@ -185,7 +185,7 @@ the capability.
 |---|---|---|
 | Customisable required guest fields | MVP | Owner |
 | Customisable stay policies (times, cancellation wording) | MVP | Owner |
-| Custom charge items (hotel-defined extras) | MVP | Manager |
+| Custom charge items (hotel-defined charge items) | MVP | Manager |
 | Customisable folio layout | Later | Owner |
 | Custom roles beyond the defaults | Later | Owner |
 | Automated workflow rules | Later | Manager |
@@ -228,7 +228,7 @@ wording.
    reservation, and check the guest into a ready room of the booked
    type; the room state becomes occupied. Early arrivals are
    recorded against the stay.
-2. During the stay, room charges and hotel-defined extras are posted
+2. During the stay, room charges and hotel-defined charge items are posted
    to the single guest folio; taxes and fees derive from the
    hotel's own rules. If the guest changes rooms, staff move the
    stay and both room states update, with the move kept in the
@@ -256,7 +256,7 @@ during trial operation in a real hotel and recorded by
 | Metric | What it tells us | How it is measured |
 |---|---|---|
 | Occupancy visibility | The owner can answer "how full are we tonight and this month" without asking staff | Owner walkthrough: open the occupancy report and daily sheet on the demo hotel and compare against the bookings |
-| Booking time | A routine direct booking is fast enough for desk use | Timed task walkthrough: staff record a direct reservation and a walk-in during the demo; durations are recorded, not yet targeted |
+| Booking time | A routine direct booking is fast enough for desk use | Timed task walkthrough: staff record a direct reservation and a walk-in during the demo; durations are recorded against the NFR performance bounds (2-second views and 3-second actions, NFR-PERF-1) as initial bounds to be validated during trial operation |
 | Double-booking incidence | Two overlapping bookings never take the same sellable room | Count of double-booked rooms over the trial period, taken from system records; direction is zero, target set after trial |
 | Owner daily use | The product earns a daily habit with the owner | During trial operation: how often the owner opens the daily sheet and revenue summary, by interview and trial log |
 | Setup independence | The hotel configures itself without technical help | Walkthrough: the owner adds a room type, a user, a charge item, and a policy change with no code changes and the desk works with the new setup immediately |

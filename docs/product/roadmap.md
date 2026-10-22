@@ -40,7 +40,7 @@ Capability milestones (all MVP per the scope, section 4):
   visible at booking time, repeat-guest recognition, and a
   shareable booking confirmation record.
 - Billing: one folio per stay, room and extra charges, cash and
-  card payment recording, printable bills and receipts,
+  card payment recording, printable invoices and receipts,
   hotel-set taxes and fees, and day-close totals.
 - Reporting: occupancy report, revenue summary, front-desk daily
   sheet, and housekeeping status report.
@@ -100,8 +100,9 @@ scope, sections 4–5; order within this horizon is not decided):
 
 - Commercial reach: guest self-service online booking, channel
   manager and OTA integration, express and self-service
-  check-in, dynamic pricing and yield rules, multi-currency
-  rates, loyalty programme and campaigns.
+  check-in, waitlist for unplaced demand, dynamic pricing and
+  yield rules, multi-currency rates, loyalty programme and
+  campaigns.
 - Chain operation: multi-property management of any kind,
   cross-property and trend analytics, and a shared guest
   database across hotels.

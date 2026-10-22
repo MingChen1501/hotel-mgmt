@@ -61,7 +61,7 @@ Goals:
   entry, with the room state always visible.
 - Serve returning guests well by recognising them and seeing
   their history and preferences before confirming a booking.
-- Close every stay with a correct bill and receipt.
+- Close every stay with a correct invoice and receipt.
 
 Pains:
 
@@ -82,7 +82,7 @@ Jobs to be done:
   history kept, record early and late arrivals and departures,
   and check them out against a settled folio.
 - Post room and extra charges, record cash and card payments,
-  and produce matching bills and receipts.
+  and produce matching invoices and receipts.
 - Look up guests, see stay history, preferences, and notes at
   booking time, and share a booking confirmation record.
 
