@@ -67,22 +67,23 @@ Development table, which use a `../` prefix.
 
 | Type | Path | Status | Owner | Purpose |
 |---|---|---|---|---|
-| HLD | `architecture/hld.md` | stub (not needed yet) | `architect` | high-level design: subsystems and their responsibilities |
+| HLD | `architecture/hld.md` | active | `architect` | high-level design: subsystems and their responsibilities (Closes #11) |
 | LLD | `architecture/lld.md` | stub (not needed yet) | `architect` | low-level design: modules, interfaces, data flow |
-| System architecture | `architecture/system-architecture.md` | stub (not needed yet) | `architect` | overall system structure and deployment view |
-| ERD | `architecture/erd.md` | stub (not needed yet) | `architect` | entity-relationship model of the domain data |
+| System architecture | `architecture/system-architecture.md` | active | `architect` | overall system structure and deployment view (Closes #11) |
+| ERD | `architecture/erd.md` | active | `architect` | entity-relationship model of the domain data (Closes #11) |
 | Sequence diagrams | `architecture/sequence-diagrams.md` | stub (not needed yet) | `architect` | key interaction flows across components |
-| State machine | `architecture/state-machine.md` | stub (not needed yet) | `architect` | lifecycle states and transitions of core entities |
+| State machine | `architecture/state-machine.md` | active | `architect` | lifecycle states and transitions of core entities (Closes #11) |
 | ADR template | `architecture/decisions/adr-0001-template.md` | stub (not needed yet) | `architect` | decision-record template (the decisions directory holds ADRs) |
+| ADR-0001 monorepo polyglot | `architecture/decisions/adr-0001-monorepo-polyglot.md` | active | `architect` | proposed monorepo with polyglot modules (Closes #11) |
 
 ## Technical
 
 | Type | Path | Status | Owner | Purpose |
 |---|---|---|---|---|
-| API spec | `technical/api-spec.md` | stub (not needed yet) | `architect` | contracts for service interfaces and endpoints |
+| API spec | `technical/api-spec.md` | active | `architect` | contracts for service interfaces and endpoints (outline, Closes #11) |
 | Schema | `technical/schema.md` | stub (not needed yet) | `architect` | data schemas and validation rules |
 | Integration | `technical/integration.md` | stub (not needed yet) | `architect` | third-party and cross-system integration contracts |
-| Error handling | `technical/error-handling.md` | stub (not needed yet) | `architect` | error taxonomy and handling conventions |
+| Error handling | `technical/error-handling.md` | active | `architect` | error taxonomy and handling conventions (outline, Closes #11) |
 | Security threat model | `technical/security-threat-model.md` | stub (not needed yet) | `architect` | threats, mitigations, and trust boundaries |
 
 ## Development
