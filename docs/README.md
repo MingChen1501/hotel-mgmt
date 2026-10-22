@@ -31,6 +31,12 @@ them early.
 | Plan | `project/plan.md` | stub (not needed yet) | milestones — issue queue only until scoped |
 | Risk register | `project/risk-register.md` | stub (not needed yet) | live risk list |
 
+## Product
+
+| Type | Path | Status | Purpose |
+|---|---|---|---|
+| Slice 1 scope | `product/slice-1-room-inventory-booking.md` | active | slice 1 product scope: room inventory + booking |
+
 ## Agentic template (reusable starter)
 
 | Path | Purpose |
