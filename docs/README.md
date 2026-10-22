@@ -120,11 +120,11 @@ docs and plans, not gated specs.
 | Type | Path | Status | Owner | Purpose |
 |---|---|---|---|---|
 | CI/CD | `devops/ci-cd.md` | stub (not needed yet) | `release-manager` | pipeline stages, checks, and merge gates |
-| Deployment | `devops/deployment.md` | stub (not needed yet) | `release-manager` | deployment targets and procedures |
+| Deployment | `devops/deployment.md` | active | `release-manager` | deployment targets and procedures (Closes #63) |
 | Environment | `devops/environment.md` | stub (not needed yet) | `release-manager` | environment inventory and configuration |
-| Runbook | `operations/runbook.md` | stub (not needed yet) | `release-manager` | step-by-step operating procedures, fresh at merge time |
+| Runbook | `operations/runbook.md` | active | `release-manager` | step-by-step operating procedures, fresh at merge time (Closes #63) |
 | Monitoring and alerting | `operations/monitoring-alerting.md` | stub (not needed yet) | `release-manager` | signals, dashboards, and alert routing |
-| Backup and DR | `operations/backup-dr.md` | stub (not needed yet) | `release-manager` | backup, restore, and disaster-recovery plan |
+| Backup and DR | `operations/backup-dr.md` | active | `release-manager` | backup, restore, and disaster-recovery plan (Closes #63) |
 | Incident response | `operations/incident-response.md` | stub (not needed yet) | `release-manager` | incident roles, severity, and response flow |
 | Release notes | `release/release-notes.md` | stub (not needed yet) | `release-manager` | per-release change entries |
 | Rollback | `release/rollback.md` | stub (not needed yet) | `release-manager` | rollback procedure per release |
@@ -133,9 +133,9 @@ docs and plans, not gated specs.
 
 | Type | Path | Status | Owner | Purpose |
 |---|---|---|---|---|
-| Plan | `project/plan.md` | stub (not needed yet) | `product-owner` | milestones — issue queue only until scoped |
-| Risk register | `project/risk-register.md` | stub (not needed yet) | `product-owner` | live risk list |
-| Decision log | `project/decision-log.md` | stub (not needed yet) | `product-owner` | decision list pointing at ADRs |
+| Plan | `project/plan.md` | active | `product-owner` | milestones from specs to pilot (Closes #63) |
+| Risk register | `project/risk-register.md` | active | `product-owner` | live risk list (Closes #63) |
+| Decision log | `project/decision-log.md` | active | `product-owner` | decision list pointing at ADRs (Closes #63) |
 | Meeting notes | `project/meeting-notes.md` | stub (not needed yet) | `product-owner` | dated notes of owner decisions |
 | Issue conventions | `project/issue-conventions.md` | active | `product-owner` | title+label convention for issues and PRs |
 
