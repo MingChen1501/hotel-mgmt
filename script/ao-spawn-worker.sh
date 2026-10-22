@@ -25,6 +25,30 @@ set -euo pipefail
 REPO="MingChen1501/hotel-mgmt"
 PROJECT="hotel-mgmt"
 MARKER=".ao-orchestrator"
+
+# Orchestrator gate: the marker file alone is forgeable (any session
+# can touch it), so additionally require that this AO session is a live
+# orchestrator session for this project. Guardrail, not a security
+# boundary: a session that deliberately forges both signals can still
+# run this script — real enforcement is GitHub-side branch
+# protection/rulesets (follow-up issue), which no session can bypass.
+require_orchestrator() {
+  if [[ ! -f "${MARKER}" ]]; then
+    echo "error: refusing to spawn: marker file ${MARKER} not found in $(pwd)" >&2
+    echo "Only the orchestrator may spawn sessions; run this wrapper from the orchestrator worktree." >&2
+    exit 1
+  fi
+  if [[ -z "${AO_SESSION_ID:-}" ]]; then
+    echo "error: refusing to spawn: AO_SESSION_ID is not set; run from the orchestrator session." >&2
+    exit 1
+  fi
+  local orch_ok
+  orch_ok="$(ao orchestrator ls --json 2>/dev/null | jq -r --arg s "${AO_SESSION_ID}" --arg p "${PROJECT}" '[.data[]? | select(.id == $s and .projectId == $p and .role == "orchestrator" and .isTerminated == false)] | length' 2>/dev/null || true)"
+  if [[ "${orch_ok}" != "1" ]]; then
+    echo "error: refusing to spawn: session '${AO_SESSION_ID}' is not a live orchestrator session for ${PROJECT}." >&2
+    exit 1
+  fi
+}
 IMPLEMENT_ROLES="dev content dev-takeover"
 REVIEW_ROLES="dev-peer-review content-review"
 SPECGATE_ROLES="spec-reviewer"
@@ -77,14 +101,11 @@ fi
 
 # Only the orchestrator may spawn sessions: the marker file
 # .ao-orchestrator exists solely in the orchestrator worktree (never
-# committed). Workers calling this wrapper are refused here, and direct
+# committed), and this session must be a live orchestrator session.
+# Workers calling this wrapper are refused here, and direct
 # `ao spawn` is denied for every session by .opencode/opencode.jsonc.
-# The marker is required even for --dry-run.
-if [[ ! -f "${MARKER}" ]]; then
-  echo "error: refusing to spawn: marker file ${MARKER} not found in $(pwd)" >&2
-  echo "Only the orchestrator may spawn sessions; run this wrapper from the orchestrator worktree." >&2
-  exit 1
-fi
+# The gate applies even for --dry-run.
+require_orchestrator
 
 # The issue must exist and be OPEN.
 issue_json="$(gh issue view "${issue}" -R "${REPO}" --json number,title,url,labels,state)" || {
@@ -100,11 +121,15 @@ if [[ "${issue_state}" != "OPEN" ]]; then
   exit 1
 fi
 
-# Best effort: warn if the issue already has an active session. Never fail here.
+# Best effort: warn if the issue already has an active session. Never fail here:
+# a broken session listing (or an unexpected JSON shape) only warns.
 if sessions_json="$(ao session ls -p "${PROJECT}" --json 2>/dev/null)"; then
-  owner="$(printf '%s' "${sessions_json}" | jq -r --arg i "${issue}" '[.data[] | select((.issueId | tostring) == $i and .isTerminated == false) | .id] | join(", ")')"
-  if [[ -n "${owner}" ]]; then
-    echo "warning: issue #${issue} already has active session(s): ${owner}" >&2
+  if owner="$(printf '%s' "${sessions_json}" | jq -r --arg i "${issue}" '[.data[]? | select((.issueId | tostring) == $i and .isTerminated == false) | .id] | join(", ")' 2>/dev/null)"; then
+    if [[ -n "${owner}" ]]; then
+      echo "warning: issue #${issue} already has active session(s): ${owner}" >&2
+    fi
+  else
+    echo "warning: could not parse session list; skipping duplicate-issue check" >&2
   fi
 else
   echo "warning: could not list sessions; skipping duplicate-issue check" >&2

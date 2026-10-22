@@ -26,8 +26,10 @@ Precedence (canonical: `AGENTS.md`): owner instruction > project cues >
   create/merge/review are orchestrator-only via
   `script/ao-spawn-worker.sh`, `script/orchestrator-merge.sh`, and
   `script/orchestrator-review.sh`; direct `ao spawn`, `ao pr merge`,
-  and `ao review trigger` are denied for every session. Runtime
-  enforcement for this lives outside this file: the hard `deny` rules in
+  and `ao review trigger` are denied for every session. These are
+  guardrails, not a security boundary (see `AGENTS.md`): they stop
+  mistakes and casual misuse, with GitHub-side rulesets as the real
+  enforcement. Runtime enforcement for this lives outside this file: the hard `deny` rules in
   `.opencode/opencode.jsonc` plus the `project-guard.ts` plugin hook
   block `gh pr merge`, force-push, pushes to the default branch,
   remote branch deletion, and `gh issue delete` from any worker

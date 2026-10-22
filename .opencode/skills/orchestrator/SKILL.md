@@ -155,8 +155,9 @@ restate the list here — link it. Summary for orchestration use only.
   a base branch that a child PR still targets.
 - risk-low / risk-medium: merge autonomously once CI green + review APPROVE,
   then report.
-- risk-high / risk-very-high / missing label: explicit owner approval required
-  before merging.
+- risk-high / risk-very-high / missing label: explicit owner approval
+  required, and then the owner merges manually — the merge script has
+  no override path.
 
 ## Risk labels
 

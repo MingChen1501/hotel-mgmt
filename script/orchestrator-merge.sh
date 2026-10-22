@@ -5,10 +5,14 @@
 #
 # Refuses unless all of these hold:
 #   - the marker file .ao-orchestrator exists in the current worktree
-#     (created only in the orchestrator worktree, never committed),
+#     (created only in the orchestrator worktree, never committed), AND
+#     this AO session is a live orchestrator session for the project
+#     (the marker alone is forgeable; this is a guardrail, not a
+#     security boundary — real enforcement is GitHub-side),
 #   - the PR is OPEN,
 #   - the PR carries exactly one risk label and it is not
-#     risk-high/risk-very-high (owner approval gate),
+#     risk-high/risk-very-high (owner approval gate: the owner merges
+#     such PRs manually, this script has no override),
 #   - every reported check is successful (a PR with genuinely no checks
 #     merges; pending/failed/cancelled checks block the merge).
 # Then prints the PR state/labels/checks, squash-merges via `ao pr merge`
@@ -21,7 +25,33 @@
 set -euo pipefail
 
 REPO="MingChen1501/hotel-mgmt"
+PROJECT="hotel-mgmt"
 MARKER=".ao-orchestrator"
+
+# Orchestrator gate: the marker file alone is forgeable (any session
+# can touch it), so additionally require that this AO session is a live
+# orchestrator session for this project. Guardrail, not a security
+# boundary: a session that deliberately forges both signals can still
+# run this script — real enforcement is GitHub-side branch
+# protection/rulesets (follow-up issue), which no session can bypass.
+require_orchestrator() {
+  local action="$1"
+  if [[ ! -f "${MARKER}" ]]; then
+    echo "error: refusing to ${action}: marker file ${MARKER} not found in $(pwd)" >&2
+    echo "Merges run only from the orchestrator worktree holding that marker (never committed)." >&2
+    exit 1
+  fi
+  if [[ -z "${AO_SESSION_ID:-}" ]]; then
+    echo "error: refusing to ${action}: AO_SESSION_ID is not set; run from the orchestrator session." >&2
+    exit 1
+  fi
+  local orch_ok
+  orch_ok="$(ao orchestrator ls --json 2>/dev/null | jq -r --arg s "${AO_SESSION_ID}" --arg p "${PROJECT}" '[.data[]? | select(.id == $s and .projectId == $p and .role == "orchestrator" and .isTerminated == false)] | length' 2>/dev/null || true)"
+  if [[ "${orch_ok}" != "1" ]]; then
+    echo "error: refusing to ${action}: session '${AO_SESSION_ID}' is not a live orchestrator session for ${PROJECT}." >&2
+    exit 1
+  fi
+}
 
 usage() {
   echo "Usage: $0 <pr-number> [--dry-run]" >&2
@@ -40,11 +70,7 @@ done
 [[ -n "${pr}" ]] || { echo "error: a PR number is required" >&2; usage; exit 1; }
 [[ "${pr}" =~ ^[0-9]+$ ]] || { echo "error: PR number must be numeric, got '${pr}'" >&2; exit 1; }
 
-if [[ ! -f "${MARKER}" ]]; then
-  echo "error: refusing to merge: marker file ${MARKER} not found in $(pwd)" >&2
-  echo "Merges run only from the orchestrator worktree holding that marker (never committed)." >&2
-  exit 1
-fi
+require_orchestrator "merge"
 
 pr_out="$(gh pr view "${pr}" -R "${REPO}" --json number,state,url,title,labels,headRefName,baseRefName 2>&1)" || {
   if printf '%s' "${pr_out}" | grep -qiE "could not resolve|not found|no pull requests|404"; then
@@ -74,7 +100,8 @@ if [[ "${risk_count}" -ne 1 ]]; then
   exit 1
 fi
 if [[ "${risk_labels}" == "risk-high" || "${risk_labels}" == "risk-very-high" ]]; then
-  echo "error: refusing to merge: PR #${pr} is labelled ${risk_labels}; owner approval required." >&2
+  echo "error: refusing to merge: PR #${pr} is labelled ${risk_labels}; explicit owner approval required." >&2
+  echo "The owner merges such PRs manually (e.g. gh pr merge --squash --delete-branch) after approving; this script has no override." >&2
   exit 1
 fi
 
@@ -121,13 +148,24 @@ ao pr merge "${pr}"
 # unless another open PR still targets it as a base (stacked-PR guard).
 # Deletion goes through the GitHub API because pushing a `:branch`
 # refspec deletion is denied for every session.
+# Both steps below are fail-safe: a failed child-PR lookup keeps the
+# branch, and a failed delete only warns — the merge already succeeded.
 if [[ -z "${head_branch}" || "${head_branch}" == "master" || "${head_branch}" == "${base_branch}" ]]; then
   echo "Kept branch ${head_branch:-unknown}: not a deletable head branch."
   exit 0
 fi
-open_bases="$(gh pr list -R "${REPO}" --state open --json baseRefName,number -q '.[].baseRefName' 2>/dev/null || true)"
+open_bases=""
+if ! open_bases="$(gh pr list -R "${REPO}" --state open --json baseRefName,number -q '.[].baseRefName' 2>/dev/null)"; then
+  echo "warning: cannot list open PRs; keeping branch ${head_branch}." >&2
+  exit 0
+fi
 if printf '%s' "${open_bases}" | grep -qxF "${head_branch}"; then
   echo "Kept branch ${head_branch}: another open PR still targets it as a base."
   exit 0
 fi
-gh api -X DELETE "repos/${REPO}/git/refs/heads/${head_branch}" >/dev/null && echo "Deleted branch ${head_branch}."
+if gh api -X DELETE "repos/${REPO}/git/refs/heads/${head_branch}" >/dev/null 2>&1; then
+  echo "Deleted branch ${head_branch}."
+else
+  echo "warning: merge succeeded but deleting branch ${head_branch} failed; delete it manually." >&2
+fi
+exit 0

@@ -48,17 +48,25 @@ doc group.
   hook; it defers on `ao ...` (config owns those) and never blocks
   `gh pr create/view/edit`, git reads, or session-branch pushes.
 - Session create/merge/review are orchestrator-only and go through the
-  three marker-gated scripts (`.ao-orchestrator` marker lives only in
-  the orchestrator worktree, never committed):
-  `script/ao-spawn-worker.sh` (spawn),
+  three scripts (each requires the `.ao-orchestrator` marker plus a live
+  orchestrator session; the marker lives only in the orchestrator
+  worktree, never committed): `script/ao-spawn-worker.sh` (spawn),
   `script/orchestrator-merge.sh` (merge),
   `script/orchestrator-review.sh` (review trigger). The scripts work
   because they invoke the CLI as a child process, which permission
   evaluation does not see; a direct `ao spawn` / `ao pr merge` /
   `ao review trigger` tool call is denied. A worker may not spawn,
   merge, or trigger review.
-- Workers never merge. GitHub-side checks (workflows, branch
-  protection) are a follow-up issue, not this change.
+- These are guardrails, not a security boundary: a session that
+  deliberately forges the marker and session signals could still run a
+  script, and textual command guards are bypassable in general (shell
+  wrappers, raw API calls). They stop mistakes and casual misuse; the
+  real enforcement is GitHub-side branch protection/rulesets
+  (follow-up issue), which no session can bypass.
+- `risk-high` / `risk-very-high` (or a missing risk label) always needs
+  explicit owner approval, and then the owner merges manually — the
+  merge script has no override path.
+- GitHub-side checks (workflows, branch protection) are a follow-up issue, not this change.
 
 ## Non-negotiables
 

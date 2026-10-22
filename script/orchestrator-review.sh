@@ -11,7 +11,30 @@
 # --dry-run prints what it would do without triggering (marker still required).
 set -euo pipefail
 
+PROJECT="hotel-mgmt"
 MARKER=".ao-orchestrator"
+
+# Orchestrator gate: the marker file alone is forgeable (any session
+# can touch it), so additionally require that this AO session is a live
+# orchestrator session for this project. Guardrail, not a security
+# boundary — real enforcement is GitHub-side (follow-up issue).
+require_orchestrator() {
+  if [[ ! -f "${MARKER}" ]]; then
+    echo "error: refusing to trigger review: marker file ${MARKER} not found in $(pwd)" >&2
+    echo "Only the orchestrator may trigger reviews; run this wrapper from the orchestrator worktree." >&2
+    exit 1
+  fi
+  if [[ -z "${AO_SESSION_ID:-}" ]]; then
+    echo "error: refusing to trigger review: AO_SESSION_ID is not set; run from the orchestrator session." >&2
+    exit 1
+  fi
+  local orch_ok
+  orch_ok="$(ao orchestrator ls --json 2>/dev/null | jq -r --arg s "${AO_SESSION_ID}" --arg p "${PROJECT}" '[.data[]? | select(.id == $s and .projectId == $p and .role == "orchestrator" and .isTerminated == false)] | length' 2>/dev/null || true)"
+  if [[ "${orch_ok}" != "1" ]]; then
+    echo "error: refusing to trigger review: session '${AO_SESSION_ID}' is not a live orchestrator session for ${PROJECT}." >&2
+    exit 1
+  fi
+}
 
 usage() {
   echo "Usage: $0 <worker-session-id> [--pr <url>] [--model <id>] [--rerun] [--dry-run]" >&2
@@ -37,11 +60,7 @@ done
 
 [[ -n "${session}" ]] || { echo "error: a worker session id is required" >&2; usage; exit 1; }
 
-if [[ ! -f "${MARKER}" ]]; then
-  echo "error: refusing to trigger review: marker file ${MARKER} not found in $(pwd)" >&2
-  echo "Only the orchestrator may trigger reviews; run this wrapper from the orchestrator worktree." >&2
-  exit 1
-fi
+require_orchestrator
 
 review_cmd=(ao review trigger "${session}")
 if [[ -n "${pr}" ]]; then

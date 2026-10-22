@@ -34,22 +34,42 @@ function isGeneratedPath(resource: string): boolean {
 // (e.g. a shell invocation shape the evaluate event does not expose),
 // the config deny still applies — this hook is defense in depth only.
 //
-// The guard defers on `ao ...` commands: direct session control
-// (`ao spawn`, `ao pr merge`, `ao review trigger`) is denied by config,
-// and the sanctioned scripts invoking those as child processes must not
-// be disturbed here. It never blocks `gh pr create`, `gh pr view`,
-// `gh pr edit`, git reads, or pushing a session branch.
+// The guard defers on most `ao ...` commands (config owns those), but
+// denies direct session control here too: the config rules match the
+// whole tool-call string, so a compound command such as
+// `true; ao pr merge 19` or `cd x && ao spawn ...` slips past them.
+// The sanctioned scripts invoke the CLI as a child process (their tool
+// calls are `script/...` strings), so denying these segments cannot
+// disturb them.
+function aoDenyReason(cmd: string): string | null {
+  if (/^ao\s+spawn(\s|$)/.test(cmd)) {
+    return "Only the orchestrator may spawn sessions, via script/ao-spawn-worker.sh."
+  }
+  if (/^ao\s+pr\s+merge(\s|$)/.test(cmd)) {
+    return "Only the orchestrator may merge, via script/orchestrator-merge.sh."
+  }
+  if (/^ao\s+review\s+trigger(\s|$)/.test(cmd)) {
+    return "Only the orchestrator may trigger reviews, via script/orchestrator-review.sh."
+  }
+  return null
+}
 function shellDenyReason(command: string): string | null {
   if (typeof command !== "string" || command.length === 0) return null
   // Split compound shell lines so `cd x && <denied>` is still caught,
   // while a mere mention of a denied command inside another word is not.
-  const segments = command.split(/&&|\|\||[;|\n]/).map((s) => s.trim()).filter(Boolean)
+  // Bare `&` splits too (backgrounding still runs the command); segment
+  // matching stays anchored so `2>&1` redirections are harmless.
+  const segments = command.split(/&&?|\|\|?|[;\n]/).map((s) => s.trim()).filter(Boolean)
   for (const seg of segments) {
     const cmd = seg.replace(/^\s*(sudo\s+)+/, "")
-    // `ao ...` is left to the config deny rules (direct session
-    // control is orchestrator-only; the sanctioned scripts invoke the
-    // CLI as a child process, which permission evaluation does not see).
-    if (/^ao(\s|$)/.test(cmd)) continue
+    // Direct session control is orchestrator-only even inside compound
+    // commands. Other `ao ...` calls (status reads, reports) are left
+    // to the config rules.
+    if (/^ao(\s|$)/.test(cmd)) {
+      const reason = aoDenyReason(cmd)
+      if (reason !== null) return reason
+      continue
+    }
     // gh allowlist: create/view/edit stay usable from any session.
     if (/^gh\s+pr\s+(create|view|edit)(\s|$)/.test(cmd)) continue
     if (/^gh\s+pr\s+merge(\s|$)/.test(cmd)) {
@@ -58,37 +78,70 @@ function shellDenyReason(command: string): string | null {
     if (/^gh\s+issue\s+delete(\s|$)/.test(cmd)) {
       return "Deleting GitHub issues is never allowed from an agent session."
     }
-    if (/^git\s+push(\s|$)/.test(cmd)) {
-      const tokens = cmd.split(/\s+/)
-      // tokens[0]=git tokens[1]=push; flags may precede the remote.
-      const args = tokens.slice(2)
-      if (args.some((t) => t === "-f" || t.startsWith("--force"))) {
-        return "Force-push is never allowed; push your session branch with a plain `git push`."
-      }
-      // Bulk pushes rewrite every ref including the default branch.
-      if (args.some((t) => t === "--all" || t === "--mirror" || t.startsWith("--mirror="))) {
-        return "Bulk push (`--all`/`--mirror`) is never allowed; push your session branch explicitly."
-      }
-      // First non-flag token is the remote; the rest are refspecs.
-      const nonFlag = args.filter((t) => !t.startsWith("-"))
-      const refspecs = nonFlag.length > 0 ? nonFlag.slice(1) : []
-      for (const ref of refspecs) {
-        // A `+` prefix is a force-push of that refspec.
-        if (ref.startsWith("+")) {
-          return "Force-push (`+<refspec>`) is never allowed; push your session branch with a plain `git push`."
-        }
-        // Normalise both sides of `src:dst`: strip `refs/heads/` so
-        // `HEAD:refs/heads/master` and `+master` cannot smuggle the
-        // default branch past the check.
-        const sides = ref.split(":").map((s) => s.replace(/^refs\/heads\//, ""))
-        if (sides.some((s) => s === "master")) {
-          return "Pushing to the default branch is never allowed; push your session branch and open a PR."
-        }
-        // Remote branch deletion: `:branch` or (equivalently) `branch:`.
-        if (ref.startsWith(":") || (ref.endsWith(":") && ref.length > 1)) {
-          return "Remote branch deletion (`git push <remote> :<branch>`) is never allowed."
-        }
-      }
+    if (/^git(\s|$)/.test(cmd)) {
+      const reason = gitPushDenyReason(cmd)
+      if (reason !== null) return reason
+    }
+  }
+  return null
+}
+
+// Guard for `git push`, tolerant of git-level global options between
+// `git` and `push` (`git -C <path> push ...`, `git -c k=v push ...`).
+// Never blocks git reads or pushing a session branch.
+function gitPushDenyReason(cmd: string): string | null {
+  const tokens = cmd.split(/\s+/)
+  if (tokens[0] !== "git") return null
+  // Skip git-level global options to find the subcommand, so
+  // `git -C <path> push ...` and `git -c k=v push ...` are still
+  // guarded while other subcommands (`git stash push ...`) are not
+  // misread as pushes.
+  let i = 1
+  while (i < tokens.length) {
+    const t = tokens[i]
+    if (t === "push") break
+    if (t === "-C" || t === "-c") {
+      i += 2
+      continue
+    }
+    if (t.startsWith("-")) {
+      i += 1
+      continue
+    }
+    return null
+  }
+  if (i >= tokens.length) return null
+  // Flags may precede the remote.
+  const args = tokens.slice(i + 1)
+  if (args.some((t) => t === "-f" || t.startsWith("--force"))) {
+    return "Force-push is never allowed; push your session branch with a plain `git push`."
+  }
+  // Bulk pushes rewrite every ref including the default branch.
+  if (args.some((t) => t === "--all" || t === "--mirror" || t.startsWith("--mirror="))) {
+    return "Bulk push (`--all`/`--mirror`) is never allowed; push your session branch explicitly."
+  }
+  // Explicit branch deletion: `--delete` / `-d`.
+  if (args.some((t) => t === "--delete" || t === "-d")) {
+    return "Remote branch deletion (`git push <remote> --delete <branch>`) is never allowed."
+  }
+  // First non-flag token is the remote; the rest are refspecs.
+  const nonFlag = args.filter((t) => !t.startsWith("-"))
+  const refspecs = nonFlag.length > 0 ? nonFlag.slice(1) : []
+  for (const ref of refspecs) {
+    // A `+` prefix is a force-push of that refspec.
+    if (ref.startsWith("+")) {
+      return "Force-push (`+<refspec>`) is never allowed; push your session branch with a plain `git push`."
+    }
+    // Normalise both sides of `src:dst`: strip `refs/heads/` so
+    // `HEAD:refs/heads/master` and `+master` cannot smuggle the
+    // default branch past the check.
+    const sides = ref.split(":").map((s) => s.replace(/^refs\/heads\//, ""))
+    if (sides.some((s) => s === "master")) {
+      return "Pushing to the default branch is never allowed; push your session branch and open a PR."
+    }
+    // Remote branch deletion: `:branch` or (equivalently) `branch:`.
+    if (ref.startsWith(":") || (ref.endsWith(":") && ref.length > 1)) {
+      return "Remote branch deletion (`git push <remote> :<branch>`) is never allowed."
     }
   }
   return null
