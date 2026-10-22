@@ -121,6 +121,12 @@ for rel in "${PAYLOAD[@]}"; do
   src="${TEMPLATE_DIR}/${rel}"
   dest="${target}/${rel}"
   rendered="$(substitute "${src}")"
+  # Command substitution strips trailing newlines; restore the one the
+  # template file carries so installed files differ only by placeholder
+  # substitution (every payload file ends with exactly one newline).
+  if [[ -z "$(tail -c 1 "${src}")" ]]; then
+    rendered="${rendered}"$'\n'
+  fi
   if [[ ! -e "${dest}" ]]; then
     if [[ "${dry_run}" -eq 1 ]]; then
       echo "would copy: ${rel}"
@@ -131,7 +137,7 @@ for rel in "${PAYLOAD[@]}"; do
       echo "copied: ${rel}"
     fi
     copied=$((copied + 1))
-  elif [[ "$(cat "${dest}")" == "${rendered}" ]]; then
+  elif [[ "$(cat "${dest}")" == "$(printf '%s' "${rendered}")" ]]; then
     echo "unchanged: ${rel}"
     unchanged=$((unchanged + 1))
   elif [[ "${force}" -eq 1 ]]; then

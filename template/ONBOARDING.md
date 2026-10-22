@@ -11,8 +11,9 @@ grep -r "{{" AGENTS.md .opencode docs script .github || echo "no placeholders le
 ## Prerequisites
 
 - A GitHub account with permission to create repositories.
-- `git`, `gh` (authenticated: `gh auth login`), and `jq` (the scripts
-  parse `gh` JSON output with it).
+- `git`, `gh` (authenticated: `gh auth login`), `jq` (the scripts
+  parse `gh` JSON output with it), and `perl` (the installer uses it
+  for placeholder substitution).
 - Your language toolchain installed.
 - An AO (agent orchestrator) installation with permission to spawn
   worker sessions.
@@ -167,6 +168,14 @@ note) — no gate ceremony, exercises the whole pipeline:
    `CHANGES_REQUESTED` + `file:line` findings).
 5. On APPROVE + green CI + `risk-low`/`risk-medium`, merge with
    `script/orchestrator-merge.sh <n>`.
+
+Smoke-test the spawn wrapper first (from the orchestrator worktree,
+against a real open issue — the orchestrator gate applies even to
+`--dry-run`; nothing is spawned):
+
+```sh
+script/ao-spawn-worker.sh --issue <n> --role dev --name smoke-test --dry-run
+```
 
 Adoption is done when every box is ticked:
 

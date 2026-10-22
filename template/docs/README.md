@@ -6,12 +6,10 @@ this project: each row points at its real path with status `active` or
 is in one of the tables — no orphans, no dead links. All content is
 English.
 
-The product scope and the MVP requirements exist (both rows are
-marked active below). The stack and architecture are still undecided, so the
-remaining spec groups below stay stubs. They flip to `active` through
-the normal spec-gated flow (see the `spec-gate` skill) as the owner
-scopes further slices. Do not invent product requirements to
-fill them early.
+Every spec group starts as a stub in a fresh install — the template
+ships no product content. Rows flip to `active` through the normal
+spec-gated flow (see the `spec-gate` skill) as the owner scopes
+slices. Do not invent product requirements to fill them early.
 
 Paths are relative to `docs/`, except the two repo-root files in the
 Development table, which use a `../` prefix.
@@ -93,8 +91,8 @@ docs and plans, not gated specs.
 
 | Type | Path | Status | Owner | Purpose |
 |---|---|---|---|---|
-| Repository README | `../README.md` | active | `dev` | repo-root entry point: what this repo is and where to start |
-| Contributing guide | `../CONTRIBUTING.md` | stub (not needed yet) | `dev` | repo-root contribution workflow |
+| Repository README | `../README.md` | stub — create at the first scoped change (the installer ships no repo-root files) | `dev` | repo-root entry point: what this repo is and where to start |
+| Contributing guide | `../CONTRIBUTING.md` | stub — create at the first scoped change (the installer ships no repo-root files) | `dev` | repo-root contribution workflow |
 | Setup | `development/setup.md` | stub (not needed yet) | `dev` | local environment setup steps |
 | Coding standards | `development/coding-standards.md` | stub (not needed yet) | `dev` | code style and review conventions |
 | Implementation plan | `development/implementation-plan.md` | stub (not needed yet) | `dev` | build sequencing per approved scope |
@@ -152,7 +150,7 @@ docs and plans, not gated specs.
 | `agentic-template/gate.md` | T0–T4 gate + worked example |
 | `agentic-template/conventions.md` | artefact/commit/session naming, language, merge, verdict mechanics |
 | `agentic-template/bootstrap.md` | step-by-step: new repo to first guarded PR |
-| `agentic-template/extraction-plan.md` | options for a standalone template repo + open decision |
+| `agentic-template/extraction-plan.md` | records how this standalone template was extracted (shipped; no new repository created) |
 
 ## Other existing docs
 

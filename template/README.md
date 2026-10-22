@@ -7,7 +7,8 @@ document taxonomy, and the installer.
 
 ## Prerequisites
 
-- `git` and `gh` (authenticated: `gh auth login`).
+- `git` and `gh` (authenticated: `gh auth login`), plus `perl`
+  (the installer uses it for placeholder substitution).
 - An AO (agent orchestrator) installation with permission to spawn
   worker sessions.
 - A target git repository (created beforehand; the installer refuses a
