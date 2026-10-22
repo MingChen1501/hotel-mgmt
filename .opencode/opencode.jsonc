@@ -25,6 +25,67 @@
     { "action": "shell", "resource": "git branch *", "effect": "allow" },
 
     // Pushing code always needs confirmation, even when a broader allow rule above matches.
-    { "action": "shell", "resource": "git push *", "effect": "ask" }
+    { "action": "shell", "resource": "git push *", "effect": "ask" },
+
+    // Hard denies (last match wins: these sit after every ask/allow
+    // above, so no earlier rule can re-allow them). Merges run only
+    // through script/orchestrator-merge.sh in the orchestrator worktree.
+    // These do NOT block `gh pr create/view/edit`, git reads, or pushing
+    // a session branch. Direct `ao spawn` / `ao pr merge` /
+    // `ao review trigger` are denied in the session-control block below.
+    // Default-branch patterns are normalised the same way as the
+    // project-guard.ts shell guard: exact `master` (a branch merely
+    // starting with `master`, e.g. `master-fix`, is NOT the default
+    // branch), both sides of a refspec, `refs/heads/master`, and the
+    // `+` force-prefix / `--all` / `--mirror` bulk-push shapes.
+    // Deletion is covered in `:` refspec form and `--delete`/`-d` flag
+    // form; `git <global-opts> push ...` shapes are covered by the
+    // `git * push ...` variants.
+    { "action": "shell", "resource": "gh pr merge *", "effect": "deny" },
+    { "action": "shell", "resource": "git push --force*", "effect": "deny" },
+    { "action": "shell", "resource": "git push -f *", "effect": "deny" },
+    { "action": "shell", "resource": "git push --all*", "effect": "deny" },
+    { "action": "shell", "resource": "git push --mirror*", "effect": "deny" },
+    { "action": "shell", "resource": "git push --delete *", "effect": "deny" },
+    { "action": "shell", "resource": "git push -d *", "effect": "deny" },
+    { "action": "shell", "resource": "git push * --delete *", "effect": "deny" },
+    { "action": "shell", "resource": "git push * -d *", "effect": "deny" },
+    { "action": "shell", "resource": "git push * +*", "effect": "deny" },
+    { "action": "shell", "resource": "git push * master", "effect": "deny" },
+    { "action": "shell", "resource": "git push * master:*", "effect": "deny" },
+    { "action": "shell", "resource": "git push * *:master", "effect": "deny" },
+    { "action": "shell", "resource": "git push * refs/heads/master", "effect": "deny" },
+    { "action": "shell", "resource": "git push * refs/heads/master:*", "effect": "deny" },
+    { "action": "shell", "resource": "git push * *:refs/heads/master*", "effect": "deny" },
+    { "action": "shell", "resource": "git push * HEAD:master*", "effect": "deny" },
+    { "action": "shell", "resource": "git push * HEAD:refs/heads/master*", "effect": "deny" },
+    { "action": "shell", "resource": "git push * :*", "effect": "deny" },
+    { "action": "shell", "resource": "git * push --mirror*", "effect": "deny" },
+    { "action": "shell", "resource": "git * push --all*", "effect": "deny" },
+    { "action": "shell", "resource": "git * push --force*", "effect": "deny" },
+    { "action": "shell", "resource": "git * push --delete *", "effect": "deny" },
+    { "action": "shell", "resource": "git * push * --delete *", "effect": "deny" },
+    { "action": "shell", "resource": "git * push * +*", "effect": "deny" },
+    { "action": "shell", "resource": "git * push * master*", "effect": "deny" },
+    { "action": "shell", "resource": "git * push * HEAD:*master*", "effect": "deny" },
+    { "action": "shell", "resource": "git * push * refs/heads/master*", "effect": "deny" },
+    { "action": "shell", "resource": "git * push * :*", "effect": "deny" },
+    { "action": "shell", "resource": "gh issue delete *", "effect": "deny" },
+
+    // Session control is orchestrator-only: no session may directly
+    // spawn sessions, merge PRs, or trigger reviews. The sanctioned
+    // scripts (script/ao-spawn-worker.sh, script/orchestrator-merge.sh,
+    // script/orchestrator-review.sh) still work because they run the
+    // CLI as a child process of the script tool call — permission is
+    // evaluated on the outer `script/...` command string, never on the
+    // inner `ao ...` invocation. Bare forms included: `ao spawn`,
+    // `ao pr merge`, and `ao review trigger` are all runnable without
+    // trailing arguments.
+    { "action": "shell", "resource": "ao spawn *", "effect": "deny" },
+    { "action": "shell", "resource": "ao spawn", "effect": "deny" },
+    { "action": "shell", "resource": "ao pr merge *", "effect": "deny" },
+    { "action": "shell", "resource": "ao pr merge", "effect": "deny" },
+    { "action": "shell", "resource": "ao review trigger *", "effect": "deny" },
+    { "action": "shell", "resource": "ao review trigger", "effect": "deny" }
   ]
 }

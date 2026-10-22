@@ -53,8 +53,12 @@ used only for internal AO reporting.
 
 ## Merge policy
 
-- **Squash merge only**: `gh pr merge <n> --squash --delete-branch`.
-  Never `--merge` or `--rebase`. Never push directly to the default
+- Merge only through `script/orchestrator-merge.sh <n>`.
+  **Squash merge only** is structural: the script merges via
+  `ao pr merge`, which squash-merges, and `gh pr merge` is denied for
+  every session, so `--merge` and `--rebase` are unreachable. The
+  script deletes the PR head branch after merging (unless a stacked PR
+  still targets it). Never push directly to the default
   branch; work on a branch + PR.
 - Merge only when CI is green.
 - `risk-low` / `risk-medium`: merge autonomously once CI is green + the
