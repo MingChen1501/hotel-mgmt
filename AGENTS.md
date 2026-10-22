@@ -38,8 +38,11 @@ doc group.
 
 ## Non-negotiables
 
-- No remote is configured — work stays local; do not publish anywhere
-  unless the owner asks.
+- Delivery runs through GitHub: origin is
+  `https://github.com/MingChen1501/hotel-mgmt.git`. GitHub issues are
+  the task source and issue/PR comments are the external communication
+  channel; all public artifacts are in English. Workers push their own
+  session branch and open PRs for their assigned issue.
 - Never push directly to the default branch; work on a branch + PR.
 - Every issue and PR carries exactly one risk label (`risk-low` /
   `risk-medium` / `risk-high` / `risk-very-high`); squash merge only

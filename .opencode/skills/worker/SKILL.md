@@ -59,8 +59,10 @@ Sign every artefact per that file.
 ## Publishing scope
 
 Canonical home: the `orchestrator` skill ("Publishing scope") — the
-rules below summarize it for worker use. No remote is configured for
-this project: work stays local unless the owner asks otherwise.
+rules below summarize it for worker use. Delivery is issue-based on
+GitHub (origin `https://github.com/MingChen1501/hotel-mgmt.git`):
+push your own session branch and open the PR for your assigned issue;
+never merge and never push to the default branch.
 
 - Publish (push branch, create/update PR) only within the
   already-authorized workflow. Available credentials, a configured
