@@ -66,10 +66,11 @@ The topology must hold a 50-room hotel with 5 staff signed in at once
 (`NFR-PERF-1`: named views within 2 seconds, named actions within
 3 seconds) and two years of operating data for standard reports
 (`NFR-PERF-2`: within 5 seconds). Open question OQ-A3 in ADR-0001
-(`docs/architecture/decisions/adr-0001-monorepo-polyglot.md`) now
-reads: single host or small cluster confirmed; CPU/RAM/disk still
-open — the installation above must fit within the property's own
-unit in either placement.
+(`docs/architecture/decisions/adr-0001-monorepo-polyglot.md`) asks
+for the smallest on-premise host the installer must support
+(CPU/RAM/disk): the single-host-or-small-cluster placement above is
+settled, only the sizing numbers stay open — the installation above
+must fit within the property's own unit in either placement.
 
 ## 3. Chain-ready direction (explicitly non-MVP)
 
