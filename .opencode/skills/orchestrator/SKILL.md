@@ -99,7 +99,11 @@ Normative rules: `docs/ao-rules.md` (canonical roles, commit identity,
 footer/marker template, reviewer-must-differ, session naming). Do not
 restate the list here — link it. Summary for orchestration use only.
 
-- **Spawn step.** Every spawn prompt names the session `<role> <target>`
+- **Spawn step.** Spawn only through
+  `script/ao-spawn-worker.sh --issue <n> --role <role> --name <label>`
+  (marker-gated: refuses outside the orchestrator worktree; direct
+  `ao spawn` is denied for every session). Every spawn prompt names
+  the session `<role> <target>`
   and tells the worker to set its per-worktree git identity before
   committing (`git config --worktree user.name "Ming Chen (<role>)"`,
   same email). Existing commits are never rewritten.
@@ -114,9 +118,14 @@ restate the list here — link it. Summary for orchestration use only.
 ## Review flow
 
 - Reviews are run by a **dedicated manual reviewer worker session**.
-- The orchestrator spawns one reviewer session per PR, targeting the
+- The orchestrator spawns one reviewer session per PR (through
+  `script/ao-spawn-worker.sh` with a reviewer role), targeting the
   PR opened by the owning worker session. The reviewer never
   implements, and no session reviews its own PR (see Role separation).
+- The orchestrator triggers the AO review only through
+  `script/orchestrator-review.sh <worker-session-id>` (marker-gated;
+  direct `ao review trigger` is denied for every session, so a worker
+  can never trigger — or re-trigger — a review of its own PR).
 - The reviewer posts the verdict as a **COMMENT** on the PR:
   `APPROVE` or `CHANGES_REQUESTED` in comment text, plus findings
   by severity with `file:line`.

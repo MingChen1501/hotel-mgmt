@@ -53,6 +53,22 @@
     { "action": "shell", "resource": "git push * HEAD:master*", "effect": "deny" },
     { "action": "shell", "resource": "git push * HEAD:refs/heads/master*", "effect": "deny" },
     { "action": "shell", "resource": "git push * :*", "effect": "deny" },
-    { "action": "shell", "resource": "gh issue delete *", "effect": "deny" }
+    { "action": "shell", "resource": "gh issue delete *", "effect": "deny" },
+
+    // Session control is orchestrator-only: no session may directly
+    // spawn sessions, merge PRs, or trigger reviews. The sanctioned
+    // scripts (script/ao-spawn-worker.sh, script/orchestrator-merge.sh,
+    // script/orchestrator-review.sh) still work because they run the
+    // CLI as a child process of the script tool call — permission is
+    // evaluated on the outer `script/...` command string, never on the
+    // inner `ao ...` invocation. Bare forms included: `ao spawn`,
+    // `ao pr merge`, and `ao review trigger` are all runnable without
+    // trailing arguments.
+    { "action": "shell", "resource": "ao spawn *", "effect": "deny" },
+    { "action": "shell", "resource": "ao spawn", "effect": "deny" },
+    { "action": "shell", "resource": "ao pr merge *", "effect": "deny" },
+    { "action": "shell", "resource": "ao pr merge", "effect": "deny" },
+    { "action": "shell", "resource": "ao review trigger *", "effect": "deny" },
+    { "action": "shell", "resource": "ao review trigger", "effect": "deny" }
   ]
 }

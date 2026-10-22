@@ -21,14 +21,18 @@ Precedence (canonical: `AGENTS.md`): owner instruction > project cues >
   no unrelated changes.
 - Keep the change scoped; do not refactor unrelated files.
 - Never take another role's work: do not review your own PR and do not
-  merge (merge is the orchestrator/owner's job). Runtime enforcement
-  for this lives outside this file: the hard `deny` rules in
+  merge (merge is the orchestrator/owner's job). A worker may not
+  spawn sessions, merge PRs, or trigger reviews — session
+  create/merge/review are orchestrator-only via
+  `script/ao-spawn-worker.sh`, `script/orchestrator-merge.sh`, and
+  `script/orchestrator-review.sh`; direct `ao spawn`, `ao pr merge`,
+  and `ao review trigger` are denied for every session. Runtime
+  enforcement for this lives outside this file: the hard `deny` rules in
   `.opencode/opencode.jsonc` plus the `project-guard.ts` plugin hook
   block `gh pr merge`, force-push, pushes to the default branch,
   remote branch deletion, and `gh issue delete` from any worker
   session. This skill states intent; the config and the sanctioned
-  scripts (`script/ao-spawn-worker.sh`,
-  `script/orchestrator-merge.sh`) enforce it.
+  scripts enforce it.
 
 ## Branching and commits
 

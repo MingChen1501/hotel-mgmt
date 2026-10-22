@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # ao-spawn-worker.sh: the only sanctioned orchestrator spawn path
 # (orchestrator, reviewer, takeover, and buffer sessions included).
+# Only the orchestrator may run it: it refuses unless the marker file
+# .ao-orchestrator exists in the current worktree (created only in the
+# orchestrator worktree, never committed).
 #
 # Usage: script/ao-spawn-worker.sh --issue <n> --role <role> --name <label> [--model <id>] [--dry-run]
 #
@@ -21,6 +24,7 @@ set -euo pipefail
 
 REPO="MingChen1501/hotel-mgmt"
 PROJECT="hotel-mgmt"
+MARKER=".ao-orchestrator"
 IMPLEMENT_ROLES="dev content dev-takeover"
 REVIEW_ROLES="dev-peer-review content-review"
 SPECGATE_ROLES="spec-reviewer"
@@ -68,6 +72,17 @@ for r in ${SPEC_ROLES}; do if [[ "${role}" == "${r}" ]]; then role_class="spec";
 for r in ${BUFFER_ROLES}; do if [[ "${role}" == "${r}" ]]; then role_class="buffer"; fi; done
 if [[ -z "${role_class}" ]]; then
   echo "error: unknown role '${role}'. Valid roles: ${VALID_ROLES}" >&2
+  exit 1
+fi
+
+# Only the orchestrator may spawn sessions: the marker file
+# .ao-orchestrator exists solely in the orchestrator worktree (never
+# committed). Workers calling this wrapper are refused here, and direct
+# `ao spawn` is denied for every session by .opencode/opencode.jsonc.
+# The marker is required even for --dry-run.
+if [[ ! -f "${MARKER}" ]]; then
+  echo "error: refusing to spawn: marker file ${MARKER} not found in $(pwd)" >&2
+  echo "Only the orchestrator may spawn sessions; run this wrapper from the orchestrator worktree." >&2
   exit 1
 fi
 

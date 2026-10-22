@@ -34,8 +34,11 @@ function isGeneratedPath(resource: string): boolean {
 // (e.g. a shell invocation shape the evaluate event does not expose),
 // the config deny still applies — this hook is defense in depth only.
 //
-// The guard never blocks: `ao pr merge`, `ao spawn`, `gh pr create`,
-// `gh pr view`, `gh pr edit`, git reads, or pushing a session branch.
+// The guard defers on `ao ...` commands: direct session control
+// (`ao spawn`, `ao pr merge`, `ao review trigger`) is denied by config,
+// and the sanctioned scripts invoking those as child processes must not
+// be disturbed here. It never blocks `gh pr create`, `gh pr view`,
+// `gh pr edit`, git reads, or pushing a session branch.
 function shellDenyReason(command: string): string | null {
   if (typeof command !== "string" || command.length === 0) return null
   // Split compound shell lines so `cd x && <denied>` is still caught,
@@ -43,8 +46,9 @@ function shellDenyReason(command: string): string | null {
   const segments = command.split(/&&|\|\||[;|\n]/).map((s) => s.trim()).filter(Boolean)
   for (const seg of segments) {
     const cmd = seg.replace(/^\s*(sudo\s+)+/, "")
-    // The sanctioned orchestrator/worker paths run through `ao`, never
-    // raw `gh`/`git` merges: `ao pr merge` and `ao spawn` are always allowed.
+    // `ao ...` is left to the config deny rules (direct session
+    // control is orchestrator-only; the sanctioned scripts invoke the
+    // CLI as a child process, which permission evaluation does not see).
     if (/^ao(\s|$)/.test(cmd)) continue
     // gh allowlist: create/view/edit stay usable from any session.
     if (/^gh\s+pr\s+(create|view|edit)(\s|$)/.test(cmd)) continue
