@@ -124,7 +124,19 @@ installation serves exactly one property.
   breaking changes require a deliberate decision, never a side
   effect.
 
-## 9. Owner-acceptance checklist
+## 9. Development strategy (options, not decided)
+
+The candidate structures, per-hotel customisation mechanisms,
+walking-skeleton scope, contract-first sequencing, and trade-offs
+live in `docs/architecture/candidate-architectures.md` (active). That
+document decides nothing: it lays out options with a recommendation so
+the owner can choose a direction before implementation starts. The
+CI/versioning approach in section 8 above describes the Candidate A
+(polyglot) shape; the per-stack CI jobs, packaging detail, and
+environment inventory it implies are DevOps follow-up work that opens
+after the stack direction is chosen.
+
+## 10. Owner-acceptance checklist
 
 - [ ] The owner confirms the eight module boundaries and their single
   data-store owners in section 4.
@@ -134,6 +146,10 @@ installation serves exactly one property.
 - [ ] The owner confirms all candidate technologies remain
   `proposed` and none is treated as decided.
 - [ ] The owner confirms the CI/versioning approach in section 8.
+- [ ] The owner has read the candidate options in
+  `docs/architecture/candidate-architectures.md`; no direction is
+  chosen by this checklist — the stack choice is recorded through
+  the ADR-0001 acceptance answers.
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-29
