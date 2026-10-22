@@ -143,12 +143,14 @@ restate the list here — link it. Summary for orchestration use only.
 
 - Merge only through `script/orchestrator-merge.sh <n>` (run in the
   orchestrator worktree holding the uncommitted `.ao-orchestrator`
-  marker). **Squash merge only** is structural: the script merges via
-  `ao pr merge`, which squash-merges, and `gh pr merge` is denied for
-  every session by `.opencode/opencode.jsonc`, so `--merge` (merge
-  commit) and `--rebase` are unreachable. Delete-branch is preserved by
-  the script: after a successful merge it deletes the PR head branch
-  unless another open PR still targets it as a base.
+  marker). The wrapper is the only merge path: it squash-merges via
+  `gh pr merge <n> --squash --delete-branch` as a child process of the
+  script (permission evaluation does not see it), while direct
+  `gh pr merge` stays denied for every session by
+  `.opencode/opencode.jsonc` — so `--merge` (merge commit) and
+  `--rebase` are unreachable. gh deletes the PR head branch after
+  merging; when another open PR still targets the head as a base, the
+  wrapper merges without `--delete-branch` and keeps the branch.
 - Merge only when CI is green (the script refuses on pending/failed
   checks). Never push directly to the default branch.
 - Stacked PRs keep their base branch alive until the child merges; do not delete
