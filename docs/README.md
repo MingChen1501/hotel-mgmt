@@ -6,8 +6,8 @@ this project: each row points at its real path with status `active` or
 is in one of the tables — no orphans, no dead links. All content is
 English.
 
-The product scope and the MVP requirements exist (both rows are
-marked active below). The stack and architecture are still undecided, so the
+The product scope, the PRD, and the MVP requirements exist (their rows
+are marked active below). The stack and architecture are still undecided, so the
 remaining spec groups below stay stubs. They flip to `active` through
 the normal spec-gated flow (see the `spec-gate` skill) as the owner
 scopes further slices. Do not invent hotel product requirements to
@@ -43,7 +43,7 @@ Development table, which use a `../` prefix.
 | Type | Path | Status | Owner | Purpose |
 |---|---|---|---|---|
 | MVP scope | `product/mvp-scope.md` | active | `product-owner` | MVP scope for the small-hotel PMS (Closes #9) |
-| PRD | `product/prd.md` | stub (not needed yet) | `product-owner` | product requirements: features, priority, release scope |
+| PRD | `product/prd.md` | active | `product-owner` | product requirements document for the small-hotel PMS (Closes #29) |
 | Roadmap | `product/roadmap.md` | stub (not needed yet) | `product-owner` | sequenced direction across milestones |
 | Personas | `product/personas.md` | stub (not needed yet) | `product-owner` | user archetypes the product serves |
 | User stories | `product/user-stories.md` | stub (not needed yet) | `product-owner` | stories expressing user needs per slice |
