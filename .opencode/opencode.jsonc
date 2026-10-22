@@ -1,0 +1,30 @@
+{
+  // Project config for OpenCode (auto-loaded from .opencode/opencode.jsonc).
+  // Field details: https://opencode.ai/docs/config
+  "$schema": "https://opencode.ai/config.json",
+
+  // NOTE: the stack is undecided, so no build/test commands are
+  // allow-listed yet. Add them here (mirroring the hotel-verify
+  // skill) once the stack is chosen.
+  // Ask/allow rules in order: the LAST matching rule wins.
+  "permissions": [
+    // Default: ask before running shell.
+    { "action": "shell", "resource": "*", "effect": "ask" },
+
+    // Read/search are always allowed.
+    { "action": "read", "resource": "*", "effect": "allow" },
+    { "action": "glob", "resource": "*", "effect": "allow" },
+    { "action": "grep", "resource": "*", "effect": "allow" },
+    { "action": "webfetch", "resource": "*", "effect": "allow" },
+    { "action": "websearch", "resource": "*", "effect": "allow" },
+
+    // Read-only git: allowed without asking.
+    { "action": "shell", "resource": "git status *", "effect": "allow" },
+    { "action": "shell", "resource": "git diff *", "effect": "allow" },
+    { "action": "shell", "resource": "git log *", "effect": "allow" },
+    { "action": "shell", "resource": "git branch *", "effect": "allow" },
+
+    // Pushing code always needs confirmation, even when a broader allow rule above matches.
+    { "action": "shell", "resource": "git push *", "effect": "ask" }
+  ]
+}
