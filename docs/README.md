@@ -154,6 +154,22 @@ docs and plans, not gated specs.
 | `agentic-template/bootstrap.md` | step-by-step: new repo to first guarded PR |
 | `agentic-template/extraction-plan.md` | options for a standalone template repo + open decision |
 
+## Standalone template (shipped, Closes #16)
+
+| Path | Purpose |
+|---|---|
+| `template/README.md` | what the template is, prerequisites, quick start, payload table |
+| `template/ONBOARDING.md` | new-project runbook: install, labels, AO registration, reviewer mode, guardrails, checklist |
+| `template/AGENTS.md` | agent guide with `{{PROJECT_NAME}}`, `{{REPO_SLUG}}`, `{{DEFAULT_BRANCH}}`, `{{DOMAIN}}` placeholders, no project-specific rules |
+| `template/.opencode/` | 11 role files, 5 skills (`project-verify` replaces `hotel-verify`), commands, `opencode.jsonc` deny rules, `project-guard.ts` |
+| `template/.github/` | issue form, blank-issue config, PR template |
+| `template/docs/` | document index and taxonomy, role rules, conventions, starter group |
+| `template/script/` | sanctioned wrappers plus `install-template.sh` (copy without overwrite unless `--force`, placeholder substitution, `--dry-run`, idempotent, refuses non-git targets) |
+
+The `agentic-template/` starter above stays as the in-tree design
+record; `template/` is the installable artefact (its
+`docs/agentic-template/extraction-plan.md` records the extraction).
+
 ## Other existing docs
 
 | Path | Purpose |

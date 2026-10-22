@@ -1,0 +1,93 @@
+# AO + OpenCode agentic workflow template
+
+Standalone template that installs the AO (agent orchestrator) +
+OpenCode agentic workflow into a new project in one pass: the agent
+guide, role files, skills, permission guardrails, issue/PR templates,
+document taxonomy, and the installer.
+
+## Prerequisites
+
+- `git` and `gh` (authenticated: `gh auth login`).
+- An AO (agent orchestrator) installation with permission to spawn
+  worker sessions.
+- A target git repository (created beforehand; the installer refuses a
+  non-git directory).
+
+## Quick start
+
+From a checkout of this template (or from the source repo's
+`template/` directory):
+
+```sh
+./template/script/install-template.sh --target /path/to/new-repo \
+  --project-name "Example Project" \
+  --repo-slug example-owner/example-project \
+  --default-branch main \
+  --domain example-domain
+```
+
+Preview without writing:
+
+```sh
+./template/script/install-template.sh --target /path/to/new-repo \
+  --project-name "Example Project" \
+  --repo-slug example-owner/example-project \
+  --default-branch main \
+  --domain example-domain \
+  --dry-run
+```
+
+Then follow `ONBOARDING.md` (installed as `ONBOARDING.md` only in
+this template directory — see the file list below): labels, AO
+project registration, guardrails, first guarded PR.
+
+## What gets installed
+
+| Template path | Installed as | Notes |
+|---|---|---|
+| `AGENTS.md` | `AGENTS.md` | Placeholders replaced; no project-specific rules |
+| `.opencode/agents/` | `.opencode/agents/` | 11 roles: orchestrator, product-owner, business-analyst, architect, qa-lead, release-manager, spec-reviewer, dev-peer-review, content, content-review, buffer-worker |
+| `.opencode/skills/orchestrator/` | same | Spawn/pool/review/merge rules |
+| `.opencode/skills/worker/` | same | Implementer rules |
+| `.opencode/skills/spec-gate/` | same | T0–T4 tiers + gate procedure |
+| `.opencode/skills/architecture/` | same | Audit method + spec layout |
+| `.opencode/skills/project-verify/` | same | Placeholder until the stack is chosen |
+| `.opencode/commands/` | same | `review`, `verify` shortcuts |
+| `.opencode/opencode.jsonc` | same | Runtime deny rules (merge/force-push/default-branch/session control) |
+| `.opencode/plugins/project-guard.ts` | same | Defense-in-depth shell/edit guard |
+| `.github/ISSUE_TEMPLATE/` | same | `task.yml` + `config.yml` (blank issues disabled) |
+| `.github/PULL_REQUEST_TEMPLATE.md` | same | Summary / Closes / Type / Risk / Test evidence |
+| `docs/README.md` | same | Document index and taxonomy |
+| `docs/ao-rules.md` | same | Normative role rules |
+| `docs/project/issue-conventions.md` | same | Title+label convention |
+| `docs/agentic-template/` | same | `bootstrap`, `conventions`, `gate`, `roles`, `extraction-plan` |
+| `script/ao-role-footer.sh` | same | Role footer generator |
+| `script/ao-spawn-worker.sh` | same | Only sanctioned spawn path |
+| `script/orchestrator-merge.sh` | same | Only sanctioned merge path |
+| `script/orchestrator-review.sh` | same | Sanctioned review-trigger path |
+| `script/install-template.sh` | — | Installer itself; not installed |
+
+`README.md` and `ONBOARDING.md` (this directory) are template
+documentation and are **not** installed.
+
+## Placeholders
+
+| Placeholder | Flag | Example |
+|---|---|---|
+| `{{PROJECT_NAME}}` | `--project-name` | `Example Project` |
+| `{{REPO_SLUG}}` | `--repo-slug` | `example-owner/example-project` |
+| `{{DEFAULT_BRANCH}}` | `--default-branch` | `main` |
+| `{{DOMAIN}}` | `--domain` | `example-domain` |
+
+All four flags are required. The installer fails if any `{{...}}`
+token remains after substitution.
+
+## Customising after install
+
+- Fill in the `project-verify` skill once the stack is chosen
+  (build/test commands, CI inventory, generated paths).
+- Narrow `GENERATED_SEGMENTS` in `project-guard.ts` to the real build
+  outputs.
+- Write the first specs through the spec-gated workflow
+  (`spec-gate` skill); flip `docs/README.md` rows to `active` as docs
+  land.
