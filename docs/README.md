@@ -62,9 +62,9 @@ Development table, which use a `../` prefix.
 | Non-functional requirements | `requirements/non-functional-requirements.md` | stub (not needed yet) | `business-analyst` | measurable NFRs (performance, reliability, usability) |
 | SRD | `requirements/srd.md` | stub (not needed yet) | `business-analyst` | stakeholder requirements definition |
 | SRS | `requirements/srs.md` | stub (not needed yet) | `business-analyst` | software requirements specification |
-| Business rules | `requirements/business-rules.md` | stub (not needed yet) | `business-analyst` | domain policies constraining behaviour |
-| Use cases | `requirements/use-cases.md` | stub (not needed yet) | `business-analyst` | actor-goal flows through the system |
-| Data dictionary | `requirements/data-dictionary.md` | stub (not needed yet) | `business-analyst` | shared definitions of data entities and fields |
+| Business rules | `requirements/business-rules.md` | active | `business-analyst` | domain policies constraining behaviour (Closes #58) |
+| Use cases | `requirements/use-cases.md` | active | `business-analyst` | actor-goal flows through the system (Closes #58) |
+| Data dictionary | `requirements/data-dictionary.md` | active | `business-analyst` | shared definitions of data entities and fields (Closes #58) |
 
 ## Architecture
 
