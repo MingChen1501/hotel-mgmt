@@ -169,11 +169,14 @@ restate the list here — link it. Summary for orchestration use only.
 
 ## Publishing scope
 
-No remote is configured for this project: work stays local unless the
-owner asks for publishing. More generally:
+Delivery is issue-based on GitHub: origin is
+`https://github.com/MingChen1501/hotel-mgmt.git`. Pushing session
+branches, opening/updating PRs, and commenting on issues/PRs within
+the assigned issue workflow is authorised. Merge authority, risk
+gates, and owner-approval rules are unchanged. More generally:
 
-- Freeform work publishes only when the owner requests it or project rules
-  require it.
+- Freeform work outside an assigned issue publishes only when the owner
+  requests it or project rules require it.
 - Available credentials, a configured remote, auto/bypass tool permissions, or
   an associated PR/MR alone do **not** authorize publishing.
 - Explicit restrictions (local-only, review-only, do-not-publish) take
