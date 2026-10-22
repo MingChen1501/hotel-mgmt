@@ -38,7 +38,8 @@ For the MVP, each hotel runs one on-premise instance of the system for
 its own property. One instance serves one property: its rooms,
 reservations, guests, and folios belong to that hotel alone, and the
 system works on the hotel's own premises without depending on a
-central service.
+central service. The desk keeps working through an internet outage:
+daily operation needs no internet connectivity.
 
 Chain-ready direction (explicitly not MVP): the product is expected to
 grow toward multi-property operation later — for example hotel groups
@@ -221,6 +222,9 @@ instance holding a small fictional hotel (under 50 rooms):
 - The owner configures a new room type, a new user, a new charge item,
   and a change to check-in time and required guest fields, all without
   code changes, and the desk immediately works with the new setup.
+- The owner runs a data export and backup, and every run shows a
+  visible success-or-failure report with a restorable on-premise copy
+  kept.
 - A second hotel's data never appears in the demo instance: the
   instance holds exactly one property's data.
 
