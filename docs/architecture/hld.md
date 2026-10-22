@@ -21,7 +21,7 @@ on-premise installation per property and keeps working without
 internet (`NFR-AVL-1`). There are no external integrations in the MVP:
 no OTA/channel manager, no payment provider, no accounting export
 (product scope, out of scope). The only outward flows are printed or
-messaged artefacts (confirmations, bills, receipts, reports) and
+messaged artefacts (confirmations, invoices, receipts, reports) and
 on-premise data export/backup (`FR-ADM-5`).
 
 ## 2. Container view
@@ -29,7 +29,7 @@ on-premise data export/backup (`FR-ADM-5`).
 The installation is composed of the modules in section 4, each a
 separately deployable container (see
 `docs/architecture/system-architecture.md` for the deployable
-topology), plus one database server hosting one logical store per
+topology), plus the database host(s) holding one logical store per
 module, plus a reverse proxy as the single entry point on the hotel
 premises. Modules never share a store; they interact only through the
 named contracts in section 4.
@@ -101,7 +101,7 @@ each change with actor and timestamp (`NFR-AUD-1`).
 ## 7. On-premise single-property deployment topology (summary)
 
 One property runs one instance: a reverse proxy, one container per
-module, one database server with one logical store per module, and an
+module, the database host(s) with one logical store per module, and an
 on-premise backup target. Detail — containers, stores, proxy, backup
 target, and the chain-ready non-MVP direction — lives in
 `docs/architecture/system-architecture.md`. `NFR-DEP-1` holds: one

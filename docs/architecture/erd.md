@@ -18,7 +18,7 @@ below names no vendor.)
 - Stay: an in-house occupation created at check-in from a
   reservation, linked to exactly one room at a time, with move
   history.
-- Folio: exactly one running bill per stay, collecting folio lines
+- Folio: exactly one running folio per stay, collecting folio lines
   (room charges, extras, taxes/fees) and payments with a running
   balance.
 - Rate plan: nightly prices per room type and date; restrictions
@@ -43,10 +43,11 @@ HotelConfig 1---* (rooms, users, policies of the single property)
 For any room type and any date, confirmed reservations plus in-house
 stays must not exceed sellable rooms (total rooms of the type minus
 out-of-order blocks). Enforcement note (no vendor detail): the
-reservation-creating transaction checks this count atomically, so two
-simultaneous bookings for the last unit cannot both succeed
-(`NFR-CON-1`); the same atomicity guards room assignment at check-in
-(`NFR-CON-2`). A refused booking names the conflict
+reservation-creating write in the reservation store checks this count
+atomically, so two simultaneous bookings for the last unit cannot both
+succeed (`NFR-CON-1`); room assignment at check-in is guarded by an
+atomic write in the stay store (`NFR-CON-2`). A refused booking names
+the conflict
 (`docs/technical/error-handling.md`).
 
 <!-- ao-role: architect -->

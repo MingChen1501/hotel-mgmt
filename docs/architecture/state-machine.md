@@ -36,17 +36,19 @@ renamed per hotel.
 
 ```text
 vacant-clean --> vacant-inspected --> occupied --> vacant-dirty --> vacant-clean
-      ^                                                        |
-      +----------- out-of-order (date-ranged block) -----------+
+     ^    ^
+     |    |
+     +----+-- out-of-order (date-ranged block; entry from / exit to a vacant state)
 ```
 
 - Live states: occupied, vacant, dirty, clean, inspected,
   out of order (`FR-RMS-1`).
 - Housekeeping walks dirty -> clean -> inspected; only inspected
   vacant rooms are offered for check-in assignment (`FR-RMS-2`).
-- Out-of-order is a date-ranged block with a recorded reason; no new
-  reservation or check-in may take the room for a blocked date
-  (`FR-RMS-3`).
+- Out-of-order is a date-ranged block with a recorded reason, entered
+  only from a vacant state (never from occupied); when the block ends
+  the room returns to a vacant state. No new reservation or check-in
+  may take the room for a blocked date (`FR-RMS-3`).
 - Check-out sets the room to vacant and dirty; a room move sets the
   old room to vacant and dirty (`FR-FDK-2`, `FR-FDK-3`).
 
