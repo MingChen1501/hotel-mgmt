@@ -113,8 +113,9 @@ workflow permissions and pinned dependencies.
    one COMMENT verdict (`APPROVE` / `CHANGES_REQUESTED` + `file:line`
    findings).
 6. On APPROVE + green CI + `risk-low`/`risk-medium`, merge with
-   `script/orchestrator-merge.sh <n>` (squash-merges via `ao pr merge`
-   and deletes the head branch).
+   `script/orchestrator-merge.sh <n>` (squash-merges via `gh pr merge
+   --squash --delete-branch` as a child process and deletes the head
+   branch, unless a stacked PR still targets it).
    Anything higher-risk waits for explicit owner approval.
 
 ## Step 6 — declare adoption done

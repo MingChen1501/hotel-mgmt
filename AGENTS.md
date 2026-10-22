@@ -42,7 +42,7 @@ doc group.
   and adds hard `deny` rules (last match wins): no `gh pr merge`,
   force-push, pushes to the default branch, remote branch deletion,
   `gh issue delete`, and no direct session control (`ao spawn`,
-  `ao pr merge`, `ao review trigger`) from any session.
+  `ao review trigger`) from any session.
   `.opencode/plugins/project-guard.ts` mirrors the gh/git denylist as
   defense in depth using only the documented permission `evaluate`
   hook; it defers on `ao ...` (config owns those) and never blocks
@@ -51,10 +51,12 @@ doc group.
   three scripts (each requires the `.ao-orchestrator` marker plus a live
   orchestrator session; the marker lives only in the orchestrator
   worktree, never committed): `script/ao-spawn-worker.sh` (spawn),
-  `script/orchestrator-merge.sh` (merge),
+  `script/orchestrator-merge.sh` (merge — the only merge path: it
+  squash-merges via `gh pr merge --squash --delete-branch` as a child
+  process while direct `gh pr merge` stays denied),
   `script/orchestrator-review.sh` (review trigger). The scripts work
   because they invoke the CLI as a child process, which permission
-  evaluation does not see; a direct `ao spawn` / `ao pr merge` /
+  evaluation does not see; a direct `ao spawn` /
   `ao review trigger` tool call is denied. A worker may not spawn,
   merge, or trigger review.
 - These are guardrails, not a security boundary: a session that
