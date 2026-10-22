@@ -61,23 +61,29 @@ function shellDenyReason(command: string): string | null {
       if (args.some((t) => t === "-f" || t.startsWith("--force"))) {
         return "Force-push is never allowed; push your session branch with a plain `git push`."
       }
+      // Bulk pushes rewrite every ref including the default branch.
+      if (args.some((t) => t === "--all" || t === "--mirror" || t.startsWith("--mirror="))) {
+        return "Bulk push (`--all`/`--mirror`) is never allowed; push your session branch explicitly."
+      }
       // First non-flag token is the remote; the rest are refspecs.
       const nonFlag = args.filter((t) => !t.startsWith("-"))
       const refspecs = nonFlag.length > 0 ? nonFlag.slice(1) : []
       for (const ref of refspecs) {
-        if (ref.startsWith(":")) {
-          return "Remote branch deletion (`git push <remote> :<branch>`) is never allowed."
+        // A `+` prefix is a force-push of that refspec.
+        if (ref.startsWith("+")) {
+          return "Force-push (`+<refspec>`) is never allowed; push your session branch with a plain `git push`."
         }
-        const dest = ref.includes(":") ? (ref.split(":").pop() as string) : ref
-        if (dest === "master" || dest.startsWith("master")) {
+        // Normalise both sides of `src:dst`: strip `refs/heads/` so
+        // `HEAD:refs/heads/master` and `+master` cannot smuggle the
+        // default branch past the check.
+        const sides = ref.split(":").map((s) => s.replace(/^refs\/heads\//, ""))
+        if (sides.some((s) => s === "master")) {
           return "Pushing to the default branch is never allowed; push your session branch and open a PR."
         }
-      }
-      // `git push origin master` carries the branch as the remote's
-      // refspec and is caught above; this catches the bare
-      // `git push origin HEAD:master` shape explicitly.
-      if (/^git\s+push\s+[^\s-]+\s+HEAD:master/.test(cmd)) {
-        return "Pushing to the default branch is never allowed; push your session branch and open a PR."
+        // Remote branch deletion: `:branch` or (equivalently) `branch:`.
+        if (ref.startsWith(":") || (ref.endsWith(":") && ref.length > 1)) {
+          return "Remote branch deletion (`git push <remote> :<branch>`) is never allowed."
+        }
       }
     }
   }

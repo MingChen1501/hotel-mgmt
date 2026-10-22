@@ -33,12 +33,25 @@
     // script/orchestrator-merge.sh in the orchestrator worktree.
     // These do NOT block `ao pr merge`, `ao spawn`, `gh pr create/view/edit`,
     // git reads, or pushing a session branch.
+    // Default-branch patterns are normalised the same way as the
+    // project-guard.ts shell guard: exact `master` (a branch merely
+    // starting with `master`, e.g. `master-fix`, is NOT the default
+    // branch), both sides of a refspec, `refs/heads/master`, and the
+    // `+` force-prefix / `--all` / `--mirror` bulk-push shapes.
     { "action": "shell", "resource": "gh pr merge *", "effect": "deny" },
     { "action": "shell", "resource": "git push --force*", "effect": "deny" },
     { "action": "shell", "resource": "git push -f *", "effect": "deny" },
-    { "action": "shell", "resource": "git push origin master*", "effect": "deny" },
-    { "action": "shell", "resource": "git push * master*", "effect": "deny" },
-    { "action": "shell", "resource": "git push origin HEAD:master*", "effect": "deny" },
+    { "action": "shell", "resource": "git push --all*", "effect": "deny" },
+    { "action": "shell", "resource": "git push --mirror*", "effect": "deny" },
+    { "action": "shell", "resource": "git push * +*", "effect": "deny" },
+    { "action": "shell", "resource": "git push * master", "effect": "deny" },
+    { "action": "shell", "resource": "git push * master:*", "effect": "deny" },
+    { "action": "shell", "resource": "git push * *:master", "effect": "deny" },
+    { "action": "shell", "resource": "git push * refs/heads/master", "effect": "deny" },
+    { "action": "shell", "resource": "git push * refs/heads/master:*", "effect": "deny" },
+    { "action": "shell", "resource": "git push * *:refs/heads/master*", "effect": "deny" },
+    { "action": "shell", "resource": "git push * HEAD:master*", "effect": "deny" },
+    { "action": "shell", "resource": "git push * HEAD:refs/heads/master*", "effect": "deny" },
     { "action": "shell", "resource": "git push * :*", "effect": "deny" },
     { "action": "shell", "resource": "gh issue delete *", "effect": "deny" }
   ]

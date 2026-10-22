@@ -121,10 +121,10 @@ restate the list here — link it. Summary for orchestration use only.
   `APPROVE` or `CHANGES_REQUESTED` in comment text, plus findings
   by severity with `file:line`.
 - Merge gate: a reviewer COMMENT verdict of **APPROVE** + green CI +
-  risk-low/risk-medium => the orchestrator merges autonomously
-  (squash merge, delete branch) and reports. `risk-high`,
-  `risk-very-high`, or a missing label => explicit owner approval
-  required before merging.
+  risk-low/risk-medium => the orchestrator merges autonomously with
+  `script/orchestrator-merge.sh <n>` (squash merge, delete branch) and
+  reports. `risk-high`, `risk-very-high`, or a missing label =>
+  explicit owner approval required before merging.
 - Review happens **after the PR is up**, never before.
 - A review session counts as a task worker (see Pool).
 - Route review findings to the responsible worker; do not fix code in
@@ -132,9 +132,16 @@ restate the list here — link it. Summary for orchestration use only.
 
 ## Merge method
 
-- **Squash merge only**: `gh pr merge <n> --squash --delete-branch`. Never
-  use `--merge` (merge commit) or `--rebase`.
-- Merge only when CI is green. Never push directly to the default branch.
+- Merge only through `script/orchestrator-merge.sh <n>` (run in the
+  orchestrator worktree holding the uncommitted `.ao-orchestrator`
+  marker). **Squash merge only** is structural: the script merges via
+  `ao pr merge`, which squash-merges, and `gh pr merge` is denied for
+  every session by `.opencode/opencode.jsonc`, so `--merge` (merge
+  commit) and `--rebase` are unreachable. Delete-branch is preserved by
+  the script: after a successful merge it deletes the PR head branch
+  unless another open PR still targets it as a base.
+- Merge only when CI is green (the script refuses on pending/failed
+  checks). Never push directly to the default branch.
 - Stacked PRs keep their base branch alive until the child merges; do not delete
   a base branch that a child PR still targets.
 - risk-low / risk-medium: merge autonomously once CI green + review APPROVE,
