@@ -78,6 +78,7 @@ Development table, which use a `../` prefix.
 | State machine | `architecture/state-machine.md` | active | `architect` | lifecycle states and transitions of core entities (Closes #11) |
 | ADR template | `architecture/decisions/adr-0001-template.md` | stub (not needed yet) | `architect` | decision-record template (the decisions directory holds ADRs) |
 | ADR-0001 monorepo polyglot | `architecture/decisions/adr-0001-monorepo-polyglot.md` | active | `architect` | proposed monorepo with polyglot modules (Closes #11) |
+| Candidate architectures | `architecture/candidate-architectures.md` | active | `architect` | candidate structures, customisation, strategies, trade-offs, recommendation (Closes #67) |
 
 ## Technical
 
