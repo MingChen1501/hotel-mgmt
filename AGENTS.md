@@ -20,6 +20,12 @@ text immediately, even before the cue is edited.
 | Content review — `content-review` (read-only) | role file |
 | Buffer (file issues only, no implementation) | `.opencode/agents/buffer-worker.md` |
 | Architect (audit, specs, refactor issues; never implements) | `.opencode/agents/architect.md` + `architecture` skill |
+| AI engineer (harness engineering: agents/skills/commands/plugins/config, cues, wrapper scripts, `template/`, onboarding; never product code) | `.opencode/agents/ai-engineer.md` + `orchestrator` skill |
+
+Harness ownership: `ai-engineer` is the single accountable owner for
+in-repo harness engineering (the paths listed in its role file). Other
+roles do not edit harness files; harness issues and spec gates for
+product/architecture content go through the owning role.
 
 ## Spec gate (tiers T0–T4)
 

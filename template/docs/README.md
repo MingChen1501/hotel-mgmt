@@ -25,6 +25,7 @@ Development table, which use a `../` prefix.
 | `qa-lead` | Testing |
 | `release-manager` | DevOps, Operations, Release |
 | `content` | Support (`user-guide.md` and `faq-troubleshooting.md` only) |
+| `ai-engineer` | Agentic template (harness docs; implementer, not a spec role — see the note there) |
 | `spec-reviewer` | none (read-only gate over all groups) |
 
 ## Business
@@ -151,6 +152,11 @@ docs and plans, not gated specs.
 | `agentic-template/conventions.md` | artefact/commit/session naming, language, merge, verdict mechanics |
 | `agentic-template/bootstrap.md` | step-by-step: new repo to first guarded PR |
 | `agentic-template/extraction-plan.md` | records how this standalone template was extracted (shipped; no new repository created) |
+
+Harness docs live in this group (`agentic-template/`) and in the
+harness paths themselves (`.opencode/`, `script/`, `template/`):
+`ai-engineer` owns them and keeps the template and live copies in
+sync in the same change.
 
 ## Other existing docs
 

@@ -49,7 +49,7 @@ require_orchestrator() {
     exit 1
   fi
 }
-IMPLEMENT_ROLES="dev content dev-takeover"
+IMPLEMENT_ROLES="dev content dev-takeover ai-engineer"
 REVIEW_ROLES="dev-peer-review content-review"
 SPECGATE_ROLES="spec-reviewer"
 SPEC_ROLES="product-owner business-analyst architect qa-lead release-manager"

@@ -88,6 +88,7 @@ PAYLOAD=(
   ".opencode/agents/product-owner.md"
   ".opencode/agents/business-analyst.md"
   ".opencode/agents/architect.md"
+  ".opencode/agents/ai-engineer.md"
   ".opencode/agents/qa-lead.md"
   ".opencode/agents/release-manager.md"
   ".opencode/agents/spec-reviewer.md"
