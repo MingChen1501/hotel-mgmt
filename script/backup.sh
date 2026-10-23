@@ -67,6 +67,13 @@ json.dump(report, open(report_file, "w"), indent=2)
 PYEOF
 }
 
+# Every run surfaces its report on the desk screen (issue #116):
+# the publisher never masks the backup outcome, so it runs guarded.
+publish_desk_report() {
+  script/publish-backup-report.sh --staging-dir "$STAGING_DIR" \
+    || echo "backup: WARNING: the desk surface was not refreshed; the report above is still in $STAGING_DIR." >&2
+}
+
 fail_backup() {
   local reason="$1"
   local finished_at
@@ -74,6 +81,7 @@ fail_backup() {
   write_report "failure" "$reason" 0 "$finished_at"
   rm -f "$STAGING_DIR/.backup-in-progress"
   echo "Backup failed at $(date +'%H:%M on %d %b') — $reason" | tee -a "$STAGING_DIR/backup.log"
+  publish_desk_report
   exit 1
 }
 
@@ -122,3 +130,4 @@ FINISHED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 write_report "success" "" "$BYTES" "$FINISHED_AT"
 rm -f "$STAGING_DIR/.backup-in-progress"
 echo "Backup succeeded at $(date +'%H:%M on %d %b'): $DUMP_FILE ($BYTES bytes, read-back verified)." | tee -a "$STAGING_DIR/backup.log"
+publish_desk_report
