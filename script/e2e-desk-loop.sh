@@ -228,6 +228,13 @@ step "backup the engine"
 DB_PASSWORD="$DB_PASSWORD_CHECK" script/backup.sh --staging-dir "$STAGING_DIR" --label e2e \
   || { echo "e2e: FAIL: backup step failed." >&2; teardown; exit 1; }
 
+step "desk shows the newest backup report (issue #116)"
+DESK_REPORT="$(curl -fsS --noproxy '*' --max-time 10 "$BASE_URL/backup-report.json")" \
+  || { echo "e2e: FAIL: the desk backup report is not served." >&2; teardown; exit 1; }
+python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get("outcome") == "success" and "Backup succeeded at" in d.get("line", "") else 1)' <<<"$DESK_REPORT" \
+  || { echo "e2e: FAIL: the desk does not show the backup success line: $DESK_REPORT" >&2; teardown; exit 1; }
+pass "desk shows the backup success line through the proxy."
+
 step "restore drill (verify-only) inside the RTO budget"
 script/restore.sh --verify-only --staging-dir "$STAGING_DIR" \
   || { echo "e2e: FAIL: restore drill failed." >&2; teardown; exit 1; }
