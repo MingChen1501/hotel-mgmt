@@ -16,6 +16,9 @@
 #       order, reload the live hotel database from the backup file,
 #       restart in start order, and run the health check
 #       (deployment.md section 6; disruptive — desk work stops).
+#       The operator must type the hotel's own property code from
+#       the per-hotel configuration set (--config PATH, default
+#       deploy/config/hotel.json) exactly; anything else aborts.
 #
 # Skeleton scope: module service rows stay in memory until the
 # persistence slice, so the drill verifies the engine contents
@@ -57,7 +60,18 @@ health_check() {
 
 case "$MODE" in
   --verify-only)
-    STAGING_DIR="${2:-./backup-staging}"
+    shift
+    STAGING_DIR="./backup-staging"
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --staging-dir)
+          STAGING_DIR="${2:?--staging-dir needs a path}"; shift 2 ;;
+        *)
+          echo "restore: unknown argument for --verify-only: $1" >&2
+          echo "usage: script/restore.sh --verify-only [--staging-dir DIR] | --live <backup-file> [--config PATH] [--staging-dir DIR]" >&2
+          exit 2 ;;
+      esac
+    done
     START_EPOCH="$(date +%s)"
     BACKUP_FILE="$(newest_verified_backup "$STAGING_DIR")" \
       || { echo "restore: no verified successful backup in $STAGING_DIR; nothing to drill from." >&2; exit 1; }
@@ -80,17 +94,48 @@ case "$MODE" in
     ;;
 
   --live)
-    BACKUP_FILE="${2:?--live needs a backup file path}"
+    shift
+    BACKUP_FILE=""
+    CONFIG="deploy/config/hotel.json"
+    STAGING_DIR="./backup-staging"
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --config)
+          CONFIG="${2:?--config needs a path}"; shift 2 ;;
+        --staging-dir)
+          STAGING_DIR="${2:?--staging-dir needs a path}"; shift 2 ;;
+        --*)
+          echo "restore: unknown argument for --live: $1" >&2
+          echo "usage: script/restore.sh --verify-only [--staging-dir DIR] | --live <backup-file> [--config PATH] [--staging-dir DIR]" >&2
+          exit 2 ;;
+        *)
+          if [[ -n "$BACKUP_FILE" ]]; then
+            echo "restore: only one backup file argument is accepted (got $1)." >&2
+            exit 2
+          fi
+          BACKUP_FILE="$1"; shift ;;
+      esac
+    done
+    [[ -n "$BACKUP_FILE" ]] || { echo "restore: --live needs a backup file path." >&2; exit 2; }
     BASE_URL="${BASE_URL:-http://127.0.0.1}"
     [[ -f "$BACKUP_FILE" ]] || { echo "restore: backup file $BACKUP_FILE not found." >&2; exit 1; }
-    echo "restore: LIVE restore from $BACKUP_FILE. Desk work must be stopped. Type the hotel property code to continue."
-    read -r CONFIRM
-    if [[ -z "$CONFIRM" ]]; then
-      echo "restore: aborted." >&2
+    # Live restore wipes and reloads the hotel database: proceed
+    # only when the operator types the hotel's own property code
+    # exactly as configured (deploy/config, deployment.md section 2).
+    # A missing or unreadable configuration fails closed.
+    PROPERTY_CODE="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("hotel", {}).get("propertyCode", ""))' "$CONFIG" 2>/dev/null || true)"
+    if [[ -z "$PROPERTY_CODE" ]]; then
+      echo "restore: cannot read hotel.propertyCode from $CONFIG; refusing the live restore." >&2
       exit 1
     fi
-    touch ./backup-staging/.restore-in-progress 2>/dev/null || true
-    trap 'rm -f ./backup-staging/.restore-in-progress' EXIT
+    echo "restore: LIVE restore from $BACKUP_FILE. Desk work must be stopped. Type the hotel property code to continue."
+    read -r CONFIRM
+    if [[ "$CONFIRM" != "$PROPERTY_CODE" ]]; then
+      echo "restore: aborted (typed code does not match the configured property code)." >&2
+      exit 1
+    fi
+    touch "$STAGING_DIR/.restore-in-progress" 2>/dev/null || true
+    trap 'rm -f "$STAGING_DIR/.restore-in-progress"' EXIT
     # Stop in reverse of the start order (deployment.md section 4).
     "${COMPOSE[@]}" stop proxy
     "${COMPOSE[@]}" stop reservations rates reporting stay rooms guests billing admin
@@ -112,6 +157,6 @@ case "$MODE" in
     ;;
 
   *)
-    echo "usage: script/restore.sh --verify-only [--staging-dir DIR] | --live <backup-file>" >&2
+    echo "usage: script/restore.sh --verify-only [--staging-dir DIR] | --live <backup-file> [--config PATH] [--staging-dir DIR]" >&2
     exit 2 ;;
 esac

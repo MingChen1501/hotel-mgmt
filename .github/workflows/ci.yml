@@ -206,3 +206,41 @@ jobs:
             psql -v ON_ERROR_STOP=1 -f "$f"
           done
           echo "All boot migrations applied."
+
+  e2e-single-host:
+    # Walking-skeleton proof for issue #113: fresh container-lab
+    # bring-up from docs only, then the desk loop end to end
+    # (book -> verify -> backup -> restore -> verify) through the
+    # proxy. GitHub-hosted runners provide the docker host the
+    # lab needs; the per-sale secrets below are throwaway CI-only
+    # values (non-default so the fail-closed gates pass).
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      DB_PASSWORD: e2e-ci-db-secret-7q2x
+      ADMIN_BOOT_SECRET: e2e-ci-owner-boot-9m4z
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare the per-hotel configuration set
+        run: |
+          set -euo pipefail
+          cp deploy/config/hotel.example.json deploy/config/hotel.json
+          sed -i 's/EXAMPLE-001/E2E-CI-001/' deploy/config/hotel.json
+          grep -q "E2E-CI-001" deploy/config/hotel.json
+
+      - name: Pre-flight gate (fails closed on default secrets)
+        run: script/preflight.sh --config deploy/config/hotel.json
+
+      - name: Desk loop E2E (book -> verify -> backup -> restore -> verify)
+        run: script/e2e-desk-loop.sh --staging-dir ./backup-staging
+
+      - name: Show the backup success report
+        if: always()
+        run: |
+          ls backup-staging/ || true
+          cat backup-staging/*.report.json || true
+
+      - name: Tear down the lab
+        if: always()
+        run: docker compose -f deploy/compose.yaml down -v

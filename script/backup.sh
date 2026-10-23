@@ -46,20 +46,24 @@ REPORT_FILE="$STAGING_DIR/hotel-$STAMP-$LABEL.report.json"
 STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 write_report() {
-  local outcome="$1" bytes="$3" finished_at="$4"
-  local reason
-  reason="$(printf '%s' "$2" | tr '"' "'")"  python3 - "$REPORT_FILE" <<PYEOF
+  local outcome="$1" reason="$2" bytes="$3" finished_at="$4"
+  # All fields travel as argv into a quoted heredoc (no shell
+  # interpolation into Python source), so failure reasons keep
+  # their cause verbatim and stay valid JSON (NFR-BKP-2: every run
+  # produces a visible success-or-failure report).
+  python3 - "$REPORT_FILE" "$outcome" "$STARTED_AT" "$finished_at" "$DUMP_FILE" "$bytes" "$reason" <<'PYEOF'
 import json, sys
+_, report_file, outcome, started_at, finished_at, artifact, raw_bytes, reason = sys.argv
 report = {
-    "outcome": "$outcome",
-    "startedAt": "$STARTED_AT",
-    "finishedAt": "$finished_at",
-    "artifact": "$DUMP_FILE",
-    "bytes": $bytes,
-    "verifiedReadBack": $([ "$outcome" = "success" ] && echo True || echo False),
-    "reason": "$reason",
+    "outcome": outcome,
+    "startedAt": started_at,
+    "finishedAt": finished_at,
+    "artifact": artifact,
+    "bytes": int(raw_bytes),
+    "verifiedReadBack": outcome == "success",
+    "reason": reason,
 }
-json.dump(report, open(sys.argv[1], "w"), indent=2)
+json.dump(report, open(report_file, "w"), indent=2)
 PYEOF
 }
 

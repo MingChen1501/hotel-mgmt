@@ -19,9 +19,10 @@
 # The stack is brought up fresh (docker compose up -d --build),
 # migrations and the boot seed are applied idempotently, and the
 # stack is left running unless --keep-up is omitted (default tears
-# down in reverse stop order). Desk credentials default to the
-# container-lab boot owner; override with ADMIN_IDENTITY /
-# ADMIN_SECRET. Never prints secret values.
+# down in reverse stop order). The desk signs in as ADMIN_IDENTITY
+# with the provisioned ADMIN_BOOT_SECRET (override with
+# ADMIN_SECRET); both secrets fail closed on dev defaults per the
+# same denylist as script/preflight.sh. Never prints secret values.
 
 set -euo pipefail
 
@@ -46,7 +47,8 @@ done
 
 COMPOSE=(docker compose -f deploy/compose.yaml)
 ADMIN_IDENTITY="${ADMIN_IDENTITY:-owner}"
-ADMIN_SECRET="${ADMIN_SECRET:-change-me-dev-only}"
+# ADMIN_SECRET defaults to the provisioned boot secret later (after
+# the fail-closed gate); an explicit override is honoured as-is.
 START_EPOCH="$(date +%s)"
 
 step() { echo "e2e: === $1 ==="; }
@@ -92,9 +94,30 @@ teardown() {
 }
 
 step "bring up the single-host stack"
+# Fail closed on default secrets (audit S3): the same denylist as
+# script/preflight.sh (canonical), so the loop can never run on dev
+# defaults even though compose ships lab-only fallbacks.
+is_default_secret() {
+  case "$1" in
+    ""|"change-me"|"change-me-dev-only"|"password"|"hotel"|"hotel-dev-only") return 0 ;;
+    *) return 1 ;;
+  esac
+}
 DB_PASSWORD_CHECK="${DB_PASSWORD:-}"
-if [[ -z "$DB_PASSWORD_CHECK" ]]; then
-  echo "e2e: FAIL: DB_PASSWORD must be set (script/preflight.sh gates defaults)." >&2
+ADMIN_BOOT_SECRET_CHECK="${ADMIN_BOOT_SECRET:-}"
+if is_default_secret "$DB_PASSWORD_CHECK"; then
+  echo "e2e: FAIL: DB_PASSWORD is unset or still a dev default; set the per-sale database secret (script/preflight.sh gates the same list)." >&2
+  exit 1
+fi
+if is_default_secret "$ADMIN_BOOT_SECRET_CHECK"; then
+  echo "e2e: FAIL: ADMIN_BOOT_SECRET is unset or still a dev default; provision the per-sale owner boot secret (script/preflight.sh gates the same list)." >&2
+  exit 1
+fi
+# The desk signs in with the provisioned per-sale boot secret unless
+# an explicit ADMIN_SECRET override is given.
+ADMIN_SECRET="${ADMIN_SECRET:-$ADMIN_BOOT_SECRET_CHECK}"
+if [[ -z "$ADMIN_SECRET" ]]; then
+  echo "e2e: FAIL: ADMIN_SECRET is empty after defaults." >&2
   exit 1
 fi
 "${COMPOSE[@]}" up -d --build
@@ -173,7 +196,9 @@ pass "quoted total $TOTAL minor units for 2 nights (sellability input: $COUNT_RE
 
 step "Reservations: book one reservation (RES -> RATE -> ROOM inputs)"
 IDEM="e2e-$(date +%s)"
-BOOK_RESP="$(api reservations CreateReservation "{\"roomTypeId\": \"$ROOM_TYPE_ID\", \"arrivalDate\": \"$ARRIVAL\", \"departureDate\": \"$DEPARTURE\", \"guest\": {\"guestId\": \"e2e-guest-1\", \"fullName\": \"E2E Guest\", \"idDocument\": \"E2E-0001\"}, \"sellableUnits\": $SELLABLE, \"priceBasis\": {\"totalMinor\": $TOTAL}, \"idempotencyKey\": \"$IDEM\", \"actor\": \"front-desk\"}")" || { teardown; exit 1; }
+# guestId is a fixed valid UUID: the contract declares format uuid
+# and strict validation would refuse a non-UUID reference.
+BOOK_RESP="$(api reservations CreateReservation "{\"roomTypeId\": \"$ROOM_TYPE_ID\", \"arrivalDate\": \"$ARRIVAL\", \"departureDate\": \"$DEPARTURE\", \"guest\": {\"guestId\": \"11111111-1111-4111-8111-111111111111\", \"fullName\": \"E2E Guest\", \"idDocument\": \"E2E-0001\"}, \"sellableUnits\": $SELLABLE, \"priceBasis\": {\"totalMinor\": $TOTAL}, \"idempotencyKey\": \"$IDEM\", \"actor\": \"front-desk\"}" "$TOKEN")" || { teardown; exit 1; }
 REF="$(field reservationRef "$BOOK_RESP")"
 STATE="$(field state "$BOOK_RESP")"
 if [[ "$STATE" != "confirmed" || -z "$REF" ]]; then
