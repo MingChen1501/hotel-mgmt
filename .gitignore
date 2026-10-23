@@ -1,1 +1,5 @@
 .ao-orchestrator
+node_modules/
+dist/
+target/
+.env

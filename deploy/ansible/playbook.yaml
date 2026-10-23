@@ -1,0 +1,107 @@
+---
+# Install baseline: bundle + per-hotel config, then start database,
+# modules, proxy in order with the install health check between steps
+# (see docs/devops/deployment.md sections 3 and 5).
+- name: Install hotel-mgmt single-host baseline
+  hosts: hotel
+  vars:
+    bundle_dir: /opt/hotel-mgmt/bundle
+    config_dir: /opt/hotel-mgmt/config
+    staging_dir: /opt/hotel-mgmt/backup-staging
+    hotel_config_src: "{{ hotel_config }}"
+    modules:
+      - { name: reservations, port: 8081, route: reservations }
+      - { name: rates, port: 8082, route: rates }
+      - { name: reporting, port: 8083, route: reporting }
+      - { name: stay, port: 8084, route: stay }
+      - { name: rooms, port: 8085, route: rooms }
+      - { name: guests, port: 8086, route: guests }
+      - { name: billing, port: 8087, route: billing }
+      - { name: admin, port: 8088, route: admin }
+  tasks:
+    - name: Validate the per-hotel configuration set parses as JSON
+      delegate_to: localhost
+      ansible.builtin.command:
+        cmd: python3 -c "import json,sys; json.load(open(sys.argv[1]))"
+        argv:
+          - "{{ hotel_config_src }}"
+      changed_when: false
+
+    - name: Create install directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - "{{ bundle_dir }}"
+        - "{{ config_dir }}"
+        - "{{ staging_dir }}"
+
+    - name: Copy the release bundle
+      ansible.builtin.copy:
+        src: "{{ bundle_src }}/"
+        dest: "{{ bundle_dir }}/"
+        mode: preserve
+
+    - name: Apply the per-hotel configuration set
+      ansible.builtin.copy:
+        src: "{{ hotel_config_src }}"
+        dest: "{{ config_dir }}/hotel.json"
+        mode: "0640"
+
+    - name: Start the database host first
+      ansible.builtin.command:
+        cmd: docker compose -f deploy/compose.yaml up -d db
+        chdir: "{{ bundle_dir }}"
+      changed_when: true
+
+    - name: Wait for the database to accept connections
+      ansible.builtin.command:
+        cmd: docker compose -f deploy/compose.yaml exec -T db pg_isready -U hotel -d hotel
+        chdir: "{{ bundle_dir }}"
+      register: pg_ready
+      until: pg_ready.rc == 0
+      retries: 24
+      delay: 5
+      changed_when: false
+
+    - name: Start the module containers
+      ansible.builtin.command:
+        cmd: docker compose -f deploy/compose.yaml up -d {{ modules | map(attribute='name') | join(' ') }}
+        chdir: "{{ bundle_dir }}"
+      changed_when: true
+
+    - name: Wait for each module to answer its health endpoint
+      ansible.builtin.uri:
+        url: http://127.0.0.1:{{ item.port }}/healthz
+        status_code: 200
+      register: module_health
+      until: module_health.status == 200
+      retries: 24
+      delay: 5
+      loop: "{{ modules }}"
+
+    - name: Start the reverse proxy last
+      ansible.builtin.command:
+        cmd: docker compose -f deploy/compose.yaml up -d proxy
+        chdir: "{{ bundle_dir }}"
+      changed_when: true
+
+    - name: Check the desk entry through the proxy
+      ansible.builtin.uri:
+        url: http://127.0.0.1/
+        status_code: 200
+      register: proxy_root
+      until: proxy_root.status == 200
+      retries: 12
+      delay: 5
+
+    - name: Check each module through the proxy
+      ansible.builtin.uri:
+        url: http://127.0.0.1/v1/{{ item.route }}/healthz
+        status_code: 200
+      register: proxy_health
+      until: proxy_health.status == 200
+      retries: 12
+      delay: 5
+      loop: "{{ modules }}"

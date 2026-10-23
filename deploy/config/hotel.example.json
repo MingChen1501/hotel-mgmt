@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "comment": "EXAMPLE per-hotel configuration set (deploy/config/README.md). The release bundle is identical for every property; only this set differs per sale. Copy to hotel.json and fill in before install. Secrets are NEVER stored here: first secrets are provisioned per the handover step in docs/devops/deployment.md section 2.",
+
+  "hotel": {
+    "name": "Example Riverside Hotel",
+    "propertyCode": "EXAMPLE-001",
+    "timezone": "Asia/Ho_Chi_Minh",
+    "currency": "VND",
+    "contact": {
+      "address": "1 Example Quay, District 1",
+      "phone": "+84-28-0000-0000"
+    }
+  },
+
+  "times": {
+    "checkIn": "14:00",
+    "checkOut": "12:00",
+    "businessDayStart": "06:00"
+  },
+
+  "roomTypes": [
+    { "code": "STD", "name": "Standard", "capacity": 2, "units": 30 },
+    { "code": "DLX", "name": "Deluxe", "capacity": 3, "units": 15 },
+    { "code": "STE", "name": "Suite", "capacity": 4, "units": 5 }
+  ],
+
+  "ratePlans": [
+    { "code": "RACK", "name": "Rack rate", "roomType": "STD", "nightlyMinorUnits": 1200000 }
+  ],
+
+  "stayPolicies": {
+    "requiredGuestFields": ["fullName", "idDocument"],
+    "cancellationReasons": ["guest-request", "no-show", "hotel-block"],
+    "cancellationWording": "Free cancellation until 18:00 on the arrival date.",
+    "noShowRule": "mark-no-show-after-midnight",
+    "openBalanceCheckoutRule": "approval-required"
+  },
+
+  "chargeItems": [
+    { "code": "ROOM", "name": "Room charge" },
+    { "code": "BFST", "name": "Breakfast" }
+  ],
+
+  "taxAndFeeRules": [
+    { "code": "VAT", "name": "VAT", "percent": 8 }
+  ],
+
+  "restrictions": [],
+
+  "discounts": [],
+
+  "backup": {
+    "schedule": "daily-02:00",
+    "retentionDaysFloor": 30
+  }
+}
