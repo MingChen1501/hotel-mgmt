@@ -47,7 +47,7 @@ copied, and placeholder substitution is re-applied). The installer
 prints the next steps when it finishes.
 
 What you get: `AGENTS.md`, `config/ao-project.jsonc` (AO project
-config template), `cues/` (16 project-scoped rule cues),
+config template), `cues/` (18 project-scoped rule cues),
 `.opencode/` (12 role files, 8 skills, 2 commands, permission config,
 guard plugin), `.github/` (issue form, PR template), `docs/` (index,
 role rules, conventions, starter group), `script/` (footer, spawn,
@@ -105,11 +105,13 @@ is created. Re-running is safe (idempotent).
 Supersession rule — newest cue wins: every cue file carries a date
 and an explicit `supersedes:` field naming older cue names it
 overrides (empty when none). Where cues conflict, the older
-conflicting text is marked superseded, never merged. Concretely,
-`native-review-broken-manual` (2026-10-16) supersedes
-`publish-and-review` (2026-10-14) for review mechanics: the older
-file stays installed but its review path is legacy, and the newer
-cue's manual fallback governs.
+conflicting text is marked superseded, never merged. Retired names
+(`publish-and-review`, `worker-report-contract`,
+`ping-orchestrator-done`) ship no file anymore; their replacements
+carry the lineage in `supersedes:` — `native-review-broken-manual`
+and `publish-scope` for the old review/publishing text,
+`worker-report-and-ping` for the old report/contract plus ping text —
+and the replacement prompt governs.
 
 ## Step 4 — AO project registration and config
 
@@ -274,7 +276,7 @@ Adoption is done when every box is ticked:
 
 - [ ] Template installed; `grep -rE "{{(PROJECT_NAME|REPO_SLUG|DEFAULT_BRANCH|DOMAIN)}}" AGENTS.md config cues .opencode docs script .github` finds no placeholders.
 - [ ] Risk + type labels exist; exactly one of each on every issue/PR.
-- [ ] Cues imported: `ao cue list --project [project-id] --json` shows the expected cues, including the supersession pair (`native-review-broken-manual` supersedes `publish-and-review`), and no active cue tells workers to use `ao review trigger` as the normal path.
+- [ ] Cues imported: `ao cue list --project [project-id] --json` shows the expected 18 cues, including the lineage (`worker-report-and-ping` supersedes `worker-report-contract` + `ping-orchestrator-done`; `publish-scope` supersedes `publish-and-review`), and no active cue tells workers to use `ao review trigger` as the normal path.
 - [ ] AO project registered with the full `--config-json` object from `config/ao-project.jsonc` (`ao project get [project-id] --json` confirms `agentRulesFile`, pool rules, harness/model, reviewers, `trackerIntake`, `autoReview: false`, `workersRequestReview: false`).
 - [ ] Reviewer mode recorded (separate reviewer session + manual fallback; native reviewer documented as disabled/legacy until the sandbox is fixed AO-side).
 - [ ] Branch protection + least-privilege CI live (require PRs, require green CI, no direct pushes).

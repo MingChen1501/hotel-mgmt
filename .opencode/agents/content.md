@@ -73,8 +73,8 @@ Present for owner confirmation before drafting:
 
 ## Verification
 
-Follow the `hotel-verify` skill (placeholder until the stack is
-chosen — confirm the concrete checks with the orchestrator). Fix
+Follow the `hotel-verify` skill (stack decided per ADR-0001 —
+confirm the concrete checks with the orchestrator). Fix
 failures before opening the PR.
 
 ## PR and reporting

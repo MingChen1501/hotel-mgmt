@@ -48,7 +48,7 @@ installed): labels, cue import, AO project registration with the full
 |---|---|---|
 | `AGENTS.md` | `AGENTS.md` | Placeholders replaced; no project-specific rules |
 | `config/ao-project.jsonc` | same | Full AO project config template (pool rules, harness/model examples, reviewers, `trackerIntake`, `autoReview`, `workersRequestReview`); apply with `--config-json` |
-| `cues/` | — (project-scoped, via `script/install-cues.sh`) | 16 rule cues with `name`/`date`/`supersedes` front-matter; newest cue wins on conflict |
+| `cues/` | — (project-scoped, via `script/install-cues.sh`) | 18 rule cues with `name`/`date`/`supersedes` front-matter; newest cue wins on conflict |
 | `.opencode/agents/` | `.opencode/agents/` | 11 roles: orchestrator, product-owner, business-analyst, architect, qa-lead, release-manager, spec-reviewer, dev-peer-review, content, content-review, buffer-worker |
 | `.opencode/skills/orchestrator/` | same | Spawn/pool/review/merge rules |
 | `.opencode/skills/worker/` | same | Implementer rules + per-stack entry points |

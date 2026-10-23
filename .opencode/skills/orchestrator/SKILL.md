@@ -14,8 +14,8 @@ cue text immediately, even before the cue is edited.
 
 A fresh orchestrator reading this can reproduce the wake/pool/review/
 merge behaviour without prior session context. Stack-specific review
-and verification live in the `hotel-verify` skill (currently a
-placeholder — the stack is undecided).
+and verification live in the `hotel-verify` skill (stack decided per
+ADR-0001, accepted 2026-10-23).
 
 ## Wake cadence
 
@@ -241,8 +241,9 @@ gates, and owner-approval rules are unchanged. More generally:
 
 - Content role: `.opencode/agents/content.md` (hotel-domain content;
   role string `content`).
-- Verify rules: `.opencode/skills/hotel-verify/SKILL.md` (placeholder
-  until the stack is chosen).
+- Verify rules: `.opencode/skills/hotel-verify/SKILL.md` (stack
+  decided per ADR-0001; per-stack commands in
+  `services/*/README.md`).
 - Worker role: `.opencode/skills/worker/SKILL.md` (scope, branching,
   PR workflow, report contract). Buffer role:
   `.opencode/agents/buffer-worker.md`.

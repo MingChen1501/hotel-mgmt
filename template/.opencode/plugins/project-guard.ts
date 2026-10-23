@@ -9,12 +9,18 @@
 // OpenCode auto-loads files under .opencode/plugins/, so no extra registration is needed.
 // Written as a plain object (no imports), like the system plugin, to stay light and reliably loadable.
 //
-// NOTE: the stack is undecided. GENERATED_SEGMENTS lists common
-// build-output directory names; narrow it to the real ones (and extend
-// GENERATED_FILES) once the stack is chosen.
+// Stack decided per ADR-0001 (monorepo polyglot, accepted 2026-10-23).
+// GENERATED_SEGMENTS lists only the build-output directories the real
+// stacks produce: the Node.js/TypeScript services emit `dist/` (tsc)
+// beside `node_modules/`; Java Spring Boot (Maven) emits `target/`; Go
+// builds to /server inside Docker while `go build ./...` discards its
+// output, so Go contributes no repo-local segment. GENERATED_FILES
+// stays empty: no stack emits a fixed-name generated file worth
+// blocking (it matches exact basenames only). Re-extend either list
+// only when a stack starts emitting a new path.
 
-// Common build-output directory names across stacks — tighten on stack choice.
-const GENERATED_SEGMENTS = ["dist", "build", "out", ".next", "vendor", "node_modules"]
+// Build-output directory names for the decided stacks (see NOTE above).
+const GENERATED_SEGMENTS = ["dist", "node_modules", "target"]
 const GENERATED_FILES: string[] = []
 
 function isGeneratedPath(resource: string): boolean {

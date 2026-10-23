@@ -65,7 +65,7 @@ describes, confirm with the orchestrator/owner first.
 ## Implement and verify
 
 - Build/verify commands and CI expectations: follow the `hotel-verify`
-  skill (placeholder until the stack is chosen — confirm the concrete
+  skill (stack decided per ADR-0001 — confirm the concrete
   commands with the orchestrator; build green before any PR; never
   open a PR while red).
 - Content conventions: follow the `content` agent file.
