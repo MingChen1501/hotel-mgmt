@@ -502,6 +502,18 @@ ADR-0001 stays `proposed` until the owner accepts it.
 
 ## 9. Open questions for the owner
 
+Resolution note (ADR-0001 accepted 2026-10-23; annotation mirroring
+§11): OQ-C1..OQ-C10 are ANSWERED — C1 minimal-subset rule (accepted
+mapping, §§8/10), C2 skeleton scope (§6.1, plan §3), C3 host reading
+(ADR-0001 OQ-A3), C4 chain direction (ADR-0001 OQ-A4), C5 contract
+style (LLD §0, integration §0), C6 plain-container cluster plumbing,
+C7 Kafka exclusion, C8 PostgreSQL default, C9 static-SPA frontend,
+C10 Billing-on-Spring placement (§8). OQ-C11 (FastAPI Reporting
+fallback confirmation) and OQ-C12 (measurement-spike authorisation)
+stay OPEN — §10 sizes the fallbacks and the spike replaces the
+planning estimates with measurements. The question wordings below
+are kept as history.
+
 - OQ-C1 — Menu-not-mandate reading: is the minimal-subset rule
   right (Kafka, mini-K8s, Redis, second engine, Grafana-beyond-
   basic-metrics only with written NFR + footprint justification)?

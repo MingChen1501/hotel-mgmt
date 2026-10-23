@@ -40,6 +40,8 @@ not a decision of this document.
 
 Layout anchor: `contracts/{events/,http/,errors/,config-schema/,messages/}`
 plus `services/<module>/contract-tests/` fixtures (LLD §9).
+`config-schema/` and `messages/` land with the first slice (§1d, §1g)
+and are not yet in the tree.
 
 ## 1. Required contract files (skeleton slice)
 
@@ -50,9 +52,9 @@ plus `services/<module>/contract-tests/` fixtures (LLD §9).
 | `contracts/http/CheckSellableCount.json` | roomType + arrival/departure dates → count per date; `NOT_FOUND` (unknown type) | Integration §1 C1; LLD §§1, 4; BA needs §1a; schema §4 `rate_prices` |
 | `contracts/http/CheckRestrictions.json` | roomType + date range → pass/fail; `STATE_ILLEGAL` naming the violated restriction | Integration §1 C1; LLD §§1, 4; BA needs §1a (`FR-RTE-4`, `BR-10`) |
 | `contracts/http/QuotePrice.json` | roomType + dates + discountName? → nightly breakdown, plan ref, total; `NOT_FOUND`, `VALIDATION_FAILED` (unknown discount) | Integration §1 C1; LLD §§1, 4; BA needs §1a (`FR-RTE-5/1/3`) |
-| `contracts/http/UpsertRatePlan.json`, `UpsertRestriction.json`, `UpsertDiscount.json` | manager setup payloads used to create the skeleton's one rate plan and its restrictions/discounts; `VALIDATION_FAILED` | LLD §4; integration §1 (per-hotel values `FR-RTE-3/4` enforced here) |
+| `contracts/http/UpsertRatePlan.json`, `UpsertRatePrice.json`, `UpsertRestriction.json`, `UpsertDiscount.json` | manager setup payloads used to create the skeleton's one rate plan (plan, nightly prices per type/date) and its restrictions/discounts; `VALIDATION_FAILED`, `NOT_FOUND` | LLD §4; integration §1 (per-hotel values `FR-RTE-3/4` enforced here) |
 | `services/reservations/contract-tests/` fixtures for the three read ops | request/response pairs plus refusal cases (`STATE_ILLEGAL` restriction, `NOT_FOUND` type/plan/discount) | Integration §9; BA needs §1a error cases |
-| `services/rates/contract-tests/` provider fixtures for all six ops above | same shapes verified provider-side before packaging | Integration §9; LLD §9 `contract-tests/` obligation |
+| `services/rates/contract-tests/` provider fixtures for all seven ops above | same shapes verified provider-side before packaging | Integration §9; LLD §9 `contract-tests/` obligation |
 
 ### 1b. RES → ROOM (`RoomInventoryService`) — SYNC (integration §1 C2)
 
@@ -143,10 +145,10 @@ rule (LLD §0; integration §0 rule).
 |---|---|---|
 | RES → GST `IdentifyGuest`, `GetBookingContext` (C3) | contract file + fixtures | Guest profiles land in the Guests slice (candidate-architectures §6.2 order); the skeleton enforces mandatory guest fields from cached config, not from live GST reads (BA needs §1c) |
 | STAY → RES `GetDueReservation` (C4) | contract file + fixtures | Stay slice (proves `NFR-CON-2` paired check-in per §6.2) |
-| STAY → ROOM `FindReadyRoom`, `AssignRoom`, `ReleaseRoom`, `RecordActualTimes` (C5) + the `NFR-CON-2` paired-concurrency guard cases | contract file + fixtures + atomic-guard proof | Stay slice; the exactly-one-winner room assignment cannot be exercised before check-in exists (integration §2 C5; LLD §3; BA needs §2b) |
+| STAY → ROOM `FindReadyRoom`, `AssignRoom`, `ReleaseRoom`, `RecordActualTimes` (C5) + the `NFR-CON-2` paired-concurrency guard cases | contract file + fixtures + atomic-guard proof | Stay slice; the exactly-one-winner room assignment cannot be exercised before check-in exists (integration §2 C5; LLD §3; BA needs §2b). Shapes landed additively: provider shapes `AssignRoom`/`ReleaseRoom` (+ `contracts/http/` manifests + rooms provider fixtures) landed with the rooms slice (#115); `FindReadyRoom`, `RecordActualTimes`, stay consumer fixtures, and the guard proof stay stubbed until the Stay slice |
 | STAY → GST `GetGuest` (C6) | contract file + fixtures | Stay slice (BA needs §2c) |
 | STAY ↔ BIL `GetFolioBalance`, `RequestCheckoutGate`, `GetStayRef` (C7/C8) + Billing §4 ops (`PostCharge`, `RecordPayment`, `ProduceInvoice`/`ProduceReceipt`, `RunDayClose`) | all Billing contract files + fixtures | Billing excluded from the skeleton by default (ADR-0001 OQ-A2); Billing slice per §6.2 |
-| Room housekeeping loop `UpdateRoomState`, `ListRoomsByState`, `BlockRoom`/`ReleaseBlock` beyond setup | fixtures (shapes may land additively with §1b) | Skeleton sets up one room and checks sellability only; dirty→clean→inspected progression and blocks belong to the rooms/housekeeping slice (integration §5; LLD §3; BA needs §5) |
+| Room housekeeping loop `UpdateRoomState`, `ListRoomsByState`, `BlockRoom`/`ReleaseBlock` beyond setup | fixtures (shapes may land additively with §1b) | Skeleton sets up one room and checks sellability only; dirty→clean→inspected progression and blocks belong to the rooms/housekeeping slice (integration §5; LLD §3; BA needs §5). Shapes landed additively: `UpdateRoomState`, `ListRoomsByState`, `BlockRoom` (+ manifests + rooms provider fixtures) landed with the rooms slice (#115); `ReleaseBlock` and remaining fixtures stay stubbed |
 | `ModifyReservation`, `CancelReservation`, `MarkNoShow`, `QueryCalendar` | fixtures (shapes may land additively with §1c) | Skeleton creates one reservation; modification/cancellation/no-show/calendar are later reservations-slice flows (integration §1; BA needs §1) |
 | Reporting feeds consumption + read API (`OccupancyReport`, `RevenueSummary`, `DailySheet`, `HousekeepingReport`) | consumer wiring + read-API contracts + `consumer_offsets` advance cases | Reporting slice; skeleton emits events to the outbox but no read model consumes them (integration §7; LLD §7; BA needs §7) |
 | `CollectExportSlice` for STAY, BIL, GST, RATE-consumer RPT | per-module slices | Each lands with its owning module's slice (integration §6 C11) |
@@ -154,17 +156,19 @@ rule (LLD §0; integration §0 rule).
 | Full OpenAPI authorship per service (F2/D2) | full service documents | Deferred to implementation slices; the operation/payload tables plus `contracts/` schemas are the frozen input (LLD D2; integration F2) |
 | gRPC transport per pair (F3) | transport bindings | Deferred optimisation; HTTP/JSON is the MVP binding (LLD D3; integration F3) |
 
-## 3. CI gate behaviour once the files land
+## 3. CI gate behaviour (gate live since the first slice landed)
 
-Authoritative behaviour is `script/contract-check.sh` (stub, issue
-#98), run as the `contract-check` job in `.github/workflows/ci.yml`:
+Authoritative behaviour is `script/contract-check.sh` (landed;
+originates in issue #98), run as the `contract-check` job in
+`.github/workflows/ci.yml`:
 
-1. **SKIP iff there is no `contracts/` directory** — the script
+1. **SKIP when there is no `contracts/` directory** — the script
    prints `contract-check: SKIP — no contracts/ tree yet …` and
    exits 0. The `contract-tests/README.md` files in each
    `services/<module>/contract-tests/` record the same expectation
-   per module. This is the expected state until the first slice
-   lands, not a failure.
+   per module. This was the expected state before the first slice
+   landed (PR #115), not a failure; with `contracts/` in the tree
+   the gate now checks in full.
 2. **The first slice flips the gate on for the whole repo.**
    Landing `contracts/` (any file in it) ends the SKIP: every
    `*.json` file under `contracts/` must parse, or the job prints

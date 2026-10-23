@@ -12,8 +12,11 @@ Every failed contract call returns the same shape:
 
 - `code`: a stable machine-readable token (for example
   `RATE_LIMIT` is not MVP; representative MVP codes:
-  `VALIDATION_FAILED`, `NOT_FOUND`, `FORBIDDEN`, `CONFLICT`,
-  `STATE_ILLEGAL`, `SETTLEMENT_REQUIRED`).
+  `VALIDATION_FAILED`, `NOT_FOUND`, `UNAUTHENTICATED`
+  (session-expiry/lockout refusals, assigned in
+  `docs/architecture/lld.md` §0 and
+  `docs/technical/integration.md` §6 C10), `FORBIDDEN`,
+  `CONFLICT`, `STATE_ILLEGAL`, `SETTLEMENT_REQUIRED`).
 - `message`: a human-readable sentence naming what was refused and
   why, suitable to show staff at the desk.
 - `details`: the named field, restriction, room, or conflicting
@@ -39,8 +42,10 @@ Every failed contract call returns the same shape:
 
 ## 3. Non-goals
 
-- No retry or backoff policy is set here; transports are undecided
-  (see `docs/technical/api-spec.md`, section 3).
+- No retry or backoff policy is set here; synchronous calls are
+  HTTP/JSON POST and asynchronous events travel the outbox +
+  dispatcher (`docs/architecture/lld.md` §0;
+  `docs/technical/integration.md` §0 rule).
 - No on-screen audit log view in the MVP (recording only,
   `NFR-AUD-1`).
 

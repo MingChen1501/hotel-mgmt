@@ -27,6 +27,7 @@ the JSON Schemas in `contracts/events/`.
 | `CheckSellableCount` | roomType, arrivalDate, departureDate (Room type; FR-RTE-2) | `NOT_FOUND` (type) |
 | `CheckRestrictions` | roomType, dateRange (Room type; FR-RTE-4) | `STATE_ILLEGAL` naming restriction |
 | `QuotePrice` | roomType, dates, discountName? (Price basis; FR-RTE-5/1/3) | `NOT_FOUND`, `VALIDATION_FAILED` (unknown discount) |
+| `UpsertRatePrice` | ratePlanName, roomTypeId, nightDate, priceMinor (Nightly price; FR-RTE-1) | `NOT_FOUND` (unknown plan), `VALIDATION_FAILED` (negative price) |
 
 Immediacy reason: refusal-with-cause inside the booking step
 (Seq-2; NFR-PERF-1 3 s). Per-hotel values enforced here:

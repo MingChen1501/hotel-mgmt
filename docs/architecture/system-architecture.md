@@ -11,7 +11,7 @@ shape only.
 One installation serves exactly one hotel property (`NFR-DEP-1`)
 from that property's own on-premise unit: a single 2*4*50 host
 (2 vCPU / 4 GB RAM / 50 GB disk — owner notation on issue #28,
-reading to be owner-confirmed) by default, with a documented
+confirmed by ADR-0001 OQ-A3) by default, with a documented
 variant spreading the same containers and the database across
 2–3 such hosts on the hotel LAN. Both placements stay on the
 premises: no cloud, no traffic across properties. All components
@@ -91,7 +91,7 @@ The topology must hold a 50-room hotel with 5 staff signed in at once
 3 seconds) and two years of operating data for standard reports
 (`NFR-PERF-2`: within 5 seconds). Owner answer on issue #28
 (2026-10-23) settles ADR-0001 OQ-A3 as 2*4*50 per host
-(2 vCPU / 4 GB RAM / 50 GB disk; reading to be owner-confirmed):
+(2 vCPU / 4 GB RAM / 50 GB disk) per host:
 the single-host default must hold the section 3 budget, and each
 node of the small-cluster variant carries the same minimum.
 

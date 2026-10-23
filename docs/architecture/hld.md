@@ -131,9 +131,13 @@ installation serves exactly one property.
   Boot Java), a
   contract-check stage (consumer contracts against provider
   modules), and a packaging stage that bundles the whole system
-  into the offline on-premise Ansible installer. No CI workflow files are added by
-  this change (out of scope); the strategy is recorded here for the
-  later pipeline issue.
+  into the offline on-premise Ansible installer. No CI workflow
+  files were added by the change that wrote this section (out of
+  scope at the time); the strategy was recorded here for the later
+  pipeline issue. Pipeline note (landed after this section was
+  written): the pipeline has since landed as
+  `.github/workflows/ci.yml` and gates merges (#121). The strategy
+  text itself is unchanged.
 - Versioning: one repository tag versions a system release for a
   property; per-module versions are recorded in the release notes
   for traceability. Contract changes are versioned and announced;
