@@ -74,7 +74,7 @@ Development table, which use a `../` prefix.
 | Type | Path | Status | Owner | Purpose |
 |---|---|---|---|---|
 | HLD | `architecture/hld.md` | active | `architect` | high-level design: subsystems and their responsibilities (Closes #11) |
-| LLD | `architecture/lld.md` | stub (not needed yet) | `architect` | low-level design: modules, interfaces, data flow |
+| LLD | `architecture/lld.md` | active | `architect` | low-level design: modules, interfaces, data flow (Closes #97) |
 | System architecture | `architecture/system-architecture.md` | active | `architect` | overall system structure and deployment view (Closes #11) |
 | ERD | `architecture/erd.md` | active | `architect` | entity-relationship model of the domain data (Closes #11) |
 | Sequence diagrams | `requirements/sequence-diagrams.md` (see Requirements) | stub (not needed yet) | `architect` | behaviour depiction lives with requirements per #43; no separate architecture diagram |
@@ -88,10 +88,10 @@ Development table, which use a `../` prefix.
 | Type | Path | Status | Owner | Purpose |
 |---|---|---|---|---|
 | API spec | `technical/api-spec.md` | active | `architect` | contracts for service interfaces and endpoints (outline, Closes #11) |
-| Schema | `technical/schema.md` | stub (not needed yet) | `architect` | data schemas and validation rules |
-| Integration | `technical/integration.md` | stub (not needed yet) | `architect` | third-party and cross-system integration contracts |
+| Schema | `technical/schema.md` | active | `architect` | data schemas and validation rules (Closes #97) |
+| Integration | `technical/integration.md` | active | `architect` | third-party and cross-system integration contracts (Closes #97) |
 | Error handling | `technical/error-handling.md` | active | `architect` | error taxonomy and handling conventions (outline, Closes #11) |
-| Security threat model | `technical/security-threat-model.md` | stub (not needed yet) | `architect` | threats, mitigations, and trust boundaries |
+| Security threat model | `technical/security-threat-model.md` | active | `architect` | threats, mitigations, and trust boundaries (Closes #97) |
 
 ## Development
 
