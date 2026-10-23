@@ -1,12 +1,12 @@
 # High-level design — small-hotel PMS
 
-Status: active (proposed architecture; ADR-0001 still awaits owner
-acceptance). Owned by `architect`. This document describes subsystem
-boundaries and their responsibilities. It states no schema detail
-(`docs/architecture/erd.md`), no state detail
-(`docs/architecture/state-machine.md`), no endpoint detail
-(`docs/technical/api-spec.md`), and no stack decision: every
-candidate technology below is marked `proposed`.
+Status: active (accepted direction per ADR-0001, accepted
+2026-10-23; outlines, not build detail). Owned by `architect`. This
+document describes subsystem boundaries and their responsibilities.
+It states no schema detail (`docs/architecture/erd.md`), no state
+detail (`docs/architecture/state-machine.md`), no endpoint detail
+(`docs/technical/api-spec.md`); per-module runtime notes below are
+planning envelopes under the accepted ADR-0001 mapping.
 
 Source requirements: `docs/requirements/mvp-requirements.md` (43 FRs /
 14 NFRs) and `docs/product/mvp-scope.md`. Nothing here adds product
@@ -75,9 +75,8 @@ proposals only.
 | Admin & Config | Hotel profile, users/roles, room/rate setup, export/backup, per-hotel customisation values (`FR-ADM-*`, `FR-CUS-*`) | Owns the config store: hotel profile, users, roles, custom field/policy definitions, backup records; no other module writes it | `AdminService` (HTTP/gRPC); emits `ConfigChangedEvents` | Node.js/TypeScript service (~100–150 MB): config CRUD + identity sessions; shared runtime; dedicated schema in the shared engine |
 
 Store note (shared engine, dedicated stores): the MVP uses one
-shared database engine (proposed default PostgreSQL; MySQL is the
-named alternative — open question OQ-C8 in
-`docs/architecture/candidate-architectures.md`) holding one
+shared database engine (accepted default PostgreSQL per ADR-0001,
+accepted 2026-10-23; MySQL stays the named fallback) holding one
 dedicated schema per module. Logical ownership is unchanged —
 never shared tables, never cross-module reads — but a single
 engine process (~256 MB) replaces eight engines to fit 2*4*50.
@@ -146,12 +145,13 @@ installation serves exactly one property.
 The candidate structures, per-hotel customisation mechanisms,
 walking-skeleton scope, contract-first sequencing, and trade-offs
 live in `docs/architecture/candidate-architectures.md` (active). That
-document decides nothing: it lays out options with a recommendation so
-the owner can choose a direction before implementation starts. The
-CI/versioning approach in section 8 above describes the Candidate A
-(polyglot) shape; the per-stack CI jobs, packaging detail, and
-environment inventory it implies are DevOps follow-up work that opens
-after the stack direction is chosen.
+document decides nothing: it lays out options with a recommendation under the
+accepted ADR-0001 direction. The CI/versioning approach in section 8
+above describes the accepted Candidate A (polyglot) shape; the
+per-stack CI jobs, packaging detail, and environment inventory it
+implies are DevOps follow-up work. The stack direction is chosen
+(ADR-0001 accepted 2026-10-23); only measurement validation (the
+OQ-C12 spike) remains.
 
 ## 10. Owner-acceptance checklist
 
@@ -167,6 +167,13 @@ after the stack direction is chosen.
   `docs/architecture/candidate-architectures.md`; no direction is
   chosen by this checklist — the stack choice is recorded through
   the ADR-0001 acceptance answers.
+
+Retirement note (2026-10-23): ADR-0001 was accepted (recorded on
+issue #28 and in `docs/project/decision-log.md` D-7), so this
+checklist is retired as satisfied. The unchecked boxes above are kept
+as history and are not re-voted here; the acceptance answers live in
+`docs/architecture/decisions/adr-0001-monorepo-polyglot.md`
+(Owner acceptance).
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-29

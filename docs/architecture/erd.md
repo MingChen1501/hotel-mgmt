@@ -1,7 +1,7 @@
 # Conceptual data model (ERD)
 
-Status: active (proposed architecture; ADR-0001 still awaits owner
-acceptance). Owned by `architect`. Conceptual entities and their
+Status: active (accepted direction per ADR-0001, accepted
+2026-10-23). Owned by `architect`. Conceptual entities and their
 relationships only — no tables, no columns detail, no vendor SQL. (A
 note on enforcement technology is allowed by issue #11; the note
 below names no vendor.)

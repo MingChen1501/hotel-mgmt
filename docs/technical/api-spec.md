@@ -1,10 +1,11 @@
 # API conventions and contract outline
 
-Status: active (proposed architecture; ADR-0001 still awaits owner
-acceptance). Owned by `architect`. Conventions and the contract list
-only — not a full OpenAPI document; endpoint detail follows with
-implementation. Service names match the HLD boundary table
-(`docs/architecture/hld.md`, section 4).
+Status: active (accepted direction per ADR-0001, accepted
+2026-10-23; outlines, not build detail). Owned by `architect`.
+Conventions and the contract list only — not a full OpenAPI
+document; endpoint detail follows with implementation. Service names
+match the HLD boundary table (`docs/architecture/hld.md`,
+section 4).
 
 ## 1. Conventions (apply to every contract)
 
