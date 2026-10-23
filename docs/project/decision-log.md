@@ -16,6 +16,8 @@ recorded as ADRs under `docs/architecture/decisions/`.
 | D-5 | 2026-10-22 | Single host or small cluster: each hotel runs one on-premise installation — a single host by default, or the same containers and database spread across a small physical cluster on the hotel LAN. | `docs/architecture/system-architecture.md` (section 1) |
 | D-6 | 2026-10-22 | Template repo extracted: the reusable agentic starter ships as the installable `template/` artefact (Closes #16); `docs/agentic-template/` stays the in-tree design record. | `docs/README.md` (template tables) |
 | D-7 | 2026-10-23 | ADR-0001 accepted: monorepo polyglot with per-module stack freedom from the allowed pool (owner acceptance "Option A"). Accepted primary mapping: Go on Reservations/Rates/Reporting, Node.js/TypeScript on Stay/Rooms/Guests/Admin & Config, Java Spring Boot on Billing, shared PostgreSQL engine; no Kafka, no Redis day-one; Ansible + plain containers offline, Nginx entry, Prometheus + Grafana on-prem, LAN + Tailscale with no inbound internet; single 2*4*50 host (2 vCPU / 4 GB RAM / 50 GB disk) default with small-cluster variant. Menu-not-mandate (extras need written NFR + footprint justification); walking skeleton Admin -> Rooms -> Rates -> Reservations + proxy/store/packaging/backup (Billing only if later added, default without); chain via separate oversight service later with MVP boundaries unchanged; MySQL fallback store, mini-K8s only with written reason, Kafka OUT unless measured need, contract style per-pair choice during skeleton. | `docs/architecture/decisions/adr-0001-monorepo-polyglot.md` (accepted; OWNER ACCEPTANCE on #28) |
+| D-8 | 2026-10-23 | GitHub milestones as the machine-readable board mirror: `.github/milestones.md` mirrors `docs/project/plan.md` milestone for milestone and carries the current gate state; the owner's human Kanban view (Projects board URL, #129) is maintained by hand and never claimed via API. | `.github/milestones.md` (board setup #121, official-board record #123, board URL #129) |
+| D-9 | 2026-10-23 | Priority and Size required on every issue and PR, alongside the one-type + one-risk label convention, so ordering and sizing stay visible on the ticket itself. | `docs/project/issue-conventions.md` (#129) |
 
 Dates above are the owner-approved order date from issue #63 (spec
 batch 2), not project milestones — the plan itself
@@ -27,4 +29,4 @@ on #28). The D-2 entry above is preserved as history; the freeze
 it records no longer applies. (Append-only note; no rewrite.)
 
 <!-- ao-role: product-owner -->
-Role: product-owner · AO session hotel-mgmt-129
+Role: product-owner · AO session hotel-mgmt-184
