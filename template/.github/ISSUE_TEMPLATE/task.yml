@@ -8,7 +8,10 @@ body:
         ## How this template works
 
         Every issue uses this form. Pick a **Type** below, write the
-        summary and sections, then after filing add **exactly one type label**
+        summary and sections, choose a **Priority** (`P0` must-fix-now /
+        `P1` next / `P2` normal / `P3` backlog) and a **Size** (`XS` / `S`
+        / `M` / `L`, T-shirt effort relative to one worker session) — both
+        are required — then after filing add **exactly one type label**
         matching Type plus **exactly one `risk-*` label** (GitHub issue forms
         cannot apply a label from a dropdown choice, so this step is manual).
         Titles follow `[type] Imperative summary`; the full convention lives in
@@ -32,6 +35,32 @@ body:
         - content
         - security
       default: 0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: Triage urgency. P0 must-fix-now, P1 next, P2 normal, P3 backlog. See docs/project/issue-conventions.md for semantics and defaults.
+      options:
+        - P0 (must-fix-now)
+        - P1 (next)
+        - P2 (normal)
+        - P3 (backlog)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: size
+    attributes:
+      label: Size
+      description: T-shirt effort relative to one worker session. XS is a trivial edit, S fits comfortably in one session, M fills one session, L may need splitting.
+      options:
+        - XS
+        - S
+        - M
+        - L
     validations:
       required: true
 

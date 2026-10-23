@@ -35,12 +35,40 @@ exactly one type label and exactly one `risk-*` label (`risk-low` /
 | `content` | `content` | guest-facing content (room descriptions, policies, announcements) |
 | `security` | `security` | security fix or hardening |
 
+## Priority and Size
+
+Every issue carries a Priority and a Size (both are required fields
+in the issue form) for triage.
+
+Priority — urgency:
+
+| Priority | Meaning |
+|---|---|
+| `P0` | must-fix-now: drop everything, fix immediately |
+| `P1` | next: the next thing to pick up |
+| `P2` | normal: scheduled routinely |
+| `P3` | backlog: wanted, no near-term plan |
+
+Size — T-shirt effort relative to one worker session:
+
+| Size | Meaning |
+|---|---|
+| `XS` | trivial edit, well under one session |
+| `S` | fits comfortably in one session |
+| `M` | fills one session |
+| `L` | large for one session, may need splitting into smaller issues |
+
+Defaults: docs/process issues default to `P2`/`S` unless stated;
+code issues default to `P1`/`M`. The buffer proposes both values when
+filing, subject to orchestrator confirmation.
+
 ## Body
 
 Issues use `.github/ISSUE_TEMPLATE/task.yml` (blank issues are
 disabled via `config.yml`, so the form is the only path). Required sections:
-Context (with evidence/links), Scope (in/out), Acceptance criteria (testable
-statements — Given/When/Then or numbered), Risk and rollback.
+Type, Priority, Size, Summary, Context (with evidence/links), Scope (in/out),
+Acceptance criteria (testable statements — Given/When/Then or numbered),
+Risk and rollback.
 
 Acceptance criteria are testable statements (Given/When/Then or numbered),
 not a tracking affordance: tick the boxes only to track progress, never as
