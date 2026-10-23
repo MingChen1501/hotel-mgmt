@@ -17,8 +17,11 @@
 #   - the PR carries exactly one risk label and it is not
 #     risk-high/risk-very-high (owner approval gate: the owner merges
 #     such PRs manually, this script has no override),
-#   - every reported check is successful (a PR with genuinely no checks
-#     merges; pending/failed/cancelled checks block the merge).
+#   - every reported check is successful or skipped as not applicable (a
+#     PR with genuinely no checks merges; fail/failed, pending, and
+#     cancelled checks still block the merge; skipping/SKIPPED checks
+#     are non-blocking — the path-aware CI marks jobs the change cannot
+#     affect as not applicable).
 # Then prints the PR state/labels/checks and squash-merges via
 # `gh pr merge <n> --squash --delete-branch` as a child process, so gh
 # deletes the PR head branch — unless another open PR still targets it
@@ -115,13 +118,15 @@ echo "Labels:  ${labels}"
 
 # CI gate: `gh pr checks` exits non-zero both when checks fail and when
 # no checks exist, so the exit code alone proves nothing. Parse the JSON:
-# a JSON array means checks were reported (every entry must be `pass`);
-# the "no checks reported" message means genuinely no checks (mergeable);
-# anything else is an unknown state and blocks the merge.
+# a JSON array means checks were reported (buckets `pass` and `skipping`
+# merge — `skipping`/`SKIPPED` is the path-aware CI marking jobs the
+# change cannot affect as not applicable); the "no checks reported"
+# message means genuinely no checks (mergeable); anything else
+# (fail/failed, pending, cancelled, unknown) blocks the merge.
 checks_out="$(gh pr checks "${pr}" -R "${REPO}" --json bucket,name,state 2>&1 || true)"
 if printf '%s' "${checks_out}" | jq -e 'type == "array"' >/dev/null 2>&1; then
   check_count="$(printf '%s' "${checks_out}" | jq 'length')"
-  bad_checks="$(printf '%s' "${checks_out}" | jq -r '[.[] | select(.bucket != "pass") | "\(.name) (\(.bucket)/\(.state))"] | join(", ")')"
+  bad_checks="$(printf '%s' "${checks_out}" | jq -r '[.[] | select(.bucket != "pass" and .bucket != "skipping") | "\(.name) (\(.bucket)/\(.state))"] | join(", ")')"
   echo "Checks:"
   printf '%s' "${checks_out}" | jq -r '.[] | "  \(.name): \(.bucket)/\(.state)"'
   if [[ "${check_count}" -eq 0 ]]; then

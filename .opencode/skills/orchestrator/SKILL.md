@@ -163,8 +163,11 @@ restate the list here — link it. Summary for orchestration use only.
   `--rebase` are unreachable. gh deletes the PR head branch after
   merging; when another open PR still targets the head as a base, the
   wrapper merges without `--delete-branch` and keeps the branch.
-- Merge only when CI is green (the script refuses on pending/failed
-  checks). Never push directly to the default branch.
+- Merge only when CI is green: `pass` plus `skipping`/`SKIPPED` (jobs the
+  path-aware CI marks as not applicable to the change) count as green.
+  The script still refuses on `fail`/`failed`, `pending`, or `cancelled`
+  checks, and a PR with genuinely no checks merges. Never push directly
+  to the default branch.
 - Stacked PRs keep their base branch alive until the child merges; do not delete
   a base branch that a child PR still targets.
 - risk-low / risk-medium: merge autonomously once CI green + review APPROVE,
