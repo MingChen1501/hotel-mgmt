@@ -48,10 +48,10 @@ prints the next steps when it finishes.
 
 What you get: `AGENTS.md`, `config/ao-project.jsonc` (AO project
 config template), `cues/` (16 project-scoped rule cues),
-`.opencode/` (12 role files, 5 skills, 2 commands, permission config,
+`.opencode/` (12 role files, 8 skills, 2 commands, permission config,
 guard plugin), `.github/` (issue form, PR template), `docs/` (index,
 role rules, conventions, starter group), `script/` (footer, spawn,
-merge, review wrappers, cue installer).
+merge, review wrappers, contract-check stub, cue installer).
 
 Harness ownership: the `ai-engineer` role owns in-repo harness
 engineering (agent/skill/command/plugin/config files, cues, wrapper

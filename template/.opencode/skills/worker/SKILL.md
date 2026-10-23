@@ -70,6 +70,24 @@ describes, confirm with the orchestrator/owner first.
   open a PR while red).
 - Content conventions: follow the `content` agent file.
 
+## Per-stack entry points
+
+Product code lives in one module directory per deployable service
+(see your project's module-to-stack mapping); each stack your
+project uses has its own sanctioned workflow skill — read it before
+touching that stack:
+
+- Go services: the `go-module` skill.
+- Node.js/TypeScript services: the `node-module` skill.
+- Spring Boot services: the `spring-module` skill.
+
+Each per-stack skill carries that stack's build/test/run/lint
+commands, module layout, conventions, contract-check usage
+(`script/contract-check.sh`), guard-writing guide, and the recipe
+for adding an endpoint + guard. Its commands match the project's
+module layout — do not substitute equivalents without routing
+through the owning spec role.
+
 ## Open the PR
 
 - One PR per task; the body closes the issue (`Closes #<n>`).
