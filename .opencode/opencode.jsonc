@@ -3,9 +3,10 @@
   // Field details: https://opencode.ai/docs/config
   "$schema": "https://opencode.ai/config.json",
 
-  // NOTE: the stack is undecided, so no build/test commands are
-  // allow-listed yet. Add them here (mirroring the hotel-verify
-  // skill) once the stack is chosen.
+  // NOTE: the stack is decided per ADR-0001 (monorepo polyglot,
+  // accepted 2026-10-23) with per-stack CI live; concrete build/test/run
+  // commands live in each services/*/README.md (see the hotel-verify
+  // skill). Shell permissions stay at the ask default below.
   // Ask/allow rules in order: the LAST matching rule wins.
   "permissions": [
     // Default: ask before running shell.

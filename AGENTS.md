@@ -1,8 +1,9 @@
 # hotel-mgmt — agent guide
 
-Hotel-management project. Stack undecided: no build/test commands are
-allow-listed yet — confirm verification with the orchestrator per the
-`hotel-verify` skill.
+Hotel-management project. Stack decided per ADR-0001 (monorepo polyglot,
+accepted 2026-10-23) with per-stack CI live: concrete build/test/run
+commands live in each `services/*/README.md` — confirm verification with
+the orchestrator per the `hotel-verify` skill.
 
 Precedence: owner instruction > project cues > `AGENTS.md` > skills >
 agent files. Obey-now: a newer owner instruction overrides older cue
