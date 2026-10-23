@@ -92,7 +92,7 @@ instructions and embeds its own (proposed) runtime.
 
 Per-module language picks (all `proposed`, all inside the allowed
 pool; footprint notes against a 2*4*50 host — three runtimes total,
-footprint first, team second):
+team strength first, footprint budgeted):
 
 | Module | Proposed language | Footprint note (why it fits 2*4*50) |
 |---|---|---|
@@ -101,16 +101,17 @@ footprint first, team second):
 | Rooms | Node.js / TypeScript | Same runtime as Stay; inventory reads stay in-process-cheap behind `RoomInventoryService` |
 | Rates & Availability | Go | Quote path latency (`NFR-PERF-1`: views within 2 s) in a tiny binary; shares the Go toolchain with Reservations/Reporting |
 | Guests | Node.js / TypeScript | Profile CRUD; same shared runtime as Stay |
-| Billing | Java 21 on Quarkus (JVM mode, RESTEasy Reactive) | Exact `BigDecimal` money arithmetic in a slim JVM (~150–180 MB RSS, no Spring heap); folio/day-close logic suits Java's type system; see the section 8 footprint math — still inside one host |
+| Billing | Java 21 on Spring Boot (JVM mode) | Exact `BigDecimal` money arithmetic in the team's main-stack framework; folio/day-close logic suits Java's type system; steady-state RSS ~350 MB (`estimate` inside the 229–389 MB measured band — see the section 8 footprint math, still inside one host) |
 | Reporting | Go | Event consumer plus HTTP read API in the same small-binary profile; no Python data stack needed at 50-room / 2-year-report scale |
 | Admin & Config | Node.js / TypeScript | Config CRUD and identity sessions; same shared runtime as Stay |
 
-Three runtimes total (Node.js + Go + one slim Java) keep the installer
+Three runtimes total (Node.js + Go + one Spring Boot Java) keep the installer
 bounded and CI to three toolchains. Python stays in the pool as the
 named fallback (Reporting data jobs — see section 8); Rust is unused
 in this mapping — available if a module later proves it needs
-Rust's profile, not spent upfront. Billing-on-Go stays the named
-revert if the slim-Java measurement misses (see OQ-C10).
+Rust's profile, not spent upfront. Quarkus JVM slim (~180 MB) stays
+the named footprint fallback and Billing-on-Go the named
+revert if the Spring measurement misses (see OQ-C10).
 
 Data ownership: one logical store per module on the database host(s);
 each module connects only to its own store (HLD section 4, ERD
@@ -136,7 +137,7 @@ data picks (all `proposed`):
   measured views miss 2 s (fallback trigger, not a day-one part).
 
 Deployment: single 2*4*50 host by default — Nginx as the single
-entry point and reverse proxy, eight module containers (two
+entry point and reverse proxy, eight module containers (three
 runtimes), one database engine, Prometheus + Grafana, and the
 backup staging area on one on-premise host. Small-cluster variant —
 the same containers and the database spread across 2–3 such hosts
@@ -404,8 +405,8 @@ while its traceability rows stay TBD or its runbook delta is missing.
 | Dimension | A — polyglot modules, one monorepo (primary) | B — modular monolith, extract later (DEMOTED) | C — shared-stack module packages (fallback) |
 |---|---|---|---|
 | Monorepo-mandatory | Yes | Yes | Yes |
-| Allowed-pool compliance | Yes: Node.js + Go + slim Java per-module picks, Python/Rust available as fallbacks | Yes (single pick from the pool) | Yes: Node.js throughout (Go-throughout alternative) |
-| 2*4*50 single-host fit | Fits per the section 3 budget (three slim runtimes, one engine, no Kafka/Redis day-one; Billing Java adds ~+130 MB vs Go, headroom kept) | Fits with the most headroom (one process, one engine) | Fits (one runtime, one engine) |
+| Allowed-pool compliance | Yes: Node.js + Go + Spring Boot Java per-module picks, Python/Rust available as fallbacks | Yes (single pick from the pool) | Yes: Node.js throughout (Go-throughout alternative) |
+| 2*4*50 single-host fit | Fits per the section 8 + section 3 budget (Spring Boot Billing ~350 MB `estimate`, headroom ~600+ MB kept; Quarkus fallback frees ~170 MB) | Fits with the most headroom (one process, one engine) | Fits (one runtime, one engine) |
 | CI cost | Higher: three-toolchain jobs plus contract checks | Lowest: one toolchain, one build; boundary lint is the only extra | Medium: per-module jobs, one toolchain, plus contract checks |
 | On-prem packaging | Medium-high: three runtimes in one offline Ansible bundle | Lightest: one runtime, smallest installer | Light: one runtime, module containers |
 | Hiring | Three ecosystems (Node.js + Go + one Java service) | Narrowest: one skill profile | Narrow: one skill profile plus platform-library ownership |
@@ -415,19 +416,20 @@ while its traceability rows stay TBD or its runbook delta is missing.
 
 ## 8. Recommendation (not a decision)
 
-Primary mapping (Candidate A — three slim runtimes, minimal subset,
-footprint first; Java placed on Billing per the 2026-10-23 owner
-request — the one module where a JVM earns its place inside
+Primary mapping (Candidate A — three runtimes, minimal subset,
+team strength first; Java Spring placed on Billing per the
+2026-10-23 owner decision that Spring is the team's main stack —
+the one module where a JVM earns its place inside
 2*4*50):
 
-| Module | Language | Store | Why (footprint first, team second) |
+| Module | Language | Store | Why (team strength first, footprint budgeted) |
 |---|---|---|---|
 | Reservations | Go | Dedicated schema in the shared engine | Tiny binary; concurrency guard `NFR-CON-1` |
 | Stay | Node.js / TypeScript | Dedicated schema in the shared engine | CRUD fit; shared runtime ×4 modules |
 | Rooms | Node.js / TypeScript | Dedicated schema in the shared engine | Shared runtime; cheap inventory reads |
 | Rates & Availability | Go | Dedicated schema in the shared engine | Quote latency `NFR-PERF-1`; shared Go toolchain |
 | Guests | Node.js / TypeScript | Dedicated schema in the shared engine | CRUD fit; shared runtime |
-| Billing | Java 21 on Quarkus (JVM mode, RESTEasy Reactive) | Dedicated schema in the shared engine | Native `BigDecimal` money arithmetic + folio/day-close type safety; slim JVM (~150–180 MB RSS) — a full Spring-class heap (~300+ MB) is explicitly OUT; footprint math below |
+| Billing | Java 21 on Spring Boot (JVM mode) | Dedicated schema in the shared engine | Native `BigDecimal` money arithmetic + folio/day-close type safety in the team's main-stack framework; ~350 MB RSS `estimate` — the one Spring-context service the budget holds; footprint math below |
 | Reporting | Go | Own read-model schema, rebuilt from outbox events | No Python data stack needed at this scale |
 | Admin & Config | Node.js / TypeScript | Config schema in the shared engine | Config CRUD + identity; shared runtime |
 
@@ -438,28 +440,46 @@ Ansible + plain containers offline, no mini-K8s by default;
 Prometheus + Grafana on-prem; LAN + Tailscale, no inbound
 internet.
 
-Footprint math for Billing-on-Java (why one slim JVM fits where
-a Spring-class heap would not): a Spring Boot service idles at
-~300–400 MB heap/RSS plus a ~200–300 MB layered image, which
-would spend the whole ~900 MB headroom in
-`docs/architecture/system-architecture.md` section 3 on one
-module — rejected for the MVP. The proposed Quarkus JVM-mode
-service (RESTEasy Reactive, no Spring context: ~150–180 MB RSS
-steady state, ~0.05–0.1 vCPU share, ~0.3 GB image with the
-shared base layer) costs only ~+100–130 MB RAM and ~+0.2 GB
-disk versus the previous Billing-on-Go estimate (~50 MB /
-~0.1 GB). The section 3 budget rises from ~3.1 GB to ~3.2–3.25 GB
-of 4 GB RAM, ~1.6–1.65 of 2 vCPU, ~23.2 GB of 50 GB disk —
-still inside one 2*4*50 host with ~750+ MB RAM, ~0.35 vCPU,
-and ~20 GB disk headroom. A GraalVM native build of the same
-service (~60–80 MB RSS) is the named optimisation if the JVM
-measurement misses; the revert is Billing-on-Go (~50 MB),
-which the fallback paragraph keeps available. Reporting batch
-jobs and Admin/config were considered for Java and rejected:
-Reporting's event-consumer-plus-read-API profile needs no JVM
-(Go binary suffices at this scale), and Admin/config is CRUD
-that already shares the Node.js runtime — a second JVM there
-would spend footprint for no tool-fit gain.
+Footprint math for Billing-on-Spring (why one Spring Boot JVM
+fits inside 2*4*50, and what it costs versus the slim-Java
+alternative): a Spring Boot 3.x-class service measures ~229–389 MB
+RSS across the two sources already cited in section 10.1
+(ankurm.com, Oct 2026; gillius.org, Oct 2025), with startup to
+first response ~6 s class. Planning figures for the Billing
+service (all `estimate`, all inside the measured band — the upper
+end covers the JDBC/migration stack Billing carries): RSS ~350 MB
+steady state, heap max sized ~256–512 MB, startup ~5–7 s to first
+folio response, vCPU share ~0.1, disk ~0.4–0.5 GB with the shared
+base layer. Nothing here is load-tested against hotel-MVP code —
+OQ-C12 records the spike that would replace these estimates with
+measured folio/day-close numbers. Versus the previous
+Billing-on-Go estimate (~50 MB / ~0.1 GB) the Spring service costs
+~+300 MB RAM and ~+0.3–0.4 GB disk. The section 3 budget therefore
+rises from the ~3.2–3.25 GB band to ~3.37–3.42 GB of 4 GB RAM,
+~1.7 of 2 vCPU, ~23.4 GB of 50 GB disk — still inside one 2*4*50
+host with explicitly stated headroom of ~600+ MB RAM, ~0.3 vCPU,
+and ~20 GB disk for burst, day-close, restore drills, and log
+growth. No compensating trim is taken: the budget holds without
+one, so no NFR coverage is touched. The named trims stay
+available inside the minimal-subset rule if the OQ-C12 spike
+measures worse than the planning figures (Grafana stopped by
+default reclaims ~150 MB RAM without losing metric retention;
+narrower Prometheus retention reclaims disk; the Quarkus JVM-slim
+fallback below frees ~170 MB RAM) — each would be recorded
+explicitly with numbers, never applied silently. The named
+footprint fallback is the Quarkus JVM-mode service (RESTEasy
+Reactive, no Spring context: ~150–180 MB RSS steady state,
+~0.3 GB image — section 10.1), which frees ~170 MB RAM versus
+Spring if team strength ever yields to footprint pressure; a
+GraalVM native build of the same service (~60–80 MB RSS) is the
+named optimisation behind that; the revert is Billing-on-Go
+(~50 MB), which the fallback paragraph keeps available.
+Reporting batch jobs and Admin/config were considered for Spring
+and rejected: Reporting's event-consumer-plus-read-API profile
+needs no JVM (Go binary suffices at this scale), and Admin/config
+is CRUD that already shares the Node.js runtime — a second
+Spring-context service anywhere else is explicitly OUT per the
+minimal-subset rule (see E3 in section 10.4).
 
 Fallback mapping (Candidate C — one runtime, team second): all
 eight modules on Node.js / TypeScript with per-module packages
@@ -468,7 +488,8 @@ packaging/monitoring/network picks as the primary. Take it if
 the team is single-stack Node.js or if the three-toolchain CI cost
 proves too high — it preserves deployable modules and the
 contract investment while cutting packaging cost toward B
-levels. Billing-on-Go stays the named revert if the slim-Java
+levels. Billing-on-Quarkus-JVM-slim stays the named footprint
+fallback and Billing-on-Go the named revert if the Spring
 measurement misses; Python/FastAPI (Reporting) stays the named
 per-module fallback inside the pool if team strength or measured
 behaviour demands it; neither is spent upfront.
@@ -510,19 +531,21 @@ ADR-0001 stays `proposed` until the owner accepts it.
 - OQ-C9 — Frontend: confirm a static SPA served by Nginx (no SSR
   runtime), framework chosen at implementation time from the free
   choice?
-- OQ-C10 — Billing-on-Java runtime: confirm Java 21 on Quarkus
-  (JVM mode) for Billing with the section 8 footprint math, the
-  GraalVM-native optimisation, and the Billing-on-Go revert — or
-  direct Billing back to Go and name a different Java entry point?
+- OQ-C10 — Billing-on-Spring runtime: confirm Java 21 on Spring
+  Boot (JVM mode) for Billing with the section 8 footprint math
+  (~350 MB RSS `estimate`, ~600+ MB headroom kept), the Quarkus
+  JVM-slim footprint fallback, the GraalVM-native optimisation,
+  and the Billing-on-Go revert — or direct Billing back to
+  Quarkus/Go and name a different Spring entry point?
 - OQ-C11 — Python-lightweight fallback: confirm FastAPI Reporting
   with the section 10 rules (worker cap 2, no pandas/numpy in the
   MVP image) as the sized per-module fallback inside the pool —
   or keep Reporting on Go with no Python fallback?
 - OQ-C12 — Measurement spike: authorise a spike that runs the
-  Billing Quarkus service (JVM mode) under folio/day-close load
-  and the FastAPI Reporting service (2 workers) under a 2-year
-  report load on a 2*4*50-class host, and replaces the section 10
-  planning estimates with measured RSS/vCPU before any build?
+  Billing Spring Boot service (JVM mode) under folio/day-close load
+  (Quarkus slim as the fallback arm) and the FastAPI Reporting service (2 workers) under a 2-year
+  report load on a 2*4*50-class host, and replaces the section 8
+  and section 10 planning estimates with measured RSS/vCPU before any build?
 
 ## 10. Java-lightweight + Python-lightweight combined budget (issue #81)
 
@@ -557,16 +580,19 @@ line (Java 21+, Quarkus 3.x / Micronaut 4.x class).
 | Startup to first 200 response | ~2.2 s (no-DB container); ~1.2 s (CRUD app) | ~2.5 s (no-DB container); ~0.7 s (CRUD app) | Measured (ankurm.com, Oct 2026; gillius.org, Oct 2025) |
 | Container image | ~0.3–0.5 GB with the shared base layer | ~0.3–0.5 GB with the shared base layer | `estimate` from the JVM fast-jar artifact sizes (~14–21 MB app + base JDK layer; ankurm.com, Oct 2026) |
 
-Planning figure for one slim-JVM service (Billing): RSS ~180 MB,
+Planning figure for one slim-JVM service: RSS ~180 MB,
 vCPU share ~0.1, disk ~0.3 GB (`estimate`, consistent with the
-section 3 row and inside the 172–271 MB measured band — the
+old section 3 row and inside the 172–271 MB measured band — the
 upper end covers the JDBC/migration stack Billing carries).
 Micronaut measures within the same band, so either framework
 holds the same budget line; the pick between them is a team
-call, not a footprint call. A Spring-class heap (~300–400 MB
-RSS, ~6.3 s startup — measured: Spring Boot 229–389 MB RSS
-across the same two sources) stays explicitly OUT per the
-minimal-subset rule; it is not a lightweight option.
+call, not a footprint call. A Spring-context service is no
+longer excluded per se: section 8 places exactly one on Billing
+as the primary (team-strength call — Java Spring is the team's
+main stack — at ~350 MB RSS `estimate`, inside the same 229–389 MB
+measured band). Quarkus/Micronaut JVM mode is now the named
+footprint fallback for that placement (~170 MB saving versus
+Spring), not a second JVM elsewhere.
 
 ### 10.2 Java-lightweight native image (option, with build cost)
 
@@ -632,25 +658,25 @@ every fit verdict below and is excluded (see E3). The 2-year /
 5-second report target (`NFR-PERF-2`) is met by the shared
 engine + read model, not by in-Python analytics.
 
-### 10.4 Combined budget: Java-light + Python-light BOTH present (worst case)
+### 10.4 Combined budget: Spring primary with the lightweight fallbacks (worst case)
 
-Baseline is the section 3 primary mapping:
-~3.2–3.25 GB of 4 GB RAM, ~1.65 of 2 vCPU, ~23.2 GB of 50 GB
-disk (Billing Quarkus JVM ~180 MB + Reporting Go ~50 MB).
-Each row below swaps in the lightweight options and re-checks
-all three dimensions per host. Deltas are `estimates` from the
-planning figures above.
+Baseline is the section 8 primary mapping:
+~3.37–3.42 GB of 4 GB RAM, ~1.7 of 2 vCPU, ~23.4 GB of 50 GB
+disk (Billing Spring Boot JVM ~350 MB `estimate` + Reporting Go
+~50 MB). Each row below swaps in the lightweight options and
+re-checks all three dimensions per host. Deltas are `estimates`
+from the planning figures above and in section 8.
 
 | # | Combination (vs 2*4*50 per host) | RAM | vCPU | Disk | Verdict |
 |---|---|---|---|---|---|
-| B0 | Primary as-shipped (Billing Quarkus JVM + Reporting Go) | ~3.2–3.25 GB | ~1.65 | ~23.2 GB | FITS — headroom ~750+ MB / ~0.35 / ~20 GB |
-| B1 | Billing Quarkus JVM + Reporting FastAPI (cap 2) | ~3.35–3.4 GB | ~1.7 | ~23.4 GB | FITS — headroom ~600 MB; worst case requested by the issue still holds single-host |
+| B0 | Primary as-shipped (Billing Spring Boot JVM + Reporting Go) | ~3.37–3.42 GB | ~1.7 | ~23.4 GB | FITS — headroom ~600+ MB / ~0.3 / ~20 GB |
+| B1 | Billing Quarkus JVM fallback + Reporting FastAPI (cap 2) | ~3.35–3.4 GB | ~1.7 | ~23.4 GB | FITS — footprint fallback plus Python fallback together still hold single-host |
 | B2 | Billing Micronaut JVM + Reporting FastAPI (cap 2) | ~3.35–3.4 GB | ~1.7 | ~23.4 GB | FITS — same band as B1; framework pick is footprint-neutral |
-| B3 | Billing native (~75 MB) + Reporting FastAPI (cap 2) | ~3.25–3.35 GB | ~1.65 | ~23.2 GB | FITS — most headroom of the Java+Python rows; pays the CI-build cost (10.2) instead of host RAM |
-| B4 | Billing Quarkus JVM + Rates FastAPI (cap 2) + Reporting Go | ~3.35–3.4 GB | ~1.7 | ~23.4 GB | FITS — same math as B1 if Python lands on Rates instead of Reporting |
-| E1 | Reporting FastAPI UNcapped (5 workers × ~120 MB + master) | ~3.75–3.8 GB | ~1.8 | ~23.5 GB | EXCLUDED single-host — ~200 MB nominal headroom leaves no burst/day-close/restore margin; the worker cap (10.3) is what keeps B1/B2/B4 inside |
-| E2 | Reporting FastAPI with pandas (150–350 MB × 2 workers) | ~3.5–3.9 GB | ~1.7–1.8 | ~23.8 GB | EXCLUDED for the MVP — analytics libraries are not an MVP dependency; re-open only with a measured `NFR-PERF-2` miss |
-| E3 | Second full Spring-class JVM (~300–400 MB) anywhere | ~3.5–3.6 GB+ | ~1.8+ | ~23.5 GB+ | EXCLUDED — restates the section 8 exclusion; no Spring-context service enters any mapping |
+| B3 | Billing native (~75 MB) + Reporting FastAPI (cap 2) | ~3.25–3.3 GB | ~1.65 | ~23.2 GB | FITS — most headroom of the Java+Python rows; pays the CI-build cost (10.2) instead of host RAM |
+| B4 | Billing Spring Boot JVM + Rates FastAPI (cap 2) + Reporting Go | ~3.5–3.57 GB | ~1.75 | ~23.6 GB | FITS — headroom ~500+ MB; thinnest FITS row; the Grafana-stop trim is named if the spike measures worse |
+| E1 | Reporting FastAPI UNcapped (5 workers × ~120 MB + master) | ~3.9–3.95 GB | ~1.85 | ~23.7 GB | EXCLUDED single-host — ~150 MB nominal headroom leaves no burst/day-close/restore margin; the worker cap (10.3) is what keeps B1/B2/B4 inside |
+| E2 | Reporting FastAPI with pandas (150–350 MB × 2 workers) | ~3.65–4.1 GB | ~1.75–1.85 | ~24.0 GB | EXCLUDED for the MVP — upper end exceeds the envelope outright; analytics libraries are not an MVP dependency; re-open only with a measured `NFR-PERF-2` miss |
+| E3 | Second full Spring-context service (~300–400 MB) anywhere — Billing already holds the one | ~3.65–3.8 GB+ | ~1.8+ | ~23.8 GB+ | EXCLUDED — one Spring-context service is the budgeted maximum; no Spring-context service enters any other module mapping |
 | E4 | Native-image build ON the 2*4*50 host | n/a (build-time) | needs 4 CPUs | needs 4+ GB build RAM | EXCLUDED on-host — builds run on CI/build infra per 10.2; the host only ever runs the built artifact |
 
 Small-cluster variant: none of the FITS rows need it — every
@@ -662,14 +688,20 @@ wrong via the OQ-C12 spike; it is not required by this analysis.
 
 ### 10.5 Recommendation update and open points
 
-- Primary mapping unchanged: Billing on Quarkus JVM mode,
-  Reporting on Go (Candidate A, section 8). The numbers confirm
-  the section 8 math rather than overturning it.
-- Fallback mapping now sized (was unquantified): Reporting on
-  FastAPI with worker cap 2 and no pandas is a budgeted
-  fallback at +~150 MB vs Go (row B1) — usable if team strength
-  or measured behaviour favours Python, without re-opening the
-  budget. The Candidate C (all-Node.js) fallback is untouched.
+- Primary mapping per section 8: Billing on Spring Boot JVM mode
+  (team-strength call, ~350 MB `estimate`), Reporting on Go
+  (Candidate A). The section 8 math carries the budget; this
+  section sizes the fallbacks against it.
+- Footprint fallback now sized (was the primary): Billing on
+  Quarkus/Micronaut JVM mode frees ~170 MB versus Spring
+  (rows B1/B2) — usable if footprint pressure ever outweighs team
+  strength, without re-opening the budget. The Candidate C
+  (all-Node.js) fallback is untouched.
+- Python fallback unchanged and still budgeted: Reporting on
+  FastAPI with worker cap 2 and no pandas is a sized fallback at
+  +~150 MB vs Go (row B1 against the Quarkus arm, row B4 against
+  the Spring baseline) — usable if team strength or measured
+  behaviour favours Python, without re-opening the budget.
 - Native image stays a named optimisation with its build cost
   made explicit (CI-only, 4-CPU/4-GB build host, ~6–8 min per
   service): take it only on a measured miss, never by default.
