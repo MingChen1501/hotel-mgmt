@@ -67,6 +67,7 @@ Development table, which use a `../` prefix.
 | Business rules | `requirements/business-rules.md` | active | `business-analyst` | domain policies constraining behaviour (Closes #58) |
 | Use cases | `requirements/use-cases.md` | active | `business-analyst` | actor-goal flows through the system (Closes #58) |
 | Data dictionary | `requirements/data-dictionary.md` | active | `business-analyst` | shared definitions of data entities and fields (Closes #58) |
+| Integration contract needs | `requirements/integration-contract-needs.md` | active | `business-analyst` | requirements-side input to module contracts: operations, payloads, sync/async, errors, config (Closes #96) |
 
 ## Architecture
 
