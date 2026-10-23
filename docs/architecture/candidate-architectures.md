@@ -514,6 +514,177 @@ ADR-0001 stays `proposed` until the owner accepts it.
   (JVM mode) for Billing with the section 8 footprint math, the
   GraalVM-native optimisation, and the Billing-on-Go revert — or
   direct Billing back to Go and name a different Java entry point?
+- OQ-C11 — Python-lightweight fallback: confirm FastAPI Reporting
+  with the section 10 rules (worker cap 2, no pandas/numpy in the
+  MVP image) as the sized per-module fallback inside the pool —
+  or keep Reporting on Go with no Python fallback?
+- OQ-C12 — Measurement spike: authorise a spike that runs the
+  Billing Quarkus service (JVM mode) under folio/day-close load
+  and the FastAPI Reporting service (2 workers) under a 2-year
+  report load on a 2*4*50-class host, and replaces the section 10
+  planning estimates with measured RSS/vCPU before any build?
+
+## 10. Java-lightweight + Python-lightweight combined budget (issue #81)
+
+Owner request 2026-10-23 (after Java placement in PR #80): check
+whether lightweight Java AND lightweight Python options both fit
+the 2*4*50 envelope (2 vCPU / 4 GB RAM / 50 GB disk per host,
+single host default). The language pool (Java / Python / Node.js /
+Go / Rust) already permits both; the question answered here is
+footprint, not permission. This section revises the proposal with
+numbers; it never decides — ADR-0001 stays `proposed`, module
+boundaries stay as in HLD section 4, and no FR/NFR changes.
+
+All figures below are steady-state RSS per component on the
+default single host unless stated otherwise. Measured figures
+cite their source; planning figures derived from them are marked
+`estimate`. Nothing here is load-tested against hotel-MVP code —
+OQ-C12 records the spike that would replace the estimates.
+
+### 10.1 Java-lightweight: Quarkus or Micronaut (JVM mode)
+
+Named runtime: Java 21 (LTS class) on Quarkus (RESTEasy Reactive,
+no Spring context) or Micronaut (Netty-based HTTP, compile-time
+DI) in JVM mode, for the placed module (Billing today; Rates or
+Reporting if ever re-placed). Named version class: current LTS
+line (Java 21+, Quarkus 3.x / Micronaut 4.x class).
+
+| Metric | Quarkus JVM | Micronaut JVM | Source |
+|---|---|---|---|
+| RSS, small REST service (no DB) | ~172 MB avg | ~180 MB avg | Measured: 4-run avg after first 200 response, 2-vCPU container, first run discarded (ankurm.com, Oct 2026: Quarkus 171.6 MB / Micronaut 180.0 MB) |
+| RSS, CRUD + JDBC + Flyway + Postgres | ~271 MB max | ~253 MB max | Measured: max RSS on M2 Pro, GraalVM Java 25, `/usr/bin/time -l` (gillius.org, Oct 2025: Quarkus 271.2 MB / Micronaut 253.2 MB) |
+| Heap used (same CRUD app) | ~14 MB | ~18 MB | Measured (gillius.org, Oct 2025: Quarkus 14.4 MB / Micronaut 17.6 MB — most RSS is non-heap: metaspace, threads, JIT) |
+| Startup to first 200 response | ~2.2 s (no-DB container); ~1.2 s (CRUD app) | ~2.5 s (no-DB container); ~0.7 s (CRUD app) | Measured (ankurm.com, Oct 2026; gillius.org, Oct 2025) |
+| Container image | ~0.3–0.5 GB with the shared base layer | ~0.3–0.5 GB with the shared base layer | `estimate` from the JVM fast-jar artifact sizes (~14–21 MB app + base JDK layer; ankurm.com, Oct 2026) |
+
+Planning figure for one slim-JVM service (Billing): RSS ~180 MB,
+vCPU share ~0.1, disk ~0.3 GB (`estimate`, consistent with the
+section 3 row and inside the 172–271 MB measured band — the
+upper end covers the JDBC/migration stack Billing carries).
+Micronaut measures within the same band, so either framework
+holds the same budget line; the pick between them is a team
+call, not a footprint call. A Spring-class heap (~300–400 MB
+RSS, ~6.3 s startup — measured: Spring Boot 229–389 MB RSS
+across the same two sources) stays explicitly OUT per the
+minimal-subset rule; it is not a lightweight option.
+
+### 10.2 Java-lightweight native image (option, with build cost)
+
+Named option: GraalVM/Mandrel ahead-of-time build of the same
+Quarkus or Micronaut service. Runtime numbers first:
+
+| Metric | Quarkus native | Micronaut native | Source |
+|---|---|---|---|
+| RSS (REST, no DB) | ~34 MB | ~46 MB | Measured (ankurm.com, Oct 2026: 33.6 MB / 46.2 MB) |
+| RSS (CRUD + JDBC) | ~71 MB | ~84 MB | Measured (gillius.org, Oct 2025: Quarkus 70.5 MB / Micronaut 83.8 MB) |
+| Startup | ~0.04 s | ~0.04 s | Measured (ankurm.com, Oct 2026: 0.035 s / 0.041 s) |
+| Executable size | ~44 MB | ~54 MB | Measured (ankurm.com, Oct 2026) |
+
+Planning figure: RSS ~60–85 MB per service (`estimate` — the
+JDBC end of the measured band plus margin). Saving versus JVM
+mode is ~100–120 MB RAM per service. Trade-offs, all documented:
+
+- Build cost: 6–8 minutes wall clock on a 2-vCPU host (measured:
+  6m22s Quarkus / 7m15s Micronaut; ankurm.com, Oct 2026);
+  official guidance is 3–10 min builds needing 4–8 GB build-host
+  RAM, with a documented minimum of 4 CPUs and 4 GB build memory
+  (quarkus.io native guides). The native build therefore cannot
+  run ON the 2*4*50 target host — it runs on the CI/build
+  machine and ships inside the offline bundle. It is a packaging
+  input, never a host load.
+- Peak throughput of the native build measures ~59% below JVM
+  mode on the same workload (Quarkus 2026 perf-lab table:
+  5,411 vs 13,265 tps) — irrelevant at 5-concurrent-staff scale,
+  recorded so a later chain-scale revisit does not re-learn it.
+- Status: named optimisation only. The default stays JVM mode;
+  native is taken only if the OQ-C12 spike shows JVM mode
+  missing its budget line.
+
+### 10.3 Python-lightweight: FastAPI for Reporting / Rates-type workloads
+
+Named runtime: FastAPI on Uvicorn (ASGI), current 0.3x/0.2x
+class, under Gunicorn process management
+(`uvicorn-worker` class) or plain `uvicorn --workers`, for
+Reporting (read-model API + event consumer) or Rates-type
+read-heavy workloads. Named version class: FastAPI 0.1xx /
+Uvicorn 0.2x–0.3x class.
+
+| Metric | Figure | Source |
+|---|---|---|
+| RSS, 1 Uvicorn worker idle | ~53 MB | Measured (markaicode, May 2026, 1-vCPU host: 52.8 MB idle) |
+| RSS, 1 worker under 300-task load | ~57 MB (+~5 MB) | Measured (same source: 57.3 MB under load) |
+| RSS per worker, warm, FastAPI + Pydantic models | ~60–120 MB | Typical observed range (renode.space, Oct 2026; deployhq survey: ~20 MB minimal baseline, +50–200 MB with app imports) |
+| Gunicorn master baseline | ~30–60 MB | Observed baseline (renode.space, Oct 2026) |
+| Async sizing rule | workers = cores or cores+1 | Async workers hold thousands of connections each; more workers only add RAM (deployhq guide) |
+
+Worker cap (binding rule for the MVP): 2 workers per
+FastAPI service on the 2-vCPU host. The classic
+`(2 × cores) + 1 = 5` rule is a sync-WSGI rule and is
+explicitly NOT used here — 5 warm workers × ~120 MB would
+spend ~600 MB for no CPU gain on 2 vCPU.
+
+Planning figure for one FastAPI service (Reporting): RSS
+~200 MB total (`estimate`: 2 workers × ~80 MB warm midpoint +
+~40 MB master), vCPU share ~0.1, disk ~0.2–0.3 GB. Conditions:
+no pandas/numpy in the MVP image — a pandas-loaded worker
+measures 150–350 MB (renode.space, Oct 2026), which breaks
+every fit verdict below and is excluded (see E3). The 2-year /
+5-second report target (`NFR-PERF-2`) is met by the shared
+engine + read model, not by in-Python analytics.
+
+### 10.4 Combined budget: Java-light + Python-light BOTH present (worst case)
+
+Baseline is the section 3 primary mapping:
+~3.2–3.25 GB of 4 GB RAM, ~1.65 of 2 vCPU, ~23.2 GB of 50 GB
+disk (Billing Quarkus JVM ~180 MB + Reporting Go ~50 MB).
+Each row below swaps in the lightweight options and re-checks
+all three dimensions per host. Deltas are `estimates` from the
+planning figures above.
+
+| # | Combination (vs 2*4*50 per host) | RAM | vCPU | Disk | Verdict |
+|---|---|---|---|---|---|
+| B0 | Primary as-shipped (Billing Quarkus JVM + Reporting Go) | ~3.2–3.25 GB | ~1.65 | ~23.2 GB | FITS — headroom ~750+ MB / ~0.35 / ~20 GB |
+| B1 | Billing Quarkus JVM + Reporting FastAPI (cap 2) | ~3.35–3.4 GB | ~1.7 | ~23.4 GB | FITS — headroom ~600 MB; worst case requested by the issue still holds single-host |
+| B2 | Billing Micronaut JVM + Reporting FastAPI (cap 2) | ~3.35–3.4 GB | ~1.7 | ~23.4 GB | FITS — same band as B1; framework pick is footprint-neutral |
+| B3 | Billing native (~75 MB) + Reporting FastAPI (cap 2) | ~3.25–3.35 GB | ~1.65 | ~23.2 GB | FITS — most headroom of the Java+Python rows; pays the CI-build cost (10.2) instead of host RAM |
+| B4 | Billing Quarkus JVM + Rates FastAPI (cap 2) + Reporting Go | ~3.35–3.4 GB | ~1.7 | ~23.4 GB | FITS — same math as B1 if Python lands on Rates instead of Reporting |
+| E1 | Reporting FastAPI UNcapped (5 workers × ~120 MB + master) | ~3.75–3.8 GB | ~1.8 | ~23.5 GB | EXCLUDED single-host — ~200 MB nominal headroom leaves no burst/day-close/restore margin; the worker cap (10.3) is what keeps B1/B2/B4 inside |
+| E2 | Reporting FastAPI with pandas (150–350 MB × 2 workers) | ~3.5–3.9 GB | ~1.7–1.8 | ~23.8 GB | EXCLUDED for the MVP — analytics libraries are not an MVP dependency; re-open only with a measured `NFR-PERF-2` miss |
+| E3 | Second full Spring-class JVM (~300–400 MB) anywhere | ~3.5–3.6 GB+ | ~1.8+ | ~23.5 GB+ | EXCLUDED — restates the section 8 exclusion; no Spring-context service enters any mapping |
+| E4 | Native-image build ON the 2*4*50 host | n/a (build-time) | needs 4 CPUs | needs 4+ GB build RAM | EXCLUDED on-host — builds run on CI/build infra per 10.2; the host only ever runs the built artifact |
+
+Small-cluster variant: none of the FITS rows need it — every
+Java-light + Python-light combination inside the caps holds the
+single-host default with burst margin. The cluster variant
+(unchanged, `system-architecture.md` section 1) stays available
+for growth or for any module that later proves the estimates
+wrong via the OQ-C12 spike; it is not required by this analysis.
+
+### 10.5 Recommendation update and open points
+
+- Primary mapping unchanged: Billing on Quarkus JVM mode,
+  Reporting on Go (Candidate A, section 8). The numbers confirm
+  the section 8 math rather than overturning it.
+- Fallback mapping now sized (was unquantified): Reporting on
+  FastAPI with worker cap 2 and no pandas is a budgeted
+  fallback at +~150 MB vs Go (row B1) — usable if team strength
+  or measured behaviour favours Python, without re-opening the
+  budget. The Candidate C (all-Node.js) fallback is untouched.
+- Native image stays a named optimisation with its build cost
+  made explicit (CI-only, 4-CPU/4-GB build host, ~6–8 min per
+  service): take it only on a measured miss, never by default.
+- Micronaut is footprint-equivalent to Quarkus in both modes
+  (within ~10 MB RSS everywhere measured); either satisfies the
+  "Java-lightweight" option — no separate evaluation needed.
+- Unmeasurable without a spike: Billing RSS under real
+  folio/day-close load (the measured figures are generic CRUD
+  apps, not hotel code); FastAPI Reporting RSS under a real
+  2-year report load; day-close/restore burst peaks for every
+  B-row. All three are OQ-C12; until the spike runs, the
+  `estimate` planning figures above stand and nothing here is
+  load-bearing for a build.
+
+ADR-0001 stays `proposed`; this analysis advises only.
 
 <!-- ao-role: architect -->
-Role: architect · AO session hotel-mgmt-84
+Role: architect · AO session hotel-mgmt-107
