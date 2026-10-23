@@ -82,6 +82,7 @@ Development table, which use a `../` prefix.
 | ADR template | `architecture/decisions/adr-0001-template.md` | stub (not needed yet) | `architect` | decision-record template (the decisions directory holds ADRs) |
 | ADR-0001 monorepo polyglot | `architecture/decisions/adr-0001-monorepo-polyglot.md` | active | `architect` | accepted monorepo with polyglot modules (Closes #11; accepted 2026-10-23, Closes #85) |
 | Candidate architectures | `architecture/candidate-architectures.md` | active | `architect` | candidate structures, customisation, strategies, trade-offs, recommendation (Closes #67) |
+| Contract readiness | `architecture/contract-readiness.md` | active | `architect` | walking-skeleton contract/file checklist with traces, stub boundary, CI gate, open questions (Closes #108) |
 
 ## Technical
 
