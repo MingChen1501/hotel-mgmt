@@ -1,7 +1,8 @@
 # Project plan — from specs to pilot
 
 Status: active. Milestones for the hotel-mgmt MVP, owned by
-`release-manager` (Closes #63). Quarter-neutral: stages state order
+`product-owner` (Closes #63), with `release-manager` input on
+deployment/operations matters. Quarter-neutral: stages state order
 and exit signals, never calendar dates — no invented dates appear in
 this document. Scope content for each stage comes from the product
 and requirements specs; this plan orders the work only.
@@ -11,15 +12,17 @@ and requirements specs; this plan orders the work only.
 1. **Specs done.** The product picture (`docs/product/*`), the
    requirements baseline (`docs/requirements/mvp-requirements.md`
    with FRs, measurable NFRs, and traceability), the architecture
-   outline (`docs/architecture/*` with ADR-0001 still proposed),
+   outline (`docs/architecture/*` with ADR-0001 accepted 2026-10-23),
    the test strategy (`docs/testing/test-strategy.md`), and these
    DevOps/Operations/Project docs are written and marked active.
    Exit signal: `spec-reviewer` PASS on each spec batch.
-2. **Stack decision.** The owner chooses the implementation stack
+2. **Stack decision — done.** The owner chose the implementation stack
    (language, runtime, database engine, container and host shape)
-   and accepts ADR-0001 (`proposed -> accepted`), closing the
-   sizing open question (smallest supported on-premise host).
-   Exit signal: accepted ADR plus published minimum host sizing.
+   and accepted ADR-0001 on 2026-10-23 (recorded on #28 / D-7 in
+   `docs/project/decision-log.md`), closing the sizing open question
+   (smallest supported on-premise host). Exit signal met: accepted ADR
+   plus published minimum host sizing (2 vCPU / 4 GB RAM / 50 GB disk
+   per host in `docs/devops/deployment.md`, section 5).
 3. **Walking skeleton.** One deployable on-premise installation
    (single-host default) runs the desk loop thinly end to end —
    book, check in, post a charge, check out — with daily backup
@@ -42,5 +45,5 @@ After the pilot, release notes and per-release rollback entries
 begin (`docs/release/*`, still stubs until the first release
 ships).
 
-<!-- ao-role: release-manager -->
-Role: release-manager · AO session hotel-mgmt-79
+<!-- ao-role: product-owner -->
+Role: product-owner · AO session hotel-mgmt-129
