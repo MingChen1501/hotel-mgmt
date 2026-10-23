@@ -28,6 +28,14 @@
           - "{{ hotel_config_src }}"
       changed_when: false
 
+    - name: Fail closed while database or boot secrets are still dev defaults
+      delegate_to: localhost
+      ansible.builtin.fail:
+        msg: "Refusing install: DB_PASSWORD or ADMIN_BOOT_SECRET still holds a dev default. Provision the per-sale secrets first (docs/devops/deployment.md section 2; audit S3)."
+      when: >-
+        lookup('env', 'DB_PASSWORD') in ['', 'change-me', 'change-me-dev-only']
+        or lookup('env', 'ADMIN_BOOT_SECRET') in ['', 'change-me', 'change-me-dev-only']
+
     - name: Create install directories
       ansible.builtin.file:
         path: "{{ item }}"

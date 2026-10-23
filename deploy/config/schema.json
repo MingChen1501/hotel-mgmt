@@ -1,0 +1,68 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "hotel-mgmt per-hotel configuration set (skeleton, issue #113)",
+  "description": "Minimal validation shape for the section-2 set in docs/devops/deployment.md. The pre-flight script (script/preflight.sh) checks required top-level keys and the retention floor; full per-field validation hardens with later slices.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "hotel",
+    "times",
+    "roomTypes",
+    "ratePlans",
+    "stayPolicies",
+    "chargeItems",
+    "taxAndFeeRules",
+    "backup"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "hotel": {
+      "type": "object",
+      "required": ["name", "propertyCode", "timezone", "currency"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "propertyCode": { "type": "string", "minLength": 1 },
+        "timezone": { "type": "string", "minLength": 1 },
+        "currency": { "type": "string", "minLength": 1 }
+      }
+    },
+    "times": {
+      "type": "object",
+      "required": ["checkIn", "checkOut", "businessDayStart"]
+    },
+    "roomTypes": {
+      "type": "array",
+      "minItems": 1
+    },
+    "ratePlans": {
+      "type": "array",
+      "minItems": 1
+    },
+    "stayPolicies": {
+      "type": "object",
+      "required": ["requiredGuestFields", "cancellationReasons", "noShowRule", "openBalanceCheckoutRule"]
+    },
+    "chargeItems": {
+      "type": "array",
+      "minItems": 1
+    },
+    "taxAndFeeRules": {
+      "type": "array"
+    },
+    "backup": {
+      "type": "object",
+      "required": ["schedule", "retentionDaysFloor"],
+      "properties": {
+        "schedule": { "type": "string", "minLength": 1 },
+        "retentionDaysFloor": {
+          "type": "integer",
+          "minimum": 30,
+          "description": "Never below the 30-backup floor in docs/operations/backup-dr.md section 3."
+        }
+      }
+    }
+  }
+}
