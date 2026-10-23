@@ -230,7 +230,17 @@ jobs:
           grep -q "E2E-CI-001" deploy/config/hotel.json
 
       - name: Validate the proxy configuration (fails fast on emerg-class faults)
-        run: docker run --rm -v "$PWD/deploy/nginx/nginx.conf:/etc/nginx/nginx.conf:ro" nginx:1.27-alpine nginx -t
+        # nginx -t resolves upstream hostnames at config-test time;
+        # the loopback stubs satisfy resolution (reachability is
+        # proven later by the loop itself through the real network).
+        run: >
+          docker run --rm
+          -v "$PWD/deploy/nginx/nginx.conf:/etc/nginx/nginx.conf:ro"
+          --add-host reservations:127.0.0.1 --add-host rates:127.0.0.1
+          --add-host reporting:127.0.0.1 --add-host stay:127.0.0.1
+          --add-host rooms:127.0.0.1 --add-host guests:127.0.0.1
+          --add-host billing:127.0.0.1 --add-host admin:127.0.0.1
+          nginx:1.27-alpine nginx -t
 
       - name: Pre-flight gate (fails closed on default secrets)
         run: script/preflight.sh --config deploy/config/hotel.json
