@@ -183,7 +183,7 @@ sync in the same change.
 
 The `agentic-template/` starter above stays as the in-tree design
 record; `template/` is the installable artefact (its
-`docs/agentic-template/extraction-plan.md` records the extraction).
+`agentic-template/extraction-plan.md` records the extraction).
 
 ## Other existing docs
 
