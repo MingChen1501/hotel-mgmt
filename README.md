@@ -1,7 +1,11 @@
 # hotel-mgmt
 
-Hotel-management project scaffold with agentic-coding workflow
-(roles, spec gate, review/merge flow). No product code yet.
+Hotel-management project with agentic-coding workflow
+(roles, spec gate, review/merge flow). The walking skeleton is
+merged: 8 services (Go on Reservations, Rates, Reporting;
+Node.js/TypeScript on Stay, Rooms, Guests, Admin; Java 21 Spring
+Boot on Billing), each with contract tests, migrations, and a
+`Dockerfile`, plus the single-host install baseline in `deploy/`.
 
 - Agent rules: `AGENTS.md` (normative role rules: `docs/ao-rules.md`).
 - Document index: `docs/README.md`.
@@ -23,5 +27,6 @@ Delivery is issue-based on GitHub (origin
 `https://github.com/MingChen1501/hotel-mgmt.git`): GitHub issues are
 the task source, issue/PR comments are the external communication
 channel, and work lands via branch + PR with squash merge on green
-CI. GitHub Actions CI runs once the stack lands. Conventions:
+CI. Path-aware GitHub Actions CI (`.github/workflows/ci.yml`)
+runs per-stack checks on every PR and push to master. Conventions:
 `docs/project/issue-conventions.md`; role rules: `docs/ao-rules.md`.
