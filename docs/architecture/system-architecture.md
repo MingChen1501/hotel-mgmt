@@ -1,9 +1,10 @@
 # System architecture — single-property on-premise deployment
 
-Status: active (proposed architecture; ADR-0001 still awaits owner
-acceptance). Owned by `architect`. The deployable topology for one
-MVP installation. Module responsibilities live in
-`docs/architecture/hld.md`; this document adds the runtime shape only.
+Status: active (accepted direction per ADR-0001, accepted
+2026-10-23; outlines, not build detail). Owned by `architect`. The
+deployable topology for one MVP installation. Module responsibilities
+live in `docs/architecture/hld.md`; this document adds the runtime
+shape only.
 
 ## 1. Deployable topology (one property, one on-premise unit)
 
@@ -25,8 +26,9 @@ keep working without internet (`NFR-AVL-1`):
   (proposed) runtime (primary mapping: Node.js × 4, Go × 3,
   Spring Boot Java × 1 on Billing —
   `docs/architecture/candidate-architectures.md` section 8).
-- Database host(s): one shared database engine (proposed
-  default PostgreSQL; MySQL is the named alternative) holding
+- Database host(s): one shared database engine (accepted
+  default PostgreSQL per ADR-0001, accepted 2026-10-23; MySQL stays
+  the named fallback) holding
   one dedicated schema per module; modules connect only to
   their own schema.
 - Monitoring: Prometheus (scrapes module `/healthz` +
@@ -55,9 +57,8 @@ Placement variants (one topology, two placements):
   host 2 — database engine + backup target; optional host 3 —
   remaining modules); same components, same contracts, only
   placement differs. Cluster plumbing is plain containers via
-  Ansible by default; mini-K8s (k3s-class) only if the owner
-  confirms it (open question OQ-C6 in
-  `docs/architecture/candidate-architectures.md`).
+  Ansible by default; mini-K8s (k3s-class) only with a written reason
+  per accepted ADR-0001 (accepted 2026-10-23).
 
 Portability rules (no single-box assumption anywhere):
 
@@ -96,8 +97,8 @@ node of the small-cluster variant carries the same minimum.
 
 ## 3. Per-module resource budget (single 2*4*50 host)
 
-Planning estimates (`proposed`, to be validated by measurement
-once the stack choice is implemented). All figures are steady
+Planning estimates (to be validated by measurement through the OQ-C12
+spike now that the stack direction is chosen). All figures are steady
 state per component on the default single host:
 
 | Component | RAM | vCPU share | Disk | Note |

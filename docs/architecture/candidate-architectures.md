@@ -718,5 +718,19 @@ wrong via the OQ-C12 spike; it is not required by this analysis.
 
 ADR-0001 stays `proposed`; this analysis advises only.
 
+## 11. Supersede note (ADR-0001 accepted 2026-10-23)
+
+ADR-0001 (`docs/architecture/decisions/adr-0001-monorepo-polyglot.md`)
+was accepted on 2026-10-23 (recorded on issue #28 and in
+`docs/project/decision-log.md` D-7). The "ADR-0001 stays `proposed`"
+and "nothing decided" lines kept in this document (the header, the
+envelope note, and the section 8 / section 10 guards) are therefore
+spent: they are preserved as the historical options record and are not
+re-decided here. The accepted direction — monorepo polyglot with the
+section 8 primary mapping, shared PostgreSQL engine (MySQL as fallback),
+no Kafka, no Redis day-one, single 2*4*50 host default with
+small-cluster variant — is authoritative in the accepted ADR, and
+nothing in this document reopens it.
+
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-107

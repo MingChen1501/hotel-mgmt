@@ -1,10 +1,10 @@
 # Error handling — envelope and conflict semantics
 
-Status: active (proposed architecture; ADR-0001 still awaits owner
-acceptance). Owned by `architect`. Outline only; implementation and
-per-service error catalogues follow later. All messages are
-user-visible strings and therefore come from the message catalogue
-(`NFR-I18N-1`).
+Status: active (accepted direction per ADR-0001, accepted
+2026-10-23; outlines, not build detail). Owned by `architect`.
+Outline only; implementation and per-service error catalogues follow
+later. All messages are user-visible strings and therefore come from
+the message catalogue (`NFR-I18N-1`).
 
 ## 1. Error envelope
 

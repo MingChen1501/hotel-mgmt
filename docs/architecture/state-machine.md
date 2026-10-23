@@ -1,7 +1,7 @@
 # State machines — booking and room
 
-Status: active (proposed architecture; ADR-0001 still awaits owner
-acceptance). Owned by `architect`. Lifecycle states only; the fixed
+Status: active (accepted direction per ADR-0001, accepted
+2026-10-23). Owned by `architect`. Lifecycle states only; the fixed
 lifecycle order is not configurable per hotel (requirements
 section 3.2). All transitions record actor and timestamp
 (`NFR-AUD-1`).
