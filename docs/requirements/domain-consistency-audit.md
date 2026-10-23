@@ -323,20 +323,27 @@ requirements-wording impact once decided.
 
 ## 7. Fix list (follow-up issues; no doc changed here)
 
-| ID | Fix | Target doc(s) | From |
-|---|---|---|---|
-| F-1 | Correct the traceability summary to 43 MVP stories / 40 capabilities / 43 FRs | user-stories.md | C-1 |
-| F-2 | Renumber requirements open questions to canonical PRD OQ-1..OQ-7 (section 5) and repoint NFR-RET-1 | mvp-requirements.md | C-2, C-7 |
-| F-3 | Confirm decision ownership: `product-owner` decides, `business-analyst` words the impact | mvp-scope.md / prd.md / mvp-requirements.md headers | C-3 |
-| F-4 | Reconcile PRD "not yet targeted" with NFR-PERF-1/2 figures (initial bounds vs provisional) | prd.md and/or mvp-requirements.md | C-4 |
-| F-5 | Delete "or bed" from NFR-CON-1 | mvp-requirements.md | C-5 |
-| F-6 | Reword FR-BIL-4, the scope invoice row, and US-BIL-4 to folio/invoice/receipt (T-3) | all three docs | C-6 |
-| F-7 | State the owner/manager division for room inventory (FR-ADM-3 vs FR-RMS-4) and align FR-ADM-2 | mvp-requirements.md | C-8 |
-| F-8 | State one shared check-in/check-out-times setting (FR-ADM-4 vs FR-CUS-2) | mvp-requirements.md | C-9 |
-| F-9 | Assign waitlist to a roadmap horizon | roadmap.md | G-1 |
-| F-10 | Note OQ-6/OQ-7 requirements impact (or explicit no-impact) | mvp-requirements.md | G-2 |
-| F-11 | Mark the Later-story section as a non-exhaustive sample | user-stories.md | G-3 |
-| F-12 | Apply terminology decisions T-1, T-3, T-5, T-6, T-8 to the flagged lines | scope, PRD, stories, requirements | T-1..T-8 |
+Status annotations (added after the round-3 re-check): this audit
+remains a historical record — the `file:line` citations in
+section 3 are frozen pre-fix and are left untouched even where the
+cited text has since moved or been reworded. The Status column
+records whether each follow-up has landed in its target doc(s) or
+remains open for a follow-up issue.
+
+| ID | Fix | Target doc(s) | From | Status |
+|---|---|---|---|---|
+| F-1 | Correct the traceability summary to 43 MVP stories / 40 capabilities / 43 FRs | user-stories.md | C-1 | Landed (`user-stories.md:321`) |
+| F-2 | Renumber requirements open questions to canonical PRD OQ-1..OQ-7 (section 5) and repoint NFR-RET-1 | mvp-requirements.md | C-2, C-7 | Landed (requirements section 5 matches PRD numbering; NFR-RET-1 points at OQ-4) |
+| F-3 | Confirm decision ownership: `product-owner` decides, `business-analyst` words the impact | mvp-scope.md / prd.md / mvp-requirements.md headers | C-3 | Landed (all three headers state it: scope `:4` + `:237`, PRD `:4` + `:308`, requirements section 5 head) |
+| F-4 | Reconcile PRD "not yet targeted" with NFR-PERF-1/2 figures (initial bounds vs provisional) | prd.md and/or mvp-requirements.md | C-4 | Landed (PRD `:259` records durations against NFR-PERF-1 as initial bounds for trial validation) |
+| F-5 | Delete "or bed" from NFR-CON-1 | mvp-requirements.md | C-5 | Landed ("or bed" gone; the room is the sellable unit) |
+| F-6 | Reword FR-BIL-4, the scope invoice row, and US-BIL-4 to folio/invoice/receipt (T-3) | all three docs | C-6 | Landed (requirements FR-BIL-4, scope `:138`, stories US-BIL-4 all use folio/invoice/receipt) |
+| F-7 | State the owner/manager division for room inventory (FR-ADM-3 vs FR-RMS-4) and align FR-ADM-2 | mvp-requirements.md | C-8 | Landed (FR-ADM-2 states the inventory is co-editable with no primary) |
+| F-8 | State one shared check-in/check-out-times setting (FR-ADM-4 vs FR-CUS-2) | mvp-requirements.md | C-9 | Landed (FR-ADM-4 states a single shared setting co-editable under FR-CUS-2) |
+| F-9 | Assign waitlist to a roadmap horizon | roadmap.md | G-1 | Landed (waitlist listed under Horizon 3, `roadmap.md:110`) |
+| F-10 | Note OQ-6/OQ-7 requirements impact (or explicit no-impact) | mvp-requirements.md | G-2 | Landed (requirements `:585-586` note OQ-6/OQ-7 as product-owned with no requirements wording at stake) |
+| F-11 | Mark the Later-story section as a non-exhaustive sample | user-stories.md | G-3 | Landed (`user-stories.md:283-285` state the section is a non-exhaustive sample) |
+| F-12 | Apply terminology decisions T-1, T-3, T-5, T-6, T-8 to the flagged lines | scope, PRD, stories, requirements | T-1..T-8 | Landed (all flagged normative lines converged; "extra items" in scope `:136` and "billable extras" in personas `:126` remain only as informal prose shorthand, which T-5 permits) |
 
 ## 8. Acceptance-criteria mapping (issue #41)
 

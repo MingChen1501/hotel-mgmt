@@ -306,7 +306,9 @@ sequenceDiagram
 
 Rooms walk vacant-dirty to clean to inspected before they are
 assignable; the handoff with the front desk is drawn in both
-directions.
+directions. `HK` is not a fourth sign-in role: it denotes staff
+signed in under one of the three roles (`FR-ADM-2` / `BR-35` /
+`NFR-SEC-1`) acting in a housekeeping capacity.
 
 - Preconditions: rooms exist in the inventory with live states visible.
 - Postconditions: cleaned rooms advance to inspected and are offered for check-in assignment; rooms needing work appear in the housekeeping report.
@@ -315,7 +317,7 @@ directions.
 sequenceDiagram
     participant Desk as Front-desk staff
     participant Rooms as Room inventory
-    participant HK as Housekeeping staff
+    participant HK as Staff in housekeeping capacity
     Desk->>Rooms: Check-out or room move releases room as vacant and dirty [FR-FDK-2, FR-FDK-3]
     Rooms-->>HK: Dirty rooms visible in housekeeping report [FR-RPT-4]
     HK->>Rooms: Mark room clean when work completes [FR-RMS-2]
