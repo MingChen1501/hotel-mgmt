@@ -1,7 +1,8 @@
 # Decision log — decisions taken so far
 
 Status: active. Decision list for the hotel-mgmt MVP, owned by
-`release-manager` (Closes #63). Each entry records a decision the
+`product-owner` (Closes #63), with `release-manager` input on
+deployment/operations matters. Each entry records a decision the
 owner has already taken; rationale and pointers live in the linked
 record. New decisions are appended here and, where architectural,
 recorded as ADRs under `docs/architecture/decisions/`.
@@ -20,5 +21,10 @@ Dates above are the owner-approved order date from issue #63 (spec
 batch 2), not project milestones — the plan itself
 (`docs/project/plan.md`) carries no dates.
 
-<!-- ao-role: release-manager -->
-Role: release-manager · AO session hotel-mgmt-79
+Supersede note (issue #91, 2026-10-23): D-2 is superseded by D-7
+— ADR-0001 was accepted 2026-10-23 (owner acceptance "Option A"
+on #28). The D-2 entry above is preserved as history; the freeze
+it records no longer applies. (Append-only note; no rewrite.)
+
+<!-- ao-role: product-owner -->
+Role: product-owner · AO session hotel-mgmt-129

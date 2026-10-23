@@ -16,6 +16,12 @@ roadmap, personas (`docs/product/personas.md`), and user stories
 (`docs/product/user-stories.md`) are the corrective step that comes
 first.
 
+Superseded 2026-10-23 (issue #91): ADR-0001 was accepted (owner
+acceptance "Option A" on #28, recorded as D-7 in
+`docs/project/decision-log.md`). The freeze note above is historical
+and no longer applies — architecture work proceeds under the accepted
+direction. (Append-only note; the original wording is preserved.)
+
 ## Horizon 1 — MVP: the daily front-desk loop end to end
 
 Outcome: one small hotel (under 50 rooms, one building, one
@@ -60,8 +66,9 @@ isolation.
 Dependencies before implementation starts on each slice: the
 requiring specs are written and marked `active` in
 `docs/README.md`, and the `spec-reviewer` gate verdict is PASS
-(see the `spec-gate` skill). Architecture work stays frozen
-until the product specs in this corrective step are active.
+(see the `spec-gate` skill). The architecture direction is decided
+(ADR-0001 accepted 2026-10-23); slices proceed through the spec
+gate under that direction.
 
 ## Horizon 2 — Next: depth in payments, reporting, and per-hotel workflow
 
@@ -112,9 +119,11 @@ scope, sections 4–5; order within this horizon is not decided):
 Dependencies: Horizon 2 outcomes hold; multi-property work
 additionally depends on per-hotel customisation records from
 MVP operation being available as design input (scope,
-section 2), and on the frozen architecture decision being
-revisited and accepted by the owner before any chain
-implementation merges.
+section 2). The former "frozen architecture decision revisited
+and accepted" precondition is satisfied by the accepted
+ADR-0001 (2026-10-23, D-7) — no fresh revisit is required;
+chain implementation itself stays out of MVP scope and needs
+its own issue and slice before any chain work merges.
 
 ## Explicit non-commitments
 
@@ -132,4 +141,4 @@ implementation merges.
   section 5; PRD non-goals, section 8).
 
 <!-- ao-role: product-owner -->
-Role: product-owner · AO session hotel-mgmt-38
+Role: product-owner · AO session hotel-mgmt-129

@@ -7,8 +7,10 @@ is in one of the tables — no orphans, no dead links. All content is
 English.
 
 The product scope, the PRD, and the MVP requirements exist (their rows
-are marked active below). The stack and architecture are still undecided, so the
-remaining spec groups below stay stubs. They flip to `active` through
+are marked active below). The stack direction is decided — ADR-0001
+(monorepo polyglot) was accepted 2026-10-23 — and the Architecture and
+Technical rows below are active outlines. The remaining spec groups
+below stay stubs. They flip to `active` through
 the normal spec-gated flow (see the `spec-gate` skill) as the owner
 scopes further slices. Do not invent hotel product requirements to
 fill them early.
