@@ -56,6 +56,9 @@ pass() { echo "e2e: PASS: $1"; }
 
 # POST one contract operation through the proxy; prints the response
 # body on success, fails on transport errors or envelope refusals.
+# --noproxy: the desk entry is always the on-premise host itself
+# (runbook.md section 4 — the desk works offline), so proxy
+# environment variables must never divert these loopback calls.
 api() {
   local contract="$1" operation="$2" payload="$3" token="${4:-}"
   local auth=()
@@ -64,7 +67,7 @@ api() {
   fi
   local tmp http_code body
   tmp="$(mktemp)"
-  http_code="$(curl -sS --max-time 15 -o "$tmp" -w '%{http_code}' -X POST "$BASE_URL/v1/$contract/$operation" \
+  http_code="$(curl -sS --noproxy '*' --max-time 15 -o "$tmp" -w '%{http_code}' -X POST "$BASE_URL/v1/$contract/$operation" \
     -H "Content-Type: application/json" "${auth[@]}" -d "$payload" 2>/dev/null)" \
     || { echo "e2e: FAIL: POST /v1/$contract/$operation unreachable." >&2; rm -f "$tmp"; return 1; }
   body="$(cat "$tmp")"
@@ -126,13 +129,19 @@ fi
 step "wait for every module through the proxy"
 for module in reservations rates reporting stay rooms guests billing admin; do
   for _ in $(seq 1 24); do
-    if curl -fsS --max-time 5 "$BASE_URL/v1/$module/healthz" >/dev/null 2>&1; then
+    if curl -fsS --noproxy '*' --max-time 5 "$BASE_URL/v1/$module/healthz" >/dev/null 2>&1; then
       break
     fi
     sleep 5
   done
-  curl -fsS --max-time 10 "$BASE_URL/v1/$module/healthz" >/dev/null \
-    || { echo "e2e: FAIL: $module never answered through the proxy." >&2; teardown; exit 1; }
+  if ! curl -fsS --noproxy '*' --max-time 10 "$BASE_URL/v1/$module/healthz" >/dev/null; then
+    echo "e2e: FAIL: $module never answered through the proxy." >&2
+    echo "e2e: --- compose state ---" >&2
+    "${COMPOSE[@]}" ps >&2 || true
+    echo "e2e: --- proxy log tail ---" >&2
+    "${COMPOSE[@]}" logs --tail=50 proxy >&2 || true
+    teardown; exit 1
+  fi
   pass "$module answers through the proxy."
 done
 
@@ -227,7 +236,7 @@ step "re-verify the desk after the drill"
 REGET_RESP="$(api reservations GetReservation "{\"reservationRef\": \"$REF\"}" "$TOKEN")" || { teardown; exit 1; }
 [[ "$(field state "$REGET_RESP")" == "confirmed" ]] || { echo "e2e: FAIL: booking lost after drill." >&2; teardown; exit 1; }
 for module in reservations rates rooms admin; do
-  curl -fsS --max-time 10 "$BASE_URL/v1/$module/healthz" >/dev/null \
+  curl -fsS --noproxy '*' --max-time 10 "$BASE_URL/v1/$module/healthz" >/dev/null \
     || { echo "e2e: FAIL: $module unhealthy after drill." >&2; teardown; exit 1; }
 done
 pass "booking $REF still confirmed; desk modules healthy after the drill."

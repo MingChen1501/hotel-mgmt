@@ -50,7 +50,9 @@ newest_verified_backup() {
 health_check() {
   local base_url="$1" ok=0 module
   for module in reservations rates reporting stay rooms guests billing admin; do
-    if ! curl -fsS --max-time 10 "$base_url/v1/$module/healthz" >/dev/null 2>&1; then
+    # --noproxy: the desk entry is the on-premise host itself, never
+    # a configured egress proxy (runbook.md section 4).
+    if ! curl -fsS --noproxy '*' --max-time 10 "$base_url/v1/$module/healthz" >/dev/null 2>&1; then
       echo "restore: health check failed for $module." >&2
       ok=1
     fi
