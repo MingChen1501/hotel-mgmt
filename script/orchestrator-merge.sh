@@ -17,6 +17,12 @@
 #   - the PR carries exactly one risk label and it is not
 #     risk-high/risk-very-high (owner approval gate: the owner merges
 #     such PRs manually, this script has no override),
+#   - a reviewer APPROVE COMMENT quoting the exact PR head SHA exists
+#     on the PR, and no CHANGES_REQUESTED COMMENT quotes that head
+#     (review gate: reviewers quote the head they reviewed — see the
+#     orchestrator skill "Review flow"; verdicts on older heads are
+#     stale and do not count; a head carrying both verdicts is refused
+#     — the blocking finding wins),
 #   - every reported check is successful or skipped as not applicable (a
 #     PR with genuinely no checks merges; fail/failed, pending, and
 #     cancelled checks still block the merge; skipping/SKIPPED checks
@@ -78,7 +84,7 @@ done
 
 require_orchestrator "merge"
 
-pr_out="$(gh pr view "${pr}" -R "${REPO}" --json number,state,url,title,labels,headRefName,baseRefName 2>&1)" || {
+pr_out="$(gh pr view "${pr}" -R "${REPO}" --json number,state,url,title,labels,headRefName,headRefOid,baseRefName 2>&1)" || {
   if printf '%s' "${pr_out}" | grep -qiE "could not resolve|not found|no pull requests|404"; then
     echo "error: PR #${pr} not found in ${REPO}" >&2
   else
@@ -94,6 +100,7 @@ labels="$(printf '%s' "${pr_json}" | jq -r '[.labels[].name] | join(", ")')"
 risk_labels="$(printf '%s' "${pr_json}" | jq -r '[.labels[].name | select(startswith("risk-"))] | join(" ")')"
 risk_count="$(printf '%s' "${pr_json}" | jq -r '[.labels[].name | select(startswith("risk-"))] | length')"
 head_branch="$(printf '%s' "${pr_json}" | jq -r '.headRefName')"
+head_oid="$(printf '%s' "${pr_json}" | jq -r '.headRefOid // empty')"
 base_branch="$(printf '%s' "${pr_json}" | jq -r '.baseRefName')"
 
 if [[ "${state}" != "OPEN" ]]; then
@@ -115,6 +122,35 @@ echo "PR:      #${pr} ${title}"
 echo "URL:     ${url}"
 echo "State:   ${state}"
 echo "Labels:  ${labels}"
+echo "Head:    ${head_oid:-unknown} (${head_branch})"
+
+# Review gate: the exact head must carry a reviewer APPROVE COMMENT.
+# A verdict counts only when its comment body names the verdict
+# (APPROVE / CHANGES_REQUESTED) and quotes the exact head SHA (full
+# or short form): verdicts on older heads are stale and do not count.
+# Any CHANGES_REQUESTED quoting the exact head refuses the merge —
+# the blocking finding wins, even alongside an APPROVE. Fail closed:
+# an unreadable head or comment list refuses too.
+if [[ -z "${head_oid:-}" ]]; then
+  echo "error: refusing to merge: cannot determine the head SHA of PR #${pr}" >&2
+  exit 1
+fi
+comments_out="$(gh pr view "${pr}" -R "${REPO}" --json comments 2>&1 || true)"
+if ! review_scan="$(printf '%s' "${comments_out}" | jq -e --arg head "${head_oid}" '(.comments // []) | map(.body // "") as $bodies | def refs_head: ascii_downcase | [scan("[0-9a-f]{7,40}")] | map(. as $tok | select($head | startswith($tok))) | length > 0; {approve: ([$bodies[] | select(test("(?i)\\bapprove\\b") and refs_head)] | length), changes: ([$bodies[] | select(test("(?i)\\bchanges_requested\\b") and refs_head)] | length)}' 2>/dev/null)"; then
+  echo "error: refusing to merge: cannot determine review status for PR #${pr}: $(printf '%s' "${comments_out}" | head -n 1)" >&2
+  exit 1
+fi
+approve_count="$(printf '%s' "${review_scan}" | jq -r '.approve')"
+changes_count="$(printf '%s' "${review_scan}" | jq -r '.changes')"
+if [[ "${changes_count}" -gt 0 ]]; then
+  echo "error: refusing to merge: PR #${pr} head ${head_oid} carries a reviewer CHANGES_REQUESTED verdict — route the findings to the responsible worker." >&2
+  exit 1
+fi
+if [[ "${approve_count}" -eq 0 ]]; then
+  echo "error: refusing to merge: PR #${pr} head ${head_oid} has no reviewer APPROVE COMMENT quoting it (verdicts on older heads are stale)." >&2
+  exit 1
+fi
+echo "Review:  APPROVE on head ${head_oid} (${approve_count} verdict comment(s); no CHANGES_REQUESTED on head)"
 
 # CI gate: `gh pr checks` exits non-zero both when checks fail and when
 # no checks exist, so the exit code alone proves nothing. Parse the JSON:

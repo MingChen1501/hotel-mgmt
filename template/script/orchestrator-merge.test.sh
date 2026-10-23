@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Regression test: orchestrator-merge.sh treats `skipping`/SKIPPED checks
 # as non-blocking (path-aware CI marks inapplicable jobs as skipped),
-# while fail/failed, pending, and cancelled checks still block the merge.
+# while fail/failed, pending, and cancelled checks still block the merge;
+# and it enforces the review gate (a reviewer APPROVE COMMENT quoting
+# the exact PR head SHA, with no CHANGES_REQUESTED quoting that head).
 #
 # Runs the wrapper with stubbed `gh`/`ao` on PATH plus a temporary marker
 # directory, so no network, live session, or real PR is needed. Every case
@@ -38,6 +40,12 @@ TEST_PROJECT="$(grep '^PROJECT=' "${SCRIPT_UNDER_TEST}" | cut -d'"' -f2)"
 export TEST_PROJECT
 export AO_SESSION_ID="test-session"
 
+# Fixed head SHA for every PR fixture (40 lowercase hex). Verdict
+# comments quote it in short (abcdef1) or full form; the stale
+# fixture quotes an unrelated SHA instead.
+TEST_HEAD="abcdef1234567890abcdef1234567890abcdef12"
+export TEST_HEAD
+
 mkdir -p "${work}/bin"
 cat >"${work}/bin/ao" <<'EOF'
 #!/usr/bin/env bash
@@ -47,9 +55,7 @@ EOF
 cat >"${work}/bin/gh" <<'EOF'
 #!/usr/bin/env bash
 if [[ "$1" == "pr" && "$2" == "view" ]]; then
-  cat <<'JSON'
-{"number":999,"state":"OPEN","url":"https://example.invalid/999","title":"Test PR","labels":[{"name":"chore"},{"name":"risk-medium"}],"headRefName":"test-branch","baseRefName":"master"}
-JSON
+  cat "${TEST_PR_JSON}"
 elif [[ "$1" == "pr" && "$2" == "checks" ]]; then
   cat "${TEST_CHECKS_JSON}"
 elif [[ "$1" == "pr" && "$2" == "list" ]]; then
@@ -62,13 +68,25 @@ EOF
 chmod +x "${work}/bin/ao" "${work}/bin/gh"
 export PATH="${work}/bin:${PATH}"
 
+# Build the stubbed `gh pr view` payload: an OPEN risk-medium PR at
+# TEST_HEAD carrying the given comments JSON array.
+make_pr_json() {
+  jq -n --argjson comments "$1" --arg head "${TEST_HEAD}" \
+    '{number:999,state:"OPEN",url:"https://example.invalid/999",title:"Test PR",labels:[{name:"chore"},{name:"risk-medium"}],headRefName:"test-branch",headRefOid:$head,baseRefName:"master",comments:$comments}'
+}
+
+GREEN_CHECKS='[{"bucket":"pass","name":"ci","state":"SUCCESS"},{"bucket":"skipping","name":"go-build","state":"SKIPPED"}]'
+APPROVE_SHORT='[{"body":"APPROVE — reviewed head abcdef1: diff scoped, checks green. Role: dev-peer-review"}]'
+APPROVE_FULL='[{"body":"APPROVE — reviewed head abcdef1234567890abcdef1234567890abcdef12: diff scoped, checks green. Role: dev-peer-review"}]'
+
 pass=0
 fail=0
 run_case() {
-  local name="$1" checks_json="$2" expect="$3" # expect: merge | refuse
-  local checks_file="${work}/checks.json"
+  local name="$1" comments_json="$2" checks_json="$3" expect="$4" # expect: merge | refuse
+  local pr_file="${work}/pr.json" checks_file="${work}/checks.json"
+  make_pr_json "${comments_json}" >"${pr_file}"
   printf '%s' "${checks_json}" >"${checks_file}"
-  export TEST_CHECKS_JSON="${checks_file}"
+  export TEST_PR_JSON="${pr_file}" TEST_CHECKS_JSON="${checks_file}"
   local out status=0
   if out="$(cd "${work}" && bash "${SCRIPT_UNDER_TEST}" 999 --dry-run 2>&1)"; then
     status=0
@@ -90,21 +108,55 @@ run_case() {
   fi
 }
 
-# Mirrors docs-only PR 123: 2 pass + 6 skipped -> merges.
+# Mirrors docs-only PR 123: 2 pass + 6 skipped -> merges (with an
+# APPROVE on the head, so the merge decision rests on the checks).
 run_case "pass+skip" \
+  "${APPROVE_SHORT}" \
   '[{"bucket":"pass","name":"changes","state":"SUCCESS"},{"bucket":"pass","name":"ci","state":"SUCCESS"},{"bucket":"skipping","name":"go-build","state":"SKIPPED"},{"bucket":"skipping","name":"node-build","state":"SKIPPED"},{"bucket":"skipping","name":"billing-build","state":"SKIPPED"},{"bucket":"skipping","name":"contract-check","state":"SKIPPED"},{"bucket":"skipping","name":"migrate-check","state":"SKIPPED"},{"bucket":"skipping","name":"e2e-single-host","state":"SKIPPED"}]' \
   merge
 
 run_case "pass+fail" \
+  "${APPROVE_SHORT}" \
   '[{"bucket":"pass","name":"ci","state":"SUCCESS"},{"bucket":"fail","name":"go-build","state":"FAILED"}]' \
   refuse
 
 run_case "pass+pending" \
+  "${APPROVE_SHORT}" \
   '[{"bucket":"pass","name":"ci","state":"SUCCESS"},{"bucket":"pending","name":"go-build","state":"PENDING"}]' \
   refuse
 
 run_case "pass+cancelled" \
+  "${APPROVE_SHORT}" \
   '[{"bucket":"pass","name":"ci","state":"SUCCESS"},{"bucket":"cancelled","name":"go-build","state":"CANCELLED"}]' \
+  refuse
+
+# Review gate: head-with-APPROVE (short and full SHA) merges.
+run_case "head-with-approve-short" "${APPROVE_SHORT}" "${GREEN_CHECKS}" merge
+run_case "head-with-approve-full" "${APPROVE_FULL}" "${GREEN_CHECKS}" merge
+
+# Review gate: head-without-APPROVE refuses (only a SPEC-GATE note
+# quoting the head — no APPROVE verdict).
+run_case "head-without-approve" \
+  '[{"body":"SPEC-GATE PASS — head abcdef1 is T0 docs-only, no specs required. Role: spec-reviewer"}]' \
+  "${GREEN_CHECKS}" \
+  refuse
+
+# Review gate: a stale APPROVE quoting an older head refuses.
+run_case "stale-approve" \
+  '[{"body":"APPROVE — reviewed head deadbee9: diff scoped. Role: dev-peer-review"}]' \
+  "${GREEN_CHECKS}" \
+  refuse
+
+# Review gate: head-with-CHANGES_REQUESTED refuses.
+run_case "head-with-changes-requested" \
+  '[{"body":"CHANGES_REQUESTED — head abcdef1: blocker at demo:12. Role: dev-peer-review"}]' \
+  "${GREEN_CHECKS}" \
+  refuse
+
+# Review gate: CHANGES_REQUESTED wins over an APPROVE on the same head.
+run_case "approve-plus-changes-requested" \
+  '[{"body":"APPROVE — reviewed head abcdef1. Role: dev-peer-review"},{"body":"CHANGES_REQUESTED — head abcdef1: blocker at demo:12. Role: dev-peer-review"}]' \
+  "${GREEN_CHECKS}" \
   refuse
 
 echo "test result: ${pass} passed, ${fail} failed"

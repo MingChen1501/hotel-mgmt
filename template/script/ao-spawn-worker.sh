@@ -144,10 +144,15 @@ if [[ ! -f "${role_file}" ]]; then
   esac
 fi
 
-# Artefact signature: buffer work is signed business-analyst
-# (see .opencode/agents/buffer-worker.md); every other role signs itself.
+# Artefact signature: every session signs its artefacts with its own
+# role string — there is no hard-coded default for any class. The
+# buffer worker's *issues* name the content-owner role for the issue
+# (or `orchestrator` for process issues with no content owner), never
+# `business-analyst` by default (see
+# .opencode/agents/buffer-worker.md); that choice is made by the
+# buffer worker at filing time, so the spawn prompt states the rule
+# instead of resolving it here.
 sign_role="${role}"
-if [[ "${role_class}" == "buffer" ]]; then sign_role="business-analyst"; fi
 
 header="You are the ${role} session for {{PROJECT_NAME}} (role string: ${role}). Read AGENTS.md, ${role_file}, docs/ao-rules.md, and GitHub issue #${issue} first (gh issue view ${issue} -R ${REPO})."
 
@@ -176,7 +181,7 @@ Every PR body must contain: a Summary section, \"Closes #${issue}\", the Type se
     ;;
   review)
     body="Review-only session: review the PR opened for issue #${issue} (read-only diff; never edit code, never push, never open a PR).
-Post exactly one COMMENT verdict on that PR: APPROVE or CHANGES_REQUESTED, with findings by severity and file:line references, plus your role footer. Then end your turn. ${footer}"
+Post exactly one COMMENT verdict on that PR: APPROVE or CHANGES_REQUESTED, with findings by severity and file:line references, plus your role footer. Quote the exact PR head SHA you reviewed (from gh pr view <n> --json headRefOid) in the verdict — the merge gate only counts verdicts quoting the exact head, so a re-pushed head needs a fresh verdict. Then end your turn. ${footer}"
     ;;
   specgate)
     body="Spec-gate session: check the required specs for issue #${issue} exist, are active, and match the change (see the spec-gate skill).
@@ -190,7 +195,7 @@ Ship the specs on a branch ao/<session>/${issue}-<slug> (never the default branc
     body="Issue-filing session: the owner request is recorded in issue #${issue} above; read it for context, scope, and constraints.
 File one issue per small task (one worker = one PR downstream), each with context, scope, acceptance criteria, exactly one risk label, and an English title/body.
 Boundaries: do not implement, fix, review, merge, push code, or open PRs; no branch needed.
-Report the filed issue URLs with each scope and risk label, then end your turn. Sign artefacts with role string business-analyst. ${footer}"
+Report the filed issue URLs with each scope and risk label, then end your turn. Sign each filed issue with the content-owner role for the issue (or orchestrator for process issues with no content owner) via script/ao-role-footer.sh <that-role> \"\$AO_SESSION_ID\" — never business-analyst by default (see .opencode/agents/buffer-worker.md)."
     ;;
 esac
 

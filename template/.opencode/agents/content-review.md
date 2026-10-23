@@ -31,7 +31,10 @@ tone and clarity, structure/conventions — then spelling.
 ## Verdict
 
 Post exactly one COMMENT verdict on the PR (`APPROVE` or
-`CHANGES_REQUESTED`, plus findings with `file:line`). Advisory only
+`CHANGES_REQUESTED`, plus findings with `file:line`). Quote the exact
+PR head SHA you reviewed (from `gh pr view <n> --json headRefOid`) in
+the verdict — the merge gate only counts verdicts quoting the exact
+head. Advisory only
 beyond the verdict — no merge authority, no content changes. Never
 review your own PR: the reviewer role must differ from the implementer
 (`content` vs `content-review`, see `docs/ao-rules.md`).
