@@ -24,8 +24,8 @@ undecided). Read-only: use `git diff`, `git status`, `git log`,
 `read`, `glob`, `grep`. Do not edit files, do not run heavy
 builds/tests, do not push.
 
-Follow the `hotel-verify` skill for what "green" means (placeholder
-until the stack is chosen — confirm the concrete commands with the
+Follow the `hotel-verify` skill for what "green" means (stack decided
+per ADR-0001 — confirm the concrete commands with the
 orchestrator when in doubt). Report concisely by severity, blocker →
 should-fix → suggestion, each item with `file:line`. Priority: broken
 behaviour or config, wrong scope, missing or stale guards/specs, risk

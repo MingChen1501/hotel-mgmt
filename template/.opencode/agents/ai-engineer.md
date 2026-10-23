@@ -99,6 +99,13 @@ checks with the orchestrator). Details live there, not here.
   harness edit ships with its `template/` twin (and vice versa), with
   counts and payload lists updated (`docs/README.md` payload rows,
   `ONBOARDING.md` "what you get", installer `PAYLOAD`).
+- Carved out of the twin rule by design (intentional, not drift):
+  live-only project ops scripts (they implement project-specific
+  procedures and are not generic enough to twin) and template-only
+  installers (`template/script/install-cues.sh`,
+  `template/script/install-template.sh` — they exist only to install
+  the template into a new project). Future audits must not re-flag
+  these paths as missing twins.
 - New projects must stay generic: `template/` copies keep the four
   placeholders (`{{PROJECT_NAME}}`, `{{REPO_SLUG}}`,
   `{{DEFAULT_BRANCH}}`, `{{DOMAIN}}`) and no project-specific wording.

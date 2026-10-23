@@ -44,6 +44,12 @@ in-repo harness engineering (the paths listed in its role file). Other
 roles do not edit harness files; harness issues and spec gates for
 product/architecture content go through the owning role.
 
+Role fallback by design (not drift): there are intentionally no
+`dev.md` or `dev-takeover.md` agent files — at spawn time those roles
+fall back to the `worker` skill (see the "Role file" block in
+`script/ao-spawn-worker.sh`). Future audits must not re-flag these
+missing files.
+
 ## Spec gate (tiers T0–T4)
 
 Behavioural/architectural changes need specs written and `active`

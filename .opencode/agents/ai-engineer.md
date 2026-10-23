@@ -54,8 +54,8 @@ implement harness changes; you never touch product code.
 
 Follow the `worker` skill for branching, commits, PR mechanics, and
 reporting (one task = one branch = one PR). Follow the
-`hotel-verify` skill for what "green" means (placeholder until the
-stack is chosen — confirm the concrete checks with the orchestrator).
+`hotel-verify` skill for what "green" means (stack decided per
+ADR-0001 — confirm the concrete checks with the orchestrator).
 Details live there, not here.
 
 ## Reads
@@ -100,6 +100,15 @@ Details live there, not here.
   harness edit ships with its `template/` twin (and vice versa), with
   counts and payload lists updated (`docs/README.md` payload rows,
   `ONBOARDING.md` "what you get", installer `PAYLOAD`).
+- Carved out of the twin rule by design (intentional, not drift):
+  live-only hotel ops scripts (`script/backup.sh`,
+  `script/restore.sh`, `script/e2e-desk-loop.sh`,
+  `script/preflight.sh`, `script/publish-backup-report.sh` — they
+  implement hotel backup/restore/E2E procedures and are not generic)
+  and template-only installers (`template/script/install-cues.sh`,
+  `template/script/install-template.sh` — they exist only to install
+  the template into a new project). Future audits must not re-flag
+  these paths as missing twins.
 - New projects must stay generic: `template/` copies keep the four
   placeholders (`{{PROJECT_NAME}}`, `{{REPO_SLUG}}`,
   `{{DEFAULT_BRANCH}}`, `{{DOMAIN}}`) and no hotel-specific wording.

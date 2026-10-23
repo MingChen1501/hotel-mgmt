@@ -179,7 +179,7 @@ sync in the same change.
 | `template/.github/` | issue form, blank-issue config, PR template |
 | `template/docs/` | document index and taxonomy, role rules, conventions, starter group (extraction plan records the `template/` + AO-assets extraction) |
 | `template/config/ao-project.jsonc` | full AO project config template (pool rules, harness/model examples, reviewers, intake, `autoReview`, `workersRequestReview`); applied with `--config-json` |
-| `template/cues/` | 16 project-scoped rule cues (`name`/`date`/`supersedes` front-matter; newest cue wins) |
+| `template/cues/` | 18 project-scoped rule cues (`name`/`date`/`supersedes` front-matter; newest cue wins) |
 | `template/script/` | sanctioned wrappers plus `install-template.sh` (copy without overwrite unless `--force`, placeholder substitution, `--dry-run`, idempotent, refuses non-git targets) and `install-cues.sh` (`--project <id> [--dry-run]`, idempotent, never duplicates) |
 
 The `agentic-template/` starter above stays as the in-tree design

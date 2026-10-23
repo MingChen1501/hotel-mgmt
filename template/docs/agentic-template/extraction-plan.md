@@ -97,9 +97,9 @@ object. The template therefore also ships:
 - `template/cues/*.md`: one file per rule cue with `name`, `date`,
   and `supersedes:` front-matter plus a one-line prompt body. The
   newest cue wins at runtime; older conflicting text is marked
-  superseded, never merged
-  (`native-review-broken-manual` 2026-10-16 supersedes
-  `publish-and-review` 2026-10-14 for review mechanics).
+  superseded, never merged (retired names such as
+  `publish-and-review` ship no file anymore; the replacement
+  `publish-scope` records the lineage in its `supersedes:` field).
 - `template/script/install-cues.sh --project <id> [--dry-run]`:
   validates front-matter, processes cues oldest-date-first, and per
   cue skips identical ones, skips differing ones explicitly (desktop

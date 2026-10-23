@@ -28,6 +28,15 @@ in-repo harness engineering (the paths listed in its role file). Other
 roles do not edit harness files; harness issues and spec gates for
 product/architecture content go through the owning role.
 
+Role fallback by design (not drift): there are intentionally no
+`.opencode/agents/dev.md`, `.opencode/agents/dev-takeover.md`, or
+`.opencode/agents/orchestrator.md` files.
+`script/ao-spawn-worker.sh` resolves `dev`/`dev-takeover` to the
+`worker` skill and every other file-less role (notably
+`orchestrator`) to the `orchestrator` skill — see the "Role file"
+block in the script. Future audits must not re-flag these missing
+files.
+
 ## Spec gate (tiers T0–T4)
 
 Behavioural/architectural changes need specs written and `active`
@@ -38,8 +47,9 @@ doc group.
 
 ## Commands (every task)
 
-- Verify: follow the `hotel-verify` skill (placeholder until the stack
-  is chosen); never open a PR while red.
+- Verify: follow the `hotel-verify` skill (stack decided per ADR-0001;
+  per-stack commands in `services/*/README.md`); never open a PR
+  while red.
 - Review the diff read-only before a PR (`dev-peer-review` /
   `content-review`).
 
