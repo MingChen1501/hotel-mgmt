@@ -51,7 +51,10 @@ installed): labels, cue import, AO project registration with the full
 | `cues/` | — (project-scoped, via `script/install-cues.sh`) | 16 rule cues with `name`/`date`/`supersedes` front-matter; newest cue wins on conflict |
 | `.opencode/agents/` | `.opencode/agents/` | 11 roles: orchestrator, product-owner, business-analyst, architect, qa-lead, release-manager, spec-reviewer, dev-peer-review, content, content-review, buffer-worker |
 | `.opencode/skills/orchestrator/` | same | Spawn/pool/review/merge rules |
-| `.opencode/skills/worker/` | same | Implementer rules |
+| `.opencode/skills/worker/` | same | Implementer rules + per-stack entry points |
+| `.opencode/skills/go-module/` | same | Go service workflow: commands, layout, contract checks, guards |
+| `.opencode/skills/node-module/` | same | Node.js service workflow: commands, layout, contract checks, guards |
+| `.opencode/skills/spring-module/` | same | Spring Boot service workflow: commands, layout, contract checks, guards |
 | `.opencode/skills/spec-gate/` | same | T0–T4 tiers + gate procedure |
 | `.opencode/skills/architecture/` | same | Audit method + spec layout |
 | `.opencode/skills/project-verify/` | same | Placeholder until the stack is chosen |
@@ -65,6 +68,7 @@ installed): labels, cue import, AO project registration with the full
 | `docs/project/issue-conventions.md` | same | Title+label convention |
 | `docs/agentic-template/` | same | `bootstrap`, `conventions`, `gate`, `roles`, `extraction-plan` |
 | `script/ao-role-footer.sh` | same | Role footer generator |
+| `script/contract-check.sh` | same | Contract-check gate stub (SKIP until contracts/ lands) |
 | `script/ao-spawn-worker.sh` | same | Only sanctioned spawn path |
 | `script/orchestrator-merge.sh` | same | Only sanctioned merge path |
 | `script/orchestrator-review.sh` | same | Sanctioned review-trigger path (legacy while native review is disabled) |

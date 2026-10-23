@@ -174,7 +174,7 @@ sync in the same change.
 | `template/README.md` | what the template is, prerequisites, quick start, payload table |
 | `template/ONBOARDING.md` | new-project runbook: install, labels, AO registration, reviewer mode, guardrails, checklist |
 | `template/AGENTS.md` | agent guide with `{{PROJECT_NAME}}`, `{{REPO_SLUG}}`, `{{DEFAULT_BRANCH}}`, `{{DOMAIN}}` placeholders, no project-specific rules |
-| `template/.opencode/` | 12 role files, 5 skills (`project-verify` replaces `hotel-verify`), commands, `opencode.jsonc` deny rules, `project-guard.ts` |
+| `template/.opencode/` | 12 role files, 8 skills (`project-verify` replaces `hotel-verify`; plus `go-module`, `node-module`, `spring-module`), commands, `opencode.jsonc` deny rules, `project-guard.ts` |
 | `template/.github/` | issue form, blank-issue config, PR template |
 | `template/docs/` | document index and taxonomy, role rules, conventions, starter group (extraction plan records the `template/` + AO-assets extraction) |
 | `template/config/ao-project.jsonc` | full AO project config template (pool rules, harness/model examples, reviewers, intake, `autoReview`, `workersRequestReview`); applied with `--config-json` |
