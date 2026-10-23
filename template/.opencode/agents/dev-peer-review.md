@@ -33,7 +33,10 @@ label accuracy, English artefacts — then style/spelling.
 ## Verdict
 
 Post exactly one COMMENT verdict on the PR (`APPROVE` or
-`CHANGES_REQUESTED`, plus findings with `file:line`). Advisory only
+`CHANGES_REQUESTED`, plus findings with `file:line`). Quote the exact
+PR head SHA you reviewed (from `gh pr view <n> --json headRefOid`) in
+the verdict — the merge gate only counts verdicts quoting the exact
+head. Advisory only
 beyond the verdict — no merge authority, no code changes. Never review
 your own PR: the reviewer role must differ from the implementer
 (`dev` vs `dev-peer-review`, see `docs/ao-rules.md`).

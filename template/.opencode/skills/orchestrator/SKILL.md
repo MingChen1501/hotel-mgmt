@@ -140,7 +140,11 @@ restate the list here — link it. Summary for orchestration use only.
   can never trigger — or re-trigger — a review of its own PR).
 - The reviewer posts the verdict as a **COMMENT** on the PR:
   `APPROVE` or `CHANGES_REQUESTED` in comment text, plus findings
-  by severity with `file:line`.
+  by severity with `file:line`. The verdict quotes the exact PR head
+  SHA it reviewed (short or full form from
+  `gh pr view <n> --json headRefOid`): the merge gate only counts
+  verdicts quoting the exact head, so a re-pushed head needs a fresh
+  verdict.
 - Merge gate: a reviewer COMMENT verdict of **APPROVE** + green CI +
   risk-low/risk-medium => the orchestrator merges autonomously with
   `script/orchestrator-merge.sh <n>` (squash merge, delete branch) and
@@ -168,6 +172,11 @@ restate the list here — link it. Summary for orchestration use only.
   The script still refuses on `fail`/`failed`, `pending`, or `cancelled`
   checks, and a PR with genuinely no checks merges. Never push directly
   to the default branch.
+- Merge only with a reviewer verdict on the exact head: the script
+  refuses a risk-low/risk-medium PR whose head SHA has no reviewer
+  APPROVE COMMENT quoting it, or where a CHANGES_REQUESTED COMMENT
+  quotes that head (the blocking finding wins, even alongside an
+  APPROVE). Verdicts on older heads are stale and do not count.
 - Stacked PRs keep their base branch alive until the child merges; do not delete
   a base branch that a child PR still targets.
 - risk-low / risk-medium: merge autonomously once CI green + review APPROVE,
