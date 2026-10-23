@@ -3,8 +3,10 @@
 Status: active. Testing approach for the hotel-mgmt MVP, owned by
 `qa-lead` (Closes #62). The requirements baseline is
 `docs/requirements/mvp-requirements.md` (43 FRs, 14 NFRs, business
-rules, data dictionary, use cases, sequences, audit). Implementation
-has not started and no test guards exist yet. This document sets only
+rules, data dictionary, use cases, sequences, audit). At the Closes
+#62 frame implementation had not started and no test guards existed
+yet; guards now fill slice by slice and the live filled count is the
+Coverage footer line in `traceability-matrix.md`. This document sets only
 the strategy frame: levels, entry/exit criteria per slice, and what is
 manual vs automated in the MVP. Detailed cases, data, plans, and
 reports come per slice later (`test-cases.md`, `test-data.md`,
@@ -175,8 +177,10 @@ Automated in the MVP (CI guards, once implementation starts):
   emitted domain events checked against `api-spec.md` section 2 in
   the per-module contract-check stage.
 
-Nothing is automated before implementation exists: this issue creates
-no guards, only the slots they will fill.
+At the Closes #62 frame nothing was automated before implementation
+existed: that frame created no guards, only the slots slices fill.
+Guards now fill slice by slice; the live filled count is the Coverage
+footer line in `traceability-matrix.md`.
 
 ## 5. Out of scope for this frame
 

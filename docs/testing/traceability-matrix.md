@@ -3,10 +3,14 @@
 Status: active. Guard-slot frame for the hotel-mgmt MVP, owned by
 `qa-lead` (Closes #62). Every FR (43) and NFR (14) from
 `docs/requirements/mvp-requirements.md` appears below with its
-required guard type. The guard column reads TBD on all rows:
-implementation slices fill it with the real guard reference (never
-invented here). No FR/NFR may be marked complete while its guard
-cell reads TBD. Levels L1–L5 are defined in `test-strategy.md`.
+required guard type. The guard column reads TBD except where slices
+have filled it with the real guard reference (never invented here).
+No FR/NFR may be marked complete while its guard cell reads TBD.
+The Coverage footer line below is the live count of filled rows.
+Levels L1–L5 are defined in `test-strategy.md`. LC contract coverage
+for touched seams is tracked via the per-module contract-check CI
+stage against `docs/technical/api-spec.md` section 2, not in per-row
+Guard cells (see strategy §LC and exit criterion §3.3).
 
 ## 1. Functional requirements (43)
 
