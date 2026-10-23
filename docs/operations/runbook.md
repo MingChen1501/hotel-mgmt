@@ -105,6 +105,12 @@ Call support the same day when any of these happen:
 - A failed upgrade that the delivery team cannot fix within the
   working day (rollback is in `docs/devops/deployment.md`,
   section 6).
+- A sign-in that says an identity is locked after 5 wrong secrets
+  (`NFR-SEC-2`): do not keep retrying. The owner or the manager
+  unlocks the locked identity, then the locked person signs in
+  again with the correct secret. If no owner or manager sign-in is
+  available, call support with the locked identity name and the
+  time of the last successful sign-in.
 - Anything that looks like wrong money figures (folio, invoice,
   or day-close totals that do not match).
 

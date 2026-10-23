@@ -11,9 +11,18 @@ by a non-technical owner is described in
 
 ## 1. Schedule (RPO 24 hours)
 
-- A full backup runs automatically every day (`NFR-BKP-1`: recovery
-  point objective at most 24 hours — after a failure the hotel loses
-  no more than one operating day of data).
+- Target schedule: one full backup every day (`NFR-BKP-1`:
+  recovery point objective at most 24 hours — after a failure the
+  hotel loses no more than one operating day of data).
+- The daily trigger is not wired yet: nothing executes the backup
+  `schedule` value in the per-hotel configuration set (no
+  cron/systemd entry, no scheduler), so backup runs are manual
+  `script/backup.sh` invocations and the script header scopes the
+  skeleton as mechanism-only. Wiring the trigger (ansible timer +
+  config `schedule` enforcement) is recorded as the open remainder
+  of milestone 3c in `docs/project/plan.md` — until that slice
+  lands, the daily schedule above is the target, not the
+  mechanism.
 - Target success rate: a scheduled backup completes successfully at
   least 6 days out of 7 (`NFR-BKP-1`).
 - The daily run keeps the desk usable while it executes; staff do

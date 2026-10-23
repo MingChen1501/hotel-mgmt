@@ -124,11 +124,11 @@ docs and plans, not gated specs.
 
 | Type | Path | Status | Owner | Purpose |
 |---|---|---|---|---|
-| CI/CD | `devops/ci-cd.md` | stub (not needed yet) | `release-manager` | pipeline stages, checks, and merge gates |
+| CI/CD | `devops/ci-cd.md` | active | `release-manager` | pipeline stages, checks, and merge gates (Closes #133) |
 | Deployment | `devops/deployment.md` | active | `release-manager` | deployment targets and procedures (Closes #63) |
 | Environment | `devops/environment.md` | stub (not needed yet) | `release-manager` | environment inventory and configuration |
 | Runbook | `operations/runbook.md` | active | `release-manager` | step-by-step operating procedures, fresh at merge time (Closes #63) |
-| Monitoring and alerting | `operations/monitoring-alerting.md` | stub (not needed yet) | `release-manager` | signals, dashboards, and alert routing |
+| Monitoring and alerting | `operations/monitoring-alerting.md` | stub (not needed yet) | `release-manager` | signals, dashboards, and alert routing — stub stays until the first exporter lands (ADR-0001 Prometheus + Grafana) |
 | Backup and DR | `operations/backup-dr.md` | active | `release-manager` | backup, restore, and disaster-recovery plan (Closes #63) |
 | Incident response | `operations/incident-response.md` | stub (not needed yet) | `release-manager` | incident roles, severity, and response flow |
 | Release notes | `release/release-notes.md` | stub (not needed yet) | `release-manager` | per-release change entries |
