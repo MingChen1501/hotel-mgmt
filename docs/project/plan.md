@@ -7,6 +7,13 @@ and exit signals, never calendar dates — no invented dates appear in
 this document. Scope content for each stage comes from the product
 and requirements specs; this plan orders the work only.
 
+Live board mirror: GitHub milestones (`.github/milestones.md`) mirror
+this plan milestone for milestone and are the machine-readable source
+of truth for gate state (3a/3b closed, 3c open). This plan states
+order and exit signals, never calendar dates; if the two drift, the
+milestones file carries the current state and this plan is updated to
+match.
+
 ## Milestones
 
 1. **Specs done.** The product picture (`docs/product/*`), the
@@ -27,21 +34,26 @@ and requirements specs; this plan orders the work only.
    on-premise installation (single-host default) lands in three
    ordered gates, so developers do not code until readiness is
    green:
-   - **3a. Readiness specs.** Contract needs
+   - **3a. Readiness specs — done.** Contract needs
      (`business-analyst`, #96), the LLD bundle (`architect`,
-     #97), and harness skills (`ai-engineer`, #98) are written
-     and merged. Exit signal: the three PRs (Closes #96, #97,
-     #98) are merged.
-   - **3b. Skeleton + per-stack CI.** The development skeleton
-     is built from the 3a specs with per-stack CI jobs (`dev`,
-     #99). Exit signal: a fresh checkout builds all modules
-     and the CI per-stack jobs are green.
-   - **3c. Desk loop E2E + backup.** The skeleton runs the desk
+     #97), and harness skills (`ai-engineer`, #98) were written
+     and merged (PR #102 Closes #96, PR #103 Closes #97, PR
+     #104 Closes #98). Exit signal met: the three PRs are
+     merged.
+   - **3b. Skeleton + per-stack CI — done.** The development
+     skeleton was built from the 3a specs with per-stack CI
+     jobs (`dev`, #99; merged PR #105 Closes #99). Exit signal
+     met: a fresh checkout builds all modules and the CI
+     per-stack jobs are green.
+   - **3c. Desk loop E2E + backup — open.** The skeleton runs the desk
      loop thinly end to end — book, check in, post a charge,
      check out — with daily backup and its success/failure
      report working, on the minimum host shape (2 vCPU / 4 GB
-     RAM / 50 GB disk per host). Exit signal: the loop runs on
-     the hotel LAN hardware with a verified backup.
+     RAM / 50 GB disk per host). Partial evidence landed:
+     single-host packaging and E2E proof (#118) and the desk
+     backup-report surface (#119). Exit signal still open: the
+     loop runs on the hotel LAN hardware with a verified
+     backup.
 4. **Modules.** The remaining MVP capabilities land slice by
    slice (reservations, rooms and housekeeping, rates, guests,
    billing, reporting, administration, per-hotel customisation),
@@ -64,15 +76,15 @@ ships).
 Development code (milestone 3b onward) starts only when every 3a
 exit signal is met — no coding until readiness is green:
 
-- [ ] Contract needs merged (`business-analyst`, Closes #96) —
-  the merged PR is the exit evidence.
-- [ ] LLD bundle merged (`architect`, Closes #97) — the merged
-  PR is the exit evidence.
-- [ ] Harness skills merged (`ai-engineer`, Closes #98) — the
+- [x] Contract needs merged (`business-analyst`, Closes #96, PR
+  #102) — the merged PR is the exit evidence.
+- [x] LLD bundle merged (`architect`, Closes #97, PR #103) — the
   merged PR is the exit evidence.
+- [x] Harness skills merged (`ai-engineer`, Closes #98, PR #104) —
+  the merged PR is the exit evidence.
 
 Each item links its gate issue above; the PR that closes the
 issue carries the exit signal.
 
-<!-- ao-role: release-manager -->
-Role: release-manager · AO session hotel-mgmt-133
+<!-- ao-role: product-owner -->
+Role: product-owner · AO session hotel-mgmt-184

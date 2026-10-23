@@ -5,7 +5,10 @@ Status: active. Product scope for the hotel-mgmt MVP, owned by
 model, personas, the market-parity feature map, success criteria, and
 open questions. It contains no requirements wording, no
 non-functional targets, no architecture, and no stack choice — those
-belong to their owning roles once the stack is decided.
+belong to their owning roles. The stack itself has since been
+decided (ADR-0001 accepted 2026-10-23, D-7 in
+`docs/project/decision-log.md`); stack and placement details live
+with their owning roles under that accepted direction.
 
 ## 1. Problem statement and targeting
 
@@ -257,4 +260,4 @@ slice before which it must be decided.
   both? (Decide before the first demo.)
 
 <!-- ao-role: product-owner -->
-Role: product-owner · AO session hotel-mgmt-8
+Role: product-owner · AO session hotel-mgmt-184
