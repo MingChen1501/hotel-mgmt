@@ -71,3 +71,138 @@ jobs:
             exit 1
           fi
           echo "No secrets-looking strings found."
+
+  go-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      matrix:
+        module: [reservations, rates, reporting]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: false
+
+      - name: Build
+        working-directory: services/${{ matrix.module }}
+        run: go build ./...
+
+      - name: Vet
+        working-directory: services/${{ matrix.module }}
+        run: go vet ./...
+
+      - name: Format check
+        working-directory: services/${{ matrix.module }}
+        run: |
+          out=$(gofmt -l .)
+          if [ -n "$out" ]; then
+            echo "Unformatted files:"
+            echo "$out"
+            exit 1
+          fi
+
+      - name: Test
+        working-directory: services/${{ matrix.module }}
+        run: go test ./...
+
+  node-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      matrix:
+        module: [stay, rooms, guests, admin]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: services/${{ matrix.module }}/package-lock.json
+
+      - name: Install
+        working-directory: services/${{ matrix.module }}
+        run: npm ci
+
+      - name: Build
+        working-directory: services/${{ matrix.module }}
+        run: npm run build
+
+      - name: Lint
+        working-directory: services/${{ matrix.module }}
+        run: npm run lint
+
+      - name: Test
+        working-directory: services/${{ matrix.module }}
+        run: npm test
+
+  billing-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Package (includes unit tests)
+        working-directory: services/billing
+        run: mvn -B package
+
+  contract-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Repo contract gate
+        run: script/contract-check.sh
+
+  migrate-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: hotel
+          POSTGRES_USER: hotel
+          POSTGRES_PASSWORD: hotel
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U hotel -d hotel"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGDATABASE: hotel
+      PGUSER: hotel
+      PGPASSWORD: hotel
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apply every module boot migration against scratch PostgreSQL
+        run: |
+          set -euo pipefail
+          for f in \
+            services/reservations/migrations/*.up.sql \
+            services/rates/migrations/*.up.sql \
+            services/reporting/migrations/*.up.sql \
+            services/stay/migrations/*.sql \
+            services/rooms/migrations/*.sql \
+            services/guests/migrations/*.sql \
+            services/admin/migrations/*.sql \
+            services/billing/src/main/resources/db/migration/V*.sql; do
+            echo "Applying $f"
+            psql -v ON_ERROR_STOP=1 -f "$f"
+          done
+          echo "All boot migrations applied."
