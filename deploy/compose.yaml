@@ -127,6 +127,12 @@ services:
     environment:
       PORT: "8088"
       DATABASE_URL: postgresql://hotel:${DB_PASSWORD:-change-me-dev-only}@db:5432/hotel
+      # Per-sale boot identity for the owner account (deployment.md
+      # section 2). The skeleton default keeps the container lab
+      # working; script/preflight.sh and the Ansible playbook fail
+      # closed while these defaults are unchanged (audit S3).
+      ADMIN_BOOT_IDENTITY: ${ADMIN_BOOT_IDENTITY:-owner}
+      ADMIN_BOOT_SECRET: ${ADMIN_BOOT_SECRET:-change-me-dev-only}
     depends_on:
       db:
         condition: service_healthy

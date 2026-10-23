@@ -3,3 +3,9 @@ node_modules/
 dist/
 target/
 .env
+# Per-sale installer state (deploy/README.md): the filled-in hotel
+# configuration, the target inventory, and local backup staging are
+# never committed with real hotel data.
+deploy/config/hotel.json
+deploy/ansible/inventory.ini
+backup-staging/

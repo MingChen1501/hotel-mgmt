@@ -20,9 +20,23 @@ Run from the repo root against a filled-in inventory:
 ```sh
 cp deploy/ansible/inventory.example.ini deploy/ansible/inventory.ini
 ${EDITOR:-vi} deploy/ansible/inventory.ini
-ansible-playbook -i deploy/ansible/inventory.ini deploy/ansible/playbook.yaml \
+cp deploy/config/hotel.example.json deploy/config/hotel.json
+${EDITOR:-vi} deploy/config/hotel.json   # hotel's own values; never commit real hotel data
+DB_PASSWORD=<per-sale secret> ADMIN_BOOT_SECRET=<per-sale secret> \
+  script/preflight.sh --config deploy/config/hotel.json
+DB_PASSWORD=<per-sale secret> ADMIN_BOOT_SECRET=<per-sale secret> \
+  ansible-playbook -i deploy/ansible/inventory.ini deploy/ansible/playbook.yaml \
   -e bundle_src=. -e hotel_config=deploy/config/hotel.json
 ```
+
+The playbook fails closed while `DB_PASSWORD` or
+`ADMIN_BOOT_SECRET` still holds a dev default (audit S3), then
+copies the release bundle, applies the per-hotel configuration
+set, starts database then modules then proxy (deployment.md start
+order), and runs the install health check (proxy reachable, each
+module answering through the proxy). Migrations, the boot seed,
+and the desk-loop proof run next via `script/e2e-desk-loop.sh`
+(see `deploy/README.md`).
 
 Pre-flight (sizing 2 vCPU / 4 GB RAM / 50 GB disk, LAN reachability,
 backup target, schema validation of the config set, first-secret
