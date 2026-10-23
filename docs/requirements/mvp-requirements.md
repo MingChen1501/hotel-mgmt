@@ -513,7 +513,7 @@ it and when under `NFR-AUD-1`.
 
 Each row maps one MVP product-scope capability to its FR id(s). Test
 spec ownership transfers to `qa-lead`: each handoff note states what
-the future guard must observe. Later and out-of-scope items from the
+each guard must observe. Later and out-of-scope items from the
 product scope have no FR and are listed in section 6.
 
 | Product-scope capability | FR id(s) | Test-spec handoff note for `qa-lead` |

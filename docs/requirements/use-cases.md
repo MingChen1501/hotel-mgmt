@@ -287,8 +287,11 @@ with a running balance; refused charges leave the folio unchanged.
 
 ## UC-10 — Run housekeeping and hand rooms back
 
-Actors: Front-desk staff, housekeeping staff. Goal: return dirty
-rooms to assignable state. Stories: US-RMS-1, US-RMS-2, US-RPT-4.
+Actors: Front-desk staff. Housekeeping updates are performed by
+staff signed in under one of the three roles (`FR-ADM-2` /
+`BR-35` / `NFR-SEC-1`) acting in a housekeeping capacity —
+housekeeping is an operational hat, not a fourth sign-in role.
+Goal: return dirty rooms to assignable state. Stories: US-RMS-1, US-RMS-2, US-RPT-4.
 Depiction: Seq-12.
 
 Preconditions: rooms exist in the inventory with live states
@@ -301,8 +304,9 @@ Main flow:
 2. Staff open the housekeeping report: rooms needing cleaning or
    inspection appear; inspected and out-of-order rooms do not.
    [FR-RPT-4]
-3. Housekeeping marks the room clean when work completes, then marks
-   it inspected; each change records who made it and when.
+3. Staff in the housekeeping capacity mark the room clean when work
+   completes, then mark it inspected; each change records who made
+   it and when.
    [FR-RMS-2, NFR-AUD-1]
 4. Inspected vacant rooms are offered for check-in assignment, and
    every room appears exactly once with its current state in the
