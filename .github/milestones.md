@@ -12,10 +12,13 @@ label convention on every issue and PR.
 
 ## Board decision (owner decision 2026-10-23)
 
-There is no GitHub Projects board, and none is planned: the
-machine token lacks the `project` scope and the CLI app cannot
-manage projects. The milestone table above plus each milestone's
-web page is the official board for this interim phase.
+The owner maintains a human Kanban view at
+https://github.com/users/MingChen1501/projects/6 (a user-owned
+Projects board). The machine token cannot read or write it (no
+project scope), so the board is human-maintained: the milestone
+table below plus each milestone's web page stays the
+machine-readable source of truth. Workers never claim to update the
+board via API.
 
 ## Milestones (mirror of `docs/project/plan.md`)
 
