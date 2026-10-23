@@ -8,7 +8,7 @@
     "build": "tsc -p tsconfig.json",
     "test": "npm run build && node --test \"dist/**/*.test.js\"",
     "lint": "eslint .",
-    "migrate": "node-pg-migrate up --migrations-dir migrations",
+    "migrate": "node-pg-migrate --migrations-dir migrations",
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts"
   },

@@ -1,6 +1,6 @@
 // Command server boots the rates module with a health endpoint.
 // Skeleton only: no business logic and no endpoints beyond /healthz.
-// Operation logic lands in later slices per docs/architecture/lld.md section 1.
+// Operation logic lands in later slices per docs/architecture/lld.md section 4.
 package main
 
 import (

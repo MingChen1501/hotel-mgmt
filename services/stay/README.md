@@ -31,7 +31,7 @@ npm run lint
 node-pg-migrate, SQL-first, forward-only in production:
 
 ```sh
-npm run migrate up
+npm run migrate -- up
 ```
 
 `DATABASE_URL` must point at the module database (default

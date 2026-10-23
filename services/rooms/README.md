@@ -31,7 +31,7 @@ npm run lint
 node-pg-migrate, SQL-first, forward-only in production:
 
 ```sh
-npm run migrate up
+npm run migrate -- up
 ```
 
 `DATABASE_URL` must point at the module database (default
@@ -51,7 +51,7 @@ Local watch (type-checks, runs, and restarts TypeScript directly):
 npm run dev
 ```
 
-Configuration is via environment: `PORT` (default `8084`); hotel
+Configuration is via environment: `PORT` (default `8085`); hotel
 values come from `AdminService.GetHotelConfig` with a cached
 offline-first fallback (see LLD section 0) and land in later slices.
 
