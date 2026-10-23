@@ -1,0 +1,8 @@
+{
+  "operation": "AssignRoom",
+  "case": "room-taken",
+  "description": "A second simultaneous assignment of the same room loses with CONFLICT naming the room (NFR-CON-2).",
+  "request": { "roomNumber": "101", "businessDate": "2026-11-01", "stayLink": "stay-2", "actor": "front-desk" },
+  "precondition": "Room 101 is already occupied.",
+  "expect": { "status": 409, "code": "CONFLICT" }
+}

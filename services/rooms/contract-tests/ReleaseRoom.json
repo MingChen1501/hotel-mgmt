@@ -1,0 +1,8 @@
+{
+  "operation": "ReleaseRoom",
+  "case": "happy-path",
+  "description": "Check-out releases the room back to vacant-dirty.",
+  "request": { "roomNumber": "101", "toState": "vacant-dirty", "actor": "front-desk" },
+  "precondition": "Room 101 is occupied.",
+  "expect": { "status": 200, "newState": "vacant-dirty" }
+}

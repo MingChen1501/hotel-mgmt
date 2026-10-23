@@ -1,0 +1,33 @@
+{
+  "operation": "SignIn",
+  "contract": "AdminService",
+  "version": "1.0",
+  "traces": ["docs/architecture/lld.md section 8", "docs/technical/integration.md section 6 C10", "FR-ADM-2", "NFR-SEC-2"],
+  "transport": {
+    "method": "POST",
+    "path": "/v1/admin/SignIn",
+    "auth": "none"
+  },
+  "request": {
+    "type": "object",
+    "required": ["signinIdentity", "secret"],
+    "properties": {
+      "signinIdentity": { "type": "string", "description": "Unique sign-in identity of the user." },
+      "secret": { "type": "string", "description": "Plaintext secret; only the hash is stored." }
+    }
+  },
+  "response": {
+    "type": "object",
+    "required": ["token", "userId", "displayName", "role"],
+    "properties": {
+      "token": { "type": "string", "description": "Opaque HMAC-signed session token for the Authorization header." },
+      "userId": { "type": "string", "format": "uuid" },
+      "displayName": { "type": "string" },
+      "role": { "type": "string", "enum": ["owner", "manager", "front-desk"] }
+    }
+  },
+  "errors": [
+    { "code": "UNAUTHENTICATED", "status": 401, "when": "Unknown identity, wrong secret, or identity locked after 5 consecutive failures." },
+    { "code": "VALIDATION_FAILED", "status": 400, "when": "Missing signinIdentity or secret." }
+  ]
+}

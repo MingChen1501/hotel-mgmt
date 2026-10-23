@@ -1,0 +1,44 @@
+{
+  "operation": "CheckSellableCount",
+  "contract": "PricingService",
+  "version": "1.0",
+  "traces": ["docs/architecture/lld.md sections 1 and 4", "docs/technical/integration.md section 1 C1", "FR-RTE-2", "BR-9"],
+  "transport": {
+    "method": "POST",
+    "path": "/v1/rates/CheckSellableCount",
+    "auth": "Bearer session token"
+  },
+  "request": {
+    "type": "object",
+    "required": ["roomTypeId", "dateFrom", "dateTo"],
+    "properties": {
+      "roomTypeId": { "type": "string", "format": "uuid" },
+      "dateFrom": { "type": "string", "format": "date" },
+      "dateTo": { "type": "string", "format": "date" },
+      "totalUnits": { "type": "integer", "minimum": 0, "description": "Cached inventory input for the type (from Rooms sellability); falls back to the plan defaultUnits." }
+    }
+  },
+  "response": {
+    "type": "object",
+    "required": ["roomTypeId", "counts"],
+    "properties": {
+      "roomTypeId": { "type": "string", "format": "uuid" },
+      "counts": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["date", "sellableCount"],
+          "properties": {
+            "date": { "type": "string", "format": "date" },
+            "sellableCount": { "type": "integer" }
+          }
+        }
+      }
+    }
+  },
+  "errors": [
+    { "code": "UNAUTHENTICATED", "status": 401, "when": "Missing session token." },
+    { "code": "NOT_FOUND", "status": 404, "when": "Unknown room type (no prices and no plan default for it)." },
+    { "code": "VALIDATION_FAILED", "status": 400, "when": "Missing field, bad date order, or no inventory input for the type." }
+  ]
+}

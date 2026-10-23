@@ -1,0 +1,7 @@
+{
+  "operation": "CheckSellableCount",
+  "case": "consumed-by-reservations",
+  "description": "Consumer fixture: Reservations calls Pricing CheckSellableCount inside the booking step (integration C1).",
+  "request": { "roomTypeId": "<deluxe-type-id>", "dateFrom": "2026-11-01", "dateTo": "2026-11-03", "totalUnits": 1 },
+  "expect": { "status": 200 }
+}

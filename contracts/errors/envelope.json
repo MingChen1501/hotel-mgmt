@@ -1,0 +1,25 @@
+{
+  "description": "Shared error envelope for every failed contract call (docs/technical/error-handling.md section 1; LLD section 0).",
+  "schema": {
+    "type": "object",
+    "required": ["code", "message", "details", "traceId"],
+    "properties": {
+      "code": {
+        "type": "string",
+        "enum": ["VALIDATION_FAILED", "NOT_FOUND", "FORBIDDEN", "CONFLICT", "STATE_ILLEGAL", "SETTLEMENT_REQUIRED", "UNAUTHENTICATED"]
+      },
+      "message": { "type": "string", "description": "Human-readable sentence naming what was refused and why." },
+      "details": { "type": "object", "description": "Named field, restriction, room, or conflicting entity.", "additionalProperties": true },
+      "traceId": { "type": "string", "description": "Hotel-local correlation id linking the error to the audit entry." }
+    }
+  },
+  "statusMapping": {
+    "VALIDATION_FAILED": 400,
+    "UNAUTHENTICATED": 401,
+    "FORBIDDEN": 403,
+    "NOT_FOUND": 404,
+    "CONFLICT": 409,
+    "STATE_ILLEGAL": 422,
+    "SETTLEMENT_REQUIRED": 409
+  }
+}

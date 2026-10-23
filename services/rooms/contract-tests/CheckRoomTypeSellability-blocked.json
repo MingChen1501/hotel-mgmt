@@ -1,0 +1,8 @@
+{
+  "operation": "CheckRoomTypeSellability",
+  "case": "blocked-room",
+  "description": "Checking a room covered by an out-of-order block refuses naming the block (FR-RMS-3, BR-12).",
+  "request": { "roomType": "Deluxe", "dateFrom": "2026-11-01", "dateTo": "2026-11-03", "roomNumber": "101" },
+  "precondition": "Room 101 is blocked for 2026-11-01 to 2026-11-05 for maintenance.",
+  "expect": { "status": 422, "code": "STATE_ILLEGAL" }
+}

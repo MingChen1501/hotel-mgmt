@@ -1,0 +1,41 @@
+{
+  "description": "RateEvents JSON Schemas (LLD section 4; integration section 7).",
+  "eventVersion": "1.0",
+  "events": {
+    "rate-plan-changed": {
+      "type": "object",
+      "required": ["eventId", "eventVersion", "ratePlanName", "actor", "occurredAt"],
+      "properties": {
+        "eventId": { "type": "string", "format": "uuid" },
+        "eventVersion": { "type": "string", "const": "1.0" },
+        "ratePlanName": { "type": "string" },
+        "actor": { "type": "string" },
+        "occurredAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "restriction-changed": {
+      "type": "object",
+      "required": ["eventId", "eventVersion", "roomTypeId", "dateFrom", "dateTo", "actor", "occurredAt"],
+      "properties": {
+        "eventId": { "type": "string", "format": "uuid" },
+        "eventVersion": { "type": "string", "const": "1.0" },
+        "roomTypeId": { "type": "string", "format": "uuid" },
+        "dateFrom": { "type": "string", "format": "date" },
+        "dateTo": { "type": "string", "format": "date" },
+        "actor": { "type": "string" },
+        "occurredAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "discount-changed": {
+      "type": "object",
+      "required": ["eventId", "eventVersion", "discountName", "actor", "occurredAt"],
+      "properties": {
+        "eventId": { "type": "string", "format": "uuid" },
+        "eventVersion": { "type": "string", "const": "1.0" },
+        "discountName": { "type": "string" },
+        "actor": { "type": "string" },
+        "occurredAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}

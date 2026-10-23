@@ -1,0 +1,38 @@
+{
+  "operation": "BlockRoom",
+  "contract": "RoomInventoryService",
+  "version": "1.0",
+  "traces": ["docs/architecture/lld.md section 3", "FR-RMS-3", "NFR-AUD-1"],
+  "transport": {
+    "method": "POST",
+    "path": "/v1/rooms/BlockRoom",
+    "auth": "Bearer session token"
+  },
+  "request": {
+    "type": "object",
+    "required": ["roomNumber", "dateFrom", "dateTo", "reason", "actor"],
+    "properties": {
+      "roomNumber": { "type": "string" },
+      "dateFrom": { "type": "string", "format": "date" },
+      "dateTo": { "type": "string", "format": "date" },
+      "reason": { "type": "string" },
+      "actor": { "type": "string" }
+    }
+  },
+  "response": {
+    "type": "object",
+    "required": ["roomNumber", "dateFrom", "dateTo", "reason"],
+    "properties": {
+      "roomNumber": { "type": "string" },
+      "dateFrom": { "type": "string", "format": "date" },
+      "dateTo": { "type": "string", "format": "date" },
+      "reason": { "type": "string" }
+    }
+  },
+  "errors": [
+    { "code": "UNAUTHENTICATED", "status": 401, "when": "Missing session token." },
+    { "code": "NOT_FOUND", "status": 404, "when": "Unknown room number." },
+    { "code": "STATE_ILLEGAL", "status": 422, "when": "Room is occupied (block of an occupied room is refused)." },
+    { "code": "VALIDATION_FAILED", "status": 400, "when": "Missing field or dateTo before dateFrom." }
+  ]
+}

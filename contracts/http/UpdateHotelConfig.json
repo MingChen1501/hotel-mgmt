@@ -1,0 +1,36 @@
+{
+  "operation": "UpdateHotelConfig",
+  "contract": "AdminService",
+  "version": "1.0",
+  "traces": ["docs/architecture/lld.md section 8", "docs/technical/integration.md section 6 C9", "FR-ADM-1", "FR-ADM-4"],
+  "transport": {
+    "method": "POST",
+    "path": "/v1/admin/UpdateHotelConfig",
+    "auth": "Bearer session token with role owner or manager"
+  },
+  "request": {
+    "type": "object",
+    "required": ["values", "updatedBy"],
+    "properties": {
+      "values": {
+        "type": "object",
+        "description": "Section 3.1 keys to upsert; fixed section 3.2 items are rejected here.",
+        "additionalProperties": true
+      },
+      "updatedBy": { "type": "string", "description": "Actor recorded on the config audit trail." }
+    }
+  },
+  "response": {
+    "type": "object",
+    "required": ["schemaVersion", "values"],
+    "properties": {
+      "schemaVersion": { "type": "integer" },
+      "values": { "type": "object", "additionalProperties": true }
+    }
+  },
+  "errors": [
+    { "code": "UNAUTHENTICATED", "status": 401, "when": "Missing, expired, or revoked session token." },
+    { "code": "FORBIDDEN", "status": 403, "when": "Caller role is front-desk." },
+    { "code": "VALIDATION_FAILED", "status": 400, "when": "Values missing, or a fixed section 3.2 item submitted as config." }
+  ]
+}

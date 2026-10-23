@@ -1,0 +1,7 @@
+{
+  "operation": "UpsertRatePrice",
+  "case": "happy-path",
+  "description": "Manager sets the nightly price for a room type and night.",
+  "request": { "ratePlanName": "Standard", "roomTypeId": "<deluxe-type-id>", "nightDate": "2026-11-01", "priceMinor": 12000 },
+  "expect": { "status": 200, "priceMinor": 12000 }
+}

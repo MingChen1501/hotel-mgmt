@@ -1,0 +1,7 @@
+{
+  "operation": "UpsertRoomType",
+  "case": "happy-path",
+  "description": "Manager defines a room type with floor-agnostic attributes.",
+  "request": { "name": "Deluxe", "capacity": 2, "bedType": "king", "features": { "seaView": true }, "actor": "manager" },
+  "expect": { "status": 200, "name": "Deluxe" }
+}

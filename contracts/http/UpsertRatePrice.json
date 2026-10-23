@@ -1,0 +1,36 @@
+{
+  "operation": "UpsertRatePrice",
+  "contract": "PricingService",
+  "version": "1.0",
+  "traces": ["docs/architecture/lld.md section 4", "FR-RTE-1"],
+  "transport": {
+    "method": "POST",
+    "path": "/v1/rates/UpsertRatePrice",
+    "auth": "Bearer session token"
+  },
+  "request": {
+    "type": "object",
+    "required": ["ratePlanName", "roomTypeId", "nightDate", "priceMinor"],
+    "properties": {
+      "ratePlanName": { "type": "string" },
+      "roomTypeId": { "type": "string", "format": "uuid", "description": "Logical reference to the rooms schema; enforced by contract, never by a cross-schema foreign key." },
+      "nightDate": { "type": "string", "format": "date" },
+      "priceMinor": { "type": "integer", "minimum": 0, "description": "Nightly price in minor currency units, never floating point." }
+    }
+  },
+  "response": {
+    "type": "object",
+    "required": ["ratePlanName", "roomTypeId", "nightDate", "priceMinor"],
+    "properties": {
+      "ratePlanName": { "type": "string" },
+      "roomTypeId": { "type": "string", "format": "uuid" },
+      "nightDate": { "type": "string", "format": "date" },
+      "priceMinor": { "type": "integer", "minimum": 0 }
+    }
+  },
+  "errors": [
+    { "code": "UNAUTHENTICATED", "status": 401, "when": "Missing session token." },
+    { "code": "NOT_FOUND", "status": 404, "when": "Unknown rate plan." },
+    { "code": "VALIDATION_FAILED", "status": 400, "when": "Missing field or negative price." }
+  ]
+}

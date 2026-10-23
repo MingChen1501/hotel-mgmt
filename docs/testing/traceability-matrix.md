@@ -12,7 +12,7 @@ cell reads TBD. Levels L1–L5 are defined in `test-strategy.md`.
 
 | Requirement | Required guard type | Guard |
 |---|---|---|
-| FR-RES-1 — Create direct reservation | L1 acceptance: book each room type across a season boundary, check quoted price and reference | TBD |
+| FR-RES-1 — Create direct reservation | L1 acceptance: book each room type across a season boundary, check quoted price and reference | Guard: `services/reservations` handler test `TestDeskLoopBookThenOverbookingRefused` (book + overbooking `CONFLICT`) + fixtures `CreateReservation.json`, `CreateReservation-conflict.json`; L3 pair `TestPairedBookingExactlyOneWins` (PR #112 slice). |
 | FR-RES-2 — Modify reservation | L1 acceptance: change dates/type/guest, check repricing and change record | TBD |
 | FR-RES-3 — Cancel reservation with reason | L1 acceptance + L5 config-matrix: cancel under each of two hotel reason lists, check the reason comes from the hotel's list plus state and released availability | TBD |
 | FR-RES-4 — Walk-in booking | L1 acceptance: same-day booking, check arrival-state readiness and arrivals-list entry | TBD |
@@ -23,15 +23,15 @@ cell reads TBD. Levels L1–L5 are defined in `test-strategy.md`.
 | FR-FDK-3 — Room moves | L1 acceptance: move an in-house guest, check both room states and kept history | TBD |
 | FR-FDK-4 — Early check-in and late check-out | L1 acceptance: record off-hours arrival/departure, check kept times and list visibility | TBD |
 | FR-FDK-5 — Arrivals and departures list | L1 acceptance: seed all three groups, check exactly-once listing with names and states | TBD |
-| FR-RMS-1 — Room inventory with live status | L1 acceptance: set every state, check each room appears once with the right state | TBD |
-| FR-RMS-2 — Housekeeping status updates | L1 acceptance: walk dirty to inspected, check check-in offer and change record | TBD |
-| FR-RMS-3 — Out-of-order and maintenance blocks | L1 acceptance: block a range, check display plus refused booking and check-in on blocked dates | TBD |
-| FR-RMS-4 — Room setup and attributes | L1 acceptance: define floor/bed/features, check inventory and assignment visibility | TBD |
-| FR-RTE-1 — Rate plans per room type | L1 acceptance: set seasonal/day prices, check new quotes follow them | TBD |
-| FR-RTE-2 — Availability overview | L1 acceptance: seed occupancy, blocks, bookings, check per-type per-date counts | TBD |
+| FR-RMS-1 — Room inventory with live status | L1 acceptance: set every state, check each room appears once with the right state | Guard: `services/rooms` test `creates a room type and room, then reports sellability` + fixtures `UpsertRoomType.json`, `UpsertRoom.json`, `ListRoomsByState.json`, `CheckRoomTypeSellability.json` (PR #112 slice). |
+| FR-RMS-2 — Housekeeping status updates | L1 acceptance: walk dirty to inspected, check check-in offer and change record | Guard: `services/rooms` test `walks dirty to inspected and refuses dirty straight to inspected` + fixtures `UpdateRoomState.json`, `UpdateRoomState-illegal.json` (PR #112 slice). |
+| FR-RMS-3 — Out-of-order and maintenance blocks | L1 acceptance: block a range, check display plus refused booking and check-in on blocked dates | Guard: `services/rooms` test `names the block when a blocked room is checked` + fixtures `BlockRoom.json`, `CheckRoomTypeSellability-blocked.json` (PR #112 slice). |
+| FR-RMS-4 — Room setup and attributes | L1 acceptance: define floor/bed/features, check inventory and assignment visibility | Guard: `services/rooms` tests cover floor/bed/features setup + assignment visibility (`AssignRoom` happy path); fixtures `UpsertRoomType.json`, `UpsertRoom.json`, `AssignRoom.json` (PR #112 slice). |
+| FR-RTE-1 — Rate plans per room type | L1 acceptance: set seasonal/day prices, check new quotes follow them | Guard: `services/rates` test `TestDeskLoopSetRateSearchQuote` (plan + nightly prices drive the quote) + fixtures `UpsertRatePlan.json`, `UpsertRatePrice.json`, `QuotePrice.json` (PR #112 slice). |
+| FR-RTE-2 — Availability overview | L1 acceptance: seed occupancy, blocks, bookings, check per-type per-date counts | Guard: `services/rates` test `TestDeskLoopSetRateSearchQuote` (per-date counts) + fixtures `CheckSellableCount.json`, `CheckRoomTypeSellability-consumed.json` (PR #112 slice). |
 | FR-RTE-3 — Manual discounts and special rates | L1 acceptance + L5 config-matrix: apply a named discount, check kept name and folio effect | TBD |
-| FR-RTE-4 — Stay restrictions | L1 acceptance + L5 config-matrix: set each restriction type, check refusal names the restriction | TBD |
-| FR-RTE-5 — Reservation price basis | L1 acceptance: create on a rate plan, change the plan, check the quoted price is unchanged unless recalculated | TBD |
+| FR-RTE-4 — Stay restrictions | L1 acceptance + L5 config-matrix: set each restriction type, check refusal names the restriction | Guard: `services/rates` test `TestRestrictionRefusalNamesRestriction` (min-stay refused naming the restriction) + `services/reservations` test `TestRestrictionViolationRefusesWithCause` + fixtures `UpsertRestriction.json`, `CheckRestrictions-violated.json` (PR #112 slice). |
+| FR-RTE-5 — Reservation price basis | L1 acceptance: create on a rate plan, change the plan, check the quoted price is unchanged unless recalculated | Guard: `services/rates` test `TestQuoteAppliesNamedDiscount` (quoted total frozen on the reservation by `TestDeskLoopBookThenOverbookingRefused`) + fixtures `QuotePrice.json`, `CreateReservation.json` (PR #112 slice). |
 | FR-GST-1 — Guest profiles with stay history | L1 acceptance: link past and upcoming stays, check profile completeness | TBD |
 | FR-GST-2 — Guest preferences and notes | L1 acceptance: save notes, check they surface before booking confirmation | TBD |
 | FR-GST-3 — Repeat-guest recognition | L1 acceptance: book for a past guest, check the returning flag and stay count | TBD |
@@ -47,12 +47,12 @@ cell reads TBD. Levels L1–L5 are defined in `test-strategy.md`.
 | FR-RPT-2 — Revenue summary | L1 acceptance: compare room/extra totals against seeded folios | TBD |
 | FR-RPT-3 — Front-desk daily sheet | L1 acceptance: compare all four groups against underlying records | TBD |
 | FR-RPT-4 — Housekeeping status report | L1 acceptance: check only rooms needing work appear | TBD |
-| FR-ADM-1 — Hotel profile setup | L1 acceptance + L5 config-matrix: save identity and local settings, check prints and date behaviour | TBD |
-| FR-ADM-2 — User accounts and roles | L1 acceptance: create each role, check sign-in plus exact function reach | TBD |
+| FR-ADM-1 — Hotel profile setup | L1 acceptance + L5 config-matrix: save identity and local settings, check prints and date behaviour | Guard: `services/admin` test `saves local settings and enforces role reach` + fixtures `UpdateHotelConfig.json`, `GetHotelConfig.json` (PR #112 slice). |
+| FR-ADM-2 — User accounts and roles | L1 acceptance: create each role, check sign-in plus exact function reach | Guard: `services/admin` tests (owner boot sign-in, per-role create + `FORBIDDEN` reach, 5-strike lockout) + fixtures `SignIn.json`, `CreateUser.json`, `CreateUser-duplicate.json` (PR #112 slice). |
 | FR-ADM-3 — Room and room-type setup | L1 acceptance: define rooms, check inventory, availability, and calendar uptake | TBD |
 | FR-ADM-4 — Rate-plan and policy setup | L1 acceptance + L5 config-matrix: save plans, times, policies, check pricing and list behaviour | TBD |
 | FR-ADM-5 — Data export and backup | L1 acceptance + L4 install/restore drill: run export/backup, check completeness plus success/failure report | TBD |
-| FR-CUS-1 — Customisable required guest fields | L1 acceptance + L5 config-matrix: mark fields mandatory, check refusal names the field | TBD |
+| FR-CUS-1 — Customisable required guest fields | L1 acceptance + L5 config-matrix: mark fields mandatory, check refusal names the field | Guard: `services/reservations` test `TestMissingMandatoryGuestFieldNamesField` (refusal names `fullName`) + fixture `CreateReservation-missing-guest-field.json` (PR #112 slice). |
 | FR-CUS-2 — Customisable stay policies | L1 acceptance + L5 config-matrix: save times and wording, check desk enforcement and display | TBD |
 | FR-CUS-3 — Custom charge items | L1 acceptance + L5 config-matrix: define an item, check posting availability and invoice naming | TBD |
 
@@ -64,8 +64,8 @@ cell reads TBD. Levels L1–L5 are defined in `test-strategy.md`.
 | NFR-BKP-1 — Backup frequency and recovery point | L4 restore drill: restore from latest backup — RPO at most 24 h, success at least 6 days out of 7 | TBD |
 | NFR-BKP-2 — Restore time and verifiability | L4 restore drill: restore on equivalent hardware — RTO at most 4 h, 100% of runs report success or failure with time | TBD |
 | NFR-AUD-1 — Audit trail for reservation, room, and folio changes | L2 sampled-change check: 100% of sampled changes carry an unaltered actor and timestamp | TBD |
-| NFR-CON-1 — No double-booking under simultaneous bookings | L3 paired simultaneous attempts: 0 double-bookings, exactly one succeeds with the conflict named | TBD |
-| NFR-CON-2 — No double room assignment at check-in | L3 paired simultaneous attempts: 0 double assignments, exactly one takes the room with the conflict named | TBD |
+| NFR-CON-1 — No double-booking under simultaneous bookings | L3 paired simultaneous attempts: 0 double-bookings, exactly one succeeds with the conflict named | Guard: L3 `TestPairedBookingExactlyOneWins` in `services/reservations/internal/store/store_test.go` — paired simultaneous attempts, 0 double-bookings, exactly one succeeds with `CONFLICT` naming type+dates (PR #112 slice). |
+| NFR-CON-2 — No double room assignment at check-in | L3 paired simultaneous attempts: 0 double assignments, exactly one takes the room with the conflict named | Guard: L3 `grants exactly one winner for paired simultaneous assignments` in `services/rooms/src/server.test.ts` — paired `AssignRoom` attempts, 0 double assignments, exactly one takes the room with `CONFLICT` (PR #112 slice). |
 | NFR-PERF-1 — Desk response under a full small hotel | L2 timed desk check: named views within 2 s, named actions within 3 s at stated load | TBD |
 | NFR-PERF-2 — Report response | L2 timed check: each standard report within 5 s on two years of 50-room data | TBD |
 | NFR-SEC-1 — Role-based access | L2 role-matrix check: 100% of out-of-role attempts refused, 0 guest sign-ins | TBD |
@@ -75,8 +75,8 @@ cell reads TBD. Levels L1–L5 are defined in `test-strategy.md`.
 | NFR-I18N-1 — Internationalisation readiness | L2 catalogue check: 100% of user-visible strings from the catalogue, locale formatting, no behaviour on English wording | TBD |
 | NFR-AVL-1 — On-premise availability | L2 offline desk check: 100% of named desk actions succeed with no outside connectivity | TBD |
 
-Coverage: 43 FRs mapped, 14 NFRs mapped, 57 rows total, 0 guards
-filled (all TBD — implementation slices fill them).
+Coverage: 43 FRs mapped, 14 NFRs mapped, 57 rows total, 14 guards
+filled (PR #112 slice: FR-RES-1, FR-RMS-1..4, FR-RTE-1/2/4/5, FR-ADM-1/2, FR-CUS-1, NFR-CON-1/2 — remaining TBD cells fill in later slices).
 
 <!-- ao-role: qa-lead -->
 Role: qa-lead · AO session hotel-mgmt-77

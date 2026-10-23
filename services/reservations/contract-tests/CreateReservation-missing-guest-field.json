@@ -1,0 +1,15 @@
+{
+  "operation": "CreateReservation",
+  "case": "missing-guest-field",
+  "description": "A booking missing a hotel-mandatory guest field is refused naming the field (FR-CUS-1).",
+  "request": {
+    "roomTypeId": "<deluxe-type-id>",
+    "arrivalDate": "2026-11-01",
+    "departureDate": "2026-11-03",
+    "guest": { "guestId": "<guest-id-3>", "contact": "+84-900-000-003" },
+    "sellableUnits": 2,
+    "priceBasis": { "totalMinor": 24000 },
+    "idempotencyKey": "desk-loop-3"
+  },
+  "expect": { "status": 400, "code": "VALIDATION_FAILED" }
+}

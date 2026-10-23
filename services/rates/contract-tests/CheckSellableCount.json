@@ -1,0 +1,7 @@
+{
+  "operation": "CheckSellableCount",
+  "case": "happy-path",
+  "description": "Desk searches availability per date using the cached inventory input.",
+  "request": { "roomTypeId": "<deluxe-type-id>", "dateFrom": "2026-11-01", "dateTo": "2026-11-03", "totalUnits": 1 },
+  "expect": { "status": 200 }
+}

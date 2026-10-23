@@ -1,0 +1,7 @@
+{
+  "operation": "QuotePrice",
+  "case": "happy-path",
+  "description": "Desk quotes two nights; the breakdown and total follow the plan prices.",
+  "request": { "roomTypeId": "<deluxe-type-id>", "arrivalDate": "2026-11-01", "departureDate": "2026-11-03" },
+  "expect": { "status": 200, "totalMinor": 24000 }
+}

@@ -1,0 +1,46 @@
+{
+  "description": "RoomStateEvents JSON Schemas (LLD section 3; integration section 7). Skeleton emits room-upserted, state-changed, blocked, assigned, and released.",
+  "eventVersion": "1.0",
+  "events": {
+    "room-upserted": {
+      "type": "object",
+      "required": ["eventId", "eventVersion", "roomNumber", "roomTypeId", "state", "actor", "occurredAt"],
+      "properties": {
+        "eventId": { "type": "string", "format": "uuid" },
+        "eventVersion": { "type": "string", "const": "1.0" },
+        "roomNumber": { "type": "string" },
+        "roomTypeId": { "type": "string", "format": "uuid" },
+        "state": { "type": "string" },
+        "actor": { "type": "string" },
+        "occurredAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "state-changed": {
+      "type": "object",
+      "required": ["eventId", "eventVersion", "roomNumber", "oldState", "newState", "actor", "occurredAt"],
+      "properties": {
+        "eventId": { "type": "string", "format": "uuid" },
+        "eventVersion": { "type": "string", "const": "1.0" },
+        "roomNumber": { "type": "string" },
+        "oldState": { "type": "string" },
+        "newState": { "type": "string" },
+        "actor": { "type": "string" },
+        "occurredAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "blocked": {
+      "type": "object",
+      "required": ["eventId", "eventVersion", "roomNumber", "dateFrom", "dateTo", "reason", "actor", "occurredAt"],
+      "properties": {
+        "eventId": { "type": "string", "format": "uuid" },
+        "eventVersion": { "type": "string", "const": "1.0" },
+        "roomNumber": { "type": "string" },
+        "dateFrom": { "type": "string", "format": "date" },
+        "dateTo": { "type": "string", "format": "date" },
+        "reason": { "type": "string" },
+        "actor": { "type": "string" },
+        "occurredAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}

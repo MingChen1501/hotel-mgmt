@@ -1,0 +1,33 @@
+{
+  "operation": "CheckRestrictions",
+  "contract": "PricingService",
+  "version": "1.0",
+  "traces": ["docs/architecture/lld.md sections 1 and 4", "docs/technical/integration.md section 1 C1", "FR-RTE-4", "BR-10"],
+  "transport": {
+    "method": "POST",
+    "path": "/v1/rates/CheckRestrictions",
+    "auth": "Bearer session token"
+  },
+  "request": {
+    "type": "object",
+    "required": ["roomTypeId", "arrivalDate", "departureDate"],
+    "properties": {
+      "roomTypeId": { "type": "string", "format": "uuid" },
+      "arrivalDate": { "type": "string", "format": "date" },
+      "departureDate": { "type": "string", "format": "date" }
+    }
+  },
+  "response": {
+    "type": "object",
+    "required": ["roomTypeId", "allowed"],
+    "properties": {
+      "roomTypeId": { "type": "string", "format": "uuid" },
+      "allowed": { "type": "boolean", "const": true }
+    }
+  },
+  "errors": [
+    { "code": "UNAUTHENTICATED", "status": 401, "when": "Missing session token." },
+    { "code": "STATE_ILLEGAL", "status": 422, "when": "A stay restriction is violated; details name the restriction (FR-RTE-4)." },
+    { "code": "VALIDATION_FAILED", "status": 400, "when": "Missing field or bad date order." }
+  ]
+}

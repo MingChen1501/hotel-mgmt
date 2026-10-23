@@ -1,0 +1,7 @@
+{
+  "operation": "SignIn",
+  "case": "happy-path",
+  "description": "Owner signs in with the correct secret and receives a session token.",
+  "request": { "signinIdentity": "owner", "secret": "<boot-secret>" },
+  "expect": { "status": 200, "role": "owner" }
+}

@@ -1,0 +1,36 @@
+{
+  "operation": "CreateUser",
+  "contract": "AdminService",
+  "version": "1.0",
+  "traces": ["docs/architecture/lld.md section 8", "docs/technical/integration.md section 6 C10", "FR-ADM-2", "NFR-SEC-1"],
+  "transport": {
+    "method": "POST",
+    "path": "/v1/admin/CreateUser",
+    "auth": "Bearer session token with role owner or manager"
+  },
+  "request": {
+    "type": "object",
+    "required": ["displayName", "signinIdentity", "secret", "role"],
+    "properties": {
+      "displayName": { "type": "string" },
+      "signinIdentity": { "type": "string" },
+      "secret": { "type": "string", "description": "Stored as a hash only, never plaintext." },
+      "role": { "type": "string", "enum": ["owner", "manager", "front-desk"] }
+    }
+  },
+  "response": {
+    "type": "object",
+    "required": ["userId", "displayName", "signinIdentity", "role"],
+    "properties": {
+      "userId": { "type": "string", "format": "uuid" },
+      "displayName": { "type": "string" },
+      "signinIdentity": { "type": "string" },
+      "role": { "type": "string", "enum": ["owner", "manager", "front-desk"] }
+    }
+  },
+  "errors": [
+    { "code": "UNAUTHENTICATED", "status": 401, "when": "Missing, expired, or revoked session token." },
+    { "code": "FORBIDDEN", "status": 403, "when": "Caller role is front-desk." },
+    { "code": "VALIDATION_FAILED", "status": 400, "when": "Missing field, unknown role, or duplicate signinIdentity." }
+  ]
+}

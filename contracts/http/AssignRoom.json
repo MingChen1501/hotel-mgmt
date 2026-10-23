@@ -1,0 +1,38 @@
+{
+  "operation": "AssignRoom",
+  "contract": "RoomInventoryService",
+  "version": "1.0",
+  "traces": ["docs/architecture/lld.md section 3", "docs/technical/integration.md section 2 C5", "NFR-CON-2"],
+  "transport": {
+    "method": "POST",
+    "path": "/v1/rooms/AssignRoom",
+    "auth": "Bearer session token"
+  },
+  "request": {
+    "type": "object",
+    "required": ["roomNumber", "businessDate", "stayLink", "actor"],
+    "properties": {
+      "roomNumber": { "type": "string" },
+      "businessDate": { "type": "string", "format": "date" },
+      "stayLink": { "type": "string" },
+      "idempotencyKey": { "type": "string" },
+      "actor": { "type": "string" }
+    }
+  },
+  "response": {
+    "type": "object",
+    "required": ["roomNumber", "stayLink", "state"],
+    "properties": {
+      "roomNumber": { "type": "string" },
+      "stayLink": { "type": "string" },
+      "state": { "type": "string", "const": "occupied" }
+    }
+  },
+  "errors": [
+    { "code": "UNAUTHENTICATED", "status": 401, "when": "Missing session token." },
+    { "code": "NOT_FOUND", "status": 404, "when": "Unknown room number." },
+    { "code": "CONFLICT", "status": 409, "when": "Room just taken: no longer vacant-inspected (NFR-CON-2)." },
+    { "code": "STATE_ILLEGAL", "status": 422, "when": "Room not ready (naming room+state) or blocked for the date (naming the block)." },
+    { "code": "VALIDATION_FAILED", "status": 400, "when": "Missing field." }
+  ]
+}

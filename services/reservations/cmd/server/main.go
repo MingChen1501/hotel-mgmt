@@ -1,6 +1,6 @@
-// Command server boots the reservations module with a health endpoint.
-// Skeleton only: no business logic and no endpoints beyond /healthz.
-// Operation logic lands in later slices per docs/architecture/lld.md section 1.
+// Command server boots the reservations module with the
+// ReservationService operations (LLD section 1) plus the health
+// endpoint.
 package main
 
 import (
@@ -8,7 +8,10 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/MingChen1501/hotel-mgmt/services/reservations/internal/handler"
 	"github.com/MingChen1501/hotel-mgmt/services/reservations/internal/health"
+	"github.com/MingChen1501/hotel-mgmt/services/reservations/internal/service"
+	"github.com/MingChen1501/hotel-mgmt/services/reservations/internal/store"
 )
 
 func main() {
@@ -16,8 +19,11 @@ func main() {
 	if port == "" {
 		port = "8081"
 	}
+	st := store.New()
 	mux := http.NewServeMux()
 	mux.Handle("GET /healthz", health.Handler("reservations"))
+	booking := handler.NewMux(service.New(st), st)
+	mux.Handle("POST /v1/reservations/", booking)
 	addr := ":" + port
 	log.Printf("reservations listening on %s", addr)
 	if err := http.ListenAndServe(addr, mux); err != nil {

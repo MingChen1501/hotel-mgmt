@@ -1,0 +1,7 @@
+{
+  "operation": "UpsertRoom",
+  "case": "unknown-type",
+  "description": "Adding a room for an unknown type is refused with NOT_FOUND.",
+  "request": { "number": "999", "roomType": "NoSuchType", "actor": "manager" },
+  "expect": { "status": 404, "code": "NOT_FOUND" }
+}

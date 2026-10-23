@@ -1,0 +1,7 @@
+{
+  "operation": "CheckRoomTypeSellability",
+  "case": "consumed-by-reservations",
+  "description": "Consumer fixture: Reservations calls Rooms CheckRoomTypeSellability inside the booking step (integration C2).",
+  "request": { "roomType": "Deluxe", "dateFrom": "2026-11-01", "dateTo": "2026-11-03" },
+  "expect": { "status": 200, "sellableCount": 1 }
+}

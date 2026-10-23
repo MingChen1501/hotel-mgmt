@@ -1,0 +1,8 @@
+{
+  "operation": "UpdateHotelConfig",
+  "case": "forbidden-role",
+  "description": "Front-desk role cannot change hotel config.",
+  "request": { "values": { "timezone": "UTC" }, "updatedBy": "front-desk-agent" },
+  "authenticatedRole": "front-desk",
+  "expect": { "status": 403, "code": "FORBIDDEN" }
+}

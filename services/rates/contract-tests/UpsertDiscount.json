@@ -1,0 +1,7 @@
+{
+  "operation": "UpsertDiscount",
+  "case": "happy-path",
+  "description": "Manager defines a named percent discount kept by name on the price basis.",
+  "request": { "name": "EarlyBird", "kind": "percent", "valueMinor": 10 },
+  "expect": { "status": 200, "name": "EarlyBird" }
+}

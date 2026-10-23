@@ -1,0 +1,7 @@
+{
+  "operation": "CreateUser",
+  "case": "duplicate-identity",
+  "description": "Reusing a sign-in identity is refused with VALIDATION_FAILED.",
+  "request": { "displayName": "Desk Agent Twice", "signinIdentity": "desk-1", "secret": "another-secret", "role": "front-desk" },
+  "expect": { "status": 400, "code": "VALIDATION_FAILED" }
+}

@@ -1,0 +1,39 @@
+{
+  "operation": "UpsertRoom",
+  "contract": "RoomInventoryService",
+  "version": "1.0",
+  "traces": ["docs/architecture/lld.md section 3", "FR-RMS-1", "FR-RMS-4", "FR-ADM-3"],
+  "transport": {
+    "method": "POST",
+    "path": "/v1/rooms/UpsertRoom",
+    "auth": "Bearer session token"
+  },
+  "request": {
+    "type": "object",
+    "required": ["number", "roomType", "actor"],
+    "properties": {
+      "number": { "type": "string" },
+      "roomType": { "type": "string", "description": "Room-type name or id." },
+      "floor": { "type": "string" },
+      "bedType": { "type": "string" },
+      "capacity": { "type": "integer", "minimum": 1 },
+      "features": { "type": "object", "additionalProperties": true },
+      "actor": { "type": "string" }
+    }
+  },
+  "response": {
+    "type": "object",
+    "required": ["id", "number", "roomTypeId", "state"],
+    "properties": {
+      "id": { "type": "string", "format": "uuid" },
+      "number": { "type": "string" },
+      "roomTypeId": { "type": "string", "format": "uuid" },
+      "state": { "type": "string" }
+    }
+  },
+  "errors": [
+    { "code": "UNAUTHENTICATED", "status": 401, "when": "Missing session token." },
+    { "code": "NOT_FOUND", "status": 404, "when": "Unknown room type." },
+    { "code": "VALIDATION_FAILED", "status": 400, "when": "Missing number, roomType, or actor." }
+  ]
+}

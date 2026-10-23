@@ -1,0 +1,38 @@
+{
+  "operation": "UpsertRestriction",
+  "contract": "PricingService",
+  "version": "1.0",
+  "traces": ["docs/architecture/lld.md section 4", "FR-RTE-4", "BR-10"],
+  "transport": {
+    "method": "POST",
+    "path": "/v1/rates/UpsertRestriction",
+    "auth": "Bearer session token"
+  },
+  "request": {
+    "type": "object",
+    "required": ["roomTypeId", "dateFrom", "dateTo"],
+    "properties": {
+      "roomTypeId": { "type": "string", "format": "uuid" },
+      "dateFrom": { "type": "string", "format": "date" },
+      "dateTo": { "type": "string", "format": "date" },
+      "minStay": { "type": ["integer", "null"], "minimum": 1 },
+      "closedToArrival": { "type": "boolean", "default": false }
+    }
+  },
+  "response": {
+    "type": "object",
+    "required": ["id", "roomTypeId", "dateFrom", "dateTo"],
+    "properties": {
+      "id": { "type": "string", "format": "uuid" },
+      "roomTypeId": { "type": "string", "format": "uuid" },
+      "dateFrom": { "type": "string", "format": "date" },
+      "dateTo": { "type": "string", "format": "date" },
+      "minStay": { "type": ["integer", "null"] },
+      "closedToArrival": { "type": "boolean" }
+    }
+  },
+  "errors": [
+    { "code": "UNAUTHENTICATED", "status": 401, "when": "Missing session token." },
+    { "code": "VALIDATION_FAILED", "status": 400, "when": "Missing field or dateTo before dateFrom." }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "operation": "QueryCalendar",
+  "case": "happy-path",
+  "description": "Desk lists reservations per date and type over the booked range.",
+  "request": { "dateFrom": "2026-11-01", "dateTo": "2026-11-03", "roomTypeId": "<deluxe-type-id>" },
+  "expect": { "status": 200 }
+}

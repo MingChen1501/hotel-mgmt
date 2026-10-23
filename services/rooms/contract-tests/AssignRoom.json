@@ -1,0 +1,8 @@
+{
+  "operation": "AssignRoom",
+  "case": "happy-path",
+  "description": "Check-in assigns a ready room; the room becomes occupied.",
+  "request": { "roomNumber": "101", "businessDate": "2026-11-01", "stayLink": "stay-1", "actor": "front-desk" },
+  "precondition": "Room 101 is vacant-inspected with no covering block.",
+  "expect": { "status": 200, "state": "occupied" }
+}

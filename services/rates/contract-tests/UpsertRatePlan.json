@@ -1,0 +1,7 @@
+{
+  "operation": "UpsertRatePlan",
+  "case": "happy-path",
+  "description": "Manager creates the Standard plan used by the desk loop.",
+  "request": { "name": "Standard", "description": "Year-round standard plan", "defaultUnits": 1 },
+  "expect": { "status": 200, "name": "Standard" }
+}

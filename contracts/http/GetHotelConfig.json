@@ -1,0 +1,30 @@
+{
+  "operation": "GetHotelConfig",
+  "contract": "AdminService",
+  "version": "1.0",
+  "traces": ["docs/architecture/lld.md section 8", "docs/technical/integration.md section 6 C9", "FR-ADM-1", "FR-ADM-4"],
+  "transport": {
+    "method": "POST",
+    "path": "/v1/admin/GetHotelConfig",
+    "auth": "Bearer session token"
+  },
+  "request": {
+    "type": "object",
+    "properties": {}
+  },
+  "response": {
+    "type": "object",
+    "required": ["schemaVersion", "values"],
+    "properties": {
+      "schemaVersion": { "type": "integer", "description": "Major version of the per-hotel config schema." },
+      "values": {
+        "type": "object",
+        "description": "Section 3.1 config set: timezone, standard times, retention floor, required guest fields, cancellation wording and reason lists, no-show rule, approval rule, charge items, tax/fee rules, restrictions, discounts.",
+        "additionalProperties": true
+      }
+    }
+  },
+  "errors": [
+    { "code": "UNAUTHENTICATED", "status": 401, "when": "Missing, expired, revoked, or idle-timed-out session token." }
+  ]
+}
