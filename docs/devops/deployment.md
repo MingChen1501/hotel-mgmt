@@ -9,9 +9,12 @@ containers, database host or hosts, on-premise backup target, desk
 clients on the hotel LAN) is defined in
 `docs/architecture/system-architecture.md` (active); this document
 adds only the install, upgrade, configuration, pre-flight, and
-rollback procedures. No stack choice is made here: product names for
-the container runtime, database engine, or host operating system are
-deliberately absent and arrive with the stack decision.
+rollback procedures. The stack direction is decided in accepted
+ADR-0001
+(`docs/architecture/decisions/adr-0001-monorepo-polyglot.md`):
+Ansible plus plain containers installed offline, Nginx entry,
+Prometheus plus Grafana on-prem, LAN-only networking with Tailscale,
+and the single 2*4*50 host default with a small-cluster variant.
 
 ## 1. Placement variants
 
@@ -49,11 +52,19 @@ charge items, tax and fee rules, stay restrictions, named discounts —
 and retention floor (section 6 and `docs/operations/backup-dr.md`).
 
 First secrets for the three role accounts (`FR-ADM-2`) are
-provisioned per sale at handover: the delivery team sets an initial
-secret for each account and hands it to the matching person, who
-changes it on first sign-in. The exact provisioning mechanism ships
-with the stack decision — until then it stays an open item (see
-`docs/project/risk-register.md`, R-1). `NFR-SEC-2` sets only the
+provisioned per sale at handover through this mechanism: at install
+time the delivery team generates one unique initial secret per
+account (owner, manager, front-desk), unique per sale and never
+reused across properties or accounts; the delivery team sets each
+initial secret through the installed system's account setup and
+confirms sign-in works; each initial secret is handed only to its
+matching person in a sealed one-to-one handover (never by plain
+email and never as a shared copy) and is never stored in plaintext
+inside the configuration set or the release bundle; each holder
+changes the initial secret on first sign-in, and the delivery team
+confirms all three changes before leaving the site; a lost or
+disclosed initial secret is replaced before handover completes and
+the replacement is recorded as a fresh handover. `NFR-SEC-2` sets only the
 behavioural targets (lockout after 5 failures, sign-out after 15
 idle minutes) and needs no procedure.
 
@@ -113,10 +124,12 @@ relative order and verify inter-host endpoints after step 5.
 
 Run before every install and every upgrade; stop on any failure:
 
-- The host or hosts meet the release's published minimum sizing
-  (CPU, memory, disk); the exact numbers ship with the stack
-  decision — until then sizing stays an open risk (see
-  `docs/project/risk-register.md`).
+- Each host meets the published minimum sizing of 2 vCPU / 4 GB
+  RAM / 50 GB disk per host (owner notation 2*4*50, accepted
+  ADR-0001 answering OQ-A3; see
+  `docs/architecture/decisions/adr-0001-monorepo-polyglot.md`).
+  This is the R-2 mitigation write-in from
+  `docs/project/risk-register.md`.
 - Free disk space covers the release bundle plus one full backup
   with margin.
 - Every host reaches every other host and the backup target over
@@ -151,4 +164,4 @@ fixed within the working day, roll back:
    issue for the failure.
 
 <!-- ao-role: release-manager -->
-Role: release-manager · AO session hotel-mgmt-79
+Role: release-manager · AO session hotel-mgmt-126
