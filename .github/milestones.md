@@ -10,6 +10,13 @@
 Milestones complement — never replace — the one-type + one-risk
 label convention on every issue and PR.
 
+## Board decision (owner decision 2026-10-23)
+
+There is no GitHub Projects board, and none is planned: the
+machine token lacks the `project` scope and the CLI app cannot
+manage projects. The milestone table above plus each milestone's
+web page is the official board for this interim phase.
+
 ## Milestones (mirror of `docs/project/plan.md`)
 
 | Milestone | State | Plan ref |
