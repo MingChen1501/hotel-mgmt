@@ -1,0 +1,8 @@
+{
+  "operation": "UpdateRoomState",
+  "case": "happy-path",
+  "description": "Housekeeping walks a room from vacant-dirty to vacant-clean.",
+  "request": { "roomNumber": "101", "newState": "vacant-clean", "actor": "housekeeping" },
+  "precondition": "Room 101 is vacant-dirty.",
+  "expect": { "status": 200, "newState": "vacant-clean" }
+}

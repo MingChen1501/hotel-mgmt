@@ -1,0 +1,15 @@
+{
+  "operation": "CreateReservation",
+  "case": "happy-path",
+  "description": "Desk books the last sellable unit of Deluxe for two nights at the quoted total.",
+  "request": {
+    "roomTypeId": "<deluxe-type-id>",
+    "arrivalDate": "2026-11-01",
+    "departureDate": "2026-11-03",
+    "guest": { "guestId": "<guest-id>", "fullName": "An Nguyen", "contact": "+84-900-000-001" },
+    "sellableUnits": 1,
+    "priceBasis": { "totalMinor": 24000, "discountName": null },
+    "idempotencyKey": "desk-loop-1"
+  },
+  "expect": { "status": 200, "state": "confirmed", "quotedTotal": 24000 }
+}

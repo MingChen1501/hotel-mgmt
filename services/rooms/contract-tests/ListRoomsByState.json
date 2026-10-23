@@ -1,0 +1,7 @@
+{
+  "operation": "ListRoomsByState",
+  "case": "happy-path",
+  "description": "Staff sees every vacant-inspected room exactly once.",
+  "request": { "state": "vacant-inspected" },
+  "expect": { "status": 200, "state": "vacant-inspected" }
+}

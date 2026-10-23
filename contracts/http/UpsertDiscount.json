@@ -1,0 +1,34 @@
+{
+  "operation": "UpsertDiscount",
+  "contract": "PricingService",
+  "version": "1.0",
+  "traces": ["docs/architecture/lld.md section 4", "FR-RTE-3", "BR-15"],
+  "transport": {
+    "method": "POST",
+    "path": "/v1/rates/UpsertDiscount",
+    "auth": "Bearer session token"
+  },
+  "request": {
+    "type": "object",
+    "required": ["name", "kind", "valueMinor"],
+    "properties": {
+      "name": { "type": "string", "description": "Kept by name on the reservation price basis." },
+      "kind": { "type": "string", "enum": ["percent", "amount"] },
+      "valueMinor": { "type": "integer", "minimum": 0, "description": "Percentage points for percent, minor currency units for amount." }
+    }
+  },
+  "response": {
+    "type": "object",
+    "required": ["id", "name", "kind", "valueMinor"],
+    "properties": {
+      "id": { "type": "string", "format": "uuid" },
+      "name": { "type": "string" },
+      "kind": { "type": "string", "enum": ["percent", "amount"] },
+      "valueMinor": { "type": "integer", "minimum": 0 }
+    }
+  },
+  "errors": [
+    { "code": "UNAUTHENTICATED", "status": 401, "when": "Missing session token." },
+    { "code": "VALIDATION_FAILED", "status": 400, "when": "Missing field, unknown kind, or negative value." }
+  ]
+}

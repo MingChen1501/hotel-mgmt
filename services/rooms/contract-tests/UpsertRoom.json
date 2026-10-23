@@ -1,0 +1,7 @@
+{
+  "operation": "UpsertRoom",
+  "case": "happy-path",
+  "description": "Manager adds room 101 of type Deluxe; a new room starts vacant-inspected so the desk loop can book it.",
+  "request": { "number": "101", "roomType": "Deluxe", "floor": "1", "bedType": "king", "capacity": 2, "features": {}, "actor": "manager" },
+  "expect": { "status": 200, "number": "101", "state": "vacant-inspected" }
+}

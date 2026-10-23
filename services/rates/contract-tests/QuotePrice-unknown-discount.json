@@ -1,0 +1,7 @@
+{
+  "operation": "QuotePrice",
+  "case": "unknown-discount",
+  "description": "Quoting with an unknown discount name is refused with VALIDATION_FAILED.",
+  "request": { "roomTypeId": "<deluxe-type-id>", "arrivalDate": "2026-11-01", "departureDate": "2026-11-03", "discountName": "NoSuchDiscount" },
+  "expect": { "status": 400, "code": "VALIDATION_FAILED" }
+}

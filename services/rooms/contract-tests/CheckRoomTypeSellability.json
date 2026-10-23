@@ -1,0 +1,7 @@
+{
+  "operation": "CheckRoomTypeSellability",
+  "case": "happy-path",
+  "description": "Desk searches Deluxe for a date range and learns the sellable count.",
+  "request": { "roomType": "Deluxe", "dateFrom": "2026-11-01", "dateTo": "2026-11-03" },
+  "expect": { "status": 200, "sellableCount": 1 }
+}

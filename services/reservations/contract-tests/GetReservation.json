@@ -1,0 +1,7 @@
+{
+  "operation": "GetReservation",
+  "case": "happy-path",
+  "description": "Desk reads back the created reservation with its price basis and history.",
+  "request": { "reservationRef": "<reservation-ref>" },
+  "expect": { "status": 200, "state": "confirmed" }
+}

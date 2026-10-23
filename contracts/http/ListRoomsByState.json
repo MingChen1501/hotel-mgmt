@@ -1,0 +1,41 @@
+{
+  "operation": "ListRoomsByState",
+  "contract": "RoomInventoryService",
+  "version": "1.0",
+  "traces": ["docs/architecture/lld.md section 3", "FR-RMS-1"],
+  "transport": {
+    "method": "POST",
+    "path": "/v1/rooms/ListRoomsByState",
+    "auth": "Bearer session token"
+  },
+  "request": {
+    "type": "object",
+    "required": ["state"],
+    "properties": {
+      "state": { "type": "string", "enum": ["occupied", "vacant-dirty", "vacant-clean", "vacant-inspected", "out-of-order"] }
+    }
+  },
+  "response": {
+    "type": "object",
+    "required": ["state", "rooms"],
+    "properties": {
+      "state": { "type": "string" },
+      "rooms": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["number", "roomTypeId", "state"],
+          "properties": {
+            "number": { "type": "string" },
+            "roomTypeId": { "type": "string", "format": "uuid" },
+            "state": { "type": "string" }
+          }
+        }
+      }
+    }
+  },
+  "errors": [
+    { "code": "UNAUTHENTICATED", "status": 401, "when": "Missing session token." },
+    { "code": "VALIDATION_FAILED", "status": 400, "when": "Missing or unknown state value." }
+  ]
+}

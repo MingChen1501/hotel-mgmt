@@ -1,0 +1,7 @@
+{
+  "operation": "UpdateHotelConfig",
+  "case": "happy-path",
+  "description": "Owner saves local settings; the snapshot reflects the new values.",
+  "request": { "values": { "timezone": "Asia/Ho_Chi_Minh", "standardCheckinTime": "14:00" }, "updatedBy": "owner" },
+  "expect": { "status": 200, "values": { "timezone": "Asia/Ho_Chi_Minh" } }
+}

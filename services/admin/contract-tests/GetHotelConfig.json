@@ -1,0 +1,7 @@
+{
+  "operation": "GetHotelConfig",
+  "case": "happy-path",
+  "description": "Authenticated caller reads the section 3.1 config snapshot with its schema version.",
+  "request": {},
+  "expect": { "status": 200, "schemaVersion": 1 }
+}

@@ -1,0 +1,7 @@
+{
+  "operation": "CheckRestrictions",
+  "case": "happy-path",
+  "description": "Dates outside every restriction window pass.",
+  "request": { "roomTypeId": "<deluxe-type-id>", "arrivalDate": "2026-11-01", "departureDate": "2026-11-03" },
+  "expect": { "status": 200, "allowed": true }
+}

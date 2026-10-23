@@ -1,0 +1,8 @@
+{
+  "operation": "UpdateRoomState",
+  "case": "illegal-transition",
+  "description": "Dirty straight to inspected is refused with STATE_ILLEGAL (BR-28).",
+  "request": { "roomNumber": "101", "newState": "vacant-inspected", "actor": "housekeeping" },
+  "precondition": "Room 101 is vacant-dirty.",
+  "expect": { "status": 422, "code": "STATE_ILLEGAL" }
+}

@@ -1,0 +1,16 @@
+{
+  "operation": "CreateReservation",
+  "case": "overbooking-refused",
+  "description": "Booking the same type and dates again loses the atomic overbooking guard with CONFLICT naming type+dates (NFR-CON-1).",
+  "request": {
+    "roomTypeId": "<deluxe-type-id>",
+    "arrivalDate": "2026-11-01",
+    "departureDate": "2026-11-03",
+    "guest": { "guestId": "<guest-id-2>", "fullName": "Binh Tran", "contact": "+84-900-000-002" },
+    "sellableUnits": 1,
+    "priceBasis": { "totalMinor": 24000 },
+    "idempotencyKey": "desk-loop-2"
+  },
+  "precondition": "One confirmed reservation already holds the single sellable unit.",
+  "expect": { "status": 409, "code": "CONFLICT" }
+}

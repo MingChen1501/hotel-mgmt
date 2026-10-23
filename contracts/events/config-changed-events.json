@@ -1,0 +1,19 @@
+{
+  "description": "ConfigChangedEvents JSON Schema (LLD section 0; integration section 6 C9). At-least-once, ordered per aggregate, idempotent apply by event id. Section 3.2 items are never emitted.",
+  "eventVersion": "1.0",
+  "events": {
+    "config-changed": {
+      "type": "object",
+      "required": ["eventId", "eventVersion", "configKey", "value", "schemaVersion", "updatedBy", "occurredAt"],
+      "properties": {
+        "eventId": { "type": "string", "format": "uuid" },
+        "eventVersion": { "type": "string", "const": "1.0" },
+        "configKey": { "type": "string" },
+        "value": {},
+        "schemaVersion": { "type": "integer" },
+        "updatedBy": { "type": "string" },
+        "occurredAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}

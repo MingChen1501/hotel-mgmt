@@ -1,0 +1,7 @@
+{
+  "operation": "BlockRoom",
+  "case": "happy-path",
+  "description": "Manager takes room 101 out of order for a maintenance range.",
+  "request": { "roomNumber": "101", "dateFrom": "2026-11-01", "dateTo": "2026-11-05", "reason": "Plumbing repair", "actor": "manager" },
+  "expect": { "status": 200, "reason": "Plumbing repair" }
+}

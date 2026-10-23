@@ -1,0 +1,49 @@
+{
+  "operation": "QuotePrice",
+  "contract": "PricingService",
+  "version": "1.0",
+  "traces": ["docs/architecture/lld.md sections 1 and 4", "docs/technical/integration.md section 1 C1", "FR-RTE-5", "FR-RTE-1", "FR-RTE-3", "BR-13"],
+  "transport": {
+    "method": "POST",
+    "path": "/v1/rates/QuotePrice",
+    "auth": "Bearer session token"
+  },
+  "request": {
+    "type": "object",
+    "required": ["roomTypeId", "arrivalDate", "departureDate"],
+    "properties": {
+      "roomTypeId": { "type": "string", "format": "uuid" },
+      "arrivalDate": { "type": "string", "format": "date" },
+      "departureDate": { "type": "string", "format": "date" },
+      "ratePlanName": { "type": "string", "description": "Optional when exactly one plan prices the type; required when several do." },
+      "discountName": { "type": "string" }
+    }
+  },
+  "response": {
+    "type": "object",
+    "required": ["roomTypeId", "arrivalDate", "departureDate", "nights", "discountName", "totalMinor"],
+    "properties": {
+      "roomTypeId": { "type": "string", "format": "uuid" },
+      "arrivalDate": { "type": "string", "format": "date" },
+      "departureDate": { "type": "string", "format": "date" },
+      "nights": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["nightDate", "priceMinor"],
+          "properties": {
+            "nightDate": { "type": "string", "format": "date" },
+            "priceMinor": { "type": "integer" }
+          }
+        }
+      },
+      "discountName": { "type": ["string", "null"] },
+      "totalMinor": { "type": "integer", "description": "Stored as the reservation price basis; later rate changes never alter it unless recalculated (BR-13)." }
+    }
+  },
+  "errors": [
+    { "code": "UNAUTHENTICATED", "status": 401, "when": "Missing session token." },
+    { "code": "NOT_FOUND", "status": 404, "when": "No priced night for the type and dates (unknown type or plan)." },
+    { "code": "VALIDATION_FAILED", "status": 400, "when": "Missing field, bad date order, or unknown discount." }
+  ]
+}

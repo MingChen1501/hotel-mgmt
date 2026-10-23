@@ -1,0 +1,7 @@
+{
+  "operation": "CreateUser",
+  "case": "happy-path",
+  "description": "Owner creates a front-desk account; the new identity can sign in.",
+  "request": { "displayName": "Desk Agent", "signinIdentity": "desk-1", "secret": "desk-secret-1", "role": "front-desk" },
+  "expect": { "status": 200, "role": "front-desk" }
+}

@@ -1,0 +1,37 @@
+{
+  "operation": "UpsertRoomType",
+  "contract": "RoomInventoryService",
+  "version": "1.0",
+  "traces": ["docs/architecture/lld.md section 3", "FR-RMS-4", "FR-ADM-3"],
+  "transport": {
+    "method": "POST",
+    "path": "/v1/rooms/UpsertRoomType",
+    "auth": "Bearer session token"
+  },
+  "request": {
+    "type": "object",
+    "required": ["name", "actor"],
+    "properties": {
+      "name": { "type": "string" },
+      "capacity": { "type": "integer", "minimum": 1 },
+      "bedType": { "type": "string" },
+      "features": { "type": "object", "additionalProperties": true },
+      "actor": { "type": "string" }
+    }
+  },
+  "response": {
+    "type": "object",
+    "required": ["id", "name", "capacity", "bedType", "features"],
+    "properties": {
+      "id": { "type": "string", "format": "uuid" },
+      "name": { "type": "string" },
+      "capacity": { "type": ["integer", "null"] },
+      "bedType": { "type": ["string", "null"] },
+      "features": { "type": "object", "additionalProperties": true }
+    }
+  },
+  "errors": [
+    { "code": "UNAUTHENTICATED", "status": 401, "when": "Missing session token." },
+    { "code": "VALIDATION_FAILED", "status": 400, "when": "Missing name or actor." }
+  ]
+}
