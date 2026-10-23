@@ -216,7 +216,7 @@ Interfaces (provider: `PricingService`):
 | `CheckSellableCount` | roomType, dateFrom, dateTo | count per date | `NOT_FOUND` (unknown type) |
 | `CheckRestrictions` | roomType, dateFrom, dateTo | pass/fail + violated restriction | `STATE_ILLEGAL` naming the restriction |
 | `QuotePrice` | roomType, dates, discountName? | nightly breakdown, plan ref, total | `NOT_FOUND`, `VALIDATION_FAILED` (unknown discount) |
-| `UpsertRatePlan`, `UpsertRestriction`, `UpsertDiscount` | (manager setup payloads) | saved record | `VALIDATION_FAILED` |
+| `UpsertRatePlan`, `UpsertRatePrice`, `UpsertRestriction`, `UpsertDiscount` | (manager setup payloads: plans, nightly prices per type/date, restrictions, discounts) | saved record | `VALIDATION_FAILED`, `NOT_FOUND` (unknown plan/type) |
 
 Internal data flow (`QuotePrice`): load plan prices for type+dates
 -> apply named discount/special price if given (kept by name, BR-15)
@@ -397,8 +397,8 @@ contracts/             shared contract library (source of truth):
   events/              JSON Schemas for the 7 domain event families
   http/                per-contract operation shapes (requests/responses)
   errors/              the shared error envelope + code catalogue
-  config-schema/       versioned per-hotel configuration schema (§3.1)
-  messages/            message-catalogue keys (NFR-I18N-1; no behaviour in wording)
+  config-schema/       versioned per-hotel configuration schema (§3.1; lands with the first slice per readiness §1d — not yet in the tree)
+  messages/            message-catalogue keys (NFR-I18N-1; no behaviour in wording; lands when the first user-visible strings need cataloguing, readiness §1g)
 frontend/              static SPA (framework free choice; served by Nginx, no SSR runtime)
 deploy/ansible/        offline packaging playbooks (release-manager owned; referenced, not added here)
 ```
@@ -413,6 +413,9 @@ Per-module directory (shape per stack, same obligations):
 - `migrations/` per module holds that module's schema chain only
   (tools per stack: golang-migrate for Go, node-pg-migrate for
   Node.js, Flyway for Billing — see `docs/technical/schema.md`).
+  Accepted exception: Billing's Flyway chain lives at the Spring
+  Boot default `services/billing/src/main/resources/db/migration/`
+  (`V<n>__` SQL), not `services/billing/migrations/`.
 - `contract-tests/` per module holds its consumer/provider checks
   against `contracts/` (see `docs/technical/integration.md`).
 - Shared code discipline: cross-cutting helpers (token validation,

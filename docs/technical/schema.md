@@ -229,7 +229,10 @@ owner/manager with time.
 
 - One migration chain per schema, stored with its owning module
   (`services/<module>/migrations/`); a migration touches exactly
-  one schema. Chains are independent and apply in dependency-free
+  one schema. Accepted exception: Billing (Spring Boot) stores its
+  Flyway chain at the framework default
+  `services/billing/src/main/resources/db/migration/` (`V<n>__`
+  SQL). Chains are independent and apply in dependency-free
   order (no cross-schema FKs exist to order around).
 - Tools per stack: Go modules (Reservations, Rates, Reporting) use
   golang-migrate (SQL files, `up`/`down` pairs, versioned
