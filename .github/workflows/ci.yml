@@ -8,12 +8,133 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read # paths-filter lists PR files via the API
 
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  # Path filter (issue #120): decides which heavy jobs a change needs.
+  # Always runs. Docs-only changes (docs/**, template/**, markdown,
+  # issue/PR templates) match no code filter below, so every heavy job
+  # is skipped and the PR is gated on the metadata `ci` job alone.
+  # A change to this workflow file (or a push to master) runs the full
+  # matrix, so no PR can go green without its required checks.
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      go-matrix: ${{ steps.gates.outputs.go-matrix }}
+      node-matrix: ${{ steps.gates.outputs.node-matrix }}
+      billing: ${{ steps.gates.outputs.billing }}
+      contracts: ${{ steps.gates.outputs.contracts }}
+      migrate: ${{ steps.gates.outputs.migrate }}
+      e2e: ${{ steps.gates.outputs.e2e }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed areas
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            go-reservations:
+              - 'services/reservations/**'
+            go-rates:
+              - 'services/rates/**'
+            go-reporting:
+              - 'services/reporting/**'
+            node-stay:
+              - 'services/stay/**'
+            node-rooms:
+              - 'services/rooms/**'
+            node-guests:
+              - 'services/guests/**'
+            node-admin:
+              - 'services/admin/**'
+            billing:
+              - 'services/billing/**'
+            services:
+              - 'services/**'
+            contracts:
+              - 'contracts/**'
+            deploy:
+              - 'deploy/**'
+            scripts:
+              - 'script/**'
+            workflow:
+              - '.github/workflows/**'
+
+      - name: Build job gates from changed areas
+        id: gates
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          GO_RESERVATIONS: ${{ steps.filter.outputs.go-reservations }}
+          GO_RATES: ${{ steps.filter.outputs.go-rates }}
+          GO_REPORTING: ${{ steps.filter.outputs.go-reporting }}
+          NODE_STAY: ${{ steps.filter.outputs.node-stay }}
+          NODE_ROOMS: ${{ steps.filter.outputs.node-rooms }}
+          NODE_GUESTS: ${{ steps.filter.outputs.node-guests }}
+          NODE_ADMIN: ${{ steps.filter.outputs.node-admin }}
+          BILLING: ${{ steps.filter.outputs.billing }}
+          SERVICES: ${{ steps.filter.outputs.services }}
+          CONTRACTS: ${{ steps.filter.outputs.contracts }}
+          DEPLOY: ${{ steps.filter.outputs.deploy }}
+          SCRIPTS: ${{ steps.filter.outputs.scripts }}
+          WORKFLOW: ${{ steps.filter.outputs.workflow }}
+        run: |
+          python3 - <<'EOF'
+          import json
+          import os
+
+          e = os.environ
+          is_push = e['EVENT_NAME'] == 'push'
+          # A workflow change or a push to master runs everything: the
+          # gate itself must be verified, and master stays fully green.
+          full = is_push or e['WORKFLOW'] == 'true'
+
+          def changed(name):
+              return e[name] == 'true'
+
+          go = [m for m, f in (
+              ('reservations', 'GO_RESERVATIONS'),
+              ('rates', 'GO_RATES'),
+              ('reporting', 'GO_REPORTING'),
+          ) if full or changed(f)]
+          node = [m for m, f in (
+              ('stay', 'NODE_STAY'),
+              ('rooms', 'NODE_ROOMS'),
+              ('guests', 'NODE_GUESTS'),
+              ('admin', 'NODE_ADMIN'),
+          ) if full or changed(f)]
+
+          services_changed = full or changed('SERVICES')
+          billing = full or changed('BILLING')
+          contracts = full or services_changed or changed('CONTRACTS') or changed('SCRIPTS')
+          migrate = full or services_changed or changed('DEPLOY')
+          e2e = (full or services_changed or changed('DEPLOY')
+                 or changed('SCRIPTS') or changed('CONTRACTS'))
+
+          def boolean(name, value):
+              with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
+                  fh.write(f'{name}={"true" if value else "false"}\n')
+
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
+              fh.write(f"go-matrix={json.dumps(go)}\n")
+              fh.write(f"node-matrix={json.dumps(node)}\n")
+          boolean('billing', billing)
+          boolean('contracts', contracts)
+          boolean('migrate', migrate)
+          boolean('e2e', e2e)
+
+          print(f'event={e["EVENT_NAME"]} full={full}')
+          print(f'go={go} node={node} billing={billing} '
+                f'contracts={contracts} migrate={migrate} e2e={e2e}')
+          EOF
+
   ci:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -73,11 +194,13 @@ jobs:
           echo "No secrets-looking strings found."
 
   go-build:
+    needs: changes
+    if: needs.changes.outputs.go-matrix != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
       matrix:
-        module: [reservations, rates, reporting]
+        module: ${{ fromJSON(needs.changes.outputs.go-matrix) }}
     steps:
       - uses: actions/checkout@v4
 
@@ -109,11 +232,13 @@ jobs:
         run: go test ./...
 
   node-build:
+    needs: changes
+    if: needs.changes.outputs.node-matrix != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
       matrix:
-        module: [stay, rooms, guests, admin]
+        module: ${{ fromJSON(needs.changes.outputs.node-matrix) }}
     steps:
       - uses: actions/checkout@v4
 
@@ -140,6 +265,8 @@ jobs:
         run: npm test
 
   billing-build:
+    needs: changes
+    if: needs.changes.outputs.billing == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -156,6 +283,8 @@ jobs:
         run: mvn -B package
 
   contract-check:
+    needs: changes
+    if: needs.changes.outputs.contracts == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -165,6 +294,8 @@ jobs:
         run: script/contract-check.sh
 
   migrate-check:
+    needs: changes
+    if: needs.changes.outputs.migrate == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     services:
@@ -208,6 +339,8 @@ jobs:
           echo "All boot migrations applied."
 
   e2e-single-host:
+    needs: changes
+    if: needs.changes.outputs.e2e == 'true'
     # Walking-skeleton proof for issue #113: fresh container-lab
     # bring-up from docs only, then the desk loop end to end
     # (book -> verify -> backup -> restore -> verify) through the
