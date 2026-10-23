@@ -2,8 +2,11 @@
 # Regression test: orchestrator-merge.sh treats `skipping`/SKIPPED checks
 # as non-blocking (path-aware CI marks inapplicable jobs as skipped),
 # while fail/failed, pending, and cancelled checks still block the merge;
-# and it enforces the review gate (a reviewer APPROVE COMMENT quoting
-# the exact PR head SHA, with no CHANGES_REQUESTED quoting that head).
+# and it enforces the review gate headline-first (a reviewer APPROVE
+# COMMENT whose headline — first non-empty line — declares PASS/APPROVE
+# and whose body quotes the exact PR head SHA, with no
+# FAIL/CHANGES_REQUESTED headline quoting that head; verdict words
+# mentioned elsewhere in the body are ignored).
 #
 # Runs the wrapper with stubbed `gh`/`ao` on PATH plus a temporary marker
 # directory, so no network, live session, or real PR is needed. Every case
@@ -134,10 +137,21 @@ run_case "pass+cancelled" \
 run_case "head-with-approve-short" "${APPROVE_SHORT}" "${GREEN_CHECKS}" merge
 run_case "head-with-approve-full" "${APPROVE_FULL}" "${GREEN_CHECKS}" merge
 
-# Review gate: head-without-APPROVE refuses (only a SPEC-GATE note
-# quoting the head — no APPROVE verdict).
-run_case "head-without-approve" \
-  '[{"body":"SPEC-GATE PASS — head abcdef1 is T0 docs-only, no specs required. Role: spec-reviewer"}]' \
+# Review gate: a PASS headline whose body merely mentions an earlier
+# CHANGES_REQUESTED round still merges (regression for #146: PR #145's
+# SPEC-GATE PASS quoted the head while recalling a CHANGES_REQUESTED
+# round, and the old whole-body matcher refused it). The leading blank
+# line also proves the headline is the first NON-EMPTY line.
+run_case "pass-with-mention-in-body" \
+  '[{"body":"\n## SPEC-GATE PASS\n\nChecked at head `abcdef1`, scope is harness-only — after a CHANGES_REQUESTED round, all findings resolved. Role: spec-reviewer"}]' \
+  "${GREEN_CHECKS}" \
+  merge
+
+# Review gate: head-without-verdict refuses (headline declares no
+# PASS/APPROVE/FAIL/CHANGES_REQUESTED, even though the body quotes
+# the head).
+run_case "head-without-verdict" \
+  '[{"body":"Reviewed head abcdef1 — findings below, verdict to follow. Role: dev-peer-review"}]' \
   "${GREEN_CHECKS}" \
   refuse
 
@@ -147,13 +161,14 @@ run_case "stale-approve" \
   "${GREEN_CHECKS}" \
   refuse
 
-# Review gate: head-with-CHANGES_REQUESTED refuses.
+# Review gate: head-with-CHANGES_REQUESTED-headline refuses.
 run_case "head-with-changes-requested" \
   '[{"body":"CHANGES_REQUESTED — head abcdef1: blocker at demo:12. Role: dev-peer-review"}]' \
   "${GREEN_CHECKS}" \
   refuse
 
-# Review gate: CHANGES_REQUESTED wins over an APPROVE on the same head.
+# Review gate: a CHANGES_REQUESTED headline wins over an APPROVE on
+# the same head.
 run_case "approve-plus-changes-requested" \
   '[{"body":"APPROVE — reviewed head abcdef1. Role: dev-peer-review"},{"body":"CHANGES_REQUESTED — head abcdef1: blocker at demo:12. Role: dev-peer-review"}]' \
   "${GREEN_CHECKS}" \

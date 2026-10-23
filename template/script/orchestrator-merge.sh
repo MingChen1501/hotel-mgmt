@@ -125,10 +125,14 @@ echo "Labels:  ${labels}"
 echo "Head:    ${head_oid:-unknown} (${head_branch})"
 
 # Review gate: the exact head must carry a reviewer APPROVE COMMENT.
-# A verdict counts only when its comment body names the verdict
-# (APPROVE / CHANGES_REQUESTED) and quotes the exact head SHA (full
+# A verdict counts only when the comment HEADLINE (first non-empty
+# line of the body) declares it — APPROVE iff the headline says PASS
+# or APPROVE, CHANGES_REQUESTED iff the headline says FAIL or
+# CHANGES_REQUESTED — and the body quotes the exact head SHA (full
 # or short form): verdicts on older heads are stale and do not count.
-# Any CHANGES_REQUESTED quoting the exact head refuses the merge —
+# Verdict words mentioned elsewhere in the body (e.g. a PASS review
+# recalling an earlier CHANGES_REQUESTED round) are ignored. Any
+# CHANGES_REQUESTED headline quoting the exact head refuses the merge —
 # the blocking finding wins, even alongside an APPROVE. Fail closed:
 # an unreadable head or comment list refuses too.
 if [[ -z "${head_oid:-}" ]]; then
@@ -136,7 +140,7 @@ if [[ -z "${head_oid:-}" ]]; then
   exit 1
 fi
 comments_out="$(gh pr view "${pr}" -R "${REPO}" --json comments 2>&1 || true)"
-if ! review_scan="$(printf '%s' "${comments_out}" | jq -e --arg head "${head_oid}" '(.comments // []) | map(.body // "") as $bodies | def refs_head: ascii_downcase | [scan("[0-9a-f]{7,40}")] | map(. as $tok | select($head | startswith($tok))) | length > 0; {approve: ([$bodies[] | select(test("(?i)\\bapprove\\b") and refs_head)] | length), changes: ([$bodies[] | select(test("(?i)\\bchanges_requested\\b") and refs_head)] | length)}' 2>/dev/null)"; then
+if ! review_scan="$(printf '%s' "${comments_out}" | jq -e --arg head "${head_oid}" '(.comments // []) | map(.body // "") as $bodies | def refs_head: ascii_downcase | [scan("[0-9a-f]{7,40}")] | map(. as $tok | select($head | startswith($tok))) | length > 0; def headline: split("\n") | map(select(test("\\S"))) | .[0] // ""; {approve: ([$bodies[] | select((headline | test("(?i)\\b(pass|approve)\\b")) and refs_head)] | length), changes: ([$bodies[] | select((headline | test("(?i)\\b(fail|changes_requested)\\b")) and refs_head)] | length)}' 2>/dev/null)"; then
   echo "error: refusing to merge: cannot determine review status for PR #${pr}: $(printf '%s' "${comments_out}" | head -n 1)" >&2
   exit 1
 fi
