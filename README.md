@@ -105,3 +105,39 @@ CI. Path-aware GitHub Actions CI (`.github/workflows/ci.yml`)
 runs per-stack checks on every PR and push to master. Conventions:
 `docs/project/issue-conventions.md`; agent rules: `AGENTS.md`
 (normative role rules: `docs/ao-rules.md`).
+
+## Agentic development workflow
+
+Day-to-day development here runs through short-lived agent sessions
+coordinated around GitHub issues:
+
+- **Issues are the task source.** Every change starts from a GitHub
+  issue; issue and PR comments are the external communication
+  channel.
+- **An orchestrator coordinates; workers implement.** The
+  orchestrator keeps one small task moving at a time and hands each
+  task to a worker session. One worker owns one small task and opens
+  one PR — and never reviews its own PR.
+- **Specs come before code.** Behavioural or architectural changes
+  need their specs written and marked active first; a dedicated
+  spec-reviewer posts a PASS/FAIL verdict, and implementation starts
+  only on PASS. Docs-only and trivial changes skip the gate
+  (change tiers T0–T4 live in the spec-gate skill).
+- **Review, then merge.** A dedicated reviewer session — always a
+  different role from the implementer — posts a recorded verdict
+  quoting the exact PR head. Merging needs that APPROVE plus green
+  CI plus a low- or medium-risk label; higher-risk changes need
+  explicit owner approval first. Merges go only through
+  `script/orchestrator-merge.sh` (squash merge); nobody pushes
+  directly to the default branch.
+- **Verify before opening the PR.** Each module builds and tests
+  from its own directory (see Modules above); a PR never opens
+  while red.
+
+Pointers for detail — agent rules: `AGENTS.md` (normative role
+rules: `docs/ao-rules.md`); helper scripts: `script/`; issue and PR
+conventions: `docs/project/issue-conventions.md`; workflow skills:
+`orchestrator` (`.opencode/skills/orchestrator/SKILL.md`), `worker`
+(`.opencode/skills/worker/SKILL.md`), `spec-gate`
+(`.opencode/skills/spec-gate/SKILL.md`), verification rules:
+`hotel-verify` (`.opencode/skills/hotel-verify/SKILL.md`).
