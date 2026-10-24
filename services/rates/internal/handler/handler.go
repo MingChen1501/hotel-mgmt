@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/MingChen1501/hotel-mgmt/services/rates/internal/messages"
 	"github.com/MingChen1501/hotel-mgmt/services/rates/internal/store"
 )
 
@@ -49,7 +50,7 @@ func decodeBody(w http.ResponseWriter, r *http.Request) (map[string]any, bool) {
 		}
 		writeJSON(w, http.StatusBadRequest, map[string]any{
 			"code":    "VALIDATION_FAILED",
-			"message": "Request body is not valid JSON.",
+			"message": messages.Text("error.transport.bad_json", nil),
 			"details": map[string]any{},
 			"traceId": traceID(),
 		})
@@ -99,7 +100,7 @@ func NewMux(st store.Repository) *http.ServeMux {
 			if !strings.HasPrefix(header, "Bearer ") || strings.TrimSpace(strings.TrimPrefix(header, "Bearer ")) == "" {
 				writeJSON(w, http.StatusUnauthorized, map[string]any{
 					"code":    "UNAUTHENTICATED",
-					"message": "Missing session token.",
+					"message": messages.Text("error.auth.missing_token", nil),
 					"details": map[string]any{},
 					"traceId": traceID(),
 				})
@@ -117,7 +118,7 @@ func NewMux(st store.Repository) *http.ServeMux {
 	mux.HandleFunc("POST /v1/rates/UpsertRatePlan", authed("UpsertRatePlan", func(w http.ResponseWriter, body map[string]any) {
 		name, ok := strField(body, "name")
 		if !ok {
-			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: "name is required.", Details: map[string]any{"field": "name"}})
+			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: messages.Text("error.validation.field_required", map[string]string{"field": "name"}), Details: map[string]any{"field": "name"}})
 			return
 		}
 		description, _ := body["description"].(string)
@@ -125,7 +126,7 @@ func NewMux(st store.Repository) *http.ServeMux {
 		if raw, present := body["defaultUnits"]; present {
 			parsed, ok := intField(body, "defaultUnits")
 			if !ok || parsed < 0 {
-				writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: "defaultUnits must be a non-negative integer.", Details: map[string]any{"field": "defaultUnits"}})
+				writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: messages.Text("rates.validation.default_units", nil), Details: map[string]any{"field": "defaultUnits"}})
 				return
 			}
 			_ = raw
@@ -139,22 +140,22 @@ func NewMux(st store.Repository) *http.ServeMux {
 	mux.HandleFunc("POST /v1/rates/UpsertRatePrice", authed("UpsertRatePrice", func(w http.ResponseWriter, body map[string]any) {
 		planName, ok := strField(body, "ratePlanName")
 		if !ok {
-			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: "ratePlanName is required.", Details: map[string]any{"field": "ratePlanName"}})
+			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: messages.Text("error.validation.field_required", map[string]string{"field": "ratePlanName"}), Details: map[string]any{"field": "ratePlanName"}})
 			return
 		}
 		roomTypeID, ok := strField(body, "roomTypeId")
 		if !ok {
-			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: "roomTypeId is required.", Details: map[string]any{"field": "roomTypeId"}})
+			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: messages.Text("error.validation.field_required", map[string]string{"field": "roomTypeId"}), Details: map[string]any{"field": "roomTypeId"}})
 			return
 		}
 		night, ok := strField(body, "nightDate")
 		if !ok {
-			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: "nightDate is required.", Details: map[string]any{"field": "nightDate"}})
+			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: messages.Text("error.validation.field_required", map[string]string{"field": "nightDate"}), Details: map[string]any{"field": "nightDate"}})
 			return
 		}
 		price, ok := intField(body, "priceMinor")
 		if !ok {
-			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: "priceMinor is required.", Details: map[string]any{"field": "priceMinor"}})
+			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: messages.Text("error.validation.field_required", map[string]string{"field": "priceMinor"}), Details: map[string]any{"field": "priceMinor"}})
 			return
 		}
 		record, oerr := st.UpsertRatePrice(planName, roomTypeID, night, price)
@@ -168,24 +169,24 @@ func NewMux(st store.Repository) *http.ServeMux {
 	mux.HandleFunc("POST /v1/rates/UpsertRestriction", authed("UpsertRestriction", func(w http.ResponseWriter, body map[string]any) {
 		roomTypeID, ok := strField(body, "roomTypeId")
 		if !ok {
-			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: "roomTypeId is required.", Details: map[string]any{"field": "roomTypeId"}})
+			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: messages.Text("error.validation.field_required", map[string]string{"field": "roomTypeId"}), Details: map[string]any{"field": "roomTypeId"}})
 			return
 		}
 		from, ok := strField(body, "dateFrom")
 		if !ok {
-			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: "dateFrom is required.", Details: map[string]any{"field": "dateFrom"}})
+			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: messages.Text("error.validation.field_required", map[string]string{"field": "dateFrom"}), Details: map[string]any{"field": "dateFrom"}})
 			return
 		}
 		to, ok := strField(body, "dateTo")
 		if !ok {
-			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: "dateTo is required.", Details: map[string]any{"field": "dateTo"}})
+			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: messages.Text("error.validation.field_required", map[string]string{"field": "dateTo"}), Details: map[string]any{"field": "dateTo"}})
 			return
 		}
 		var minStay *int
 		if _, present := body["minStay"]; present {
 			parsed, ok := intField(body, "minStay")
 			if !ok || parsed < 1 {
-				writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: "minStay must be a positive integer.", Details: map[string]any{"field": "minStay"}})
+				writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: messages.Text("rates.validation.min_stay", nil), Details: map[string]any{"field": "minStay"}})
 				return
 			}
 			value := int(parsed)
@@ -203,17 +204,17 @@ func NewMux(st store.Repository) *http.ServeMux {
 	mux.HandleFunc("POST /v1/rates/UpsertDiscount", authed("UpsertDiscount", func(w http.ResponseWriter, body map[string]any) {
 		name, ok := strField(body, "name")
 		if !ok {
-			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: "name is required.", Details: map[string]any{"field": "name"}})
+			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: messages.Text("error.validation.field_required", map[string]string{"field": "name"}), Details: map[string]any{"field": "name"}})
 			return
 		}
 		kind, ok := strField(body, "kind")
 		if !ok {
-			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: "kind is required.", Details: map[string]any{"field": "kind"}})
+			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: messages.Text("error.validation.field_required", map[string]string{"field": "kind"}), Details: map[string]any{"field": "kind"}})
 			return
 		}
 		value, ok := intField(body, "valueMinor")
 		if !ok {
-			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: "valueMinor is required.", Details: map[string]any{"field": "valueMinor"}})
+			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: messages.Text("error.validation.field_required", map[string]string{"field": "valueMinor"}), Details: map[string]any{"field": "valueMinor"}})
 			return
 		}
 		record, oerr := st.UpsertDiscount(name, kind, value)
@@ -227,17 +228,17 @@ func NewMux(st store.Repository) *http.ServeMux {
 	mux.HandleFunc("POST /v1/rates/QuotePrice", authed("QuotePrice", func(w http.ResponseWriter, body map[string]any) {
 		roomTypeID, ok := strField(body, "roomTypeId")
 		if !ok {
-			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: "roomTypeId is required.", Details: map[string]any{"field": "roomTypeId"}})
+			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: messages.Text("error.validation.field_required", map[string]string{"field": "roomTypeId"}), Details: map[string]any{"field": "roomTypeId"}})
 			return
 		}
 		arrival, ok := strField(body, "arrivalDate")
 		if !ok {
-			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: "arrivalDate is required.", Details: map[string]any{"field": "arrivalDate"}})
+			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: messages.Text("error.validation.field_required", map[string]string{"field": "arrivalDate"}), Details: map[string]any{"field": "arrivalDate"}})
 			return
 		}
 		departure, ok := strField(body, "departureDate")
 		if !ok {
-			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: "departureDate is required.", Details: map[string]any{"field": "departureDate"}})
+			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: messages.Text("error.validation.field_required", map[string]string{"field": "departureDate"}), Details: map[string]any{"field": "departureDate"}})
 			return
 		}
 		quote, oerr := st.Quote(roomTypeID, arrival, departure, optStrField(body, "ratePlanName"), optStrField(body, "discountName"))
@@ -258,24 +259,24 @@ func NewMux(st store.Repository) *http.ServeMux {
 	mux.HandleFunc("POST /v1/rates/CheckSellableCount", authed("CheckSellableCount", func(w http.ResponseWriter, body map[string]any) {
 		roomTypeID, ok := strField(body, "roomTypeId")
 		if !ok {
-			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: "roomTypeId is required.", Details: map[string]any{"field": "roomTypeId"}})
+			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: messages.Text("error.validation.field_required", map[string]string{"field": "roomTypeId"}), Details: map[string]any{"field": "roomTypeId"}})
 			return
 		}
 		from, ok := strField(body, "dateFrom")
 		if !ok {
-			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: "dateFrom is required.", Details: map[string]any{"field": "dateFrom"}})
+			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: messages.Text("error.validation.field_required", map[string]string{"field": "dateFrom"}), Details: map[string]any{"field": "dateFrom"}})
 			return
 		}
 		to, ok := strField(body, "dateTo")
 		if !ok {
-			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: "dateTo is required.", Details: map[string]any{"field": "dateTo"}})
+			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: messages.Text("error.validation.field_required", map[string]string{"field": "dateTo"}), Details: map[string]any{"field": "dateTo"}})
 			return
 		}
 		var units *int
 		if _, present := body["totalUnits"]; present {
 			parsed, ok := intField(body, "totalUnits")
 			if !ok || parsed < 0 {
-				writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: "totalUnits must be a non-negative integer.", Details: map[string]any{"field": "totalUnits"}})
+				writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: messages.Text("rates.validation.total_units", nil), Details: map[string]any{"field": "totalUnits"}})
 				return
 			}
 			value := int(parsed)
@@ -296,17 +297,17 @@ func NewMux(st store.Repository) *http.ServeMux {
 	mux.HandleFunc("POST /v1/rates/CheckRestrictions", authed("CheckRestrictions", func(w http.ResponseWriter, body map[string]any) {
 		roomTypeID, ok := strField(body, "roomTypeId")
 		if !ok {
-			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: "roomTypeId is required.", Details: map[string]any{"field": "roomTypeId"}})
+			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: messages.Text("error.validation.field_required", map[string]string{"field": "roomTypeId"}), Details: map[string]any{"field": "roomTypeId"}})
 			return
 		}
 		arrival, ok := strField(body, "arrivalDate")
 		if !ok {
-			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: "arrivalDate is required.", Details: map[string]any{"field": "arrivalDate"}})
+			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: messages.Text("error.validation.field_required", map[string]string{"field": "arrivalDate"}), Details: map[string]any{"field": "arrivalDate"}})
 			return
 		}
 		departure, ok := strField(body, "departureDate")
 		if !ok {
-			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: "departureDate is required.", Details: map[string]any{"field": "departureDate"}})
+			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: messages.Text("error.validation.field_required", map[string]string{"field": "departureDate"}), Details: map[string]any{"field": "departureDate"}})
 			return
 		}
 		if oerr := st.CheckRestrictions(roomTypeID, arrival, departure); oerr != nil {

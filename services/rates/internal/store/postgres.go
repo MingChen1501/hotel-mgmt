@@ -12,10 +12,10 @@ package store
 import (
 	"database/sql"
 	"encoding/json"
-	"fmt"
 	"sort"
 	"strings"
 
+	"github.com/MingChen1501/hotel-mgmt/services/rates/internal/messages"
 	_ "github.com/lib/pq"
 )
 
@@ -56,7 +56,7 @@ func NewPostgres(db *sql.DB) *Postgres {
 }
 
 func storeFailure() *OpError {
-	return &OpError{Code: "VALIDATION_FAILED", Status: 500, Message: "Pricing store unavailable.", Details: map[string]any{}}
+	return &OpError{Code: "VALIDATION_FAILED", Status: 500, Message: messages.Text("rates.store.unavailable", nil), Details: map[string]any{}}
 }
 
 func pgMarshal(value any) string {
@@ -114,7 +114,7 @@ func (p *Postgres) UpsertRatePlan(name, description string, defaultUnits *int) *
 // UpsertRatePrice sets one nightly price.
 func (p *Postgres) UpsertRatePrice(planName, roomTypeID, night string, priceMinor int64) (*RatePrice, *OpError) {
 	if priceMinor < 0 {
-		return nil, validation("priceMinor", "priceMinor cannot be negative.")
+		return nil, validation("priceMinor", messages.Text("error.validation.price_negative", nil))
 	}
 	if _, err := parseDate(night, "nightDate"); err != nil {
 		return nil, err
@@ -122,7 +122,7 @@ func (p *Postgres) UpsertRatePrice(planName, roomTypeID, night string, priceMino
 	var planID string
 	if err := p.db.QueryRow(`SELECT id FROM rates.rate_plans WHERE name = $1`, planName).Scan(&planID); err != nil {
 		if err == sql.ErrNoRows {
-			return nil, notFound(fmt.Sprintf("Unknown rate plan %s.", planName), map[string]any{"ratePlanName": planName})
+			return nil, notFound(messages.Text("rates.notfound.rate_plan", map[string]string{"ratePlanName": planName}), map[string]any{"ratePlanName": planName})
 		}
 		return nil, storeFailure()
 	}
@@ -137,7 +137,7 @@ func (p *Postgres) UpsertRatePrice(planName, roomTypeID, night string, priceMino
 		planID, roomTypeID, night, priceMinor,
 	).Scan(&id); err != nil {
 		if strings.Contains(err.Error(), "22P02") {
-			return nil, validation("roomTypeId", "roomTypeId must be a UUID.")
+			return nil, validation("roomTypeId", messages.Text("error.validation.must_be_uuid", map[string]string{"field": "roomTypeId"}))
 		}
 		return nil, storeFailure()
 	}
@@ -168,7 +168,7 @@ func (p *Postgres) UpsertRestriction(roomTypeID, from, to string, minStay *int, 
 		roomTypeID, from, to, minStayValue, closedToArrival,
 	).Scan(&id); err != nil {
 		if strings.Contains(err.Error(), "22P02") {
-			return nil, validation("roomTypeId", "roomTypeId must be a UUID.")
+			return nil, validation("roomTypeId", messages.Text("error.validation.must_be_uuid", map[string]string{"field": "roomTypeId"}))
 		}
 		return nil, storeFailure()
 	}
@@ -179,13 +179,13 @@ func (p *Postgres) UpsertRestriction(roomTypeID, from, to string, minStay *int, 
 // UpsertDiscount records one named discount.
 func (p *Postgres) UpsertDiscount(name, kind string, valueMinor int64) (*Discount, *OpError) {
 	if kind != "percent" && kind != "amount" {
-		return nil, validation("kind", "kind must be percent or amount.")
+		return nil, validation("kind", messages.Text("rates.validation.discount_kind", nil))
 	}
 	if valueMinor < 0 {
-		return nil, validation("valueMinor", "valueMinor cannot be negative.")
+		return nil, validation("valueMinor", messages.Text("rates.validation.value_negative", nil))
 	}
 	if kind == "percent" && valueMinor > 100 {
-		return nil, validation("valueMinor", "percent discounts cannot exceed 100.")
+		return nil, validation("valueMinor", messages.Text("rates.validation.percent_cap", nil))
 	}
 	var id string
 	if err := p.db.QueryRow(
@@ -253,10 +253,10 @@ func (p *Postgres) Quote(roomTypeID, arrival, departure string, planName, discou
 	}
 	nights := nightsBetween(arrivalDay, departureDay)
 	if len(nights) == 0 {
-		return nil, validation("departureDate", "departureDate must be after arrivalDate.")
+		return nil, validation("departureDate", messages.Text("error.validation.departure_order", nil))
 	}
 	if len(nights) > 730 {
-		return nil, validation("departureDate", "Quote ranges longer than 730 nights are not supported in the skeleton.")
+		return nil, validation("departureDate", messages.Text("rates.validation.quote_range", nil))
 	}
 	plans, loadErr := p.loadPlans()
 	if loadErr != nil {
@@ -278,7 +278,7 @@ func (p *Postgres) Quote(roomTypeID, arrival, departure string, planName, discou
 		).Scan(&priceMinor)
 		if qerr != nil {
 			if qerr == sql.ErrNoRows {
-				return nil, notFound(fmt.Sprintf("No priced night for the type on %s.", night.Format(dateLayout)), map[string]any{"roomTypeId": roomTypeID, "nightDate": night.Format(dateLayout)})
+				return nil, notFound(messages.Text("rates.notfound.priced_night", map[string]string{"nightDate": night.Format(dateLayout)}), map[string]any{"roomTypeId": roomTypeID, "nightDate": night.Format(dateLayout)})
 			}
 			return nil, storeFailure()
 		}
@@ -290,7 +290,7 @@ func (p *Postgres) Quote(roomTypeID, arrival, departure string, planName, discou
 		var valueMinor int64
 		if qerr := p.db.QueryRow(`SELECT kind, value_minor FROM rates.discounts WHERE name = $1`, *discountName).Scan(&kind, &valueMinor); qerr != nil {
 			if qerr == sql.ErrNoRows {
-				return nil, validation("discountName", fmt.Sprintf("Unknown discount %s.", *discountName))
+				return nil, validation("discountName", messages.Text("rates.validation.unknown_discount", map[string]string{"discountName": *discountName}))
 			}
 			return nil, storeFailure()
 		}
@@ -320,7 +320,7 @@ func (p *Postgres) CheckRestrictions(roomTypeID, arrival, departure string) *OpE
 		return err
 	}
 	if !departureDay.After(arrivalDay) {
-		return validation("departureDate", "departureDate must be after arrivalDate.")
+		return validation("departureDate", messages.Text("error.validation.departure_order", nil))
 	}
 	nights := len(nightsBetween(arrivalDay, departureDay))
 	lastNight := departureDay.AddDate(0, 0, -1).Format(dateLayout)
@@ -331,7 +331,7 @@ func (p *Postgres) CheckRestrictions(roomTypeID, arrival, departure string) *OpE
 	)
 	if qerr != nil {
 		if strings.Contains(qerr.Error(), "22P02") {
-			return validation("roomTypeId", "roomTypeId must be a UUID.")
+			return validation("roomTypeId", messages.Text("error.validation.must_be_uuid", map[string]string{"field": "roomTypeId"}))
 		}
 		return storeFailure()
 	}
@@ -347,10 +347,10 @@ func (p *Postgres) CheckRestrictions(roomTypeID, arrival, departure string) *OpE
 			continue
 		}
 		if closed && from <= arrival && arrival <= to {
-			return stateIllegal(fmt.Sprintf("Room type is closed to arrival on %s.", arrival), map[string]any{"roomTypeId": roomTypeID, "restriction": "closed-to-arrival", "dateFrom": from, "dateTo": to})
+			return stateIllegal(messages.Text("rates.state.closed_to_arrival", map[string]string{"arrivalDate": arrival}), map[string]any{"roomTypeId": roomTypeID, "restriction": "closed-to-arrival", "dateFrom": from, "dateTo": to})
 		}
 		if minStay.Valid && nights < int(minStay.Int64) {
-			return stateIllegal(fmt.Sprintf("Minimum stay of %d nights applies for the requested dates.", minStay.Int64), map[string]any{"roomTypeId": roomTypeID, "restriction": "min-stay", "minStay": minStay.Int64, "dateFrom": from, "dateTo": to})
+			return stateIllegal(messages.Text("rates.state.min_stay", map[string]string{"minStay": messages.Num(minStay.Int64)}), map[string]any{"roomTypeId": roomTypeID, "restriction": "min-stay", "minStay": minStay.Int64, "dateFrom": from, "dateTo": to})
 		}
 	}
 	if err := rows.Err(); err != nil {
@@ -392,15 +392,15 @@ func (p *Postgres) CheckSellableCount(roomTypeID, from, to string, totalUnits *i
 		var known int
 		if qerr := p.db.QueryRow(`SELECT count(*) FROM rates.rate_prices WHERE room_type_id = $1`, roomTypeID).Scan(&known); qerr != nil {
 			if strings.Contains(qerr.Error(), "22P02") {
-				return nil, validation("roomTypeId", "roomTypeId must be a UUID.")
+				return nil, validation("roomTypeId", messages.Text("error.validation.must_be_uuid", map[string]string{"field": "roomTypeId"}))
 			}
 			return nil, storeFailure()
 		}
 		if known == 0 && totalUnits == nil {
-			return nil, notFound(fmt.Sprintf("Unknown room type %s.", roomTypeID), map[string]any{"roomTypeId": roomTypeID})
+			return nil, notFound(messages.Text("rates.notfound.room_type", map[string]string{"roomTypeId": roomTypeID}), map[string]any{"roomTypeId": roomTypeID})
 		}
 		if known == 0 {
-			return nil, validation("totalUnits", "No inventory input for the room type.")
+			return nil, validation("totalUnits", messages.Text("rates.validation.no_inventory", nil))
 		}
 		fallback := 0
 		units = &fallback
@@ -419,7 +419,7 @@ func (p *Postgres) quotePlan(roomTypeID string, planName *string, plans []*RateP
 				return plan, nil
 			}
 		}
-		return nil, notFound(fmt.Sprintf("Unknown rate plan %s.", *planName), map[string]any{"ratePlanName": *planName})
+		return nil, notFound(messages.Text("rates.notfound.rate_plan", map[string]string{"ratePlanName": *planName}), map[string]any{"ratePlanName": *planName})
 	}
 	var candidates []*RatePlan
 	for _, plan := range plans {
@@ -431,7 +431,7 @@ func (p *Postgres) quotePlan(roomTypeID string, planName *string, plans []*RateP
 		return candidates[0], nil
 	}
 	if len(candidates) == 0 {
-		return nil, notFound("No priced nights for the room type and dates.", map[string]any{"roomTypeId": roomTypeID})
+		return nil, notFound(messages.Text("rates.notfound.priced_nights", nil), map[string]any{"roomTypeId": roomTypeID})
 	}
-	return nil, validation("ratePlanName", "Several plans price the type; name the rate plan.")
+	return nil, validation("ratePlanName", messages.Text("rates.validation.ambiguous_plan", nil))
 }

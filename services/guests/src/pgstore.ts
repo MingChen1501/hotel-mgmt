@@ -1,6 +1,7 @@
 import type { Pool } from "pg";
 import { randomUUID } from "node:crypto";
 import { HttpError } from "./errors.js";
+import { msg } from "./messages.js";
 import {
   requireString,
   requireUuid,
@@ -111,7 +112,7 @@ export class PostgresGuestStore implements GuestStoreAPI {
     const stayId = requireUuid(input.stayId, "stayId");
     const found = await this.pool.query(`SELECT id FROM guests.guests WHERE id = $1`, [guestId]);
     if (found.rows.length === 0) {
-      throw new HttpError("NOT_FOUND", `Unknown guest ${guestId}.`, { guestId });
+      throw new HttpError("NOT_FOUND", msg("guests.notfound.guest", { guestId }), { guestId });
     }
     // Duplicate StayEvents delivery lands on the UNIQUE
     // (guest_id, stay_id) link row: exactly one link survives, so the
@@ -144,7 +145,7 @@ export class PostgresGuestStore implements GuestStoreAPI {
     const reservationRef = requireUuid(input.reservationRef, "reservationRef");
     const record = this.confirmations.get(reservationRef);
     if (!record) {
-      throw new HttpError("NOT_FOUND", `Unknown reservation ${reservationRef}.`, {
+      throw new HttpError("NOT_FOUND", msg("error.notfound.reservation", { ref: reservationRef }), {
         reservationRef,
       });
     }
@@ -172,7 +173,7 @@ export class PostgresGuestStore implements GuestStoreAPI {
         [requireUuid(input.guestId, "guestId")],
       );
       if (found.rows.length === 0) {
-        throw new HttpError("NOT_FOUND", `Unknown guest ${input.guestId}.`, { guestId: input.guestId });
+        throw new HttpError("NOT_FOUND", msg("guests.notfound.guest", { guestId: input.guestId }), { guestId: input.guestId });
       }
       return PostgresGuestStore.toGuest(found.rows[0]);
     }
@@ -184,10 +185,10 @@ export class PostgresGuestStore implements GuestStoreAPI {
         [wanted],
       );
       if (found.rows.length === 0) {
-        throw new HttpError("NOT_FOUND", `Unknown guest ${wanted}.`, { fullName: wanted });
+        throw new HttpError("NOT_FOUND", msg("guests.notfound.guest_by_name", { fullName: wanted }), { fullName: wanted });
       }
       return PostgresGuestStore.toGuest(found.rows[0]);
     }
-    throw new HttpError("VALIDATION_FAILED", "guestId or fullName is required.", { field: "guestId" });
+    throw new HttpError("VALIDATION_FAILED", msg("guests.validation.guest_or_name", {}), { field: "guestId" });
   }
 }

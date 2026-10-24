@@ -18,6 +18,9 @@
 
 set -euo pipefail
 
+# shellcheck disable=SC1091
+source "$(dirname "$0")/messages.sh"
+
 CONFIG="deploy/config/hotel.json"
 STAGING_DIR="./backup-staging"
 
@@ -36,11 +39,15 @@ done
 
 fail=0
 fail_msg() {
-  echo "preflight: FAIL: $1" >&2
+  local key="$1" fallback="$2"
+  shift 2
+  echo "$(msg "script.runbook.preflight_fail" "preflight: FAIL: {item}" item="$(msg "$key" "$fallback" "$@")")" >&2
   fail=1
 }
 pass_msg() {
-  echo "preflight: OK: $1"
+  local key="$1" fallback="$2"
+  shift 2
+  echo "$(msg "script.runbook.preflight_ok" "preflight: OK: {item}" item="$(msg "$key" "$fallback" "$@")")"
 }
 
 # 1. Secrets are provisioned per sale and never left on dev defaults
@@ -54,15 +61,15 @@ is_default_secret() {
 }
 
 if is_default_secret "${DB_PASSWORD:-}"; then
-  fail_msg "DB_PASSWORD is unset or still a dev default; set the per-sale database secret (deployment.md section 2)."
+  fail_msg "script.runbook.preflight_db_default" "DB_PASSWORD is unset or still a dev default; set the per-sale database secret (deployment.md section 2)."
 else
-  pass_msg "DB_PASSWORD is set to a non-default value."
+  pass_msg "script.runbook.preflight_db_set" "DB_PASSWORD is set to a non-default value."
 fi
 
 if is_default_secret "${ADMIN_BOOT_SECRET:-}"; then
-  fail_msg "ADMIN_BOOT_SECRET is unset or still a dev default; provision the per-sale owner boot secret (deployment.md section 2)."
+  fail_msg "script.runbook.preflight_boot_default" "ADMIN_BOOT_SECRET is unset or still a dev default; provision the per-sale owner boot secret (deployment.md section 2)."
 else
-  pass_msg "ADMIN_BOOT_SECRET is set to a non-default value."
+  pass_msg "script.runbook.preflight_boot_set" "ADMIN_BOOT_SECRET is set to a non-default value."
 fi
 
 # 2. The per-hotel configuration set validates against the release
@@ -73,42 +80,42 @@ fi
 # that resolve, stay policies complete, retention floor honoured —
 # and fails closed on any default, placeholder, or malformed value.
 if "$(dirname "$0")/validate-hotel-config.sh" --config "$CONFIG"; then
-  pass_msg "configuration set $CONFIG validates against deploy/config/schema.json."
+  pass_msg "script.runbook.preflight_config_ok" "configuration set {config} validates against deploy/config/schema.json." config="$CONFIG"
 else
-  fail_msg "configuration set $CONFIG fails validation; see deploy/config/schema.json."
+  fail_msg "script.runbook.preflight_config_bad" "configuration set {config} fails validation; see deploy/config/schema.json." config="$CONFIG"
 fi
 
 # 3. Fresh verification state only: covered by the validator above
 # (EXAMPLE-001 placeholder refusal), kept as an explicit gate so the
 # failure names the placeholder directly.
 if [[ -f "$CONFIG" ]] && grep -q "EXAMPLE-001" "$CONFIG" 2>/dev/null; then
-  fail_msg "configuration set $CONFIG still carries the EXAMPLE-001 placeholder; fill in the hotel's own values."
+  fail_msg "script.runbook.preflight_example" "configuration set {config} still carries the EXAMPLE-001 placeholder; fill in the hotel's own values." config="$CONFIG"
 else
-  pass_msg "configuration set carries the hotel's own property values."
+  pass_msg "script.runbook.preflight_config_own" "configuration set carries the hotel's own property values."
 fi
 
 # 4. Host sizing meets the 2*4*50 minimum (deployment.md section 5).
 if command -v nproc >/dev/null 2>&1; then
   if [[ "$(nproc)" -lt 2 ]]; then
-    fail_msg "host has fewer than 2 vCPUs (2*4*50 minimum)."
+    fail_msg "script.runbook.preflight_cpu_few" "host has fewer than 2 vCPUs (2*4*50 minimum)."
   else
-    pass_msg "host CPU count meets the 2 vCPU minimum."
+    pass_msg "script.runbook.preflight_cpu_ok" "host CPU count meets the 2 vCPU minimum."
   fi
 fi
 if [[ -r /proc/meminfo ]]; then
   mem_kb="$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)"
   if [[ "$mem_kb" -lt 4000000 ]]; then
-    fail_msg "host has less than 4 GB RAM (2*4*50 minimum)."
+    fail_msg "script.runbook.preflight_mem_few" "host has less than 4 GB RAM (2*4*50 minimum)."
   else
-    pass_msg "host memory meets the 4 GB minimum."
+    pass_msg "script.runbook.preflight_mem_ok" "host memory meets the 4 GB minimum."
   fi
 fi
 
 # 5. Tooling for the installer path is present.
 if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
-  pass_msg "docker compose is available."
+  pass_msg "script.runbook.preflight_docker_ok" "docker compose is available."
 else
-  fail_msg "docker with the compose plugin is required on the host."
+  fail_msg "script.runbook.preflight_docker_missing" "docker with the compose plugin is required on the host."
 fi
 
 # 6. A blank (or existing) backup target is reachable and writable,
@@ -116,25 +123,25 @@ fi
 # sections 3 and 5).
 if [[ -d "$STAGING_DIR" ]]; then
   if [[ -w "$STAGING_DIR" ]]; then
-    pass_msg "backup target $STAGING_DIR is reachable and writable."
+    pass_msg "script.runbook.preflight_target_ok" "backup target {dir} is reachable and writable." dir="$STAGING_DIR"
   else
-    fail_msg "backup target $STAGING_DIR is not writable."
+    fail_msg "script.runbook.preflight_target_readonly" "backup target {dir} is not writable." dir="$STAGING_DIR"
   fi
 else
   if mkdir -p "$STAGING_DIR" 2>/dev/null && [[ -w "$STAGING_DIR" ]]; then
-    pass_msg "backup target $STAGING_DIR created and writable."
+    pass_msg "script.runbook.preflight_target_created" "backup target {dir} created and writable." dir="$STAGING_DIR"
   else
-    fail_msg "backup target $STAGING_DIR cannot be created or written."
+    fail_msg "script.runbook.preflight_target_failed" "backup target {dir} cannot be created or written." dir="$STAGING_DIR"
   fi
 fi
 if [[ -e "$STAGING_DIR/.backup-in-progress" || -e "$STAGING_DIR/.restore-in-progress" ]]; then
-  fail_msg "a backup or restore job is already in progress in $STAGING_DIR."
+  fail_msg "script.runbook.preflight_job_busy" "a backup or restore job is already in progress in {dir}." dir="$STAGING_DIR"
 else
-  pass_msg "no backup or restore job is in progress."
+  pass_msg "script.runbook.preflight_job_idle" "no backup or restore job is in progress."
 fi
 
 if [[ "$fail" -ne 0 ]]; then
-  echo "preflight: FAILED — fix the items above and re-run." >&2
+  echo "$(msg "script.runbook.preflight_failed" "preflight: FAILED — fix the items above and re-run.")" >&2
   exit 1
 fi
-echo "preflight: PASSED."
+echo "$(msg "script.runbook.preflight_passed" "preflight: PASSED.")"

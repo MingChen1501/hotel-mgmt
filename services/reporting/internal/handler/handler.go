@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/MingChen1501/hotel-mgmt/services/reporting/internal/messages"
 	"github.com/MingChen1501/hotel-mgmt/services/reporting/internal/service"
 	"github.com/MingChen1501/hotel-mgmt/services/reporting/internal/store"
 )
@@ -53,7 +54,7 @@ func decodeBody(w http.ResponseWriter, r *http.Request) (map[string]any, bool) {
 		}
 		writeJSON(w, http.StatusBadRequest, map[string]any{
 			"code":    "VALIDATION_FAILED",
-			"message": "Request body is not valid JSON.",
+			"message": messages.Text("error.transport.bad_json", nil),
 			"details": map[string]any{},
 			"traceId": traceID(),
 		})
@@ -79,7 +80,7 @@ func NewMux(svc *service.Service) *http.ServeMux {
 			if !strings.HasPrefix(header, "Bearer ") || strings.TrimSpace(strings.TrimPrefix(header, "Bearer ")) == "" {
 				writeJSON(w, http.StatusUnauthorized, map[string]any{
 					"code":    "UNAUTHENTICATED",
-					"message": "Missing session token.",
+					"message": messages.Text("error.auth.missing_token", nil),
 					"details": map[string]any{},
 					"traceId": traceID(),
 				})
@@ -96,12 +97,12 @@ func NewMux(svc *service.Service) *http.ServeMux {
 	mux.HandleFunc("POST /v1/reporting/OccupancyReport", authed(func(w http.ResponseWriter, body map[string]any) {
 		from, ok := strField(body, "dateFrom")
 		if !ok {
-			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: "dateFrom is required.", Details: map[string]any{"field": "dateFrom"}})
+			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: messages.Text("error.validation.date_from_required", nil), Details: map[string]any{"field": "dateFrom"}})
 			return
 		}
 		to, ok := strField(body, "dateTo")
 		if !ok {
-			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: "dateTo is required.", Details: map[string]any{"field": "dateTo"}})
+			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: messages.Text("error.validation.date_to_required", nil), Details: map[string]any{"field": "dateTo"}})
 			return
 		}
 		rows, asOf, oerr := svc.OccupancyReport(from, to)
@@ -122,12 +123,12 @@ func NewMux(svc *service.Service) *http.ServeMux {
 	mux.HandleFunc("POST /v1/reporting/RevenueSummary", authed(func(w http.ResponseWriter, body map[string]any) {
 		from, ok := strField(body, "dateFrom")
 		if !ok {
-			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: "dateFrom is required.", Details: map[string]any{"field": "dateFrom"}})
+			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: messages.Text("error.validation.date_from_required", nil), Details: map[string]any{"field": "dateFrom"}})
 			return
 		}
 		to, ok := strField(body, "dateTo")
 		if !ok {
-			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: "dateTo is required.", Details: map[string]any{"field": "dateTo"}})
+			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: messages.Text("error.validation.date_to_required", nil), Details: map[string]any{"field": "dateTo"}})
 			return
 		}
 		rows, asOf, oerr := svc.RevenueSummary(from, to)
@@ -148,7 +149,7 @@ func NewMux(svc *service.Service) *http.ServeMux {
 	mux.HandleFunc("POST /v1/reporting/DailySheet", authed(func(w http.ResponseWriter, body map[string]any) {
 		day, ok := strField(body, "businessDate")
 		if !ok {
-			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: "businessDate is required.", Details: map[string]any{"field": "businessDate"}})
+			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: messages.Text("reporting.validation.business_date_required", nil), Details: map[string]any{"field": "businessDate"}})
 			return
 		}
 		sheet, oerr := svc.DailySheet(day)

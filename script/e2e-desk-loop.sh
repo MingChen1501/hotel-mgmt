@@ -37,6 +37,9 @@
 
 set -euo pipefail
 
+# shellcheck disable=SC1091
+source "$(dirname "$0")/messages.sh"
+
 BASE_URL="http://127.0.0.1"
 STAGING_DIR="./backup-staging"
 HOTEL_CONFIG="deploy/config/hotel.json"
@@ -65,8 +68,8 @@ ADMIN_IDENTITY="${ADMIN_IDENTITY:-owner}"
 # the fail-closed gate); an explicit override is honoured as-is.
 START_EPOCH="$(date +%s)"
 
-step() { echo "e2e: === $1 ==="; }
-pass() { echo "e2e: PASS: $1"; }
+step() { echo "$(msg "$@")"; }
+pass() { echo "$(msg "$@")"; }
 
 # POST one contract operation through the proxy; prints the response
 # body on success, fails on transport errors or envelope refusals.
@@ -83,15 +86,15 @@ api() {
   tmp="$(mktemp)"
   http_code="$(curl -sS --noproxy '*' --max-time 15 -o "$tmp" -w '%{http_code}' -X POST "$BASE_URL/v1/$contract/$operation" \
     -H "Content-Type: application/json" "${auth[@]}" -d "$payload" 2>/dev/null)" \
-    || { echo "e2e: FAIL: POST /v1/$contract/$operation unreachable." >&2; rm -f "$tmp"; return 1; }
+    || { echo "$(msg "script.runbook.e2e_api_unreachable" "e2e: FAIL: POST /v1/{contract}/{operation} unreachable." contract="$contract" operation="$operation")" >&2; rm -f "$tmp"; return 1; }
   body="$(cat "$tmp")"
   rm -f "$tmp"
   if [[ "$http_code" -lt 200 || "$http_code" -ge 300 ]]; then
-    echo "e2e: FAIL: /v1/$contract/$operation HTTP $http_code: $body" >&2
+    echo "$(msg "script.runbook.e2e_api_http_fail" "e2e: FAIL: /v1/{contract}/{operation} HTTP {httpCode}: {body}." contract="$contract" operation="$operation" httpCode="$http_code" body="$body")" >&2
     return 1
   fi
   if python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if "code" in d else 1)' <<<"$body" 2>/dev/null; then
-    echo "e2e: FAIL: /v1/$contract/$operation refused: $body" >&2
+    echo "$(msg "script.runbook.e2e_api_refused" "e2e: FAIL: /v1/{contract}/{operation} refused: {body}." contract="$contract" operation="$operation" body="$body")" >&2
     return 1
   fi
   printf '%s' "$body"
@@ -109,31 +112,31 @@ expect_refusal() {
   tmp="$(mktemp)"
   http_code="$(curl -sS --noproxy '*' --max-time 15 -o "$tmp" -w '%{http_code}' -X POST "$BASE_URL/v1/$contract/$operation" \
     -H "Content-Type: application/json" -H "Authorization: Bearer $token" -d "$payload" 2>/dev/null)" \
-    || { echo "e2e: FAIL: POST /v1/$contract/$operation unreachable." >&2; rm -f "$tmp"; return 1; }
+    || { echo "$(msg "script.runbook.e2e_api_unreachable" "e2e: FAIL: POST /v1/{contract}/{operation} unreachable." contract="$contract" operation="$operation")" >&2; rm -f "$tmp"; return 1; }
   body="$(cat "$tmp")"
   rm -f "$tmp"
   actual="$(python3 -c 'import json,sys; print(json.load(sys.stdin).get("code", ""))' <<<"$body" 2>/dev/null || true)"
   if [[ "$http_code" -ge 200 && "$http_code" -lt 300 ]]; then
-    echo "e2e: FAIL: /v1/$contract/$operation succeeded, want refusal $code: $body" >&2
+    echo "$(msg "script.runbook.e2e_refusal_succeeded" "e2e: FAIL: /v1/{contract}/{operation} succeeded, want refusal {code}: {body}." contract="$contract" operation="$operation" code="$code" body="$body")" >&2
     return 1
   fi
   if [[ "$actual" != "$code" ]]; then
-    echo "e2e: FAIL: /v1/$contract/$operation refused with '$actual', want '$code': $body" >&2
+    echo "$(msg "script.runbook.e2e_refusal_code" "e2e: FAIL: /v1/{contract}/{operation} refused with '{actual}', want '{code}': {body}." contract="$contract" operation="$operation" actual="$actual" code="$code" body="$body")" >&2
     return 1
   fi
-  echo "e2e: refused as expected: /v1/$contract/$operation $code."
+  echo "$(msg "script.runbook.e2e_refusal_ok" "e2e: refused as expected: /v1/{contract}/{operation} {code}." contract="$contract" operation="$operation" code="$code")"
 }
 
 teardown() {
   if [[ "$TEARDOWN" -eq 1 ]]; then
-    echo "e2e: tearing down in reverse stop order (deployment.md section 4)."
+    echo "$(msg "script.runbook.e2e_teardown" "e2e: tearing down in reverse stop order (deployment.md section 4).")"
     "${COMPOSE[@]}" stop proxy >/dev/null 2>&1 || true
     "${COMPOSE[@]}" stop reservations rates reporting stay rooms guests billing admin >/dev/null 2>&1 || true
     "${COMPOSE[@]}" stop db >/dev/null 2>&1 || true
   fi
 }
 
-step "bring up the single-host stack"
+step "script.runbook.e2e_step_bring_up" "e2e: === bring up the single-host stack ==="
 # Fail closed on default secrets (audit S3): the same denylist as
 # script/preflight.sh (canonical), so the loop can never run on dev
 # defaults even though compose ships lab-only fallbacks.
@@ -146,24 +149,24 @@ is_default_secret() {
 DB_PASSWORD_CHECK="${DB_PASSWORD:-}"
 ADMIN_BOOT_SECRET_CHECK="${ADMIN_BOOT_SECRET:-}"
 if is_default_secret "$DB_PASSWORD_CHECK"; then
-  echo "e2e: FAIL: DB_PASSWORD is unset or still a dev default; set the per-sale database secret (script/preflight.sh gates the same list)." >&2
+  echo "$(msg "script.runbook.e2e_db_default" "e2e: FAIL: DB_PASSWORD is unset or still a dev default; set the per-sale database secret (script/preflight.sh gates the same list).")" >&2
   exit 1
 fi
 if is_default_secret "$ADMIN_BOOT_SECRET_CHECK"; then
-  echo "e2e: FAIL: ADMIN_BOOT_SECRET is unset or still a dev default; provision the per-sale owner boot secret (script/preflight.sh gates the same list)." >&2
+  echo "$(msg "script.runbook.e2e_boot_default" "e2e: FAIL: ADMIN_BOOT_SECRET is unset or still a dev default; provision the per-sale owner boot secret (script/preflight.sh gates the same list).")" >&2
   exit 1
 fi
 # The desk signs in with the provisioned per-sale boot secret unless
 # an explicit ADMIN_SECRET override is given.
 ADMIN_SECRET="${ADMIN_SECRET:-$ADMIN_BOOT_SECRET_CHECK}"
 if [[ -z "$ADMIN_SECRET" ]]; then
-  echo "e2e: FAIL: ADMIN_SECRET is empty after defaults." >&2
+  echo "$(msg "script.runbook.e2e_secret_empty" "e2e: FAIL: ADMIN_SECRET is empty after defaults.")" >&2
   exit 1
 fi
 "${COMPOSE[@]}" up -d --build
 "${COMPOSE[@]}" exec -T db bash -c 'until pg_isready -U hotel -d hotel; do sleep 2; done'
 
-step "wait for every module through the proxy"
+step "script.runbook.e2e_step_wait_modules" "e2e: === wait for every module through the proxy ==="
 for module in reservations rates reporting stay rooms guests billing admin; do
   for _ in $(seq 1 24); do
     if curl -fsS --noproxy '*' --max-time 5 "$BASE_URL/v1/$module/healthz" >/dev/null 2>&1; then
@@ -172,17 +175,17 @@ for module in reservations rates reporting stay rooms guests billing admin; do
     sleep 5
   done
   if ! curl -fsS --noproxy '*' --max-time 10 "$BASE_URL/v1/$module/healthz" >/dev/null; then
-    echo "e2e: FAIL: $module never answered through the proxy." >&2
-    echo "e2e: --- compose state ---" >&2
+    echo "$(msg "script.runbook.e2e_module_down" "e2e: FAIL: {module} never answered through the proxy." module="$module")" >&2
+    echo "$(msg "script.runbook.e2e_compose_state" "e2e: --- compose state ---")" >&2
     "${COMPOSE[@]}" ps >&2 || true
-    echo "e2e: --- proxy log tail ---" >&2
+    echo "$(msg "script.runbook.e2e_proxy_log" "e2e: --- proxy log tail ---")" >&2
     "${COMPOSE[@]}" logs --tail=50 proxy >&2 || true
     teardown; exit 1
   fi
-  pass "$module answers through the proxy."
+  pass "script.runbook.e2e_module_ok" "e2e: PASS: {module} answers through the proxy." module="$module"
 done
 
-step "apply boot migrations and the boot seed (idempotent)"
+step "script.runbook.e2e_step_migrations" "e2e: === apply boot migrations and the boot seed (idempotent) ==="
 MIGRATIONS=(
   services/reservations/migrations/000001_boot.up.sql
   services/reservations/migrations/000002_schema.up.sql
@@ -206,37 +209,37 @@ MIGRATIONS=(
 )
 for migration in "${MIGRATIONS[@]}"; do
   "${COMPOSE[@]}" exec -T db psql -U hotel -d hotel -v ON_ERROR_STOP=1 -f - <"$migration" >/dev/null \
-    || { echo "e2e: FAIL: migration $migration did not apply." >&2; teardown; exit 1; }
+    || { echo "$(msg "script.runbook.e2e_migration_failed" "e2e: FAIL: migration {migration} did not apply." migration="$migration")" >&2; teardown; exit 1; }
 done
 "${COMPOSE[@]}" exec -T db psql -U hotel -d hotel -v ON_ERROR_STOP=1 -f - <deploy/seed/boot.sql >/dev/null \
-  || { echo "e2e: FAIL: boot seed did not apply." >&2; teardown; exit 1; }
-pass "migrations and boot seed applied."
+  || { echo "$(msg "script.runbook.e2e_seed_failed" "e2e: FAIL: boot seed did not apply.")" >&2; teardown; exit 1; }
+pass "script.runbook.e2e_migrations_ok" "e2e: PASS: migrations and boot seed applied."
 
-step "Admin: sign in and read the hotel config"
+step "script.runbook.e2e_step_signin" "e2e: === Admin: sign in and read the hotel config ==="
 SIGNIN_RESP="$(api admin SignIn "{\"signinIdentity\": \"$ADMIN_IDENTITY\", \"secret\": \"$ADMIN_SECRET\"}")" \
   || { teardown; exit 1; }
 TOKEN="$(field token "$SIGNIN_RESP")"
-[[ -n "$TOKEN" ]] || { echo "e2e: FAIL: sign-in returned no token." >&2; teardown; exit 1; }
-pass "owner sign-in returned a session token."
+[[ -n "$TOKEN" ]] || { echo "$(msg "script.runbook.e2e_no_token" "e2e: FAIL: sign-in returned no token.")" >&2; teardown; exit 1; }
+pass "script.runbook.e2e_signin_ok" "e2e: PASS: owner sign-in returned a session token."
 CONFIG_RESP="$(api admin GetHotelConfig '{}' "$TOKEN")" || { teardown; exit 1; }
-echo "e2e: hotel config schemaVersion: $(field schemaVersion "$CONFIG_RESP")"
+echo "$(msg "script.runbook.e2e_config_version" "e2e: hotel config schemaVersion: {version}." version="$(field schemaVersion "$CONFIG_RESP")")"
 
-step "Hotel config: apply the deployment set (FR-ADM-1, FR-ADM-4, NFR-DEP-1)"
+step "script.runbook.e2e_step_hotel_config" "e2e: === Hotel config: apply the deployment set (FR-ADM-1, FR-ADM-4, NFR-DEP-1) ==="
 if [[ -f "$HOTEL_CONFIG" ]]; then
   ADMIN_IDENTITY="$ADMIN_IDENTITY" ADMIN_SECRET="$ADMIN_SECRET" \
     script/apply-hotel-config.sh --config "$HOTEL_CONFIG" --base-url "$BASE_URL" \
     || { teardown; exit 1; }
-  pass "deployment set $HOTEL_CONFIG applied with the hotel's own values in effect."
+  pass "script.runbook.e2e_config_applied" "e2e: PASS: deployment set {config} applied with the hotel's own values in effect." config="$HOTEL_CONFIG"
 else
-  echo "e2e: no deployment set at $HOTEL_CONFIG; desk runs on the boot seed values."
+  echo "$(msg "script.runbook.e2e_no_config" "e2e: no deployment set at {config}; desk runs on the boot seed values." config="$HOTEL_CONFIG")"
 fi
 
-step "Guests: upsert the E2E guest (FR-GST-1)"
+step "script.runbook.e2e_step_guest" "e2e: === Guests: upsert the E2E guest (FR-GST-1) ==="
 GUEST_ID="11111111-1111-4111-8111-111111111111"
 api guests UpsertGuest "{\"guestId\": \"$GUEST_ID\", \"fullName\": \"E2E Guest\", \"contact\": {\"idDocument\": \"E2E-0001\"}, \"preferences\": {\"floor\": \"high\"}, \"notes\": \"E2E\", \"actor\": \"front-desk\"}" "$TOKEN" >/dev/null || { teardown; exit 1; }
-pass "guest $GUEST_ID upserted."
+pass "script.runbook.e2e_guest_ok" "e2e: PASS: guest {guestId} upserted." guestId="$GUEST_ID"
 
-step "Rooms: set up one type and one room, check sellability"
+step "script.runbook.e2e_step_rooms" "e2e: === Rooms: set up one type and one room, check sellability ==="
 ARRIVAL="$(date -d '+30 days' +%F)"
 DEPARTURE="$(date -d '+32 days' +%F)"
 NIGHT1="$(date -d '+30 days' +%F)"
@@ -250,12 +253,12 @@ ROOM2_ID="$(field id "$ROOM2_RESP")"
 SELL_RESP="$(api rooms CheckRoomTypeSellability "{\"roomType\": \"$ROOM_TYPE_ID\", \"dateFrom\": \"$ARRIVAL\", \"dateTo\": \"$DEPARTURE\"}" "$TOKEN")" || { teardown; exit 1; }
 SELLABLE="$(field sellableCount "$SELL_RESP")"
 if [[ "$SELLABLE" -lt 1 ]]; then
-  echo "e2e: FAIL: expected at least one sellable unit, got $SELLABLE." >&2
+  echo "$(msg "script.runbook.e2e_no_sellable" "e2e: FAIL: expected at least one sellable unit, got {sellable}." sellable="$SELLABLE")" >&2
   teardown; exit 1
 fi
-pass "room type $ROOM_TYPE_ID sellable ($SELLABLE unit(s)) for $ARRIVAL to $DEPARTURE."
+pass "script.runbook.e2e_sellable_ok" "e2e: PASS: room type {roomType} sellable ({sellable} unit(s)) for {arrival} to {departure}." roomType="$ROOM_TYPE_ID" sellable="$SELLABLE" arrival="$ARRIVAL" departure="$DEPARTURE"
 
-step "Rates: plan, nightly prices, restriction check, quote"
+step "script.runbook.e2e_step_rates" "e2e: === Rates: plan, nightly prices, restriction check, quote ==="
 api rates UpsertRatePlan '{"name": "E2E-RACK", "description": "E2E rack rate", "defaultUnits": 1}' "$TOKEN" >/dev/null || { teardown; exit 1; }
 api rates UpsertRatePrice "{\"ratePlanName\": \"E2E-RACK\", \"roomTypeId\": \"$ROOM_TYPE_ID\", \"nightDate\": \"$NIGHT1\", \"priceMinor\": 120000}" "$TOKEN" >/dev/null || { teardown; exit 1; }
 api rates UpsertRatePrice "{\"ratePlanName\": \"E2E-RACK\", \"roomTypeId\": \"$ROOM_TYPE_ID\", \"nightDate\": \"$NIGHT2\", \"priceMinor\": 120000}" "$TOKEN" >/dev/null || { teardown; exit 1; }
@@ -263,9 +266,9 @@ api rates CheckRestrictions "{\"roomTypeId\": \"$ROOM_TYPE_ID\", \"arrivalDate\"
 COUNT_RESP="$(api rates CheckSellableCount "{\"roomTypeId\": \"$ROOM_TYPE_ID\", \"dateFrom\": \"$ARRIVAL\", \"dateTo\": \"$DEPARTURE\", \"totalUnits\": $SELLABLE}" "$TOKEN")" || { teardown; exit 1; }
 QUOTE_RESP="$(api rates QuotePrice "{\"roomTypeId\": \"$ROOM_TYPE_ID\", \"arrivalDate\": \"$ARRIVAL\", \"departureDate\": \"$DEPARTURE\", \"ratePlanName\": \"E2E-RACK\"}" "$TOKEN")" || { teardown; exit 1; }
 TOTAL="$(field totalMinor "$QUOTE_RESP")"
-pass "quoted total $TOTAL minor units for 2 nights (sellability input: $COUNT_RESP)."
+pass "script.runbook.e2e_quote_ok" "e2e: PASS: quoted total {total} minor units for 2 nights (sellability input: {count})." total="$TOTAL" count="$COUNT_RESP"
 
-step "Reservations: book one reservation (RES -> RATE -> ROOM inputs)"
+step "script.runbook.e2e_step_book" "e2e: === Reservations: book one reservation (RES -> RATE -> ROOM inputs) ==="
 IDEM="e2e-$(date +%s)"
 # guestId is a fixed valid UUID: the contract declares format uuid
 # and strict validation would refuse a non-UUID reference.
@@ -273,20 +276,20 @@ BOOK_RESP="$(api reservations CreateReservation "{\"roomTypeId\": \"$ROOM_TYPE_I
 REF="$(field reservationRef "$BOOK_RESP")"
 STATE="$(field state "$BOOK_RESP")"
 if [[ "$STATE" != "confirmed" || -z "$REF" ]]; then
-  echo "e2e: FAIL: booking did not confirm: $BOOK_RESP" >&2
+  echo "$(msg "script.runbook.e2e_booking_failed" "e2e: FAIL: booking did not confirm: {body}." body="$BOOK_RESP")" >&2
   teardown; exit 1
 fi
-pass "booked reservation $REF (state confirmed, quoted total $(field quotedTotal "$BOOK_RESP"))."
+pass "script.runbook.e2e_booking_ok" "e2e: PASS: booked reservation {ref} (state confirmed, quoted total {total})." ref="$REF" total="$(field quotedTotal "$BOOK_RESP")"
 
-step "verify the booking"
+step "script.runbook.e2e_step_verify_booking" "e2e: === verify the booking ==="
 GET_RESP="$(api reservations GetReservation "{\"reservationRef\": \"$REF\"}" "$TOKEN")" || { teardown; exit 1; };
-[[ "$(field state "$GET_RESP")" == "confirmed" ]] || { echo "e2e: FAIL: GetReservation state mismatch: $GET_RESP" >&2; teardown; exit 1; }
+[[ "$(field state "$GET_RESP")" == "confirmed" ]] || { echo "$(msg "script.runbook.e2e_get_mismatch" "e2e: FAIL: GetReservation state mismatch: {body}." body="$GET_RESP")" >&2; teardown; exit 1; }
 CAL_RESP="$(api reservations QueryCalendar "{\"dateFrom\": \"$ARRIVAL\", \"dateTo\": \"$DEPARTURE\", \"roomTypeId\": \"$ROOM_TYPE_ID\"}" "$TOKEN")" || { teardown; exit 1; };
 python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if any(r.get("reservationRef") == sys.argv[1] for r in d.get("reservations", [])) else 1)' "$REF" <<<"$CAL_RESP" \
-  || { echo "e2e: FAIL: calendar does not list $REF." >&2; teardown; exit 1; }
-pass "GetReservation and QueryCalendar both show $REF confirmed."
+  || { echo "$(msg "script.runbook.e2e_calendar_missing" "e2e: FAIL: calendar does not list {ref}." ref="$REF")" >&2; teardown; exit 1; }
+pass "script.runbook.e2e_verify_ok" "e2e: PASS: GetReservation and QueryCalendar both show {ref} confirmed." ref="$REF"
 
-step "check in one stay for tonight (FR-FDK-1, NFR-CON-2)"
+step "script.runbook.e2e_step_checkin" "e2e: === check in one stay for tonight (FR-FDK-1, NFR-CON-2) ==="
 TODAY="$(date +%F)"
 TOMORROW="$(date -d '+1 day' +%F)"
 PLUS2="$(date -d '+2 days' +%F)"
@@ -297,35 +300,35 @@ TODAY_TOTAL="$(field totalMinor "$TODAY_QUOTE")"
 TODAY_BOOK="$(api reservations CreateReservation "{\"roomTypeId\": \"$ROOM_TYPE_ID\", \"arrivalDate\": \"$TODAY\", \"departureDate\": \"$PLUS2\", \"guest\": {\"guestId\": \"$GUEST_ID\", \"fullName\": \"E2E Guest\"}, \"sellableUnits\": $SELLABLE, \"priceBasis\": {\"totalMinor\": $TODAY_TOTAL}, \"idempotencyKey\": \"$IDEM-today\", \"actor\": \"front-desk\"}" "$TOKEN")" || { teardown; exit 1; }
 TODAY_REF="$(field reservationRef "$TODAY_BOOK")"
 TODAY_RESID="$(field reservationId "$TODAY_BOOK")"
-[[ -n "$TODAY_RESID" ]] || { echo "e2e: FAIL: booking returned no reservationId." >&2; teardown; exit 1; }
+[[ -n "$TODAY_RESID" ]] || { echo "$(msg "script.runbook.e2e_no_reservation_id" "e2e: FAIL: booking returned no reservationId.")" >&2; teardown; exit 1; }
 STAY_ID="$(python3 -c 'import uuid; print(uuid.uuid4())')"
 api rooms AssignRoom "{\"roomNumber\": \"E2E-101\", \"businessDate\": \"$TODAY\", \"stayLink\": \"$STAY_ID\", \"actor\": \"front-desk\"}" "$TOKEN" >/dev/null || { teardown; exit 1; }
 api stay CheckIn "{\"stayId\": \"$STAY_ID\", \"reservationId\": \"$TODAY_RESID\", \"guestId\": \"$GUEST_ID\", \"roomId\": \"$ROOM1_ID\", \"actor\": \"front-desk\"}" "$TOKEN" >/dev/null || { teardown; exit 1; }
 api reservations CheckInReservation "{\"reservationRef\": \"$TODAY_REF\", \"stayId\": \"$STAY_ID\", \"actor\": \"front-desk\"}" "$TOKEN" >/dev/null || { teardown; exit 1; }
-pass "stay $STAY_ID in-house for reservation $TODAY_REF."
+pass "script.runbook.e2e_checkin_ok" "e2e: PASS: stay {stay} in-house for reservation {ref}." stay="$STAY_ID" ref="$TODAY_REF"
 
-step "move the guest mid-stay (FR-FDK-3)"
+step "script.runbook.e2e_step_move" "e2e: === move the guest mid-stay (FR-FDK-3) ==="
 api rooms AssignRoom "{\"roomNumber\": \"E2E-102\", \"businessDate\": \"$TODAY\", \"stayLink\": \"$STAY_ID\", \"actor\": \"front-desk\"}" "$TOKEN" >/dev/null || { teardown; exit 1; }
 MOVE_RESP="$(api stay MoveRoom "{\"stayId\": \"$STAY_ID\", \"toRoomId\": \"$ROOM2_ID\", \"idempotencyKey\": \"$IDEM-move\", \"actor\": \"front-desk\"}" "$TOKEN")" || { teardown; exit 1; }
-[[ "$(field roomId "$MOVE_RESP")" == "$ROOM2_ID" ]] || { echo "e2e: FAIL: move did not link $ROOM2_ID: $MOVE_RESP" >&2; teardown; exit 1; }
+[[ "$(field roomId "$MOVE_RESP")" == "$ROOM2_ID" ]] || { echo "$(msg "script.runbook.e2e_move_failed" "e2e: FAIL: move did not link {room}: {body}." room="$ROOM2_ID" body="$MOVE_RESP")" >&2; teardown; exit 1; }
 REL1_RESP="$(api rooms ReleaseRoom "{\"roomNumber\": \"E2E-101\", \"actor\": \"front-desk\"}" "$TOKEN")" || { teardown; exit 1; }
-[[ "$(field newState "$REL1_RESP")" == "vacant-dirty" ]] || { echo "e2e: FAIL: old room not released vacant-dirty: $REL1_RESP" >&2; teardown; exit 1; }
-pass "stay $STAY_ID moved to E2E-102, E2E-101 vacant-dirty."
+[[ "$(field newState "$REL1_RESP")" == "vacant-dirty" ]] || { echo "$(msg "script.runbook.e2e_release1_failed" "e2e: FAIL: old room not released vacant-dirty: {body}." body="$REL1_RESP")" >&2; teardown; exit 1; }
+pass "script.runbook.e2e_move_ok" "e2e: PASS: stay {stay} moved to E2E-102, E2E-101 vacant-dirty." stay="$STAY_ID"
 
-step "record the early arrival and check the daily lists (FR-FDK-4/5)"
+step "script.runbook.e2e_step_times" "e2e: === record the early arrival and check the daily lists (FR-FDK-4/5) ==="
 TIMES_RESP="$(api stay RecordActualTimes "{\"stayId\": \"$STAY_ID\", \"actualArrival\": \"${TODAY}T05:30:00Z\", \"actor\": \"front-desk\"}" "$TOKEN")" || { teardown; exit 1; }
-[[ "$(field actualArrival "$TIMES_RESP")" == "${TODAY}T05:30:00.000Z" ]] || { echo "e2e: FAIL: actual arrival not kept: $TIMES_RESP" >&2; teardown; exit 1; }
+[[ "$(field actualArrival "$TIMES_RESP")" == "${TODAY}T05:30:00.000Z" ]] || { echo "$(msg "script.runbook.e2e_arrival_failed" "e2e: FAIL: actual arrival not kept: {body}." body="$TIMES_RESP")" >&2; teardown; exit 1; }
 LISTS_RESP="$(api stay ListArrivalsDepartures "{\"businessDate\": \"$TODAY\"}" "$TOKEN")" || { teardown; exit 1; }
 python3 - "$LISTS_RESP" "$STAY_ID" <<'PYEOF' \
-  || { echo "e2e: FAIL: stay missing from the daily lists." >&2; teardown; exit 1; }
+  || { echo "$(msg "script.runbook.e2e_lists_failed" "e2e: FAIL: stay missing from the daily lists.")" >&2; teardown; exit 1; }
 import json, sys
 lists, stay = json.loads(sys.argv[1]), sys.argv[2]
 assert any(s.get("stayId") == stay for s in lists["arrivals"]), lists
 assert any(s.get("stayId") == stay for s in lists["inHouse"]), lists
 PYEOF
-pass "early arrival kept, stay listed in arrivals and in-house."
+pass "script.runbook.e2e_lists_ok" "e2e: PASS: early arrival kept, stay listed in arrivals and in-house."
 
-step "folio charge, payment, invoice/receipt, and day-close (FR-BIL-1/2/3/4/6, FR-CUS-3)"
+step "script.runbook.e2e_step_billing" "e2e: === folio charge, payment, invoice/receipt, and day-close (FR-BIL-1/2/3/4/6, FR-CUS-3) ==="
 api billing UpsertChargeItem '{"name": "E2E Breakfast", "priceMinor": 2500, "actor": "manager"}' "$TOKEN" >/dev/null || { teardown; exit 1; }
 api billing PostCharge "{\"stayId\": \"$STAY_ID\", \"itemKind\": \"nightly-room-charge\", \"itemName\": \"Room E2E-101\", \"amountMinor\": 120000, \"idempotencyKey\": \"$IDEM-charge\", \"actor\": \"front-desk\"}" "$TOKEN" >/dev/null || { teardown; exit 1; }
 api billing PostCharge "{\"stayId\": \"$STAY_ID\", \"itemKind\": \"charge-item\", \"itemName\": \"E2E Breakfast\", \"amountMinor\": 2500, \"idempotencyKey\": \"$IDEM-charge-item\", \"actor\": \"front-desk\"}" "$TOKEN" >/dev/null || { teardown; exit 1; }
@@ -338,7 +341,7 @@ FOLIO_RESP="$(api billing GetFolioBalance "{\"stayId\": \"$STAY_ID\", \"actor\":
 FOLIO_ID="$(field folioId "$FOLIO_RESP")"
 INVOICE_RESP="$(api billing ProduceInvoice "{\"folioId\": \"$FOLIO_ID\", \"actor\": \"front-desk\"}" "$TOKEN")" || { teardown; exit 1; }
 python3 - "$INVOICE_RESP" "$FOLIO_RESP" <<'PYEOF' \
-  || { echo "e2e: FAIL: invoice does not match the folio." >&2; teardown; exit 1; }
+  || { echo "$(msg "script.runbook.e2e_invoice_failed" "e2e: FAIL: invoice does not match the folio.")" >&2; teardown; exit 1; }
 import json, sys
 invoice, folio = (json.loads(a) for a in sys.argv[1:3])
 assert invoice["invoiceId"] == invoice["folioId"] == folio["folioId"], invoice
@@ -351,7 +354,7 @@ assert any(c["itemName"] == "E2E Breakfast" for c in invoice["charges"]), invoic
 PYEOF
 RECEIPT_RESP="$(api billing ProduceReceipt "{\"paymentId\": \"$PAYMENT_ID\", \"actor\": \"front-desk\"}" "$TOKEN")" || { teardown; exit 1; }
 python3 - "$RECEIPT_RESP" "$PAY_RESP" <<'PYEOF' \
-  || { echo "e2e: FAIL: receipt does not match the recorded payment." >&2; teardown; exit 1; }
+  || { echo "$(msg "script.runbook.e2e_receipt_failed" "e2e: FAIL: receipt does not match the recorded payment.")" >&2; teardown; exit 1; }
 import json, sys
 receipt, payment = (json.loads(a) for a in sys.argv[1:3])
 assert receipt["receiptId"] == receipt["paymentId"] == payment["paymentId"], receipt
@@ -359,21 +362,21 @@ assert receipt["folioId"] == payment["folioId"], receipt
 assert receipt["method"] == payment["method"] == "cash", receipt
 assert receipt["amountMinor"] == payment["amountMinor"] == 60000, receipt
 PYEOF
-pass "day-close $TODAY charges=$CHARGES_TOTAL folio balance=$FOLIO_BALANCE; invoice matches folio, receipt matches cash payment."
+pass "script.runbook.e2e_billing_ok" "e2e: PASS: day-close {date} charges={charges} folio balance={balance}; invoice matches folio, receipt matches cash payment." date="$TODAY" charges="$CHARGES_TOTAL" balance="$FOLIO_BALANCE"
 
-step "check out with folio review (FR-FDK-2, FR-BIL-7)"
+step "script.runbook.e2e_step_checkout" "e2e: === check out with folio review (FR-FDK-2, FR-BIL-7) ==="
 expect_refusal stay CheckOut "{\"stayId\": \"$STAY_ID\", \"folioId\": \"$FOLIO_ID\", \"folioBalanceMinor\": $FOLIO_BALANCE, \"actor\": \"front-desk\"}" "$TOKEN" "SETTLEMENT_REQUIRED" || { teardown; exit 1; }
-pass "open-balance check-out refused, stay remains in house."
+pass "script.runbook.e2e_refusal_checkout_ok" "e2e: PASS: open-balance check-out refused, stay remains in house."
 api billing RecordOpenBalanceApproval "{\"stayId\": \"$STAY_ID\", \"approvedBy\": \"owner\", \"role\": \"manager\", \"reason\": \"E2E approved\", \"idempotencyKey\": \"$IDEM-approval\", \"actor\": \"manager\"}" "$TOKEN" >/dev/null || { teardown; exit 1; }
 CHECKOUT_RESP="$(api stay CheckOut "{\"stayId\": \"$STAY_ID\", \"folioId\": \"$FOLIO_ID\", \"folioBalanceMinor\": $FOLIO_BALANCE, \"openBalanceApproval\": {\"approvedBy\": \"owner\", \"role\": \"manager\"}, \"actualDeparture\": \"${TODAY}T14:00:00Z\", \"idempotencyKey\": \"$IDEM-checkout\", \"actor\": \"front-desk\"}" "$TOKEN")" || { teardown; exit 1; }
-[[ "$(field state "$CHECKOUT_RESP")" == "closed" ]] || { echo "e2e: FAIL: stay not closed: $CHECKOUT_RESP" >&2; teardown; exit 1; }
-[[ "$(field invoiceRef "$CHECKOUT_RESP")" == "$FOLIO_ID" ]] || { echo "e2e: FAIL: invoice is not the folio: $CHECKOUT_RESP" >&2; teardown; exit 1; }
+[[ "$(field state "$CHECKOUT_RESP")" == "closed" ]] || { echo "$(msg "script.runbook.e2e_not_closed" "e2e: FAIL: stay not closed: {body}." body="$CHECKOUT_RESP")" >&2; teardown; exit 1; }
+[[ "$(field invoiceRef "$CHECKOUT_RESP")" == "$FOLIO_ID" ]] || { echo "$(msg "script.runbook.e2e_invoice_ref" "e2e: FAIL: invoice is not the folio: {body}." body="$CHECKOUT_RESP")" >&2; teardown; exit 1; }
 expect_refusal stay GetStayRef "{\"stayId\": \"$STAY_ID\"}" "$TOKEN" "STATE_ILLEGAL" || { teardown; exit 1; }
 REL2_RESP="$(api rooms ReleaseRoom "{\"roomNumber\": \"E2E-102\", \"actor\": \"front-desk\"}" "$TOKEN")" || { teardown; exit 1; }
-[[ "$(field newState "$REL2_RESP")" == "vacant-dirty" ]] || { echo "e2e: FAIL: room not released vacant-dirty: $REL2_RESP" >&2; teardown; exit 1; }
-pass "stay $STAY_ID closed with invoice $FOLIO_ID, E2E-102 vacant-dirty."
+[[ "$(field newState "$REL2_RESP")" == "vacant-dirty" ]] || { echo "$(msg "script.runbook.e2e_release2_failed" "e2e: FAIL: room not released vacant-dirty: {body}." body="$REL2_RESP")" >&2; teardown; exit 1; }
+pass "script.runbook.e2e_checkout_ok" "e2e: PASS: stay {stay} closed with invoice {folio}, E2E-102 vacant-dirty." stay="$STAY_ID" folio="$FOLIO_ID"
 
-step "write the restore expectation record"
+step "script.runbook.e2e_step_expectation" "e2e: === write the restore expectation record ==="
 EXPECT_FILE="$STAGING_DIR/e2e-expect.json"
 PAYMENTS_JSON="$(python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["paymentsByMethod"], sort_keys=True))' <<<"$DAY_CLOSE")"
 # Pre-failure ground truth for the runbook section 5 owner checks
@@ -409,33 +412,33 @@ record = {
 }
 json.dump(record, open(path, "w"), indent=2)
 PYEOF
-echo "e2e: expectation record: $(cat "$EXPECT_FILE")"
+echo "$(msg "script.runbook.e2e_expectation" "e2e: expectation record: {record}." record="$(cat "$EXPECT_FILE")")"
 
-step "backup the engine"
+step "script.runbook.e2e_step_backup" "e2e: === backup the engine ==="
 DB_PASSWORD="$DB_PASSWORD_CHECK" script/backup.sh --staging-dir "$STAGING_DIR" --label e2e \
-  || { echo "e2e: FAIL: backup step failed." >&2; teardown; exit 1; }
+  || { echo "$(msg "script.runbook.e2e_backup_failed" "e2e: FAIL: backup step failed.")" >&2; teardown; exit 1; }
 
-step "desk shows the newest backup report (issue #116)"
+step "script.runbook.e2e_step_report" "e2e: === desk shows the newest backup report (issue #116) ==="
 DESK_REPORT="$(curl -fsS --noproxy '*' --max-time 10 "$BASE_URL/backup-report.json")" \
-  || { echo "e2e: FAIL: the desk backup report is not served." >&2; teardown; exit 1; }
+  || { echo "$(msg "script.runbook.e2e_no_report" "e2e: FAIL: the desk backup report is not served.")" >&2; teardown; exit 1; }
 python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get("outcome") == "success" and "Backup succeeded at" in d.get("line", "") else 1)' <<<"$DESK_REPORT" \
-  || { echo "e2e: FAIL: the desk does not show the backup success line: $DESK_REPORT" >&2; teardown; exit 1; }
-pass "desk shows the backup success line through the proxy."
+  || { echo "$(msg "script.runbook.e2e_report_failed" "e2e: FAIL: the desk does not show the backup success line: {report}." report="$DESK_REPORT")" >&2; teardown; exit 1; }
+pass "script.runbook.e2e_report_ok" "e2e: PASS: desk shows the backup success line through the proxy."
 
-step "restore drill (verify-only) inside the RTO budget"
+step "script.runbook.e2e_step_drill" "e2e: === restore drill (verify-only) inside the RTO budget ==="
 script/restore.sh --verify-only --staging-dir "$STAGING_DIR" --expect-file "$EXPECT_FILE" \
-  || { echo "e2e: FAIL: restore drill failed." >&2; teardown; exit 1; }
+  || { echo "$(msg "script.runbook.e2e_drill_failed" "e2e: FAIL: restore drill failed.")" >&2; teardown; exit 1; }
 
-step "re-verify the desk after the drill"
+step "script.runbook.e2e_step_reverify" "e2e: === re-verify the desk after the drill ==="
 REGET_RESP="$(api reservations GetReservation "{\"reservationRef\": \"$REF\"}" "$TOKEN")" || { teardown; exit 1; }
-[[ "$(field state "$REGET_RESP")" == "confirmed" ]] || { echo "e2e: FAIL: booking lost after drill." >&2; teardown; exit 1; }
+[[ "$(field state "$REGET_RESP")" == "confirmed" ]] || { echo "$(msg "script.runbook.e2e_booking_lost" "e2e: FAIL: booking lost after drill.")" >&2; teardown; exit 1; }
 TODAY_REGET="$(api reservations GetReservation "{\"reservationRef\": \"$TODAY_REF\"}" "$TOKEN")" || { teardown; exit 1; }
-[[ "$(field state "$TODAY_REGET")" == "checked-in" ]] || { echo "e2e: FAIL: checked-in booking lost after drill." >&2; teardown; exit 1; }
+[[ "$(field state "$TODAY_REGET")" == "checked-in" ]] || { echo "$(msg "script.runbook.e2e_checkin_lost" "e2e: FAIL: checked-in booking lost after drill.")" >&2; teardown; exit 1; }
 TODAY_STAY="$(api stay GetStay "{\"stayId\": \"$STAY_ID\"}" "$TOKEN")" || { teardown; exit 1; }
-[[ "$(field state "$TODAY_STAY")" == "closed" ]] || { echo "e2e: FAIL: closed stay lost after drill." >&2; teardown; exit 1; }
+[[ "$(field state "$TODAY_STAY")" == "closed" ]] || { echo "$(msg "script.runbook.e2e_stay_lost" "e2e: FAIL: closed stay lost after drill.")" >&2; teardown; exit 1; }
 TODAY_LISTS="$(api stay ListArrivalsDepartures "{\"businessDate\": \"$TODAY\"}" "$TOKEN")" || { teardown; exit 1; }
 python3 - "$TODAY_LISTS" "$STAY_ID" <<'PYEOF' \
-  || { echo "e2e: FAIL: closed stay missing from departures after drill." >&2; teardown; exit 1; }
+  || { echo "$(msg "script.runbook.e2e_departures_lost" "e2e: FAIL: closed stay missing from departures after drill.")" >&2; teardown; exit 1; }
 import json, sys
 lists, stay = json.loads(sys.argv[1]), sys.argv[2]
 assert any(s.get("stayId") == stay for s in lists["departures"]), lists
@@ -450,14 +453,14 @@ assert actual["businessDate"] == day["businessDate"], actual
 assert actual["chargesTotalMinor"] == day["chargesTotalMinor"], actual
 assert actual["paymentsByMethod"] == day["paymentsByMethod"], actual
 PYEOF
-[ $? -eq 0 ] || { echo "e2e: FAIL: day-close totals changed across the drill." >&2; teardown; exit 1; }
+[ $? -eq 0 ] || { echo "$(msg "script.runbook.e2e_dayclose_changed" "e2e: FAIL: day-close totals changed across the drill.")" >&2; teardown; exit 1; }
 for module in reservations rates rooms admin stay guests billing; do
   curl -fsS --noproxy '*' --max-time 10 "$BASE_URL/v1/$module/healthz" >/dev/null \
-    || { echo "e2e: FAIL: $module unhealthy after drill." >&2; teardown; exit 1; }
+    || { echo "$(msg "script.runbook.e2e_unhealthy" "e2e: FAIL: {module} unhealthy after drill." module="$module")" >&2; teardown; exit 1; }
 done
-pass "booking $REF still confirmed, stay $STAY_ID closed, day-close $TODAY intact; desk modules healthy after the drill."
+pass "script.runbook.e2e_reverify_ok" "e2e: PASS: booking {ref} still confirmed, stay {stay} closed, day-close {date} intact; desk modules healthy after the drill." ref="$REF" stay="$STAY_ID" date="$TODAY"
 
 ELAPSED="$(( $(date +%s) - START_EPOCH ))"
-echo "e2e: EVIDENCE: reservation=$REF state=confirmed totalMinor=$TOTAL arrival=$ARRIVAL departure=$DEPARTURE stay=$STAY_ID state=closed invoice=$FOLIO_ID dayCloseDate=$TODAY chargesTotal=$CHARGES_TOTAL folioBalance=$FOLIO_BALANCE elapsed=${ELAPSED}s (RTO budget 4h)."
+echo "$(msg "script.runbook.e2e_evidence" "e2e: EVIDENCE: reservation={ref} state=confirmed totalMinor={total} arrival={arrival} departure={departure} stay={stay} state=closed invoice={folio} dayCloseDate={date} chargesTotal={charges} folioBalance={balance} elapsed={elapsed}s (RTO budget 4h)." ref="$REF" total="$TOTAL" arrival="$ARRIVAL" departure="$DEPARTURE" stay="$STAY_ID" folio="$FOLIO_ID" date="$TODAY" charges="$CHARGES_TOTAL" balance="$FOLIO_BALANCE" elapsed="$ELAPSED")"
 teardown
-echo "e2e: SUCCEEDED."
+echo "$(msg "script.runbook.e2e_succeeded" "e2e: SUCCEEDED.")"

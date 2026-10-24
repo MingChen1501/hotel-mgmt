@@ -23,6 +23,9 @@
 
 set -euo pipefail
 
+# shellcheck disable=SC1091
+source "$(dirname "$0")/messages.sh"
+
 STAGING_DIR="./backup-staging"
 LABEL="daily"
 
@@ -71,7 +74,7 @@ PYEOF
 # the publisher never masks the backup outcome, so it runs guarded.
 publish_desk_report() {
   script/publish-backup-report.sh --staging-dir "$STAGING_DIR" \
-    || echo "backup: WARNING: the desk surface was not refreshed; the report above is still in $STAGING_DIR." >&2
+    || echo "$(msg "script.runbook.backup_warning" "backup: WARNING: the desk surface was not refreshed; the report above is still in {dir}." dir="$STAGING_DIR")" >&2
 }
 
 fail_backup() {
@@ -80,14 +83,14 @@ fail_backup() {
   finished_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   write_report "failure" "$reason" 0 "$finished_at"
   rm -f "$STAGING_DIR/.backup-in-progress"
-  echo "Backup failed at $(date +'%H:%M on %d %b') — $reason" | tee -a "$STAGING_DIR/backup.log"
+  echo "$(msg "script.runbook.backup_failed" "Backup failed at {timestamp} — {reason}" timestamp="$(date +'%H:%M on %d %b')" reason="$reason")" | tee -a "$STAGING_DIR/backup.log"
   publish_desk_report
   exit 1
 }
 
 mkdir -p "$STAGING_DIR"
 if [[ -e "$STAGING_DIR/.backup-in-progress" ]]; then
-  echo "backup: a backup job is already in progress in $STAGING_DIR." >&2
+  echo "$(msg "script.runbook.backup_in_progress" "backup: a backup job is already in progress in {dir}." dir="$STAGING_DIR")" >&2
   exit 1
 fi
 touch "$STAGING_DIR/.backup-in-progress"
@@ -98,14 +101,14 @@ touch "$STAGING_DIR/.backup-in-progress"
 if ! "${COMPOSE[@]}" exec -T db pg_dump -U hotel -d hotel -F p >"$DUMP_FILE" 2>"$STAGING_DIR/.backup-stderr"; then
   reason="$(head -c 300 "$STAGING_DIR/.backup-stderr" | tr '\n' ' ')"
   rm -f "$DUMP_FILE" "$STAGING_DIR/.backup-stderr"
-  fail_backup "database dump failed: ${reason:-unknown error}"
+  fail_backup "$(msg "script.runbook.backup_reason_dump" "database dump failed: {detail}" detail="${reason:-unknown error}")"
 fi
 rm -f "$STAGING_DIR/.backup-stderr"
 
 BYTES="$(wc -c <"$DUMP_FILE" | tr -d ' ')"
 if [[ "$BYTES" -lt 100 ]]; then
   rm -f "$DUMP_FILE"
-  fail_backup "dump artifact is suspiciously small (${BYTES} bytes)"
+  fail_backup "$(msg "script.runbook.backup_reason_small" "dump artifact is suspiciously small ({bytes} bytes)" bytes="$BYTES")"
 fi
 
 # Completeness check (backup-dr section 4): the copy must read back.
@@ -114,20 +117,20 @@ fi
 SCRATCH="hotel_backup_verify_$$"
 if ! "${COMPOSE[@]}" exec -T db psql -U hotel -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE $SCRATCH;" >/dev/null; then
   rm -f "$DUMP_FILE"
-  fail_backup "could not create the scratch verification database"
+  fail_backup "$(msg "script.runbook.backup_reason_scratch" "could not create the scratch verification database")"
 fi
 if "${COMPOSE[@]}" exec -T db psql -U hotel -d "$SCRATCH" -v ON_ERROR_STOP=1 -f - <"$DUMP_FILE" >/dev/null 2>&1 \
   && TABLES="$("${COMPOSE[@]}" exec -T db psql -U hotel -d "$SCRATCH" -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog','information_schema');")"; then
-  echo "backup: verification read-back found $TABLES user tables in the scratch database."
+  echo "$(msg "script.runbook.backup_verified" "backup: verification read-back found {tables} user tables in the scratch database." tables="$TABLES")"
 else
   "${COMPOSE[@]}" exec -T db psql -U hotel -d postgres -c "DROP DATABASE IF EXISTS $SCRATCH;" >/dev/null 2>&1 || true
   rm -f "$DUMP_FILE"
-  fail_backup "verification read-back of the backup copy failed"
+  fail_backup "$(msg "script.runbook.backup_reason_readback" "verification read-back of the backup copy failed")"
 fi
 "${COMPOSE[@]}" exec -T db psql -U hotel -d postgres -v ON_ERROR_STOP=1 -c "DROP DATABASE $SCRATCH;" >/dev/null
 
 FINISHED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 write_report "success" "" "$BYTES" "$FINISHED_AT"
 rm -f "$STAGING_DIR/.backup-in-progress"
-echo "Backup succeeded at $(date +'%H:%M on %d %b'): $DUMP_FILE ($BYTES bytes, read-back verified)." | tee -a "$STAGING_DIR/backup.log"
+echo "$(msg "script.runbook.backup_succeeded" "Backup succeeded at {timestamp}: {dumpFile} ({bytes} bytes, read-back verified)." timestamp="$(date +'%H:%M on %d %b')" dumpFile="$DUMP_FILE" bytes="$BYTES")" | tee -a "$STAGING_DIR/backup.log"
 publish_desk_report

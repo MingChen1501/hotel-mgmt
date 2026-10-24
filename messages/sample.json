@@ -1,12 +1,17 @@
 {
-  "description": "Bounded NFR-I18N-1 coverage sample for issue #192: error envelopes of reservations (Go) + admin (Node) + billing (Spring) and the frontend desk copy. Follow-up #201 extends this list to the remaining services and script wording.",
+  "description": "Bounded NFR-I18N-1 coverage sample: error envelopes of reservations (Go) + admin (Node) + billing (Spring) and the frontend desk copy (issue #192), plus the remaining services rates/reporting (Go) + rooms/stay/guests (Node) and the script runbook wording (issue #201).",
   "sample": [
     {
       "key": "error.transport.bad_json",
       "surface": "reservations+admin envelope",
       "sources": [
         "services/reservations/internal/handler/handler.go",
-        "services/admin/src/server.ts"
+        "services/admin/src/server.ts",
+        "services/rates/internal/handler/handler.go",
+        "services/reporting/internal/handler/handler.go",
+        "services/rooms/src/server.ts",
+        "services/stay/src/server.ts",
+        "services/guests/src/server.ts"
       ],
       "params": {}
     },
@@ -14,7 +19,10 @@
       "key": "error.transport.body_not_object",
       "surface": "admin envelope",
       "sources": [
-        "services/admin/src/server.ts"
+        "services/admin/src/server.ts",
+        "services/rooms/src/server.ts",
+        "services/stay/src/server.ts",
+        "services/guests/src/server.ts"
       ],
       "params": {}
     },
@@ -22,7 +30,10 @@
       "key": "error.transport.body_read_failed",
       "surface": "admin envelope",
       "sources": [
-        "services/admin/src/server.ts"
+        "services/admin/src/server.ts",
+        "services/rooms/src/server.ts",
+        "services/stay/src/server.ts",
+        "services/guests/src/server.ts"
       ],
       "params": {}
     },
@@ -30,7 +41,10 @@
       "key": "error.transport.unexpected",
       "surface": "admin envelope",
       "sources": [
-        "services/admin/src/server.ts"
+        "services/admin/src/server.ts",
+        "services/rooms/src/server.ts",
+        "services/stay/src/server.ts",
+        "services/guests/src/server.ts"
       ],
       "params": {}
     },
@@ -38,7 +52,10 @@
       "key": "error.transport.unknown_path",
       "surface": "admin envelope",
       "sources": [
-        "services/admin/src/server.ts"
+        "services/admin/src/server.ts",
+        "services/rooms/src/server.ts",
+        "services/stay/src/server.ts",
+        "services/guests/src/server.ts"
       ],
       "params": {}
     },
@@ -48,7 +65,12 @@
       "sources": [
         "services/reservations/internal/handler/handler.go",
         "services/admin/src/server.ts",
-        "services/billing/src/main/java/com/hotel/billing/web/BillingController.java"
+        "services/billing/src/main/java/com/hotel/billing/web/BillingController.java",
+        "services/rates/internal/handler/handler.go",
+        "services/reporting/internal/handler/handler.go",
+        "services/rooms/src/server.ts",
+        "services/stay/src/server.ts",
+        "services/guests/src/server.ts"
       ],
       "params": {}
     },
@@ -144,7 +166,11 @@
       "sources": [
         "services/admin/src/store.ts",
         "services/billing/src/main/java/com/hotel/billing/service/BillingService.java",
-        "services/billing/src/main/java/com/hotel/billing/web/BillingController.java"
+        "services/billing/src/main/java/com/hotel/billing/web/BillingController.java",
+        "services/rates/internal/handler/handler.go",
+        "services/rooms/src/store.ts",
+        "services/stay/src/store.ts",
+        "services/guests/src/store.ts"
       ],
       "params": {
         "field": "string"
@@ -164,7 +190,10 @@
       "key": "error.validation.must_be_uuid",
       "surface": "billing envelope",
       "sources": [
-        "services/billing/src/main/java/com/hotel/billing/service/BillingService.java"
+        "services/billing/src/main/java/com/hotel/billing/service/BillingService.java",
+        "services/rates/internal/store/postgres.go",
+        "services/stay/src/store.ts",
+        "services/guests/src/store.ts"
       ],
       "params": {
         "field": "string"
@@ -307,7 +336,9 @@
       "key": "error.validation.price_negative",
       "surface": "billing envelope",
       "sources": [
-        "services/billing/src/main/java/com/hotel/billing/service/BillingService.java"
+        "services/billing/src/main/java/com/hotel/billing/service/BillingService.java",
+        "services/rates/internal/store/store.go",
+        "services/rates/internal/store/postgres.go"
       ],
       "params": {}
     },
@@ -326,7 +357,8 @@
       "key": "error.validation.business_date",
       "surface": "billing envelope",
       "sources": [
-        "services/billing/src/main/java/com/hotel/billing/service/BillingService.java"
+        "services/billing/src/main/java/com/hotel/billing/service/BillingService.java",
+        "services/reporting/internal/store/store.go"
       ],
       "params": {}
     },
@@ -335,7 +367,8 @@
       "surface": "reservations envelope",
       "sources": [
         "services/reservations/internal/handler/handler.go",
-        "services/reservations/internal/service/service.go"
+        "services/reservations/internal/service/service.go",
+        "services/reporting/internal/store/store.go"
       ],
       "params": {}
     },
@@ -343,7 +376,8 @@
       "key": "error.validation.stay_id_required",
       "surface": "reservations envelope",
       "sources": [
-        "services/reservations/internal/handler/handler.go"
+        "services/reservations/internal/handler/handler.go",
+        "services/reporting/internal/store/store.go"
       ],
       "params": {}
     },
@@ -351,7 +385,8 @@
       "key": "error.validation.date_from_required",
       "surface": "reservations envelope",
       "sources": [
-        "services/reservations/internal/handler/handler.go"
+        "services/reservations/internal/handler/handler.go",
+        "services/reporting/internal/handler/handler.go"
       ],
       "params": {}
     },
@@ -359,7 +394,8 @@
       "key": "error.validation.date_to_required",
       "surface": "reservations envelope",
       "sources": [
-        "services/reservations/internal/handler/handler.go"
+        "services/reservations/internal/handler/handler.go",
+        "services/reporting/internal/handler/handler.go"
       ],
       "params": {}
     },
@@ -367,7 +403,8 @@
       "key": "error.validation.date_from_format",
       "surface": "reservations envelope",
       "sources": [
-        "services/reservations/internal/handler/handler.go"
+        "services/reservations/internal/handler/handler.go",
+        "services/reporting/internal/store/store.go"
       ],
       "params": {}
     },
@@ -375,7 +412,8 @@
       "key": "error.validation.date_to_format",
       "surface": "reservations envelope",
       "sources": [
-        "services/reservations/internal/handler/handler.go"
+        "services/reservations/internal/handler/handler.go",
+        "services/reporting/internal/store/store.go"
       ],
       "params": {}
     },
@@ -383,7 +421,11 @@
       "key": "error.validation.date_range_order",
       "surface": "reservations envelope",
       "sources": [
-        "services/reservations/internal/handler/handler.go"
+        "services/reservations/internal/handler/handler.go",
+        "services/rates/internal/store/store.go",
+        "services/reporting/internal/store/store.go",
+        "services/rooms/src/store.ts",
+        "services/rooms/src/pgstore.ts"
       ],
       "params": {}
     },
@@ -391,7 +433,8 @@
       "key": "error.validation.room_type_required",
       "surface": "reservations envelope",
       "sources": [
-        "services/reservations/internal/service/service.go"
+        "services/reservations/internal/service/service.go",
+        "services/reporting/internal/store/store.go"
       ],
       "params": {}
     },
@@ -399,7 +442,8 @@
       "key": "error.validation.arrival_format",
       "surface": "reservations envelope",
       "sources": [
-        "services/reservations/internal/service/service.go"
+        "services/reservations/internal/service/service.go",
+        "services/reporting/internal/store/store.go"
       ],
       "params": {}
     },
@@ -415,7 +459,9 @@
       "key": "error.validation.departure_order",
       "surface": "reservations envelope",
       "sources": [
-        "services/reservations/internal/service/service.go"
+        "services/reservations/internal/service/service.go",
+        "services/rates/internal/store/store.go",
+        "services/rates/internal/store/postgres.go"
       ],
       "params": {}
     },
@@ -496,7 +542,9 @@
       "surface": "reservations envelope",
       "sources": [
         "services/reservations/internal/store/store.go",
-        "services/reservations/internal/store/postgres.go"
+        "services/reservations/internal/store/postgres.go",
+        "services/guests/src/store.ts",
+        "services/guests/src/pgstore.ts"
       ],
       "params": {
         "ref": "string"
@@ -867,6 +915,2006 @@
       ],
       "params": {
         "operation": "string"
+      }
+    },
+    {
+      "key": "rates.validation.date_format",
+      "surface": "rates envelope",
+      "sources": [
+        "services/rates/internal/store/store.go"
+      ],
+      "params": {
+        "field": "string"
+      }
+    },
+    {
+      "key": "rates.validation.default_units",
+      "surface": "rates envelope",
+      "sources": [
+        "services/rates/internal/handler/handler.go"
+      ],
+      "params": {}
+    },
+    {
+      "key": "rates.validation.min_stay",
+      "surface": "rates envelope",
+      "sources": [
+        "services/rates/internal/handler/handler.go"
+      ],
+      "params": {}
+    },
+    {
+      "key": "rates.validation.total_units",
+      "surface": "rates envelope",
+      "sources": [
+        "services/rates/internal/handler/handler.go"
+      ],
+      "params": {}
+    },
+    {
+      "key": "rates.validation.discount_kind",
+      "surface": "rates envelope",
+      "sources": [
+        "services/rates/internal/store/store.go",
+        "services/rates/internal/store/postgres.go"
+      ],
+      "params": {}
+    },
+    {
+      "key": "rates.validation.value_negative",
+      "surface": "rates envelope",
+      "sources": [
+        "services/rates/internal/store/store.go",
+        "services/rates/internal/store/postgres.go"
+      ],
+      "params": {}
+    },
+    {
+      "key": "rates.validation.percent_cap",
+      "surface": "rates envelope",
+      "sources": [
+        "services/rates/internal/store/store.go",
+        "services/rates/internal/store/postgres.go"
+      ],
+      "params": {}
+    },
+    {
+      "key": "rates.validation.quote_range",
+      "surface": "rates envelope",
+      "sources": [
+        "services/rates/internal/store/store.go",
+        "services/rates/internal/store/postgres.go"
+      ],
+      "params": {}
+    },
+    {
+      "key": "rates.validation.unknown_discount",
+      "surface": "rates envelope",
+      "sources": [
+        "services/rates/internal/store/store.go",
+        "services/rates/internal/store/postgres.go"
+      ],
+      "params": {
+        "discountName": "string"
+      }
+    },
+    {
+      "key": "rates.validation.no_inventory",
+      "surface": "rates envelope",
+      "sources": [
+        "services/rates/internal/store/store.go",
+        "services/rates/internal/store/postgres.go"
+      ],
+      "params": {}
+    },
+    {
+      "key": "rates.validation.ambiguous_plan",
+      "surface": "rates envelope",
+      "sources": [
+        "services/rates/internal/store/store.go",
+        "services/rates/internal/store/postgres.go"
+      ],
+      "params": {}
+    },
+    {
+      "key": "rates.notfound.rate_plan",
+      "surface": "rates envelope",
+      "sources": [
+        "services/rates/internal/store/store.go",
+        "services/rates/internal/store/postgres.go"
+      ],
+      "params": {
+        "ratePlanName": "string"
+      }
+    },
+    {
+      "key": "rates.notfound.priced_night",
+      "surface": "rates envelope",
+      "sources": [
+        "services/rates/internal/store/store.go",
+        "services/rates/internal/store/postgres.go"
+      ],
+      "params": {
+        "nightDate": "string"
+      }
+    },
+    {
+      "key": "rates.notfound.room_type",
+      "surface": "rates envelope",
+      "sources": [
+        "services/rates/internal/store/store.go",
+        "services/rates/internal/store/postgres.go"
+      ],
+      "params": {
+        "roomTypeId": "string"
+      }
+    },
+    {
+      "key": "rates.notfound.priced_nights",
+      "surface": "rates envelope",
+      "sources": [
+        "services/rates/internal/store/store.go",
+        "services/rates/internal/store/postgres.go"
+      ],
+      "params": {}
+    },
+    {
+      "key": "rates.state.closed_to_arrival",
+      "surface": "rates envelope",
+      "sources": [
+        "services/rates/internal/store/store.go",
+        "services/rates/internal/store/postgres.go"
+      ],
+      "params": {
+        "arrivalDate": "string"
+      }
+    },
+    {
+      "key": "rates.state.min_stay",
+      "surface": "rates envelope",
+      "sources": [
+        "services/rates/internal/store/store.go",
+        "services/rates/internal/store/postgres.go"
+      ],
+      "params": {
+        "minStay": "integer"
+      }
+    },
+    {
+      "key": "rates.store.unavailable",
+      "surface": "rates envelope",
+      "sources": [
+        "services/rates/internal/store/postgres.go"
+      ],
+      "params": {}
+    },
+    {
+      "key": "reporting.validation.event_required",
+      "surface": "reporting envelope",
+      "sources": [
+        "services/reporting/internal/store/store.go"
+      ],
+      "params": {}
+    },
+    {
+      "key": "reporting.validation.departure_after_arrival",
+      "surface": "reporting envelope",
+      "sources": [
+        "services/reporting/internal/store/store.go"
+      ],
+      "params": {}
+    },
+    {
+      "key": "reporting.validation.date_format",
+      "surface": "reporting envelope",
+      "sources": [
+        "services/reporting/internal/store/store.go"
+      ],
+      "params": {
+        "field": "string"
+      }
+    },
+    {
+      "key": "reporting.validation.sellable_units",
+      "surface": "reporting envelope",
+      "sources": [
+        "services/reporting/internal/store/store.go"
+      ],
+      "params": {}
+    },
+    {
+      "key": "reporting.validation.folio_required",
+      "surface": "reporting envelope",
+      "sources": [
+        "services/reporting/internal/store/store.go"
+      ],
+      "params": {}
+    },
+    {
+      "key": "reporting.validation.business_date_required",
+      "surface": "reporting envelope",
+      "sources": [
+        "services/reporting/internal/handler/handler.go"
+      ],
+      "params": {}
+    },
+    {
+      "key": "reporting.validation.kind",
+      "surface": "reporting envelope",
+      "sources": [
+        "services/reporting/internal/store/store.go"
+      ],
+      "params": {}
+    },
+    {
+      "key": "reporting.validation.amount",
+      "surface": "reporting envelope",
+      "sources": [
+        "services/reporting/internal/store/store.go"
+      ],
+      "params": {}
+    },
+    {
+      "key": "reporting.validation.room_required",
+      "surface": "reporting envelope",
+      "sources": [
+        "services/reporting/internal/store/store.go"
+      ],
+      "params": {}
+    },
+    {
+      "key": "reporting.validation.state_required",
+      "surface": "reporting envelope",
+      "sources": [
+        "services/reporting/internal/store/store.go"
+      ],
+      "params": {}
+    },
+    {
+      "key": "reporting.validation.new_state_required",
+      "surface": "reporting envelope",
+      "sources": [
+        "services/reporting/internal/store/store.go"
+      ],
+      "params": {}
+    },
+    {
+      "key": "reporting.validation.date_to_order",
+      "surface": "reporting envelope",
+      "sources": [
+        "services/reporting/internal/store/store.go"
+      ],
+      "params": {}
+    },
+    {
+      "key": "rooms.validation.date_format",
+      "surface": "rooms envelope",
+      "sources": [
+        "services/rooms/src/store.ts"
+      ],
+      "params": {
+        "field": "string"
+      }
+    },
+    {
+      "key": "rooms.notfound.room_type",
+      "surface": "rooms envelope",
+      "sources": [
+        "services/rooms/src/store.ts",
+        "services/rooms/src/pgstore.ts"
+      ],
+      "params": {
+        "roomType": "string"
+      }
+    },
+    {
+      "key": "rooms.notfound.room",
+      "surface": "rooms envelope",
+      "sources": [
+        "services/rooms/src/store.ts",
+        "services/rooms/src/pgstore.ts"
+      ],
+      "params": {
+        "roomNumber": "string"
+      }
+    },
+    {
+      "key": "rooms.validation.unknown_state",
+      "surface": "rooms envelope",
+      "sources": [
+        "services/rooms/src/store.ts",
+        "services/rooms/src/pgstore.ts"
+      ],
+      "params": {}
+    },
+    {
+      "key": "rooms.state.room_blocked",
+      "surface": "rooms envelope",
+      "sources": [
+        "services/rooms/src/store.ts",
+        "services/rooms/src/pgstore.ts"
+      ],
+      "params": {
+        "roomNumber": "string"
+      }
+    },
+    {
+      "key": "rooms.state.room_blocked_on",
+      "surface": "rooms envelope",
+      "sources": [
+        "services/rooms/src/store.ts",
+        "services/rooms/src/pgstore.ts"
+      ],
+      "params": {
+        "roomNumber": "string",
+        "businessDate": "string"
+      }
+    },
+    {
+      "key": "rooms.conflict.room_taken",
+      "surface": "rooms envelope",
+      "sources": [
+        "services/rooms/src/store.ts",
+        "services/rooms/src/pgstore.ts"
+      ],
+      "params": {
+        "roomNumber": "string"
+      }
+    },
+    {
+      "key": "rooms.state.room_not_ready",
+      "surface": "rooms envelope",
+      "sources": [
+        "services/rooms/src/store.ts",
+        "services/rooms/src/pgstore.ts"
+      ],
+      "params": {
+        "roomNumber": "string",
+        "state": "string"
+      }
+    },
+    {
+      "key": "rooms.state.room_not_occupied",
+      "surface": "rooms envelope",
+      "sources": [
+        "services/rooms/src/store.ts",
+        "services/rooms/src/pgstore.ts"
+      ],
+      "params": {
+        "roomNumber": "string",
+        "state": "string"
+      }
+    },
+    {
+      "key": "rooms.validation.release_occupied",
+      "surface": "rooms envelope",
+      "sources": [
+        "services/rooms/src/store.ts",
+        "services/rooms/src/pgstore.ts"
+      ],
+      "params": {}
+    },
+    {
+      "key": "rooms.state.room_occupied",
+      "surface": "rooms envelope",
+      "sources": [
+        "services/rooms/src/store.ts",
+        "services/rooms/src/pgstore.ts"
+      ],
+      "params": {
+        "roomNumber": "string"
+      }
+    },
+    {
+      "key": "rooms.validation.duplicate_block",
+      "surface": "rooms envelope",
+      "sources": [
+        "services/rooms/src/store.ts",
+        "services/rooms/src/pgstore.ts"
+      ],
+      "params": {}
+    },
+    {
+      "key": "rooms.state.illegal_transition",
+      "surface": "rooms envelope",
+      "sources": [
+        "services/rooms/src/store.ts",
+        "services/rooms/src/pgstore.ts"
+      ],
+      "params": {
+        "roomNumber": "string",
+        "oldState": "string",
+        "newState": "string"
+      }
+    },
+    {
+      "key": "rooms.state.no_covering_block",
+      "surface": "rooms envelope",
+      "sources": [
+        "services/rooms/src/store.ts",
+        "services/rooms/src/pgstore.ts"
+      ],
+      "params": {
+        "roomNumber": "string",
+        "dateFrom": "string",
+        "dateTo": "string"
+      }
+    },
+    {
+      "key": "stay.validation.timestamp_format",
+      "surface": "stay envelope",
+      "sources": [
+        "services/stay/src/store.ts"
+      ],
+      "params": {
+        "field": "string"
+      }
+    },
+    {
+      "key": "stay.validation.date_format",
+      "surface": "stay envelope",
+      "sources": [
+        "services/stay/src/store.ts"
+      ],
+      "params": {
+        "field": "string"
+      }
+    },
+    {
+      "key": "stay.validation.folio_balance",
+      "surface": "stay envelope",
+      "sources": [
+        "services/stay/src/store.ts"
+      ],
+      "params": {}
+    },
+    {
+      "key": "stay.settlement.open_balance",
+      "surface": "stay envelope",
+      "sources": [
+        "services/stay/src/store.ts"
+      ],
+      "params": {}
+    },
+    {
+      "key": "stay.validation.approval_object",
+      "surface": "stay envelope",
+      "sources": [
+        "services/stay/src/store.ts"
+      ],
+      "params": {}
+    },
+    {
+      "key": "stay.conflict.already_checked_in",
+      "surface": "stay envelope",
+      "sources": [
+        "services/stay/src/store.ts",
+        "services/stay/src/pgstore.ts"
+      ],
+      "params": {}
+    },
+    {
+      "key": "stay.notfound.stay",
+      "surface": "stay envelope",
+      "sources": [
+        "services/stay/src/store.ts",
+        "services/stay/src/pgstore.ts"
+      ],
+      "params": {
+        "stayId": "string"
+      }
+    },
+    {
+      "key": "stay.notfound.stay_for_reservation",
+      "surface": "stay envelope",
+      "sources": [
+        "services/stay/src/store.ts",
+        "services/stay/src/pgstore.ts"
+      ],
+      "params": {
+        "reservationId": "string"
+      }
+    },
+    {
+      "key": "stay.validation.stay_or_reservation",
+      "surface": "stay envelope",
+      "sources": [
+        "services/stay/src/store.ts",
+        "services/stay/src/pgstore.ts"
+      ],
+      "params": {}
+    },
+    {
+      "key": "stay.validation.unknown_state",
+      "surface": "stay envelope",
+      "sources": [
+        "services/stay/src/store.ts",
+        "services/stay/src/pgstore.ts"
+      ],
+      "params": {}
+    },
+    {
+      "key": "stay.state.not_in_house",
+      "surface": "stay envelope",
+      "sources": [
+        "services/stay/src/store.ts",
+        "services/stay/src/pgstore.ts"
+      ],
+      "params": {
+        "stayId": "string",
+        "state": "string"
+      }
+    },
+    {
+      "key": "stay.validation.guest_in_room",
+      "surface": "stay envelope",
+      "sources": [
+        "services/stay/src/store.ts",
+        "services/stay/src/pgstore.ts"
+      ],
+      "params": {}
+    },
+    {
+      "key": "stay.validation.departure_order",
+      "surface": "stay envelope",
+      "sources": [
+        "services/stay/src/store.ts",
+        "services/stay/src/pgstore.ts"
+      ],
+      "params": {}
+    },
+    {
+      "key": "stay.conflict.already_moved",
+      "surface": "stay envelope",
+      "sources": [
+        "services/stay/src/pgstore.ts"
+      ],
+      "params": {
+        "stayId": "string"
+      }
+    },
+    {
+      "key": "stay.state.left_in_house",
+      "surface": "stay envelope",
+      "sources": [
+        "services/stay/src/pgstore.ts"
+      ],
+      "params": {
+        "stayId": "string"
+      }
+    },
+    {
+      "key": "guests.validation.date_format",
+      "surface": "guests envelope",
+      "sources": [
+        "services/guests/src/store.ts"
+      ],
+      "params": {
+        "field": "string"
+      }
+    },
+    {
+      "key": "guests.validation.price_amount",
+      "surface": "guests envelope",
+      "sources": [
+        "services/guests/src/store.ts"
+      ],
+      "params": {}
+    },
+    {
+      "key": "guests.notfound.guest",
+      "surface": "guests envelope",
+      "sources": [
+        "services/guests/src/store.ts",
+        "services/guests/src/pgstore.ts"
+      ],
+      "params": {
+        "guestId": "string"
+      }
+    },
+    {
+      "key": "guests.notfound.guest_by_name",
+      "surface": "guests envelope",
+      "sources": [
+        "services/guests/src/store.ts",
+        "services/guests/src/pgstore.ts"
+      ],
+      "params": {
+        "fullName": "string"
+      }
+    },
+    {
+      "key": "guests.validation.guest_or_name",
+      "surface": "guests envelope",
+      "sources": [
+        "services/guests/src/store.ts",
+        "services/guests/src/pgstore.ts"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.preflight_db_default",
+      "surface": "script runbook",
+      "sources": [
+        "script/preflight.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.preflight_db_set",
+      "surface": "script runbook",
+      "sources": [
+        "script/preflight.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.preflight_boot_default",
+      "surface": "script runbook",
+      "sources": [
+        "script/preflight.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.preflight_boot_set",
+      "surface": "script runbook",
+      "sources": [
+        "script/preflight.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.preflight_config_ok",
+      "surface": "script runbook",
+      "sources": [
+        "script/preflight.sh"
+      ],
+      "params": {
+        "config": "string"
+      }
+    },
+    {
+      "key": "script.runbook.preflight_config_bad",
+      "surface": "script runbook",
+      "sources": [
+        "script/preflight.sh"
+      ],
+      "params": {
+        "config": "string"
+      }
+    },
+    {
+      "key": "script.runbook.preflight_example",
+      "surface": "script runbook",
+      "sources": [
+        "script/preflight.sh"
+      ],
+      "params": {
+        "config": "string"
+      }
+    },
+    {
+      "key": "script.runbook.preflight_config_own",
+      "surface": "script runbook",
+      "sources": [
+        "script/preflight.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.preflight_cpu_few",
+      "surface": "script runbook",
+      "sources": [
+        "script/preflight.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.preflight_cpu_ok",
+      "surface": "script runbook",
+      "sources": [
+        "script/preflight.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.preflight_mem_few",
+      "surface": "script runbook",
+      "sources": [
+        "script/preflight.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.preflight_mem_ok",
+      "surface": "script runbook",
+      "sources": [
+        "script/preflight.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.preflight_docker_ok",
+      "surface": "script runbook",
+      "sources": [
+        "script/preflight.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.preflight_docker_missing",
+      "surface": "script runbook",
+      "sources": [
+        "script/preflight.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.preflight_target_ok",
+      "surface": "script runbook",
+      "sources": [
+        "script/preflight.sh"
+      ],
+      "params": {
+        "dir": "string"
+      }
+    },
+    {
+      "key": "script.runbook.preflight_target_readonly",
+      "surface": "script runbook",
+      "sources": [
+        "script/preflight.sh"
+      ],
+      "params": {
+        "dir": "string"
+      }
+    },
+    {
+      "key": "script.runbook.preflight_target_created",
+      "surface": "script runbook",
+      "sources": [
+        "script/preflight.sh"
+      ],
+      "params": {
+        "dir": "string"
+      }
+    },
+    {
+      "key": "script.runbook.preflight_target_failed",
+      "surface": "script runbook",
+      "sources": [
+        "script/preflight.sh"
+      ],
+      "params": {
+        "dir": "string"
+      }
+    },
+    {
+      "key": "script.runbook.preflight_job_busy",
+      "surface": "script runbook",
+      "sources": [
+        "script/preflight.sh"
+      ],
+      "params": {
+        "dir": "string"
+      }
+    },
+    {
+      "key": "script.runbook.preflight_job_idle",
+      "surface": "script runbook",
+      "sources": [
+        "script/preflight.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.preflight_failed",
+      "surface": "script runbook",
+      "sources": [
+        "script/preflight.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.preflight_passed",
+      "surface": "script runbook",
+      "sources": [
+        "script/preflight.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.backup_warning",
+      "surface": "script runbook",
+      "sources": [
+        "script/backup.sh"
+      ],
+      "params": {
+        "dir": "string"
+      }
+    },
+    {
+      "key": "script.runbook.backup_failed",
+      "surface": "script runbook",
+      "sources": [
+        "script/backup.sh"
+      ],
+      "params": {
+        "timestamp": "string",
+        "reason": "string"
+      }
+    },
+    {
+      "key": "script.runbook.backup_in_progress",
+      "surface": "script runbook",
+      "sources": [
+        "script/backup.sh"
+      ],
+      "params": {
+        "dir": "string"
+      }
+    },
+    {
+      "key": "script.runbook.backup_reason_dump",
+      "surface": "script runbook",
+      "sources": [
+        "script/backup.sh"
+      ],
+      "params": {
+        "detail": "string"
+      }
+    },
+    {
+      "key": "script.runbook.backup_reason_small",
+      "surface": "script runbook",
+      "sources": [
+        "script/backup.sh"
+      ],
+      "params": {
+        "bytes": "string"
+      }
+    },
+    {
+      "key": "script.runbook.backup_reason_scratch",
+      "surface": "script runbook",
+      "sources": [
+        "script/backup.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.backup_verified",
+      "surface": "script runbook",
+      "sources": [
+        "script/backup.sh"
+      ],
+      "params": {
+        "tables": "string"
+      }
+    },
+    {
+      "key": "script.runbook.backup_reason_readback",
+      "surface": "script runbook",
+      "sources": [
+        "script/backup.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.backup_succeeded",
+      "surface": "script runbook",
+      "sources": [
+        "script/backup.sh"
+      ],
+      "params": {
+        "timestamp": "string",
+        "dumpFile": "string",
+        "bytes": "string"
+      }
+    },
+    {
+      "key": "script.runbook.restore_health_failed",
+      "surface": "script runbook",
+      "sources": [
+        "script/restore.sh"
+      ],
+      "params": {
+        "module": "string"
+      }
+    },
+    {
+      "key": "script.runbook.restore_expect_missing",
+      "surface": "script runbook",
+      "sources": [
+        "script/restore.sh"
+      ],
+      "params": {
+        "file": "string"
+      }
+    },
+    {
+      "key": "script.runbook.restore_expect_incomplete",
+      "surface": "script runbook",
+      "sources": [
+        "script/restore.sh"
+      ],
+      "params": {
+        "file": "string"
+      }
+    },
+    {
+      "key": "script.runbook.restore_reservation_state",
+      "surface": "script runbook",
+      "sources": [
+        "script/restore.sh"
+      ],
+      "params": {
+        "ref": "string",
+        "state": "string",
+        "want": "string"
+      }
+    },
+    {
+      "key": "script.runbook.restore_reservation_link",
+      "surface": "script runbook",
+      "sources": [
+        "script/restore.sh"
+      ],
+      "params": {
+        "ref": "string"
+      }
+    },
+    {
+      "key": "script.runbook.restore_stay_state",
+      "surface": "script runbook",
+      "sources": [
+        "script/restore.sh"
+      ],
+      "params": {
+        "stayId": "string",
+        "state": "string",
+        "want": "string"
+      }
+    },
+    {
+      "key": "script.runbook.restore_stay_link",
+      "surface": "script runbook",
+      "sources": [
+        "script/restore.sh"
+      ],
+      "params": {
+        "stayId": "string"
+      }
+    },
+    {
+      "key": "script.runbook.restore_arrivals",
+      "surface": "script runbook",
+      "sources": [
+        "script/restore.sh"
+      ],
+      "params": {
+        "date": "string",
+        "actual": "string",
+        "want": "string"
+      }
+    },
+    {
+      "key": "script.runbook.restore_folio_balance",
+      "surface": "script runbook",
+      "sources": [
+        "script/restore.sh"
+      ],
+      "params": {
+        "folioId": "string",
+        "actual": "string",
+        "want": "string"
+      }
+    },
+    {
+      "key": "script.runbook.restore_day_charges",
+      "surface": "script runbook",
+      "sources": [
+        "script/restore.sh"
+      ],
+      "params": {
+        "date": "string",
+        "actual": "string"
+      }
+    },
+    {
+      "key": "script.runbook.restore_day_payments",
+      "surface": "script runbook",
+      "sources": [
+        "script/restore.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.restore_profiles",
+      "surface": "script runbook",
+      "sources": [
+        "script/restore.sh"
+      ],
+      "params": {
+        "actual": "string"
+      }
+    },
+    {
+      "key": "script.runbook.restore_hotel_name",
+      "surface": "script runbook",
+      "sources": [
+        "script/restore.sh"
+      ],
+      "params": {
+        "actual": "string",
+        "want": "string"
+      }
+    },
+    {
+      "key": "script.runbook.restore_room_state",
+      "surface": "script runbook",
+      "sources": [
+        "script/restore.sh"
+      ],
+      "params": {
+        "room": "string",
+        "actual": "string",
+        "want": "string"
+      }
+    },
+    {
+      "key": "script.runbook.restore_rate_prices",
+      "surface": "script runbook",
+      "sources": [
+        "script/restore.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.restore_audit_gaps",
+      "surface": "script runbook",
+      "sources": [
+        "script/restore.sh"
+      ],
+      "params": {
+        "gaps": "string"
+      }
+    },
+    {
+      "key": "script.runbook.restore_verified",
+      "surface": "script runbook",
+      "sources": [
+        "script/restore.sh"
+      ],
+      "params": {
+        "date": "string",
+        "arrivals": "string",
+        "stayId": "string",
+        "stayState": "string",
+        "charges": "string",
+        "hotel": "string",
+        "room": "string",
+        "roomState": "string",
+        "plan": "string"
+      }
+    },
+    {
+      "key": "script.runbook.restore_drill_failed",
+      "surface": "script runbook",
+      "sources": [
+        "script/restore.sh"
+      ],
+      "params": {
+        "reason": "string"
+      }
+    },
+    {
+      "key": "script.runbook.restore_drill_no_backup",
+      "surface": "script runbook",
+      "sources": [
+        "script/restore.sh"
+      ],
+      "params": {
+        "dir": "string"
+      }
+    },
+    {
+      "key": "script.runbook.restore_drill_missing_artifact",
+      "surface": "script runbook",
+      "sources": [
+        "script/restore.sh"
+      ],
+      "params": {
+        "file": "string"
+      }
+    },
+    {
+      "key": "script.runbook.restore_drill_load_failed",
+      "surface": "script runbook",
+      "sources": [
+        "script/restore.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.restore_drill_expect_failed",
+      "surface": "script runbook",
+      "sources": [
+        "script/restore.sh"
+      ],
+      "params": {
+        "file": "string"
+      }
+    },
+    {
+      "key": "script.runbook.restore_drill_succeeded",
+      "surface": "script runbook",
+      "sources": [
+        "script/restore.sh"
+      ],
+      "params": {
+        "elapsed": "string",
+        "file": "string",
+        "tables": "string",
+        "profiles": "string",
+        "report": "string"
+      }
+    },
+    {
+      "key": "script.runbook.restore_live_extra_arg",
+      "surface": "script runbook",
+      "sources": [
+        "script/restore.sh"
+      ],
+      "params": {
+        "arg": "string"
+      }
+    },
+    {
+      "key": "script.runbook.restore_live_needs_file",
+      "surface": "script runbook",
+      "sources": [
+        "script/restore.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.restore_live_not_found",
+      "surface": "script runbook",
+      "sources": [
+        "script/restore.sh"
+      ],
+      "params": {
+        "file": "string"
+      }
+    },
+    {
+      "key": "script.runbook.restore_live_no_property",
+      "surface": "script runbook",
+      "sources": [
+        "script/restore.sh"
+      ],
+      "params": {
+        "config": "string"
+      }
+    },
+    {
+      "key": "script.runbook.restore_live_confirm",
+      "surface": "script runbook",
+      "sources": [
+        "script/restore.sh"
+      ],
+      "params": {
+        "file": "string"
+      }
+    },
+    {
+      "key": "script.runbook.restore_live_aborted",
+      "surface": "script runbook",
+      "sources": [
+        "script/restore.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.restore_live_succeeded",
+      "surface": "script runbook",
+      "sources": [
+        "script/restore.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.restore_live_health_failed",
+      "surface": "script runbook",
+      "sources": [
+        "script/restore.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.e2e_api_unreachable",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {
+        "contract": "string",
+        "operation": "string"
+      }
+    },
+    {
+      "key": "script.runbook.e2e_api_http_fail",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {
+        "contract": "string",
+        "operation": "string",
+        "httpCode": "string",
+        "body": "string"
+      }
+    },
+    {
+      "key": "script.runbook.e2e_api_refused",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {
+        "contract": "string",
+        "operation": "string",
+        "body": "string"
+      }
+    },
+    {
+      "key": "script.runbook.e2e_refusal_succeeded",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {
+        "contract": "string",
+        "operation": "string",
+        "code": "string",
+        "body": "string"
+      }
+    },
+    {
+      "key": "script.runbook.e2e_refusal_code",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {
+        "contract": "string",
+        "operation": "string",
+        "actual": "string",
+        "code": "string",
+        "body": "string"
+      }
+    },
+    {
+      "key": "script.runbook.e2e_refusal_ok",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {
+        "contract": "string",
+        "operation": "string",
+        "code": "string"
+      }
+    },
+    {
+      "key": "script.runbook.e2e_teardown",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.e2e_step_bring_up",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.e2e_db_default",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.e2e_boot_default",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.e2e_secret_empty",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.e2e_step_wait_modules",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.e2e_module_down",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {
+        "module": "string"
+      }
+    },
+    {
+      "key": "script.runbook.e2e_compose_state",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.e2e_proxy_log",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.e2e_module_ok",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {
+        "module": "string"
+      }
+    },
+    {
+      "key": "script.runbook.e2e_step_migrations",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.e2e_migration_failed",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {
+        "migration": "string"
+      }
+    },
+    {
+      "key": "script.runbook.e2e_seed_failed",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.e2e_migrations_ok",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.e2e_step_signin",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.e2e_no_token",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.e2e_signin_ok",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.e2e_config_version",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {
+        "version": "string"
+      }
+    },
+    {
+      "key": "script.runbook.e2e_step_hotel_config",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.e2e_config_applied",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {
+        "config": "string"
+      }
+    },
+    {
+      "key": "script.runbook.e2e_no_config",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {
+        "config": "string"
+      }
+    },
+    {
+      "key": "script.runbook.e2e_step_guest",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.e2e_guest_ok",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {
+        "guestId": "string"
+      }
+    },
+    {
+      "key": "script.runbook.e2e_step_rooms",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.e2e_no_sellable",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {
+        "sellable": "string"
+      }
+    },
+    {
+      "key": "script.runbook.e2e_sellable_ok",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {
+        "roomType": "string",
+        "sellable": "string",
+        "arrival": "string",
+        "departure": "string"
+      }
+    },
+    {
+      "key": "script.runbook.e2e_step_rates",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.e2e_quote_ok",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {
+        "total": "string",
+        "count": "string"
+      }
+    },
+    {
+      "key": "script.runbook.e2e_step_book",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.e2e_booking_failed",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {
+        "body": "string"
+      }
+    },
+    {
+      "key": "script.runbook.e2e_booking_ok",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {
+        "ref": "string",
+        "total": "string"
+      }
+    },
+    {
+      "key": "script.runbook.e2e_step_verify_booking",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.e2e_get_mismatch",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {
+        "body": "string"
+      }
+    },
+    {
+      "key": "script.runbook.e2e_calendar_missing",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {
+        "ref": "string"
+      }
+    },
+    {
+      "key": "script.runbook.e2e_verify_ok",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {
+        "ref": "string"
+      }
+    },
+    {
+      "key": "script.runbook.e2e_step_checkin",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.e2e_no_reservation_id",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.e2e_checkin_ok",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {
+        "stay": "string",
+        "ref": "string"
+      }
+    },
+    {
+      "key": "script.runbook.e2e_step_move",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.e2e_move_failed",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {
+        "room": "string",
+        "body": "string"
+      }
+    },
+    {
+      "key": "script.runbook.e2e_release1_failed",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {
+        "body": "string"
+      }
+    },
+    {
+      "key": "script.runbook.e2e_move_ok",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {
+        "stay": "string"
+      }
+    },
+    {
+      "key": "script.runbook.e2e_step_times",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.e2e_arrival_failed",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {
+        "body": "string"
+      }
+    },
+    {
+      "key": "script.runbook.e2e_lists_failed",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.e2e_lists_ok",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.e2e_step_billing",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.e2e_invoice_failed",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.e2e_receipt_failed",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.e2e_billing_ok",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {
+        "date": "string",
+        "charges": "string",
+        "balance": "string"
+      }
+    },
+    {
+      "key": "script.runbook.e2e_step_checkout",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.e2e_refusal_checkout_ok",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.e2e_not_closed",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {
+        "body": "string"
+      }
+    },
+    {
+      "key": "script.runbook.e2e_invoice_ref",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {
+        "body": "string"
+      }
+    },
+    {
+      "key": "script.runbook.e2e_release2_failed",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {
+        "body": "string"
+      }
+    },
+    {
+      "key": "script.runbook.e2e_checkout_ok",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {
+        "stay": "string",
+        "folio": "string"
+      }
+    },
+    {
+      "key": "script.runbook.e2e_step_expectation",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.e2e_expectation",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {
+        "record": "string"
+      }
+    },
+    {
+      "key": "script.runbook.e2e_step_backup",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.e2e_backup_failed",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.e2e_step_report",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.e2e_no_report",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.e2e_report_failed",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {
+        "report": "string"
+      }
+    },
+    {
+      "key": "script.runbook.e2e_report_ok",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.e2e_step_drill",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.e2e_drill_failed",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.e2e_step_reverify",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.e2e_booking_lost",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.e2e_checkin_lost",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.e2e_stay_lost",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.e2e_departures_lost",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.e2e_dayclose_changed",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.e2e_unhealthy",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {
+        "module": "string"
+      }
+    },
+    {
+      "key": "script.runbook.e2e_reverify_ok",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {
+        "ref": "string",
+        "stay": "string",
+        "date": "string"
+      }
+    },
+    {
+      "key": "script.runbook.e2e_evidence",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {
+        "ref": "string",
+        "total": "string",
+        "arrival": "string",
+        "departure": "string",
+        "stay": "string",
+        "folio": "string",
+        "date": "string",
+        "charges": "string",
+        "balance": "string",
+        "elapsed": "string"
+      }
+    },
+    {
+      "key": "script.runbook.e2e_succeeded",
+      "surface": "script runbook",
+      "sources": [
+        "script/e2e-desk-loop.sh"
+      ],
+      "params": {}
+    },
+    {
+      "key": "script.runbook.preflight_fail",
+      "surface": "script runbook",
+      "sources": [
+        "script/preflight.sh"
+      ],
+      "params": {
+        "item": "string"
+      }
+    },
+    {
+      "key": "script.runbook.preflight_ok",
+      "surface": "script runbook",
+      "sources": [
+        "script/preflight.sh"
+      ],
+      "params": {
+        "item": "string"
       }
     }
   ]

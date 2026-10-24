@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/MingChen1501/hotel-mgmt/services/reporting/internal/messages"
 )
 
 // OpError carries the shared error envelope code for an operation.
@@ -190,7 +192,7 @@ func (s *Store) Apply(event Event) *OpError {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if strings.TrimSpace(event.ID) == "" {
-		return validation("eventId", "eventId is required.")
+		return validation("eventId", messages.Text("reporting.validation.event_required", nil))
 	}
 	if s.seen[event.ID] {
 		return nil
@@ -241,19 +243,19 @@ func (s *Store) project(event Event) *OpError {
 	case "reservation.created":
 		ref, ok := strPayload(payload, "reservationRef")
 		if !ok {
-			return validation("reservationRef", "reservationRef is required.")
+			return validation("reservationRef", messages.Text("error.validation.reservation_ref_required", nil))
 		}
 		roomType, ok := strPayload(payload, "roomTypeId")
 		if !ok {
-			return validation("roomTypeId", "roomTypeId is required.")
+			return validation("roomTypeId", messages.Text("error.validation.room_type_required", nil))
 		}
 		arrival, ok := strPayload(payload, "arrivalDate")
 		if !ok || !validDate(arrival) {
-			return validation("arrivalDate", "arrivalDate must be a YYYY-MM-DD date.")
+			return validation("arrivalDate", messages.Text("error.validation.arrival_format", nil))
 		}
 		departure, ok := strPayload(payload, "departureDate")
 		if !ok || !validDate(departure) || departure <= arrival {
-			return validation("departureDate", "departureDate must be a YYYY-MM-DD date after arrivalDate.")
+			return validation("departureDate", messages.Text("reporting.validation.departure_after_arrival", nil))
 		}
 		s.reservations[ref] = &reservationProjection{
 			Ref: ref, RoomTypeID: roomType, Arrival: arrival, Departure: departure, Active: true,
@@ -265,7 +267,7 @@ func (s *Store) project(event Event) *OpError {
 	case "reservation.cancelled", "reservation.no-show":
 		ref, ok := strPayload(payload, "reservationRef")
 		if !ok {
-			return validation("reservationRef", "reservationRef is required.")
+			return validation("reservationRef", messages.Text("error.validation.reservation_ref_required", nil))
 		}
 		if record, found := s.reservations[ref]; found {
 			record.Active = false
@@ -273,11 +275,11 @@ func (s *Store) project(event Event) *OpError {
 	case "stay.checked-in":
 		stayID, ok := strPayload(payload, "stayId")
 		if !ok {
-			return validation("stayId", "stayId is required.")
+			return validation("stayId", messages.Text("error.validation.stay_id_required", nil))
 		}
 		day, ok := strPayload(payload, "date")
 		if !ok || !validDate(day) {
-			return validation("date", "date must be a YYYY-MM-DD date.")
+			return validation("date", messages.Text("reporting.validation.date_format", map[string]string{"field": "date"}))
 		}
 		stay := s.stays[stayID]
 		if stay == nil {
@@ -297,11 +299,11 @@ func (s *Store) project(event Event) *OpError {
 	case "stay.checked-out":
 		stayID, ok := strPayload(payload, "stayId")
 		if !ok {
-			return validation("stayId", "stayId is required.")
+			return validation("stayId", messages.Text("error.validation.stay_id_required", nil))
 		}
 		day, ok := strPayload(payload, "date")
 		if !ok || !validDate(day) {
-			return validation("date", "date must be a YYYY-MM-DD date.")
+			return validation("date", messages.Text("reporting.validation.date_format", map[string]string{"field": "date"}))
 		}
 		stay := s.stays[stayID]
 		if stay == nil {
@@ -329,33 +331,33 @@ func (s *Store) project(event Event) *OpError {
 	case "rate.availability-set":
 		roomType, ok := strPayload(payload, "roomTypeId")
 		if !ok {
-			return validation("roomTypeId", "roomTypeId is required.")
+			return validation("roomTypeId", messages.Text("error.validation.room_type_required", nil))
 		}
 		date, ok := strPayload(payload, "date")
 		if !ok || !validDate(date) {
-			return validation("date", "date must be a YYYY-MM-DD date.")
+			return validation("date", messages.Text("reporting.validation.date_format", map[string]string{"field": "date"}))
 		}
 		units, ok := intPayload(payload, "sellableUnits")
 		if !ok || units < 0 {
-			return validation("sellableUnits", "sellableUnits is required and cannot be negative.")
+			return validation("sellableUnits", messages.Text("reporting.validation.sellable_units", nil))
 		}
 		s.sellable[occKey(date, roomType)] = int(units)
 	case "folio.charge-posted":
 		folio, ok := strPayload(payload, "folioId")
 		if !ok {
-			return validation("folioId", "folioId is required.")
+			return validation("folioId", messages.Text("reporting.validation.folio_required", nil))
 		}
 		day, ok := strPayload(payload, "businessDate")
 		if !ok || !validDate(day) {
-			return validation("businessDate", "businessDate must be a YYYY-MM-DD date.")
+			return validation("businessDate", messages.Text("error.validation.business_date", nil))
 		}
 		kind, ok := strPayload(payload, "kind")
 		if !ok || (kind != "room" && kind != "extra") {
-			return validation("kind", "kind must be room or extra.")
+			return validation("kind", messages.Text("reporting.validation.kind", nil))
 		}
 		amount, ok := intPayload(payload, "amountMinor")
 		if !ok || amount < 0 {
-			return validation("amountMinor", "amountMinor is required and cannot be negative.")
+			return validation("amountMinor", messages.Text("reporting.validation.amount", nil))
 		}
 		total := s.revenue[day]
 		if total == nil {
@@ -371,11 +373,11 @@ func (s *Store) project(event Event) *OpError {
 	case "folio.payment-recorded":
 		folio, ok := strPayload(payload, "folioId")
 		if !ok {
-			return validation("folioId", "folioId is required.")
+			return validation("folioId", messages.Text("reporting.validation.folio_required", nil))
 		}
 		amount, ok := intPayload(payload, "amountMinor")
 		if !ok || amount < 0 {
-			return validation("amountMinor", "amountMinor is required and cannot be negative.")
+			return validation("amountMinor", messages.Text("reporting.validation.amount", nil))
 		}
 		s.folios[folio] -= amount
 	case "config.changed":
@@ -385,21 +387,21 @@ func (s *Store) project(event Event) *OpError {
 	case "room.room-upserted":
 		room, ok := strPayload(payload, "roomNumber")
 		if !ok {
-			return validation("roomNumber", "roomNumber is required.")
+			return validation("roomNumber", messages.Text("reporting.validation.room_required", nil))
 		}
 		state, ok := strPayload(payload, "state")
 		if !ok {
-			return validation("state", "state is required.")
+			return validation("state", messages.Text("reporting.validation.state_required", nil))
 		}
 		s.housekeeping[room] = &housekeepingProjection{Room: room, State: state}
 	case "room.state-changed":
 		room, ok := strPayload(payload, "roomNumber")
 		if !ok {
-			return validation("roomNumber", "roomNumber is required.")
+			return validation("roomNumber", messages.Text("reporting.validation.room_required", nil))
 		}
 		state, ok := strPayload(payload, "newState")
 		if !ok {
-			return validation("newState", "newState is required.")
+			return validation("newState", messages.Text("reporting.validation.new_state_required", nil))
 		}
 		if row := s.housekeeping[room]; row != nil {
 			row.State = state
@@ -409,21 +411,21 @@ func (s *Store) project(event Event) *OpError {
 	case "room.blocked":
 		room, ok := strPayload(payload, "roomNumber")
 		if !ok {
-			return validation("roomNumber", "roomNumber is required.")
+			return validation("roomNumber", messages.Text("reporting.validation.room_required", nil))
 		}
 		from, ok := strPayload(payload, "dateFrom")
 		if !ok || !validDate(from) {
-			return validation("dateFrom", "dateFrom must be a YYYY-MM-DD date.")
+			return validation("dateFrom", messages.Text("error.validation.date_from_format", nil))
 		}
 		to, ok := strPayload(payload, "dateTo")
 		if !ok || !validDate(to) || to < from {
-			return validation("dateTo", "dateTo must be a YYYY-MM-DD date on or after dateFrom.")
+			return validation("dateTo", messages.Text("reporting.validation.date_to_order", nil))
 		}
 		s.housekeeping[room] = &housekeepingProjection{Room: room, State: "out-of-order"}
 	case "room.block-released":
 		room, ok := strPayload(payload, "roomNumber")
 		if !ok {
-			return validation("roomNumber", "roomNumber is required.")
+			return validation("roomNumber", messages.Text("reporting.validation.room_required", nil))
 		}
 		// Out-of-order rooms re-enter through dirty (rooms LLD
 		// section 3); a later state-changed event refines this.
@@ -438,14 +440,14 @@ func (s *Store) project(event Event) *OpError {
 func parseRange(dateFrom, dateTo string) (time.Time, time.Time, *OpError) {
 	from, err := time.Parse(dateLayout, dateFrom)
 	if err != nil {
-		return time.Time{}, time.Time{}, validation("dateFrom", "dateFrom must be a YYYY-MM-DD date.")
+		return time.Time{}, time.Time{}, validation("dateFrom", messages.Text("error.validation.date_from_format", nil))
 	}
 	to, err := time.Parse(dateLayout, dateTo)
 	if err != nil {
-		return time.Time{}, time.Time{}, validation("dateTo", "dateTo must be a YYYY-MM-DD date.")
+		return time.Time{}, time.Time{}, validation("dateTo", messages.Text("error.validation.date_to_format", nil))
 	}
 	if to.Before(from) {
-		return time.Time{}, time.Time{}, validation("dateTo", "dateTo is before dateFrom.")
+		return time.Time{}, time.Time{}, validation("dateTo", messages.Text("error.validation.date_range_order", nil))
 	}
 	return from, to, nil
 }
@@ -539,7 +541,7 @@ func (s *Store) Revenue(dateFrom, dateTo string) ([]RevenueRow, time.Time, *OpEr
 // no linked stay check-out), and folios carrying an open balance.
 func (s *Store) Sheet(businessDate string) (*DailySheet, *OpError) {
 	if !validDate(businessDate) {
-		return nil, validation("businessDate", "businessDate must be a YYYY-MM-DD date.")
+		return nil, validation("businessDate", messages.Text("error.validation.business_date", nil))
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()

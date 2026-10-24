@@ -96,6 +96,11 @@ if catalogue is not None:
         "services/admin/src/messages.en.json",
         "services/billing/src/main/resources/messages/en.json",
         "frontend/messages/en.json",
+        "services/rates/internal/messages/en.json",
+        "services/reporting/internal/messages/en.json",
+        "services/rooms/src/messages.en.json",
+        "services/stay/src/messages.en.json",
+        "services/guests/src/messages.en.json",
     ]
     for mirror in mirrors:
         path = ROOT / mirror
@@ -267,6 +272,52 @@ if catalogue is not None:
         if member not in loader:
             fail(f"frontend/messages.js is missing the {member[:-1]} member")
     ok("frontend/messages.js exposes the loader contract")
+
+    # 7. Shell runbook wording resolves via the catalogue: every
+    # msg/step/pass/fail_msg call in the four runbook scripts
+    # references an existing key, and every inline fallback repeats
+    # the pattern (single-line calls with literal key and fallback,
+    # per script/messages.sh). Param patterns must keep every static
+    # fragment in the fallback, mirroring the frontend check.
+    def scan_shell_calls(text):
+        calls = []
+        pattern = re.compile(
+            r'(?:fail_msg|pass_msg|step|pass|msg)\s+"([^"]+)"\s+"((?:[^"\\]|\\.)*)"')
+        for match in pattern.finditer(text):
+            key = match.group(1)
+            if key.startswith("$"):
+                # Wrapper definitions forward their caller's key and
+                # fallback at runtime; the call sites carry the
+                # literals and are sampled individually.
+                continue
+            fallback = re.sub(r'\\(.)', r'\1', match.group(2))
+            calls.append((key, fallback))
+        return calls
+
+    for script_name in ["script/preflight.sh", "script/backup.sh",
+                        "script/restore.sh", "script/e2e-desk-loop.sh"]:
+        text = (ROOT / script_name).read_text(encoding="utf-8")
+        count = 0
+        for key, fallback in scan_shell_calls(text):
+            pattern = messages.get(key)
+            if pattern is None:
+                fail(f"{script_name} calls msg() with unknown key {key!r}")
+                continue
+            names = set(placeholder.findall(pattern))
+            if not names:
+                if fallback != pattern:
+                    fail(f"{script_name} [{key}] fallback differs from the catalogue")
+            else:
+                fragments = [part for part in placeholder.split(pattern)
+                             if part and part not in names]
+                for fragment in fragments:
+                    if fragment not in fallback:
+                        fail(f"{script_name} [{key}] fallback drops the static fragment {fragment!r}")
+                        break
+            count += 1
+        if count == 0:
+            fail(f"{script_name}: no catalogue call sites found")
+        ok(f"{script_name}: {count} msg() call sites match the catalogue")
 
 if failures:
     print(f"\ncatalogue-coverage-check: {len(failures)} failure(s)")
