@@ -11,9 +11,22 @@ written first, marked `active` in the docs index, and checked by the
 |---|---|---|
 | **T0 docs-only** | prose/docs/process only, no behaviour change | no gate; index statuses updated in the same PR when a doc flips stub <-> active |
 | **T1 low risk, no behaviour change** | typo, test-only, dependency bump | no new spec; index unaffected |
-| **T2 behaviour change** | user-visible feature | acceptance criteria + FR/NFR delta + test traceability, written before the implementation PR opens |
-| **T3 architectural** | new subsystem, data-model change, workflow change, subsystem removal | T2 set + ADR + HLD update before implementation; ADR status must move `proposed -> accepted` (owner) before code merges |
+| **T2 behaviour change** | user-visible feature | acceptance criteria + FR/NFR delta + test traceability + per-flow implementation diagram (happy path + failure/rollback path), written before the implementation PR opens |
+| **T3 architectural** | new subsystem, data-model change, workflow change, subsystem removal | T2 set + ADR + HLD update (including the per-flow diagrams for new/changed flows) before implementation; ADR status must move `proposed -> accepted` (owner) before code merges |
 | **T4 release-affecting** | workflow/permissions/deployment change | applicable T0–T3 set + deployment/env/runbook deltas + rollback note in the same PR |
+
+Tier is chosen by the owning spec role (`product-owner` for scope,
+`architect` for T3) and recorded in the issue; `spec-reviewer`
+re-checks the tier as part of its verdict.
+
+Implementation flow diagrams come before code and are maintained with
+code: every T2/T3 change ships one diagram per touched flow (happy path
+plus failure/rollback path, mermaid `flowchart TD` with an edge trace
+citing code) sourced in the docs index, with only thin `file:line` refs
+from code. An implementation PR that touches a documented flow must
+refresh its diagram in the same PR; reviewers check diagram staleness
+as part of the verdict (`CHANGES_REQUESTED` with `file:line` gaps on
+drift, same as any stale spec).
 
 Tier is chosen by the owning spec role (`product-owner` for scope,
 `architect` for T3) and recorded in the issue; `spec-reviewer`
@@ -48,12 +61,14 @@ Copy this row into the issue when tiering a change:
 
 | Change | Tier | Required specs before implementation | Evidence/notes |
 |---|---|---|---|
-| <issue/PR ref — what changes> | <T0/T1/T2/T3/T4 + one-line why> | <spec files to write first; T3: ADR + HLD update + owner acceptance> | <risk label; artefacts the implementation PR must carry> |
+| <issue/PR ref — what changes> | <T0/T1/T2/T3/T4 + one-line why> | <spec files to write first; T2/T3: per-flow diagrams (happy path + failure/rollback path); T3: ADR + HLD update + owner acceptance> | <risk label; artefacts the implementation PR must carry, including refreshed flow diagrams for touched flows> |
 
 Generic example (illustrative only): removing a client-side search
 subsystem was tiered T3 (subsystem removal) — ADR (remove vs keep,
-owner-accepted), HLD/LLD update, FR/NFR delta, updated test
+owner-accepted), HLD/LLD update with per-flow diagrams (happy path +
+failure/rollback path) for touched flows, FR/NFR delta, updated test
 traceability, acceptance criteria, index rows flipped to `active`
-before the implementation PR. A new project should fill one such row
-per tiered change and keep it in the issue, not copy this example's
-nouns.
+before the implementation PR; the implementation PR refreshed the
+touched flow diagrams in the same PR. A new project should fill one
+such row per tiered change and keep it in the issue, not copy this
+example's nouns.

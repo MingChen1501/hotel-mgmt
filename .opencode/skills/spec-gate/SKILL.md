@@ -35,13 +35,29 @@ change in `docs/README.md`).
 |---|---|---|
 | **T0 docs-only** | prose/docs/process only, no behaviour change | no gate; `docs/README.md` statuses updated in the same PR when a doc flips stub <-> active |
 | **T1 low risk, no behaviour change** | typo, test-only, dependency bump | no new spec; `docs/README.md` unaffected |
-| **T2 behaviour change** | reader-visible UI/content feature | acceptance criteria + FR/NFR delta + test traceability, written before the implementation PR opens |
-| **T3 architectural** | new subsystem, data-model change (e.g. series/tags), workflow change, subsystem removal | T2 set + ADR + HLD update before implementation; ADR status must move `proposed -> accepted` (owner) before code merges |
+| **T2 behaviour change** | reader-visible UI/content feature | acceptance criteria + FR/NFR delta + test traceability + per-flow implementation diagram (happy path + failure/rollback path), written before the implementation PR opens |
+| **T3 architectural** | new subsystem, data-model change (e.g. series/tags), workflow change, subsystem removal | T2 set + ADR + HLD update (including the per-flow diagrams for new/changed flows) before implementation; ADR status must move `proposed -> accepted` (owner) before code merges |
 | **T4 release-affecting** | workflow/permissions/deployment change | applicable T0-T3 set + deployment/env/runbook deltas + rollback note in the same PR |
 
 Tier is chosen by the owning spec role (`product-owner` for scope,
 `architect` for T3) and recorded in the issue; `spec-reviewer`
 re-checks the tier as part of its verdict.
+
+## Implementation flow diagrams (before code, maintained with code)
+
+Every T2/T3 change ships a per-flow implementation diagram before the
+implementation PR opens: one diagram per touched flow covering the happy
+path plus the failure/rollback path (mermaid `flowchart TD` with an edge
+trace citing code — `docs/architecture/services/rooms.md` §§3–4 is the
+established shape). The diagram source lives in `docs/` under the owning
+spec (HLD/LLD for T3, requirements or service design note for T2); code
+carries only thin refs (`file:line` pointers), never a pasted copy.
+
+Maintain-with-code: an implementation PR that touches a documented flow
+must refresh its diagram in the same PR (edges, error codes, rollback
+notes). `dev-peer-review`/`content-review` check diagram staleness as
+part of the verdict — a PR whose behaviour drifted from its diagram gets
+`CHANGES_REQUESTED` with `file:line` gaps, same as any stale spec.
 
 ## Gate procedure
 
@@ -81,4 +97,4 @@ re-checks the tier as part of its verdict.
 
 | Change | Tier | Required specs before implementation | Evidence/notes |
 |---|---|---|---|
-| PR #349 — removing the static client-side search (Closes #342) | T3 architectural (subsystem removal) | ADR (remove vs keep search, owner-accepted); HLD/LLD update (component removal); FR/NFR delta (drop the search FRs, lower the JS budget); updated test traceability (search guards removed); acceptance criteria; `docs/README.md` rows flipped to `active` before the implementation PR | `risk-medium`; deleted `search.json`, `assets/js/search.js`, the search include/SCSS/nav entries, and the search guards; same artefacts the PR in fact carried as diff hunks, but written as specs first |
+| PR #349 — removing the static client-side search (Closes #342) | T3 architectural (subsystem removal) | ADR (remove vs keep search, owner-accepted); HLD/LLD update (component removal) with per-flow diagrams (happy path + failure/rollback path) for touched flows; FR/NFR delta (drop the search FRs, lower the JS budget); updated test traceability (search guards removed); acceptance criteria; `docs/README.md` rows flipped to `active` before the implementation PR | `risk-medium`; deleted `search.json`, `assets/js/search.js`, the search include/SCSS/nav entries, and the search guards; same artefacts the PR in fact carried as diff hunks, but written as specs first; the implementation PR refreshes the touched flow diagrams in the same PR (maintain-with-code), and `dev-peer-review` checks diagram staleness as part of the verdict |

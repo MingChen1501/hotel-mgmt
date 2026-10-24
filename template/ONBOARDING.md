@@ -252,7 +252,9 @@ note) — no gate ceremony, exercises the whole pipeline:
 1. File an issue with a risk label and a proposed tier
    (`spec-gate` skill: T0 needs no gate; T1 typo/test-only/dependency
    bump needs no new spec; T2 needs acceptance criteria + FR/NFR delta
-   + traceability; T3 adds ADR + HLD with owner acceptance; T4 adds
+   + traceability + per-flow implementation diagrams (happy path +
+   failure/rollback path); T3 adds ADR + HLD (including the diagrams for
+   new/changed flows) with owner acceptance; T4 adds
    deployment/env/runbook deltas + rollback note).
 2. For T2+: the orchestrator spawns the owning spec role(s), then
    `spec-reviewer`; implementation starts only on `SPEC-GATE PASS`.
