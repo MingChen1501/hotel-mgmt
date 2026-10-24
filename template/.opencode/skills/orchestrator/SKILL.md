@@ -60,6 +60,13 @@ orchestrator assign -> role worker enrichment -> work.
 
 1. The orchestrator first spawns a dedicated **buffer worker** for issue
    creation only. The buffer worker is exempt from the task-worker pool.
+   Normally the spawn is anchored on an open issue
+   (`script/ao-spawn-worker.sh --issue <n> --role buffer-worker ...`);
+   when the backlog is empty and no open issue exists, use bootstrap
+   mode instead
+   (`script/ao-spawn-worker.sh --seed "<owner request>" --role buffer-worker ...`),
+   which carries the owner request verbatim under the same gate and the
+   same buffer boundaries.
 2. The buffer worker files a skeleton issue from the owner request:
    context, a short triage note with the suggested owning role, exactly
    one risk label, and an English title/body. It does NOT write full
@@ -113,7 +120,9 @@ restate the list here — link it. Summary for orchestration use only.
 
 - **Spawn step.** Spawn only through
   `script/ao-spawn-worker.sh --issue <n> --role <role> --name <label>`
-  (marker-gated: refuses outside the orchestrator worktree; direct
+  (or `--seed "<owner request>" --role buffer-worker --name <label>`
+  for the empty-backlog buffer bootstrap; marker-gated: refuses outside
+  the orchestrator worktree; direct
   `ao spawn` is denied for every session). Every spawn prompt names
   the session `<role> <target>`
   and tells the worker to set its per-worktree git identity before

@@ -6,11 +6,21 @@
 # orchestrator worktree, never committed).
 #
 # Usage: script/ao-spawn-worker.sh --issue <n> --role <role> --name <label> [--model <id>] [--dry-run]
+#   or: script/ao-spawn-worker.sh --seed "<owner request>" --role buffer-worker --name <label> [--model <id>] [--dry-run]
 #
 # Validates the issue (exists and OPEN), the role, and the display name,
 # composes a role-appropriate worker prompt from the issue, then spawns via
 # `ao spawn --project hotel-mgmt --issue <n> --name <label> --prompt <prompt>`.
 # --dry-run prints the composed prompt and the spawn command without spawning.
+#
+# Bootstrap mode (--seed, buffer-worker only): when the backlog is empty
+# and no open issue exists to anchor the spawn, the orchestrator passes
+# the owner's chat request verbatim instead of an issue number. The gate
+# (marker file plus live-orchestrator session check) and the buffer
+# prompt boundaries are identical to the issue-anchored buffer path; only
+# the context block differs (verbatim owner request instead of an issue
+# reference). The spawn omits --issue because there is no issue yet —
+# the buffer worker files it.
 #
 # Prompt classes:
 #   implement (dev, content, dev-takeover): implement + branch + PR.
@@ -57,6 +67,7 @@ BUFFER_ROLES="buffer-worker"
 VALID_ROLES="${IMPLEMENT_ROLES} ${REVIEW_ROLES} ${SPECGATE_ROLES} ${SPEC_ROLES} ${BUFFER_ROLES}"
 
 issue=""
+seed=""
 role=""
 name=""
 model=""
@@ -64,12 +75,14 @@ dry_run=0
 
 usage() {
   echo "Usage: $0 --issue <n> --role <role> --name <label> [--model <id>] [--dry-run]" >&2
+  echo "   or: $0 --seed \"<owner request>\" --role buffer-worker --name <label> [--model <id>] [--dry-run]" >&2
   echo "  Roles: ${VALID_ROLES}" >&2
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --issue) issue="${2:-}"; shift 2 ;;
+    --seed) seed="${2:-}"; shift 2 ;;
     --role) role="${2:-}"; shift 2 ;;
     --name) name="${2:-}"; shift 2 ;;
     --model) model="${2:-}"; shift 2 ;;
@@ -79,8 +92,20 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[[ -n "${issue}" ]] || { echo "error: --issue <n> is required" >&2; usage; exit 1; }
-[[ "${issue}" =~ ^[0-9]+$ ]] || { echo "error: --issue must be a number, got '${issue}'" >&2; exit 1; }
+# Exactly one of --issue / --seed is required: --seed is the
+# empty-backlog bootstrap alternative to --issue.
+if [[ -n "${issue}" && -n "${seed}" ]]; then
+  echo "error: --issue and --seed are mutually exclusive (pass exactly one)" >&2
+  usage; exit 1
+fi
+if [[ -z "${issue}" && -z "${seed}" ]]; then
+  echo "error: --issue <n> or --seed \"<owner request>\" is required" >&2
+  usage; exit 1
+fi
+if [[ -n "${seed}" ]]; then
+  [[ -n "$(printf '%s' "${seed}" | tr -d '[:space:]')" ]] || { echo "error: --seed must be a non-empty owner request" >&2; exit 1; }
+fi
+[[ -z "${issue}" || "${issue}" =~ ^[0-9]+$ ]] || { echo "error: --issue must be a number, got '${issue}'" >&2; exit 1; }
 [[ -n "${role}" ]] || { echo "error: --role <role> is required" >&2; usage; exit 1; }
 [[ -n "${name}" ]] || { echo "error: --name <label> is required (non-empty)" >&2; usage; exit 1; }
 if [[ "${#name}" -gt 100 ]]; then
@@ -99,40 +124,55 @@ if [[ -z "${role_class}" ]]; then
   exit 1
 fi
 
+# Bootstrap mode is buffer-only: only the buffer worker files issues
+# from a raw owner request; every other role needs an issue as its spec.
+if [[ -n "${seed}" && "${role_class}" != "buffer" ]]; then
+  echo "error: --seed is only valid with --role buffer-worker (got '${role}')" >&2
+  exit 1
+fi
+
 # Only the orchestrator may spawn sessions: the marker file
 # .ao-orchestrator exists solely in the orchestrator worktree (never
 # committed), and this session must be a live orchestrator session.
 # Workers calling this wrapper are refused here, and direct
 # `ao spawn` is denied for every session by .opencode/opencode.jsonc.
 # The gate applies even for --dry-run.
+# The gate applies even for --dry-run, and identically to bootstrap
+# (--seed) spawns: no gate is relaxed.
 require_orchestrator
 
-# The issue must exist and be OPEN.
-issue_json="$(gh issue view "${issue}" -R "${REPO}" --json number,title,url,labels,state)" || {
-  echo "error: issue #${issue} not found in ${REPO}" >&2
-  exit 1
-}
-issue_state="$(printf '%s' "${issue_json}" | jq -r '.state')"
-issue_title="$(printf '%s' "${issue_json}" | jq -r '.title')"
-issue_url="$(printf '%s' "${issue_json}" | jq -r '.url')"
-issue_labels="$(printf '%s' "${issue_json}" | jq -r '[.labels[].name] | join(",")')"
-if [[ "${issue_state}" != "OPEN" ]]; then
-  echo "error: issue #${issue} is not open (state: ${issue_state})" >&2
-  exit 1
-fi
+# The issue must exist and be OPEN (issue-anchored path only;
+# bootstrap has no issue yet — the buffer worker files it).
+issue_title=""
+issue_url=""
+issue_labels=""
+if [[ -n "${issue}" ]]; then
+  issue_json="$(gh issue view "${issue}" -R "${REPO}" --json number,title,url,labels,state)" || {
+    echo "error: issue #${issue} not found in ${REPO}" >&2
+    exit 1
+  }
+  issue_state="$(printf '%s' "${issue_json}" | jq -r '.state')"
+  issue_title="$(printf '%s' "${issue_json}" | jq -r '.title')"
+  issue_url="$(printf '%s' "${issue_json}" | jq -r '.url')"
+  issue_labels="$(printf '%s' "${issue_json}" | jq -r '[.labels[].name] | join(",")')"
+  if [[ "${issue_state}" != "OPEN" ]]; then
+    echo "error: issue #${issue} is not open (state: ${issue_state})" >&2
+    exit 1
+  fi
 
-# Best effort: warn if the issue already has an active session. Never fail here:
-# a broken session listing (or an unexpected JSON shape) only warns.
-if sessions_json="$(ao session ls -p "${PROJECT}" --json 2>/dev/null)"; then
-  if owner="$(printf '%s' "${sessions_json}" | jq -r --arg i "${issue}" '[.data[]? | select((.issueId | tostring) == $i and .isTerminated == false) | .id] | join(", ")' 2>/dev/null)"; then
-    if [[ -n "${owner}" ]]; then
-      echo "warning: issue #${issue} already has active session(s): ${owner}" >&2
+  # Best effort: warn if the issue already has an active session. Never fail here:
+  # a broken session listing (or an unexpected JSON shape) only warns.
+  if sessions_json="$(ao session ls -p "${PROJECT}" --json 2>/dev/null)"; then
+    if owner="$(printf '%s' "${sessions_json}" | jq -r --arg i "${issue}" '[.data[]? | select((.issueId | tostring) == $i and .isTerminated == false) | .id] | join(", ")' 2>/dev/null)"; then
+      if [[ -n "${owner}" ]]; then
+        echo "warning: issue #${issue} already has active session(s): ${owner}" >&2
+      fi
+    else
+      echo "warning: could not parse session list; skipping duplicate-issue check" >&2
     fi
   else
-    echo "warning: could not parse session list; skipping duplicate-issue check" >&2
+    echo "warning: could not list sessions; skipping duplicate-issue check" >&2
   fi
-else
-  echo "warning: could not list sessions; skipping duplicate-issue check" >&2
 fi
 
 # Role file: agent definition when one exists, otherwise the skill/role doc.
@@ -154,18 +194,31 @@ fi
 # instead of resolving it here.
 sign_role="${role}"
 
-header="You are the ${role} session for hotel-mgmt (role string: ${role}). Read AGENTS.md, ${role_file}, docs/ao-rules.md, and GitHub issue #${issue} first (gh issue view ${issue} -R ${REPO})."
+header="You are the ${role} session for hotel-mgmt (role string: ${role}). Read AGENTS.md, ${role_file}, docs/ao-rules.md"
+if [[ -n "${issue}" ]]; then
+  header="${header}, and GitHub issue #${issue} first (gh issue view ${issue} -R ${REPO})."
+else
+  header="${header} first."
+fi
 
 case "${role_class}" in
   implement|spec) header="${header} The issue is the spec: implement exactly what it says." ;;
+  buffer) header="${header} The owner request below is your task context: read it first, then follow the role instructions below." ;;
   *) header="${header} The issue is your task context: read it first, then follow the role instructions below." ;;
 esac
 
-header="${header}
+if [[ -n "${issue}" ]]; then
+  header="${header}
 
 Issue #${issue}: ${issue_title}
 ${issue_url}
 Issue labels: ${issue_labels}"
+else
+  header="${header}
+
+Owner request (verbatim):
+${seed}"
+fi
 
 identity="Identity: configure this worktree with git config --worktree user.name \"Ming Chen (${role})\"; keep the existing email.
 All public artifacts MUST be English (PRs, commits, issues, review comments, code comments)."
@@ -192,7 +245,15 @@ Post exactly one SPEC-GATE verdict as a PR/issue comment: PASS or FAIL with the 
 Ship the specs on a branch ao/<session>/${issue}-<slug> (never the default branch) with a PR body containing: a Summary section, \"Closes #${issue}\", the Type section, the Risk label copied from the issue labels (${issue_labels}), and a Test evidence section. ${footer}"
     ;;
   buffer)
-    body="Issue-filing session: the owner request is recorded in issue #${issue} above; read it for context, scope, and constraints.
+    # The boundaries below are identical for the issue-anchored and
+    # bootstrap (--seed) paths; only the context line differs (issue
+    # reference vs verbatim owner request).
+    if [[ -n "${issue}" ]]; then
+      buffer_context="Issue-filing session: the owner request is recorded in issue #${issue} above; read it for context, scope, and constraints."
+    else
+      buffer_context="Issue-filing session: the owner request is quoted verbatim above (no issue exists yet — you will file it); read it for context, scope, and constraints."
+    fi
+    body="${buffer_context}
 File one issue per small task (one worker = one PR downstream), each with context, scope, acceptance criteria, exactly one risk label, and an English title/body.
 Boundaries: do not implement, fix, review, merge, push code, or open PRs; no branch needed.
 Report the filed issue URLs with each scope and risk label, then end your turn. Sign each filed issue with the content-owner role for the issue (or orchestrator for process issues with no content owner) via script/ao-role-footer.sh <that-role> \"\$AO_SESSION_ID\" — never business-analyst by default (see .opencode/agents/buffer-worker.md)."
@@ -206,7 +267,11 @@ ${body}
 
 ${merge_authority}"
 
-spawn_cmd=(ao spawn --project "${PROJECT}" --issue "${issue}" --name "${name}" --prompt "${prompt}")
+spawn_cmd=(ao spawn --project "${PROJECT}")
+if [[ -n "${issue}" ]]; then
+  spawn_cmd+=(--issue "${issue}")
+fi
+spawn_cmd+=(--name "${name}" --prompt "${prompt}")
 if [[ -n "${model}" ]]; then
   spawn_cmd+=(--model "${model}")
 fi
