@@ -147,6 +147,7 @@ docs and plans, not gated specs.
 | Monitoring and alerting | `operations/monitoring-alerting.md` | stub (not needed yet) | `release-manager` | signals, dashboards, and alert routing — stub stays until the first exporter lands (ADR-0001 Prometheus + Grafana) |
 | Backup and DR | `operations/backup-dr.md` | active | `release-manager` | backup, restore, and disaster-recovery plan (Closes #63) |
 | Pilot exit checklist | `operations/pilot-exit-checklist.md` | active | `release-manager` | per-sale runbook walkthrough record and pilot exit checklist (Closes #153) |
+| POC demo checklist | `operations/demo-poc-checklist.md` | active | `release-manager` | owner-runnable demo pass/fail checklist with sign-off (Closes #185) |
 | Incident response | `operations/incident-response.md` | stub (not needed yet) | `release-manager` | incident roles, severity, and response flow |
 | Release notes | `release/release-notes.md` | stub (not needed yet) | `release-manager` | per-release change entries |
 | Rollback | `release/rollback.md` | stub (not needed yet) | `release-manager` | rollback procedure per release |
