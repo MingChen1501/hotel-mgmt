@@ -1,5 +1,5 @@
 // Command server boots the reporting module with the
-// ReportingService read operations (LLD section 7, FR-RPT-1..3) plus
+// ReportingService read operations (LLD section 7, FR-RPT-1..4) plus
 // the health endpoint.
 //
 // Row storage is in-memory and rebuilt from owning-module outbox

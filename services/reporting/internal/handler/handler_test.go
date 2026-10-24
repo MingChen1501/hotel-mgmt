@@ -121,3 +121,47 @@ func TestReportingAuthAndValidation(t *testing.T) {
 		t.Fatalf("missing businessDate = %d %v, want 400 VALIDATION_FAILED", code, missing)
 	}
 }
+
+// TestDeskLoopReadsHousekeepingReport covers FR-RPT-4 over HTTP:
+// the housekeeping report agrees with the rebuilt read model —
+// dirty and clean-but-uninspected rooms appear while inspected and
+// out-of-order rooms do not — and carries its as-of timestamp.
+func TestDeskLoopReadsHousekeepingReport(t *testing.T) {
+	st := store.New()
+	events := []store.Event{
+		{ID: "evt-hk-1", Subscription: "room", Type: "room.room-upserted", Payload: map[string]any{"roomNumber": "101", "roomTypeId": "standard", "state": "vacant-dirty", "actor": "setup"}},
+		{ID: "evt-hk-2", Subscription: "room", Type: "room.room-upserted", Payload: map[string]any{"roomNumber": "102", "roomTypeId": "standard", "state": "vacant-clean", "actor": "setup"}},
+		{ID: "evt-hk-3", Subscription: "room", Type: "room.room-upserted", Payload: map[string]any{"roomNumber": "103", "roomTypeId": "standard", "state": "vacant-inspected", "actor": "setup"}},
+		{ID: "evt-hk-4", Subscription: "room", Type: "room.room-upserted", Payload: map[string]any{"roomNumber": "104", "roomTypeId": "standard", "state": "vacant-dirty", "actor": "setup"}},
+		{ID: "evt-hk-5", Subscription: "room", Type: "room.blocked", Payload: map[string]any{"roomNumber": "104", "dateFrom": "2026-11-01", "dateTo": "2026-11-05", "reason": "renovation", "actor": "manager"}},
+	}
+	if oerr := st.Rebuild(events); oerr != nil {
+		t.Fatalf("Rebuild: %v", oerr)
+	}
+	mux := NewMux(service.New(st))
+
+	code, report := post(t, mux, "/v1/reporting/HousekeepingReport", map[string]any{}, deskToken)
+	if code != http.StatusOK {
+		t.Fatalf("HousekeepingReport status = %d (%v)", code, report)
+	}
+	listed, _ := report["rooms"].([]any)
+	if len(listed) != 2 {
+		t.Fatalf("rooms = %v, want 101 + 102", report["rooms"])
+	}
+	first, _ := listed[0].(map[string]any)
+	second, _ := listed[1].(map[string]any)
+	if first["roomNumber"] != "101" || first["state"] != "vacant-dirty" {
+		t.Fatalf("first room = %v, want 101 vacant-dirty", first)
+	}
+	if second["roomNumber"] != "102" || second["state"] != "vacant-clean" {
+		t.Fatalf("second room = %v, want 102 vacant-clean", second)
+	}
+	if _, ok := report["asOf"].(string); !ok {
+		t.Fatalf("housekeeping report carries no as-of timestamp: %v", report)
+	}
+
+	code, unauth := post(t, mux, "/v1/reporting/HousekeepingReport", map[string]any{}, "")
+	if code != http.StatusUnauthorized || unauth["code"] != "UNAUTHENTICATED" {
+		t.Fatalf("missing token = %d %v, want 401 UNAUTHENTICATED", code, unauth)
+	}
+}

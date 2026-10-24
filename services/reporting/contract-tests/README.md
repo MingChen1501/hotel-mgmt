@@ -1,9 +1,10 @@
 # contract-tests (reporting)
 
-Provider fixtures for `ReportingService` (issue #156), generated
-from `contracts/` per `docs/technical/integration.md` section 9:
-`OccupancyReport`, `RevenueSummary`, and `DailySheet` happy paths.
-All three operations are pure reads, so they carry no refusal
+Provider fixtures for `ReportingService` (issue #156; housekeeping
+report added by issue #191), generated from `contracts/` per
+`docs/technical/integration.md` section 9: `OccupancyReport`,
+`RevenueSummary`, `DailySheet`, and `HousekeepingReport` happy paths.
+All four operations are pure reads, so they carry no refusal
 branches beyond the shared `UNAUTHENTICATED` / `VALIDATION_FAILED`
 envelope mapping covered in `internal/handler/handler_test.go`.
 

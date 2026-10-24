@@ -1,5 +1,5 @@
 // Package service implements the ReportingService read step order
-// (LLD section 7, FR-RPT-1..3): validate the date window, then serve
+// (LLD section 7, FR-RPT-1..4): validate the date window, then serve
 // from the rebuilt read-model projections. The service never reads
 // other modules' stores; freshness is visible through the as-of
 // timestamp on every report.
@@ -11,7 +11,7 @@ import (
 	"github.com/MingChen1501/hotel-mgmt/services/reporting/internal/store"
 )
 
-// Service serves occupancy, revenue, and daily-sheet reads.
+// Service serves occupancy, revenue, daily-sheet, and housekeeping reads.
 type Service struct {
 	store *store.Store
 }
@@ -42,4 +42,10 @@ func (s *Service) RevenueSummary(dateFrom, dateTo string) ([]store.RevenueRow, t
 // desk view with the read-model as-of timestamp.
 func (s *Service) DailySheet(businessDate string) (*store.DailySheet, *store.OpError) {
 	return s.store.Sheet(businessDate)
+}
+
+// HousekeepingReport returns the rooms needing cleaning or
+// inspection right now with the read-model as-of timestamp.
+func (s *Service) HousekeepingReport() ([]store.HousekeepingRoom, time.Time) {
+	return s.store.Housekeeping()
 }
