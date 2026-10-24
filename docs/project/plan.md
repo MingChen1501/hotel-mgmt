@@ -9,7 +9,8 @@ and requirements specs; this plan orders the work only.
 
 Live board mirror: GitHub milestones (`.github/milestones.md`) mirror
 this plan milestone for milestone and are the machine-readable source
-of truth for gate state (3a/3b closed, 3c open). This plan states
+of truth for gate state (3a/3b/3c closed — 3c closed per #224 with
+all its issues merged). This plan states
 order and exit signals, never calendar dates; if the two drift, the
 milestones file carries the current state and this plan is updated to
 match.
@@ -45,15 +46,16 @@ match.
      jobs (`dev`, #99; merged PR #105 Closes #99). Exit signal
      met: a fresh checkout builds all modules and the CI
      per-stack jobs are green.
-   - **3c. Desk loop E2E + backup — open.** The skeleton runs the desk
+   - **3c. Desk loop E2E + backup — done.** The skeleton runs the desk
      loop thinly end to end — book, check in, post a charge,
      check out — with daily backup and its success/failure
      report working, on the minimum host shape (2 vCPU / 4 GB
-     RAM / 50 GB disk per host). Partial evidence landed:
+     RAM / 50 GB disk per host). Evidence landed:
      single-host packaging and E2E proof (#118) and the desk
-     backup-report surface (#119). Exit signal still open: the
-     loop runs on the hotel LAN hardware with a verified
-     backup.
+     backup-report surface (#119). Exit signal met: all
+     milestone issues merged; milestone closed per #224
+     (the hotel-LAN-hardware verification continues under
+     the `Pilot` milestone).
 4. **Modules.** The remaining MVP capabilities land slice by
    slice (reservations, rooms and housekeeping, rates, guests,
    billing, reporting, administration, per-hotel customisation),
