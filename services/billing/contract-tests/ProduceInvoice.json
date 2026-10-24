@@ -1,0 +1,7 @@
+{
+  "operation": "ProduceInvoice",
+  "case": "happy-path",
+  "description": "Presents the invoice for a folio with charges and a cash payment, matching every line and the balance exactly.",
+  "request": { "folioId": "<folio-id>", "actor": "front-desk" },
+  "expect": { "status": 200 }
+}

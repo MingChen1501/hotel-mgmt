@@ -94,6 +94,20 @@ public class BillingController {
     return service.getDayClose(required(body, "businessDate"));
   }
 
+  @PostMapping("/ProduceInvoice")
+  public BillingService.InvoiceView produceInvoice(@RequestHeader(value = "Authorization", required = false)
+  String authorization, @RequestBody Map<String, Object> body) {
+    requireToken(authorization);
+    return service.produceInvoice(required(body, "folioId"), actor(body));
+  }
+
+  @PostMapping("/ProduceReceipt")
+  public BillingService.ReceiptView produceReceipt(@RequestHeader(value = "Authorization", required = false)
+  String authorization, @RequestBody Map<String, Object> body) {
+    requireToken(authorization);
+    return service.produceReceipt(required(body, "paymentId"), actor(body));
+  }
+
   @PostMapping("/UpsertChargeItem")
   public Map<String, Object> upsertChargeItem(@RequestHeader(value = "Authorization", required = false)
   String authorization, @RequestBody Map<String, Object> body) {

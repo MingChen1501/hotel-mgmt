@@ -14,6 +14,7 @@ import com.hotel.billing.repo.BillingRepository;
 import com.hotel.billing.repo.BillingRepository.ChargeLine;
 import com.hotel.billing.repo.BillingRepository.DayClose;
 import com.hotel.billing.repo.BillingRepository.Folio;
+import com.hotel.billing.repo.BillingRepository.PaymentLine;
 import com.hotel.billing.web.ApiException;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -132,5 +133,57 @@ class BillingServiceTest {
         null, "approval-1", "front-desk");
     assertEquals("{\"approvedBy\":\"manager\"}", view.openBalanceApproval());
     verify(repo, never()).recordApproval(any(), anyString(), anyString());
+  }
+
+  @Test
+  void produceInvoiceMatchesFolioLinesAndBalance() {
+    UUID lineId = UUID.randomUUID();
+    UUID paymentId = UUID.randomUUID();
+    when(repo.findFolioById(FOLIO)).thenReturn(folio(65000));
+    when(repo.chargeLines(FOLIO)).thenReturn(java.util.List.of(
+        new ChargeLine(lineId, FOLIO, "nightly-room-charge", "Room 101", 120000, 0, 0, NOW, "front-desk"),
+        new ChargeLine(UUID.randomUUID(), FOLIO, "charge-item", "E2E Breakfast", 2500, 0, 0, NOW, "front-desk")));
+    when(repo.paymentLines(FOLIO)).thenReturn(java.util.List
+        .of(new PaymentLine(paymentId, FOLIO, "cash", 57500, NOW, "front-desk")));
+    BillingService.InvoiceView view = service.produceInvoice(FOLIO.toString(), "front-desk");
+    assertEquals(FOLIO, view.invoiceId());
+    assertEquals(FOLIO, view.folioId());
+    assertEquals(STAY, view.stayId());
+    assertEquals(65000L, view.balanceMinor());
+    assertEquals(2, view.charges().size());
+    assertEquals("E2E Breakfast", view.charges().get(1).get("itemName"));
+    assertEquals(1, view.payments().size());
+    assertEquals("cash", view.payments().get(0).get("method"));
+  }
+
+  @Test
+  void produceInvoiceRefusesUnknownFolios() {
+    when(repo.findFolioById(any())).thenReturn(null);
+    ApiException err = assertThrows(ApiException.class,
+        () -> service.produceInvoice(UUID.randomUUID().toString(), "front-desk"));
+    assertEquals("NOT_FOUND", err.code());
+  }
+
+  @Test
+  void produceReceiptMatchesTheRecordedPayment() {
+    UUID paymentId = UUID.randomUUID();
+    PaymentLine line = new PaymentLine(paymentId, FOLIO, "cash", 60000, NOW, "front-desk");
+    when(repo.findPaymentOrNull(paymentId)).thenReturn(line);
+    when(repo.findFolioById(FOLIO)).thenReturn(folio(62500));
+    BillingService.ReceiptView view = service.produceReceipt(paymentId.toString(), "front-desk");
+    assertEquals(paymentId, view.receiptId());
+    assertEquals(paymentId, view.paymentId());
+    assertEquals(FOLIO, view.folioId());
+    assertEquals(STAY, view.stayId());
+    assertEquals("cash", view.method());
+    assertEquals(60000L, view.amountMinor());
+  }
+
+  @Test
+  void produceReceiptRefusesUnknownPayments() {
+    when(repo.findPaymentOrNull(any())).thenReturn(null);
+    ApiException err = assertThrows(ApiException.class,
+        () -> service.produceReceipt(UUID.randomUUID().toString(), "front-desk"));
+    assertEquals("NOT_FOUND", err.code());
   }
 }

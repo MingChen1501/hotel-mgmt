@@ -1,0 +1,37 @@
+{
+  "operation": "ProduceReceipt",
+  "contract": "BillingService",
+  "version": "1.0",
+  "traces": ["docs/architecture/lld.md section 6", "docs/technical/integration.md section 4", "FR-BIL-4"],
+  "transport": {
+    "method": "POST",
+    "path": "/v1/billing/ProduceReceipt",
+    "auth": "Bearer session token"
+  },
+  "request": {
+    "type": "object",
+    "required": ["paymentId", "actor"],
+    "properties": {
+      "paymentId": { "type": "string", "format": "uuid" },
+      "actor": { "type": "string" }
+    }
+  },
+  "response": {
+    "type": "object",
+    "required": ["receiptId", "paymentId", "folioId", "stayId", "method", "amountMinor", "paidAt"],
+    "properties": {
+      "receiptId": { "type": "string", "format": "uuid", "description": "The recorded payment id." },
+      "paymentId": { "type": "string", "format": "uuid" },
+      "folioId": { "type": "string", "format": "uuid" },
+      "stayId": { "type": "string", "format": "uuid" },
+      "method": { "type": "string" },
+      "amountMinor": { "type": "integer" },
+      "paidAt": { "type": "string", "format": "date-time" }
+    }
+  },
+  "errors": [
+    { "code": "UNAUTHENTICATED", "status": 401, "when": "Missing session token." },
+    { "code": "NOT_FOUND", "status": 404, "when": "No payment for the paymentId." },
+    { "code": "VALIDATION_FAILED", "status": 400, "when": "Missing or malformed paymentId." }
+  ]
+}

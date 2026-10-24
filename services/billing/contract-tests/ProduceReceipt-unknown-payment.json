@@ -1,0 +1,7 @@
+{
+  "operation": "ProduceReceipt",
+  "case": "unknown-payment",
+  "description": "Refuses a receipt for an unknown payment with NOT_FOUND naming the payment.",
+  "request": { "paymentId": "00000000-0000-4000-8000-000000000000", "actor": "front-desk" },
+  "expect": { "status": 404, "code": "NOT_FOUND" }
+}
