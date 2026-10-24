@@ -1,0 +1,873 @@
+{
+  "description": "Bounded NFR-I18N-1 coverage sample for issue #192: error envelopes of reservations (Go) + admin (Node) + billing (Spring) and the frontend desk copy. Follow-up #201 extends this list to the remaining services and script wording.",
+  "sample": [
+    {
+      "key": "error.transport.bad_json",
+      "surface": "reservations+admin envelope",
+      "sources": [
+        "services/reservations/internal/handler/handler.go",
+        "services/admin/src/server.ts"
+      ],
+      "params": {}
+    },
+    {
+      "key": "error.transport.body_not_object",
+      "surface": "admin envelope",
+      "sources": [
+        "services/admin/src/server.ts"
+      ],
+      "params": {}
+    },
+    {
+      "key": "error.transport.body_read_failed",
+      "surface": "admin envelope",
+      "sources": [
+        "services/admin/src/server.ts"
+      ],
+      "params": {}
+    },
+    {
+      "key": "error.transport.unexpected",
+      "surface": "admin envelope",
+      "sources": [
+        "services/admin/src/server.ts"
+      ],
+      "params": {}
+    },
+    {
+      "key": "error.transport.unknown_path",
+      "surface": "admin envelope",
+      "sources": [
+        "services/admin/src/server.ts"
+      ],
+      "params": {}
+    },
+    {
+      "key": "error.auth.missing_token",
+      "surface": "reservations+admin+billing envelope",
+      "sources": [
+        "services/reservations/internal/handler/handler.go",
+        "services/admin/src/server.ts",
+        "services/billing/src/main/java/com/hotel/billing/web/BillingController.java"
+      ],
+      "params": {}
+    },
+    {
+      "key": "error.auth.locked",
+      "surface": "admin envelope",
+      "sources": [
+        "services/admin/src/store.ts",
+        "services/admin/src/pgstore.ts"
+      ],
+      "params": {
+        "identity": "string"
+      }
+    },
+    {
+      "key": "error.auth.bad_credentials",
+      "surface": "admin envelope",
+      "sources": [
+        "services/admin/src/store.ts",
+        "services/admin/src/pgstore.ts"
+      ],
+      "params": {}
+    },
+    {
+      "key": "error.auth.session_invalid",
+      "surface": "admin envelope",
+      "sources": [
+        "services/admin/src/store.ts",
+        "services/admin/src/pgstore.ts"
+      ],
+      "params": {}
+    },
+    {
+      "key": "error.auth.session_revoked",
+      "surface": "admin envelope",
+      "sources": [
+        "services/admin/src/store.ts",
+        "services/admin/src/pgstore.ts"
+      ],
+      "params": {}
+    },
+    {
+      "key": "error.auth.session_idle",
+      "surface": "admin envelope",
+      "sources": [
+        "services/admin/src/store.ts",
+        "services/admin/src/pgstore.ts"
+      ],
+      "params": {
+        "idleMinutes": "integer"
+      }
+    },
+    {
+      "key": "error.auth.session_orphan",
+      "surface": "admin envelope",
+      "sources": [
+        "services/admin/src/store.ts",
+        "services/admin/src/pgstore.ts"
+      ],
+      "params": {}
+    },
+    {
+      "key": "error.forbidden.front_desk_operation",
+      "surface": "admin envelope",
+      "sources": [
+        "services/admin/src/store.ts",
+        "services/admin/src/pgstore.ts"
+      ],
+      "params": {
+        "operation": "string"
+      }
+    },
+    {
+      "key": "error.forbidden.config_change",
+      "surface": "admin envelope",
+      "sources": [
+        "services/admin/src/store.ts",
+        "services/admin/src/pgstore.ts"
+      ],
+      "params": {}
+    },
+    {
+      "key": "error.forbidden.user_create",
+      "surface": "admin envelope",
+      "sources": [
+        "services/admin/src/pgstore.ts"
+      ],
+      "params": {}
+    },
+    {
+      "key": "error.validation.field_required",
+      "surface": "admin+billing envelope",
+      "sources": [
+        "services/admin/src/store.ts",
+        "services/billing/src/main/java/com/hotel/billing/service/BillingService.java",
+        "services/billing/src/main/java/com/hotel/billing/web/BillingController.java"
+      ],
+      "params": {
+        "field": "string"
+      }
+    },
+    {
+      "key": "error.validation.field_number",
+      "surface": "billing envelope",
+      "sources": [
+        "services/billing/src/main/java/com/hotel/billing/web/BillingController.java"
+      ],
+      "params": {
+        "field": "string"
+      }
+    },
+    {
+      "key": "error.validation.must_be_uuid",
+      "surface": "billing envelope",
+      "sources": [
+        "services/billing/src/main/java/com/hotel/billing/service/BillingService.java"
+      ],
+      "params": {
+        "field": "string"
+      }
+    },
+    {
+      "key": "error.validation.unknown_role",
+      "surface": "admin envelope",
+      "sources": [
+        "services/admin/src/store.ts",
+        "services/admin/src/pgstore.ts"
+      ],
+      "params": {}
+    },
+    {
+      "key": "error.validation.identity_taken",
+      "surface": "admin envelope",
+      "sources": [
+        "services/admin/src/store.ts",
+        "services/admin/src/pgstore.ts"
+      ],
+      "params": {
+        "signinIdentity": "string"
+      }
+    },
+    {
+      "key": "error.validation.unknown_identity",
+      "surface": "admin envelope",
+      "sources": [
+        "services/admin/src/store.ts",
+        "services/admin/src/pgstore.ts"
+      ],
+      "params": {
+        "signinIdentity": "string"
+      }
+    },
+    {
+      "key": "error.validation.own_role",
+      "surface": "admin envelope",
+      "sources": [
+        "services/admin/src/store.ts",
+        "services/admin/src/pgstore.ts"
+      ],
+      "params": {}
+    },
+    {
+      "key": "error.validation.last_owner",
+      "surface": "admin envelope",
+      "sources": [
+        "services/admin/src/store.ts",
+        "services/admin/src/pgstore.ts"
+      ],
+      "params": {
+        "signinIdentity": "string"
+      }
+    },
+    {
+      "key": "error.validation.not_locked",
+      "surface": "admin envelope",
+      "sources": [
+        "services/admin/src/store.ts",
+        "services/admin/src/pgstore.ts"
+      ],
+      "params": {
+        "signinIdentity": "string"
+      }
+    },
+    {
+      "key": "error.validation.limit_range",
+      "surface": "admin envelope",
+      "sources": [
+        "services/admin/src/store.ts",
+        "services/admin/src/pgstore.ts"
+      ],
+      "params": {
+        "min": "integer",
+        "max": "integer"
+      }
+    },
+    {
+      "key": "error.validation.values_object",
+      "surface": "admin envelope",
+      "sources": [
+        "services/admin/src/store.ts",
+        "services/admin/src/pgstore.ts"
+      ],
+      "params": {}
+    },
+    {
+      "key": "error.validation.retention_floor",
+      "surface": "admin envelope",
+      "sources": [
+        "services/admin/src/pgstore.ts"
+      ],
+      "params": {}
+    },
+    {
+      "key": "error.validation.item_kind",
+      "surface": "billing envelope",
+      "sources": [
+        "services/billing/src/main/java/com/hotel/billing/service/BillingService.java"
+      ],
+      "params": {}
+    },
+    {
+      "key": "error.validation.method",
+      "surface": "billing envelope",
+      "sources": [
+        "services/billing/src/main/java/com/hotel/billing/service/BillingService.java"
+      ],
+      "params": {}
+    },
+    {
+      "key": "error.validation.amount_negative",
+      "surface": "billing envelope",
+      "sources": [
+        "services/billing/src/main/java/com/hotel/billing/service/BillingService.java"
+      ],
+      "params": {}
+    },
+    {
+      "key": "error.validation.amount_positive",
+      "surface": "billing envelope",
+      "sources": [
+        "services/billing/src/main/java/com/hotel/billing/service/BillingService.java"
+      ],
+      "params": {}
+    },
+    {
+      "key": "error.validation.item_undefined",
+      "surface": "billing envelope",
+      "sources": [
+        "services/billing/src/main/java/com/hotel/billing/service/BillingService.java"
+      ],
+      "params": {
+        "itemName": "string"
+      }
+    },
+    {
+      "key": "error.validation.price_negative",
+      "surface": "billing envelope",
+      "sources": [
+        "services/billing/src/main/java/com/hotel/billing/service/BillingService.java"
+      ],
+      "params": {}
+    },
+    {
+      "key": "error.validation.percent_range",
+      "surface": "billing envelope",
+      "sources": [
+        "services/billing/src/main/java/com/hotel/billing/service/BillingService.java"
+      ],
+      "params": {
+        "min": "integer",
+        "max": "integer"
+      }
+    },
+    {
+      "key": "error.validation.business_date",
+      "surface": "billing envelope",
+      "sources": [
+        "services/billing/src/main/java/com/hotel/billing/service/BillingService.java"
+      ],
+      "params": {}
+    },
+    {
+      "key": "error.validation.reservation_ref_required",
+      "surface": "reservations envelope",
+      "sources": [
+        "services/reservations/internal/handler/handler.go",
+        "services/reservations/internal/service/service.go"
+      ],
+      "params": {}
+    },
+    {
+      "key": "error.validation.stay_id_required",
+      "surface": "reservations envelope",
+      "sources": [
+        "services/reservations/internal/handler/handler.go"
+      ],
+      "params": {}
+    },
+    {
+      "key": "error.validation.date_from_required",
+      "surface": "reservations envelope",
+      "sources": [
+        "services/reservations/internal/handler/handler.go"
+      ],
+      "params": {}
+    },
+    {
+      "key": "error.validation.date_to_required",
+      "surface": "reservations envelope",
+      "sources": [
+        "services/reservations/internal/handler/handler.go"
+      ],
+      "params": {}
+    },
+    {
+      "key": "error.validation.date_from_format",
+      "surface": "reservations envelope",
+      "sources": [
+        "services/reservations/internal/handler/handler.go"
+      ],
+      "params": {}
+    },
+    {
+      "key": "error.validation.date_to_format",
+      "surface": "reservations envelope",
+      "sources": [
+        "services/reservations/internal/handler/handler.go"
+      ],
+      "params": {}
+    },
+    {
+      "key": "error.validation.date_range_order",
+      "surface": "reservations envelope",
+      "sources": [
+        "services/reservations/internal/handler/handler.go"
+      ],
+      "params": {}
+    },
+    {
+      "key": "error.validation.room_type_required",
+      "surface": "reservations envelope",
+      "sources": [
+        "services/reservations/internal/service/service.go"
+      ],
+      "params": {}
+    },
+    {
+      "key": "error.validation.arrival_format",
+      "surface": "reservations envelope",
+      "sources": [
+        "services/reservations/internal/service/service.go"
+      ],
+      "params": {}
+    },
+    {
+      "key": "error.validation.departure_format",
+      "surface": "reservations envelope",
+      "sources": [
+        "services/reservations/internal/service/service.go"
+      ],
+      "params": {}
+    },
+    {
+      "key": "error.validation.departure_order",
+      "surface": "reservations envelope",
+      "sources": [
+        "services/reservations/internal/service/service.go"
+      ],
+      "params": {}
+    },
+    {
+      "key": "error.validation.price_basis",
+      "surface": "reservations envelope",
+      "sources": [
+        "services/reservations/internal/service/service.go"
+      ],
+      "params": {}
+    },
+    {
+      "key": "error.validation.guest_id_required",
+      "surface": "reservations envelope",
+      "sources": [
+        "services/reservations/internal/service/service.go"
+      ],
+      "params": {}
+    },
+    {
+      "key": "error.validation.guest_field_missing",
+      "surface": "reservations envelope",
+      "sources": [
+        "services/reservations/internal/service/service.go"
+      ],
+      "params": {
+        "field": "string"
+      }
+    },
+    {
+      "key": "error.validation.guest_change_required",
+      "surface": "reservations envelope",
+      "sources": [
+        "services/reservations/internal/service/service.go"
+      ],
+      "params": {}
+    },
+    {
+      "key": "error.validation.cancel_reason_required",
+      "surface": "reservations envelope",
+      "sources": [
+        "services/reservations/internal/service/service.go"
+      ],
+      "params": {}
+    },
+    {
+      "key": "error.validation.noshow_reason_required",
+      "surface": "reservations envelope",
+      "sources": [
+        "services/reservations/internal/service/service.go"
+      ],
+      "params": {}
+    },
+    {
+      "key": "error.validation.sellable_units",
+      "surface": "reservations envelope",
+      "sources": [
+        "services/reservations/internal/store/store.go"
+      ],
+      "params": {
+        "min": "integer"
+      }
+    },
+    {
+      "key": "error.conflict.no_availability",
+      "surface": "reservations envelope",
+      "sources": [
+        "services/reservations/internal/store/store.go",
+        "services/reservations/internal/store/postgres.go"
+      ],
+      "params": {
+        "arrivalDate": "string",
+        "departureDate": "string"
+      }
+    },
+    {
+      "key": "error.notfound.reservation",
+      "surface": "reservations envelope",
+      "sources": [
+        "services/reservations/internal/store/store.go",
+        "services/reservations/internal/store/postgres.go"
+      ],
+      "params": {
+        "ref": "string"
+      }
+    },
+    {
+      "key": "error.state.not_confirmed_checkin",
+      "surface": "reservations envelope",
+      "sources": [
+        "services/reservations/internal/store/store.go",
+        "services/reservations/internal/store/postgres.go"
+      ],
+      "params": {
+        "ref": "string",
+        "state": "string"
+      }
+    },
+    {
+      "key": "error.state.lifecycle_refusal",
+      "surface": "reservations envelope",
+      "sources": [
+        "services/reservations/internal/store/store.go",
+        "services/reservations/internal/store/postgres.go"
+      ],
+      "params": {
+        "ref": "string",
+        "state": "string",
+        "operation": "string"
+      }
+    },
+    {
+      "key": "error.state.arrival_not_passed",
+      "surface": "reservations envelope",
+      "sources": [
+        "services/reservations/internal/store/store.go",
+        "services/reservations/internal/store/postgres.go"
+      ],
+      "params": {
+        "ref": "string",
+        "arrivalDate": "string"
+      }
+    },
+    {
+      "key": "error.store.unavailable",
+      "surface": "reservations envelope",
+      "sources": [
+        "services/reservations/internal/store/postgres.go"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.entry.title",
+      "surface": "frontend desk entry",
+      "sources": [
+        "frontend/index.html"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.entry.intro",
+      "surface": "frontend desk entry",
+      "sources": [
+        "frontend/index.html"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.entry.backup_heading",
+      "surface": "frontend desk entry",
+      "sources": [
+        "frontend/index.html"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.entry.backup_loading",
+      "surface": "frontend desk entry",
+      "sources": [
+        "frontend/index.html"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.entry.backup_missing",
+      "surface": "frontend desk entry",
+      "sources": [
+        "frontend/index.html"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.entry.backup_support",
+      "surface": "frontend desk entry",
+      "sources": [
+        "frontend/index.html"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.entry.noscript_backup",
+      "surface": "frontend desk entry",
+      "sources": [
+        "frontend/index.html"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.entry.module_health",
+      "surface": "frontend desk entry",
+      "sources": [
+        "frontend/index.html"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.entry.admin_link",
+      "surface": "frontend desk entry",
+      "sources": [
+        "frontend/index.html"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.admin.title",
+      "surface": "frontend admin console",
+      "sources": [
+        "frontend/admin.html"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.admin.back",
+      "surface": "frontend admin console",
+      "sources": [
+        "frontend/admin.html"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.admin.sign_in",
+      "surface": "frontend admin console",
+      "sources": [
+        "frontend/admin.html"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.admin.signin_identity",
+      "surface": "frontend admin console",
+      "sources": [
+        "frontend/admin.html"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.admin.secret",
+      "surface": "frontend admin console",
+      "sources": [
+        "frontend/admin.html"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.admin.signed_in_as",
+      "surface": "frontend admin console",
+      "sources": [
+        "frontend/admin.html"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.admin.signout",
+      "surface": "frontend admin console",
+      "sources": [
+        "frontend/admin.html"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.admin.users_heading",
+      "surface": "frontend admin console",
+      "sources": [
+        "frontend/admin.html"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.admin.th_name",
+      "surface": "frontend admin console",
+      "sources": [
+        "frontend/admin.html"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.admin.th_identity",
+      "surface": "frontend admin console",
+      "sources": [
+        "frontend/admin.html"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.admin.th_role",
+      "surface": "frontend admin console",
+      "sources": [
+        "frontend/admin.html"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.admin.th_locked",
+      "surface": "frontend admin console",
+      "sources": [
+        "frontend/admin.html"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.admin.th_actions",
+      "surface": "frontend admin console",
+      "sources": [
+        "frontend/admin.html"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.admin.create_heading",
+      "surface": "frontend admin console",
+      "sources": [
+        "frontend/admin.html"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.admin.name_label",
+      "surface": "frontend admin console",
+      "sources": [
+        "frontend/admin.html"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.admin.role_label",
+      "surface": "frontend admin console",
+      "sources": [
+        "frontend/admin.html"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.admin.create_button",
+      "surface": "frontend admin console",
+      "sources": [
+        "frontend/admin.html"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.admin.audit_heading",
+      "surface": "frontend admin console",
+      "sources": [
+        "frontend/admin.html"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.admin.audit_note",
+      "surface": "frontend admin console",
+      "sources": [
+        "frontend/admin.html"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.admin.refresh",
+      "surface": "frontend admin console",
+      "sources": [
+        "frontend/admin.html"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.admin.th_time",
+      "surface": "frontend admin console",
+      "sources": [
+        "frontend/admin.html"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.admin.th_actor",
+      "surface": "frontend admin console",
+      "sources": [
+        "frontend/admin.html"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.admin.th_action",
+      "surface": "frontend admin console",
+      "sources": [
+        "frontend/admin.html"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.admin.th_entity",
+      "surface": "frontend admin console",
+      "sources": [
+        "frontend/admin.html"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.admin.th_detail",
+      "surface": "frontend admin console",
+      "sources": [
+        "frontend/admin.html"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.admin.no_entries",
+      "surface": "frontend admin console",
+      "sources": [
+        "frontend/admin.html"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.admin.save_role",
+      "surface": "frontend admin console",
+      "sources": [
+        "frontend/admin.html"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.admin.unlock",
+      "surface": "frontend admin console",
+      "sources": [
+        "frontend/admin.html"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.admin.yes",
+      "surface": "frontend admin console",
+      "sources": [
+        "frontend/admin.html"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.admin.no",
+      "surface": "frontend admin console",
+      "sources": [
+        "frontend/admin.html"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.admin.request_failed",
+      "surface": "frontend admin console",
+      "sources": [
+        "frontend/admin.html"
+      ],
+      "params": {
+        "operation": "string"
+      }
+    }
+  ]
+}
