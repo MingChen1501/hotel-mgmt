@@ -130,6 +130,7 @@ docs and plans, not gated specs.
 | Runbook | `operations/runbook.md` | active | `release-manager` | step-by-step operating procedures, fresh at merge time (Closes #63) |
 | Monitoring and alerting | `operations/monitoring-alerting.md` | stub (not needed yet) | `release-manager` | signals, dashboards, and alert routing — stub stays until the first exporter lands (ADR-0001 Prometheus + Grafana) |
 | Backup and DR | `operations/backup-dr.md` | active | `release-manager` | backup, restore, and disaster-recovery plan (Closes #63) |
+| Pilot exit checklist | `operations/pilot-exit-checklist.md` | active | `release-manager` | per-sale runbook walkthrough record and pilot exit checklist (Closes #153) |
 | Incident response | `operations/incident-response.md` | stub (not needed yet) | `release-manager` | incident roles, severity, and response flow |
 | Release notes | `release/release-notes.md` | stub (not needed yet) | `release-manager` | per-release change entries |
 | Rollback | `release/rollback.md` | stub (not needed yet) | `release-manager` | rollback procedure per release |
