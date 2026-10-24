@@ -1,0 +1,8 @@
+{
+  "operation": "CheckRestrictions",
+  "case": "closed-to-arrival",
+  "description": "Arrival inside a closed-to-arrival window is refused naming the restriction (FR-RTE-4); arrival outside the window passes.",
+  "request": { "roomTypeId": "<deluxe-type-id>", "arrivalDate": "2026-12-24", "departureDate": "2026-12-26" },
+  "precondition": "A closedToArrival restriction covers 2026-12-20 to 2026-12-31.",
+  "expect": { "status": 422, "code": "STATE_ILLEGAL" }
+}

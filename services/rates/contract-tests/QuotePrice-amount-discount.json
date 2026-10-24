@@ -1,0 +1,8 @@
+{
+  "operation": "QuotePrice",
+  "case": "amount-discount",
+  "description": "Quoting with a fixed-amount named discount keeps the name and subtracts the amount; a discount larger than the total floors the quote at zero (FR-RTE-3, BR-15).",
+  "request": { "roomTypeId": "<deluxe-type-id>", "arrivalDate": "2026-11-01", "departureDate": "2026-11-03", "discountName": "Loyalty20" },
+  "precondition": "Plan prices 12000 per night for 2026-11-01 and 2026-11-02; discount Loyalty20 is amount 2000.",
+  "expect": { "status": 200, "discountName": "Loyalty20", "totalMinor": 22000 }
+}

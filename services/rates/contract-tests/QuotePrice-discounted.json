@@ -1,0 +1,8 @@
+{
+  "operation": "QuotePrice",
+  "case": "percent-discount",
+  "description": "Quoting with a 10 percent named discount keeps the name and adjusts the total (FR-RTE-3, BR-15).",
+  "request": { "roomTypeId": "<deluxe-type-id>", "arrivalDate": "2026-11-01", "departureDate": "2026-11-03", "discountName": "EarlyBird" },
+  "precondition": "Plan prices 12000 per night for 2026-11-01 and 2026-11-02; discount EarlyBird is percent 10.",
+  "expect": { "status": 200, "discountName": "EarlyBird", "totalMinor": 21600 }
+}
