@@ -1,0 +1,7 @@
+{
+  "operation": "RevenueSummary",
+  "case": "happy-path",
+  "description": "Owner opens the revenue summary for a day with one room charge and one extra charge on the same folio.",
+  "request": { "dateFrom": "2026-11-01", "dateTo": "2026-11-01" },
+  "expect": { "status": 200, "days": [ { "businessDate": "2026-11-01", "roomRevenue": 18000, "extraRevenue": 2500 } ], "asOf": "<iso-timestamp>" }
+}

@@ -1,0 +1,44 @@
+{
+  "operation": "RevenueSummary",
+  "contract": "ReportingService",
+  "version": "1.0",
+  "traces": ["docs/architecture/lld.md section 7", "FR-RPT-2"],
+  "transport": {
+    "method": "POST",
+    "path": "/v1/reporting/RevenueSummary",
+    "auth": "Bearer session token"
+  },
+  "request": {
+    "type": "object",
+    "required": ["dateFrom", "dateTo"],
+    "properties": {
+      "dateFrom": { "type": "string", "format": "date", "description": "First business date (YYYY-MM-DD, inclusive)." },
+      "dateTo": { "type": "string", "format": "date", "description": "Last business date (YYYY-MM-DD, inclusive)." }
+    }
+  },
+  "response": {
+    "type": "object",
+    "required": ["dateFrom", "dateTo", "days", "asOf"],
+    "properties": {
+      "dateFrom": { "type": "string", "format": "date" },
+      "dateTo": { "type": "string", "format": "date" },
+      "days": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["businessDate", "roomRevenue", "extraRevenue"],
+          "properties": {
+            "businessDate": { "type": "string", "format": "date" },
+            "roomRevenue": { "type": "integer", "description": "Room revenue in minor units." },
+            "extraRevenue": { "type": "integer", "description": "Extra revenue in minor units." }
+          }
+        }
+      },
+      "asOf": { "type": "string", "format": "date-time", "description": "Newest event applied to the read model." }
+    }
+  },
+  "errors": [
+    { "code": "UNAUTHENTICATED", "status": 401, "when": "Missing session token." },
+    { "code": "VALIDATION_FAILED", "status": 400, "when": "dateFrom or dateTo is missing, malformed, or dateTo is before dateFrom." }
+  ]
+}

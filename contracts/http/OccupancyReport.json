@@ -1,0 +1,45 @@
+{
+  "operation": "OccupancyReport",
+  "contract": "ReportingService",
+  "version": "1.0",
+  "traces": ["docs/architecture/lld.md section 7", "FR-RPT-1"],
+  "transport": {
+    "method": "POST",
+    "path": "/v1/reporting/OccupancyReport",
+    "auth": "Bearer session token"
+  },
+  "request": {
+    "type": "object",
+    "required": ["dateFrom", "dateTo"],
+    "properties": {
+      "dateFrom": { "type": "string", "format": "date", "description": "First night date (YYYY-MM-DD, inclusive)." },
+      "dateTo": { "type": "string", "format": "date", "description": "Last night date (YYYY-MM-DD, inclusive)." }
+    }
+  },
+  "response": {
+    "type": "object",
+    "required": ["dateFrom", "dateTo", "nights", "asOf"],
+    "properties": {
+      "dateFrom": { "type": "string", "format": "date" },
+      "dateTo": { "type": "string", "format": "date" },
+      "nights": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["nightDate", "roomTypeId", "occupied", "available"],
+          "properties": {
+            "nightDate": { "type": "string", "format": "date" },
+            "roomTypeId": { "type": "string" },
+            "occupied": { "type": "integer", "minimum": 0 },
+            "available": { "type": "integer", "minimum": 0 }
+          }
+        }
+      },
+      "asOf": { "type": "string", "format": "date-time", "description": "Newest event applied to the read model." }
+    }
+  },
+  "errors": [
+    { "code": "UNAUTHENTICATED", "status": 401, "when": "Missing session token." },
+    { "code": "VALIDATION_FAILED", "status": 400, "when": "dateFrom or dateTo is missing, malformed, or dateTo is before dateFrom." }
+  ]
+}

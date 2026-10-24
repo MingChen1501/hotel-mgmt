@@ -1,0 +1,7 @@
+{
+  "operation": "OccupancyReport",
+  "case": "happy-path",
+  "description": "Owner opens the occupancy report for two Deluxe nights with one booking and two sellable units per night.",
+  "request": { "dateFrom": "2026-11-01", "dateTo": "2026-11-02" },
+  "expect": { "status": 200, "nights": [ { "nightDate": "2026-11-01", "occupied": 1, "available": 1 } ], "asOf": "<iso-timestamp>" }
+}
