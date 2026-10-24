@@ -131,7 +131,10 @@ installation serves exactly one property.
   Boot Java), a
   contract-check stage (consumer contracts against provider
   modules), and a packaging stage that bundles the whole system
-  into the offline on-premise Ansible installer. No CI workflow
+  into the release bundle installed by the canonical
+  `script/install.sh` (the installer path CI proves on every run),
+  with the Ansible playbook as the offline-friendly alternative
+  implementing the same steps. No CI workflow
   files were added by the change that wrote this section (out of
   scope at the time); the strategy was recorded here for the later
   pipeline issue. Pipeline note (landed after this section was
