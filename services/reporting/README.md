@@ -2,9 +2,10 @@
 
 Module 7 per `docs/architecture/lld.md` section 7: occupancy,
 revenue, daily sheet, and housekeeping reports over its own
-read model.
-Skeleton only: the service boots and answers `/healthz`; operation
-logic lands in later slices.
+read model. This slice (issue #156) serves the occupancy, revenue,
+and daily-sheet reads (FR-RPT-1..3) from a read model rebuilt from
+domain events; the housekeeping report (FR-RPT-4) lands with the
+housekeeping loop. The service boots and answers `/healthz`.
 
 ## Build
 

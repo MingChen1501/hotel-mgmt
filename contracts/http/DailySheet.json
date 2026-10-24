@@ -1,0 +1,74 @@
+{
+  "operation": "DailySheet",
+  "contract": "ReportingService",
+  "version": "1.0",
+  "traces": ["docs/architecture/lld.md section 7", "FR-RPT-3"],
+  "transport": {
+    "method": "POST",
+    "path": "/v1/reporting/DailySheet",
+    "auth": "Bearer session token"
+  },
+  "request": {
+    "type": "object",
+    "required": ["businessDate"],
+    "properties": {
+      "businessDate": { "type": "string", "format": "date", "description": "Business date for the one-page desk view (YYYY-MM-DD)." }
+    }
+  },
+  "response": {
+    "type": "object",
+    "required": ["businessDate", "arrivals", "inHouse", "departures", "openBalances", "asOf"],
+    "properties": {
+      "businessDate": { "type": "string", "format": "date" },
+      "arrivals": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["kind", "ref"],
+          "properties": {
+            "kind": { "type": "string", "enum": ["reservation", "stay"] },
+            "ref": { "type": "string" }
+          }
+        }
+      },
+      "inHouse": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["kind", "ref"],
+          "properties": {
+            "kind": { "type": "string", "enum": ["stay"] },
+            "ref": { "type": "string" }
+          }
+        }
+      },
+      "departures": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["kind", "ref"],
+          "properties": {
+            "kind": { "type": "string", "enum": ["reservation", "stay"] },
+            "ref": { "type": "string" }
+          }
+        }
+      },
+      "openBalances": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["folioId", "balanceMinor"],
+          "properties": {
+            "folioId": { "type": "string" },
+            "balanceMinor": { "type": "integer", "description": "Open folio balance in minor units." }
+          }
+        }
+      },
+      "asOf": { "type": "string", "format": "date-time", "description": "Newest event applied to the read model." }
+    }
+  },
+  "errors": [
+    { "code": "UNAUTHENTICATED", "status": 401, "when": "Missing session token." },
+    { "code": "VALIDATION_FAILED", "status": 400, "when": "businessDate is missing or malformed." }
+  ]
+}

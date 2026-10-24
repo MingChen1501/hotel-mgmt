@@ -1,0 +1,7 @@
+{
+  "operation": "DailySheet",
+  "case": "happy-path",
+  "description": "Manager opens the daily sheet for arrival day: one reservation arrival and its folio carrying an open balance.",
+  "request": { "businessDate": "2026-11-01" },
+  "expect": { "status": 200, "arrivals": [ { "kind": "reservation", "ref": "<reservation-ref>" } ], "openBalances": [ { "balanceMinor": 20500 } ], "asOf": "<iso-timestamp>" }
+}
