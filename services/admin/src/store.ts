@@ -1,5 +1,6 @@
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { HttpError } from "./errors.js";
+import { formatNumber, msg } from "./messages.js";
 
 // In-memory AdminService identity and config store (LLD section 8).
 // Tokens are opaque HMAC-signed session tokens: the payload carries
@@ -104,7 +105,7 @@ export function toPublic(user: PublicUser): PublicUser {
 
 export function requiredString(value: unknown, field: string): string {
   if (typeof value !== "string" || value.trim() === "") {
-    throw new HttpError("VALIDATION_FAILED", `${field} is required.`, { field });
+    throw new HttpError("VALIDATION_FAILED", msg("error.validation.field_required", { field }), { field });
   }
   return value.trim();
 }
@@ -173,7 +174,7 @@ export class AdminStore implements AdminStoreAPI {
   // rates, rooms, and reports, and front-desk staff operate the desk.
   private requireUserManager(caller: AuthenticatedUser, operation: string): void {
     if (caller.role === "front-desk") {
-      throw new HttpError("FORBIDDEN", `Front-desk accounts cannot ${operation}.`, { role: caller.role });
+      throw new HttpError("FORBIDDEN", msg("error.forbidden.front_desk_operation", { operation }), { role: caller.role });
     }
   }
 
@@ -202,15 +203,15 @@ export class AdminStore implements AdminStoreAPI {
 
   async signIn(signinIdentity: unknown, secret: unknown): Promise<{ token: string; user: PublicUser }> {
     if (typeof signinIdentity !== "string" || signinIdentity.trim() === "") {
-      throw new HttpError("VALIDATION_FAILED", "signinIdentity is required.", { field: "signinIdentity" });
+      throw new HttpError("VALIDATION_FAILED", msg("error.validation.field_required", { field: "signinIdentity" }), { field: "signinIdentity" });
     }
     if (typeof secret !== "string" || secret === "") {
-      throw new HttpError("VALIDATION_FAILED", "secret is required.", { field: "secret" });
+      throw new HttpError("VALIDATION_FAILED", msg("error.validation.field_required", { field: "secret" }), { field: "secret" });
     }
     const identity = signinIdentity.trim();
     const state = this.failures.get(identity);
     if (state?.lockedUntil !== null && state?.lockedUntil !== undefined && state.lockedUntil > Date.now()) {
-      throw new HttpError("UNAUTHENTICATED", `Identity ${identity} is locked after repeated failures.`, {
+      throw new HttpError("UNAUTHENTICATED", msg("error.auth.locked", { identity }), {
         signinIdentity: identity,
       });
     }
@@ -223,7 +224,7 @@ export class AdminStore implements AdminStoreAPI {
       timingSafeEqual(Buffer.from(candidate), Buffer.from(expected));
     if (!matches || !user) {
       this.recordFailure(identity);
-      throw new HttpError("UNAUTHENTICATED", "Unknown identity or wrong secret.", { signinIdentity: identity });
+      throw new HttpError("UNAUTHENTICATED", msg("error.auth.bad_credentials", {}), { signinIdentity: identity });
     }
     this.failures.delete(identity);
     const tokenId = randomUUID();
@@ -240,20 +241,20 @@ export class AdminStore implements AdminStoreAPI {
   async authenticate(token: string): Promise<AuthenticatedUser> {
     const tokenId = verifySessionToken(this.key, token);
     if (!tokenId) {
-      throw new HttpError("UNAUTHENTICATED", "Invalid or expired session token.", {});
+      throw new HttpError("UNAUTHENTICATED", msg("error.auth.session_invalid", {}), {});
     }
     const session = this.sessions.get(tokenId);
     if (!session || session.revoked) {
-      throw new HttpError("UNAUTHENTICATED", "Session is revoked or signed out.", {});
+      throw new HttpError("UNAUTHENTICATED", msg("error.auth.session_revoked", {}), {});
     }
     if (Date.now() - session.lastActivityAt > IDLE_TIMEOUT_MS) {
       this.sessions.delete(tokenId);
-      throw new HttpError("UNAUTHENTICATED", "Session ended after 15 minutes without activity.", {});
+      throw new HttpError("UNAUTHENTICATED", msg("error.auth.session_idle", { idleMinutes: formatNumber(15) }), {});
     }
     session.lastActivityAt = Date.now();
     const user = this.users.get(session.userId);
     if (!user) {
-      throw new HttpError("UNAUTHENTICATED", "Session user no longer exists.", {});
+      throw new HttpError("UNAUTHENTICATED", msg("error.auth.session_orphan", {}), {});
     }
     return { ...toPublic(user), tokenId };
   }
@@ -266,13 +267,13 @@ export class AdminStore implements AdminStoreAPI {
     const displayName = requiredString(input.displayName, "displayName");
     const signinIdentity = requiredString(input.signinIdentity, "signinIdentity");
     if (typeof input.secret !== "string" || input.secret === "") {
-      throw new HttpError("VALIDATION_FAILED", "secret is required.", { field: "secret" });
+      throw new HttpError("VALIDATION_FAILED", msg("error.validation.field_required", { field: "secret" }), { field: "secret" });
     }
     if (typeof input.role !== "string" || !ROLES.includes(input.role as Role)) {
-      throw new HttpError("VALIDATION_FAILED", "Unknown role.", { role: input.role });
+      throw new HttpError("VALIDATION_FAILED", msg("error.validation.unknown_role", {}), { role: input.role });
     }
     if (this.usersByIdentity.has(signinIdentity)) {
-      throw new HttpError("VALIDATION_FAILED", `Sign-in identity ${signinIdentity} is already taken.`, {
+      throw new HttpError("VALIDATION_FAILED", msg("error.validation.identity_taken", { signinIdentity }), {
         signinIdentity,
       });
     }
@@ -304,18 +305,18 @@ export class AdminStore implements AdminStoreAPI {
     this.requireUserManager(caller, "change user roles");
     const signinIdentity = requiredString(input.signinIdentity, "signinIdentity");
     if (typeof input.role !== "string" || !ROLES.includes(input.role as Role)) {
-      throw new HttpError("VALIDATION_FAILED", "Unknown role.", { role: input.role });
+      throw new HttpError("VALIDATION_FAILED", msg("error.validation.unknown_role", {}), { role: input.role });
     }
     const user = this.usersByIdentity.get(signinIdentity);
     if (!user) {
-      throw new HttpError("VALIDATION_FAILED", `Unknown sign-in identity ${signinIdentity}.`, { signinIdentity });
+      throw new HttpError("VALIDATION_FAILED", msg("error.validation.unknown_identity", { signinIdentity }), { signinIdentity });
     }
     if (user.userId === caller.userId) {
-      throw new HttpError("VALIDATION_FAILED", "You cannot change your own role.", { signinIdentity });
+      throw new HttpError("VALIDATION_FAILED", msg("error.validation.own_role", {}), { signinIdentity });
     }
     const nextRole = input.role as Role;
     if (user.role === "owner" && nextRole !== "owner" && !this.hasOtherOwner(user.userId)) {
-      throw new HttpError("VALIDATION_FAILED", `Cannot demote ${signinIdentity}: the last remaining owner.`, {
+      throw new HttpError("VALIDATION_FAILED", msg("error.validation.last_owner", { signinIdentity }), {
         signinIdentity,
       });
     }
@@ -334,10 +335,10 @@ export class AdminStore implements AdminStoreAPI {
     const signinIdentity = requiredString(input.signinIdentity, "signinIdentity");
     const user = this.usersByIdentity.get(signinIdentity);
     if (!user) {
-      throw new HttpError("VALIDATION_FAILED", `Unknown sign-in identity ${signinIdentity}.`, { signinIdentity });
+      throw new HttpError("VALIDATION_FAILED", msg("error.validation.unknown_identity", { signinIdentity }), { signinIdentity });
     }
     if (!this.isLocked(user)) {
-      throw new HttpError("VALIDATION_FAILED", `Identity ${signinIdentity} is not currently locked.`, {
+      throw new HttpError("VALIDATION_FAILED", msg("error.validation.not_locked", { signinIdentity }), {
         signinIdentity,
       });
     }
@@ -373,7 +374,7 @@ export class AdminStore implements AdminStoreAPI {
     this.requireUserManager(caller, "read the audit log");
     const limit = input.limit === undefined ? 50 : input.limit;
     if (typeof limit !== "number" || !Number.isInteger(limit) || limit < 1 || limit > 200) {
-      throw new HttpError("VALIDATION_FAILED", "limit must be an integer between 1 and 200.", { field: "limit" });
+      throw new HttpError("VALIDATION_FAILED", msg("error.validation.limit_range", { min: formatNumber(1), max: formatNumber(200) }), { field: "limit" });
     }
     const entries: AuditEntry[] = [];
     for (const user of this.users.values()) {
@@ -435,10 +436,10 @@ export class AdminStore implements AdminStoreAPI {
     input: { values?: unknown; updatedBy?: unknown },
   ): Promise<{ schemaVersion: number; values: Record<string, unknown> }> {
     if (caller.role === "front-desk") {
-      throw new HttpError("FORBIDDEN", "Front-desk accounts cannot change hotel config.", { role: caller.role });
+      throw new HttpError("FORBIDDEN", msg("error.forbidden.config_change", {}), { role: caller.role });
     }
     if (typeof input.values !== "object" || input.values === null || Array.isArray(input.values)) {
-      throw new HttpError("VALIDATION_FAILED", "values must be an object.", { field: "values" });
+      throw new HttpError("VALIDATION_FAILED", msg("error.validation.values_object", {}), { field: "values" });
     }
     requiredString(input.updatedBy, "updatedBy");
     const entries = Object.entries(input.values as Record<string, unknown>);
