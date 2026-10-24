@@ -65,39 +65,22 @@ else
   pass_msg "ADMIN_BOOT_SECRET is set to a non-default value."
 fi
 
-# 2. The per-hotel configuration set parses and validates against the
-# release bundle's configuration schema (deployment.md section 5).
-if [[ ! -f "$CONFIG" ]]; then
-  fail_msg "configuration set $CONFIG not found; copy deploy/config/hotel.example.json and fill in per sale."
+# 2. The per-hotel configuration set validates against the release
+# bundle's configuration schema (deployment.md section 5; issue
+# #158). The shared validator checks the full section-2 set — hotel
+# identity present and never the EXAMPLE placeholder, standard times
+# well-formed, room/rate/charge sections non-empty with references
+# that resolve, stay policies complete, retention floor honoured —
+# and fails closed on any default, placeholder, or malformed value.
+if "$(dirname "$0")/validate-hotel-config.sh" --config "$CONFIG"; then
+  pass_msg "configuration set $CONFIG validates against deploy/config/schema.json."
 else
-  if python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$CONFIG" 2>/dev/null; then
-    if python3 - "$CONFIG" "deploy/config/schema.json" <<'PYEOF' 2>/dev/null; then
-import json, sys
-config = json.load(open(sys.argv[1]))
-schema = json.load(open(sys.argv[2]))
-missing = [k for k in schema.get("required", []) if k not in config]
-if missing:
-    print("missing required keys: " + ", ".join(missing))
-    sys.exit(1)
-if config.get("schemaVersion") != 1:
-    print("schemaVersion must be 1")
-    sys.exit(1)
-floor = config.get("backup", {}).get("retentionDaysFloor", 0)
-if not isinstance(floor, int) or floor < 30:
-    print("backup.retentionDaysFloor must be an integer of at least 30")
-    sys.exit(1)
-PYEOF
-      pass_msg "configuration set $CONFIG validates against deploy/config/schema.json."
-    else
-      fail_msg "configuration set $CONFIG fails schema validation; see deploy/config/schema.json."
-    fi
-  else
-    fail_msg "configuration set $CONFIG is not valid JSON."
-  fi
+  fail_msg "configuration set $CONFIG fails validation; see deploy/config/schema.json."
 fi
 
-# 3. Fresh verification state only: the example file must never be
-# installed as the hotel's own set.
+# 3. Fresh verification state only: covered by the validator above
+# (EXAMPLE-001 placeholder refusal), kept as an explicit gate so the
+# failure names the placeholder directly.
 if [[ -f "$CONFIG" ]] && grep -q "EXAMPLE-001" "$CONFIG" 2>/dev/null; then
   fail_msg "configuration set $CONFIG still carries the EXAMPLE-001 placeholder; fill in the hotel's own values."
 else

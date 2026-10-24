@@ -111,6 +111,7 @@ export class AdminStore implements AdminStoreAPI {
 
   constructor(tokenKey?: string) {
     this.key = tokenKey ?? process.env["ADMIN_TOKEN_KEY"] ?? "dev-only-change-me";
+    this.config.set("name", "Skeleton Hotel");
     this.config.set("timezone", "UTC");
     this.config.set("standardCheckinTime", "14:00");
     this.config.set("standardCheckoutTime", "12:00");
@@ -245,7 +246,13 @@ export class AdminStore implements AdminStoreAPI {
       throw new HttpError("VALIDATION_FAILED", "values must be an object.", { field: "values" });
     }
     requiredString(input.updatedBy, "updatedBy");
-    for (const [key, value] of Object.entries(input.values as Record<string, unknown>)) {
+    const entries = Object.entries(input.values as Record<string, unknown>);
+    if ("name" in (input.values as Record<string, unknown>)) {
+      // The hotel's own name arrives via the deployment set
+      // (issue #158); never blank it through the API.
+      requiredString((input.values as Record<string, unknown>)["name"], "name");
+    }
+    for (const [key, value] of entries) {
       this.config.set(key, value);
     }
     return this.getConfig();

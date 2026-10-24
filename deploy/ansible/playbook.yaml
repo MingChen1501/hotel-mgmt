@@ -20,6 +20,12 @@
       - { name: billing, route: billing }
       - { name: admin, route: admin }
   tasks:
+    - name: Validate the per-hotel configuration set against the release schema
+      delegate_to: localhost
+      ansible.builtin.command:
+        cmd: "{{ bundle_src }}/script/validate-hotel-config.sh --config {{ hotel_config_src }}"
+      changed_when: false
+
     - name: Validate the per-hotel configuration set parses as JSON
       delegate_to: localhost
       ansible.builtin.command:
@@ -52,7 +58,7 @@
         dest: "{{ bundle_dir }}/"
         mode: preserve
 
-    - name: Apply the per-hotel configuration set
+    - name: Copy the per-hotel configuration set
       ansible.builtin.copy:
         src: "{{ hotel_config_src }}"
         dest: "{{ config_dir }}/hotel.json"
@@ -104,3 +110,11 @@
       retries: 12
       delay: 5
       loop: "{{ modules }}"
+
+    - name: Apply the per-hotel configuration set through Admin
+      ansible.builtin.command:
+        cmd: "{{ bundle_dir }}/script/apply-hotel-config.sh --config {{ config_dir }}/hotel.json --base-url http://127.0.0.1"
+        chdir: "{{ bundle_dir }}"
+      environment:
+        ADMIN_BOOT_SECRET: "{{ lookup('env', 'ADMIN_BOOT_SECRET') }}"
+      changed_when: true

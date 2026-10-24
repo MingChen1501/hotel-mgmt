@@ -29,13 +29,17 @@ DB_PASSWORD=<per-sale secret> ADMIN_BOOT_SECRET=<per-sale secret> \
   -e bundle_src=. -e hotel_config=deploy/config/hotel.json
 ```
 
-The playbook fails closed while `DB_PASSWORD` or
-`ADMIN_BOOT_SECRET` still holds a dev default (audit S3), then
-copies the release bundle, applies the per-hotel configuration
-set, starts database then modules then proxy (deployment.md start
-order), and runs the install health check (proxy reachable, each
-module answering through the proxy). Migrations, the boot seed,
-and the desk-loop proof run next via `script/e2e-desk-loop.sh`
+The playbook validates the set against the release schema
+(`script/validate-hotel-config.sh`) before copying it, fails closed
+while `DB_PASSWORD` or `ADMIN_BOOT_SECRET` still holds a dev default
+(audit S3), then copies the release bundle, applies the per-hotel
+configuration set, starts database then modules then proxy
+(deployment.md start order), and runs the install health check (proxy
+reachable, each module answering through the proxy). After the health
+check it applies the set through Admin
+(`script/apply-hotel-config.sh`), so the hotel's own identity and
+standard times are in effect before handover. Migrations, the boot
+seed, and the desk-loop proof run next via `script/e2e-desk-loop.sh`
 (see `deploy/README.md`).
 
 Pre-flight (sizing 2 vCPU / 4 GB RAM / 50 GB disk, LAN reachability,

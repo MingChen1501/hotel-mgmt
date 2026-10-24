@@ -52,8 +52,10 @@ npm run dev
 ```
 
 Configuration is via environment: `PORT` (default `8088`); hotel
-values come from `AdminService.GetHotelConfig` with a cached
-offline-first fallback (see LLD section 0) and land in later slices.
+values are served from `AdminService.GetHotelConfig` with a cached
+offline-first fallback (see LLD section 0) and arrive via the
+deployment set (`script/apply-hotel-config.sh`, issue #158) or
+`UpdateHotelConfig`, never via seeds.
 
 ## Docker
 
