@@ -56,8 +56,11 @@ Placement variants (one topology, two placements):
   split: host 1 — Nginx + desk-facing modules + monitoring;
   host 2 — database engine + backup target; optional host 3 —
   remaining modules); same components, same contracts, only
-  placement differs. Cluster plumbing is plain containers via
-  Ansible by default; mini-K8s (k3s-class) only with a written reason
+  placement differs. Cluster plumbing is plain containers
+  installed via the canonical `script/install.sh` by default (the
+  Ansible playbook is the offline-friendly alternative
+  implementing the same steps); mini-K8s (k3s-class) only with a
+  written reason
   per accepted ADR-0001 (accepted 2026-10-23).
 
 Portability rules (no single-box assumption anywhere):
