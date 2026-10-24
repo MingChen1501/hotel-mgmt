@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# OpenAPI route-drift gate (issue #228).
+# OpenAPI route-drift gate (issues #228, #241).
 #
 # Fails closed when the curated desk-loop spec drifts:
 # 1. frontend/docs/openapi.yaml (served at /docs) must be
@@ -9,6 +9,11 @@
 #    operation whose transport method and path match exactly
 #    (the transport entries are the route source of truth the
 #    services and the proxy implement).
+# 3. The spec operationId set must equal the curated 14-op set
+#    pinned below (issue #241): an added op or a silently
+#    deleted op fails the gate with a named cause.
+# 4. A served mirror without its contracts/openapi.yaml source
+#    fails instead of SKIP-passing (issue #241).
 #
 # Static only (no docker): live reachability stays covered by
 # script/e2e-desk-loop.sh. Called from script/contract-check.sh and
@@ -24,6 +29,11 @@ MIRROR="$ROOT/frontend/docs/openapi.yaml"
 fail=0
 
 if [[ ! -f "$SOURCE" ]]; then
+  if [[ -f "$MIRROR" ]]; then
+    echo "openapi-route-check: FAIL — orphaned served mirror $MIRROR exists without its source $SOURCE."
+    echo "  (restore contracts/openapi.yaml; the mirror must never outlive its single source)"
+    exit 1
+  fi
   echo "openapi-route-check: SKIP — no contracts/openapi.yaml yet. Nothing to check."
   exit 0
 fi
@@ -60,6 +70,25 @@ root = sys.argv[1]
 with open(f"{root}/contracts/openapi.yaml", encoding="utf-8") as fh:
     spec = yaml.safe_load(fh)
 
+# Curated desk-loop op set (issue #241): the gate pins these 14
+# operationIds and fails on any added or removed op by name.
+expected = frozenset({
+    "SignIn",
+    "QuotePrice",
+    "CreateReservation",
+    "GetReservation",
+    "AssignRoom",
+    "CheckIn",
+    "CheckInReservation",
+    "PostCharge",
+    "RecordPayment",
+    "GetFolioBalance",
+    "ProduceInvoice",
+    "RecordOpenBalanceApproval",
+    "CheckOut",
+    "ProduceReceipt",
+})
+
 assert isinstance(spec, dict) and str(spec.get("openapi", "")).startswith("3.0."), "spec must be OpenAPI 3.0.x"
 paths = spec.get("paths", {})
 assert paths, "spec defines no paths"
@@ -94,11 +123,16 @@ for path, item in sorted(paths.items()):
                 f"{t.get('method')} {t.get('path')}"
             )
 
+for op in sorted(seen_ops - set(expected)):
+    failures.append(f"unexpected operationId '{op}': not in the curated 14-op set (issue #241)")
+for op in sorted(set(expected) - seen_ops):
+    failures.append(f"missing curated operation '{op}': removed from the spec but still expected (issue #241)")
+
 if failures:
     for f in failures:
         print(f"  FAIL {f}")
     sys.exit(1)
-print(f"  OK {len(seen_ops)} spec operation(s) resolve to contract routes")
+print(f"  OK {len(seen_ops)} spec operation(s) match the curated 14-op set and resolve to contract routes")
 PYEOF
 then
   :
