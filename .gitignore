@@ -9,3 +9,6 @@ target/
 deploy/config/hotel.json
 deploy/ansible/inventory.ini
 backup-staging/
+# Generated desk artefact (script/publish-backup-report.sh default
+# --desk-file): regenerated on every desk-loop/demo run, never committed.
+frontend/backup-report.json
