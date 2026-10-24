@@ -16,6 +16,13 @@ sync, no extra bookkeeping (see `.github/milestones.md`).
     workflow, template, CI automation).
   - `QA` — test plans, issue reports, and bugs found. The **fix**
     for a bug stays in its phase milestone.
+- **Historical names.** Milestones closed before this convention
+  (`Specs done`, `Stack decision`, `Walking skeleton 3a/3b`) keep
+  their names as history. The twelve milestones closed per #224 were
+  renamed to the convention where the plan number is certain
+  (#5 → `Phase 3 - desk loop E2E and backup`; `Modules - *` →
+  `Phase 4 - * slice` per plan milestone 4); old issue/PR bodies keep
+  the old names as immutable history and are never rewritten.
 
 ## Lifecycle
 

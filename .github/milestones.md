@@ -34,15 +34,15 @@ use `Phase <N> - <scope>`, standing milestones (`Pilot`, `Harness`,
 | Stack decision | closed | plan milestone 2 |
 | Walking skeleton 3a - readiness specs | closed | plan 3a (#96, #97, #98 merged) |
 | Walking skeleton 3b - skeleton and per-stack CI | closed | plan 3b (#99; fresh checkout builds, per-stack CI green) |
-| Walking skeleton 3c - desk loop E2E and backup | closed | plan 3c (closed per #224; LAN-hardware verification continues under `Pilot`) |
-| Modules - reservations slice | closed | plan 4, per-slice guards (closed per #224, 0 open) |
-| Modules - rooms and housekeeping slice | closed | plan 4, per-slice guards (closed per #224, 0 open) |
-| Modules - rates slice | closed | plan 4, per-slice guards (closed per #224, 0 open) |
-| Modules - guests slice | closed | plan 4, per-slice guards (closed per #224, 0 open) |
-| Modules - billing slice | closed | plan 4, per-slice guards (closed per #224, 0 open) |
-| Modules - reporting slice | closed | plan 4, per-slice guards (closed per #224, 0 open) |
-| Modules - administration slice | closed | plan 4, per-slice guards (closed per #224, 0 open) |
-| Modules - per-hotel customisation slice | closed | plan 4, per-slice guards (closed per #224, 0 open) |
+| Phase 3 - desk loop E2E and backup | closed | plan 3c (closed per #224; LAN-hardware verification continues under `Pilot`) |
+| Phase 4 - reservations slice | closed | plan 4, per-slice guards (closed per #224, 0 open) |
+| Phase 4 - rooms and housekeeping slice | closed | plan 4, per-slice guards (closed per #224, 0 open) |
+| Phase 4 - rates slice | closed | plan 4, per-slice guards (closed per #224, 0 open) |
+| Phase 4 - guests slice | closed | plan 4, per-slice guards (closed per #224, 0 open) |
+| Phase 4 - billing slice | closed | plan 4, per-slice guards (closed per #224, 0 open) |
+| Phase 4 - reporting slice | closed | plan 4, per-slice guards (closed per #224, 0 open) |
+| Phase 4 - administration slice | closed | plan 4, per-slice guards (closed per #224, 0 open) |
+| Phase 4 - per-hotel customisation slice | closed | plan 4, per-slice guards (closed per #224, 0 open) |
 | Phase 3 - persistence slice | closed | pre-convention slice board (closed per #224, 0 open) |
 | Phase 3 - stay flow slice | closed | pre-convention slice board (closed per #224, 0 open) |
 | Phase 3 - process decisions | closed | pre-convention slice board (closed per #224, 0 open) |
