@@ -1,0 +1,1228 @@
+# Curated desk-loop OpenAPI spec (issue #228).
+# Single source of truth; frontend/docs/openapi.yaml MUST be byte-identical
+# (script/openapi-route-check.sh fails closed on any difference).
+# Transcribed from contracts/http/*.json shapes; maintained by hand.
+openapi: 3.0.3
+info:
+  title: Hotel Management - Desk-Loop API
+  version: 1.0.0
+  description: 'Curated desk-loop spec (issue #228): owner sign-in, then book, check in, charge, check out, and receipt -
+    14 operations transcribed from contracts/http/*.json. This file is the single source of truth; frontend/docs/openapi.yaml
+    is a byte-identical served mirror verified by script/openapi-route-check.sh. Open Swagger UI at /docs on a local stack
+    and try each op end to end.'
+servers:
+- url: /
+  description: Local stack through the reverse proxy (http://127.0.0.1/).
+security:
+- bearerAuth: []
+paths:
+  /v1/admin/SignIn:
+    post:
+      operationId: SignIn
+      tags:
+      - Admin
+      summary: 'Owner sign-in (desk loop step 1: session token for every op below).'
+      description: 'AdminService: Owner and staff identity (Admin module). Contract version 1.0. Traces: docs/architecture/lld.md
+        section 8, docs/technical/integration.md section 6 C10, FR-ADM-2, NFR-SEC-2.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - signinIdentity
+              - secret
+              properties:
+                signinIdentity:
+                  type: string
+                  description: Unique sign-in identity of the user.
+                secret:
+                  type: string
+                  description: Plaintext secret; only the hash is stored.
+      responses:
+        '200':
+          description: 'Success: SignIn response.'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - token
+                - userId
+                - displayName
+                - role
+                properties:
+                  token:
+                    type: string
+                    description: Opaque HMAC-signed session token for the Authorization header.
+                  userId:
+                    type: string
+                    format: uuid
+                  displayName:
+                    type: string
+                  role:
+                    type: string
+                    enum:
+                    - owner
+                    - manager
+                    - front-desk
+        '401':
+          description: 'UNAUTHENTICATED: Unknown identity, wrong secret, or identity locked after 5 consecutive failures.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '400':
+          description: 'VALIDATION_FAILED: Missing signinIdentity or secret.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      security: []
+  /v1/rates/QuotePrice:
+    post:
+      operationId: QuotePrice
+      tags:
+      - Rates
+      summary: Price the stay before booking (desk loop step 2).
+      description: 'PricingService: Rate plans and price quotes (Rates module). Contract version 1.0. Traces: docs/architecture/lld.md
+        sections 1 and 4, docs/technical/integration.md section 1 C1, FR-RTE-5, FR-RTE-1, FR-RTE-3, BR-13.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - roomTypeId
+              - arrivalDate
+              - departureDate
+              properties:
+                roomTypeId:
+                  type: string
+                  format: uuid
+                arrivalDate:
+                  type: string
+                  format: date
+                departureDate:
+                  type: string
+                  format: date
+                ratePlanName:
+                  type: string
+                  description: Optional when exactly one plan prices the type; required when several do.
+                discountName:
+                  type: string
+      responses:
+        '200':
+          description: 'Success: QuotePrice response.'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - roomTypeId
+                - arrivalDate
+                - departureDate
+                - nights
+                - discountName
+                - totalMinor
+                properties:
+                  roomTypeId:
+                    type: string
+                    format: uuid
+                  arrivalDate:
+                    type: string
+                    format: date
+                  departureDate:
+                    type: string
+                    format: date
+                  nights:
+                    type: array
+                    items:
+                      type: object
+                      required:
+                      - nightDate
+                      - priceMinor
+                      properties:
+                        nightDate:
+                          type: string
+                          format: date
+                        priceMinor:
+                          type: integer
+                  discountName:
+                    type: string
+                    nullable: true
+                  totalMinor:
+                    type: integer
+                    description: Stored as the reservation price basis; later rate changes never alter it unless recalculated
+                      (BR-13).
+        '401':
+          description: 'UNAUTHENTICATED: Missing session token.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: 'NOT_FOUND: No priced night for the type and dates (unknown type or plan).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '400':
+          description: 'VALIDATION_FAILED: Missing field, bad date order, or unknown discount.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /v1/reservations/CreateReservation:
+    post:
+      operationId: CreateReservation
+      tags:
+      - Reservations
+      summary: Book one reservation, confirmed state (desk loop step 3).
+      description: 'ReservationService: Reservations (Reservations module). Contract version 1.1. Traces: docs/architecture/lld.md
+        section 1, docs/technical/integration.md section 1, FR-RES-1, FR-RTE-5, NFR-CON-1.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - roomTypeId
+              - arrivalDate
+              - departureDate
+              - guest
+              - sellableUnits
+              - priceBasis
+              properties:
+                roomTypeId:
+                  type: string
+                  format: uuid
+                arrivalDate:
+                  type: string
+                  format: date
+                departureDate:
+                  type: string
+                  format: date
+                guest:
+                  type: object
+                  required:
+                  - guestId
+                  properties:
+                    guestId:
+                      type: string
+                      format: uuid
+                      description: Logical reference to the guests schema.
+                    fullName:
+                      type: string
+                    contact:
+                      type: string
+                sellableUnits:
+                  type: integer
+                  minimum: 1
+                  description: Desk-loop input from the Rates/Rooms search step; the atomic guard refuses when overlapping
+                    bookings reach it.
+                priceBasis:
+                  type: object
+                  required:
+                  - totalMinor
+                  properties:
+                    totalMinor:
+                      type: integer
+                      minimum: 0
+                    discountName:
+                      type: string
+                      nullable: true
+                discountName:
+                  type: string
+                idempotencyKey:
+                  type: string
+      responses:
+        '200':
+          description: 'Success: CreateReservation response.'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - reservationRef
+                - state
+                - quotedTotal
+                - reservationId
+                - stayId
+                properties:
+                  reservationRef:
+                    type: string
+                  state:
+                    type: string
+                    enum:
+                    - confirmed
+                  quotedTotal:
+                    type: integer
+                  reservationId:
+                    type: string
+                    format: uuid
+                  stayId:
+                    type: string
+                    nullable: true
+        '401':
+          description: 'UNAUTHENTICATED: Missing session token.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: 'CONFLICT: No sellable unit left for the type and dates; details name type+dates (NFR-CON-1).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: 'STATE_ILLEGAL: A stay restriction is violated; details name the restriction (FR-RTE-4).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '400':
+          description: 'VALIDATION_FAILED: Missing field, bad date order, or a hotel-mandatory guest field is missing (FR-CUS-1).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /v1/reservations/GetReservation:
+    post:
+      operationId: GetReservation
+      tags:
+      - Reservations
+      summary: Read back the booking to verify it (desk loop step 4).
+      description: 'ReservationService: Reservations (Reservations module). Contract version 1.1. Traces: docs/architecture/lld.md
+        section 1, FR-RES-1.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - reservationRef
+              properties:
+                reservationRef:
+                  type: string
+      responses:
+        '200':
+          description: 'Success: GetReservation response.'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - reservationRef
+                - roomTypeId
+                - arrivalDate
+                - departureDate
+                - guest
+                - priceBasis
+                - state
+                - reservationId
+                - stayId
+                properties:
+                  reservationRef:
+                    type: string
+                  roomTypeId:
+                    type: string
+                    format: uuid
+                  arrivalDate:
+                    type: string
+                    format: date
+                  departureDate:
+                    type: string
+                    format: date
+                  guest:
+                    type: object
+                    additionalProperties: true
+                  priceBasis:
+                    type: object
+                    additionalProperties: true
+                  state:
+                    type: string
+                  reservationId:
+                    type: string
+                    format: uuid
+                  stayId:
+                    type: string
+                    nullable: true
+        '401':
+          description: 'UNAUTHENTICATED: Missing session token.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: 'NOT_FOUND: Unknown reservation reference.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '400':
+          description: 'VALIDATION_FAILED: Missing reservationRef.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /v1/rooms/AssignRoom:
+    post:
+      operationId: AssignRoom
+      tags:
+      - Rooms
+      summary: Assign the physical room to the stay link (desk loop step 5).
+      description: 'RoomInventoryService: Room inventory and assignment (Rooms module). Contract version 1.0. Traces: docs/architecture/lld.md
+        section 3, docs/technical/integration.md section 2 C5, NFR-CON-2.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - roomNumber
+              - businessDate
+              - stayLink
+              - actor
+              properties:
+                roomNumber:
+                  type: string
+                businessDate:
+                  type: string
+                  format: date
+                stayLink:
+                  type: string
+                idempotencyKey:
+                  type: string
+                actor:
+                  type: string
+      responses:
+        '200':
+          description: 'Success: AssignRoom response.'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - roomNumber
+                - stayLink
+                - state
+                properties:
+                  roomNumber:
+                    type: string
+                  stayLink:
+                    type: string
+                  state:
+                    type: string
+                    enum:
+                    - occupied
+        '401':
+          description: 'UNAUTHENTICATED: Missing session token.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: 'NOT_FOUND: Unknown room number.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: 'CONFLICT: Room just taken: no longer vacant-inspected (NFR-CON-2).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: 'STATE_ILLEGAL: Room not ready (naming room+state) or blocked for the date (naming the block).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '400':
+          description: 'VALIDATION_FAILED: Missing field.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /v1/stay/CheckIn:
+    post:
+      operationId: CheckIn
+      tags:
+      - Stay
+      summary: Check the guest in, in-house state (desk loop step 6).
+      description: 'StayService: Stays from check-in to check-out (Stay module). Contract version 1.0. Traces: docs/architecture/lld.md
+        section 2, docs/technical/integration.md section 2, FR-FDK-1, NFR-CON-2.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - reservationId
+              - guestId
+              - roomId
+              - actor
+              properties:
+                stayId:
+                  type: string
+                  format: uuid
+                  description: Client-supplied stay id; generated when absent.
+                reservationId:
+                  type: string
+                  format: uuid
+                  description: Logical reference to the reservations schema.
+                guestId:
+                  type: string
+                  format: uuid
+                  description: Logical reference to the guests schema.
+                roomId:
+                  type: string
+                  format: uuid
+                  description: Assigned room id; the Rooms-schema atomic write runs first.
+                actualArrival:
+                  type: string
+                  format: date-time
+                actor:
+                  type: string
+      responses:
+        '200':
+          description: 'Success: CheckIn response.'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - stayId
+                - reservationId
+                - guestId
+                - roomId
+                - state
+                properties:
+                  stayId:
+                    type: string
+                    format: uuid
+                  reservationId:
+                    type: string
+                    format: uuid
+                  guestId:
+                    type: string
+                    format: uuid
+                  roomId:
+                    type: string
+                    format: uuid
+                  state:
+                    type: string
+                    enum:
+                    - in-house
+                  actualArrival:
+                    type: string
+                    format: date-time
+                  actualDeparture:
+                    type: string
+                    nullable: true
+        '401':
+          description: 'UNAUTHENTICATED: Missing session token.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: 'CONFLICT: The reservation is already checked in; details name the reservation and the existing stay.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '400':
+          description: 'VALIDATION_FAILED: Missing or malformed reservation, guest, or room link.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /v1/reservations/CheckInReservation:
+    post:
+      operationId: CheckInReservation
+      tags:
+      - Reservations
+      summary: Link the reservation to the created stay (desk loop step 7).
+      description: 'ReservationService: Reservations (Reservations module). Contract version 1.0. Traces: docs/architecture/lld.md
+        section 1, FR-FDK-1, FR-RES-1.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - reservationRef
+              - stayId
+              - actor
+              properties:
+                reservationRef:
+                  type: string
+                stayId:
+                  type: string
+                  format: uuid
+                  description: Stay id created by the Stay module first.
+                actor:
+                  type: string
+      responses:
+        '200':
+          description: 'Success: CheckInReservation response.'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - reservationId
+                - reservationRef
+                - state
+                - stayId
+                properties:
+                  reservationId:
+                    type: string
+                    format: uuid
+                  reservationRef:
+                    type: string
+                  state:
+                    type: string
+                    enum:
+                    - checked-in
+                  stayId:
+                    type: string
+                    format: uuid
+        '401':
+          description: 'UNAUTHENTICATED: Missing session token.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: 'NOT_FOUND: Unknown reservation reference.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: 'STATE_ILLEGAL: The reservation is not confirmed for check-in.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '400':
+          description: 'VALIDATION_FAILED: Missing reservationRef or stayId.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /v1/billing/PostCharge:
+    post:
+      operationId: PostCharge
+      tags:
+      - Billing
+      summary: Post a folio charge, room night or charge item (desk loop step 8).
+      description: 'BillingService: Folios, payments, invoices, receipts (Billing module). Contract version 1.0. Traces: docs/architecture/lld.md
+        section 6, docs/technical/integration.md section 4, FR-BIL-2, FR-BIL-5.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - stayId
+              - itemKind
+              - itemName
+              - amountMinor
+              - actor
+              properties:
+                stayId:
+                  type: string
+                  format: uuid
+                itemKind:
+                  type: string
+                  enum:
+                  - nightly-room-charge
+                  - charge-item
+                itemName:
+                  type: string
+                amountMinor:
+                  type: integer
+                  minimum: 0
+                idempotencyKey:
+                  type: string
+                actor:
+                  type: string
+      responses:
+        '200':
+          description: 'Success: PostCharge response.'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - lineId
+                - folioId
+                - stayId
+                - itemKind
+                - itemName
+                - amountMinor
+                properties:
+                  lineId:
+                    type: string
+                    format: uuid
+                  folioId:
+                    type: string
+                    format: uuid
+                  stayId:
+                    type: string
+                    format: uuid
+                  itemKind:
+                    type: string
+                  itemName:
+                    type: string
+                  amountMinor:
+                    type: integer
+                  taxMinor:
+                    type: integer
+                  feeMinor:
+                    type: integer
+                  postedAt:
+                    type: string
+                    format: date-time
+        '401':
+          description: 'UNAUTHENTICATED: Missing session token.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '400':
+          description: 'VALIDATION_FAILED: Unknown item kind, an undefined charge item, or a negative amount.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /v1/billing/RecordPayment:
+    post:
+      operationId: RecordPayment
+      tags:
+      - Billing
+      summary: Record a cash or card payment (desk loop step 9).
+      description: 'BillingService: Folios, payments, invoices, receipts (Billing module). Contract version 1.0. Traces: docs/architecture/lld.md
+        section 6, docs/technical/integration.md section 4, FR-BIL-3.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - stayId
+              - method
+              - amountMinor
+              - actor
+              properties:
+                stayId:
+                  type: string
+                  format: uuid
+                method:
+                  type: string
+                  enum:
+                  - cash
+                  - card
+                  description: Cash and card only until OQ-1 is decided.
+                amountMinor:
+                  type: integer
+                  minimum: 1
+                idempotencyKey:
+                  type: string
+                actor:
+                  type: string
+      responses:
+        '200':
+          description: 'Success: RecordPayment response.'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - paymentId
+                - folioId
+                - stayId
+                - method
+                - amountMinor
+                - balanceMinor
+                properties:
+                  paymentId:
+                    type: string
+                    format: uuid
+                  folioId:
+                    type: string
+                    format: uuid
+                  stayId:
+                    type: string
+                    format: uuid
+                  method:
+                    type: string
+                  amountMinor:
+                    type: integer
+                  paidAt:
+                    type: string
+                    format: date-time
+                  balanceMinor:
+                    type: integer
+        '401':
+          description: 'UNAUTHENTICATED: Missing session token.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '400':
+          description: 'VALIDATION_FAILED: A method other than cash or card, or a non-positive amount.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /v1/billing/GetFolioBalance:
+    post:
+      operationId: GetFolioBalance
+      tags:
+      - Billing
+      summary: Review the folio balance before check-out (desk loop step 10).
+      description: 'BillingService: Folios, payments, invoices, receipts (Billing module). Contract version 1.0. Traces: docs/architecture/lld.md
+        section 6, docs/technical/integration.md section 3, FR-BIL-1.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - stayId
+              - actor
+              properties:
+                stayId:
+                  type: string
+                  format: uuid
+                actor:
+                  type: string
+      responses:
+        '200':
+          description: 'Success: GetFolioBalance response.'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - folioId
+                - stayId
+                - balanceMinor
+                - charges
+                - payments
+                properties:
+                  folioId:
+                    type: string
+                    format: uuid
+                  stayId:
+                    type: string
+                    format: uuid
+                  balanceMinor:
+                    type: integer
+                  openBalanceApproval:
+                    type: object
+                    nullable: true
+                  charges:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  payments:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+        '401':
+          description: 'UNAUTHENTICATED: Missing session token.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '400':
+          description: 'VALIDATION_FAILED: Missing or malformed stayId.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /v1/billing/ProduceInvoice:
+    post:
+      operationId: ProduceInvoice
+      tags:
+      - Billing
+      summary: Produce the invoice from the folio (desk loop step 11).
+      description: 'BillingService: Folios, payments, invoices, receipts (Billing module). Contract version 1.0. Traces: docs/architecture/lld.md
+        section 6, docs/technical/integration.md section 4, FR-BIL-4.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - folioId
+              - actor
+              properties:
+                folioId:
+                  type: string
+                  format: uuid
+                actor:
+                  type: string
+      responses:
+        '200':
+          description: 'Success: ProduceInvoice response.'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - invoiceId
+                - folioId
+                - stayId
+                - balanceMinor
+                - charges
+                - payments
+                - producedAt
+                properties:
+                  invoiceId:
+                    type: string
+                    format: uuid
+                    description: The presented folio id.
+                  folioId:
+                    type: string
+                    format: uuid
+                  stayId:
+                    type: string
+                    format: uuid
+                  balanceMinor:
+                    type: integer
+                  openBalanceApproval:
+                    type: object
+                    nullable: true
+                  charges:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  payments:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  producedAt:
+                    type: string
+                    format: date-time
+        '401':
+          description: 'UNAUTHENTICATED: Missing session token.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: 'NOT_FOUND: No folio for the folioId.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '400':
+          description: 'VALIDATION_FAILED: Missing or malformed folioId.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /v1/billing/RecordOpenBalanceApproval:
+    post:
+      operationId: RecordOpenBalanceApproval
+      tags:
+      - Billing
+      summary: Approve an open balance so check-out can proceed (desk loop step 12).
+      description: 'BillingService: Folios, payments, invoices, receipts (Billing module). Contract version 1.0. Traces: docs/architecture/lld.md
+        section 6, docs/technical/integration.md section 3 C7, FR-BIL-7.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - stayId
+              - approvedBy
+              - role
+              - actor
+              properties:
+                stayId:
+                  type: string
+                  format: uuid
+                approvedBy:
+                  type: string
+                  description: Approving identity; which role may approve follows the hotel open-balance rule.
+                role:
+                  type: string
+                  description: Approver role at approval time, kept with the record.
+                reason:
+                  type: string
+                idempotencyKey:
+                  type: string
+                actor:
+                  type: string
+      responses:
+        '200':
+          description: 'Success: RecordOpenBalanceApproval response.'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - folioId
+                - stayId
+                - balanceMinor
+                - openBalanceApproval
+                properties:
+                  folioId:
+                    type: string
+                    format: uuid
+                  stayId:
+                    type: string
+                    format: uuid
+                  balanceMinor:
+                    type: integer
+                  openBalanceApproval:
+                    type: object
+                    description: 'Recorded approval: approver, role, reason, time.'
+        '401':
+          description: 'UNAUTHENTICATED: Missing session token.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '400':
+          description: 'VALIDATION_FAILED: Missing approver, role, or stay link.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /v1/stay/CheckOut:
+    post:
+      operationId: CheckOut
+      tags:
+      - Stay
+      summary: Check out, closed state with the folio as invoice (desk loop step 13).
+      description: 'StayService: Stays from check-in to check-out (Stay module). Contract version 1.0. Traces: docs/architecture/lld.md
+        section 2, docs/technical/integration.md section 3 C7, FR-FDK-2, FR-BIL-7, NFR-CON-2.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - stayId
+              - folioId
+              - folioBalanceMinor
+              - actor
+              properties:
+                stayId:
+                  type: string
+                  format: uuid
+                folioId:
+                  type: string
+                  format: uuid
+                  description: Reviewed folio id, presented as the final invoice.
+                folioBalanceMinor:
+                  type: integer
+                  description: Reviewed folio balance; the gate input for BR-17.
+                openBalanceApproval:
+                  type: object
+                  nullable: true
+                  description: Approval recorded via BillingService RecordOpenBalanceApproval; required unless the balance
+                    is zero.
+                actualDeparture:
+                  type: string
+                  format: date-time
+                  description: Late departure kept on the stay; now() when absent.
+                idempotencyKey:
+                  type: string
+                actor:
+                  type: string
+      responses:
+        '200':
+          description: 'Success: CheckOut response.'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - stayId
+                - reservationId
+                - guestId
+                - roomId
+                - state
+                - invoiceRef
+                properties:
+                  stayId:
+                    type: string
+                    format: uuid
+                  reservationId:
+                    type: string
+                    format: uuid
+                  guestId:
+                    type: string
+                    format: uuid
+                  roomId:
+                    type: string
+                    format: uuid
+                  state:
+                    type: string
+                    enum:
+                    - closed
+                  actualArrival:
+                    type: string
+                    nullable: true
+                  actualDeparture:
+                    type: string
+                    nullable: true
+                  invoiceRef:
+                    type: string
+                    format: uuid
+                    description: The presented folio id.
+        '401':
+          description: 'UNAUTHENTICATED: Missing session token.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: 'SETTLEMENT_REQUIRED: Open balance with no recorded approval; the stay remains in house.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: 'STATE_ILLEGAL: Stay is not in house; details name the stay and its state.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: 'NOT_FOUND: Unknown stay.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '400':
+          description: 'VALIDATION_FAILED: Missing or malformed stay, folio, or balance link.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /v1/billing/ProduceReceipt:
+    post:
+      operationId: ProduceReceipt
+      tags:
+      - Billing
+      summary: Produce the receipt for a recorded payment (desk loop step 14).
+      description: 'BillingService: Folios, payments, invoices, receipts (Billing module). Contract version 1.0. Traces: docs/architecture/lld.md
+        section 6, docs/technical/integration.md section 4, FR-BIL-4.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - paymentId
+              - actor
+              properties:
+                paymentId:
+                  type: string
+                  format: uuid
+                actor:
+                  type: string
+      responses:
+        '200':
+          description: 'Success: ProduceReceipt response.'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - receiptId
+                - paymentId
+                - folioId
+                - stayId
+                - method
+                - amountMinor
+                - paidAt
+                properties:
+                  receiptId:
+                    type: string
+                    format: uuid
+                    description: The recorded payment id.
+                  paymentId:
+                    type: string
+                    format: uuid
+                  folioId:
+                    type: string
+                    format: uuid
+                  stayId:
+                    type: string
+                    format: uuid
+                  method:
+                    type: string
+                  amountMinor:
+                    type: integer
+                  paidAt:
+                    type: string
+                    format: date-time
+        '401':
+          description: 'UNAUTHENTICATED: Missing session token.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: 'NOT_FOUND: No payment for the paymentId.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '400':
+          description: 'VALIDATION_FAILED: Missing or malformed paymentId.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: 'Opaque HMAC-signed session token from AdminService SignIn; send as Authorization: Bearer <token>.'
+  schemas:
+    ErrorEnvelope:
+      type: object
+      required:
+      - code
+      properties:
+        code:
+          type: string
+          description: Machine-readable refusal code (see each op's error responses).
+        message:
+          type: string
+      additionalProperties: true

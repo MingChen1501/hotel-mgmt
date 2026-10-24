@@ -50,6 +50,12 @@ Fastest path to a running desk loop on a dev machine:
    → re-verify).
 4. For an owner-visible walkthrough, use `script/demo-poc.sh` with
    the sign-off record in `docs/operations/demo-poc-checklist.md`.
+5. Browse and try the desk-loop API: `contracts/openapi.yaml` is the
+   curated 14-op spec (book → check-in → charge → check-out → receipt
+   + SignIn); on a local stack Swagger UI serves it at
+   `http://127.0.0.1/docs` (served mirror
+   `frontend/docs/openapi.yaml`, drift-gated by
+   `script/openapi-route-check.sh`).
 
 Command detail lives in the linked sources — this README only points
 at them.

@@ -125,6 +125,8 @@ docs and plans, not gated specs.
 | Coding standards | `development/coding-standards.md` | stub (not needed yet) | `dev` | code style and review conventions |
 | Implementation plan | `development/implementation-plan.md` | stub (not needed yet) | `dev` | build sequencing per approved scope |
 | Task breakdown | `development/task-breakdown.md` | stub (not needed yet) | `dev` | work items derived from the plan |
+| Desk-loop API spec | `../contracts/openapi.yaml` | active | `dev` | curated desk-loop OpenAPI source of truth, 14 ops (Closes #228) |
+| Desk-loop API docs | `../frontend/docs/index.html` | active | `dev` | Swagger UI served at `/docs` on a local stack (Closes #228) |
 
 ## Testing
 
