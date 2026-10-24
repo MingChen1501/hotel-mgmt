@@ -139,17 +139,21 @@ restate the list here — link it. Summary for orchestration use only.
   direct `ao review trigger` is denied for every session, so a worker
   can never trigger — or re-trigger — a review of its own PR).
 - The reviewer posts the verdict as a PR issue comment or as a formal
-  PR review: the verdict word goes in the headline (first non-empty
+  PR review: the verdict word LEADS the headline (first non-empty
   line of the body) — `APPROVE` (or `PASS`) for approval,
   `CHANGES_REQUESTED` (or `FAIL`) for blocking findings — plus
   findings by severity with `file:line`. The verdict quotes the exact
   PR head SHA it reviewed (short or full form from
   `gh pr view <n> --json headRefOid`): the merge gate reads both PR
   issue comments and formal PR reviews (`gh pr view --json reviews`),
-  reads only the headline for the verdict (a formal review in state
-  APPROVED / CHANGES_REQUESTED also counts when its body quotes the
-  head), and only counts verdicts quoting the exact head, so a
-  re-pushed head needs a fresh verdict.
+  counts only the LEADING verdict token of the headline (after
+  stripping markdown markers and an optional `SPEC-GATE` / `Verdict:`
+  prefix, the first word must be the verdict — e.g. `APPROVE — ...`,
+  `## SPEC-GATE PASS`, `CHANGES_REQUESTED — ...`; a verdict word
+  appearing only later in the headline does not count — a formal
+  review in state APPROVED / CHANGES_REQUESTED also counts when its
+  body quotes the head), and only counts verdicts quoting the exact
+  head, so a re-pushed head needs a fresh verdict.
 - Merge gate: a reviewer verdict of **APPROVE** + green CI +
   risk-low/risk-medium => the orchestrator merges autonomously with
   `script/orchestrator-merge.sh <n>` (squash merge, delete branch) and
@@ -179,14 +183,17 @@ restate the list here — link it. Summary for orchestration use only.
   to the default branch.
 - Merge only with a reviewer verdict on the exact head: the script
   reads both PR issue comments and formal PR reviews — only the
-  headline (first non-empty line of the body) for the verdict, a
-  PASS/APPROVE headline for approval, a FAIL/CHANGES_REQUESTED
-  headline for blocking (a formal review in state APPROVED /
-  CHANGES_REQUESTED also counts when its body quotes the head) — and
-  refuses a risk-low/risk-medium PR whose head SHA has no reviewer
-  APPROVE verdict quoting it, or where a CHANGES_REQUESTED verdict
-  quotes that head (the blocking finding wins, even alongside an
-  APPROVE; verdict words elsewhere in the body are ignored).
+  LEADING verdict token of the headline (first non-empty line of the
+  body) counts: after stripping markdown markers and an optional
+  `SPEC-GATE` / `Verdict:` prefix, a headline STARTING with
+  PASS/APPROVE approves, a headline STARTING with FAIL/
+  CHANGES_REQUESTED (or `CHANGES REQUESTED` with a space) blocks (a
+  formal review in state APPROVED / CHANGES_REQUESTED also counts when
+  its body quotes the head) — and refuses a risk-low/risk-medium PR
+  whose head SHA has no reviewer APPROVE verdict quoting it, or where
+  a CHANGES_REQUESTED verdict quotes that head (the blocking finding
+  wins, even alongside an APPROVE; verdict words elsewhere — including
+  later in the headline, e.g. `fail-closed` — are ignored).
   Verdicts on older heads are stale and do not count.
 - Stacked PRs keep their base branch alive until the child merges; do not delete
   a base branch that a child PR still targets.
