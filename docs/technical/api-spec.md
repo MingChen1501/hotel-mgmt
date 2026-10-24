@@ -33,8 +33,8 @@ section 4).
 
 | Contract | Representative operations / events (to be detailed later) |
 |---|---|
-| `ReservationService` | Quote, create, modify, cancel, mark no-show; calendar query. Emits `ReservationEvents`. |
-| `StayService` | Check in, check out, move room, record early/late times; arrivals/departures queries. Emits `StayEvents`. |
+| `ReservationService` | Create, modify, cancel, mark no-show; calendar query; check-in reservation link. Emits `ReservationEvents`. |
+| `StayService` | Check in, check out, move room, record early/late times; stay reads, arrivals/departures queries. Emits `StayEvents`. |
 | `RoomInventoryService` | Room/room-type setup, status updates, out-of-order blocks, availability query. Emits `RoomStateEvents`. |
 | `PricingService` | Rate-plan setup, price quote, discount application, restriction check. Emits `RateEvents`. |
 | `GuestService` | Profile CRUD, preference/notes update, repeat-guest flag, confirmation record. Emits `GuestEvents`. |
@@ -61,9 +61,13 @@ bullets are preserved and annotated, not rewritten.
   dispatcher; Kafka is excluded
   (`docs/architecture/lld.md` §0 outbox; `docs/technical/integration.md`
   §0 rule).
-- Full OpenAPI (or equivalent) authorship per service — DEFERRED to
-  implementation slices; the LLD operation/payload tables plus the
-  `contracts/` schemas are the frozen input
+- Full OpenAPI (or equivalent) authorship per service — PARTLY
+  LANDED, remainder DEFERRED to implementation slices: the
+  curated desk-loop subset (`contracts/openapi.yaml`, 14 ops,
+  #240, mirrored byte-identically at `frontend/docs/openapi.yaml`
+  and checked by `script/openapi-route-check.sh`) is the frozen
+  input alongside the LLD operation/payload tables plus the
+  `contracts/` schemas
   (`docs/architecture/lld.md` D2; `docs/technical/integration.md`
   F2). gRPC transport per pair is likewise a deferred optimisation
   (LLD D3; integration F3).

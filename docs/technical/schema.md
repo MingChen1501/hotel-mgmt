@@ -246,8 +246,10 @@ owner/manager with time.
   deprecation window (expand-then-contract, mirroring the contract
   versioning in `docs/technical/integration.md`); every migration
   header names its FR trace; seed data is limited to the fixed
-  role set and empty-table defaults — hotel values enter through
-  Admin config operations, never through seeds.
+  role set and empty-table defaults plus the minimal E2E boot set
+  (`deploy/seed/boot.sql`: one hotel profile, one room type, two
+  rooms — no hotel values, no credentials) — hotel values enter
+  through Admin config operations, never through value seeds.
 
 Traceability: every dictionary entry (§§1–13) has its tables
 above; every FR's stored data has a row home; the fixed §3.2 items

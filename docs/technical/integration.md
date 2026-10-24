@@ -84,11 +84,13 @@ room+state; block refusal naming block.
 
 ### C7. STAY -> BIL (`BillingService`) — SYNC
 
-`GetFolioBalance` (stayLink -> folio lines + balance; FR-BIL-1);
-`RequestCheckoutGate` (stayLink -> settled / approved / refused;
-FR-BIL-7; BR-17). Open balance without approval ->
-`SETTLEMENT_REQUIRED`. Approval rule (whether needed, which role)
-is hotel config (§3.1).
+`GetFolioBalance` (stayLink -> folio lines + balance; FR-BIL-1).
+`RequestCheckoutGate` (stayLink -> settled / approved / refused)
+is NOT IMPLEMENTED (specified but never built — see F4 below):
+the settlement gate is enforced stay-side by `StayService.CheckOut`
+against `GetFolioBalance` plus the recorded approval. Open balance
+without approval -> `SETTLEMENT_REQUIRED`. Approval rule (whether
+needed, which role) is hotel config (§3.1).
 
 ### C8. BIL -> STAY (`StayService`) — SYNC read
 
@@ -98,12 +100,18 @@ folio line and receipt matches its stay exactly (FR-BIL-4; BR-24).
 
 ## 4. Charge, payment, day-close (BA §4; provider: Billing, SYNC)
 
-`PostCharge` (stayLink, item, amount -> line + balance; FR-BIL-2/5,
-FR-CUS-3); `RecordPayment` (folioLink, method cash|card, amount;
-FR-BIL-3; BR-23); `ProduceInvoice` / `ProduceReceipt`
-(FR-BIL-4; exact match, BR-24); `RunDayClose` (businessDate ->
-charges + per-method payment totals agreeing with folios;
-FR-BIL-6; BR-26). Undefined item -> `VALIDATION_FAILED` naming
+`PostCharge` (stayLink, item, amount -> line + balance, tax/fee
+derived from hotel rules; FR-BIL-2/5, FR-CUS-3); `RecordPayment`
+(folioLink, method cash|card, amount; FR-BIL-3; BR-23);
+`ProduceInvoice` / `ProduceReceipt` (FR-BIL-4; exact match,
+BR-24); `RunDayClose` (businessDate -> charges + per-method
+payment totals agreeing with folios; FR-BIL-6; BR-26);
+`GetDayClose` (businessDate -> stored day-close totals; FR-BIL-6);
+`UpsertChargeItem` (name, price -> named hotel sellable; FR-CUS-3);
+`UpsertTaxFeeRule` (name, percent 0–100 -> percentage rule for
+charge posting; FR-BIL-5); `RecordOpenBalanceApproval`
+(stayLink, approver, role -> approval recorded on the folio;
+FR-BIL-7; BR-17). Undefined item -> `VALIDATION_FAILED` naming
 item (assigned here). Fixed-until-decided: method enum cash/card
 only (OQ-1); day-close totals without sign-off (OQ-3).
 
@@ -181,9 +189,12 @@ the desk.
 - Event schema checks: every emitted event validates against
   `contracts/events/` JSON Schemas; consumers test idempotent
   apply (duplicate delivery) and ordering per aggregate.
-- Compatibility gate: a CI job fails the pipeline on any breaking
-  `contracts/` change that lacks a major bump + deprecation note;
-  breaking changes never merge silently.
+- Compatibility gate (planned, not implemented as of master): a CI
+  job will fail the pipeline on any breaking `contracts/` change
+  that lacks a major bump + deprecation note; breaking changes
+  never merge silently. Today `script/contract-check.sh`
+  enforces JSON parse + manifest-match only; the major-bump
+  check is still to build.
 - Config-matrix checks (L5) re-run the desk flows against at
   least two distinct per-hotel config sets per release candidate,
   covering every §3.1 item in at least one setup.
@@ -197,9 +208,16 @@ the desk.
   product decision; the catalog extends additively when it lands.
 - F2 — Full OpenAPI authorship per service: deferred to
   implementation slices; this catalog plus `contracts/` is the
-  frozen input.
+  frozen input. Landed since: the curated desk-loop subset only
+  (`contracts/openapi.yaml`, 14 ops, #240) — not full per-service
+  authorship.
 - F3 — gRPC transport per pair: deferred optimisation; HTTP/JSON
   is the MVP binding (§0 rule).
+- F4 — Billing `RequestCheckoutGate` (C7): specified but never
+  implemented (no code, no contract manifest as of master).
+  Settlement is enforced stay-side (`StayService.CheckOut` folio
+  gate + `GetFolioBalance` + recorded approvals). Re-open only
+  with a product decision that needs a provider-side gate op.
 
 Coverage: every BA need (§§1–7, error index §9) is encoded above
 or deferred here with reason; the five product open questions

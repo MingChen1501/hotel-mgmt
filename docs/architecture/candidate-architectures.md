@@ -50,8 +50,9 @@ Constrained on-premise envelope (owner hard constraints, issue #28,
 
 Downstream note: the system-design output in this document feeds
 DevOps detailing — CI per stack, on-premise packaging, and
-environment inventory (`docs/devops/ci-cd.md`,
-`docs/devops/environment.md`, still stubs). That dependent work opens
+environment inventory (`docs/devops/ci-cd.md`, active since #133 —
+no longer a stub; the environment-inventory doc was never written
+and has no as-built counterpart as of master). That dependent work opens
 after the owner chooses a stack direction; this document only records
 what each candidate will demand from it.
 

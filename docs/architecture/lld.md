@@ -91,6 +91,7 @@ Interfaces (provider: `ReservationService`):
 | `CancelReservation` | reservationRef, reason (from hotel list) | state=cancelled | `STATE_ILLEGAL` (already checked-in), `VALIDATION_FAILED` (reason missing) |
 | `MarkNoShow` | reservationRef, reason | state=no-show | `STATE_ILLEGAL` (arrival date not passed / already in house) |
 | `GetReservation` | reservationRef | full reservation incl. price basis, history | `NOT_FOUND` |
+| `CheckInReservation` | reservationRef, stayId, actor | reservation state=checked-in with the stay link | `NOT_FOUND`, `STATE_ILLEGAL` (not confirmed) |
 | `QueryCalendar` | dateFrom, dateTo, roomType? | reservations per date/type with state | — |
 | `GetDueReservation` | reservationRef (STAY -> RES) | reservation with dates, type, guestLink, priceBasis | `NOT_FOUND`, `STATE_ILLEGAL` (not due/arrivable) |
 
@@ -135,6 +136,8 @@ Interfaces (provider: `StayService`):
 | Operation | Request | Response | Errors |
 |---|---|---|---|
 | `CheckIn` | reservationRef, roomNumber, actualArrivalTime?, idempotencyKey | stayId, roomNumber, state=in-house | `CONFLICT` (room taken), `STATE_ILLEGAL` (room not ready / reservation not due), `VALIDATION_FAILED` (missing check-in field) |
+| `GetStay` | stayId or reservationId | stay record | `NOT_FOUND`, `VALIDATION_FAILED` (neither identifier) |
+| `QueryStays` | state? | stays, each exactly once | `VALIDATION_FAILED` (unknown state) |
 | `CheckOut` | stayId, idempotencyKey | stay closed, invoiceRef | `SETTLEMENT_REQUIRED` (open balance, no approval), `STATE_ILLEGAL` (not in house) |
 | `MoveRoom` | stayId, newRoomNumber | stayId, move history entry | `CONFLICT` / `STATE_ILLEGAL` as in check-in |
 | `RecordActualTimes` | stayId, actualArrival?, actualDeparture? | stayId, kept times | `VALIDATION_FAILED` (implausible values per hotel times) |
@@ -249,7 +252,7 @@ Interfaces (provider: `GuestService`):
 | `GetBookingContext` | guestLink | preferences, notes | `NOT_FOUND` |
 | `GetGuest` | guestLink | profile + mandatory-field status | `NOT_FOUND` |
 | `UpsertGuest` | identifying/contact details, preferences, notes | guestLink | `VALIDATION_FAILED` (missing hotel-mandatory field) |
-| `ProduceConfirmation` | reservationRef (data fetched via RES read) | confirmation record (hotel, guest, dates, type, price) | `NOT_FOUND` |
+| `ProduceConfirmation` | reservationRef (record attached from the RES-side guest block) | confirmation record (hotel, guest, dates, type, price) | `NOT_FOUND` (no stored record for the ref) |
 
 Internal data flow: single-guest-record CRUD; stay links appended on
 stay lifecycle events consumed from `StayEvents` (link-only, no
@@ -276,11 +279,15 @@ Interfaces (provider: `BillingService`):
 | Operation | Request | Response | Errors |
 |---|---|---|---|
 | `GetFolioBalance` | stayLink | folio with every charge/payment line + running balance | `NOT_FOUND` (must not happen — one folio per stay, BR-21) |
-| `RequestCheckoutGate` | stayLink | settled / approved / refused | `SETTLEMENT_REQUIRED` (open balance, no approval) |
+| `RequestCheckoutGate` | — | — | NOT IMPLEMENTED (see D4 below): specified but never built; the settlement gate is enforced stay-side (`StayService.CheckOut` folio gate) fed by `GetFolioBalance` plus recorded approvals |
 | `PostCharge` | stayLink, item (nightly room charge or defined charge item), amount, idempotencyKey | folio line + new balance | `VALIDATION_FAILED` naming undefined item (`FR-CUS-3`, BR-22) |
 | `RecordPayment` | folioLink, method (cash|card — OQ-1 undecided, fixed until decided), amount, idempotencyKey | payment line + new balance | `VALIDATION_FAILED` (other methods, requirements §3.2) |
 | `ProduceInvoice` / `ProduceReceipt` | folioLink / paymentRef | printable record matching folio/payment exactly | `NOT_FOUND` |
 | `RunDayClose` | businessDate | totals of charges + payments per method | — (no sign-off step until OQ-3 decided, BR-26) |
+| `GetDayClose` | businessDate | stored day-close totals for the date | `NOT_FOUND` (no run for the date) |
+| `UpsertChargeItem` | name, priceMinor | named hotel sellable for charge posting | `VALIDATION_FAILED` (blank name, negative price) |
+| `UpsertTaxFeeRule` | name, percent (0–100) | named percentage rule applied to posted charges | `VALIDATION_FAILED` (blank name, out-of-range percent) |
+| `RecordOpenBalanceApproval` | stayLink, approvedBy, role, reason? | folio with the recorded approval | `VALIDATION_FAILED` (missing approver/role) |
 
 Outbound calls (consumer): `StayService.GetStayRef` (synchronous
 read so every line matches its stay exactly, BA needs §3b).
@@ -318,6 +325,7 @@ Interfaces (provider: `ReportingService`, synchronous read API):
 | `OccupancyReport` | dateFrom, dateTo | per-date occupied/available counts + as-of timestamp | — |
 | `RevenueSummary` | dateFrom, dateTo | room vs extra revenue totals + as-of | — |
 | `DailySheet` | businessDate | arrivals, in-house, departures, open balances + as-of | — |
+| `HousekeepingReport` | — | rooms needing cleaning/inspection right now + as-of | — |
 | `HousekeepingReport` | — | rooms needing cleaning/inspection (inspected + out-of-order excluded) + as-of | — |
 
 Internal data flow: event consumer subscribes to
@@ -394,11 +402,12 @@ services/
   reporting/           Go — module 7 (consumer + read API)
   admin/               Node.js/TS — module 8 (incl. identity component)
 contracts/             shared contract library (source of truth):
-  events/              JSON Schemas for the 7 domain event families
+  events/              JSON Schemas for 5 of the 7 domain event families (Guest and Folio schemas pending — code is the source for those two until they land; see `docs/architecture/event-flow.md` §2)
   http/                per-contract operation shapes (requests/responses)
+  openapi.yaml         curated desk-loop OpenAPI subset (14 ops transcribed from `http/` shapes; byte-identical mirror at `frontend/docs/openapi.yaml`, checked by `script/openapi-route-check.sh`)
   errors/              the shared error envelope + code catalogue
-  config-schema/       versioned per-hotel configuration schema (§3.1; lands with the first slice per readiness §1d — not yet in the tree)
-  messages/            message-catalogue keys (NFR-I18N-1; no behaviour in wording; lands when the first user-visible strings need cataloguing, readiness §1g)
+  config-schema/       not landed as a `contracts/` tree — the versioned per-hotel configuration schema (§3.1) lives as-built at `deploy/config/schema.json`
+  messages/            no `contracts/messages/` tree — the catalogue lives as-built as per-service catalogues (`services/*/messages*`, `frontend/messages.js`; NFR-I18N-1, no behaviour in wording)
 frontend/              static SPA (framework free choice; served by Nginx, no SSR runtime)
 deploy/ansible/        offline packaging playbooks (release-manager owned; referenced, not added here)
 ```
@@ -431,12 +440,20 @@ Per-module directory (shape per stack, same obligations):
   no-show rule, §3.1), and one folio per stay is fixed with no stay
   for a no-show. Re-open when the product decision lands.
 - D2 — Full OpenAPI (or equivalent) authorship per service
-  (api-spec.md §3): deferred to implementation slices; the
+  (api-spec.md §3): still deferred to implementation slices; the
   operation/payload tables here plus `contracts/` schemas are the
-  frozen input to it.
+  frozen input to it. Landed since: the curated desk-loop subset
+  only (`contracts/openapi.yaml`, 14 ops, #240) — not full
+  per-service authorship.
 - D3 — gRPC adoption per pair: deferred optimisation; HTTP/JSON is
   the MVP transport and any move follows the versioning rules in
   `docs/technical/integration.md`.
+- D4 — Billing `RequestCheckoutGate`: specified in §6 above but
+  never implemented (no code, no contract manifest as of master).
+  Settlement is enforced stay-side instead: Stay `CheckOut` runs
+  the folio gate against Billing `GetFolioBalance` plus the
+  recorded `RecordOpenBalanceApproval` approval. Re-open only
+  with a product decision that needs a provider-side gate op.
 
 Coverage: 8/8 modules with responsibilities, signatures, data flow,
 outbox events, and error mapping; every BA contract need (§§1–7, §9

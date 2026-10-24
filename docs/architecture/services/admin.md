@@ -14,15 +14,15 @@ Node.js/TypeScript flat `src/` files over raw `node:http`, wired in `services/ad
 
 | Layer | Files | Responsibility |
 |---|---|---|
-| Transport + routing | `src/server.ts` | `createServiceServer` answers `GET /healthz` (:81); `SignIn` is the one unauthenticated operation (:96); every other `/v1/*` call requires a Bearer token |
+| Transport + routing | `src/server.ts` | `createServiceServer` answers `GET /healthz` (:82); `SignIn` is the one unauthenticated operation (:97); every other `/v1/*` call requires a Bearer token |
 | Identity + sessions | `src/store.ts` (`AdminStore`, `AdminStoreAPI` at :114), `src/auth.ts` | `signIn` with failure counting and lockout, `authenticate` with 15-minute idle expiry and revocation checks, role enforcement |
 | Hotel config + users | `src/store.ts` | `GetHotelConfig`/`UpdateHotelConfig`, `CreateUser`/`UpdateUserRole`/`UnlockIdentity`/`ListUsers`, `QueryAuditLog` |
-| Row storage | `src/store.ts` (in-memory; lockout counters memory-only by design at :13), `src/pgstore.ts` (`PostgresAdminStore implements AdminStoreAPI` at :61) | identical semantics; Postgres selected at boot when `DATABASE_URL` is set |
-| Startup migrations | `src/migrate.ts` | `applyAdminMigrations` runs the `migrations/*.sql` chain in name order at startup; idempotent (`IF NOT EXISTS` / `ON CONFLICT DO NOTHING`) so the E2E loop can re-apply |
+| Row storage | `src/store.ts` (in-memory; lockout counters memory-only by design at :10-16), `src/pgstore.ts` (`PostgresAdminStore implements AdminStoreAPI` at :61) | identical semantics; Postgres selected at boot when `DATABASE_URL` is set |
+| Startup migrations | `src/migrate.ts` | `applyAdminMigrations` runs the `migrations/*.sql` chain in name order at startup (:10-17); idempotent (`IF NOT EXISTS` / `ON CONFLICT DO NOTHING`) so the E2E loop can re-apply |
 | Errors | `src/errors.ts` | shared `HttpError` envelope (same code set as Stay, plus `FORBIDDEN` for role refusals) |
 | Boot | `src/index.ts`, `src/migrate.ts` | migration chain first (schema must exist before sign-in traffic), then store selection, `listen(PORT)` (default `8088`) |
 
-The operation table (`src/server.ts:107-135`): `GetHotelConfig` (:107), `UpdateHotelConfig` (:111), `CreateUser` (:115), `UpdateUserRole` (:119), `UnlockIdentity` (:123), `SignOut` (:127), `ListUsers` (:131), `QueryAuditLog` (:135); `SignIn` precedes auth at :96.
+The operation table (`src/server.ts:108-143`): `GetHotelConfig` (:108), `UpdateHotelConfig` (:112), `CreateUser` (:116), `UpdateUserRole` (:120), `UnlockIdentity` (:124), `SignOut` (:128), `ListUsers` (:132), `QueryAuditLog` (:136); `SignIn` precedes auth at :97.
 
 ## 3. Happy-path flowchart
 
@@ -38,10 +38,10 @@ flowchart TD
 
 Edge trace (every edge cites code):
 
-- A: both fields required (`src/store.ts:205-208`).
-- B: unknown identity or wrong secret → `UNAUTHENTICATED` without distinguishing which (:226); an identity locked after repeated failures is refused while the lock holds (:212-225, counters at :148).
-- C: match path issues the token; D: sign-in audited; E: `{token, user}` returned (`src/store.ts:116,148-230`).
-- Boot seed: `ensureBootUser` guarantees the first owner exists before traffic (`src/store.ts:115`).
+- A: both fields required (`src/store.ts:204-209`).
+- B: unknown identity or wrong secret → `UNAUTHENTICATED` without distinguishing which (:227); an identity locked after repeated failures is refused while the lock holds (:212-214, 5-strike counting via `MAX_FAILURES` at :23).
+- C: match path issues the token; D: sign-in audited; E: `{token, user}` returned (`src/store.ts:117,204-238`).
+- Boot seed: `ensureBootUser` guarantees the first owner exists before traffic (`src/store.ts:116,183-202`).
 
 ## 4. Failure/rollback flowchart
 
@@ -59,15 +59,15 @@ flowchart TD
 
 Edge trace:
 
-- S: invalid/expired token, revoked/signed-out session, 15-minute idle expiry, or deleted user → `UNAUTHENTICATED` (`src/store.ts:243-256`); `SignOut` revokes (`src/server.ts:127`).
-- P: front-desk accounts are refused admin operations with `FORBIDDEN` (`src/store.ts:176`); unknown roles refused (`:272, :307`); duplicate identities refused (`:275`).
-- Self-role change and last-owner demotion are refused (`:314-318`); unlocking a non-locked identity is refused (`:337-340`).
+- S: invalid/expired token, revoked/signed-out session, 15-minute idle expiry, or deleted user → `UNAUTHENTICATED` (`src/store.ts:241-257`); `SignOut` revokes (`src/server.ts:128`).
+- P: front-desk accounts are refused admin operations with `FORBIDDEN` (`src/store.ts:177`); unknown roles refused (`:272, :307`); duplicate identities refused (`:276`).
+- Self-role change and last-owner demotion are refused (`:315-319`); unlocking a non-locked identity is refused (`:338-341`).
 
 Rollback: none — each admin write is a single guarded step with refusals preceding mutation; sessions carry no compensating state.
 
 ## 5. Outbound dependencies
 
-None — Admin is the dependency sink in reverse: every module reads hotel values from `GetHotelConfig` (cached offline-first fallback per LLD section 0) and accepts its session tokens, but Admin calls no sibling at runtime. Deployment values arrive via `UpdateHotelConfig` or the deployment set (`script/apply-hotel-config.sh`), never via seeds (README run note, relocated below).
+None — Admin is the dependency sink in reverse: every module reads hotel values from `GetHotelConfig` (cached offline-first fallback per LLD section 0) and accepts its session tokens, but Admin calls no sibling at runtime. Deployment values arrive via `UpdateHotelConfig` or the deployment set (`script/apply-hotel-config.sh`) — beyond the minimal boot seed (`deploy/seed/boot.sql`: one hotel profile, one room type, two rooms for the E2E loop; no hotel values, no credentials).
 
 See also: [deployment](../system-architecture.md) (§1), [C4 containers](../c4-containers.md), and [event flow](../event-flow.md) (config distribution; Admin writes no outbox rows in code — see the flagged note there).
 
@@ -77,9 +77,9 @@ Same shared Node envelope as Stay (`src/errors.ts`; `docs/technical/error-handli
 
 | Code | Status | Raised when |
 |---|---|---|
-| `VALIDATION_FAILED` | 400 | missing field, unknown role, duplicate identity, self-role change, last-owner demote, unlock of non-locked identity (:107, :269-340) |
-| `UNAUTHENTICATED` | 401 | unknown identity / wrong secret / locked, bad or expired session (:212-256) |
-| `FORBIDDEN` | 403 | front-desk account on an admin-only operation (:176) |
+| `VALIDATION_FAILED` | 400 | missing field, unknown role, duplicate identity, self-role change, last-owner demote, unlock of non-locked identity (:108, :270-341) |
+| `UNAUTHENTICATED` | 401 | unknown identity / wrong secret / locked, bad or expired session (:212-257) |
+| `FORBIDDEN` | 403 | front-desk account on an admin-only operation (:177) |
 
 ## 7. Operations
 
@@ -117,7 +117,7 @@ Local watch (type-checks, runs, and restarts TypeScript directly):
 npm run dev
 ```
 
-Configuration via environment: `PORT` (default `8088`); hotel values are served from `AdminService.GetHotelConfig` with a cached offline-first fallback (see LLD section 0) and arrive via the deployment set (`script/apply-hotel-config.sh`, issue #158) or `UpdateHotelConfig`, never via seeds.
+Configuration via environment: `PORT` (default `8088`); hotel values are served from `AdminService.GetHotelConfig` with a cached offline-first fallback (see LLD section 0) and arrive via the deployment set (`script/apply-hotel-config.sh`, issue #158) or `UpdateHotelConfig` — beyond the minimal boot seed (`deploy/seed/boot.sql`), never via value seeds.
 
 Docker:
 
