@@ -17,10 +17,11 @@
 #   - the PR carries exactly one risk label and it is not
 #     risk-high/risk-very-high (owner approval gate: the owner merges
 #     such PRs manually, this script has no override),
-#   - a reviewer APPROVE COMMENT quoting the exact PR head SHA exists
-#     on the PR, and no CHANGES_REQUESTED COMMENT quotes that head
+#   - a reviewer APPROVE verdict quoting the exact PR head SHA exists
+#     on the PR, and no CHANGES_REQUESTED verdict quotes that head
 #     (review gate: reviewers quote the head they reviewed — see the
-#     orchestrator skill "Review flow"; verdicts on older heads are
+#     orchestrator skill "Review flow"; the gate reads BOTH PR issue
+#     comments AND formal PR reviews; verdicts on older heads are
 #     stale and do not count; a head carrying both verdicts is refused
 #     — the blocking finding wins),
 #   - every reported check is successful or skipped as not applicable (a
@@ -124,24 +125,27 @@ echo "State:   ${state}"
 echo "Labels:  ${labels}"
 echo "Head:    ${head_oid:-unknown} (${head_branch})"
 
-# Review gate: the exact head must carry a reviewer APPROVE COMMENT.
-# A verdict counts only when the comment HEADLINE (first non-empty
-# line of the body) declares it — APPROVE iff the headline says PASS
-# or APPROVE, CHANGES_REQUESTED iff the headline says FAIL or
-# CHANGES_REQUESTED — and the body quotes the exact head SHA (full
-# or short form): verdicts on older heads are stale and do not count.
-# Verdict words mentioned elsewhere in the body (e.g. a PASS review
-# recalling an earlier CHANGES_REQUESTED round) are ignored. Any
-# CHANGES_REQUESTED headline quoting the exact head refuses the merge —
-# the blocking finding wins, even alongside an APPROVE. Fail closed:
-# an unreadable head or comment list refuses too.
+# Review gate: the exact head must carry a reviewer APPROVE verdict.
+# The gate reads BOTH verdict sources — PR issue comments AND formal
+# PR reviews (`gh pr view --json reviews`). A verdict counts only
+# when its HEADLINE (first non-empty line of the body) declares it —
+# APPROVE iff the headline says PASS or APPROVE, CHANGES_REQUESTED
+# iff the headline says FAIL or CHANGES_REQUESTED — or when a formal
+# review carries the APPROVED / CHANGES_REQUESTED state itself — AND
+# the body quotes the exact head SHA (full or short form): verdicts
+# on older heads are stale and do not count. Verdict words mentioned
+# elsewhere in the body (e.g. a PASS review recalling an earlier
+# CHANGES_REQUESTED round) are ignored. Any CHANGES_REQUESTED
+# verdict quoting the exact head refuses the merge — the blocking
+# finding wins, even alongside an APPROVE. Fail closed: an unreadable
+# head, comment list, or review list refuses too.
 if [[ -z "${head_oid:-}" ]]; then
   echo "error: refusing to merge: cannot determine the head SHA of PR #${pr}" >&2
   exit 1
 fi
-comments_out="$(gh pr view "${pr}" -R "${REPO}" --json comments 2>&1 || true)"
-if ! review_scan="$(printf '%s' "${comments_out}" | jq -e --arg head "${head_oid}" '(.comments // []) | map(.body // "") as $bodies | def refs_head: ascii_downcase | [scan("[0-9a-f]{7,40}")] | map(. as $tok | select($head | startswith($tok))) | length > 0; def headline: split("\n") | map(select(test("\\S"))) | .[0] // ""; {approve: ([$bodies[] | select((headline | test("(?i)\\b(pass|approve)\\b")) and refs_head)] | length), changes: ([$bodies[] | select((headline | test("(?i)\\b(fail|changes_requested)\\b")) and refs_head)] | length)}' 2>/dev/null)"; then
-  echo "error: refusing to merge: cannot determine review status for PR #${pr}: $(printf '%s' "${comments_out}" | head -n 1)" >&2
+verdicts_out="$(gh pr view "${pr}" -R "${REPO}" --json comments,reviews 2>&1 || true)"
+if ! review_scan="$(printf '%s' "${verdicts_out}" | jq -e --arg head "${head_oid}" '([(.comments // [])[] | {body: (.body // ""), state: "COMMENT"}] + [(.reviews // [])[] | {body: (.body // ""), state: (.state // "")}]) as $verdicts | def refs_head: ascii_downcase | [scan("[0-9a-f]{7,40}")] | map(. as $tok | select($head | startswith($tok))) | length > 0; def headline: split("\n") | map(select(test("\\S"))) | .[0] // ""; {approve: ([$verdicts[] | .body as $b | select(($b | refs_head) and ((($b | headline) | test("(?i)\\b(pass|approve)\\b")) or .state == "APPROVED"))] | length), changes: ([$verdicts[] | .body as $b | select(($b | refs_head) and ((($b | headline) | test("(?i)\\b(fail|changes_requested)\\b")) or .state == "CHANGES_REQUESTED"))] | length)}' 2>/dev/null)"; then
+  echo "error: refusing to merge: cannot determine review status for PR #${pr}: $(printf '%s' "${verdicts_out}" | head -n 1)" >&2
   exit 1
 fi
 approve_count="$(printf '%s' "${review_scan}" | jq -r '.approve')"
@@ -151,10 +155,10 @@ if [[ "${changes_count}" -gt 0 ]]; then
   exit 1
 fi
 if [[ "${approve_count}" -eq 0 ]]; then
-  echo "error: refusing to merge: PR #${pr} head ${head_oid} has no reviewer APPROVE COMMENT quoting it (verdicts on older heads are stale)." >&2
+  echo "error: refusing to merge: PR #${pr} head ${head_oid} has no reviewer APPROVE verdict quoting it (in PR comments or formal reviews; verdicts on older heads are stale)." >&2
   exit 1
 fi
-echo "Review:  APPROVE on head ${head_oid} (${approve_count} verdict comment(s); no CHANGES_REQUESTED on head)"
+echo "Review:  APPROVE on head ${head_oid} (${approve_count} verdict(s) across comments and formal reviews; no CHANGES_REQUESTED on head)"
 
 # CI gate: `gh pr checks` exits non-zero both when checks fail and when
 # no checks exist, so the exit code alone proves nothing. Parse the JSON:

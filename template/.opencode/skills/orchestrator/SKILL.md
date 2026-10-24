@@ -138,15 +138,19 @@ restate the list here — link it. Summary for orchestration use only.
   `script/orchestrator-review.sh <worker-session-id>` (marker-gated;
   direct `ao review trigger` is denied for every session, so a worker
   can never trigger — or re-trigger — a review of its own PR).
-- The reviewer posts the verdict as a **COMMENT** on the PR: the
-  verdict word goes in the comment headline (first non-empty line) —
-  `APPROVE` (or `PASS`) for approval, `CHANGES_REQUESTED` (or `FAIL`)
-  for blocking findings — plus findings by severity with `file:line`.
-  The verdict quotes the exact PR head SHA it reviewed (short or full
-  form from `gh pr view <n> --json headRefOid`): the merge gate reads
-  only the headline for the verdict and only counts verdicts quoting
-  the exact head, so a re-pushed head needs a fresh verdict.
-- Merge gate: a reviewer COMMENT verdict of **APPROVE** + green CI +
+- The reviewer posts the verdict as a PR issue comment or as a formal
+  PR review: the verdict word goes in the headline (first non-empty
+  line of the body) — `APPROVE` (or `PASS`) for approval,
+  `CHANGES_REQUESTED` (or `FAIL`) for blocking findings — plus
+  findings by severity with `file:line`. The verdict quotes the exact
+  PR head SHA it reviewed (short or full form from
+  `gh pr view <n> --json headRefOid`): the merge gate reads both PR
+  issue comments and formal PR reviews (`gh pr view --json reviews`),
+  reads only the headline for the verdict (a formal review in state
+  APPROVED / CHANGES_REQUESTED also counts when its body quotes the
+  head), and only counts verdicts quoting the exact head, so a
+  re-pushed head needs a fresh verdict.
+- Merge gate: a reviewer verdict of **APPROVE** + green CI +
   risk-low/risk-medium => the orchestrator merges autonomously with
   `script/orchestrator-merge.sh <n>` (squash merge, delete branch) and
   reports. `risk-high`, `risk-very-high`, or a missing label =>
@@ -174,13 +178,16 @@ restate the list here — link it. Summary for orchestration use only.
   checks, and a PR with genuinely no checks merges. Never push directly
   to the default branch.
 - Merge only with a reviewer verdict on the exact head: the script
-  reads only the comment headline (first non-empty line) — a
-  PASS/APPROVE headline for approval, a FAIL/CHANGES_REQUESTED headline
-  for blocking — and refuses a risk-low/risk-medium PR whose head SHA
-  has no reviewer APPROVE headline quoting it, or where a
-  CHANGES_REQUESTED headline quotes that head (the blocking finding
-  wins, even alongside an APPROVE; verdict words elsewhere in the body
-  are ignored). Verdicts on older heads are stale and do not count.
+  reads both PR issue comments and formal PR reviews — only the
+  headline (first non-empty line of the body) for the verdict, a
+  PASS/APPROVE headline for approval, a FAIL/CHANGES_REQUESTED
+  headline for blocking (a formal review in state APPROVED /
+  CHANGES_REQUESTED also counts when its body quotes the head) — and
+  refuses a risk-low/risk-medium PR whose head SHA has no reviewer
+  APPROVE verdict quoting it, or where a CHANGES_REQUESTED verdict
+  quotes that head (the blocking finding wins, even alongside an
+  APPROVE; verdict words elsewhere in the body are ignored).
+  Verdicts on older heads are stale and do not count.
 - Stacked PRs keep their base branch alive until the child merges; do not delete
   a base branch that a child PR still targets.
 - risk-low / risk-medium: merge autonomously once CI green + review APPROVE,
