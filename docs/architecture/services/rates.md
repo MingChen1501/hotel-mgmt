@@ -1,0 +1,129 @@
+# Rates — as-built design
+
+Status: active. Source page for the rates & availability module (single source of truth; `services/rates/README.md` is a thin stub pointing here). Owned by `architect` (Closes #181).
+
+## 1. Purpose
+
+Rate plans, per-night prices, availability counts, discounts, and stay restrictions; the price basis behind every reservation quote.
+
+Links: `docs/architecture/lld.md` section 4; `docs/requirements/sequence-diagrams.md` section 1 (availability search) and section 2 (reservation creation, via `QuotePrice`); business rules BR-9, BR-10, BR-13..BR-15.
+
+## 2. Pattern and layers as-built
+
+Go `handler / store` with no service layer — reads and guarded writes go straight from routes to the store, wired in `services/rates/cmd/server/main.go`.
+
+| Layer | Files | Responsibility |
+|---|---|---|
+| Transport + auth + body decoding | `internal/handler/handler.go` | `NewMux(st)` routes `POST /v1/rates/<Operation>`; the `authed(operation, …)` wrapper enforces Bearer presence per operation (:94-116) |
+| Guarded state + storage | `internal/store/store.go` (`Repository`, `Store`), `internal/store/postgres.go` | plan/price/restriction/discount writes, quote math, restriction and sellable-count checks |
+| Health | `internal/health/` | `GET /healthz` with the module identity (`cmd/server/main.go:36`) |
+| Boot | `cmd/server/main.go` | selects Postgres storage when `DATABASE_URL` is set (:26), mounts health + pricing routes (:36-37) |
+
+The routing table (`internal/handler/handler.go`): `UpsertRatePlan` (:117), `UpsertRatePrice` (:139), `UpsertRestriction` (:168), `UpsertDiscount` (:203), `QuotePrice` (:227), `CheckSellableCount` (:258), `CheckRestrictions` (:296). The operation name is threaded into `authed` for future per-operation policy (`:115`).
+
+## 3. Happy-path flowchart
+
+QuotePrice (`POST /v1/rates/QuotePrice`) — the price basis:
+
+```mermaid
+flowchart TD
+    A[Bearer token present] --> B[Decode JSON body]
+    B --> C[Dates valid, range within cap]
+    C --> D[Plan resolves]
+    D --> E[Every night priced]
+    E --> F[Discount applies]
+    F --> G[200 totalMinor]
+```
+
+Edge trace (every edge cites code):
+
+- A–B: Bearer presence + JSON decode, same contract as reservations (`internal/handler/handler.go:94-116`).
+- C: arrival/departure must be `YYYY-MM-DD` with departure after arrival; ranges over 730 nights are refused (`internal/store/store.go:250-253`).
+- D: plan resolution falls back through the plan chain; an unknown plan/type combination → `NOT_FOUND` (:239-274, :375-407).
+- E: each night in the range must carry a price for the type or the quote fails (`:266`).
+- F: named discount must exist (:274); percent discounts cap at 100 (:217-223).
+- G: summed `totalMinor` returned for the desk to carry as the reservation `priceBasis`.
+
+## 4. Failure/rollback flowchart
+
+Restriction and count guards — the stay-refusal side:
+
+```mermaid
+flowchart TD
+    R[CheckRestrictions] --> CA{Closed to arrival?}
+    CA -->|yes| S422a[422 STATE_ILLEGAL closed-to-arrival]
+    CA -->|no| MS{Under min stay?}
+    MS -->|yes| S422b[422 STATE_ILLEGAL min-stay]
+    MS -->|no| OK[200 pass]
+    Q[QuotePrice bad input] --> R400[400 VALIDATION_FAILED, nothing written]
+    U[Unknown plan or type] --> R404[404 NOT_FOUND, nothing written]
+```
+
+Edge trace:
+
+- CA: closed-to-arrival overlap → `STATE_ILLEGAL` with the restriction window in details (`internal/store/store.go:316`).
+- MS: minimum-stay violation → `STATE_ILLEGAL` with the required nights (`:319`).
+- Q: bad dates, negative `priceMinor` (:179), bad discount kind/value (:217-223) → `VALIDATION_FAILED` 400.
+- U: unknown plan (:187), unknown room type (:360), missing inventory input (:363) → `NOT_FOUND` 404 / `VALIDATION_FAILED` 400 respectively.
+
+Rollback: none — quotes and checks are pure reads; upserts are single guarded writes.
+
+## 5. Outbound dependencies
+
+None at runtime. Consumed by the desk loop (availability search, `QuotePrice` totals carried into Reservations `Create`/`Modify` as `priceBasis`) and by the future Reservations `CheckRestrictionsHook` seam. Hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (LLD section 0).
+
+## 6. Error mapping
+
+Envelope `{code, message, details, traceId}` (same shape as reservations) to `docs/technical/error-handling.md` section 1. Constructors (`internal/store/store.go:27-36`):
+
+| Code | Status | Raised when |
+|---|---|---|
+| `VALIDATION_FAILED` | 400 | bad dates, ranges, prices, discount kind/value (:53, :179, :204, :217-223, :250-253) |
+| `UNAUTHENTICATED` | 401 | missing session token (`internal/handler/handler.go:98-108`) |
+| `NOT_FOUND` | 404 | unknown plan, unpriced night, unknown room type (:187, :266, :360) |
+| `STATE_ILLEGAL` | 422 | closed-to-arrival, min-stay violation (:35-36, :316, :319) |
+
+## 7. Operations
+
+Run from `services/rates`. Build and test:
+
+```sh
+go build ./...
+go test ./...
+```
+
+Vet and format (`gofmt -l .` must print nothing):
+
+```sh
+go vet ./...
+gofmt -l .
+```
+
+Migrate (golang-migrate, forward-only in production; `down` files are local-dev only):
+
+```sh
+migrate -path migrations -database "$DATABASE_URL" up
+```
+
+Run:
+
+```sh
+go run ./cmd/server
+```
+
+Configuration via environment: `PORT` (default `8082`); hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (see LLD section 0) and land in later slices.
+
+Docker:
+
+```sh
+docker build -t hotel-rates .
+```
+
+Contract tests: `contract-tests/` holds fixtures per provided/consumed operation once the first slice lands (see `contract-tests/README.md`). Run the repo gate from the repo root before opening a PR:
+
+```sh
+script/contract-check.sh
+```
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-249
