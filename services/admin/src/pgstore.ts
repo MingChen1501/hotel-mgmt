@@ -20,6 +20,7 @@ import {
 // Profile-backed config keys: single-homed in admin.hotel_profile,
 // everything else lives in admin.hotel_config_values (schema.md §8).
 const PROFILE_COLUMNS: Record<string, string> = {
+  name: "name",
   timezone: "timezone",
   standardCheckinTime: "standard_checkin_time",
   standardCheckoutTime: "standard_checkout_time",
@@ -29,6 +30,7 @@ const PROFILE_COLUMNS: Record<string, string> = {
 };
 
 const CONFIG_DEFAULTS: Record<string, unknown> = {
+  name: "Skeleton Hotel",
   timezone: "UTC",
   standardCheckinTime: "14:00",
   standardCheckoutTime: "12:00",
@@ -218,7 +220,7 @@ export class PostgresAdminStore implements AdminStoreAPI {
   async getConfig(): Promise<{ schemaVersion: number; values: Record<string, unknown> }> {
     const values: Record<string, unknown> = { ...CONFIG_DEFAULTS };
     const profiles = await this.pool.query(
-      `SELECT timezone, standard_checkin_time AS "standardCheckinTime",
+      `SELECT name, timezone, standard_checkin_time AS "standardCheckinTime",
          standard_checkout_time AS "standardCheckoutTime",
          retention_floor_days AS "retentionFloorDays",
          cancellation_reasons AS "cancellationReasons", noshow_rule AS "noshowRule"
@@ -279,6 +281,11 @@ export class PostgresAdminStore implements AdminStoreAPI {
 
   private profileValue(key: string, value: unknown): unknown {
     switch (key) {
+      case "name": {
+        // The hotel's own name arrives via the deployment set
+        // (issue #158); never blank it through the API.
+        return requiredString(value, key);
+      }
       case "retentionFloorDays": {
         const days = Number(value);
         if (!Number.isInteger(days) || days < 0) {

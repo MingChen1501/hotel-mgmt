@@ -19,7 +19,13 @@
 # Usage (from the repo root, after script/preflight.sh passes):
 #   DB_PASSWORD=<secret> ADMIN_BOOT_SECRET=<secret> \
 #     script/e2e-desk-loop.sh [--base-url http://127.0.0.1] \
-#     [--staging-dir ./backup-staging] [--keep-up]
+#     [--staging-dir ./backup-staging] [--hotel-config deploy/config/hotel.json] [--keep-up]
+#
+# When the hotel's configuration set exists (the default path above),
+# the loop applies it through script/apply-hotel-config.sh right
+# after the Admin sign-in and verifies the hotel's own identity and
+# standard times are in effect (FR-ADM-1, FR-ADM-4, NFR-DEP-1); when
+# it is absent the desk runs on the boot seed values.
 #
 # The stack is brought up fresh (docker compose up -d --build),
 # migrations and the boot seed are applied idempotently, and the
@@ -33,6 +39,7 @@ set -euo pipefail
 
 BASE_URL="http://127.0.0.1"
 STAGING_DIR="./backup-staging"
+HOTEL_CONFIG="deploy/config/hotel.json"
 TEARDOWN=1
 
 while [[ $# -gt 0 ]]; do
@@ -41,11 +48,13 @@ while [[ $# -gt 0 ]]; do
       BASE_URL="${2:?--base-url needs a URL}"; shift 2 ;;
     --staging-dir)
       STAGING_DIR="${2:?--staging-dir needs a path}"; shift 2 ;;
+    --hotel-config)
+      HOTEL_CONFIG="${2:?--hotel-config needs a path}"; shift 2 ;;
     --keep-up)
       TEARDOWN=0; shift ;;
     *)
       echo "e2e: unknown argument: $1" >&2
-      echo "usage: script/e2e-desk-loop.sh [--base-url URL] [--staging-dir DIR] [--keep-up]" >&2
+      echo "usage: script/e2e-desk-loop.sh [--base-url URL] [--staging-dir DIR] [--hotel-config PATH] [--keep-up]" >&2
       exit 2 ;;
   esac
 done
@@ -211,6 +220,16 @@ TOKEN="$(field token "$SIGNIN_RESP")"
 pass "owner sign-in returned a session token."
 CONFIG_RESP="$(api admin GetHotelConfig '{}' "$TOKEN")" || { teardown; exit 1; }
 echo "e2e: hotel config schemaVersion: $(field schemaVersion "$CONFIG_RESP")"
+
+step "Hotel config: apply the deployment set (FR-ADM-1, FR-ADM-4, NFR-DEP-1)"
+if [[ -f "$HOTEL_CONFIG" ]]; then
+  ADMIN_IDENTITY="$ADMIN_IDENTITY" ADMIN_SECRET="$ADMIN_SECRET" \
+    script/apply-hotel-config.sh --config "$HOTEL_CONFIG" --base-url "$BASE_URL" \
+    || { teardown; exit 1; }
+  pass "deployment set $HOTEL_CONFIG applied with the hotel's own values in effect."
+else
+  echo "e2e: no deployment set at $HOTEL_CONFIG; desk runs on the boot seed values."
+fi
 
 step "Guests: upsert the E2E guest (FR-GST-1)"
 GUEST_ID="11111111-1111-4111-8111-111111111111"

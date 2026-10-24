@@ -145,11 +145,33 @@ describe("identity and config", () => {
         port,
         "POST",
         "/v1/admin/UpdateHotelConfig",
-        { values: { timezone: "Asia/Ho_Chi_Minh" }, updatedBy: "owner" },
+        {
+          values: { name: "Riverside Hotel", timezone: "Asia/Ho_Chi_Minh", standardCheckinTime: "14:00" },
+          updatedBy: "owner",
+        },
         ownerToken,
       );
       assert.equal(saved.status, 200);
+      assert.equal((saved.body as { values: { name: string } }).values.name, "Riverside Hotel");
       assert.equal((saved.body as { values: { timezone: string } }).values.timezone, "Asia/Ho_Chi_Minh");
+      assert.equal(
+        (saved.body as { values: { standardCheckinTime: string } }).values.standardCheckinTime,
+        "14:00",
+      );
+
+      const reread = await request(port, "POST", "/v1/admin/GetHotelConfig", {}, ownerToken);
+      assert.equal(reread.status, 200);
+      assert.equal((reread.body as { values: { name: string } }).values.name, "Riverside Hotel");
+
+      const blankName = await request(
+        port,
+        "POST",
+        "/v1/admin/UpdateHotelConfig",
+        { values: { name: "  " }, updatedBy: "owner" },
+        ownerToken,
+      );
+      assert.equal(blankName.status, 400);
+      assert.equal((blankName.body as { code: string }).code, "VALIDATION_FAILED");
 
       const refused = await request(
         port,

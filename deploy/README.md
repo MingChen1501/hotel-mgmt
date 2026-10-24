@@ -46,6 +46,9 @@ ${EDITOR:-vi} deploy/ansible/inventory.ini
 DB_PASSWORD=<per-sale secret> ADMIN_BOOT_SECRET=<per-sale secret> \
   ansible-playbook -i deploy/ansible/inventory.ini deploy/ansible/playbook.yaml \
   -e bundle_src=. -e hotel_config=deploy/config/hotel.json
+# The playbook validates the set against the release schema before
+# copying it, then applies it through Admin after the install health
+# check (see deploy/config/README.md).
 
 # 2b. Or directly with compose (container lab):
 DB_PASSWORD=<per-sale secret> ADMIN_BOOT_SECRET=<per-sale secret> \
