@@ -144,12 +144,12 @@ api guests UpsertGuest '{"guestId": "22222222-2222-4222-8222-222222222222", "ful
   || fail "UpsertGuest failed."
 pass "50 rooms, rate plan, and perf guest ready; one-night total $TOTAL."
 
-step "seed a near-full book for tonight (48 of 50 units)"
-for i in $(seq 1 48); do
+step "seed a near-full book for tonight (47 of 50 units)"
+for i in $(seq 1 47); do
   api reservations CreateReservation "{\"roomTypeId\": \"$PERF_TYPE_ID\", \"arrivalDate\": \"$TODAY\", \"departureDate\": \"$TOMORROW\", \"guest\": {\"guestId\": \"22222222-2222-4222-8222-222222222222\", \"fullName\": \"Perf Guest\"}, \"sellableUnits\": 50, \"priceBasis\": {\"totalMinor\": $TOTAL}, \"idempotencyKey\": \"perf-book-$i\", \"actor\": \"front-desk\"}" "$(tok "$i")" >/dev/null \
     || fail "seed booking perf-book-$i failed."
 done
-pass "48 bookings seeded."
+pass "47 bookings seeded."
 
 step "open one stay with a charge for the folio views"
 B1="$(api reservations CreateReservation "{\"roomTypeId\": \"$PERF_TYPE_ID\", \"arrivalDate\": \"$TODAY\", \"departureDate\": \"$TOMORROW\", \"guest\": {\"guestId\": \"22222222-2222-4222-8222-222222222222\", \"fullName\": \"Perf Guest\"}, \"sellableUnits\": 50, \"priceBasis\": {\"totalMinor\": $TOTAL}, \"idempotencyKey\": \"perf-book-setup\", \"actor\": \"front-desk\"}" "$(tok 0)")" \
