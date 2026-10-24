@@ -155,11 +155,12 @@ step "open one stay with a charge for the folio views"
 B1="$(api reservations CreateReservation "{\"roomTypeId\": \"$PERF_TYPE_ID\", \"arrivalDate\": \"$TODAY\", \"departureDate\": \"$TOMORROW\", \"guest\": {\"guestId\": \"22222222-2222-4222-8222-222222222222\", \"fullName\": \"Perf Guest\"}, \"sellableUnits\": 50, \"priceBasis\": {\"totalMinor\": $TOTAL}, \"idempotencyKey\": \"perf-book-setup\", \"actor\": \"front-desk\"}" "$(tok 0)")" \
   || fail "setup booking failed."
 B1_RESID="$(field reservationId "$B1")"
-STAY_SETUP="perf-setup-stay"
-api rooms AssignRoom "{\"roomNumber\": \"PERF-01\", \"businessDate\": \"$TODAY\", \"stayLink\": \"$STAY_SETUP\", \"actor\": \"front-desk\"}" "$(tok 1)" >/dev/null \
+api rooms AssignRoom "{\"roomNumber\": \"PERF-01\", \"businessDate\": \"$TODAY\", \"stayLink\": \"perf-setup-link\", \"actor\": \"front-desk\"}" "$(tok 1)" >/dev/null \
   || fail "AssignRoom PERF-01 failed."
-api stay CheckIn "{\"stayId\": \"$STAY_SETUP\", \"reservationId\": \"$B1_RESID\", \"guestId\": \"22222222-2222-4222-8222-222222222222\", \"roomId\": \"${ROOM_IDS[0]}\", \"actor\": \"front-desk\"}" "$(tok 1)" >/dev/null \
+SETUP_CHECKIN="$(api stay CheckIn "{\"reservationId\": \"$B1_RESID\", \"guestId\": \"22222222-2222-4222-8222-222222222222\", \"roomId\": \"${ROOM_IDS[0]}\", \"actor\": \"front-desk\"}" "$(tok 1)")" \
   || fail "setup CheckIn failed."
+STAY_SETUP="$(field stayId "$SETUP_CHECKIN")"
+[[ -n "$STAY_SETUP" ]] || fail "setup CheckIn returned no stayId."
 api reservations CheckInReservation "{\"reservationRef\": \"$(field reservationRef "$B1")\", \"stayId\": \"$STAY_SETUP\", \"actor\": \"front-desk\"}" "$(tok 1)" >/dev/null \
   || fail "setup CheckInReservation failed."
 api billing PostCharge "{\"stayId\": \"$STAY_SETUP\", \"itemKind\": \"nightly-room-charge\", \"itemName\": \"Room PERF-01\", \"amountMinor\": 120000, \"idempotencyKey\": \"perf-charge-setup\", \"actor\": \"front-desk\"}" "$(tok 2)" >/dev/null \
@@ -188,12 +189,14 @@ step "timed check-ins (bound 3000ms on the reference host only)"
 for rep in 1 2; do
   BOOK="$(api reservations CreateReservation "{\"roomTypeId\": \"$PERF_TYPE_ID\", \"arrivalDate\": \"$TODAY\", \"departureDate\": \"$TOMORROW\", \"guest\": {\"guestId\": \"22222222-2222-4222-8222-222222222222\", \"fullName\": \"Perf Guest\"}, \"sellableUnits\": 50, \"priceBasis\": {\"totalMinor\": $TOTAL}, \"idempotencyKey\": \"perf-book-checkin-$rep\", \"actor\": \"front-desk\"}" "$(tok "$rep")")" \
     || fail "check-in booking $rep failed."
-  STAY="perf-checkin-stay-$rep"
+  STAY_LINK="perf-checkin-link-$rep"
   ROOM_N="$(printf 'PERF-%02d' "$(( rep + 1 ))")"
-  api rooms AssignRoom "{\"roomNumber\": \"$ROOM_N\", \"businessDate\": \"$TODAY\", \"stayLink\": \"$STAY\", \"actor\": \"front-desk\"}" "$(tok "$rep")" >/dev/null \
+  api rooms AssignRoom "{\"roomNumber\": \"$ROOM_N\", \"businessDate\": \"$TODAY\", \"stayLink\": \"$STAY_LINK\", \"actor\": \"front-desk\"}" "$(tok "$rep")" >/dev/null \
     || fail "AssignRoom $ROOM_N failed."
-  timed "CheckIn" 3000 stay CheckIn "{\"stayId\": \"$STAY\", \"reservationId\": \"$(field reservationId "$BOOK")\", \"guestId\": \"22222222-2222-4222-8222-222222222222\", \"roomId\": \"${ROOM_IDS[$rep]}\", \"actor\": \"front-desk\"}" "$(tok "$rep")" \
+  timed "CheckIn" 3000 stay CheckIn "{\"reservationId\": \"$(field reservationId "$BOOK")\", \"guestId\": \"22222222-2222-4222-8222-222222222222\", \"roomId\": \"${ROOM_IDS[$rep]}\", \"actor\": \"front-desk\"}" "$(tok "$rep")" \
     || fail "timed CheckIn $rep failed."
+  STAY="$(field stayId "$TIMED_RESP")"
+  [[ -n "$STAY" ]] || fail "timed CheckIn $rep returned no stayId."
   api reservations CheckInReservation "{\"reservationRef\": \"$(field reservationRef "$BOOK")\", \"stayId\": \"$STAY\", \"actor\": \"front-desk\"}" "$(tok "$rep")" >/dev/null \
     || fail "CheckInReservation $rep failed."
   eval "STAY_$rep=\"$STAY\"; ROOM_$rep=\"$ROOM_N\""
