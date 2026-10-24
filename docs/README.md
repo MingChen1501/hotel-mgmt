@@ -81,7 +81,7 @@ Development table, which use a `../` prefix.
 | State machine | `architecture/state-machine.md` | active | `architect` | lifecycle states and transitions of core entities (Closes #11) |
 | ADR template | `architecture/decisions/adr-0001-template.md` | stub (not needed yet) | `architect` | decision-record template (the decisions directory holds ADRs) |
 | ADR-0001 monorepo polyglot | `architecture/decisions/adr-0001-monorepo-polyglot.md` | active | `architect` | accepted monorepo with polyglot modules (Closes #11; accepted 2026-10-23, Closes #85) |
-| ADR-0002 cross-stack layering | `architecture/decisions/adr-0002-cross-stack-layering.md` | active | `architect` | stack-idiomatic layering differences are intentional (Closes #181; proposed, owner accepts at merge) |
+| ADR-0002 cross-stack layering | `architecture/decisions/adr-0002-cross-stack-layering.md` | active | `architect` | stack-idiomatic layering differences are intentional (Closes #181; accepted 2026-10-24, Closes #188) |
 | Candidate architectures | `architecture/candidate-architectures.md` | active | `architect` | candidate structures, customisation, strategies, trade-offs, recommendation (Closes #67) |
 | Contract readiness | `architecture/contract-readiness.md` | active | `architect` | walking-skeleton contract/file checklist with traces, stub boundary, CI gate, open questions (Closes #108) |
 

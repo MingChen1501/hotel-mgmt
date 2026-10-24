@@ -1,8 +1,8 @@
 # ADR-0002: Cross-stack layering follows stack idioms
 
-Status: proposed (owner flips to `accepted` at merge time; the docs PR implementing issue #181 stays open until then).
+Status: accepted (owner acceptance 2026-10-24, pre-authorized with the #186 docs merge; Closes #188).
 
-Date: 2026-10-24 (proposed).
+Date: 2026-10-24 (proposed); accepted 2026-10-24.
 
 ## Context
 
@@ -17,6 +17,10 @@ All eight expose the same external contract shape — `POST /v1/<module>/<Operat
 ## Decision
 
 Keep the three shapes. Each follows its stack's idioms (Go `internal/` package layering, Spring stereotype layering, small-Node flat modules); unifying them would fight all three ecosystems for no behavioural gain. Cross-module consistency is enforced at the contract surface (operation routes, envelope, auth), not in internal file layout.
+
+## Owner acceptance (2026-10-24, Closes #188)
+
+The owner approved the service-design layout in #181 and pre-authorized accepting this ADR with the #186 docs merge. The reviewer flagged the leftover `proposed` status as a non-blocking mismatch at merge time; this change flips the status to `accepted` to match the `docs/README.md` index row. No content change beyond the status flip.
 
 ## Consequences
 
@@ -41,4 +45,4 @@ Force `handler/service/store` naming onto Java and Node.
 - Downside: unidiomatic Spring and Node code; large rename churn with zero behavioural effect; fights framework conventions (e.g. Spring `web/repo` stereotypes).
 
 <!-- ao-role: architect -->
-Role: architect · AO session hotel-mgmt-249
+Role: architect · AO session hotel-mgmt-255
