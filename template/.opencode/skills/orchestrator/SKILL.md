@@ -236,6 +236,23 @@ restate the list here — link it. Summary for orchestration use only.
 - Detailed estimation guide: the `project-verify` skill (once the stack is
   chosen and its checklist exists).
 
+## Issue and PR conventions
+
+- Title formats differ (canonical:
+  `docs/project/issue-conventions.md`): issues keep `[type]
+  Imperative summary`; PR titles (and therefore squash-merge commit
+  messages) use Conventional Commits (`type(scope): Subject`,
+  `Closes #<n>` in the body, never in the title). An off-format PR
+  title is a blocking review finding — route it back to the worker,
+  do not fix it in the orchestrator.
+- Milestones (see your milestone conventions, owned by
+  `product-owner`): phase boards plus standing milestones that never
+  close. Every open issue carries exactly one milestone (no nulls);
+  PRs carry no milestone and inherit it through their linked issue.
+  A phase milestone closes only when its plan exit criteria are met
+  and all its issues are closed. Missing issue milestone is a
+  blocking review finding.
+
 ## CI / review routing
 
 - If CI fails, send the failing output to the responsible worker; ask them to

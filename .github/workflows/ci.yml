@@ -202,6 +202,12 @@ jobs:
       - name: Pre-flight fail-closed proof (issue #153, no docker needed)
         run: script/test-preflight-fail-closed.sh
 
+      - name: Harness conventions self-check (issue #231)
+        run: script/harness-conventions-check.sh
+
+      - name: Harness self-check proves red on a phantom fixture (issue #231)
+        run: script/harness-conventions-check.sh --self-test
+
   go-build:
     needs: changes
     if: needs.changes.outputs.go-matrix != '[]'

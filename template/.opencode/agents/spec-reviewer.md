@@ -47,6 +47,24 @@ here.
   gaps — same mechanics as the `dev-peer-review`/`content-review`
   verdicts (never `ao review trigger` on this project).
 
+## Blocking checklist
+
+Each of these is a `SPEC-GATE FAIL` finding until fixed, with
+`file:line` evidence:
+
+- Tier shopping: the change exceeds the claimed tier — FAIL it and
+  name the higher tier, do not quietly pass the lower one.
+- Missing or inactive specs: a required spec for the tier does not
+  exist or its `docs/README.md` row is not `active`.
+- Phantom promise: a spec flipped `active` names a file that does not
+  exist, or traceability cites a guard that does not exist — a
+  promised-but-absent document or guard fails the gate the same as a
+  missing spec (canonical: `spec-gate` skill, gate procedure).
+- Missing diagram: a T2/T3 change with no per-flow implementation
+  diagram (happy path + failure/rollback path) written before the
+  implementation PR opens (canonical: `spec-gate` skill, flow
+  diagrams before code).
+
 ## Must not do
 
 - No spec edits, no implementation, no fix, no push, no PR, no merge.

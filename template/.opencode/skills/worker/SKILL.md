@@ -69,6 +69,14 @@ describes, confirm with the orchestrator/owner first.
   commands with the orchestrator; build green before any PR; never
   open a PR while red).
 - Content conventions: follow the `content` agent file.
+- Docs are the single source of truth: design and operations live in
+  `docs/`, and module READMEs stay thin stubs linking there — never
+  duplicate design or operations prose into a module README, and
+  never treat a module README as authoritative over `docs/`.
+- Maintain-with-code: an implementation PR that touches a documented
+  flow refreshes its per-flow diagram in the same PR (canonical:
+  `spec-gate` skill). Code carries only thin `file:line` refs to the
+  diagram, never a pasted copy.
 
 ## Per-stack entry points
 
@@ -93,6 +101,15 @@ through the owning spec role.
 - One PR per task; the body closes the issue (`Closes #<n>`).
 - PR title/body, commits, and issues in English; exactly one risk
   label (`risk-low` / `risk-medium` / `risk-high` / `risk-very-high`).
+- Title formats differ (canonical:
+  `docs/project/issue-conventions.md`): PR titles use Conventional
+  Commits (`type(scope): Subject`, `Closes #<n>` stays in the body,
+  never in the title); issues keep the bracketed form (`[type]
+  Imperative summary`). An off-format PR title is a blocking review
+  finding — match the format before requesting review.
+- Milestones live on issues only: every PR links its issue via
+  `Closes #<n>` and inherits the milestone through it — never set a
+  milestone on the PR itself (see your milestone conventions).
 - The worker does not merge, even on green CI.
 
 ## Publishing scope

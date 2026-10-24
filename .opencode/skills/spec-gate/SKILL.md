@@ -64,16 +64,20 @@ part of the verdict — a PR whose behaviour drifted from its diagram gets
 1. The orchestrator spawns the owning spec role(s) for the tier; they
    write/update the required specs and flip the matching `docs/README.md`
    rows to `active`.
-2. The orchestrator spawns `spec-reviewer`, which checks that the
+2. No phantom promises: a row flipped to `active` must name a spec
+   file that exists on disk, and traceability must cite guards that
+   exist (`file:line`). A spec that promises a document or a guard
+   that does not exist fails the gate the same as a missing spec.
+3. The orchestrator spawns `spec-reviewer`, which checks that the
    required specs exist, are `active`, and match the change, then posts
    one COMMENT verdict (`SPEC-GATE PASS` or `SPEC-GATE FAIL` with
    `file:line` gaps, verdict word first — the merge gate counts only
    the leading headline token) on the issue/PR — same mechanics as the
    `dev-peer-review`/`content-review` verdicts (no native AO reviewer,
    never `ao review trigger` on this project).
-3. Implementation starts only on PASS. On FAIL the orchestrator routes
+4. Implementation starts only on PASS. On FAIL the orchestrator routes
    the gaps back to the owning spec role, not to the implementer.
-4. T3 additionally requires the owner to accept the ADR
+5. T3 additionally requires the owner to accept the ADR
    (`proposed -> accepted`) before the implementation PR merges.
 
 ## How the tiers interact with existing rules

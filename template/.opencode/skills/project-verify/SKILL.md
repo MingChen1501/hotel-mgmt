@@ -16,6 +16,10 @@ concrete build, test, or lint commands to allow-list or run.
 - Never open a PR while verification is red or unknown.
 - Keep changes scoped and describe in the PR body how they were
   checked (commands run + results), so the reviewer can reproduce.
+- No phantom promises: cite only guards, scripts, and CI jobs that
+  exist (by `file:line` or job name). A verification claim must name
+  a real guard file, a real script path, or a real CI job — never a
+  planned-but-unwritten check.
 
 ## When the stack is chosen
 
@@ -26,3 +30,6 @@ Replace this placeholder with the real checklist:
 - Test suites and their scope per change type.
 - CI workflow inventory and what "green" requires.
 - Any generated-output paths the project guard plugin must block.
+- Single source of truth: name which `docs/` file is authoritative
+  for the commands above, and keep module READMEs as thin stubs
+  linking there — never the reverse.
