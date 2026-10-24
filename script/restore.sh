@@ -179,28 +179,62 @@ case "$MODE" in
       esac
     done
     START_EPOCH="$(date +%s)"
-    BACKUP_FILE="$(newest_verified_backup "$STAGING_DIR")" \
-      || { echo "restore: no verified successful backup in $STAGING_DIR; nothing to drill from." >&2; exit 1; }
-    if [[ ! -f "$BACKUP_FILE" ]]; then
-      echo "restore: newest verified artifact $BACKUP_FILE is missing from disk." >&2
+    DRILL_STAMP="$(date +%Y%m%d-%H%M%S)"
+    DRILL_REPORT="$STAGING_DIR/hotel-$DRILL_STAMP-restore-drill.report.json"
+    # Every drill run leaves a visible success-or-failure report beside
+    # the backup reports (issue #153): a drill without a success
+    # report counts as failed, mirroring the backup rule in
+    # docs/operations/backup-dr.md section 4 (NFR-BKP-2).
+    write_drill_report() {
+      local outcome="$1" reason="$2" elapsed="$3" artifact="$4" tables="$5" profiles="$6"
+      python3 - "$DRILL_REPORT" "$outcome" "$START_EPOCH" "$elapsed" "$artifact" "$tables" "$profiles" "$reason" <<'PYEOF'
+import json, sys
+_, report_file, outcome, started, elapsed, artifact, tables, profiles, reason = sys.argv
+elapsed_seconds = int(elapsed)
+rto_budget_seconds = 4 * 3600
+report = {
+    "outcome": outcome,
+    "kind": "restore-drill",
+    "startedEpoch": int(started),
+    "elapsedSeconds": elapsed_seconds,
+    "rtoBudgetSeconds": rto_budget_seconds,
+    "withinBudget": elapsed_seconds <= rto_budget_seconds,
+    "artifact": artifact,
+    "userTables": int(tables),
+    "hotelProfileRows": int(profiles),
+    "reason": reason,
+}
+json.dump(report, open(report_file, "w"), indent=2)
+PYEOF
+    }
+    fail_drill() {
+      local reason="$1" artifact="$2"
+      local elapsed="$(( $(date +%s) - START_EPOCH ))"
+      write_drill_report "failure" "$reason" "$elapsed" "$artifact" 0 0
+      echo "restore: drill FAILED — $reason" >&2
       exit 1
+    }
+    BACKUP_FILE="$(newest_verified_backup "$STAGING_DIR")" \
+      || fail_drill "no verified successful backup in $STAGING_DIR; nothing to drill from" ""
+    if [[ ! -f "$BACKUP_FILE" ]]; then
+      fail_drill "newest verified artifact $BACKUP_FILE is missing from disk" "$BACKUP_FILE"
     fi
     SCRATCH="hotel_restore_verify_$$"
     "${COMPOSE[@]}" exec -T db psql -U hotel -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE $SCRATCH;" >/dev/null
     if ! "${COMPOSE[@]}" exec -T db psql -U hotel -d "$SCRATCH" -v ON_ERROR_STOP=1 -f - <"$BACKUP_FILE" >/dev/null; then
       "${COMPOSE[@]}" exec -T db psql -U hotel -d postgres -c "DROP DATABASE IF EXISTS $SCRATCH;" >/dev/null 2>&1 || true
-      echo "restore: drill FAILED — the backup copy did not load." >&2
-      exit 1
+      fail_drill "the backup copy did not load" "$BACKUP_FILE"
     fi
     TABLES="$("${COMPOSE[@]}" exec -T db psql -U hotel -d "$SCRATCH" -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog','information_schema');")"
     PROFILES="$("${COMPOSE[@]}" exec -T db psql -U hotel -d "$SCRATCH" -tAc "SELECT count(*) FROM admin.hotel_profile;" 2>/dev/null || echo 0)"
     if [[ -n "$EXPECT_FILE" ]]; then
       verify_expectation "$SCRATCH" "$EXPECT_FILE" \
-        || { "${COMPOSE[@]}" exec -T db psql -U hotel -d postgres -v ON_ERROR_STOP=1 -c "DROP DATABASE $SCRATCH;" >/dev/null 2>&1 || true; exit 1; }
+        || { "${COMPOSE[@]}" exec -T db psql -U hotel -d postgres -v ON_ERROR_STOP=1 -c "DROP DATABASE $SCRATCH;" >/dev/null 2>&1 || true; fail_drill "desk-state verification against $EXPECT_FILE failed" "$BACKUP_FILE"; }
     fi
     "${COMPOSE[@]}" exec -T db psql -U hotel -d postgres -v ON_ERROR_STOP=1 -c "DROP DATABASE $SCRATCH;" >/dev/null
     ELAPSED="$(( $(date +%s) - START_EPOCH ))"
-    echo "restore: drill SUCCEEDED in ${ELAPSED}s (RTO budget 4h): $BACKUP_FILE restored to scratch with $TABLES user tables, $PROFILES hotel profile row(s)."
+    write_drill_report "success" "" "$ELAPSED" "$BACKUP_FILE" "$TABLES" "$PROFILES"
+    echo "restore: drill SUCCEEDED in ${ELAPSED}s (RTO budget 4h): $BACKUP_FILE restored to scratch with $TABLES user tables, $PROFILES hotel profile row(s); report $DRILL_REPORT."
     ;;
 
   --live)

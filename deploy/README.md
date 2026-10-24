@@ -24,21 +24,28 @@ variant.
 - `ansible/` — dependency-free install playbook (only
   `ansible.builtin` plus the `docker compose` CLI on the target).
 
-## Install on a fresh host (docs only)
+## Install on a fresh host
 
 Single-host default sale, following `docs/devops/deployment.md`
-section 3 (installer path proven by issue #113):
+section 3 (installer path proven by issue #153):
 
 ```sh
 # 0. From the repo root, with the hotel's configuration set ready.
 cp deploy/config/hotel.example.json deploy/config/hotel.json
 ${EDITOR:-vi} deploy/config/hotel.json   # hotel's own values; never commit real hotel data
 
-# 1. Pre-flight gates the install and fails closed on default
-# secrets (deployment.md section 5; audit S3).
+# 1-3. One command: pre-flight (fails closed on default secrets and
+# invalid sets) then the install proof (desk loop end to end, first
+# backup, restore drill with desk-state verification), leaving the
+# stack up for handover:
 DB_PASSWORD=<per-sale secret> ADMIN_BOOT_SECRET=<per-sale secret> \
-  script/preflight.sh --config deploy/config/hotel.json
+  script/install.sh --config deploy/config/hotel.json
+# Evidence: the install log (pre-flight PASSED, desk-loop proof
+# SUCCEEDED), the first backup report in ./backup-staging, and the
+# restore-drill report beside it. Record the handover in
+# docs/operations/pilot-exit-checklist.md.
 
+# Installer alternatives for the same steps:
 # 2a. With Ansible (offline-friendly; only ansible.builtin plus the
 # docker compose CLI on the target):
 cp deploy/ansible/inventory.example.ini deploy/ansible/inventory.ini
@@ -50,12 +57,12 @@ DB_PASSWORD=<per-sale secret> ADMIN_BOOT_SECRET=<per-sale secret> \
 # copying it, then applies it through Admin after the install health
 # check (see deploy/config/README.md).
 
-# 2b. Or directly with compose (container lab):
+# 2b. Step by step with compose (container lab):
+DB_PASSWORD=<per-sale secret> ADMIN_BOOT_SECRET=<per-sale secret> \
+  script/preflight.sh --config deploy/config/hotel.json
 DB_PASSWORD=<per-sale secret> ADMIN_BOOT_SECRET=<per-sale secret> \
   docker compose -f deploy/compose.yaml up -d --build
-
-# 3. Booking, backup, and restore proof in one script
-# (book -> verify -> backup -> restore -> verify):
+# ...then apply the set, run the health check, and prove the desk:
 DB_PASSWORD=<per-sale secret> ADMIN_BOOT_SECRET=<per-sale secret> \
   script/e2e-desk-loop.sh --keep-up
 ```

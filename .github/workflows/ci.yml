@@ -193,6 +193,9 @@ jobs:
           fi
           echo "No secrets-looking strings found."
 
+      - name: Pre-flight fail-closed proof (issue #153, no docker needed)
+        run: script/test-preflight-fail-closed.sh
+
   go-build:
     needs: changes
     if: needs.changes.outputs.go-matrix != '[]'
@@ -375,13 +378,13 @@ jobs:
           --add-host billing:127.0.0.1 --add-host admin:127.0.0.1
           nginx:1.27-alpine nginx -t
 
-      - name: Pre-flight gate (fails closed on default secrets)
-        run: script/preflight.sh --config deploy/config/hotel.json
+      - name: One-hotel installer end to end (issue #153)
+        # script/install.sh sequences the same gates (pre-flight, then
+        # the desk-loop proof with backup and restore drill, stack left
+        # up), so CI proves the installer path itself on every run.
+        run: script/install.sh --config deploy/config/hotel.json --staging-dir ./backup-staging
 
-      - name: Desk loop E2E (book -> verify -> backup -> restore -> verify)
-        run: script/e2e-desk-loop.sh --staging-dir ./backup-staging
-
-      - name: Show the backup success report
+      - name: Show the backup and restore-drill reports
         if: always()
         run: |
           ls backup-staging/ || true
