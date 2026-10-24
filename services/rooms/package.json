@@ -5,7 +5,7 @@
   "description": "Hotel management Rooms module skeleton (LLD module 3).",
   "license": "UNLICENSED",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && cp src/messages.en.json dist/messages.en.json",
     "test": "npm run build && node --test \"dist/**/*.test.js\"",
     "lint": "eslint .",
     "migrate": "node-pg-migrate --migrations-dir migrations",

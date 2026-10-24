@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { HttpError } from "./errors.js";
+import { msg } from "./messages.js";
 
 // In-memory GuestService store (LLD section 5). One record per
 // guest with stay history links, preferences visible at booking time,
@@ -46,14 +47,14 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
 
 export function requireUuid(value: unknown, field: string): string {
   if (typeof value !== "string" || !UUID_PATTERN.test(value)) {
-    throw new HttpError("VALIDATION_FAILED", `${field} must be a UUID.`, { field });
+    throw new HttpError("VALIDATION_FAILED", msg("error.validation.must_be_uuid", { field }), { field });
   }
   return value;
 }
 
 export function requireString(value: unknown, field: string): string {
   if (typeof value !== "string" || value.trim() === "") {
-    throw new HttpError("VALIDATION_FAILED", `${field} is required.`, { field });
+    throw new HttpError("VALIDATION_FAILED", msg("error.validation.field_required", { field }), { field });
   }
   return value.trim();
 }
@@ -156,14 +157,14 @@ function asObject(value: unknown): Record<string, unknown> {
 
 function requireDate(value: unknown, field: string): string {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value.trim())) {
-    throw new HttpError("VALIDATION_FAILED", `${field} must be a YYYY-MM-DD date.`, { field });
+    throw new HttpError("VALIDATION_FAILED", msg("guests.validation.date_format", { field }), { field });
   }
   return value.trim();
 }
 
 function requirePriceMinor(value: unknown): number {
   if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
-    throw new HttpError("VALIDATION_FAILED", "price.amountMinor must be a non-negative integer.", {
+    throw new HttpError("VALIDATION_FAILED", msg("guests.validation.price_amount", {}), {
       field: "price",
     });
   }
@@ -245,7 +246,7 @@ export class GuestStore implements GuestStoreAPI {
     const stayId = requireUuid(input.stayId, "stayId");
     const record = this.guests.get(guestId);
     if (!record) {
-      throw new HttpError("NOT_FOUND", `Unknown guest ${guestId}.`, { guestId });
+      throw new HttpError("NOT_FOUND", msg("guests.notfound.guest", { guestId }), { guestId });
     }
     if (!this.links.some((link) => link.guestId === guestId && link.stayId === stayId)) {
       this.links.push({ guestId, stayId, linkedAt: new Date().toISOString() });
@@ -271,7 +272,7 @@ export class GuestStore implements GuestStoreAPI {
     const reservationRef = requireUuid(input.reservationRef, "reservationRef");
     const record = this.confirmations.get(reservationRef);
     if (!record) {
-      throw new HttpError("NOT_FOUND", `Unknown reservation ${reservationRef}.`, {
+      throw new HttpError("NOT_FOUND", msg("error.notfound.reservation", { ref: reservationRef }), {
         reservationRef,
       });
     }
@@ -286,7 +287,7 @@ export class GuestStore implements GuestStoreAPI {
     if (typeof input.guestId === "string" && input.guestId !== "") {
       const record = this.guests.get(requireUuid(input.guestId, "guestId"));
       if (!record) {
-        throw new HttpError("NOT_FOUND", `Unknown guest ${input.guestId}.`, { guestId: input.guestId });
+        throw new HttpError("NOT_FOUND", msg("guests.notfound.guest", { guestId: input.guestId }), { guestId: input.guestId });
       }
       return record;
     }
@@ -297,8 +298,8 @@ export class GuestStore implements GuestStoreAPI {
           return record;
         }
       }
-      throw new HttpError("NOT_FOUND", `Unknown guest ${wanted}.`, { fullName: wanted });
+      throw new HttpError("NOT_FOUND", msg("guests.notfound.guest_by_name", { fullName: wanted }), { fullName: wanted });
     }
-    throw new HttpError("VALIDATION_FAILED", "guestId or fullName is required.", { field: "guestId" });
+    throw new HttpError("VALIDATION_FAILED", msg("guests.validation.guest_or_name", {}), { field: "guestId" });
   }
 }

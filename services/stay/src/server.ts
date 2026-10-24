@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { extractBearer } from "./auth.js";
 import { HttpError, errorEnvelope } from "./errors.js";
 import { type StayStoreAPI, StayStore } from "./store.js";
+import { msg } from "./messages.js";
 
 type Body = Record<string, unknown>;
 
@@ -19,16 +20,16 @@ function readBody(req: IncomingMessage): Promise<Body> {
       try {
         const parsed: unknown = JSON.parse(raw);
         if (typeof parsed !== "object" || parsed === null) {
-          reject(new HttpError("VALIDATION_FAILED", "Request body must be a JSON object.", {}));
+          reject(new HttpError("VALIDATION_FAILED", msg("error.transport.body_not_object", {}), {}));
           return;
         }
         resolve(parsed as Body);
       } catch {
-        reject(new HttpError("VALIDATION_FAILED", "Request body is not valid JSON.", {}));
+        reject(new HttpError("VALIDATION_FAILED", msg("error.transport.bad_json", {}), {}));
       }
     });
     req.on("error", () => {
-      reject(new HttpError("VALIDATION_FAILED", "Failed to read the request body.", {}));
+      reject(new HttpError("VALIDATION_FAILED", msg("error.transport.body_read_failed", {}), {}));
     });
   });
 }
@@ -78,7 +79,7 @@ export function createServiceServer(service: string, store: StayStoreAPI = new S
       } else {
         writeJson(res, 500, {
           code: "VALIDATION_FAILED",
-          message: "Unexpected failure handling the request.",
+          message: msg("error.transport.unexpected", {}),
           details: {},
           traceId: randomUUID(),
         });
@@ -102,12 +103,12 @@ async function handleRequest(
     writeJson(
       res,
       404,
-      { code: "NOT_FOUND", message: "unknown path", details: {}, traceId: randomUUID() },
+      { code: "NOT_FOUND", message: msg("error.transport.unknown_path", {}), details: {}, traceId: randomUUID() },
     );
     return;
   }
   if (!extractBearer(req)) {
-    throw new HttpError("UNAUTHENTICATED", "Missing session token.", {});
+    throw new HttpError("UNAUTHENTICATED", msg("error.auth.missing_token", {}), {});
   }
   const body = await readBody(req);
   const operation = route[1];
@@ -164,7 +165,7 @@ async function handleRequest(
       writeJson(
         res,
         404,
-        { code: "NOT_FOUND", message: "unknown path", details: {}, traceId: randomUUID() },
+        { code: "NOT_FOUND", message: msg("error.transport.unknown_path", {}), details: {}, traceId: randomUUID() },
       );
     }
   }

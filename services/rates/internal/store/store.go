@@ -12,6 +12,8 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/MingChen1501/hotel-mgmt/services/rates/internal/messages"
 )
 
 // OpError carries the shared error envelope code for an operation.
@@ -50,7 +52,7 @@ func newID() string {
 func parseDate(value, field string) (time.Time, *OpError) {
 	parsed, err := time.Parse(dateLayout, value)
 	if err != nil {
-		return time.Time{}, validation(field, field+" must be a YYYY-MM-DD date.")
+		return time.Time{}, validation(field, messages.Text("rates.validation.date_format", map[string]string{"field": field}))
 	}
 	return parsed, nil
 }
@@ -176,7 +178,7 @@ func (s *Store) UpsertRatePlan(name, description string, defaultUnits *int) *Rat
 // UpsertRatePrice sets one nightly price.
 func (s *Store) UpsertRatePrice(planName, roomTypeID, night string, priceMinor int64) (*RatePrice, *OpError) {
 	if priceMinor < 0 {
-		return nil, validation("priceMinor", "priceMinor cannot be negative.")
+		return nil, validation("priceMinor", messages.Text("error.validation.price_negative", nil))
 	}
 	if _, err := parseDate(night, "nightDate"); err != nil {
 		return nil, err
@@ -184,7 +186,7 @@ func (s *Store) UpsertRatePrice(planName, roomTypeID, night string, priceMinor i
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, ok := s.plans[planName]; !ok {
-		return nil, notFound(fmt.Sprintf("Unknown rate plan %s.", planName), map[string]any{"ratePlanName": planName})
+		return nil, notFound(messages.Text("rates.notfound.rate_plan", map[string]string{"ratePlanName": planName}), map[string]any{"ratePlanName": planName})
 	}
 	record := &RatePrice{RatePlanName: planName, RoomTypeID: roomTypeID, NightDate: night, PriceMinor: priceMinor}
 	s.prices[priceKey(planName, roomTypeID, night)] = record
@@ -201,7 +203,7 @@ func (s *Store) UpsertRestriction(roomTypeID, from, to string, minStay *int, clo
 		return nil, err
 	}
 	if to < from {
-		return nil, validation("dateTo", "dateTo is before dateFrom.")
+		return nil, validation("dateTo", messages.Text("error.validation.date_range_order", nil))
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -214,13 +216,13 @@ func (s *Store) UpsertRestriction(roomTypeID, from, to string, minStay *int, clo
 // UpsertDiscount records one named discount.
 func (s *Store) UpsertDiscount(name, kind string, valueMinor int64) (*Discount, *OpError) {
 	if kind != "percent" && kind != "amount" {
-		return nil, validation("kind", "kind must be percent or amount.")
+		return nil, validation("kind", messages.Text("rates.validation.discount_kind", nil))
 	}
 	if valueMinor < 0 {
-		return nil, validation("valueMinor", "valueMinor cannot be negative.")
+		return nil, validation("valueMinor", messages.Text("rates.validation.value_negative", nil))
 	}
 	if kind == "percent" && valueMinor > 100 {
-		return nil, validation("valueMinor", "percent discounts cannot exceed 100.")
+		return nil, validation("valueMinor", messages.Text("rates.validation.percent_cap", nil))
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -247,10 +249,10 @@ func (s *Store) Quote(roomTypeID, arrival, departure string, planName, discountN
 	}
 	nights := nightsBetween(arrivalDay, departureDay)
 	if len(nights) == 0 {
-		return nil, validation("departureDate", "departureDate must be after arrivalDate.")
+		return nil, validation("departureDate", messages.Text("error.validation.departure_order", nil))
 	}
 	if len(nights) > 730 {
-		return nil, validation("departureDate", "Quote ranges longer than 730 nights are not supported in the skeleton.")
+		return nil, validation("departureDate", messages.Text("rates.validation.quote_range", nil))
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -263,7 +265,7 @@ func (s *Store) Quote(roomTypeID, arrival, departure string, planName, discountN
 		key := priceKey(plan.Name, roomTypeID, night.Format(dateLayout))
 		price, ok := s.prices[key]
 		if !ok {
-			return nil, notFound(fmt.Sprintf("No priced night for the type on %s.", night.Format(dateLayout)), map[string]any{"roomTypeId": roomTypeID, "nightDate": night.Format(dateLayout)})
+			return nil, notFound(messages.Text("rates.notfound.priced_night", map[string]string{"nightDate": night.Format(dateLayout)}), map[string]any{"roomTypeId": roomTypeID, "nightDate": night.Format(dateLayout)})
 		}
 		quoted.Nights = append(quoted.Nights, NightQuote{NightDate: price.NightDate, PriceMinor: price.PriceMinor})
 		quoted.TotalMinor += price.PriceMinor
@@ -271,7 +273,7 @@ func (s *Store) Quote(roomTypeID, arrival, departure string, planName, discountN
 	if discountName != nil && *discountName != "" {
 		discount, ok := s.discounts[*discountName]
 		if !ok {
-			return nil, validation("discountName", fmt.Sprintf("Unknown discount %s.", *discountName))
+			return nil, validation("discountName", messages.Text("rates.validation.unknown_discount", map[string]string{"discountName": *discountName}))
 		}
 		quoted.Discount = discountName
 		switch discount.Kind {
@@ -299,7 +301,7 @@ func (s *Store) CheckRestrictions(roomTypeID, arrival, departure string) *OpErro
 		return err
 	}
 	if !departureDay.After(arrivalDay) {
-		return validation("departureDate", "departureDate must be after arrivalDate.")
+		return validation("departureDate", messages.Text("error.validation.departure_order", nil))
 	}
 	nights := len(nightsBetween(arrivalDay, departureDay))
 	lastNight := departureDay.AddDate(0, 0, -1).Format(dateLayout)
@@ -313,10 +315,10 @@ func (s *Store) CheckRestrictions(roomTypeID, arrival, departure string) *OpErro
 			continue
 		}
 		if restriction.ClosedToArrival && restriction.DateFrom <= arrival && arrival <= restriction.DateTo {
-			return stateIllegal(fmt.Sprintf("Room type is closed to arrival on %s.", arrival), map[string]any{"roomTypeId": roomTypeID, "restriction": "closed-to-arrival", "dateFrom": restriction.DateFrom, "dateTo": restriction.DateTo})
+			return stateIllegal(messages.Text("rates.state.closed_to_arrival", map[string]string{"arrivalDate": arrival}), map[string]any{"roomTypeId": roomTypeID, "restriction": "closed-to-arrival", "dateFrom": restriction.DateFrom, "dateTo": restriction.DateTo})
 		}
 		if restriction.MinStay != nil && nights < *restriction.MinStay {
-			return stateIllegal(fmt.Sprintf("Minimum stay of %d nights applies for the requested dates.", *restriction.MinStay), map[string]any{"roomTypeId": roomTypeID, "restriction": "min-stay", "minStay": *restriction.MinStay, "dateFrom": restriction.DateFrom, "dateTo": restriction.DateTo})
+			return stateIllegal(messages.Text("rates.state.min_stay", map[string]string{"minStay": messages.Num(int64(*restriction.MinStay))}), map[string]any{"roomTypeId": roomTypeID, "restriction": "min-stay", "minStay": *restriction.MinStay, "dateFrom": restriction.DateFrom, "dateTo": restriction.DateTo})
 		}
 	}
 	return nil
@@ -335,7 +337,7 @@ func (s *Store) CheckSellableCount(roomTypeID, from, to string, totalUnits *int)
 		return nil, err
 	}
 	if toDay.Before(fromDay) {
-		return nil, validation("dateTo", "dateTo is before dateFrom.")
+		return nil, validation("dateTo", messages.Text("error.validation.date_range_order", nil))
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -357,10 +359,10 @@ func (s *Store) CheckSellableCount(roomTypeID, from, to string, totalUnits *int)
 			}
 		}
 		if !known && totalUnits == nil {
-			return nil, notFound(fmt.Sprintf("Unknown room type %s.", roomTypeID), map[string]any{"roomTypeId": roomTypeID})
+			return nil, notFound(messages.Text("rates.notfound.room_type", map[string]string{"roomTypeId": roomTypeID}), map[string]any{"roomTypeId": roomTypeID})
 		}
 		if !known {
-			return nil, validation("totalUnits", "No inventory input for the room type.")
+			return nil, validation("totalUnits", messages.Text("rates.validation.no_inventory", nil))
 		}
 		fallback := 0
 		units = &fallback
@@ -376,7 +378,7 @@ func (s *Store) quotePlan(roomTypeID string, planName *string) (*RatePlan, *OpEr
 	if planName != nil && *planName != "" {
 		plan, ok := s.plans[*planName]
 		if !ok {
-			return nil, notFound(fmt.Sprintf("Unknown rate plan %s.", *planName), map[string]any{"ratePlanName": *planName})
+			return nil, notFound(messages.Text("rates.notfound.rate_plan", map[string]string{"ratePlanName": *planName}), map[string]any{"ratePlanName": *planName})
 		}
 		return plan, nil
 	}
@@ -390,9 +392,9 @@ func (s *Store) quotePlan(roomTypeID string, planName *string) (*RatePlan, *OpEr
 		return candidates[0], nil
 	}
 	if len(candidates) == 0 {
-		return nil, notFound("No priced nights for the room type and dates.", map[string]any{"roomTypeId": roomTypeID})
+		return nil, notFound(messages.Text("rates.notfound.priced_nights", nil), map[string]any{"roomTypeId": roomTypeID})
 	}
-	return nil, validation("ratePlanName", "Several plans price the type; name the rate plan.")
+	return nil, validation("ratePlanName", messages.Text("rates.validation.ambiguous_plan", nil))
 }
 
 func (s *Store) planPricesType(planName, roomTypeID string) bool {

@@ -1,6 +1,7 @@
 import type { Pool, PoolClient } from "pg";
 import { randomUUID } from "node:crypto";
 import { HttpError } from "./errors.js";
+import { msg } from "./messages.js";
 import {
   STAY_STATES,
   checkFolioGate,
@@ -68,7 +69,7 @@ export class PostgresStayStore implements StayStoreAPI {
     );
     if (existing.rows.length > 0) {
       const record = PostgresStayStore.toStay(existing.rows[0]);
-      throw new HttpError("CONFLICT", "Reservation is already checked in.", {
+      throw new HttpError("CONFLICT", msg("stay.conflict.already_checked_in", {}), {
         reservationId,
         stayId: record.id,
       });
@@ -112,7 +113,7 @@ export class PostgresStayStore implements StayStoreAPI {
         [requireUuid(input.stayId, "stayId")],
       );
       if (found.rows.length === 0) {
-        throw new HttpError("NOT_FOUND", `Unknown stay ${input.stayId}.`, { stayId: input.stayId });
+        throw new HttpError("NOT_FOUND", msg("stay.notfound.stay", { stayId: input.stayId }), { stayId: input.stayId });
       }
       return PostgresStayStore.toStay(found.rows[0]);
     }
@@ -123,19 +124,19 @@ export class PostgresStayStore implements StayStoreAPI {
         [requireUuid(input.reservationId, "reservationId")],
       );
       if (found.rows.length === 0) {
-        throw new HttpError("NOT_FOUND", `No stay for reservation ${input.reservationId}.`, {
+        throw new HttpError("NOT_FOUND", msg("stay.notfound.stay_for_reservation", { reservationId: input.reservationId }), {
           reservationId: input.reservationId,
         });
       }
       return PostgresStayStore.toStay(found.rows[0]);
     }
-    throw new HttpError("VALIDATION_FAILED", "stayId or reservationId is required.", { field: "stayId" });
+    throw new HttpError("VALIDATION_FAILED", msg("stay.validation.stay_or_reservation", {}), { field: "stayId" });
   }
 
   async queryStays(input: QueryStaysInput): Promise<StayRecord[]> {
     if (input.state !== undefined) {
       if (typeof input.state !== "string" || !STAY_STATES.includes(input.state as StayState)) {
-        throw new HttpError("VALIDATION_FAILED", "Unknown stay state.", { state: input.state });
+        throw new HttpError("VALIDATION_FAILED", msg("stay.validation.unknown_state", {}), { state: input.state });
       }
       const { rows } = await this.pool.query(
         `SELECT id, reservation_id, guest_id, current_room_id, state, actual_arrival, actual_departure
@@ -189,10 +190,10 @@ export class PostgresStayStore implements StayStoreAPI {
           [id],
         );
         if (current.rows.length === 0) {
-          throw new HttpError("NOT_FOUND", `Unknown stay ${id}.`, { stayId: id });
+          throw new HttpError("NOT_FOUND", msg("stay.notfound.stay", { stayId: id }), { stayId: id });
         }
         const record = PostgresStayStore.toStay(current.rows[0]);
-        throw new HttpError("STATE_ILLEGAL", `Stay ${id} is ${record.state}, not in house.`, {
+        throw new HttpError("STATE_ILLEGAL", msg("stay.state.not_in_house", { stayId: id, state: record.state }), {
           stayId: id,
           state: record.state,
         });
@@ -247,7 +248,7 @@ export class PostgresStayStore implements StayStoreAPI {
               },
             };
           }
-          throw new HttpError("STATE_ILLEGAL", `Stay ${id} already moved under this key.`, { stayId: id });
+          throw new HttpError("STATE_ILLEGAL", msg("stay.conflict.already_moved", { stayId: id }), { stayId: id });
         }
       }
       const current = await client.query(
@@ -256,17 +257,17 @@ export class PostgresStayStore implements StayStoreAPI {
         [id],
       );
       if (current.rows.length === 0) {
-        throw new HttpError("NOT_FOUND", `Unknown stay ${id}.`, { stayId: id });
+        throw new HttpError("NOT_FOUND", msg("stay.notfound.stay", { stayId: id }), { stayId: id });
       }
       const record = PostgresStayStore.toStay(current.rows[0]);
       if (record.state !== "in-house") {
-        throw new HttpError("STATE_ILLEGAL", `Stay ${id} is ${record.state}, not in house.`, {
+        throw new HttpError("STATE_ILLEGAL", msg("stay.state.not_in_house", { stayId: id, state: record.state }), {
           stayId: id,
           state: record.state,
         });
       }
       if (record.currentRoomId === toRoomId) {
-        throw new HttpError("VALIDATION_FAILED", "The guest is already in that room.", { toRoomId });
+        throw new HttpError("VALIDATION_FAILED", msg("stay.validation.guest_in_room", {}), { toRoomId });
       }
       const moved = await client.query(
         `UPDATE stay.stays SET current_room_id = $2, updated_by = $3, updated_at = now()
@@ -275,7 +276,7 @@ export class PostgresStayStore implements StayStoreAPI {
         [id, toRoomId, actor],
       );
       if (moved.rows.length === 0) {
-        throw new HttpError("STATE_ILLEGAL", `Stay ${id} left the in-house state mid-move.`, { stayId: id });
+        throw new HttpError("STATE_ILLEGAL", msg("stay.state.left_in_house", { stayId: id }), { stayId: id });
       }
       const history = await client.query(
         `INSERT INTO stay.stay_moves (stay_id, from_room_id, to_room_id, created_by)
@@ -328,13 +329,13 @@ export class PostgresStayStore implements StayStoreAPI {
         [id],
       );
       if (current.rows.length === 0) {
-        throw new HttpError("NOT_FOUND", `Unknown stay ${id}.`, { stayId: id });
+        throw new HttpError("NOT_FOUND", msg("stay.notfound.stay", { stayId: id }), { stayId: id });
       }
       const record = PostgresStayStore.toStay(current.rows[0]);
       const actualArrival = arrival ?? record.actualArrival;
       const actualDeparture = departure ?? record.actualDeparture;
       if (actualArrival !== null && actualDeparture !== null && actualDeparture < actualArrival) {
-        throw new HttpError("VALIDATION_FAILED", "actualDeparture cannot be before actualArrival.", {
+        throw new HttpError("VALIDATION_FAILED", msg("stay.validation.departure_order", {}), {
           actualArrival,
           actualDeparture,
         });
@@ -372,11 +373,11 @@ export class PostgresStayStore implements StayStoreAPI {
       [id],
     );
     if (found.rows.length === 0) {
-      throw new HttpError("NOT_FOUND", `Unknown stay ${id}.`, { stayId: id });
+      throw new HttpError("NOT_FOUND", msg("stay.notfound.stay", { stayId: id }), { stayId: id });
     }
     const record = PostgresStayStore.toStay(found.rows[0]);
     if (record.state !== "in-house") {
-      throw new HttpError("STATE_ILLEGAL", `Stay ${id} is ${record.state}, not in house.`, {
+      throw new HttpError("STATE_ILLEGAL", msg("stay.state.not_in_house", { stayId: id, state: record.state }), {
         stayId: id,
         state: record.state,
       });

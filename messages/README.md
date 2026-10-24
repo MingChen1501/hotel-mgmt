@@ -26,6 +26,14 @@ code changes.
   across services when the English sentence is identical
   (for example every service uses `error.auth.missing_token`).
 - `desk.entry.*`, `desk.admin.*` — static desk-console copy.
+- `rates.*`, `reporting.*`, `rooms.*`, `stay.*`, `guests.*` —
+  per-service envelope sentences added in issue #201, following the
+  shared-`error.*` shape (`<surface>.validation|notfound|state|
+  conflict|settlement|store.<name>`).
+- `script.runbook.*` — operator-visible runbook wording from
+  `script/preflight.sh`, `script/backup.sh`, `script/restore.sh`,
+  and `script/e2e-desk-loop.sh` (issue #201), resolved at runtime
+  through `script/messages.sh` with an inline fallback.
 
 ## What is NOT catalogued
 
@@ -55,10 +63,12 @@ Each runtime embeds a copy so services and pages work without extra
 file mounts; every mirror MUST be byte-identical to `en.json` and
 the coverage script fails the build otherwise:
 
-- Go (`services/reservations`): `internal/messages/en.json`
+- Go (`services/reservations`, `services/rates`,
+  `services/reporting`): `internal/messages/en.json`
   (`//go:embed`), overridable at runtime with
   `MESSAGE_CATALOGUE_PATH`.
-- Node (`services/admin`): `src/messages.en.json` (imported at
+- Node (`services/admin`, `services/rooms`, `services/stay`,
+  `services/guests`): `src/messages.en.json` (imported at
   compile time), overridable at runtime with
   `MESSAGE_CATALOGUE_PATH`.
 - Spring (`services/billing`): `src/main/resources/messages/en.json`
@@ -68,7 +78,10 @@ the coverage script fails the build otherwise:
   `frontend/messages.js`), with the English text kept inline as the
   no-JS fallback. Static elements carry `data-msg="key"`; inline
   scripts resolve through `DeskMessages.msg(key, params, fallback)`.
+- Shell (`script/`): no embedded copy — `script/messages.sh`
+  reads the canonical `messages/en.json` at runtime (repo-relative),
+  with the inline fallback printed when the catalogue is unreadable,
+  the key is missing, or python3 is unavailable.
 
-To extend coverage to a new surface (follow-up #201 owns
-rates/reporting/rooms/stay/guests plus `script/` wording): add keys
+To extend coverage to a new surface: add keys
 here, add the call sites, extend `sample.json`, and mirror as above.

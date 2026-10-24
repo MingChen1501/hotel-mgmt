@@ -32,6 +32,9 @@
 
 set -euo pipefail
 
+# shellcheck disable=SC1091
+source "$(dirname "$0")/messages.sh"
+
 COMPOSE=(docker compose -f deploy/compose.yaml)
 MODE="${1:-}"
 
@@ -57,7 +60,7 @@ health_check() {
     # --noproxy: the desk entry is the on-premise host itself, never
     # a configured egress proxy (runbook.md section 4).
     if ! curl -fsS --noproxy '*' --max-time 10 "$base_url/v1/$module/healthz" >/dev/null 2>&1; then
-      echo "restore: health check failed for $module." >&2
+      echo "$(msg "script.runbook.restore_health_failed" "restore: health check failed for {module}." module="$module")" >&2
       ok=1
     fi
   done
@@ -73,7 +76,7 @@ health_check() {
 # audit actor and timestamp (NFR-AUD-1).
 verify_expectation() {
   local scratch="$1" expect_file="$2"
-  [[ -f "$expect_file" ]] || { echo "restore: expectation file $expect_file is missing." >&2; return 1; }
+  [[ -f "$expect_file" ]] || { echo "$(msg "script.runbook.restore_expect_missing" "restore: expectation file {file} is missing." file="$expect_file")" >&2; return 1; }
   local q
   q() { "${COMPOSE[@]}" exec -T db psql -U hotel -d "$scratch" -tAc "$1"; }
   local expect
@@ -88,15 +91,15 @@ verify_expectation() {
   room_state="$(expect roomState)"
   rate_plan="$(expect ratePlanName)"
   [[ -n "$reservation_ref" && -n "$stay_id" && -n "$folio_id" && -n "$arrivals_date" && -n "$hotel_name" && -n "$room_number" && -n "$room_state" && -n "$rate_plan" ]] \
-    || { echo "restore: expectation file $expect_file is incomplete." >&2; return 1; }
+    || { echo "$(msg "script.runbook.restore_expect_incomplete" "restore: expectation file {file} is incomplete." file="$expect_file")" >&2; return 1; }
 
   local res_state res_stay
   res_state="$(q "SELECT state FROM reservations.reservations WHERE reference = '$reservation_ref';")"
   res_stay="$(q "SELECT stay_id FROM reservations.reservations WHERE reference = '$reservation_ref';")"
   [[ "$res_state" == "$(expect reservationState)" ]] \
-    || { echo "restore: reservation $reservation_ref state is '$res_state', want '$(expect reservationState)'." >&2; return 1; }
+    || { echo "$(msg "script.runbook.restore_reservation_state" "restore: reservation {ref} state is '{state}', want '{want}'." ref="$reservation_ref" state="$res_state" want="$(expect reservationState)")" >&2; return 1; }
   [[ "$res_stay" == "$stay_id" ]] \
-    || { echo "restore: reservation $reservation_ref lost its stay link." >&2; return 1; }
+    || { echo "$(msg "script.runbook.restore_reservation_link" "restore: reservation {ref} lost its stay link." ref="$reservation_ref")" >&2; return 1; }
 
   local stay_state stay_res
   stay_state="$(q "SELECT state FROM stay.stays WHERE id = '$stay_id';")"
@@ -108,29 +111,29 @@ verify_expectation() {
   stay_want="$(expect stayState)"
   [[ -z "$stay_want" ]] && stay_want="in-house"
   [[ "$stay_state" == "$stay_want" ]] \
-    || { echo "restore: stay $stay_id state is '$stay_state', want '$stay_want'." >&2; return 1; }
+    || { echo "$(msg "script.runbook.restore_stay_state" "restore: stay {stayId} state is '{state}', want '{want}'." stayId="$stay_id" state="$stay_state" want="$stay_want")" >&2; return 1; }
   local stay_reservation_id
   stay_reservation_id="$(q "SELECT id FROM reservations.reservations WHERE reference = '$reservation_ref';")"
   [[ "$stay_res" == "$stay_reservation_id" ]] \
-    || { echo "restore: stay $stay_id lost its reservation link." >&2; return 1; }
+    || { echo "$(msg "script.runbook.restore_stay_link" "restore: stay {stayId} lost its reservation link." stayId="$stay_id")" >&2; return 1; }
 
   local arrivals
   arrivals="$(q "SELECT coalesce(string_agg(reference, ',' ORDER BY reference), '') FROM reservations.reservations WHERE arrival_date = '$arrivals_date' AND state IN ('confirmed','checked-in');")"
   local want_arrivals
   want_arrivals="$(python3 -c 'import json,sys; print(",".join(sorted(json.load(open(sys.argv[1]))["arrivalRefs"])))' "$expect_file")"
   [[ "$arrivals" == "$want_arrivals" ]] \
-    || { echo "restore: arrivals for $arrivals_date are '$arrivals', want '$want_arrivals'." >&2; return 1; }
+    || { echo "$(msg "script.runbook.restore_arrivals" "restore: arrivals for {date} are '{actual}', want '{want}'." date="$arrivals_date" actual="$arrivals" want="$want_arrivals")" >&2; return 1; }
 
   local folio_balance day_charges day_payments audit_gaps
   folio_balance="$(q "SELECT balance_minor FROM billing.folios WHERE id = '$folio_id';")"
   [[ "$folio_balance" == "$(expect folioBalanceMinor)" ]] \
-    || { echo "restore: folio $folio_id balance is '$folio_balance', want '$(expect folioBalanceMinor)'." >&2; return 1; }
+    || { echo "$(msg "script.runbook.restore_folio_balance" "restore: folio {folioId} balance is '{actual}', want '{want}'." folioId="$folio_id" actual="$folio_balance" want="$(expect folioBalanceMinor)")" >&2; return 1; }
   day_charges="$(q "SELECT charges_total_minor FROM billing.day_close_runs WHERE business_date = '$arrivals_date';")"
   [[ "$day_charges" == "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["dayClose"]["chargesTotalMinor"])' "$expect_file")" ]] \
-    || { echo "restore: day-close charges for $arrivals_date are '$day_charges'." >&2; return 1; }
+    || { echo "$(msg "script.runbook.restore_day_charges" "restore: day-close charges for {date} are '{actual}'." date="$arrivals_date" actual="$day_charges")" >&2; return 1; }
   day_payments="$(q "SELECT payments_by_method FROM billing.day_close_runs WHERE business_date = '$arrivals_date';")"
   python3 - "$day_payments" "$expect_file" <<'PYEOF' \
-    || { echo "restore: day-close payments for the date changed across the drill." >&2; return 1; }
+    || { echo "$(msg "script.runbook.restore_day_payments" "restore: day-close payments for the date changed across the drill.")" >&2; return 1; }
 import json, sys
 actual = json.loads(sys.argv[1])
 want = json.load(open(sys.argv[2]))["dayClose"]["paymentsByMethod"]
@@ -139,16 +142,16 @@ PYEOF
   local profiles restored_hotel restored_room rate_prices
   profiles="$(q "SELECT count(*) FROM admin.hotel_profile;")"
   [[ "$profiles" == "1" ]] \
-    || { echo "restore: hotel profile rows = '$profiles', want exactly 1." >&2; return 1; }
+    || { echo "$(msg "script.runbook.restore_profiles" "restore: hotel profile rows = '{actual}', want exactly 1." actual="$profiles")" >&2; return 1; }
   restored_hotel="$(q "SELECT name FROM admin.hotel_profile LIMIT 1;")"
   [[ "$restored_hotel" == "$hotel_name" ]] \
-    || { echo "restore: hotel name is '$restored_hotel', want '$hotel_name'." >&2; return 1; }
+    || { echo "$(msg "script.runbook.restore_hotel_name" "restore: hotel name is '{actual}', want '{want}'." actual="$restored_hotel" want="$hotel_name")" >&2; return 1; }
   restored_room="$(q "SELECT state FROM rooms.rooms WHERE number = '$room_number';")"
   [[ "$restored_room" == "$room_state" ]] \
-    || { echo "restore: room $room_number state is '$restored_room', want '$room_state'." >&2; return 1; }
+    || { echo "$(msg "script.runbook.restore_room_state" "restore: room {room} state is '{actual}', want '{want}'." room="$room_number" actual="$restored_room" want="$room_state")" >&2; return 1; }
   rate_prices="$(q "SELECT coalesce(json_object_agg(night_date::text, price_minor ORDER BY night_date)::text, '{}') FROM rates.rate_prices WHERE rate_plan_id = (SELECT id FROM rates.rate_plans WHERE name = '$rate_plan');")"
   python3 - "$rate_prices" "$expect_file" <<'PYEOF' \
-    || { echo "restore: rate prices for plan changed across the drill." >&2; return 1; }
+    || { echo "$(msg "script.runbook.restore_rate_prices" "restore: rate prices for plan changed across the drill.")" >&2; return 1; }
 import json, sys
 actual = json.loads(sys.argv[1])
 want = {k: int(v) for k, v in json.load(open(sys.argv[2]))["ratePrices"].items()}
@@ -156,8 +159,8 @@ assert actual == want, (actual, want)
 PYEOF
   audit_gaps="$(q "SELECT (SELECT count(*) FROM reservations.reservations WHERE created_by IS NULL OR created_at IS NULL) + (SELECT count(*) FROM stay.stays WHERE created_by IS NULL OR created_at IS NULL) + (SELECT count(*) FROM billing.folios WHERE created_by IS NULL OR created_at IS NULL) + (SELECT count(*) FROM billing.day_close_runs WHERE created_by IS NULL OR created_at IS NULL);")"
   [[ "$audit_gaps" == "0" ]] \
-    || { echo "restore: $audit_gaps touched row(s) lost their audit entries." >&2; return 1; }
-  echo "restore: desk state verified — arrivals $arrivals_date ($arrivals), stay $stay_id $stay_state, day-close charges $day_charges, hotel '$hotel_name', room $room_number $room_state, rate plan $rate_plan prices intact."
+    || { echo "$(msg "script.runbook.restore_audit_gaps" "restore: {gaps} touched row(s) lost their audit entries." gaps="$audit_gaps")" >&2; return 1; }
+  echo "$(msg "script.runbook.restore_verified" "restore: desk state verified — arrivals {date} ({arrivals}), stay {stayId} {stayState}, day-close charges {charges}, hotel '{hotel}', room {room} {roomState}, rate plan {plan} prices intact." date="$arrivals_date" arrivals="$arrivals" stayId="$stay_id" stayState="$stay_state" charges="$day_charges" hotel="$hotel_name" room="$room_number" roomState="$room_state" plan="$rate_plan")"
   return 0
 }
 
@@ -211,30 +214,30 @@ PYEOF
       local reason="$1" artifact="$2"
       local elapsed="$(( $(date +%s) - START_EPOCH ))"
       write_drill_report "failure" "$reason" "$elapsed" "$artifact" 0 0
-      echo "restore: drill FAILED — $reason" >&2
+      echo "$(msg "script.runbook.restore_drill_failed" "restore: drill FAILED — {reason}" reason="$reason")" >&2
       exit 1
     }
     BACKUP_FILE="$(newest_verified_backup "$STAGING_DIR")" \
-      || fail_drill "no verified successful backup in $STAGING_DIR; nothing to drill from" ""
+      || fail_drill "$(msg "script.runbook.restore_drill_no_backup" "no verified successful backup in {dir}; nothing to drill from" dir="$STAGING_DIR")" ""
     if [[ ! -f "$BACKUP_FILE" ]]; then
-      fail_drill "newest verified artifact $BACKUP_FILE is missing from disk" "$BACKUP_FILE"
+      fail_drill "$(msg "script.runbook.restore_drill_missing_artifact" "newest verified artifact {file} is missing from disk" file="$BACKUP_FILE")" "$BACKUP_FILE"
     fi
     SCRATCH="hotel_restore_verify_$$"
     "${COMPOSE[@]}" exec -T db psql -U hotel -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE $SCRATCH;" >/dev/null
     if ! "${COMPOSE[@]}" exec -T db psql -U hotel -d "$SCRATCH" -v ON_ERROR_STOP=1 -f - <"$BACKUP_FILE" >/dev/null; then
       "${COMPOSE[@]}" exec -T db psql -U hotel -d postgres -c "DROP DATABASE IF EXISTS $SCRATCH;" >/dev/null 2>&1 || true
-      fail_drill "the backup copy did not load" "$BACKUP_FILE"
+      fail_drill "$(msg "script.runbook.restore_drill_load_failed" "the backup copy did not load")" "$BACKUP_FILE"
     fi
     TABLES="$("${COMPOSE[@]}" exec -T db psql -U hotel -d "$SCRATCH" -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog','information_schema');")"
     PROFILES="$("${COMPOSE[@]}" exec -T db psql -U hotel -d "$SCRATCH" -tAc "SELECT count(*) FROM admin.hotel_profile;" 2>/dev/null || echo 0)"
     if [[ -n "$EXPECT_FILE" ]]; then
       verify_expectation "$SCRATCH" "$EXPECT_FILE" \
-        || { "${COMPOSE[@]}" exec -T db psql -U hotel -d postgres -v ON_ERROR_STOP=1 -c "DROP DATABASE $SCRATCH;" >/dev/null 2>&1 || true; fail_drill "desk-state verification against $EXPECT_FILE failed" "$BACKUP_FILE"; }
+        || { "${COMPOSE[@]}" exec -T db psql -U hotel -d postgres -v ON_ERROR_STOP=1 -c "DROP DATABASE $SCRATCH;" >/dev/null 2>&1 || true; fail_drill "$(msg "script.runbook.restore_drill_expect_failed" "desk-state verification against {file} failed" file="$EXPECT_FILE")" "$BACKUP_FILE"; }
     fi
     "${COMPOSE[@]}" exec -T db psql -U hotel -d postgres -v ON_ERROR_STOP=1 -c "DROP DATABASE $SCRATCH;" >/dev/null
     ELAPSED="$(( $(date +%s) - START_EPOCH ))"
     write_drill_report "success" "" "$ELAPSED" "$BACKUP_FILE" "$TABLES" "$PROFILES"
-    echo "restore: drill SUCCEEDED in ${ELAPSED}s (RTO budget 4h): $BACKUP_FILE restored to scratch with $TABLES user tables, $PROFILES hotel profile row(s); report $DRILL_REPORT."
+    echo "$(msg "script.runbook.restore_drill_succeeded" "restore: drill SUCCEEDED in {elapsed}s (RTO budget 4h): {file} restored to scratch with {tables} user tables, {profiles} hotel profile row(s); report {report}." elapsed="$ELAPSED" file="$BACKUP_FILE" tables="$TABLES" profiles="$PROFILES" report="$DRILL_REPORT")"
     ;;
 
   --live)
@@ -254,28 +257,28 @@ PYEOF
           exit 2 ;;
         *)
           if [[ -n "$BACKUP_FILE" ]]; then
-            echo "restore: only one backup file argument is accepted (got $1)." >&2
+            echo "$(msg "script.runbook.restore_live_extra_arg" "restore: only one backup file argument is accepted (got {arg})." arg="$1")" >&2
             exit 2
           fi
           BACKUP_FILE="$1"; shift ;;
       esac
     done
-    [[ -n "$BACKUP_FILE" ]] || { echo "restore: --live needs a backup file path." >&2; exit 2; }
+    [[ -n "$BACKUP_FILE" ]] || { echo "$(msg "script.runbook.restore_live_needs_file" "restore: --live needs a backup file path.")" >&2; exit 2; }
     BASE_URL="${BASE_URL:-http://127.0.0.1}"
-    [[ -f "$BACKUP_FILE" ]] || { echo "restore: backup file $BACKUP_FILE not found." >&2; exit 1; }
+    [[ -f "$BACKUP_FILE" ]] || { echo "$(msg "script.runbook.restore_live_not_found" "restore: backup file {file} not found." file="$BACKUP_FILE")" >&2; exit 1; }
     # Live restore wipes and reloads the hotel database: proceed
     # only when the operator types the hotel's own property code
     # exactly as configured (deploy/config, deployment.md section 2).
     # A missing or unreadable configuration fails closed.
     PROPERTY_CODE="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("hotel", {}).get("propertyCode", ""))' "$CONFIG" 2>/dev/null || true)"
     if [[ -z "$PROPERTY_CODE" ]]; then
-      echo "restore: cannot read hotel.propertyCode from $CONFIG; refusing the live restore." >&2
+      echo "$(msg "script.runbook.restore_live_no_property" "restore: cannot read hotel.propertyCode from {config}; refusing the live restore." config="$CONFIG")" >&2
       exit 1
     fi
-    echo "restore: LIVE restore from $BACKUP_FILE. Desk work must be stopped. Type the hotel property code to continue."
+    echo "$(msg "script.runbook.restore_live_confirm" "restore: LIVE restore from {file}. Desk work must be stopped. Type the hotel property code to continue." file="$BACKUP_FILE")"
     read -r CONFIRM
     if [[ "$CONFIRM" != "$PROPERTY_CODE" ]]; then
-      echo "restore: aborted (typed code does not match the configured property code)." >&2
+      echo "$(msg "script.runbook.restore_live_aborted" "restore: aborted (typed code does not match the configured property code).")" >&2
       exit 1
     fi
     touch "$STAGING_DIR/.restore-in-progress" 2>/dev/null || true
@@ -293,9 +296,9 @@ PYEOF
     "${COMPOSE[@]}" up -d proxy
     sleep 10
     if health_check "$BASE_URL"; then
-      echo "restore: LIVE restore SUCCEEDED; sign in and run the runbook section 5 checks before resuming desk work."
+      echo "$(msg "script.runbook.restore_live_succeeded" "restore: LIVE restore SUCCEEDED; sign in and run the runbook section 5 checks before resuming desk work.")"
     else
-      echo "restore: LIVE restore loaded but the health check FAILED — call support (runbook.md section 6)." >&2
+      echo "$(msg "script.runbook.restore_live_health_failed" "restore: LIVE restore loaded but the health check FAILED — call support (runbook.md section 6).")" >&2
       exit 1
     fi
     ;;

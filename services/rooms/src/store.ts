@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { HttpError } from "./errors.js";
+import { msg } from "./messages.js";
 
 // In-memory RoomInventoryService store (LLD section 3). The guard
 // shapes mirror the SQL transactions from the schema migration: the
@@ -85,14 +86,14 @@ export const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 export function requireDate(value: unknown, field: string): string {
   if (typeof value !== "string" || !DATE_PATTERN.test(value)) {
-    throw new HttpError("VALIDATION_FAILED", `${field} must be a YYYY-MM-DD date.`, { field });
+    throw new HttpError("VALIDATION_FAILED", msg("rooms.validation.date_format", { field }), { field });
   }
   return value;
 }
 
 export function requireString(value: unknown, field: string): string {
   if (typeof value !== "string" || value.trim() === "") {
-    throw new HttpError("VALIDATION_FAILED", `${field} is required.`, { field });
+    throw new HttpError("VALIDATION_FAILED", msg("error.validation.field_required", { field }), { field });
   }
   return value.trim();
 }
@@ -198,7 +199,7 @@ export class RoomStore implements RoomStoreAPI {
     const key = requireString(ref, "roomType");
     const found = this.roomTypes.get(key) ?? this.roomTypesByName.get(key);
     if (!found) {
-      throw new HttpError("NOT_FOUND", `Unknown room type ${key}.`, { roomType: key });
+      throw new HttpError("NOT_FOUND", msg("rooms.notfound.room_type", { roomType: key }), { roomType: key });
     }
     return found;
   }
@@ -207,7 +208,7 @@ export class RoomStore implements RoomStoreAPI {
     const key = requireString(number, "roomNumber");
     const room = this.rooms.get(key);
     if (!room) {
-      throw new HttpError("NOT_FOUND", `Unknown room ${key}.`, { roomNumber: key });
+      throw new HttpError("NOT_FOUND", msg("rooms.notfound.room", { roomNumber: key }), { roomNumber: key });
     }
     return room;
   }
@@ -265,7 +266,7 @@ export class RoomStore implements RoomStoreAPI {
     const room = await this.findRoom(input.roomNumber);
     const actor = requireString(input.actor, "actor");
     if (typeof input.newState !== "string" || !ROOM_STATES.includes(input.newState as RoomState)) {
-      throw new HttpError("VALIDATION_FAILED", "Unknown state value.", { newState: input.newState });
+      throw new HttpError("VALIDATION_FAILED", msg("rooms.validation.unknown_state", {}), { newState: input.newState });
     }
     const newState = input.newState as RoomState;
     if (room.state === newState) {
@@ -274,7 +275,7 @@ export class RoomStore implements RoomStoreAPI {
     if (!ALLOWED_TRANSITIONS[room.state].includes(newState)) {
       throw new HttpError(
         "STATE_ILLEGAL",
-        `Cannot move room ${room.number} from ${room.state} to ${newState}.`,
+        msg("rooms.state.illegal_transition", { roomNumber: room.number, oldState: room.state, newState }),
         { roomNumber: room.number, oldState: room.state, newState },
       );
     }
@@ -292,7 +293,7 @@ export class RoomStore implements RoomStoreAPI {
 
   async listRoomsByState(state: unknown): Promise<RoomRecord[]> {
     if (typeof state !== "string" || !ROOM_STATES.includes(state as RoomState)) {
-      throw new HttpError("VALIDATION_FAILED", "Unknown state value.", { state });
+      throw new HttpError("VALIDATION_FAILED", msg("rooms.validation.unknown_state", {}), { state });
     }
     return [...this.rooms.values()].filter((room) => room.state === state);
   }
@@ -309,7 +310,7 @@ export class RoomStore implements RoomStoreAPI {
     const dateFrom = requireDate(input.dateFrom, "dateFrom");
     const dateTo = requireDate(input.dateTo, "dateTo");
     if (dateTo < dateFrom) {
-      throw new HttpError("VALIDATION_FAILED", "dateTo is before dateFrom.", { dateFrom, dateTo });
+      throw new HttpError("VALIDATION_FAILED", msg("error.validation.date_range_order", {}), { dateFrom, dateTo });
     }
     if (input.roomNumber !== undefined) {
       const room = await this.findRoom(input.roomNumber);
@@ -317,7 +318,7 @@ export class RoomStore implements RoomStoreAPI {
         (entry) => entry.roomId === room.id && rangesOverlap(entry.dateFrom, entry.dateTo, dateFrom, dateTo),
       );
       if (block) {
-        throw new HttpError("STATE_ILLEGAL", `Room ${room.number} is blocked for the requested dates.`, {
+        throw new HttpError("STATE_ILLEGAL", msg("rooms.state.room_blocked", { roomNumber: room.number }), {
           roomNumber: room.number,
           dateFrom: block.dateFrom,
           dateTo: block.dateTo,
@@ -371,7 +372,7 @@ export class RoomStore implements RoomStoreAPI {
         entry.roomId === room.id && entry.dateFrom <= businessDate && entry.dateTo >= businessDate,
     );
     if (block) {
-      throw new HttpError("STATE_ILLEGAL", `Room ${room.number} is blocked on ${businessDate}.`, {
+      throw new HttpError("STATE_ILLEGAL", msg("rooms.state.room_blocked_on", { roomNumber: room.number, businessDate }), {
         roomNumber: room.number,
         dateFrom: block.dateFrom,
         dateTo: block.dateTo,
@@ -379,10 +380,10 @@ export class RoomStore implements RoomStoreAPI {
       });
     }
     if (room.state === "occupied") {
-      throw new HttpError("CONFLICT", `Room ${room.number} was just taken.`, { roomNumber: room.number });
+      throw new HttpError("CONFLICT", msg("rooms.conflict.room_taken", { roomNumber: room.number }), { roomNumber: room.number });
     }
     if (room.state !== "vacant-inspected") {
-      throw new HttpError("STATE_ILLEGAL", `Room ${room.number} is ${room.state}, not ready.`, {
+      throw new HttpError("STATE_ILLEGAL", msg("rooms.state.room_not_ready", { roomNumber: room.number, state: room.state }), {
         roomNumber: room.number,
         state: room.state,
       });
@@ -405,7 +406,7 @@ export class RoomStore implements RoomStoreAPI {
     const room = await this.findRoom(input.roomNumber);
     const actor = requireString(input.actor, "actor");
     if (room.state !== "occupied") {
-      throw new HttpError("STATE_ILLEGAL", `Room ${room.number} is ${room.state}, not occupied.`, {
+      throw new HttpError("STATE_ILLEGAL", msg("rooms.state.room_not_occupied", { roomNumber: room.number, state: room.state }), {
         roomNumber: room.number,
         state: room.state,
       });
@@ -415,7 +416,7 @@ export class RoomStore implements RoomStoreAPI {
         ? (input.toState as RoomState)
         : "vacant-dirty";
     if (toState === "occupied") {
-      throw new HttpError("VALIDATION_FAILED", "Release target cannot be occupied.", { toState });
+      throw new HttpError("VALIDATION_FAILED", msg("rooms.validation.release_occupied", {}), { toState });
     }
     room.state = toState;
     this.recordHistory(room.id, "occupied", toState, actor);
@@ -430,10 +431,10 @@ export class RoomStore implements RoomStoreAPI {
     const reason = requireString(input.reason, "reason");
     const actor = requireString(input.actor, "actor");
     if (dateTo < dateFrom) {
-      throw new HttpError("VALIDATION_FAILED", "dateTo is before dateFrom.", { dateFrom, dateTo });
+      throw new HttpError("VALIDATION_FAILED", msg("error.validation.date_range_order", {}), { dateFrom, dateTo });
     }
     if (room.state === "occupied") {
-      throw new HttpError("STATE_ILLEGAL", `Room ${room.number} is occupied and cannot be blocked.`, {
+      throw new HttpError("STATE_ILLEGAL", msg("rooms.state.room_occupied", { roomNumber: room.number }), {
         roomNumber: room.number,
       });
     }
@@ -442,7 +443,7 @@ export class RoomStore implements RoomStoreAPI {
         entry.roomId === room.id && entry.dateFrom === dateFrom && entry.dateTo === dateTo && entry.reason === reason,
     );
     if (duplicate) {
-      throw new HttpError("VALIDATION_FAILED", "Identical block already exists.", {
+      throw new HttpError("VALIDATION_FAILED", msg("rooms.validation.duplicate_block", {}), {
         roomNumber: room.number,
         dateFrom,
         dateTo,
@@ -469,7 +470,7 @@ export class RoomStore implements RoomStoreAPI {
     const dateTo = requireDate(input.dateTo, "dateTo");
     const actor = requireString(input.actor, "actor");
     if (dateTo < dateFrom) {
-      throw new HttpError("VALIDATION_FAILED", "dateTo is before dateFrom.", { dateFrom, dateTo });
+      throw new HttpError("VALIDATION_FAILED", msg("error.validation.date_range_order", {}), { dateFrom, dateTo });
     }
     const index = this.blocks.findIndex(
       (entry) => entry.roomId === room.id && entry.dateFrom === dateFrom && entry.dateTo === dateTo,
@@ -477,7 +478,7 @@ export class RoomStore implements RoomStoreAPI {
     if (index === -1) {
       throw new HttpError(
         "STATE_ILLEGAL",
-        `Room ${room.number} has no block covering ${dateFrom} to ${dateTo}.`,
+        msg("rooms.state.no_covering_block", { roomNumber: room.number, dateFrom, dateTo }),
         { roomNumber: room.number, dateFrom, dateTo },
       );
     }

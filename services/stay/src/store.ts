@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { HttpError } from "./errors.js";
+import { msg } from "./messages.js";
 
 // In-memory StayService store (LLD section 2). Check-in records one
 // in-house occupation after the desk loop assigns the room through
@@ -37,14 +38,14 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
 
 export function requireUuid(value: unknown, field: string): string {
   if (typeof value !== "string" || !UUID_PATTERN.test(value)) {
-    throw new HttpError("VALIDATION_FAILED", `${field} must be a UUID.`, { field });
+    throw new HttpError("VALIDATION_FAILED", msg("error.validation.must_be_uuid", { field }), { field });
   }
   return value;
 }
 
 export function requireString(value: unknown, field: string): string {
   if (typeof value !== "string" || value.trim() === "") {
-    throw new HttpError("VALIDATION_FAILED", `${field} is required.`, { field });
+    throw new HttpError("VALIDATION_FAILED", msg("error.validation.field_required", { field }), { field });
   }
   return value.trim();
 }
@@ -54,7 +55,7 @@ export function optionalTimestamp(value: unknown, field: string): string | null 
     return null;
   }
   if (typeof value !== "string" || Number.isNaN(Date.parse(value))) {
-    throw new HttpError("VALIDATION_FAILED", `${field} must be an ISO-8601 timestamp.`, { field });
+    throw new HttpError("VALIDATION_FAILED", msg("stay.validation.timestamp_format", { field }), { field });
   }
   return new Date(value).toISOString();
 }
@@ -146,12 +147,12 @@ export interface StayStoreAPI {
 // SETTLEMENT_REQUIRED and the stay remains in house.
 export function checkFolioGate(folioBalanceMinor: unknown, openBalanceApproval: unknown): void {
   if (!Number.isInteger(folioBalanceMinor)) {
-    throw new HttpError("VALIDATION_FAILED", "folioBalanceMinor is required and must be an integer.", {
+    throw new HttpError("VALIDATION_FAILED", msg("stay.validation.folio_balance", {}), {
       field: "folioBalanceMinor",
     });
   }
   if (folioBalanceMinor !== 0 && (openBalanceApproval === undefined || openBalanceApproval === null)) {
-    throw new HttpError("SETTLEMENT_REQUIRED", "The folio has an open balance and no approval is recorded.", {
+    throw new HttpError("SETTLEMENT_REQUIRED", msg("stay.settlement.open_balance", {}), {
       folioBalanceMinor,
     });
   }
@@ -160,7 +161,7 @@ export function checkFolioGate(folioBalanceMinor: unknown, openBalanceApproval: 
     openBalanceApproval !== null &&
     (typeof openBalanceApproval !== "object" || Array.isArray(openBalanceApproval))
   ) {
-    throw new HttpError("VALIDATION_FAILED", "openBalanceApproval must be the recorded approval object.", {
+    throw new HttpError("VALIDATION_FAILED", msg("stay.validation.approval_object", {}), {
       field: "openBalanceApproval",
     });
   }
@@ -168,7 +169,7 @@ export function checkFolioGate(folioBalanceMinor: unknown, openBalanceApproval: 
 
 export function requireDate(value: unknown, field: string): string {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(Date.parse(value))) {
-    throw new HttpError("VALIDATION_FAILED", `${field} must be a YYYY-MM-DD date.`, { field });
+    throw new HttpError("VALIDATION_FAILED", msg("stay.validation.date_format", { field }), { field });
   }
   return value;
 }
@@ -192,7 +193,7 @@ export class StayStore implements StayStoreAPI {
     const actualArrival = optionalTimestamp(input.actualArrival, "actualArrival") ?? new Date().toISOString();
     const actor = requireString(input.actor, "actor");
     if (this.staysByReservation.has(reservationId)) {
-      throw new HttpError("CONFLICT", "Reservation is already checked in.", {
+      throw new HttpError("CONFLICT", msg("stay.conflict.already_checked_in", {}), {
         reservationId,
         stayId: (this.staysByReservation.get(reservationId) as StayRecord).id,
       });
@@ -223,26 +224,26 @@ export class StayStore implements StayStoreAPI {
     if (typeof input.stayId === "string" && input.stayId !== "") {
       const record = this.stays.get(requireUuid(input.stayId, "stayId"));
       if (!record) {
-        throw new HttpError("NOT_FOUND", `Unknown stay ${input.stayId}.`, { stayId: input.stayId });
+        throw new HttpError("NOT_FOUND", msg("stay.notfound.stay", { stayId: input.stayId }), { stayId: input.stayId });
       }
       return record;
     }
     if (typeof input.reservationId === "string" && input.reservationId !== "") {
       const record = this.staysByReservation.get(requireUuid(input.reservationId, "reservationId"));
       if (!record) {
-        throw new HttpError("NOT_FOUND", `No stay for reservation ${input.reservationId}.`, {
+        throw new HttpError("NOT_FOUND", msg("stay.notfound.stay_for_reservation", { reservationId: input.reservationId }), {
           reservationId: input.reservationId,
         });
       }
       return record;
     }
-    throw new HttpError("VALIDATION_FAILED", "stayId or reservationId is required.", { field: "stayId" });
+    throw new HttpError("VALIDATION_FAILED", msg("stay.validation.stay_or_reservation", {}), { field: "stayId" });
   }
 
   async queryStays(input: QueryStaysInput): Promise<StayRecord[]> {
     if (input.state !== undefined) {
       if (typeof input.state !== "string" || !STAY_STATES.includes(input.state as StayState)) {
-        throw new HttpError("VALIDATION_FAILED", "Unknown stay state.", { state: input.state });
+        throw new HttpError("VALIDATION_FAILED", msg("stay.validation.unknown_state", {}), { state: input.state });
       }
       return [...this.stays.values()].filter((stay) => stay.state === input.state);
     }
@@ -270,10 +271,10 @@ export class StayStore implements StayStoreAPI {
     }
     const record = this.stays.get(id);
     if (!record) {
-      throw new HttpError("NOT_FOUND", `Unknown stay ${id}.`, { stayId: id });
+      throw new HttpError("NOT_FOUND", msg("stay.notfound.stay", { stayId: id }), { stayId: id });
     }
     if (record.state !== "in-house") {
-      throw new HttpError("STATE_ILLEGAL", `Stay ${id} is ${record.state}, not in house.`, {
+      throw new HttpError("STATE_ILLEGAL", msg("stay.state.not_in_house", { stayId: id, state: record.state }), {
         stayId: id,
         state: record.state,
       });
@@ -312,16 +313,16 @@ export class StayStore implements StayStoreAPI {
     }
     const record = this.stays.get(id);
     if (!record) {
-      throw new HttpError("NOT_FOUND", `Unknown stay ${id}.`, { stayId: id });
+      throw new HttpError("NOT_FOUND", msg("stay.notfound.stay", { stayId: id }), { stayId: id });
     }
     if (record.state !== "in-house") {
-      throw new HttpError("STATE_ILLEGAL", `Stay ${id} is ${record.state}, not in house.`, {
+      throw new HttpError("STATE_ILLEGAL", msg("stay.state.not_in_house", { stayId: id, state: record.state }), {
         stayId: id,
         state: record.state,
       });
     }
     if (record.currentRoomId === toRoomId) {
-      throw new HttpError("VALIDATION_FAILED", "The guest is already in that room.", { toRoomId });
+      throw new HttpError("VALIDATION_FAILED", msg("stay.validation.guest_in_room", {}), { toRoomId });
     }
     const move: MoveRecord = {
       stayId: id,
@@ -350,12 +351,12 @@ export class StayStore implements StayStoreAPI {
     const actor = requireString(input.actor, "actor");
     const record = this.stays.get(id);
     if (!record) {
-      throw new HttpError("NOT_FOUND", `Unknown stay ${id}.`, { stayId: id });
+      throw new HttpError("NOT_FOUND", msg("stay.notfound.stay", { stayId: id }), { stayId: id });
     }
     const actualArrival = optionalTimestamp(input.actualArrival, "actualArrival") ?? record.actualArrival;
     const actualDeparture = optionalTimestamp(input.actualDeparture, "actualDeparture") ?? record.actualDeparture;
     if (actualArrival !== null && actualDeparture !== null && actualDeparture < actualArrival) {
-      throw new HttpError("VALIDATION_FAILED", "actualDeparture cannot be before actualArrival.", {
+      throw new HttpError("VALIDATION_FAILED", msg("stay.validation.departure_order", {}), {
         actualArrival,
         actualDeparture,
       });
@@ -378,10 +379,10 @@ export class StayStore implements StayStoreAPI {
     const id = requireUuid(input.stayId, "stayId");
     const record = this.stays.get(id);
     if (!record) {
-      throw new HttpError("NOT_FOUND", `Unknown stay ${id}.`, { stayId: id });
+      throw new HttpError("NOT_FOUND", msg("stay.notfound.stay", { stayId: id }), { stayId: id });
     }
     if (record.state !== "in-house") {
-      throw new HttpError("STATE_ILLEGAL", `Stay ${id} is ${record.state}, not in house.`, {
+      throw new HttpError("STATE_ILLEGAL", msg("stay.state.not_in_house", { stayId: id, state: record.state }), {
         stayId: id,
         state: record.state,
       });

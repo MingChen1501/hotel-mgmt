@@ -1,6 +1,7 @@
 import type { Pool, PoolClient } from "pg";
 import { randomUUID } from "node:crypto";
 import { HttpError } from "./errors.js";
+import { msg } from "./messages.js";
 import {
   ALLOWED_TRANSITIONS,
   ROOM_STATES,
@@ -114,7 +115,7 @@ export class PostgresRoomStore implements RoomStoreAPI {
       [key],
     );
     if (rows.length === 0) {
-      throw new HttpError("NOT_FOUND", `Unknown room type ${key}.`, { roomType: key });
+      throw new HttpError("NOT_FOUND", msg("rooms.notfound.room_type", { roomType: key }), { roomType: key });
     }
     return PostgresRoomStore.toRoomType(
       rows[0] as { id: string; name: string; capacity: number | null; bed_type: string | null; features: Record<string, unknown> },
@@ -129,7 +130,7 @@ export class PostgresRoomStore implements RoomStoreAPI {
       [key],
     );
     if (rows.length === 0) {
-      throw new HttpError("NOT_FOUND", `Unknown room ${key}.`, { roomNumber: key });
+      throw new HttpError("NOT_FOUND", msg("rooms.notfound.room", { roomNumber: key }), { roomNumber: key });
     }
     return PostgresRoomStore.toRoom(rows[0]);
   }
@@ -267,7 +268,7 @@ export class PostgresRoomStore implements RoomStoreAPI {
   }> {
     const actor = requireString(input.actor, "actor");
     if (typeof input.newState !== "string" || !ROOM_STATES.includes(input.newState as RoomState)) {
-      throw new HttpError("VALIDATION_FAILED", "Unknown state value.", { newState: input.newState });
+      throw new HttpError("VALIDATION_FAILED", msg("rooms.validation.unknown_state", {}), { newState: input.newState });
     }
     const newState = input.newState as RoomState;
     return this.withTx(async (client) => {
@@ -277,7 +278,7 @@ export class PostgresRoomStore implements RoomStoreAPI {
       );
       if (found.rows.length === 0) {
         const key = requireString(input.roomNumber, "roomNumber");
-        throw new HttpError("NOT_FOUND", `Unknown room ${key}.`, { roomNumber: key });
+        throw new HttpError("NOT_FOUND", msg("rooms.notfound.room", { roomNumber: key }), { roomNumber: key });
       }
       const room = found.rows[0] as { id: string; number: string; state: RoomState };
       if (room.state === newState) {
@@ -286,7 +287,7 @@ export class PostgresRoomStore implements RoomStoreAPI {
       if (!ALLOWED_TRANSITIONS[room.state].includes(newState)) {
         throw new HttpError(
           "STATE_ILLEGAL",
-          `Cannot move room ${room.number} from ${room.state} to ${newState}.`,
+          msg("rooms.state.illegal_transition", { roomNumber: room.number, oldState: room.state, newState }),
           { roomNumber: room.number, oldState: room.state, newState },
         );
       }
@@ -313,7 +314,7 @@ export class PostgresRoomStore implements RoomStoreAPI {
 
   async listRoomsByState(state: unknown): Promise<RoomRecord[]> {
     if (typeof state !== "string" || !ROOM_STATES.includes(state as RoomState)) {
-      throw new HttpError("VALIDATION_FAILED", "Unknown state value.", { state });
+      throw new HttpError("VALIDATION_FAILED", msg("rooms.validation.unknown_state", {}), { state });
     }
     const { rows } = await this.pool.query(
       `SELECT id, number, room_type_id, floor, bed_type, capacity, features, state
@@ -335,7 +336,7 @@ export class PostgresRoomStore implements RoomStoreAPI {
     const dateFrom = requireDate(input.dateFrom, "dateFrom");
     const dateTo = requireDate(input.dateTo, "dateTo");
     if (dateTo < dateFrom) {
-      throw new HttpError("VALIDATION_FAILED", "dateTo is before dateFrom.", { dateFrom, dateTo });
+      throw new HttpError("VALIDATION_FAILED", msg("error.validation.date_range_order", {}), { dateFrom, dateTo });
     }
     if (input.roomNumber !== undefined) {
       const room = await this.findRoom(input.roomNumber);
@@ -348,7 +349,7 @@ export class PostgresRoomStore implements RoomStoreAPI {
       );
       if (blocked.rows.length > 0) {
         const entry = blocked.rows[0] as { dateFrom: string; dateTo: string; reason: string };
-        throw new HttpError("STATE_ILLEGAL", `Room ${room.number} is blocked for the requested dates.`, {
+        throw new HttpError("STATE_ILLEGAL", msg("rooms.state.room_blocked", { roomNumber: room.number }), {
           roomNumber: room.number,
           dateFrom: entry.dateFrom,
           dateTo: entry.dateTo,
@@ -455,7 +456,7 @@ export class PostgresRoomStore implements RoomStoreAPI {
   ): Promise<HttpError> {
     const found = await client.query(`SELECT id, number, state FROM rooms.rooms WHERE number = $1`, [roomNumber]);
     if (found.rows.length === 0) {
-      return new HttpError("NOT_FOUND", `Unknown room ${roomNumber}.`, { roomNumber });
+      return new HttpError("NOT_FOUND", msg("rooms.notfound.room", { roomNumber }), { roomNumber });
     }
     const room = found.rows[0] as { id: string; number: string; state: RoomState };
     const blocked = await client.query(
@@ -467,7 +468,7 @@ export class PostgresRoomStore implements RoomStoreAPI {
     );
     if (blocked.rows.length > 0) {
       const entry = blocked.rows[0] as { dateFrom: string; dateTo: string; reason: string };
-      return new HttpError("STATE_ILLEGAL", `Room ${room.number} is blocked on ${businessDate}.`, {
+      return new HttpError("STATE_ILLEGAL", msg("rooms.state.room_blocked_on", { roomNumber: room.number, businessDate }), {
         roomNumber: room.number,
         dateFrom: entry.dateFrom,
         dateTo: entry.dateTo,
@@ -475,17 +476,17 @@ export class PostgresRoomStore implements RoomStoreAPI {
       });
     }
     if (room.state === "occupied") {
-      return new HttpError("CONFLICT", `Room ${room.number} was just taken.`, { roomNumber: room.number });
+      return new HttpError("CONFLICT", msg("rooms.conflict.room_taken", { roomNumber: room.number }), { roomNumber: room.number });
     }
     if (room.state !== "vacant-inspected") {
-      return new HttpError("STATE_ILLEGAL", `Room ${room.number} is ${room.state}, not ready.`, {
+      return new HttpError("STATE_ILLEGAL", msg("rooms.state.room_not_ready", { roomNumber: room.number, state: room.state }), {
         roomNumber: room.number,
         state: room.state,
       });
     }
     // The room reads ready here but the write lost: a simultaneous
     // assignment won the race between the check and the write.
-    return new HttpError("CONFLICT", `Room ${room.number} was just taken.`, { roomNumber: room.number });
+    return new HttpError("CONFLICT", msg("rooms.conflict.room_taken", { roomNumber: room.number }), { roomNumber: room.number });
   }
 
   async releaseRoom(input: ReleaseRoomInput): Promise<{
@@ -499,7 +500,7 @@ export class PostgresRoomStore implements RoomStoreAPI {
         ? (input.toState as RoomState)
         : "vacant-dirty";
     if (toState === "occupied") {
-      throw new HttpError("VALIDATION_FAILED", "Release target cannot be occupied.", { toState });
+      throw new HttpError("VALIDATION_FAILED", msg("rooms.validation.release_occupied", {}), { toState });
     }
     return this.withTx(async (client) => {
       const found = await client.query(`SELECT id, number, state FROM rooms.rooms WHERE number = $1`, [
@@ -507,11 +508,11 @@ export class PostgresRoomStore implements RoomStoreAPI {
       ]);
       if (found.rows.length === 0) {
         const key = requireString(input.roomNumber, "roomNumber");
-        throw new HttpError("NOT_FOUND", `Unknown room ${key}.`, { roomNumber: key });
+        throw new HttpError("NOT_FOUND", msg("rooms.notfound.room", { roomNumber: key }), { roomNumber: key });
       }
       const room = found.rows[0] as { id: string; number: string; state: RoomState };
       if (room.state !== "occupied") {
-        throw new HttpError("STATE_ILLEGAL", `Room ${room.number} is ${room.state}, not occupied.`, {
+        throw new HttpError("STATE_ILLEGAL", msg("rooms.state.room_not_occupied", { roomNumber: room.number, state: room.state }), {
           roomNumber: room.number,
           state: room.state,
         });
@@ -548,7 +549,7 @@ export class PostgresRoomStore implements RoomStoreAPI {
     const reason = requireString(input.reason, "reason");
     const actor = requireString(input.actor, "actor");
     if (dateTo < dateFrom) {
-      throw new HttpError("VALIDATION_FAILED", "dateTo is before dateFrom.", { dateFrom, dateTo });
+      throw new HttpError("VALIDATION_FAILED", msg("error.validation.date_range_order", {}), { dateFrom, dateTo });
     }
     return this.withTx(async (client) => {
       const found = await client.query(`SELECT id, number, state FROM rooms.rooms WHERE number = $1`, [
@@ -556,11 +557,11 @@ export class PostgresRoomStore implements RoomStoreAPI {
       ]);
       if (found.rows.length === 0) {
         const key = requireString(input.roomNumber, "roomNumber");
-        throw new HttpError("NOT_FOUND", `Unknown room ${key}.`, { roomNumber: key });
+        throw new HttpError("NOT_FOUND", msg("rooms.notfound.room", { roomNumber: key }), { roomNumber: key });
       }
       const room = found.rows[0] as { id: string; number: string; state: RoomState };
       if (room.state === "occupied") {
-        throw new HttpError("STATE_ILLEGAL", `Room ${room.number} is occupied and cannot be blocked.`, {
+        throw new HttpError("STATE_ILLEGAL", msg("rooms.state.room_occupied", { roomNumber: room.number }), {
           roomNumber: room.number,
         });
       }
@@ -570,7 +571,7 @@ export class PostgresRoomStore implements RoomStoreAPI {
         [room.id, dateFrom, dateTo, reason],
       );
       if (duplicate.rows.length > 0) {
-        throw new HttpError("VALIDATION_FAILED", "Identical block already exists.", {
+        throw new HttpError("VALIDATION_FAILED", msg("rooms.validation.duplicate_block", {}), {
           roomNumber: room.number,
           dateFrom,
           dateTo,
@@ -602,7 +603,7 @@ export class PostgresRoomStore implements RoomStoreAPI {
     const dateTo = requireDate(input.dateTo, "dateTo");
     const actor = requireString(input.actor, "actor");
     if (dateTo < dateFrom) {
-      throw new HttpError("VALIDATION_FAILED", "dateTo is before dateFrom.", { dateFrom, dateTo });
+      throw new HttpError("VALIDATION_FAILED", msg("error.validation.date_range_order", {}), { dateFrom, dateTo });
     }
     return this.withTx(async (client) => {
       const found = await client.query(`SELECT id, number FROM rooms.rooms WHERE number = $1`, [
@@ -610,7 +611,7 @@ export class PostgresRoomStore implements RoomStoreAPI {
       ]);
       if (found.rows.length === 0) {
         const key = requireString(input.roomNumber, "roomNumber");
-        throw new HttpError("NOT_FOUND", `Unknown room ${key}.`, { roomNumber: key });
+        throw new HttpError("NOT_FOUND", msg("rooms.notfound.room", { roomNumber: key }), { roomNumber: key });
       }
       const room = found.rows[0] as { id: string; number: string };
       const removed = await client.query(
@@ -622,7 +623,7 @@ export class PostgresRoomStore implements RoomStoreAPI {
       if (removed.rows.length === 0) {
         throw new HttpError(
           "STATE_ILLEGAL",
-          `Room ${room.number} has no block covering ${dateFrom} to ${dateTo}.`,
+          msg("rooms.state.no_covering_block", { roomNumber: room.number, dateFrom, dateTo }),
           { roomNumber: room.number, dateFrom, dateTo },
         );
       }
