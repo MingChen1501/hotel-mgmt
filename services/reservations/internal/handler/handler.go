@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MingChen1501/hotel-mgmt/services/reservations/internal/messages"
 	"github.com/MingChen1501/hotel-mgmt/services/reservations/internal/service"
 	"github.com/MingChen1501/hotel-mgmt/services/reservations/internal/store"
 )
@@ -51,7 +52,7 @@ func decodeBody(w http.ResponseWriter, r *http.Request) (map[string]any, bool) {
 		}
 		writeJSON(w, http.StatusBadRequest, map[string]any{
 			"code":    "VALIDATION_FAILED",
-			"message": "Request body is not valid JSON.",
+			"message": messages.Text("error.transport.bad_json", nil),
 			"details": map[string]any{},
 			"traceId": traceID(),
 		})
@@ -101,7 +102,7 @@ func NewMux(svc *service.Service, st store.Repository) *http.ServeMux {
 			if !strings.HasPrefix(header, "Bearer ") || strings.TrimSpace(strings.TrimPrefix(header, "Bearer ")) == "" {
 				writeJSON(w, http.StatusUnauthorized, map[string]any{
 					"code":    "UNAUTHENTICATED",
-					"message": "Missing session token.",
+					"message": messages.Text("error.auth.missing_token", nil),
 					"details": map[string]any{},
 					"traceId": traceID(),
 				})
@@ -157,7 +158,7 @@ func NewMux(svc *service.Service, st store.Repository) *http.ServeMux {
 	mux.HandleFunc("POST /v1/reservations/GetReservation", authed(func(w http.ResponseWriter, body map[string]any) {
 		ref, ok := strField(body, "reservationRef")
 		if !ok {
-			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: "reservationRef is required.", Details: map[string]any{"field": "reservationRef"}})
+			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: messages.Text("error.validation.reservation_ref_required", nil), Details: map[string]any{"field": "reservationRef"}})
 			return
 		}
 		record, oerr := st.Get(ref)
@@ -180,12 +181,12 @@ func NewMux(svc *service.Service, st store.Repository) *http.ServeMux {
 	mux.HandleFunc("POST /v1/reservations/CheckInReservation", authed(func(w http.ResponseWriter, body map[string]any) {
 		ref, ok := strField(body, "reservationRef")
 		if !ok {
-			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: "reservationRef is required.", Details: map[string]any{"field": "reservationRef"}})
+			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: messages.Text("error.validation.reservation_ref_required", nil), Details: map[string]any{"field": "reservationRef"}})
 			return
 		}
 		stayID, _ := strField(body, "stayId")
 		if stayID == "" {
-			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: "stayId is required.", Details: map[string]any{"field": "stayId"}})
+			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: messages.Text("error.validation.stay_id_required", nil), Details: map[string]any{"field": "stayId"}})
 			return
 		}
 		actor, _ := strField(body, "actor")
@@ -203,7 +204,7 @@ func NewMux(svc *service.Service, st store.Repository) *http.ServeMux {
 	mux.HandleFunc("POST /v1/reservations/ModifyReservation", authed(func(w http.ResponseWriter, body map[string]any) {
 		ref, ok := strField(body, "reservationRef")
 		if !ok {
-			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: "reservationRef is required.", Details: map[string]any{"field": "reservationRef"}})
+			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: messages.Text("error.validation.reservation_ref_required", nil), Details: map[string]any{"field": "reservationRef"}})
 			return
 		}
 		arrival, _ := body["arrivalDate"].(string)
@@ -241,7 +242,7 @@ func NewMux(svc *service.Service, st store.Repository) *http.ServeMux {
 	mux.HandleFunc("POST /v1/reservations/CancelReservation", authed(func(w http.ResponseWriter, body map[string]any) {
 		ref, ok := strField(body, "reservationRef")
 		if !ok {
-			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: "reservationRef is required.", Details: map[string]any{"field": "reservationRef"}})
+			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: messages.Text("error.validation.reservation_ref_required", nil), Details: map[string]any{"field": "reservationRef"}})
 			return
 		}
 		reason, _ := strField(body, "reason")
@@ -261,7 +262,7 @@ func NewMux(svc *service.Service, st store.Repository) *http.ServeMux {
 	mux.HandleFunc("POST /v1/reservations/MarkNoShow", authed(func(w http.ResponseWriter, body map[string]any) {
 		ref, ok := strField(body, "reservationRef")
 		if !ok {
-			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: "reservationRef is required.", Details: map[string]any{"field": "reservationRef"}})
+			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: messages.Text("error.validation.reservation_ref_required", nil), Details: map[string]any{"field": "reservationRef"}})
 			return
 		}
 		reason, _ := strField(body, "reason")
@@ -280,24 +281,24 @@ func NewMux(svc *service.Service, st store.Repository) *http.ServeMux {
 	mux.HandleFunc("POST /v1/reservations/QueryCalendar", authed(func(w http.ResponseWriter, body map[string]any) {
 		from, ok := strField(body, "dateFrom")
 		if !ok {
-			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: "dateFrom is required.", Details: map[string]any{"field": "dateFrom"}})
+			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: messages.Text("error.validation.date_from_required", nil), Details: map[string]any{"field": "dateFrom"}})
 			return
 		}
 		to, ok := strField(body, "dateTo")
 		if !ok {
-			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: "dateTo is required.", Details: map[string]any{"field": "dateTo"}})
+			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: messages.Text("error.validation.date_to_required", nil), Details: map[string]any{"field": "dateTo"}})
 			return
 		}
 		if _, err := time.Parse("2006-01-02", from); err != nil {
-			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: "dateFrom must be a YYYY-MM-DD date.", Details: map[string]any{"field": "dateFrom"}})
+			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: messages.Text("error.validation.date_from_format", nil), Details: map[string]any{"field": "dateFrom"}})
 			return
 		}
 		if _, err := time.Parse("2006-01-02", to); err != nil {
-			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: "dateTo must be a YYYY-MM-DD date.", Details: map[string]any{"field": "dateTo"}})
+			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: messages.Text("error.validation.date_to_format", nil), Details: map[string]any{"field": "dateTo"}})
 			return
 		}
 		if to < from {
-			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: "dateTo is before dateFrom.", Details: map[string]any{"field": "dateTo"}})
+			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: messages.Text("error.validation.date_range_order", nil), Details: map[string]any{"field": "dateTo"}})
 			return
 		}
 		roomTypeID, _ := strField(body, "roomTypeId")

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/MingChen1501/hotel-mgmt/messages/schema.json",
+  "title": "Hotel message catalogue (default locale)",
+  "description": "Single source of truth for user-visible strings (NFR-I18N-1, api-spec section 1). Only the default locale ships; other locales arrive as additional files with the same keys.",
+  "type": "object",
+  "required": ["locale", "messages"],
+  "additionalProperties": false,
+  "properties": {
+    "locale": {
+      "type": "string",
+      "pattern": "^[a-z]{2}$",
+      "description": "BCP-47 primary language subtag this file provides."
+    },
+    "messages": {
+      "type": "object",
+      "minProperties": 1,
+      "patternProperties": {
+        "^[a-z0-9]+(\\.[a-z0-9_]+)+$": {
+          "type": "string",
+          "minLength": 1,
+          "description": "ICU-style pattern; placeholders are {name} with letters, digits, and underscores."
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

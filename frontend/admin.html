@@ -3,63 +3,64 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Hotel Management — Admin Console</title>
+  <title data-msg="desk.admin.title">Hotel Management — Admin Console</title>
 </head>
 <body>
-  <h1>Hotel Management — Admin Console</h1>
-  <p><a href="/">Back to the desk entry</a></p>
+  <h1 data-msg="desk.admin.title">Hotel Management — Admin Console</h1>
+  <p><a href="/" data-msg="desk.admin.back">Back to the desk entry</a></p>
 
   <section id="signin-section">
-    <h2>Sign in</h2>
+    <h2 data-msg="desk.admin.sign_in">Sign in</h2>
     <form id="signin-form">
-      <label>Sign-in identity: <input id="signin-identity" name="signin-identity" autocomplete="username"></label>
-      <label>Secret: <input id="signin-secret" name="signin-secret" type="password" autocomplete="current-password"></label>
-      <button type="submit">Sign in</button>
+      <label data-msg="desk.admin.signin_identity">Sign-in identity: <input id="signin-identity" name="signin-identity" autocomplete="username"></label>
+      <label data-msg="desk.admin.secret">Secret: <input id="signin-secret" name="signin-secret" type="password" autocomplete="current-password"></label>
+      <button type="submit" data-msg="desk.admin.sign_in">Sign in</button>
     </form>
     <p id="signin-error" role="alert" hidden></p>
   </section>
 
   <section id="console-section" hidden>
-    <p>Signed in as <strong id="whoami"></strong> (<span id="myrole"></span>).
-      <button id="signout-button" type="button">Sign out</button></p>
+    <p><span data-msg="desk.admin.signed_in_as">Signed in as </span><strong id="whoami"></strong> (<span id="myrole"></span>).
+      <button id="signout-button" type="button" data-msg="desk.admin.signout">Sign out</button></p>
 
-    <h2>Users and roles</h2>
+    <h2 data-msg="desk.admin.users_heading">Users and roles</h2>
     <p id="users-error" role="alert" hidden></p>
     <table id="users-table">
       <thead>
-        <tr><th>Name</th><th>Sign-in identity</th><th>Role</th><th>Locked</th><th>Actions</th></tr>
+        <tr><th data-msg="desk.admin.th_name">Name</th><th data-msg="desk.admin.th_identity">Sign-in identity</th><th data-msg="desk.admin.th_role">Role</th><th data-msg="desk.admin.th_locked">Locked</th><th data-msg="desk.admin.th_actions">Actions</th></tr>
       </thead>
       <tbody></tbody>
     </table>
 
-    <h3>Create account</h3>
+    <h3 data-msg="desk.admin.create_heading">Create account</h3>
     <form id="create-form">
-      <label>Name: <input id="create-name" name="create-name"></label>
-      <label>Sign-in identity: <input id="create-identity" name="create-identity"></label>
-      <label>Secret: <input id="create-secret" name="create-secret" type="password"></label>
-      <label>Role:
-        <select id="create-role" name="create-role">
+      <label data-msg="desk.admin.name_label">Name: <input id="create-name" name="create-name"></label>
+      <label data-msg="desk.admin.signin_identity">Sign-in identity: <input id="create-identity" name="create-identity"></label>
+      <label data-msg="desk.admin.secret">Secret: <input id="create-secret" name="create-secret" type="password"></label>
+      <label><span data-msg="desk.admin.role_label">Role: </span>        <select id="create-role" name="create-role">
           <option value="front-desk">front-desk</option>
           <option value="manager">manager</option>
           <option value="owner">owner</option>
         </select>
       </label>
-      <button type="submit">Create</button>
+      <button type="submit" data-msg="desk.admin.create_button">Create</button>
     </form>
 
-    <h2>Audit view</h2>
-    <p>Read-only: account creations and updates, config writes, and backup reports, newest first.</p>
-    <p><button id="audit-refresh" type="button">Refresh</button></p>
+    <h2 data-msg="desk.admin.audit_heading">Audit view</h2>
+    <p data-msg="desk.admin.audit_note">Read-only: account creations and updates, config writes, and backup reports, newest first.</p>
+    <p><button id="audit-refresh" type="button" data-msg="desk.admin.refresh">Refresh</button></p>
     <p id="audit-error" role="alert" hidden></p>
     <table id="audit-table">
       <thead>
-        <tr><th>Time</th><th>Actor</th><th>Action</th><th>Entity</th><th>Detail</th></tr>
+        <tr><th data-msg="desk.admin.th_time">Time</th><th data-msg="desk.admin.th_actor">Actor</th><th data-msg="desk.admin.th_action">Action</th><th data-msg="desk.admin.th_entity">Entity</th><th data-msg="desk.admin.th_detail">Detail</th></tr>
       </thead>
       <tbody></tbody>
     </table>
   </section>
 
+  <script src="messages.js"></script>
   <script>
+    DeskMessages.init();
     // Admin console (issue #163): users/roles management plus a
     // read-only audit view over already-persisted rows. Same static
     // pattern as the desk entry (issue #116): no build step, the
@@ -85,7 +86,7 @@
         });
         var payload = await response.json();
         if (!response.ok) {
-          throw new Error(payload.message || payload.code || ("request failed: " + operation));
+          throw new Error(payload.message || payload.code || (DeskMessages.msg("desk.admin.request_failed", { operation: operation }, "request failed: " + operation)));
         }
         return payload;
       }
@@ -104,9 +105,9 @@
           }).join("");
           return "<tr><td>" + esc(user.displayName) + "</td><td>" + esc(user.signinIdentity) + "</td>" +
             '<td><select data-identity="' + esc(user.signinIdentity) + '" class="role-select">' + roleOptions + "</select></td>" +
-            "<td>" + (user.locked ? "yes" : "no") + "</td>" +
-            '<td><button type="button" data-identity="' + esc(user.signinIdentity) + '" class="role-save">Save role</button> ' +
-            (user.locked ? '<button type="button" data-identity="' + esc(user.signinIdentity) + '" class="unlock">Unlock</button>' : "") +
+            "<td>" + (user.locked ? DeskMessages.msg("desk.admin.yes", {}, "yes") : DeskMessages.msg("desk.admin.no", {}, "no")) + "</td>" +
+            '<td><button type="button" data-identity="' + esc(user.signinIdentity) + '" class="role-save">" + DeskMessages.msg("desk.admin.save_role", {}, "Save role") + "</button> ' +
+            (user.locked ? '<button type="button" data-identity="' + esc(user.signinIdentity) + '" class="unlock">" + DeskMessages.msg("desk.admin.unlock", {}, "Unlock") + "</button>' : "") +
             "</td></tr>";
         }).join("");
         document.querySelector("#users-table tbody").innerHTML = rows;
@@ -119,7 +120,7 @@
           return "<tr><td>" + esc(entry.at) + "</td><td>" + esc(entry.actor) + "</td><td>" +
             esc(entry.action) + "</td><td>" + esc(entry.entity) + "</td><td>" + esc(entry.detail || "") + "</td></tr>";
         }).join("");
-        document.querySelector("#audit-table tbody").innerHTML = rows || '<tr><td colspan="5">No entries yet.</td></tr>';
+        document.querySelector("#audit-table tbody").innerHTML = rows || '<tr><td colspan="5">' + DeskMessages.msg("desk.admin.no_entries", {}, "No entries yet.") + '</td></tr>';
         show("audit-error", "");
       }
 

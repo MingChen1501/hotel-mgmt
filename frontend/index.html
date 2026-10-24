@@ -3,19 +3,19 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Hotel Management — Desk Entry</title>
+  <title data-msg="desk.entry.title">Hotel Management — Desk Entry</title>
 </head>
 <body>
-  <h1>Hotel Management — Desk Entry</h1>
-  <p>Served by Nginx. Desk screens land in later slices; this page only
+  <h1 data-msg="desk.entry.title">Hotel Management — Desk Entry</h1>
+  <p data-msg="desk.entry.intro">Served by Nginx. Desk screens land in later slices; this page only
   proves the entry point is up.</p>
-  <h2>Backup report</h2>
-  <p id="backup-report">Loading the latest backup report…</p>
+  <h2 data-msg="desk.entry.backup_heading">Backup report</h2>
+  <p id="backup-report" data-msg="desk.entry.backup_loading">Loading the latest backup report…</p>
   <p id="backup-support" hidden></p>
-  <noscript><p>No recent backup report — treat as failed. Note this
-  message word for word and call support the same day (runbook
-  section 6).</p></noscript>
+  <noscript><p data-msg="desk.entry.noscript_backup">No recent backup report — treat as failed. Note this message word for word and call support the same day (runbook section 6).</p></noscript>
+  <script src="messages.js"></script>
   <script>
+    DeskMessages.init();
     // Desk surface for the newest backup report (issue #116).
     // script/publish-backup-report.sh renders backup-report.json
     // beside this page after every backup run, in the runbook
@@ -26,8 +26,7 @@
       var support = document.getElementById("backup-support");
       function showFailure(text) {
         line.textContent = text;
-        support.textContent = "Note this message word for word and call " +
-          "support the same day (runbook section 6).";
+        support.textContent = DeskMessages.msg("desk.entry.backup_support", {}, "Note this message word for word and call support the same day (runbook section 6).");
         support.hidden = false;
       }
       fetch("backup-report.json", { cache: "no-store" })
@@ -45,19 +44,18 @@
           if (report.outcome === "failure") {
             support.textContent = typeof report.support === "string" && report.support
               ? report.support
-              : "Note this message word for word and call support the same day " +
-                "(runbook section 6).";
+              : DeskMessages.msg("desk.entry.backup_support", {}, "Note this message word for word and call support the same day (runbook section 6).");
             support.hidden = false;
           }
         })
         .catch(function () {
-          showFailure("No recent backup report — treat as failed.");
+          showFailure(DeskMessages.msg("desk.entry.backup_missing", {}, "No recent backup report — treat as failed."));
         });
     })();
   </script>
-  <h2>Module health</h2>
+  <h2 data-msg="desk.entry.module_health">Module health</h2>
   <ul>
-    <li><a href="/admin.html">Admin console (users, roles, audit view)</a></li>
+    <li><a href="/admin.html" data-msg="desk.entry.admin_link">Admin console (users, roles, audit view)</a></li>
     <li><a href="/v1/reservations/healthz">reservations</a></li>
     <li><a href="/v1/rates/healthz">rates</a></li>
     <li><a href="/v1/reporting/healthz">reporting</a></li>

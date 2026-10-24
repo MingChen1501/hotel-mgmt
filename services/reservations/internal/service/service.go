@@ -11,10 +11,10 @@
 package service
 
 import (
-	"fmt"
 	"strings"
 	"time"
 
+	"github.com/MingChen1501/hotel-mgmt/services/reservations/internal/messages"
 	"github.com/MingChen1501/hotel-mgmt/services/reservations/internal/store"
 )
 
@@ -61,30 +61,30 @@ func validation(field, message string, details map[string]any) *store.OpError {
 // Create runs one booking attempt through validation and the guard.
 func (s *Service) Create(req CreateRequest) (*store.Reservation, *store.OpError) {
 	if strings.TrimSpace(req.RoomTypeID) == "" {
-		return nil, validation("roomTypeId", "roomTypeId is required.", nil)
+		return nil, validation("roomTypeId", messages.Text("error.validation.room_type_required", nil), nil)
 	}
 	arrival, err := time.Parse(dateLayout, req.ArrivalDate)
 	if err != nil {
-		return nil, validation("arrivalDate", "arrivalDate must be a YYYY-MM-DD date.", nil)
+		return nil, validation("arrivalDate", messages.Text("error.validation.arrival_format", nil), nil)
 	}
 	departure, err := time.Parse(dateLayout, req.DepartureDate)
 	if err != nil {
-		return nil, validation("departureDate", "departureDate must be a YYYY-MM-DD date.", nil)
+		return nil, validation("departureDate", messages.Text("error.validation.departure_format", nil), nil)
 	}
 	if !departure.After(arrival) {
-		return nil, validation("departureDate", "departureDate must be after arrivalDate.", nil)
+		return nil, validation("departureDate", messages.Text("error.validation.departure_order", nil), nil)
 	}
 	if !req.HasTotal || req.TotalMinor < 0 {
-		return nil, validation("priceBasis", "priceBasis.totalMinor is required and cannot be negative.", nil)
+		return nil, validation("priceBasis", messages.Text("error.validation.price_basis", nil), nil)
 	}
 	guestID, _ := req.Guest["guestId"].(string)
 	if strings.TrimSpace(guestID) == "" {
-		return nil, validation("guest.guestId", "guest.guestId is required.", map[string]any{"field": "guest.guestId"})
+		return nil, validation("guest.guestId", messages.Text("error.validation.guest_id_required", nil), map[string]any{"field": "guest.guestId"})
 	}
 	for _, field := range s.RequiredGuestFields {
 		value, _ := req.Guest[field].(string)
 		if strings.TrimSpace(value) == "" {
-			return nil, validation("guest."+field, fmt.Sprintf("Missing hotel-mandatory guest field %s.", field), map[string]any{"field": field})
+			return nil, validation("guest."+field, messages.Text("error.validation.guest_field_missing", map[string]string{"field": field}), map[string]any{"field": field})
 		}
 	}
 	if s.CheckRestrictionsHook != nil {
@@ -127,19 +127,19 @@ type ModifyRequest struct {
 // Modify validates one repriced change and runs the guarded store step.
 func (s *Service) Modify(req ModifyRequest) (*store.Reservation, *store.OpError) {
 	if strings.TrimSpace(req.Ref) == "" {
-		return nil, validation("reservationRef", "reservationRef is required.", nil)
+		return nil, validation("reservationRef", messages.Text("error.validation.reservation_ref_required", nil), nil)
 	}
 	arrival := ""
 	if strings.TrimSpace(req.ArrivalDate) != "" {
 		if _, err := time.Parse(dateLayout, req.ArrivalDate); err != nil {
-			return nil, validation("arrivalDate", "arrivalDate must be a YYYY-MM-DD date.", nil)
+			return nil, validation("arrivalDate", messages.Text("error.validation.arrival_format", nil), nil)
 		}
 		arrival = req.ArrivalDate
 	}
 	departure := ""
 	if strings.TrimSpace(req.DepartureDate) != "" {
 		if _, err := time.Parse(dateLayout, req.DepartureDate); err != nil {
-			return nil, validation("departureDate", "departureDate must be a YYYY-MM-DD date.", nil)
+			return nil, validation("departureDate", messages.Text("error.validation.departure_format", nil), nil)
 		}
 		departure = req.DepartureDate
 	}
@@ -147,28 +147,28 @@ func (s *Service) Modify(req ModifyRequest) (*store.Reservation, *store.OpError)
 		parsedArrival, _ := time.Parse(dateLayout, arrival)
 		parsedDeparture, _ := time.Parse(dateLayout, departure)
 		if !parsedDeparture.After(parsedArrival) {
-			return nil, validation("departureDate", "departureDate must be after arrivalDate.", nil)
+			return nil, validation("departureDate", messages.Text("error.validation.departure_order", nil), nil)
 		}
 	}
 	if !req.HasTotal || req.TotalMinor < 0 {
-		return nil, validation("priceBasis", "priceBasis.totalMinor is required and cannot be negative.", nil)
+		return nil, validation("priceBasis", messages.Text("error.validation.price_basis", nil), nil)
 	}
 	guestID := ""
 	var guest map[string]any
 	if req.HasGuest {
 		if req.Guest == nil {
-			return nil, validation("guest", "guest is required when changing the guest.", nil)
+			return nil, validation("guest", messages.Text("error.validation.guest_change_required", nil), nil)
 		}
 		guest = req.Guest
 		value, ok := guest["guestId"].(string)
 		if !ok || strings.TrimSpace(value) == "" {
-			return nil, validation("guest.guestId", "guest.guestId is required.", map[string]any{"field": "guest.guestId"})
+			return nil, validation("guest.guestId", messages.Text("error.validation.guest_id_required", nil), map[string]any{"field": "guest.guestId"})
 		}
 		guestID = value
 		for _, field := range s.RequiredGuestFields {
 			fieldValue, _ := guest[field].(string)
 			if strings.TrimSpace(fieldValue) == "" {
-				return nil, validation("guest."+field, fmt.Sprintf("Missing hotel-mandatory guest field %s.", field), map[string]any{"field": field})
+				return nil, validation("guest."+field, messages.Text("error.validation.guest_field_missing", map[string]string{"field": field}), map[string]any{"field": field})
 			}
 		}
 	}
@@ -221,10 +221,10 @@ type CancelRequest struct {
 // required and kept verbatim (BR-7 baseline).
 func (s *Service) Cancel(req CancelRequest) (*store.Reservation, *store.OpError) {
 	if strings.TrimSpace(req.Ref) == "" {
-		return nil, validation("reservationRef", "reservationRef is required.", nil)
+		return nil, validation("reservationRef", messages.Text("error.validation.reservation_ref_required", nil), nil)
 	}
 	if strings.TrimSpace(req.Reason) == "" {
-		return nil, validation("reason", "A cancellation reason from the hotel list is required.", map[string]any{"field": "reason"})
+		return nil, validation("reason", messages.Text("error.validation.cancel_reason_required", nil), map[string]any{"field": "reason"})
 	}
 	return s.store.Cancel(strings.TrimSpace(req.Ref), strings.TrimSpace(req.Reason), req.Actor, req.IdempotencyKey)
 }
@@ -240,10 +240,10 @@ type MarkNoShowRequest struct {
 // which additionally refuses arrivals that have not passed yet.
 func (s *Service) MarkNoShow(req MarkNoShowRequest) (*store.Reservation, *store.OpError) {
 	if strings.TrimSpace(req.Ref) == "" {
-		return nil, validation("reservationRef", "reservationRef is required.", nil)
+		return nil, validation("reservationRef", messages.Text("error.validation.reservation_ref_required", nil), nil)
 	}
 	if strings.TrimSpace(req.Reason) == "" {
-		return nil, validation("reason", "A no-show reason from the hotel list is required.", map[string]any{"field": "reason"})
+		return nil, validation("reason", messages.Text("error.validation.noshow_reason_required", nil), map[string]any{"field": "reason"})
 	}
 	return s.store.MarkNoShow(strings.TrimSpace(req.Ref), strings.TrimSpace(req.Reason), req.Actor)
 }

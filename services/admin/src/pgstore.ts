@@ -18,13 +18,14 @@ import {
   type PublicUser,
   type Role,
 } from "./store.js";
+import { formatNumber, msg } from "./messages.js";
 
 // User/role writes stay with owner and manager (BR-35): the owner
 // additionally controls users and hotel setup, the manager controls
 // rates, rooms, and reports, and front-desk staff operate the desk.
 function requireUserManager(caller: AuthenticatedUser, operation: string): void {
   if (caller.role === "front-desk") {
-    throw new HttpError("FORBIDDEN", `Front-desk accounts cannot ${operation}.`, { role: caller.role });
+    throw new HttpError("FORBIDDEN", msg("error.forbidden.front_desk_operation", { operation }), { role: caller.role });
   }
 }
 
@@ -106,15 +107,15 @@ export class PostgresAdminStore implements AdminStoreAPI {
 
   async signIn(signinIdentity: unknown, secret: unknown): Promise<{ token: string; user: PublicUser }> {
     if (typeof signinIdentity !== "string" || signinIdentity.trim() === "") {
-      throw new HttpError("VALIDATION_FAILED", "signinIdentity is required.", { field: "signinIdentity" });
+      throw new HttpError("VALIDATION_FAILED", msg("error.validation.field_required", { field: "signinIdentity" }), { field: "signinIdentity" });
     }
     if (typeof secret !== "string" || secret === "") {
-      throw new HttpError("VALIDATION_FAILED", "secret is required.", { field: "secret" });
+      throw new HttpError("VALIDATION_FAILED", msg("error.validation.field_required", { field: "secret" }), { field: "secret" });
     }
     const identity = signinIdentity.trim();
     const state = this.failures.get(identity);
     if (state?.lockedUntil !== null && state?.lockedUntil !== undefined && state.lockedUntil > Date.now()) {
-      throw new HttpError("UNAUTHENTICATED", `Identity ${identity} is locked after repeated failures.`, {
+      throw new HttpError("UNAUTHENTICATED", msg("error.auth.locked", { identity }), {
         signinIdentity: identity,
       });
     }
@@ -129,7 +130,7 @@ export class PostgresAdminStore implements AdminStoreAPI {
     if (user?.lockedUntil !== null && user?.lockedUntil !== undefined) {
       const lockedUntil = new Date(user.lockedUntil).getTime();
       if (lockedUntil > Date.now()) {
-        throw new HttpError("UNAUTHENTICATED", `Identity ${identity} is locked after repeated failures.`, {
+        throw new HttpError("UNAUTHENTICATED", msg("error.auth.locked", { identity }), {
           signinIdentity: identity,
         });
       }
@@ -142,7 +143,7 @@ export class PostgresAdminStore implements AdminStoreAPI {
       timingSafeEqual(Buffer.from(candidate), Buffer.from(expected));
     if (!matches || !user) {
       await this.recordFailure(identity);
-      throw new HttpError("UNAUTHENTICATED", "Unknown identity or wrong secret.", { signinIdentity: identity });
+      throw new HttpError("UNAUTHENTICATED", msg("error.auth.bad_credentials", {}), { signinIdentity: identity });
     }
     this.failures.delete(identity);
     const tokenId = randomUUID();
@@ -161,7 +162,7 @@ export class PostgresAdminStore implements AdminStoreAPI {
   async authenticate(token: string): Promise<AuthenticatedUser> {
     const tokenId = verifySessionToken(this.key, token);
     if (!tokenId) {
-      throw new HttpError("UNAUTHENTICATED", "Invalid or expired session token.", {});
+      throw new HttpError("UNAUTHENTICATED", msg("error.auth.session_invalid", {}), {});
     }
     const { rows } = await this.pool.query(
       `SELECT token_id AS "tokenId", user_id AS "userId",
@@ -171,11 +172,11 @@ export class PostgresAdminStore implements AdminStoreAPI {
     );
     const session = rows[0] as { tokenId: string; userId: string; lastActivityAt: string; revoked: boolean } | undefined;
     if (!session || session.revoked) {
-      throw new HttpError("UNAUTHENTICATED", "Session is revoked or signed out.", {});
+      throw new HttpError("UNAUTHENTICATED", msg("error.auth.session_revoked", {}), {});
     }
     if (Date.now() - new Date(session.lastActivityAt).getTime() > IDLE_TIMEOUT_MS) {
       await this.pool.query(`DELETE FROM admin.sessions WHERE token_id = $1`, [tokenId]);
-      throw new HttpError("UNAUTHENTICATED", "Session ended after 15 minutes without activity.", {});
+      throw new HttpError("UNAUTHENTICATED", msg("error.auth.session_idle", { idleMinutes: formatNumber(15) }), {});
     }
     await this.pool.query(
       `UPDATE admin.sessions
@@ -191,7 +192,7 @@ export class PostgresAdminStore implements AdminStoreAPI {
     );
     const user = users.rows[0] as PublicUser | undefined;
     if (!user) {
-      throw new HttpError("UNAUTHENTICATED", "Session user no longer exists.", {});
+      throw new HttpError("UNAUTHENTICATED", msg("error.auth.session_orphan", {}), {});
     }
     return { ...toPublic(user), tokenId };
   }
@@ -201,15 +202,15 @@ export class PostgresAdminStore implements AdminStoreAPI {
     input: { displayName?: unknown; signinIdentity?: unknown; secret?: unknown; role?: unknown },
   ): Promise<PublicUser> {
     if (caller.role === "front-desk") {
-      throw new HttpError("FORBIDDEN", "Front-desk accounts cannot create users.", { role: caller.role });
+      throw new HttpError("FORBIDDEN", msg("error.forbidden.user_create", {}), { role: caller.role });
     }
     const displayName = requiredString(input.displayName, "displayName");
     const signinIdentity = requiredString(input.signinIdentity, "signinIdentity");
     if (typeof input.secret !== "string" || input.secret === "") {
-      throw new HttpError("VALIDATION_FAILED", "secret is required.", { field: "secret" });
+      throw new HttpError("VALIDATION_FAILED", msg("error.validation.field_required", { field: "secret" }), { field: "secret" });
     }
     if (typeof input.role !== "string" || !ROLES.includes(input.role as Role)) {
-      throw new HttpError("VALIDATION_FAILED", "Unknown role.", { role: input.role });
+      throw new HttpError("VALIDATION_FAILED", msg("error.validation.unknown_role", {}), { role: input.role });
     }
     const created = await this.pool.query(
       `INSERT INTO admin.users (id, display_name, signin_identity, secret_hash, role, created_by, updated_by)
@@ -220,7 +221,7 @@ export class PostgresAdminStore implements AdminStoreAPI {
       [randomUUID(), displayName, signinIdentity, hashSecret(input.secret), input.role, caller.signinIdentity],
     );
     if (created.rows.length === 0) {
-      throw new HttpError("VALIDATION_FAILED", `Sign-in identity ${signinIdentity} is already taken.`, {
+      throw new HttpError("VALIDATION_FAILED", msg("error.validation.identity_taken", { signinIdentity }), {
         signinIdentity,
       });
     }
@@ -239,7 +240,7 @@ export class PostgresAdminStore implements AdminStoreAPI {
     requireUserManager(caller, "change user roles");
     const signinIdentity = requiredString(input.signinIdentity, "signinIdentity");
     if (typeof input.role !== "string" || !ROLES.includes(input.role as Role)) {
-      throw new HttpError("VALIDATION_FAILED", "Unknown role.", { role: input.role });
+      throw new HttpError("VALIDATION_FAILED", msg("error.validation.unknown_role", {}), { role: input.role });
     }
     const nextRole = input.role as Role;
     return this.withTx(async (client) => {
@@ -251,17 +252,17 @@ export class PostgresAdminStore implements AdminStoreAPI {
       );
       const user = found.rows[0] as PublicUser | undefined;
       if (!user) {
-        throw new HttpError("VALIDATION_FAILED", `Unknown sign-in identity ${signinIdentity}.`, { signinIdentity });
+        throw new HttpError("VALIDATION_FAILED", msg("error.validation.unknown_identity", { signinIdentity }), { signinIdentity });
       }
       if (user.userId === caller.userId) {
-        throw new HttpError("VALIDATION_FAILED", "You cannot change your own role.", { signinIdentity });
+        throw new HttpError("VALIDATION_FAILED", msg("error.validation.own_role", {}), { signinIdentity });
       }
       if (user.role === "owner" && nextRole !== "owner") {
         const others = await client.query(`SELECT COUNT(*) AS count FROM admin.users WHERE role = 'owner' AND id <> $1`, [
           user.userId,
         ]);
         if (Number(others.rows[0].count) === 0) {
-          throw new HttpError("VALIDATION_FAILED", `Cannot demote ${signinIdentity}: the last remaining owner.`, {
+          throw new HttpError("VALIDATION_FAILED", msg("error.validation.last_owner", { signinIdentity }), {
             signinIdentity,
           });
         }
@@ -288,7 +289,7 @@ export class PostgresAdminStore implements AdminStoreAPI {
     return this.withTx(async (client) => {
       const found = await client.query(`SELECT id FROM admin.users WHERE signin_identity = $1`, [signinIdentity]);
       if (found.rows.length === 0) {
-        throw new HttpError("VALIDATION_FAILED", `Unknown sign-in identity ${signinIdentity}.`, { signinIdentity });
+        throw new HttpError("VALIDATION_FAILED", msg("error.validation.unknown_identity", { signinIdentity }), { signinIdentity });
       }
       const locked = await client.query(
         `SELECT locked_until AS "lockedUntil" FROM admin.users WHERE signin_identity = $1`,
@@ -298,7 +299,7 @@ export class PostgresAdminStore implements AdminStoreAPI {
       const memoryLocked = this.isMemoryLocked(signinIdentity);
       const columnLocked = lockedUntil !== null && lockedUntil !== undefined && new Date(lockedUntil).getTime() > Date.now();
       if (!memoryLocked && !columnLocked) {
-        throw new HttpError("VALIDATION_FAILED", `Identity ${signinIdentity} is not currently locked.`, {
+        throw new HttpError("VALIDATION_FAILED", msg("error.validation.not_locked", { signinIdentity }), {
           signinIdentity,
         });
       }
@@ -352,7 +353,7 @@ export class PostgresAdminStore implements AdminStoreAPI {
     requireUserManager(caller, "read the audit log");
     const limit = input.limit === undefined ? 50 : input.limit;
     if (typeof limit !== "number" || !Number.isInteger(limit) || limit < 1 || limit > 200) {
-      throw new HttpError("VALIDATION_FAILED", "limit must be an integer between 1 and 200.", { field: "limit" });
+      throw new HttpError("VALIDATION_FAILED", msg("error.validation.limit_range", { min: formatNumber(1), max: formatNumber(200) }), { field: "limit" });
     }
     const entries: AuditEntry[] = [];
     const users = await this.pool.query(
@@ -459,10 +460,10 @@ export class PostgresAdminStore implements AdminStoreAPI {
     input: { values?: unknown; updatedBy?: unknown },
   ): Promise<{ schemaVersion: number; values: Record<string, unknown> }> {
     if (caller.role === "front-desk") {
-      throw new HttpError("FORBIDDEN", "Front-desk accounts cannot change hotel config.", { role: caller.role });
+      throw new HttpError("FORBIDDEN", msg("error.forbidden.config_change", {}), { role: caller.role });
     }
     if (typeof input.values !== "object" || input.values === null || Array.isArray(input.values)) {
-      throw new HttpError("VALIDATION_FAILED", "values must be an object.", { field: "values" });
+      throw new HttpError("VALIDATION_FAILED", msg("error.validation.values_object", {}), { field: "values" });
     }
     const updatedBy = requiredString(input.updatedBy, "updatedBy");
     const entries = Object.entries(input.values as Record<string, unknown>);
@@ -502,7 +503,7 @@ export class PostgresAdminStore implements AdminStoreAPI {
       case "retentionFloorDays": {
         const days = Number(value);
         if (!Number.isInteger(days) || days < 0) {
-          throw new HttpError("VALIDATION_FAILED", "retentionFloorDays must be a non-negative integer.", {
+          throw new HttpError("VALIDATION_FAILED", msg("error.validation.retention_floor", {}), {
             field: key,
           });
         }

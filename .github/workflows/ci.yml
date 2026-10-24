@@ -193,6 +193,9 @@ jobs:
           fi
           echo "No secrets-looking strings found."
 
+      - name: Catalogue coverage (NFR-I18N-1, issue #192)
+        run: script/catalogue-coverage-check.sh
+
       - name: Pre-flight fail-closed proof (issue #153, no docker needed)
         run: script/test-preflight-fail-closed.sh
 

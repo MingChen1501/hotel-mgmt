@@ -10,10 +10,11 @@ package store
 
 import (
 	"crypto/rand"
-	"fmt"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/MingChen1501/hotel-mgmt/services/reservations/internal/messages"
 )
 
 // OpError carries the shared error envelope code for an operation.
@@ -199,7 +200,7 @@ func activeState(state string) bool {
 // reservation instead of booking again.
 func (s *Store) Create(input CreateInput, idempotencyKey string) (*Reservation, *OpError) {
 	if input.SellableUnits < 1 {
-		return nil, validation("sellableUnits", "sellableUnits must be at least 1.")
+		return nil, validation("sellableUnits", messages.Text("error.validation.sellable_units", map[string]string{"min": messages.Num(1)}))
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -219,7 +220,7 @@ func (s *Store) Create(input CreateInput, idempotencyKey string) (*Reservation, 
 	}
 	if booked >= input.SellableUnits {
 		return nil, conflict(
-			fmt.Sprintf("No sellable unit left for the room type for %s to %s.", input.ArrivalDate, input.DepartureDate),
+			messages.Text("error.conflict.no_availability", map[string]string{"arrivalDate": input.ArrivalDate, "departureDate": input.DepartureDate}),
 			map[string]any{"roomTypeId": input.RoomTypeID, "arrivalDate": input.ArrivalDate, "departureDate": input.DepartureDate},
 		)
 	}
@@ -264,7 +265,7 @@ func (s *Store) Get(ref string) (*Reservation, *OpError) {
 	defer s.mu.Unlock()
 	record, ok := s.byRef[strings.TrimSpace(ref)]
 	if !ok {
-		return nil, notFound(fmt.Sprintf("Unknown reservation %s.", ref), map[string]any{"reservationRef": ref})
+		return nil, notFound(messages.Text("error.notfound.reservation", map[string]string{"ref": ref}), map[string]any{"reservationRef": ref})
 	}
 	return record, nil
 }
@@ -298,12 +299,12 @@ func (s *Store) CheckIn(ref, stayID string, actor string) (*Reservation, *OpErro
 	defer s.mu.Unlock()
 	record, ok := s.byRef[strings.TrimSpace(ref)]
 	if !ok {
-		return nil, notFound(fmt.Sprintf("Unknown reservation %s.", ref), map[string]any{"reservationRef": ref})
+		return nil, notFound(messages.Text("error.notfound.reservation", map[string]string{"ref": ref}), map[string]any{"reservationRef": ref})
 	}
 	if record.State != "confirmed" {
 		return nil, &OpError{
 			Code: "STATE_ILLEGAL", Status: 422,
-			Message: fmt.Sprintf("Reservation %s is %s, not confirmed for check-in.", ref, record.State),
+			Message: messages.Text("error.state.not_confirmed_checkin", map[string]string{"ref": ref, "state": record.State}),
 			Details: map[string]any{"reservationRef": ref, "state": record.State},
 		}
 	}
@@ -321,7 +322,7 @@ func (s *Store) CheckIn(ref, stayID string, actor string) (*Reservation, *OpErro
 func stateRefusal(ref, state, operation string) *OpError {
 	return &OpError{
 		Code: "STATE_ILLEGAL", Status: 422,
-		Message: fmt.Sprintf("Reservation %s is %s and cannot be %s.", ref, state, operation),
+		Message: messages.Text("error.state.lifecycle_refusal", map[string]string{"ref": ref, "state": state, "operation": operation}),
 		Details: map[string]any{"reservationRef": ref, "state": state},
 	}
 }
@@ -334,7 +335,7 @@ func stateRefusal(ref, state, operation string) *OpError {
 // with actor and timestamp (NFR-AUD-1) and a modified event is queued.
 func (s *Store) Modify(input ModifyInput, idempotencyKey string) (*Reservation, *OpError) {
 	if input.SellableUnits < 1 {
-		return nil, validation("sellableUnits", "sellableUnits must be at least 1.")
+		return nil, validation("sellableUnits", messages.Text("error.validation.sellable_units", map[string]string{"min": messages.Num(1)}))
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -345,7 +346,7 @@ func (s *Store) Modify(input ModifyInput, idempotencyKey string) (*Reservation, 
 	}
 	record, ok := s.byRef[strings.TrimSpace(input.Ref)]
 	if !ok {
-		return nil, notFound(fmt.Sprintf("Unknown reservation %s.", input.Ref), map[string]any{"reservationRef": input.Ref})
+		return nil, notFound(messages.Text("error.notfound.reservation", map[string]string{"ref": input.Ref}), map[string]any{"reservationRef": input.Ref})
 	}
 	if record.State != "confirmed" {
 		return nil, stateRefusal(input.Ref, record.State, "modified")
@@ -373,7 +374,7 @@ func (s *Store) Modify(input ModifyInput, idempotencyKey string) (*Reservation, 
 	}
 	if booked >= input.SellableUnits {
 		return nil, conflict(
-			fmt.Sprintf("No sellable unit left for the room type for %s to %s.", newArrival, newDeparture),
+			messages.Text("error.conflict.no_availability", map[string]string{"arrivalDate": newArrival, "departureDate": newDeparture}),
 			map[string]any{"roomTypeId": newRoomType, "arrivalDate": newArrival, "departureDate": newDeparture},
 		)
 	}
@@ -428,7 +429,7 @@ func (s *Store) Cancel(ref, reason, actor, idempotencyKey string) (*Reservation,
 	}
 	record, ok := s.byRef[strings.TrimSpace(ref)]
 	if !ok {
-		return nil, notFound(fmt.Sprintf("Unknown reservation %s.", ref), map[string]any{"reservationRef": ref})
+		return nil, notFound(messages.Text("error.notfound.reservation", map[string]string{"ref": ref}), map[string]any{"reservationRef": ref})
 	}
 	if strings.TrimSpace(reason) == "" {
 		return nil, validation("reason", "A cancellation reason from the hotel list is required.")
@@ -464,7 +465,7 @@ func (s *Store) MarkNoShow(ref, reason, actor string) (*Reservation, *OpError) {
 	defer s.mu.Unlock()
 	record, ok := s.byRef[strings.TrimSpace(ref)]
 	if !ok {
-		return nil, notFound(fmt.Sprintf("Unknown reservation %s.", ref), map[string]any{"reservationRef": ref})
+		return nil, notFound(messages.Text("error.notfound.reservation", map[string]string{"ref": ref}), map[string]any{"reservationRef": ref})
 	}
 	if strings.TrimSpace(reason) == "" {
 		return nil, validation("reason", "A no-show reason from the hotel list is required.")
@@ -476,7 +477,7 @@ func (s *Store) MarkNoShow(ref, reason, actor string) (*Reservation, *OpError) {
 	if record.ArrivalDate >= today {
 		return nil, &OpError{
 			Code: "STATE_ILLEGAL", Status: 422,
-			Message: fmt.Sprintf("Reservation %s arrives on %s, which has not passed.", ref, record.ArrivalDate),
+			Message: messages.Text("error.state.arrival_not_passed", map[string]string{"ref": ref, "arrivalDate": record.ArrivalDate}),
 			Details: map[string]any{"reservationRef": ref, "arrivalDate": record.ArrivalDate},
 		}
 	}

@@ -12,10 +12,10 @@ package store
 import (
 	"database/sql"
 	"encoding/json"
-	"fmt"
 	"strings"
 	"time"
 
+	"github.com/MingChen1501/hotel-mgmt/services/reservations/internal/messages"
 	_ "github.com/lib/pq"
 )
 
@@ -148,7 +148,7 @@ func (p *Postgres) Create(input CreateInput, idempotencyKey string) (*Reservatio
 	}
 	tx, err := p.db.Begin()
 	if err != nil {
-		return nil, &OpError{Code: "VALIDATION_FAILED", Status: 500, Message: "Reservation store unavailable.", Details: map[string]any{}}
+		return nil, &OpError{Code: "VALIDATION_FAILED", Status: 500, Message: messages.Text("error.store.unavailable", nil), Details: map[string]any{}}
 	}
 	committed := false
 	defer func() {
@@ -165,7 +165,7 @@ func (p *Postgres) Create(input CreateInput, idempotencyKey string) (*Reservatio
 				return nil, oerr
 			}
 			if err := tx.Commit(); err != nil {
-				return nil, &OpError{Code: "VALIDATION_FAILED", Status: 500, Message: "Reservation store unavailable.", Details: map[string]any{}}
+				return nil, &OpError{Code: "VALIDATION_FAILED", Status: 500, Message: messages.Text("error.store.unavailable", nil), Details: map[string]any{}}
 			}
 			committed = true
 			return record, nil
@@ -182,7 +182,7 @@ func (p *Postgres) Create(input CreateInput, idempotencyKey string) (*Reservatio
 	}
 	if booked >= input.SellableUnits {
 		return nil, conflict(
-			fmt.Sprintf("No sellable unit left for the room type for %s to %s.", input.ArrivalDate, input.DepartureDate),
+			messages.Text("error.conflict.no_availability", map[string]string{"arrivalDate": input.ArrivalDate, "departureDate": input.DepartureDate}),
 			map[string]any{"roomTypeId": input.RoomTypeID, "arrivalDate": input.ArrivalDate, "departureDate": input.DepartureDate},
 		)
 	}
@@ -222,7 +222,7 @@ func (p *Postgres) Create(input CreateInput, idempotencyKey string) (*Reservatio
 		record.Ref = newRef()
 	}
 	if !inserted {
-		return nil, &OpError{Code: "VALIDATION_FAILED", Status: 500, Message: "Reservation store unavailable.", Details: map[string]any{}}
+		return nil, &OpError{Code: "VALIDATION_FAILED", Status: 500, Message: messages.Text("error.store.unavailable", nil), Details: map[string]any{}}
 	}
 	if idempotencyKey != "" {
 		var winner string
@@ -237,14 +237,14 @@ func (p *Postgres) Create(input CreateInput, idempotencyKey string) (*Reservatio
 			// insert and return the original reservation instead.
 			var originalRef string
 			if qerr := tx.QueryRow(`SELECT result_ref FROM reservations.idempotency_keys WHERE key = $1`, idempotencyKey).Scan(&originalRef); qerr != nil || originalRef == "" {
-				return nil, &OpError{Code: "VALIDATION_FAILED", Status: 500, Message: "Reservation store unavailable.", Details: map[string]any{}}
+				return nil, &OpError{Code: "VALIDATION_FAILED", Status: 500, Message: messages.Text("error.store.unavailable", nil), Details: map[string]any{}}
 			}
 			original, oerr := p.getInTx(tx, originalRef)
 			if oerr != nil {
 				return nil, oerr
 			}
 			if err := tx.Commit(); err != nil {
-				return nil, &OpError{Code: "VALIDATION_FAILED", Status: 500, Message: "Reservation store unavailable.", Details: map[string]any{}}
+				return nil, &OpError{Code: "VALIDATION_FAILED", Status: 500, Message: messages.Text("error.store.unavailable", nil), Details: map[string]any{}}
 			}
 			committed = true
 			return original, nil
@@ -257,7 +257,7 @@ func (p *Postgres) Create(input CreateInput, idempotencyKey string) (*Reservatio
 		 VALUES ($1,'state','null',$2,$3)`,
 		record.ID, `"confirmed"`, input.Actor,
 	); err != nil {
-		return nil, &OpError{Code: "VALIDATION_FAILED", Status: 500, Message: "Reservation store unavailable.", Details: map[string]any{}}
+		return nil, &OpError{Code: "VALIDATION_FAILED", Status: 500, Message: messages.Text("error.store.unavailable", nil), Details: map[string]any{}}
 	}
 	payload := marshalJSON(map[string]any{
 		"reservationRef": record.Ref, "roomTypeId": record.RoomTypeID,
@@ -269,10 +269,10 @@ func (p *Postgres) Create(input CreateInput, idempotencyKey string) (*Reservatio
 		 VALUES ('reservation','created',$1::jsonb,now(),$2)`,
 		payload, input.Actor,
 	); err != nil {
-		return nil, &OpError{Code: "VALIDATION_FAILED", Status: 500, Message: "Reservation store unavailable.", Details: map[string]any{}}
+		return nil, &OpError{Code: "VALIDATION_FAILED", Status: 500, Message: messages.Text("error.store.unavailable", nil), Details: map[string]any{}}
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, &OpError{Code: "VALIDATION_FAILED", Status: 500, Message: "Reservation store unavailable.", Details: map[string]any{}}
+		return nil, &OpError{Code: "VALIDATION_FAILED", Status: 500, Message: messages.Text("error.store.unavailable", nil), Details: map[string]any{}}
 	}
 	committed = true
 	return record, nil
@@ -284,10 +284,10 @@ func (p *Postgres) getInTx(tx *sql.Tx, ref string) (*Reservation, *OpError) {
 		strings.TrimSpace(ref),
 	))
 	if err == sql.ErrNoRows {
-		return nil, notFound(fmt.Sprintf("Unknown reservation %s.", ref), map[string]any{"reservationRef": ref})
+		return nil, notFound(messages.Text("error.notfound.reservation", map[string]string{"ref": ref}), map[string]any{"reservationRef": ref})
 	}
 	if err != nil {
-		return nil, &OpError{Code: "VALIDATION_FAILED", Status: 500, Message: "Reservation store unavailable.", Details: map[string]any{}}
+		return nil, &OpError{Code: "VALIDATION_FAILED", Status: 500, Message: messages.Text("error.store.unavailable", nil), Details: map[string]any{}}
 	}
 	return record, nil
 }
@@ -299,10 +299,10 @@ func (p *Postgres) Get(ref string) (*Reservation, *OpError) {
 		strings.TrimSpace(ref),
 	))
 	if err == sql.ErrNoRows {
-		return nil, notFound(fmt.Sprintf("Unknown reservation %s.", ref), map[string]any{"reservationRef": ref})
+		return nil, notFound(messages.Text("error.notfound.reservation", map[string]string{"ref": ref}), map[string]any{"reservationRef": ref})
 	}
 	if err != nil {
-		return nil, &OpError{Code: "VALIDATION_FAILED", Status: 500, Message: "Reservation store unavailable.", Details: map[string]any{}}
+		return nil, &OpError{Code: "VALIDATION_FAILED", Status: 500, Message: messages.Text("error.store.unavailable", nil), Details: map[string]any{}}
 	}
 	return record, nil
 }
@@ -345,7 +345,7 @@ func (p *Postgres) Query(dateFrom, dateTo, roomTypeID string) []*CalendarEntry {
 func (p *Postgres) CheckIn(ref, stayID, actor string) (*Reservation, *OpError) {
 	tx, err := p.db.Begin()
 	if err != nil {
-		return nil, &OpError{Code: "VALIDATION_FAILED", Status: 500, Message: "Reservation store unavailable.", Details: map[string]any{}}
+		return nil, &OpError{Code: "VALIDATION_FAILED", Status: 500, Message: messages.Text("error.store.unavailable", nil), Details: map[string]any{}}
 	}
 	committed := false
 	defer func() {
@@ -360,7 +360,7 @@ func (p *Postgres) CheckIn(ref, stayID, actor string) (*Reservation, *OpError) {
 	if record.State != "confirmed" {
 		return nil, &OpError{
 			Code: "STATE_ILLEGAL", Status: 422,
-			Message: fmt.Sprintf("Reservation %s is %s, not confirmed for check-in.", ref, record.State),
+			Message: messages.Text("error.state.not_confirmed_checkin", map[string]string{"ref": ref, "state": record.State}),
 			Details: map[string]any{"reservationRef": ref, "state": record.State},
 		}
 	}
@@ -378,7 +378,7 @@ func (p *Postgres) CheckIn(ref, stayID, actor string) (*Reservation, *OpError) {
 		 VALUES ($1,'state','"confirmed"','"checked-in"',$2)`,
 		record.ID, actor,
 	); err != nil {
-		return nil, &OpError{Code: "VALIDATION_FAILED", Status: 500, Message: "Reservation store unavailable.", Details: map[string]any{}}
+		return nil, &OpError{Code: "VALIDATION_FAILED", Status: 500, Message: messages.Text("error.store.unavailable", nil), Details: map[string]any{}}
 	}
 	payload := marshalJSON(map[string]any{"reservationRef": record.Ref, "stayId": stayID})
 	if _, err := tx.Exec(
@@ -386,10 +386,10 @@ func (p *Postgres) CheckIn(ref, stayID, actor string) (*Reservation, *OpError) {
 		 VALUES ('reservation','checked-in',$1::jsonb,now(),$2)`,
 		payload, actor,
 	); err != nil {
-		return nil, &OpError{Code: "VALIDATION_FAILED", Status: 500, Message: "Reservation store unavailable.", Details: map[string]any{}}
+		return nil, &OpError{Code: "VALIDATION_FAILED", Status: 500, Message: messages.Text("error.store.unavailable", nil), Details: map[string]any{}}
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, &OpError{Code: "VALIDATION_FAILED", Status: 500, Message: "Reservation store unavailable.", Details: map[string]any{}}
+		return nil, &OpError{Code: "VALIDATION_FAILED", Status: 500, Message: messages.Text("error.store.unavailable", nil), Details: map[string]any{}}
 	}
 	committed = true
 	record.State = "checked-in"
@@ -400,7 +400,7 @@ func (p *Postgres) CheckIn(ref, stayID, actor string) (*Reservation, *OpError) {
 // storeUnavailable is the envelope error for unexpected driver
 // failures the handler reports without leaking internals.
 func storeUnavailable() *OpError {
-	return &OpError{Code: "VALIDATION_FAILED", Status: 500, Message: "Reservation store unavailable.", Details: map[string]any{}}
+	return &OpError{Code: "VALIDATION_FAILED", Status: 500, Message: messages.Text("error.store.unavailable", nil), Details: map[string]any{}}
 }
 
 // Modify reprices and changes a confirmed reservation (FR-RES-2,
@@ -447,7 +447,7 @@ func (p *Postgres) Modify(input ModifyInput, idempotencyKey string) (*Reservatio
 		&record.RoomTypeID, &record.GuestID, &guestSnapshot, &priceBasis,
 		&record.State, &cancelReason, &noShowReason, &stayID, &record.CreatedBy, &record.CreatedAt); err != nil {
 		if err == sql.ErrNoRows {
-			return nil, notFound(fmt.Sprintf("Unknown reservation %s.", input.Ref), map[string]any{"reservationRef": input.Ref})
+			return nil, notFound(messages.Text("error.notfound.reservation", map[string]string{"ref": input.Ref}), map[string]any{"reservationRef": input.Ref})
 		}
 		return nil, storeUnavailable()
 	}
@@ -461,7 +461,7 @@ func (p *Postgres) Modify(input ModifyInput, idempotencyKey string) (*Reservatio
 	if record.State != "confirmed" {
 		return nil, &OpError{
 			Code: "STATE_ILLEGAL", Status: 422,
-			Message: fmt.Sprintf("Reservation %s is %s and cannot be modified.", input.Ref, record.State),
+			Message: messages.Text("error.state.lifecycle_refusal", map[string]string{"ref": input.Ref, "state": record.State, "operation": "modified"}),
 			Details: map[string]any{"reservationRef": input.Ref, "state": record.State},
 		}
 	}
@@ -488,7 +488,7 @@ func (p *Postgres) Modify(input ModifyInput, idempotencyKey string) (*Reservatio
 	}
 	if booked >= input.SellableUnits {
 		return nil, conflict(
-			fmt.Sprintf("No sellable unit left for the room type for %s to %s.", newArrival, newDeparture),
+			messages.Text("error.conflict.no_availability", map[string]string{"arrivalDate": newArrival, "departureDate": newDeparture}),
 			map[string]any{"roomTypeId": newRoomType, "arrivalDate": newArrival, "departureDate": newDeparture},
 		)
 	}
@@ -614,7 +614,7 @@ func (p *Postgres) Cancel(ref, reason, actor, idempotencyKey string) (*Reservati
 	if record.State != "confirmed" {
 		return nil, &OpError{
 			Code: "STATE_ILLEGAL", Status: 422,
-			Message: fmt.Sprintf("Reservation %s is %s and cannot be cancelled.", ref, record.State),
+			Message: messages.Text("error.state.lifecycle_refusal", map[string]string{"ref": ref, "state": record.State, "operation": "cancelled"}),
 			Details: map[string]any{"reservationRef": ref, "state": record.State},
 		}
 	}
@@ -692,7 +692,7 @@ func (p *Postgres) MarkNoShow(ref, reason, actor string) (*Reservation, *OpError
 	if record.State != "confirmed" {
 		return nil, &OpError{
 			Code: "STATE_ILLEGAL", Status: 422,
-			Message: fmt.Sprintf("Reservation %s is %s and cannot be marked no-show.", ref, record.State),
+			Message: messages.Text("error.state.lifecycle_refusal", map[string]string{"ref": ref, "state": record.State, "operation": "marked no-show"}),
 			Details: map[string]any{"reservationRef": ref, "state": record.State},
 		}
 	}
@@ -700,7 +700,7 @@ func (p *Postgres) MarkNoShow(ref, reason, actor string) (*Reservation, *OpError
 	if record.ArrivalDate >= today {
 		return nil, &OpError{
 			Code: "STATE_ILLEGAL", Status: 422,
-			Message: fmt.Sprintf("Reservation %s arrives on %s, which has not passed.", ref, record.ArrivalDate),
+			Message: messages.Text("error.state.arrival_not_passed", map[string]string{"ref": ref, "arrivalDate": record.ArrivalDate}),
 			Details: map[string]any{"reservationRef": ref, "arrivalDate": record.ArrivalDate},
 		}
 	}
@@ -759,5 +759,5 @@ func mapDBError(err error, field string) *OpError {
 	if isInvalidText(err) {
 		return validation(field, field+" must be a UUID.")
 	}
-	return &OpError{Code: "VALIDATION_FAILED", Status: 500, Message: "Reservation store unavailable.", Details: map[string]any{}}
+	return &OpError{Code: "VALIDATION_FAILED", Status: 500, Message: messages.Text("error.store.unavailable", nil), Details: map[string]any{}}
 }

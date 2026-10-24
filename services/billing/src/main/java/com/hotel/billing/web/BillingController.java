@@ -1,6 +1,7 @@
 package com.hotel.billing.web;
 
 import com.hotel.billing.service.BillingService;
+import com.hotel.billing.util.Messages;
 import java.math.BigDecimal;
 import java.util.Map;
 import org.springframework.http.MediaType;
@@ -38,7 +39,7 @@ public class BillingController {
   private static String required(Map<String, Object> body, String field) {
     String value = optional(body, field);
     if (value == null || value.isBlank()) {
-      throw ApiException.validation(field, field + " is required.");
+      throw ApiException.validation(field, Messages.text("error.validation.field_required", Map.of("field", field)));
     }
     return value.strip();
   }
@@ -48,7 +49,7 @@ public class BillingController {
     if (value instanceof Number number) {
       return number.longValue();
     }
-    throw ApiException.validation(field, field + " is required.");
+    throw ApiException.validation(field, Messages.text("error.validation.field_required", Map.of("field", field)));
   }
 
   private static BigDecimal percentOf(Map<String, Object> body, String field) {
@@ -57,16 +58,16 @@ public class BillingController {
       try {
         return new BigDecimal(number.toString());
       } catch (NumberFormatException e) {
-        throw ApiException.validation(field, field + " must be a number.");
+        throw ApiException.validation(field, Messages.text("error.validation.field_number", Map.of("field", field)));
       }
     }
-    throw ApiException.validation(field, field + " is required.");
+    throw ApiException.validation(field, Messages.text("error.validation.field_required", Map.of("field", field)));
   }
 
   private void requireToken(String authorization) {
     if (authorization == null || !authorization.startsWith("Bearer ")
         || authorization.substring("Bearer ".length()).isBlank()) {
-      throw new ApiException("UNAUTHENTICATED", 401, "Missing session token.", Map.of());
+      throw new ApiException("UNAUTHENTICATED", 401, Messages.text("error.auth.missing_token", Map.of()), Map.of());
     }
   }
 
