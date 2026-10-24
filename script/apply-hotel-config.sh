@@ -148,6 +148,7 @@ checks = {
     "timezone": want["hotel"]["timezone"],
     "standardCheckinTime": want["times"]["checkIn"],
     "standardCheckoutTime": want["times"]["checkOut"],
+    "cancellationWording": want["stayPolicies"].get("cancellationWording", ""),
 }
 mismatches = [k for k, v in checks.items() if values.get(k) != v]
 if mismatches:

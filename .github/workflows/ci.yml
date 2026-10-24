@@ -384,6 +384,13 @@ jobs:
         # up), so CI proves the installer path itself on every run.
         run: script/install.sh --config deploy/config/hotel.json --staging-dir ./backup-staging
 
+      - name: Timed desk checks (NFR-PERF-1, CI variant, issue #182)
+        # The lab is still up from the installer step. This records the
+        # named view/action timings as a ci-e2e-variant (never compared
+        # against single-host bounds); the numbers feed
+        # docs/testing/test-report.md.
+        run: script/e2e-perf-check.sh --base-url http://127.0.0.1
+
       - name: Show the backup and restore-drill reports
         if: always()
         run: |
@@ -393,3 +400,31 @@ jobs:
       - name: Tear down the lab
         if: always()
         run: docker compose -f deploy/compose.yaml down -v
+
+  perf-reporting-variant:
+    # NFR-PERF-2 timing record (issue #182): two years of 50-room data
+    # rebuilt in-process, each standard report timed with -v so the
+    # PERF lines land in the job log for docs/testing/test-report.md.
+    # CI runners are variants (never compared against single-host
+    # bounds); the bound assertion engages only with REFERENCE_HOST=1.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PERF_ENV_LABEL: ci-e2e-variant
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: false
+
+      - name: Runner facts for the test-report environment label
+        run: |
+          nproc
+          grep MemTotal /proc/meminfo
+          df -h /tmp | tail -1
+
+      - name: Rebuild two years of 50-room data and time the standard reports
+        working-directory: services/reporting
+        run: go test -v -run 'TestPerfTwoYearReportsRecordTimings' ./internal/service/
