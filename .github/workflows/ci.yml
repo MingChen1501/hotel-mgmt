@@ -61,6 +61,8 @@ jobs:
               - 'services/**'
             contracts:
               - 'contracts/**'
+            openapi-docs:
+              - 'frontend/docs/**'
             deploy:
               - 'deploy/**'
             scripts:
@@ -82,6 +84,7 @@ jobs:
           BILLING: ${{ steps.filter.outputs.billing }}
           SERVICES: ${{ steps.filter.outputs.services }}
           CONTRACTS: ${{ steps.filter.outputs.contracts }}
+          OPENAPI_DOCS: ${{ steps.filter.outputs.openapi-docs }}
           DEPLOY: ${{ steps.filter.outputs.deploy }}
           SCRIPTS: ${{ steps.filter.outputs.scripts }}
           WORKFLOW: ${{ steps.filter.outputs.workflow }}
@@ -113,7 +116,7 @@ jobs:
 
           services_changed = full or changed('SERVICES')
           billing = full or changed('BILLING')
-          contracts = full or services_changed or changed('CONTRACTS') or changed('SCRIPTS')
+          contracts = full or services_changed or changed('CONTRACTS') or changed('SCRIPTS') or changed('OPENAPI_DOCS')
           migrate = full or services_changed or changed('DEPLOY')
           e2e = (full or services_changed or changed('DEPLOY')
                  or changed('SCRIPTS') or changed('CONTRACTS'))

@@ -73,3 +73,10 @@ if [[ "$fail" -ne 0 ]]; then
   exit 1
 fi
 echo "contract-check: PASSED."
+
+# Curated desk-loop OpenAPI gate (issue #228): every spec route must
+# resolve to a contract route, and the served /docs mirror must be
+# byte-identical to the single source in contracts/.
+if [[ -f "$ROOT/contracts/openapi.yaml" || -f "$ROOT/frontend/docs/openapi.yaml" ]]; then
+  "$ROOT/script/openapi-route-check.sh" || exit 1
+fi
