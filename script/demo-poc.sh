@@ -135,7 +135,7 @@ if [[ "$ARTEFACTS_RESULT" == "PASS" ]]; then
   echo "demo-poc: $EVIDENCE" | tee -a "$LOG_FILE"
   echo "demo-poc: backup report: $BACKUP_REPORT (open it: outcome must be success)" | tee -a "$LOG_FILE"
   echo "demo-poc: drill report:  $DRILL_REPORT (open it: outcome success, withinBudget true)" | tee -a "$LOG_FILE"
-  echo "demo-poc: invoice/receipt: the EVIDENCE line above carries the invoice (folio) id; the desk prints the invoice and the cash receipt from that folio and its payment (docs/operations/demo-poc-checklist.md step 6)." | tee -a "$LOG_FILE"
+  echo "demo-poc: invoice/receipt: the EVIDENCE line above carries the invoice (folio) id; the desk prints the invoice and the cash receipt from that folio and its payment (docs/operations/demo-poc-checklist.md §4)." | tee -a "$LOG_FILE"
 fi
 
 if [[ -n "$FAIL_CAUSE" ]]; then
