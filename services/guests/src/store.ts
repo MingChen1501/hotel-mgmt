@@ -86,6 +86,35 @@ export interface LinkStayInput {
   actor?: unknown;
 }
 
+// Confirmation record (LLD section 5; FR-GST-4): the booking
+// confirmation the hotel shares with the guest. Money follows the
+// module convention (minor units, never float).
+export interface ConfirmationRecord {
+  reservationRef: string;
+  hotel: { hotelId: string; name: string };
+  guest: { guestId: string; fullName: string };
+  dates: { checkIn: string; checkOut: string };
+  type: string;
+  price: { amountMinor: number; currency: string };
+}
+
+// Reservation snapshot attached from reservation reads/events (LLD
+// section 5 "data fetched via RES read"). The local copy mirrors the
+// linkStay StayEvents-ingestion pattern: the op itself stays
+// read-only and the service gains no outbound RES reader.
+export interface AttachReservationInput {
+  reservationRef?: unknown;
+  hotel?: unknown;
+  guest?: unknown;
+  dates?: unknown;
+  type?: unknown;
+  price?: unknown;
+}
+
+export interface ProduceConfirmationInput {
+  reservationRef?: unknown;
+}
+
 export interface GuestProfile extends GuestRecord {
   stayLinks: GuestStayLink[];
   mandatoryFieldStatus: MandatoryFieldStatus;
@@ -109,15 +138,60 @@ export interface GuestStoreAPI {
   // (guest, stay) — and the returning flag with the past-stay count
   // (FR-GST-3) derives from the linked stays.
   linkStay(input: LinkStayInput): Promise<GuestRecord & { stayLinks: GuestStayLink[] }>;
+  // Reservation-snapshot ingestion: caches the reservation + hotel
+  // data a confirmation is produced from (LLD section 5; FR-GST-4).
+  // Re-delivery of the same ref overwrites, so replay stays
+  // idempotent. The produced confirmation itself is never a stored
+  // row (schema.md section 5) — it is formatted at request time.
+  attachReservation(input: AttachReservationInput): Promise<ConfirmationRecord>;
+  // Read-only: formats the confirmation record for a known
+  // reservationRef; unknown refs refuse NOT_FOUND. No state change,
+  // no outbox event.
+  produceConfirmation(input: ProduceConfirmationInput): Promise<ConfirmationRecord>;
 }
 
 function asObject(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
 }
 
+function requireDate(value: unknown, field: string): string {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value.trim())) {
+    throw new HttpError("VALIDATION_FAILED", `${field} must be a YYYY-MM-DD date.`, { field });
+  }
+  return value.trim();
+}
+
+function requirePriceMinor(value: unknown): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+    throw new HttpError("VALIDATION_FAILED", "price.amountMinor must be a non-negative integer.", {
+      field: "price",
+    });
+  }
+  return value;
+}
+
+// Validates one attached reservation snapshot into the confirmation
+// record shape (LLD section 5; FR-GST-4).
+export function toConfirmationRecord(input: AttachReservationInput): ConfirmationRecord {
+  const reservationRef = requireUuid(input.reservationRef, "reservationRef");
+  const hotel = asObject(input.hotel);
+  const guest = asObject(input.guest);
+  const dates = asObject(input.dates);
+  const price = asObject(input.price);
+  return {
+    reservationRef,
+    hotel: { hotelId: requireUuid(hotel.hotelId, "hotel.hotelId"), name: requireString(hotel.name, "hotel.name") },
+    guest: { guestId: requireUuid(guest.guestId, "guest.guestId"), fullName: requireString(guest.fullName, "guest.fullName") },
+    dates: { checkIn: requireDate(dates.checkIn, "dates.checkIn"), checkOut: requireDate(dates.checkOut, "dates.checkOut") },
+    type: requireString(input.type, "type"),
+    price: { amountMinor: requirePriceMinor(price.amountMinor), currency: requireString(price.currency, "price.currency") },
+  };
+}
+
 export class GuestStore implements GuestStoreAPI {
   private readonly guests = new Map<string, GuestRecord>();
   private readonly links: GuestStayLink[] = [];
+  private readonly confirmations = new Map<string, ConfirmationRecord>();
   private readonly outbox: { aggregate: string; eventType: string; payload: Record<string, unknown> }[] = [];
 
   async upsertGuest(input: UpsertGuestInput): Promise<GuestRecord> {
@@ -185,6 +259,23 @@ export class GuestStore implements GuestStoreAPI {
       payload: { guestId, stayId, pastStayCount: stayCount },
     });
     return { ...record, stayLinks: this.linksFor(guestId) };
+  }
+
+  async attachReservation(input: AttachReservationInput): Promise<ConfirmationRecord> {
+    const record = toConfirmationRecord(input);
+    this.confirmations.set(record.reservationRef, record);
+    return record;
+  }
+
+  async produceConfirmation(input: ProduceConfirmationInput): Promise<ConfirmationRecord> {
+    const reservationRef = requireUuid(input.reservationRef, "reservationRef");
+    const record = this.confirmations.get(reservationRef);
+    if (!record) {
+      throw new HttpError("NOT_FOUND", `Unknown reservation ${reservationRef}.`, {
+        reservationRef,
+      });
+    }
+    return record;
   }
 
   private linksFor(guestId: string): GuestStayLink[] {

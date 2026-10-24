@@ -246,6 +246,57 @@ describe("guest profiles", () => {
     }
   });
 
+  it("produces the confirmation record for a known reservation ref", async () => {
+    const store = new GuestStore();
+    const server = createServiceServer("guests", store);
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+    const port = (server.address() as { port: number }).port;
+    try {
+      const reservationRef = "33333333-3333-4333-8333-333333333333";
+      await store.attachReservation({
+        reservationRef,
+        hotel: { hotelId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", name: "Hanoi Riverside" },
+        guest: { guestId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", fullName: "Confirmation Guest" },
+        dates: { checkIn: "2026-11-01", checkOut: "2026-11-03" },
+        type: "deluxe",
+        price: { amountMinor: 2400000, currency: "VND" },
+      });
+
+      const confirmation = await request(port, "POST", "/v1/guests/ProduceConfirmation", { reservationRef });
+      assert.equal(confirmation.status, 200);
+      assert.deepEqual(confirmation.body, {
+        reservationRef,
+        hotel: { hotelId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", name: "Hanoi Riverside" },
+        guest: { guestId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", fullName: "Confirmation Guest" },
+        dates: { checkIn: "2026-11-01", checkOut: "2026-11-03" },
+        type: "deluxe",
+        price: { amountMinor: 2400000, currency: "VND" },
+      });
+    } finally {
+      server.close();
+    }
+  });
+
+  it("refuses confirmation for an unknown reservation ref with NOT_FOUND", async () => {
+    const server = createServiceServer("guests", new GuestStore());
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+    const port = (server.address() as { port: number }).port;
+    try {
+      const unknownRef = "00000000-0000-4000-8000-000000000000";
+      const refused = await request(port, "POST", "/v1/guests/ProduceConfirmation", {
+        reservationRef: unknownRef,
+      });
+      assert.equal(refused.status, 404);
+      assert.equal((refused.body as { code: string }).code, "NOT_FOUND");
+
+      const missing = await request(port, "POST", "/v1/guests/ProduceConfirmation", {});
+      assert.equal(missing.status, 400);
+      assert.equal((missing.body as { code: string }).code, "VALIDATION_FAILED");
+    } finally {
+      server.close();
+    }
+  });
+
   it("refuses profile and stay-link writes for unknown guests", async () => {
     const store = new GuestStore();
     const server = createServiceServer("guests", store);

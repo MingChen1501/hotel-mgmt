@@ -1,0 +1,15 @@
+{
+  "operation": "ProduceConfirmation",
+  "case": "happy-path",
+  "description": "Produces the booking confirmation record showing hotel, guest, dates, room type, and quoted price (FR-GST-4).",
+  "request": { "reservationRef": "33333333-3333-4333-8333-333333333333" },
+  "expect": {
+    "status": 200,
+    "reservationRef": "33333333-3333-4333-8333-333333333333",
+    "hotel": { "hotelId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "name": "Hanoi Riverside" },
+    "guest": { "guestId": "<guest-id>", "fullName": "E2E Guest" },
+    "dates": { "checkIn": "2026-11-01", "checkOut": "2026-11-03" },
+    "type": "deluxe",
+    "price": { "amountMinor": 2400000, "currency": "VND" }
+  }
+}
