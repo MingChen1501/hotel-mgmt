@@ -1,0 +1,15 @@
+{
+  "operation": "CreateReservation",
+  "case": "walk-in",
+  "description": "Desk books a walk-in guest with today as the arrival date: the booking lands confirmed, ready for immediate check-in, and appears on today's arrivals list (FR-RES-4).",
+  "request": {
+    "roomTypeId": "<deluxe-type-id>",
+    "arrivalDate": "<today>",
+    "departureDate": "<today-plus-2>",
+    "guest": { "guestId": "<guest-id>", "fullName": "Walk In", "contact": "+84-900-000-009" },
+    "sellableUnits": 1,
+    "priceBasis": { "totalMinor": 24000, "discountName": null },
+    "idempotencyKey": "walk-in-1"
+  },
+  "expect": { "status": 200, "state": "confirmed", "arrivalDate": "<today>" }
+}

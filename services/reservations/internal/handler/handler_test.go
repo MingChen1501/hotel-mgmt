@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/MingChen1501/hotel-mgmt/services/reservations/internal/service"
 	"github.com/MingChen1501/hotel-mgmt/services/reservations/internal/store"
@@ -89,6 +90,58 @@ func TestRequiresSessionToken(t *testing.T) {
 	code, body := post(t, mux, "/v1/reservations/CreateReservation", loopBody("desk-loop-1"), "")
 	if code != http.StatusUnauthorized || body["code"] != "UNAUTHENTICATED" {
 		t.Fatalf("missing token = %d %v, want 401 UNAUTHENTICATED", code, body)
+	}
+}
+
+// TestWalkInSameDayBookingConfirmedAndOnArrivals covers FR-RES-4: a
+// guest arriving without a reservation is booked with today as the
+// arrival date, lands in the confirmed state ready for immediate
+// check-in, and appears on today's arrivals list (QueryCalendar over
+// the business date). Dates derive from the clock, never fixtures.
+func TestWalkInSameDayBookingConfirmedAndOnArrivals(t *testing.T) {
+	mux := newMux()
+	today := time.Now().UTC().Format("2006-01-02")
+	tomorrow := time.Now().UTC().AddDate(0, 0, 1).Format("2006-01-02")
+	departure := time.Now().UTC().AddDate(0, 0, 2).Format("2006-01-02")
+
+	body := loopBody("walk-in-1")
+	body["arrivalDate"] = today
+	body["departureDate"] = departure
+	code, created := post(t, mux, "/v1/reservations/CreateReservation", body, deskToken)
+	if code != http.StatusOK {
+		t.Fatalf("walk-in CreateReservation status = %d (%v)", code, created)
+	}
+	if created["state"] != "confirmed" {
+		t.Fatalf("walk-in = %v, want confirmed state", created)
+	}
+	ref, _ := created["reservationRef"].(string)
+	if ref == "" {
+		t.Fatal("walk-in reservation has no reference")
+	}
+
+	code, fetched := post(t, mux, "/v1/reservations/GetReservation", map[string]any{"reservationRef": ref}, deskToken)
+	if code != http.StatusOK || fetched["arrivalDate"] != today {
+		t.Fatalf("walk-in GetReservation = %d %v, want arrival today", code, fetched)
+	}
+
+	code, checked := post(t, mux, "/v1/reservations/CheckInReservation", map[string]any{"reservationRef": ref, "stayId": "stay-walk-in-1", "actor": "front-desk"}, deskToken)
+	if code != http.StatusOK || checked["state"] != "checked-in" {
+		t.Fatalf("walk-in CheckInReservation = %d %v, want checked-in", code, checked)
+	}
+
+	code, calendar := post(t, mux, "/v1/reservations/QueryCalendar", map[string]any{"dateFrom": today, "dateTo": tomorrow}, deskToken)
+	if code != http.StatusOK {
+		t.Fatalf("QueryCalendar status = %d", code)
+	}
+	entries, _ := calendar["reservations"].([]any)
+	found := false
+	for _, raw := range entries {
+		if entry, _ := raw.(map[string]any); entry["reservationRef"] == ref {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("today's arrivals hold %d entries, want the walk-in %s", len(entries), ref)
 	}
 }
 
