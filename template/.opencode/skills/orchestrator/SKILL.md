@@ -29,16 +29,24 @@ placeholder — the stack is undecided).
 
 ## On each wake
 
-1. Inspect state: `ao status`, `ao session ls --project {{PROJECT_NAME}}`, open PRs,
+1. Sync the canonical checkout (the project path humans and read-only
+   checks use): when its tree is clean
+   (`git -C <path> status --porcelain` empty), fast-forward it
+   (`git -C <path> pull --ff-only`) so wake-time reads see
+   `origin/{{DEFAULT_BRANCH}}`; when it has local changes, leave it
+   untouched and warn the owner (skip, never force, stash, merge, or
+   rebase). The canonical tree is for read/display plus orchestrator
+   spot-checks, never a workspace.
+2. Inspect state: `ao status`, `ao session ls --project {{PROJECT_NAME}}`, open PRs,
    and open issues.
-2. Kill sessions that are done (merged/closed PR, completed task) with
+3. Kill sessions that are done (merged/closed PR, completed task) with
    `ao session kill`.
-3. Spawn the next queued task **only when a slot is free** (see Pool). Never
+4. Spawn the next queued task **only when a slot is free** (see Pool). Never
    batch-spawn.
-4. Update issues (close done, comment progress, create follow-ups).
-5. Escalate only decisions (risk-high/very-high merges, missing labels,
+5. Update issues (close done, comment progress, create follow-ups).
+6. Escalate only decisions (risk-high/very-high merges, missing labels,
    conflicts requiring owner input).
-6. Stay terse. Report only state changes, blockers, and decisions needed.
+7. Stay terse. Report only state changes, blockers, and decisions needed.
 
 ## Pool
 
