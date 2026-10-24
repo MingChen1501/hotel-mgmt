@@ -7,7 +7,9 @@ package service
 // scale-correctness, never the 5 s single-host bound. The bound
 // assertion engages only with REFERENCE_HOST=1 on the 2*4*50
 // reference host.
-// Housekeeping is timed separately once its read op lands (#191).
+// Housekeeping is timed in this same harness now that its read op
+// has landed (#191): room states are seeded alongside the stay feed
+// so the report scans a realistic 50-room floor.
 
 import (
 	"fmt"
@@ -69,9 +71,29 @@ func perfExtra(i, r int) bool {
 	return (i+r)%7 == 0
 }
 
+// perfRoomState assigns each perf room a deterministic starting
+// housekeeping state covering the FR-RPT-4 state machine: dirty,
+// clean, inspected, out of order, and occupied rooms. Seeded via
+// room.room-upserted events so the report scans a realistic 50-room
+// floor instead of an empty projection.
+func perfRoomState(r int) string {
+	switch r % 5 {
+	case 0:
+		return "vacant-dirty"
+	case 1:
+		return "vacant-clean"
+	case 2:
+		return "vacant-inspected"
+	case 3:
+		return "out-of-order"
+	default:
+		return "occupied"
+	}
+}
+
 // TestPerfTwoYearReportsRecordTimings generates two years of 50-room
 // operating data, rebuilds the read model, and times the occupancy,
-// revenue, and daily-sheet reads over the full window.
+// revenue, daily-sheet, and housekeeping reads over the full window.
 func TestPerfTwoYearReportsRecordTimings(t *testing.T) {
 	base := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	const windowDays = 731 // 2024-01-01..2025-12-31: two years of operating data
@@ -81,6 +103,10 @@ func TestPerfTwoYearReportsRecordTimings(t *testing.T) {
 	var events []store.Event
 	emit := func(id, subscription, typ string, day time.Time, payload map[string]any) {
 		events = append(events, store.Event{ID: id, Subscription: subscription, Type: typ, OccurredAt: day, Payload: payload})
+	}
+	for r := 0; r < perfRooms; r++ {
+		emit(fmt.Sprintf("perf-hkstate-%d", r), "room", "room.room-upserted", base,
+			map[string]any{"roomNumber": fmt.Sprintf("room-p-%d", r), "roomTypeId": perfRoomType, "state": perfRoomState(r), "actor": "perf-seed"})
 	}
 	for i := 0; i < windowDays; i++ {
 		day := base.AddDate(0, 0, i)
@@ -235,9 +261,48 @@ func TestPerfTwoYearReportsRecordTimings(t *testing.T) {
 		}
 	}
 
+	var housekeeping []store.HousekeepingRoom
+	var hkAsOf time.Time
+	hkElapsed := timed("HousekeepingReport", func() *store.OpError {
+		rooms, asOf := svc.HousekeepingReport()
+		housekeeping = rooms
+		hkAsOf = asOf
+		return nil
+	})
+	if hkAsOf.IsZero() {
+		t.Fatal("housekeeping report carries no as-of timestamp")
+	}
+	wantHousekeeping := map[string]string{}
+	for r := 0; r < perfRooms; r++ {
+		state := perfRoomState(r)
+		if state == "occupied" {
+			// Every perf room is booked on ~2 of every 3 days, so
+			// its first stay check-out flips it to vacant-dirty
+			// (only the rooms module's own state-changed event
+			// could overwrite that, and the seed emits none).
+			state = "vacant-dirty"
+		}
+		if state == "vacant-dirty" || state == "vacant-clean" {
+			wantHousekeeping[fmt.Sprintf("room-p-%d", r)] = state
+		}
+	}
+	if len(housekeeping) != len(wantHousekeeping) {
+		t.Fatalf("housekeeping rooms = %d, want %d over %d rooms", len(housekeeping), len(wantHousekeeping), perfRooms)
+	}
+	for _, room := range housekeeping {
+		want, found := wantHousekeeping[room.Room]
+		if !found {
+			t.Fatalf("unexpected room on the housekeeping report: %+v", room)
+		}
+		if room.State != want {
+			t.Fatalf("room %s state = %q, want %q", room.Room, room.State, want)
+		}
+	}
+
 	if os.Getenv("REFERENCE_HOST") == "1" {
 		for name, elapsed := range map[string]time.Duration{
 			"OccupancyReport": occElapsed, "RevenueSummary": revElapsed, "DailySheet": sheetElapsed,
+			"HousekeepingReport": hkElapsed,
 		} {
 			if elapsed > 5*time.Second {
 				t.Fatalf("%s took %v on the reference host, want within 5 s", name, elapsed)

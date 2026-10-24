@@ -186,7 +186,7 @@ Desk-loop proof for the slice (PR #115 body): live SignIn → GetHotelConfig →
 | FR-ADM-3 room setup | `services/rooms` `defines rooms as owner and shows them in inventory and availability` | PR #194 local: rooms 13/13; CI run 40072283932 `node-build (rooms)` SUCCESS; merge `2367943b` all 14 success |
 | FR-CUS-2 stay policies | `services/admin` `saves stay times and cancellation wording and shows them back` + `apply-hotel-config.sh` wording verification | PR #194 local: admin 17 pass + 1 pre-existing pg skip; CI run 40072283932 `node-build (admin)` SUCCESS; merge `2367943b` all 14 success |
 | NFR-PERF-1 desk timing | `script/e2e-perf-check.sh` timed run (section 3) | PR #194 CI run 40072283932 `e2e-single-host` SUCCESS (12 view + 9 action timings, env `ci-e2e-variant`); merge `2367943b` `e2e-single-host` success |
-| NFR-PERF-2 report timing | `TestPerfTwoYearReportsRecordTimings` (section 4; HousekeepingReport untimed — gap G1, section 9) | PR #194 CI run 40072283932 `perf-reporting-variant` SUCCESS (rebuild 71 ms over 126,050 events); merge `2367943b` `perf-reporting-variant` success |
+| NFR-PERF-2 report timing | `TestPerfTwoYearReportsRecordTimings` (section 4; HousekeepingReport timed by #216, gap G1 closed) | PR #194 CI run 40072283932 `perf-reporting-variant` SUCCESS (rebuild 71 ms over 126,050 events); merge `2367943b` `perf-reporting-variant` success; #216 re-runs the variant with the housekeeping timing |
 
 ### 1.14 Follow-up slices (#189 → PR #198; #190 → PR #199; #191 → PR #200; #192 → PR #202; #201 → PR #207)
 
@@ -238,7 +238,7 @@ No bound was asserted on this run (`referenceHost=0`); the numbers are recorded 
 
 Carried over from the #182 report (PR #194, CI run 40071918989, job `perf-reporting-variant` 120807003314):
 
-- Method: `TestPerfTwoYearReportsRecordTimings` generates two years of 50-room operating data as domain events (731 days, 2024-01-01 to 2025-12-31, 126,050 events: availability baselines, reservations, stay check-ins/check-outs, room/extra charges, payments), folds them through the real `Rebuild` path, and times each standard report over the full window. Scale-correctness is asserted (row counts, spot occupancy, revenue totals, daily-sheet groups agree with the generated source rows); the 5 s bound is asserted only with `REFERENCE_HOST=1`.
+- Method: `TestPerfTwoYearReportsRecordTimings` generates two years of 50-room operating data as domain events (731 days, 2024-01-01 to 2025-12-31, 126,100 events: availability baselines, reservations, stay check-ins/check-outs, room/extra charges, payments, plus 50 room-state seeds so the housekeeping report scans a realistic 50-room floor), folds them through the real `Rebuild` path, and times each standard report over the full window. Scale-correctness is asserted (row counts, spot occupancy, revenue totals, daily-sheet groups, and the housekeeping room set agree with the generated source rows); the 5 s bound is asserted only with `REFERENCE_HOST=1`.
 - Note: the lab reporting service is in-memory with no production rebuild endpoint or dispatcher yet, so the run populates the read model via `Rebuild` (the same code path the unit rebuild tests cover) rather than SQL-seeding the `rpt_*` tables. The measured object is exactly what NFR-PERF-2 bounds: the standard-report read path over two years of 50-room data.
 - Environment: `label=ci-e2e-variant go=go1.24.13 cpus=2 mem=8128876kB disk=13335MiB-avail` (GitHub-hosted runner — variant, never compared against single-host bounds).
 
@@ -248,7 +248,7 @@ Carried over from the #182 report (PR #194, CI run 40071918989, job `perf-report
 | OccupancyReport | 505 ms | 731 days × 1 type (731 rows) |
 | RevenueSummary | 0 ms | 731 days (731 rows) |
 | DailySheet | 5 ms | spot business date |
-| HousekeepingReport | not timed — read op landed in #191 but the timing was never added | gap G1 → follow-up #216 (section 9) |
+| HousekeepingReport | 0 ms local run (`label=ci-e2e-variant go=go1.24.7 cpus=8`; CI variant refreshes on the #216 PR run) | 50-room floor (30 rooms needing work) |
 
 ## 5. L3 overbooking concurrency
 
@@ -279,7 +279,7 @@ Carried over from the #182 report (PR #194, CI run 40071918989, job `perf-report
 
 ## 9. Open gaps and reproduce pointers
 
-- G1: `HousekeepingReport` is untimed in the PERF-2 harness. The #191 slice landed the read op but `services/reporting/internal/service/perf_test.go:10` still defers the timing; the report records it as untimed-with-follow-up citing #216. No new guard is added here (out of scope for #214).
+- G1 (closed by #216): `HousekeepingReport` was untimed in the PERF-2 harness — the #191 slice landed the read op but `services/reporting/internal/service/perf_test.go:10` still deferred the timing. The #216 slice times it in the same harness (50 room-state seeds, same `timed` helper and `REFERENCE_HOST=1` 5 s bound, scale-correctness asserted) and fills the section 4 row above.
 - No other gaps: 57/57 cells filled with passing guards; strategy and index reconciled by this change (matrix footer corrected to the verified live total 57; `test-plan.md` / `test-cases.md` / `test-data.md` stub promises dropped from the strategy and index per the #214 DROP decision; test-report index row flipped to active).
 - Reproduce: NFR-PERF-1 — bring up the lab per `docs/devops/deployment.md` (or `script/install.sh`), then run `script/e2e-perf-check.sh --base-url http://127.0.0.1`; on a 2*4*50 reference host add `REFERENCE_HOST=1`, otherwise the run records a `ci-e2e-variant`-labelled run (override with `PERF_ENV_LABEL`). NFR-PERF-2 — `go test -v -run TestPerfTwoYearReportsRecordTimings ./internal/service/` from `services/reporting` (add `REFERENCE_HOST=1` on the reference host to assert the 5 s bound). Catalogue — `bash script/catalogue-coverage-check.sh` (also runs in the always-run CI `ci` job).
 
