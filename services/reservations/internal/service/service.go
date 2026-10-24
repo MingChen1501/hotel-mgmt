@@ -27,13 +27,13 @@ type RestrictionCheck func(roomTypeID, arrivalDate, departureDate string) *store
 
 // Service validates booking attempts and runs the store guard.
 type Service struct {
-	store                 *store.Store
+	store                 store.Repository
 	RequiredGuestFields   []string
 	CheckRestrictionsHook RestrictionCheck
 }
 
 // New returns a Service over store.
-func New(st *store.Store) *Service {
+func New(st store.Repository) *Service {
 	return &Service{store: st, RequiredGuestFields: []string{"fullName"}}
 }
 

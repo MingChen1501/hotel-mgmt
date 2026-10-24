@@ -112,7 +112,7 @@ services:
     image: hotel-billing:0.1.0
     environment:
       PORT: "8087"
-      DATABASE_URL: jdbc:postgresql://db:5432/hotel
+      DATABASE_URL: postgresql://hotel:${DB_PASSWORD:-change-me-dev-only}@db:5432/hotel
       DB_USER: hotel
       DB_PASSWORD: ${DB_PASSWORD:-change-me-dev-only}
     depends_on:

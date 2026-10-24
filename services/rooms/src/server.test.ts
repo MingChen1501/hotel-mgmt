@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createServiceServer } from "./server.js";
-import { RoomStore } from "./store.js";
+import { type RoomStoreAPI, RoomStore } from "./store.js";
 
 const TOKEN = "skeleton-test-token";
 
@@ -26,7 +26,7 @@ async function request(
 
 async function withServer(
   run: (port: number) => Promise<void>,
-  store?: RoomStore,
+  store?: RoomStoreAPI,
 ): Promise<void> {
   const server = createServiceServer("rooms", store);
   await new Promise<void>((resolve) => server.listen(0, resolve));
@@ -116,10 +116,10 @@ describe("desk loop", () => {
 
   it("walks dirty to inspected and refuses dirty straight to inspected", async () => {
     const store = new RoomStore();
-    store.upsertRoomType({ name: "Standard", actor: "owner" });
-    const created = store.upsertRoom({ number: "201", roomType: "Standard", actor: "owner" });
-    store.updateRoomState({ roomNumber: created.number, newState: "occupied", actor: "front-desk" });
-    store.releaseRoom({ roomNumber: created.number, actor: "front-desk" });
+    await store.upsertRoomType({ name: "Standard", actor: "owner" });
+    const created = await store.upsertRoom({ number: "201", roomType: "Standard", actor: "owner" });
+    await store.updateRoomState({ roomNumber: created.number, newState: "occupied", actor: "front-desk" });
+    await store.releaseRoom({ roomNumber: created.number, actor: "front-desk" });
     await withServer(async (port) => {
       const illegal = await request(port, "POST", "/v1/rooms/UpdateRoomState", {
         roomNumber: "201",
@@ -147,8 +147,8 @@ describe("desk loop", () => {
 
   it("names the block when a blocked room is checked", async () => {
     const store = new RoomStore();
-    store.upsertRoomType({ name: "Deluxe", actor: "manager" });
-    store.upsertRoom({ number: "101", roomType: "Deluxe", actor: "manager" });
+    await store.upsertRoomType({ name: "Deluxe", actor: "manager" });
+    await store.upsertRoom({ number: "101", roomType: "Deluxe", actor: "manager" });
     await withServer(async (port) => {
       const blocked = await request(port, "POST", "/v1/rooms/BlockRoom", {
         roomNumber: "101",
@@ -173,8 +173,8 @@ describe("desk loop", () => {
 
   it("grants exactly one winner for paired simultaneous assignments (NFR-CON-2)", async () => {
     const store = new RoomStore();
-    store.upsertRoomType({ name: "Deluxe", actor: "manager" });
-    store.upsertRoom({ number: "101", roomType: "Deluxe", actor: "manager" });
+    await store.upsertRoomType({ name: "Deluxe", actor: "manager" });
+    await store.upsertRoom({ number: "101", roomType: "Deluxe", actor: "manager" });
     await withServer(async (port) => {
       const attempts = await Promise.all([
         request(port, "POST", "/v1/rooms/AssignRoom", {

@@ -93,7 +93,7 @@ func intField(body map[string]any, field string) (int64, bool) {
 }
 
 // NewMux routes the ReservationService operations onto svc.
-func NewMux(svc *service.Service, st *store.Store) *http.ServeMux {
+func NewMux(svc *service.Service, st store.Repository) *http.ServeMux {
 	mux := http.NewServeMux()
 	authed := func(handle func(http.ResponseWriter, map[string]any)) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
@@ -150,7 +150,7 @@ func NewMux(svc *service.Service, st *store.Store) *http.ServeMux {
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
-			"reservationRef": record.Ref, "state": record.State, "quotedTotal": record.TotalMinor,
+			"reservationId": record.ID, "reservationRef": record.Ref, "state": record.State, "quotedTotal": record.TotalMinor,
 		})
 	}))
 
@@ -166,11 +166,35 @@ func NewMux(svc *service.Service, st *store.Store) *http.ServeMux {
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
-			"reservationRef": record.Ref, "roomTypeId": record.RoomTypeID,
+			"reservationId": record.ID, "reservationRef": record.Ref, "roomTypeId": record.RoomTypeID,
 			"arrivalDate": record.ArrivalDate, "departureDate": record.DepartureDate,
 			"guest":      record.Guest,
 			"priceBasis": map[string]any{"totalMinor": record.TotalMinor, "discountName": record.DiscountName},
 			"state":      record.State,
+			"stayId":     stayOrNull(record.StayID),
+		})
+	}))
+
+	mux.HandleFunc("POST /v1/reservations/CheckInReservation", authed(func(w http.ResponseWriter, body map[string]any) {
+		ref, ok := strField(body, "reservationRef")
+		if !ok {
+			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: "reservationRef is required.", Details: map[string]any{"field": "reservationRef"}})
+			return
+		}
+		stayID, _ := strField(body, "stayId")
+		if stayID == "" {
+			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: "stayId is required.", Details: map[string]any{"field": "stayId"}})
+			return
+		}
+		actor, _ := strField(body, "actor")
+		record, oerr := st.CheckIn(ref, stayID, actor)
+		if oerr != nil {
+			writeOpError(w, oerr)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"reservationId": record.ID, "reservationRef": record.Ref,
+			"state": record.State, "stayId": record.StayID,
 		})
 	}))
 
@@ -204,6 +228,7 @@ func NewMux(svc *service.Service, st *store.Store) *http.ServeMux {
 			encoded = append(encoded, map[string]any{
 				"reservationRef": entry.Ref, "roomTypeId": entry.RoomTypeID,
 				"arrivalDate": entry.ArrivalDate, "departureDate": entry.DepartureDate, "state": entry.State,
+				"stayId": stayOrNull(entry.StayID),
 			})
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"dateFrom": from, "dateTo": to, "reservations": encoded})
@@ -237,4 +262,13 @@ func sellUnits(value int64, ok bool) int {
 		return 0
 	}
 	return int(value)
+}
+
+// stayOrNull renders an empty stay link as JSON null so callers can
+// tell "no stay yet" apart from a linked stay id.
+func stayOrNull(stayID string) any {
+	if stayID == "" {
+		return nil
+	}
+	return stayID
 }

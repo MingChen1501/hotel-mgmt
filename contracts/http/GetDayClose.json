@@ -1,0 +1,33 @@
+{
+  "operation": "GetDayClose",
+  "contract": "BillingService",
+  "version": "1.0",
+  "traces": ["docs/architecture/lld.md section 6", "FR-BIL-6"],
+  "transport": {
+    "method": "POST",
+    "path": "/v1/billing/GetDayClose",
+    "auth": "Bearer session token"
+  },
+  "request": {
+    "type": "object",
+    "required": ["businessDate"],
+    "properties": {
+      "businessDate": { "type": "string", "format": "date" }
+    }
+  },
+  "response": {
+    "type": "object",
+    "required": ["businessDate", "chargesTotalMinor", "paymentsByMethod"],
+    "properties": {
+      "businessDate": { "type": "string", "format": "date" },
+      "chargesTotalMinor": { "type": "integer" },
+      "paymentsByMethod": { "type": "object", "additionalProperties": true },
+      "runAt": { "type": "string", "format": "date-time" }
+    }
+  },
+  "errors": [
+    { "code": "UNAUTHENTICATED", "status": 401, "when": "Missing session token." },
+    { "code": "NOT_FOUND", "status": 404, "when": "No day-close run for the date." },
+    { "code": "VALIDATION_FAILED", "status": 400, "when": "Malformed businessDate." }
+  ]
+}

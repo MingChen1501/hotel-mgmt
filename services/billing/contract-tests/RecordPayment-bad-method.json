@@ -1,0 +1,12 @@
+{
+  "operation": "RecordPayment",
+  "case": "refusal-method",
+  "description": "A method other than cash or card is refused (OQ-1 baseline).",
+  "request": {
+    "stayId": "<stay-id>",
+    "method": "transfer",
+    "amountMinor": 60000,
+    "actor": "front-desk"
+  },
+  "expect": { "status": 400, "code": "VALIDATION_FAILED" }
+}

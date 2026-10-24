@@ -1,0 +1,29 @@
+{
+  "operation": "QueryStays",
+  "contract": "StayService",
+  "version": "1.0",
+  "traces": ["docs/architecture/lld.md section 2", "FR-FDK-5"],
+  "transport": {
+    "method": "POST",
+    "path": "/v1/stay/QueryStays",
+    "auth": "Bearer session token"
+  },
+  "request": {
+    "type": "object",
+    "properties": {
+      "state": { "type": "string", "enum": ["in-house", "closed"] }
+    }
+  },
+  "response": {
+    "type": "object",
+    "required": ["stays"],
+    "properties": {
+      "state": { "type": ["string", "null"] },
+      "stays": { "type": "array", "items": { "type": "object", "additionalProperties": true } }
+    }
+  },
+  "errors": [
+    { "code": "UNAUTHENTICATED", "status": 401, "when": "Missing session token." },
+    { "code": "VALIDATION_FAILED", "status": 400, "when": "Unknown stay state." }
+  ]
+}

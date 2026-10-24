@@ -129,6 +129,20 @@ type Store struct {
 	events       []map[string]any
 }
 
+// Repository is the store contract the handler programs against.
+// New returns the in-memory implementation used in unit tests;
+// NewPostgres (postgres.go) returns the Postgres-backed implementation
+// used when DATABASE_URL is set. Both keep the same pricing semantics.
+type Repository interface {
+	UpsertRatePlan(name, description string, defaultUnits *int) *RatePlan
+	UpsertRatePrice(planName, roomTypeID, night string, priceMinor int64) (*RatePrice, *OpError)
+	UpsertRestriction(roomTypeID, from, to string, minStay *int, closedToArrival bool) (*StayRestriction, *OpError)
+	UpsertDiscount(name, kind string, valueMinor int64) (*Discount, *OpError)
+	Quote(roomTypeID, arrival, departure string, planName, discountName *string) (*Quote, *OpError)
+	CheckRestrictions(roomTypeID, arrival, departure string) *OpError
+	CheckSellableCount(roomTypeID, from, to string, totalUnits *int) ([]DayCount, *OpError)
+}
+
 // New returns an empty Store.
 func New() *Store {
 	return &Store{

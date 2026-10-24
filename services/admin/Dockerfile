@@ -14,6 +14,7 @@ ENV NODE_ENV=production
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 COPY --from=build /src/dist ./dist
+COPY --from=build /src/migrations ./migrations
 EXPOSE 8088
 ENV PORT=8088
 CMD ["node", "dist/index.js"]

@@ -1,0 +1,7 @@
+{
+  "operation": "QueryStays",
+  "case": "happy-path",
+  "description": "Lists the in-house stays exactly once for the arrivals evidence.",
+  "request": { "state": "in-house" },
+  "expect": { "status": 200 }
+}

@@ -1,0 +1,12 @@
+{
+  "operation": "UpsertGuest",
+  "case": "happy-path",
+  "description": "Keeps one record per guest with preferences visible at booking time.",
+  "request": {
+    "guestId": "<guest-id>",
+    "fullName": "E2E Guest",
+    "preferences": { "floor": "high" },
+    "actor": "front-desk"
+  },
+  "expect": { "status": 200, "returningFlag": false, "pastStayCount": 0 }
+}

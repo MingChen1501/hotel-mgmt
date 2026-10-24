@@ -1,0 +1,7 @@
+{
+  "operation": "IdentifyGuest",
+  "case": "happy-path",
+  "description": "Identifies the guest with stay history, returning flag, and past-stay count.",
+  "request": { "guestId": "<guest-id>" },
+  "expect": { "status": 200, "returningFlag": false }
+}

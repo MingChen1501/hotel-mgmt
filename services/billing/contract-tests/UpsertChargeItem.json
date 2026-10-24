@@ -1,0 +1,7 @@
+{
+  "operation": "UpsertChargeItem",
+  "case": "happy-path",
+  "description": "Defines the hotel's own charge item for posting to any folio.",
+  "request": { "name": "Breakfast", "priceMinor": 2500, "actor": "manager" },
+  "expect": { "status": 200, "name": "Breakfast" }
+}

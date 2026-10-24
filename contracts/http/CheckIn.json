@@ -1,0 +1,41 @@
+{
+  "operation": "CheckIn",
+  "contract": "StayService",
+  "version": "1.0",
+  "traces": ["docs/architecture/lld.md section 2", "docs/technical/integration.md section 2", "FR-FDK-1", "NFR-CON-2"],
+  "transport": {
+    "method": "POST",
+    "path": "/v1/stay/CheckIn",
+    "auth": "Bearer session token"
+  },
+  "request": {
+    "type": "object",
+    "required": ["reservationId", "guestId", "roomId", "actor"],
+    "properties": {
+      "stayId": { "type": "string", "format": "uuid", "description": "Client-supplied stay id; generated when absent." },
+      "reservationId": { "type": "string", "format": "uuid", "description": "Logical reference to the reservations schema." },
+      "guestId": { "type": "string", "format": "uuid", "description": "Logical reference to the guests schema." },
+      "roomId": { "type": "string", "format": "uuid", "description": "Assigned room id; the Rooms-schema atomic write runs first." },
+      "actualArrival": { "type": "string", "format": "date-time" },
+      "actor": { "type": "string" }
+    }
+  },
+  "response": {
+    "type": "object",
+    "required": ["stayId", "reservationId", "guestId", "roomId", "state"],
+    "properties": {
+      "stayId": { "type": "string", "format": "uuid" },
+      "reservationId": { "type": "string", "format": "uuid" },
+      "guestId": { "type": "string", "format": "uuid" },
+      "roomId": { "type": "string", "format": "uuid" },
+      "state": { "type": "string", "const": "in-house" },
+      "actualArrival": { "type": "string", "format": "date-time" },
+      "actualDeparture": { "type": ["string", "null"] }
+    }
+  },
+  "errors": [
+    { "code": "UNAUTHENTICATED", "status": 401, "when": "Missing session token." },
+    { "code": "CONFLICT", "status": 409, "when": "The reservation is already checked in; details name the reservation and the existing stay." },
+    { "code": "VALIDATION_FAILED", "status": 400, "when": "Missing or malformed reservation, guest, or room link." }
+  ]
+}

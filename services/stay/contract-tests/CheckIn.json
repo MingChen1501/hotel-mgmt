@@ -1,0 +1,12 @@
+{
+  "operation": "CheckIn",
+  "case": "happy-path",
+  "description": "Checks a reservation in against its assigned room: one in-house stay row.",
+  "request": {
+    "reservationId": "<reservation-id>",
+    "guestId": "<guest-id>",
+    "roomId": "<room-id>",
+    "actor": "front-desk"
+  },
+  "expect": { "status": 200, "state": "in-house" }
+}

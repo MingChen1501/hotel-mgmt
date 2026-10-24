@@ -42,6 +42,7 @@ const dateLayout = "2006-01-02"
 
 // Reservation is one booking row.
 type Reservation struct {
+	ID            string
 	Ref           string
 	RoomTypeID    string
 	ArrivalDate   string
@@ -51,6 +52,7 @@ type Reservation struct {
 	TotalMinor    int64
 	DiscountName  *string
 	State         string
+	StayID        string
 	CreatedBy     string
 	CreatedAt     time.Time
 }
@@ -75,6 +77,18 @@ type CalendarEntry struct {
 	ArrivalDate   string
 	DepartureDate string
 	State         string
+	StayID        string
+}
+
+// Repository is the store contract the service and handler program
+// against. New returns the in-memory implementation used in unit tests;
+// NewPostgres (postgres.go) returns the Postgres-backed implementation
+// used when DATABASE_URL is set. Both keep the same guard semantics.
+type Repository interface {
+	Create(input CreateInput, idempotencyKey string) (*Reservation, *OpError)
+	Get(ref string) (*Reservation, *OpError)
+	Query(dateFrom, dateTo, roomTypeID string) []*CalendarEntry
+	CheckIn(ref, stayID, actor string) (*Reservation, *OpError)
 }
 
 // Store holds reservations behind a mutex.
@@ -99,6 +113,26 @@ func newRef() string {
 		out[i] = alphabet[int(b)%len(alphabet)]
 	}
 	return "RSV-" + string(out[:])
+}
+
+func newID() string {
+	var buf [16]byte
+	_, _ = rand.Read(buf[:])
+	buf[6] = (buf[6] & 0x0f) | 0x40
+	buf[8] = (buf[8] & 0x3f) | 0x80
+	const hexdigits = "0123456789abcdef"
+	var out [36]byte
+	j := 0
+	for i, b := range buf {
+		if i == 4 || i == 6 || i == 8 || i == 10 {
+			out[j] = '-'
+			j++
+		}
+		out[j] = hexdigits[b>>4]
+		out[j+1] = hexdigits[b&0x0f]
+		j += 2
+	}
+	return string(out[:])
 }
 
 func overlaps(arrival, departure, existingArrival, existingDeparture string) bool {
@@ -139,6 +173,7 @@ func (s *Store) Create(input CreateInput, idempotencyKey string) (*Reservation, 
 		)
 	}
 	record := &Reservation{
+		ID:            newID(),
 		Ref:           newRef(),
 		RoomTypeID:    input.RoomTypeID,
 		ArrivalDate:   input.ArrivalDate,
@@ -198,7 +233,34 @@ func (s *Store) Query(dateFrom, dateTo, roomTypeID string) []*CalendarEntry {
 		entries = append(entries, &CalendarEntry{
 			Ref: record.Ref, RoomTypeID: record.RoomTypeID,
 			ArrivalDate: record.ArrivalDate, DepartureDate: record.DepartureDate, State: record.State,
+			StayID: record.StayID,
 		})
 	}
 	return entries
+}
+
+// CheckIn flips a confirmed reservation to checked-in and links the
+// stay created by the Stay module (the desk loop calls Stay CheckIn
+// first and passes its stay id here). Re-check-in is refused.
+func (s *Store) CheckIn(ref, stayID string, actor string) (*Reservation, *OpError) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	record, ok := s.byRef[strings.TrimSpace(ref)]
+	if !ok {
+		return nil, notFound(fmt.Sprintf("Unknown reservation %s.", ref), map[string]any{"reservationRef": ref})
+	}
+	if record.State != "confirmed" {
+		return nil, &OpError{
+			Code: "STATE_ILLEGAL", Status: 422,
+			Message: fmt.Sprintf("Reservation %s is %s, not confirmed for check-in.", ref, record.State),
+			Details: map[string]any{"reservationRef": ref, "state": record.State},
+		}
+	}
+	record.State = "checked-in"
+	record.StayID = stayID
+	s.events = append(s.events, map[string]any{
+		"aggregate": "reservation", "eventType": "checked-in",
+		"payload": map[string]any{"reservationRef": record.Ref, "stayId": stayID},
+	})
+	return record, nil
 }

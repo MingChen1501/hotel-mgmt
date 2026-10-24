@@ -1,0 +1,7 @@
+{
+  "operation": "RunDayClose",
+  "case": "happy-path",
+  "description": "Closes the day with charge totals and per-method payment totals agreeing with the folios.",
+  "request": { "businessDate": "<business-date>", "actor": "manager" },
+  "expect": { "status": 200 }
+}

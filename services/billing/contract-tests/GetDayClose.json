@@ -1,0 +1,7 @@
+{
+  "operation": "GetDayClose",
+  "case": "happy-path",
+  "description": "Reads the persisted day-close run back for restore comparison.",
+  "request": { "businessDate": "<business-date>" },
+  "expect": { "status": 200 }
+}

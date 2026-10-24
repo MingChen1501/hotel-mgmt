@@ -1,0 +1,36 @@
+{
+  "operation": "GetStay",
+  "contract": "StayService",
+  "version": "1.0",
+  "traces": ["docs/architecture/lld.md section 2", "FR-FDK-1", "FR-FDK-5"],
+  "transport": {
+    "method": "POST",
+    "path": "/v1/stay/GetStay",
+    "auth": "Bearer session token"
+  },
+  "request": {
+    "type": "object",
+    "properties": {
+      "stayId": { "type": "string", "format": "uuid" },
+      "reservationId": { "type": "string", "format": "uuid" }
+    }
+  },
+  "response": {
+    "type": "object",
+    "required": ["stayId", "reservationId", "guestId", "roomId", "state"],
+    "properties": {
+      "stayId": { "type": "string", "format": "uuid" },
+      "reservationId": { "type": "string", "format": "uuid" },
+      "guestId": { "type": "string", "format": "uuid" },
+      "roomId": { "type": "string", "format": "uuid" },
+      "state": { "type": "string" },
+      "actualArrival": { "type": ["string", "null"] },
+      "actualDeparture": { "type": ["string", "null"] }
+    }
+  },
+  "errors": [
+    { "code": "UNAUTHENTICATED", "status": 401, "when": "Missing session token." },
+    { "code": "NOT_FOUND", "status": 404, "when": "Unknown stay or no stay for the reservation." },
+    { "code": "VALIDATION_FAILED", "status": 400, "when": "Neither stayId nor reservationId is given." }
+  ]
+}

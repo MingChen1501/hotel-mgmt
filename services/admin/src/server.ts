@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
 import { HttpError, errorEnvelope } from "./errors.js";
-import { AdminStore } from "./store.js";
+import { type AdminStoreAPI, AdminStore } from "./store.js";
 
 type Body = Record<string, unknown>;
 
@@ -49,7 +49,7 @@ function bearerToken(req: IncomingMessage): string | null {
 // createServiceServer answers GET /healthz with the module identity,
 // routes POST /v1/admin/<Operation> per contracts/http, and refuses
 // every other path with the shared error envelope.
-export function createServiceServer(service: string, store: AdminStore = new AdminStore()): Server {
+export function createServiceServer(service: string, store: AdminStoreAPI = new AdminStore()): Server {
   return createServer((req, res) => {
     void handleRequest(req, res, service, store).catch((err: unknown) => {
       if (err instanceof HttpError) {
@@ -66,17 +66,17 @@ export function createServiceServer(service: string, store: AdminStore = new Adm
   });
 }
 
-export function bootStoreFromEnvironment(store: AdminStore): void {
+export async function bootStoreFromEnvironment(store: AdminStoreAPI): Promise<void> {
   const identity = process.env["ADMIN_BOOT_IDENTITY"] ?? "owner";
   const secret = process.env["ADMIN_BOOT_SECRET"] ?? "change-me";
-  store.ensureBootUser(identity, secret);
+  await store.ensureBootUser(identity, secret);
 }
 
 async function handleRequest(
   req: IncomingMessage,
   res: ServerResponse,
   service: string,
-  store: AdminStore,
+  store: AdminStoreAPI,
 ): Promise<void> {
   if (req.method === "GET" && req.url === "/healthz") {
     writeJson(res, 200, { service, status: "ok" });
@@ -94,7 +94,7 @@ async function handleRequest(
   const body = await readBody(req);
   const operation = route[1];
   if (operation === "SignIn") {
-    const { token, user } = store.signIn(body["signinIdentity"], body["secret"]);
+    const { token, user } = await store.signIn(body["signinIdentity"], body["secret"]);
     writeJson(res, 200, { token, ...user });
     return;
   }
@@ -102,18 +102,18 @@ async function handleRequest(
   if (!token) {
     throw new HttpError("UNAUTHENTICATED", "Missing session token.", {});
   }
-  const caller = store.authenticate(token);
+  const caller = await store.authenticate(token);
   switch (operation) {
     case "GetHotelConfig": {
-      writeJson(res, 200, store.getConfig());
+      writeJson(res, 200, await store.getConfig());
       return;
     }
     case "UpdateHotelConfig": {
-      writeJson(res, 200, store.updateConfig(caller, body));
+      writeJson(res, 200, await store.updateConfig(caller, body));
       return;
     }
     case "CreateUser": {
-      writeJson(res, 200, store.createUser(caller, body));
+      writeJson(res, 200, await store.createUser(caller, body));
       return;
     }
     default: {

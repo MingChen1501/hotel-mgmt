@@ -11,10 +11,10 @@
 #
 # Skeleton scope: the shared engine holds the module schemas, the
 # seed rows, and the per-hotel configuration rows. Module service
-# rows stay in memory until the persistence slice, so this drill
-# proves the mechanism (artifact, verification read-back, report,
-# timing) rather than desk-state restore — see script/restore.sh and
-# the restore drill report.
+# rows persist in Postgres (issue #149), so this drill proves the
+# mechanism (artifact, verification read-back, report, timing) and
+# the desk-state restore (see script/restore.sh and the restore drill
+# report).
 #
 # Usage (from the repo root, stack already up):
 #   DB_PASSWORD=<secret> script/backup.sh [--staging-dir DIR] [--label NAME]

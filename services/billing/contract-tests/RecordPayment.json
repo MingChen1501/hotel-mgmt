@@ -1,0 +1,13 @@
+{
+  "operation": "RecordPayment",
+  "case": "happy-path",
+  "description": "Records a cash payment against the folio and lowers the balance.",
+  "request": {
+    "stayId": "<stay-id>",
+    "method": "cash",
+    "amountMinor": 60000,
+    "idempotencyKey": "e2e-payment-1",
+    "actor": "front-desk"
+  },
+  "expect": { "status": 200, "method": "cash" }
+}

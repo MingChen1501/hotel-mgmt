@@ -1,0 +1,14 @@
+{
+  "operation": "PostCharge",
+  "case": "happy-path",
+  "description": "Posts a nightly room charge to the stay folio and moves the balance.",
+  "request": {
+    "stayId": "<stay-id>",
+    "itemKind": "nightly-room-charge",
+    "itemName": "Room E2E-101",
+    "amountMinor": 120000,
+    "idempotencyKey": "e2e-charge-1",
+    "actor": "front-desk"
+  },
+  "expect": { "status": 200, "amountMinor": 120000 }
+}
