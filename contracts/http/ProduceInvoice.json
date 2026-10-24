@@ -1,0 +1,38 @@
+{
+  "operation": "ProduceInvoice",
+  "contract": "BillingService",
+  "version": "1.0",
+  "traces": ["docs/architecture/lld.md section 6", "docs/technical/integration.md section 4", "FR-BIL-4"],
+  "transport": {
+    "method": "POST",
+    "path": "/v1/billing/ProduceInvoice",
+    "auth": "Bearer session token"
+  },
+  "request": {
+    "type": "object",
+    "required": ["folioId", "actor"],
+    "properties": {
+      "folioId": { "type": "string", "format": "uuid" },
+      "actor": { "type": "string" }
+    }
+  },
+  "response": {
+    "type": "object",
+    "required": ["invoiceId", "folioId", "stayId", "balanceMinor", "charges", "payments", "producedAt"],
+    "properties": {
+      "invoiceId": { "type": "string", "format": "uuid", "description": "The presented folio id." },
+      "folioId": { "type": "string", "format": "uuid" },
+      "stayId": { "type": "string", "format": "uuid" },
+      "balanceMinor": { "type": "integer" },
+      "openBalanceApproval": { "type": ["object", "null"] },
+      "charges": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+      "payments": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+      "producedAt": { "type": "string", "format": "date-time" }
+    }
+  },
+  "errors": [
+    { "code": "UNAUTHENTICATED", "status": 401, "when": "Missing session token." },
+    { "code": "NOT_FOUND", "status": 404, "when": "No folio for the folioId." },
+    { "code": "VALIDATION_FAILED", "status": 400, "when": "Missing or malformed folioId." }
+  ]
+}

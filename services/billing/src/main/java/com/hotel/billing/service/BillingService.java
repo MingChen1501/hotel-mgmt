@@ -44,6 +44,16 @@ public class BillingService {
   public record DayCloseView(LocalDate businessDate, long chargesTotalMinor, Map<String, Long> paymentsByMethod,
       String runAt) {}
 
+  // Invoice and receipt are presentations of stored rows, never
+  // stored rows themselves (FR-BIL-4, issue #151): the invoice shows
+  // the folio with every line and the running balance exactly, and
+  // each receipt matches one recorded payment.
+  public record InvoiceView(UUID invoiceId, UUID folioId, UUID stayId, long balanceMinor, String openBalanceApproval,
+      List<Map<String, Object>> charges, List<Map<String, Object>> payments, String producedAt) {}
+
+  public record ReceiptView(UUID receiptId, UUID paymentId, UUID folioId, UUID stayId, String method,
+      long amountMinor, String paidAt) {}
+
   public record ApprovalView(UUID folioId, UUID stayId, long balanceMinor, String openBalanceApproval) {}
 
   private static Map<String, Object> chargeMap(ChargeLine line) {
@@ -74,6 +84,22 @@ public class BillingService {
       return UUID.fromString(stayId);
     } catch (IllegalArgumentException e) {
       throw ApiException.validation("stayId", "stayId must be a UUID.");
+    }
+  }
+
+  private static UUID folioUuid(String folioId) {
+    try {
+      return UUID.fromString(folioId);
+    } catch (IllegalArgumentException e) {
+      throw ApiException.validation("folioId", "folioId must be a UUID.");
+    }
+  }
+
+  private static UUID paymentUuid(String paymentId) {
+    try {
+      return UUID.fromString(paymentId);
+    } catch (IllegalArgumentException e) {
+      throw ApiException.validation("paymentId", "paymentId must be a UUID.");
     }
   }
 
@@ -176,6 +202,38 @@ public class BillingService {
     return dayCloseViewOf(run);
   }
 
+  // Presents the invoice for a folio (FR-BIL-4, issue #151): a read
+  // of stored rows, so the printed invoice matches the folio lines
+  // and balance exactly by construction. Idempotent with no guard —
+  // repeating the read returns the same stored rows.
+  @Transactional(readOnly = true)
+  public InvoiceView produceInvoice(String folioId, String actor) {
+    actorOf(actor);
+    Folio folio = repo.findFolioById(folioUuid(folioId));
+    if (folio == null) {
+      throw ApiException.notFound("No folio for " + folioId, Map.of("folioId", folioId));
+    }
+    return invoiceViewOf(folio);
+  }
+
+  // Presents the receipt for one recorded payment (FR-BIL-4, issue
+  // #151): a read of the stored payment row, so each receipt matches
+  // its payment exactly by construction. Idempotent with no guard.
+  @Transactional(readOnly = true)
+  public ReceiptView produceReceipt(String paymentId, String actor) {
+    actorOf(actor);
+    PaymentLine line = repo.findPaymentOrNull(paymentUuid(paymentId));
+    if (line == null) {
+      throw ApiException.notFound("No payment for " + paymentId, Map.of("paymentId", paymentId));
+    }
+    Folio folio = repo.findFolioById(line.folioId());
+    if (folio == null) {
+      throw ApiException.notFound("No folio for payment " + paymentId, Map.of("paymentId", paymentId));
+    }
+    return new ReceiptView(line.id(), line.id(), folio.id(), folio.stayId(), line.method(), line.amountMinor(),
+        line.paidAt().toString());
+  }
+
   // Records the authorised open-balance approval against the folio
   // (BR-17, FR-BIL-7, issue #150): Stay.CheckOut reads the approval
   // back through GetFolioBalance and closes an approved open balance.
@@ -249,6 +307,19 @@ public class BillingService {
     }
     return new FolioView(folio.id(), folio.stayId(), folio.balanceMinor(), folio.openBalanceApproval(), charges,
         payments);
+  }
+
+  private InvoiceView invoiceViewOf(Folio folio) {
+    List<Map<String, Object>> charges = new ArrayList<>();
+    for (ChargeLine line : repo.chargeLines(folio.id())) {
+      charges.add(chargeMap(line));
+    }
+    List<Map<String, Object>> payments = new ArrayList<>();
+    for (PaymentLine line : repo.paymentLines(folio.id())) {
+      payments.add(paymentMap(line));
+    }
+    return new InvoiceView(folio.id(), folio.id(), folio.stayId(), folio.balanceMinor(),
+        folio.openBalanceApproval(), charges, payments, OffsetDateTime.now(ZoneOffset.UTC).toString());
   }
 
   private static LineView lineViewOf(ChargeLine line, Folio folio) {

@@ -1,0 +1,7 @@
+{
+  "operation": "ProduceReceipt",
+  "case": "happy-path",
+  "description": "Presents the receipt for one recorded cash payment, matching the payment exactly.",
+  "request": { "paymentId": "<payment-id>", "actor": "front-desk" },
+  "expect": { "status": 200, "method": "cash" }
+}

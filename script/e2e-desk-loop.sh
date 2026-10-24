@@ -306,16 +306,41 @@ assert any(s.get("stayId") == stay for s in lists["inHouse"]), lists
 PYEOF
 pass "early arrival kept, stay listed in arrivals and in-house."
 
-step "folio charge, payment, and day-close (FR-BIL-1/2/3/6)"
+step "folio charge, payment, invoice/receipt, and day-close (FR-BIL-1/2/3/4/6, FR-CUS-3)"
 api billing UpsertChargeItem '{"name": "E2E Breakfast", "priceMinor": 2500, "actor": "manager"}' "$TOKEN" >/dev/null || { teardown; exit 1; }
 api billing PostCharge "{\"stayId\": \"$STAY_ID\", \"itemKind\": \"nightly-room-charge\", \"itemName\": \"Room E2E-101\", \"amountMinor\": 120000, \"idempotencyKey\": \"$IDEM-charge\", \"actor\": \"front-desk\"}" "$TOKEN" >/dev/null || { teardown; exit 1; }
+api billing PostCharge "{\"stayId\": \"$STAY_ID\", \"itemKind\": \"charge-item\", \"itemName\": \"E2E Breakfast\", \"amountMinor\": 2500, \"idempotencyKey\": \"$IDEM-charge-item\", \"actor\": \"front-desk\"}" "$TOKEN" >/dev/null || { teardown; exit 1; }
 PAY_RESP="$(api billing RecordPayment "{\"stayId\": \"$STAY_ID\", \"method\": \"cash\", \"amountMinor\": 60000, \"idempotencyKey\": \"$IDEM-payment\", \"actor\": \"front-desk\"}" "$TOKEN")" || { teardown; exit 1; }
 FOLIO_BALANCE="$(field balanceMinor "$PAY_RESP")"
+PAYMENT_ID="$(field paymentId "$PAY_RESP")"
 DAY_CLOSE="$(api billing RunDayClose "{\"businessDate\": \"$TODAY\", \"actor\": \"manager\"}" "$TOKEN")" || { teardown; exit 1; }
 CHARGES_TOTAL="$(field chargesTotalMinor "$DAY_CLOSE")"
 FOLIO_RESP="$(api billing GetFolioBalance "{\"stayId\": \"$STAY_ID\", \"actor\": \"front-desk\"}" "$TOKEN")" || { teardown; exit 1; }
 FOLIO_ID="$(field folioId "$FOLIO_RESP")"
-pass "day-close $TODAY charges=$CHARGES_TOTAL folio balance=$FOLIO_BALANCE."
+INVOICE_RESP="$(api billing ProduceInvoice "{\"folioId\": \"$FOLIO_ID\", \"actor\": \"front-desk\"}" "$TOKEN")" || { teardown; exit 1; }
+python3 - "$INVOICE_RESP" "$FOLIO_RESP" <<'PYEOF' \
+  || { echo "e2e: FAIL: invoice does not match the folio." >&2; teardown; exit 1; }
+import json, sys
+invoice, folio = (json.loads(a) for a in sys.argv[1:3])
+assert invoice["invoiceId"] == invoice["folioId"] == folio["folioId"], invoice
+assert invoice["stayId"] == folio["stayId"], invoice
+assert invoice["balanceMinor"] == folio["balanceMinor"], invoice
+assert [c["itemName"] for c in invoice["charges"]] == [c["itemName"] for c in folio["charges"]], invoice
+assert [c["amountMinor"] for c in invoice["charges"]] == [c["amountMinor"] for c in folio["charges"]], invoice
+assert [p["paymentId"] for p in invoice["payments"]] == [p["paymentId"] for p in folio["payments"]], invoice
+assert any(c["itemName"] == "E2E Breakfast" for c in invoice["charges"]), invoice
+PYEOF
+RECEIPT_RESP="$(api billing ProduceReceipt "{\"paymentId\": \"$PAYMENT_ID\", \"actor\": \"front-desk\"}" "$TOKEN")" || { teardown; exit 1; }
+python3 - "$RECEIPT_RESP" "$PAY_RESP" <<'PYEOF' \
+  || { echo "e2e: FAIL: receipt does not match the recorded payment." >&2; teardown; exit 1; }
+import json, sys
+receipt, payment = (json.loads(a) for a in sys.argv[1:3])
+assert receipt["receiptId"] == receipt["paymentId"] == payment["paymentId"], receipt
+assert receipt["folioId"] == payment["folioId"], receipt
+assert receipt["method"] == payment["method"] == "cash", receipt
+assert receipt["amountMinor"] == payment["amountMinor"] == 60000, receipt
+PYEOF
+pass "day-close $TODAY charges=$CHARGES_TOTAL folio balance=$FOLIO_BALANCE; invoice matches folio, receipt matches cash payment."
 
 step "check out with folio review (FR-FDK-2, FR-BIL-7)"
 expect_refusal stay CheckOut "{\"stayId\": \"$STAY_ID\", \"folioId\": \"$FOLIO_ID\", \"folioBalanceMinor\": $FOLIO_BALANCE, \"actor\": \"front-desk\"}" "$TOKEN" "SETTLEMENT_REQUIRED" || { teardown; exit 1; }

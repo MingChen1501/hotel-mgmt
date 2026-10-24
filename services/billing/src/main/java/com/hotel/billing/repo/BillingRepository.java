@@ -71,6 +71,15 @@ public class BillingRepository {
         + " FROM billing.folios WHERE stay_id = ?", BillingRepository::toFolio, stayId);
   }
 
+  // Nullable folio lookup for the invoice presentation (FR-BIL-4,
+  // issue #151): the service maps a miss to NOT_FOUND naming the
+  // folio instead of leaking the driver exception.
+  public Folio findFolioById(UUID folioId) {
+    List<Folio> rows = jdbc.query("SELECT id, stay_id, balance_minor, open_balance_approval"
+        + " FROM billing.folios WHERE id = ?", BillingRepository::toFolio, folioId);
+    return rows.isEmpty() ? null : rows.get(0);
+  }
+
   public List<ChargeLine> chargeLines(UUID folioId) {
     return jdbc.query("SELECT id, folio_id, item_kind, item_name, amount_minor, tax_minor, fee_minor,"
         + " posted_at, created_by FROM billing.folio_charge_lines WHERE folio_id = ? ORDER BY posted_at",
@@ -108,6 +117,15 @@ public class BillingRepository {
   public PaymentLine findPayment(UUID paymentId) {
     return jdbc.queryForObject("SELECT id, folio_id, method, amount_minor, paid_at, created_by"
         + " FROM billing.folio_payment_lines WHERE id = ?", BillingRepository::toPayment, paymentId);
+  }
+
+  // Nullable payment lookup for the receipt presentation (FR-BIL-4,
+  // issue #151): the service maps a miss to NOT_FOUND naming the
+  // payment instead of leaking the driver exception.
+  public PaymentLine findPaymentOrNull(UUID paymentId) {
+    List<PaymentLine> rows = jdbc.query("SELECT id, folio_id, method, amount_minor, paid_at, created_by"
+        + " FROM billing.folio_payment_lines WHERE id = ?", BillingRepository::toPayment, paymentId);
+    return rows.isEmpty() ? null : rows.get(0);
   }
 
   public void addToBalance(UUID folioId, long delta, String actor) {

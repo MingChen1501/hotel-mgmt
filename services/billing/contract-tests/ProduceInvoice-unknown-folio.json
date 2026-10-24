@@ -1,0 +1,7 @@
+{
+  "operation": "ProduceInvoice",
+  "case": "unknown-folio",
+  "description": "Refuses an invoice for an unknown folio with NOT_FOUND naming the folio.",
+  "request": { "folioId": "00000000-0000-4000-8000-000000000000", "actor": "front-desk" },
+  "expect": { "status": 404, "code": "NOT_FOUND" }
+}
