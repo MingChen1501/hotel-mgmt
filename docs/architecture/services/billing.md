@@ -14,14 +14,14 @@ Java 21 Spring Boot `web / service / repo (+ config)`, the only stack with a fra
 
 | Layer | Files | Responsibility |
 |---|---|---|
-| Transport + auth + body shaping | `src/main/java/com/hotel/billing/web/BillingController.java` | `@RestController` at `/v1/billing`; `requireToken` enforces Bearer presence (:53-58); `required`/`amountOf` extract and validate body fields (:37-52) |
+| Transport + auth + body shaping | `src/main/java/com/hotel/billing/web/BillingController.java` | `@RestController` at `/v1/billing`; `requireToken` enforces Bearer presence (:67-72); `required`/`amountOf` extract and validate body fields (:29-55) |
 | Envelope | `src/main/java/com/hotel/billing/web/ApiException.java`, `web/ApiExceptionHandler.java` | `ApiException` carries code/status/message/details (:8-42); `@RestControllerAdvice` renders every one with the shared envelope plus `traceId` (:12-23) |
 | Validation + step order | `src/main/java/com/hotel/billing/service/BillingService.java` | UUID/actor checks, item-kind rules, amount rules, idempotency claims, folio/payment/invoice/receipt/approval flows |
 | Data access | `src/main/java/com/hotel/billing/repo/BillingRepository.java` | `JdbcTemplate` over the billing schema only: `ensureFolio`, charge/payment inserts, `addToBalance`, `recordApproval`, `claimOrWait`, charge-item catalog (:61-171) |
 | Wiring | `src/main/java/com/hotel/billing/config/DatabaseConfig.java`, `BillingApplication.java` | datasource and context bootstrap |
 | Boot | Flyway + `src/main/resources/application.properties` | versioned `V<n>__` migrations run automatically at startup; `server.port=${PORT:8087}` (:1) |
 
-The operation table (`web/BillingController.java`): `GetFolioBalance` (:60), `PostCharge` (:67), `RecordPayment` (:75), `RunDayClose` (:83), `GetDayClose` (:90), `ProduceInvoice` (:97), `ProduceReceipt` (:104), `UpsertChargeItem` (:111), `RecordOpenBalanceApproval` (:118).
+The operation table (`web/BillingController.java`): `GetFolioBalance` (:74), `PostCharge` (:81), `RecordPayment` (:89), `RunDayClose` (:97), `GetDayClose` (:104), `ProduceInvoice` (:111), `ProduceReceipt` (:118), `UpsertChargeItem` (:125), `UpsertTaxFeeRule` (:134), `RecordOpenBalanceApproval` (:141).
 
 ## 3. Happy-path flowchart
 
@@ -38,11 +38,11 @@ flowchart TD
 
 Edge trace (every edge cites code):
 
-- A: missing/blank Bearer → `UNAUTHENTICATED` 401 (`web/BillingController.java:53-58`).
-- B: `stayId`, `itemKind`, `itemName`, `amountMinor` extracted and required (:67-72 via `:37-52`).
-- C: `stayId` must be a UUID, `itemKind` must be `nightly-room-charge` or `charge-item`, `itemName` required, `amountMinor` non-negative, and the charge item must be defined (`service/BillingService.java:86-134`).
-- D: folio ensured for the stay (`repo/BillingRepository.java:61`); a supplied idempotency key is claimed — the replay returns the original line (`service/BillingService.java:142` via `repo/BillingRepository.java:171`).
-- E: charge line inserted and folio balance updated (`repo/BillingRepository.java:95-137`); F: line view returned to the desk.
+- A: missing/blank Bearer → `UNAUTHENTICATED` 401 (`web/BillingController.java:67-72`).
+- B: `stayId`, `itemKind`, `itemName`, `amountMinor` extracted and required (:81-86 via `:29-55`).
+- C: `stayId` must be a UUID, `itemKind` must be `nightly-room-charge` or `charge-item`, `itemName` required, `amountMinor` non-negative, and the charge item must be defined (`service/BillingService.java:126-140`).
+- D: folio ensured for the stay (`repo/BillingRepository.java:65`); a supplied idempotency key is claimed — the replay returns the original line (`service/BillingService.java:146` via `repo/BillingRepository.java:220`).
+- E: charge line inserted and folio balance updated (`repo/BillingRepository.java:99-135`); F: line view returned to the desk.
 
 ## 4. Failure/rollback flowchart
 
@@ -62,10 +62,11 @@ flowchart TD
 
 Edge trace:
 
-- M: `method` must be `cash` or `card`, `amountMinor` positive (`service/BillingService.java:161-164`); duplicates collapse on the idempotency claim (`:171`).
-- W: `approvedBy` and `role` required; approval recorded as JSON on the folio (`:246-258`).
-- Y: no day-close run for the date → `NOT_FOUND` (`:200`).
-- Z: unknown folio/payment (or payment without folio) → `NOT_FOUND` (`:214-231`).
+- M: `method` must be `cash` or `card`, `amountMinor` positive (`service/BillingService.java:170-175`); duplicates collapse on the idempotency claim (`:180-185`).
+- W: `approvedBy` and `role` required; approval recorded as JSON on the folio (`:255-277`).
+- Y: no day-close run for the date → `NOT_FOUND` (`:206-212`).
+- Z: unknown folio/payment (or payment without folio) → `NOT_FOUND` (`:224-243`).
+- Setup: `UpsertChargeItem` registers a named sellable (`:298-313`); `UpsertTaxFeeRule` registers a percentage rule capped at 0–100 (`:314-325`); both refuse blank names and out-of-range values with `VALIDATION_FAILED`.
 - Settlement: `ApiException.settlementRequired` builds the `SETTLEMENT_REQUIRED` 409 (`web/ApiException.java:41-42`); the stay-side folio gate that consumes approvals lives in Stay `checkFolioGate`.
 
 Rollback: none — each operation is a single validated write with the idempotency claim preceding mutation; refusals precede any insert.
@@ -82,9 +83,9 @@ Envelope `{code, message, details, traceId}` (`web/ApiExceptionHandler.java:12-2
 
 | Code | Status | Raised when |
 |---|---|---|
-| `VALIDATION_FAILED` | 400 | missing/blank field, bad UUID/date, bad item kind or method, negative amount (`service/BillingService.java:86-164,246-294`) |
-| `UNAUTHENTICATED` | 401 | missing session token (`web/BillingController.java:53-58`) |
-| `NOT_FOUND` | 404 | unknown day-close, folio, payment, or charge line (`service/BillingService.java:200-231`) |
+| `VALIDATION_FAILED` | 400 | missing/blank field, bad UUID/date, bad item kind or method, negative amount, out-of-range percent (`service/BillingService.java:126-193,255-325`) |
+| `UNAUTHENTICATED` | 401 | missing session token (`web/BillingController.java:67-72`) |
+| `NOT_FOUND` | 404 | unknown day-close, folio, payment, or charge line (`service/BillingService.java:206-243`) |
 | `SETTLEMENT_REQUIRED` | 409 | settlement refused without approval (`web/ApiException.java:41-42`) |
 
 ## 7. Operations

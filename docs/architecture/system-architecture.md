@@ -31,10 +31,13 @@ keep working without internet (`NFR-AVL-1`):
   the named fallback) holding
   one dedicated schema per module; modules connect only to
   their own schema.
-- Monitoring: Prometheus (scrapes module `/healthz` +
-  `/metrics` and host stats) plus Grafana dashboards, both
-  on-premise with no cloud push; Grafana may be stopped to
-  reclaim RAM without losing metric retention.
+- Monitoring (planned — no as-built counterpart as of master:
+  no `/metrics` endpoint in code, no Prometheus/Grafana services
+  in `deploy/`): Prometheus (scrapes module `/healthz` +
+  `/metrics` and host stats; only `/healthz` exists in code
+  today) plus Grafana dashboards, both on-premise with no cloud
+  push; Grafana may be stopped to reclaim RAM without losing
+  metric retention.
 - Backup target: on-premise storage (dedicated disk partition
   or hotel NAS) receiving exports and backups (`FR-ADM-5`);
   every run reports success or failure with its time

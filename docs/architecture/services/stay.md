@@ -21,7 +21,7 @@ Node.js/TypeScript flat `src/` files over raw `node:http` (no web framework), wi
 | Errors | `src/errors.ts` | `HttpError` code→status map, `errorEnvelope` |
 | Boot | `src/index.ts` | store selection by `DATABASE_URL`, `listen(PORT)` |
 
-The operation table (`src/server.ts:114-170`): `CheckIn` (:115), `GetStay` (:120), `QueryStays` (:125), `CheckOut` (:130), `MoveRoom` (:135), `RecordActualTimes` (:143), `GetStayRef` (:148), `ListArrivalsDepartures` (:153); unknown operations return `NOT_FOUND` (:163-169).
+The operation table (`src/server.ts:116-171`): `CheckIn` (:116), `GetStay` (:121), `QueryStays` (:126), `CheckOut` (:131), `MoveRoom` (:136), `RecordActualTimes` (:144), `GetStayRef` (:149), `ListArrivalsDepartures` (:154); unknown operations return `NOT_FOUND` (:164-171).
 
 ## 3. Happy-path flowchart
 
@@ -38,11 +38,11 @@ flowchart TD
 
 Edge trace (every edge cites code):
 
-- A: `extractBearer` absent → `UNAUTHENTICATED` (`src/server.ts:109-111`; `src/auth.ts`).
+- A: `extractBearer` absent → `UNAUTHENTICATED` (`src/server.ts:110-111`; `src/auth.ts`).
 - B: empty body → `{}`; non-object or unparsable JSON → `VALIDATION_FAILED` (`src/server.ts:9-33`).
-- C: `stayId`/`reservationId`/`guestId`/`roomId` UUID checks, `actor` required (`src/store.ts:187-193` via `requireUuid`/`requireString` at :38-51).
-- D: existing stay for the reservation → `CONFLICT` with both ids (`src/store.ts:194-199`); an already-known `stayId` returns the stored record idempotently (:200-202).
-- E: record stored `in-house`, `stay.checked-in` outbox event queued (:203-219); F: `stayId`, `roomId`, `state` returned (`src/server.ts:115-118` via `stayPayload` at :41-59).
+- C: `stayId`/`reservationId`/`guestId`/`roomId` UUID checks, `actor` required (`src/store.ts:189-194` via `requireUuid`/`requireString` at :39-46).
+- D: existing stay for the reservation → `CONFLICT` with both ids (`src/store.ts:195-199`); an already-known `stayId` returns the stored record idempotently (:201-202).
+- E: record stored `in-house`, `stay.checked-in` outbox event queued (:204-220); F: `stayId`, `roomId`, `state` returned (`src/server.ts:116-119` via `stayPayload` at :42-59).
 
 ## 4. Failure/rollback flowchart
 
@@ -60,21 +60,21 @@ flowchart TD
 
 Edge trace:
 
-- G: non-integer balance → `VALIDATION_FAILED`; non-zero balance without a recorded `openBalanceApproval` object → `SETTLEMENT_REQUIRED`, stay remains in house (`src/store.ts:147-168`); gate runs before any state read (`src/store.ts:259-263`).
-- H: replayed `idempotencyKey` returns the original close (`src/store.ts:264-270`); paired simultaneous check-outs resolve exactly one winner, the loser is refused below.
-- I: unknown stay → `NOT_FOUND` (:271-274); already `closed` → `STATE_ILLEGAL` (:275-280).
-- J: state flips to `closed`, `actualDeparture` stamped, `stay.checked-out` outbox event queued, key recorded (:281-291).
-- MoveRoom follows the same shape: in-house conditional write with idempotent key replay (`src/store.ts:299-309`); room assignment/release around it is the desk's Rooms `AssignRoom`/`ReleaseRoom` calls, not a stay-side rollback.
+- G: non-integer balance → `VALIDATION_FAILED`; non-zero balance without a recorded `openBalanceApproval` object → `SETTLEMENT_REQUIRED`, stay remains in house (`src/store.ts:148-168`); gate runs before any state read (`src/store.ts:260-264`).
+- H: replayed `idempotencyKey` returns the original close (`src/store.ts:266-271`); paired simultaneous check-outs resolve exactly one winner, the loser is refused below.
+- I: unknown stay → `NOT_FOUND` (:273-274); already `closed` → `STATE_ILLEGAL` (:276-281).
+- J: state flips to `closed`, `actualDeparture` stamped, `stay.checked-out` outbox event queued, key recorded (:282-292).
+- MoveRoom follows the same shape: in-house conditional write with idempotent key replay (`src/store.ts:300-344`); room assignment/release around it is the desk's Rooms `AssignRoom`/`ReleaseRoom` calls, not a stay-side rollback.
 
 ## 5. Outbound dependencies
 
-None at runtime. The folio-gate inputs (`folioBalanceMinor`, `openBalanceApproval`) arrive inside the `CheckOut` request — the desk fetches them from Billing `GetFolioBalance` first. The stay links back to Reservations via `CheckInReservation` (called by the desk with the new stay id). Emits `stay.checked-in` / `stay.checked-out` outbox events (`src/store.ts:214-218,283-287`) consumed by Reporting and Guests `linkStay`. Hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (LLD section 0).
+None at runtime. The folio-gate inputs (`folioBalanceMinor`, `openBalanceApproval`) arrive inside the `CheckOut` request — the desk fetches them from Billing `GetFolioBalance` first. The stay links back to Reservations via `CheckInReservation` (called by the desk with the new stay id). Emits `stay.checked-in` / `stay.checked-out` outbox events (`src/store.ts:215-219,284-288`; Postgres `src/pgstore.ts:97,201,286,349`, helper :460-468) consumed by Reporting and Guests `linkStay`. Hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (LLD section 0).
 
 See also: [deployment](../system-architecture.md) (§1), [C4 containers](../c4-containers.md), and [event flow](../event-flow.md) (this service's outbox emissions).
 
 ## 6. Error mapping
 
-Envelope `{code, message, details, traceId}` (`src/errors.ts:39-45`; transport mapping `src/server.ts:75-87`) to `docs/technical/error-handling.md` section 1. Code→status map (`src/errors.ts:4-25`):
+Envelope `{code, message, details, traceId}` (`src/errors.ts:36-43`; transport mapping `src/server.ts:76-88`) to `docs/technical/error-handling.md` section 1. Code→status map (`src/errors.ts:5-24`):
 
 | Code | Status | Raised when |
 |---|---|---|

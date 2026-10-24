@@ -38,10 +38,12 @@ pair (with basenames the script can cross-check) is first-slice
 authorship inside the script's JSON constraint (see OQ-R2 in §5),
 not a decision of this document.
 
-Layout anchor: `contracts/{events/,http/,errors/,config-schema/,messages/}`
+Layout anchor: `contracts/{events/,http/,errors/}`
 plus `services/<module>/contract-tests/` fixtures (LLD §9).
-`config-schema/` and `messages/` land with the first slice (§1d, §1g)
-and are not yet in the tree.
+`config-schema/` and `messages/` never landed as `contracts/`
+trees — the versioned config schema lives at
+`deploy/config/schema.json` and the catalogue as per-service
+`messages*` files (see §1d, §1g).
 
 ## 1. Required contract files (skeleton slice)
 
@@ -74,10 +76,10 @@ and are not yet in the tree.
 | Paired-concurrency guard case (`NFR-CON-1`) | two simultaneous `CreateReservation` calls for the last sellable unit of a type/dates: exactly one succeeds, the other gets `CONFLICT` naming type+dates, run against the real stores (not a mock) | Integration §9 ("paired-concurrency guards against the real stores, `NFR-CON-1/2`"); LLD §1; test strategy L3; traceability `NFR-CON-1` row |
 
 Shapes for `ModifyReservation`, `CancelReservation`,
-`MarkNoShow`, `GetReservation`, `QueryCalendar` may land in the
-same file set (additive, versioned per integration §8), but their
-fixtures stay stubbed until the reservations slice needs them —
-the skeleton creates one reservation and proves the booking guard
+`MarkNoShow`, `GetReservation`, `QueryCalendar` landed in the
+same file set (additive, versioned per integration §8) with their
+fixtures in the reservations slice — the skeleton creates one
+reservation and proves the booking guard
 (candidate-architectures §6.1); modification, cancellation, and
 no-show flows are later slices.
 
@@ -89,7 +91,7 @@ no-show flows are later slices.
 | `contracts/http/UpdateHotelConfig.json` (+ `CreateUser`, `UpdateUserRole`, `UnlockIdentity`, `SignIn`, `SignOut`) | skeleton hotel setup: profile, one user/role, minimal config set; `VALIDATION_FAILED`, `FORBIDDEN` | LLD §8; BA needs §6a/§6b; schema §8 `hotel_profile`, `users`, `sessions` |
 | `contracts/http/ValidateSession.json`, `CheckRole.json` (or the local-validation rule encoding) | per-call enforcement on every skeleton pair: local HMAC-signed-token validation + bounded revalidation; `UNAUTHENTICATED` (locked/expired), `FORBIDDEN` (out-of-role) | Integration §6 C10; LLD §0 (answers OQ-C4) and §8; security-threat-model enforcement points; BA needs §6b |
 | `contracts/events/config-changed-events.json` | `ConfigChangedEvents` JSON Schema: §3.1 values only (§3.2 fixed items never emitted); at-least-once, ordered per aggregate, idempotent apply by event id | Integration §6 C9 + §9; LLD §0 (answers OQ-C2) and §8; BA needs §6a |
-| `contracts/config-schema/<version>.json` | versioned per-hotel configuration schema (§3.1 set: identity/contact, timezone, standard times, retention floor, required fields, cancellation wording + reason lists, no-show rule, approval rule, charge items, tax/fee rules, restrictions, discounts); major-version rejection rule per integration §8 | Integration §6 C9 + §8; LLD §8; schema §8; requirements §3.1 |
+| `contracts/config-schema/<version>.json` | versioned per-hotel configuration schema — as-built at `deploy/config/schema.json` (no `contracts/config-schema/` copy as of master); §3.1 set: identity/contact, timezone, standard times, retention floor, required fields, cancellation wording + reason lists, no-show rule, approval rule, charge items, tax/fee rules, restrictions, discounts; major-version rejection rule per integration §8 | Integration §6 C9 + §8; LLD §8; schema §8; requirements §3.1 |
 | `services/admin/contract-tests/` fixtures | config snapshot pair, `FORBIDDEN` role branches, `UNAUTHENTICATED` session branches (already enumerated in the admin `contract-tests/README.md`) | Integration §9; admin `contract-tests/README.md` |
 | Consumer `ConfigChangedEvents` cases (RES, ROOM, RATE) | duplicate-delivery idempotent apply + per-aggregate ordering | Integration §9 event-schema checks; LLD §0 |
 
@@ -104,6 +106,10 @@ no-show flows are later slices.
 Backup trigger/report surface details follow the fixed-until-decided
 rule for OQ-5 (see §5 OQ-R3); the skeleton proves the first backup
 run and its report (candidate-architectures §6.1 item 3; plan §3c).
+As-built note: neither op landed as a `contracts/http/` manifest as
+of master — the backup run and its report are proven instead by
+`script/backup.sh` + `script/restore.sh` inside the E2E loop
+(`script/e2e-desk-loop.sh`; deployment §3; runbook).
 
 ### 1f. Events emitted during the skeleton (schemas land; RPT consumption deferred)
 
@@ -143,17 +149,15 @@ rule (LLD §0; integration §0 rule).
 
 | Pair / operations | Stays stubbed | Why (no new reasoning — decided sequencing) |
 |---|---|---|
-| RES → GST `IdentifyGuest`, `GetBookingContext` (C3) | contract file + fixtures | Guest profiles land in the Guests slice (candidate-architectures §6.2 order); the skeleton enforces mandatory guest fields from cached config, not from live GST reads (BA needs §1c) |
+| RES → GST `IdentifyGuest`, `GetBookingContext` (C3) | live reads inside booking (manifests + fixtures landed) | Guest profiles landed with the Guests slice; the skeleton still enforces mandatory guest fields from cached config, not from live GST reads — live RES→GST calls inside the booking step stay future (BA needs §1c) |
 | STAY → RES `GetDueReservation` (C4) | contract file + fixtures | Stay slice (proves `NFR-CON-2` paired check-in per §6.2) |
-| STAY → ROOM `FindReadyRoom`, `AssignRoom`, `ReleaseRoom`, `RecordActualTimes` (C5) + the `NFR-CON-2` paired-concurrency guard cases | contract file + fixtures + atomic-guard proof | Stay slice; the exactly-one-winner room assignment cannot be exercised before check-in exists (integration §2 C5; LLD §3; BA needs §2b). Shapes landed additively: provider shapes `AssignRoom`/`ReleaseRoom` (+ `contracts/http/` manifests + rooms provider fixtures) landed with the rooms slice (#115); `FindReadyRoom`, `RecordActualTimes`, stay consumer fixtures, and the guard proof stay stubbed until the Stay slice |
-| STAY → GST `GetGuest` (C6) | contract file + fixtures | Stay slice (BA needs §2c) |
-| STAY ↔ BIL `GetFolioBalance`, `RequestCheckoutGate`, `GetStayRef` (C7/C8) + Billing §4 ops (`PostCharge`, `RecordPayment`, `ProduceInvoice`/`ProduceReceipt`, `RunDayClose`) | all Billing contract files + fixtures | Billing excluded from the skeleton by default (ADR-0001 OQ-A2); Billing slice per §6.2 |
-| Room housekeeping loop `UpdateRoomState`, `ListRoomsByState`, `BlockRoom`/`ReleaseBlock` beyond setup | fixtures (shapes may land additively with §1b) | Skeleton sets up one room and checks sellability only; dirty→clean→inspected progression and blocks belong to the rooms/housekeeping slice (integration §5; LLD §3; BA needs §5). Shapes landed additively: `UpdateRoomState`, `ListRoomsByState`, `BlockRoom` (+ manifests + rooms provider fixtures) landed with the rooms slice (#115); `ReleaseBlock` and remaining fixtures stay stubbed |
-| `ModifyReservation`, `CancelReservation`, `MarkNoShow`, `QueryCalendar` | fixtures (shapes may land additively with §1c) | Skeleton creates one reservation; modification/cancellation/no-show/calendar are later reservations-slice flows (integration §1; BA needs §1) |
-| Reporting feeds consumption + read API (`OccupancyReport`, `RevenueSummary`, `DailySheet`, `HousekeepingReport`) | consumer wiring + read-API contracts + `consumer_offsets` advance cases | Reporting slice; skeleton emits events to the outbox but no read model consumes them (integration §7; LLD §7; BA needs §7) |
-| `CollectExportSlice` for STAY, BIL, GST, RATE-consumer RPT | per-module slices | Each lands with its owning module's slice (integration §6 C11) |
+| STAY → ROOM `FindReadyRoom`, `AssignRoom`, `ReleaseRoom`, `RecordActualTimes` (C5) + the `NFR-CON-2` paired-concurrency guard cases | `FindReadyRoom` shape + stay consumer fixtures + atomic-guard proof | Stay slice; the exactly-one-winner room assignment cannot be exercised before check-in exists (integration §2 C5; LLD §3; BA needs §2b). Landed as of master: `AssignRoom`/`ReleaseRoom`/`RecordActualTimes` manifests + rooms provider fixtures + stay consumer fixtures; `FindReadyRoom` shape + fixtures and the guard proof stay stubbed until the Stay slice |
+| STAY → GST `GetGuest` (C6) | live read inside check-in (manifest + fixtures landed) | Stay slice (BA needs §2c): the desk still carries guest data in the check-in request; the live STAY→GST `GetGuest` call wires in with the Stay slice |
+| STAY ↔ BIL `GetFolioBalance`, `RequestCheckoutGate`, `GetStayRef` (C7/C8) + Billing §4 ops (`PostCharge`, `RecordPayment`, `ProduceInvoice`/`ProduceReceipt`, `RunDayClose`, `GetDayClose`, `UpsertChargeItem`, `UpsertTaxFeeRule`, `RecordOpenBalanceApproval`) | `UpsertTaxFeeRule` manifest + `RequestCheckoutGate` (not implemented — LLD D4 / integration F4) | Billing slice landed (manifests + fixtures as of master); `RequestCheckoutGate` was specified but never built — settlement is enforced stay-side |
+| Reporting feeds consumption (`consumer_offsets` advance cases, idempotent apply) | consumer-side event-application cases | Reporting slice; the read-API contracts (`OccupancyReport`, `RevenueSummary`, `DailySheet`, `HousekeepingReport` manifests + fixtures) landed as of master — only the consumer-application cases stay open |
+| `CollectExportSlice` for STAY, BIL, GST, RATE-consumer RPT | per-module slices (no manifests as of master) | Each lands with its owning module's slice (integration §6 C11) — still absent; backup is proven via `script/backup.sh` + `script/restore.sh` instead (see §1e note) |
 | Conditional RES → BIL no-show-charge operation (F1) | contract does not exist | Undecided product rule (requirements OQ-1 / §3.1 no-show rule) plus fixed one-folio-per-stay with no stay for a no-show (LLD D1; integration F1) |
-| Full OpenAPI authorship per service (F2/D2) | full service documents | Deferred to implementation slices; the operation/payload tables plus `contracts/` schemas are the frozen input (LLD D2; integration F2) |
+| Full OpenAPI authorship per service (F2/D2) | full service documents (curated desk-loop subset landed: `contracts/openapi.yaml`, 14 ops, #240) | Deferred to implementation slices; the operation/payload tables plus `contracts/` schemas are the frozen input (LLD D2; integration F2) |
 | gRPC transport per pair (F3) | transport bindings | Deferred optimisation; HTTP/JSON is the MVP binding (LLD D3; integration F3) |
 
 ## 3. CI gate behaviour (gate live since the first slice landed)
@@ -199,6 +203,13 @@ originates in issue #98), run as the `contract-check` job in
    (script header comment). The L3 paired-concurrency guards and
    LC contract guards run in the module/test jobs per the test
    strategy, not in this script.
+6. **OpenAPI mirror gate (landed #240, separate script):**
+   `script/openapi-route-check.sh` fails closed when
+   `frontend/docs/openapi.yaml` diverges byte-for-byte from
+   `contracts/openapi.yaml`, or when a spec path+method has no
+   matching `contracts/http/*.json` manifest. The curated
+   desk-loop subset stays in lockstep with the manifests through
+   this gate, not through the `contract-check` job above.
 
 ## 4. No new scope
 

@@ -14,12 +14,12 @@ Go `handler / store` with no service layer — reads and guarded writes go strai
 
 | Layer | Files | Responsibility |
 |---|---|---|
-| Transport + auth + body decoding | `internal/handler/handler.go` | `NewMux(st)` routes `POST /v1/rates/<Operation>`; the `authed(operation, …)` wrapper enforces Bearer presence per operation (:94-116) |
+| Transport + auth + body decoding | `internal/handler/handler.go` | `NewMux(st)` routes `POST /v1/rates/<Operation>`; the `authed(operation, …)` wrapper enforces Bearer presence per operation (:97-116) |
 | Guarded state + storage | `internal/store/store.go` (`Repository`, `Store`), `internal/store/postgres.go` | plan/price/restriction/discount writes, quote math, restriction and sellable-count checks |
 | Health | `internal/health/` | `GET /healthz` with the module identity (`cmd/server/main.go:36`) |
 | Boot | `cmd/server/main.go` | selects Postgres storage when `DATABASE_URL` is set (:26), mounts health + pricing routes (:36-37) |
 
-The routing table (`internal/handler/handler.go`): `UpsertRatePlan` (:117), `UpsertRatePrice` (:139), `UpsertRestriction` (:168), `UpsertDiscount` (:203), `QuotePrice` (:227), `CheckSellableCount` (:258), `CheckRestrictions` (:296). The operation name is threaded into `authed` for future per-operation policy (`:115`).
+The routing table (`internal/handler/handler.go`): `UpsertRatePlan` (:118), `UpsertRatePrice` (:140), `UpsertRestriction` (:169), `UpsertDiscount` (:204), `QuotePrice` (:228), `CheckSellableCount` (:259), `CheckRestrictions` (:297). The operation name is threaded into `authed` for future per-operation policy (`:115`).
 
 ## 3. Happy-path flowchart
 
@@ -37,11 +37,11 @@ flowchart TD
 
 Edge trace (every edge cites code):
 
-- A–B: Bearer presence + JSON decode, same contract as reservations (`internal/handler/handler.go:94-116`).
-- C: arrival/departure must be `YYYY-MM-DD` with departure after arrival; ranges over 730 nights are refused (`internal/store/store.go:250-253`).
-- D: plan resolution falls back through the plan chain; an unknown plan/type combination → `NOT_FOUND` (:239-274, :375-407).
-- E: each night in the range must carry a price for the type or the quote fails (`:266`).
-- F: named discount must exist (:274); percent discounts cap at 100 (:217-223).
+- A–B: Bearer presence + JSON decode, same contract as reservations (`internal/handler/handler.go:97-116`).
+- C: arrival/departure must be `YYYY-MM-DD` with departure after arrival; ranges over 730 nights are refused (`internal/store/store.go:254`).
+- D: plan resolution falls back through the plan chain; an unknown plan/type combination → `NOT_FOUND` (:241-293, :377-408).
+- E: each night in the range must carry a price for the type or the quote fails (`:268`).
+- F: named discount must exist (:273-276); percent discounts cap at 100 (:224-225).
 - G: summed `totalMinor` returned for the desk to carry as the reservation `priceBasis`.
 
 ## 4. Failure/rollback flowchart
@@ -61,10 +61,10 @@ flowchart TD
 
 Edge trace:
 
-- CA: closed-to-arrival overlap → `STATE_ILLEGAL` with the restriction window in details (`internal/store/store.go:316`).
-- MS: minimum-stay violation → `STATE_ILLEGAL` with the required nights (`:319`).
-- Q: bad dates, negative `priceMinor` (:179), bad discount kind/value (:217-223) → `VALIDATION_FAILED` 400.
-- U: unknown plan (:187), unknown room type (:360), missing inventory input (:363) → `NOT_FOUND` 404 / `VALIDATION_FAILED` 400 respectively.
+- CA: closed-to-arrival overlap → `STATE_ILLEGAL` with the restriction window in details (`internal/store/store.go:318`).
+- MS: minimum-stay violation → `STATE_ILLEGAL` with the required nights (`:320`).
+- Q: bad dates, negative `priceMinor` (:179-181), bad restriction range (:206), bad discount kind/value (:218-225) → `VALIDATION_FAILED` 400.
+- U: unknown plan (:189), unknown room type (:362), missing inventory input (:365) → `NOT_FOUND` 404 / `VALIDATION_FAILED` 400 respectively.
 
 Rollback: none — quotes and checks are pure reads; upserts are single guarded writes.
 
@@ -76,14 +76,14 @@ See also: [deployment](../system-architecture.md) (§1), [C4 containers](../c4-c
 
 ## 6. Error mapping
 
-Envelope `{code, message, details, traceId}` (same shape as reservations) to `docs/technical/error-handling.md` section 1. Constructors (`internal/store/store.go:27-36`):
+Envelope `{code, message, details, traceId}` (same shape as reservations) to `docs/technical/error-handling.md` section 1. Constructors (`internal/store/store.go:29-37`):
 
 | Code | Status | Raised when |
 |---|---|---|
-| `VALIDATION_FAILED` | 400 | bad dates, ranges, prices, discount kind/value (:53, :179, :204, :217-223, :250-253) |
-| `UNAUTHENTICATED` | 401 | missing session token (`internal/handler/handler.go:98-108`) |
-| `NOT_FOUND` | 404 | unknown plan, unpriced night, unknown room type (:187, :266, :360) |
-| `STATE_ILLEGAL` | 422 | closed-to-arrival, min-stay violation (:35-36, :316, :319) |
+| `VALIDATION_FAILED` | 400 | bad dates, ranges, prices, discount kind/value (:50-56, :179-181, :206, :218-225, :254) |
+| `UNAUTHENTICATED` | 401 | missing session token (`internal/handler/handler.go:99-109`) |
+| `NOT_FOUND` | 404 | unknown plan, unpriced night, unknown room type (:189, :268, :362) |
+| `STATE_ILLEGAL` | 422 | closed-to-arrival, min-stay violation (:37, :318, :320) |
 
 ## 7. Operations
 

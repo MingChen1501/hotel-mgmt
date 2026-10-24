@@ -4,7 +4,7 @@ Status: active. Source page for the reporting module (single source of truth; `s
 
 ## 1. Purpose
 
-Occupancy, revenue, and daily-sheet reads over its own rebuilt read model; the housekeeping report (FR-RPT-4) lands with the housekeeping loop.
+Occupancy, revenue, daily-sheet, and housekeeping reads over its own rebuilt read model (FR-RPT-1..4).
 
 Links: `docs/architecture/lld.md` section 7; `docs/requirements/sequence-diagrams.md` section 9 (check-out feeds revenue) and section 12 (housekeeping loop, future); FR-RPT-1..3.
 
@@ -15,12 +15,12 @@ Go `handler / service / store`, where the service is a thin validation-and-deleg
 | Layer | Files | Responsibility |
 |---|---|---|
 | Transport + auth + body decoding | `internal/handler/handler.go` | `NewMux(svc)` routes `POST /v1/reporting/<Operation>`; Bearer presence check; date-window required-field checks before delegating |
-| Read step order | `internal/service/service.go` | validates nothing itself beyond delegating: `OccupancyReport` (:31), `RevenueSummary` (:37), `DailySheet` (:43) straight to the store; never reads other modules' stores |
-| Projections + storage | `internal/store/store.go` (`Store`), `internal/store/postgres.go` | `Apply` ingests one domain event (:172), `Rebuild` replays the log (:198), `project` routes by event type (:217); `Occupancy` (:383), `Revenue` (:438), `Sheet` (:465) serve reads with an as-of timestamp |
+| Read step order | `internal/service/service.go` | validates nothing itself beyond delegating: `OccupancyReport` (:31), `RevenueSummary` (:37), `DailySheet` (:43), `HousekeepingReport` (:49) straight to the store; never reads other modules' stores |
+| Projections + storage | `internal/store/store.go` (`Store`), `internal/store/postgres.go` | `Apply` ingests one domain event (:191), `Rebuild` replays the log (:217), `project` routes by event type (:237); `Occupancy` (:460), `Revenue` (:515), `Sheet` (:542), `Housekeeping` (:618) serve reads with an as-of timestamp |
 | Health | `internal/health/` | `GET /healthz` with the module identity (`cmd/server/main.go:28`) |
-| Boot | `cmd/server/main.go` | store wiring exposed for the rebuild job (`service.Store()`), mounts health + read routes (:28-29) |
+| Boot | `cmd/server/main.go` | store wiring exposed for the rebuild job (`service.Store()`), mounts health + read routes (:26-30) |
 
-The routing table (`internal/handler/handler.go`): `OccupancyReport` (:96), `RevenueSummary` (:122), `DailySheet` (:148). Every report carries `asOf` so staleness is visible.
+The routing table (`internal/handler/handler.go`): `OccupancyReport` (:97), `RevenueSummary` (:123), `DailySheet` (:149), `HousekeepingReport` (:179). Every report carries `asOf` so staleness is visible.
 
 ## 3. Happy-path flowchart
 
@@ -36,10 +36,10 @@ flowchart TD
 
 Edge trace (every edge cites code):
 
-- A–B: Bearer presence + JSON decode (`internal/handler/handler.go:74-95`).
-- C: `dateFrom`/`dateTo` required (:96-114); the store validates the window shape (`internal/store/store.go:383`).
-- D: per-night, per-type occupied/available counts served from the rebuilt projection — the service never touches another module's rows (`internal/service/service.go:1-11,31-35`).
-- E: `nights` plus the read-model `asOf` timestamp returned so freshness is explicit (`internal/handler/handler.go:106-121`).
+- A–B: Bearer presence + JSON decode (`internal/handler/handler.go:75-96`).
+- C: `dateFrom`/`dateTo` required (:97-100); the store validates the window shape (`internal/store/store.go:460`).
+- D: per-night, per-type occupied/available counts served from the rebuilt projection — the service never touches another module's rows (`internal/service/service.go:31-35`).
+- E: `nights` plus the read-model `asOf` timestamp returned so freshness is explicit (`internal/handler/handler.go:108-121`).
 
 ## 4. Failure/rollback flowchart
 
@@ -55,15 +55,15 @@ flowchart TD
 
 Edge trace:
 
-- W: missing `dateFrom`/`dateTo`/`businessDate` → `VALIDATION_FAILED` before any store call (`internal/handler/handler.go:96-170`); malformed windows refused in `Occupancy`/`Revenue` (`internal/store/store.go:383-464`).
-- V: `Sheet` on an unknown business date surfaces `NOT_FOUND` (`internal/store/store.go:465`).
-- J–K: `Apply` ingests one event at a time and `project` routes known types only — `reservation.created` (:223), `reservation.cancelled`/`no-show` (:247), `stay.checked-in` (:255), `stay.checked-out` (:279), `rate.availability-set` (:300), `folio.charge-posted` (:314), `folio.payment-recorded` (:342), `config.changed` (:352); `Rebuild` replays the whole log to replace the projection (:198-216).
+- W: missing `dateFrom`/`dateTo`/`businessDate` → `VALIDATION_FAILED` before any store call (`internal/handler/handler.go:97-190`); malformed windows refused in `Occupancy`/`Revenue`/`Sheet`/`Housekeeping` (`internal/store/store.go:460-618`).
+- V: `Sheet` on an unknown business date surfaces `NOT_FOUND` (`internal/store/store.go:542`).
+- J–K: `Apply` ingests one event at a time and `project` routes known types only — `reservation.created` (:243), `reservation.cancelled`/`no-show` (:267), `stay.checked-in` (:275), `stay.checked-out` (:299), `rate.availability-set` (:331), `folio.charge-posted` (:345), `folio.payment-recorded` (:373), `config.changed` (:383); `Rebuild` replays the whole log to replace the projection (:217-235).
 
 Rollback: none needed — reads never mutate, and rebuild replaces rather than patches the projection.
 
 ## 5. Outbound dependencies
 
-None — by design the service never reads other modules' stores (`internal/service/service.go:1-11`). Its only input is the domain-event log via `Apply`/`Rebuild`. Hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (LLD section 0).
+None — by design the service never reads other modules' stores (`internal/service/service.go:13-51`). Its only input is the domain-event log via `Apply`/`Rebuild`. Hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (LLD section 0).
 
 See also: [deployment](../system-architecture.md) (§1), [C4 containers](../c4-containers.md), and [event flow](../event-flow.md) (this service's event consumption and rebuild).
 
@@ -73,9 +73,9 @@ Envelope `{code, message, details, traceId}` (same shape as reservations) to `do
 
 | Code | Status | Raised when |
 |---|---|---|
-| `VALIDATION_FAILED` | 400 | missing/malformed date window or business date (`internal/handler/handler.go:96-170`; `internal/store/store.go:383-464`) |
-| `UNAUTHENTICATED` | 401 | missing session token (`internal/handler/handler.go:78-88`) |
-| `NOT_FOUND` | 404 | unknown business date for the daily sheet (`internal/store/store.go:465`) |
+| `VALIDATION_FAILED` | 400 | missing/malformed date window or business date (`internal/handler/handler.go:97-190`; `internal/store/store.go:460-618`) |
+| `UNAUTHENTICATED` | 401 | missing session token (`internal/handler/handler.go:77-87`) |
+| `NOT_FOUND` | 404 | unknown business date for the daily sheet (`internal/store/store.go:542`) |
 
 ## 7. Operations
 

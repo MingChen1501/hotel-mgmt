@@ -46,9 +46,12 @@ beyond session hygiene.
 - B1 — Desk clients on the hotel LAN. Assumption: the LAN is a
   closed, hotel-operated network (wired desk terminals and a staff
   WPA segment); it is trusted for availability but NOT for
-  confidentiality against passive sniffing: all browser-to-Nginx
-  traffic uses TLS with a hotel-local certificate installed at
-  provisioning (§5), and session tokens never travel in URLs.
+  confidentiality against passive sniffing. Planned control (not
+  implemented as of master — `deploy/nginx/nginx.conf` serves
+  plain `:80`; `deploy/README.md` lists TLS/LAN hardening as
+  future): all browser-to-Nginx traffic uses TLS with a
+  hotel-local certificate installed at provisioning (§5), and
+  session tokens never travel in URLs.
 - B2 — Remote access over Tailscale only. No inbound internet
   exposure: Nginx binds the LAN interface; no port-forwarding, no
   callbacks, no external push targets. Vendor/owner remote sessions
@@ -110,12 +113,15 @@ one operation set with no primary editor (LLD §0).
 At install time (offline media, Ansible playbooks owned by
 `release-manager`), the provisioner generates per-installation
 secrets and records their existence (not their values) in a
-provisioning log kept with the hotel:
+provisioning log kept with the hotel (planned as a written
+handover artefact — no log format exists in `deploy/` as of
+master):
 
 1. Database engine credentials: one random password per module
    schema plus an admin credential sealed for break-glass use.
 2. Session-signing key (HMAC) held by Admin; TLS key/certificate
-   for the LAN Nginx entry, installed on desk clients.
+   for the LAN Nginx entry, installed on desk clients (planned —
+   see B1; no TLS objects exist in `deploy/` as of master).
 3. Backup-encryption key, hotel-held; a copy sealed with the
    break-glass credentials.
 4. Bootstrap owner account: created with a one-time secret that
