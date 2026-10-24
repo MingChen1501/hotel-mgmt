@@ -1,0 +1,7 @@
+{
+  "operation": "ListUsers",
+  "case": "happy-path",
+  "description": "Owner lists accounts; each entry carries role and lock state, never secret hashes.",
+  "request": {},
+  "expect": { "status": 200 }
+}

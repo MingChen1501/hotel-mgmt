@@ -1,0 +1,31 @@
+{
+  "operation": "UnlockIdentity",
+  "contract": "AdminService",
+  "version": "1.0",
+  "traces": ["docs/architecture/lld.md section 8", "docs/technical/integration.md section 6 C10", "FR-ADM-2", "NFR-SEC-2"],
+  "transport": {
+    "method": "POST",
+    "path": "/v1/admin/UnlockIdentity",
+    "auth": "Bearer session token with role owner or manager"
+  },
+  "request": {
+    "type": "object",
+    "required": ["signinIdentity"],
+    "properties": {
+      "signinIdentity": { "type": "string", "description": "Locked sign-in identity to release." }
+    }
+  },
+  "response": {
+    "type": "object",
+    "required": ["signinIdentity", "unlocked"],
+    "properties": {
+      "signinIdentity": { "type": "string" },
+      "unlocked": { "type": "boolean", "const": true }
+    }
+  },
+  "errors": [
+    { "code": "UNAUTHENTICATED", "status": 401, "when": "Missing, expired, or revoked session token." },
+    { "code": "FORBIDDEN", "status": 403, "when": "Caller role is front-desk." },
+    { "code": "VALIDATION_FAILED", "status": 400, "when": "Unknown identity or identity is not currently locked." }
+  ]
+}

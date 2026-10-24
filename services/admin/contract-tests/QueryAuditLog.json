@@ -1,0 +1,7 @@
+{
+  "operation": "QueryAuditLog",
+  "case": "happy-path",
+  "description": "Owner reads the audit view over persisted rows; entries carry actor and timestamp, newest first.",
+  "request": { "limit": 50 },
+  "expect": { "status": 200 }
+}

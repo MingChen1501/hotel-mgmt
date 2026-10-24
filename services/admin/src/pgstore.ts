@@ -12,10 +12,21 @@ import {
   toPublic,
   verifySessionToken,
   type AdminStoreAPI,
+  type AuditEntry,
   type AuthenticatedUser,
+  type ListedUser,
   type PublicUser,
   type Role,
 } from "./store.js";
+
+// User/role writes stay with owner and manager (BR-35): the owner
+// additionally controls users and hotel setup, the manager controls
+// rates, rooms, and reports, and front-desk staff operate the desk.
+function requireUserManager(caller: AuthenticatedUser, operation: string): void {
+  if (caller.role === "front-desk") {
+    throw new HttpError("FORBIDDEN", `Front-desk accounts cannot ${operation}.`, { role: caller.role });
+  }
+}
 
 // Profile-backed config keys: single-homed in admin.hotel_profile,
 // everything else lives in admin.hotel_config_values (schema.md §8).
@@ -215,6 +226,208 @@ export class PostgresAdminStore implements AdminStoreAPI {
     }
     const user = created.rows[0] as PublicUser;
     return { userId: user.userId, displayName: user.displayName, signinIdentity: user.signinIdentity, role: user.role };
+  }
+
+  // Owner/manager role change (FR-ADM-2). Guards: the caller can
+  // never change its own role, and the last remaining owner can
+  // never be demoted, so the hotel cannot lock itself out of user
+  // management.
+  async updateUserRole(
+    caller: AuthenticatedUser,
+    input: { signinIdentity?: unknown; role?: unknown },
+  ): Promise<PublicUser> {
+    requireUserManager(caller, "change user roles");
+    const signinIdentity = requiredString(input.signinIdentity, "signinIdentity");
+    if (typeof input.role !== "string" || !ROLES.includes(input.role as Role)) {
+      throw new HttpError("VALIDATION_FAILED", "Unknown role.", { role: input.role });
+    }
+    const nextRole = input.role as Role;
+    return this.withTx(async (client) => {
+      const found = await client.query(
+        `SELECT id AS "userId", display_name AS "displayName",
+          signin_identity AS "signinIdentity", role
+        FROM admin.users WHERE signin_identity = $1`,
+        [signinIdentity],
+      );
+      const user = found.rows[0] as PublicUser | undefined;
+      if (!user) {
+        throw new HttpError("VALIDATION_FAILED", `Unknown sign-in identity ${signinIdentity}.`, { signinIdentity });
+      }
+      if (user.userId === caller.userId) {
+        throw new HttpError("VALIDATION_FAILED", "You cannot change your own role.", { signinIdentity });
+      }
+      if (user.role === "owner" && nextRole !== "owner") {
+        const others = await client.query(`SELECT COUNT(*) AS count FROM admin.users WHERE role = 'owner' AND id <> $1`, [
+          user.userId,
+        ]);
+        if (Number(others.rows[0].count) === 0) {
+          throw new HttpError("VALIDATION_FAILED", `Cannot demote ${signinIdentity}: the last remaining owner.`, {
+            signinIdentity,
+          });
+        }
+      }
+      const updated = await client.query(
+        `UPDATE admin.users SET role = $1, updated_by = $2, updated_at = now()
+         WHERE id = $3
+         RETURNING id AS "userId", display_name AS "displayName",
+           signin_identity AS "signinIdentity", role`,
+        [nextRole, caller.signinIdentity, user.userId],
+      );
+      const row = updated.rows[0] as PublicUser;
+      return { userId: row.userId, displayName: row.displayName, signinIdentity: row.signinIdentity, role: row.role };
+    });
+  }
+
+  // Owner/manager unlock after a 5-strike lockout (NFR-SEC-2, BR-42).
+  async unlockIdentity(
+    caller: AuthenticatedUser,
+    input: { signinIdentity?: unknown },
+  ): Promise<{ signinIdentity: string; unlocked: true }> {
+    requireUserManager(caller, "unlock identities");
+    const signinIdentity = requiredString(input.signinIdentity, "signinIdentity");
+    return this.withTx(async (client) => {
+      const found = await client.query(`SELECT id FROM admin.users WHERE signin_identity = $1`, [signinIdentity]);
+      if (found.rows.length === 0) {
+        throw new HttpError("VALIDATION_FAILED", `Unknown sign-in identity ${signinIdentity}.`, { signinIdentity });
+      }
+      const locked = await client.query(
+        `SELECT locked_until AS "lockedUntil" FROM admin.users WHERE signin_identity = $1`,
+        [signinIdentity],
+      );
+      const lockedUntil = (locked.rows[0] as { lockedUntil: string | null }).lockedUntil;
+      const memoryLocked = this.isMemoryLocked(signinIdentity);
+      const columnLocked = lockedUntil !== null && lockedUntil !== undefined && new Date(lockedUntil).getTime() > Date.now();
+      if (!memoryLocked && !columnLocked) {
+        throw new HttpError("VALIDATION_FAILED", `Identity ${signinIdentity} is not currently locked.`, {
+          signinIdentity,
+        });
+      }
+      this.failures.delete(signinIdentity);
+      await client.query(
+        `UPDATE admin.users SET locked_until = NULL, updated_by = $1, updated_at = now()
+         WHERE signin_identity = $2`,
+        [caller.signinIdentity, signinIdentity],
+      );
+      return { signinIdentity, unlocked: true as const };
+    });
+  }
+
+  async signOut(caller: AuthenticatedUser): Promise<{ signedOut: true }> {
+    await this.pool.query(`UPDATE admin.sessions SET revoked = TRUE, updated_at = now() WHERE token_id = $1`, [
+      caller.tokenId,
+    ]);
+    return { signedOut: true as const };
+  }
+
+  async listUsers(caller: AuthenticatedUser): Promise<{ users: ListedUser[] }> {
+    requireUserManager(caller, "list users");
+    const { rows } = await this.pool.query(
+      `SELECT id AS "userId", display_name AS "displayName",
+        signin_identity AS "signinIdentity", role,
+        locked_until AS "lockedUntil"
+      FROM admin.users ORDER BY signin_identity`,
+    );
+    const users = (rows as (PublicUser & { lockedUntil: string | null })[]).map((row) => ({
+      userId: row.userId,
+      displayName: row.displayName,
+      signinIdentity: row.signinIdentity,
+      role: row.role,
+      locked:
+        (row.lockedUntil !== null &&
+          row.lockedUntil !== undefined &&
+          new Date(row.lockedUntil).getTime() > Date.now()) ||
+        this.isMemoryLocked(row.signinIdentity),
+    }));
+    return { users };
+  }
+
+  // Read-only audit view over already-persisted rows (issue #163):
+  // account creations/updates, config/profile writes, and backup run
+  // reports, newest first. No new recording semantics; the Later
+  // recording scope stays unchanged.
+  async queryAuditLog(
+    caller: AuthenticatedUser,
+    input: { limit?: unknown },
+  ): Promise<{ entries: AuditEntry[] }> {
+    requireUserManager(caller, "read the audit log");
+    const limit = input.limit === undefined ? 50 : input.limit;
+    if (typeof limit !== "number" || !Number.isInteger(limit) || limit < 1 || limit > 200) {
+      throw new HttpError("VALIDATION_FAILED", "limit must be an integer between 1 and 200.", { field: "limit" });
+    }
+    const entries: AuditEntry[] = [];
+    const users = await this.pool.query(
+      `SELECT signin_identity AS "signinIdentity", display_name AS "displayName", role,
+        created_by AS "createdBy", created_at AS "createdAt",
+        updated_by AS "updatedBy", updated_at AS "updatedAt"
+      FROM admin.users`,
+    );
+    for (const row of users.rows as Record<string, unknown>[]) {
+      entries.push({
+        at: (row["createdAt"] as Date).toISOString(),
+        actor: String(row["createdBy"]),
+        action: "user.created",
+        entity: String(row["signinIdentity"]),
+        detail: `${String(row["displayName"])} (${String(row["role"])})`,
+      });
+      const createdAt = (row["createdAt"] as Date).getTime();
+      const updatedAt = (row["updatedAt"] as Date).getTime();
+      if (updatedAt > createdAt) {
+        entries.push({
+          at: (row["updatedAt"] as Date).toISOString(),
+          actor: String(row["updatedBy"]),
+          action: "user.updated",
+          entity: String(row["signinIdentity"]),
+          detail: `now ${String(row["role"])}`,
+        });
+      }
+    }
+    const configs = await this.pool.query(
+      `SELECT config_key, updated_by AS "updatedBy", updated_at AS "updatedAt"
+       FROM admin.hotel_config_values`,
+    );
+    for (const row of configs.rows as Record<string, unknown>[]) {
+      entries.push({
+        at: (row["updatedAt"] as Date).toISOString(),
+        actor: String(row["updatedBy"]),
+        action: "config.updated",
+        entity: String(row["config_key"]),
+      });
+    }
+    const profiles = await this.pool.query(
+      `SELECT updated_by AS "updatedBy", updated_at AS "updatedAt", created_at AS "createdAt"
+       FROM admin.hotel_profile LIMIT 1`,
+    );
+    for (const row of profiles.rows as Record<string, unknown>[]) {
+      if ((row["updatedAt"] as Date).getTime() > (row["createdAt"] as Date).getTime()) {
+        entries.push({
+          at: (row["updatedAt"] as Date).toISOString(),
+          actor: String(row["updatedBy"]),
+          action: "profile.updated",
+          entity: "hotel_profile",
+        });
+      }
+    }
+    const backups = await this.pool.query(
+      `SELECT result, created_by AS "createdBy", created_at AS "createdAt",
+        finished_at AS "finishedAt"
+       FROM admin.backup_runs`,
+    );
+    for (const row of backups.rows as Record<string, unknown>[]) {
+      entries.push({
+        at: ((row["finishedAt"] as Date | null) ?? (row["createdAt"] as Date)).toISOString(),
+        actor: String(row["createdBy"]),
+        action: "backup.reported",
+        entity: "backup_runs",
+        detail: String(row["result"]),
+      });
+    }
+    entries.sort((a, b) => (a.at < b.at ? 1 : -1));
+    return { entries: entries.slice(0, limit) };
+  }
+
+  private isMemoryLocked(signinIdentity: string): boolean {
+    const state = this.failures.get(signinIdentity);
+    return state?.lockedUntil !== null && state?.lockedUntil !== undefined && state.lockedUntil > Date.now();
   }
 
   async getConfig(): Promise<{ schemaVersion: number; values: Record<string, unknown> }> {

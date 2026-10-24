@@ -28,8 +28,35 @@ export interface PublicUser {
   role: Role;
 }
 
+export interface ListedUser extends PublicUser {
+  locked: boolean;
+}
+
+export type AuditAction = "user.created" | "user.updated" | "config.updated" | "profile.updated" | "backup.reported";
+
+export interface AuditEntry {
+  at: string;
+  actor: string;
+  action: AuditAction;
+  entity: string;
+  detail?: string;
+}
+
 interface UserRecord extends PublicUser {
   secretHash: string;
+  createdBy: string;
+  createdAt: number;
+  updatedBy: string;
+  updatedAt: number;
+}
+
+interface ConfigRecord {
+  value: unknown;
+  // Null until the first API write: seeded defaults are code
+  // fallbacks, not persisted rows, so they never appear in the
+  // audit view (issue #163 keeps the Later recording scope).
+  updatedBy: string | null;
+  updatedAt: number | null;
 }
 
 export interface SessionRecord {
@@ -92,6 +119,20 @@ export interface AdminStoreAPI {
     caller: AuthenticatedUser,
     input: { displayName?: unknown; signinIdentity?: unknown; secret?: unknown; role?: unknown },
   ): Promise<PublicUser>;
+  updateUserRole(
+    caller: AuthenticatedUser,
+    input: { signinIdentity?: unknown; role?: unknown },
+  ): Promise<PublicUser>;
+  unlockIdentity(
+    caller: AuthenticatedUser,
+    input: { signinIdentity?: unknown },
+  ): Promise<{ signinIdentity: string; unlocked: true }>;
+  signOut(caller: AuthenticatedUser): Promise<{ signedOut: true }>;
+  listUsers(caller: AuthenticatedUser): Promise<{ users: ListedUser[] }>;
+  queryAuditLog(
+    caller: AuthenticatedUser,
+    input: { limit?: unknown },
+  ): Promise<{ entries: AuditEntry[] }>;
   getConfig(): Promise<{ schemaVersion: number; values: Record<string, unknown> }>;
   updateConfig(
     caller: AuthenticatedUser,
@@ -105,21 +146,35 @@ export class AdminStore implements AdminStoreAPI {
   private readonly usersByIdentity = new Map<string, UserRecord>();
   private readonly sessions = new Map<string, SessionRecord>();
   private readonly failures = new Map<string, { count: number; lockedUntil: number | null }>();
-  private readonly config = new Map<string, unknown>();
+  private readonly config = new Map<string, ConfigRecord>();
   private readonly key: string;
   readonly schemaVersion = 1;
 
   constructor(tokenKey?: string) {
     this.key = tokenKey ?? process.env["ADMIN_TOKEN_KEY"] ?? "dev-only-change-me";
-    this.config.set("name", "Skeleton Hotel");
-    this.config.set("timezone", "UTC");
-    this.config.set("standardCheckinTime", "14:00");
-    this.config.set("standardCheckoutTime", "12:00");
-    this.config.set("retentionFloorDays", 365);
-    this.config.set("requiredGuestFields", ["fullName"]);
-    this.config.set("cancellationReasons", []);
-    this.config.set("noshowRule", {});
-    this.config.set("approvalRule", { required: false });
+    const seed: Record<string, unknown> = {
+      name: "Skeleton Hotel",
+      timezone: "UTC",
+      standardCheckinTime: "14:00",
+      standardCheckoutTime: "12:00",
+      retentionFloorDays: 365,
+      requiredGuestFields: ["fullName"],
+      cancellationReasons: [],
+      noshowRule: {},
+      approvalRule: { required: false },
+    };
+    for (const [key, value] of Object.entries(seed)) {
+      this.config.set(key, { value, updatedBy: null, updatedAt: null });
+    }
+  }
+
+  // User/role writes stay with owner and manager (BR-35): the owner
+  // additionally controls users and hotel setup, the manager controls
+  // rates, rooms, and reports, and front-desk staff operate the desk.
+  private requireUserManager(caller: AuthenticatedUser, operation: string): void {
+    if (caller.role === "front-desk") {
+      throw new HttpError("FORBIDDEN", `Front-desk accounts cannot ${operation}.`, { role: caller.role });
+    }
   }
 
   // Bootstraps the single owner identity the desk loop signs in with.
@@ -135,6 +190,10 @@ export class AdminStore implements AdminStoreAPI {
       signinIdentity,
       role: "owner",
       secretHash: hashSecret(secret),
+      createdBy: "boot",
+      createdAt: Date.now(),
+      updatedBy: "boot",
+      updatedAt: Date.now(),
     };
     this.users.set(user.userId, user);
     this.usersByIdentity.set(signinIdentity, user);
@@ -203,9 +262,7 @@ export class AdminStore implements AdminStoreAPI {
     caller: AuthenticatedUser,
     input: { displayName?: unknown; signinIdentity?: unknown; secret?: unknown; role?: unknown },
   ): Promise<PublicUser> {
-    if (caller.role === "front-desk") {
-      throw new HttpError("FORBIDDEN", "Front-desk accounts cannot create users.", { role: caller.role });
-    }
+    this.requireUserManager(caller, "create users");
     const displayName = requiredString(input.displayName, "displayName");
     const signinIdentity = requiredString(input.signinIdentity, "signinIdentity");
     if (typeof input.secret !== "string" || input.secret === "") {
@@ -219,20 +276,158 @@ export class AdminStore implements AdminStoreAPI {
         signinIdentity,
       });
     }
+    const now = Date.now();
     const user: UserRecord = {
       userId: randomUUID(),
       displayName,
       signinIdentity,
       role: input.role as Role,
       secretHash: hashSecret(input.secret),
+      createdBy: caller.signinIdentity,
+      createdAt: now,
+      updatedBy: caller.signinIdentity,
+      updatedAt: now,
     };
     this.users.set(user.userId, user);
     this.usersByIdentity.set(signinIdentity, user);
     return toPublic(user);
   }
 
+  // Owner/manager role change (FR-ADM-2). Guards: the caller can
+  // never change its own role, and the last remaining owner can
+  // never be demoted, so the hotel cannot lock itself out of user
+  // management.
+  async updateUserRole(
+    caller: AuthenticatedUser,
+    input: { signinIdentity?: unknown; role?: unknown },
+  ): Promise<PublicUser> {
+    this.requireUserManager(caller, "change user roles");
+    const signinIdentity = requiredString(input.signinIdentity, "signinIdentity");
+    if (typeof input.role !== "string" || !ROLES.includes(input.role as Role)) {
+      throw new HttpError("VALIDATION_FAILED", "Unknown role.", { role: input.role });
+    }
+    const user = this.usersByIdentity.get(signinIdentity);
+    if (!user) {
+      throw new HttpError("VALIDATION_FAILED", `Unknown sign-in identity ${signinIdentity}.`, { signinIdentity });
+    }
+    if (user.userId === caller.userId) {
+      throw new HttpError("VALIDATION_FAILED", "You cannot change your own role.", { signinIdentity });
+    }
+    const nextRole = input.role as Role;
+    if (user.role === "owner" && nextRole !== "owner" && !this.hasOtherOwner(user.userId)) {
+      throw new HttpError("VALIDATION_FAILED", `Cannot demote ${signinIdentity}: the last remaining owner.`, {
+        signinIdentity,
+      });
+    }
+    user.role = nextRole;
+    user.updatedBy = caller.signinIdentity;
+    user.updatedAt = Date.now();
+    return toPublic(user);
+  }
+
+  // Owner/manager unlock after a 5-strike lockout (NFR-SEC-2, BR-42).
+  async unlockIdentity(
+    caller: AuthenticatedUser,
+    input: { signinIdentity?: unknown },
+  ): Promise<{ signinIdentity: string; unlocked: true }> {
+    this.requireUserManager(caller, "unlock identities");
+    const signinIdentity = requiredString(input.signinIdentity, "signinIdentity");
+    const user = this.usersByIdentity.get(signinIdentity);
+    if (!user) {
+      throw new HttpError("VALIDATION_FAILED", `Unknown sign-in identity ${signinIdentity}.`, { signinIdentity });
+    }
+    if (!this.isLocked(user)) {
+      throw new HttpError("VALIDATION_FAILED", `Identity ${signinIdentity} is not currently locked.`, {
+        signinIdentity,
+      });
+    }
+    this.failures.delete(signinIdentity);
+    user.updatedBy = caller.signinIdentity;
+    user.updatedAt = Date.now();
+    return { signinIdentity, unlocked: true as const };
+  }
+
+  async signOut(caller: AuthenticatedUser): Promise<{ signedOut: true }> {
+    const session = this.sessions.get(caller.tokenId);
+    if (session) {
+      session.revoked = true;
+    }
+    return { signedOut: true as const };
+  }
+
+  async listUsers(caller: AuthenticatedUser): Promise<{ users: ListedUser[] }> {
+    this.requireUserManager(caller, "list users");
+    const users = [...this.users.values()]
+      .map((user) => ({ ...toPublic(user), locked: this.isLocked(user) }))
+      .sort((a, b) => (a.signinIdentity < b.signinIdentity ? -1 : 1));
+    return { users };
+  }
+
+  // Read-only audit view over already-persisted rows (issue #163):
+  // account creations/updates, config writes, nothing else. No new
+  // recording semantics; the Later recording scope stays unchanged.
+  async queryAuditLog(
+    caller: AuthenticatedUser,
+    input: { limit?: unknown },
+  ): Promise<{ entries: AuditEntry[] }> {
+    this.requireUserManager(caller, "read the audit log");
+    const limit = input.limit === undefined ? 50 : input.limit;
+    if (typeof limit !== "number" || !Number.isInteger(limit) || limit < 1 || limit > 200) {
+      throw new HttpError("VALIDATION_FAILED", "limit must be an integer between 1 and 200.", { field: "limit" });
+    }
+    const entries: AuditEntry[] = [];
+    for (const user of this.users.values()) {
+      entries.push({
+        at: new Date(user.createdAt).toISOString(),
+        actor: user.createdBy,
+        action: "user.created",
+        entity: user.signinIdentity,
+        detail: `${user.displayName} (${user.role})`,
+      });
+      if (user.updatedAt > user.createdAt) {
+        entries.push({
+          at: new Date(user.updatedAt).toISOString(),
+          actor: user.updatedBy,
+          action: "user.updated",
+          entity: user.signinIdentity,
+          detail: `now ${user.role}`,
+        });
+      }
+    }
+    for (const [key, record] of this.config) {
+      if (record.updatedBy !== null && record.updatedAt !== null) {
+        entries.push({
+          at: new Date(record.updatedAt).toISOString(),
+          actor: record.updatedBy,
+          action: "config.updated",
+          entity: key,
+        });
+      }
+    }
+    entries.sort((a, b) => (a.at < b.at ? 1 : -1));
+    return { entries: entries.slice(0, limit) };
+  }
+
+  private isLocked(user: UserRecord): boolean {
+    const state = this.failures.get(user.signinIdentity);
+    return state?.lockedUntil !== null && state?.lockedUntil !== undefined && state.lockedUntil > Date.now();
+  }
+
+  private hasOtherOwner(exceptUserId: string): boolean {
+    for (const user of this.users.values()) {
+      if (user.userId !== exceptUserId && user.role === "owner") {
+        return true;
+      }
+    }
+    return false;
+  }
+
   async getConfig(): Promise<{ schemaVersion: number; values: Record<string, unknown> }> {
-    return { schemaVersion: this.schemaVersion, values: Object.fromEntries(this.config) };
+    const values: Record<string, unknown> = {};
+    for (const [key, record] of this.config) {
+      values[key] = record.value;
+    }
+    return { schemaVersion: this.schemaVersion, values };
   }
 
   async updateConfig(
@@ -252,8 +447,10 @@ export class AdminStore implements AdminStoreAPI {
       // (issue #158); never blank it through the API.
       requiredString((input.values as Record<string, unknown>)["name"], "name");
     }
+    const now = Date.now();
+    const actor = input.updatedBy as string;
     for (const [key, value] of entries) {
-      this.config.set(key, value);
+      this.config.set(key, { value, updatedBy: actor, updatedAt: now });
     }
     return this.getConfig();
   }

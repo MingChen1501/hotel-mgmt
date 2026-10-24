@@ -1,0 +1,44 @@
+{
+  "operation": "QueryAuditLog",
+  "contract": "AdminService",
+  "version": "1.0",
+  "traces": ["docs/architecture/lld.md section 8", "NFR-AUD-1"],
+  "transport": {
+    "method": "POST",
+    "path": "/v1/admin/QueryAuditLog",
+    "auth": "Bearer session token with role owner or manager"
+  },
+  "request": {
+    "type": "object",
+    "required": [],
+    "properties": {
+      "limit": { "type": "integer", "minimum": 1, "maximum": 200, "default": 50, "description": "Newest entries first; defaults to 50." }
+    }
+  },
+  "response": {
+    "type": "object",
+    "required": ["entries"],
+    "properties": {
+      "entries": {
+        "type": "array",
+        "description": "Read-only view over already-persisted rows (issue #163 keeps the Later recording scope unchanged): account creations and updates, config/profile updates, and backup run reports, newest first.",
+        "items": {
+          "type": "object",
+          "required": ["at", "actor", "action", "entity"],
+          "properties": {
+            "at": { "type": "string", "format": "date-time" },
+            "actor": { "type": "string" },
+            "action": { "type": "string", "enum": ["user.created", "user.updated", "config.updated", "profile.updated", "backup.reported"] },
+            "entity": { "type": "string" },
+            "detail": { "type": "string" }
+          }
+        }
+      }
+    }
+  },
+  "errors": [
+    { "code": "UNAUTHENTICATED", "status": 401, "when": "Missing, expired, or revoked session token." },
+    { "code": "FORBIDDEN", "status": 403, "when": "Caller role is front-desk." },
+    { "code": "VALIDATION_FAILED", "status": 400, "when": "limit is outside 1..200." }
+  ]
+}

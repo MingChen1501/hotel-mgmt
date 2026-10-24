@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hotel Management — Admin Console</title>
+</head>
+<body>
+  <h1>Hotel Management — Admin Console</h1>
+  <p><a href="/">Back to the desk entry</a></p>
+
+  <section id="signin-section">
+    <h2>Sign in</h2>
+    <form id="signin-form">
+      <label>Sign-in identity: <input id="signin-identity" name="signin-identity" autocomplete="username"></label>
+      <label>Secret: <input id="signin-secret" name="signin-secret" type="password" autocomplete="current-password"></label>
+      <button type="submit">Sign in</button>
+    </form>
+    <p id="signin-error" role="alert" hidden></p>
+  </section>
+
+  <section id="console-section" hidden>
+    <p>Signed in as <strong id="whoami"></strong> (<span id="myrole"></span>).
+      <button id="signout-button" type="button">Sign out</button></p>
+
+    <h2>Users and roles</h2>
+    <p id="users-error" role="alert" hidden></p>
+    <table id="users-table">
+      <thead>
+        <tr><th>Name</th><th>Sign-in identity</th><th>Role</th><th>Locked</th><th>Actions</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
+    <h3>Create account</h3>
+    <form id="create-form">
+      <label>Name: <input id="create-name" name="create-name"></label>
+      <label>Sign-in identity: <input id="create-identity" name="create-identity"></label>
+      <label>Secret: <input id="create-secret" name="create-secret" type="password"></label>
+      <label>Role:
+        <select id="create-role" name="create-role">
+          <option value="front-desk">front-desk</option>
+          <option value="manager">manager</option>
+          <option value="owner">owner</option>
+        </select>
+      </label>
+      <button type="submit">Create</button>
+    </form>
+
+    <h2>Audit view</h2>
+    <p>Read-only: account creations and updates, config writes, and backup reports, newest first.</p>
+    <p><button id="audit-refresh" type="button">Refresh</button></p>
+    <p id="audit-error" role="alert" hidden></p>
+    <table id="audit-table">
+      <thead>
+        <tr><th>Time</th><th>Actor</th><th>Action</th><th>Entity</th><th>Detail</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <script>
+    // Admin console (issue #163): users/roles management plus a
+    // read-only audit view over already-persisted rows. Same static
+    // pattern as the desk entry (issue #116): no build step, the
+    // page calls /v1/admin/* through Nginx on this host.
+    (function () {
+      var token = null;
+
+      function show(id, message) {
+        var el = document.getElementById(id);
+        el.textContent = message;
+        el.hidden = !message;
+      }
+
+      async function call(operation, body) {
+        var headers = { "Content-Type": "application/json" };
+        if (token) {
+          headers["Authorization"] = "Bearer " + token;
+        }
+        var response = await fetch("/v1/admin/" + operation, {
+          method: "POST",
+          headers: headers,
+          body: JSON.stringify(body || {}),
+        });
+        var payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.message || payload.code || ("request failed: " + operation));
+        }
+        return payload;
+      }
+
+      function esc(value) {
+        return String(value).replace(/[&<>"']/g, function (ch) {
+          return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch];
+        });
+      }
+
+      async function refreshUsers() {
+        var data = await call("ListUsers", {});
+        var rows = data.users.map(function (user) {
+          var roleOptions = ["owner", "manager", "front-desk"].map(function (role) {
+            return '<option value="' + role + '"' + (role === user.role ? " selected" : "") + ">" + role + "</option>";
+          }).join("");
+          return "<tr><td>" + esc(user.displayName) + "</td><td>" + esc(user.signinIdentity) + "</td>" +
+            '<td><select data-identity="' + esc(user.signinIdentity) + '" class="role-select">' + roleOptions + "</select></td>" +
+            "<td>" + (user.locked ? "yes" : "no") + "</td>" +
+            '<td><button type="button" data-identity="' + esc(user.signinIdentity) + '" class="role-save">Save role</button> ' +
+            (user.locked ? '<button type="button" data-identity="' + esc(user.signinIdentity) + '" class="unlock">Unlock</button>' : "") +
+            "</td></tr>";
+        }).join("");
+        document.querySelector("#users-table tbody").innerHTML = rows;
+        show("users-error", "");
+      }
+
+      async function refreshAudit() {
+        var data = await call("QueryAuditLog", { limit: 50 });
+        var rows = data.entries.map(function (entry) {
+          return "<tr><td>" + esc(entry.at) + "</td><td>" + esc(entry.actor) + "</td><td>" +
+            esc(entry.action) + "</td><td>" + esc(entry.entity) + "</td><td>" + esc(entry.detail || "") + "</td></tr>";
+        }).join("");
+        document.querySelector("#audit-table tbody").innerHTML = rows || '<tr><td colspan="5">No entries yet.</td></tr>';
+        show("audit-error", "");
+      }
+
+      async function refreshAll() {
+        await refreshUsers();
+        await refreshAudit();
+      }
+
+      document.getElementById("signin-form").addEventListener("submit", async function (event) {
+        event.preventDefault();
+        try {
+          var payload = await call("SignIn", {
+            signinIdentity: document.getElementById("signin-identity").value,
+            secret: document.getElementById("signin-secret").value,
+          });
+          token = payload.token;
+          document.getElementById("whoami").textContent = payload.displayName;
+          document.getElementById("myrole").textContent = payload.role;
+          document.getElementById("signin-section").hidden = true;
+          document.getElementById("console-section").hidden = false;
+          show("signin-error", "");
+          await refreshAll();
+        } catch (err) {
+          show("signin-error", err.message);
+        }
+      });
+
+      document.getElementById("create-form").addEventListener("submit", async function (event) {
+        event.preventDefault();
+        try {
+          await call("CreateUser", {
+            displayName: document.getElementById("create-name").value,
+            signinIdentity: document.getElementById("create-identity").value,
+            secret: document.getElementById("create-secret").value,
+            role: document.getElementById("create-role").value,
+          });
+          event.target.reset();
+          await refreshAll();
+        } catch (err) {
+          show("users-error", err.message);
+        }
+      });
+
+      document.querySelector("#users-table tbody").addEventListener("click", async function (event) {
+        var target = event.target;
+        var identity = target.getAttribute && target.getAttribute("data-identity");
+        if (!identity) {
+          return;
+        }
+        try {
+          if (target.classList.contains("role-save")) {
+            var select = document.querySelector('.role-select[data-identity="' + identity + '"]');
+            await call("UpdateUserRole", { signinIdentity: identity, role: select.value });
+          } else if (target.classList.contains("unlock")) {
+            await call("UnlockIdentity", { signinIdentity: identity });
+          } else {
+            return;
+          }
+          await refreshAll();
+        } catch (err) {
+          show("users-error", err.message);
+        }
+      });
+
+      document.getElementById("audit-refresh").addEventListener("click", async function () {
+        try {
+          await refreshAudit();
+        } catch (err) {
+          show("audit-error", err.message);
+        }
+      });
+
+      document.getElementById("signout-button").addEventListener("click", async function () {
+        try {
+          await call("SignOut", {});
+        } catch (err) {
+          /* A dead token signs out locally all the same. */
+        }
+        token = null;
+        document.getElementById("console-section").hidden = true;
+        document.getElementById("signin-section").hidden = false;
+        document.getElementById("signin-secret").value = "";
+      });
+    })();
+  </script>
+</body>
+</html>

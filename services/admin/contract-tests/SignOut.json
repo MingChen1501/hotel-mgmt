@@ -1,0 +1,7 @@
+{
+  "operation": "SignOut",
+  "case": "happy-path",
+  "description": "Owner ends the session; the token is refused afterwards.",
+  "request": {},
+  "expect": { "status": 200, "signedOut": true }
+}

@@ -71,4 +71,62 @@ describe("admin postgres store", { skip: DATABASE_URL === undefined || DATABASE_
       await pool.end();
     }
   });
+
+  it("manages roles, unlock, sign-out, list, and audit over persisted rows (FR-ADM-2, NFR-SEC-1/2, NFR-AUD-1)", async () => {
+    const pool = new Pool({ connectionString: DATABASE_URL });
+    try {
+      await wipe(pool);
+      const store = new PostgresAdminStore(pool, "test-key");
+      await store.ensureBootUser("owner", "owner-secret");
+      const ownerSession = await store.signIn("owner", "owner-secret");
+      const owner = await store.authenticate(ownerSession.token);
+
+      const desk = await store.createUser(owner, {
+        displayName: "Desk",
+        signinIdentity: "desk-1",
+        secret: "desk-secret",
+        role: "front-desk",
+      });
+      assert.equal(desk.role, "front-desk");
+
+      const promoted = await store.updateUserRole(owner, { signinIdentity: "desk-1", role: "manager" });
+      assert.equal(promoted.role, "manager");
+      await assert.rejects(
+        store.updateUserRole(owner, { signinIdentity: "owner", role: "manager" }),
+        /last remaining owner/,
+      );
+
+      const listed = await store.listUsers(owner);
+      assert.equal(listed.users.length, 2);
+      assert.ok(listed.users.every((user) => !("secretHash" in user)));
+
+      await store.updateConfig(owner, { values: { timezone: "Asia/Ho_Chi_Minh" }, updatedBy: "owner" });
+      const log = await store.queryAuditLog(owner, { limit: 50 });
+      const actions = log.entries.map((entry) => entry.action);
+      assert.ok(actions.includes("user.created"));
+      assert.ok(actions.includes("user.updated"));
+      assert.ok(actions.includes("config.updated"));
+      const created = log.entries.find((entry) => entry.action === "user.created" && entry.entity === "desk-1");
+      assert.equal(created?.actor, "owner");
+
+      for (let attempt = 0; attempt < 5; attempt++) {
+        await assert.rejects(store.signIn("desk-1", "wrong"), /Unknown identity or wrong secret/);
+      }
+      await assert.rejects(store.signIn("desk-1", "desk-secret"), /locked/);
+      const lockedList = await store.listUsers(owner);
+      assert.equal(
+        lockedList.users.find((user) => user.signinIdentity === "desk-1")?.locked,
+        true,
+      );
+      const unlocked = await store.unlockIdentity(owner, { signinIdentity: "desk-1" });
+      assert.equal(unlocked.unlocked, true);
+      await store.signIn("desk-1", "desk-secret");
+
+      const ended = await store.signOut(owner);
+      assert.equal(ended.signedOut, true);
+      await assert.rejects(store.authenticate(ownerSession.token), /revoked or signed out/);
+    } finally {
+      await pool.end();
+    }
+  });
 });

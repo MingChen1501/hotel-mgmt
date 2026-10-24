@@ -1,0 +1,7 @@
+{
+  "operation": "UpdateUserRole",
+  "case": "forbidden",
+  "description": "Front-desk caller attempts a role change; access is refused without touching the account.",
+  "request": { "signinIdentity": "mgr-1", "role": "owner" },
+  "expect": { "status": 403, "code": "FORBIDDEN" }
+}

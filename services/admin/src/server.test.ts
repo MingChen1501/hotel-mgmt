@@ -185,3 +185,331 @@ describe("identity and config", () => {
     });
   });
 });
+
+describe("user and role management (FR-ADM-2)", () => {
+  async function ownerTokenOn(port: number): Promise<string> {
+    const signin = await request(port, "POST", "/v1/admin/SignIn", {
+      signinIdentity: "owner",
+      secret: "owner-secret",
+    });
+    assert.equal(signin.status, 200);
+    return (signin.body as { token: string }).token;
+  }
+
+  it("updates a user role and guards self-change plus the last owner", async () => {
+    await withServer(await bootStore(), async (port) => {
+      const ownerToken = await ownerTokenOn(port);
+      const created = await request(
+        port,
+        "POST",
+        "/v1/admin/CreateUser",
+        { displayName: "Manager", signinIdentity: "mgr-1", secret: "mgr-secret", role: "manager" },
+        ownerToken,
+      );
+      assert.equal(created.status, 200);
+
+      const updated = await request(
+        port,
+        "POST",
+        "/v1/admin/UpdateUserRole",
+        { signinIdentity: "mgr-1", role: "front-desk" },
+        ownerToken,
+      );
+      assert.equal(updated.status, 200);
+      assert.equal((updated.body as { role: string }).role, "front-desk");
+
+      const unknown = await request(
+        port,
+        "POST",
+        "/v1/admin/UpdateUserRole",
+        { signinIdentity: "ghost", role: "manager" },
+        ownerToken,
+      );
+      assert.equal(unknown.status, 400);
+      assert.equal((unknown.body as { code: string }).code, "VALIDATION_FAILED");
+
+      const badRole = await request(
+        port,
+        "POST",
+        "/v1/admin/UpdateUserRole",
+        { signinIdentity: "mgr-1", role: "superuser" },
+        ownerToken,
+      );
+      assert.equal(badRole.status, 400);
+      assert.equal((badRole.body as { code: string }).code, "VALIDATION_FAILED");
+
+      const selfChange = await request(
+        port,
+        "POST",
+        "/v1/admin/UpdateUserRole",
+        { signinIdentity: "owner", role: "manager" },
+        ownerToken,
+      );
+      assert.equal(selfChange.status, 400);
+      assert.equal((selfChange.body as { code: string }).code, "VALIDATION_FAILED");
+    });
+  });
+
+  it("refuses to demote the last remaining owner", async () => {
+    await withServer(await bootStore(), async (port) => {
+      const ownerToken = await ownerTokenOn(port);
+      await request(
+        port,
+        "POST",
+        "/v1/admin/CreateUser",
+        { displayName: "Second Owner", signinIdentity: "owner-2", secret: "owner-2-secret", role: "owner" },
+        ownerToken,
+      );
+      const secondSignin = await request(port, "POST", "/v1/admin/SignIn", {
+        signinIdentity: "owner-2",
+        secret: "owner-2-secret",
+      });
+      const secondToken = (secondSignin.body as { token: string }).token;
+
+      const demote = await request(
+        port,
+        "POST",
+        "/v1/admin/UpdateUserRole",
+        { signinIdentity: "owner-2", role: "manager" },
+        ownerToken,
+      );
+      assert.equal(demote.status, 200);
+
+      const lastOwner = await request(
+        port,
+        "POST",
+        "/v1/admin/UpdateUserRole",
+        { signinIdentity: "owner", role: "manager" },
+        secondToken,
+      );
+      assert.equal(lastOwner.status, 400);
+      assert.equal((lastOwner.body as { code: string }).code, "VALIDATION_FAILED");
+    });
+  });
+
+  it("refuses role changes from front-desk accounts (NFR-SEC-1)", async () => {
+    await withServer(await bootStore(), async (port) => {
+      const ownerToken = await ownerTokenOn(port);
+      await request(
+        port,
+        "POST",
+        "/v1/admin/CreateUser",
+        { displayName: "Desk", signinIdentity: "desk-1", secret: "desk-secret", role: "front-desk" },
+        ownerToken,
+      );
+      const deskSignin = await request(port, "POST", "/v1/admin/SignIn", {
+        signinIdentity: "desk-1",
+        secret: "desk-secret",
+      });
+      const deskToken = (deskSignin.body as { token: string }).token;
+
+      const refused = await request(
+        port,
+        "POST",
+        "/v1/admin/UpdateUserRole",
+        { signinIdentity: "desk-1", role: "manager" },
+        deskToken,
+      );
+      assert.equal(refused.status, 403);
+      assert.equal((refused.body as { code: string }).code, "FORBIDDEN");
+    });
+  });
+
+  it("unlocks a locked identity so sign-in works again (NFR-SEC-2)", async () => {
+    const store = await bootStore();
+    await withServer(store, async (port) => {
+      const ownerToken = await ownerTokenOn(port);
+      await request(
+        port,
+        "POST",
+        "/v1/admin/CreateUser",
+        { displayName: "Desk", signinIdentity: "desk-1", secret: "desk-secret", role: "front-desk" },
+        ownerToken,
+      );
+      for (let attempt = 0; attempt < 5; attempt++) {
+        await request(port, "POST", "/v1/admin/SignIn", { signinIdentity: "desk-1", secret: "wrong" });
+      }
+      const locked = await request(port, "POST", "/v1/admin/SignIn", {
+        signinIdentity: "desk-1",
+        secret: "desk-secret",
+      });
+      assert.equal(locked.status, 401);
+
+      const unlocked = await request(
+        port,
+        "POST",
+        "/v1/admin/UnlockIdentity",
+        { signinIdentity: "desk-1" },
+        ownerToken,
+      );
+      assert.equal(unlocked.status, 200);
+      assert.equal((unlocked.body as { unlocked: boolean }).unlocked, true);
+
+      const retry = await request(port, "POST", "/v1/admin/SignIn", {
+        signinIdentity: "desk-1",
+        secret: "desk-secret",
+      });
+      assert.equal(retry.status, 200);
+    });
+  });
+
+  it("refuses unlock for unknown or unlocked identities and for front-desk callers", async () => {
+    await withServer(await bootStore(), async (port) => {
+      const ownerToken = await ownerTokenOn(port);
+      await request(
+        port,
+        "POST",
+        "/v1/admin/CreateUser",
+        { displayName: "Desk", signinIdentity: "desk-1", secret: "desk-secret", role: "front-desk" },
+        ownerToken,
+      );
+      const deskSignin = await request(port, "POST", "/v1/admin/SignIn", {
+        signinIdentity: "desk-1",
+        secret: "desk-secret",
+      });
+      const deskToken = (deskSignin.body as { token: string }).token;
+
+      const unknown = await request(
+        port,
+        "POST",
+        "/v1/admin/UnlockIdentity",
+        { signinIdentity: "ghost" },
+        ownerToken,
+      );
+      assert.equal(unknown.status, 400);
+      assert.equal((unknown.body as { code: string }).code, "VALIDATION_FAILED");
+
+      const notLocked = await request(
+        port,
+        "POST",
+        "/v1/admin/UnlockIdentity",
+        { signinIdentity: "desk-1" },
+        ownerToken,
+      );
+      assert.equal(notLocked.status, 400);
+      assert.equal((notLocked.body as { code: string }).code, "VALIDATION_FAILED");
+
+      const refused = await request(
+        port,
+        "POST",
+        "/v1/admin/UnlockIdentity",
+        { signinIdentity: "desk-1" },
+        deskToken,
+      );
+      assert.equal(refused.status, 403);
+      assert.equal((refused.body as { code: string }).code, "FORBIDDEN");
+    });
+  });
+
+  it("ends the session on sign-out (NFR-SEC-2)", async () => {
+    await withServer(await bootStore(), async (port) => {
+      const ownerToken = await ownerTokenOn(port);
+      const ended = await request(port, "POST", "/v1/admin/SignOut", {}, ownerToken);
+      assert.equal(ended.status, 200);
+      assert.equal((ended.body as { signedOut: boolean }).signedOut, true);
+
+      const reuse = await request(port, "POST", "/v1/admin/GetHotelConfig", {}, ownerToken);
+      assert.equal(reuse.status, 401);
+      assert.equal((reuse.body as { code: string }).code, "UNAUTHENTICATED");
+    });
+  });
+
+  it("lists users with lock state and never leaks secret hashes", async () => {
+    await withServer(await bootStore(), async (port) => {
+      const ownerToken = await ownerTokenOn(port);
+      await request(
+        port,
+        "POST",
+        "/v1/admin/CreateUser",
+        { displayName: "Desk", signinIdentity: "desk-1", secret: "desk-secret", role: "front-desk" },
+        ownerToken,
+      );
+      const listed = await request(port, "POST", "/v1/admin/ListUsers", {}, ownerToken);
+      assert.equal(listed.status, 200);
+      const users = (listed.body as { users: Record<string, unknown>[] }).users;
+      assert.equal(users.length, 2);
+      for (const user of users) {
+        assert.ok(!("secretHash" in user));
+        assert.ok(!("secret_hash" in user));
+        assert.equal(typeof user["locked"], "boolean");
+      }
+      const identities = users.map((user) => user["signinIdentity"]).sort();
+      assert.deepEqual(identities, ["desk-1", "owner"]);
+    });
+  });
+});
+
+describe("read-only audit log (NFR-AUD-1)", () => {
+  it("shows account and config changes with actor and time, newest first", async () => {
+    await withServer(await bootStore(), async (port) => {
+      const signin = await request(port, "POST", "/v1/admin/SignIn", {
+        signinIdentity: "owner",
+        secret: "owner-secret",
+      });
+      const ownerToken = (signin.body as { token: string }).token;
+
+      await request(
+        port,
+        "POST",
+        "/v1/admin/CreateUser",
+        { displayName: "Desk", signinIdentity: "desk-1", secret: "desk-secret", role: "front-desk" },
+        ownerToken,
+      );
+      await request(
+        port,
+        "POST",
+        "/v1/admin/UpdateHotelConfig",
+        { values: { timezone: "Asia/Ho_Chi_Minh" }, updatedBy: "owner" },
+        ownerToken,
+      );
+
+      const log = await request(port, "POST", "/v1/admin/QueryAuditLog", { limit: 50 }, ownerToken);
+      assert.equal(log.status, 200);
+      const entries = (log.body as { entries: Record<string, unknown>[] }).entries;
+      assert.ok(entries.length >= 2);
+      const actions = entries.map((entry) => entry["action"]);
+      assert.ok(actions.includes("user.created"));
+      assert.ok(actions.includes("config.updated"));
+      for (const entry of entries) {
+        assert.match(String(entry["at"]), /^\d{4}-\d{2}-\d{2}T/);
+        assert.ok(String(entry["actor"]).length > 0);
+        assert.ok(String(entry["entity"]).length > 0);
+      }
+      const times = entries.map((entry) => String(entry["at"]));
+      assert.deepEqual([...times].sort().reverse(), times);
+
+      const created = entries.find((entry) => entry["action"] === "user.created" && entry["entity"] === "desk-1");
+      assert.equal(created?.["actor"], "owner");
+    });
+  });
+
+  it("refuses the audit log for front-desk accounts and bad limits", async () => {
+    await withServer(await bootStore(), async (port) => {
+      const signin = await request(port, "POST", "/v1/admin/SignIn", {
+        signinIdentity: "owner",
+        secret: "owner-secret",
+      });
+      const ownerToken = (signin.body as { token: string }).token;
+      await request(
+        port,
+        "POST",
+        "/v1/admin/CreateUser",
+        { displayName: "Desk", signinIdentity: "desk-1", secret: "desk-secret", role: "front-desk" },
+        ownerToken,
+      );
+      const deskSignin = await request(port, "POST", "/v1/admin/SignIn", {
+        signinIdentity: "desk-1",
+        secret: "desk-secret",
+      });
+      const deskToken = (deskSignin.body as { token: string }).token;
+
+      const refused = await request(port, "POST", "/v1/admin/QueryAuditLog", {}, deskToken);
+      assert.equal(refused.status, 403);
+      assert.equal((refused.body as { code: string }).code, "FORBIDDEN");
+
+      const badLimit = await request(port, "POST", "/v1/admin/QueryAuditLog", { limit: 500 }, ownerToken);
+      assert.equal(badLimit.status, 400);
+      assert.equal((badLimit.body as { code: string }).code, "VALIDATION_FAILED");
+    });
+  });
+});
