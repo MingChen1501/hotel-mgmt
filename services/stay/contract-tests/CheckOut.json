@@ -1,0 +1,12 @@
+{
+  "operation": "CheckOut",
+  "case": "happy-path",
+  "description": "Closes a settled in-house stay and presents the folio as the final invoice.",
+  "request": {
+    "stayId": "<stay-id>",
+    "folioId": "<folio-id>",
+    "folioBalanceMinor": 0,
+    "actor": "front-desk"
+  },
+  "expect": { "status": 200, "state": "closed" }
+}

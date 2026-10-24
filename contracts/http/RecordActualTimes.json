@@ -1,0 +1,39 @@
+{
+  "operation": "RecordActualTimes",
+  "contract": "StayService",
+  "version": "1.0",
+  "traces": ["docs/architecture/lld.md section 2", "docs/technical/integration.md section 2 C5", "FR-FDK-4"],
+  "transport": {
+    "method": "POST",
+    "path": "/v1/stay/RecordActualTimes",
+    "auth": "Bearer session token"
+  },
+  "request": {
+    "type": "object",
+    "required": ["stayId", "actor"],
+    "properties": {
+      "stayId": { "type": "string", "format": "uuid" },
+      "actualArrival": { "type": "string", "format": "date-time" },
+      "actualDeparture": { "type": "string", "format": "date-time" },
+      "actor": { "type": "string" }
+    }
+  },
+  "response": {
+    "type": "object",
+    "required": ["stayId", "reservationId", "guestId", "roomId", "state"],
+    "properties": {
+      "stayId": { "type": "string", "format": "uuid" },
+      "reservationId": { "type": "string", "format": "uuid" },
+      "guestId": { "type": "string", "format": "uuid" },
+      "roomId": { "type": "string", "format": "uuid" },
+      "state": { "type": "string" },
+      "actualArrival": { "type": ["string", "null"] },
+      "actualDeparture": { "type": ["string", "null"] }
+    }
+  },
+  "errors": [
+    { "code": "UNAUTHENTICATED", "status": 401, "when": "Missing session token." },
+    { "code": "NOT_FOUND", "status": 404, "when": "Unknown stay." },
+    { "code": "VALIDATION_FAILED", "status": 400, "when": "Implausible values per hotel times: unparseable timestamp, or departure before arrival." }
+  ]
+}

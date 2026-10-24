@@ -11,8 +11,10 @@
 # docs/devops/deployment.md section 3 step 6 and
 # docs/operations/backup-dr.md section 4.
 #
-# Sequence: book -> check in -> charge/pay/close -> backup -> restore
-# (verified against the pre-failure expectation record) -> verify.
+# Sequence: book -> check in -> move/times -> charge/pay/close ->
+# checkout with folio review (refusal, approval, close, room
+# release) -> backup -> restore (verified against the pre-failure
+# expectation record) -> verify.
 #
 # Usage (from the repo root, after script/preflight.sh passes):
 #   DB_PASSWORD=<secret> ADMIN_BOOT_SECRET=<secret> \
@@ -90,6 +92,29 @@ field() {
   python3 -c 'import json,sys; print(json.load(sys.stdin).get(sys.argv[1], ""))' "$1" <<<"$2"
 }
 
+# Expect a contract refusal: passes when the call answers outside 2xx
+# with the expected error code, fails otherwise. Safe under set -e.
+expect_refusal() {
+  local contract="$1" operation="$2" payload="$3" token="$4" code="$5"
+  local tmp http_code body actual
+  tmp="$(mktemp)"
+  http_code="$(curl -sS --noproxy '*' --max-time 15 -o "$tmp" -w '%{http_code}' -X POST "$BASE_URL/v1/$contract/$operation" \
+    -H "Content-Type: application/json" -H "Authorization: Bearer $token" -d "$payload" 2>/dev/null)" \
+    || { echo "e2e: FAIL: POST /v1/$contract/$operation unreachable." >&2; rm -f "$tmp"; return 1; }
+  body="$(cat "$tmp")"
+  rm -f "$tmp"
+  actual="$(python3 -c 'import json,sys; print(json.load(sys.stdin).get("code", ""))' <<<"$body" 2>/dev/null || true)"
+  if [[ "$http_code" -ge 200 && "$http_code" -lt 300 ]]; then
+    echo "e2e: FAIL: /v1/$contract/$operation succeeded, want refusal $code: $body" >&2
+    return 1
+  fi
+  if [[ "$actual" != "$code" ]]; then
+    echo "e2e: FAIL: /v1/$contract/$operation refused with '$actual', want '$code': $body" >&2
+    return 1
+  fi
+  echo "e2e: refused as expected: /v1/$contract/$operation $code."
+}
+
 teardown() {
   if [[ "$TEARDOWN" -eq 1 ]]; then
     echo "e2e: tearing down in reverse stop order (deployment.md section 4)."
@@ -160,6 +185,7 @@ MIGRATIONS=(
   services/reporting/migrations/000002_schema.up.sql
   services/stay/migrations/001_boot.sql
   services/stay/migrations/002_schema.sql
+  services/stay/migrations/003_checkout.sql
   services/rooms/migrations/001_boot.sql
   services/rooms/migrations/002_schema.sql
   services/guests/migrations/001_boot.sql
@@ -200,6 +226,8 @@ TYPE_RESP="$(api rooms UpsertRoomType '{"name": "E2E Standard", "capacity": 2, "
 ROOM_TYPE_ID="$(field id "$TYPE_RESP")"
 ROOM1_RESP="$(api rooms UpsertRoom "{\"number\": \"E2E-101\", \"roomType\": \"$ROOM_TYPE_ID\", \"actor\": \"e2e\"}" "$TOKEN")" || { teardown; exit 1; }
 ROOM1_ID="$(field id "$ROOM1_RESP")"
+ROOM2_RESP="$(api rooms UpsertRoom "{\"number\": \"E2E-102\", \"roomType\": \"$ROOM_TYPE_ID\", \"actor\": \"e2e\"}" "$TOKEN")" || { teardown; exit 1; }
+ROOM2_ID="$(field id "$ROOM2_RESP")"
 SELL_RESP="$(api rooms CheckRoomTypeSellability "{\"roomType\": \"$ROOM_TYPE_ID\", \"dateFrom\": \"$ARRIVAL\", \"dateTo\": \"$DEPARTURE\"}" "$TOKEN")" || { teardown; exit 1; }
 SELLABLE="$(field sellableCount "$SELL_RESP")"
 if [[ "$SELLABLE" -lt 1 ]]; then
@@ -257,6 +285,27 @@ api stay CheckIn "{\"stayId\": \"$STAY_ID\", \"reservationId\": \"$TODAY_RESID\"
 api reservations CheckInReservation "{\"reservationRef\": \"$TODAY_REF\", \"stayId\": \"$STAY_ID\", \"actor\": \"front-desk\"}" "$TOKEN" >/dev/null || { teardown; exit 1; }
 pass "stay $STAY_ID in-house for reservation $TODAY_REF."
 
+step "move the guest mid-stay (FR-FDK-3)"
+api rooms AssignRoom "{\"roomNumber\": \"E2E-102\", \"businessDate\": \"$TODAY\", \"stayLink\": \"$STAY_ID\", \"actor\": \"front-desk\"}" "$TOKEN" >/dev/null || { teardown; exit 1; }
+MOVE_RESP="$(api stay MoveRoom "{\"stayId\": \"$STAY_ID\", \"toRoomId\": \"$ROOM2_ID\", \"idempotencyKey\": \"$IDEM-move\", \"actor\": \"front-desk\"}" "$TOKEN")" || { teardown; exit 1; }
+[[ "$(field roomId "$MOVE_RESP")" == "$ROOM2_ID" ]] || { echo "e2e: FAIL: move did not link $ROOM2_ID: $MOVE_RESP" >&2; teardown; exit 1; }
+REL1_RESP="$(api rooms ReleaseRoom "{\"roomNumber\": \"E2E-101\", \"actor\": \"front-desk\"}" "$TOKEN")" || { teardown; exit 1; }
+[[ "$(field newState "$REL1_RESP")" == "vacant-dirty" ]] || { echo "e2e: FAIL: old room not released vacant-dirty: $REL1_RESP" >&2; teardown; exit 1; }
+pass "stay $STAY_ID moved to E2E-102, E2E-101 vacant-dirty."
+
+step "record the early arrival and check the daily lists (FR-FDK-4/5)"
+TIMES_RESP="$(api stay RecordActualTimes "{\"stayId\": \"$STAY_ID\", \"actualArrival\": \"${TODAY}T05:30:00Z\", \"actor\": \"front-desk\"}" "$TOKEN")" || { teardown; exit 1; }
+[[ "$(field actualArrival "$TIMES_RESP")" == "${TODAY}T05:30:00.000Z" ]] || { echo "e2e: FAIL: actual arrival not kept: $TIMES_RESP" >&2; teardown; exit 1; }
+LISTS_RESP="$(api stay ListArrivalsDepartures "{\"businessDate\": \"$TODAY\"}" "$TOKEN")" || { teardown; exit 1; }
+python3 - "$LISTS_RESP" "$STAY_ID" <<'PYEOF' \
+  || { echo "e2e: FAIL: stay missing from the daily lists." >&2; teardown; exit 1; }
+import json, sys
+lists, stay = json.loads(sys.argv[1]), sys.argv[2]
+assert any(s.get("stayId") == stay for s in lists["arrivals"]), lists
+assert any(s.get("stayId") == stay for s in lists["inHouse"]), lists
+PYEOF
+pass "early arrival kept, stay listed in arrivals and in-house."
+
 step "folio charge, payment, and day-close (FR-BIL-1/2/3/6)"
 api billing UpsertChargeItem '{"name": "E2E Breakfast", "priceMinor": 2500, "actor": "manager"}' "$TOKEN" >/dev/null || { teardown; exit 1; }
 api billing PostCharge "{\"stayId\": \"$STAY_ID\", \"itemKind\": \"nightly-room-charge\", \"itemName\": \"Room E2E-101\", \"amountMinor\": 120000, \"idempotencyKey\": \"$IDEM-charge\", \"actor\": \"front-desk\"}" "$TOKEN" >/dev/null || { teardown; exit 1; }
@@ -267,6 +316,18 @@ CHARGES_TOTAL="$(field chargesTotalMinor "$DAY_CLOSE")"
 FOLIO_RESP="$(api billing GetFolioBalance "{\"stayId\": \"$STAY_ID\", \"actor\": \"front-desk\"}" "$TOKEN")" || { teardown; exit 1; }
 FOLIO_ID="$(field folioId "$FOLIO_RESP")"
 pass "day-close $TODAY charges=$CHARGES_TOTAL folio balance=$FOLIO_BALANCE."
+
+step "check out with folio review (FR-FDK-2, FR-BIL-7)"
+expect_refusal stay CheckOut "{\"stayId\": \"$STAY_ID\", \"folioId\": \"$FOLIO_ID\", \"folioBalanceMinor\": $FOLIO_BALANCE, \"actor\": \"front-desk\"}" "$TOKEN" "SETTLEMENT_REQUIRED" || { teardown; exit 1; }
+pass "open-balance check-out refused, stay remains in house."
+api billing RecordOpenBalanceApproval "{\"stayId\": \"$STAY_ID\", \"approvedBy\": \"owner\", \"role\": \"manager\", \"reason\": \"E2E approved\", \"idempotencyKey\": \"$IDEM-approval\", \"actor\": \"manager\"}" "$TOKEN" >/dev/null || { teardown; exit 1; }
+CHECKOUT_RESP="$(api stay CheckOut "{\"stayId\": \"$STAY_ID\", \"folioId\": \"$FOLIO_ID\", \"folioBalanceMinor\": $FOLIO_BALANCE, \"openBalanceApproval\": {\"approvedBy\": \"owner\", \"role\": \"manager\"}, \"actualDeparture\": \"${TODAY}T14:00:00Z\", \"idempotencyKey\": \"$IDEM-checkout\", \"actor\": \"front-desk\"}" "$TOKEN")" || { teardown; exit 1; }
+[[ "$(field state "$CHECKOUT_RESP")" == "closed" ]] || { echo "e2e: FAIL: stay not closed: $CHECKOUT_RESP" >&2; teardown; exit 1; }
+[[ "$(field invoiceRef "$CHECKOUT_RESP")" == "$FOLIO_ID" ]] || { echo "e2e: FAIL: invoice is not the folio: $CHECKOUT_RESP" >&2; teardown; exit 1; }
+expect_refusal stay GetStayRef "{\"stayId\": \"$STAY_ID\"}" "$TOKEN" "STATE_ILLEGAL" || { teardown; exit 1; }
+REL2_RESP="$(api rooms ReleaseRoom "{\"roomNumber\": \"E2E-102\", \"actor\": \"front-desk\"}" "$TOKEN")" || { teardown; exit 1; }
+[[ "$(field newState "$REL2_RESP")" == "vacant-dirty" ]] || { echo "e2e: FAIL: room not released vacant-dirty: $REL2_RESP" >&2; teardown; exit 1; }
+pass "stay $STAY_ID closed with invoice $FOLIO_ID, E2E-102 vacant-dirty."
 
 step "write the restore expectation record"
 EXPECT_FILE="$STAGING_DIR/e2e-expect.json"
@@ -288,6 +349,7 @@ record = {
     "reservationRef": ref,
     "reservationState": "checked-in",
     "stayId": stay,
+    "stayState": "closed",
     "folioId": folio,
     "folioBalanceMinor": int(balance),
     "dayClose": {
@@ -326,7 +388,14 @@ REGET_RESP="$(api reservations GetReservation "{\"reservationRef\": \"$REF\"}" "
 TODAY_REGET="$(api reservations GetReservation "{\"reservationRef\": \"$TODAY_REF\"}" "$TOKEN")" || { teardown; exit 1; }
 [[ "$(field state "$TODAY_REGET")" == "checked-in" ]] || { echo "e2e: FAIL: checked-in booking lost after drill." >&2; teardown; exit 1; }
 TODAY_STAY="$(api stay GetStay "{\"stayId\": \"$STAY_ID\"}" "$TOKEN")" || { teardown; exit 1; }
-[[ "$(field state "$TODAY_STAY")" == "in-house" ]] || { echo "e2e: FAIL: in-house stay lost after drill." >&2; teardown; exit 1; }
+[[ "$(field state "$TODAY_STAY")" == "closed" ]] || { echo "e2e: FAIL: closed stay lost after drill." >&2; teardown; exit 1; }
+TODAY_LISTS="$(api stay ListArrivalsDepartures "{\"businessDate\": \"$TODAY\"}" "$TOKEN")" || { teardown; exit 1; }
+python3 - "$TODAY_LISTS" "$STAY_ID" <<'PYEOF' \
+  || { echo "e2e: FAIL: closed stay missing from departures after drill." >&2; teardown; exit 1; }
+import json, sys
+lists, stay = json.loads(sys.argv[1]), sys.argv[2]
+assert any(s.get("stayId") == stay for s in lists["departures"]), lists
+PYEOF
 TODAY_DAY="$(api billing GetDayClose "{\"businessDate\": \"$TODAY\"}" "$TOKEN")" || { teardown; exit 1; }
 python3 - "$EXPECT_FILE" "$TODAY_DAY" <<'PYEOF'
 import json, sys
@@ -342,9 +411,9 @@ for module in reservations rates rooms admin stay guests billing; do
   curl -fsS --noproxy '*' --max-time 10 "$BASE_URL/v1/$module/healthz" >/dev/null \
     || { echo "e2e: FAIL: $module unhealthy after drill." >&2; teardown; exit 1; }
 done
-pass "booking $REF still confirmed, stay $STAY_ID in-house, day-close $TODAY intact; desk modules healthy after the drill."
+pass "booking $REF still confirmed, stay $STAY_ID closed, day-close $TODAY intact; desk modules healthy after the drill."
 
 ELAPSED="$(( $(date +%s) - START_EPOCH ))"
-echo "e2e: EVIDENCE: reservation=$REF state=confirmed totalMinor=$TOTAL arrival=$ARRIVAL departure=$DEPARTURE stay=$STAY_ID state=in-house dayCloseDate=$TODAY chargesTotal=$CHARGES_TOTAL folioBalance=$FOLIO_BALANCE elapsed=${ELAPSED}s (RTO budget 4h)."
+echo "e2e: EVIDENCE: reservation=$REF state=confirmed totalMinor=$TOTAL arrival=$ARRIVAL departure=$DEPARTURE stay=$STAY_ID state=closed invoice=$FOLIO_ID dayCloseDate=$TODAY chargesTotal=$CHARGES_TOTAL folioBalance=$FOLIO_BALANCE elapsed=${ELAPSED}s (RTO budget 4h)."
 teardown
 echo "e2e: SUCCEEDED."

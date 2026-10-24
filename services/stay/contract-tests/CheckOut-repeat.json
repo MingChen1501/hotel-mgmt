@@ -1,0 +1,13 @@
+{
+  "operation": "CheckOut",
+  "case": "refusal-already-closed",
+  "description": "A second check-out under a new key is refused naming the stay and its closed state; the same key replays the original close.",
+  "request": {
+    "stayId": "<stay-id>",
+    "folioId": "<folio-id>",
+    "folioBalanceMinor": 0,
+    "idempotencyKey": "<new-key>",
+    "actor": "front-desk"
+  },
+  "expect": { "status": 422, "code": "STATE_ILLEGAL" }
+}

@@ -1,0 +1,7 @@
+{
+  "operation": "ListArrivalsDepartures",
+  "case": "happy-path",
+  "description": "Lists arrivals, in-house stays, and departures for the business date, each exactly once.",
+  "request": { "businessDate": "<yyyy-mm-dd>" },
+  "expect": { "status": 200 }
+}

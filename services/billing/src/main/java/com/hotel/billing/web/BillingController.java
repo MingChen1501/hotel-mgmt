@@ -100,4 +100,13 @@ public class BillingController {
     requireToken(authorization);
     return service.upsertChargeItem(required(body, "name"), amountOf(body, "priceMinor"), actor(body));
   }
+
+  @PostMapping("/RecordOpenBalanceApproval")
+  public BillingService.ApprovalView recordOpenBalanceApproval(
+      @RequestHeader(value = "Authorization", required = false)
+      String authorization, @RequestBody Map<String, Object> body) {
+    requireToken(authorization);
+    return service.recordOpenBalanceApproval(required(body, "stayId"), required(body, "approvedBy"),
+        required(body, "role"), optional(body, "reason"), optional(body, "idempotencyKey"), actor(body));
+  }
 }

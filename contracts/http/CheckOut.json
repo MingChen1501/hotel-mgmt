@@ -1,0 +1,45 @@
+{
+  "operation": "CheckOut",
+  "contract": "StayService",
+  "version": "1.0",
+  "traces": ["docs/architecture/lld.md section 2", "docs/technical/integration.md section 3 C7", "FR-FDK-2", "FR-BIL-7", "NFR-CON-2"],
+  "transport": {
+    "method": "POST",
+    "path": "/v1/stay/CheckOut",
+    "auth": "Bearer session token"
+  },
+  "request": {
+    "type": "object",
+    "required": ["stayId", "folioId", "folioBalanceMinor", "actor"],
+    "properties": {
+      "stayId": { "type": "string", "format": "uuid" },
+      "folioId": { "type": "string", "format": "uuid", "description": "Reviewed folio id, presented as the final invoice." },
+      "folioBalanceMinor": { "type": "integer", "description": "Reviewed folio balance; the gate input for BR-17." },
+      "openBalanceApproval": { "type": ["object", "null"], "description": "Approval recorded via BillingService RecordOpenBalanceApproval; required unless the balance is zero." },
+      "actualDeparture": { "type": "string", "format": "date-time", "description": "Late departure kept on the stay; now() when absent." },
+      "idempotencyKey": { "type": "string" },
+      "actor": { "type": "string" }
+    }
+  },
+  "response": {
+    "type": "object",
+    "required": ["stayId", "reservationId", "guestId", "roomId", "state", "invoiceRef"],
+    "properties": {
+      "stayId": { "type": "string", "format": "uuid" },
+      "reservationId": { "type": "string", "format": "uuid" },
+      "guestId": { "type": "string", "format": "uuid" },
+      "roomId": { "type": "string", "format": "uuid" },
+      "state": { "type": "string", "const": "closed" },
+      "actualArrival": { "type": ["string", "null"] },
+      "actualDeparture": { "type": ["string", "null"] },
+      "invoiceRef": { "type": "string", "format": "uuid", "description": "The presented folio id." }
+    }
+  },
+  "errors": [
+    { "code": "UNAUTHENTICATED", "status": 401, "when": "Missing session token." },
+    { "code": "SETTLEMENT_REQUIRED", "status": 409, "when": "Open balance with no recorded approval; the stay remains in house." },
+    { "code": "STATE_ILLEGAL", "status": 422, "when": "Stay is not in house; details name the stay and its state." },
+    { "code": "NOT_FOUND", "status": 404, "when": "Unknown stay." },
+    { "code": "VALIDATION_FAILED", "status": 400, "when": "Missing or malformed stay, folio, or balance link." }
+  ]
+}

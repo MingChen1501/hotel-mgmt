@@ -1,0 +1,14 @@
+{
+  "operation": "RecordOpenBalanceApproval",
+  "case": "happy-path",
+  "description": "Records the authorised open-balance approval against the folio so an approved check-out may close.",
+  "request": {
+    "stayId": "<stay-id>",
+    "approvedBy": "manager",
+    "role": "manager",
+    "reason": "Guest pays on next visit",
+    "idempotencyKey": "e2e-approval-1",
+    "actor": "front-desk"
+  },
+  "expect": { "status": 200 }
+}

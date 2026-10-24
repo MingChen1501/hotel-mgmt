@@ -1,0 +1,33 @@
+{
+  "operation": "GetStayRef",
+  "contract": "StayService",
+  "version": "1.0",
+  "traces": ["docs/architecture/lld.md section 2", "docs/technical/integration.md section 3 C8", "FR-BIL-2", "FR-BIL-3", "FR-BIL-4"],
+  "transport": {
+    "method": "POST",
+    "path": "/v1/stay/GetStayRef",
+    "auth": "Bearer session token"
+  },
+  "request": {
+    "type": "object",
+    "required": ["stayId"],
+    "properties": {
+      "stayId": { "type": "string", "format": "uuid" }
+    }
+  },
+  "response": {
+    "type": "object",
+    "required": ["stayId", "guestId", "roomId", "state"],
+    "properties": {
+      "stayId": { "type": "string", "format": "uuid" },
+      "guestId": { "type": "string", "format": "uuid" },
+      "roomId": { "type": "string", "format": "uuid" },
+      "state": { "type": "string", "const": "in-house" }
+    }
+  },
+  "errors": [
+    { "code": "UNAUTHENTICATED", "status": 401, "when": "Missing session token." },
+    { "code": "NOT_FOUND", "status": 404, "when": "Unknown stay." },
+    { "code": "STATE_ILLEGAL", "status": 422, "when": "Stay is not in house or already closed; no folio line may post against it." }
+  ]
+}

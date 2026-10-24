@@ -1,0 +1,13 @@
+{
+  "operation": "CheckOut",
+  "case": "approved-open-balance",
+  "description": "Check-out with an open balance and a recorded approval closes the stay.",
+  "request": {
+    "stayId": "<stay-id>",
+    "folioId": "<folio-id>",
+    "folioBalanceMinor": 6000,
+    "openBalanceApproval": { "approvedBy": "manager", "role": "manager" },
+    "actor": "front-desk"
+  },
+  "expect": { "status": 200, "state": "closed" }
+}

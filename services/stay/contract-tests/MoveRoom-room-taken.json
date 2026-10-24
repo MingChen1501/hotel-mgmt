@@ -1,0 +1,11 @@
+{
+  "operation": "MoveRoom",
+  "case": "refusal-room-taken",
+  "description": "A move into a room just taken by a simultaneous check-in is refused naming the room via AssignRoom.",
+  "request": {
+    "stayId": "<stay-id>",
+    "toRoomId": "<taken-room-id>",
+    "actor": "front-desk"
+  },
+  "expect": { "status": 409, "code": "CONFLICT" }
+}

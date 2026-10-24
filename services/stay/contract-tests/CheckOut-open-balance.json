@@ -1,0 +1,12 @@
+{
+  "operation": "CheckOut",
+  "case": "refusal-open-balance",
+  "description": "Check-out with an open balance and no approval is refused and the stay remains in house.",
+  "request": {
+    "stayId": "<stay-id>",
+    "folioId": "<folio-id>",
+    "folioBalanceMinor": 6000,
+    "actor": "front-desk"
+  },
+  "expect": { "status": 409, "code": "SETTLEMENT_REQUIRED" }
+}

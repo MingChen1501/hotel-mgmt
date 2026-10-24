@@ -58,6 +58,15 @@ function stayPayload(stay: {
   };
 }
 
+function stayRefPayload(ref: { stayId: string; guestId: string; roomId: string; state: string }): Record<string, unknown> {
+  return {
+    stayId: ref.stayId,
+    guestId: ref.guestId,
+    roomId: ref.roomId,
+    state: ref.state,
+  };
+}
+
 // createServiceServer answers GET /healthz with the module identity,
 // routes POST /v1/stay/<Operation> per contracts/http, and refuses
 // every other path with the shared error envelope.
@@ -116,6 +125,39 @@ async function handleRequest(
     case "QueryStays": {
       const stays = await store.queryStays(body);
       writeJson(res, 200, { state: body["state"] ?? null, stays: stays.map(stayPayload) });
+      return;
+    }
+    case "CheckOut": {
+      const { stay, invoiceRef } = await store.checkOut(body);
+      writeJson(res, 200, { ...stayPayload(stay), invoiceRef });
+      return;
+    }
+    case "MoveRoom": {
+      const { stay, move } = await store.moveRoom(body);
+      writeJson(res, 200, {
+        ...stayPayload(stay),
+        move: { fromRoomId: move.fromRoomId, toRoomId: move.toRoomId, movedAt: move.movedAt },
+      });
+      return;
+    }
+    case "RecordActualTimes": {
+      const stay = await store.recordActualTimes(body);
+      writeJson(res, 200, stayPayload(stay));
+      return;
+    }
+    case "GetStayRef": {
+      const ref = await store.getStayRef(body);
+      writeJson(res, 200, stayRefPayload(ref));
+      return;
+    }
+    case "ListArrivalsDepartures": {
+      const lists = await store.listArrivalsDepartures(body);
+      writeJson(res, 200, {
+        businessDate: body["businessDate"] ?? null,
+        arrivals: lists.arrivals.map(stayPayload),
+        inHouse: lists.inHouse.map(stayPayload),
+        departures: lists.departures.map(stayPayload),
+      });
       return;
     }
     default: {

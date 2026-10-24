@@ -115,6 +115,14 @@ public class BillingRepository {
         + " updated_by = ?, updated_at = now() WHERE id = ?", delta, actor, folioId);
   }
 
+  // Records the authorised open-balance approval against the folio
+  // (BR-17, FR-BIL-7, issue #150): the JSON record carries approver,
+  // role, reason, and time for the Stay.CheckOut gate to read back.
+  public void recordApproval(UUID folioId, String approvalJson, String actor) {
+    jdbc.update("UPDATE billing.folios SET open_balance_approval = ?::jsonb,"
+        + " updated_by = ?, updated_at = now() WHERE id = ?", approvalJson, actor, folioId);
+  }
+
   public boolean chargeItemExists(String name) {
     Integer count = jdbc.queryForObject("SELECT count(*) FROM billing.charge_items WHERE name = ?", Integer.class,
         name);
