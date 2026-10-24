@@ -92,4 +92,18 @@ class BillingControllerTest {
         .content("{\"stayId\":\"" + STAY + "\",\"actor\":\"front-desk\"}")).andExpect(status().isOk())
         .andExpect(jsonPath("$.balanceMinor").value(6000));
   }
+
+  @Test
+  void approvalRecordsAgainstTheFolio() throws Exception {
+    UUID folio = UUID.randomUUID();
+    when(service.recordOpenBalanceApproval(anyString(), anyString(), anyString(), any(), any(), anyString()))
+        .thenReturn(new BillingService.ApprovalView(folio, UUID.fromString(STAY), 6000,
+            "{\"approvedBy\":\"manager\"}"));
+    mvc.perform(post("/v1/billing/RecordOpenBalanceApproval").header("Authorization", "Bearer test-token")
+        .contentType(MediaType.APPLICATION_JSON)
+        .content("{\"stayId\":\"" + STAY + "\",\"approvedBy\":\"manager\",\"role\":\"manager\","
+            + "\"actor\":\"front-desk\"}"))
+        .andExpect(status().isOk()).andExpect(jsonPath("$.folioId").value(folio.toString()))
+        .andExpect(jsonPath("$.balanceMinor").value(6000));
+  }
 }

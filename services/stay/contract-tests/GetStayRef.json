@@ -1,0 +1,7 @@
+{
+  "operation": "GetStayRef",
+  "case": "happy-path",
+  "description": "Reads the in-house stay link for folio posting; closed stays are refused.",
+  "request": { "stayId": "<stay-id>" },
+  "expect": { "status": 200, "state": "in-house" }
+}

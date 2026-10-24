@@ -1,0 +1,12 @@
+{
+  "operation": "RecordActualTimes",
+  "case": "happy-path",
+  "description": "Keeps the off-hours arrival and departure times on the stay.",
+  "request": {
+    "stayId": "<stay-id>",
+    "actualArrival": "<iso-arrival>",
+    "actualDeparture": "<iso-departure>",
+    "actor": "front-desk"
+  },
+  "expect": { "status": 200 }
+}

@@ -1,0 +1,11 @@
+{
+  "operation": "MoveRoom",
+  "case": "happy-path",
+  "description": "Moves an in-house guest to the new room and keeps the move with both rooms and its time.",
+  "request": {
+    "stayId": "<stay-id>",
+    "toRoomId": "<room-id>",
+    "actor": "front-desk"
+  },
+  "expect": { "status": 200, "state": "in-house" }
+}

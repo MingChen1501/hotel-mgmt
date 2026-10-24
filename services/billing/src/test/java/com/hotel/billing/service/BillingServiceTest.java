@@ -95,4 +95,42 @@ class BillingServiceTest {
     ApiException err = assertThrows(ApiException.class, () -> service.getDayClose("2026-10-27"));
     assertEquals("NOT_FOUND", err.code());
   }
+
+  @Test
+  void recordApprovalRequiresApproverAndRole() {
+    ApiException noApprover = assertThrows(ApiException.class,
+        () -> service.recordOpenBalanceApproval(STAY.toString(), " ", "manager", null, null, "front-desk"));
+    assertEquals("VALIDATION_FAILED", noApprover.code());
+    ApiException noRole = assertThrows(ApiException.class,
+        () -> service.recordOpenBalanceApproval(STAY.toString(), "manager", " ", null, null, "front-desk"));
+    assertEquals("VALIDATION_FAILED", noRole.code());
+    verify(repo, never()).recordApproval(any(), anyString(), anyString());
+  }
+
+  @Test
+  void recordApprovalStoresTheRecord() {
+    when(repo.ensureFolio(eq(STAY), eq("front-desk"))).thenReturn(folio(6000));
+    Folio approved = new Folio(FOLIO, STAY, 6000, "{\"approvedBy\":\"manager\"}");
+    when(repo.findFolioByStay(STAY)).thenReturn(approved);
+    BillingService.ApprovalView view = service.recordOpenBalanceApproval(STAY.toString(), "manager", "manager",
+        "Guest pays next visit", null, "front-desk");
+    assertEquals(FOLIO, view.folioId());
+    assertEquals(6000L, view.balanceMinor());
+    assertEquals("{\"approvedBy\":\"manager\"}", view.openBalanceApproval());
+    verify(repo).recordApproval(eq(FOLIO), anyString(), eq("front-desk"));
+    verify(repo).outbox(eq("folio"), eq("approval-recorded"), anyString(), eq("front-desk"));
+  }
+
+  @Test
+  void recordApprovalReplaysTheOriginalRecord() {
+    when(repo.ensureFolio(eq(STAY), eq("front-desk"))).thenReturn(folio(6000));
+    when(repo.claimOrWait(eq("approval-1"), eq("RecordOpenBalanceApproval"), anyString()))
+        .thenReturn(FOLIO.toString());
+    Folio approved = new Folio(FOLIO, STAY, 6000, "{\"approvedBy\":\"manager\"}");
+    when(repo.findFolioByStay(STAY)).thenReturn(approved);
+    BillingService.ApprovalView view = service.recordOpenBalanceApproval(STAY.toString(), "manager", "manager",
+        null, "approval-1", "front-desk");
+    assertEquals("{\"approvedBy\":\"manager\"}", view.openBalanceApproval());
+    verify(repo, never()).recordApproval(any(), anyString(), anyString());
+  }
 }

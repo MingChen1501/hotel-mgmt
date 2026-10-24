@@ -1,0 +1,12 @@
+{
+  "operation": "RecordActualTimes",
+  "case": "refusal-implausible",
+  "description": "A departure before the arrival is refused as an implausible value.",
+  "request": {
+    "stayId": "<stay-id>",
+    "actualArrival": "<iso-arrival>",
+    "actualDeparture": "<iso-before-arrival>",
+    "actor": "front-desk"
+  },
+  "expect": { "status": 400, "code": "VALIDATION_FAILED" }
+}

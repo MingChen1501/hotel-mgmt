@@ -1,0 +1,32 @@
+{
+  "operation": "ListArrivalsDepartures",
+  "contract": "StayService",
+  "version": "1.0",
+  "traces": ["docs/architecture/lld.md section 2", "FR-FDK-5"],
+  "transport": {
+    "method": "POST",
+    "path": "/v1/stay/ListArrivalsDepartures",
+    "auth": "Bearer session token"
+  },
+  "request": {
+    "type": "object",
+    "required": ["businessDate"],
+    "properties": {
+      "businessDate": { "type": "string", "format": "date" }
+    }
+  },
+  "response": {
+    "type": "object",
+    "required": ["businessDate", "arrivals", "inHouse", "departures"],
+    "properties": {
+      "businessDate": { "type": "string", "format": "date" },
+      "arrivals": { "type": "array", "description": "Stays arrived on the date, each exactly once.", "items": { "type": "object", "additionalProperties": true } },
+      "inHouse": { "type": "array", "description": "Current in-house stays, each exactly once.", "items": { "type": "object", "additionalProperties": true } },
+      "departures": { "type": "array", "description": "Stays closed on the date, each exactly once.", "items": { "type": "object", "additionalProperties": true } }
+    }
+  },
+  "errors": [
+    { "code": "UNAUTHENTICATED", "status": 401, "when": "Missing session token." },
+    { "code": "VALIDATION_FAILED", "status": 400, "when": "Missing or malformed businessDate." }
+  ]
+}

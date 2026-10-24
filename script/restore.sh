@@ -101,8 +101,14 @@ verify_expectation() {
   local stay_state stay_res
   stay_state="$(q "SELECT state FROM stay.stays WHERE id = '$stay_id';")"
   stay_res="$(q "SELECT reservation_id FROM stay.stays WHERE id = '$stay_id';")"
-  [[ "$stay_state" == "in-house" ]] \
-    || { echo "restore: stay $stay_id state is '$stay_state', want 'in-house'." >&2; return 1; }
+  # The stay-flow slice (issue #150) backs up after checkout, so the
+  # expected stay state rides in the expectation record; older
+  # records without the key still expect the in-house stay.
+  local stay_want
+  stay_want="$(expect stayState)"
+  [[ -z "$stay_want" ]] && stay_want="in-house"
+  [[ "$stay_state" == "$stay_want" ]] \
+    || { echo "restore: stay $stay_id state is '$stay_state', want '$stay_want'." >&2; return 1; }
   local stay_reservation_id
   stay_reservation_id="$(q "SELECT id FROM reservations.reservations WHERE reference = '$reservation_ref';")"
   [[ "$stay_res" == "$stay_reservation_id" ]] \
@@ -151,7 +157,7 @@ PYEOF
   audit_gaps="$(q "SELECT (SELECT count(*) FROM reservations.reservations WHERE created_by IS NULL OR created_at IS NULL) + (SELECT count(*) FROM stay.stays WHERE created_by IS NULL OR created_at IS NULL) + (SELECT count(*) FROM billing.folios WHERE created_by IS NULL OR created_at IS NULL) + (SELECT count(*) FROM billing.day_close_runs WHERE created_by IS NULL OR created_at IS NULL);")"
   [[ "$audit_gaps" == "0" ]] \
     || { echo "restore: $audit_gaps touched row(s) lost their audit entries." >&2; return 1; }
-  echo "restore: desk state verified — arrivals $arrivals_date ($arrivals), stay $stay_id in-house, day-close charges $day_charges, hotel '$hotel_name', room $room_number $room_state, rate plan $rate_plan prices intact."
+  echo "restore: desk state verified — arrivals $arrivals_date ($arrivals), stay $stay_id $stay_state, day-close charges $day_charges, hotel '$hotel_name', room $room_number $room_state, rate plan $rate_plan prices intact."
   return 0
 }
 

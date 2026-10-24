@@ -1,0 +1,37 @@
+{
+  "operation": "RecordOpenBalanceApproval",
+  "contract": "BillingService",
+  "version": "1.0",
+  "traces": ["docs/architecture/lld.md section 6", "docs/technical/integration.md section 3 C7", "FR-BIL-7"],
+  "transport": {
+    "method": "POST",
+    "path": "/v1/billing/RecordOpenBalanceApproval",
+    "auth": "Bearer session token"
+  },
+  "request": {
+    "type": "object",
+    "required": ["stayId", "approvedBy", "role", "actor"],
+    "properties": {
+      "stayId": { "type": "string", "format": "uuid" },
+      "approvedBy": { "type": "string", "description": "Approving identity; which role may approve follows the hotel open-balance rule." },
+      "role": { "type": "string", "description": "Approver role at approval time, kept with the record." },
+      "reason": { "type": "string" },
+      "idempotencyKey": { "type": "string" },
+      "actor": { "type": "string" }
+    }
+  },
+  "response": {
+    "type": "object",
+    "required": ["folioId", "stayId", "balanceMinor", "openBalanceApproval"],
+    "properties": {
+      "folioId": { "type": "string", "format": "uuid" },
+      "stayId": { "type": "string", "format": "uuid" },
+      "balanceMinor": { "type": "integer" },
+      "openBalanceApproval": { "type": "object", "description": "Recorded approval: approver, role, reason, time." }
+    }
+  },
+  "errors": [
+    { "code": "UNAUTHENTICATED", "status": 401, "when": "Missing session token." },
+    { "code": "VALIDATION_FAILED", "status": 400, "when": "Missing approver, role, or stay link." }
+  ]
+}

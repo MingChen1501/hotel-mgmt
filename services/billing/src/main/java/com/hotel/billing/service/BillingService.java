@@ -7,6 +7,8 @@ import com.hotel.billing.repo.BillingRepository.Folio;
 import com.hotel.billing.repo.BillingRepository.PaymentLine;
 import com.hotel.billing.web.ApiException;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -41,6 +43,8 @@ public class BillingService {
 
   public record DayCloseView(LocalDate businessDate, long chargesTotalMinor, Map<String, Long> paymentsByMethod,
       String runAt) {}
+
+  public record ApprovalView(UUID folioId, UUID stayId, long balanceMinor, String openBalanceApproval) {}
 
   private static Map<String, Object> chargeMap(ChargeLine line) {
     Map<String, Object> body = new LinkedHashMap<>();
@@ -170,6 +174,57 @@ public class BillingService {
       throw ApiException.notFound("No day-close run for " + businessDate, Map.of("businessDate", businessDate));
     }
     return dayCloseViewOf(run);
+  }
+
+  // Records the authorised open-balance approval against the folio
+  // (BR-17, FR-BIL-7, issue #150): Stay.CheckOut reads the approval
+  // back through GetFolioBalance and closes an approved open balance.
+  // Which role may approve follows the hotel open-balance rule; the
+  // approver identity and role at approval time are kept verbatim on
+  // the record, and role-rule enforcement rides on the config fan-out
+  // slice that distributes the rule. Replay under the same
+  // idempotencyKey returns the original record.
+  @Transactional
+  public ApprovalView recordOpenBalanceApproval(String stayId, String approvedBy, String role, String reason,
+      String idempotencyKey, String actor) {
+    if (approvedBy == null || approvedBy.isBlank()) {
+      throw ApiException.validation("approvedBy", "approvedBy is required.");
+    }
+    if (role == null || role.isBlank()) {
+      throw ApiException.validation("role", "role is required.");
+    }
+    String who = actorOf(actor);
+    Folio folio = repo.ensureFolio(stayUuid(stayId), who);
+    String key = idempotencyKey == null ? "" : idempotencyKey.strip();
+    if (!key.isEmpty()) {
+      String winner = repo.claimOrWait(key, "RecordOpenBalanceApproval", folio.id().toString());
+      if (winner != null) {
+        Folio approved = repo.findFolioByStay(folio.stayId());
+        return new ApprovalView(approved.id(), approved.stayId(), approved.balanceMinor(),
+            approved.openBalanceApproval());
+      }
+    }
+    String approval = approvalJson(approvedBy.strip(), role.strip(), reason == null ? "" : reason.strip());
+    repo.recordApproval(folio.id(), approval, who);
+    String payload = "{\"folioId\":\"" + folio.id() + "\"}";
+    repo.outbox("folio", "approval-recorded", payload, who);
+    Folio approved = repo.findFolioByStay(folio.stayId());
+    return new ApprovalView(approved.id(), approved.stayId(), approved.balanceMinor(),
+        approved.openBalanceApproval());
+  }
+
+  private static String approvalJson(String approvedBy, String role, String reason) {
+    try {
+      com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+      Map<String, Object> record = new LinkedHashMap<>();
+      record.put("approvedBy", approvedBy);
+      record.put("role", role);
+      record.put("reason", reason);
+      record.put("approvedAt", OffsetDateTime.now(ZoneOffset.UTC).toString());
+      return mapper.writeValueAsString(record);
+    } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+      throw new IllegalStateException("Unserialisable open-balance approval.", e);
+    }
   }
 
   @Transactional

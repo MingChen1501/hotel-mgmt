@@ -2,8 +2,10 @@
 
 Module 2 per `docs/architecture/lld.md` section 2: check-in,
 check-out, room moves, early/late times, arrivals/departures.
-Skeleton only: the service boots and answers `/healthz`; operation
-logic lands in later slices.
+Implements the desk loop (issues #149, #150): `CheckIn`, `CheckOut`
+with the folio gate, `MoveRoom`, `RecordActualTimes`, `GetStay`,
+`GetStayRef`, `QueryStays`, and `ListArrivalsDepartures`; the
+service boots and answers `/healthz`.
 
 ## Build
 

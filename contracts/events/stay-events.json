@@ -1,0 +1,57 @@
+{
+  "description": "StayEvents JSON Schemas (LLD section 2; integration section 7). checked-in is emitted since the persistence slice; moved, actual-times-recorded, and checked-out land with the stay-flow slice (issue #150).",
+  "eventVersion": "1.0",
+  "events": {
+    "checked-in": {
+      "type": "object",
+      "required": ["eventId", "eventVersion", "stayId", "reservationId", "roomId", "actor", "occurredAt"],
+      "properties": {
+        "eventId": { "type": "string", "format": "uuid" },
+        "eventVersion": { "type": "string", "const": "1.0" },
+        "stayId": { "type": "string", "format": "uuid" },
+        "reservationId": { "type": "string", "format": "uuid" },
+        "roomId": { "type": "string", "format": "uuid" },
+        "actor": { "type": "string" },
+        "occurredAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "moved": {
+      "type": "object",
+      "required": ["eventId", "eventVersion", "stayId", "fromRoomId", "toRoomId", "actor", "occurredAt"],
+      "properties": {
+        "eventId": { "type": "string", "format": "uuid" },
+        "eventVersion": { "type": "string", "const": "1.0" },
+        "stayId": { "type": "string", "format": "uuid" },
+        "fromRoomId": { "type": "string", "format": "uuid" },
+        "toRoomId": { "type": "string", "format": "uuid" },
+        "actor": { "type": "string" },
+        "occurredAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "actual-times-recorded": {
+      "type": "object",
+      "required": ["eventId", "eventVersion", "stayId", "actor", "occurredAt"],
+      "properties": {
+        "eventId": { "type": "string", "format": "uuid" },
+        "eventVersion": { "type": "string", "const": "1.0" },
+        "stayId": { "type": "string", "format": "uuid" },
+        "actualArrival": { "type": ["string", "null"], "format": "date-time" },
+        "actualDeparture": { "type": ["string", "null"], "format": "date-time" },
+        "actor": { "type": "string" },
+        "occurredAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "checked-out": {
+      "type": "object",
+      "required": ["eventId", "eventVersion", "stayId", "folioId", "actor", "occurredAt"],
+      "properties": {
+        "eventId": { "type": "string", "format": "uuid" },
+        "eventVersion": { "type": "string", "const": "1.0" },
+        "stayId": { "type": "string", "format": "uuid" },
+        "folioId": { "type": "string", "format": "uuid" },
+        "actor": { "type": "string" },
+        "occurredAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}
