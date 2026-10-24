@@ -1,0 +1,40 @@
+{
+  "operation": "ListUsers",
+  "contract": "AdminService",
+  "version": "1.0",
+  "traces": ["docs/architecture/lld.md section 8", "FR-ADM-2", "NFR-SEC-1"],
+  "transport": {
+    "method": "POST",
+    "path": "/v1/admin/ListUsers",
+    "auth": "Bearer session token with role owner or manager"
+  },
+  "request": {
+    "type": "object",
+    "required": [],
+    "properties": {}
+  },
+  "response": {
+    "type": "object",
+    "required": ["users"],
+    "properties": {
+      "users": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["userId", "displayName", "signinIdentity", "role", "locked"],
+          "properties": {
+            "userId": { "type": "string", "format": "uuid" },
+            "displayName": { "type": "string" },
+            "signinIdentity": { "type": "string" },
+            "role": { "type": "string", "enum": ["owner", "manager", "front-desk"] },
+            "locked": { "type": "boolean", "description": "True while a 5-strike lockout is still holding." }
+          }
+        }
+      }
+    }
+  },
+  "errors": [
+    { "code": "UNAUTHENTICATED", "status": 401, "when": "Missing, expired, or revoked session token." },
+    { "code": "FORBIDDEN", "status": 403, "when": "Caller role is front-desk." }
+  ]
+}

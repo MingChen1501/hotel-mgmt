@@ -1,0 +1,7 @@
+{
+  "operation": "UnlockIdentity",
+  "case": "forbidden",
+  "description": "Front-desk caller attempts an unlock; access is refused and the lock holds.",
+  "request": { "signinIdentity": "desk-1" },
+  "expect": { "status": 403, "code": "FORBIDDEN" }
+}

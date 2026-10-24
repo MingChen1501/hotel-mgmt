@@ -116,6 +116,26 @@ async function handleRequest(
       writeJson(res, 200, await store.createUser(caller, body));
       return;
     }
+    case "UpdateUserRole": {
+      writeJson(res, 200, await store.updateUserRole(caller, body));
+      return;
+    }
+    case "UnlockIdentity": {
+      writeJson(res, 200, await store.unlockIdentity(caller, body));
+      return;
+    }
+    case "SignOut": {
+      writeJson(res, 200, await store.signOut(caller));
+      return;
+    }
+    case "ListUsers": {
+      writeJson(res, 200, await store.listUsers(caller));
+      return;
+    }
+    case "QueryAuditLog": {
+      writeJson(res, 200, await store.queryAuditLog(caller, body));
+      return;
+    }
     default: {
       writeJson(
         res,

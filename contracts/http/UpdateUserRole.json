@@ -1,0 +1,34 @@
+{
+  "operation": "UpdateUserRole",
+  "contract": "AdminService",
+  "version": "1.0",
+  "traces": ["docs/architecture/lld.md section 8", "docs/technical/integration.md section 6 C10", "FR-ADM-2", "NFR-SEC-1"],
+  "transport": {
+    "method": "POST",
+    "path": "/v1/admin/UpdateUserRole",
+    "auth": "Bearer session token with role owner or manager"
+  },
+  "request": {
+    "type": "object",
+    "required": ["signinIdentity", "role"],
+    "properties": {
+      "signinIdentity": { "type": "string", "description": "Sign-in identity of the account whose role changes." },
+      "role": { "type": "string", "enum": ["owner", "manager", "front-desk"] }
+    }
+  },
+  "response": {
+    "type": "object",
+    "required": ["userId", "displayName", "signinIdentity", "role"],
+    "properties": {
+      "userId": { "type": "string", "format": "uuid" },
+      "displayName": { "type": "string" },
+      "signinIdentity": { "type": "string" },
+      "role": { "type": "string", "enum": ["owner", "manager", "front-desk"] }
+    }
+  },
+  "errors": [
+    { "code": "UNAUTHENTICATED", "status": 401, "when": "Missing, expired, or revoked session token." },
+    { "code": "FORBIDDEN", "status": 403, "when": "Caller role is front-desk." },
+    { "code": "VALIDATION_FAILED", "status": 400, "when": "Unknown identity, unknown role, changing your own role, or demoting the last remaining owner." }
+  ]
+}

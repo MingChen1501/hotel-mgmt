@@ -1,0 +1,26 @@
+{
+  "operation": "SignOut",
+  "contract": "AdminService",
+  "version": "1.0",
+  "traces": ["docs/architecture/lld.md section 8", "docs/technical/integration.md section 6 C10", "NFR-SEC-2"],
+  "transport": {
+    "method": "POST",
+    "path": "/v1/admin/SignOut",
+    "auth": "Bearer session token being ended"
+  },
+  "request": {
+    "type": "object",
+    "required": [],
+    "properties": {}
+  },
+  "response": {
+    "type": "object",
+    "required": ["signedOut"],
+    "properties": {
+      "signedOut": { "type": "boolean", "const": true }
+    }
+  },
+  "errors": [
+    { "code": "UNAUTHENTICATED", "status": 401, "when": "Missing, expired, or already revoked session token." }
+  ]
+}

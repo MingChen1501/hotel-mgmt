@@ -1,0 +1,7 @@
+{
+  "operation": "QueryAuditLog",
+  "case": "empty-page",
+  "description": "Fresh install with only the boot owner: the audit view returns the boot creation entry alone.",
+  "request": { "limit": 1 },
+  "expect": { "status": 200 }
+}

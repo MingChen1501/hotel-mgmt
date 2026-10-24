@@ -1,0 +1,7 @@
+{
+  "operation": "UnlockIdentity",
+  "case": "happy-path",
+  "description": "Owner releases a 5-strike lockout; the identity can sign in again.",
+  "request": { "signinIdentity": "desk-1" },
+  "expect": { "status": 200, "unlocked": true }
+}

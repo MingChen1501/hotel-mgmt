@@ -1,0 +1,7 @@
+{
+  "operation": "UpdateUserRole",
+  "case": "happy-path",
+  "description": "Owner moves a manager to front-desk; the new role takes effect on next sign-in.",
+  "request": { "signinIdentity": "mgr-1", "role": "front-desk" },
+  "expect": { "status": 200, "role": "front-desk" }
+}
