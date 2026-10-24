@@ -1,0 +1,37 @@
+{
+  "operation": "HousekeepingReport",
+  "contract": "ReportingService",
+  "version": "1.0",
+  "traces": ["docs/architecture/lld.md section 7", "FR-RPT-4"],
+  "transport": {
+    "method": "POST",
+    "path": "/v1/reporting/HousekeepingReport",
+    "auth": "Bearer session token"
+  },
+  "request": {
+    "type": "object",
+    "required": [],
+    "properties": {}
+  },
+  "response": {
+    "type": "object",
+    "required": ["rooms", "asOf"],
+    "properties": {
+      "rooms": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["roomNumber", "state"],
+          "properties": {
+            "roomNumber": { "type": "string" },
+            "state": { "type": "string", "description": "Current housekeeping state: vacant-dirty needs cleaning, vacant-clean needs inspection." }
+          }
+        }
+      },
+      "asOf": { "type": "string", "format": "date-time", "description": "Newest event applied to the read model." }
+    }
+  },
+  "errors": [
+    { "code": "UNAUTHENTICATED", "status": 401, "when": "Missing session token." }
+  ]
+}

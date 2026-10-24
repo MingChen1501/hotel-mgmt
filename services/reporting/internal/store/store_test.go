@@ -238,3 +238,81 @@ func TestMalformedEventsAreRefused(t *testing.T) {
 		t.Fatalf("refused events projected rows: %+v", rows)
 	}
 }
+
+// housekeepingEvents builds the FR-RPT-4 source rows as domain
+// events: 101 stays dirty, 102 stays clean-but-uninspected, 103 is
+// inspected, 104 is blocked out of order, 105 is cleaned then
+// inspected, 106 is blocked then released back to dirty, and 107 is
+// occupied until its stay checks out.
+func housekeepingEvents() []Event {
+	return []Event{
+		{ID: "evt-hk-1", Subscription: "room", Type: "room.room-upserted", OccurredAt: at("2026-11-01"), Payload: map[string]any{"roomNumber": "101", "roomTypeId": "standard", "state": "vacant-dirty", "actor": "setup"}},
+		{ID: "evt-hk-2", Subscription: "room", Type: "room.room-upserted", OccurredAt: at("2026-11-01"), Payload: map[string]any{"roomNumber": "102", "roomTypeId": "standard", "state": "vacant-clean", "actor": "setup"}},
+		{ID: "evt-hk-3", Subscription: "room", Type: "room.room-upserted", OccurredAt: at("2026-11-01"), Payload: map[string]any{"roomNumber": "103", "roomTypeId": "standard", "state": "vacant-inspected", "actor": "setup"}},
+		{ID: "evt-hk-4", Subscription: "room", Type: "room.room-upserted", OccurredAt: at("2026-11-01"), Payload: map[string]any{"roomNumber": "104", "roomTypeId": "standard", "state": "vacant-dirty", "actor": "setup"}},
+		{ID: "evt-hk-5", Subscription: "room", Type: "room.blocked", OccurredAt: at("2026-11-01"), Payload: map[string]any{"roomNumber": "104", "dateFrom": "2026-11-01", "dateTo": "2026-11-05", "reason": "renovation", "actor": "manager"}},
+		{ID: "evt-hk-6", Subscription: "room", Type: "room.room-upserted", OccurredAt: at("2026-11-01"), Payload: map[string]any{"roomNumber": "105", "roomTypeId": "standard", "state": "vacant-clean", "actor": "setup"}},
+		{ID: "evt-hk-7", Subscription: "room", Type: "room.state-changed", OccurredAt: at("2026-11-02"), Payload: map[string]any{"roomNumber": "105", "oldState": "vacant-clean", "newState": "vacant-inspected", "actor": "housekeeping"}},
+		{ID: "evt-hk-8", Subscription: "room", Type: "room.room-upserted", OccurredAt: at("2026-11-01"), Payload: map[string]any{"roomNumber": "106", "roomTypeId": "standard", "state": "vacant-dirty", "actor": "setup"}},
+		{ID: "evt-hk-9", Subscription: "room", Type: "room.blocked", OccurredAt: at("2026-11-02"), Payload: map[string]any{"roomNumber": "106", "dateFrom": "2026-11-02", "dateTo": "2026-11-03", "reason": "plumbing", "actor": "manager"}},
+		{ID: "evt-hk-10", Subscription: "room", Type: "room.block-released", OccurredAt: at("2026-11-03"), Payload: map[string]any{"roomNumber": "106", "dateFrom": "2026-11-02", "dateTo": "2026-11-03", "reason": "plumbing fixed", "actor": "manager"}},
+		{ID: "evt-hk-11", Subscription: "room", Type: "room.room-upserted", OccurredAt: at("2026-11-02"), Payload: map[string]any{"roomNumber": "107", "roomTypeId": "standard", "state": "occupied", "actor": "front-desk"}},
+		{ID: "evt-hk-12", Subscription: "stay", Type: "stay.checked-in", OccurredAt: at("2026-11-02"), Payload: map[string]any{"stayId": "stay-hk-1", "reservationRef": "RSV-HK", "roomId": "107", "date": "2026-11-02"}},
+		{ID: "evt-hk-13", Subscription: "stay", Type: "stay.checked-out", OccurredAt: at("2026-11-03"), Payload: map[string]any{"stayId": "stay-hk-1", "date": "2026-11-03"}},
+	}
+}
+
+// TestRebuildTracksRoomsNeedingWork is the FR-RPT-4 paired guard:
+// the read model is rebuilt from room and stay events, then the
+// housekeeping report holds exactly the rooms needing work — dirty
+// and clean-but-uninspected rooms appear, while inspected,
+// out-of-order, and occupied rooms do not. Replaying the slice
+// leaves the report unchanged (idempotent apply).
+func TestRebuildTracksRoomsNeedingWork(t *testing.T) {
+	st := New()
+	events := housekeepingEvents()
+	if oerr := st.Rebuild(events); oerr != nil {
+		t.Fatalf("Rebuild: %v", oerr)
+	}
+
+	rooms, asOf := st.Housekeeping()
+	if asOf.IsZero() {
+		t.Fatal("housekeeping report carries no as-of timestamp")
+	}
+	// 101 dirty, 102 clean-but-uninspected, 106 released back to
+	// dirty, 107 dirtied by check-out; 103 and 105 are inspected,
+	// 104 is out of order.
+	want := map[string]string{"101": "vacant-dirty", "102": "vacant-clean", "106": "vacant-dirty", "107": "vacant-dirty"}
+	if len(rooms) != len(want) {
+		t.Fatalf("housekeeping rooms = %+v, want %d rooms", rooms, len(want))
+	}
+	for _, room := range rooms {
+		state, found := want[room.Room]
+		if !found {
+			t.Fatalf("unexpected room on the report: %+v", room)
+		}
+		if room.State != state {
+			t.Fatalf("room %s state = %q, want %q", room.Room, room.State, state)
+		}
+	}
+
+	// Duplicate delivery never double-counts: replaying the slice
+	// leaves the report and the room offset exactly as rebuilt.
+	for _, event := range events {
+		if oerr := st.Apply(event); oerr != nil {
+			t.Fatalf("duplicate Apply %s: %v", event.ID, oerr)
+		}
+	}
+	again, _ := st.Housekeeping()
+	if len(again) != len(want) {
+		t.Fatalf("housekeeping rooms moved %d -> %d on duplicate delivery", len(want), len(again))
+	}
+	for i := range again {
+		if again[i] != rooms[i] {
+			t.Fatalf("housekeeping room %d moved %+v -> %+v on duplicate delivery", i, rooms[i], again[i])
+		}
+	}
+	if offsets := st.Offsets(); offsets["room"] != "evt-hk-11" {
+		t.Fatalf("room offset = %q, want evt-hk-11", offsets["room"])
+	}
+}

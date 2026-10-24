@@ -1,6 +1,6 @@
 // Package handler exposes ReportingService read operations as
 // HTTP/JSON routes (POST /v1/reporting/<Operation>) with the shared
-// error envelope (LLD section 7, FR-RPT-1..3). Reads never block on
+// error envelope (LLD section 7, FR-RPT-1..4). Reads never block on
 // the event feed: a lagging rebuild shows through the as-of
 // timestamp, never by refusing the desk. Skeleton identity check:
 // every /v1/* call must carry a Bearer session token; local HMAC
@@ -172,6 +172,18 @@ func NewMux(svc *service.Service) *http.ServeMux {
 			"arrivals":     encode(sheet.Arrivals), "inHouse": encode(sheet.InHouse),
 			"departures": encode(sheet.Departures), "openBalances": balances,
 			"asOf": sheet.AsOf.UTC().Format("2006-01-02T15:04:05Z07:00"),
+		})
+	}))
+
+	mux.HandleFunc("POST /v1/reporting/HousekeepingReport", authed(func(w http.ResponseWriter, body map[string]any) {
+		rooms, asOf := svc.HousekeepingReport()
+		listed := make([]map[string]any, 0, len(rooms))
+		for _, room := range rooms {
+			listed = append(listed, map[string]any{"roomNumber": room.Room, "state": room.State})
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"rooms": listed,
+			"asOf":  asOf.UTC().Format("2006-01-02T15:04:05Z07:00"),
 		})
 	}))
 

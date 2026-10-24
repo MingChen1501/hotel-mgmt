@@ -1,0 +1,7 @@
+{
+  "operation": "HousekeepingReport",
+  "case": "happy-path",
+  "description": "Staff opens the housekeeping report: one dirty room and one clean-but-uninspected room appear; the inspected room and the out-of-order room do not.",
+  "request": {},
+  "expect": { "status": 200, "rooms": [ { "roomNumber": "101", "state": "vacant-dirty" }, { "roomNumber": "102", "state": "vacant-clean" } ], "asOf": "<iso-timestamp>" }
+}

@@ -1,5 +1,5 @@
 // Package store implements the ReportingService read model (LLD
-// section 7, FR-RPT-1..3). The rebuild job replays domain events
+// section 7, FR-RPT-1..4). The rebuild job replays domain events
 // into pre-aggregated projections: every apply is idempotent by
 // event id and advances the per-subscription consumer offset in the
 // same critical section, so replays and restarts converge without
@@ -72,6 +72,14 @@ type revenueTotal struct {
 	Extra int64
 }
 
+// housekeepingProjection is one room's current housekeeping state
+// (FR-RPT-4), folded from RoomStateEvents. Room is the room number
+// as carried by those events.
+type housekeepingProjection struct {
+	Room  string
+	State string
+}
+
 // NightRow is one per-date, per-type occupancy row (FR-RPT-1).
 type NightRow struct {
 	NightDate string
@@ -99,6 +107,13 @@ type BalanceEntry struct {
 	BalanceMinor int64
 }
 
+// HousekeepingRoom is one room needing cleaning or inspection right
+// now (FR-RPT-4).
+type HousekeepingRoom struct {
+	Room  string
+	State string
+}
+
 // DailySheet is the front-desk one-page view (FR-RPT-3).
 type DailySheet struct {
 	BusinessDate string
@@ -120,6 +135,7 @@ type Store struct {
 	sellable     map[string]int
 	revenue      map[string]*revenueTotal
 	folios       map[string]int64
+	housekeeping map[string]*housekeepingProjection
 }
 
 // New returns an empty Store.
@@ -132,6 +148,7 @@ func New() *Store {
 		sellable:     make(map[string]int),
 		revenue:      make(map[string]*revenueTotal),
 		folios:       make(map[string]int64),
+		housekeeping: make(map[string]*housekeepingProjection),
 	}
 }
 
@@ -205,6 +222,7 @@ func (s *Store) Rebuild(events []Event) *OpError {
 	s.sellable = make(map[string]int)
 	s.revenue = make(map[string]*revenueTotal)
 	s.folios = make(map[string]int64)
+	s.housekeeping = make(map[string]*housekeepingProjection)
 	s.mu.Unlock()
 	for _, event := range events {
 		if oerr := s.Apply(event); oerr != nil {
@@ -297,6 +315,17 @@ func (s *Store) project(event Event) *OpError {
 				record.CheckoutDay = day
 			}
 		}
+		if stay.RoomID != "" {
+			if row := s.housekeeping[stay.RoomID]; row != nil && row.State == "occupied" {
+				// Check-out turns an occupied room vacant and dirty
+				// (state-machine section 2). The rooms module's own
+				// state-changed event stays the source of truth and
+				// overwrites this when it arrives; this only keeps
+				// the report current while that feed lags, and never
+				// creates rows for unknown rooms.
+				row.State = "vacant-dirty"
+			}
+		}
 	case "rate.availability-set":
 		roomType, ok := strPayload(payload, "roomTypeId")
 		if !ok {
@@ -353,6 +382,52 @@ func (s *Store) project(event Event) *OpError {
 		// Hotel identity and wording printed on reports are served
 		// from Admin at read time (per-hotel config delivery, issue
 		// #158); the rebuild only tracks freshness for these events.
+	case "room.room-upserted":
+		room, ok := strPayload(payload, "roomNumber")
+		if !ok {
+			return validation("roomNumber", "roomNumber is required.")
+		}
+		state, ok := strPayload(payload, "state")
+		if !ok {
+			return validation("state", "state is required.")
+		}
+		s.housekeeping[room] = &housekeepingProjection{Room: room, State: state}
+	case "room.state-changed":
+		room, ok := strPayload(payload, "roomNumber")
+		if !ok {
+			return validation("roomNumber", "roomNumber is required.")
+		}
+		state, ok := strPayload(payload, "newState")
+		if !ok {
+			return validation("newState", "newState is required.")
+		}
+		if row := s.housekeeping[room]; row != nil {
+			row.State = state
+		} else {
+			s.housekeeping[room] = &housekeepingProjection{Room: room, State: state}
+		}
+	case "room.blocked":
+		room, ok := strPayload(payload, "roomNumber")
+		if !ok {
+			return validation("roomNumber", "roomNumber is required.")
+		}
+		from, ok := strPayload(payload, "dateFrom")
+		if !ok || !validDate(from) {
+			return validation("dateFrom", "dateFrom must be a YYYY-MM-DD date.")
+		}
+		to, ok := strPayload(payload, "dateTo")
+		if !ok || !validDate(to) || to < from {
+			return validation("dateTo", "dateTo must be a YYYY-MM-DD date on or after dateFrom.")
+		}
+		s.housekeeping[room] = &housekeepingProjection{Room: room, State: "out-of-order"}
+	case "room.block-released":
+		room, ok := strPayload(payload, "roomNumber")
+		if !ok {
+			return validation("roomNumber", "roomNumber is required.")
+		}
+		// Out-of-order rooms re-enter through dirty (rooms LLD
+		// section 3); a later state-changed event refines this.
+		s.housekeeping[room] = &housekeepingProjection{Room: room, State: "vacant-dirty"}
 	default:
 		// Forward-compatible ignore: recorded as seen with offset
 		// and as-of advance by Apply.
@@ -515,6 +590,41 @@ func (s *Store) Sheet(businessDate string) (*DailySheet, *OpError) {
 	byRef(sheet.Departures)
 	sort.Slice(sheet.OpenBalances, func(i, j int) bool { return sheet.OpenBalances[i].FolioID < sheet.OpenBalances[j].FolioID })
 	return sheet, nil
+}
+
+// needsHousekeepingWork reports whether a room state belongs on the
+// housekeeping report (FR-RPT-4): dirty rooms need cleaning,
+// clean-but-uninspected rooms need inspection. Inspected,
+// out-of-order, and occupied rooms never appear. Unknown future
+// states fail visible so staff notice them, matching the
+// needs_work column default.
+func needsHousekeepingWork(state string) bool {
+	switch state {
+	case "vacant-dirty", "vacant-clean":
+		return true
+	case "vacant-inspected", "out-of-order", "occupied":
+		return false
+	default:
+		return true
+	}
+}
+
+// Housekeeping returns every room needing cleaning or inspection
+// right now, sorted by room, with the read-model as-of timestamp. A
+// lagging feed shows through the as-of timestamp, never by blocking
+// the read.
+func (s *Store) Housekeeping() ([]HousekeepingRoom, time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var rooms []HousekeepingRoom
+	for _, row := range s.housekeeping {
+		if !needsHousekeepingWork(row.State) {
+			continue
+		}
+		rooms = append(rooms, HousekeepingRoom{Room: row.Room, State: row.State})
+	}
+	sort.Slice(rooms, func(i, j int) bool { return rooms[i].Room < rooms[j].Room })
+	return rooms, s.asOf
 }
 
 // Offsets returns the consumer-offset record per subscription: the
