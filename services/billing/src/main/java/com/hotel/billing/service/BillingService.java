@@ -6,6 +6,7 @@ import com.hotel.billing.repo.BillingRepository.DayClose;
 import com.hotel.billing.repo.BillingRepository.Folio;
 import com.hotel.billing.repo.BillingRepository.PaymentLine;
 import com.hotel.billing.repo.BillingRepository.TaxFeeRule;
+import com.hotel.billing.util.Messages;
 import com.hotel.billing.web.ApiException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -86,7 +87,7 @@ public class BillingService {
     try {
       return UUID.fromString(stayId);
     } catch (IllegalArgumentException e) {
-      throw ApiException.validation("stayId", "stayId must be a UUID.");
+      throw ApiException.validation("stayId", Messages.text("error.validation.must_be_uuid", Map.of("field", "stayId")));
     }
   }
 
@@ -94,7 +95,7 @@ public class BillingService {
     try {
       return UUID.fromString(folioId);
     } catch (IllegalArgumentException e) {
-      throw ApiException.validation("folioId", "folioId must be a UUID.");
+      throw ApiException.validation("folioId", Messages.text("error.validation.must_be_uuid", Map.of("field", "folioId")));
     }
   }
 
@@ -102,13 +103,13 @@ public class BillingService {
     try {
       return UUID.fromString(paymentId);
     } catch (IllegalArgumentException e) {
-      throw ApiException.validation("paymentId", "paymentId must be a UUID.");
+      throw ApiException.validation("paymentId", Messages.text("error.validation.must_be_uuid", Map.of("field", "paymentId")));
     }
   }
 
   private static String actorOf(String actor) {
     if (actor == null || actor.isBlank()) {
-      throw ApiException.validation("actor", "actor is required.");
+      throw ApiException.validation("actor", Messages.text("error.validation.field_required", Map.of("field", "actor")));
     }
     return actor.strip();
   }
@@ -125,16 +126,16 @@ public class BillingService {
   public LineView postCharge(String stayId, String itemKind, String itemName, long amountMinor,
       String idempotencyKey, String actor) {
     if (!"nightly-room-charge".equals(itemKind) && !"charge-item".equals(itemKind)) {
-      throw ApiException.validation("itemKind", "itemKind must be nightly-room-charge or charge-item.");
+      throw ApiException.validation("itemKind", Messages.text("error.validation.item_kind", Map.of()));
     }
     if (itemName == null || itemName.isBlank()) {
-      throw ApiException.validation("itemName", "itemName is required.");
+      throw ApiException.validation("itemName", Messages.text("error.validation.field_required", Map.of("field", "itemName")));
     }
     if (amountMinor < 0) {
-      throw ApiException.validation("amountMinor", "amountMinor cannot be negative.");
+      throw ApiException.validation("amountMinor", Messages.text("error.validation.amount_negative", Map.of()));
     }
     if ("charge-item".equals(itemKind) && !repo.chargeItemExists(itemName.strip())) {
-      throw new ApiException("VALIDATION_FAILED", 400, "Charge item " + itemName.strip() + " is not defined.",
+      throw new ApiException("VALIDATION_FAILED", 400, Messages.text("error.validation.item_undefined", Map.of("itemName", itemName.strip())),
           Map.of("itemName", itemName.strip()));
     }
     String who = actorOf(actor);
@@ -166,10 +167,10 @@ public class BillingService {
   public PaymentView recordPayment(String stayId, String method, long amountMinor, String idempotencyKey,
       String actor) {
     if (!"cash".equals(method) && !"card".equals(method)) {
-      throw ApiException.validation("method", "method must be cash or card.");
+      throw ApiException.validation("method", Messages.text("error.validation.method", Map.of()));
     }
     if (amountMinor <= 0) {
-      throw ApiException.validation("amountMinor", "amountMinor must be positive.");
+      throw ApiException.validation("amountMinor", Messages.text("error.validation.amount_positive", Map.of()));
     }
     String who = actorOf(actor);
     Folio folio = repo.ensureFolio(stayUuid(stayId), who);
@@ -205,7 +206,7 @@ public class BillingService {
   public DayCloseView getDayClose(String businessDate) {
     DayClose run = repo.findDayClose(dayOf(businessDate));
     if (run == null) {
-      throw ApiException.notFound("No day-close run for " + businessDate, Map.of("businessDate", businessDate));
+      throw ApiException.notFound(Messages.text("error.notfound.day_close", Map.of("businessDate", businessDate)), Map.of("businessDate", businessDate));
     }
     return dayCloseViewOf(run);
   }
@@ -219,7 +220,7 @@ public class BillingService {
     actorOf(actor);
     Folio folio = repo.findFolioById(folioUuid(folioId));
     if (folio == null) {
-      throw ApiException.notFound("No folio for " + folioId, Map.of("folioId", folioId));
+      throw ApiException.notFound(Messages.text("error.notfound.folio", Map.of("folioId", folioId)), Map.of("folioId", folioId));
     }
     return invoiceViewOf(folio);
   }
@@ -232,11 +233,11 @@ public class BillingService {
     actorOf(actor);
     PaymentLine line = repo.findPaymentOrNull(paymentUuid(paymentId));
     if (line == null) {
-      throw ApiException.notFound("No payment for " + paymentId, Map.of("paymentId", paymentId));
+      throw ApiException.notFound(Messages.text("error.notfound.payment", Map.of("paymentId", paymentId)), Map.of("paymentId", paymentId));
     }
     Folio folio = repo.findFolioById(line.folioId());
     if (folio == null) {
-      throw ApiException.notFound("No folio for payment " + paymentId, Map.of("paymentId", paymentId));
+      throw ApiException.notFound(Messages.text("error.notfound.folio_payment", Map.of("paymentId", paymentId)), Map.of("paymentId", paymentId));
     }
     return new ReceiptView(line.id(), line.id(), folio.id(), folio.stayId(), line.method(), line.amountMinor(),
         line.paidAt().toString());
@@ -254,10 +255,10 @@ public class BillingService {
   public ApprovalView recordOpenBalanceApproval(String stayId, String approvedBy, String role, String reason,
       String idempotencyKey, String actor) {
     if (approvedBy == null || approvedBy.isBlank()) {
-      throw ApiException.validation("approvedBy", "approvedBy is required.");
+      throw ApiException.validation("approvedBy", Messages.text("error.validation.field_required", Map.of("field", "approvedBy")));
     }
     if (role == null || role.isBlank()) {
-      throw ApiException.validation("role", "role is required.");
+      throw ApiException.validation("role", Messages.text("error.validation.field_required", Map.of("field", "role")));
     }
     String who = actorOf(actor);
     Folio folio = repo.ensureFolio(stayUuid(stayId), who);
@@ -296,10 +297,10 @@ public class BillingService {
   @Transactional
   public Map<String, Object> upsertChargeItem(String name, long priceMinor, String actor) {
     if (name == null || name.isBlank()) {
-      throw ApiException.validation("name", "name is required.");
+      throw ApiException.validation("name", Messages.text("error.validation.field_required", Map.of("field", "name")));
     }
     if (priceMinor < 0) {
-      throw ApiException.validation("priceMinor", "priceMinor cannot be negative.");
+      throw ApiException.validation("priceMinor", Messages.text("error.validation.price_negative", Map.of()));
     }
     return repo.upsertChargeItem(name.strip(), priceMinor, actorOf(actor));
   }
@@ -312,13 +313,13 @@ public class BillingService {
   @Transactional
   public Map<String, Object> upsertTaxFeeRule(String name, BigDecimal percent, String actor) {
     if (name == null || name.isBlank()) {
-      throw ApiException.validation("name", "name is required.");
+      throw ApiException.validation("name", Messages.text("error.validation.field_required", Map.of("field", "name")));
     }
     if (percent == null) {
-      throw ApiException.validation("percent", "percent is required.");
+      throw ApiException.validation("percent", Messages.text("error.validation.field_required", Map.of("field", "percent")));
     }
     if (percent.compareTo(BigDecimal.ZERO) < 0 || percent.compareTo(BigDecimal.valueOf(100)) > 0) {
-      throw ApiException.validation("percent", "percent must be between 0 and 100.");
+      throw ApiException.validation("percent", Messages.text("error.validation.percent_range", Map.of("min", Messages.formatNumber(0), "max", Messages.formatNumber(100))));
     }
     return repo.upsertTaxFeeRule(name.strip(), percent, actorOf(actor));
   }
@@ -382,7 +383,7 @@ public class BillingService {
     try {
       return LocalDate.parse(businessDate);
     } catch (Exception e) {
-      throw ApiException.validation("businessDate", "businessDate must be a YYYY-MM-DD date.");
+      throw ApiException.validation("businessDate", Messages.text("error.validation.business_date", Map.of()));
     }
   }
 }
