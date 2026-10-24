@@ -1,0 +1,14 @@
+{
+  "operation": "MarkNoShow",
+  "case": "happy-path",
+  "description": "Desk marks a past-arrival unarrived reservation no-show; the held room releases and the no-show stays in history (FR-RES-6).",
+  "request": {
+    "reservationRef": "<past-arrival-ref>",
+    "reason": "no-arrival"
+  },
+  "precondition": "The reservation arrival date has passed without check-in.",
+  "expect": {
+    "status": 200,
+    "state": "no-show"
+  }
+}

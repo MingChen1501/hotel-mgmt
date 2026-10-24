@@ -1,0 +1,14 @@
+{
+  "operation": "MarkNoShow",
+  "case": "arrival-not-passed",
+  "description": "Marking no-show before the arrival date has passed is refused (BR-5).",
+  "request": {
+    "reservationRef": "<future-arrival-ref>",
+    "reason": "no-arrival"
+  },
+  "precondition": "The reservation arrival date has not passed.",
+  "expect": {
+    "status": 422,
+    "code": "STATE_ILLEGAL"
+  }
+}

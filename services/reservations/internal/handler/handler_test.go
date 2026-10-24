@@ -91,3 +91,104 @@ func TestRequiresSessionToken(t *testing.T) {
 		t.Fatalf("missing token = %d %v, want 401 UNAUTHENTICATED", code, body)
 	}
 }
+
+func modifyBody(ref string, key string) map[string]any {
+	return map[string]any{
+		"reservationRef": ref,
+		"arrivalDate":    "2026-11-02",
+		"departureDate":  "2026-11-04",
+		"roomTypeId":     "deluxe-type",
+		"sellableUnits":  2,
+		"priceBasis":     map[string]any{"totalMinor": 26000},
+		"idempotencyKey": key,
+		"actor":          "front-desk",
+	}
+}
+
+// TestDeskLifecycleModifyCancelNoShowCalendar walks the full
+// desk-usable lifecycle on one host: book, modify with reprice,
+// cancel with reason and rebook the released dates, mark a
+// past-arrival booking no-show, and read the seeded calendar with a
+// GetReservation drill-down for reference, guest, and price.
+func TestDeskLifecycleModifyCancelNoShowCalendar(t *testing.T) {
+	mux := newMux()
+
+	code, created := post(t, mux, "/v1/reservations/CreateReservation", loopBody("lifecycle-1"), deskToken)
+	if code != http.StatusOK {
+		t.Fatalf("CreateReservation status = %d (%v)", code, created)
+	}
+	ref, _ := created["reservationRef"].(string)
+
+	code, modified := post(t, mux, "/v1/reservations/ModifyReservation", modifyBody(ref, "lifecycle-modify-1"), deskToken)
+	if code != http.StatusOK || modified["recalculatedTotal"] != float64(26000) {
+		t.Fatalf("ModifyReservation = %d %v, want repriced 26000", code, modified)
+	}
+
+	code, missing := post(t, mux, "/v1/reservations/CancelReservation", map[string]any{"reservationRef": ref}, deskToken)
+	if code != http.StatusBadRequest || missing["code"] != "VALIDATION_FAILED" {
+		t.Fatalf("CancelReservation without reason = %d %v, want 400 VALIDATION_FAILED", code, missing)
+	}
+
+	code, cancelled := post(t, mux, "/v1/reservations/CancelReservation", map[string]any{"reservationRef": ref, "reason": "guest-request", "actor": "front-desk", "idempotencyKey": "lifecycle-cancel-1"}, deskToken)
+	if code != http.StatusOK || cancelled["state"] != "cancelled" || cancelled["cancelReason"] != "guest-request" {
+		t.Fatalf("CancelReservation = %d %v, want cancelled with kept reason", code, cancelled)
+	}
+
+	code, repeat := post(t, mux, "/v1/reservations/ModifyReservation", modifyBody(ref, "lifecycle-modify-2"), deskToken)
+	if code != 422 || repeat["code"] != "STATE_ILLEGAL" {
+		t.Fatalf("ModifyReservation cancelled = %d %v, want 422 STATE_ILLEGAL", code, repeat)
+	}
+
+	code, rebooked := post(t, mux, "/v1/reservations/CreateReservation", loopBody("lifecycle-2"), deskToken)
+	if code != http.StatusOK {
+		t.Fatalf("rebooking released dates = %d (%v), want 200", code, rebooked)
+	}
+
+	past := loopBody("lifecycle-3")
+	past["arrivalDate"] = "2020-01-01"
+	past["departureDate"] = "2020-01-03"
+	code, pastCreated := post(t, mux, "/v1/reservations/CreateReservation", past, deskToken)
+	if code != http.StatusOK {
+		t.Fatalf("past CreateReservation status = %d (%v)", code, pastCreated)
+	}
+	pastRef, _ := pastCreated["reservationRef"].(string)
+
+	rebookedRef, _ := rebooked["reservationRef"].(string)
+	code, tooEarly := post(t, mux, "/v1/reservations/MarkNoShow", map[string]any{"reservationRef": rebookedRef, "reason": "no-arrival"}, deskToken)
+	if code != 422 || tooEarly["code"] != "STATE_ILLEGAL" {
+		t.Fatalf("MarkNoShow arrival-not-passed = %d %v, want 422 STATE_ILLEGAL", code, tooEarly)
+	}
+
+	code, marked := post(t, mux, "/v1/reservations/MarkNoShow", map[string]any{"reservationRef": pastRef, "reason": "no-arrival", "actor": "night-audit"}, deskToken)
+	if code != http.StatusOK || marked["state"] != "no-show" || marked["noShowReason"] != "no-arrival" {
+		t.Fatalf("MarkNoShow = %d %v, want no-show with kept reason", code, marked)
+	}
+
+	code, calendar := post(t, mux, "/v1/reservations/QueryCalendar", map[string]any{"dateFrom": "2020-01-01", "dateTo": "2026-11-04"}, deskToken)
+	if code != http.StatusOK {
+		t.Fatalf("QueryCalendar status = %d", code)
+	}
+	entries, _ := calendar["reservations"].([]any)
+	if len(entries) != 3 {
+		t.Fatalf("calendar holds %d entries, want 3 (cancelled + rebooked + no-show)", len(entries))
+	}
+	seen := map[string]bool{}
+	for _, raw := range entries {
+		entry, _ := raw.(map[string]any)
+		state, _ := entry["state"].(string)
+		seen[state] = true
+		entryRef, _ := entry["reservationRef"].(string)
+		code, detail := post(t, mux, "/v1/reservations/GetReservation", map[string]any{"reservationRef": entryRef}, deskToken)
+		if code != http.StatusOK {
+			t.Fatalf("GetReservation %s status = %d", entryRef, code)
+		}
+		if detail["reservationRef"] != entryRef || detail["guest"] == nil || detail["priceBasis"] == nil {
+			t.Fatalf("GetReservation %s = %v, want reference, guest, and price", entryRef, detail)
+		}
+	}
+	for _, want := range []string{"cancelled", "confirmed", "no-show"} {
+		if !seen[want] {
+			t.Fatalf("calendar states = %v, want cancelled, confirmed, and no-show", seen)
+		}
+	}
+}

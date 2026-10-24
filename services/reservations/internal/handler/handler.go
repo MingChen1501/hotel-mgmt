@@ -168,10 +168,12 @@ func NewMux(svc *service.Service, st store.Repository) *http.ServeMux {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"reservationId": record.ID, "reservationRef": record.Ref, "roomTypeId": record.RoomTypeID,
 			"arrivalDate": record.ArrivalDate, "departureDate": record.DepartureDate,
-			"guest":      record.Guest,
-			"priceBasis": map[string]any{"totalMinor": record.TotalMinor, "discountName": record.DiscountName},
-			"state":      record.State,
-			"stayId":     stayOrNull(record.StayID),
+			"guest":        record.Guest,
+			"priceBasis":   map[string]any{"totalMinor": record.TotalMinor, "discountName": record.DiscountName},
+			"state":        record.State,
+			"cancelReason": strOrNull(record.CancelReason),
+			"noShowReason": strOrNull(record.NoShowReason),
+			"stayId":       stayOrNull(record.StayID),
 		})
 	}))
 
@@ -195,6 +197,83 @@ func NewMux(svc *service.Service, st store.Repository) *http.ServeMux {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"reservationId": record.ID, "reservationRef": record.Ref,
 			"state": record.State, "stayId": record.StayID,
+		})
+	}))
+
+	mux.HandleFunc("POST /v1/reservations/ModifyReservation", authed(func(w http.ResponseWriter, body map[string]any) {
+		ref, ok := strField(body, "reservationRef")
+		if !ok {
+			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: "reservationRef is required.", Details: map[string]any{"field": "reservationRef"}})
+			return
+		}
+		arrival, _ := body["arrivalDate"].(string)
+		departure, _ := body["departureDate"].(string)
+		roomTypeID, _ := strField(body, "roomTypeId")
+		guest, hasGuest := body["guest"].(map[string]any)
+		sellable, hasSellable := intField(body, "sellableUnits")
+		price, hasPrice := nestedPrice(body)
+		discount := nestedDiscount(body)
+		key, _ := strField(body, "idempotencyKey")
+		actor, _ := strField(body, "actor")
+		record, oerr := svc.Modify(service.ModifyRequest{
+			Ref:            ref,
+			ArrivalDate:    strings.TrimSpace(arrival),
+			DepartureDate:  strings.TrimSpace(departure),
+			RoomTypeID:     roomTypeID,
+			Guest:          guest,
+			HasGuest:       hasGuest,
+			SellableUnits:  sellUnits(sellable, hasSellable),
+			TotalMinor:     price,
+			HasTotal:       hasPrice,
+			DiscountName:   discount,
+			IdempotencyKey: key,
+			Actor:          actor,
+		})
+		if oerr != nil {
+			writeOpError(w, oerr)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"reservationId": record.ID, "reservationRef": record.Ref, "state": record.State, "recalculatedTotal": record.TotalMinor,
+		})
+	}))
+
+	mux.HandleFunc("POST /v1/reservations/CancelReservation", authed(func(w http.ResponseWriter, body map[string]any) {
+		ref, ok := strField(body, "reservationRef")
+		if !ok {
+			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: "reservationRef is required.", Details: map[string]any{"field": "reservationRef"}})
+			return
+		}
+		reason, _ := strField(body, "reason")
+		key, _ := strField(body, "idempotencyKey")
+		actor, _ := strField(body, "actor")
+		record, oerr := svc.Cancel(service.CancelRequest{Ref: ref, Reason: reason, Actor: actor, IdempotencyKey: key})
+		if oerr != nil {
+			writeOpError(w, oerr)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"reservationId": record.ID, "reservationRef": record.Ref, "state": record.State,
+			"cancelReason": strOrNull(record.CancelReason),
+		})
+	}))
+
+	mux.HandleFunc("POST /v1/reservations/MarkNoShow", authed(func(w http.ResponseWriter, body map[string]any) {
+		ref, ok := strField(body, "reservationRef")
+		if !ok {
+			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: "reservationRef is required.", Details: map[string]any{"field": "reservationRef"}})
+			return
+		}
+		reason, _ := strField(body, "reason")
+		actor, _ := strField(body, "actor")
+		record, oerr := svc.MarkNoShow(service.MarkNoShowRequest{Ref: ref, Reason: reason, Actor: actor})
+		if oerr != nil {
+			writeOpError(w, oerr)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"reservationId": record.ID, "reservationRef": record.Ref, "state": record.State,
+			"noShowReason": strOrNull(record.NoShowReason),
 		})
 	}))
 
@@ -262,6 +341,15 @@ func sellUnits(value int64, ok bool) int {
 		return 0
 	}
 	return int(value)
+}
+
+// strOrNull renders a nil kept reason as JSON null so callers can
+// tell "no reason kept" apart from a recorded reason.
+func strOrNull(value *string) any {
+	if value == nil {
+		return nil
+	}
+	return *value
 }
 
 // stayOrNull renders an empty stay link as JSON null so callers can

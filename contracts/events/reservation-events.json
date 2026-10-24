@@ -1,21 +1,229 @@
 {
-  "description": "ReservationEvents JSON Schemas (LLD section 1; integration section 7). Skeleton emits created; modified, cancelled, and no-show shapes land additively with later slices.",
+  "description": "ReservationEvents JSON Schemas (LLD section 1; integration section 7). The modified, cancelled, and no-show shapes land with the lifecycle slice (issue #159).",
   "eventVersion": "1.0",
   "events": {
     "created": {
       "type": "object",
-      "required": ["eventId", "eventVersion", "reservationRef", "roomTypeId", "arrivalDate", "departureDate", "guestId", "priceBasisTotal", "actor", "occurredAt"],
+      "required": [
+        "eventId",
+        "eventVersion",
+        "reservationRef",
+        "roomTypeId",
+        "arrivalDate",
+        "departureDate",
+        "guestId",
+        "priceBasisTotal",
+        "actor",
+        "occurredAt"
+      ],
       "properties": {
-        "eventId": { "type": "string", "format": "uuid" },
-        "eventVersion": { "type": "string", "const": "1.0" },
-        "reservationRef": { "type": "string" },
-        "roomTypeId": { "type": "string", "format": "uuid" },
-        "arrivalDate": { "type": "string", "format": "date" },
-        "departureDate": { "type": "string", "format": "date" },
-        "guestId": { "type": "string", "format": "uuid" },
-        "priceBasisTotal": { "type": "integer" },
-        "actor": { "type": "string" },
-        "occurredAt": { "type": "string", "format": "date-time" }
+        "eventId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "eventVersion": {
+          "type": "string",
+          "const": "1.0"
+        },
+        "reservationRef": {
+          "type": "string"
+        },
+        "roomTypeId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "arrivalDate": {
+          "type": "string",
+          "format": "date"
+        },
+        "departureDate": {
+          "type": "string",
+          "format": "date"
+        },
+        "guestId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "priceBasisTotal": {
+          "type": "integer"
+        },
+        "actor": {
+          "type": "string"
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "modified": {
+      "type": "object",
+      "required": [
+        "eventId",
+        "eventVersion",
+        "reservationRef",
+        "roomTypeId",
+        "arrivalDate",
+        "departureDate",
+        "guestId",
+        "priceBasisTotal",
+        "actor",
+        "occurredAt"
+      ],
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "eventVersion": {
+          "type": "string",
+          "const": "1.0"
+        },
+        "reservationRef": {
+          "type": "string"
+        },
+        "roomTypeId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "arrivalDate": {
+          "type": "string",
+          "format": "date"
+        },
+        "departureDate": {
+          "type": "string",
+          "format": "date"
+        },
+        "guestId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "priceBasisTotal": {
+          "type": "integer"
+        },
+        "actor": {
+          "type": "string"
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "cancelled": {
+      "type": "object",
+      "required": [
+        "eventId",
+        "eventVersion",
+        "reservationRef",
+        "roomTypeId",
+        "arrivalDate",
+        "departureDate",
+        "guestId",
+        "priceBasisTotal",
+        "actor",
+        "occurredAt",
+        "reason"
+      ],
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "eventVersion": {
+          "type": "string",
+          "const": "1.0"
+        },
+        "reservationRef": {
+          "type": "string"
+        },
+        "roomTypeId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "arrivalDate": {
+          "type": "string",
+          "format": "date"
+        },
+        "departureDate": {
+          "type": "string",
+          "format": "date"
+        },
+        "guestId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "priceBasisTotal": {
+          "type": "integer"
+        },
+        "actor": {
+          "type": "string"
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
+    },
+    "no-show": {
+      "type": "object",
+      "required": [
+        "eventId",
+        "eventVersion",
+        "reservationRef",
+        "roomTypeId",
+        "arrivalDate",
+        "departureDate",
+        "guestId",
+        "priceBasisTotal",
+        "actor",
+        "occurredAt",
+        "reason"
+      ],
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "eventVersion": {
+          "type": "string",
+          "const": "1.0"
+        },
+        "reservationRef": {
+          "type": "string"
+        },
+        "roomTypeId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "arrivalDate": {
+          "type": "string",
+          "format": "date"
+        },
+        "departureDate": {
+          "type": "string",
+          "format": "date"
+        },
+        "guestId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "priceBasisTotal": {
+          "type": "integer"
+        },
+        "actor": {
+          "type": "string"
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "reason": {
+          "type": "string"
+        }
       }
     }
   }

@@ -1,0 +1,20 @@
+{
+  "operation": "ModifyReservation",
+  "case": "already-checked-in",
+  "description": "Modifying a checked-in reservation is refused naming the state (BR-2).",
+  "request": {
+    "reservationRef": "<checked-in-ref>",
+    "arrivalDate": "2026-11-02",
+    "departureDate": "2026-11-04",
+    "sellableUnits": 2,
+    "priceBasis": {
+      "totalMinor": 26000
+    },
+    "idempotencyKey": "modify-2"
+  },
+  "precondition": "The reservation is already checked-in.",
+  "expect": {
+    "status": 422,
+    "code": "STATE_ILLEGAL"
+  }
+}

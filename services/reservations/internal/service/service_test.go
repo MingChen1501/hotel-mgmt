@@ -79,3 +79,120 @@ func TestGuardRefusesSecondBookingForLastUnit(t *testing.T) {
 		t.Fatalf("error = %v, want CONFLICT", oerr)
 	}
 }
+
+func loopModify(ref string) ModifyRequest {
+	return ModifyRequest{
+		Ref:           ref,
+		ArrivalDate:   "2026-11-02",
+		DepartureDate: "2026-11-04",
+		SellableUnits: 2,
+		TotalMinor:    26000,
+		HasTotal:      true,
+		Actor:         "front-desk",
+	}
+}
+
+func TestModifyHappyPathReprices(t *testing.T) {
+	svc := New(store.New())
+	created, oerr := svc.Create(loopRequest())
+	if oerr != nil {
+		t.Fatalf("Create refused: %v", oerr)
+	}
+	modified, oerr := svc.Modify(loopModify(created.Ref))
+	if oerr != nil {
+		t.Fatalf("Modify refused: %v", oerr)
+	}
+	if modified.TotalMinor != 26000 || modified.ArrivalDate != "2026-11-02" {
+		t.Fatalf("modified = %+v, want repriced total and new dates", modified)
+	}
+}
+
+func TestModifyRequiresRepricedTotal(t *testing.T) {
+	svc := New(store.New())
+	created, oerr := svc.Create(loopRequest())
+	if oerr != nil {
+		t.Fatalf("Create refused: %v", oerr)
+	}
+	req := loopModify(created.Ref)
+	req.HasTotal = false
+	if _, oerr := svc.Modify(req); oerr == nil || oerr.Code != "VALIDATION_FAILED" {
+		t.Fatalf("error = %v, want VALIDATION_FAILED for missing total", oerr)
+	}
+}
+
+func TestModifyRestrictionRefusesWithCause(t *testing.T) {
+	svc := New(store.New())
+	created, oerr := svc.Create(loopRequest())
+	if oerr != nil {
+		t.Fatalf("Create refused: %v", oerr)
+	}
+	svc.CheckRestrictionsHook = func(roomTypeID, arrivalDate, departureDate string) *store.OpError {
+		return &store.OpError{Code: "STATE_ILLEGAL", Status: 422, Message: "Closed to arrival.", Details: map[string]any{"restriction": "closed-to-arrival"}}
+	}
+	if _, oerr := svc.Modify(loopModify(created.Ref)); oerr == nil || oerr.Code != "STATE_ILLEGAL" {
+		t.Fatalf("error = %v, want STATE_ILLEGAL", oerr)
+	}
+}
+
+func TestModifyUnknownRefIsNotFound(t *testing.T) {
+	svc := New(store.New())
+	req := loopModify("RSV-UNKNOWN")
+	if _, oerr := svc.Modify(req); oerr == nil || oerr.Code != "NOT_FOUND" {
+		t.Fatalf("error = %v, want NOT_FOUND", oerr)
+	}
+}
+
+func TestCancelHappyPath(t *testing.T) {
+	svc := New(store.New())
+	created, oerr := svc.Create(loopRequest())
+	if oerr != nil {
+		t.Fatalf("Create refused: %v", oerr)
+	}
+	cancelled, oerr := svc.Cancel(CancelRequest{Ref: created.Ref, Reason: "guest-request", Actor: "front-desk"})
+	if oerr != nil {
+		t.Fatalf("Cancel refused: %v", oerr)
+	}
+	if cancelled.State != "cancelled" || cancelled.CancelReason == nil || *cancelled.CancelReason != "guest-request" {
+		t.Fatalf("cancelled = %+v, want cancelled with kept reason", cancelled)
+	}
+}
+
+func TestCancelMissingReasonRefused(t *testing.T) {
+	svc := New(store.New())
+	created, oerr := svc.Create(loopRequest())
+	if oerr != nil {
+		t.Fatalf("Create refused: %v", oerr)
+	}
+	if _, oerr := svc.Cancel(CancelRequest{Ref: created.Ref}); oerr == nil || oerr.Code != "VALIDATION_FAILED" {
+		t.Fatalf("error = %v, want VALIDATION_FAILED", oerr)
+	}
+}
+
+func TestMarkNoShowHappyPath(t *testing.T) {
+	svc := New(store.New())
+	req := loopRequest()
+	req.ArrivalDate = "2020-01-01"
+	req.DepartureDate = "2020-01-03"
+	created, oerr := svc.Create(req)
+	if oerr != nil {
+		t.Fatalf("Create refused: %v", oerr)
+	}
+	marked, oerr := svc.MarkNoShow(MarkNoShowRequest{Ref: created.Ref, Reason: "no-arrival", Actor: "night-audit"})
+	if oerr != nil {
+		t.Fatalf("MarkNoShow refused: %v", oerr)
+	}
+	if marked.State != "no-show" || marked.NoShowReason == nil || *marked.NoShowReason != "no-arrival" {
+		t.Fatalf("marked = %+v, want no-show with kept reason", marked)
+	}
+}
+
+func TestMarkNoShowTooEarlyRefused(t *testing.T) {
+	svc := New(store.New())
+	created, oerr := svc.Create(loopRequest())
+	if oerr != nil {
+		t.Fatalf("Create refused: %v", oerr)
+	}
+	if _, oerr := svc.MarkNoShow(MarkNoShowRequest{Ref: created.Ref, Reason: "no-arrival", Actor: "night-audit"}); oerr == nil || oerr.Code != "STATE_ILLEGAL" {
+		t.Fatalf("error = %v, want STATE_ILLEGAL", oerr)
+	}
+}

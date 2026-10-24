@@ -1,0 +1,14 @@
+{
+  "operation": "MarkNoShow",
+  "case": "already-checked-in",
+  "description": "Marking a checked-in stay no-show is refused naming the state (BR-5).",
+  "request": {
+    "reservationRef": "<checked-in-ref>",
+    "reason": "no-arrival"
+  },
+  "precondition": "The reservation is already checked-in.",
+  "expect": {
+    "status": 422,
+    "code": "STATE_ILLEGAL"
+  }
+}

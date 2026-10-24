@@ -1,0 +1,142 @@
+{
+  "operation": "ModifyReservation",
+  "contract": "ReservationService",
+  "version": "1.0",
+  "traces": [
+    "docs/architecture/lld.md section 1",
+    "FR-RES-2",
+    "NFR-CON-1"
+  ],
+  "transport": {
+    "method": "POST",
+    "path": "/v1/reservations/ModifyReservation",
+    "auth": "Bearer session token"
+  },
+  "request": {
+    "type": "object",
+    "required": [
+      "reservationRef",
+      "sellableUnits",
+      "priceBasis"
+    ],
+    "properties": {
+      "reservationRef": {
+        "type": "string"
+      },
+      "arrivalDate": {
+        "type": "string",
+        "format": "date",
+        "description": "New arrival date; omitted keeps the current date."
+      },
+      "departureDate": {
+        "type": "string",
+        "format": "date",
+        "description": "New departure date; omitted keeps the current date."
+      },
+      "roomTypeId": {
+        "type": "string",
+        "format": "uuid",
+        "description": "New room type; omitted keeps the current type."
+      },
+      "guest": {
+        "type": "object",
+        "required": [
+          "guestId"
+        ],
+        "properties": {
+          "guestId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Logical reference to the guests schema."
+          },
+          "fullName": {
+            "type": "string"
+          },
+          "contact": {
+            "type": "string"
+          }
+        },
+        "description": "New guest link; omitted keeps the current guest."
+      },
+      "sellableUnits": {
+        "type": "integer",
+        "minimum": 1,
+        "description": "Desk-loop input from the Rates/Rooms search step for the new dates and type; the atomic guard re-runs excluding the reservation itself."
+      },
+      "priceBasis": {
+        "type": "object",
+        "required": [
+          "totalMinor"
+        ],
+        "properties": {
+          "totalMinor": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Fresh QuotePrice total for the new dates, type, and discount (BR-2 reprice)."
+          },
+          "discountName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "idempotencyKey": {
+        "type": "string"
+      }
+    }
+  },
+  "response": {
+    "type": "object",
+    "required": [
+      "reservationRef",
+      "state",
+      "recalculatedTotal",
+      "reservationId"
+    ],
+    "properties": {
+      "reservationRef": {
+        "type": "string"
+      },
+      "state": {
+        "type": "string",
+        "const": "confirmed"
+      },
+      "recalculatedTotal": {
+        "type": "integer"
+      },
+      "reservationId": {
+        "type": "string",
+        "format": "uuid"
+      }
+    }
+  },
+  "errors": [
+    {
+      "code": "UNAUTHENTICATED",
+      "status": 401,
+      "when": "Missing session token."
+    },
+    {
+      "code": "CONFLICT",
+      "status": 409,
+      "when": "No sellable unit left for the new type and dates; details name type+dates (NFR-CON-1)."
+    },
+    {
+      "code": "STATE_ILLEGAL",
+      "status": 422,
+      "when": "The reservation already left the confirmed state, or a stay restriction is violated for the new dates."
+    },
+    {
+      "code": "VALIDATION_FAILED",
+      "status": 400,
+      "when": "Missing field, bad date order, missing repriced total, or a hotel-mandatory guest field is missing."
+    },
+    {
+      "code": "NOT_FOUND",
+      "status": 404,
+      "when": "Unknown reservation reference."
+    }
+  ]
+}

@@ -131,3 +131,63 @@ func TestPostgresPairedBookingExactlyOneWins(t *testing.T) {
 		t.Fatalf("loser error = %v, want CONFLICT", refusal)
 	}
 }
+
+// TestPostgresLifecycleModifyCancelNoShow proves the lifecycle writes
+// persist with history and outbox rows: modify reprices, cancel keeps
+// the reason and releases the dates, and a past-arrival booking can
+// be marked no-show.
+func TestPostgresLifecycleModifyCancelNoShow(t *testing.T) {
+	db := pgTestDB(t)
+	pgWipe(t, db)
+	pg := NewPostgres(db)
+
+	created, oerr := pg.Create(pgLoopInput(), "pg-lifecycle-1")
+	if oerr != nil {
+		t.Fatalf("create refused: %v", oerr)
+	}
+	modified, oerr := pg.Modify(ModifyInput{
+		Ref: created.Ref, ArrivalDate: "2026-11-02", DepartureDate: "2026-11-04",
+		SellableUnits: 2, TotalMinor: 26000, Actor: "front-desk",
+	}, "pg-modify-1")
+	if oerr != nil {
+		t.Fatalf("modify refused: %v", oerr)
+	}
+	if modified.TotalMinor != 26000 || modified.ArrivalDate != "2026-11-02" {
+		t.Fatalf("modified = %+v, want repriced total and new dates", modified)
+	}
+	cancelled, oerr := pg.Cancel(created.Ref, "guest-request", "front-desk", "pg-cancel-1")
+	if oerr != nil {
+		t.Fatalf("cancel refused: %v", oerr)
+	}
+	if cancelled.State != "cancelled" || cancelled.CancelReason == nil || *cancelled.CancelReason != "guest-request" {
+		t.Fatalf("cancelled = %+v, want cancelled with kept reason", cancelled)
+	}
+	if _, oerr := pg.Create(pgLoopInput(), "pg-lifecycle-2"); oerr != nil {
+		t.Fatalf("rebooking released dates refused: %v", oerr)
+	}
+	past := pgLoopInput()
+	past.ArrivalDate = "2020-01-01"
+	past.DepartureDate = "2020-01-03"
+	pastCreated, oerr := pg.Create(past, "pg-lifecycle-3")
+	if oerr != nil {
+		t.Fatalf("past create refused: %v", oerr)
+	}
+	marked, oerr := pg.MarkNoShow(pastCreated.Ref, "no-arrival", "night-audit")
+	if oerr != nil {
+		t.Fatalf("mark no-show refused: %v", oerr)
+	}
+	if marked.State != "no-show" || marked.NoShowReason == nil {
+		t.Fatalf("marked = %+v, want no-show with kept reason", marked)
+	}
+
+	var changes int
+	if err := db.QueryRow(`SELECT count(*) FROM reservations.reservation_changes`).Scan(&changes); err != nil || changes < 6 {
+		t.Fatalf("reservation_changes = %d, %v; want at least 6", changes, err)
+	}
+	for _, eventType := range []string{"created", "modified", "cancelled", "no-show"} {
+		var count int
+		if err := db.QueryRow(`SELECT count(*) FROM reservations.outbox WHERE event_type = $1`, eventType).Scan(&count); err != nil || count < 1 {
+			t.Fatalf("outbox %s = %d, %v; want at least 1", eventType, count, err)
+		}
+	}
+}
