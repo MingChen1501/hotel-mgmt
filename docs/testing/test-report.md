@@ -230,7 +230,7 @@ Named actions (bound 3000 ms on the reference host only):
 | CheckIn (2 reps, fresh booking + room each) | 50, 36 |
 | PostCharge (3 reps, folio with balance) | 39, 39, 42 |
 | RecordPayment (2 reps, cash) | 43, 41 |
-| CheckOut (2 reps, settled folios) | 35, 43 |
+| CheckOut (2 reps, settled folios) | 43, 35 |
 
 No bound was asserted on this run (`referenceHost=0`); the numbers are recorded as the CI variant. Bound assertion on the 2*4*50 reference host is deferred to the owner POC-demo environment.
 
