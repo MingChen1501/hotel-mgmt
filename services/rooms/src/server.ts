@@ -136,6 +136,10 @@ async function handleRequest(
       writeJson(res, 200, await store.blockRoom(body));
       return;
     }
+    case "ReleaseBlock": {
+      writeJson(res, 200, await store.releaseBlock(body));
+      return;
+    }
     default: {
       writeJson(
         res,

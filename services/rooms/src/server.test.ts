@@ -224,4 +224,146 @@ describe("desk loop", () => {
       assert.deepEqual(replay.body, first.body);
     });
   });
+
+  it("blocks a range, releases it, and returns the room to sale", async () => {
+    const store = new RoomStore();
+    await store.upsertRoomType({ name: "Deluxe", actor: "manager" });
+    await store.upsertRoom({ number: "101", roomType: "Deluxe", actor: "manager" });
+    await withServer(async (port) => {
+      const blocked = await request(port, "POST", "/v1/rooms/BlockRoom", {
+        roomNumber: "101",
+        dateFrom: "2026-11-01",
+        dateTo: "2026-11-05",
+        reason: "Plumbing repair",
+        actor: "manager",
+      });
+      assert.equal(blocked.status, 200);
+
+      const refused = await request(port, "POST", "/v1/rooms/CheckRoomTypeSellability", {
+        roomType: "Deluxe",
+        dateFrom: "2026-11-01",
+        dateTo: "2026-11-03",
+      });
+      assert.equal(refused.status, 200);
+      assert.deepEqual((refused.body as { blockedRooms: string[] }).blockedRooms, ["101"]);
+      assert.equal((refused.body as { sellableCount: number }).sellableCount, 0);
+
+      const released = await request(port, "POST", "/v1/rooms/ReleaseBlock", {
+        roomNumber: "101",
+        dateFrom: "2026-11-01",
+        dateTo: "2026-11-05",
+        actor: "manager",
+      });
+      assert.equal(released.status, 200);
+      assert.deepEqual(released.body, {
+        roomNumber: "101",
+        dateFrom: "2026-11-01",
+        dateTo: "2026-11-05",
+        reason: "Plumbing repair",
+      });
+
+      const sell = await request(port, "POST", "/v1/rooms/CheckRoomTypeSellability", {
+        roomType: "Deluxe",
+        dateFrom: "2026-11-01",
+        dateTo: "2026-11-03",
+      });
+      assert.equal(sell.status, 200);
+      assert.equal((sell.body as { sellableCount: number }).sellableCount, 1);
+      assert.deepEqual((sell.body as { blockedRooms: string[] }).blockedRooms, []);
+    }, store);
+  });
+
+  it("refuses to release a range with no covering block", async () => {
+    const store = new RoomStore();
+    await store.upsertRoomType({ name: "Deluxe", actor: "manager" });
+    await store.upsertRoom({ number: "101", roomType: "Deluxe", actor: "manager" });
+    await withServer(async (port) => {
+      const release = await request(port, "POST", "/v1/rooms/ReleaseBlock", {
+        roomNumber: "101",
+        dateFrom: "2026-11-01",
+        dateTo: "2026-11-05",
+        actor: "manager",
+      });
+      assert.equal(release.status, 422);
+      assert.equal((release.body as { code: string }).code, "STATE_ILLEGAL");
+
+      const unknown = await request(port, "POST", "/v1/rooms/ReleaseBlock", {
+        roomNumber: "999",
+        dateFrom: "2026-11-01",
+        dateTo: "2026-11-05",
+        actor: "manager",
+      });
+      assert.equal(unknown.status, 404);
+      assert.equal((unknown.body as { code: string }).code, "NOT_FOUND");
+    }, store);
+  });
+
+  it("coordinates a room move end to end on the rooms side (FR-FDK-3)", async () => {
+    const store = new RoomStore();
+    await store.upsertRoomType({ name: "Deluxe", actor: "manager" });
+    await store.upsertRoom({ number: "101", roomType: "Deluxe", actor: "manager" });
+    await store.upsertRoom({ number: "102", roomType: "Deluxe", actor: "manager" });
+    await withServer(async (port) => {
+      const firstStay = await request(port, "POST", "/v1/rooms/AssignRoom", {
+        roomNumber: "101",
+        businessDate: "2026-11-01",
+        stayLink: "stay-1",
+        actor: "front-desk",
+      });
+      assert.equal(firstStay.status, 200);
+
+      // The desk assigns the new room, then releases the old one
+      // around the stay-side MoveRoom call.
+      const newRoom = await request(port, "POST", "/v1/rooms/AssignRoom", {
+        roomNumber: "102",
+        businessDate: "2026-11-01",
+        stayLink: "stay-1",
+        actor: "front-desk",
+      });
+      assert.equal(newRoom.status, 200);
+      const released = await request(port, "POST", "/v1/rooms/ReleaseRoom", {
+        roomNumber: "101",
+        actor: "front-desk",
+      });
+      assert.equal(released.status, 200);
+      assert.deepEqual(released.body, {
+        roomNumber: "101",
+        oldState: "occupied",
+        newState: "vacant-dirty",
+      });
+
+      // Housekeeping walks the old room back to inspected, and the
+      // room is offered for check-in assignment again.
+      assert.equal(
+        (await request(port, "POST", "/v1/rooms/UpdateRoomState", {
+          roomNumber: "101",
+          newState: "vacant-clean",
+          actor: "housekeeping",
+        })).status,
+        200,
+      );
+      assert.equal(
+        (await request(port, "POST", "/v1/rooms/UpdateRoomState", {
+          roomNumber: "101",
+          newState: "vacant-inspected",
+          actor: "housekeeping",
+        })).status,
+        200,
+      );
+      const ready = await request(port, "POST", "/v1/rooms/ListRoomsByState", {
+        state: "vacant-inspected",
+      });
+      assert.equal(ready.status, 200);
+      assert.ok(
+        ((ready.body as { rooms: { number: string }[] }).rooms ?? []).some((room) => room.number === "101"),
+      );
+      const nextStay = await request(port, "POST", "/v1/rooms/AssignRoom", {
+        roomNumber: "101",
+        businessDate: "2026-11-02",
+        stayLink: "stay-2",
+        actor: "front-desk",
+      });
+      assert.equal(nextStay.status, 200);
+    }, store);
+  });
 });

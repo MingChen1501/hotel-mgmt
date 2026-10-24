@@ -1,0 +1,8 @@
+{
+  "operation": "ReleaseBlock",
+  "case": "happy-path",
+  "description": "Manager lifts the maintenance block so the room returns to sale for the range.",
+  "request": { "roomNumber": "101", "dateFrom": "2026-11-01", "dateTo": "2026-11-05", "actor": "manager" },
+  "precondition": "Room 101 carries a block for 2026-11-01 to 2026-11-05.",
+  "expect": { "status": 200, "reason": "Plumbing repair" }
+}

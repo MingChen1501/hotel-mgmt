@@ -1,0 +1,8 @@
+{
+  "operation": "ReleaseBlock",
+  "case": "no-covering-block",
+  "description": "Releasing a range with no covering block is refused with STATE_ILLEGAL and changes nothing.",
+  "request": { "roomNumber": "101", "dateFrom": "2026-11-01", "dateTo": "2026-11-05", "actor": "manager" },
+  "precondition": "Room 101 carries no block for 2026-11-01 to 2026-11-05.",
+  "expect": { "status": 422, "code": "STATE_ILLEGAL" }
+}

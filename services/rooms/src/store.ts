@@ -154,6 +154,13 @@ export interface BlockRoomInput {
   actor?: unknown;
 }
 
+export interface ReleaseBlockInput {
+  roomNumber?: unknown;
+  dateFrom?: unknown;
+  dateTo?: unknown;
+  actor?: unknown;
+}
+
 // RoomStoreAPI is the contract both the in-memory store and the
 // Postgres store implement (issue #149).
 export interface RoomStoreAPI {
@@ -174,6 +181,7 @@ export interface RoomStoreAPI {
   assignRoom(input: AssignRoomInput): Promise<{ roomNumber: string; stayLink: string; state: RoomState }>;
   releaseRoom(input: ReleaseRoomInput): Promise<{ roomNumber: string; oldState: RoomState; newState: RoomState }>;
   blockRoom(input: BlockRoomInput): Promise<{ roomNumber: string; dateFrom: string; dateTo: string; reason: string }>;
+  releaseBlock(input: ReleaseBlockInput): Promise<{ roomNumber: string; dateFrom: string; dateTo: string; reason: string }>;
   historyForRoomId(roomId: string): Promise<StateHistoryEntry[]>;
 }
 
@@ -442,6 +450,45 @@ export class RoomStore implements RoomStoreAPI {
     }
     this.blocks.push({ roomId: room.id, dateFrom, dateTo, reason, createdBy: actor });
     this.emit("room", "blocked", { roomNumber: room.number, dateFrom, dateTo, reason, actor }, actor);
+    return { roomNumber: room.number, dateFrom, dateTo, reason };
+  }
+
+  // ReleaseBlock lifts the block covering exactly the requested
+  // range (FR-RMS-3, BR-29). The match is exact so a partial release
+  // never silently lifts a wider block; releasing part of a range is
+  // release-then-re-block of the remainder. Releasing a range with
+  // no covering block is refused without changing anything.
+  async releaseBlock(input: ReleaseBlockInput): Promise<{
+    roomNumber: string;
+    dateFrom: string;
+    dateTo: string;
+    reason: string;
+  }> {
+    const room = await this.findRoom(input.roomNumber);
+    const dateFrom = requireDate(input.dateFrom, "dateFrom");
+    const dateTo = requireDate(input.dateTo, "dateTo");
+    const actor = requireString(input.actor, "actor");
+    if (dateTo < dateFrom) {
+      throw new HttpError("VALIDATION_FAILED", "dateTo is before dateFrom.", { dateFrom, dateTo });
+    }
+    const index = this.blocks.findIndex(
+      (entry) => entry.roomId === room.id && entry.dateFrom === dateFrom && entry.dateTo === dateTo,
+    );
+    if (index === -1) {
+      throw new HttpError(
+        "STATE_ILLEGAL",
+        `Room ${room.number} has no block covering ${dateFrom} to ${dateTo}.`,
+        { roomNumber: room.number, dateFrom, dateTo },
+      );
+    }
+    const [released] = this.blocks.splice(index, 1);
+    const reason = released?.reason ?? "";
+    this.emit(
+      "room",
+      "block-released",
+      { roomNumber: room.number, dateFrom, dateTo, reason, actor },
+      actor,
+    );
     return { roomNumber: room.number, dateFrom, dateTo, reason };
   }
 
