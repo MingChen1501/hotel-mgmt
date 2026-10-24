@@ -128,23 +128,26 @@ echo "Head:    ${head_oid:-unknown} (${head_branch})"
 # Review gate: the exact head must carry a reviewer APPROVE verdict.
 # The gate reads BOTH verdict sources — PR issue comments AND formal
 # PR reviews (`gh pr view --json reviews`). A verdict counts only
-# when its HEADLINE (first non-empty line of the body) declares it —
-# APPROVE iff the headline says PASS or APPROVE, CHANGES_REQUESTED
-# iff the headline says FAIL or CHANGES_REQUESTED — or when a formal
-# review carries the APPROVED / CHANGES_REQUESTED state itself — AND
-# the body quotes the exact head SHA (full or short form): verdicts
-# on older heads are stale and do not count. Verdict words mentioned
-# elsewhere in the body (e.g. a PASS review recalling an earlier
-# CHANGES_REQUESTED round) are ignored. Any CHANGES_REQUESTED
-# verdict quoting the exact head refuses the merge — the blocking
-# finding wins, even alongside an APPROVE. Fail closed: an unreadable
-# head, comment list, or review list refuses too.
+# when its HEADLINE (first non-empty line of the body) LEADS with it:
+# after stripping leading markdown markers (e.g. `## `, `**`) and an
+# optional `SPEC-GATE` / `Verdict:` prefix, the headline must START
+# with the verdict word — PASS or APPROVE counts as APPROVE, FAIL or
+# CHANGES_REQUESTED (or `CHANGES REQUESTED` with a space) counts as
+# CHANGES_REQUESTED — or when a formal review carries the APPROVED /
+# CHANGES_REQUESTED state itself — AND the body quotes the exact head
+# SHA (full or short form): verdicts on older heads are stale and do
+# not count. Verdict words mentioned elsewhere — including later in
+# the headline itself (e.g. an APPROVE headline recalling an earlier
+# FAIL round or citing a `fail-closed` proof) — are ignored. Any
+# CHANGES_REQUESTED verdict quoting the exact head refuses the merge
+# — the blocking finding wins, even alongside an APPROVE. Fail closed:
+# an unreadable head, comment list, or review list refuses too.
 if [[ -z "${head_oid:-}" ]]; then
   echo "error: refusing to merge: cannot determine the head SHA of PR #${pr}" >&2
   exit 1
 fi
 verdicts_out="$(gh pr view "${pr}" -R "${REPO}" --json comments,reviews 2>&1 || true)"
-if ! review_scan="$(printf '%s' "${verdicts_out}" | jq -e --arg head "${head_oid}" '([(.comments // [])[] | {body: (.body // ""), state: "COMMENT"}] + [(.reviews // [])[] | {body: (.body // ""), state: (.state // "")}]) as $verdicts | def refs_head: ascii_downcase | [scan("[0-9a-f]{7,40}")] | map(. as $tok | select($head | startswith($tok))) | length > 0; def headline: split("\n") | map(select(test("\\S"))) | .[0] // ""; {approve: ([$verdicts[] | .body as $b | select(($b | refs_head) and ((($b | headline) | test("(?i)\\b(pass|approve)\\b")) or .state == "APPROVED"))] | length), changes: ([$verdicts[] | .body as $b | select(($b | refs_head) and ((($b | headline) | test("(?i)\\b(fail|changes_requested)\\b")) or .state == "CHANGES_REQUESTED"))] | length)}' 2>/dev/null)"; then
+if ! review_scan="$(printf '%s' "${verdicts_out}" | jq -e --arg head "${head_oid}" '([(.comments // [])[] | {body: (.body // ""), state: "COMMENT"}] + [(.reviews // [])[] | {body: (.body // ""), state: (.state // "")}]) as $verdicts | def refs_head: ascii_downcase | [scan("[0-9a-f]{7,40}")] | map(. as $tok | select($head | startswith($tok))) | length > 0; def headline: split("\n") | map(select(test("\\S"))) | .[0] // ""; def verdict_headline: headline | ascii_downcase | sub("^[\\s#>*+\\-`\"(\\[]+"; "") | sub("^spec[-\\s]?gate\\s*:?\\s*"; "") | sub("^verdict\\s*:?\\s*"; "") | sub("^[\\s#>*+\\-`\"(\\[]+"; ""); def is_approve: test("^(pass|approve)\\b"); def is_changes: test("^fail\\b") or test("^changes(_requested|\\s+requested)\\b"); {approve: ([$verdicts[] | .body as $b | select(($b | refs_head) and ((($b | verdict_headline) | is_approve) or .state == "APPROVED"))] | length), changes: ([$verdicts[] | .body as $b | select(($b | refs_head) and ((($b | verdict_headline) | is_changes) or .state == "CHANGES_REQUESTED"))] | length)}' 2>/dev/null)"; then
   echo "error: refusing to merge: cannot determine review status for PR #${pr}: $(printf '%s' "${verdicts_out}" | head -n 1)" >&2
   exit 1
 fi

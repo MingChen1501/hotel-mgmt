@@ -51,7 +51,8 @@ re-checks the tier as part of its verdict.
 2. The orchestrator spawns `spec-reviewer`, which checks that the
    required specs exist, are `active`, and match the change, then posts
    one COMMENT verdict (`SPEC-GATE PASS` or `SPEC-GATE FAIL` with
-   `file:line` gaps) on the issue/PR — same mechanics as the
+   `file:line` gaps, verdict word first — the merge gate counts only
+   the leading headline token) on the issue/PR — same mechanics as the
    `dev-peer-review`/`content-review` verdicts (no native AO reviewer,
    never `ao review trigger` on this project).
 3. Implementation starts only on PASS. On FAIL the orchestrator routes

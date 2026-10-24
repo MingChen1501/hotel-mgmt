@@ -34,8 +34,10 @@ label accuracy, English artefacts — then style/spelling.
 
 Post exactly one verdict on the PR — a PR issue comment or a formal
 PR review — (`APPROVE` or `CHANGES_REQUESTED`, plus findings with
-`file:line`). Put the verdict word in the headline (first non-empty
-line) and quote the exact PR head SHA you reviewed (from
+`file:line`). Lead the headline (first non-empty line) with the
+verdict word — the merge gate counts only the leading token, so
+`APPROVE — ...`, not `Reviewed ... APPROVE` — and quote the exact
+PR head SHA you reviewed (from
 `gh pr view <n> --json headRefOid`) in the verdict — the merge gate
 reads both issue comments and formal reviews but only counts verdicts
 quoting the exact head. Advisory only

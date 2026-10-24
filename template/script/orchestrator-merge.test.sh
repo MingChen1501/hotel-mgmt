@@ -2,14 +2,18 @@
 # Regression test: orchestrator-merge.sh treats `skipping`/SKIPPED checks
 # as non-blocking (path-aware CI marks inapplicable jobs as skipped),
 # while fail/failed, pending, and cancelled checks still block the merge;
-# and it enforces the review gate headline-first over BOTH verdict
+# and it enforces the review gate leading-token rule over BOTH verdict
 # sources — PR issue comments AND formal PR reviews (`gh pr view --json
-# reviews`): a reviewer APPROVE verdict whose headline — first non-empty
-# line — declares PASS/APPROVE and whose body quotes the exact PR head
-# SHA (or whose formal-review state is APPROVED with a head-quoting
-# body), with no FAIL/CHANGES_REQUESTED headline or CHANGES_REQUESTED
-# state quoting that head; verdict words mentioned elsewhere in the
-# body are ignored; CHANGES_REQUESTED on the head wins (fail closed).
+# reviews`): a reviewer APPROVE verdict counts only when its headline —
+# first non-empty line — LEADS with the verdict word (after stripping
+# leading markdown markers and an optional SPEC-GATE / Verdict: prefix):
+# it must START with PASS/APPROVE; STARTING with FAIL/CHANGES_REQUESTED
+# (or CHANGES REQUESTED with a space) counts as blocking — plus a body
+# quoting the exact PR head SHA (or a formal-review APPROVED /
+# CHANGES_REQUESTED state with a head-quoting body). Verdict words
+# mentioned elsewhere — including later in the headline itself (e.g. a
+# `fail-closed` proof cited in an APPROVE headline) — are ignored.
+# CHANGES_REQUESTED on the head wins (fail closed).
 #
 # Runs the wrapper with stubbed `gh`/`ao` on PATH plus a temporary marker
 # directory, so no network, live session, or real PR is needed. Every case
@@ -123,6 +127,59 @@ run_case() {
     fi
   fi
 }
+
+# Review gate (#179 leading-token): an APPROVE headline citing the
+# `fail-closed` proof merges — the live PR #178 false positive, where
+# the old anywhere-in-headline matcher counted `fail` inside
+# `fail-closed` as CHANGES_REQUESTED and refused a genuine APPROVE.
+run_case "approve-with-fail-closed-in-headline" \
+  '[{"body":"APPROVE — reviewed head abcdef1: all 13 checks green including e2e-single-host and the new fail-closed proof. Role: dev-peer-review"}]' \
+  "${NO_REVIEWS}" \
+  "${GREEN_CHECKS}" \
+  merge
+
+# Review gate (#179 leading-token): a PASS headline recalling an
+# earlier CHANGES_REQUESTED round merges — the mention later in the
+# headline is ignored.
+run_case "pass-headline-with-changes-requested-later" \
+  '[{"body":"PASS — head abcdef1 verified after an earlier CHANGES_REQUESTED round, all findings resolved. Role: spec-reviewer"}]' \
+  "${NO_REVIEWS}" \
+  "${GREEN_CHECKS}" \
+  merge
+
+# Review gate (#179 leading-token): a `Verdict:`-prefixed APPROVE
+# headline merges.
+run_case "verdict-prefix-approve" \
+  '[{"body":"Verdict: APPROVE — head abcdef1: diff scoped, checks green. Role: dev-peer-review"}]' \
+  "${NO_REVIEWS}" \
+  "${GREEN_CHECKS}" \
+  merge
+
+# Review gate (#179 leading-token): `SPEC-GATE FAIL` refuses — the
+# SPEC-GATE prefix is stripped, FAIL leads.
+run_case "spec-gate-fail" \
+  '[{"body":"SPEC-GATE FAIL — head abcdef1: tier mismatch at docs/README.md:12. Role: spec-reviewer"}]' \
+  "${NO_REVIEWS}" \
+  "${GREEN_CHECKS}" \
+  refuse
+
+# Review gate (#179 leading-token): `CHANGES REQUESTED` with a space
+# refuses.
+run_case "changes-requested-with-space" \
+  '[{"body":"CHANGES REQUESTED — head abcdef1: blocker at demo:12. Role: dev-peer-review"}]' \
+  "${NO_REVIEWS}" \
+  "${GREEN_CHECKS}" \
+  refuse
+
+# Review gate (#179 leading-token): a verdict word appearing only
+# LATER in the headline does not count — `Reviewed head abcdef1 —
+# PASS` leads with `Reviewed`, so there is no APPROVE and the merge
+# is refused (the old anywhere-in-headline matcher merged this).
+run_case "verdict-word-only-later-in-headline" \
+  '[{"body":"Reviewed head abcdef1 — PASS, findings to follow. Role: dev-peer-review"}]' \
+  "${NO_REVIEWS}" \
+  "${GREEN_CHECKS}" \
+  refuse
 
 # Mirrors docs-only PR 123: 2 pass + 6 skipped -> merges (with an
 # APPROVE on the head, so the merge decision rests on the checks).
