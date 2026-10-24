@@ -1,0 +1,12 @@
+{
+  "operation": "CheckIn",
+  "case": "refusal-repeat",
+  "description": "A second check-in for the same reservation is refused naming the reservation and the existing stay.",
+  "request": {
+    "reservationId": "<reservation-id>",
+    "guestId": "<guest-id>",
+    "roomId": "<room-id>",
+    "actor": "front-desk"
+  },
+  "expect": { "status": 409, "code": "CONFLICT" }
+}

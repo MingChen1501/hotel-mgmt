@@ -1,8 +1,11 @@
 {
   "operation": "GetReservation",
   "contract": "ReservationService",
-  "version": "1.0",
-  "traces": ["docs/architecture/lld.md section 1", "FR-RES-1"],
+  "version": "1.1",
+  "traces": [
+    "docs/architecture/lld.md section 1",
+    "FR-RES-1"
+  ],
   "transport": {
     "method": "POST",
     "path": "/v1/reservations/GetReservation",
@@ -10,27 +13,82 @@
   },
   "request": {
     "type": "object",
-    "required": ["reservationRef"],
+    "required": [
+      "reservationRef"
+    ],
     "properties": {
-      "reservationRef": { "type": "string" }
+      "reservationRef": {
+        "type": "string"
+      }
     }
   },
   "response": {
     "type": "object",
-    "required": ["reservationRef", "roomTypeId", "arrivalDate", "departureDate", "guest", "priceBasis", "state"],
+    "required": [
+      "reservationRef",
+      "roomTypeId",
+      "arrivalDate",
+      "departureDate",
+      "guest",
+      "priceBasis",
+      "state",
+      "reservationId",
+      "stayId"
+    ],
     "properties": {
-      "reservationRef": { "type": "string" },
-      "roomTypeId": { "type": "string", "format": "uuid" },
-      "arrivalDate": { "type": "string", "format": "date" },
-      "departureDate": { "type": "string", "format": "date" },
-      "guest": { "type": "object", "additionalProperties": true },
-      "priceBasis": { "type": "object", "additionalProperties": true },
-      "state": { "type": "string" }
+      "reservationRef": {
+        "type": "string"
+      },
+      "roomTypeId": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "arrivalDate": {
+        "type": "string",
+        "format": "date"
+      },
+      "departureDate": {
+        "type": "string",
+        "format": "date"
+      },
+      "guest": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "priceBasis": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "state": {
+        "type": "string"
+      },
+      "reservationId": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "stayId": {
+        "type": [
+          "string",
+          "null"
+        ]
+      }
     }
   },
   "errors": [
-    { "code": "UNAUTHENTICATED", "status": 401, "when": "Missing session token." },
-    { "code": "NOT_FOUND", "status": 404, "when": "Unknown reservation reference." },
-    { "code": "VALIDATION_FAILED", "status": 400, "when": "Missing reservationRef." }
+    {
+      "code": "UNAUTHENTICATED",
+      "status": 401,
+      "when": "Missing session token."
+    },
+    {
+      "code": "NOT_FOUND",
+      "status": 404,
+      "when": "Unknown reservation reference."
+    },
+    {
+      "code": "VALIDATION_FAILED",
+      "status": 400,
+      "when": "Missing reservationRef."
+    }
   ]
 }

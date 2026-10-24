@@ -1,0 +1,7 @@
+{
+  "operation": "GetStay",
+  "case": "happy-path",
+  "description": "Reads the in-house stay back by its stay id.",
+  "request": { "stayId": "<stay-id>" },
+  "expect": { "status": 200, "state": "in-house" }
+}

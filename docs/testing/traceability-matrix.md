@@ -16,17 +16,17 @@ Guard cells (see strategy §LC and exit criterion §3.3).
 
 | Requirement | Required guard type | Guard |
 |---|---|---|
-| FR-RES-1 — Create direct reservation | L1 acceptance: book each room type across a season boundary, check quoted price and reference | Guard: `services/reservations` handler test `TestDeskLoopBookThenOverbookingRefused` (book + overbooking `CONFLICT`) + fixtures `CreateReservation.json`, `CreateReservation-conflict.json`; L3 pair `TestPairedBookingExactlyOneWins` (PR #112 slice). |
+| FR-RES-1 — Create direct reservation | L1 acceptance: book each room type across a season boundary, check quoted price and reference | Guard: `services/reservations` handler test `TestDeskLoopBookThenOverbookingRefused` (book + overbooking `CONFLICT`) + fixtures `CreateReservation.json`, `CreateReservation-conflict.json`; L3 pair `TestPairedBookingExactlyOneWins` (PR #112 slice); pg persistence + `CheckInReservation` round-trip (memory + pg) and fixture (PR #149 slice). |
 | FR-RES-2 — Modify reservation | L1 acceptance: change dates/type/guest, check repricing and change record | TBD |
 | FR-RES-3 — Cancel reservation with reason | L1 acceptance + L5 config-matrix: cancel under each of two hotel reason lists, check the reason comes from the hotel's list plus state and released availability | TBD |
 | FR-RES-4 — Walk-in booking | L1 acceptance: same-day booking, check arrival-state readiness and arrivals-list entry | TBD |
 | FR-RES-5 — Reservation calendar | L1 acceptance: seeded multi-date multi-type bookings, check placement and drill-down | TBD |
 | FR-RES-6 — No-show handling | L1 acceptance + L5 config-matrix: mark past-arrival booking no-show under each of two hotel no-show rules, check state, released room, history and kept reason | TBD |
-| FR-FDK-1 — Check-in | L1 acceptance: check in against a ready room, check stay link and occupied state | TBD |
+| FR-FDK-1 — Check-in | L1 acceptance: check in against a ready room, check stay link and occupied state | Guard: `services/stay` CheckIn/GetStay round-trip (memory + pg `pgstore.test.ts`) + e2e same-day AssignRoom -> CheckIn -> CheckInReservation with the restored `stay.stays` row (PR #149 slice). |
 | FR-FDK-2 — Check-out | L1 acceptance: check out a settled stay, check closure, final invoice, vacant-dirty state | TBD |
 | FR-FDK-3 — Room moves | L1 acceptance: move an in-house guest, check both room states and kept history | TBD |
 | FR-FDK-4 — Early check-in and late check-out | L1 acceptance: record off-hours arrival/departure, check kept times and list visibility | TBD |
-| FR-FDK-5 — Arrivals and departures list | L1 acceptance: seed all three groups, check exactly-once listing with names and states | TBD |
+| FR-FDK-5 — Arrivals and departures list | L1 acceptance: seed all three groups, check exactly-once listing with names and states | Guard: e2e QueryCalendar arrivals + stay QueryStays in-house listing compared to the pre-failure record by `restore.sh --expect-file` (PR #149 slice). |
 | FR-RMS-1 — Room inventory with live status | L1 acceptance: set every state, check each room appears once with the right state | Guard: `services/rooms` test `creates a room type and room, then reports sellability` + fixtures `UpsertRoomType.json`, `UpsertRoom.json`, `ListRoomsByState.json`, `CheckRoomTypeSellability.json` (PR #112 slice). |
 | FR-RMS-2 — Housekeeping status updates | L1 acceptance: walk dirty to inspected, check check-in offer and change record | Guard: `services/rooms` test `walks dirty to inspected and refuses dirty straight to inspected` + fixtures `UpdateRoomState.json`, `UpdateRoomState-illegal.json` (PR #112 slice). |
 | FR-RMS-3 — Out-of-order and maintenance blocks | L1 acceptance: block a range, check display plus refused booking and check-in on blocked dates | Guard: `services/rooms` test `names the block when a blocked room is checked` + fixtures `BlockRoom.json`, `CheckRoomTypeSellability-blocked.json` (PR #112 slice). |
@@ -40,12 +40,12 @@ Guard cells (see strategy §LC and exit criterion §3.3).
 | FR-GST-2 — Guest preferences and notes | L1 acceptance: save notes, check they surface before booking confirmation | TBD |
 | FR-GST-3 — Repeat-guest recognition | L1 acceptance: book for a past guest, check the returning flag and stay count | TBD |
 | FR-GST-4 — Booking confirmation record | L1 acceptance: produce a confirmation, check hotel, guest, dates, type, price | TBD |
-| FR-BIL-1 — Guest folio | L1 acceptance: open a stay folio, check single folio with running balance | TBD |
-| FR-BIL-2 — Room and extra charges | L1 acceptance: post room and extra lines, check lines plus balance movement | TBD |
-| FR-BIL-3 — Payment recording | L1 acceptance: record cash and card payments, check method, time, balance movement | TBD |
+| FR-BIL-1 — Guest folio | L1 acceptance: open a stay folio, check single folio with running balance | Guard: `BillingServiceTest` getFolioBalance + `BillingControllerTest` folio route + e2e folio persists with running balance, restore drill `billing.folios` row (PR #149 slice). |
+| FR-BIL-2 — Room and extra charges | L1 acceptance: post room and extra lines, check lines plus balance movement | Guard: `BillingServiceTest` postCharge (+undefined-item refusal) + `BillingControllerTest` + e2e nightly-room-charge line, restore drill (PR #149 slice). |
+| FR-BIL-3 — Payment recording | L1 acceptance: record cash and card payments, check method, time, balance movement | Guard: `BillingServiceTest` recordPayment (+bad-method refusal) + e2e cash payment, restore drill (PR #149 slice). |
 | FR-BIL-4 — Invoice and receipt | L1 acceptance: print invoice and receipts, check exact match to folio and payments | TBD |
 | FR-BIL-5 — Configurable taxes and fees | L1 acceptance + L5 config-matrix: set rules, post a charge, check derived amounts and balance | TBD |
-| FR-BIL-6 — Day-close totals | L1 acceptance: post a day of activity, close, check per-method totals agree with folios | TBD |
+| FR-BIL-6 — Day-close totals | L1 acceptance: post a day of activity, close, check per-method totals agree with folios | Guard: `BillingServiceTest` runDayClose totals + e2e RunDayClose/GetDayClose compared to the restored `billing.day_close_runs` row (PR #149 slice). |
 | FR-BIL-7 — Settlement before check-out | L1 acceptance + L5 config-matrix: attempt open-balance check-out under each of two hotel approval setups, check refusal unless an authorised approval is recorded | TBD |
 | FR-RPT-1 — Occupancy report | L1 acceptance: compare per-date counts against seeded bookings | TBD |
 | FR-RPT-2 — Revenue summary | L1 acceptance: compare room/extra totals against seeded folios | TBD |
@@ -55,7 +55,7 @@ Guard cells (see strategy §LC and exit criterion §3.3).
 | FR-ADM-2 — User accounts and roles | L1 acceptance: create each role, check sign-in plus exact function reach | Guard: `services/admin` tests (owner boot sign-in, per-role create + `FORBIDDEN` reach, 5-strike lockout) + fixtures `SignIn.json`, `CreateUser.json`, `CreateUser-duplicate.json` (PR #112 slice). |
 | FR-ADM-3 — Room and room-type setup | L1 acceptance: define rooms, check inventory, availability, and calendar uptake | TBD |
 | FR-ADM-4 — Rate-plan and policy setup | L1 acceptance + L5 config-matrix: save plans, times, policies, check pricing and list behaviour | TBD |
-| FR-ADM-5 — Data export and backup | L1 acceptance + L4 install/restore drill: run export/backup, check completeness plus success/failure report | TBD |
+| FR-ADM-5 — Data export and backup | L1 acceptance + L4 install/restore drill: run export/backup, check completeness plus success/failure report | Guard: e2e backup artifact + `restore.sh --verify-only --expect-file` proves arrivals, the in-house stay, and day-close totals survive, with the visible success report (PR #149 slice). |
 | FR-CUS-1 — Customisable required guest fields | L1 acceptance + L5 config-matrix: mark fields mandatory, check refusal names the field | Guard: `services/reservations` test `TestMissingMandatoryGuestFieldNamesField` (refusal names `fullName`) + fixture `CreateReservation-missing-guest-field.json` (PR #112 slice). |
 | FR-CUS-2 — Customisable stay policies | L1 acceptance + L5 config-matrix: save times and wording, check desk enforcement and display | TBD |
 | FR-CUS-3 — Custom charge items | L1 acceptance + L5 config-matrix: define an item, check posting availability and invoice naming | TBD |
@@ -65,9 +65,9 @@ Guard cells (see strategy §LC and exit criterion §3.3).
 | Requirement | Required guard type | Guard |
 |---|---|---|
 | NFR-DEP-1 — Single-property on-premise installation | L4 install drill: sample records across screens, reports, exports — 100% belong to the installed property | TBD |
-| NFR-BKP-1 — Backup frequency and recovery point | L4 restore drill: restore from latest backup — RPO at most 24 h, success at least 6 days out of 7 | TBD |
-| NFR-BKP-2 — Restore time and verifiability | L4 restore drill: restore on equivalent hardware — RTO at most 4 h, 100% of runs report success or failure with time | TBD |
-| NFR-AUD-1 — Audit trail for reservation, room, and folio changes | L2 sampled-change check: 100% of sampled changes carry an unaltered actor and timestamp | TBD |
+| NFR-BKP-1 — Backup frequency and recovery point | L4 restore drill: restore from latest backup — RPO at most 24 h, success at least 6 days out of 7 | Guard: daily full backup of the shared engine + restore drill from the latest verified copy; RPO 24 h is the schedule target per backup-dr (PR #149 slice). |
+| NFR-BKP-2 — Restore time and verifiability | L4 restore drill: restore on equivalent hardware — RTO at most 4 h, 100% of runs report success or failure with time | Guard: restore drill elapsed stays inside the 4 h RTO with the elapsed time printed, and every run writes a visible success-or-failure report (PR #149 slice). |
+| NFR-AUD-1 — Audit trail for reservation, room, and folio changes | L2 sampled-change check: 100% of sampled changes carry an unaltered actor and timestamp | Guard: `restore.sh --expect-file` asserts created_by/created_at are non-null on the restored reservations, stays, folios, and day-close rows; history tables persist change rows (PR #149 slice). |
 | NFR-CON-1 — No double-booking under simultaneous bookings | L3 paired simultaneous attempts: 0 double-bookings, exactly one succeeds with the conflict named | Guard: L3 `TestPairedBookingExactlyOneWins` in `services/reservations/internal/store/store_test.go` — paired simultaneous attempts, 0 double-bookings, exactly one succeeds with `CONFLICT` naming type+dates (PR #112 slice). |
 | NFR-CON-2 — No double room assignment at check-in | L3 paired simultaneous attempts: 0 double assignments, exactly one takes the room with the conflict named | Guard: L3 `grants exactly one winner for paired simultaneous assignments` in `services/rooms/src/server.test.ts` — paired `AssignRoom` attempts, 0 double assignments, exactly one takes the room with `CONFLICT` (PR #112 slice). |
 | NFR-PERF-1 — Desk response under a full small hotel | L2 timed desk check: named views within 2 s, named actions within 3 s at stated load | TBD |
@@ -75,12 +75,12 @@ Guard cells (see strategy §LC and exit criterion §3.3).
 | NFR-SEC-1 — Role-based access | L2 role-matrix check: 100% of out-of-role attempts refused, 0 guest sign-ins | TBD |
 | NFR-SEC-2 — Authentication | L2 sign-in check: lockout after 5 consecutive failures, sign-out after 15 idle minutes | TBD |
 | NFR-RET-1 — Data retention | L2 purge check: 24 months minimum retrievable, 0 records removed from within the floor | TBD |
-| NFR-TZ-1 — Date and timezone handling | L2 record check: 100% of sampled records carry a UTC offset and render on the correct local date | TBD |
+| NFR-TZ-1 — Date and timezone handling | L2 record check: 100% of sampled records carry a UTC offset and render on the correct local date | Guard: timestamptz columns on every touched table; the drill sample carries UTC offsets on the hotel-local day (PR #149 slice). |
 | NFR-I18N-1 — Internationalisation readiness | L2 catalogue check: 100% of user-visible strings from the catalogue, locale formatting, no behaviour on English wording | TBD |
 | NFR-AVL-1 — On-premise availability | L2 offline desk check: 100% of named desk actions succeed with no outside connectivity | TBD |
 
-Coverage: 43 FRs mapped, 14 NFRs mapped, 57 rows total, 14 guards
-filled (PR #112 slice: FR-RES-1, FR-RMS-1..4, FR-RTE-1/2/4/5, FR-ADM-1/2, FR-CUS-1, NFR-CON-1/2 — remaining TBD cells fill in later slices).
+Coverage: 43 FRs mapped, 14 NFRs mapped, 57 rows total, 25 guards
+filled (PR #112 slice: FR-RES-1, FR-RMS-1..4, FR-RTE-1/2/4/5, FR-ADM-1/2, FR-CUS-1, NFR-CON-1/2; PR #149 slice: FR-FDK-1, FR-FDK-5, FR-BIL-1/2/3/6, FR-ADM-5, NFR-BKP-1/2, NFR-AUD-1, NFR-TZ-1, plus FR-RES-1 persistence — remaining TBD cells fill in later slices).
 
 <!-- ao-role: qa-lead -->
 Role: qa-lead · AO session hotel-mgmt-77

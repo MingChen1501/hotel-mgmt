@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { randomUUID } from "node:crypto";
 import { extractBearer } from "./auth.js";
 import { HttpError, errorEnvelope } from "./errors.js";
-import { RoomStore } from "./store.js";
+import { type RoomStoreAPI, RoomStore } from "./store.js";
 
 type Body = Record<string, unknown>;
 
@@ -41,7 +41,7 @@ function writeJson(res: ServerResponse, status: number, payload: unknown): void 
 // createServiceServer answers GET /healthz with the module identity,
 // routes POST /v1/rooms/<Operation> per contracts/http, and refuses
 // every other path with the shared error envelope.
-export function createServiceServer(service: string, store: RoomStore = new RoomStore()): Server {
+export function createServiceServer(service: string, store: RoomStoreAPI = new RoomStore()): Server {
   return createServer((req, res) => {
     void handleRequest(req, res, service, store).catch((err: unknown) => {
       if (err instanceof HttpError) {
@@ -62,7 +62,7 @@ async function handleRequest(
   req: IncomingMessage,
   res: ServerResponse,
   service: string,
-  store: RoomStore,
+  store: RoomStoreAPI,
 ): Promise<void> {
   if (req.method === "GET" && req.url === "/healthz") {
     writeJson(res, 200, { service, status: "ok" });
@@ -84,7 +84,7 @@ async function handleRequest(
   const operation = route[1];
   switch (operation) {
     case "UpsertRoomType": {
-      const record = store.upsertRoomType(body);
+      const record = await store.upsertRoomType(body);
       writeJson(res, 200, {
         id: record.id,
         name: record.name,
@@ -95,7 +95,7 @@ async function handleRequest(
       return;
     }
     case "UpsertRoom": {
-      const record = store.upsertRoom(body);
+      const record = await store.upsertRoom(body);
       writeJson(res, 200, {
         id: record.id,
         number: record.number,
@@ -105,11 +105,11 @@ async function handleRequest(
       return;
     }
     case "UpdateRoomState": {
-      writeJson(res, 200, store.updateRoomState(body));
+      writeJson(res, 200, await store.updateRoomState(body));
       return;
     }
     case "ListRoomsByState": {
-      const rooms = store.listRoomsByState(body["state"]);
+      const rooms = await store.listRoomsByState(body["state"]);
       writeJson(res, 200, {
         state: body["state"],
         rooms: rooms.map((room) => ({
@@ -121,19 +121,19 @@ async function handleRequest(
       return;
     }
     case "CheckRoomTypeSellability": {
-      writeJson(res, 200, store.checkSellability(body));
+      writeJson(res, 200, await store.checkSellability(body));
       return;
     }
     case "AssignRoom": {
-      writeJson(res, 200, store.assignRoom(body));
+      writeJson(res, 200, await store.assignRoom(body));
       return;
     }
     case "ReleaseRoom": {
-      writeJson(res, 200, store.releaseRoom(body));
+      writeJson(res, 200, await store.releaseRoom(body));
       return;
     }
     case "BlockRoom": {
-      writeJson(res, 200, store.blockRoom(body));
+      writeJson(res, 200, await store.blockRoom(body));
       return;
     }
     default: {

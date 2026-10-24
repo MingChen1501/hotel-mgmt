@@ -5,8 +5,14 @@ import { HttpError } from "./errors.js";
 // shapes mirror the SQL transactions from the schema migration: the
 // AssignRoom check-and-set is atomic (single synchronous section, no
 // await between the read and the write), and every state change
-// appends a history row plus an outbox event. Postgres persistence
-// of these rows hardens in a later slice; the semantics stay the same.
+// appends a history row plus an outbox event.
+//
+// Postgres persistence hardens in PostgresRoomStore (pgstore.ts),
+// selected when DATABASE_URL is set (issue #149); both implement
+// RoomStoreAPI with identical semantics. The AssignRoom idempotency
+// receipts stay in memory by design: the schema carries no receipt
+// table (schema.md section 3), and the NFR-CON-2 exactly-once guard
+// itself is the conditional atomic write, which is fully persisted.
 export type RoomState =
   | "occupied"
   | "vacant-dirty"
@@ -24,7 +30,7 @@ export const ROOM_STATES: RoomState[] = [
 
 // Housekeeping order (BR-28): dirty -> clean -> inspected. Occupied
 // rooms only release to dirty; out-of-order rooms re-enter via dirty.
-const ALLOWED_TRANSITIONS: Record<RoomState, RoomState[]> = {
+export const ALLOWED_TRANSITIONS: Record<RoomState, RoomState[]> = {
   "vacant-dirty": ["vacant-clean", "out-of-order"],
   "vacant-clean": ["vacant-inspected", "vacant-dirty", "out-of-order"],
   "vacant-inspected": ["occupied", "vacant-dirty", "out-of-order"],
@@ -75,27 +81,103 @@ export interface OutboxEvent {
   createdBy: string;
 }
 
-const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+export const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
-function requireDate(value: unknown, field: string): string {
+export function requireDate(value: unknown, field: string): string {
   if (typeof value !== "string" || !DATE_PATTERN.test(value)) {
     throw new HttpError("VALIDATION_FAILED", `${field} must be a YYYY-MM-DD date.`, { field });
   }
   return value;
 }
 
-function requireString(value: unknown, field: string): string {
+export function requireString(value: unknown, field: string): string {
   if (typeof value !== "string" || value.trim() === "") {
     throw new HttpError("VALIDATION_FAILED", `${field} is required.`, { field });
   }
   return value.trim();
 }
 
-function rangesOverlap(fromA: string, toA: string, fromB: string, toB: string): boolean {
+export function rangesOverlap(fromA: string, toA: string, fromB: string, toB: string): boolean {
   return fromA <= toB && toA >= fromB;
 }
 
-export class RoomStore {
+export interface UpsertRoomTypeInput {
+  name?: unknown;
+  capacity?: unknown;
+  bedType?: unknown;
+  features?: unknown;
+  actor?: unknown;
+}
+
+export interface UpsertRoomInput {
+  number?: unknown;
+  roomType?: unknown;
+  floor?: unknown;
+  bedType?: unknown;
+  capacity?: unknown;
+  features?: unknown;
+  actor?: unknown;
+}
+
+export interface UpdateRoomStateInput {
+  roomNumber?: unknown;
+  newState?: unknown;
+  actor?: unknown;
+}
+
+export interface CheckSellabilityInput {
+  roomType?: unknown;
+  dateFrom?: unknown;
+  dateTo?: unknown;
+  roomNumber?: unknown;
+}
+
+export interface AssignRoomInput {
+  roomNumber?: unknown;
+  businessDate?: unknown;
+  stayLink?: unknown;
+  idempotencyKey?: unknown;
+  actor?: unknown;
+}
+
+export interface ReleaseRoomInput {
+  roomNumber?: unknown;
+  toState?: unknown;
+  actor?: unknown;
+}
+
+export interface BlockRoomInput {
+  roomNumber?: unknown;
+  dateFrom?: unknown;
+  dateTo?: unknown;
+  reason?: unknown;
+  actor?: unknown;
+}
+
+// RoomStoreAPI is the contract both the in-memory store and the
+// Postgres store implement (issue #149).
+export interface RoomStoreAPI {
+  resolveRoomType(ref: unknown): Promise<RoomTypeRecord>;
+  findRoom(number: unknown): Promise<RoomRecord>;
+  upsertRoomType(input: UpsertRoomTypeInput): Promise<RoomTypeRecord>;
+  upsertRoom(input: UpsertRoomInput): Promise<RoomRecord>;
+  updateRoomState(input: UpdateRoomStateInput): Promise<{ roomNumber: string; oldState: RoomState; newState: RoomState }>;
+  listRoomsByState(state: unknown): Promise<RoomRecord[]>;
+  checkSellability(input: CheckSellabilityInput): Promise<{
+    roomTypeId: string;
+    dateFrom: string;
+    dateTo: string;
+    totalCount: number;
+    sellableCount: number;
+    blockedRooms: string[];
+  }>;
+  assignRoom(input: AssignRoomInput): Promise<{ roomNumber: string; stayLink: string; state: RoomState }>;
+  releaseRoom(input: ReleaseRoomInput): Promise<{ roomNumber: string; oldState: RoomState; newState: RoomState }>;
+  blockRoom(input: BlockRoomInput): Promise<{ roomNumber: string; dateFrom: string; dateTo: string; reason: string }>;
+  historyForRoomId(roomId: string): Promise<StateHistoryEntry[]>;
+}
+
+export class RoomStore implements RoomStoreAPI {
   private readonly roomTypes = new Map<string, RoomTypeRecord>();
   private readonly roomTypesByName = new Map<string, RoomTypeRecord>();
   private readonly rooms = new Map<string, RoomRecord>();
@@ -104,7 +186,7 @@ export class RoomStore {
   private readonly outbox: OutboxEvent[] = [];
   private readonly idempotency = new Map<string, { roomNumber: string; stayLink: string; state: RoomState }>();
 
-  resolveRoomType(ref: unknown): RoomTypeRecord {
+  async resolveRoomType(ref: unknown): Promise<RoomTypeRecord> {
     const key = requireString(ref, "roomType");
     const found = this.roomTypes.get(key) ?? this.roomTypesByName.get(key);
     if (!found) {
@@ -113,7 +195,7 @@ export class RoomStore {
     return found;
   }
 
-  findRoom(number: unknown): RoomRecord {
+  async findRoom(number: unknown): Promise<RoomRecord> {
     const key = requireString(number, "roomNumber");
     const room = this.rooms.get(key);
     if (!room) {
@@ -122,13 +204,7 @@ export class RoomStore {
     return room;
   }
 
-  upsertRoomType(input: {
-    name?: unknown;
-    capacity?: unknown;
-    bedType?: unknown;
-    features?: unknown;
-    actor?: unknown;
-  }): RoomTypeRecord {
+  async upsertRoomType(input: UpsertRoomTypeInput): Promise<RoomTypeRecord> {
     const name = requireString(input.name, "name");
     const actor = requireString(input.actor, "actor");
     const existing = this.roomTypesByName.get(name);
@@ -148,18 +224,10 @@ export class RoomStore {
     return record;
   }
 
-  upsertRoom(input: {
-    number?: unknown;
-    roomType?: unknown;
-    floor?: unknown;
-    bedType?: unknown;
-    capacity?: unknown;
-    features?: unknown;
-    actor?: unknown;
-  }): RoomRecord {
+  async upsertRoom(input: UpsertRoomInput): Promise<RoomRecord> {
     const number = requireString(input.number, "number");
     const actor = requireString(input.actor, "actor");
-    const roomType = this.resolveRoomType(input.roomType);
+    const roomType = await this.resolveRoomType(input.roomType);
     const existing = this.rooms.get(number);
     const record: RoomRecord = {
       id: existing?.id ?? randomUUID(),
@@ -181,12 +249,12 @@ export class RoomStore {
     return record;
   }
 
-  updateRoomState(input: { roomNumber?: unknown; newState?: unknown; actor?: unknown }): {
+  async updateRoomState(input: UpdateRoomStateInput): Promise<{
     roomNumber: string;
     oldState: RoomState;
     newState: RoomState;
-  } {
-    const room = this.findRoom(input.roomNumber);
+  }> {
+    const room = await this.findRoom(input.roomNumber);
     const actor = requireString(input.actor, "actor");
     if (typeof input.newState !== "string" || !ROOM_STATES.includes(input.newState as RoomState)) {
       throw new HttpError("VALIDATION_FAILED", "Unknown state value.", { newState: input.newState });
@@ -214,34 +282,29 @@ export class RoomStore {
     return { roomNumber: room.number, oldState, newState };
   }
 
-  listRoomsByState(state: unknown): RoomRecord[] {
+  async listRoomsByState(state: unknown): Promise<RoomRecord[]> {
     if (typeof state !== "string" || !ROOM_STATES.includes(state as RoomState)) {
       throw new HttpError("VALIDATION_FAILED", "Unknown state value.", { state });
     }
     return [...this.rooms.values()].filter((room) => room.state === state);
   }
 
-  checkSellability(input: {
-    roomType?: unknown;
-    dateFrom?: unknown;
-    dateTo?: unknown;
-    roomNumber?: unknown;
-  }): {
+  async checkSellability(input: CheckSellabilityInput): Promise<{
     roomTypeId: string;
     dateFrom: string;
     dateTo: string;
     totalCount: number;
     sellableCount: number;
     blockedRooms: string[];
-  } {
-    const roomType = this.resolveRoomType(input.roomType);
+  }> {
+    const roomType = await this.resolveRoomType(input.roomType);
     const dateFrom = requireDate(input.dateFrom, "dateFrom");
     const dateTo = requireDate(input.dateTo, "dateTo");
     if (dateTo < dateFrom) {
       throw new HttpError("VALIDATION_FAILED", "dateTo is before dateFrom.", { dateFrom, dateTo });
     }
     if (input.roomNumber !== undefined) {
-      const room = this.findRoom(input.roomNumber);
+      const room = await this.findRoom(input.roomNumber);
       const block = this.blocks.find(
         (entry) => entry.roomId === room.id && rangesOverlap(entry.dateFrom, entry.dateTo, dateFrom, dateTo),
       );
@@ -284,20 +347,14 @@ export class RoomStore {
   // only when it is currently vacant-inspected with no covering
   // block. The read and the write share one synchronous section, so
   // two simultaneous assignments cannot both succeed.
-  assignRoom(input: {
-    roomNumber?: unknown;
-    businessDate?: unknown;
-    stayLink?: unknown;
-    idempotencyKey?: unknown;
-    actor?: unknown;
-  }): { roomNumber: string; stayLink: string; state: RoomState } {
+  async assignRoom(input: AssignRoomInput): Promise<{ roomNumber: string; stayLink: string; state: RoomState }> {
     if (typeof input.idempotencyKey === "string" && input.idempotencyKey !== "") {
       const replay = this.idempotency.get(input.idempotencyKey);
       if (replay) {
         return replay;
       }
     }
-    const room = this.findRoom(input.roomNumber);
+    const room = await this.findRoom(input.roomNumber);
     const businessDate = requireDate(input.businessDate, "businessDate");
     const stayLink = requireString(input.stayLink, "stayLink");
     const actor = requireString(input.actor, "actor");
@@ -332,12 +389,12 @@ export class RoomStore {
     return receipt;
   }
 
-  releaseRoom(input: { roomNumber?: unknown; toState?: unknown; actor?: unknown }): {
+  async releaseRoom(input: ReleaseRoomInput): Promise<{
     roomNumber: string;
     oldState: RoomState;
     newState: RoomState;
-  } {
-    const room = this.findRoom(input.roomNumber);
+  }> {
+    const room = await this.findRoom(input.roomNumber);
     const actor = requireString(input.actor, "actor");
     if (room.state !== "occupied") {
       throw new HttpError("STATE_ILLEGAL", `Room ${room.number} is ${room.state}, not occupied.`, {
@@ -358,14 +415,8 @@ export class RoomStore {
     return { roomNumber: room.number, oldState: "occupied", newState: toState };
   }
 
-  blockRoom(input: {
-    roomNumber?: unknown;
-    dateFrom?: unknown;
-    dateTo?: unknown;
-    reason?: unknown;
-    actor?: unknown;
-  }): { roomNumber: string; dateFrom: string; dateTo: string; reason: string } {
-    const room = this.findRoom(input.roomNumber);
+  async blockRoom(input: BlockRoomInput): Promise<{ roomNumber: string; dateFrom: string; dateTo: string; reason: string }> {
+    const room = await this.findRoom(input.roomNumber);
     const dateFrom = requireDate(input.dateFrom, "dateFrom");
     const dateTo = requireDate(input.dateTo, "dateTo");
     const reason = requireString(input.reason, "reason");
@@ -394,7 +445,7 @@ export class RoomStore {
     return { roomNumber: room.number, dateFrom, dateTo, reason };
   }
 
-  historyForRoomId(roomId: string): StateHistoryEntry[] {
+  async historyForRoomId(roomId: string): Promise<StateHistoryEntry[]> {
     return this.history.filter((entry) => entry.roomId === roomId);
   }
 

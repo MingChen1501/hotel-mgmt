@@ -1,0 +1,42 @@
+{
+  "operation": "PostCharge",
+  "contract": "BillingService",
+  "version": "1.0",
+  "traces": ["docs/architecture/lld.md section 6", "docs/technical/integration.md section 4", "FR-BIL-2", "FR-BIL-5"],
+  "transport": {
+    "method": "POST",
+    "path": "/v1/billing/PostCharge",
+    "auth": "Bearer session token"
+  },
+  "request": {
+    "type": "object",
+    "required": ["stayId", "itemKind", "itemName", "amountMinor", "actor"],
+    "properties": {
+      "stayId": { "type": "string", "format": "uuid" },
+      "itemKind": { "type": "string", "enum": ["nightly-room-charge", "charge-item"] },
+      "itemName": { "type": "string" },
+      "amountMinor": { "type": "integer", "minimum": 0 },
+      "idempotencyKey": { "type": "string" },
+      "actor": { "type": "string" }
+    }
+  },
+  "response": {
+    "type": "object",
+    "required": ["lineId", "folioId", "stayId", "itemKind", "itemName", "amountMinor"],
+    "properties": {
+      "lineId": { "type": "string", "format": "uuid" },
+      "folioId": { "type": "string", "format": "uuid" },
+      "stayId": { "type": "string", "format": "uuid" },
+      "itemKind": { "type": "string" },
+      "itemName": { "type": "string" },
+      "amountMinor": { "type": "integer" },
+      "taxMinor": { "type": "integer" },
+      "feeMinor": { "type": "integer" },
+      "postedAt": { "type": "string", "format": "date-time" }
+    }
+  },
+  "errors": [
+    { "code": "UNAUTHENTICATED", "status": 401, "when": "Missing session token." },
+    { "code": "VALIDATION_FAILED", "status": 400, "when": "Unknown item kind, an undefined charge item, or a negative amount." }
+  ]
+}

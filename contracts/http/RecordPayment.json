@@ -1,0 +1,39 @@
+{
+  "operation": "RecordPayment",
+  "contract": "BillingService",
+  "version": "1.0",
+  "traces": ["docs/architecture/lld.md section 6", "docs/technical/integration.md section 4", "FR-BIL-3"],
+  "transport": {
+    "method": "POST",
+    "path": "/v1/billing/RecordPayment",
+    "auth": "Bearer session token"
+  },
+  "request": {
+    "type": "object",
+    "required": ["stayId", "method", "amountMinor", "actor"],
+    "properties": {
+      "stayId": { "type": "string", "format": "uuid" },
+      "method": { "type": "string", "enum": ["cash", "card"], "description": "Cash and card only until OQ-1 is decided." },
+      "amountMinor": { "type": "integer", "minimum": 1 },
+      "idempotencyKey": { "type": "string" },
+      "actor": { "type": "string" }
+    }
+  },
+  "response": {
+    "type": "object",
+    "required": ["paymentId", "folioId", "stayId", "method", "amountMinor", "balanceMinor"],
+    "properties": {
+      "paymentId": { "type": "string", "format": "uuid" },
+      "folioId": { "type": "string", "format": "uuid" },
+      "stayId": { "type": "string", "format": "uuid" },
+      "method": { "type": "string" },
+      "amountMinor": { "type": "integer" },
+      "paidAt": { "type": "string", "format": "date-time" },
+      "balanceMinor": { "type": "integer" }
+    }
+  },
+  "errors": [
+    { "code": "UNAUTHENTICATED", "status": 401, "when": "Missing session token." },
+    { "code": "VALIDATION_FAILED", "status": 400, "when": "A method other than cash or card, or a non-positive amount." }
+  ]
+}

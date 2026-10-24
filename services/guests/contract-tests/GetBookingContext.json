@@ -1,0 +1,7 @@
+{
+  "operation": "GetBookingContext",
+  "case": "happy-path",
+  "description": "Shows saved preferences and notes before the booking is confirmed.",
+  "request": { "guestId": "<guest-id>" },
+  "expect": { "status": 200, "fullName": "E2E Guest" }
+}

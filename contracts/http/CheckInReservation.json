@@ -1,0 +1,36 @@
+{
+  "operation": "CheckInReservation",
+  "contract": "ReservationService",
+  "version": "1.0",
+  "traces": ["docs/architecture/lld.md section 1", "FR-FDK-1", "FR-RES-1"],
+  "transport": {
+    "method": "POST",
+    "path": "/v1/reservations/CheckInReservation",
+    "auth": "Bearer session token"
+  },
+  "request": {
+    "type": "object",
+    "required": ["reservationRef", "stayId", "actor"],
+    "properties": {
+      "reservationRef": { "type": "string" },
+      "stayId": { "type": "string", "format": "uuid", "description": "Stay id created by the Stay module first." },
+      "actor": { "type": "string" }
+    }
+  },
+  "response": {
+    "type": "object",
+    "required": ["reservationId", "reservationRef", "state", "stayId"],
+    "properties": {
+      "reservationId": { "type": "string", "format": "uuid" },
+      "reservationRef": { "type": "string" },
+      "state": { "type": "string", "const": "checked-in" },
+      "stayId": { "type": "string", "format": "uuid" }
+    }
+  },
+  "errors": [
+    { "code": "UNAUTHENTICATED", "status": 401, "when": "Missing session token." },
+    { "code": "NOT_FOUND", "status": 404, "when": "Unknown reservation reference." },
+    { "code": "STATE_ILLEGAL", "status": 422, "when": "The reservation is not confirmed for check-in." },
+    { "code": "VALIDATION_FAILED", "status": 400, "when": "Missing reservationRef or stayId." }
+  ]
+}

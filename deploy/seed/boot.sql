@@ -1,17 +1,19 @@
--- Minimal boot seed for the walking skeleton E2E loop (issue #111).
+-- Minimal boot seed for the walking skeleton E2E loop (issue #111,
+-- persistence slice issue #149).
 --
 -- Exactly the minimal boot set, nothing more: one hotel profile, one
--- room type, two rooms, one admin user. Hotel values beyond this row
--- enter through Admin config operations, never through seeds
--- (docs/technical/schema.md section 9).
+-- room type, two rooms. Hotel values beyond these rows enter through
+-- Admin config operations, never through seeds
+-- (docs/technical/schema.md section 9). The boot owner identity is
+-- provisioned by the Admin module itself at startup from
+-- ADMIN_BOOT_IDENTITY/ADMIN_BOOT_SECRET (per-sale secret, fail-closed
+-- in script/preflight.sh), so no credential hash lives in the seed.
 --
 -- Apply after all four module migrations, against the shared engine:
 --   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f deploy/seed/boot.sql
 --
 -- Idempotent (INSERT ... ON CONFLICT DO NOTHING) and deterministic
 -- (fixed UUIDs) so the E2E loop can rely on stable references.
--- The owner secret below is a development-only boot credential:
--- rotate it through Admin user operations before any real use.
 
 -- One hotel (admin.hotel_profile holds a single row; the singleton
 -- guard lives in module logic, schema.md section 8).
@@ -24,15 +26,6 @@ VALUES
    '1 Demo Street', '+00 000 000 000', 'desk@skeleton.example',
    'UTC', '14:00', '12:00', 365, 'seed', 'seed')
 ON CONFLICT (id) DO NOTHING;
-
--- One admin user (role owner; secret is a bcrypt hash of the
--- dev-only password 'change-me', generated with pgcrypto crypt()).
-INSERT INTO admin.users
-  (id, display_name, signin_identity, secret_hash, role, created_by, updated_by)
-VALUES
-  ('00000000-0000-0000-0000-000000000002', 'Boot Owner', 'owner',
-   crypt('change-me', gen_salt('bf')), 'owner', 'seed', 'seed')
-ON CONFLICT (signin_identity) DO NOTHING;
 
 -- One room type.
 INSERT INTO rooms.room_types

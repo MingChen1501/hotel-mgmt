@@ -1,0 +1,7 @@
+{
+  "operation": "GetFolioBalance",
+  "case": "happy-path",
+  "description": "Reads the stay folio with every charge and payment line and the running balance.",
+  "request": { "stayId": "<stay-id>", "actor": "front-desk" },
+  "expect": { "status": 200 }
+}

@@ -1,0 +1,37 @@
+{
+  "operation": "IdentifyGuest",
+  "contract": "GuestService",
+  "version": "1.0",
+  "traces": ["docs/architecture/lld.md section 5", "docs/technical/integration.md section 1", "FR-GST-1", "FR-GST-3"],
+  "transport": {
+    "method": "POST",
+    "path": "/v1/guests/IdentifyGuest",
+    "auth": "Bearer session token"
+  },
+  "request": {
+    "type": "object",
+    "properties": {
+      "guestId": { "type": "string", "format": "uuid" },
+      "fullName": { "type": "string" }
+    }
+  },
+  "response": {
+    "type": "object",
+    "required": ["guestId", "fullName", "returningFlag", "pastStayCount", "stayLinks"],
+    "properties": {
+      "guestId": { "type": "string", "format": "uuid" },
+      "fullName": { "type": "string" },
+      "contact": { "type": "object", "additionalProperties": true },
+      "preferences": { "type": "object", "additionalProperties": true },
+      "notes": { "type": "string" },
+      "returningFlag": { "type": "boolean" },
+      "pastStayCount": { "type": "integer" },
+      "stayLinks": { "type": "array", "items": { "type": "object", "additionalProperties": true } }
+    }
+  },
+  "errors": [
+    { "code": "UNAUTHENTICATED", "status": 401, "when": "Missing session token." },
+    { "code": "NOT_FOUND", "status": 404, "when": "Unknown guest." },
+    { "code": "VALIDATION_FAILED", "status": 400, "when": "Neither guestId nor fullName is given." }
+  ]
+}

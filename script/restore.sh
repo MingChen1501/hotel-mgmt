@@ -12,6 +12,10 @@
 #   script/restore.sh --verify-only   restore the newest verified
 #       backup into a scratch database and verify its contents
 #       (non-disruptive; this is the drill evidence for the RTO).
+#       With --expect-file PATH the drill additionally proves the
+#       desk state survived: arrivals, the in-house stay, and the
+#       day-close totals match the pre-failure expectation record
+#       written by the desk loop (issue #149; closes #117).
 #   script/restore.sh --live <file>   stop the stack in upgrade
 #       order, reload the live hotel database from the backup file,
 #       restart in start order, and run the health check
@@ -20,11 +24,8 @@
 #       the per-hotel configuration set (--config PATH, default
 #       deploy/config/hotel.json) exactly; anything else aborts.
 #
-# Skeleton scope: module service rows stay in memory until the
-# persistence slice, so the drill verifies the engine contents
-# (schemas, seed and config rows). Desk-state restore waits for
-# that slice and is tracked as a runbook-deviation follow-up, not
-# claimed here.
+# Scope: module rows persist in Postgres (issue #149), so the drill
+# verifies the restored desk state, not just the engine contents.
 
 set -euo pipefail
 
@@ -60,17 +61,87 @@ health_check() {
   return "$ok"
 }
 
+# verify_expectation proves the desk state survived the restore
+# (issue #149; closes #117): the arrivals for the expected date, the
+# one in-house stay, and the day-close totals in the scratch database
+# match the pre-failure expectation record, and every touched row
+# carries its audit actor and timestamp (NFR-AUD-1).
+verify_expectation() {
+  local scratch="$1" expect_file="$2"
+  [[ -f "$expect_file" ]] || { echo "restore: expectation file $expect_file is missing." >&2; return 1; }
+  local q
+  q() { "${COMPOSE[@]}" exec -T db psql -U hotel -d "$scratch" -tAc "$1"; }
+  local expect
+  expect() { python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get(sys.argv[2], ""))' "$expect_file" "$1"; }
+  local reservation_ref stay_id folio_id arrivals_date
+  reservation_ref="$(expect reservationRef)"
+  stay_id="$(expect stayId)"
+  folio_id="$(expect folioId)"
+  arrivals_date="$(expect arrivalsDate)"
+  [[ -n "$reservation_ref" && -n "$stay_id" && -n "$folio_id" && -n "$arrivals_date" ]] \
+    || { echo "restore: expectation file $expect_file is incomplete." >&2; return 1; }
+
+  local res_state res_stay
+  res_state="$(q "SELECT state FROM reservations.reservations WHERE reference = '$reservation_ref';")"
+  res_stay="$(q "SELECT stay_id FROM reservations.reservations WHERE reference = '$reservation_ref';")"
+  [[ "$res_state" == "$(expect reservationState)" ]] \
+    || { echo "restore: reservation $reservation_ref state is '$res_state', want '$(expect reservationState)'." >&2; return 1; }
+  [[ "$res_stay" == "$stay_id" ]] \
+    || { echo "restore: reservation $reservation_ref lost its stay link." >&2; return 1; }
+
+  local stay_state stay_res
+  stay_state="$(q "SELECT state FROM stay.stays WHERE id = '$stay_id';")"
+  stay_res="$(q "SELECT reservation_id FROM stay.stays WHERE id = '$stay_id';")"
+  [[ "$stay_state" == "in-house" ]] \
+    || { echo "restore: stay $stay_id state is '$stay_state', want 'in-house'." >&2; return 1; }
+  local stay_reservation_id
+  stay_reservation_id="$(q "SELECT id FROM reservations.reservations WHERE reference = '$reservation_ref';")"
+  [[ "$stay_res" == "$stay_reservation_id" ]] \
+    || { echo "restore: stay $stay_id lost its reservation link." >&2; return 1; }
+
+  local arrivals
+  arrivals="$(q "SELECT coalesce(string_agg(reference, ',' ORDER BY reference), '') FROM reservations.reservations WHERE arrival_date = '$arrivals_date' AND state IN ('confirmed','checked-in');")"
+  local want_arrivals
+  want_arrivals="$(python3 -c 'import json,sys; print(",".join(sorted(json.load(open(sys.argv[1]))["arrivalRefs"])))' "$expect_file")"
+  [[ "$arrivals" == "$want_arrivals" ]] \
+    || { echo "restore: arrivals for $arrivals_date are '$arrivals', want '$want_arrivals'." >&2; return 1; }
+
+  local folio_balance day_charges day_payments audit_gaps
+  folio_balance="$(q "SELECT balance_minor FROM billing.folios WHERE id = '$folio_id';")"
+  [[ "$folio_balance" == "$(expect folioBalanceMinor)" ]] \
+    || { echo "restore: folio $folio_id balance is '$folio_balance', want '$(expect folioBalanceMinor)'." >&2; return 1; }
+  day_charges="$(q "SELECT charges_total_minor FROM billing.day_close_runs WHERE business_date = '$arrivals_date';")"
+  [[ "$day_charges" == "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["dayClose"]["chargesTotalMinor"])' "$expect_file")" ]] \
+    || { echo "restore: day-close charges for $arrivals_date are '$day_charges'." >&2; return 1; }
+  day_payments="$(q "SELECT payments_by_method FROM billing.day_close_runs WHERE business_date = '$arrivals_date';")"
+  python3 - "$day_payments" "$expect_file" <<'PYEOF' \
+    || { echo "restore: day-close payments for the date changed across the drill." >&2; return 1; }
+import json, sys
+actual = json.loads(sys.argv[1])
+want = json.load(open(sys.argv[2]))["dayClose"]["paymentsByMethod"]
+assert actual == want, (actual, want)
+PYEOF
+  audit_gaps="$(q "SELECT (SELECT count(*) FROM reservations.reservations WHERE created_by IS NULL OR created_at IS NULL) + (SELECT count(*) FROM stay.stays WHERE created_by IS NULL OR created_at IS NULL) + (SELECT count(*) FROM billing.folios WHERE created_by IS NULL OR created_at IS NULL) + (SELECT count(*) FROM billing.day_close_runs WHERE created_by IS NULL OR created_at IS NULL);")"
+  [[ "$audit_gaps" == "0" ]] \
+    || { echo "restore: $audit_gaps touched row(s) lost their audit entries." >&2; return 1; }
+  echo "restore: desk state verified — arrivals $arrivals_date ($arrivals), stay $stay_id in-house, day-close charges $day_charges."
+  return 0
+}
+
 case "$MODE" in
   --verify-only)
     shift
     STAGING_DIR="./backup-staging"
+    EXPECT_FILE=""
     while [[ $# -gt 0 ]]; do
       case "$1" in
         --staging-dir)
           STAGING_DIR="${2:?--staging-dir needs a path}"; shift 2 ;;
+        --expect-file)
+          EXPECT_FILE="${2:?--expect-file needs a path}"; shift 2 ;;
         *)
           echo "restore: unknown argument for --verify-only: $1" >&2
-          echo "usage: script/restore.sh --verify-only [--staging-dir DIR] | --live <backup-file> [--config PATH] [--staging-dir DIR]" >&2
+          echo "usage: script/restore.sh --verify-only [--staging-dir DIR] [--expect-file PATH] | --live <backup-file> [--config PATH] [--staging-dir DIR]" >&2
           exit 2 ;;
       esac
     done
@@ -90,6 +161,10 @@ case "$MODE" in
     fi
     TABLES="$("${COMPOSE[@]}" exec -T db psql -U hotel -d "$SCRATCH" -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog','information_schema');")"
     PROFILES="$("${COMPOSE[@]}" exec -T db psql -U hotel -d "$SCRATCH" -tAc "SELECT count(*) FROM admin.hotel_profile;" 2>/dev/null || echo 0)"
+    if [[ -n "$EXPECT_FILE" ]]; then
+      verify_expectation "$SCRATCH" "$EXPECT_FILE" \
+        || { "${COMPOSE[@]}" exec -T db psql -U hotel -d postgres -v ON_ERROR_STOP=1 -c "DROP DATABASE $SCRATCH;" >/dev/null 2>&1 || true; exit 1; }
+    fi
     "${COMPOSE[@]}" exec -T db psql -U hotel -d postgres -v ON_ERROR_STOP=1 -c "DROP DATABASE $SCRATCH;" >/dev/null
     ELAPSED="$(( $(date +%s) - START_EPOCH ))"
     echo "restore: drill SUCCEEDED in ${ELAPSED}s (RTO budget 4h): $BACKUP_FILE restored to scratch with $TABLES user tables, $PROFILES hotel profile row(s)."

@@ -1,0 +1,33 @@
+{
+  "operation": "GetBookingContext",
+  "contract": "GuestService",
+  "version": "1.0",
+  "traces": ["docs/architecture/lld.md section 5", "docs/technical/integration.md section 1", "FR-GST-2"],
+  "transport": {
+    "method": "POST",
+    "path": "/v1/guests/GetBookingContext",
+    "auth": "Bearer session token"
+  },
+  "request": {
+    "type": "object",
+    "required": ["guestId"],
+    "properties": {
+      "guestId": { "type": "string", "format": "uuid" }
+    }
+  },
+  "response": {
+    "type": "object",
+    "required": ["guestId", "fullName", "preferences", "notes"],
+    "properties": {
+      "guestId": { "type": "string", "format": "uuid" },
+      "fullName": { "type": "string" },
+      "preferences": { "type": "object", "additionalProperties": true },
+      "notes": { "type": "string" }
+    }
+  },
+  "errors": [
+    { "code": "UNAUTHENTICATED", "status": 401, "when": "Missing session token." },
+    { "code": "NOT_FOUND", "status": 404, "when": "Unknown guest." },
+    { "code": "VALIDATION_FAILED", "status": 400, "when": "Missing guestId." }
+  ]
+}

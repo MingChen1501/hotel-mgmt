@@ -1,0 +1,33 @@
+{
+  "operation": "UpsertChargeItem",
+  "contract": "BillingService",
+  "version": "1.0",
+  "traces": ["docs/architecture/lld.md section 6", "FR-CUS-3"],
+  "transport": {
+    "method": "POST",
+    "path": "/v1/billing/UpsertChargeItem",
+    "auth": "Bearer session token"
+  },
+  "request": {
+    "type": "object",
+    "required": ["name", "priceMinor", "actor"],
+    "properties": {
+      "name": { "type": "string" },
+      "priceMinor": { "type": "integer", "minimum": 0 },
+      "actor": { "type": "string" }
+    }
+  },
+  "response": {
+    "type": "object",
+    "required": ["id", "name", "priceMinor"],
+    "properties": {
+      "id": { "type": "string", "format": "uuid" },
+      "name": { "type": "string" },
+      "priceMinor": { "type": "integer", "minimum": 0 }
+    }
+  },
+  "errors": [
+    { "code": "UNAUTHENTICATED", "status": 401, "when": "Missing session token." },
+    { "code": "VALIDATION_FAILED", "status": 400, "when": "Missing name or a negative price." }
+  ]
+}

@@ -91,7 +91,7 @@ func intField(body map[string]any, field string) (int64, bool) {
 }
 
 // NewMux routes the PricingService operations onto store.
-func NewMux(st *store.Store) *http.ServeMux {
+func NewMux(st store.Repository) *http.ServeMux {
 	mux := http.NewServeMux()
 	authed := func(operation string, handle func(http.ResponseWriter, map[string]any)) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {

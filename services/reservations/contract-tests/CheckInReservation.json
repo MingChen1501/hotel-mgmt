@@ -1,0 +1,11 @@
+{
+  "operation": "CheckInReservation",
+  "case": "happy-path",
+  "description": "Links a confirmed reservation to its in-house stay.",
+  "request": {
+    "reservationRef": "<reservation-ref>",
+    "stayId": "<stay-id>",
+    "actor": "front-desk"
+  },
+  "expect": { "status": 200, "state": "checked-in" }
+}
