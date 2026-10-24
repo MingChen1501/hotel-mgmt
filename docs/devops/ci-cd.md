@@ -16,7 +16,7 @@ Needed pipeline changes become issues.
 
 - **changes.** Always runs. A path filter maps changed areas to the
   heavy jobs below (Go modules, Node modules, billing, services,
-  contracts, deploy, scripts, workflow). Docs-only changes
+  contracts, frontend docs, deploy, scripts, workflow). Docs-only changes
   (`docs/**`, `template/**`, markdown, issue/PR templates) match no
   code filter, so every heavy job is skipped and the PR is gated on
   the metadata `ci` job alone. A change to the workflow file itself
@@ -27,7 +27,10 @@ Needed pipeline changes become issues.
   `docs/README.md`, `docs/ao-rules.md`, issue conventions,
   permissions config, issue/PR templates), no merge-conflict
   markers in tracked files, no secrets-looking strings in tracked
-  files.
+  files, catalogue-coverage check (`script/catalogue-coverage-check.sh`),
+  pre-flight fail-closed proof (`script/test-preflight-fail-closed.sh`),
+  and the harness conventions self-check plus its `--self-test` red proof
+  (`script/harness-conventions-check.sh`).
 - **go-build.** Matrix over the changed Go modules
   (`reservations`, `rates`, `reporting`): build, vet, format check,
   test.
@@ -35,7 +38,8 @@ Needed pipeline changes become issues.
   `rooms`, `guests`, `admin`): install, build, lint, test.
 - **billing-build.** When the billing service changed: Maven
   package (includes unit tests).
-- **contract-check.** When contracts, services, or scripts changed:
+- **contract-check.** When contracts, services, scripts, or frontend
+  docs (`frontend/docs/**`) changed:
   the repo contract gate (`script/contract-check.sh`).
 - **migrate-check.** When services or deploy changed: every module
   boot migration applies against a scratch PostgreSQL.
