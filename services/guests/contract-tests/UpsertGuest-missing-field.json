@@ -1,0 +1,7 @@
+{
+  "operation": "UpsertGuest",
+  "case": "missing-field",
+  "description": "Refuses a guest write missing the mandatory full name with VALIDATION_FAILED naming the field (FR-CUS-1).",
+  "request": { "contact": { "phone": "+84-900-000-001" }, "actor": "front-desk" },
+  "expect": { "status": 400, "code": "VALIDATION_FAILED" }
+}

@@ -1,0 +1,7 @@
+{
+  "operation": "IdentifyGuest",
+  "case": "by-name",
+  "description": "Looks a guest up by full-name search key with stay history, returning flag, and past-stay count (FR-GST-1, FR-GST-3).",
+  "request": { "fullName": "E2E Guest" },
+  "expect": { "status": 200, "returningFlag": false, "pastStayCount": 0 }
+}

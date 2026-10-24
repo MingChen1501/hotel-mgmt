@@ -80,6 +80,86 @@ describe("guest profiles", () => {
       server.close();
     }
   });
+
+  it("looks a guest up by full-name search key with stay links and the returning flag", async () => {
+    const server = createServiceServer("guests", new GuestStore());
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+    const port = (server.address() as { port: number }).port;
+    try {
+      const upserted = await request(port, "POST", "/v1/guests/UpsertGuest", {
+        fullName: "Lookup Guest",
+        contact: { phone: "+84-900-000-010" },
+        actor: "front-desk",
+      });
+      assert.equal(upserted.status, 200);
+      const guestId = (upserted.body as { guestId: string }).guestId;
+
+      const identified = await request(port, "POST", "/v1/guests/IdentifyGuest", {
+        fullName: "Lookup Guest",
+      });
+      assert.equal(identified.status, 200);
+      const profile = identified.body as {
+        guestId: string;
+        fullName: string;
+        returningFlag: boolean;
+        pastStayCount: number;
+        stayLinks: unknown[];
+      };
+      assert.equal(profile.guestId, guestId);
+      assert.equal(profile.fullName, "Lookup Guest");
+      assert.equal(profile.returningFlag, false);
+      assert.equal(profile.pastStayCount, 0);
+      assert.deepEqual(profile.stayLinks, []);
+    } finally {
+      server.close();
+    }
+  });
+
+  it("saves notes and shows them in booking context before confirmation", async () => {
+    const server = createServiceServer("guests", new GuestStore());
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+    const port = (server.address() as { port: number }).port;
+    try {
+      const upserted = await request(port, "POST", "/v1/guests/UpsertGuest", {
+        fullName: "Notes Guest",
+        notes: "Prefers a quiet high floor.",
+        actor: "front-desk",
+      });
+      assert.equal(upserted.status, 200);
+      const guestId = (upserted.body as { guestId: string }).guestId;
+
+      const context = await request(port, "POST", "/v1/guests/GetBookingContext", { guestId });
+      assert.equal(context.status, 200);
+      assert.equal((context.body as { notes: string }).notes, "Prefers a quiet high floor.");
+    } finally {
+      server.close();
+    }
+  });
+
+  it("refuses lookups for unknown guests and writes missing the mandatory name", async () => {
+    const server = createServiceServer("guests", new GuestStore());
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+    const port = (server.address() as { port: number }).port;
+    const unknownId = "00000000-0000-4000-8000-000000000000";
+    try {
+      const identified = await request(port, "POST", "/v1/guests/IdentifyGuest", { guestId: unknownId });
+      assert.equal(identified.status, 404);
+      assert.equal((identified.body as { code: string }).code, "NOT_FOUND");
+
+      const context = await request(port, "POST", "/v1/guests/GetBookingContext", { guestId: unknownId });
+      assert.equal(context.status, 404);
+      assert.equal((context.body as { code: string }).code, "NOT_FOUND");
+
+      const upserted = await request(port, "POST", "/v1/guests/UpsertGuest", {
+        contact: { phone: "+84-900-000-011" },
+        actor: "front-desk",
+      });
+      assert.equal(upserted.status, 400);
+      assert.equal((upserted.body as { code: string }).code, "VALIDATION_FAILED");
+    } finally {
+      server.close();
+    }
+  });
 });
 
 // Postgres round-trip for the guests schema (issue #149). Skipped
