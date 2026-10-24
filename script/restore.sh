@@ -13,9 +13,10 @@
 #       backup into a scratch database and verify its contents
 #       (non-disruptive; this is the drill evidence for the RTO).
 #       With --expect-file PATH the drill additionally proves the
-#       desk state survived: arrivals, the in-house stay, and the
-#       day-close totals match the pre-failure expectation record
-#       written by the desk loop (issue #149; closes #117).
+#       desk state survived: arrivals, the in-house stay, the
+#       day-close totals, and the config rows (hotel profile name,
+#       room states, rate prices) match the pre-failure expectation
+#       record written by the desk loop (issue #117).
 #   script/restore.sh --live <file>   stop the stack in upgrade
 #       order, reload the live hotel database from the backup file,
 #       restart in start order, and run the health check
@@ -25,7 +26,9 @@
 #       deploy/config/hotel.json) exactly; anything else aborts.
 #
 # Scope: module rows persist in Postgres (issue #149), so the drill
-# verifies the restored desk state, not just the engine contents.
+# verifies the restored desk state, not just the engine contents:
+# reservations, stays, folios, day-close totals, and the config
+# rows behind the runbook section 5 owner checks (issue #117).
 
 set -euo pipefail
 
@@ -62,10 +65,12 @@ health_check() {
 }
 
 # verify_expectation proves the desk state survived the restore
-# (issue #149; closes #117): the arrivals for the expected date, the
-# one in-house stay, and the day-close totals in the scratch database
-# match the pre-failure expectation record, and every touched row
-# carries its audit actor and timestamp (NFR-AUD-1).
+# (issue #117): the arrivals for the expected date, the one
+# in-house stay, and the day-close totals in the scratch database
+# match the pre-failure expectation record, as do the config rows
+# behind the runbook section 5 owner checks (hotel profile name,
+# room states, rate prices); and every touched row carries its
+# audit actor and timestamp (NFR-AUD-1).
 verify_expectation() {
   local scratch="$1" expect_file="$2"
   [[ -f "$expect_file" ]] || { echo "restore: expectation file $expect_file is missing." >&2; return 1; }
@@ -73,12 +78,16 @@ verify_expectation() {
   q() { "${COMPOSE[@]}" exec -T db psql -U hotel -d "$scratch" -tAc "$1"; }
   local expect
   expect() { python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get(sys.argv[2], ""))' "$expect_file" "$1"; }
-  local reservation_ref stay_id folio_id arrivals_date
+  local reservation_ref stay_id folio_id arrivals_date hotel_name room_number room_state rate_plan
   reservation_ref="$(expect reservationRef)"
   stay_id="$(expect stayId)"
   folio_id="$(expect folioId)"
   arrivals_date="$(expect arrivalsDate)"
-  [[ -n "$reservation_ref" && -n "$stay_id" && -n "$folio_id" && -n "$arrivals_date" ]] \
+  hotel_name="$(expect hotelName)"
+  room_number="$(expect roomNumber)"
+  room_state="$(expect roomState)"
+  rate_plan="$(expect ratePlanName)"
+  [[ -n "$reservation_ref" && -n "$stay_id" && -n "$folio_id" && -n "$arrivals_date" && -n "$hotel_name" && -n "$room_number" && -n "$room_state" && -n "$rate_plan" ]] \
     || { echo "restore: expectation file $expect_file is incomplete." >&2; return 1; }
 
   local res_state res_stay
@@ -121,10 +130,28 @@ actual = json.loads(sys.argv[1])
 want = json.load(open(sys.argv[2]))["dayClose"]["paymentsByMethod"]
 assert actual == want, (actual, want)
 PYEOF
+  local profiles restored_hotel restored_room rate_prices
+  profiles="$(q "SELECT count(*) FROM admin.hotel_profile;")"
+  [[ "$profiles" == "1" ]] \
+    || { echo "restore: hotel profile rows = '$profiles', want exactly 1." >&2; return 1; }
+  restored_hotel="$(q "SELECT name FROM admin.hotel_profile LIMIT 1;")"
+  [[ "$restored_hotel" == "$hotel_name" ]] \
+    || { echo "restore: hotel name is '$restored_hotel', want '$hotel_name'." >&2; return 1; }
+  restored_room="$(q "SELECT state FROM rooms.rooms WHERE number = '$room_number';")"
+  [[ "$restored_room" == "$room_state" ]] \
+    || { echo "restore: room $room_number state is '$restored_room', want '$room_state'." >&2; return 1; }
+  rate_prices="$(q "SELECT coalesce(json_object_agg(night_date::text, price_minor ORDER BY night_date)::text, '{}') FROM rates.rate_prices WHERE rate_plan_id = (SELECT id FROM rates.rate_plans WHERE name = '$rate_plan');")"
+  python3 - "$rate_prices" "$expect_file" <<'PYEOF' \
+    || { echo "restore: rate prices for plan changed across the drill." >&2; return 1; }
+import json, sys
+actual = json.loads(sys.argv[1])
+want = {k: int(v) for k, v in json.load(open(sys.argv[2]))["ratePrices"].items()}
+assert actual == want, (actual, want)
+PYEOF
   audit_gaps="$(q "SELECT (SELECT count(*) FROM reservations.reservations WHERE created_by IS NULL OR created_at IS NULL) + (SELECT count(*) FROM stay.stays WHERE created_by IS NULL OR created_at IS NULL) + (SELECT count(*) FROM billing.folios WHERE created_by IS NULL OR created_at IS NULL) + (SELECT count(*) FROM billing.day_close_runs WHERE created_by IS NULL OR created_at IS NULL);")"
   [[ "$audit_gaps" == "0" ]] \
     || { echo "restore: $audit_gaps touched row(s) lost their audit entries." >&2; return 1; }
-  echo "restore: desk state verified — arrivals $arrivals_date ($arrivals), stay $stay_id in-house, day-close charges $day_charges."
+  echo "restore: desk state verified — arrivals $arrivals_date ($arrivals), stay $stay_id in-house, day-close charges $day_charges, hotel '$hotel_name', room $room_number $room_state, rate plan $rate_plan prices intact."
   return 0
 }
 
@@ -234,6 +261,6 @@ case "$MODE" in
     ;;
 
   *)
-    echo "usage: script/restore.sh --verify-only [--staging-dir DIR] | --live <backup-file> [--config PATH] [--staging-dir DIR]" >&2
+    echo "usage: script/restore.sh --verify-only [--staging-dir DIR] [--expect-file PATH] | --live <backup-file> [--config PATH] [--staging-dir DIR]" >&2
     exit 2 ;;
 esac
