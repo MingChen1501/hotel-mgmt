@@ -51,6 +51,7 @@ Development table, which use a `../` prefix.
 | Personas | `product/personas.md` | active | `product-owner` | user archetypes the product serves (Closes #30) |
 | User stories | `product/user-stories.md` | active | `product-owner` | stories expressing user needs per slice (Closes #30) |
 | Acceptance criteria | `product/acceptance-criteria.md` | active | `product-owner` | done-conditions per slice (Closes #59) |
+| Phase glossary | `product/phase-glossary.md` | active | `product-owner` | project phase definitions with entry/exit evidence (Closes #226) |
 | Scope | `product/scope.md` | stub (not needed yet) | `product-owner` | in/out scope statement for the product (`product/mvp-scope.md` is the operative scope statement) |
 
 ## Requirements
