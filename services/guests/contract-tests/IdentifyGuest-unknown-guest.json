@@ -1,0 +1,7 @@
+{
+  "operation": "IdentifyGuest",
+  "case": "unknown-guest",
+  "description": "Refuses a lookup for an unknown guest with NOT_FOUND (FR-GST-1).",
+  "request": { "guestId": "00000000-0000-4000-8000-000000000000" },
+  "expect": { "status": 404, "code": "NOT_FOUND" }
+}
