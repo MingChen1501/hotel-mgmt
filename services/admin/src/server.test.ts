@@ -184,6 +184,89 @@ describe("identity and config", () => {
       assert.equal((refused.body as { code: string }).code, "FORBIDDEN");
     });
   });
+
+  it("saves stay times and cancellation wording and shows them back (FR-CUS-2)", async () => {
+    // FR-CUS-2: the owner sets the hotel's check-in/check-out times
+    // and cancellation wording; the desk reads back exactly what was
+    // saved (display), and front-desk accounts cannot change the set
+    // (config matrix). Format validation of the times lives in
+    // script/validate-hotel-config.sh (FR-ADM-4); the API keeps names
+    // non-blank and persists every key verbatim.
+    await withServer(await bootStore(), async (port) => {
+      const ownerSignin = await request(port, "POST", "/v1/admin/SignIn", {
+        signinIdentity: "owner",
+        secret: "owner-secret",
+      });
+      const ownerToken = (ownerSignin.body as { token: string }).token;
+
+      const wording = "Free cancellation until 18:00 on the arrival date.";
+      const saved = await request(
+        port,
+        "POST",
+        "/v1/admin/UpdateHotelConfig",
+        {
+          values: {
+            standardCheckinTime: "15:00",
+            standardCheckoutTime: "11:00",
+            cancellationWording: wording,
+          },
+          updatedBy: "owner",
+        },
+        ownerToken,
+      );
+      assert.equal(saved.status, 200);
+      assert.equal(
+        (saved.body as { values: { standardCheckinTime: string } }).values.standardCheckinTime,
+        "15:00",
+      );
+      assert.equal(
+        (saved.body as { values: { standardCheckoutTime: string } }).values.standardCheckoutTime,
+        "11:00",
+      );
+      assert.equal(
+        (saved.body as { values: { cancellationWording: string } }).values.cancellationWording,
+        wording,
+      );
+
+      const reread = await request(port, "POST", "/v1/admin/GetHotelConfig", {}, ownerToken);
+      assert.equal(reread.status, 200);
+      assert.equal(
+        (reread.body as { values: { standardCheckinTime: string } }).values.standardCheckinTime,
+        "15:00",
+      );
+      assert.equal(
+        (reread.body as { values: { standardCheckoutTime: string } }).values.standardCheckoutTime,
+        "11:00",
+      );
+      assert.equal(
+        (reread.body as { values: { cancellationWording: string } }).values.cancellationWording,
+        wording,
+      );
+
+      const created = await request(
+        port,
+        "POST",
+        "/v1/admin/CreateUser",
+        { displayName: "Desk Agent", signinIdentity: "desk-1", secret: "desk-secret", role: "front-desk" },
+        ownerToken,
+      );
+      assert.equal(created.status, 200);
+      const deskSignin = await request(port, "POST", "/v1/admin/SignIn", {
+        signinIdentity: "desk-1",
+        secret: "desk-secret",
+      });
+      const deskToken = (deskSignin.body as { token: string }).token;
+      const refused = await request(
+        port,
+        "POST",
+        "/v1/admin/UpdateHotelConfig",
+        { values: { cancellationWording: "Changed at the desk." }, updatedBy: "desk-1" },
+        deskToken,
+      );
+      assert.equal(refused.status, 403);
+      assert.equal((refused.body as { code: string }).code, "FORBIDDEN");
+    });
+  });
 });
 
 describe("user and role management (FR-ADM-2)", () => {
