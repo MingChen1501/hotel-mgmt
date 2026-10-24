@@ -1,64 +1,7 @@
 # Rates (Go)
 
-Module 4 per `docs/architecture/lld.md` section 4: rate plans,
-availability counts, discounts, stay restrictions, price basis.
-Skeleton only: the service boots and answers `/healthz`; operation
-logic lands in later slices.
+Rate plans, per-night prices, availability counts, discounts, and stay restrictions. Go service (`handler / store`, no service layer); module 4 per `docs/architecture/lld.md` section 4.
 
-## Build
+Design and operations (single source of truth, no duplication here):
 
-Run from this directory (`services/rates`):
-
-```sh
-go build ./...
-```
-
-## Test
-
-```sh
-go test ./...
-```
-
-## Vet and format
-
-```sh
-go vet ./...
-gofmt -l .
-```
-
-`gofmt -l .` must print nothing.
-
-## Migrate
-
-golang-migrate, forward-only in production (`down` files are
-local-dev only):
-
-```sh
-migrate -path migrations -database "$DATABASE_URL" up
-```
-
-## Run
-
-```sh
-go run ./cmd/server
-```
-
-Configuration is via environment: `PORT` (default `8082`); hotel
-values come from `AdminService.GetHotelConfig` with a cached
-offline-first fallback (see LLD section 0) and land in later slices.
-
-## Docker
-
-```sh
-docker build -t hotel-rates .
-```
-
-## Contract tests
-
-`contract-tests/` holds fixtures per provided/consumed operation once
-the first slice lands (see `contract-tests/README.md`). Run the repo
-gate from the repo root before opening a PR:
-
-```sh
-script/contract-check.sh
-```
+- `docs/architecture/services/rates.md` — pattern and layers, flowcharts, dependencies, error mapping, build/test/run
