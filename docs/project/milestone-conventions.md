@@ -51,3 +51,15 @@ exactly-one-type + one-risk-label rule in
 label). File test plans, issue reports, and found bugs against `QA`;
 file their fixes against the phase milestone whose exit signal the
 fix serves.
+
+## Q&A tracking
+
+Question-and-answer issues (e.g. #213, architect Q&A on where Ansible
+is used) are filed with the `[docs]` type and the normal
+exactly-one-type + one-risk-label labels — no new label: the question
+topic is already disambiguated by the title plus the milestone below,
+so an extra label would add bookkeeping without signal. File the issue
+against the milestone the question belongs to (the phase board whose
+scope it clarifies, or `Harness` for harness questions); post the
+answer as an issue comment; close the issue once the answer is
+accepted, per the close rule.
