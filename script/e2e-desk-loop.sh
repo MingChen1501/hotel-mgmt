@@ -271,9 +271,17 @@ pass "day-close $TODAY charges=$CHARGES_TOTAL folio balance=$FOLIO_BALANCE."
 step "write the restore expectation record"
 EXPECT_FILE="$STAGING_DIR/e2e-expect.json"
 PAYMENTS_JSON="$(python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["paymentsByMethod"], sort_keys=True))' <<<"$DAY_CLOSE")"
-python3 - "$EXPECT_FILE" "$TODAY" "$TODAY_REF" "$STAY_ID" "$FOLIO_ID" "$FOLIO_BALANCE" "$CHARGES_TOTAL" "$PAYMENTS_JSON" <<'PYEOF'
+# Pre-failure ground truth for the runbook section 5 owner checks
+# (issue #117): the hotel's own name, the checked-in room's state,
+# and the rate plan's nightly prices, read from the live database
+# just before the backup so the drill compares against what the
+# desk actually showed.
+HOTEL_NAME="$("${COMPOSE[@]}" exec -T db psql -U hotel -d hotel -tAc "SELECT name FROM admin.hotel_profile LIMIT 1;")"
+ROOM_STATE="$("${COMPOSE[@]}" exec -T db psql -U hotel -d hotel -tAc "SELECT state FROM rooms.rooms WHERE number = 'E2E-101';")"
+RATE_PRICES_JSON="$("${COMPOSE[@]}" exec -T db psql -U hotel -d hotel -tAc "SELECT coalesce(json_object_agg(night_date::text, price_minor ORDER BY night_date)::text, '{}') FROM rates.rate_prices WHERE rate_plan_id = (SELECT id FROM rates.rate_plans WHERE name = 'E2E-RACK');")"
+python3 - "$EXPECT_FILE" "$TODAY" "$TODAY_REF" "$STAY_ID" "$FOLIO_ID" "$FOLIO_BALANCE" "$CHARGES_TOTAL" "$PAYMENTS_JSON" "$HOTEL_NAME" "$ROOM_STATE" "$RATE_PRICES_JSON" <<'PYEOF'
 import json, sys
-_, path, today, ref, stay, folio, balance, charges, payments = sys.argv
+_, path, today, ref, stay, folio, balance, charges, payments, hotel, room_state, prices = sys.argv
 record = {
     "arrivalsDate": today,
     "arrivalRefs": [ref],
@@ -287,6 +295,11 @@ record = {
         "chargesTotalMinor": int(charges),
         "paymentsByMethod": json.loads(payments),
     },
+    "hotelName": hotel,
+    "roomNumber": "E2E-101",
+    "roomState": room_state,
+    "ratePlanName": "E2E-RACK",
+    "ratePrices": {k: int(v) for k, v in json.loads(prices).items()},
 }
 json.dump(record, open(path, "w"), indent=2)
 PYEOF
