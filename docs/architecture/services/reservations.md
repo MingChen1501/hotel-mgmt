@@ -70,6 +70,8 @@ Rollback: there is none to run — every write is a single mutex-guarded step (`
 
 None at runtime. The `CheckRestrictionsHook` (`internal/service/service.go:26`) is the seam the Pricing `CheckRestrictions` and Rooms `CheckRoomTypeSellability` outbound calls plug into; until that slice, the desk loop supplies `sellableUnits` and `priceBasis` search outputs in the request (`internal/service/service.go:9-10`). Hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (LLD section 0). Emits `reservation.created` / `reservation.checked-in` domain events (`internal/store/store.go:250-257,312-315`).
 
+See also: [deployment](../system-architecture.md) (§1), [C4 containers](../c4-containers.md), and [event flow](../event-flow.md) (this service's outbox emissions).
+
 ## 6. Error mapping
 
 Envelope `{code, message, details, traceId}` (`internal/handler/handler.go:32-39`) to `docs/technical/error-handling.md` section 1.

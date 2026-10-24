@@ -84,6 +84,8 @@ Development table, which use a `../` prefix.
 | ADR-0002 cross-stack layering | `architecture/decisions/adr-0002-cross-stack-layering.md` | active | `architect` | stack-idiomatic layering differences are intentional (Closes #181; accepted 2026-10-24, Closes #188) |
 | Candidate architectures | `architecture/candidate-architectures.md` | active | `architect` | candidate structures, customisation, strategies, trade-offs, recommendation (Closes #67) |
 | Contract readiness | `architecture/contract-readiness.md` | active | `architect` | walking-skeleton contract/file checklist with traces, stub boundary, CI gate, open questions (Closes #108) |
+| C4 containers | `architecture/c4-containers.md` | active | `architect` | container + component diagrams with per-edge sources (Closes #193) |
+| Event flow | `architecture/event-flow.md` | active | `architect` | outbox-to-reporting data flow with flagged gaps (Closes #193) |
 
 ### Service design (as-built, per service)
 

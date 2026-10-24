@@ -68,17 +68,43 @@ Portability rules (no single-box assumption anywhere):
   their stores) is reached via configuration/service names, so a
   container can move between hosts without code or image changes.
 
-Conceptual layout (placement differs, components do not):
+Conceptual layout (placement differs, components do not) — rendered
+below; every node/edge traces to the source in parentheses:
 
-```text
-desk clients (hotel LAN) --> Nginx --> module containers (8)
-                                                |
-                                    each module --> its own schema
-                                                        (shared engine)
-module containers --> on-premise backup target (exports/backups)
-Prometheus scrapes modules + host; Grafana dashboards on-premise
-remote access via Tailscale only (no inbound internet)
+```mermaid
+flowchart TD
+    DESK[Desk clients<br/>hotel LAN only<br/>no guest sign-in<br/>NFR-SEC-1] --> NGINX[Nginx :80<br/>single entry + static SPA<br/>only host-published port<br/>compose.yaml: proxy 80:80<br/>nginx.conf: listen 80]
+    NGINX --> MODULES
+    subgraph MODULES[8 module containers<br/>compose.yaml PORT + DATABASE_URL<br/>nginx.conf upstreams + /v1 routes]
+        RES[reservations :8081]
+        RATES[rates :8082]
+        RPT[reporting :8083]
+        STAY[stay :8084]
+        ROOMS[rooms :8085]
+        GUESTS[guests :8086]
+        BILL[billing :8087]
+        ADMIN[admin :8088]
+    end
+    RES --> DB[(PostgreSQL :5432<br/>one engine, 8 schemas<br/>internal to hotel-lan, no ports<br/>compose.yaml: db)]
+    STAY --> DB
+    ROOMS --> DB
+    RATES --> DB
+    GUESTS --> DB
+    BILL --> DB
+    RPT --> DB
+    ADMIN --> DB
+    MODULES -.-> BK[(Backup target<br/>backup-staging volume<br/>compose.yaml + backup-dr.md<br/>RPO 24h / RTO 4h)]
+    PROM[Prometheus<br/>scrapes module /healthz + /metrics<br/>system-architecture.md §1] -.-> MODULES
+    GRAF[Grafana dashboards<br/>stoppable, metrics kept] -.-> PROM
+    REM[Vendor / owner remote] -.->|Tailscale only<br/>no inbound internet<br/>deployment.md:16| NGINX
 ```
+
+Small-cluster variant (same containers, same contracts, only
+placement differs — `system-architecture.md` §1): host 1 carries
+Nginx + desk-facing modules + monitoring; host 2 carries the
+database engine + backup target; optional host 3 carries remaining
+modules; all hosts join the hotel LAN over the same
+`hotel-lan` service names (portability rules above).
 
 No component calls outside the property in the MVP; there are no
 external integrations (no OTA, no payment provider, no accounting

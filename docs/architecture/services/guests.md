@@ -66,6 +66,8 @@ Rollback: none — reads are pure; upserts and link appends are single guarded s
 
 None at runtime. Consumes `StayEvents` through `linkStay` ingestion (LLD section 5; FR-GST-1: `src/store.ts:106-111`). Supplies the guest block the desk carries into Reservations `Create`/`Modify` (including the hotel-mandatory `fullName` the reservations service enforces). Hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (LLD section 0).
 
+See also: [deployment](../system-architecture.md) (§1), [C4 containers](../c4-containers.md), and [event flow](../event-flow.md) (this service's outbox emissions).
+
 ## 6. Error mapping
 
 Same shared Node envelope as Stay (`src/errors.ts`; `docs/technical/error-handling.md` section 1). Codes observed in `src/store.ts`:

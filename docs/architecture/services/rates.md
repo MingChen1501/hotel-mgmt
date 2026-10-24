@@ -72,6 +72,8 @@ Rollback: none — quotes and checks are pure reads; upserts are single guarded 
 
 None at runtime. Consumed by the desk loop (availability search, `QuotePrice` totals carried into Reservations `Create`/`Modify` as `priceBasis`) and by the future Reservations `CheckRestrictionsHook` seam. Hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (LLD section 0).
 
+See also: [deployment](../system-architecture.md) (§1), [C4 containers](../c4-containers.md), and [event flow](../event-flow.md) (this service's outbox emissions).
+
 ## 6. Error mapping
 
 Envelope `{code, message, details, traceId}` (same shape as reservations) to `docs/technical/error-handling.md` section 1. Constructors (`internal/store/store.go:27-36`):

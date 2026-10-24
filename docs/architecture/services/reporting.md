@@ -65,6 +65,8 @@ Rollback: none needed — reads never mutate, and rebuild replaces rather than p
 
 None — by design the service never reads other modules' stores (`internal/service/service.go:1-11`). Its only input is the domain-event log via `Apply`/`Rebuild`. Hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (LLD section 0).
 
+See also: [deployment](../system-architecture.md) (§1), [C4 containers](../c4-containers.md), and [event flow](../event-flow.md) (this service's event consumption and rebuild).
+
 ## 6. Error mapping
 
 Envelope `{code, message, details, traceId}` (same shape as reservations) to `docs/technical/error-handling.md` section 1. Constructor (`internal/store/store.go:28`):
