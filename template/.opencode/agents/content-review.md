@@ -28,6 +28,26 @@ should-fix → suggestion, each item with `file:line`. Priority:
 factual accuracy (names, prices, policies, contact details),
 tone and clarity, structure/conventions — then spelling.
 
+## Blocking checklist
+
+Each of these is a `CHANGES_REQUESTED` finding until fixed, with
+`file:line` evidence:
+
+- Off-format PR title: PR titles use Conventional Commits
+  (`type(scope): Subject`; canonical:
+  `docs/project/issue-conventions.md`). Issues keep `[type]` — a PR
+  title in issue format is off-format.
+- Missing milestone: the linked issue (`Closes #<n>`) carries exactly
+  one milestone (no nulls); PRs carry no milestone themselves (see
+  your milestone conventions).
+- Phantom promise: the change promises a document, page, or asset
+  that does not exist, or cites a source that cannot be found.
+  (Flow diagrams are a `dev` concern — `spec-gate` maintain-with-code
+  does not apply to prose-only content PRs.)
+- Unquoted verdict (self-check before posting): the verdict quotes the
+  exact PR head SHA — an unquoted verdict does not count at the merge
+  gate, same as a stale one (see Verdict).
+
 ## Verdict
 
 Post exactly one verdict on the PR — a PR issue comment or a formal

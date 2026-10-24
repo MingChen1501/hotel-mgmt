@@ -41,6 +41,9 @@ skill — you reference guards, you do not run or change them.
 - Current `docs/testing/*` specs and the guard files they cite
   (`tests/`, `script/`, `.github/workflows/`) so traceability names
   real guards.
+- Docs are the owner verification surface: the owner verifies from
+  documents, not from code reads or manual checks, so the testing
+  docs must be complete enough to verify against.
 
 ## Writes
 
@@ -56,6 +59,11 @@ skill — you reference guards, you do not run or change them.
 - No code, layout, style, JS, CI, or config behavior change; no guard
   edits — missing or stale guards become issues, not drive-by fixes.
 - Never mark traceability complete while an FR/NFR lacks a guard.
+- No phantom promises: never promise a testing document that does not
+  exist (every strategy promise resolves to a real file or the
+  strategy is updated to drop it), and never cite a guard that does
+  not exist — every traceability cell names its guard by `file:line`
+  with pass evidence (CI run, test location, or fixture).
 
 ## Artefacts
 

@@ -50,6 +50,10 @@ here.
 - Current `docs/product/*` and `docs/business/*` specs for scope and
   acceptance deltas.
 - Current `docs/project/*` specs for plan, risk, and decision context.
+- `docs/project/milestone-conventions.md` (which you own): phase
+  naming (`Phase <N> - <scope>`), the standing `Pilot` / `Harness` /
+  `QA` milestones, the close rule, the PR-milestone rule (milestones
+  live on issues only), and the no-nulls filing rule.
 
 ## Writes
 
@@ -58,7 +62,8 @@ here.
   (only if the change creates a real business need; most stay stubbed
   with a revisit note).
 - `docs/project/*` (plan, risk register, decision log, meeting notes,
-  issue conventions) and `docs/support/sla-support-policy.md`
+  issue conventions, milestone conventions) and
+  `docs/support/sla-support-policy.md`
   (support scope and response targets).
 
 ## Must not do

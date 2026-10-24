@@ -22,13 +22,17 @@ PostgreSQL engine. Per-stack CI is live in
   contract-check usage (`script/contract-check.sh`): `go-module`
   (Go), `node-module` (Node.js/TypeScript), `spring-module`
   (Spring Boot).
-- Concrete build/test/run commands live in each
-  `services/*/README.md` (Go: `go build ./...` / `go test ./...`;
-  Node: `npm run build` / `npm test` / `npm run lint`; Billing:
-  the Maven commands in `services/billing/README.md`). Run the ones
-  for every stack touched and confirm the commands with the
-  orchestrator when in doubt.
+- Docs are the single source of truth: concrete build/test/run
+  commands live in each `docs/architecture/services/*.md` (§7
+  Operations); each `services/*/README.md` is a thin stub linking
+  there, never the authority. If a service README and its design
+  note disagree, the design note wins — file the README drift as a
+  finding instead of following it.
 - Build green before any PR; never open a PR while verification is
   red or unknown.
 - Keep changes scoped and describe in the PR body how they were
   checked (commands run + results), so the reviewer can reproduce.
+- No phantom promises: cite only guards, scripts, and CI jobs that
+  exist (by `file:line` or job name). A verification claim must name
+  a real guard file, a real script path, or a real CI job — never a
+  planned-but-unwritten check.

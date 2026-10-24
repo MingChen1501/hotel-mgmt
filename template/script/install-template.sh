@@ -124,6 +124,7 @@ PAYLOAD=(
   "docs/agentic-template/extraction-plan.md"
   "script/ao-role-footer.sh"
   "script/contract-check.sh"
+  "script/harness-conventions-check.sh"
   "script/ao-spawn-worker.sh"
   "script/orchestrator-merge.sh"
   "script/orchestrator-review.sh"
