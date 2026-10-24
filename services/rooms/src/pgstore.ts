@@ -9,6 +9,7 @@ import {
   type AssignRoomInput,
   type BlockRoomInput,
   type CheckSellabilityInput,
+  type ReleaseBlockInput,
   type ReleaseRoomInput,
   type RoomRecord,
   type RoomState,
@@ -584,6 +585,52 @@ export class PostgresRoomStore implements RoomStoreAPI {
         client,
         "room",
         "blocked",
+        { roomNumber: room.number, dateFrom, dateTo, reason, actor },
+        actor,
+      );
+      return { roomNumber: room.number, dateFrom, dateTo, reason };
+    });
+  }
+
+  async releaseBlock(input: ReleaseBlockInput): Promise<{
+    roomNumber: string;
+    dateFrom: string;
+    dateTo: string;
+    reason: string;
+  }> {
+    const dateFrom = requireDate(input.dateFrom, "dateFrom");
+    const dateTo = requireDate(input.dateTo, "dateTo");
+    const actor = requireString(input.actor, "actor");
+    if (dateTo < dateFrom) {
+      throw new HttpError("VALIDATION_FAILED", "dateTo is before dateFrom.", { dateFrom, dateTo });
+    }
+    return this.withTx(async (client) => {
+      const found = await client.query(`SELECT id, number FROM rooms.rooms WHERE number = $1`, [
+        requireString(input.roomNumber, "roomNumber"),
+      ]);
+      if (found.rows.length === 0) {
+        const key = requireString(input.roomNumber, "roomNumber");
+        throw new HttpError("NOT_FOUND", `Unknown room ${key}.`, { roomNumber: key });
+      }
+      const room = found.rows[0] as { id: string; number: string };
+      const removed = await client.query(
+        `DELETE FROM rooms.room_blocks
+          WHERE room_id = $1 AND date_from = $2 AND date_to = $3
+          RETURNING reason`,
+        [room.id, dateFrom, dateTo],
+      );
+      if (removed.rows.length === 0) {
+        throw new HttpError(
+          "STATE_ILLEGAL",
+          `Room ${room.number} has no block covering ${dateFrom} to ${dateTo}.`,
+          { roomNumber: room.number, dateFrom, dateTo },
+        );
+      }
+      const reason = (removed.rows[0] as { reason: string }).reason;
+      await this.outbox(
+        client,
+        "room",
+        "block-released",
         { roomNumber: room.number, dateFrom, dateTo, reason, actor },
         actor,
       );

@@ -49,6 +49,60 @@ describe("rooms postgres store", { skip: DATABASE_URL === undefined || DATABASE_
     }
   });
 
+  it("releases a block and returns the room to sale", async () => {
+    const pool = new Pool({ connectionString: DATABASE_URL });
+    try {
+      await wipe(pool);
+      const store = new PostgresRoomStore(pool);
+      await store.upsertRoomType({ name: "Deluxe", actor: "manager" });
+      await store.upsertRoom({ number: "101", roomType: "Deluxe", actor: "manager" });
+      await store.blockRoom({
+        roomNumber: "101",
+        dateFrom: "2026-11-01",
+        dateTo: "2026-11-05",
+        reason: "Plumbing repair",
+        actor: "manager",
+      });
+      const blocked = await store.checkSellability({
+        roomType: "Deluxe",
+        dateFrom: "2026-11-01",
+        dateTo: "2026-11-03",
+      });
+      assert.equal(blocked.sellableCount, 0);
+
+      const released = await store.releaseBlock({
+        roomNumber: "101",
+        dateFrom: "2026-11-01",
+        dateTo: "2026-11-05",
+        actor: "manager",
+      });
+      assert.equal(released.reason, "Plumbing repair");
+      const sell = await store.checkSellability({
+        roomType: "Deluxe",
+        dateFrom: "2026-11-01",
+        dateTo: "2026-11-03",
+      });
+      assert.equal(sell.sellableCount, 1);
+
+      await assert.rejects(
+        () =>
+          store.releaseBlock({
+            roomNumber: "101",
+            dateFrom: "2026-11-01",
+            dateTo: "2026-11-05",
+            actor: "manager",
+          }),
+        (err: unknown) => (err as { code?: string }).code === "STATE_ILLEGAL",
+      );
+      const outbox = await pool.query(
+        "SELECT count(*)::int AS n FROM rooms.outbox WHERE event_type = 'block-released'",
+      );
+      assert.equal((outbox.rows[0] as { n: number }).n, 1);
+    } finally {
+      await pool.end();
+    }
+  });
+
   it("grants exactly one winner for paired simultaneous assignments", async () => {
     const pool = new Pool({ connectionString: DATABASE_URL });
     try {

@@ -7,7 +7,11 @@ setup (`UpsertRoomType`, `UpsertRoom` plus the unknown-type
 plus the illegal-transition `STATE_ILLEGAL` branch, `ListRoomsByState`),
 sellability (`CheckRoomTypeSellability` plus the blocked-date
 `STATE_ILLEGAL` branch), assignment (`AssignRoom` plus the
-`CONFLICT` taken branch, `ReleaseRoom`), and `BlockRoom`.
+`CONFLICT` taken branch, `ReleaseRoom`), blocks (`BlockRoom` plus
+`ReleaseBlock` with the no-covering-block `STATE_ILLEGAL` branch,
+issue #160), and the rooms-side move coordination (assign new room,
+release old room to vacant-dirty, walk it back to inspected,
+issue #160).
 
 The paired-concurrency guard for `NFR-CON-2` runs in
 `src/server.test.ts` against the real store. The repo gate
