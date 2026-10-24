@@ -72,6 +72,25 @@ export async function bootStoreFromEnvironment(store: AdminStoreAPI): Promise<vo
   await store.ensureBootUser(identity, secret);
 }
 
+// bootStoreWithRetry runs the boot seed until it lands. The install
+// flow applies the admin schema after the containers answer health
+// checks (deployment.md section 3 steps 4-5), so the first attempts
+// fail while the tables are still missing. Retrying keeps the
+// process (and its proxy DNS entry) alive until the store is ready
+// instead of crashing before the reverse proxy starts.
+export async function bootStoreWithRetry(store: AdminStoreAPI, delayMs = 2000): Promise<void> {
+  for (;;) {
+    try {
+      await bootStoreFromEnvironment(store);
+      return;
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      console.error(`admin boot seed deferred (store not ready yet): ${detail}`);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+}
+
 async function handleRequest(
   req: IncomingMessage,
   res: ServerResponse,

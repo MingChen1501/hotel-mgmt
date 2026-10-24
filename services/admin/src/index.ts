@@ -1,5 +1,5 @@
 import { Pool } from "pg";
-import { createServiceServer, bootStoreFromEnvironment } from "./server.js";
+import { createServiceServer, bootStoreFromEnvironment, bootStoreWithRetry } from "./server.js";
 import { AdminStore } from "./store.js";
 import { PostgresAdminStore } from "./pgstore.js";
 
@@ -19,11 +19,22 @@ if (store instanceof PostgresAdminStore) {
 }
 
 async function main(): Promise<void> {
-  await bootStoreFromEnvironment(store);
   const server = createServiceServer("admin", store);
-  server.listen(port, () => {
-    console.log(`admin listening on :${port}`);
+  // Listen before seeding: the install flow applies the admin
+  // schema after the containers answer health checks (deployment.md
+  // section 3 steps 4-5), so blocking on the seed here would exit
+  // the process before the reverse proxy can resolve this module.
+  await new Promise<void>((resolve) => {
+    server.listen(port, () => {
+      console.log(`admin listening on :${port}`);
+      resolve();
+    });
   });
+  if (store instanceof PostgresAdminStore) {
+    await bootStoreWithRetry(store);
+  } else {
+    await bootStoreFromEnvironment(store);
+  }
 }
 
 void main();

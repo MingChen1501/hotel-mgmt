@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { createServiceServer } from "./server.js";
+import { createServiceServer, bootStoreWithRetry } from "./server.js";
 import { type AdminStoreAPI, AdminStore } from "./store.js";
 
 async function request(
@@ -161,5 +161,24 @@ describe("identity and config", () => {
       assert.equal(refused.status, 403);
       assert.equal((refused.body as { code: string }).code, "FORBIDDEN");
     });
+  });
+});
+
+describe("boot seed retry", () => {
+  it("retries the boot seed until the store is ready instead of crashing", async () => {
+    let attempts = 0;
+    const store = {
+      async ensureBootUser() {
+        attempts += 1;
+        // The first attempts run before the install flow applies
+        // the admin schema, so the tables are still missing.
+        if (attempts < 3) {
+          throw new Error('relation "admin.users" does not exist');
+        }
+        return { userId: "u-1", displayName: "Owner", signinIdentity: "owner", role: "owner" };
+      },
+    } as unknown as AdminStoreAPI;
+    await bootStoreWithRetry(store, 0);
+    assert.equal(attempts, 3);
   });
 });
