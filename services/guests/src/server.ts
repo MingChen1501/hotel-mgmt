@@ -129,6 +129,10 @@ async function handleRequest(
       });
       return;
     }
+    case "ProduceConfirmation": {
+      writeJson(res, 200, await store.produceConfirmation(body));
+      return;
+    }
     default: {
       writeJson(
         res,

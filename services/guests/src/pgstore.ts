@@ -5,6 +5,9 @@ import {
   requireString,
   requireUuid,
   mandatoryFieldStatus,
+  toConfirmationRecord,
+  type AttachReservationInput,
+  type ConfirmationRecord,
   type GetBookingContextInput,
   type GetGuestInput,
   type GuestProfile,
@@ -13,6 +16,7 @@ import {
   type GuestStoreAPI,
   type IdentifyGuestInput,
   type LinkStayInput,
+  type ProduceConfirmationInput,
   type UpsertGuestInput,
 } from "./store.js";
 
@@ -28,6 +32,11 @@ function asObject(value: unknown): Record<string, unknown> {
 // from the linked stays.
 export class PostgresGuestStore implements GuestStoreAPI {
   constructor(private readonly pool: Pool) {}
+
+  // Reservation snapshots are an ephemeral local copy (re-seeded
+  // from reservation reads/events), not stored rows: confirmations
+  // are produced at request time per schema.md section 5.
+  private readonly confirmations = new Map<string, ConfirmationRecord>();
 
   private static toGuest(row: {
     id: string;
@@ -123,6 +132,23 @@ export class PostgresGuestStore implements GuestStoreAPI {
     );
     const record = PostgresGuestStore.toGuest(rows[0]);
     return { ...record, stayLinks: await this.stayLinksFor(record.id) };
+  }
+
+  async attachReservation(input: AttachReservationInput): Promise<ConfirmationRecord> {
+    const record = toConfirmationRecord(input);
+    this.confirmations.set(record.reservationRef, record);
+    return record;
+  }
+
+  async produceConfirmation(input: ProduceConfirmationInput): Promise<ConfirmationRecord> {
+    const reservationRef = requireUuid(input.reservationRef, "reservationRef");
+    const record = this.confirmations.get(reservationRef);
+    if (!record) {
+      throw new HttpError("NOT_FOUND", `Unknown reservation ${reservationRef}.`, {
+        reservationRef,
+      });
+    }
+    return record;
   }
 
   private async stayLinksFor(guestId: string): Promise<GuestStayLink[]> {

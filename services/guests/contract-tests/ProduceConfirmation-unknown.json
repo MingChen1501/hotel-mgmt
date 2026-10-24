@@ -1,0 +1,7 @@
+{
+  "operation": "ProduceConfirmation",
+  "case": "unknown-ref",
+  "description": "Refuses the confirmation record for an unknown reservation ref with NOT_FOUND (FR-GST-4).",
+  "request": { "reservationRef": "00000000-0000-4000-8000-000000000000" },
+  "expect": { "status": 404, "code": "NOT_FOUND" }
+}
