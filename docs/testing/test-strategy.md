@@ -8,9 +8,14 @@ rules, data dictionary, use cases, sequences, audit). At the Closes
 yet; guards now fill slice by slice and the live filled count is the
 Coverage footer line in `traceability-matrix.md`. This document sets only
 the strategy frame: levels, entry/exit criteria per slice, and what is
-manual vs automated in the MVP. Detailed cases, data, plans, and
-reports come per slice later (`test-cases.md`, `test-data.md`,
-`test-plan.md`, `test-report.md` stay stubs until scoped).
+manual vs automated in the MVP. Detailed cases and data live with the
+guards themselves: each matrix guard cell names the exact test plus
+fixture, and results are recorded in the consolidated `test-report.md`
+(Closes #214). Per-slice plans live in the slice issues. No separate
+`test-cases.md`, `test-data.md`, or `test-plan.md` files exist: the
+#214 DROP decision removed those stub promises as duplication, since
+the guard cells plus fixtures plus the consolidated report already
+carry the cases/data content.
 
 ## 1. Test levels
 
@@ -125,11 +130,11 @@ A slice enters testing when all of the following hold:
 
 1. Its FR/NFR delta specs are `active` in `docs/README.md` with a
    `SPEC-GATE PASS` verdict where the tier requires one.
-2. Its rows in `traceability-matrix.md` name the required guard type
-   (guard column may still read TBD — filling it is the slice's job).
-3. Its test cases and data for the slice exist (`test-cases.md` /
-   `test-data.md` deltas, written per slice later).
-4. The build under test is identified (commit or install image) and
+2. Its guard slots in `traceability-matrix.md` name the required
+   guard type (guard column may still read TBD — filling it is the
+   slice's job), and the slice fills them with the exact test plus
+   fixture.
+3. The build under test is identified (commit or install image) and
    its seed data matches the slice's stated hotel setup.
 
 ## 3. Exit criteria per slice
@@ -147,8 +152,8 @@ A slice exits testing when all of the following hold:
 5. Open failures are filed as issues with FR/NFR ids attached; no
    `risk-high` / `risk-very-high` failure is waived without owner
    approval.
-6. The slice's results are recorded (`test-report.md` delta, per slice
-   later).
+6. The slice's results are recorded in the consolidated
+   `test-report.md`.
 
 ## 4. Manual vs automated in the MVP
 
@@ -184,9 +189,10 @@ footer line in `traceability-matrix.md`.
 
 ## 5. Out of scope for this frame
 
-Test cases, test data, per-slice test plans, and test reports
-(per slice later); running any tests; product or architecture
-changes; code.
+Per-slice test plans/cases/data as separate files (cases and data
+live in the matrix guard cells plus fixtures; plans live in slice
+issues; results in `test-report.md` — see the #214 DROP decision);
+running any tests; product or architecture changes; code.
 
 <!-- ao-role: qa-lead -->
 Role: qa-lead · AO session hotel-mgmt-124

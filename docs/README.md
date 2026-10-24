@@ -130,11 +130,8 @@ docs and plans, not gated specs.
 | Type | Path | Status | Owner | Purpose |
 |---|---|---|---|---|
 | Test strategy | `testing/test-strategy.md` | active | `qa-lead` | testing approach, levels, and entry/exit criteria (Closes #62) |
-| Test plan | `testing/test-plan.md` | stub (not needed yet) | `qa-lead` | scoped plan per release or slice |
-| Test cases | `testing/test-cases.md` | stub (not needed yet) | `qa-lead` | cases covering each FR/NFR |
-| Test data | `testing/test-data.md` | stub (not needed yet) | `qa-lead` | datasets and fixtures backing the cases |
 | Traceability matrix | `testing/traceability-matrix.md` | active | `qa-lead` | FR/NFR-to-guard map (every item keeps at least one guard) (Closes #62) |
-| Test report | `testing/test-report.md` | stub (not needed yet) | `qa-lead` | results and open gaps per run |
+| Test report | `testing/test-report.md` | active | `qa-lead` | consolidated full-MVP results with pass evidence per cell (Closes #214) |
 
 ## DevOps / Operations / Release
 
