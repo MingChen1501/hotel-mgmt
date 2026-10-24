@@ -20,6 +20,22 @@ export interface GuestRecord {
   pastStayCount: number;
 }
 
+// Hotel-mandatory guest fields (FR-CUS-1 baseline enforced in
+// module logic): the full name is always required; which contact
+// channels are mandatory is hotel config delivered by a later slice
+// (sibling #158), so the status check covers the name baseline.
+const MANDATORY_GUEST_FIELDS = ["fullName"] as const;
+
+export interface MandatoryFieldStatus {
+  complete: boolean;
+  missingFields: string[];
+}
+
+export function mandatoryFieldStatus(record: { fullName: string }): MandatoryFieldStatus {
+  const missingFields = record.fullName.trim() === "" ? [...MANDATORY_GUEST_FIELDS] : [];
+  return { complete: missingFields.length === 0, missingFields };
+}
+
 export interface GuestStayLink {
   guestId: string;
   stayId: string;
@@ -60,6 +76,21 @@ export interface GetBookingContextInput {
   guestId?: unknown;
 }
 
+export interface GetGuestInput {
+  guestId?: unknown;
+}
+
+export interface LinkStayInput {
+  guestId?: unknown;
+  stayId?: unknown;
+  actor?: unknown;
+}
+
+export interface GuestProfile extends GuestRecord {
+  stayLinks: GuestStayLink[];
+  mandatoryFieldStatus: MandatoryFieldStatus;
+}
+
 // GuestStoreAPI is the contract both the in-memory store and the
 // Postgres store implement (issue #149).
 export interface GuestStoreAPI {
@@ -71,6 +102,13 @@ export interface GuestStoreAPI {
     preferences: Record<string, unknown>;
     notes: string;
   }>;
+  getGuest(input: GetGuestInput): Promise<GuestProfile>;
+  // Stay-link ingestion: appends a link-only stay reference consumed
+  // from StayEvents (LLD section 5; FR-GST-1). Duplicate delivery of
+  // the same stay is idempotent — the link row is UNIQUE per
+  // (guest, stay) — and the returning flag with the past-stay count
+  // (FR-GST-3) derives from the linked stays.
+  linkStay(input: LinkStayInput): Promise<GuestRecord & { stayLinks: GuestStayLink[] }>;
 }
 
 function asObject(value: unknown): Record<string, unknown> {
@@ -117,6 +155,40 @@ export class GuestStore implements GuestStoreAPI {
   }> {
     const record = this.findGuest({ guestId: input.guestId });
     return { guestId: record.id, fullName: record.fullName, preferences: record.preferences, notes: record.notes };
+  }
+
+  async getGuest(input: GetGuestInput): Promise<GuestProfile> {
+    const record = this.findGuest({ guestId: input.guestId });
+    return {
+      ...record,
+      stayLinks: this.linksFor(record.id),
+      mandatoryFieldStatus: mandatoryFieldStatus(record),
+    };
+  }
+
+  async linkStay(input: LinkStayInput): Promise<GuestRecord & { stayLinks: GuestStayLink[] }> {
+    const guestId = requireUuid(input.guestId, "guestId");
+    const stayId = requireUuid(input.stayId, "stayId");
+    const record = this.guests.get(guestId);
+    if (!record) {
+      throw new HttpError("NOT_FOUND", `Unknown guest ${guestId}.`, { guestId });
+    }
+    if (!this.links.some((link) => link.guestId === guestId && link.stayId === stayId)) {
+      this.links.push({ guestId, stayId, linkedAt: new Date().toISOString() });
+    }
+    const stayCount = this.linksFor(guestId).length;
+    record.pastStayCount = stayCount;
+    record.returningFlag = stayCount > 0;
+    this.outbox.push({
+      aggregate: "guest",
+      eventType: "stay-linked",
+      payload: { guestId, stayId, pastStayCount: stayCount },
+    });
+    return { ...record, stayLinks: this.linksFor(guestId) };
+  }
+
+  private linksFor(guestId: string): GuestStayLink[] {
+    return this.links.filter((link) => link.guestId === guestId);
   }
 
   private findGuest(input: { guestId?: unknown; fullName?: unknown }): GuestRecord {

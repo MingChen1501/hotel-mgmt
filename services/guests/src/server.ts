@@ -114,6 +114,21 @@ async function handleRequest(
       writeJson(res, 200, await store.getBookingContext(body));
       return;
     }
+    case "GetGuest": {
+      const profile = await store.getGuest(body);
+      writeJson(res, 200, {
+        guestId: profile.id,
+        fullName: profile.fullName,
+        contact: profile.contact,
+        preferences: profile.preferences,
+        notes: profile.notes,
+        returningFlag: profile.returningFlag,
+        pastStayCount: profile.pastStayCount,
+        stayLinks: profile.stayLinks,
+        mandatoryFieldStatus: profile.mandatoryFieldStatus,
+      });
+      return;
+    }
     default: {
       writeJson(
         res,
