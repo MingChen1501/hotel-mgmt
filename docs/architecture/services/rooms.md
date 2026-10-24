@@ -70,6 +70,8 @@ Rollback: none — each transition is a single guarded in-memory step; refusals 
 
 None at runtime. Consumed by the desk loop (Stay `MoveRoom` pairs Rooms `AssignRoom`/`ReleaseRoom`) and by the future Reservations restriction seam via `CheckRoomTypeSellability` (`src/store.ts:300`). Hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (LLD section 0).
 
+See also: [deployment](../system-architecture.md) (§1), [C4 containers](../c4-containers.md), and [event flow](../event-flow.md) (this service's outbox emissions).
+
 ## 6. Error mapping
 
 Same shared Node envelope as Stay (`src/errors.ts`; `docs/technical/error-handling.md` section 1). Codes observed in `src/store.ts`:

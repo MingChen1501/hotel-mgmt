@@ -70,6 +70,8 @@ Edge trace:
 
 None at runtime. The folio-gate inputs (`folioBalanceMinor`, `openBalanceApproval`) arrive inside the `CheckOut` request — the desk fetches them from Billing `GetFolioBalance` first. The stay links back to Reservations via `CheckInReservation` (called by the desk with the new stay id). Emits `stay.checked-in` / `stay.checked-out` outbox events (`src/store.ts:214-218,283-287`) consumed by Reporting and Guests `linkStay`. Hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (LLD section 0).
 
+See also: [deployment](../system-architecture.md) (§1), [C4 containers](../c4-containers.md), and [event flow](../event-flow.md) (this service's outbox emissions).
+
 ## 6. Error mapping
 
 Envelope `{code, message, details, traceId}` (`src/errors.ts:39-45`; transport mapping `src/server.ts:75-87`) to `docs/technical/error-handling.md` section 1. Code→status map (`src/errors.ts:4-25`):

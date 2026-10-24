@@ -28,14 +28,20 @@ below names no vendor.)
 
 ## 2. Relationships (conceptual)
 
-```text
-RoomType 1---* Room
-Guest 1---* Reservation (each reservation books one RoomType)
-Reservation 1---0..1 Stay (a stay comes from at most one reservation)
-Stay 1---1 Folio (exactly one folio per stay, MVP fixed)
-Room 1---* Stay over time (one stay links one room at a time)
-RatePlan *---* RoomType (prices per room type and date)
-HotelConfig 1---* (rooms, users, policies of the single property)
+```mermaid
+erDiagram
+    ROOM_TYPE["Room type"] ||--|{ ROOM["Room"] : contains
+    GUEST ||--|{ RESERVATION["Reservation"] : books
+    RESERVATION ||--o| STAY["Stay"] : "becomes, at most one"
+    STAY ||--|| FOLIO["Folio"] : "exactly one per stay"
+    ROOM ||--|{ STAY : "hosts over time, one at a time"
+    RATE_PLAN["Rate plan"]}|--|{ROOM_TYPE : "prices per date"
+    HOTEL_CONFIG["Hotel config"] ||--|{ ROOM : "single-property scope"
+    %% HotelConfig also covers users/roles, policies, charge items, and
+    %% tax/fee rules (erd §1) — those are config sections, not entities,
+    %% so no further nodes are drawn. Cross-checked against service
+    %% migrations (services/*/migrations/, billing V1/V2); migrations win
+    %% on any mismatch — none found in this pass.
 ```
 
 ## 3. Overbooking constraint (conceptual)
