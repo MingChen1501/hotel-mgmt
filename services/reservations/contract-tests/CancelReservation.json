@@ -1,0 +1,14 @@
+{
+  "operation": "CancelReservation",
+  "case": "happy-path",
+  "description": "Desk cancels a confirmed reservation with a hotel reason; the reason is kept and the held dates release (FR-RES-3).",
+  "request": {
+    "reservationRef": "<reservation-ref>",
+    "reason": "guest-request",
+    "idempotencyKey": "cancel-1"
+  },
+  "expect": {
+    "status": 200,
+    "state": "cancelled"
+  }
+}

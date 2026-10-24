@@ -1,0 +1,12 @@
+{
+  "operation": "CancelReservation",
+  "case": "missing-reason",
+  "description": "Cancelling without a hotel reason is refused (BR-3).",
+  "request": {
+    "reservationRef": "<reservation-ref>"
+  },
+  "expect": {
+    "status": 400,
+    "code": "VALIDATION_FAILED"
+  }
+}

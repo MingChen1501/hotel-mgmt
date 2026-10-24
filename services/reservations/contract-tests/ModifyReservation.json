@@ -1,0 +1,20 @@
+{
+  "operation": "ModifyReservation",
+  "case": "happy-path",
+  "description": "Desk changes dates and room type before check-in; the quoted total is recalculated and the change is recorded (FR-RES-2).",
+  "request": {
+    "reservationRef": "<reservation-ref>",
+    "arrivalDate": "2026-11-02",
+    "departureDate": "2026-11-04",
+    "roomTypeId": "<deluxe-type-id>",
+    "sellableUnits": 2,
+    "priceBasis": {
+      "totalMinor": 26000
+    },
+    "idempotencyKey": "modify-1"
+  },
+  "expect": {
+    "status": 200,
+    "state": "confirmed"
+  }
+}

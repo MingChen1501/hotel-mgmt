@@ -1,0 +1,77 @@
+{
+  "operation": "MarkNoShow",
+  "contract": "ReservationService",
+  "version": "1.0",
+  "traces": [
+    "docs/architecture/lld.md section 1",
+    "FR-RES-6"
+  ],
+  "transport": {
+    "method": "POST",
+    "path": "/v1/reservations/MarkNoShow",
+    "auth": "Bearer session token"
+  },
+  "request": {
+    "type": "object",
+    "required": [
+      "reservationRef",
+      "reason"
+    ],
+    "properties": {
+      "reservationRef": {
+        "type": "string"
+      },
+      "reason": {
+        "type": "string",
+        "description": "No-show reason from the hotel's own reason list (BR-5; kept in the reservation history)."
+      }
+    }
+  },
+  "response": {
+    "type": "object",
+    "required": [
+      "reservationRef",
+      "state",
+      "noShowReason",
+      "reservationId"
+    ],
+    "properties": {
+      "reservationRef": {
+        "type": "string"
+      },
+      "state": {
+        "type": "string",
+        "const": "no-show"
+      },
+      "noShowReason": {
+        "type": "string"
+      },
+      "reservationId": {
+        "type": "string",
+        "format": "uuid"
+      }
+    }
+  },
+  "errors": [
+    {
+      "code": "UNAUTHENTICATED",
+      "status": 401,
+      "when": "Missing session token."
+    },
+    {
+      "code": "STATE_ILLEGAL",
+      "status": 422,
+      "when": "The reservation already left the confirmed state, or its arrival date has not passed yet."
+    },
+    {
+      "code": "VALIDATION_FAILED",
+      "status": 400,
+      "when": "Missing reservation reference or missing no-show reason."
+    },
+    {
+      "code": "NOT_FOUND",
+      "status": 404,
+      "when": "Unknown reservation reference."
+    }
+  ]
+}

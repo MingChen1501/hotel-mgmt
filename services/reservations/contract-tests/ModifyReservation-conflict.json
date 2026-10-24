@@ -1,0 +1,21 @@
+{
+  "operation": "ModifyReservation",
+  "case": "guard-lost",
+  "description": "Moving a reservation onto dates whose last sellable unit is held loses the re-run guard with CONFLICT naming type+dates (NFR-CON-1).",
+  "request": {
+    "reservationRef": "<reservation-ref>",
+    "arrivalDate": "2026-11-01",
+    "departureDate": "2026-11-03",
+    "roomTypeId": "<deluxe-type-id>",
+    "sellableUnits": 1,
+    "priceBasis": {
+      "totalMinor": 24000
+    },
+    "idempotencyKey": "modify-3"
+  },
+  "precondition": "Another confirmed reservation already holds the single sellable unit for the target type and dates.",
+  "expect": {
+    "status": 409,
+    "code": "CONFLICT"
+  }
+}

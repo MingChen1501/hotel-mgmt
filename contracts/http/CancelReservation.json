@@ -1,0 +1,80 @@
+{
+  "operation": "CancelReservation",
+  "contract": "ReservationService",
+  "version": "1.0",
+  "traces": [
+    "docs/architecture/lld.md section 1",
+    "FR-RES-3"
+  ],
+  "transport": {
+    "method": "POST",
+    "path": "/v1/reservations/CancelReservation",
+    "auth": "Bearer session token"
+  },
+  "request": {
+    "type": "object",
+    "required": [
+      "reservationRef",
+      "reason"
+    ],
+    "properties": {
+      "reservationRef": {
+        "type": "string"
+      },
+      "reason": {
+        "type": "string",
+        "description": "Cancellation reason from the hotel's own reason list (BR-3; list membership enforced where the hotel config list is available, otherwise a non-empty reason is required and kept verbatim per BR-7)."
+      },
+      "idempotencyKey": {
+        "type": "string"
+      }
+    }
+  },
+  "response": {
+    "type": "object",
+    "required": [
+      "reservationRef",
+      "state",
+      "cancelReason",
+      "reservationId"
+    ],
+    "properties": {
+      "reservationRef": {
+        "type": "string"
+      },
+      "state": {
+        "type": "string",
+        "const": "cancelled"
+      },
+      "cancelReason": {
+        "type": "string"
+      },
+      "reservationId": {
+        "type": "string",
+        "format": "uuid"
+      }
+    }
+  },
+  "errors": [
+    {
+      "code": "UNAUTHENTICATED",
+      "status": 401,
+      "when": "Missing session token."
+    },
+    {
+      "code": "STATE_ILLEGAL",
+      "status": 422,
+      "when": "The reservation already left the confirmed state (already checked-in, cancelled, or no-show)."
+    },
+    {
+      "code": "VALIDATION_FAILED",
+      "status": 400,
+      "when": "Missing reservation reference or missing cancellation reason."
+    },
+    {
+      "code": "NOT_FOUND",
+      "status": 404,
+      "when": "Unknown reservation reference."
+    }
+  ]
+}

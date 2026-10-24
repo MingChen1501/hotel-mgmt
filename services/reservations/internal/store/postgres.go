@@ -106,11 +106,12 @@ func scanReservationRows(row rowScanner) (*Reservation, error) {
 	var arrival, departure string
 	var guestSnapshot, priceBasis string
 	var stayID sql.NullString
+	var cancelReason, noShowReason sql.NullString
 	var createdAt time.Time
 	if err := row.Scan(
 		&record.ID, &record.Ref, &arrival, &departure,
 		&record.RoomTypeID, &record.GuestID, &guestSnapshot, &priceBasis,
-		&record.State, &stayID, &record.CreatedBy, &createdAt,
+		&record.State, &cancelReason, &noShowReason, &stayID, &record.CreatedBy, &createdAt,
 	); err != nil {
 		return nil, err
 	}
@@ -121,13 +122,21 @@ func scanReservationRows(row rowScanner) (*Reservation, error) {
 	if stayID.Valid {
 		record.StayID = stayID.String
 	}
+	if cancelReason.Valid {
+		value := cancelReason.String
+		record.CancelReason = &value
+	}
+	if noShowReason.Valid {
+		value := noShowReason.String
+		record.NoShowReason = &value
+	}
 	record.CreatedAt = createdAt.UTC()
 	return record, nil
 }
 
 const reservationColumns = `id, reference, arrival_date::text, departure_date::text,
 	room_type_id, guest_id, guest_snapshot, price_basis,
-	state, stay_id, created_by, created_at`
+	state, cancel_reason, noshow_reason, stay_id, created_by, created_at`
 
 // Create atomically guards and inserts one reservation. When
 // idempotencyKey is non-empty, a repeated key returns the original
@@ -386,6 +395,353 @@ func (p *Postgres) CheckIn(ref, stayID, actor string) (*Reservation, *OpError) {
 	record.State = "checked-in"
 	record.StayID = stayID
 	return record, nil
+}
+
+// storeUnavailable is the envelope error for unexpected driver
+// failures the handler reports without leaking internals.
+func storeUnavailable() *OpError {
+	return &OpError{Code: "VALIDATION_FAILED", Status: 500, Message: "Reservation store unavailable.", Details: map[string]any{}}
+}
+
+// Modify reprices and changes a confirmed reservation (FR-RES-2,
+// BR-2). The row is locked, the overbooking guard re-runs for the new
+// dates and type excluding the reservation itself, and the update,
+// change history, idempotency key, and modified outbox event commit
+// together (NFR-CON-1, NFR-AUD-1).
+func (p *Postgres) Modify(input ModifyInput, idempotencyKey string) (*Reservation, *OpError) {
+	if input.SellableUnits < 1 {
+		return nil, validation("sellableUnits", "sellableUnits must be at least 1.")
+	}
+	tx, err := p.db.Begin()
+	if err != nil {
+		return nil, storeUnavailable()
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+	if idempotencyKey != "" {
+		var existingRef string
+		if err := tx.QueryRow(`SELECT result_ref FROM reservations.idempotency_keys WHERE key = $1`, idempotencyKey).Scan(&existingRef); err == nil && existingRef != "" {
+			record, oerr := p.getInTx(tx, existingRef)
+			if oerr != nil {
+				return nil, oerr
+			}
+			if err := tx.Commit(); err != nil {
+				return nil, storeUnavailable()
+			}
+			committed = true
+			return record, nil
+		}
+	}
+	var record Reservation
+	var arrival, departure string
+	var guestSnapshot, priceBasis string
+	var stayID, cancelReason, noShowReason sql.NullString
+	if err := tx.QueryRow(
+		`SELECT `+reservationColumns+` FROM reservations.reservations WHERE reference = $1 FOR UPDATE`,
+		strings.TrimSpace(input.Ref),
+	).Scan(&record.ID, &record.Ref, &arrival, &departure,
+		&record.RoomTypeID, &record.GuestID, &guestSnapshot, &priceBasis,
+		&record.State, &cancelReason, &noShowReason, &stayID, &record.CreatedBy, &record.CreatedAt); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, notFound(fmt.Sprintf("Unknown reservation %s.", input.Ref), map[string]any{"reservationRef": input.Ref})
+		}
+		return nil, storeUnavailable()
+	}
+	record.ArrivalDate = arrival
+	record.DepartureDate = departure
+	record.Guest = parseGuestSnapshot(guestSnapshot)
+	parsePriceBasis(priceBasis, &record)
+	if stayID.Valid {
+		record.StayID = stayID.String
+	}
+	if record.State != "confirmed" {
+		return nil, &OpError{
+			Code: "STATE_ILLEGAL", Status: 422,
+			Message: fmt.Sprintf("Reservation %s is %s and cannot be modified.", input.Ref, record.State),
+			Details: map[string]any{"reservationRef": input.Ref, "state": record.State},
+		}
+	}
+	newArrival := record.ArrivalDate
+	if strings.TrimSpace(input.ArrivalDate) != "" {
+		newArrival = input.ArrivalDate
+	}
+	newDeparture := record.DepartureDate
+	if strings.TrimSpace(input.DepartureDate) != "" {
+		newDeparture = input.DepartureDate
+	}
+	newRoomType := record.RoomTypeID
+	if strings.TrimSpace(input.RoomTypeID) != "" {
+		newRoomType = strings.TrimSpace(input.RoomTypeID)
+	}
+	var booked int
+	if err := tx.QueryRow(
+		`SELECT count(*) FROM reservations.reservations
+		  WHERE room_type_id = $1 AND state IN ('confirmed','checked-in')
+		    AND arrival_date < $3 AND departure_date > $2 AND reference <> $4`,
+		newRoomType, newArrival, newDeparture, strings.TrimSpace(input.Ref),
+	).Scan(&booked); err != nil {
+		return nil, mapDBError(err, "roomTypeId")
+	}
+	if booked >= input.SellableUnits {
+		return nil, conflict(
+			fmt.Sprintf("No sellable unit left for the room type for %s to %s.", newArrival, newDeparture),
+			map[string]any{"roomTypeId": newRoomType, "arrivalDate": newArrival, "departureDate": newDeparture},
+		)
+	}
+	newGuestID := record.GuestID
+	newGuestSnapshot := guestSnapshot
+	if strings.TrimSpace(input.GuestID) != "" && input.GuestID != record.GuestID {
+		newGuestID = strings.TrimSpace(input.GuestID)
+		newGuestSnapshot = marshalJSON(input.Guest)
+	}
+	recordChange := func(field, oldValue, newValue string) *OpError {
+		if _, err := tx.Exec(
+			`INSERT INTO reservations.reservation_changes
+			  (reservation_id, changed_field, old_value, new_value, created_by)
+			 VALUES ($1,$2,$3::jsonb,$4::jsonb,$5)`,
+			record.ID, field, oldValue, newValue, input.Actor,
+		); err != nil {
+			return storeUnavailable()
+		}
+		return nil
+	}
+	if newArrival != record.ArrivalDate || newDeparture != record.DepartureDate {
+		if oerr := recordChange("dates",
+			marshalJSON(map[string]any{"arrivalDate": record.ArrivalDate, "departureDate": record.DepartureDate}),
+			marshalJSON(map[string]any{"arrivalDate": newArrival, "departureDate": newDeparture})); oerr != nil {
+			return nil, oerr
+		}
+	}
+	if newRoomType != record.RoomTypeID {
+		if oerr := recordChange("roomTypeId", marshalJSON(record.RoomTypeID), marshalJSON(newRoomType)); oerr != nil {
+			return nil, oerr
+		}
+	}
+	if newGuestID != record.GuestID {
+		if oerr := recordChange("guestId", marshalJSON(record.GuestID), marshalJSON(newGuestID)); oerr != nil {
+			return nil, oerr
+		}
+	}
+	if input.TotalMinor != record.TotalMinor {
+		if oerr := recordChange("priceBasis", marshalJSON(record.TotalMinor), marshalJSON(input.TotalMinor)); oerr != nil {
+			return nil, oerr
+		}
+	}
+	if _, err := tx.Exec(
+		`UPDATE reservations.reservations
+		  SET arrival_date = $2, departure_date = $3, room_type_id = $4,
+		      guest_id = $5, guest_snapshot = $6, price_basis = $7,
+		      updated_by = $8, updated_at = now()
+		  WHERE reference = $1`,
+		strings.TrimSpace(input.Ref), newArrival, newDeparture, newRoomType,
+		newGuestID, newGuestSnapshot, priceBasisJSON(input.TotalMinor, input.DiscountName), input.Actor,
+	); err != nil {
+		return nil, mapDBError(err, "roomTypeId")
+	}
+	if idempotencyKey != "" {
+		if _, err := tx.Exec(
+			`INSERT INTO reservations.idempotency_keys (key, operation, result_ref)
+			 VALUES ($1,'ModifyReservation',$2) ON CONFLICT (key) DO NOTHING`,
+			idempotencyKey, strings.TrimSpace(input.Ref),
+		); err != nil {
+			return nil, storeUnavailable()
+		}
+	}
+	payload := marshalJSON(map[string]any{
+		"reservationRef": record.Ref, "roomTypeId": newRoomType,
+		"arrivalDate": newArrival, "departureDate": newDeparture,
+		"guestId": newGuestID, "priceBasisTotal": input.TotalMinor, "actor": input.Actor,
+	})
+	if _, err := tx.Exec(
+		`INSERT INTO reservations.outbox (aggregate, event_type, payload, occurred_at, created_by)
+		 VALUES ('reservation','modified',$1::jsonb,now(),$2)`,
+		payload, input.Actor,
+	); err != nil {
+		return nil, storeUnavailable()
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, storeUnavailable()
+	}
+	committed = true
+	updated, oerr := p.Get(input.Ref)
+	if oerr != nil {
+		return nil, oerr
+	}
+	return updated, nil
+}
+
+// Cancel moves a confirmed reservation to cancelled with the kept
+// hotel reason (FR-RES-3, BR-3) in one transaction with its change
+// history, idempotency key, and cancelled outbox event. Availability
+// releases automatically: the guard counts only confirmed and
+// checked-in rows.
+func (p *Postgres) Cancel(ref, reason, actor, idempotencyKey string) (*Reservation, *OpError) {
+	tx, err := p.db.Begin()
+	if err != nil {
+		return nil, storeUnavailable()
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+	if idempotencyKey != "" {
+		var existingRef string
+		if err := tx.QueryRow(`SELECT result_ref FROM reservations.idempotency_keys WHERE key = $1`, idempotencyKey).Scan(&existingRef); err == nil && existingRef != "" {
+			record, oerr := p.getInTx(tx, existingRef)
+			if oerr != nil {
+				return nil, oerr
+			}
+			if err := tx.Commit(); err != nil {
+				return nil, storeUnavailable()
+			}
+			committed = true
+			return record, nil
+		}
+	}
+	record, oerr := p.getInTx(tx, ref)
+	if oerr != nil {
+		return nil, oerr
+	}
+	if strings.TrimSpace(reason) == "" {
+		return nil, validation("reason", "A cancellation reason from the hotel list is required.")
+	}
+	if record.State != "confirmed" {
+		return nil, &OpError{
+			Code: "STATE_ILLEGAL", Status: 422,
+			Message: fmt.Sprintf("Reservation %s is %s and cannot be cancelled.", ref, record.State),
+			Details: map[string]any{"reservationRef": ref, "state": record.State},
+		}
+	}
+	kept := strings.TrimSpace(reason)
+	if _, err := tx.Exec(
+		`UPDATE reservations.reservations
+		  SET state = 'cancelled', cancel_reason = $2, updated_by = $3, updated_at = now()
+		  WHERE reference = $1`,
+		strings.TrimSpace(ref), kept, actor,
+	); err != nil {
+		return nil, mapDBError(err, "reason")
+	}
+	if _, err := tx.Exec(
+		`INSERT INTO reservations.reservation_changes
+		  (reservation_id, changed_field, old_value, new_value, created_by)
+		 VALUES ($1,'state','"confirmed"','"cancelled"',$2)`,
+		record.ID, actor,
+	); err != nil {
+		return nil, storeUnavailable()
+	}
+	if idempotencyKey != "" {
+		if _, err := tx.Exec(
+			`INSERT INTO reservations.idempotency_keys (key, operation, result_ref)
+			 VALUES ($1,'CancelReservation',$2) ON CONFLICT (key) DO NOTHING`,
+			idempotencyKey, strings.TrimSpace(ref),
+		); err != nil {
+			return nil, storeUnavailable()
+		}
+	}
+	payload := marshalJSON(map[string]any{
+		"reservationRef": record.Ref, "roomTypeId": record.RoomTypeID,
+		"arrivalDate": record.ArrivalDate, "departureDate": record.DepartureDate,
+		"guestId": record.GuestID, "reason": kept, "actor": actor,
+	})
+	if _, err := tx.Exec(
+		`INSERT INTO reservations.outbox (aggregate, event_type, payload, occurred_at, created_by)
+		 VALUES ('reservation','cancelled',$1::jsonb,now(),$2)`,
+		payload, actor,
+	); err != nil {
+		return nil, storeUnavailable()
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, storeUnavailable()
+	}
+	committed = true
+	updated, oerr := p.Get(ref)
+	if oerr != nil {
+		return nil, oerr
+	}
+	return updated, nil
+}
+
+// MarkNoShow moves a confirmed reservation whose arrival date has
+// passed without check-in to no-show (FR-RES-6, BR-5) with its change
+// history and no-show outbox event in one transaction. No folio
+// charge is posted: the no-show charge decision is deferred per LLD D1.
+func (p *Postgres) MarkNoShow(ref, reason, actor string) (*Reservation, *OpError) {
+	tx, err := p.db.Begin()
+	if err != nil {
+		return nil, storeUnavailable()
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+	record, oerr := p.getInTx(tx, ref)
+	if oerr != nil {
+		return nil, oerr
+	}
+	if strings.TrimSpace(reason) == "" {
+		return nil, validation("reason", "A no-show reason from the hotel list is required.")
+	}
+	if record.State != "confirmed" {
+		return nil, &OpError{
+			Code: "STATE_ILLEGAL", Status: 422,
+			Message: fmt.Sprintf("Reservation %s is %s and cannot be marked no-show.", ref, record.State),
+			Details: map[string]any{"reservationRef": ref, "state": record.State},
+		}
+	}
+	today := time.Now().UTC().Format(dateLayout)
+	if record.ArrivalDate >= today {
+		return nil, &OpError{
+			Code: "STATE_ILLEGAL", Status: 422,
+			Message: fmt.Sprintf("Reservation %s arrives on %s, which has not passed.", ref, record.ArrivalDate),
+			Details: map[string]any{"reservationRef": ref, "arrivalDate": record.ArrivalDate},
+		}
+	}
+	kept := strings.TrimSpace(reason)
+	if _, err := tx.Exec(
+		`UPDATE reservations.reservations
+		  SET state = 'no-show', noshow_reason = $2, updated_by = $3, updated_at = now()
+		  WHERE reference = $1`,
+		strings.TrimSpace(ref), kept, actor,
+	); err != nil {
+		return nil, mapDBError(err, "reason")
+	}
+	if _, err := tx.Exec(
+		`INSERT INTO reservations.reservation_changes
+		  (reservation_id, changed_field, old_value, new_value, created_by)
+		 VALUES ($1,'state','"confirmed"','"no-show"',$2)`,
+		record.ID, actor,
+	); err != nil {
+		return nil, storeUnavailable()
+	}
+	payload := marshalJSON(map[string]any{
+		"reservationRef": record.Ref, "roomTypeId": record.RoomTypeID,
+		"arrivalDate": record.ArrivalDate, "departureDate": record.DepartureDate,
+		"guestId": record.GuestID, "reason": kept, "actor": actor,
+	})
+	if _, err := tx.Exec(
+		`INSERT INTO reservations.outbox (aggregate, event_type, payload, occurred_at, created_by)
+		 VALUES ('reservation','no-show',$1::jsonb,now(),$2)`,
+		payload, actor,
+	); err != nil {
+		return nil, storeUnavailable()
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, storeUnavailable()
+	}
+	committed = true
+	updated, oerr := p.Get(ref)
+	if oerr != nil {
+		return nil, oerr
+	}
+	return updated, nil
 }
 
 func isUniqueViolation(err error) bool {
