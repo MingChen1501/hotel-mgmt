@@ -6,14 +6,37 @@ backlog stays scannable without periodic retitling drives.
 
 ## Title
 
+Issue titles and PR titles use different formats. Issues keep the
+bracketed form for backlog scannability; PR titles — and therefore
+squash-merge commit messages — use Conventional Commits.
+
+### Issue titles
+
 `[type] Imperative summary` — a lowercase type token in square brackets,
 then one sentence-case sentence with no trailing period.
 
-- Imperative mood: start with a verb (`Add`, `Fix`, `Remove`, `Lift`).
+- Imperative mood: start with a verb (`Add`, `Fix`, `Remove`, `Split`).
   `content` issues are the exception: their title is the working content
   title (`[content] Rewrite the cancellation policy page`).
 - One line, no period, no extra prefixes (`docs:` / `Perf:` / `CI:` are
   legacy forms — use `[docs]` / `[perf]` / `[ci]` instead).
+
+### PR titles
+
+`type(scope): Subject` — Conventional Commits form: a lowercase `type`
+from the table below, an optional lowercase `scope` in parentheses naming
+the affected module or area (e.g. `project`, `reporting`, `rooms`;
+omit `scope` only for cross-cutting changes), a colon and one space,
+then a sentence-case `Subject` with no trailing period.
+
+- Imperative mood, same as issue titles: start with a verb (`Add`,
+  `Fix`, `Split`).
+- `Subject` states what the PR does, not the issue number: `Closes #n`
+  stays in the PR body (Linked issue section), never in the title.
+- Reviewer checklist: an off-format PR title is a blocking finding
+  (verdict requests changes until the title matches this format).
+- No retroactive rewrite: already-merged history keeps its old title
+  styles; this convention applies to new PRs only.
 
 ## Type to label table
 
@@ -87,11 +110,18 @@ and the role footer.
 
 ## Examples of good titles
 
+Issues:
+
 - `[chore] Add issue and PR templates with a title and label convention`
 - `[fix] Correct the checkout total when a discount applies`
 - `[feat] Add room availability search for a date range`
 - `[docs] House every SWE document type in-tree with index table`
 - `[content] Rewrite the cancellation policy page`
+
+Example pair (issue title vs its PR title) for this convention change:
+
+- Issue: `[docs] Split PR title format to Conventional Commits`
+- PR: `docs(project): Split PR title format to Conventional Commits`
 
 ## Retitle rule for old issues
 
