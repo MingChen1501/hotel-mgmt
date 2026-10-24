@@ -1,0 +1,7 @@
+{
+  "operation": "GetGuest",
+  "case": "happy-path",
+  "description": "Returns the full guest profile with stay history, returning flag, and mandatory-field status by guest link (FR-GST-1).",
+  "request": { "guestId": "<guest-id>" },
+  "expect": { "status": 200, "fullName": "E2E Guest", "returningFlag": false, "pastStayCount": 0, "mandatoryComplete": true }
+}

@@ -1,0 +1,7 @@
+{
+  "operation": "GetGuest",
+  "case": "missing-field",
+  "description": "Reports a profile missing the hotel-mandatory full name with the field named in mandatoryFieldStatus (FR-GST-1, FR-CUS-1).",
+  "request": { "guestId": "<guest-id-with-blank-name>" },
+  "expect": { "status": 200, "mandatoryComplete": false, "missingFields": ["fullName"] }
+}

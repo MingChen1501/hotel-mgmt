@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { Pool } from "pg";
 import { createServiceServer } from "./server.js";
-import { GuestStore } from "./store.js";
+import { GuestStore, mandatoryFieldStatus } from "./store.js";
 import { PostgresGuestStore } from "./pgstore.js";
 
 const TOKEN = "skeleton-test-token";
@@ -160,6 +160,118 @@ describe("guest profiles", () => {
       server.close();
     }
   });
+
+  it("returns the full profile with mandatory-field status by guest link", async () => {
+    const server = createServiceServer("guests", new GuestStore());
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+    const port = (server.address() as { port: number }).port;
+    try {
+      const upserted = await request(port, "POST", "/v1/guests/UpsertGuest", {
+        fullName: "Profile Guest",
+        contact: { phone: "+84-900-000-020" },
+        preferences: { floor: "high" },
+        notes: "Prefers a quiet high floor.",
+        actor: "front-desk",
+      });
+      assert.equal(upserted.status, 200);
+      const guestId = (upserted.body as { guestId: string }).guestId;
+
+      const fetched = await request(port, "POST", "/v1/guests/GetGuest", { guestId });
+      assert.equal(fetched.status, 200);
+      const profile = fetched.body as {
+        guestId: string;
+        fullName: string;
+        contact: unknown;
+        preferences: unknown;
+        notes: string;
+        returningFlag: boolean;
+        pastStayCount: number;
+        stayLinks: unknown[];
+        mandatoryFieldStatus: { complete: boolean; missingFields: string[] };
+      };
+      assert.equal(profile.guestId, guestId);
+      assert.equal(profile.fullName, "Profile Guest");
+      assert.deepEqual(profile.contact, { phone: "+84-900-000-020" });
+      assert.deepEqual(profile.preferences, { floor: "high" });
+      assert.equal(profile.notes, "Prefers a quiet high floor.");
+      assert.equal(profile.returningFlag, false);
+      assert.equal(profile.pastStayCount, 0);
+      assert.deepEqual(profile.stayLinks, []);
+      assert.deepEqual(profile.mandatoryFieldStatus, { complete: true, missingFields: [] });
+    } finally {
+      server.close();
+    }
+  });
+
+  it("links stays from stay lifecycle events and flags returning guests", async () => {
+    const store = new GuestStore();
+    const server = createServiceServer("guests", store);
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+    const port = (server.address() as { port: number }).port;
+    try {
+      const upserted = await request(port, "POST", "/v1/guests/UpsertGuest", {
+        fullName: "Stay History Guest",
+        actor: "front-desk",
+      });
+      assert.equal(upserted.status, 200);
+      const guestId = (upserted.body as { guestId: string }).guestId;
+      const firstStay = "11111111-1111-4111-8111-111111111111";
+      const secondStay = "22222222-2222-4222-8222-222222222222";
+
+      await store.linkStay({ guestId, stayId: firstStay, actor: "stay-service" });
+      // Duplicate StayEvents delivery of the same stay stays idempotent.
+      await store.linkStay({ guestId, stayId: firstStay, actor: "stay-service" });
+      await store.linkStay({ guestId, stayId: secondStay, actor: "stay-service" });
+
+      const fetched = await request(port, "POST", "/v1/guests/GetGuest", { guestId });
+      assert.equal(fetched.status, 200);
+      const profile = fetched.body as {
+        returningFlag: boolean;
+        pastStayCount: number;
+        stayLinks: { guestId: string; stayId: string }[];
+      };
+      assert.equal(profile.returningFlag, true);
+      assert.equal(profile.pastStayCount, 2);
+      assert.deepEqual(
+        profile.stayLinks.map((link) => link.stayId).sort(),
+        [firstStay, secondStay],
+      );
+
+      const identified = await request(port, "POST", "/v1/guests/IdentifyGuest", { guestId });
+      assert.equal(identified.status, 200);
+      assert.equal((identified.body as { returningFlag: boolean }).returningFlag, true);
+      assert.equal((identified.body as { pastStayCount: number }).pastStayCount, 2);
+    } finally {
+      server.close();
+    }
+  });
+
+  it("refuses profile and stay-link writes for unknown guests", async () => {
+    const store = new GuestStore();
+    const server = createServiceServer("guests", store);
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+    const port = (server.address() as { port: number }).port;
+    const unknownId = "00000000-0000-4000-8000-000000000000";
+    const stayId = "33333333-3333-4333-8333-333333333333";
+    try {
+      const fetched = await request(port, "POST", "/v1/guests/GetGuest", { guestId: unknownId });
+      assert.equal(fetched.status, 404);
+      assert.equal((fetched.body as { code: string }).code, "NOT_FOUND");
+
+      await assert.rejects(store.linkStay({ guestId: unknownId, stayId }), /Unknown guest/);
+    } finally {
+      server.close();
+    }
+  });
+
+  it("reports profiles missing the hotel-mandatory name", async () => {
+    // Restored or legacy rows can predate name enforcement; GetGuest
+    // names the missing hotel-mandatory field instead of refusing.
+    assert.deepEqual(mandatoryFieldStatus({ fullName: "  " }), {
+      complete: false,
+      missingFields: ["fullName"],
+    });
+  });
 });
 
 // Postgres round-trip for the guests schema (issue #149). Skipped
@@ -179,6 +291,27 @@ describe("guests postgres store", { skip: DATABASE_URL === undefined || DATABASE
       const identified = await store.identifyGuest({ guestId: guest.id });
       assert.equal(identified.fullName, "E2E Guest");
       assert.deepEqual(identified.stayLinks, []);
+    } finally {
+      await pool.end();
+    }
+  });
+
+  it("links stays idempotently and reports the profile with field status", async () => {
+    const pool = new Pool({ connectionString: DATABASE_URL });
+    try {
+      await pool.query("DELETE FROM guests.outbox");
+      await pool.query("DELETE FROM guests.guest_stay_links");
+      await pool.query("DELETE FROM guests.guests");
+      const store = new PostgresGuestStore(pool);
+      const guest = await store.upsertGuest({ fullName: "E2E Guest", actor: "front-desk" });
+      const stayId = "44444444-4444-4444-8444-444444444444";
+      await store.linkStay({ guestId: guest.id, stayId });
+      await store.linkStay({ guestId: guest.id, stayId });
+      const profile = await store.getGuest({ guestId: guest.id });
+      assert.equal(profile.pastStayCount, 1);
+      assert.equal(profile.returningFlag, true);
+      assert.equal(profile.stayLinks.length, 1);
+      assert.deepEqual(profile.mandatoryFieldStatus, { complete: true, missingFields: [] });
     } finally {
       await pool.end();
     }
