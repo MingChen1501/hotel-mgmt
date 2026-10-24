@@ -114,6 +114,59 @@ describe("desk loop", () => {
     });
   });
 
+  it("defines rooms as owner and shows them in inventory and availability", async () => {
+    // FR-ADM-3: the owner defines the property's rooms, types, and
+    // capacity; the rooms appear in the inventory, in availability,
+    // and (via the e2e desk loop, which books a defined type and
+    // reads it back on the calendar) in calendar uptake. The owner
+    // actor is what distinguishes this guard from the FR-RMS-4
+    // manager-side setup coverage.
+    await withServer(async (port) => {
+      const typeRes = await request(port, "POST", "/v1/rooms/UpsertRoomType", {
+        name: "Family",
+        capacity: 4,
+        bedType: "queen",
+        features: { extraBed: true },
+        actor: "owner",
+      });
+      assert.equal(typeRes.status, 200);
+      assert.equal((typeRes.body as { capacity: number }).capacity, 4);
+      const typeId = (typeRes.body as { id: string }).id;
+      assert.ok(typeId);
+
+      const roomRes = await request(port, "POST", "/v1/rooms/UpsertRoom", {
+        number: "301",
+        roomType: "Family",
+        floor: "3",
+        actor: "owner",
+      });
+      assert.equal(roomRes.status, 200);
+      assert.equal((roomRes.body as { state: string }).state, "vacant-inspected");
+
+      const inventory = await request(port, "POST", "/v1/rooms/ListRoomsByState", {
+        state: "vacant-inspected",
+      });
+      assert.equal(inventory.status, 200);
+      const rooms = (inventory.body as { rooms: { number: string; roomTypeId: string }[] }).rooms;
+      assert.ok(rooms.some((room) => room.number === "301" && room.roomTypeId === typeId));
+
+      const sell = await request(port, "POST", "/v1/rooms/CheckRoomTypeSellability", {
+        roomType: "Family",
+        dateFrom: "2026-11-01",
+        dateTo: "2026-11-03",
+      });
+      assert.equal(sell.status, 200);
+      assert.deepEqual(sell.body, {
+        roomTypeId: typeId,
+        dateFrom: "2026-11-01",
+        dateTo: "2026-11-03",
+        totalCount: 1,
+        sellableCount: 1,
+        blockedRooms: [],
+      });
+    });
+  });
+
   it("walks dirty to inspected and refuses dirty straight to inspected", async () => {
     const store = new RoomStore();
     await store.upsertRoomType({ name: "Standard", actor: "owner" });
