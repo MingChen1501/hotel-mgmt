@@ -1,7 +1,8 @@
 import { Pool } from "pg";
-import { createServiceServer, bootStoreFromEnvironment, bootStoreWithRetry } from "./server.js";
-import { AdminStore } from "./store.js";
+import { createServiceServer, bootStoreFromEnvironment } from "./server.js";
+import { type AdminStoreAPI, AdminStore } from "./store.js";
 import { PostgresAdminStore } from "./pgstore.js";
+import { applyAdminMigrations } from "./migrate.js";
 
 const port = Number(process.env["PORT"] ?? "8088");
 
@@ -10,31 +11,31 @@ const port = Number(process.env["PORT"] ?? "8088");
 // (issue #149); otherwise the in-memory store serves unit tests and
 // local runs with identical identity and config semantics.
 const databaseUrl = process.env["DATABASE_URL"];
-const store =
-  databaseUrl !== undefined && databaseUrl !== ""
-    ? new PostgresAdminStore(new Pool({ connectionString: databaseUrl }))
-    : new AdminStore();
-if (store instanceof PostgresAdminStore) {
-  console.log("admin using Postgres row storage");
-}
+const usePostgres = databaseUrl !== undefined && databaseUrl !== "";
 
 async function main(): Promise<void> {
+  let store: AdminStoreAPI = new AdminStore();
+  if (usePostgres) {
+    console.log("admin using Postgres row storage");
+    const pool = new Pool({ connectionString: databaseUrl });
+    // The install flow starts the containers before the schema
+    // exists, and the boot seed needs these tables before sign-in
+    // can work, so the module applies its own chain first — the same
+    // startup-migration pattern billing uses with Flyway. Every
+    // statement is idempotent, so the later E2E re-apply of the same
+    // files has no effect.
+    const applied = await applyAdminMigrations(pool);
+    console.log(`admin applied migrations: ${applied.join(", ")}`);
+    store = new PostgresAdminStore(pool);
+  }
+  await bootStoreFromEnvironment(store);
   const server = createServiceServer("admin", store);
-  // Listen before seeding: the install flow applies the admin
-  // schema after the containers answer health checks (deployment.md
-  // section 3 steps 4-5), so blocking on the seed here would exit
-  // the process before the reverse proxy can resolve this module.
   await new Promise<void>((resolve) => {
     server.listen(port, () => {
       console.log(`admin listening on :${port}`);
       resolve();
     });
   });
-  if (store instanceof PostgresAdminStore) {
-    await bootStoreWithRetry(store);
-  } else {
-    await bootStoreFromEnvironment(store);
-  }
 }
 
 void main();
