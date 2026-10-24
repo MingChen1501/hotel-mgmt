@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hotel Management — Desk-Loop API Docs</title>
+  <!-- Swagger UI 5.18.2, vendored (Apache-2.0, https://github.com/swagger-api/swagger-ui).
+       No CDN: the desk works offline, so every asset is served same-origin
+       by the existing proxy static mount (issue #228). -->
+  <link rel="stylesheet" type="text/css" href="./swagger-ui.css">
+  <link rel="icon" type="image/png" href="./favicon-32x32.png" sizes="32x32">
+  <link rel="icon" type="image/png" href="./favicon-16x16.png" sizes="16x16">
+</head>
+<body>
+  <div id="swagger-ui"></div>
+  <script src="./swagger-ui-bundle.js"></script>
+  <script src="./swagger-ui-standalone-preset.js"></script>
+  <script>
+    // Curated desk-loop spec (issue #228): the served copy at
+    // ./openapi.yaml is a byte-identical mirror of
+    // contracts/openapi.yaml, verified by script/openapi-route-check.sh.
+    window.onload = function () {
+      window.ui = SwaggerUIBundle({
+        url: "./openapi.yaml",
+        dom_id: "#swagger-ui",
+        deepLinking: true,
+        presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
+        layout: "StandaloneLayout"
+      });
+    };
+  </script>
+</body>
+</html>
