@@ -41,6 +41,10 @@ public class BillingRepository {
   public record DayClose(LocalDate businessDate, long chargesTotalMinor, Map<String, Long> paymentsByMethod,
       OffsetDateTime runAt) {}
 
+  // Hotel tax and fee rule (FR-BIL-5, issue #190): one stored rule
+  // carries a percent; the service sums them to derive the line tax.
+  public record TaxFeeRule(String name, java.math.BigDecimal percent) {}
+
   private static Folio toFolio(ResultSet rs, int row) throws SQLException {
     return new Folio(UUID.fromString(rs.getString("id")), UUID.fromString(rs.getString("stay_id")),
         rs.getLong("balance_minor"), rs.getString("open_balance_approval"));
@@ -158,6 +162,51 @@ public class BillingRepository {
       throw new IllegalStateException("Charge item upsert returned no row.");
     }
     return rows.get(0);
+  }
+
+  // Hotel tax and fee rules (FR-BIL-5, issue #190): stored as JSON
+  // documents keyed by name; the service reads them on every charge
+  // posting to derive the line tax. The stored schema carries only
+  // percent-based rules, so fee derivation waits for a fee-rule type.
+  public List<TaxFeeRule> listTaxFeeRules() {
+    return jdbc.query("SELECT name, rule::text AS rule_json FROM billing.tax_fee_rules ORDER BY name",
+        (rs, row) -> new TaxFeeRule(rs.getString("name"), percentOf(rs.getString("rule_json"))));
+  }
+
+  public Map<String, Object> upsertTaxFeeRule(String name, java.math.BigDecimal percent, String actor) {
+    UUID id = UUID.randomUUID();
+    Map<String, Object> doc = new LinkedHashMap<>();
+    doc.put("name", name);
+    doc.put("percent", percent);
+    String ruleJson;
+    try {
+      ruleJson = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(doc);
+    } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+      throw new IllegalStateException("Unserialisable tax and fee rule.", e);
+    }
+    List<Map<String, Object>> rows = jdbc.queryForList("INSERT INTO billing.tax_fee_rules"
+        + " (id, name, rule, created_by, updated_by) VALUES (?, ?, ?::jsonb, ?, ?)"
+        + " ON CONFLICT (name) DO UPDATE SET rule = EXCLUDED.rule,"
+        + " updated_by = EXCLUDED.updated_by, updated_at = now() RETURNING name, rule::text AS rule",
+        id, name, ruleJson, actor, actor);
+    if (rows.isEmpty()) {
+      throw new IllegalStateException("Tax and fee rule upsert returned no row.");
+    }
+    return rows.get(0);
+  }
+
+  private static java.math.BigDecimal percentOf(String ruleJson) {
+    try {
+      com.fasterxml.jackson.databind.JsonNode node = new com.fasterxml.jackson.databind.ObjectMapper()
+          .readTree(ruleJson);
+      if (node.has("percent") && node.get("percent").isNumber()) {
+        return new java.math.BigDecimal(node.get("percent").asText());
+      }
+    } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+      // Stored rows are validated at write time; a defensive zero
+      // keeps a hand-edited row from failing the charge posting.
+    }
+    return java.math.BigDecimal.ZERO;
   }
 
   /**

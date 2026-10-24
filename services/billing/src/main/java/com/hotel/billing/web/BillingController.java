@@ -1,6 +1,7 @@
 package com.hotel.billing.web;
 
 import com.hotel.billing.service.BillingService;
+import java.math.BigDecimal;
 import java.util.Map;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -46,6 +47,18 @@ public class BillingController {
     Object value = body.get(field);
     if (value instanceof Number number) {
       return number.longValue();
+    }
+    throw ApiException.validation(field, field + " is required.");
+  }
+
+  private static BigDecimal percentOf(Map<String, Object> body, String field) {
+    Object value = body.get(field);
+    if (value instanceof Number number) {
+      try {
+        return new BigDecimal(number.toString());
+      } catch (NumberFormatException e) {
+        throw ApiException.validation(field, field + " must be a number.");
+      }
     }
     throw ApiException.validation(field, field + " is required.");
   }
@@ -113,6 +126,15 @@ public class BillingController {
   String authorization, @RequestBody Map<String, Object> body) {
     requireToken(authorization);
     return service.upsertChargeItem(required(body, "name"), amountOf(body, "priceMinor"), actor(body));
+  }
+
+  // Stores one hotel tax rule driving the PostCharge derivation
+  // (FR-BIL-5, issue #190); mirrors UpsertChargeItem.
+  @PostMapping("/UpsertTaxFeeRule")
+  public Map<String, Object> upsertTaxFeeRule(@RequestHeader(value = "Authorization", required = false)
+  String authorization, @RequestBody Map<String, Object> body) {
+    requireToken(authorization);
+    return service.upsertTaxFeeRule(required(body, "name"), percentOf(body, "percent"), actor(body));
   }
 
   @PostMapping("/RecordOpenBalanceApproval")

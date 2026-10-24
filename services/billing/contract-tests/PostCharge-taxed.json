@@ -1,0 +1,14 @@
+{
+  "operation": "PostCharge",
+  "case": "taxed",
+  "description": "Posts a nightly room charge with the hotel VAT rule applied: the tax derives from the stored percent and the balance includes it.",
+  "request": {
+    "stayId": "<stay-id>",
+    "itemKind": "nightly-room-charge",
+    "itemName": "Room E2E-101",
+    "amountMinor": 100000,
+    "idempotencyKey": "e2e-charge-taxed",
+    "actor": "front-desk"
+  },
+  "expect": { "status": 200, "amountMinor": 100000, "taxMinor": 8000, "feeMinor": 0 }
+}

@@ -5,7 +5,10 @@ import com.hotel.billing.repo.BillingRepository.ChargeLine;
 import com.hotel.billing.repo.BillingRepository.DayClose;
 import com.hotel.billing.repo.BillingRepository.Folio;
 import com.hotel.billing.repo.BillingRepository.PaymentLine;
+import com.hotel.billing.repo.BillingRepository.TaxFeeRule;
 import com.hotel.billing.web.ApiException;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -144,11 +147,16 @@ public class BillingService {
         return lineViewOf(repo.findCharge(UUID.fromString(winner)), folio);
       }
     }
-    // Tax and fee derivation from hotel rules (FR-BIL-5) lands with
-    // the tax slice; until then lines carry zero tax and fee and the
-    // balance follows the line amount exactly.
-    ChargeLine line = repo.insertCharge(lineId, folio.id(), itemKind, itemName.strip(), amountMinor, 0, 0, who);
-    repo.addToBalance(folio.id(), amountMinor, who);
+    // Tax and fee derivation from the hotel rules (BR-25, FR-BIL-5,
+    // issue #190): every stored rule carries a percent; the line tax
+    // is the amount times the summed percent with exact decimal
+    // arithmetic, rounded half-up to the minor unit, and the balance
+    // moves by amount plus tax plus fee. The stored schema carries no
+    // fee driver, so fee lines stay zero until a fee-rule type lands.
+    long[] derived = deriveTaxAndFee(amountMinor, repo.listTaxFeeRules());
+    ChargeLine line = repo.insertCharge(lineId, folio.id(), itemKind, itemName.strip(), amountMinor, derived[0],
+        derived[1], who);
+    repo.addToBalance(folio.id(), amountMinor + derived[0] + derived[1], who);
     String payload = "{\"folioId\":\"" + folio.id() + "\",\"lineId\":\"" + line.id() + "\"}";
     repo.outbox("folio", "charge-posted", payload, who);
     return lineViewOf(line, folio);
@@ -294,6 +302,39 @@ public class BillingService {
       throw ApiException.validation("priceMinor", "priceMinor cannot be negative.");
     }
     return repo.upsertChargeItem(name.strip(), priceMinor, actorOf(actor));
+  }
+
+  // Stores one hotel tax rule (FR-BIL-5, issue #190): the rule name
+  // keys the stored document and the percent drives the charge-posting
+  // derivation. Percent must be a 0-100 number; anything else is a
+  // validation refusal naming the field. Mirrors UpsertChargeItem so
+  // the hotel set lands through the same write pattern.
+  @Transactional
+  public Map<String, Object> upsertTaxFeeRule(String name, BigDecimal percent, String actor) {
+    if (name == null || name.isBlank()) {
+      throw ApiException.validation("name", "name is required.");
+    }
+    if (percent == null) {
+      throw ApiException.validation("percent", "percent is required.");
+    }
+    if (percent.compareTo(BigDecimal.ZERO) < 0 || percent.compareTo(BigDecimal.valueOf(100)) > 0) {
+      throw ApiException.validation("percent", "percent must be between 0 and 100.");
+    }
+    return repo.upsertTaxFeeRule(name.strip(), percent, actorOf(actor));
+  }
+
+  // Derives the line tax and fee from the stored hotel rules (BR-25,
+  // FR-BIL-5, issue #190). Returns {taxMinor, feeMinor}.
+  static long[] deriveTaxAndFee(long amountMinor, List<TaxFeeRule> rules) {
+    BigDecimal total = BigDecimal.ZERO;
+    for (TaxFeeRule rule : rules) {
+      if (rule.percent() != null) {
+        total = total.add(rule.percent());
+      }
+    }
+    long taxMinor = BigDecimal.valueOf(amountMinor).multiply(total)
+        .divide(BigDecimal.valueOf(100), 0, RoundingMode.HALF_UP).longValue();
+    return new long[] {taxMinor, 0};
   }
 
   private FolioView viewOf(Folio folio) {
