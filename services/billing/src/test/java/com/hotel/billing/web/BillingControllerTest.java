@@ -50,6 +50,31 @@ class BillingControllerTest {
   }
 
   @Test
+  void postChargeTaxedRouteShowsDerivedAmounts() throws Exception {
+    UUID folio = UUID.randomUUID();
+    UUID line = UUID.randomUUID();
+    when(service.postCharge(anyString(), anyString(), anyString(), anyLong(), any(), anyString())).thenReturn(
+        new BillingService.LineView(line, folio, UUID.fromString(STAY), "nightly-room-charge", "Room 101", 100000,
+            8000, 0, "2026-10-26T00:00:00Z"));
+    mvc.perform(post("/v1/billing/PostCharge").header("Authorization", "Bearer test-token")
+        .contentType(MediaType.APPLICATION_JSON)
+        .content("{\"stayId\":\"" + STAY + "\",\"itemKind\":\"nightly-room-charge\","
+            + "\"itemName\":\"Room 101\",\"amountMinor\":100000,\"actor\":\"front-desk\"}"))
+        .andExpect(status().isOk()).andExpect(jsonPath("$.taxMinor").value(8000))
+        .andExpect(jsonPath("$.feeMinor").value(0));
+  }
+
+  @Test
+  void upsertTaxFeeRuleRouteStoresTheRule() throws Exception {
+    when(service.upsertTaxFeeRule(anyString(), any(java.math.BigDecimal.class), anyString()))
+        .thenReturn(Map.of("name", "VAT"));
+    mvc.perform(post("/v1/billing/UpsertTaxFeeRule").header("Authorization", "Bearer test-token")
+        .contentType(MediaType.APPLICATION_JSON)
+        .content("{\"name\":\"VAT\",\"percent\":8,\"actor\":\"front-desk\"}")).andExpect(status().isOk())
+        .andExpect(jsonPath("$.name").value("VAT"));
+  }
+
+  @Test
   void missingTokenIsUnauthenticated() throws Exception {
     mvc.perform(post("/v1/billing/GetFolioBalance").contentType(MediaType.APPLICATION_JSON)
         .content("{\"stayId\":\"" + STAY + "\",\"actor\":\"front-desk\"}")).andExpect(status().isUnauthorized())

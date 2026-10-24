@@ -15,7 +15,9 @@ import com.hotel.billing.repo.BillingRepository.ChargeLine;
 import com.hotel.billing.repo.BillingRepository.DayClose;
 import com.hotel.billing.repo.BillingRepository.Folio;
 import com.hotel.billing.repo.BillingRepository.PaymentLine;
+import com.hotel.billing.repo.BillingRepository.TaxFeeRule;
 import com.hotel.billing.web.ApiException;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -77,6 +79,40 @@ class BillingServiceTest {
     assertEquals(lineId, view.lineId());
     verify(repo, never()).insertCharge(any(), any(), anyString(), anyString(), anyLong(), anyLong(), anyLong(),
         anyString());
+  }
+
+  @Test
+  void postChargeDerivesTaxAndFeeFromHotelRules() {
+    when(repo.ensureFolio(eq(STAY), eq("front-desk"))).thenReturn(folio(0));
+    when(repo.claimOrWait(eq("charge-taxed"), eq("PostCharge"), anyString())).thenReturn(null);
+    when(repo.listTaxFeeRules()).thenReturn(java.util.List.of(new TaxFeeRule("VAT", new BigDecimal("8"))));
+    when(repo.insertCharge(any(), eq(FOLIO), eq("nightly-room-charge"), eq("Room 101"), eq(100000L), eq(8000L),
+        eq(0L), eq("front-desk")))
+        .thenAnswer(invocation -> new ChargeLine(invocation.getArgument(0), FOLIO, "nightly-room-charge",
+            "Room 101", 100000L, 8000L, 0L, NOW, "front-desk"));
+    BillingService.LineView view = service.postCharge(STAY.toString(), "nightly-room-charge", "Room 101", 100000L,
+        "charge-taxed", "front-desk");
+    assertEquals(100000L, view.amountMinor());
+    assertEquals(8000L, view.taxMinor());
+    assertEquals(0L, view.feeMinor());
+    verify(repo).addToBalance(eq(FOLIO), eq(108000L), eq("front-desk"));
+  }
+
+  @Test
+  void upsertTaxFeeRuleRefusesBadInput() {
+    ApiException noName = assertThrows(ApiException.class,
+        () -> service.upsertTaxFeeRule(" ", new BigDecimal("8"), "front-desk"));
+    assertEquals("VALIDATION_FAILED", noName.code());
+    ApiException noPercent = assertThrows(ApiException.class,
+        () -> service.upsertTaxFeeRule("VAT", null, "front-desk"));
+    assertEquals("VALIDATION_FAILED", noPercent.code());
+    ApiException negative = assertThrows(ApiException.class,
+        () -> service.upsertTaxFeeRule("VAT", new BigDecimal("-1"), "front-desk"));
+    assertEquals("VALIDATION_FAILED", negative.code());
+    ApiException overHundred = assertThrows(ApiException.class,
+        () -> service.upsertTaxFeeRule("VAT", new BigDecimal("101"), "front-desk"));
+    assertEquals("VALIDATION_FAILED", overHundred.code());
+    verify(repo, never()).upsertTaxFeeRule(anyString(), any(), anyString());
   }
 
   @Test
