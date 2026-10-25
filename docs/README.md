@@ -137,6 +137,7 @@ docs and plans, not gated specs.
 | Test report | `testing/test-report.md` | active | `qa-lead` | consolidated full-MVP results with pass evidence per cell (Closes #214) |
 | Phase 6 QA plan | `testing/phase-6-qa-plan.md` | active | `qa-lead` | scoped independent-QA pass plan: entry, activities, bug flow, exit (Closes #264) |
 | A1 desk-loop run log | `testing/phase-6-qa-a1-run-log.md` | active | `qa-lead` | scripted live-stack desk-loop record: per-step observed-vs-expected, screen surfaces, admin reads, evidence, defects (Closes #267) |
+| A2 PERF bounds run log | `testing/phase-6-qa-a2-run-log.md` | active | `qa-lead` | PERF bounds run record: hardware decision, variant numbers with environment labels, CI job/run ids, regression comparison, defects (Closes #268) |
 
 ## DevOps / Operations / Release
 
