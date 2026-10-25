@@ -179,7 +179,7 @@ export interface RoomStoreAPI {
     sellableCount: number;
     blockedRooms: string[];
   }>;
-  assignRoom(input: AssignRoomInput): Promise<{ roomNumber: string; stayLink: string; state: RoomState }>;
+  assignRoom(input: AssignRoomInput): Promise<{ roomId: string; roomNumber: string; stayLink: string; state: RoomState }>;
   releaseRoom(input: ReleaseRoomInput): Promise<{ roomNumber: string; oldState: RoomState; newState: RoomState }>;
   blockRoom(input: BlockRoomInput): Promise<{ roomNumber: string; dateFrom: string; dateTo: string; reason: string }>;
   releaseBlock(input: ReleaseBlockInput): Promise<{ roomNumber: string; dateFrom: string; dateTo: string; reason: string }>;
@@ -193,7 +193,7 @@ export class RoomStore implements RoomStoreAPI {
   private readonly blocks: RoomBlockRecord[] = [];
   private readonly history: StateHistoryEntry[] = [];
   private readonly outbox: OutboxEvent[] = [];
-  private readonly idempotency = new Map<string, { roomNumber: string; stayLink: string; state: RoomState }>();
+  private readonly idempotency = new Map<string, { roomId: string; roomNumber: string; stayLink: string; state: RoomState }>();
 
   async resolveRoomType(ref: unknown): Promise<RoomTypeRecord> {
     const key = requireString(ref, "roomType");
@@ -356,7 +356,7 @@ export class RoomStore implements RoomStoreAPI {
   // only when it is currently vacant-inspected with no covering
   // block. The read and the write share one synchronous section, so
   // two simultaneous assignments cannot both succeed.
-  async assignRoom(input: AssignRoomInput): Promise<{ roomNumber: string; stayLink: string; state: RoomState }> {
+  async assignRoom(input: AssignRoomInput): Promise<{ roomId: string; roomNumber: string; stayLink: string; state: RoomState }> {
     if (typeof input.idempotencyKey === "string" && input.idempotencyKey !== "") {
       const replay = this.idempotency.get(input.idempotencyKey);
       if (replay) {
@@ -391,7 +391,7 @@ export class RoomStore implements RoomStoreAPI {
     room.state = "occupied";
     this.recordHistory(room.id, "vacant-inspected", "occupied", actor);
     this.emit("room", "state-changed", { roomNumber: room.number, stayLink, actor }, actor);
-    const receipt = { roomNumber: room.number, stayLink, state: room.state };
+    const receipt = { roomId: room.id, roomNumber: room.number, stayLink, state: room.state };
     if (typeof input.idempotencyKey === "string" && input.idempotencyKey !== "") {
       this.idempotency.set(input.idempotencyKey, receipt);
     }

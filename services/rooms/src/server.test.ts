@@ -142,13 +142,15 @@ describe("desk loop", () => {
       });
       assert.equal(roomRes.status, 200);
       assert.equal((roomRes.body as { state: string }).state, "vacant-inspected");
+      const roomId = (roomRes.body as { id: string }).id;
+      assert.match(roomId, /^[0-9a-f-]{36}$/i);
 
       const inventory = await request(port, "POST", "/v1/rooms/ListRoomsByState", {
         state: "vacant-inspected",
       });
       assert.equal(inventory.status, 200);
-      const rooms = (inventory.body as { rooms: { number: string; roomTypeId: string }[] }).rooms;
-      assert.ok(rooms.some((room) => room.number === "301" && room.roomTypeId === typeId));
+      const rooms = (inventory.body as { rooms: { roomId: string; number: string; roomTypeId: string }[] }).rooms;
+      assert.ok(rooms.some((room) => room.number === "301" && room.roomTypeId === typeId && room.roomId === roomId));
 
       const sell = await request(port, "POST", "/v1/rooms/CheckRoomTypeSellability", {
         roomType: "Family",
@@ -163,6 +165,43 @@ describe("desk loop", () => {
         totalCount: 1,
         sellableCount: 1,
         blockedRooms: [],
+      });
+    });
+  });
+
+  it("emits the stable room UUID in inventory rows and the assignment echo", async () => {
+    // Issue #256: the desk UI assembles CheckIn.roomId and
+    // MoveRoom.toRoomId from these fields, so both responses carry
+    // the same UUID the UpsertRoom call created.
+    await withServer(async (port) => {
+      await request(port, "POST", "/v1/rooms/UpsertRoomType", { name: "Deluxe", actor: "manager" });
+      const roomRes = await request(port, "POST", "/v1/rooms/UpsertRoom", {
+        number: "101",
+        roomType: "Deluxe",
+        actor: "manager",
+      });
+      const roomId = (roomRes.body as { id: string }).id;
+      assert.match(roomId, /^[0-9a-f-]{36}$/i);
+
+      const inventory = await request(port, "POST", "/v1/rooms/ListRoomsByState", {
+        state: "vacant-inspected",
+      });
+      assert.equal(inventory.status, 200);
+      const rows = (inventory.body as { rooms: { roomId: string; number: string }[] }).rooms;
+      assert.ok(rows.some((row) => row.number === "101" && row.roomId === roomId));
+
+      const assigned = await request(port, "POST", "/v1/rooms/AssignRoom", {
+        roomNumber: "101",
+        businessDate: "2026-11-01",
+        stayLink: "stay-1",
+        actor: "front-desk",
+      });
+      assert.equal(assigned.status, 200);
+      assert.deepEqual(assigned.body, {
+        roomId,
+        roomNumber: "101",
+        stayLink: "stay-1",
+        state: "occupied",
       });
     });
   });

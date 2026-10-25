@@ -34,7 +34,7 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
 // two simultaneous assignments cannot both succeed. AssignRoom
 // idempotency receipts stay in memory (see store.ts).
 export class PostgresRoomStore implements RoomStoreAPI {
-  private readonly idempotency = new Map<string, { roomNumber: string; stayLink: string; state: RoomState }>();
+  private readonly idempotency = new Map<string, { roomId: string; roomNumber: string; stayLink: string; state: RoomState }>();
 
   constructor(private readonly pool: Pool) {}
 
@@ -396,7 +396,7 @@ export class PostgresRoomStore implements RoomStoreAPI {
     };
   }
 
-  async assignRoom(input: AssignRoomInput): Promise<{ roomNumber: string; stayLink: string; state: RoomState }> {
+  async assignRoom(input: AssignRoomInput): Promise<{ roomId: string; roomNumber: string; stayLink: string; state: RoomState }> {
     if (typeof input.idempotencyKey === "string" && input.idempotencyKey !== "") {
       const replay = this.idempotency.get(input.idempotencyKey);
       if (replay) {
@@ -437,7 +437,7 @@ export class PostgresRoomStore implements RoomStoreAPI {
         { roomNumber: room.number, stayLink, actor },
         actor,
       );
-      return { roomNumber: room.number, stayLink, state: room.state };
+      return { roomId: room.id, roomNumber: room.number, stayLink, state: room.state };
     });
     if (typeof input.idempotencyKey === "string" && input.idempotencyKey !== "") {
       this.idempotency.set(input.idempotencyKey, receipt);

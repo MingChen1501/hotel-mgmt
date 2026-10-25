@@ -114,6 +114,7 @@ async function handleRequest(
       writeJson(res, 200, {
         state: body["state"],
         rooms: rooms.map((room) => ({
+          roomId: room.id,
           number: room.number,
           roomTypeId: room.roomTypeId,
           state: room.state,

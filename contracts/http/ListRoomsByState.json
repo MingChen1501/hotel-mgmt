@@ -24,8 +24,9 @@
         "type": "array",
         "items": {
           "type": "object",
-          "required": ["number", "roomTypeId", "state"],
+          "required": ["roomId", "number", "roomTypeId", "state"],
           "properties": {
+            "roomId": { "type": "string", "format": "uuid" },
             "number": { "type": "string" },
             "roomTypeId": { "type": "string", "format": "uuid" },
             "state": { "type": "string" }

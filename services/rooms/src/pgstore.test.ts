@@ -37,6 +37,7 @@ describe("rooms postgres store", { skip: DATABASE_URL === undefined || DATABASE_
         actor: "front-desk",
       });
       assert.equal(receipt.state, "occupied");
+      assert.equal(receipt.roomId, room.id);
       const listed = await store.listRoomsByState("occupied");
       assert.equal(listed.length, 1);
 
