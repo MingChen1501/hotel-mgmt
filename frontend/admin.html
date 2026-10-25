@@ -106,8 +106,8 @@
           return "<tr><td>" + esc(user.displayName) + "</td><td>" + esc(user.signinIdentity) + "</td>" +
             '<td><select data-identity="' + esc(user.signinIdentity) + '" class="role-select">' + roleOptions + "</select></td>" +
             "<td>" + (user.locked ? DeskMessages.msg("desk.admin.yes", {}, "yes") : DeskMessages.msg("desk.admin.no", {}, "no")) + "</td>" +
-            '<td><button type="button" data-identity="' + esc(user.signinIdentity) + '" class="role-save">" + DeskMessages.msg("desk.admin.save_role", {}, "Save role") + "</button> ' +
-            (user.locked ? '<button type="button" data-identity="' + esc(user.signinIdentity) + '" class="unlock">" + DeskMessages.msg("desk.admin.unlock", {}, "Unlock") + "</button>' : "") +
+            '<td><button type="button" data-identity="' + esc(user.signinIdentity) + '" class="role-save">' + DeskMessages.msg("desk.admin.save_role", {}, "Save role") + "</button> " +
+            (user.locked ? '<button type="button" data-identity="' + esc(user.signinIdentity) + '" class="unlock">' + DeskMessages.msg("desk.admin.unlock", {}, "Unlock") + "</button>" : "") +
             "</td></tr>";
         }).join("");
         document.querySelector("#users-table tbody").innerHTML = rows;
