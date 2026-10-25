@@ -178,9 +178,9 @@
         show("dashboard-error", "");
         try {
           var lists = await call("ListArrivalsDepartures", { businessDate: date });
-          await renderStays("arrivals", lists.arrivals || []);
-          await renderStays("inhouse", lists.inHouse || []);
-          await renderStays("departures", lists.departures || []);
+          await renderStays("arrivals-table", lists.arrivals || []);
+          await renderStays("inhouse-table", lists.inHouse || []);
+          await renderStays("departures-table", lists.departures || []);
           var dirty = await call("ListRoomsByState", { state: "vacant-dirty" });
           renderAttention("dirty-list", dirty.rooms || []);
           var clean = await call("ListRoomsByState", { state: "vacant-clean" });
