@@ -600,5 +600,123 @@ folio layout, custom roles beyond the defaults, automated workflow
 rules, multi-property operation of any kind, and multi-language
 operation (readiness only is `NFR-I18N-1`).
 
+## 7. Desk UI migration shell slice (Refs #291)
+
+Scaffold slice of ADR-0003 (accepted 2026-10-25): a placeholder
+Vue 3 + Vite shell served under `/app/` with no app routes. Design
+lives in `docs/architecture/hld.md` §11 and
+`docs/architecture/lld.md` §11; acceptance criteria live in the
+issue body (the `docs/product/acceptance-criteria.md` slice is
+separate `product-owner` work under gate gap 4). This section
+records only the requirements delta the T3 spec gate requires.
+
+### 7.1 Explicit no-change statements
+
+- Every MVP requirement in sections 1 and 2 is unchanged by this
+  slice: all `FR-RES-*`, `FR-FDK-*`, `FR-RMS-*`, `FR-RTE-*`,
+  `FR-GST-*`, `FR-BIL-*`, `FR-RPT-*`, `FR-ADM-*`, and `FR-CUS-*`
+  keep their wording, and every NFR keeps its target. During the
+  parallel run staff work continues on the untouched legacy pages,
+  so all desk flows behave exactly as specified.
+- No data-dictionary entries: the shell introduces no data
+  entities or fields (`data-dictionary.md` unchanged).
+- No business rules: the shell introduces no domain policy
+  (`business-rules.md` unchanged).
+- The section 4 traceability table and its coverage count are
+  unchanged: the shell adds no MVP capability, so the 40 mapped
+  capabilities stand. The shell handoff table below is separate
+  and does not alter that count.
+
+### 7.2 Shell-scoped functional requirements
+
+Ids use the `SHL` (migration shell) namespace. These are
+temporary scaffold requirements: they constrain the placeholder
+shell only and are superseded per screen as follow-up issues
+land real routes.
+
+FR-SHL-1 — Placeholder route renders under `/app/`. Staff can
+open the migration shell and see the placeholder view; no app
+routes exist beyond it.
+Given staff load any `/app/*` path (including a history-mode deep
+link or reload); when the shell boots; then exactly one
+placeholder route renders, and no other app route exists.
+
+FR-SHL-2 — Shared Bearer API client plus session store used by
+the placeholder. The placeholder authenticates through the one
+shared client and the one session store, with a single
+401-to-sign-out path.
+Given a signed-in session in the shell; when any API call
+through the shared client receives a `401` / `UNAUTHENTICATED`
+response; then the session store token is cleared and the shell
+routes to sign-in. The token persists in `sessionStorage`
+(survives reload, dies with the tab).
+
+FR-SHL-3 — Print routes reserved, none implemented. Print URLs
+are reserved to live under `/app/print/`, but this slice
+implements no print route.
+Given staff load any `/app/print/...` path; when the shell
+routes it; then no print document is rendered by this slice
+(reservation of the namespace only; the print route lands in a
+follow-up issue).
+
+FR-SHL-4 — Legacy pages and `/docs` mirror intact. The old
+static pages and the Swagger mirror keep serving exactly as
+before.
+Given the shell is deployed; when staff load any legacy page at
+`/` or the `/docs` Swagger mirror; then each serves exactly its
+pre-slice content, and the byte-identical OpenAPI mirror
+(`contracts/openapi.yaml` vs `frontend/docs/openapi.yaml`) stays
+green.
+
+### 7.3 Shell-scoped non-functional requirements
+
+NFR-SHL-1 — CI build job green. The Vite + Vue 3 + Router +
+Pinia + TypeScript app builds and tests in CI.
+Given a commit touching the shell; when the new CI job (Node 22
++ `npm ci` + build + test, matching the existing Node matrix)
+runs; then build and test both pass. Target: 100% of shell
+commits green before merge.
+
+NFR-SHL-2 — Nginx fallback correctness. Every `/app/*` path
+that matches no static asset falls back inside the block to
+`/app/index.html` (NOT `/index.html`).
+Given any `/app/*` path with no matching static file; when
+Nginx serves it; then the response is `/app/index.html` with a
+200 status. Target: 100% of sampled non-asset `/app/*` paths
+(deep link, reload, unknown path) return the shell entry.
+
+NFR-SHL-3 — Offline banner with manual retry, no write
+queueing. A LAN disconnect in the shell is clearly signalled and
+never silently queued.
+Given the shell loses connectivity; when an API call fails or
+the browser fires `offline`; then a banner names the disconnect
+and offers a safe manual retry, and no desk write is queued for
+later replay. Target: 100% of disconnect drills show the banner
+and queue 0 writes.
+
+### 7.4 Traceability handoff for `qa-lead`
+
+No guard exists yet for any item in sections 7.2–7.3: the
+implementation PR for #291 must create them. Each handoff note
+names the missing guard explicitly instead of citing one.
+
+| Shell item | Missing guard (implementation PR must create) | Handoff note for `qa-lead` |
+|---|---|---|
+| FR-SHL-1 | Placeholder-render check (new; e.g. served-shell navigation asserting the placeholder view at `/app/` and on a deep-link reload) | Guard loads `/app/` plus one deep `/app/*` path and checks the placeholder renders with no other route reachable |
+| FR-SHL-2 | Shared-client 401 test (new; e.g. unit/integration test forcing a 401 through the shared client) | Guard forces a 401 and checks the store token clears and the shell routes to sign-in |
+| FR-SHL-3 | Namespace-reservation check (new; e.g. served-shell assertion that no `/app/print/...` route renders a document) | Guard loads `/app/print/...` and checks no print document renders while the namespace stays reserved |
+| FR-SHL-4 | Mirror + legacy checks (existing `script/openapi-route-check.sh` byte-identical check plus served-legacy page assertions) | Guard runs the byte-identical mirror check and loads each legacy page and `/docs`, checking pre-slice content |
+| NFR-SHL-1 | New CI build job (new workflow job: Node 22 + `npm ci` + build + test over the shell) | Guard is the CI job itself: red blocks the implementation PR |
+| NFR-SHL-2 | Fallback assertion (new; e.g. served-shell curl over sampled non-asset `/app/*` paths) | Guard requests sampled non-asset paths and checks every response is `/app/index.html` with status 200 |
+| NFR-SHL-3 | Disconnect drill (new; e.g. offline simulation asserting banner, retry, and zero queued writes) | Guard drops connectivity mid-session and checks the banner shows, retry is offered, and 0 writes queue |
+
+### 7.5 Explicitly not specified here
+
+Real screen routes (desk, book, stay, folio, print, admin),
+the catalogue layer, and decommission of the old pages have no
+FR or NFR in this slice and must not be read into one; each
+lands with its own spec-gated follow-up issue. No backend or
+contract change is specified anywhere in this slice.
+
 <!-- ao-role: business-analyst -->
 Role: business-analyst · AO session hotel-mgmt-9
