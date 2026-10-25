@@ -375,6 +375,7 @@
     "desk.book.copy_failed": "Copy failed. Select the confirmation text by hand.",
     "desk.book.new_button": "New booking",
     "desk.book.refused_soldout": "No rooms of this type are free for these dates.",
-    "desk.book.refused_noprice": "No price exists for this room type and these dates."
+    "desk.book.refused_noprice": "No price exists for this room type and these dates.",
+    "desk.book.refused_restriction": "That stay breaks a booking rule: {restriction}."
   }
 }

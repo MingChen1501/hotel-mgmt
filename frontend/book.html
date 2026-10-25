@@ -6,9 +6,13 @@
   <title data-msg="desk.book.title">Hotel Management — Desk Booking</title>
   <style>
     @media print {
-      body > *:not(#confirmation-section) {
+      body > *:not(#booking-section) {
         display: none;
       }
+      #booking-section > *:not(#confirmation-section) {
+        display: none;
+      }
+      #booking-section,
       #confirmation-section {
         display: block;
       }
@@ -107,6 +111,8 @@
       var token = null;
       var displayName = "";
       var quote = null;
+      var quoteKey = null;
+      var confirming = false;
 
       function show(id, message) {
         var el = document.getElementById(id);
@@ -138,6 +144,7 @@
         if (!response.ok) {
           var failure = new Error(payload.message || payload.code || DeskMessages.msg("desk.admin.request_failed", { operation: operation }, "request failed: {operation}"));
           failure.code = payload.code;
+          failure.details = payload.details || null;
           throw failure;
         }
         return payload;
@@ -176,6 +183,7 @@
 
       function clearQuote() {
         quote = null;
+        quoteKey = null;
         document.getElementById("quote-section").hidden = true;
         document.getElementById("quote-nights").innerHTML = "";
         document.getElementById("quote-total").textContent = "";
@@ -291,6 +299,12 @@
         try {
           var priced = await call("QuotePrice", body);
           quote = priced;
+          // One key per quote: a double-clicked Confirm replays the
+          // same booking instead of creating two reservations (the
+          // store replays on idempotencyKey).
+          quoteKey = (window.crypto && crypto.randomUUID)
+            ? crypto.randomUUID()
+            : String(Date.now()) + "-" + String(Math.random()).slice(2);
           var items = (priced.nights || []).map(function (night) {
             return "<li>" + esc(DeskMessages.msg("desk.book.quote_night", {
               nightDate: night.nightDate,
@@ -316,6 +330,9 @@
       });
 
       document.getElementById("confirm-button").addEventListener("click", async function () {
+        if (confirming) {
+          return;
+        }
         show("confirm-error", "");
         var guestId = document.getElementById("guest-id").value.trim();
         if (!guestId) {
@@ -326,15 +343,22 @@
           show("confirm-error", DeskMessages.msg("desk.book.no_quote", {}, "Get a price first, then confirm."));
           return;
         }
+        confirming = true;
+        var confirmButton = document.getElementById("confirm-button");
+        confirmButton.disabled = true;
         try {
-          var created = await call("CreateReservation", {
+          var bookingBody = {
             roomTypeId: quote.roomTypeId,
             arrivalDate: quote.arrivalDate,
             departureDate: quote.departureDate,
             guest: { guestId: guestId },
             sellableUnits: 1,
             priceBasis: { totalMinor: quote.totalMinor, discountName: quote.discountName || null },
-          });
+          };
+          if (quoteKey) {
+            bookingBody.idempotencyKey = quoteKey;
+          }
+          var created = await call("CreateReservation", bookingBody);
           var booking = await call("GetReservation", { reservationRef: created.reservationRef });
           document.getElementById("booking-reference").textContent = DeskMessages.msg("desk.book.reference", {
             ref: booking.reservationRef,
@@ -378,7 +402,19 @@
             show("confirm-error", DeskMessages.msg("desk.book.refused_soldout", {}, "No rooms of this type are free for these dates."));
             return;
           }
+          if (err.code === "STATE_ILLEGAL") {
+            var restriction = (err.details && err.details.restriction) || "";
+            if (restriction) {
+              show("confirm-error", DeskMessages.msg("desk.book.refused_restriction", {
+                restriction: restriction,
+              }, "That stay breaks a booking rule: {restriction}."));
+              return;
+            }
+          }
           show("confirm-error", err.message);
+        } finally {
+          confirming = false;
+          confirmButton.disabled = false;
         }
       });
 
