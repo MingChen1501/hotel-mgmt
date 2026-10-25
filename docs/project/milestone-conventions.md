@@ -10,12 +10,13 @@ sync, no extra bookkeeping (see `.github/milestones.md`).
 - **Phase boards:** `Phase <N> - <scope>` where `<N>` is the
   `docs/project/plan.md` milestone number and `<scope>` is a short
   lowercase descriptor (e.g. `Phase 4 - reservations slice`).
+  Numbered phases run 1–6 and include `Phase 5 - desk UI` and
+  `Phase 6 - QA`.
 - **Standing milestones** (not phases, never closed):
-  - `Pilot` — the real-hotel pilot operation (plan milestone 5).
+  - `Pilot` — the real-hotel pilot operation (standing track,
+    not a plan phase).
   - `Harness` — the ongoing automation track (agents, skills,
     workflow, template, CI automation).
-  - `QA` — test plans, issue reports, and bugs found. The **fix**
-    for a bug stays in its phase milestone.
 - **Historical names.** Milestones closed before this convention
   (`Specs done`, `Stack decision`, `Walking skeleton 3a/3b`) keep
   their names as history. The twelve milestones closed per #224 were
@@ -28,12 +29,13 @@ sync, no extra bookkeeping (see `.github/milestones.md`).
 
 - **One live milestone per active phase.** Each active plan phase has
   exactly one open milestone; a new phase milestone opens only when
-  its phase starts. The current live phase board is
-  `Phase 6 - desk UI` (plan milestone 6, program #248); the full
+  its phase starts. The current live phase boards are
+  `Phase 5 - desk UI` (plan milestone 5, program #248) and
+  `Phase 6 - QA` (plan milestone 6); the full
   live list lives in `.github/milestones.md`.
 - **Close rule.** A phase milestone closes when its plan exit criteria
   are met **and** all its issues are closed. Standing milestones
-  (`Pilot`, `Harness`, `QA`) never close.
+  (`Pilot`, `Harness`) never close.
 - **No nulls.** Every open issue carries exactly one milestone (filing
   rule). Verify with:
 
@@ -54,12 +56,12 @@ left as-is.
 
 ## QA tracking
 
-QA work is tracked by the standing `QA` milestone, not by label: the
-exactly-one-type + one-risk-label rule in
+QA work is tracked under the numbered `Phase 6 - QA` milestone,
+not by label: the exactly-one-type + one-risk-label rule in
 `docs/project/issue-conventions.md` is unchanged (there is no `qa`
-label). File test plans, issue reports, and found bugs against `QA`;
-file their fixes against the phase milestone whose exit signal the
-fix serves.
+label). File test plans, issue reports, and found bugs against
+`Phase 6 - QA`; file their fixes against the phase milestone whose
+exit signal the fix serves.
 
 ## Q&A tracking
 

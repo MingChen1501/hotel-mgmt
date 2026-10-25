@@ -24,8 +24,8 @@ board via API.
 
 Naming, lifecycle, and bookkeeping rules live in
 `docs/project/milestone-conventions.md` (Closes #224): phase boards
-use `Phase <N> - <scope>`, standing milestones (`Pilot`, `Harness`,
-`QA`) never close, milestones live on issues only (PRs link via
+use `Phase <N> - <scope>`, standing milestones (`Pilot`, `Harness`)
+never close, milestones live on issues only (PRs link via
 `Closes #`), and every open issue carries exactly one milestone.
 
 | Milestone | State | Plan ref |
@@ -46,10 +46,10 @@ use `Phase <N> - <scope>`, standing milestones (`Pilot`, `Harness`,
 | Phase 3 - persistence slice | closed | pre-convention slice board (closed per #224, 0 open) |
 | Phase 3 - stay flow slice | closed | pre-convention slice board (closed per #224, 0 open) |
 | Phase 3 - process decisions | closed | pre-convention slice board (closed per #224, 0 open) |
-| Phase 6 - desk UI | open | plan 6 (clickable desk UI for the front-desk loop, program #248; exit: receptionist operates book-to-receipt on screens alone, pilot-ready) |
-| Pilot | open | plan 5 (full-day operation, runbook, restore drill inside RTO 4h) |
+| Phase 5 - desk UI | open | plan 5 (clickable desk UI for the front-desk loop, program #248; exit: receptionist operates book-to-receipt on screens alone, pilot-ready) |
+| Phase 6 - QA | open | plan 6 (QA track: test plans, issue reports, bugs found; fixes stay in phase milestones) |
+| Pilot | open | standing pilot operation (full-day operation, runbook, restore drill inside RTO 4h) |
 | Harness | open | ongoing automation track (agents, skills, workflow, CI); not a plan phase |
-| QA | open | standing QA track (test plans, issue reports, bugs found; fixes stay in phase milestones) |
 
 ## Backfill rules (history, issue #120)
 
