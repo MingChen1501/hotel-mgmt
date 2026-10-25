@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title data-msg="desk.book.title">Hotel Management — Desk Booking</title>
+  <style>
+    @media print {
+      body > *:not(#confirmation-section) {
+        display: none;
+      }
+      #confirmation-section {
+        display: block;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1 data-msg="desk.book.title">Hotel Management — Desk Booking</h1>
+  <p><a href="/" data-msg="desk.book.back">Back to the desk entry</a> ·
+    <a href="/desk.html" data-msg="desk.book.today_link">Today's arrivals, in-house, and departures</a></p>
+  <noscript><p>This page needs JavaScript to sign in, quote a price, and book.</p></noscript>
+
+  <section id="signin-section">
+    <h2 data-msg="desk.admin.sign_in">Sign in</h2>
+    <form id="signin-form">
+      <label data-msg="desk.admin.signin_identity">Sign-in identity: <input id="signin-identity" name="signin-identity" autocomplete="username"></label>
+      <label data-msg="desk.admin.secret">Secret: <input id="signin-secret" name="signin-secret" type="password" autocomplete="current-password"></label>
+      <button type="submit" data-msg="desk.admin.sign_in">Sign in</button>
+    </form>
+    <p id="signin-error" role="alert" hidden></p>
+  </section>
+
+  <section id="booking-section" hidden>
+    <p><span data-msg="desk.admin.signed_in_as">Signed in as </span><strong id="whoami"></strong> (<span id="myrole"></span>).
+      <button id="signout-button" type="button" data-msg="desk.admin.signout">Sign out</button></p>
+
+    <h2 data-msg="desk.book.form_heading">New booking</h2>
+    <form id="booking-form">
+      <fieldset>
+        <legend data-msg="desk.book.guest_heading">Guest</legend>
+        <p data-msg="desk.book.guest_note">Find a returning guest by name, enter a known guest ID, or register a walk-in guest by name.</p>
+        <p data-msg="desk.book.actor_note">Walk-in registrations are recorded under your sign-in name.</p>
+        <label data-msg="desk.book.guest_name">Guest name: <input id="guest-name" name="guest-name" autocomplete="off"></label>
+        <button id="find-guest-button" type="button" data-msg="desk.book.find_button">Find guest</button>
+        <button id="register-guest-button" type="button" data-msg="desk.book.register_button">Register walk-in guest</button>
+        <br>
+        <label data-msg="desk.book.guest_id">Guest ID: <input id="guest-id" name="guest-id" autocomplete="off"></label>
+        <p id="guest-status" role="status"></p>
+      </fieldset>
+
+      <fieldset>
+        <legend data-msg="desk.book.stay_heading">Stay</legend>
+        <label data-msg="desk.book.arrival">Arrival date: <input id="arrival-date" name="arrival-date" type="date"></label>
+        <label data-msg="desk.book.departure">Departure date: <input id="departure-date" name="departure-date" type="date"></label>
+        <br>
+        <label data-msg="desk.book.room_type">Room type ID: <input id="room-type-id" name="room-type-id" autocomplete="off"></label>
+        <br>
+        <label data-msg="desk.book.rate_plan">Rate plan (leave blank when only one prices this type): <input id="rate-plan" name="rate-plan" autocomplete="off"></label>
+        <label data-msg="desk.book.discount">Discount (optional): <input id="discount-name" name="discount-name" autocomplete="off"></label>
+        <br>
+        <button id="quote-button" type="button" data-msg="desk.book.quote_button">Get price</button>
+        <p id="quote-error" role="alert" hidden></p>
+      </fieldset>
+
+      <section id="quote-section" hidden>
+        <h3 data-msg="desk.book.quote_heading">Quoted price</h3>
+        <ul id="quote-nights"></ul>
+        <p><strong id="quote-total"></strong></p>
+        <button id="confirm-button" type="button" data-msg="desk.book.confirm_button">Confirm booking</button>
+        <p id="confirm-error" role="alert" hidden></p>
+      </section>
+    </form>
+
+    <section id="result-section" hidden>
+      <h2 data-msg="desk.book.result_heading">Booking confirmed</h2>
+      <p><strong id="booking-reference"></strong></p>
+      <p id="booking-readback"></p>
+      <p><a href="/desk.html" data-msg="desk.book.view_arrivals">View on today's arrivals</a></p>
+      <button id="new-booking-button" type="button" data-msg="desk.book.new_button">New booking</button>
+    </section>
+
+    <section id="confirmation-section" hidden>
+      <h2 data-msg="desk.book.confirmation_heading">Booking confirmation</h2>
+      <div id="confirmation-body"></div>
+      <button id="print-button" type="button" data-msg="desk.book.print_button">Print</button>
+      <button id="copy-button" type="button" data-msg="desk.book.copy_button">Copy confirmation</button>
+      <p id="copy-status" role="status" hidden></p>
+    </section>
+  </section>
+
+  <script src="messages.js"></script>
+  <script>
+    DeskMessages.init();
+    // Desk booking form (issue #250, Screen 2): quote the price before
+    // anything is booked, then confirm the reservation. Same static
+    // pattern as the admin console and the today dashboard
+    // (frontend/desk.html): no build step, the page calls the
+    // versioned contract paths through Nginx on this host with the
+    // same Bearer session. Op order: QuotePrice (read-only price),
+    // CreateReservation with sellableUnits 1 (the atomic guard
+    // refuses unsellable combinations), GetReservation read-back,
+    // ProduceConfirmation for the printable/shareable confirmation.
+    // Returning guests resolve through IdentifyGuest; genuinely new
+    // walk-ins register through UpsertGuest before quoting.
+    (function () {
+      var token = null;
+      var displayName = "";
+      var quote = null;
+
+      function show(id, message) {
+        var el = document.getElementById(id);
+        el.textContent = message;
+        el.hidden = !message;
+      }
+
+      async function call(operation, body) {
+        var routes = {
+          SignIn: "/v1/admin/SignIn",
+          SignOut: "/v1/admin/SignOut",
+          IdentifyGuest: "/v1/guests/IdentifyGuest",
+          UpsertGuest: "/v1/guests/UpsertGuest",
+          QuotePrice: "/v1/rates/QuotePrice",
+          CreateReservation: "/v1/reservations/CreateReservation",
+          GetReservation: "/v1/reservations/GetReservation",
+          ProduceConfirmation: "/v1/guests/ProduceConfirmation",
+        };
+        var headers = { "Content-Type": "application/json" };
+        if (token) {
+          headers["Authorization"] = "Bearer " + token;
+        }
+        var response = await fetch(routes[operation], {
+          method: "POST",
+          headers: headers,
+          body: JSON.stringify(body || {}),
+        });
+        var payload = await response.json();
+        if (!response.ok) {
+          var failure = new Error(payload.message || payload.code || DeskMessages.msg("desk.admin.request_failed", { operation: operation }, "request failed: {operation}"));
+          failure.code = payload.code;
+          throw failure;
+        }
+        return payload;
+      }
+
+      function esc(value) {
+        return String(value).replace(/[&<>"']/g, function (ch) {
+          return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch];
+        });
+      }
+
+      function isSignedOut(err) {
+        return err && err.code === "UNAUTHENTICATED";
+      }
+
+      function signedOut() {
+        token = null;
+        displayName = "";
+        quote = null;
+        document.getElementById("booking-section").hidden = true;
+        document.getElementById("signin-section").hidden = false;
+        document.getElementById("signin-secret").value = "";
+      }
+
+      function refuseSession(err) {
+        signedOut();
+        show("signin-error", DeskMessages.msg("desk.today.session_expired", {}, "Session expired. Sign in again."));
+      }
+
+      // Amounts arrive in minor currency units; the quote carries no
+      // currency code, so it renders as a plain decimal figure. The
+      // confirmation (which carries a currency) formats with it.
+      function plainAmount(minor) {
+        return (minor / 100).toFixed(2);
+      }
+
+      function clearQuote() {
+        quote = null;
+        document.getElementById("quote-section").hidden = true;
+        document.getElementById("quote-nights").innerHTML = "";
+        document.getElementById("quote-total").textContent = "";
+        show("quote-error", "");
+        show("confirm-error", "");
+      }
+
+      function stayInput() {
+        return {
+          roomTypeId: document.getElementById("room-type-id").value.trim(),
+          arrivalDate: document.getElementById("arrival-date").value,
+          departureDate: document.getElementById("departure-date").value,
+          ratePlanName: document.getElementById("rate-plan").value.trim(),
+          discountName: document.getElementById("discount-name").value.trim(),
+        };
+      }
+
+      document.getElementById("signin-form").addEventListener("submit", async function (event) {
+        event.preventDefault();
+        try {
+          var payload = await call("SignIn", {
+            signinIdentity: document.getElementById("signin-identity").value,
+            secret: document.getElementById("signin-secret").value,
+          });
+          token = payload.token;
+          displayName = payload.displayName;
+          document.getElementById("whoami").textContent = payload.displayName;
+          document.getElementById("myrole").textContent = payload.role;
+          document.getElementById("signin-section").hidden = true;
+          document.getElementById("booking-section").hidden = false;
+          show("signin-error", "");
+        } catch (err) {
+          show("signin-error", err.message);
+        }
+      });
+
+      document.getElementById("signout-button").addEventListener("click", async function () {
+        try {
+          await call("SignOut", {});
+        } catch (err) {
+          /* A dead token signs out locally all the same. */
+        }
+        signedOut();
+      });
+
+      document.getElementById("find-guest-button").addEventListener("click", async function () {
+        var name = document.getElementById("guest-name").value.trim();
+        var status = document.getElementById("guest-status");
+        if (!name) {
+          status.textContent = DeskMessages.msg("desk.book.guest_notfound", {}, "No guest with that name. Check the name, enter the guest ID, or register a walk-in guest.");
+          return;
+        }
+        try {
+          var guest = await call("IdentifyGuest", { fullName: name });
+          document.getElementById("guest-id").value = guest.guestId;
+          status.textContent = DeskMessages.msg("desk.book.guest_found", {
+            name: guest.fullName,
+            stays: guest.pastStayCount,
+          }, "Guest found: {name} ({stays} past stays).");
+        } catch (err) {
+          if (isSignedOut(err)) {
+            refuseSession(err);
+            return;
+          }
+          if (err.code === "NOT_FOUND") {
+            status.textContent = DeskMessages.msg("desk.book.guest_notfound", {}, "No guest with that name. Check the name, enter the guest ID, or register a walk-in guest.");
+            return;
+          }
+          status.textContent = err.message;
+        }
+      });
+
+      document.getElementById("register-guest-button").addEventListener("click", async function () {
+        var name = document.getElementById("guest-name").value.trim();
+        var status = document.getElementById("guest-status");
+        if (!name) {
+          status.textContent = DeskMessages.msg("desk.book.guest_notfound", {}, "No guest with that name. Check the name, enter the guest ID, or register a walk-in guest.");
+          return;
+        }
+        try {
+          var guest = await call("UpsertGuest", { fullName: name, actor: displayName });
+          document.getElementById("guest-id").value = guest.guestId;
+          status.textContent = DeskMessages.msg("desk.book.guest_new", { name: guest.fullName }, "New guest registered: {name}.");
+        } catch (err) {
+          if (isSignedOut(err)) {
+            refuseSession(err);
+            return;
+          }
+          status.textContent = err.message;
+        }
+      });
+
+      ["room-type-id", "arrival-date", "departure-date", "rate-plan", "discount-name"].forEach(function (id) {
+        document.getElementById(id).addEventListener("input", clearQuote);
+      });
+
+      document.getElementById("quote-button").addEventListener("click", async function () {
+        clearQuote();
+        document.getElementById("result-section").hidden = true;
+        document.getElementById("confirmation-section").hidden = true;
+        var input = stayInput();
+        var body = {
+          roomTypeId: input.roomTypeId,
+          arrivalDate: input.arrivalDate,
+          departureDate: input.departureDate,
+        };
+        if (input.ratePlanName) {
+          body.ratePlanName = input.ratePlanName;
+        }
+        if (input.discountName) {
+          body.discountName = input.discountName;
+        }
+        try {
+          var priced = await call("QuotePrice", body);
+          quote = priced;
+          var items = (priced.nights || []).map(function (night) {
+            return "<li>" + esc(DeskMessages.msg("desk.book.quote_night", {
+              nightDate: night.nightDate,
+              amount: plainAmount(night.priceMinor),
+            }, "Night {nightDate}: {amount}")) + "</li>";
+          });
+          document.getElementById("quote-nights").innerHTML = items.join("");
+          document.getElementById("quote-total").textContent = DeskMessages.msg("desk.book.quote_total", {
+            amount: plainAmount(priced.totalMinor),
+          }, "Total: {amount}");
+          document.getElementById("quote-section").hidden = false;
+        } catch (err) {
+          if (isSignedOut(err)) {
+            refuseSession(err);
+            return;
+          }
+          if (err.code === "NOT_FOUND") {
+            show("quote-error", DeskMessages.msg("desk.book.refused_noprice", {}, "No price exists for this room type and these dates."));
+            return;
+          }
+          show("quote-error", err.message);
+        }
+      });
+
+      document.getElementById("confirm-button").addEventListener("click", async function () {
+        show("confirm-error", "");
+        var guestId = document.getElementById("guest-id").value.trim();
+        if (!guestId) {
+          show("confirm-error", DeskMessages.msg("desk.book.guest_need", {}, "Find or register the guest first."));
+          return;
+        }
+        if (!quote) {
+          show("confirm-error", DeskMessages.msg("desk.book.no_quote", {}, "Get a price first, then confirm."));
+          return;
+        }
+        try {
+          var created = await call("CreateReservation", {
+            roomTypeId: quote.roomTypeId,
+            arrivalDate: quote.arrivalDate,
+            departureDate: quote.departureDate,
+            guest: { guestId: guestId },
+            sellableUnits: 1,
+            priceBasis: { totalMinor: quote.totalMinor, discountName: quote.discountName || null },
+          });
+          var booking = await call("GetReservation", { reservationRef: created.reservationRef });
+          document.getElementById("booking-reference").textContent = DeskMessages.msg("desk.book.reference", {
+            ref: booking.reservationRef,
+          }, "Booking reference: {ref}");
+          var guestName = guestId;
+          try {
+            var guest = await call("IdentifyGuest", { guestId: guestId });
+            guestName = guest.fullName;
+          } catch (nameErr) {
+            /* The read-back still names the guest ID when lookup fails. */
+          }
+          var quotedTotal = (booking.priceBasis && booking.priceBasis.totalMinor !== undefined)
+            ? booking.priceBasis.totalMinor
+            : created.quotedTotal;
+          document.getElementById("booking-readback").textContent = DeskMessages.msg("desk.book.readback", {
+            name: guestName,
+            arrival: booking.arrivalDate,
+            departure: booking.departureDate,
+            amount: plainAmount(quotedTotal),
+          }, "{name}, {arrival} to {departure}, total {amount}.");
+          document.getElementById("result-section").hidden = false;
+          try {
+            var confirmation = await call("ProduceConfirmation", { reservationRef: booking.reservationRef });
+            renderConfirmation(confirmation);
+          } catch (confirmationErr) {
+            if (isSignedOut(confirmationErr)) {
+              refuseSession(confirmationErr);
+              return;
+            }
+            document.getElementById("confirmation-body").innerHTML =
+              "<p>" + esc(confirmationErr.message) + "</p>";
+            document.getElementById("confirmation-section").hidden = false;
+          }
+          clearQuote();
+        } catch (err) {
+          if (isSignedOut(err)) {
+            refuseSession(err);
+            return;
+          }
+          if (err.code === "CONFLICT") {
+            show("confirm-error", DeskMessages.msg("desk.book.refused_soldout", {}, "No rooms of this type are free for these dates."));
+            return;
+          }
+          show("confirm-error", err.message);
+        }
+      });
+
+      function renderConfirmation(confirmation) {
+        var price = confirmation.price || {};
+        var money = (price.amountMinor !== undefined && price.currency)
+          ? DeskMessages.formatMoney(price.amountMinor, price.currency)
+          : plainAmount(price.amountMinor || 0);
+        var lines = [
+          ["hotel", (confirmation.hotel && confirmation.hotel.name) || ""],
+          ["guest", (confirmation.guest && confirmation.guest.fullName) || ""],
+          ["reference", confirmation.reservationRef],
+          ["check-in", (confirmation.dates && confirmation.dates.checkIn) || ""],
+          ["check-out", (confirmation.dates && confirmation.dates.checkOut) || ""],
+          ["type", confirmation.type || ""],
+          ["price", money],
+        ];
+        document.getElementById("confirmation-body").innerHTML = "<dl>" + lines.map(function (pair) {
+          return "<dt>" + esc(pair[0]) + "</dt><dd>" + esc(pair[1]) + "</dd>";
+        }).join("") + "</dl>";
+        document.getElementById("confirmation-section").hidden = false;
+      }
+
+      document.getElementById("print-button").addEventListener("click", function () {
+        window.print();
+      });
+
+      document.getElementById("copy-button").addEventListener("click", function () {
+        var text = document.getElementById("confirmation-body").innerText;
+        var done = function () {
+          var status = document.getElementById("copy-status");
+          status.textContent = DeskMessages.msg("desk.book.copied", {}, "Confirmation copied.");
+          status.hidden = false;
+        };
+        var failed = function () {
+          var status = document.getElementById("copy-status");
+          status.textContent = DeskMessages.msg("desk.book.copy_failed", {}, "Copy failed. Select the confirmation text by hand.");
+          status.hidden = false;
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done, failed);
+        } else {
+          failed();
+        }
+      });
+
+      document.getElementById("new-booking-button").addEventListener("click", function () {
+        ["guest-name", "guest-id", "arrival-date", "departure-date", "room-type-id", "rate-plan", "discount-name"].forEach(function (id) {
+          document.getElementById(id).value = "";
+        });
+        document.getElementById("guest-status").textContent = "";
+        document.getElementById("result-section").hidden = true;
+        document.getElementById("confirmation-section").hidden = true;
+        clearQuote();
+      });
+    })();
+  </script>
+</body>
+</html>
