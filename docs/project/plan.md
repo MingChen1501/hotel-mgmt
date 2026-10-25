@@ -68,6 +68,12 @@ match.
    hands and a restore drill completed inside RTO 4 hours. Exit
    signal: the pilot hotel signs off and the open risk items for
    go-live are closed or accepted by the owner.
+6. **Desk UI.** A clickable desk UI for the front-desk loop
+   (program #248): book, check in, post a charge, check out, and
+   print the receipt, plus arrivals and dirty-room visibility,
+   served as static pages through the existing proxy. Exit
+   signal: a receptionist operates book-to-receipt on the screens
+   alone and the UI is pilot-ready.
 
 After the pilot, release notes and per-release rollback entries
 begin (`docs/release/*`, still stubs until the first release
@@ -89,4 +95,4 @@ Each item links its gate issue above; the PR that closes the
 issue carries the exit signal.
 
 <!-- ao-role: product-owner -->
-Role: product-owner · AO session hotel-mgmt-184
+Role: product-owner · AO session hotel-mgmt-340

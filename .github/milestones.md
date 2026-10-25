@@ -46,6 +46,7 @@ use `Phase <N> - <scope>`, standing milestones (`Pilot`, `Harness`,
 | Phase 3 - persistence slice | closed | pre-convention slice board (closed per #224, 0 open) |
 | Phase 3 - stay flow slice | closed | pre-convention slice board (closed per #224, 0 open) |
 | Phase 3 - process decisions | closed | pre-convention slice board (closed per #224, 0 open) |
+| Phase 6 - desk UI | open | plan 6 (clickable desk UI for the front-desk loop, program #248; exit: receptionist operates book-to-receipt on screens alone, pilot-ready) |
 | Pilot | open | plan 5 (full-day operation, runbook, restore drill inside RTO 4h) |
 | Harness | open | ongoing automation track (agents, skills, workflow, CI); not a plan phase |
 | QA | open | standing QA track (test plans, issue reports, bugs found; fixes stay in phase milestones) |
