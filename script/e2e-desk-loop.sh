@@ -378,6 +378,10 @@ pass "script.runbook.e2e_checkout_ok" "e2e: PASS: stay {stay} closed with invoic
 
 step "script.runbook.e2e_step_expectation" "e2e: === write the restore expectation record ==="
 EXPECT_FILE="$STAGING_DIR/e2e-expect.json"
+# Direct invocations may point at a fresh --staging-dir that nothing
+# has created yet (backup.sh runs mkdir -p only in step 14), so
+# ensure it exists before the expectation record write below.
+mkdir -p "$STAGING_DIR"
 PAYMENTS_JSON="$(python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["paymentsByMethod"], sort_keys=True))' <<<"$DAY_CLOSE")"
 # Pre-failure ground truth for the runbook section 5 owner checks
 # (issue #117): the hotel's own name, the checked-in room's state,
