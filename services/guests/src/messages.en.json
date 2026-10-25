@@ -313,6 +313,27 @@
     "script.runbook.e2e_step_backup": "e2e: === backup the engine ===",
     "script.runbook.e2e_step_report": "e2e: === desk shows the newest backup report (issue #116) ===",
     "script.runbook.e2e_step_drill": "e2e: === restore drill (verify-only) inside the RTO budget ===",
-    "script.runbook.e2e_step_reverify": "e2e: === re-verify the desk after the drill ==="
+    "script.runbook.e2e_step_reverify": "e2e: === re-verify the desk after the drill ===",
+    "desk.entry.desk_link": "Desk today (arrivals, in-house, departures)",
+    "desk.today.title": "Hotel Management — Desk Today",
+    "desk.today.back": "Back to the desk entry",
+    "desk.today.business_date": "Business date: ",
+    "desk.today.refresh": "Refresh",
+    "desk.today.loading": "Loading today’s lists…",
+    "desk.today.arrivals": "Arriving today",
+    "desk.today.in_house": "In house",
+    "desk.today.departures": "Leaving today",
+    "desk.today.attention": "Rooms needing attention",
+    "desk.today.dirty": "Dirty",
+    "desk.today.uninspected": "Clean but uninspected",
+    "desk.today.out_of_order": "Out of order",
+    "desk.today.th_guest": "Guest",
+    "desk.today.th_room": "Room",
+    "desk.today.not_assigned": "Not assigned",
+    "desk.today.room_ref": "Room {roomRef}",
+    "desk.today.room_type": "Room type {roomType}",
+    "desk.today.unknown_guest": "Unknown guest ({guestId})",
+    "desk.today.sheet_line": "{arrivals} arriving, {inHouse} in house, {departures} leaving, {openBalances} open balances (as of {asOf}).",
+    "desk.today.session_expired": "Session expired. Sign in again."
   }
 }
