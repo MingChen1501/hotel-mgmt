@@ -409,6 +409,7 @@ contracts/             shared contract library (source of truth):
   config-schema/       not landed as a `contracts/` tree — the versioned per-hotel configuration schema (§3.1) lives as-built at `deploy/config/schema.json`
   messages/            no `contracts/messages/` tree — the catalogue lives as-built as per-service catalogues (`services/*/messages*`, `frontend/messages.js`; NFR-I18N-1, no behaviour in wording)
 frontend/              static SPA (framework free choice; served by Nginx, no SSR runtime)
+app/                   Vue 3 + Vite CSR shell (ADR-0003, accepted 2026-10-25): Vite `base '/app/'`, static `dist/` into the Nginx image, `location /app/` + `try_files` fallback to `/app/index.html`; scaffold design in §11 (Refs #291)
 deploy/ansible/        offline packaging playbooks (release-manager owned; referenced, not added here)
 ```
 
@@ -458,6 +459,183 @@ Per-module directory (shape per stack, same obligations):
 Coverage: 8/8 modules with responsibilities, signatures, data flow,
 outbox events, and error mapping; every BA contract need (§§1–7, §9
 error index) is encoded above or deferred here with reason.
+
+## 11. Desk UI shell (`/app/`) — scaffold design (Refs #291)
+
+Scaffold slice of ADR-0003 (accepted 2026-10-25): the placeholder
+shell only. No app routes, no catalogue layer, no backend change.
+Subsystem boundary is in `docs/architecture/hld.md` §11; this
+section is the build-ready decomposition the implementation PR
+must follow, including the per-flow diagrams (happy path +
+failure/rollback path) the T3 gate requires.
+
+Intended tree (files the implementation PR must create; edge
+traces below cite these intended paths):
+
+```text
+app/                     new Vite + Vue 3 + Router (history) + Pinia + TS shell
+  package.json           deps: vue, vue-router, pinia; scripts: build, test
+  vite.config.ts         `base: '/app/'` so all assets resolve under /app/
+  src/main.ts            app bootstrap: pinia install, router mount
+  src/router.ts          history router; exactly one placeholder route in this slice
+  src/api/client.ts      shared Bearer fetch wrapper (connectivity state, single 401 path)
+  src/stores/session.ts  Pinia session store (sessionStorage token, sign-in/out)
+  src/views/Placeholder.vue  the one placeholder route view
+```
+
+Nginx contract (parallel run; legacy `/` pages untouched):
+
+```text
+location /app/ {
+  try_files $uri $uri/ /app/index.html;
+}
+```
+
+Fallback is `/app/index.html`, NOT `/index.html`
+(owner-mandated correction). `/docs` Swagger mirror intact.
+
+Shared-client contract (`src/api/client.ts` + `src/stores/session.ts`):
+
+- Every API call carries `Authorization: Bearer <token>` from the
+  session store; token persistence is `sessionStorage`
+  (threat-model delta in
+  `docs/technical/security-threat-model.md` §4).
+- Any `401` / `UNAUTHENTICATED` response clears the store token
+  and routes to sign-in — the single 401 path, replacing the
+  per-page copy-pasted blocks (`frontend/desk.html:83`,
+  `book.html:112`, `frontend/admin.html:69`).
+- Connectivity state is owned by the client: `online`/`offline`
+  events plus failed-fetch detection drive an offline banner with
+  safe manual retry. Explicitly NO write queueing: desk actions
+  are synchronous authoritative ops (charge, payment, check-in)
+  and queueing risks double-charge; disconnect means clearly
+  blocked, same as today's static pages.
+
+CI contract: one new job (Node 22 + `npm ci` + build + test,
+matching the existing Node matrix) builds `app/`; the
+`openapi-route-check.sh` byte-identical mirror
+(`contracts/openapi.yaml` vs `frontend/docs/openapi.yaml`) stays
+green.
+
+### 11.1 Placeholder-render flowchart
+
+Staff browser loads any `/app/*` path (history-mode deep link or
+reload included):
+
+```mermaid
+flowchart TD
+    A[GET /app/* path] --> B[Nginx location /app/]
+    B --> C{Static file matches $uri?}
+    C -->|yes| D[Serve dist asset]
+    C -->|no| E[try_files fallback /app/index.html]
+    E --> F[Vite bundle boots: main.ts]
+    F --> G[Router resolves placeholder route]
+    G --> H[Placeholder view renders]
+```
+
+Edge trace (every edge cites the intended file the
+implementation PR must create):
+
+- A–B: `deploy/nginx/nginx.conf` gains the `location /app/`
+  block; legacy `location /` is untouched.
+- C–D: hashed Vite assets under `/app/assets/` served directly
+  (`app/dist/` packaged into the Nginx image; `vite.config.ts`
+  `base: '/app/'`).
+- C–E: non-asset paths fall through to `/app/index.html`
+  (`try_files $uri $uri/ /app/index.html;` — NOT `/index.html`).
+- F–G: `src/main.ts` installs Pinia and mounts the router;
+  `src/router.ts` holds exactly one route (placeholder only).
+- G–H: `src/views/Placeholder.vue` renders using the session
+  store (`src/stores/session.ts`).
+
+Failure/rollback:
+
+```mermaid
+flowchart TD
+    P[dist/ missing or stale in image] --> Q[Placeholder 404 or old bundle]
+    Q --> R[Rollback: redeploy previous Nginx image]
+    S[Bundle 404 on asset] --> T[Rebuild app/ and repack image]
+    U[Router unknown path] --> V[Fallback serves index.html; router shows placeholder]
+```
+
+Edge trace:
+
+- P–R: rollback is proxy-only (remove the redirect / redeploy
+  the previous Nginx image); old static files at `/` remain in
+  place, so no data migration either way.
+- S–T: asset miss means the image packed a stale `dist/`;
+  rebuild, never hand-edit.
+- U–V: history-mode unknown paths still boot the placeholder in
+  this slice (no app routes exist yet); real 404 semantics arrive
+  with the first screen slice.
+
+### 11.2 Shared-client 401-to-sign-out flowchart
+
+Authenticated call from the placeholder through the shared client:
+
+```mermaid
+flowchart TD
+    A[Placeholder calls api client] --> B[Attach Bearer token from session store]
+    B --> C[Fetch /v1/* behind Nginx]
+    C --> D{Response?}
+    D -->|2xx| E[Return data to view]
+    D -->|401 / UNAUTHENTICATED| F[Clear store token]
+    F --> G[Route to sign-in]
+    D -->|network failure| H[Raise offline banner; block action]
+```
+
+Edge trace:
+
+- A–B: `src/api/client.ts` reads the token from
+  `src/stores/session.ts` (never from page-local state).
+- D–E: happy path returns parsed data; the placeholder needs no
+  payload shape in this slice.
+- D–F–G: single 401 path — clear + sign-in redirect, replacing
+  the five per-page handlers (`frontend/desk.html:83`,
+  `book.html:112`, `frontend/admin.html:69`); a revoked or
+  expired token takes the same path (revocation re-checked per
+  LLD §0).
+- D–H: fetch rejection (LAN disconnect) is NOT treated as
+  sign-out; it drives the §11.3 banner and manual retry instead.
+
+Failure/rollback: no compensation — clearing the store token is
+a single local step; refusals precede any mutation, and the
+server-side session rules (15-minute idle sign-out, 5-minute
+revalidation bound, LLD §0) are unchanged.
+
+### 11.3 Offline banner / manual-retry flowchart
+
+LAN disconnect during a desk session on `/app/`:
+
+```mermaid
+flowchart TD
+    A[online/offline event or fetch rejects] --> B[Client sets connectivity down]
+    B --> C[Offline banner shows; action blocked with reason]
+    C --> D{Link back?}
+    D -->|offline event| E[Banner clears; manual retry offered]
+    D -->|still down| F[Banner stays; actions stay blocked]
+    E --> G[Staff retries action manually]
+    G --> H{Retry result?}
+    H -->|2xx| I[Banner clears; data shown]
+    H -->|fails| C
+```
+
+Edge trace:
+
+- A–B: `src/api/client.ts` owns connectivity state
+  (`online`/`offline` listeners + failed-fetch detection).
+- B–C: banner + blocked action with reason; the desk never
+  silently drops an op.
+- E–G: retry is always staff-initiated (safe manual retry) —
+  explicitly no automatic write queueing and no background
+  replay, because desk writes are synchronous authoritative ops
+  (ADR-0003 criterion 9: queueing risks double-charge).
+- H–C: a retry that still fails returns to the blocked banner;
+  reconnect alone clears nothing until the staff retries.
+
+Failure/rollback: none compensating — blocked actions mutate
+nothing, so there is nothing to roll back; the previous Nginx
+image (without `/app/`) restores the legacy pages instantly.
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-137

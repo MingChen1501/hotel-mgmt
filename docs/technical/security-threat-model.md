@@ -107,6 +107,16 @@ one operation set with no primary editor (LLD §0).
 - Locked, revoked, or expired sessions are refused with
   `UNAUTHENTICATED`; a signed-out token cannot be replayed into a
   new session.
+- `/app/` shell delta (Refs #291, ADR-0003 Consequences): the Vue
+  3 + Vite shell keeps the single session token in the shared
+  Pinia session store persisted to `sessionStorage` — it survives
+  a tab reload and dies with the tab. No meaningful XSS
+  regression in the LAN-only / no-guest-sign-in posture per
+  `NFR-SEC-1`: script injected into the shell reads an in-memory
+  token exactly as easily as a `sessionStorage` one, and the
+  token still never travels in URLs (B1). Server-side controls
+  above (idle sign-out, 5-minute revalidation, lockout) apply
+  unchanged to shell sessions.
 
 ## 5. Secrets and first-provisioning flow
 

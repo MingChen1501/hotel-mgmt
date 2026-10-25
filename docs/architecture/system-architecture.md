@@ -19,7 +19,12 @@ keep working without internet (`NFR-AVL-1`):
 
 - Nginx: the single entry point and reverse proxy for desk
   clients on the hotel LAN; serves the static frontend build and
-  routes to the module containers; no external exposure.
+  routes to the module containers; no external exposure. During
+  the ADR-0003 desk-UI migration the same Nginx image also serves
+  the Vue 3 + Vite static `dist/` under the dedicated `location
+  /app/` block (`try_files` fallback to `/app/index.html`;
+  legacy pages at `/` untouched, `/docs` mirror intact) — shell
+  design in `docs/architecture/lld.md` §11 (Refs #291).
 - Module containers: one container per HLD module (Reservations,
   Stay, Rooms, Rates & Availability, Guests, Billing, Reporting,
   Admin & Config), each embedding its own
