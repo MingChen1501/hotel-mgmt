@@ -154,7 +154,7 @@ if catalogue is not None:
     def collapse(value):
         return re.sub(r"\s+", " ", value).strip()
 
-    for page in ["frontend/index.html", "frontend/admin.html", "frontend/desk.html", "frontend/book.html", "frontend/stay.html"]:
+    for page in ["frontend/index.html", "frontend/admin.html", "frontend/desk.html", "frontend/book.html", "frontend/stay.html", "frontend/folio.html"]:
         parser = MsgParser()
         parser.feed((ROOT / page).read_text(encoding="utf-8"))
         for key, texts in parser.found.items():
@@ -244,7 +244,7 @@ if catalogue is not None:
             i = k
         return calls
 
-    for page in ["frontend/index.html", "frontend/admin.html", "frontend/desk.html", "frontend/book.html", "frontend/stay.html"]:
+    for page in ["frontend/index.html", "frontend/admin.html", "frontend/desk.html", "frontend/book.html", "frontend/stay.html", "frontend/folio.html"]:
         text = (ROOT / page).read_text(encoding="utf-8")
         for key, params_raw, (kind, fallback) in scan_calls(text):
             pattern = messages.get(key)
