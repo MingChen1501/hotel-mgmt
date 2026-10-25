@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title data-msg="desk.print.title">Hotel Management — Desk Print</title>
+  <style>
+    @media print {
+      body > *:not(#print-section) {
+        display: none;
+      }
+      #print-section > *:not(.print-document) {
+        display: none;
+      }
+      #print-section > .print-document:not(.active) {
+        display: none;
+      }
+      #print-section,
+      #print-section > .print-document.active {
+        display: block;
+      }
+      #print-section > .print-document.active button {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1 data-msg="desk.print.title">Hotel Management — Desk Print</h1>
+  <p><a href="/" data-msg="desk.print.back">Back to the desk entry</a> ·
+    <a href="/desk.html" data-msg="desk.print.today_link">Today's arrivals, in-house, and departures</a> ·
+    <a href="/folio.html" data-msg="desk.print.folio_link">Stay folio (charges and payments)</a> ·
+    <a href="/book.html" data-msg="desk.print.book_link">Desk booking (price quote and confirm)</a></p>
+  <noscript><p>This page needs JavaScript to sign in and print invoices, receipts, and confirmations.</p></noscript>
+
+  <section id="signin-section">
+    <h2 data-msg="desk.admin.sign_in">Sign in</h2>
+    <form id="signin-form">
+      <label data-msg="desk.admin.signin_identity">Sign-in identity: <input id="signin-identity" name="signin-identity" autocomplete="username"></label>
+      <label data-msg="desk.admin.secret">Secret: <input id="signin-secret" name="signin-secret" type="password" autocomplete="current-password"></label>
+      <button type="submit" data-msg="desk.admin.sign_in">Sign in</button>
+    </form>
+    <p id="signin-error" role="alert" hidden></p>
+  </section>
+
+  <section id="print-section" hidden>
+    <p><span data-msg="desk.admin.signed_in_as">Signed in as </span><strong id="whoami"></strong> (<span id="myrole"></span>).
+      <button id="signout-button" type="button" data-msg="desk.admin.signout">Sign out</button></p>
+
+    <h2 data-msg="desk.print.open_heading">Open a folio for printing</h2>
+    <div>
+      <label data-msg="desk.print.stay_id">Stay ID: <input id="print-stay-id" name="print-stay-id" autocomplete="off"></label>
+      <button id="open-button" type="button" data-msg="desk.print.open_button">Open folio</button>
+      <p id="open-error" role="alert" hidden></p>
+    </div>
+
+    <h2 data-msg="desk.print.folio_heading">Folio on screen (what prints must match this)</h2>
+    <p id="folio-status" role="status"></p>
+    <table id="folio-table">
+      <thead>
+        <tr><th data-msg="desk.folio.th_time">Time</th><th data-msg="desk.folio.th_item">Item</th><th data-msg="desk.folio.th_amount">Amount</th><th data-msg="desk.folio.th_balance">Running balance</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <div>
+      <button id="invoice-button" type="button" data-msg="desk.print.invoice_button" disabled>Show invoice</button>
+      <p id="invoice-error" role="alert" hidden></p>
+    </div>
+
+    <section id="invoice-document" class="print-document" hidden>
+      <h2 data-msg="desk.print.invoice_heading">Invoice</h2>
+      <div id="invoice-body"></div>
+      <button id="invoice-print-button" type="button" data-msg="desk.print.print_button">Print</button>
+      <button id="invoice-copy-button" type="button" data-msg="desk.print.copy_button">Copy text</button>
+      <p id="invoice-copy-status" role="status" hidden></p>
+    </section>
+
+    <h2 data-msg="desk.print.receipt_heading">Receipts (one per payment)</h2>
+    <p id="receipt-status" role="status"></p>
+    <ul id="payment-list"></ul>
+    <p id="receipt-error" role="alert" hidden></p>
+
+    <section id="receipt-document" class="print-document" hidden>
+      <h2 data-msg="desk.print.receipt_heading">Receipts (one per payment)</h2>
+      <div id="receipt-body"></div>
+      <button id="receipt-print-button" type="button" data-msg="desk.print.print_button">Print</button>
+      <button id="receipt-copy-button" type="button" data-msg="desk.print.copy_button">Copy text</button>
+      <p id="receipt-copy-status" role="status" hidden></p>
+    </section>
+
+    <h2 data-msg="desk.print.confirmation_heading">Booking confirmation</h2>
+    <div>
+      <label data-msg="desk.print.reservation_ref">Booking reference: <input id="print-ref" name="print-ref" autocomplete="off"></label>
+      <button id="load-button" type="button" data-msg="desk.print.load_button">Load confirmation</button>
+      <p id="load-error" role="alert" hidden></p>
+    </div>
+
+    <section id="confirmation-document" class="print-document" hidden>
+      <h2 data-msg="desk.print.confirmation_heading">Booking confirmation</h2>
+      <div id="confirmation-body"></div>
+      <button id="confirmation-print-button" type="button" data-msg="desk.print.print_button">Print</button>
+      <button id="confirmation-copy-button" type="button" data-msg="desk.print.copy_button">Copy text</button>
+      <p id="confirmation-copy-status" role="status" hidden></p>
+    </section>
+  </section>
+
+  <script src="messages.js"></script>
+  <script>
+    DeskMessages.init();
+    // Desk print view (issue #253, Screen 5): print the invoice that
+    // matches the folio lines and balance exactly, one receipt per
+    // recorded payment, and the booking confirmation. Same static
+    // pattern as the admin console, the today dashboard
+    // (frontend/desk.html), the booking form (frontend/book.html),
+    // the stay lifecycle (frontend/stay.html), and the folio view
+    // (frontend/folio.html): no build step, the page calls the
+    // versioned contract paths through Nginx on this host with the
+    // same Bearer session and role rules as the API. Desk-loop ops:
+    // GetFolioBalance (stayId, actor) reuses the folio data path so
+    // the screen shows what the paper must match; ProduceInvoice
+    // (folioId, actor) renders the invoice with the same line
+    // helpers as the folio view (charge totals include the stored
+    // tax/fee, entries time-sorted, running balance recomputed);
+    // ProduceReceipt (paymentId, actor) renders one receipt per
+    // payment, reading paymentId with a fallback to id; and
+    // ProduceConfirmation (reservationRef) renders the confirmation
+    // with the same layout as the booking form. Each document
+    // section prints alone: its Print button marks the section
+    // active and calls window.print, and the print CSS hides
+    // everything outside the active document without ever hiding
+    // its ancestors. Behaviour branches only on envelope codes.
+    (function () {
+      var token = null;
+      var displayName = "";
+      var currentFolioId = null;
+      var opening = false;
+      var invoicing = false;
+      var receipting = false;
+      var loading = false;
+
+      function show(id, message) {
+        var el = document.getElementById(id);
+        el.textContent = message;
+        el.hidden = !message;
+      }
+
+      function status(id, message) {
+        document.getElementById(id).textContent = message || "";
+      }
+
+      async function call(operation, body) {
+        var routes = {
+          SignIn: "/v1/admin/SignIn",
+          SignOut: "/v1/admin/SignOut",
+          GetFolioBalance: "/v1/billing/GetFolioBalance",
+          ProduceInvoice: "/v1/billing/ProduceInvoice",
+          ProduceReceipt: "/v1/billing/ProduceReceipt",
+          ProduceConfirmation: "/v1/guests/ProduceConfirmation",
+        };
+        var headers = { "Content-Type": "application/json" };
+        if (token) {
+          headers["Authorization"] = "Bearer " + token;
+        }
+        var response = await fetch(routes[operation], {
+          method: "POST",
+          headers: headers,
+          body: JSON.stringify(body || {}),
+        });
+        var payload = await response.json();
+        if (!response.ok) {
+          var failure = new Error(payload.message || payload.code || DeskMessages.msg("desk.admin.request_failed", { operation: operation }, "request failed: {operation}"));
+          failure.code = payload.code;
+          failure.details = payload.details || null;
+          throw failure;
+        }
+        return payload;
+      }
+
+      function esc(value) {
+        return String(value).replace(/[&<>"']/g, function (ch) {
+          return { "&": "&amp;", "&lt;": "&lt;", "&gt;": "&gt;", '"': "&quot;", "'": "&#39;" }[ch];
+        });
+      }
+
+      function isSignedOut(err) {
+        return err && err.code === "UNAUTHENTICATED";
+      }
+
+      function signedOut() {
+        token = null;
+        displayName = "";
+        currentFolioId = null;
+        document.getElementById("print-section").hidden = true;
+        document.getElementById("signin-section").hidden = false;
+        document.getElementById("signin-secret").value = "";
+      }
+
+      function refuseSession() {
+        signedOut();
+        show("signin-error", DeskMessages.msg("desk.today.session_expired", {}, "Session expired. Sign in again."));
+      }
+
+      function plainAmount(minor) {
+        return (minor / 100).toFixed(2);
+      }
+
+      function isCharge(line) {
+        return typeof line.itemKind === "string" && typeof line.itemName === "string" &&
+          typeof line.amountMinor === "number" && typeof line.postedAt === "string";
+      }
+
+      function isPayment(line) {
+        return typeof line.method === "string" && typeof line.amountMinor === "number" &&
+          typeof line.paidAt === "string" && line.itemKind === undefined;
+      }
+
+      function chargeTotal(line) {
+        return line.amountMinor + (line.taxMinor || 0) + (line.feeMinor || 0);
+      }
+
+      function chargeItemText(line) {
+        var extras = [];
+        if (line.taxMinor) {
+          extras.push("tax " + plainAmount(line.taxMinor));
+        }
+        if (line.feeMinor) {
+          extras.push("fee " + plainAmount(line.feeMinor));
+        }
+        return extras.length ? line.itemName + " (" + extras.join(", ") + ")" : line.itemName;
+      }
+
+      function folioEntries(source) {
+        var entries = [];
+        (source.charges || []).forEach(function (line) {
+          if (isCharge(line)) {
+            entries.push({ at: line.postedAt, item: chargeItemText(line), delta: chargeTotal(line) });
+          } else {
+            entries.push({ at: "", item: DeskMessages.msg("desk.folio.raw_line", { raw: JSON.stringify(line) }, "Unrecognised line: " + JSON.stringify(line) + ".") });
+          }
+        });
+        (source.payments || []).forEach(function (line) {
+          if (isPayment(line)) {
+            entries.push({ at: line.paidAt, item: line.method + " payment", delta: -line.amountMinor });
+          } else {
+            entries.push({ at: "", item: DeskMessages.msg("desk.folio.raw_line", { raw: JSON.stringify(line) }, "Unrecognised line: " + JSON.stringify(line) + ".") });
+          }
+        });
+        entries.sort(function (a, b) {
+          return a.at < b.at ? -1 : (a.at > b.at ? 1 : 0);
+        });
+        return entries;
+      }
+
+      function entriesRows(entries) {
+        var running = 0;
+        return entries.map(function (entry) {
+          if (entry.delta === undefined) {
+            return "<tr><td></td><td>" + esc(entry.item) + "</td><td></td><td></td></tr>";
+          }
+          running += entry.delta;
+          return "<tr><td>" + esc(entry.at) + "</td><td>" + esc(entry.item) + "</td><td>" +
+            esc(plainAmount(entry.delta)) + "</td><td>" + esc(plainAmount(running)) + "</td></tr>";
+        }).join("");
+      }
+
+      function documentLines(pairs) {
+        return "<dl>" + pairs.map(function (pair) {
+          return "<dt>" + esc(pair[0]) + "</dt><dd>" + esc(pair[1]) + "</dd>";
+        }).join("") + "</dl>";
+      }
+
+      function printDocument(id) {
+        var section = document.getElementById(id);
+        section.classList.add("active");
+        var done = function () {
+          section.classList.remove("active");
+          window.removeEventListener("afterprint", done);
+        };
+        window.addEventListener("afterprint", done);
+        window.print();
+        // A missing afterprint event still cleans up on the next tick.
+        window.setTimeout(function () {
+          section.classList.remove("active");
+        }, 0);
+      }
+
+      function copyText(bodyId, statusId) {
+        var text = document.getElementById(bodyId).innerText;
+        var done = function () {
+          var status = document.getElementById(statusId);
+          status.textContent = DeskMessages.msg("desk.print.copied", {}, "Copied.");
+          status.hidden = false;
+        };
+        var failed = function () {
+          var status = document.getElementById(statusId);
+          status.textContent = DeskMessages.msg("desk.print.copy_failed", {}, "Copy failed. Select the text by hand.");
+          status.hidden = false;
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done, failed);
+        } else {
+          failed();
+        }
+      }
+
+      function paymentIdOf(line) {
+        if (line && typeof line.paymentId === "string" && line.paymentId) {
+          return line.paymentId;
+        }
+        if (line && typeof line.id === "string" && line.id) {
+          return line.id;
+        }
+        return null;
+      }
+
+      function renderFolio(folio) {
+        currentFolioId = folio.folioId;
+        var entries = folioEntries(folio);
+        document.querySelector("#folio-table tbody").innerHTML = entriesRows(entries) ||
+          '<tr><td colspan="4">' + esc(DeskMessages.msg("desk.folio.no_lines", {}, "No charges or payments yet.")) + "</td></tr>";
+        status("folio-status", DeskMessages.msg("desk.folio.folio_line", {
+          folioId: folio.folioId,
+          balance: plainAmount(folio.balanceMinor),
+        }, "Folio " + folio.folioId + ": balance " + plainAmount(folio.balanceMinor) + "."));
+        document.getElementById("invoice-button").disabled = false;
+        var list = document.getElementById("payment-list");
+        var payments = (folio.payments || []).filter(isPayment);
+        if (!payments.length) {
+          list.innerHTML = "<li>" + esc(DeskMessages.msg("desk.print.no_payments", {}, "No payments recorded yet.")) + "</li>";
+          return;
+        }
+        list.innerHTML = "";
+        payments.forEach(function (line) {
+          var item = document.createElement("li");
+          var id = paymentIdOf(line);
+          var label = line.method + " payment: " + plainAmount(line.amountMinor) + " at " + line.paidAt;
+          if (!id) {
+            item.textContent = DeskMessages.msg("desk.folio.raw_line", { raw: JSON.stringify(line) }, "Unrecognised line: " + JSON.stringify(line) + ".");
+            list.appendChild(item);
+            return;
+          }
+          item.textContent = label + " ";
+          var button = document.createElement("button");
+          button.type = "button";
+          button.textContent = DeskMessages.msg("desk.print.receipt_button", {}, "Receipt");
+          button.addEventListener("click", function () {
+            showReceipt(id);
+          });
+          item.appendChild(button);
+          list.appendChild(item);
+        });
+      }
+
+      function renderInvoice(invoice) {
+        var entries = folioEntries(invoice);
+        var lines = [
+          ["invoice", invoice.invoiceId],
+          ["folio", invoice.folioId],
+          ["stay", invoice.stayId],
+          ["produced at", invoice.producedAt],
+          ["balance", plainAmount(invoice.balanceMinor)],
+        ];
+        document.getElementById("invoice-body").innerHTML = documentLines(lines) +
+          '<table><thead><tr><th scope="col">' +
+          esc(DeskMessages.msg("desk.folio.th_time", {}, "Time")) + "</th><th scope=\"col\">" +
+          esc(DeskMessages.msg("desk.folio.th_item", {}, "Item")) + "</th><th scope=\"col\">" +
+          esc(DeskMessages.msg("desk.folio.th_amount", {}, "Amount")) + "</th><th scope=\"col\">" +
+          esc(DeskMessages.msg("desk.folio.th_balance", {}, "Running balance")) + "</th></tr></thead><tbody>" +
+          (entriesRows(entries) ||
+            '<tr><td colspan="4">' + esc(DeskMessages.msg("desk.folio.no_lines", {}, "No charges or payments yet.")) + "</td></tr>") +
+          "</tbody></table>";
+        status("folio-status", DeskMessages.msg("desk.print.invoice_line", {
+          invoiceId: invoice.invoiceId,
+          folioId: invoice.folioId,
+          balance: plainAmount(invoice.balanceMinor),
+        }, "Invoice " + invoice.invoiceId + " for folio " + invoice.folioId + ": balance " + plainAmount(invoice.balanceMinor) + "."));
+        document.getElementById("invoice-document").hidden = false;
+      }
+
+      function renderReceipt(receipt) {
+        var lines = [
+          ["receipt", receipt.receiptId],
+          ["payment", receipt.paymentId],
+          ["folio", receipt.folioId],
+          ["stay", receipt.stayId],
+          ["method", receipt.method],
+          ["amount", plainAmount(receipt.amountMinor)],
+          ["paid at", receipt.paidAt],
+        ];
+        document.getElementById("receipt-body").innerHTML = documentLines(lines);
+        status("receipt-status", DeskMessages.msg("desk.print.receipt_line", {
+          receiptId: receipt.receiptId,
+          method: receipt.method,
+          amount: plainAmount(receipt.amountMinor),
+          paidAt: receipt.paidAt,
+        }, "Receipt " + receipt.receiptId + ": " + receipt.method + " payment of " + plainAmount(receipt.amountMinor) + " on " + receipt.paidAt + "."));
+        document.getElementById("receipt-document").hidden = false;
+      }
+
+      function renderConfirmation(confirmation) {
+        var price = confirmation.price || {};
+        var money = (price.amountMinor !== undefined && price.currency)
+          ? DeskMessages.formatMoney(price.amountMinor, price.currency)
+          : plainAmount(price.amountMinor || 0);
+        var lines = [
+          ["hotel", (confirmation.hotel && confirmation.hotel.name) || ""],
+          ["guest", (confirmation.guest && confirmation.guest.fullName) || ""],
+          ["reference", confirmation.reservationRef],
+          ["check-in", (confirmation.dates && confirmation.dates.checkIn) || ""],
+          ["check-out", (confirmation.dates && confirmation.dates.checkOut) || ""],
+          ["type", confirmation.type || ""],
+          ["price", money],
+        ];
+        document.getElementById("confirmation-body").innerHTML = documentLines(lines);
+        document.getElementById("confirmation-document").hidden = false;
+      }
+
+      async function openFolio() {
+        var stayId = document.getElementById("print-stay-id").value.trim();
+        if (!stayId) {
+          status("folio-status", DeskMessages.msg("desk.print.need_stay", {}, "Enter a stay ID first."));
+          return;
+        }
+        opening = true;
+        var openButton = document.getElementById("open-button");
+        openButton.disabled = true;
+        show("open-error", "");
+        try {
+          renderFolio(await call("GetFolioBalance", { stayId: stayId, actor: displayName }));
+        } catch (err) {
+          if (isSignedOut(err)) {
+            refuseSession();
+            return;
+          }
+          show("open-error", err.message);
+        } finally {
+          opening = false;
+          openButton.disabled = false;
+        }
+      }
+
+      async function showInvoice() {
+        if (invoicing || !currentFolioId) {
+          return;
+        }
+        invoicing = true;
+        var invoiceButton = document.getElementById("invoice-button");
+        invoiceButton.disabled = true;
+        show("invoice-error", "");
+        try {
+          renderInvoice(await call("ProduceInvoice", { folioId: currentFolioId, actor: displayName }));
+        } catch (err) {
+          if (isSignedOut(err)) {
+            refuseSession();
+            return;
+          }
+          show("invoice-error", err.message);
+        } finally {
+          invoicing = false;
+          invoiceButton.disabled = false;
+        }
+      }
+
+      async function showReceipt(paymentId) {
+        if (receipting) {
+          return;
+        }
+        receipting = true;
+        show("receipt-error", "");
+        try {
+          renderReceipt(await call("ProduceReceipt", { paymentId: paymentId, actor: displayName }));
+        } catch (err) {
+          if (isSignedOut(err)) {
+            refuseSession();
+            return;
+          }
+          show("receipt-error", err.message);
+        } finally {
+          receipting = false;
+        }
+      }
+
+      async function loadConfirmation() {
+        var ref = document.getElementById("print-ref").value.trim();
+        if (!ref) {
+          show("load-error", DeskMessages.msg("desk.print.need_ref", {}, "Enter a booking reference first."));
+          return;
+        }
+        loading = true;
+        var loadButton = document.getElementById("load-button");
+        loadButton.disabled = true;
+        show("load-error", "");
+        try {
+          renderConfirmation(await call("ProduceConfirmation", { reservationRef: ref }));
+        } catch (err) {
+          if (isSignedOut(err)) {
+            refuseSession();
+            return;
+          }
+          show("load-error", err.message);
+        } finally {
+          loading = false;
+          loadButton.disabled = false;
+        }
+      }
+
+      document.getElementById("open-button").addEventListener("click", async function () {
+        if (opening) {
+          return;
+        }
+        await openFolio();
+      });
+
+      document.getElementById("print-stay-id").addEventListener("input", function () {
+        currentFolioId = null;
+        document.getElementById("invoice-button").disabled = true;
+        document.getElementById("invoice-document").hidden = true;
+        status("folio-status", "");
+        show("open-error", "");
+      });
+
+      document.getElementById("invoice-button").addEventListener("click", async function () {
+        await showInvoice();
+      });
+
+      document.getElementById("load-button").addEventListener("click", async function () {
+        if (loading) {
+          return;
+        }
+        await loadConfirmation();
+      });
+
+      document.getElementById("invoice-print-button").addEventListener("click", function () {
+        printDocument("invoice-document");
+      });
+
+      document.getElementById("receipt-print-button").addEventListener("click", function () {
+        printDocument("receipt-document");
+      });
+
+      document.getElementById("confirmation-print-button").addEventListener("click", function () {
+        printDocument("confirmation-document");
+      });
+
+      document.getElementById("invoice-copy-button").addEventListener("click", function () {
+        copyText("invoice-body", "invoice-copy-status");
+      });
+
+      document.getElementById("receipt-copy-button").addEventListener("click", function () {
+        copyText("receipt-body", "receipt-copy-status");
+      });
+
+      document.getElementById("confirmation-copy-button").addEventListener("click", function () {
+        copyText("confirmation-body", "confirmation-copy-status");
+      });
+
+      document.getElementById("signin-form").addEventListener("submit", async function (event) {
+        event.preventDefault();
+        try {
+          var payload = await call("SignIn", {
+            signinIdentity: document.getElementById("signin-identity").value,
+            secret: document.getElementById("signin-secret").value,
+          });
+          token = payload.token;
+          displayName = payload.displayName;
+          document.getElementById("whoami").textContent = payload.displayName;
+          document.getElementById("myrole").textContent = payload.role;
+          document.getElementById("signin-section").hidden = true;
+          document.getElementById("print-section").hidden = false;
+          show("signin-error", "");
+        } catch (err) {
+          show("signin-error", err.message);
+        }
+      });
+
+      document.getElementById("signout-button").addEventListener("click", async function () {
+        try {
+          await call("SignOut", {});
+        } catch (err) {
+          /* A dead token signs out locally all the same. */
+        }
+        signedOut();
+      });
+
+      (function prefill() {
+        var params = new URLSearchParams(window.location.search);
+        var stayId = params.get("stayId");
+        if (stayId) {
+          document.getElementById("print-stay-id").value = stayId;
+        }
+        var ref = params.get("reservationRef");
+        if (ref) {
+          document.getElementById("print-ref").value = ref;
+        }
+      })();
+    })();
+  </script>
+</body>
+</html>
