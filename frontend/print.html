@@ -178,7 +178,7 @@
 
       function esc(value) {
         return String(value).replace(/[&<>"']/g, function (ch) {
-          return { "&": "&amp;", "&lt;": "&lt;", "&gt;": "&gt;", '"': "&quot;", "'": "&#39;" }[ch];
+          return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch];
         });
       }
 
