@@ -182,5 +182,52 @@ as history and are not re-voted here; the acceptance answers live in
 `docs/architecture/decisions/adr-0001-monorepo-polyglot.md`
 (Owner acceptance).
 
+## 11. Desk UI migration shell (`/app/`) — scaffold (Refs #291)
+
+Decision: ADR-0003 (accepted 2026-10-25) migrates the desk UI to
+Vue 3 + Vite, CSR-only, static `dist/` served by the existing
+Nginx. This section records the scaffold slice only (issue #291,
+follow-up 1 of the ADR-0003 §4 split plan): a placeholder shell
+under `/app/` with no app routes. Real screen routes, the
+catalogue layer, and decommission of the old pages are later
+follow-ups and change nothing here.
+
+Subsystem shape (parallel run throughout migration):
+
+- New presentation subsystem: Vite + Vue 3 + Vue Router (history
+  mode) + Pinia + TypeScript, built with Vite `base '/app/'` to a
+  static `dist/` that is packaged into the Nginx image. No SSR
+  runtime; no backend or contract change.
+- Nginx serves the shell from a dedicated block alongside the
+  untouched legacy pages: `location /app/` with `try_files $uri
+  $uri/ /app/index.html;` (fallback is `/app/index.html`, NOT
+  `/index.html` — owner-mandated correction carried from ADR-0003).
+  Legacy static pages stay untouched at `/`; the `/docs` Swagger
+  mirror stays intact.
+- Shared Bearer API client plus one Pinia session store replace
+  the per-page copy-pasted token blocks; single 401-to-sign-out
+  path; token persistence is `sessionStorage` (survives reload,
+  dies with the tab — see the delta in
+  `docs/technical/security-threat-model.md` §4 and ADR-0003
+  Consequences).
+- One new CI job (Node 22 + `npm ci` + build + test, matching the
+  existing Node matrix) keeps the shell green; the change is
+  purely additive.
+- Placeholder route only: exactly one route renders; no app
+  routes beyond the placeholder. Print routes are reserved to live
+  under `/app/print/` (owner correction carried; no print route is
+  implemented in this slice).
+
+Flows with happy path + failure/rollback path (mermaid, with edge
+traces to the intended `app/` files the implementation PR must
+create) live in `docs/architecture/lld.md` §11: placeholder
+render, shared-client 401-to-sign-out, and offline
+banner/manual retry (explicitly no write queueing — desk actions
+are synchronous authoritative ops, per ADR-0003 criterion 9).
+
+Rollback: revert the single implementation PR and remove the
+`/app/` location block; the old static files remain in place, so
+there is no data migration in either direction.
+
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-29
