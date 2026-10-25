@@ -79,6 +79,42 @@ Guard cells (see strategy §LC and exit criterion §3.3).
 | NFR-I18N-1 — Internationalisation readiness | L2 catalogue check: 100% of user-visible strings from the catalogue, locale formatting, no behaviour on English wording | Guard (PR #192 slice): `messages/en.json` catalogue with `messages/sample.json` covering the reservations/admin/billing error envelopes and the frontend desk copy, enforced by `script/catalogue-coverage-check.sh` (CI `ci` job; keys/params/call-sites, byte-identical mirrors, default-locale rendering) plus per-stack loader/formatter unit tests (`messages_test.go`, `messages.test.ts`, `MessagesTest`, frontend loader smoke) — default-locale output byte-identical, no behaviour on wording; rates/reporting/rooms/stay/guests plus `script/` wording extend the sample in #201. |
 | NFR-AVL-1 — On-premise availability | L2 offline desk check: 100% of named desk actions succeed with no outside connectivity | Guard: the pilot runbook walkthrough (docs/operations/pilot-exit-checklist.md part A, runbook.md section 4) confirms with a non-technical stand-in that booking, check-in, check-out, charge posting, payment recording, and invoice printing all complete with no outside connectivity (PR #153 slice). |
 
+## 3. Migration shell slice (Refs #291)
+
+Scaffold slice of ADR-0003 (accepted 2026-10-25): the Vue 3 +
+Vite placeholder shell under `/app/`. Requirements live in
+`docs/requirements/mvp-requirements.md` §7 (FR-SHL-1..4,
+NFR-SHL-1..3, owned by `business-analyst`); design and per-flow
+diagrams (happy path + failure/rollback path) live in
+`docs/architecture/hld.md` §11 and
+`docs/architecture/lld.md` §11 (placeholder render §11.1,
+shared-client 401-to-sign-out §11.2, offline banner/manual retry
+§11.3). These are temporary scaffold requirements, superseded
+per screen as follow-up issues land real routes; they do not
+alter the 57-row MVP coverage count above.
+
+Per the `business-analyst` handoff (`mvp-requirements.md` §7.4),
+no guard exists yet for any shell item except the mirror half of
+FR-SHL-4: the implementation PR for #291 must create the rest.
+Guard cells below name the missing guards explicitly instead of
+citing one; no shell row is marked complete until its guard
+exists and passes.
+
+| Shell item | Required guard type | Guard |
+|---|---|---|
+| FR-SHL-1 — Placeholder route renders under `/app/` | Served-shell navigation: load `/app/` plus one history-mode deep `/app/*` path (reload included), check exactly one placeholder view renders and no other app route is reachable | Missing — implementation PR must create the placeholder-render check (covers the `lld.md` §11.1 happy path; failure path: stale `dist/` → rebuild, never hand-edit). Guard: TBD. |
+| FR-SHL-2 — Shared Bearer API client plus session store used by the placeholder | Shared-client 401 test: force a `401` / `UNAUTHENTICATED` through the shared client, check the store token clears and the shell routes to sign-in; token survives reload and dies with the tab (`sessionStorage`) | Missing — implementation PR must create the 401 test (covers the `lld.md` §11.2 happy + failure path). Guard: TBD. |
+| FR-SHL-3 — Print routes reserved, none implemented | Namespace-reservation check: load `/app/print/...`, check no print document renders while the namespace stays reserved | Missing — implementation PR must create the reservation check (no print route lands in this slice). Guard: TBD. |
+| FR-SHL-4 — Legacy pages and `/docs` mirror intact | Mirror half: byte-identical OpenAPI check; served half: load each legacy page at `/` plus `/docs`, check pre-slice content unchanged | Half-covered: mirror half cites `script/openapi-route-check.sh:46` (`cmp -s` byte-identical assert, CI-green today). Served-legacy half missing — implementation PR must create the legacy-page assertions. Guard: TBD for the served half. |
+| NFR-SHL-1 — CI build job green | New CI job (Node 22 + `npm ci` + build + test over `app/`, matching the existing Node matrix): build and test both pass on every shell commit | Missing — implementation PR must create the job; red blocks that PR. Guard: TBD (the CI job itself). |
+| NFR-SHL-2 — Nginx fallback correctness | Fallback assertion: request sampled non-asset `/app/*` paths (deep link, reload, unknown path), check every response is `/app/index.html` with status 200 — NOT `/index.html` | Missing — implementation PR must create the fallback assertion against the served shell. Guard: TBD. |
+| NFR-SHL-3 — Offline banner with manual retry, no write queueing | Disconnect drill: drop connectivity mid-session, check the banner names the disconnect, a safe manual retry is offered, and 0 desk writes queue | Missing — implementation PR must create the drill (covers the `lld.md` §11.3 happy + failure path; queueing is forbidden because desk writes are synchronous authoritative ops). Guard: TBD. |
+
+Shell-slice coverage (Refs #291): 7 rows mapped, 0 guards
+complete (FR-SHL-4 mirror half has an existing passing check;
+all 7 implementation guards pending the #291 implementation PR).
+The MVP Coverage line above stands unchanged at 57/57.
+
 Coverage: 43 FRs mapped, 14 NFRs mapped, 57 rows total, 57 guards
 filled (PR #112 slice: FR-RES-1, FR-RMS-1..4, FR-RTE-1/2/4/5, FR-ADM-1/2, FR-CUS-1, NFR-CON-1/2; PR #149 slice: FR-FDK-1, FR-FDK-5, FR-BIL-1/2/3/6, FR-ADM-5, NFR-BKP-1/2, NFR-AUD-1, NFR-TZ-1, plus FR-RES-1 persistence; PR #150 slice: FR-FDK-2, FR-FDK-3, FR-FDK-4, FR-BIL-7, plus the NFR-CON-2 stay-side checkout guard; PR #151 slice: FR-BIL-4, FR-CUS-3; PR #156 slice: FR-RPT-1..3; PR #157 slice: FR-GST-1..3; PR #158 slice: NFR-DEP-1, FR-ADM-4 config level, plus the FR-ADM-1 deployment extension; PR #159 slice: FR-RES-2/3/5/6 plus the NFR-CON-1 modify-path extension; PR #160 slice: ReleaseBlock plus rooms-side move coordination (FR-RMS-3, FR-FDK-3); PR #161 slice: full rates handling (FR-RTE-3 filled, FR-RTE-4/5 extended — remaining TBD cells fill in later slices); count corrected to the live total 48 (later slices filled cells without updating this line); PR #153 slice: NFR-RET-1, NFR-AVL-1; PR #182 slice: FR-RES-4, FR-ADM-3, FR-CUS-2, NFR-PERF-1/2 filled (5 guards — count corrected to the live total 53); FR-GST-4, FR-BIL-5, FR-RPT-4 point at follow-ups #189, #190, #191 and fill with those issues; NFR-I18N-1 filled by the #192 slice (count corrected to the live total 54); #189/#190/#191/#192/#201 slices filled FR-GST-4, FR-BIL-5, FR-RPT-4, NFR-I18N-1 (plus the #201 extension) — count corrected to the live total 57 (Closes #214)).
 
