@@ -42,7 +42,9 @@ then a sentence-case `Subject` with no trailing period.
 
 Each type maps 1:1 to a label of the same name. Every issue and PR carries
 exactly one type label and exactly one `risk-*` label (`risk-low` /
-`risk-medium` / `risk-high` / `risk-very-high`).
+`risk-medium` / `risk-high` / `risk-very-high`). An optional third label,
+`owner-review`, may be added on top (see below); it never substitutes for
+either required label.
 
 | Type | Label | Use for |
 |---|---|---|
@@ -57,6 +59,44 @@ exactly one type label and exactly one `risk-*` label (`risk-low` /
 | `chore` | `chore` | maintenance with no user-visible change |
 | `content` | `content` | guest-facing content (room descriptions, policies, announcements) |
 | `security` | `security` | security fix or hardening |
+
+## Owner-review label (optional third axis)
+
+`owner-review` ("Needs owner check or decision, independent of risk
+level") is an optional third label axis. Add it alongside — never
+instead of — the exactly-one type label and the exactly-one `risk-*`
+label. Risk labels alone do not reliably signal "owner must look": a
+risk-low ADR can still need owner acceptance, and product/requirements
+changes can need owner final review.
+
+Add `owner-review` when any of these triggers holds:
+
+- ADR acceptance is pending (the decision needs owner acceptance
+  before it counts as accepted).
+- An owner-final-review rule applies (e.g. product/requirements
+  changes needing owner final review).
+- A sign-off is required (scope, acceptance, release, or policy
+  sign-off by the owner).
+- Demo or pilot acceptance is pending.
+- Any explicit owner checkpoint: the owner, the orchestrator, or the
+  issue itself names an owner check or decision.
+
+`owner-review` never replaces risk labels and never changes merge
+authority on its own. `risk-high` / `risk-very-high` still needs
+explicit owner approval and then the owner merges manually. An issue at
+`risk-low` or `risk-medium` with `owner-review` still merges through
+the normal gate (green CI + reviewer APPROVE) once the owner records
+the decision — the label only routes the item to the owner, it does
+not raise the merge bar.
+
+Example: `[docs] Document the owner-review label axis` carries
+`docs` + `risk-low` + `owner-review` — the content is low-risk, but
+the convention it records needs an owner check before workers treat it
+as settled.
+
+Going forward only: do not retrospectively add `owner-review` to old
+issues where it is merely arguably missing. Apply it to new issues and
+to issues being touched when a trigger above clearly holds.
 
 ## Priority and Size
 
@@ -101,12 +141,14 @@ acceptance criteria.
 
 Issue forms cannot apply a label from a dropdown choice, so after
 filing add exactly one type label matching the Type field plus exactly one
-`risk-*` label by hand. Every artefact ends with the AO role footer lines
+`risk-*` label by hand, and add `owner-review` when a trigger in the
+section above holds. Every artefact ends with the AO role footer lines
 (appended via `script/ao-role-footer.sh`, never hand-written).
 
 PRs use `.github/PULL_REQUEST_TEMPLATE.md`: Summary, linked issue
 (`Closes #`), Type, Risk label, Test evidence (which suites/CI checks),
-and the role footer.
+and the role footer. Add `owner-review` to the PR too when the issue
+carries it or a trigger above holds for the change itself.
 
 ## Examples of good titles
 
@@ -128,4 +170,5 @@ Example pair (issue title vs its PR title) for this convention change:
 Do not bulk-retitle the backlog. Normalise an old issue's title and labels
 when touching it (commenting, implementing, or closing): apply the
 `[type] Imperative summary` title, exactly one type label, and exactly one
-`risk-*` label, and note the retitle in passing.
+`risk-*` label, and note the retitle in passing. Leave `owner-review`
+as found unless a trigger in the section above clearly holds.
