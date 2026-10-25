@@ -62,18 +62,25 @@ match.
    each with its test guards per the test strategy. Exit signal:
    every FR has a passing guard and every touched NFR meets its
    measurable target.
-5. **Pilot.** One real small hotel operates a full day on the
-   system — arrivals, in-house stays, departures, day-close
-   totals, printed invoices — with the runbook in the manager's
-   hands and a restore drill completed inside RTO 4 hours. Exit
-   signal: the pilot hotel signs off and the open risk items for
-   go-live are closed or accepted by the owner.
-6. **Desk UI.** A clickable desk UI for the front-desk loop
+5. **Desk UI.** A clickable desk UI for the front-desk loop
    (program #248): book, check in, post a charge, check out, and
    print the receipt, plus arrivals and dirty-room visibility,
    served as static pages through the existing proxy. Exit
    signal: a receptionist operates book-to-receipt on the screens
    alone and the UI is pilot-ready.
+6. **QA.** The QA track — test plans, issue reports, and bugs
+   found; the fix for a bug lands in its phase milestone. Exit
+   signal: every QA issue for a phase is closed or accepted by
+   the owner before that phase milestone closes.
+
+Standing tracks (never closed, not phases): `Pilot` — one real
+small hotel operates a full day on the system — arrivals,
+in-house stays, departures, day-close totals, printed invoices —
+with the runbook in the manager's hands and a restore drill
+completed inside RTO 4 hours; the pilot hotel signs off and the
+open risk items for go-live are closed or accepted by the owner.
+`Harness` — the ongoing automation track (agents, skills,
+workflow, template, CI automation).
 
 After the pilot, release notes and per-release rollback entries
 begin (`docs/release/*`, still stubs until the first release
@@ -95,4 +102,4 @@ Each item links its gate issue above; the PR that closes the
 issue carries the exit signal.
 
 <!-- ao-role: product-owner -->
-Role: product-owner · AO session hotel-mgmt-340
+Role: product-owner · AO session hotel-mgmt-342
