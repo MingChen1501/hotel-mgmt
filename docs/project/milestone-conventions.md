@@ -28,7 +28,9 @@ sync, no extra bookkeeping (see `.github/milestones.md`).
 
 - **One live milestone per active phase.** Each active plan phase has
   exactly one open milestone; a new phase milestone opens only when
-  its phase starts.
+  its phase starts. The current live phase board is
+  `Phase 6 - desk UI` (plan milestone 6, program #248); the full
+  live list lives in `.github/milestones.md`.
 - **Close rule.** A phase milestone closes when its plan exit criteria
   are met **and** all its issues are closed. Standing milestones
   (`Pilot`, `Harness`, `QA`) never close.
