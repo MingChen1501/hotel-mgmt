@@ -21,8 +21,9 @@
   },
   "response": {
     "type": "object",
-    "required": ["roomNumber", "stayLink", "state"],
+    "required": ["roomId", "roomNumber", "stayLink", "state"],
     "properties": {
+      "roomId": { "type": "string", "format": "uuid" },
       "roomNumber": { "type": "string" },
       "stayLink": { "type": "string" },
       "state": { "type": "string", "const": "occupied" }

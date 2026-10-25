@@ -410,10 +410,14 @@ paths:
               schema:
                 type: object
                 required:
+                - roomId
                 - roomNumber
                 - stayLink
                 - state
                 properties:
+                  roomId:
+                    type: string
+                    format: uuid
                   roomNumber:
                     type: string
                   stayLink:
