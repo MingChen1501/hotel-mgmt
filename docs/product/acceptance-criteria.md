@@ -295,6 +295,81 @@ Slice done when: required-field, policy, and charge-item setup is
 changeable without code changes and the desk enforces and displays the
 hotel's own configuration immediately after saving.
 
+## 10. Desk UI migration shell slice (Refs #291)
+
+Scaffold slice of ADR-0003 (accepted 2026-10-25): a placeholder
+Vue 3 + Vite shell served under `/app/` with no app routes beyond
+the placeholder. This slice records only the shell's
+done-conditions; it adds no product capability and changes no MVP
+behaviour. Requirements wording is owned by `business-analyst`
+(`docs/requirements/mvp-requirements.md` §7: FR-SHL-1..4,
+NFR-SHL-1..3); design lives in `docs/architecture/hld.md` §11 and
+`docs/architecture/lld.md` §11 (placeholder render §11.1,
+shared-client 401-to-sign-out §11.2, offline banner/manual retry
+§11.3); guard mapping lives in
+`docs/testing/traceability-matrix.md` §3. Each condition below is
+testable on a single on-premise instance running the shell
+alongside the untouched legacy pages. No condition traces to an
+MVP user story: the shell precedes all screen migrations, and the
+MVP stories (US-RES-1 through US-CUS-3) keep their existing
+done-conditions in sections 1–9, which hold unchanged because
+staff work continues on the legacy pages during the parallel run.
+These shell conditions are temporary scaffold needs and are
+superseded per screen as follow-up issues land real routes.
+
+- AC-SHL-1 — Given staff load the shell at `/app/` or any
+  `/app/*` history-mode path (deep link or reload included), when
+  the shell boots, then exactly one placeholder route renders and
+  no other app route exists or is reachable. Traces to: FR-SHL-1
+  (no MVP story; scaffold only, superseded as screen issues land
+  real routes).
+- AC-SHL-2 — Given a signed-in session in the shell, when any API
+  call through the shared Bearer client receives a `401` /
+  `UNAUTHENTICATED` response, then the session store token is
+  cleared and the shell routes to sign-in; the token persists in
+  `sessionStorage` (survives reload, dies with the tab). Traces
+  to: FR-SHL-2 (no MVP story; single 401 path replacing the
+  per-page token blocks).
+- AC-SHL-3 — Given staff load any `/app/print/...` path, when the
+  shell routes it, then no print document is rendered: the
+  `/app/print/` namespace is reserved only, and the print route
+  lands in a follow-up issue. Traces to: FR-SHL-3 (no MVP story;
+  reservation only).
+- AC-SHL-4 — Given the shell is deployed, when staff load any
+  legacy page at `/` or the `/docs` Swagger mirror, then each
+  serves exactly its pre-slice content, and the byte-identical
+  OpenAPI mirror (`contracts/openapi.yaml` vs
+  `frontend/docs/openapi.yaml`) stays green. Traces to: FR-SHL-4
+  (no MVP story; parallel-run preservation).
+- AC-SHL-5 — Given a commit touching the shell, when the new CI
+  job (Node 22 + `npm ci` + build + test, matching the existing
+  Node matrix) runs, then build and test both pass, and a red job
+  blocks the change. Traces to: NFR-SHL-1 (no MVP story; target:
+  100% of shell commits green before merge).
+- AC-SHL-6 — Given any `/app/*` path with no matching static file
+  (deep link, reload, unknown path), when Nginx serves it, then
+  the response is `/app/index.html` with a 200 status — NOT
+  `/index.html` (owner-mandated correction carried from ADR-0003).
+  Traces to: NFR-SHL-2 (no MVP story; target: 100% of sampled
+  non-asset `/app/*` paths return the shell entry).
+- AC-SHL-7 — Given the shell loses connectivity, when an API call
+  fails or the browser fires `offline`, then a banner names the
+  disconnect and offers a safe manual retry, and no desk write is
+  queued for later replay. Traces to: NFR-SHL-3 (no MVP story;
+  target: 100% of disconnect drills show the banner and queue 0
+  writes; queueing is forbidden because desk writes are
+  synchronous authoritative ops).
+
+Slice done when: the placeholder renders at `/app/` and on deep
+links with no other route reachable, the shared client clears the
+`sessionStorage` token and routes to sign-in on any 401, the
+`/app/print/` namespace renders nothing, every legacy page and
+the `/docs` mirror serve pre-slice content with the OpenAPI
+mirror green, the new CI job is green, every sampled non-asset
+`/app/*` path falls back to `/app/index.html` (never
+`/index.html`), and a dropped connection shows the banner with a
+manual retry and queues zero writes.
+
 ## Traceability summary
 
 43 done-conditions cover all 9 MVP slices from the roadmap
@@ -307,5 +382,15 @@ condition's `Traces to` line; no condition references a Later story or
 invents an FR. Open questions OQ-1 through OQ-6 are named where their
 stories carry them; none is decided here.
 
+Shell-slice addendum (Refs #291): 7 scaffold done-conditions
+(AC-SHL-1..7) cover the `/app/` migration shell. Each traces to
+its shell requirement (`docs/requirements/mvp-requirements.md`
+§7: FR-SHL-1..4, NFR-SHL-1..3) and to no MVP story — the shell
+adds no MVP capability, so the 43-condition MVP count above
+stands unchanged and the section 1–9 done-conditions hold as
+written. The shell conditions are superseded per screen as
+follow-up issues land real routes (catalogue, desk, book, stay,
+folio, print, admin, decommission).
+
 <!-- ao-role: product-owner -->
-Role: product-owner · AO session hotel-mgmt-74
+Role: product-owner · AO session hotel-mgmt-384
