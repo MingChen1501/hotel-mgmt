@@ -147,6 +147,7 @@ docs and plans, not gated specs.
 |---|---|---|---|---|
 | CI/CD | `devops/ci-cd.md` | active | `release-manager` | pipeline stages, checks, and merge gates (Closes #133) |
 | Deployment | `devops/deployment.md` | active | `release-manager` | deployment targets and procedures (Closes #63) |
+| Local dev setup | `devops/local-dev-setup.md` | active | `release-manager` | dev-lab setup + admin secret management (Closes #283) |
 | Environment | `devops/environment.md` | stub (not needed yet) | `release-manager` | environment inventory and configuration |
 | Runbook | `operations/runbook.md` | active | `release-manager` | step-by-step operating procedures, fresh at merge time (Closes #63) |
 | Monitoring and alerting | `operations/monitoring-alerting.md` | stub (not needed yet) | `release-manager` | signals, dashboards, and alert routing — stub stays until the first exporter lands (ADR-0001 Prometheus + Grafana) |
