@@ -135,6 +135,7 @@ docs and plans, not gated specs.
 | Test strategy | `testing/test-strategy.md` | active | `qa-lead` | testing approach, levels, and entry/exit criteria (Closes #62) |
 | Traceability matrix | `testing/traceability-matrix.md` | active | `qa-lead` | FR/NFR-to-guard map (every item keeps at least one guard) (Closes #62) |
 | Test report | `testing/test-report.md` | active | `qa-lead` | consolidated full-MVP results with pass evidence per cell (Closes #214) |
+| Phase 6 QA plan | `testing/phase-6-qa-plan.md` | active | `qa-lead` | scoped independent-QA pass plan: entry, activities, bug flow, exit (Closes #264) |
 
 ## DevOps / Operations / Release
 
