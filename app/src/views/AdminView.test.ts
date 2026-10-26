@@ -5,7 +5,10 @@
 // UpdateUserRole, UnlockIdentity), and the read-only audit view
 // (QueryAuditLog) — plus the read-only hotel-config display over
 // the existing GetHotelConfig op, through the shared Bearer client
-// and the catalogue `t()` wrapper. No Playwright harness exists in
+// and the catalogue `t()` wrapper. Role gating (Refs #340, BR-35)
+// hides every management section from front-desk callers behind a
+// read-only notice with zero admin calls; owner/manager render the
+// full console. No Playwright harness exists in
 // this repo yet, so these Vitest component tests are the
 // characterization coverage for the admin flows.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -184,7 +187,7 @@ describe('admin view', () => {
     vi.clearAllMocks();
   });
 
-  it('renders the console with no per-screen sign-in copy', () => {
+  it('renders the restricted notice with no per-screen sign-in copy when unsigned', () => {
     const wrapper = mountAdmin();
     expect(wrapper.find('[data-testid="admin-view"]').exists()).toBe(true);
     // Catalogue wiring (Refs #292): the heading resolves through t().
@@ -194,7 +197,11 @@ describe('admin view', () => {
     // The shell owns the one sign-in gate (Refs #338, FR-DSP-2):
     // no per-screen sign-in copy renders here anymore.
     expect(wrapper.find('[data-testid="admin-signin"]').exists()).toBe(false);
-    expect(wrapper.find('[data-testid="admin-console"]').exists()).toBe(true);
+    // Fail-closed role gate (Refs #340): without a signed-in
+    // manager/owner role there is no console, only the read-only
+    // notice.
+    expect(wrapper.find('[data-testid="admin-console"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="admin-restricted-notice"]').exists()).toBe(true);
   });
 
   it('loads users, config, and audit under the shell session', async () => {
@@ -345,27 +352,56 @@ describe('admin view', () => {
   // `app/src/App.test.ts` covers the plain-sentence failure, the
   // distinct locked wording, and the expired notice.
 
-  it('surfaces FORBIDDEN in the users section without signing out', async () => {
+  it('renders the full console for the manager role', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     const state = freshState();
-    state.listUsersStatus = 403;
+    stubBackend(fetchMock, state);
+    // Owner/manager view unchanged (Refs #340): the manager reaches
+    // the same management sections as the owner.
+    useSessionStore().signIn('tok-1', 'Bob Manager', 'manager');
+    const wrapper = mountAdmin();
+    await vi.waitFor(() => {
+      expect(wrapper.findAll('[data-testid="admin-user-row"]')).toHaveLength(state.users.length);
+    });
+    await vi.waitFor(() => {
+      expect(wrapper.findAll('[data-testid="admin-audit-row"]')).toHaveLength(state.audit.length);
+    });
+    expect(wrapper.find('[data-testid="admin-restricted-notice"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="admin-console"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="admin-create-form"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="admin-config-list"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="admin-audit-table"]').exists()).toBe(true);
+  });
+
+  it('hides every management section from front-desk callers and issues no admin calls', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const state = freshState();
     stubBackend(fetchMock, state);
     useSessionStore().signIn('tok-1', 'Cara Clerk', 'front-desk');
     const wrapper = mountAdmin();
-    // Role rules stay server-side: the refusal surfaces in the
-    // section error as one plain sentence (FR-DSP-3) and the
-    // session survives (Refs #298).
+    // Cosmetic role gate (Refs #340, BR-35 least privilege): no
+    // management section renders, only the read-only notice — no
+    // management action is reachable or clickable.
     await vi.waitFor(() => {
-      expect(wrapper.find('[data-testid="admin-console"]').exists()).toBe(true);
+      expect(wrapper.find('[data-testid="admin-restricted-notice"]').exists()).toBe(true);
     });
-    await vi.waitFor(() => {
-      expect(wrapper.find('[data-testid="admin-users-error"]').exists()).toBe(true);
-    });
-    expect(wrapper.find('[data-testid="admin-users-error"]').text()).toContain(
-      'That did not work. Try again; if it keeps failing, tell the manager.',
+    expect(wrapper.find('[data-testid="admin-console"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="admin-users-table"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="admin-create-form"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="admin-config-list"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="admin-audit-table"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="admin-restricted-notice"]').text()).toContain(
+      'managed by the owner or manager',
     );
-    expect(wrapper.find('[data-testid="admin-users-error"]').text()).not.toContain('403');
+    // The view issues no admin call at all, so no server refusal is
+    // ever surfaced; the session survives untouched. Server
+    // enforcement stays the real gate (still FORBIDDEN there).
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="admin-restricted-notice"]').exists()).toBe(true);
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
     expect(useSessionStore().isSignedIn).toBe(true);
   });
 

@@ -4,7 +4,17 @@
     <p>{{ t('desk.admin.intro', {}, 'Manage staff accounts and roles, review the hotel setup, and read the audit log.') }}</p>
     <noscript><p>This page needs JavaScript to manage users, roles, and config.</p></noscript>
 
-    <section data-testid="admin-console">
+    <Message
+      v-if="!canManage"
+      severity="info"
+      data-testid="admin-restricted-notice"
+    >
+      {{ t('desk.admin.restricted_notice', {}, 'Staff accounts, hotel setup, and the audit log are managed by the owner or manager. Ask the manager if something needs changing.') }}
+    </Message>
+    <section
+      v-if="canManage"
+      data-testid="admin-console"
+    >
       <h2>{{ t('desk.admin.users_heading', {}, 'Users and roles') }}</h2>
       <Message
         v-if="usersError"
@@ -214,7 +224,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, onMounted, ref } from 'vue';
+import { computed, defineComponent, onMounted, ref } from 'vue';
 import Button from 'primevue/button';
 import InputText from 'primevue/inputtext';
 import Message from 'primevue/message';
@@ -245,8 +255,15 @@ import { useSessionStore } from '../stores/session';
 //   including the Save role / Unlock labels (Refs #275).
 // - Errors switch on envelope codes, never on resolved wording.
 // - Role rules stay server-side (ListUsers and friends answer
-//   FORBIDDEN to front-desk callers): this view surfaces the code,
-//   it never gates client-side.
+//   FORBIDDEN to front-desk callers): the view additionally hides
+//   every management section from front-desk callers as a cosmetic
+//   gate on top of that enforcement (Refs #340). Per BR-35 least
+//   privilege the front-desk role has no need for the staff roster,
+//   the audit log, or hotel setup, so front-desk sees only a
+//   read-only notice and the view makes no admin calls at all —
+//   hiding (rather than disabling) avoids both leaking staff
+//   identities and suggesting access that does not exist. Owner
+//   and manager see the full console, unchanged.
 // - Rows render through Vue interpolation, never raw HTML: the
 //   legacy string-built `esc()` path (Refs #276) cannot regress.
 
@@ -325,6 +342,11 @@ export default defineComponent({
     const auditEntries = ref<AuditEntry[]>([]);
     const auditError = ref('');
 
+    // Cosmetic role gate (Refs #340, BR-35 least privilege): only
+    // owner and manager reach the management sections. Server
+    // enforcement is untouched — this only decides what renders.
+    const canManage = computed(() => session.role === 'owner' || session.role === 'manager');
+
     // The shell owns the one sign-in gate (Refs #338): a
     // 401/UNAUTHENTICATED expires the shared session and the gate
     // takes over with the session-expired notice.
@@ -391,6 +413,11 @@ export default defineComponent({
     }
 
     async function refreshAll(): Promise<void> {
+      // Front-desk callers never reach the console, so no admin
+      // call is ever issued for them (Refs #340).
+      if (!canManage.value) {
+        return;
+      }
       await refreshUsers();
       if (!session.isSignedIn) {
         return;
@@ -403,6 +430,11 @@ export default defineComponent({
     }
 
     async function onCreate(): Promise<void> {
+      // Unreachable for front-desk (no management action renders),
+      // guarded so a stray call can never issue a refused op.
+      if (!canManage.value) {
+        return;
+      }
       try {
         await apiFetch<unknown>('/v1/admin/CreateUser', {
           method: 'POST',
@@ -432,6 +464,9 @@ export default defineComponent({
     }
 
     async function onSaveRole(signinIdentity: string): Promise<void> {
+      if (!canManage.value) {
+        return;
+      }
       const user = users.value.find((candidate) => candidate.signinIdentity === signinIdentity);
       if (user === undefined) {
         return;
@@ -456,6 +491,9 @@ export default defineComponent({
     }
 
     async function onUnlock(signinIdentity: string): Promise<void> {
+      if (!canManage.value) {
+        return;
+      }
       try {
         await apiFetch<unknown>('/v1/admin/UnlockIdentity', {
           method: 'POST',
@@ -476,13 +514,18 @@ export default defineComponent({
     }
 
     async function onAuditRefresh(): Promise<void> {
+      if (!canManage.value) {
+        return;
+      }
       await refreshAudit();
     }
 
     onMounted(() => {
       // A reload restores the Bearer token from sessionStorage: go
       // straight back to the console instead of stranding it.
-      if (session.isSignedIn) {
+      // Front-desk callers keep only the read-only notice, so no
+      // admin call is issued for them (Refs #340).
+      if (session.isSignedIn && canManage.value) {
         void refreshAll();
       }
     });
@@ -490,6 +533,7 @@ export default defineComponent({
     return {
       t,
       session,
+      canManage,
       roleOptions: ROLE_OPTIONS,
       users,
       usersError,
