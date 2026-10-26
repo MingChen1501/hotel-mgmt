@@ -92,3 +92,52 @@ test('second overlapping booking is refused as sold out', async ({ page, request
   await page.getByTestId('book-confirm').click();
   await expect(page.getByTestId('book-confirm-error')).toContainText('No rooms of this type are free');
 });
+
+test('confirm without a guest names the missing guest first', async ({ page, request }) => {
+  const token = await ownerToken(request);
+  const window = stayWindow(40, 2);
+  const ctx = await setupFlowContext(request, token, 'booknoguest', window);
+  await signInThroughGate(page);
+  await page.goto('/app/book');
+  // A priced quote with no guest resolved: the confirm must name
+  // the missing mandatory guest (FR-CUS-1) instead of booking.
+  await page.getByTestId('book-arrival-date').fill(window.arrival);
+  await page.getByTestId('book-departure-date').fill(window.departure);
+  await page.getByTestId('book-room-type-id').fill(ctx.roomTypeId);
+  await page.getByTestId('book-rate-plan').fill(ctx.ratePlan);
+  await page.getByTestId('book-quote').click();
+  await expect(page.getByTestId('book-quote-section')).toBeVisible();
+  await page.getByTestId('book-confirm').click();
+  await expect(page.getByTestId('book-confirm-error')).toContainText('Find or register the guest first');
+  await expect(page.getByTestId('book-result')).toHaveCount(0);
+});
+
+test('restriction refusal names the restriction on screen', async ({ page, request }) => {
+  const token = await ownerToken(request);
+  const window = stayWindow(44, 2);
+  const ctx = await setupFlowContext(request, token, 'bookrestr', window);
+  await signInThroughGate(page);
+  await page.goto('/app/book');
+  await bookOnce(page, ctx.guestName, window.arrival, window.departure, ctx.roomTypeId, ctx.ratePlan);
+  // Server-side stay-restriction enforcement (the reservations
+  // CheckRestrictionsHook) is not wired yet, so the documented
+  // STATE_ILLEGAL envelope (contracts/http/CreateReservation.json,
+  // FR-RTE-4) is simulated at the contract boundary. The mapping
+  // under test is still the real view code: the refusal must name
+  // the restriction, never a generic failure.
+  await page.route('**/v1/reservations/CreateReservation', (route) =>
+    route.fulfill({
+      status: 422,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 'STATE_ILLEGAL',
+        message: 'stay restriction violated',
+        details: { restriction: 'closed-to-arrival' },
+        traceId: 'browser-e2e',
+      }),
+    }),
+  );
+  await page.getByTestId('book-confirm').click();
+  await expect(page.getByTestId('book-confirm-error')).toContainText('booking rule');
+  await expect(page.getByTestId('book-confirm-error')).toContainText('closed-to-arrival');
+});
