@@ -51,6 +51,22 @@ Each of these is a `CHANGES_REQUESTED` finding until fixed, with
   README that duplicates or contradicts `docs/`, or traceability
   citing a non-existent guard. Docs in `docs/` are the verification
   surface; every claim must resolve to a real file or job.
+- UI consistency (the fail-closed half — catalogue keys, nav/route
+  match, style-block citations, print CSS — is pinned by the CI
+  shell and catalogue guards; the items below are the judgement half
+  CI cannot decide, each a `CHANGES_REQUESTED` finding until fixed,
+  with `file:line` evidence):
+  - Library-first: new screens use the project component library
+    for a covered pattern; new ad-hoc markup/CSS carries a
+    justification, and any new inline `<style>` is print isolation
+    with a comment citing why.
+  - No hardcoded user-visible copy: new template/script strings go
+    through the message catalogue (grandfathered edge cases such as
+    no-script fallbacks stay explicitly noted).
+  - No orphan screens: a new route is linked from the shell nav and
+    the route table with a catalogue label.
+  - Print CSS preserved: print views keep their print rules; the
+    shell screen stylesheet stays screen-only.
 - Unquoted verdict (self-check before posting): the verdict quotes the
   exact PR head SHA — an unquoted verdict does not count at the merge
   gate, same as a stale one (see Verdict).

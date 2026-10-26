@@ -20,6 +20,18 @@
 # - Print route (FR-SHL-3): /app/print/... returns the shell
 #   entry (the print screen renders client-side); the static entry
 #   carries no print document markup.
+# - UI consistency (issue #342, fail-closed half): every inline
+#   `<style>` block under app/src carries a why-comment citing its
+#   issue/ADR (inline styling is print isolation only — the Vitest
+#   suite pins the screen/print separation, this script pins the
+#   citation); every non-catch-all route in `app/src/router.ts`
+#   matches a shell-nav entry in `app/src/App.vue` by name and path
+#   (no orphan screens, no dead nav items); the print source keeps
+#   its `@media print` rules and the built bytes carry them too. The
+#   judgement half (PrimeVue-first for covered patterns, dynamic
+#   `t()` calls, hardcoded-copy edge cases) stays a blocking
+#   reviewer checklist item in
+#   `.opencode/agents/dev-peer-review.md`.
 # - Admin route (Refs #298): /app/admin returns the shell entry
 #   (the console renders client-side).
 # - Cutover redirects (FR-SHL-4 served half, Refs #299): every
@@ -122,6 +134,100 @@ if grep -q '/app/' "$DIST/index.html"; then
   pass "dist/index.html references /app/ assets"
 else
   fail_here "dist/index.html has no /app/ reference (built with the wrong base?)"
+fi
+
+echo "shell-served-check: UI consistency, static half (issue #342)..."
+if python3 - "$ROOT" <<'EOF'
+import re
+import sys
+from pathlib import Path
+
+ROOT = Path(sys.argv[1])
+failures = []
+
+def fail(message):
+    failures.append(message)
+    print(f"  FAIL {message}")
+
+def ok(message):
+    print(f"  OK {message}")
+
+APP_SRC = ROOT / "app" / "src"
+
+# 1. Inline <style> is print isolation only, and every block says
+# why: each SFC style block must carry a comment citing its issue
+# or ADR. Views must be print-only; the single shell stylesheet
+# (App.vue) is the only screen-owned block.
+style_pat = re.compile(r"<style[^>]*>([\s\S]*?)</style>")
+blocks = 0
+for path in sorted(APP_SRC.rglob("*.vue")):
+    text = path.read_text(encoding="utf-8")
+    for block in style_pat.findall(text):
+        blocks += 1
+        rel = str(path.relative_to(ROOT))
+        code = re.sub(r"/\*[\s\S]*?\*/", "", block)
+        if "Refs #" not in block and "ADR-" not in block:
+            fail(f"{rel} <style> block carries no why-comment (cite Refs # / ADR-)")
+            continue
+        if path.name == "App.vue":
+            if "@media screen" not in code or "@media print" in code:
+                fail(f"{rel} shell stylesheet is not screen-only")
+                continue
+        elif "@media print" not in code:
+            fail(f"{rel} view stylesheet is not print-only (inline <style> is print isolation only)")
+            continue
+        ok(f"{rel} <style> block cited and medium-owned")
+if blocks == 0:
+    fail("app/src carries no <style> blocks at all (shell stylesheet missing?)")
+else:
+    ok(f"{blocks} <style> block(s) checked")
+
+# 2. No orphan screens, no dead nav items: every non-catch-all
+# route in the route table matches a shell-nav entry by name and
+# path, and vice versa.
+router_text = (APP_SRC / "router.ts").read_text(encoding="utf-8")
+routes = re.findall(r"path:\s*'([^']+)'\s*,\s*\n?\s*name:\s*'([^']+)'", router_text)
+routes = [(name, path) for path, name in routes if "pathMatch" not in path]
+app_text = (APP_SRC / "App.vue").read_text(encoding="utf-8")
+nav = re.findall(r"\{\s*name:\s*'([^']+)',\s*to:\s*'([^']+)'", app_text)
+if not routes:
+    fail("app/src/router.ts carries no named routes")
+if not nav:
+    fail("app/src/App.vue carries no NAV_ITEMS entries")
+for name, path in routes:
+    if (name, path) not in nav:
+        fail(f"route {name} ({path}) has no matching shell-nav entry (orphan screen)")
+for name, path in nav:
+    if (name, path) not in routes:
+        fail(f"shell-nav entry {name} ({path}) matches no route (dead nav item)")
+if routes and nav and sorted(routes) == sorted(nav):
+    ok(f"route table and shell nav match ({len(routes)} routes)")
+
+# 3. Print CSS is preserved at the source: the print view keeps
+# its @media print rules with a why-comment.
+print_text = (APP_SRC / "views" / "PrintView.vue").read_text(encoding="utf-8")
+if "@media print" in print_text and ("Refs #" in print_text or "ADR-" in print_text):
+    ok("PrintView.vue keeps cited @media print rules")
+else:
+    fail("PrintView.vue lost its cited @media print rules")
+
+if failures:
+    print(f"\nUI-consistency static half: {len(failures)} failure(s)")
+    sys.exit(1)
+print("\nUI-consistency static half: PASS")
+EOF
+then
+  pass "route table, shell nav, style-block citations, and print source agree"
+else
+  fail_here "UI-consistency static half red (see failures above)"
+fi
+# 4. Print CSS survives the build: the shipped bytes must carry the
+# print rules the source pins above, or the paper output silently
+# loses its print styling.
+if grep -rq '@media print' "$DIST/assets" 2>/dev/null; then
+  pass "built assets carry @media print rules (print CSS survived the build)"
+else
+  fail_here "built assets carry no @media print rules (print CSS lost in the build)"
 fi
 
 echo "shell-served-check: staging the served root..."
