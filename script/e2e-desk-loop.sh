@@ -163,6 +163,30 @@ if [[ -z "$ADMIN_SECRET" ]]; then
   echo "$(msg "script.runbook.e2e_secret_empty" "e2e: FAIL: ADMIN_SECRET is empty after defaults.")" >&2
   exit 1
 fi
+
+# Desk UI migration shell (Refs #291): the proxy serves the Vite
+# static build from app/dist/ (bind-mounted at /srv/app-dist, never
+# nested under the :ro frontend mount), and dist/ is gitignored, so
+# the build must exist before compose up or proxy creation fails.
+# Rebuild when the Node toolchain is present; otherwise reuse a
+# previously built dist, and fail closed when there is nothing to
+# serve. (Plain echo: the catalogue gate covers only its bounded
+# sample, and script/install.sh already uses plain echo.)
+if [[ -f app/package.json ]]; then
+  if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
+    echo "e2e: building the desk UI migration shell (app/dist/)..."
+    (cd app && npm ci && npm run build)
+  elif [[ -f app/dist/index.html ]]; then
+    echo "e2e: WARNING: node/npm not found; reusing the existing app/dist/ build."
+  else
+    echo "e2e: FAIL: app/dist/index.html is missing and node/npm are unavailable;" >&2
+    echo "e2e: FAIL: install Node 22 and rerun, or run 'npm ci && npm run build' in app/ first." >&2
+    exit 1
+  fi
+else
+  echo "e2e: FAIL: app/package.json is missing; the proxy mount for /app/ has nothing to serve." >&2
+  exit 1
+fi
 "${COMPOSE[@]}" up -d --build
 "${COMPOSE[@]}" exec -T db bash -c 'until pg_isready -U hotel -d hotel; do sleep 2; done'
 

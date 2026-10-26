@@ -14,7 +14,8 @@
 # - Fallback correctness (NFR-SHL-2): the `location /app/` block in
 #   `deploy/nginx/nginx.conf` carries `try_files $uri $uri/
 #   /app/index.html;` verbatim (fallback is `/app/index.html`, NOT
-#   `/index.html` — owner-mandated correction), and every sampled
+#   `/index.html` — owner-mandated correction) plus its own
+#   root/alias for real file resolution, and every sampled
 #   non-asset /app/* path falls back to it.
 # - Print namespace (FR-SHL-3): /app/print/... returns the shell
 #   entry with no print document markup.
@@ -26,10 +27,12 @@
 # Serving method: docker is not guaranteed where this runs, so the
 # script serves a staged root (legacy `frontend/` + built
 # `app/dist/` at `/app/`) through a small Python server that mirrors
-# the exact nginx block above (`try_files $uri $uri/
-# /app/index.html;` inside `location /app/`, legacy `location /`
-# with `index` otherwise). Nginx config *syntax* stays covered by
-# the e2e `nginx -t` step, which runs on every deploy change.
+# the exact nginx block above (`alias /srv/app-dist/;` plus
+# `try_files $uri $uri/ /app/index.html;` inside `location /app/`,
+# legacy `location /` with `index` otherwise). The staged layout
+# mirrors the alias mapping (dist staged at `$STAGE/app`, served for
+# `/app/*`), while nginx config *syntax* stays covered by the e2e
+# `nginx -t` step, which runs on every deploy change.
 #
 # Precondition: `app/dist/` must exist from `npm run build` in
 # `app/` (a stale or missing dist fails closed here — rebuild,
@@ -69,6 +72,14 @@ if awk '/location \/app\//,/}/' "$NGINX_CONF" | grep -qF 'try_files $uri $uri/ /
   pass "location /app/ falls back to /app/index.html (NOT /index.html)"
 else
   fail_here "nginx $NGINX_CONF lacks 'try_files \$uri \$uri/ /app/index.html;' inside 'location /app/'"
+fi
+# Real nginx never inherits a sibling location's root, so the /app/
+# block must carry its own root/alias or try_files resolves against
+# the compiled default root (404/500 cycle on the fallback).
+if awk '/location \/app\//,/}/' "$NGINX_CONF" | grep -Eq '(^|[[:space:]])(root|alias)[[:space:]]+[^;]+;'; then
+  pass "location /app/ carries its own root/alias (real file resolution)"
+else
+  fail_here "location /app/ sets no root/alias in $NGINX_CONF"
 fi
 if grep -qF "base: '/app/'" "$ROOT/app/vite.config.ts"; then
   pass "vite base is '/app/'"

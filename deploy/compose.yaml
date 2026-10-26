@@ -148,9 +148,13 @@ services:
       - ../frontend:/usr/share/nginx/html:ro
       # Desk UI migration shell (Refs #291): the Vite static build
       # (`app/dist/`, built by `npm run build` / the CI app-build
-      # job) is served under /app/; the legacy pages above stay
-      # mounted untouched for the parallel run.
-      - ../app/dist:/usr/share/nginx/html/app:ro
+      # job, or by script/e2e-desk-loop.sh before compose up) is
+      # served under /app/ via the matching `alias` in nginx.conf.
+      # It mounts at a separate top-level container path on purpose:
+      # nesting it under the :ro frontend mount above fails proxy
+      # creation (the mountpoint cannot be created on a read-only
+      # mount), and dist/ is gitignored so it must be built first.
+      - ../app/dist:/srv/app-dist:ro
     depends_on:
       - reservations
       - rates
