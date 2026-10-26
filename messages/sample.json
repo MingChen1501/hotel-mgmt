@@ -3224,6 +3224,46 @@
       }
     },
     {
+      "key": "desk.folio.refused_bad_method",
+      "surface": "desk folio",
+      "sources": [
+        "app/src/views/FolioView.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.folio.refused_unknown_folio",
+      "surface": "desk folio",
+      "sources": [
+        "app/src/views/FolioView.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.stay.refused_already_closed",
+      "surface": "desk stay",
+      "sources": [
+        "app/src/views/StayView.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.print.refused_unknown_folio",
+      "surface": "desk print",
+      "sources": [
+        "app/src/views/PrintView.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.print.refused_unknown_payment",
+      "surface": "desk print",
+      "sources": [
+        "app/src/views/PrintView.vue"
+      ],
+      "params": {}
+    },
+    {
       "key": "desk.print.refused_unknown_ref",
       "surface": "desk print",
       "sources": [

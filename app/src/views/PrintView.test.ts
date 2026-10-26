@@ -377,6 +377,115 @@ describe('print view', () => {
     expect(wrapper.find('[data-testid="print-confirmation-document"]').exists()).toBe(false);
   });
 
+  it('names an unknown folio on open instead of the raw envelope', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountPrint();
+    await signIn(wrapper, fetchMock);
+    // Override after sign-in: the helper stubs the happy path, and
+    // re-stubbing here would clobber the refusal below. A stay id
+    // outside UUID shape never reaches a folio: billing refuses
+    // with VALIDATION_FAILED naming the field (Refs #365).
+    const happy = stubHappyPath(fetchMock);
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/billing/GetFolioBalance') {
+        return Promise.resolve(
+          jsonResponse(
+            {
+              code: 'VALIDATION_FAILED',
+              message: 'stayId must be a UUID.',
+              details: { field: 'stayId' },
+            },
+            400,
+          ),
+        );
+      }
+      return happy(url, init);
+    });
+
+    await wrapper.find('[data-testid="print-stay-id"]').setValue('not-a-stay-id');
+    await wrapper.find('[data-testid="print-open"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="print-open-error"]').exists()).toBe(true);
+    });
+    expect(wrapper.find('[data-testid="print-open-error"]').text()).toContain(
+      'No folio for that stay. Check the stay ID and try again.',
+    );
+    expect(wrapper.find('[data-testid="print-invoice-document"]').exists()).toBe(false);
+  });
+
+  it('names an unknown folio on the invoice instead of the raw envelope', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountPrint();
+    await signIn(wrapper, fetchMock);
+    await openFolio(wrapper, 's-1');
+    // Override after the folio opens: billing refuses an invoice
+    // for an unknown folio with NOT_FOUND naming the folio
+    // (Refs #365).
+    const happy = stubHappyPath(fetchMock);
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/billing/ProduceInvoice') {
+        return Promise.resolve(
+          jsonResponse(
+            {
+              code: 'NOT_FOUND',
+              message: 'No folio for 00000000-0000-4000-8000-000000000000.',
+              details: { folioId: '00000000-0000-4000-8000-000000000000' },
+            },
+            404,
+          ),
+        );
+      }
+      return happy(url, init);
+    });
+
+    await wrapper.find('[data-testid="print-invoice"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="print-invoice-error"]').exists()).toBe(true);
+    });
+    expect(wrapper.find('[data-testid="print-invoice-error"]').text()).toContain(
+      'No folio for that stay. Check the stay ID and try again.',
+    );
+    expect(wrapper.find('[data-testid="print-invoice-document"]').exists()).toBe(false);
+  });
+
+  it('names an unknown payment on the receipt instead of the raw envelope', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountPrint();
+    await signIn(wrapper, fetchMock);
+    await openFolio(wrapper, 's-1');
+    // Override after the folio opens: billing refuses a receipt
+    // for an unknown payment with NOT_FOUND naming the payment
+    // (Refs #365).
+    const happy = stubHappyPath(fetchMock);
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/billing/ProduceReceipt') {
+        return Promise.resolve(
+          jsonResponse(
+            {
+              code: 'NOT_FOUND',
+              message: 'No payment for 00000000-0000-4000-8000-000000000000.',
+              details: { paymentId: '00000000-0000-4000-8000-000000000000' },
+            },
+            404,
+          ),
+        );
+      }
+      return happy(url, init);
+    });
+
+    await wrapper.find('[data-testid="print-receipt"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="print-receipt-error"]').exists()).toBe(true);
+    });
+    expect(wrapper.find('[data-testid="print-receipt-error"]').text()).toContain(
+      'No payment found with that ID. Open the folio again and try again.',
+    );
+    expect(wrapper.find('[data-testid="print-receipt-document"]').exists()).toBe(false);
+  });
+
   it('refuses empty stays and empty booking references in plain words', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
@@ -614,7 +723,7 @@ describe('print view source', () => {
     expect(printViewSource).toContain(op);
   });
 
-  it.each(['need_stay', 'need_ref', 'copied', 'copy_failed', 'paymentId'])(
+  it.each(['need_stay', 'need_ref', 'copied', 'copy_failed', 'paymentId', 'refused_unknown_folio', 'refused_unknown_payment'])(
     'keeps the print vocabulary %s',
     (token) => {
       expect(printViewSource).toContain(token);

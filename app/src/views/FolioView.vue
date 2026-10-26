@@ -356,6 +356,18 @@ function unknownItemName(err: unknown): string {
   return typeof details?.itemName === 'string' ? details.itemName : '';
 }
 
+// The envelope `field` for VALIDATION_FAILED refusals (Refs #365):
+// a bad payment method arrives as `{ field: 'method' }`, a bad stay
+// or folio id as `{ field: 'stayId' }` / `{ field: 'folioId' }`.
+// Branching stays on code+details, never on resolved wording.
+function refusedField(err: unknown): string {
+  if (typeof err !== 'object' || err === null) {
+    return '';
+  }
+  const details = (err as ApiError).details as { field?: unknown } | null | undefined;
+  return typeof details?.field === 'string' ? details.field : '';
+}
+
 // Unexpected failures read as one plain sentence (FR-DSP-3,
 // desk.shell.request_failed): call sites map known envelope codes
 // to specific catalogue wordings, so this fallback never surfaces
@@ -499,6 +511,21 @@ export default defineComponent({
           expireToGate();
           return;
         }
+        // No folio for the stay: billing refuses an unknown folio
+        // with NOT_FOUND and a malformed stay id with
+        // VALIDATION_FAILED naming the field (Refs #365).
+        if (
+          errorCode(err) === 'NOT_FOUND' ||
+          (errorCode(err) === 'VALIDATION_FAILED' &&
+            (refusedField(err) === 'stayId' || refusedField(err) === 'folioId'))
+        ) {
+          openError.value = t(
+            'desk.folio.refused_unknown_folio',
+            {},
+            'No folio for that stay. Check the stay ID and try again.',
+          );
+          return;
+        }
         openError.value = errorMessage();
       } finally {
         opening.value = false;
@@ -614,6 +641,17 @@ export default defineComponent({
       } catch (err) {
         if (isSignedOut(err)) {
           expireToGate();
+          return;
+        }
+        // A method other than cash or card is refused
+        // VALIDATION_FAILED naming the field (Refs #365): name the
+        // accepted methods instead of the raw envelope.
+        if (errorCode(err) === 'VALIDATION_FAILED' && refusedField(err) === 'method') {
+          paymentError.value = t(
+            'desk.folio.refused_bad_method',
+            {},
+            'That payment method is not accepted. Use cash or card.',
+          );
           return;
         }
         paymentError.value = errorMessage();

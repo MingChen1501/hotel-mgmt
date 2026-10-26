@@ -337,6 +337,79 @@ describe('folio view', () => {
     );
   });
 
+  it('names a bad payment method in plain words', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountFolio();
+    await signIn(wrapper, fetchMock);
+    // Override after sign-in: the helper stubs the happy path, and
+    // re-stubbing here would clobber the refusal below. Billing
+    // refuses a method other than cash or card with
+    // VALIDATION_FAILED naming the field (Refs #365).
+    const happy = stubHappyPath(fetchMock);
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/billing/RecordPayment') {
+        return Promise.resolve(
+          jsonResponse(
+            {
+              code: 'VALIDATION_FAILED',
+              message: 'method must be cash or card.',
+              details: { field: 'method' },
+            },
+            400,
+          ),
+        );
+      }
+      return happy(url, init);
+    });
+    await openFolio(wrapper, 's-1');
+
+    await wrapper.find('[data-testid="folio-payment-amount"]').setValue('100');
+    await wrapper.find('[data-testid="folio-pay"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="folio-payment-error"]').exists()).toBe(true);
+    });
+    expect(wrapper.find('[data-testid="folio-payment-error"]').text()).toContain(
+      'That payment method is not accepted. Use cash or card.',
+    );
+  });
+
+  it('names an unknown folio on open in plain words', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountFolio();
+    await signIn(wrapper, fetchMock);
+    // Override after sign-in: the helper stubs the happy path, and
+    // re-stubbing here would clobber the refusal below. A malformed
+    // stay id never reaches a folio: billing refuses with
+    // VALIDATION_FAILED naming the field (Refs #365).
+    const happy = stubHappyPath(fetchMock);
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/billing/GetFolioBalance') {
+        return Promise.resolve(
+          jsonResponse(
+            {
+              code: 'VALIDATION_FAILED',
+              message: 'stayId must be a UUID.',
+              details: { field: 'stayId' },
+            },
+            400,
+          ),
+        );
+      }
+      return happy(url, init);
+    });
+
+    await wrapper.find('[data-testid="folio-stay-id"]').setValue('not-a-stay-id');
+    await wrapper.find('[data-testid="folio-open"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="folio-open-error"]').exists()).toBe(true);
+    });
+    expect(wrapper.find('[data-testid="folio-open-error"]').text()).toContain(
+      'No folio for that stay. Check the stay ID and try again.',
+    );
+  });
+
   it('guards the charge click while a post is in flight', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
@@ -428,7 +501,7 @@ describe('folio view source', () => {
     expect(folioViewSource).toContain(op);
   });
 
-  it.each(['need_stay', 'need_charge', 'need_payment', 'idempotencyKey'])(
+  it.each(['need_stay', 'need_charge', 'need_payment', 'refused_bad_method', 'refused_unknown_folio', 'idempotencyKey'])(
     'keeps the folio vocabulary %s',
     (token) => {
       expect(folioViewSource).toContain(token);

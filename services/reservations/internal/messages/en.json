@@ -413,6 +413,7 @@
     "desk.stay.refused_unknown_ref": "Unknown booking reference. Check the reference and try again.",
     "desk.stay.refused_taken": "That room was just taken. Pick another ready room.",
     "desk.stay.refused_checked_in": "That booking is already checked in.",
+    "desk.stay.refused_already_closed": "That stay is already checked out, so closing it again is refused.",
     "desk.stay.move_heading": "Move a guest mid-stay",
     "desk.stay.stay_id": "Stay ID:",
     "desk.stay.target_room": "Move to room:",
@@ -543,6 +544,10 @@
     "desk.admin.restricted_notice": "Staff accounts, hotel setup, and the audit log are managed by the owner or manager. Ask the manager if something needs changing.",
     "desk.shell.request_failed": "That did not work. Try again; if it keeps failing, tell the manager.",
     "desk.folio.refused_unknown_item": "That extra is not on the hotel list: {itemName}. Check the name, or ask the manager to add it.",
-    "desk.print.refused_unknown_ref": "Unknown booking reference. Check the reference and try again."
+    "desk.folio.refused_bad_method": "That payment method is not accepted. Use cash or card.",
+    "desk.folio.refused_unknown_folio": "No folio for that stay. Check the stay ID and try again.",
+    "desk.print.refused_unknown_ref": "Unknown booking reference. Check the reference and try again.",
+    "desk.print.refused_unknown_folio": "No folio for that stay. Check the stay ID and try again.",
+    "desk.print.refused_unknown_payment": "No payment found with that ID. Open the folio again and try again."
   }
 }

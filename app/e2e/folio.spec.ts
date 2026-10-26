@@ -218,10 +218,8 @@ test('bad payment method is refused on screen', async ({ page, request }) => {
   // The method picker offers only cash/card, so the bad method
   // travels the way a mistyped desk integration would: force the
   // bound value, then pay. Billing answers VALIDATION_FAILED and
-  // the refusal must stay on screen with the balance untouched.
-  // The view maps only the unknown-item refusal to a named cause
-  // today, so this pins the visible refusal; naming the bad method
-  // on screen is a view follow-up, not this batch.
+  // the refusal names the accepted methods in plain words, with the
+  // balance untouched.
   await page.$eval('#folio-payment-method', (el) => {
     const select = el as HTMLSelectElement;
     select.value = 'voucher';
@@ -229,6 +227,7 @@ test('bad payment method is refused on screen', async ({ page, request }) => {
   });
   await page.getByTestId('folio-payment-amount').fill('100');
   await page.getByTestId('folio-pay').click();
-  await expect(page.getByTestId('folio-payment-error')).toBeVisible();
+  await expect(page.getByTestId('folio-payment-error')).toContainText('not accepted');
+  await expect(page.getByTestId('folio-payment-error')).toContainText('cash or card');
   await expect(page.getByTestId('folio-status')).toContainText('balance 0.00');
 });

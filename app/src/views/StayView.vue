@@ -1469,6 +1469,17 @@ export default defineComponent({
           );
           return;
         }
+        // The second close of an already-closed stay is refused
+        // STATE_ILLEGAL: name the closed stay instead of the raw
+        // envelope (Refs #365).
+        if (errorCode(err) === 'STATE_ILLEGAL') {
+          checkoutError.value = t(
+            'desk.stay.refused_already_closed',
+            {},
+            'That stay is already checked out, so closing it again is refused.',
+          );
+          return;
+        }
         checkoutError.value = errorMessage();
       } finally {
         checkingOut.value = false;
