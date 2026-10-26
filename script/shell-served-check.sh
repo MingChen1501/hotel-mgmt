@@ -27,6 +27,12 @@
 #   to its matching `/app/` route, and the `/docs` Swagger mirror
 #   still serves pre-slice content. The mirror-byte half delegates
 #   to `script/openapi-route-check.sh`.
+# - Asset MIME types (Refs #333): the `http` block carries the nginx
+#   `include /etc/nginx/mime.types;` plus a non-text `default_type`,
+#   and the served `.js` / `.css` assets come back as
+#   `application/javascript` / `text/css` — a build served as
+#   text/plain makes the browser refuse the ES-module scripts and
+#   the desk UI stays blank.
 #
 # Serving method: docker is not guaranteed where this runs, so the
 # script serves a staged root (remainder `frontend/` — `/docs` only —
@@ -95,6 +101,22 @@ if grep -q "createWebHistory('/app/')" "$ROOT/app/src/router.ts"; then
   pass "router history base is '/app/'"
 else
   fail_here "app/src/router.ts lacks createWebHistory('/app/')"
+fi
+# MIME types (Refs #333): replacing the image's nginx.conf drops its
+# `include mime.types`, and without a types map every asset falls back
+# to text/plain — the browser then refuses the Vue ES-module scripts
+# ("module scripts require a JavaScript MIME type") and the page stays
+# blank. Pin the include (and the image's generic fallback) here; the
+# served half is asserted below against the staged root.
+if awk '/^http \{/,0' "$NGINX_CONF" | grep -qF 'include /etc/nginx/mime.types;'; then
+  pass "http block includes the nginx mime.types map (Refs #333)"
+else
+  fail_here "nginx $NGINX_CONF lacks 'include /etc/nginx/mime.types;' in the http block"
+fi
+if awk '/^http \{/,0' "$NGINX_CONF" | grep -qF 'default_type application/octet-stream;'; then
+  pass "http block sets a non-text default_type (application/octet-stream)"
+else
+  fail_here "nginx $NGINX_CONF lacks 'default_type application/octet-stream;' in the http block"
 fi
 if grep -q '/app/' "$DIST/index.html"; then
   pass "dist/index.html references /app/ assets"
@@ -235,6 +257,36 @@ if [[ -n "${ASSET:-}" ]]; then
 else
   fail_here "no hashed asset found under app/dist/assets/"
 fi
+
+echo "shell-served-check: asset MIME types (Refs #333)..."
+# The staged server carries the same extension map as the nginx
+# mime.types include pinned above. Asserting the served headers here
+# means a build that would ship an unfetchable ES module (served as
+# text/plain, so the browser refuses the module script and the page
+# stays blank) fails in CI instead of in a browser.
+check_mime() { # check_mime <extension> <expected content-type> [optional]
+  local asset path ct
+  asset="$(cd "$DIST/assets" && ls -1 | grep -E "\.$1$" | head -n 1 || true)"
+  if [[ -z "${asset:-}" ]]; then
+    if [[ "${3:-required}" == "optional" ]]; then
+      echo "  SKIP no .$1 asset in this build (nothing to assert)"
+      return
+    fi
+    fail_here "no .$1 asset found under app/dist/assets/"
+    return
+  fi
+  path="/app/assets/$asset"
+  ct="$(curl -sS -o /dev/null -w '%{content_type}' "$BASE$path")"
+  if [[ "$ct" == "$2" ]]; then
+    pass "GET $path -> Content-Type $ct"
+  else
+    fail_here "GET $path -> Content-Type '$ct', expected '$2'"
+  fi
+}
+# The module script is the file the browser refuses outright when
+# mistyped, so it is required; a stylesheet-free build still counts.
+check_mime js application/javascript
+check_mime css text/css optional
 
 echo "shell-served-check: print route served (FR-SHL-3)..."
 code="$(get /app/print/receipt-1)"
