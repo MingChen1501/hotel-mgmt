@@ -155,16 +155,38 @@ docker compose -f deploy/compose.yaml exec -T db psql -U hotel -d hotel -c \
 
 ## 7. Secret rotation
 
-There is **no supported secret-rotation operation** in the current Admin
-contract: the operation switch in `services/admin/src/server.ts` offers
-`GetHotelConfig`, `UpdateHotelConfig`, `CreateUser` (the only operation
-that accepts a secret, for new users), `UpdateUserRole`,
-`UnlockIdentity`, `SignOut`, `ListUsers`, and `QueryAuditLog` — no
-change-secret or rotate-secret path. Rotation is therefore **TBD**:
-tracked in follow-up issue #284. Do not invent a rotation procedure;
-until #284 lands, a replacement secret means creating a new user or
-re-provisioning the boot identity out of band, never editing a hash
-by hand.
+The supported rotation path is the self-service `ChangeSecret`
+operation (issue #284): an authenticated caller rotates **their own**
+secret by proving possession of the current one —
+
+```sh
+OWNER_TOKEN=$(curl -fsS --noproxy '*' -X POST http://127.0.0.1/v1/admin/SignIn \
+  -H 'Content-Type: application/json' \
+  -d '{"signinIdentity": "owner", "secret": "<current secret>"}' | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+curl -fsS --noproxy '*' -X POST http://127.0.0.1/v1/admin/ChangeSecret \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $OWNER_TOKEN" \
+  -d '{"currentSecret": "<current secret>", "newSecret": "<new secret>"}'
+```
+
+Rules (enforced in `services/admin/src/store.ts` `changeSecret` and
+mirrored in `services/admin/src/pgstore.ts`):
+
+- Any authenticated role may rotate its own secret, including
+  front-desk — it is self-service, not privilege escalation.
+- A wrong `currentSecret` is refused `UNAUTHENTICATED` without
+  touching the 5-strike lockout counters (lockout policy unchanged).
+- Rotation changes the secret, not active sessions: existing sessions
+  stay valid until they idle out or `SignOut`; the old secret stops
+  signing in immediately and the new one works.
+- The change bumps `updated_by`/`updated_at`, so it appears in
+  `QueryAuditLog` as `user.updated` by the caller.
+
+Two things this path is not: changing `ADMIN_BOOT_SECRET` and
+restarting does **not** rotate anything — `ensureBootUser` is
+`INSERT … ON CONFLICT DO NOTHING`, so the stored hash survives
+restarts. And never edit `admin.users.secret_hash` by hand; the DB
+hatch in section 6 covers lockout only, never secrets.
 
 ## 8. API testing
 

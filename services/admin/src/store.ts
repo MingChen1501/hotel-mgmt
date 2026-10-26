@@ -129,6 +129,10 @@ export interface AdminStoreAPI {
     input: { signinIdentity?: unknown },
   ): Promise<{ signinIdentity: string; unlocked: true }>;
   signOut(caller: AuthenticatedUser): Promise<{ signedOut: true }>;
+  changeSecret(
+    caller: AuthenticatedUser,
+    input: { currentSecret?: unknown; newSecret?: unknown },
+  ): Promise<PublicUser>;
   listUsers(caller: AuthenticatedUser): Promise<{ users: ListedUser[] }>;
   queryAuditLog(
     caller: AuthenticatedUser,
@@ -354,6 +358,39 @@ export class AdminStore implements AdminStoreAPI {
       session.revoked = true;
     }
     return { signedOut: true as const };
+  }
+
+  // Self-service secret rotation (issue #284): the caller changes
+  // their own secret only, proving possession of the current one.
+  // A wrong current secret is refused without touching the sign-in
+  // failure counters (lockout policy unchanged); rotation changes
+  // the secret, not active sessions (session handling unchanged).
+  async changeSecret(
+    caller: AuthenticatedUser,
+    input: { currentSecret?: unknown; newSecret?: unknown },
+  ): Promise<PublicUser> {
+    if (typeof input.currentSecret !== "string" || input.currentSecret === "") {
+      throw new HttpError("VALIDATION_FAILED", msg("error.validation.field_required", { field: "currentSecret" }), { field: "currentSecret" });
+    }
+    if (typeof input.newSecret !== "string" || input.newSecret === "") {
+      throw new HttpError("VALIDATION_FAILED", msg("error.validation.field_required", { field: "newSecret" }), { field: "newSecret" });
+    }
+    const user = this.users.get(caller.userId);
+    if (!user) {
+      throw new HttpError("UNAUTHENTICATED", msg("error.auth.session_orphan", {}), {});
+    }
+    const candidate = hashSecret(input.currentSecret);
+    const expected = user.secretHash;
+    const matches =
+      candidate.length === expected.length &&
+      timingSafeEqual(Buffer.from(candidate), Buffer.from(expected));
+    if (!matches) {
+      throw new HttpError("UNAUTHENTICATED", msg("error.auth.bad_credentials", {}), { signinIdentity: user.signinIdentity });
+    }
+    user.secretHash = hashSecret(input.newSecret);
+    user.updatedBy = caller.signinIdentity;
+    user.updatedAt = Date.now();
+    return toPublic(user);
   }
 
   async listUsers(caller: AuthenticatedUser): Promise<{ users: ListedUser[] }> {

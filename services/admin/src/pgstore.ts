@@ -320,6 +320,48 @@ export class PostgresAdminStore implements AdminStoreAPI {
     return { signedOut: true as const };
   }
 
+  // Self-service secret rotation (issue #284): same semantics as
+  // the in-memory store — own secret only, current-secret proof,
+  // no failure-counter side effects, sessions untouched.
+  async changeSecret(
+    caller: AuthenticatedUser,
+    input: { currentSecret?: unknown; newSecret?: unknown },
+  ): Promise<PublicUser> {
+    if (typeof input.currentSecret !== "string" || input.currentSecret === "") {
+      throw new HttpError("VALIDATION_FAILED", msg("error.validation.field_required", { field: "currentSecret" }), { field: "currentSecret" });
+    }
+    if (typeof input.newSecret !== "string" || input.newSecret === "") {
+      throw new HttpError("VALIDATION_FAILED", msg("error.validation.field_required", { field: "newSecret" }), { field: "newSecret" });
+    }
+    const found = await this.pool.query(
+      `SELECT id AS "userId", display_name AS "displayName",
+        signin_identity AS "signinIdentity", role, secret_hash AS "secretHash"
+      FROM admin.users WHERE id = $1`,
+      [caller.userId],
+    );
+    const user = found.rows[0] as (PublicUser & { secretHash: string }) | undefined;
+    if (!user) {
+      throw new HttpError("UNAUTHENTICATED", msg("error.auth.session_orphan", {}), {});
+    }
+    const candidate = hashSecret(input.currentSecret);
+    const expected = user.secretHash;
+    const matches =
+      candidate.length === expected.length &&
+      timingSafeEqual(Buffer.from(candidate), Buffer.from(expected));
+    if (!matches) {
+      throw new HttpError("UNAUTHENTICATED", msg("error.auth.bad_credentials", {}), { signinIdentity: user.signinIdentity });
+    }
+    const updated = await this.pool.query(
+      `UPDATE admin.users SET secret_hash = $1, updated_by = $2, updated_at = now()
+        WHERE id = $3
+        RETURNING id AS "userId", display_name AS "displayName",
+          signin_identity AS "signinIdentity", role`,
+      [hashSecret(input.newSecret), caller.signinIdentity, caller.userId],
+    );
+    const row = updated.rows[0] as PublicUser;
+    return { userId: row.userId, displayName: row.displayName, signinIdentity: row.signinIdentity, role: row.role };
+  }
+
   async listUsers(caller: AuthenticatedUser): Promise<{ users: ListedUser[] }> {
     requireUserManager(caller, "list users");
     const { rows } = await this.pool.query(

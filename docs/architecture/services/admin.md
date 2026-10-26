@@ -16,13 +16,13 @@ Node.js/TypeScript flat `src/` files over raw `node:http`, wired in `services/ad
 |---|---|---|
 | Transport + routing | `src/server.ts` | `createServiceServer` answers `GET /healthz` (:82); `SignIn` is the one unauthenticated operation (:97); every other `/v1/*` call requires a Bearer token |
 | Identity + sessions | `src/store.ts` (`AdminStore`, `AdminStoreAPI` at :114), `src/auth.ts` | `signIn` with failure counting and lockout, `authenticate` with 15-minute idle expiry and revocation checks, role enforcement |
-| Hotel config + users | `src/store.ts` | `GetHotelConfig`/`UpdateHotelConfig`, `CreateUser`/`UpdateUserRole`/`UnlockIdentity`/`ListUsers`, `QueryAuditLog` |
+| Hotel config + users | `src/store.ts` | `GetHotelConfig`/`UpdateHotelConfig`, `CreateUser`/`UpdateUserRole`/`UnlockIdentity`/`ChangeSecret`/`ListUsers`, `QueryAuditLog` |
 | Row storage | `src/store.ts` (in-memory; lockout counters memory-only by design at :10-16), `src/pgstore.ts` (`PostgresAdminStore implements AdminStoreAPI` at :61) | identical semantics; Postgres selected at boot when `DATABASE_URL` is set |
 | Startup migrations | `src/migrate.ts` | `applyAdminMigrations` runs the `migrations/*.sql` chain in name order at startup (:10-17); idempotent (`IF NOT EXISTS` / `ON CONFLICT DO NOTHING`) so the E2E loop can re-apply |
 | Errors | `src/errors.ts` | shared `HttpError` envelope (same code set as Stay, plus `FORBIDDEN` for role refusals) |
 | Boot | `src/index.ts`, `src/migrate.ts` | migration chain first (schema must exist before sign-in traffic), then store selection, `listen(PORT)` (default `8088`) |
 
-The operation table (`src/server.ts:108-143`): `GetHotelConfig` (:108), `UpdateHotelConfig` (:112), `CreateUser` (:116), `UpdateUserRole` (:120), `UnlockIdentity` (:124), `SignOut` (:128), `ListUsers` (:132), `QueryAuditLog` (:136); `SignIn` precedes auth at :97.
+The operation table (`src/server.ts:108-143`): `GetHotelConfig` (:108), `UpdateHotelConfig` (:112), `CreateUser` (:116), `UpdateUserRole` (:120), `UnlockIdentity` (:124), `SignOut` (:128), `ChangeSecret` (self-service rotation, issue #284), `ListUsers`, `QueryAuditLog`; `SignIn` precedes auth at :97.
 
 ## 3. Happy-path flowchart
 

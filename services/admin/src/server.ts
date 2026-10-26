@@ -129,6 +129,10 @@ async function handleRequest(
       writeJson(res, 200, await store.signOut(caller));
       return;
     }
+    case "ChangeSecret": {
+      writeJson(res, 200, await store.changeSecret(caller, body));
+      return;
+    }
     case "ListUsers": {
       writeJson(res, 200, await store.listUsers(caller));
       return;

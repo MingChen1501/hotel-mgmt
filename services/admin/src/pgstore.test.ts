@@ -129,4 +129,30 @@ describe("admin postgres store", { skip: DATABASE_URL === undefined || DATABASE_
       await pool.end();
     }
   });
+
+  it("rotates the persisted secret hash: old stops, new signs in (issue #284)", async () => {
+    const pool = new Pool({ connectionString: DATABASE_URL });
+    try {
+      await wipe(pool);
+      const store = new PostgresAdminStore(pool, "test-key");
+      await store.ensureBootUser("owner", "owner-secret");
+      const ownerSession = await store.signIn("owner", "owner-secret");
+      const owner = await store.authenticate(ownerSession.token);
+
+      const rotated = await store.changeSecret(owner, {
+        currentSecret: "owner-secret",
+        newSecret: "owner-secret-rotated",
+      });
+      assert.equal(rotated.signinIdentity, "owner");
+      await assert.rejects(store.signIn("owner", "owner-secret"), /Unknown identity or wrong secret/);
+      await store.signIn("owner", "owner-secret-rotated");
+
+      await assert.rejects(
+        store.changeSecret(owner, { currentSecret: "not-the-secret", newSecret: "x" }),
+        /Unknown identity or wrong secret/,
+      );
+    } finally {
+      await pool.end();
+    }
+  });
 });
