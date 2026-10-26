@@ -718,5 +718,153 @@ FR or NFR in this slice and must not be read into one; each
 lands with its own spec-gated follow-up issue. No backend or
 contract change is specified anywhere in this slice.
 
+## 8. Desk UI styling pass (Refs #338)
+
+Presentation-only slice of the approved Phase 1 UI contract
+(the `product-owner` contract comment on #338): the Vue desk
+under `/app/` becomes MVP-usable for a non-technical stand-in
+with no behaviour change. Design (tokens, PrimeVue component
+mapping) lives with `architect` (HLD/LLD); acceptance criteria
+live with `product-owner` (issue body plus
+`docs/product/acceptance-criteria.md`, a separate
+`product-owner` slice); test strategy and the run record live
+with `qa-lead`. This section records only the requirements
+delta the T2 spec gate requires.
+
+### 8.1 Explicit no-change statements
+
+- Every MVP requirement in sections 1 and 2 is unchanged by
+  this slice: all `FR-RES-*`, `FR-FDK-*`, `FR-RMS-*`,
+  `FR-RTE-*`, `FR-GST-*`, `FR-BIL-*`, `FR-RPT-*`, `FR-ADM-*`,
+  and `FR-CUS-*` keep their wording, and every NFR keeps its
+  target. The desk loop (book, check-in, charge, pay,
+  check-out, print) behaves exactly as specified; only
+  presentation changes.
+- Refusal semantics are unchanged: `FR-RTE-4`, `FR-CUS-1`,
+  and `FR-BIL-7` refusals still fire on exactly the same
+  conditions — only their on-screen wording becomes
+  stand-in-readable plain sentences (see `FR-DSP-3`).
+- Money and dates render exactly as today: hotel locale
+  settings govern (`FR-ADM-1`, `NFR-TZ-1` hold); the
+  contract changes presentation, never values.
+- No data-dictionary entries: the slice introduces no data
+  entities or fields (`data-dictionary.md` unchanged).
+- No business rules: the slice introduces no domain policy
+  (`business-rules.md` unchanged).
+- The section 4 traceability table and its coverage count are
+  unchanged: the slice adds no MVP capability, so the mapped
+  capabilities stand. The handoff table below (§8.4) is
+  separate and does not alter that count.
+
+### 8.2 Presentation-scoped functional requirements
+
+Ids use the `DSP` (desk presentation) namespace. These
+constrain presentation only: routes, APIs, refusal
+conditions, print output, and tests stay intact, and no new
+screen or flow is specified here.
+
+FR-DSP-1 — Global shell navigation. Staff always see where
+they are and can reach every screen.
+Given staff are signed in on any `/app/` screen; when they
+look at the top shell; then the six destinations Desk,
+Book, Stay, Folio, Print, and Admin appear in that order,
+followed by the signed-in user name and Sign out, and the
+active route is highlighted (bold label plus underline) so
+the stand-in always knows the current screen. Each item
+routes to its existing path (`/app/`, `/app/book`,
+`/app/stay`, `/app/folio`, `/app/print`, `/app/admin`):
+no route is added, removed, or renamed.
+
+FR-DSP-2 — Single shell-owned sign-in gate. A signed-out
+visitor meets exactly one sign-in form.
+Given a signed-out visitor on any `/app/*` path; when the
+shell renders; then only the sign-in form is shown
+(per-screen sign-in copies are removed), and a failed
+sign-in reads as one plain sentence naming that the sign-in
+did not work and to try again. Sign-out returns to the
+sign-in form and clears the session token as today
+(`NFR-SEC-2` hold).
+
+FR-DSP-3 — Plain-words state coverage on every screen.
+Loading, empty, error, and refusal states read as
+non-technical sentences.
+Given any desk screen awaiting data, holding no rows,
+hitting a failure, or refusing a business action; when the
+state renders; then the screen states what is happening and
+the next step in plain words: loading names the affected
+region while the rest stays visible and disables
+repeat-write buttons until the call returns; every empty
+list names what is empty and the next step; errors never
+surface technical codes; every refusal is one plain
+sentence naming the cause (for example, an open-balance
+check-out refusal names the balance and the payment-or-
+approval next step). Refusal conditions are unchanged —
+only the wording becomes stand-in readable.
+
+FR-DSP-4 — Print output unchanged. Receipts, invoices, and
+confirmations print exactly as today.
+Given a folio with charges and payments; when staff print
+the receipt, invoice, or confirmation; then the printed
+document matches the folio lines and balance exactly
+(`FR-BIL-4` holds byte-for-byte in behaviour), the existing
+print stylesheet is preserved, and screen styling does not
+leak into print.
+
+### 8.3 Presentation-scoped non-functional requirements
+
+NFR-DSP-1 — Stand-in demo readability. A non-technical
+stand-in completes the desk loop on the UI alone.
+Given a signed-in stand-in with no guidance beyond the
+screens; when they work book, check-in, charge, pay,
+check-out, then print receipt/invoice; then every step
+completes guided only by what the screens say, and every
+refusal met along the way reads as a plain sentence.
+Target: 1/1 unassisted passes on the demo script
+(`product-owner` acceptance; `qa-lead` owns the run
+record).
+
+NFR-DSP-2 — Keyboard focus visibility. Keyboard users
+always see where focus is.
+Given any interactive element on any `/app/` screen; when
+it receives keyboard focus; then a visible focus indicator
+shows (2px desk-blue outline per the contract §1 tokens).
+Target: 100% of interactive elements on the six routes
+show the indicator on focus.
+
+User-visible strings stay in the catalogue: `NFR-I18N-1`
+holds — every new plain-words sentence ships in
+`messages/en.json` and stays covered by
+`script/catalogue-coverage-check.sh`.
+
+### 8.4 Traceability handoff for `qa-lead`
+
+Existing guards cover current markup; the Phase 2
+implementation PR extends them where markup changes,
+updates characterization tests where markup changed, and
+deletes no test without replacement. New items name the
+missing guard explicitly instead of citing one.
+
+| Pres item | Guard (existing on disk; implementation PR extends) | Handoff note for `qa-lead` |
+|---|---|---|
+| FR-DSP-1 | Six-route shape: `app/src/router.test.ts:16` (migration shell router suite); per-screen render: `app/src/views/DeskView.test.ts:126`, `BookView.test.ts:202`, `StayView.test.ts`, `FolioView.test.ts`, `PrintView.test.ts`, `AdminView.test.ts` | Extend with shell-nav render plus active-highlight assertions on each of the six routes; keep the existing `data-testid` hooks (`*-view`, `offline-banner`) so characterization tests survive |
+| FR-DSP-2 | Sign-in round trips: `app/src/views/DeskView.test.ts:134` (signed-out form), `:143` (sign-in shows dashboard), `:288` (failure surfaces without signing in), `:341` (sign-out back to form); session store: `app/src/stores/session.test.ts:8` (sessionStorage-only persistence, reload restore, sign-out clears); 401 path: `app/src/api/client.test.ts:55` (token clears, routes to sign-in) | Collapse per-screen sign-in copies into the one shell gate; move the per-view sign-in tests to the gate without deleting coverage |
+| FR-DSP-3 | Empty-state wording: `app/src/views/DeskView.test.ts:247` (empty catalogue string when every list is empty); failure wording: `DeskView.test.ts:199` (unknown-guest catalogue string on GetGuest failure), `:302` (locked wording), `:320` (session-expired string on 401); offline wording: `app/src/App.test.ts:17` (banner hooks `offline-banner`, `offline-text`, `offline-retry`) | Add per-screen loading/empty/error/refusal wording assertions; refusal-condition tests stay untouched (semantics unchanged, wording only) |
+| FR-DSP-4 | Exact-match backend guards for `FR-BIL-4` (unchanged) plus `app/src/views/PrintView.test.ts` (print screen incl. `print-view`, `print-signin` hooks) | Add a served-print assertion that printed output still matches the folio exactly and no screen style leaks into print; print CSS stays preserved |
+| NFR-DSP-1 | Missing — Phase 2 must create the stand-in demo run record (scripted book to print pass, unassisted, plain-sentence refusals) | `qa-lead` owns the run record; 1/1 unassisted passes is the exit signal |
+| NFR-DSP-2 | Missing — Phase 2 must create the focus-visibility check (e.g. keyboard-focus assertion over the six routes) | Guard tabs through every interactive element on each route and checks the visible indicator; 100% show it |
+
+### 8.5 Explicitly not specified here
+
+No new screens or flows; the six existing routes are the
+complete set. No backend, API, contract, schema, or
+error-code change. No Figma mockups and no marketing-grade
+visuals. The PrimeVue component mapping (forms, tables,
+dialogs, messages per pattern) is design, not
+requirements: it lives with `architect` (HLD/LLD) and must
+not be read as an FR here. The
+`docs/product/acceptance-criteria.md` slice for this
+change is separate `product-owner` work under the gate;
+this section traces to the issue-body acceptance only.
+
 <!-- ao-role: business-analyst -->
 Role: business-analyst · AO session hotel-mgmt-9
