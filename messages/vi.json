@@ -6,6 +6,7 @@
     "error.transport.body_read_failed": "Không đọc được nội dung yêu cầu.",
     "error.transport.unexpected": "Xử lý yêu cầu thất bại ngoài dự kiến.",
     "error.transport.unknown_path": "đường dẫn không xác định",
+    "error.upstream.restrictions_unavailable": "Không kiểm tra được quy tắc lưu trú, nên đặt phòng đã bị từ chối.",
     "error.auth.missing_token": "Thiếu mã phiên đăng nhập.",
     "error.auth.locked": "Tên đăng nhập {identity} bị khóa sau nhiều lần thất bại.",
     "error.auth.bad_credentials": "Tên đăng nhập hoặc mật khẩu không đúng.",

@@ -8,6 +8,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { installLoopbackGuard } from './loopback-guard';
 import {
+  apiOp,
   ownerToken,
   setupFlowContext,
   signInThroughGate,
@@ -120,23 +121,18 @@ test('restriction refusal names the restriction on screen', async ({ page, reque
   await page.goto('/app/book');
   await bookOnce(page, ctx.guestName, window.arrival, window.departure, ctx.roomTypeId, ctx.ratePlan);
   // Server-side stay-restriction enforcement (the reservations
-  // CheckRestrictionsHook) is not wired yet, so the documented
-  // STATE_ILLEGAL envelope (contracts/http/CreateReservation.json,
-  // FR-RTE-4) is simulated at the contract boundary. The mapping
+  // CheckRestrictionsHook wired to rates in #361): a real
+  // closed-to-arrival window covers the booked arrival, so the
+  // confirm hits the real 422 STATE_ILLEGAL envelope
+  // (contracts/http/CreateReservation.json, FR-RTE-4). The mapping
   // under test is still the real view code: the refusal must name
   // the restriction, never a generic failure.
-  await page.route('**/v1/reservations/CreateReservation', (route) =>
-    route.fulfill({
-      status: 422,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        code: 'STATE_ILLEGAL',
-        message: 'stay restriction violated',
-        details: { restriction: 'closed-to-arrival' },
-        traceId: 'browser-e2e',
-      }),
-    }),
-  );
+  await apiOp(request, 'rates', 'UpsertRestriction', {
+    roomTypeId: ctx.roomTypeId,
+    dateFrom: window.arrival,
+    dateTo: window.departure,
+    closedToArrival: true,
+  }, token);
   await page.getByTestId('book-confirm').click();
   await expect(page.getByTestId('book-confirm-error')).toContainText('booking rule');
   await expect(page.getByTestId('book-confirm-error')).toContainText('closed-to-arrival');

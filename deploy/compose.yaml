@@ -41,6 +41,9 @@ services:
       PORT: "8081"
       # Consumed from the first store slice on; the skeleton only answers /healthz.
       DATABASE_URL: postgresql://hotel:${DB_PASSWORD:-change-me-dev-only}@db:5432/hotel
+      # Direct rates base URL for the server-side stay-restriction check
+      # (FR-RTE-4, issue #361); the caller Bearer token travels on the call.
+      RATES_BASE_URL: http://rates:8082
     depends_on:
       db:
         condition: service_healthy

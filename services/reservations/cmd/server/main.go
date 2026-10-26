@@ -12,9 +12,11 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/MingChen1501/hotel-mgmt/services/reservations/internal/handler"
 	"github.com/MingChen1501/hotel-mgmt/services/reservations/internal/health"
+	"github.com/MingChen1501/hotel-mgmt/services/reservations/internal/pricing"
 	"github.com/MingChen1501/hotel-mgmt/services/reservations/internal/service"
 	"github.com/MingChen1501/hotel-mgmt/services/reservations/internal/store"
 )
@@ -36,7 +38,13 @@ func main() {
 	}
 	mux := http.NewServeMux()
 	mux.Handle("GET /healthz", health.Handler("reservations"))
-	booking := handler.NewMux(service.New(repo), repo)
+	svc := service.New(repo)
+	ratesBase := strings.TrimSpace(os.Getenv("RATES_BASE_URL"))
+	if ratesBase == "" {
+		ratesBase = "http://rates:8082"
+	}
+	svc.CheckRestrictionsHook = pricing.NewClient(ratesBase).Check
+	booking := handler.NewMux(svc, repo)
 	mux.Handle("POST /v1/reservations/", booking)
 	addr := ":" + port
 	log.Printf("reservations listening on %s", addr)
