@@ -209,10 +209,11 @@ function mountStay() {
 }
 
 async function signIn(wrapper: ReturnType<typeof mountStay>, fetchMock: ReturnType<typeof vi.fn>) {
+  // The shell owns the one sign-in gate (Refs #338): views mount
+  // with a signed-in session preset, then load like a reload.
   stubHappyPath(fetchMock);
-  await wrapper.find('[data-testid="stay-signin-identity"]').setValue('owner');
-  await wrapper.find('[data-testid="stay-signin-secret"]').setValue('s3cret');
-  await wrapper.find('[data-testid="stay-signin-form"]').trigger('submit');
+  useSessionStore().signIn('tok-1', 'Ada Owner', 'owner');
+  await wrapper.find('[data-testid="stay-refresh"]').trigger('click');
   await vi.waitFor(() => {
     expect(wrapper.find('[data-testid="stay-main"]').exists()).toBe(true);
   });
@@ -223,6 +224,16 @@ async function signIn(wrapper: ReturnType<typeof mountStay>, fetchMock: ReturnTy
   });
 }
 
+// Check-out now asks once through the shell confirm dialog
+// (Refs #338, LLD §12.2): open the dialog, then confirm.
+async function confirmCheckout(wrapper: ReturnType<typeof mountStay>) {
+  await wrapper.find('[data-testid="stay-checkout"]').trigger('click');
+  await vi.waitFor(() => {
+    expect(wrapper.find('[data-testid="stay-checkout-dialog"]').exists()).toBe(true);
+  });
+  await wrapper.find('[data-testid="stay-checkout-confirm"]').trigger('click');
+}
+
 describe('stay view', () => {
   beforeEach(() => {
     sessionStorage.clear();
@@ -231,33 +242,35 @@ describe('stay view', () => {
     vi.clearAllMocks();
   });
 
-  it('renders the sign-in form when signed out', () => {
+  it('renders the stay lists with no per-screen sign-in copy', () => {
     const wrapper = mountStay();
     expect(wrapper.find('[data-testid="stay-view"]').exists()).toBe(true);
     // Catalogue wiring (Refs #292): the heading resolves through t().
-    expect(wrapper.find('[data-testid="stay-view"] h1').text()).toContain('Desk Stay');
-    expect(wrapper.find('[data-testid="stay-signin"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="stay-main"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="stay-view"] h1').text()).toContain(
+      'Check guests in, move them, and check them out',
+    );
+    // The shell owns the one sign-in gate (Refs #338, FR-DSP-2):
+    // no per-screen sign-in copy renders here anymore.
+    expect(wrapper.find('[data-testid="stay-signin"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="stay-main"]').exists()).toBe(true);
   });
 
-  it('signs in and renders the three daily lists with bearer auth', async () => {
+  it('loads the three daily lists with bearer auth under the shell session', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     const wrapper = mountStay();
     await signIn(wrapper, fetchMock);
 
     // Bearer session handling: the shared client attaches the token
-    // to every call made after sign-in.
+    // to every call (the sign-in itself happened in the shell gate).
     const calls = fetchMock.mock.calls;
     expect(calls.length).toBeGreaterThan(0);
-    expect((calls[0]?.[1]?.headers as Headers).get('Authorization')).toBeNull();
-    for (const call of calls.slice(1)) {
+    for (const call of calls) {
       expect((call[1].headers as Headers).get('Authorization')).toBe('Bearer tok-1');
     }
-    expect(wrapper.find('[data-testid="stay-whoami"]').text()).toBe('Ada Owner');
     expect(wrapper.text()).toContain('Guest Two');
     expect(wrapper.text()).toContain('Guest Three');
-    expect(wrapper.find('[data-testid="stay-signin-error"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="stay-lists-error"]').exists()).toBe(false);
   });
 
   it('drives the arrival pick to a checked-in stay through the echoed room id', async () => {
@@ -481,7 +494,7 @@ describe('stay view', () => {
     expect(wrapper.find('[data-testid="stay-folio-status"]').text()).toContain('Folio f-1');
     expect(wrapper.find('[data-testid="stay-approval-section"]').exists()).toBe(false);
 
-    await wrapper.find('[data-testid="stay-checkout"]').trigger('click');
+    await confirmCheckout(wrapper);
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="stay-checkout-status"]').text()).toContain('Checked out');
     });
@@ -574,11 +587,93 @@ describe('stay view', () => {
         'balance is zero',
       );
     });
-    await wrapper.find('[data-testid="stay-checkout"]').trigger('click');
+    await confirmCheckout(wrapper);
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="stay-checkout-error"]').text()).toContain('open balance');
     });
     expect(wrapper.find('[data-testid="stay-approval-section"]').exists()).toBe(true);
+  });
+
+  it('normalizes a stringified folio approval to the contracted object on check-out', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountStay();
+    await signIn(wrapper, fetchMock);
+
+    // Billing serves the recorded approval as a JSON string while
+    // the contract types it as an object (Refs #338): the view
+    // must send the parsed object or the stay gate refuses it.
+    const happy = stubHappyPath(fetchMock);
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/billing/GetFolioBalance') {
+        return Promise.resolve(
+          jsonResponse({
+            folioId: 'f-2',
+            stayId: 's-1',
+            balanceMinor: 1500,
+            openBalanceApproval: '{"approvedBy":"Night Manager","role":"manager"}',
+          }),
+        );
+      }
+      return happy(url, init);
+    });
+
+    await wrapper.find('[data-testid="stay-checkout-stay-id"]').setValue('s-1');
+    await wrapper.find('[data-testid="stay-review"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkout-status"]').text()).toContain(
+        'Approval recorded for stay s-1',
+      );
+    });
+    await confirmCheckout(wrapper);
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkout-status"]').text()).toContain('Checked out');
+    });
+    const checkoutBody = parseBody(
+      fetchMock.mock.calls.find((call) => String(call[0]) === '/v1/stay/CheckOut')?.[1],
+    );
+    expect(checkoutBody.openBalanceApproval).toEqual({
+      approvedBy: 'Night Manager',
+      role: 'manager',
+    });
+  });
+
+  it('asks once through the confirm dialog before checking out', async () => {    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountStay();
+    await signIn(wrapper, fetchMock);
+
+    await wrapper.find('[data-testid="stay-checkout-stay-id"]').setValue('s-1');
+    await wrapper.find('[data-testid="stay-review"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkout-status"]').text()).toContain(
+        'balance is zero',
+      );
+    });
+
+    // Opening the dialog performs no call by itself.
+    const before = fetchMock.mock.calls.filter(
+      (call) => String(call[0]) === '/v1/stay/CheckOut',
+    ).length;
+    await wrapper.find('[data-testid="stay-checkout"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkout-dialog"]').exists()).toBe(true);
+    });
+    expect(wrapper.find('[data-testid="stay-checkout-dialog"]').text()).toContain(
+      'Check out this stay now?',
+    );
+    expect(
+      fetchMock.mock.calls.filter((call) => String(call[0]) === '/v1/stay/CheckOut'),
+    ).toHaveLength(before);
+
+    // Cancelling closes the dialog with no check-out call.
+    await wrapper.find('[data-testid="stay-checkout-cancel"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkout-dialog"]').exists()).toBe(false);
+    });
+    expect(
+      fetchMock.mock.calls.filter((call) => String(call[0]) === '/v1/stay/CheckOut'),
+    ).toHaveLength(before);
   });
 
   it('returns the in-flight guard: a double-clicked check-in assigns once', async () => {
@@ -611,7 +706,7 @@ describe('stay view', () => {
     expect(after - before).toBe(1);
   });
 
-  it('signs out and shows the session-expired catalogue string on 401', async () => {
+  it('expires the session with the gate notice on 401', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     const wrapper = mountStay();
@@ -624,12 +719,13 @@ describe('stay view', () => {
       return Promise.resolve(jsonResponse({ code: 'UNAUTHENTICATED', message: 'expired' }, 401));
     });
     await wrapper.find('[data-testid="stay-refresh"]').trigger('click');
+    // The shared client expires the session and routes to the
+    // gate (covered in the shell gate suite); the view keeps no
+    // sign-in copy.
     await vi.waitFor(() => {
-      expect(wrapper.find('[data-testid="stay-signin"]').exists()).toBe(true);
+      expect(useSessionStore().token).toBeNull();
     });
-    await vi.waitFor(() => {
-      expect(wrapper.find('[data-testid="stay-signin-error"]').text()).toContain('Session expired');
-    });
+    expect(useSessionStore().signOutNotice).toBe('session-expired');
     expect(useSessionStore().isSignedIn).toBe(false);
     expect(router.replace).toHaveBeenCalledWith('/');
   });

@@ -168,13 +168,11 @@ function mountPrint() {
 }
 
 async function signIn(wrapper: ReturnType<typeof mountPrint>, fetchMock: ReturnType<typeof vi.fn>) {
+  // The shell owns the one sign-in gate (Refs #338): views mount
+  // with a signed-in session preset, then work directly.
   stubHappyPath(fetchMock);
-  await wrapper.find('[data-testid="print-signin-identity"]').setValue('owner');
-  await wrapper.find('[data-testid="print-signin-secret"]').setValue('s3cret');
-  await wrapper.find('[data-testid="print-signin-form"]').trigger('submit');
-  await vi.waitFor(() => {
-    expect(wrapper.find('[data-testid="print-main"]').exists()).toBe(true);
-  });
+  useSessionStore().signIn('tok-1', 'Ada Owner', 'owner');
+  await wrapper.vm.$nextTick();
 }
 
 async function openFolio(wrapper: ReturnType<typeof mountPrint>, stayId: string) {
@@ -200,21 +198,24 @@ describe('print view', () => {
     vi.clearAllMocks();
   });
 
-  it('renders the sign-in form when signed out', () => {
+  it('renders the print form with no per-screen sign-in copy', () => {
     const wrapper = mountPrint();
     expect(wrapper.find('[data-testid="print-view"]').exists()).toBe(true);
     // Catalogue wiring (Refs #292): the heading resolves through t().
-    expect(wrapper.find('[data-testid="print-view"] h1').text()).toContain('Desk Print');
-    expect(wrapper.find('[data-testid="print-signin"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="print-main"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="print-view"] h1').text()).toContain(
+      'Print receipts, invoices, and confirmations',
+    );
+    // The shell owns the one sign-in gate (Refs #338, FR-DSP-2):
+    // no per-screen sign-in copy renders here anymore.
+    expect(wrapper.find('[data-testid="print-signin"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="print-main"]').exists()).toBe(true);
   });
 
-  it('signs in with bearer auth and opens a folio with the running balance', async () => {
+  it('opens a folio with the running balance under the shell session', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     const wrapper = mountPrint();
     await signIn(wrapper, fetchMock);
-    expect(wrapper.find('[data-testid="print-whoami"]').text()).toBe('Ada Owner');
 
     await openFolio(wrapper, 's-1');
 
@@ -239,10 +240,10 @@ describe('print view', () => {
     expect(receiptButtons).toHaveLength(1);
 
     // Bearer session handling: the shared client attaches the token
-    // to every call made after sign-in.
+    // to every call (the sign-in itself happened in the shell gate).
     const calls = fetchMock.mock.calls;
-    expect((calls[0]?.[1]?.headers as Headers).get('Authorization')).toBeNull();
-    for (const call of calls.slice(1)) {
+    expect(calls.length).toBeGreaterThan(0);
+    for (const call of calls) {
       expect((call[1].headers as Headers).get('Authorization')).toBe('Bearer tok-1');
     }
   });
@@ -348,6 +349,34 @@ describe('print view', () => {
     });
   });
 
+  it('names an unknown booking reference in plain words', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountPrint();
+    await signIn(wrapper, fetchMock);
+    // Override after sign-in: the helper stubs the happy path, and
+    // re-stubbing here would clobber the refusal below.
+    const happy = stubHappyPath(fetchMock);
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/reservations/GetReservation') {
+        return Promise.resolve(
+          jsonResponse({ code: 'NOT_FOUND', message: 'Unknown reservation RSV-NOPE.' }, 404),
+        );
+      }
+      return happy(url, init);
+    });
+
+    await wrapper.find('[data-testid="print-ref"]').setValue('RSV-NOPE');
+    await wrapper.find('[data-testid="print-load"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="print-load-error"]').exists()).toBe(true);
+    });
+    expect(wrapper.find('[data-testid="print-load-error"]').text()).toContain(
+      'Unknown booking reference. Check the reference and try again.',
+    );
+    expect(wrapper.find('[data-testid="print-confirmation-document"]').exists()).toBe(false);
+  });
+
   it('refuses empty stays and empty booking references in plain words', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
@@ -416,7 +445,7 @@ describe('print view', () => {
     expect(invoiceCalls()).toHaveLength(1);
   });
 
-  it('returns to sign-in with the expired-session message on 401', async () => {
+  it('expires the session with the gate notice on 401', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     const wrapper = mountPrint();
@@ -427,12 +456,13 @@ describe('print view', () => {
     );
     await wrapper.find('[data-testid="print-stay-id"]').setValue('s-1');
     await wrapper.find('[data-testid="print-open"]').trigger('click');
+    // The shared client expires the session and routes to the
+    // gate (covered in the shell gate suite); the view keeps no
+    // sign-in copy.
     await vi.waitFor(() => {
-      expect(wrapper.find('[data-testid="print-signin"]').exists()).toBe(true);
+      expect(useSessionStore().token).toBeNull();
     });
-    await vi.waitFor(() => {
-      expect(wrapper.find('[data-testid="print-signin-error"]').text()).toContain('Session expired');
-    });
+    expect(useSessionStore().signOutNotice).toBe('session-expired');
     expect(useSessionStore().isSignedIn).toBe(false);
     expect(router.replace).toHaveBeenCalledWith('/');
   });
@@ -568,9 +598,10 @@ describe('print view', () => {
 // refusal, copy, and print vocabulary, and every paragraph stays in
 // English.
 describe('print view source', () => {
+  // Sign-in round trips moved to the shell gate (Refs #338,
+  // FR-DSP-2, LLD §12.4): SignIn/SignOut now live in `App.vue`,
+  // so the per-screen copies are gone from this source.
   const requiredOps = [
-    '/v1/admin/SignIn',
-    '/v1/admin/SignOut',
     '/v1/billing/GetFolioBalance',
     '/v1/billing/ProduceInvoice',
     '/v1/billing/ProduceReceipt',

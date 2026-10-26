@@ -604,18 +604,10 @@
       "params": {}
     },
     {
-      "key": "desk.admin.back",
-      "surface": "desk admin console",
-      "sources": [
-        "app/src/views/AdminView.vue"
-      ],
-      "params": {}
-    },
-    {
       "key": "desk.admin.sign_in",
       "surface": "desk admin console",
       "sources": [
-        "app/src/views/AdminView.vue"
+        "app/src/App.vue"
       ],
       "params": {}
     },
@@ -639,7 +631,7 @@
       "key": "desk.admin.signed_in_as",
       "surface": "desk admin console",
       "sources": [
-        "app/src/views/AdminView.vue"
+        "app/src/App.vue"
       ],
       "params": {}
     },
@@ -647,7 +639,7 @@
       "key": "desk.admin.signout",
       "surface": "desk admin console",
       "sources": [
-        "app/src/views/AdminView.vue"
+        "app/src/App.vue"
       ],
       "params": {}
     },
@@ -815,14 +807,6 @@
     },
     {
       "key": "desk.admin.th_detail",
-      "surface": "desk admin console",
-      "sources": [
-        "app/src/views/AdminView.vue"
-      ],
-      "params": {}
-    },
-    {
-      "key": "desk.admin.no_entries",
       "surface": "desk admin console",
       "sources": [
         "app/src/views/AdminView.vue"
@@ -2892,6 +2876,360 @@
       "params": {
         "item": "string"
       }
+    },
+    {
+      "key": "desk.shell.brand",
+      "surface": "desk shell",
+      "sources": [
+        "app/src/App.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.shell.nav_desk",
+      "surface": "desk shell",
+      "sources": [
+        "app/src/App.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.shell.nav_book",
+      "surface": "desk shell",
+      "sources": [
+        "app/src/App.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.shell.nav_stay",
+      "surface": "desk shell",
+      "sources": [
+        "app/src/App.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.shell.nav_folio",
+      "surface": "desk shell",
+      "sources": [
+        "app/src/App.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.shell.nav_print",
+      "surface": "desk shell",
+      "sources": [
+        "app/src/App.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.shell.nav_admin",
+      "surface": "desk shell",
+      "sources": [
+        "app/src/App.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.shell.signin_intro",
+      "surface": "desk shell",
+      "sources": [
+        "app/src/App.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.shell.signin_failed",
+      "surface": "desk shell",
+      "sources": [
+        "app/src/App.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.shell.signing_in",
+      "surface": "desk shell",
+      "sources": [
+        "app/src/App.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.shell.checkout_confirm",
+      "surface": "desk shell",
+      "sources": [
+        "app/src/views/StayView.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.shell.checkout_detail",
+      "surface": "desk shell",
+      "sources": [
+        "app/src/views/StayView.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.shell.cancel",
+      "surface": "desk shell",
+      "sources": [
+        "app/src/views/StayView.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.today.intro",
+      "surface": "desk today",
+      "sources": [
+        "app/src/views/DeskView.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.today.empty_arrivals",
+      "surface": "desk today",
+      "sources": [
+        "app/src/views/DeskView.vue",
+        "app/src/views/StayView.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.today.empty_inhouse",
+      "surface": "desk today",
+      "sources": [
+        "app/src/views/DeskView.vue",
+        "app/src/views/StayView.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.today.empty_departures",
+      "surface": "desk today",
+      "sources": [
+        "app/src/views/DeskView.vue",
+        "app/src/views/StayView.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.today.empty_dirty",
+      "surface": "desk today",
+      "sources": [
+        "app/src/views/DeskView.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.today.empty_uninspected",
+      "surface": "desk today",
+      "sources": [
+        "app/src/views/DeskView.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.today.empty_outoforder",
+      "surface": "desk today",
+      "sources": [
+        "app/src/views/DeskView.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.stay.intro",
+      "surface": "desk stay",
+      "sources": [
+        "app/src/views/StayView.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.stay.loading_lists",
+      "surface": "desk stay",
+      "sources": [
+        "app/src/views/StayView.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.stay.checking_in",
+      "surface": "desk stay",
+      "sources": [
+        "app/src/views/StayView.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.stay.moving",
+      "surface": "desk stay",
+      "sources": [
+        "app/src/views/StayView.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.stay.recording",
+      "surface": "desk stay",
+      "sources": [
+        "app/src/views/StayView.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.stay.reviewing",
+      "surface": "desk stay",
+      "sources": [
+        "app/src/views/StayView.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.stay.approving",
+      "surface": "desk stay",
+      "sources": [
+        "app/src/views/StayView.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.stay.checking_out",
+      "surface": "desk stay",
+      "sources": [
+        "app/src/views/StayView.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.folio.intro",
+      "surface": "desk folio",
+      "sources": [
+        "app/src/views/FolioView.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.folio.opening",
+      "surface": "desk folio",
+      "sources": [
+        "app/src/views/FolioView.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.folio.charging",
+      "surface": "desk folio",
+      "sources": [
+        "app/src/views/FolioView.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.folio.paying",
+      "surface": "desk folio",
+      "sources": [
+        "app/src/views/FolioView.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.book.confirming",
+      "surface": "desk book",
+      "sources": [
+        "app/src/views/BookView.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.print.intro",
+      "surface": "desk print",
+      "sources": [
+        "app/src/views/PrintView.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.print.opening",
+      "surface": "desk print",
+      "sources": [
+        "app/src/views/PrintView.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.print.loading_confirmation",
+      "surface": "desk print",
+      "sources": [
+        "app/src/views/PrintView.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.admin.intro",
+      "surface": "desk admin console",
+      "sources": [
+        "app/src/views/AdminView.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.admin.empty_users",
+      "surface": "desk admin console",
+      "sources": [
+        "app/src/views/AdminView.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.admin.empty_config",
+      "surface": "desk admin console",
+      "sources": [
+        "app/src/views/AdminView.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.admin.empty_audit",
+      "surface": "desk admin console",
+      "sources": [
+        "app/src/views/AdminView.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.shell.request_failed",
+      "surface": "desk shell",
+      "sources": [
+        "app/src/views/DeskView.vue",
+        "app/src/views/BookView.vue",
+        "app/src/views/StayView.vue",
+        "app/src/views/FolioView.vue",
+        "app/src/views/PrintView.vue",
+        "app/src/views/AdminView.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.folio.refused_unknown_item",
+      "surface": "desk folio",
+      "sources": [
+        "app/src/views/FolioView.vue"
+      ],
+      "params": {
+        "itemName": "string"
+      }
+    },
+    {
+      "key": "desk.print.refused_unknown_ref",
+      "surface": "desk print",
+      "sources": [
+        "app/src/views/PrintView.vue"
+      ],
+      "params": {}
     }
   ]
 }

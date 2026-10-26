@@ -1,106 +1,45 @@
 <template>
   <main data-testid="folio-view">
-    <h1>{{ t('desk.folio.title', {}, 'Hotel Management — Desk Folio') }}</h1>
-    <p>
-      <a href="/app/">{{ t('desk.folio.back', {}, 'Back to the desk entry') }}</a> ·
-      <a href="/app/">{{ t('desk.folio.today_link', {}, "Today's arrivals, in-house, and departures") }}</a> ·
-      <a href="/app/stay">{{ t('desk.folio.stay_link', {}, 'Stay check-in, move, and check-out') }}</a> ·
-      <a href="/app/print">{{ t('desk.entry.print_link', {}, 'Print invoice, receipt, or confirmation') }}</a>
-    </p>
-    <noscript><p>This page needs JavaScript to sign in and open a folio.</p></noscript>
+    <h1>{{ t('desk.folio.title', {}, 'Folio: charges, payments, and balance') }}</h1>
+    <p>{{ t('desk.folio.intro', {}, 'Open a stay folio, post charges, record payments, and watch the running balance.') }}</p>
+    <noscript><p>This page needs JavaScript to open a folio.</p></noscript>
 
-    <section
-      v-if="!session.isSignedIn"
-      data-testid="folio-signin"
-    >
-      <h2>{{ t('desk.admin.sign_in', {}, 'Sign in') }}</h2>
-      <form
-        data-testid="folio-signin-form"
-        @submit.prevent="onSignIn"
-      >
-        <label for="folio-signin-identity">
-          {{ t('desk.admin.signin_identity', {}, 'Sign-in identity: ') }}
-          <input
-            id="folio-signin-identity"
-            v-model="identity"
-            name="signin-identity"
-            autocomplete="username"
-            data-testid="folio-signin-identity"
-          >
-        </label>
-        <label for="folio-signin-secret">
-          {{ t('desk.admin.secret', {}, 'Secret: ') }}
-          <input
-            id="folio-signin-secret"
-            v-model="secret"
-            name="signin-secret"
-            type="password"
-            autocomplete="current-password"
-            data-testid="folio-signin-secret"
-          >
-        </label>
-        <button
-          type="submit"
-          data-testid="folio-signin-submit"
-        >
-          {{ t('desk.admin.sign_in', {}, 'Sign in') }}
-        </button>
-      </form>
-      <p
-        v-if="signInError"
-        role="alert"
-        data-testid="folio-signin-error"
-      >
-        {{ signInError }}
-      </p>
-    </section>
-
-    <section
-      v-else
-      data-testid="folio-main"
-    >
-      <p>
-        <span>{{ t('desk.admin.signed_in_as', {}, 'Signed in as ') }}</span><strong data-testid="folio-whoami">{{ displayName }}</strong>
-        (<span data-testid="folio-myrole">{{ role }}</span>).
-        <button
-          id="folio-signout-button"
-          type="button"
-          data-testid="folio-signout"
-          @click="onSignOut"
-        >
-          {{ t('desk.admin.signout', {}, 'Sign out') }}
-        </button>
-      </p>
-
+    <section data-testid="folio-main">
       <h2>{{ t('desk.folio.open_heading', {}, 'Open a stay folio') }}</h2>
       <div>
         <label for="folio-stay-id">
           {{ t('desk.folio.stay_id', {}, 'Stay ID: ') }}
-          <input
+          <InputText
             id="folio-stay-id"
             v-model="stayId"
             name="folio-stay-id"
             autocomplete="off"
             data-testid="folio-stay-id"
-            @input="onStayIdInput"
-          >
+            @update:model-value="onStayIdInput"
+          />
         </label>
-        <button
+        <Button
           id="folio-open-button"
           type="button"
+          :label="t('desk.folio.open_button', {}, 'Open folio')"
           data-testid="folio-open"
           :disabled="opening"
           @click="onOpen"
-        >
-          {{ t('desk.folio.open_button', {}, 'Open folio') }}
-        </button>
+        />
         <p
+          v-if="opening"
+          data-testid="folio-opening"
+        >
+          {{ t('desk.folio.opening', {}, 'Opening the folio…') }}
+        </p>
+        <Message
           v-if="openError"
+          severity="error"
           role="alert"
           data-testid="folio-open-error"
         >
           {{ openError }}
-        </p>
+        </Message>
       </div>
 
       <h2>{{ t('desk.folio.folio_heading', {}, 'Folio lines and running balance') }}</h2>
@@ -110,35 +49,31 @@
       >
         {{ folioStatus }}
       </p>
-      <table
+      <DataTable
         id="folio-table"
+        :value="entryRows"
         data-testid="folio-table"
       >
-        <thead>
-          <tr>
-            <th>{{ t('desk.folio.th_time', {}, 'Time') }}</th>
-            <th>{{ t('desk.folio.th_item', {}, 'Item') }}</th>
-            <th>{{ t('desk.folio.th_amount', {}, 'Amount') }}</th>
-            <th>{{ t('desk.folio.th_balance', {}, 'Running balance') }}</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="(entry, index) in entryRows"
-            :key="index"
-          >
-            <td>{{ entry.at }}</td>
-            <td>{{ entry.item }}</td>
-            <td>{{ entry.amount }}</td>
-            <td>{{ entry.balance }}</td>
-          </tr>
-          <tr v-if="entryRows.length === 0">
-            <td colspan="4">
-              {{ t('desk.folio.no_lines', {}, 'No charges or payments yet.') }}
-            </td>
-          </tr>
-        </tbody>
-      </table>
+        <Column
+          field="at"
+          :header="t('desk.folio.th_time', {}, 'Time')"
+        />
+        <Column
+          field="item"
+          :header="t('desk.folio.th_item', {}, 'Item')"
+        />
+        <Column
+          field="amount"
+          :header="t('desk.folio.th_amount', {}, 'Amount')"
+        />
+        <Column
+          field="balance"
+          :header="t('desk.folio.th_balance', {}, 'Running balance')"
+        />
+        <template #empty>
+          {{ t('desk.folio.no_lines', {}, 'No charges or payments yet. Posted charges and recorded payments appear here.') }}
+        </template>
+      </DataTable>
 
       <h2>{{ t('desk.folio.charge_heading', {}, 'Post a charge') }}</h2>
       <div>
@@ -159,47 +94,53 @@
         </label>
         <label for="folio-charge-name">
           {{ t('desk.folio.item_name', {}, 'Item name: ') }}
-          <input
+          <InputText
             id="folio-charge-name"
             v-model="chargeName"
             name="charge-name"
             autocomplete="off"
             data-testid="folio-charge-name"
-          >
+          />
         </label>
         <label for="folio-charge-amount">
           {{ t('desk.folio.amount_label', {}, 'Amount: ') }}
-          <input
+          <InputText
             id="folio-charge-amount"
             v-model="chargeAmount"
             name="charge-amount"
             inputmode="decimal"
             autocomplete="off"
             data-testid="folio-charge-amount"
-          >
+          />
         </label>
-        <button
+        <Button
           id="folio-charge-button"
           type="button"
+          :label="t('desk.folio.charge_button', {}, 'Post charge')"
           data-testid="folio-charge"
           :disabled="charging"
           @click="onCharge"
+        />
+        <p
+          v-if="charging"
+          data-testid="folio-charging"
         >
-          {{ t('desk.folio.charge_button', {}, 'Post charge') }}
-        </button>
+          {{ t('desk.folio.charging', {}, 'Posting the charge…') }}
+        </p>
         <p
           role="status"
           data-testid="folio-charge-status"
         >
           {{ chargeStatus }}
         </p>
-        <p
+        <Message
           v-if="chargeError"
+          severity="error"
           role="alert"
           data-testid="folio-charge-error"
         >
           {{ chargeError }}
-        </p>
+        </Message>
       </div>
 
       <h2>{{ t('desk.folio.payment_heading', {}, 'Record a payment') }}</h2>
@@ -221,37 +162,43 @@
         </label>
         <label for="folio-payment-amount">
           {{ t('desk.folio.amount_label', {}, 'Amount: ') }}
-          <input
+          <InputText
             id="folio-payment-amount"
             v-model="paymentAmount"
             name="payment-amount"
             inputmode="decimal"
             autocomplete="off"
             data-testid="folio-payment-amount"
-          >
+          />
         </label>
-        <button
+        <Button
           id="folio-pay-button"
           type="button"
+          :label="t('desk.folio.pay_button', {}, 'Record payment')"
           data-testid="folio-pay"
           :disabled="paying"
           @click="onPay"
+        />
+        <p
+          v-if="paying"
+          data-testid="folio-paying"
         >
-          {{ t('desk.folio.pay_button', {}, 'Record payment') }}
-        </button>
+          {{ t('desk.folio.paying', {}, 'Recording the payment…') }}
+        </p>
         <p
           role="status"
           data-testid="folio-payment-status"
         >
           {{ paymentStatus }}
         </p>
-        <p
+        <Message
           v-if="paymentError"
+          severity="error"
           role="alert"
           data-testid="folio-payment-error"
         >
           {{ paymentError }}
-        </p>
+        </Message>
       </div>
     </section>
   </main>
@@ -259,6 +206,11 @@
 
 <script lang="ts">
 import { computed, defineComponent, ref } from 'vue';
+import Button from 'primevue/button';
+import Column from 'primevue/column';
+import DataTable from 'primevue/datatable';
+import InputText from 'primevue/inputtext';
+import Message from 'primevue/message';
 import { apiFetch } from '../api/client';
 import type { ApiError } from '../api/client';
 import { t } from '../i18n';
@@ -387,8 +339,33 @@ function isSignedOut(err: unknown): boolean {
   );
 }
 
-function errorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : 'Request failed.';
+function errorCode(err: unknown): string {
+  return typeof err === 'object' && err !== null
+    ? String((err as ApiError).code ?? '')
+    : '';
+}
+
+// The undefined-item refusal names the item through the envelope
+// details (Refs #338, FR-DSP-3): details drive the wording, never
+// the resolved server text.
+function unknownItemName(err: unknown): string {
+  if (typeof err !== 'object' || err === null) {
+    return '';
+  }
+  const details = (err as ApiError).details as { itemName?: unknown } | null | undefined;
+  return typeof details?.itemName === 'string' ? details.itemName : '';
+}
+
+// Unexpected failures read as one plain sentence (FR-DSP-3,
+// desk.shell.request_failed): call sites map known envelope codes
+// to specific catalogue wordings, so this fallback never surfaces
+// technical codes or statuses.
+function errorMessage(): string {
+  return t(
+    'desk.shell.request_failed',
+    {},
+    'That did not work. Try again; if it keeps failing, tell the manager.',
+  );
 }
 
 function newIdempotencyKey(): string {
@@ -414,14 +391,10 @@ function prefilledStayId(): string {
 
 export default defineComponent({
   name: 'FolioView',
+  // eslint-disable-next-line vue/no-reserved-component-names -- PrimeVue registers Button/Dialog under these canonical names (Refs #338 component mapping).
+  components: { Button, Column, DataTable, InputText, Message },
   setup() {
     const session = useSessionStore();
-    const identity = ref('');
-    const secret = ref('');
-    const signInError = ref('');
-    const displayName = ref('');
-    const role = ref('');
-
     const stayId = ref(prefilledStayId());
     const folio = ref<Folio | null>(null);
     const folioStatus = ref('');
@@ -477,21 +450,12 @@ export default defineComponent({
       });
     });
 
-    function signOutLocal(): void {
-      session.signOut();
-      secret.value = '';
-      displayName.value = '';
-      role.value = '';
+    // The shell owns the one sign-in gate (Refs #338): a
+    // 401/UNAUTHENTICATED expires the shared session and the gate
+    // takes over with the session-expired notice.
+    function expireToGate(): void {
       folio.value = null;
-    }
-
-    function refuseSession(): void {
-      signOutLocal();
-      signInError.value = t(
-        'desk.today.session_expired',
-        {},
-        'Session expired. Sign in again.',
-      );
+      session.expireSession();
     }
 
     function renderFolio(next: Folio): void {
@@ -506,7 +470,7 @@ export default defineComponent({
     async function readFolio(id: string): Promise<void> {
       const next = await apiFetch<Folio>('/v1/billing/GetFolioBalance', {
         method: 'POST',
-        body: JSON.stringify({ stayId: id, actor: displayName.value }),
+        body: JSON.stringify({ stayId: id, actor: session.displayName ?? '' }),
       });
       renderFolio(next);
     }
@@ -515,33 +479,6 @@ export default defineComponent({
       folio.value = null;
       folioStatus.value = '';
       openError.value = '';
-    }
-
-    async function onSignIn(): Promise<void> {
-      signInError.value = '';
-      try {
-        const payload = await apiFetch<{ token: string; displayName: string; role: string }>(
-          '/v1/admin/SignIn',
-          {
-            method: 'POST',
-            body: JSON.stringify({ signinIdentity: identity.value, secret: secret.value }),
-          },
-        );
-        session.signIn(payload.token);
-        displayName.value = payload.displayName;
-        role.value = payload.role;
-      } catch (err) {
-        signInError.value = errorMessage(err);
-      }
-    }
-
-    async function onSignOut(): Promise<void> {
-      try {
-        await apiFetch<unknown>('/v1/admin/SignOut', { method: 'POST', body: '{}' });
-      } catch {
-        // A dead token signs out locally all the same (legacy parity).
-      }
-      signOutLocal();
     }
 
     async function onOpen(): Promise<void> {
@@ -559,10 +496,10 @@ export default defineComponent({
         await readFolio(id);
       } catch (err) {
         if (isSignedOut(err)) {
-          refuseSession();
+          expireToGate();
           return;
         }
-        openError.value = errorMessage(err);
+        openError.value = errorMessage();
       } finally {
         opening.value = false;
       }
@@ -597,7 +534,7 @@ export default defineComponent({
             itemKind: chargeKind.value,
             itemName,
             amountMinor,
-            actor: displayName.value,
+            actor: session.displayName ?? '',
             idempotencyKey: newIdempotencyKey(),
           }),
         });
@@ -615,10 +552,18 @@ export default defineComponent({
         await readFolio(id);
       } catch (err) {
         if (isSignedOut(err)) {
-          refuseSession();
+          expireToGate();
           return;
         }
-        chargeError.value = errorMessage(err);
+        if (errorCode(err) === 'VALIDATION_FAILED' && unknownItemName(err) !== '') {
+          chargeError.value = t(
+            'desk.folio.refused_unknown_item',
+            { itemName: unknownItemName(err) },
+            `That extra is not on the hotel list: ${unknownItemName(err)}. Check the name, or ask the manager to add it.`,
+          );
+          return;
+        }
+        chargeError.value = errorMessage();
       } finally {
         charging.value = false;
       }
@@ -651,7 +596,7 @@ export default defineComponent({
             stayId: id,
             method: paymentMethod.value,
             amountMinor,
-            actor: displayName.value,
+            actor: session.displayName ?? '',
             idempotencyKey: newIdempotencyKey(),
           }),
         });
@@ -668,10 +613,10 @@ export default defineComponent({
         await readFolio(id);
       } catch (err) {
         if (isSignedOut(err)) {
-          refuseSession();
+          expireToGate();
           return;
         }
-        paymentError.value = errorMessage(err);
+        paymentError.value = errorMessage();
       } finally {
         paying.value = false;
       }
@@ -679,12 +624,6 @@ export default defineComponent({
 
     return {
       t,
-      session,
-      identity,
-      secret,
-      signInError,
-      displayName,
-      role,
       stayId,
       folioStatus,
       openError,
@@ -702,8 +641,6 @@ export default defineComponent({
       paymentError,
       paying,
       onStayIdInput,
-      onSignIn,
-      onSignOut,
       onOpen,
       onCharge,
       onPay,

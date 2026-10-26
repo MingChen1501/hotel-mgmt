@@ -1,7 +1,8 @@
 <template>
   <main data-testid="desk-view">
-    <h1>{{ t('desk.today.title', {}, 'Hotel Management — Desk Today') }}</h1>
-    <noscript><p>This page needs JavaScript to sign in and load today's lists. No recent backup report — treat as failed. Note this message word for word and call support the same day (runbook section 6).</p></noscript>
+    <h1>{{ t('desk.today.title', {}, 'Desk today: arrivals, stays, and rooms needing attention') }}</h1>
+    <p>{{ t('desk.today.intro', {}, 'The morning view: who arrives, who is in house, who leaves, and which rooms need attention.') }}</p>
+    <noscript><p>This page needs JavaScript to load today's lists. No recent backup report — treat as failed. Note this message word for word and call support the same day (runbook section 6).</p></noscript>
 
     <section data-testid="desk-backup">
       <h2>{{ t('desk.entry.backup_heading', {}, 'Backup report') }}</h2>
@@ -16,176 +17,92 @@
       </p>
     </section>
 
-    <section
-      v-if="!session.isSignedIn"
-      data-testid="desk-signin"
-    >
-      <h2>{{ t('desk.admin.sign_in', {}, 'Sign in') }}</h2>
-      <form
-        data-testid="desk-signin-form"
-        @submit.prevent="onSignIn"
-      >
-        <label for="desk-signin-identity">
-          {{ t('desk.admin.signin_identity', {}, 'Sign-in identity: ') }}
-          <input
-            id="desk-signin-identity"
-            v-model="identity"
-            name="signin-identity"
-            autocomplete="username"
-            data-testid="desk-signin-identity"
-          >
-        </label>
-        <label for="desk-signin-secret">
-          {{ t('desk.admin.secret', {}, 'Secret: ') }}
-          <input
-            id="desk-signin-secret"
-            v-model="secret"
-            name="signin-secret"
-            type="password"
-            autocomplete="current-password"
-            data-testid="desk-signin-secret"
-          >
-        </label>
-        <button
-          type="submit"
-          data-testid="desk-signin-submit"
-        >
-          {{ t('desk.admin.sign_in', {}, 'Sign in') }}
-        </button>
-      </form>
-      <p
-        v-if="signInError"
-        role="alert"
-        data-testid="desk-signin-error"
-      >
-        {{ signInError }}
-      </p>
-    </section>
-
-    <section
-      v-else
-      data-testid="desk-dashboard"
-    >
-      <p>
-        <span>{{ t('desk.admin.signed_in_as', {}, 'Signed in as ') }}</span><strong data-testid="desk-whoami">{{ displayName }}</strong>
-        (<span data-testid="desk-myrole">{{ role }}</span>).
-        <button
-          id="desk-signout-button"
-          type="button"
-          data-testid="desk-signout"
-          @click="onSignOut"
-        >
-          {{ t('desk.admin.signout', {}, 'Sign out') }}
-        </button>
-      </p>
+    <section data-testid="desk-dashboard">
       <p>
         <span>{{ t('desk.today.business_date', {}, 'Business date: ') }}</span><strong data-testid="desk-business-date">{{ businessDate }}</strong>
-        <button
+        <Button
           id="desk-refresh-button"
           type="button"
+          :label="t('desk.today.refresh', {}, 'Refresh')"
           data-testid="desk-refresh"
           @click="onRefresh"
-        >
-          {{ t('desk.today.refresh', {}, 'Refresh') }}
-        </button>
+        />
       </p>
-      <p
+      <Message
         v-if="loading"
+        severity="info"
         data-testid="desk-loading"
       >
         {{ t('desk.today.loading', {}, 'Loading today’s lists…') }}
-      </p>
-      <p
+      </Message>
+      <Message
         v-if="dashboardError"
+        severity="error"
         role="alert"
         data-testid="desk-dashboard-error"
       >
         {{ dashboardError }}
-      </p>
+      </Message>
       <p data-testid="desk-sheet-line">
         {{ sheetLine }}
       </p>
 
       <h2>{{ t('desk.today.arrivals', {}, 'Arriving today') }}</h2>
-      <table
+      <DataTable
         id="desk-arrivals-table"
+        :value="arrivals"
         data-testid="desk-arrivals-table"
       >
-        <thead>
-          <tr>
-            <th>{{ t('desk.today.th_guest', {}, 'Guest') }}</th>
-            <th>{{ t('desk.today.th_room', {}, 'Room') }}</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="stay in arrivals"
-            :key="stay.key"
-          >
-            <td>{{ stay.guestName }}</td>
-            <td>{{ stay.roomLabel }}</td>
-          </tr>
-          <tr v-if="!loading && arrivals.length === 0">
-            <td colspan="2">
-              {{ t('desk.admin.no_entries', {}, 'No entries yet.') }}
-            </td>
-          </tr>
-        </tbody>
-      </table>
+        <Column
+          field="guestName"
+          :header="t('desk.today.th_guest', {}, 'Guest')"
+        />
+        <Column
+          field="roomLabel"
+          :header="t('desk.today.th_room', {}, 'Room')"
+        />
+        <template #empty>
+          <span v-if="!loading">{{ t('desk.today.empty_arrivals', {}, 'No arrivals today. New bookings appear here.') }}</span>
+        </template>
+      </DataTable>
 
       <h2>{{ t('desk.today.in_house', {}, 'In house') }}</h2>
-      <table
+      <DataTable
         id="desk-inhouse-table"
+        :value="inHouse"
         data-testid="desk-inhouse-table"
       >
-        <thead>
-          <tr>
-            <th>{{ t('desk.today.th_guest', {}, 'Guest') }}</th>
-            <th>{{ t('desk.today.th_room', {}, 'Room') }}</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="stay in inHouse"
-            :key="stay.key"
-          >
-            <td>{{ stay.guestName }}</td>
-            <td>{{ stay.roomLabel }}</td>
-          </tr>
-          <tr v-if="!loading && inHouse.length === 0">
-            <td colspan="2">
-              {{ t('desk.admin.no_entries', {}, 'No entries yet.') }}
-            </td>
-          </tr>
-        </tbody>
-      </table>
+        <Column
+          field="guestName"
+          :header="t('desk.today.th_guest', {}, 'Guest')"
+        />
+        <Column
+          field="roomLabel"
+          :header="t('desk.today.th_room', {}, 'Room')"
+        />
+        <template #empty>
+          <span v-if="!loading">{{ t('desk.today.empty_inhouse', {}, 'No guests in house right now.') }}</span>
+        </template>
+      </DataTable>
 
       <h2>{{ t('desk.today.departures', {}, 'Leaving today') }}</h2>
-      <table
+      <DataTable
         id="desk-departures-table"
+        :value="departures"
         data-testid="desk-departures-table"
       >
-        <thead>
-          <tr>
-            <th>{{ t('desk.today.th_guest', {}, 'Guest') }}</th>
-            <th>{{ t('desk.today.th_room', {}, 'Room') }}</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="stay in departures"
-            :key="stay.key"
-          >
-            <td>{{ stay.guestName }}</td>
-            <td>{{ stay.roomLabel }}</td>
-          </tr>
-          <tr v-if="!loading && departures.length === 0">
-            <td colspan="2">
-              {{ t('desk.admin.no_entries', {}, 'No entries yet.') }}
-            </td>
-          </tr>
-        </tbody>
-      </table>
+        <Column
+          field="guestName"
+          :header="t('desk.today.th_guest', {}, 'Guest')"
+        />
+        <Column
+          field="roomLabel"
+          :header="t('desk.today.th_room', {}, 'Room')"
+        />
+        <template #empty>
+          <span v-if="!loading">{{ t('desk.today.empty_departures', {}, 'No departures today.') }}</span>
+        </template>
+      </DataTable>
 
       <h2>{{ t('desk.today.attention', {}, 'Rooms needing attention') }}</h2>
       <h3>{{ t('desk.today.dirty', {}, 'Dirty') }}</h3>
@@ -197,7 +114,7 @@
           {{ room.number }} — {{ t('desk.today.room_type', { roomType: room.roomTypeId }, `Room type ${room.roomTypeId}`) }}
         </li>
         <li v-if="!loading && dirty.length === 0">
-          {{ t('desk.admin.no_entries', {}, 'No entries yet.') }}
+          {{ t('desk.today.empty_dirty', {}, 'No dirty rooms right now. Rooms needing cleaning appear here.') }}
         </li>
       </ul>
       <h3>{{ t('desk.today.uninspected', {}, 'Clean but uninspected') }}</h3>
@@ -209,7 +126,7 @@
           {{ room.number }} — {{ t('desk.today.room_type', { roomType: room.roomTypeId }, `Room type ${room.roomTypeId}`) }}
         </li>
         <li v-if="!loading && uninspected.length === 0">
-          {{ t('desk.admin.no_entries', {}, 'No entries yet.') }}
+          {{ t('desk.today.empty_uninspected', {}, 'No rooms waiting for inspection right now.') }}
         </li>
       </ul>
       <h3>{{ t('desk.today.out_of_order', {}, 'Out of order') }}</h3>
@@ -221,7 +138,7 @@
           {{ room.number }} — {{ t('desk.today.room_type', { roomType: room.roomTypeId }, `Room type ${room.roomTypeId}`) }}
         </li>
         <li v-if="!loading && outOfOrder.length === 0">
-          {{ t('desk.admin.no_entries', {}, 'No entries yet.') }}
+          {{ t('desk.today.empty_outoforder', {}, 'No rooms out of order right now.') }}
         </li>
       </ul>
     </section>
@@ -230,6 +147,10 @@
 
 <script lang="ts">
 import { defineComponent, onMounted, ref } from 'vue';
+import Button from 'primevue/button';
+import Column from 'primevue/column';
+import DataTable from 'primevue/datatable';
+import Message from 'primevue/message';
 import { apiFetch } from '../api/client';
 import type { ApiError } from '../api/client';
 import { t } from '../i18n';
@@ -301,13 +222,10 @@ function isSignedOut(err: unknown): boolean {
 
 export default defineComponent({
   name: 'DeskView',
+  // eslint-disable-next-line vue/no-reserved-component-names -- PrimeVue registers Button/Dialog under these canonical names (Refs #338 component mapping).
+  components: { Button, Column, DataTable, Message },
   setup() {
     const session = useSessionStore();
-    const identity = ref('');
-    const secret = ref('');
-    const signInError = ref('');
-    const displayName = ref('');
-    const role = ref('');
     const businessDate = ref(localBusinessDate());
     const loading = ref(false);
     const dashboardError = ref('');
@@ -321,11 +239,12 @@ export default defineComponent({
     const backupLine = ref(t('desk.entry.backup_loading', {}, 'Loading the latest backup report…'));
     const backupSupport = ref('');
 
-    function signOutLocal(): void {
-      session.signOut();
-      secret.value = '';
-      displayName.value = '';
-      role.value = '';
+    // The shell owns the one sign-in gate (Refs #338): a
+    // 401/UNAUTHENTICATED expires the shared session, the gate
+    // takes over, and the stored notice tells the stand-in the
+    // session ended in plain words.
+    function expireToGate(): void {
+      session.expireSession();
     }
 
     async function resolveGuestName(guestId: string | undefined): Promise<string> {
@@ -417,19 +336,18 @@ export default defineComponent({
           '{arrivals} arriving, {inHouse} in house, {departures} leaving, {openBalances} open balances (as of {asOf}).',
         );
       } catch (err) {
-        // The shared client already cleared the session and routed
-        // to sign-in on 401: mirror the legacy page by surfacing
-        // the session-expired catalogue string there.
+        // The shared client already expired the session and routed
+        // to the gate on 401: mirror the legacy page by leaving
+        // the session-expired notice for the gate to show.
         if (isSignedOut(err) || !session.isSignedIn) {
-          signOutLocal();
-          signInError.value = t(
-            'desk.today.session_expired',
-            {},
-            'Session expired. Sign in again.',
-          );
+          expireToGate();
           return;
         }
-        dashboardError.value = err instanceof Error ? err.message : 'Request failed.';
+        dashboardError.value = t(
+          'desk.shell.request_failed',
+          {},
+          'That did not work. Try again; if it keeps failing, tell the manager.',
+        );
       } finally {
         loading.value = false;
       }
@@ -476,37 +394,9 @@ export default defineComponent({
       }
     }
 
-    async function onSignIn(): Promise<void> {
-      signInError.value = '';
-      try {
-        const payload = await apiFetch<{ token: string; displayName: string; role: string }>(
-          '/v1/admin/SignIn',
-          {
-            method: 'POST',
-            body: JSON.stringify({ signinIdentity: identity.value, secret: secret.value }),
-          },
-        );
-        session.signIn(payload.token);
-        displayName.value = payload.displayName;
-        role.value = payload.role;
-        await refreshDashboard();
-      } catch (err) {
-        signInError.value = err instanceof Error ? err.message : 'Request failed.';
-      }
-    }
-
     async function onRefresh(): Promise<void> {
       await refreshDashboard();
       await loadBackupReport();
-    }
-
-    async function onSignOut(): Promise<void> {
-      try {
-        await apiFetch<unknown>('/v1/admin/SignOut', { method: 'POST', body: '{}' });
-      } catch {
-        // A dead token signs out locally all the same (legacy parity).
-      }
-      signOutLocal();
     }
 
     onMounted(() => {
@@ -522,12 +412,6 @@ export default defineComponent({
 
     return {
       t,
-      session,
-      identity,
-      secret,
-      signInError,
-      displayName,
-      role,
       businessDate,
       loading,
       dashboardError,
@@ -540,9 +424,7 @@ export default defineComponent({
       outOfOrder,
       backupLine,
       backupSupport,
-      onSignIn,
       onRefresh,
-      onSignOut,
     };
   },
 });

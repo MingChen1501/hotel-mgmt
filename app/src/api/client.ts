@@ -93,7 +93,7 @@ async function handleUnauthorized(
   details?: unknown,
 ): Promise<never> {
   const store = useSessionStore();
-  store.signOut();
+  store.expireSession();
   await router.replace('/');
   // A locked identity answers 401 with IDENTITY_LOCKED (Refs #319):
   // keep the server's locked wording so sign-in screens can show a
@@ -156,6 +156,12 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
   } catch (err) {
     const reason = err instanceof Error ? err.message : 'Network request failed';
     setOffline(reason, { path, init });
+    // The offline reason stays in this message for the shell-owned
+    // retry chrome (contract §2, NFR-SHL-3: the banner names the
+    // disconnect and the retry result keeps the reason — pinned by
+    // App.test.ts). View error fields never show it raw: the shared
+    // errorMessage helper maps every failure to the plain
+    // desk.shell.request_failed sentence (FR-DSP-3).
     throw apiError(`Request failed: the desk is offline (${reason}).`, undefined, 'OFFLINE');
   }
 
@@ -182,8 +188,11 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
         ? (body as { code?: unknown; details?: unknown })
         : null;
     const code = envelope !== null ? String(envelope.code ?? res.status) : String(res.status);
+    // Plain-words fallback (FR-DSP-3): call sites map known
+    // envelope codes to specific catalogue sentences, so this
+    // generic path never surfaces technical statuses.
     throw apiError(
-      `Request failed with status ${res.status}.`,
+      'That did not work. Try again; if it keeps failing, tell the manager.',
       res.status,
       code,
       envelope?.details,

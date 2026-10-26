@@ -1,75 +1,9 @@
 <template>
   <main data-testid="book-view">
-    <h1>{{ t('desk.book.title', {}, 'Hotel Management — Desk Booking') }}</h1>
-    <p>
-      <a href="/app/">{{ t('desk.book.back', {}, 'Back to the desk entry') }}</a> ·
-      <a href="/app/">{{ t('desk.book.today_link', {}, "Today's arrivals, in-house, and departures") }}</a>
-    </p>
-    <noscript><p>This page needs JavaScript to sign in, quote a price, and book.</p></noscript>
+    <h1>{{ t('desk.book.title', {}, 'Book a room') }}</h1>
+    <noscript><p>This page needs JavaScript to quote a price and book.</p></noscript>
 
-    <section
-      v-if="!session.isSignedIn"
-      data-testid="book-signin"
-    >
-      <h2>{{ t('desk.admin.sign_in', {}, 'Sign in') }}</h2>
-      <form
-        data-testid="book-signin-form"
-        @submit.prevent="onSignIn"
-      >
-        <label for="book-signin-identity">
-          {{ t('desk.admin.signin_identity', {}, 'Sign-in identity: ') }}
-          <input
-            id="book-signin-identity"
-            v-model="identity"
-            name="signin-identity"
-            autocomplete="username"
-            data-testid="book-signin-identity"
-          >
-        </label>
-        <label for="book-signin-secret">
-          {{ t('desk.admin.secret', {}, 'Secret: ') }}
-          <input
-            id="book-signin-secret"
-            v-model="secret"
-            name="signin-secret"
-            type="password"
-            autocomplete="current-password"
-            data-testid="book-signin-secret"
-          >
-        </label>
-        <button
-          type="submit"
-          data-testid="book-signin-submit"
-        >
-          {{ t('desk.admin.sign_in', {}, 'Sign in') }}
-        </button>
-      </form>
-      <p
-        v-if="signInError"
-        role="alert"
-        data-testid="book-signin-error"
-      >
-        {{ signInError }}
-      </p>
-    </section>
-
-    <section
-      v-else
-      data-testid="book-booking"
-    >
-      <p>
-        <span>{{ t('desk.admin.signed_in_as', {}, 'Signed in as ') }}</span><strong data-testid="book-whoami">{{ displayName }}</strong>
-        (<span data-testid="book-myrole">{{ role }}</span>).
-        <button
-          id="book-signout-button"
-          type="button"
-          data-testid="book-signout"
-          @click="onSignOut"
-        >
-          {{ t('desk.admin.signout', {}, 'Sign out') }}
-        </button>
-      </p>
-
+    <section data-testid="book-booking">
       <h2>{{ t('desk.book.form_heading', {}, 'New booking') }}</h2>
       <form @submit.prevent="">
         <fieldset>
@@ -78,40 +12,38 @@
           <p>{{ t('desk.book.actor_note', {}, 'Walk-in registrations are recorded under your sign-in name.') }}</p>
           <label for="book-guest-name">
             {{ t('desk.book.guest_name', {}, 'Guest name: ') }}
-            <input
+            <InputText
               id="book-guest-name"
               v-model="guestName"
               name="guest-name"
               autocomplete="off"
               data-testid="book-guest-name"
-            >
+            />
           </label>
-          <button
+          <Button
             id="book-find-guest-button"
             type="button"
+            :label="t('desk.book.find_button', {}, 'Find guest')"
             data-testid="book-find-guest"
             @click="onFindGuest"
-          >
-            {{ t('desk.book.find_button', {}, 'Find guest') }}
-          </button>
-          <button
+          />
+          <Button
             id="book-register-guest-button"
             type="button"
+            :label="t('desk.book.register_button', {}, 'Register walk-in guest')"
             data-testid="book-register-guest"
             @click="onRegisterGuest"
-          >
-            {{ t('desk.book.register_button', {}, 'Register walk-in guest') }}
-          </button>
+          />
           <br>
           <label for="book-guest-id">
             {{ t('desk.book.guest_id', {}, 'Guest ID: ') }}
-            <input
+            <InputText
               id="book-guest-id"
               v-model="guestId"
               name="guest-id"
               autocomplete="off"
               data-testid="book-guest-id"
-            >
+            />
           </label>
           <p
             role="status"
@@ -148,54 +80,54 @@
           <br>
           <label for="book-room-type-id">
             {{ t('desk.book.room_type', {}, 'Room type ID: ') }}
-            <input
+            <InputText
               id="book-room-type-id"
               v-model="roomTypeId"
               name="room-type-id"
               autocomplete="off"
               data-testid="book-room-type-id"
-              @input="onStayInput"
-            >
+              @update:model-value="onStayInput"
+            />
           </label>
           <br>
           <label for="book-rate-plan">
             {{ t('desk.book.rate_plan', {}, 'Rate plan (leave blank when only one prices this type): ') }}
-            <input
+            <InputText
               id="book-rate-plan"
               v-model="ratePlan"
               name="rate-plan"
               autocomplete="off"
               data-testid="book-rate-plan"
-              @input="onStayInput"
-            >
+              @update:model-value="onStayInput"
+            />
           </label>
           <label for="book-discount-name">
             {{ t('desk.book.discount', {}, 'Discount (optional): ') }}
-            <input
+            <InputText
               id="book-discount-name"
               v-model="discountName"
               name="discount-name"
               autocomplete="off"
               data-testid="book-discount-name"
-              @input="onStayInput"
-            >
+              @update:model-value="onStayInput"
+            />
           </label>
           <br>
-          <button
+          <Button
             id="book-quote-button"
             type="button"
+            :label="t('desk.book.quote_button', {}, 'Get price')"
             data-testid="book-quote"
             @click="onQuote"
-          >
-            {{ t('desk.book.quote_button', {}, 'Get price') }}
-          </button>
-          <p
+          />
+          <Message
             v-if="quoteError"
+            severity="error"
             role="alert"
             data-testid="book-quote-error"
           >
             {{ quoteError }}
-          </p>
+          </Message>
         </fieldset>
 
         <section
@@ -212,22 +144,28 @@
             </li>
           </ul>
           <p><strong data-testid="book-quote-total">{{ quoteTotal }}</strong></p>
-          <button
+          <Button
             id="book-confirm-button"
             type="button"
+            :label="t('desk.book.confirm_button', {}, 'Confirm booking')"
             data-testid="book-confirm"
             :disabled="confirming"
             @click="onConfirm"
-          >
-            {{ t('desk.book.confirm_button', {}, 'Confirm booking') }}
-          </button>
+          />
           <p
+            v-if="confirming"
+            data-testid="book-confirming"
+          >
+            {{ t('desk.book.confirming', {}, 'Confirming the booking…') }}
+          </p>
+          <Message
             v-if="confirmError"
+            severity="error"
             role="alert"
             data-testid="book-confirm-error"
           >
             {{ confirmError }}
-          </p>
+          </Message>
         </section>
       </form>
 
@@ -244,14 +182,13 @@
           <a href="/app/">{{ t('desk.book.view_arrivals', {}, "View on today's arrivals") }}</a> ·
           <a href="/app/print">{{ t('desk.entry.print_link', {}, 'Print invoice, receipt, or confirmation') }}</a>
         </p>
-        <button
+        <Button
           id="book-new-booking-button"
           type="button"
+          :label="t('desk.book.new_button', {}, 'New booking')"
           data-testid="book-new-booking"
           @click="onNewBooking"
-        >
-          {{ t('desk.book.new_button', {}, 'New booking') }}
-        </button>
+        />
       </section>
 
       <section
@@ -276,22 +213,20 @@
         >
           {{ confirmationError }}
         </p>
-        <button
+        <Button
           id="book-print-button"
           type="button"
+          :label="t('desk.book.print_button', {}, 'Print')"
           data-testid="book-print"
           @click="onPrint"
-        >
-          {{ t('desk.book.print_button', {}, 'Print') }}
-        </button>
-        <button
+        />
+        <Button
           id="book-copy-button"
           type="button"
+          :label="t('desk.book.copy_button', {}, 'Copy confirmation')"
           data-testid="book-copy"
           @click="onCopy"
-        >
-          {{ t('desk.book.copy_button', {}, 'Copy confirmation') }}
-        </button>
+        />
         <p
           v-if="copyStatus"
           role="status"
@@ -306,6 +241,9 @@
 
 <script lang="ts">
 import { defineComponent, ref } from 'vue';
+import Button from 'primevue/button';
+import InputText from 'primevue/inputtext';
+import Message from 'primevue/message';
 import { apiFetch } from '../api/client';
 import type { ApiError } from '../api/client';
 import { catalogueLocale, t } from '../i18n';
@@ -399,8 +337,16 @@ function errorCode(err: unknown): string {
     : '';
 }
 
-function errorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : 'Request failed.';
+// Unexpected failures read as one plain sentence (FR-DSP-3,
+// desk.shell.request_failed): call sites map known envelope codes
+// to specific catalogue wordings, so this fallback never surfaces
+// technical codes or statuses.
+function errorMessage(): string {
+  return t(
+    'desk.shell.request_failed',
+    {},
+    'That did not work. Try again; if it keeps failing, tell the manager.',
+  );
 }
 
 function restrictionDetail(err: unknown): string {
@@ -426,13 +372,10 @@ function newIdempotencyKey(): string {
 
 export default defineComponent({
   name: 'BookView',
+  // eslint-disable-next-line vue/no-reserved-component-names -- PrimeVue registers Button/Dialog under these canonical names (Refs #338 component mapping).
+  components: { Button, InputText, Message },
   setup() {
     const session = useSessionStore();
-    const identity = ref('');
-    const secret = ref('');
-    const signInError = ref('');
-    const displayName = ref('');
-    const role = ref('');
     const guestName = ref('');
     const guestId = ref('');
     const guestStatus = ref('');
@@ -459,22 +402,13 @@ export default defineComponent({
     const confirmationError = ref('');
     const copyStatus = ref('');
 
-    function signOutLocal(): void {
-      session.signOut();
-      secret.value = '';
-      displayName.value = '';
-      role.value = '';
+    // The shell owns the one sign-in gate (Refs #338): a
+    // 401/UNAUTHENTICATED expires the shared session and the gate
+    // takes over with the session-expired notice.
+    function expireToGate(): void {
       quote.value = null;
       quoteKey.value = null;
-    }
-
-    function refuseSession(): void {
-      signOutLocal();
-      signInError.value = t(
-        'desk.today.session_expired',
-        {},
-        'Session expired. Sign in again.',
-      );
+      session.expireSession();
     }
 
     function clearQuote(): void {
@@ -488,33 +422,6 @@ export default defineComponent({
 
     function onStayInput(): void {
       clearQuote();
-    }
-
-    async function onSignIn(): Promise<void> {
-      signInError.value = '';
-      try {
-        const payload = await apiFetch<{ token: string; displayName: string; role: string }>(
-          '/v1/admin/SignIn',
-          {
-            method: 'POST',
-            body: JSON.stringify({ signinIdentity: identity.value, secret: secret.value }),
-          },
-        );
-        session.signIn(payload.token);
-        displayName.value = payload.displayName;
-        role.value = payload.role;
-      } catch (err) {
-        signInError.value = errorMessage(err);
-      }
-    }
-
-    async function onSignOut(): Promise<void> {
-      try {
-        await apiFetch<unknown>('/v1/admin/SignOut', { method: 'POST', body: '{}' });
-      } catch {
-        // A dead token signs out locally all the same (legacy parity).
-      }
-      signOutLocal();
     }
 
     async function onFindGuest(): Promise<void> {
@@ -541,7 +448,7 @@ export default defineComponent({
         );
       } catch (err) {
         if (isSignedOut(err)) {
-          refuseSession();
+          expireToGate();
           return;
         }
         if (errorCode(err) === 'NOT_FOUND') {
@@ -552,7 +459,7 @@ export default defineComponent({
           );
           return;
         }
-        guestStatus.value = errorMessage(err);
+        guestStatus.value = errorMessage();
       }
     }
 
@@ -569,7 +476,7 @@ export default defineComponent({
       try {
         const guest = await apiFetch<{ guestId: string; fullName: string }>(
           '/v1/guests/UpsertGuest',
-          { method: 'POST', body: JSON.stringify({ fullName: name, actor: displayName.value }) },
+          { method: 'POST', body: JSON.stringify({ fullName: name, actor: session.displayName ?? '' }) },
         );
         guestId.value = guest.guestId;
         resolvedGuest.value = { guestId: guest.guestId, fullName: guest.fullName };
@@ -580,10 +487,10 @@ export default defineComponent({
         );
       } catch (err) {
         if (isSignedOut(err)) {
-          refuseSession();
+          expireToGate();
           return;
         }
-        guestStatus.value = errorMessage(err);
+        guestStatus.value = errorMessage();
       }
     }
 
@@ -630,7 +537,7 @@ export default defineComponent({
         );
       } catch (err) {
         if (isSignedOut(err)) {
-          refuseSession();
+          expireToGate();
           return;
         }
         if (errorCode(err) === 'NOT_FOUND') {
@@ -641,7 +548,7 @@ export default defineComponent({
           );
           return;
         }
-        quoteError.value = errorMessage(err);
+        quoteError.value = errorMessage();
       }
     }
 
@@ -712,7 +619,7 @@ export default defineComponent({
             resolvedGuest.value = { guestId: resolvedGuestId, fullName: named.fullName };
           } catch (lookupErr) {
             if (isSignedOut(lookupErr)) {
-              refuseSession();
+              expireToGate();
               return;
             }
             if (errorCode(lookupErr) === 'NOT_FOUND') {
@@ -723,7 +630,7 @@ export default defineComponent({
               );
               return;
             }
-            confirmError.value = errorMessage(lookupErr);
+            confirmError.value = errorMessage();
             return;
           }
         }
@@ -749,10 +656,10 @@ export default defineComponent({
             typeof sellable.sellableCount === 'number' ? sellable.sellableCount : NaN;
         } catch (sellErr) {
           if (isSignedOut(sellErr)) {
-            refuseSession();
+            expireToGate();
             return;
           }
-          confirmError.value = errorMessage(sellErr);
+          confirmError.value = errorMessage();
           return;
         }
         if (!Number.isInteger(sellableUnits) || sellableUnits < 1) {
@@ -841,16 +748,16 @@ export default defineComponent({
           renderConfirmation(confirmation);
         } catch (confirmationErr) {
           if (isSignedOut(confirmationErr)) {
-            refuseSession();
+            expireToGate();
             return;
           }
           confirmationPairs.value = null;
-          confirmationError.value = errorMessage(confirmationErr);
+          confirmationError.value = errorMessage();
         }
         clearQuote();
       } catch (err) {
         if (isSignedOut(err)) {
-          refuseSession();
+          expireToGate();
           return;
         }
         if (errorCode(err) === 'CONFLICT') {
@@ -872,7 +779,7 @@ export default defineComponent({
             return;
           }
         }
-        confirmError.value = errorMessage(err);
+        confirmError.value = errorMessage();
       } finally {
         confirming.value = false;
       }
@@ -933,12 +840,6 @@ export default defineComponent({
 
     return {
       t,
-      session,
-      identity,
-      secret,
-      signInError,
-      displayName,
-      role,
       guestName,
       guestId,
       guestStatus,
@@ -957,8 +858,6 @@ export default defineComponent({
       confirmationPairs,
       confirmationError,
       copyStatus,
-      onSignIn,
-      onSignOut,
       onFindGuest,
       onRegisterGuest,
       onStayInput,
