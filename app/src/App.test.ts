@@ -20,7 +20,10 @@ describe('shell offline banner', () => {
     setActivePinia(createPinia());
     resetConnectivityForTests();
     attachConnectivityListeners();
-    await router.replace('/');
+    // Placeholder path on purpose: '/' now renders the desk screen
+    // (Refs #293), whose reload auto-refresh would consume the fetch
+    // stubs below. These banner tests need a fetch-quiet screen.
+    await router.replace('/shell');
   });
 
   it('hides the banner while online', () => {

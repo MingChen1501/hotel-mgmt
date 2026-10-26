@@ -1,20 +1,29 @@
-// Guard for FR-SHL-1 (placeholder renders) + FR-SHL-3 (print
+// Guard for FR-SHL-1 (desk screen renders at /) + FR-SHL-3 (print
 // namespace reserved, nothing implemented) at router level
-// (Refs #291, LLD §11.1). Served-shell halves live in
+// (Refs #291, #293, LLD §11.1). Served-shell halves live in
 // `script/shell-served-check.sh`.
 import { describe, expect, it } from 'vitest';
 import { createAppRouter } from './router';
+import DeskView from './views/DeskView.vue';
 import PlaceholderView from './views/Placeholder.vue';
 
 describe('migration shell router', () => {
-  it('holds exactly one route: the placeholder', () => {
+  it('holds the desk route plus the placeholder catch-all', () => {
     const router = createAppRouter();
     const routes = router.getRoutes();
-    expect(routes).toHaveLength(1);
-    expect(routes[0]?.name).toBe('placeholder');
+    expect(routes).toHaveLength(2);
+    expect(routes.map((route) => route.name).sort()).toEqual(['desk', 'placeholder']);
   });
 
-  it.each(['/app/', '/app/stay/today', '/app/book/quote-1', '/app/unknown-screen'])(
+  it('renders the desk screen for /', async () => {
+    const router = createAppRouter();
+    const resolved = router.resolve('/');
+    expect(resolved.name).toBe('desk');
+    expect(resolved.matched).toHaveLength(1);
+    expect(resolved.matched[0]?.components?.default).toBe(DeskView);
+  });
+
+  it.each(['/app/stay/today', '/app/book/quote-1', '/app/unknown-screen'])(
     'renders the placeholder for %s (deep link, reload, unknown path)',
     async (path) => {
       const router = createAppRouter();
