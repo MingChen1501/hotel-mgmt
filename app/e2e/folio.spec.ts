@@ -168,3 +168,67 @@ test('undefined charge item is refused with the cause named', async ({ page, req
   await expect(page.getByTestId('folio-charge-error')).toContainText('not on the hotel list');
   await expect(page.getByTestId('folio-charge-error')).toContainText('No Such Item Anywhere');
 });
+
+test('bad payment method is refused on screen', async ({ page, request }) => {
+  const token = await ownerToken(request);
+  const window = stayWindow(0, 2);
+  const ctx = await setupFlowContext(request, token, 'pay', window);
+  const today = todayLocal();
+  const quote = await apiOp(request, 'rates', 'QuotePrice', {
+    roomTypeId: ctx.roomTypeId,
+    arrivalDate: window.arrival,
+    departureDate: window.departure,
+    ratePlanName: ctx.ratePlan,
+  }, token);
+  const sellable = await apiOp(request, 'rooms', 'CheckRoomTypeSellability', {
+    roomType: ctx.roomTypeId,
+    dateFrom: window.arrival,
+    dateTo: window.departure,
+  }, token);
+  const booking = await apiOp(request, 'reservations', 'CreateReservation', {
+    roomTypeId: ctx.roomTypeId,
+    arrivalDate: window.arrival,
+    departureDate: window.departure,
+    guest: { guestId: ctx.guestId, fullName: ctx.guestName, idDocument: 'UI-FOLIO-3' },
+    sellableUnits: sellable.sellableCount,
+    priceBasis: { totalMinor: quote.totalMinor },
+    idempotencyKey: randomUUID(),
+    actor: 'browser-e2e',
+  }, token);
+  const stayId = randomUUID();
+  await apiOp(request, 'rooms', 'AssignRoom', {
+    roomNumber: ctx.roomNumbers[0],
+    businessDate: today,
+    stayLink: stayId,
+    actor: 'browser-e2e',
+  }, token);
+  await apiOp(request, 'stay', 'CheckIn', {
+    stayId,
+    reservationId: booking.reservationId,
+    guestId: ctx.guestId,
+    roomId: ctx.roomIds[0],
+    actor: 'browser-e2e',
+  }, token);
+
+  await signInThroughGate(page);
+  await page.goto('/app/folio');
+  await page.getByTestId('folio-stay-id').fill(stayId);
+  await page.getByTestId('folio-open').click();
+  await expect(page.getByTestId('folio-status')).toContainText('balance 0.00');
+  // The method picker offers only cash/card, so the bad method
+  // travels the way a mistyped desk integration would: force the
+  // bound value, then pay. Billing answers VALIDATION_FAILED and
+  // the refusal must stay on screen with the balance untouched.
+  // The view maps only the unknown-item refusal to a named cause
+  // today, so this pins the visible refusal; naming the bad method
+  // on screen is a view follow-up, not this batch.
+  await page.$eval('#folio-payment-method', (el) => {
+    const select = el as HTMLSelectElement;
+    select.value = 'voucher';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await page.getByTestId('folio-payment-amount').fill('100');
+  await page.getByTestId('folio-pay').click();
+  await expect(page.getByTestId('folio-payment-error')).toBeVisible();
+  await expect(page.getByTestId('folio-status')).toContainText('balance 0.00');
+});

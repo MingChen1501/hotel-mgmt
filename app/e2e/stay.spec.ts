@@ -4,7 +4,7 @@
 // check-out behind the folio gate: the open-balance refusal reads
 // in plain words, an approval is recorded, and check-out closes
 // through the confirm dialog.
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { installLoopbackGuard } from './loopback-guard';
 import {
@@ -13,6 +13,8 @@ import {
   setupFlowContext,
   signInThroughGate,
   stayWindow,
+  todayLocal,
+  type FlowContext,
 } from './desk-flow';
 
 let guard!: ReturnType<typeof installLoopbackGuard>;
@@ -83,8 +85,11 @@ test('check-in, move, times, approval, and dialog check-out', async ({ page, req
 
   // Record the early arrival; the kept values stay visible.
   await page.getByTestId('stay-times-arrival').fill(`${window.arrival}T05:30`);
+  await page.getByTestId('stay-times-departure').fill(`${window.departure}T18:45`);
   await page.getByTestId('stay-times').click();
   await expect(page.getByTestId('stay-times-status')).toContainText('kept');
+  await expect(page.getByTestId('stay-times-status')).toContainText('Arrived');
+  await expect(page.getByTestId('stay-times-status')).toContainText('leaving');
 
   // An open balance refuses check-out in plain words naming the
   // approval next step.
@@ -109,7 +114,117 @@ test('check-in, move, times, approval, and dialog check-out', async ({ page, req
   await expect(page.getByTestId('stay-checkout-dialog')).toContainText('Check out this stay now?');
   await page.getByTestId('stay-checkout-confirm').click();
   await expect(page.getByTestId('stay-checkout-status')).toContainText('Checked out: stay');
+  // The close carries the invoice ref (FR-FDK-2, FR-BIL-4
+  // presentation: the reviewed folio id is the invoice).
+  // Room release stays API-loop-covered: the desk loop calls rooms
+  // ReleaseRoom explicitly and asserts vacant-dirty there, while the
+  // desk screens (legacy page and this view alike) never release —
+  // no screen action can produce it, so the browser suite does not
+  // re-prove it here.
+  await expect(page.getByTestId('stay-checkout-status')).toContainText('invoice');
 });
+
+test('move to a taken room is refused with the cause named', async ({ page, request }) => {
+  const token = await ownerToken(request);
+  const window = stayWindow(1, 2);
+  const ctx = await setupFlowContext(request, token, 'take', window);
+  const stayA = await checkInStay(request, token, ctx, 'UI-TAKEN-A');
+
+  await signInThroughGate(page);
+  await page.goto('/app/stay');
+  await page.getByTestId('stay-move-stay-id').fill(stayA);
+  await page.getByTestId('stay-move-room').selectOption({ label: ctx.roomNumbers[1] });
+  // Occupy the target only after the picker rendered it as ready:
+  // the desk move then races the taken room and the AssignRoom
+  // CONFLICT must surface naming the cause.
+  await apiOp(request, 'rooms', 'AssignRoom', {
+    roomNumber: ctx.roomNumbers[1],
+    businessDate: todayLocal(),
+    stayLink: randomUUID(),
+    actor: 'browser-e2e',
+  }, token);
+  await page.getByTestId('stay-move').click();
+  await expect(page.getByTestId('stay-move-error')).toContainText('just taken');
+});
+
+test('closing an already-closed stay is refused on screen', async ({ page, request }) => {
+  const token = await ownerToken(request);
+  const window = stayWindow(2, 2);
+  const ctx = await setupFlowContext(request, token, 'dbl', window);
+  const stayId = await checkInStay(request, token, ctx, 'UI-DOUBLE-1');
+
+  await signInThroughGate(page);
+  await page.goto('/app/stay');
+  // First close through the dialog, with no open balance so no
+  // approval is needed.
+  await page.getByTestId('stay-checkout-stay-id').fill(stayId);
+  await page.getByTestId('stay-review').click();
+  await expect(page.getByTestId('stay-checkout-status')).toContainText('balance is zero');
+  await page.getByTestId('stay-checkout').click();
+  await page.getByTestId('stay-checkout-confirm').click();
+  await expect(page.getByTestId('stay-checkout-status')).toContainText('Checked out: stay');
+  // The second close of the same stay is refused STATE_ILLEGAL by
+  // the stay service: the refusal must stay on screen instead of a
+  // silent accept. The view maps only SETTLEMENT_REQUIRED to a
+  // named cause today, so this pins the visible refusal; naming
+  // STATE_ILLEGAL on screen is a view follow-up, not this batch.
+  await page.getByTestId('stay-checkout-stay-id').fill(stayId);
+  await page.getByTestId('stay-review').click();
+  await page.getByTestId('stay-checkout').click();
+  await page.getByTestId('stay-checkout-confirm').click();
+  await expect(page.getByTestId('stay-checkout-error')).toBeVisible();
+});
+
+async function checkInStay(
+  request: APIRequestContext,
+  token: string,
+  ctx: FlowContext,
+  idDoc: string,
+  roomIndex = 0,
+): Promise<string> {
+  const today = todayLocal();
+  const quote = await apiOp(request, 'rates', 'QuotePrice', {
+    roomTypeId: ctx.roomTypeId,
+    arrivalDate: ctx.window.arrival,
+    departureDate: ctx.window.departure,
+    ratePlanName: ctx.ratePlan,
+  }, token);
+  const sellable = await apiOp(request, 'rooms', 'CheckRoomTypeSellability', {
+    roomType: ctx.roomTypeId,
+    dateFrom: ctx.window.arrival,
+    dateTo: ctx.window.departure,
+  }, token);
+  const booking = await apiOp(request, 'reservations', 'CreateReservation', {
+    roomTypeId: ctx.roomTypeId,
+    arrivalDate: ctx.window.arrival,
+    departureDate: ctx.window.departure,
+    guest: { guestId: ctx.guestId, fullName: ctx.guestName, idDocument: idDoc },
+    sellableUnits: sellable.sellableCount,
+    priceBasis: { totalMinor: quote.totalMinor },
+    idempotencyKey: randomUUID(),
+    actor: 'browser-e2e',
+  }, token);
+  const stayId = randomUUID();
+  await apiOp(request, 'rooms', 'AssignRoom', {
+    roomNumber: ctx.roomNumbers[roomIndex],
+    businessDate: today,
+    stayLink: stayId,
+    actor: 'browser-e2e',
+  }, token);
+  await apiOp(request, 'stay', 'CheckIn', {
+    stayId,
+    reservationId: booking.reservationId,
+    guestId: ctx.guestId,
+    roomId: ctx.roomIds[roomIndex],
+    actor: 'browser-e2e',
+  }, token);
+  await apiOp(request, 'reservations', 'CheckInReservation', {
+    reservationRef: booking.reservationRef,
+    stayId,
+    actor: 'browser-e2e',
+  }, token);
+  return stayId;
+}
 
 async function stayIdFromStatus(page: Page): Promise<string> {
   // The check-in status reads "Checked in: stay {stayId} in room …".
