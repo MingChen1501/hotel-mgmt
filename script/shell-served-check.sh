@@ -20,6 +20,8 @@
 # - Print route (FR-SHL-3): /app/print/... returns the shell
 #   entry (the print screen renders client-side); the static entry
 #   carries no print document markup.
+# - Admin route (Refs #298): /app/admin returns the shell entry
+#   (the console renders client-side).
 # - Legacy preservation (FR-SHL-4 served half): every legacy page at
 #   `/` and the `/docs` Swagger mirror still serve pre-slice
 #   content. The mirror-byte half delegates to
@@ -217,6 +219,14 @@ if grep -q 'print-document' "$BODY"; then
   fail_here "/app/print/... response contains print-document markup"
 else
   pass "/app/print/... response renders no static print document (client-rendered)"
+fi
+
+echo "shell-served-check: admin route served (Refs #298)..."
+code="$(get /app/admin)"
+if [[ "$code" == "200" ]] && cmp -s "$BODY" "$DIST/index.html"; then
+  pass "GET /app/admin -> 200, shell entry bytes"
+else
+  fail_here "GET /app/admin -> $code, not the shell entry"
 fi
 
 echo "shell-served-check: legacy pages + /docs intact (FR-SHL-4 served half)..."
