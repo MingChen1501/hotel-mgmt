@@ -732,6 +732,32 @@
       "params": {}
     },
     {
+      "key": "desk.admin.config_heading",
+      "surface": "desk admin console",
+      "sources": [
+        "app/src/views/AdminView.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.admin.config_note",
+      "surface": "desk admin console",
+      "sources": [
+        "app/src/views/AdminView.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.admin.config_version",
+      "surface": "desk admin console",
+      "sources": [
+        "app/src/views/AdminView.vue"
+      ],
+      "params": {
+        "schemaVersion": "integer"
+      }
+    },
+    {
       "key": "desk.admin.audit_heading",
       "surface": "desk admin console",
       "sources": [
