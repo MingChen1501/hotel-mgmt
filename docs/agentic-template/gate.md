@@ -11,7 +11,7 @@ written first, marked `active` in the docs index, and checked by the
 |---|---|---|
 | **T0 docs-only** | prose/docs/process only, no behaviour change | no gate; index statuses updated in the same PR when a doc flips stub <-> active |
 | **T1 low risk, no behaviour change** | typo, test-only, dependency bump | no new spec; index unaffected |
-| **T2 behaviour change** | user-visible feature | acceptance criteria + FR/NFR delta + test traceability + per-flow implementation diagram (happy path + failure/rollback path), written before the implementation PR opens |
+| **T2 behaviour change** | user-visible feature | acceptance criteria + FR/NFR delta + test traceability + per-flow implementation diagram (happy path + failure/rollback path) + UI contract section for any reader-visible UI change (shape and ownership: UI contract section below), written before the implementation PR opens |
 | **T3 architectural** | new subsystem, data-model change, workflow change, subsystem removal | T2 set + ADR + HLD update (including the per-flow diagrams for new/changed flows) before implementation; ADR status must move `proposed -> accepted` (owner) before code merges |
 | **T4 release-affecting** | workflow/permissions/deployment change | applicable T0–T3 set + deployment/env/runbook deltas + rollback note in the same PR |
 
