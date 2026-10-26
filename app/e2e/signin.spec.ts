@@ -65,3 +65,23 @@ test('locked identity surfaces the locked wording distinctly', async ({ page, re
   await expect(page.getByTestId('shell-signin-error')).toContainText(/locked/i);
   await expect(page.getByTestId('shell-gate')).toBeVisible();
 });
+
+test('signed-out session routes back to the gate on the next write', async ({ page, request }) => {
+  await ownerToken(request);
+  await signInThroughGate(page);
+  await expect(page.getByTestId('desk-dashboard')).toBeVisible();
+  // Invalidate the UI's own session behind the shell's back (no UI
+  // sign-out), then touch the admin console: only the admin
+  // service enforces revocation, so the ListUsers read trips the
+  // shared-client 401 path (FR-ADM-2, NFR-SEC-2) back to the gate
+  // with the session-expired notice, not a dead dashboard.
+  const uiToken = await page.evaluate(() => sessionStorage.getItem('hotel-mgmt.session.token'));
+  if (typeof uiToken !== 'string' || !uiToken) {
+    throw new Error('UI sign-in stored no session token');
+  }
+  await apiOp(request, 'admin', 'SignOut', {}, uiToken);
+  await page.goto('/app/admin');
+  await expect(page.getByTestId('shell-gate')).toBeVisible();
+  await expect(page.getByTestId('shell-expired-notice')).toContainText('Session expired');
+  await expect(page.getByTestId('shell-nav')).toHaveCount(0);
+});

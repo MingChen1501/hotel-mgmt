@@ -29,6 +29,20 @@ test('backup success line, lists, and cross-check line render', async ({ page, r
   await expect(page.getByTestId('desk-sheet-line')).toContainText(/in house/);
 });
 
+test('missing backup report renders the failed-report warning', async ({ page, request }) => {
+  await ownerToken(request);
+  // No report published at this URL: the desk must render the
+  // runbook failed-report warning (FR-ADM-5, NFR-BKP-2), never an
+  // empty section — the dashboard around it still renders.
+  await page.route('**/backup-report.json', (route) =>
+    route.fulfill({ status: 404, contentType: 'text/plain', body: 'no report' }),
+  );
+  await signInThroughGate(page);
+  await expect(page.getByTestId('desk-backup-report')).toContainText('No recent backup report');
+  await expect(page.getByTestId('desk-backup-support')).toContainText('call support');
+  await expect(page.getByTestId('desk-dashboard')).toBeVisible();
+});
+
 test('keyboard focus shows the desk-blue outline on every tab stop', async ({
   page,
   request,
