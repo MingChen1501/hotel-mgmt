@@ -111,6 +111,33 @@ function stubHappyPath(
         }),
       );
     }
+    if (url === '/v1/reservations/GetReservation') {
+      return Promise.resolve(
+        jsonResponse({
+          reservationRef: body.reservationRef ?? 'RSV-1',
+          roomTypeId: 'room-type-1',
+          arrivalDate: '2026-11-01',
+          departureDate: '2026-11-03',
+          guest: { guestId: 'g-1', fullName: 'Pat Guest' },
+          priceBasis: { totalMinor: 20000, discountName: null },
+          state: 'confirmed',
+          reservationId: 'r-1',
+          stayId: null,
+        }),
+      );
+    }
+    if (url === '/v1/guests/AttachReservation') {
+      return Promise.resolve(
+        jsonResponse({
+          hotel: { name: 'Grand Test' },
+          guest: { fullName: 'Pat Guest' },
+          reservationRef: body.reservationRef,
+          dates: { checkIn: '2026-11-01', checkOut: '2026-11-03' },
+          type: 'standard',
+          price: { amountMinor: 20000, currency: 'USD' },
+        }),
+      );
+    }
     if (url === '/v1/guests/ProduceConfirmation') {
       return Promise.resolve(
         jsonResponse({
@@ -297,6 +324,27 @@ describe('print view', () => {
     expect(confirmCalls).toHaveLength(1);
     expect(parseBody(confirmCalls[0]?.[1] as RequestInit)).toMatchObject({
       reservationRef: 'RSV-1',
+    });
+
+    // Issue #323: the human ref resolves through the reservation
+    // read, and the RES-side snapshot is attached before producing.
+    const readCalls = fetchMock.mock.calls.filter(
+      (call) => call[0] === '/v1/reservations/GetReservation',
+    );
+    expect(readCalls).toHaveLength(1);
+    expect(parseBody(readCalls[0]?.[1] as RequestInit)).toMatchObject({
+      reservationRef: 'RSV-1',
+    });
+    const attachCalls = fetchMock.mock.calls.filter(
+      (call) => call[0] === '/v1/guests/AttachReservation',
+    );
+    expect(attachCalls).toHaveLength(1);
+    expect(parseBody(attachCalls[0]?.[1] as RequestInit)).toMatchObject({
+      reservationRef: 'RSV-1',
+      guest: { guestId: 'g-1', fullName: 'Pat Guest' },
+      dates: { checkIn: '2026-11-01', checkOut: '2026-11-03' },
+      type: 'room-type-1',
+      price: { amountMinor: 20000 },
     });
   });
 
@@ -526,6 +574,8 @@ describe('print view source', () => {
     '/v1/billing/GetFolioBalance',
     '/v1/billing/ProduceInvoice',
     '/v1/billing/ProduceReceipt',
+    '/v1/reservations/GetReservation',
+    '/v1/guests/AttachReservation',
     '/v1/guests/ProduceConfirmation',
   ];
 
