@@ -115,7 +115,7 @@ export class PostgresAdminStore implements AdminStoreAPI {
     const identity = signinIdentity.trim();
     const state = this.failures.get(identity);
     if (state?.lockedUntil !== null && state?.lockedUntil !== undefined && state.lockedUntil > Date.now()) {
-      throw new HttpError("UNAUTHENTICATED", msg("error.auth.locked", { identity }), {
+      throw new HttpError("IDENTITY_LOCKED", msg("error.auth.locked", { identity }), {
         signinIdentity: identity,
       });
     }
@@ -130,7 +130,7 @@ export class PostgresAdminStore implements AdminStoreAPI {
     if (user?.lockedUntil !== null && user?.lockedUntil !== undefined) {
       const lockedUntil = new Date(user.lockedUntil).getTime();
       if (lockedUntil > Date.now()) {
-        throw new HttpError("UNAUTHENTICATED", msg("error.auth.locked", { identity }), {
+        throw new HttpError("IDENTITY_LOCKED", msg("error.auth.locked", { identity }), {
           signinIdentity: identity,
         });
       }

@@ -365,6 +365,28 @@ describe('admin view', () => {
     expect(wrapper.find('[data-testid="admin-console"]').exists()).toBe(false);
   });
 
+  it('routes a locked-identity 401 at sign-in to the locked message, not the expired notice', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    // Locked identity: the server answers 401 with IDENTITY_LOCKED
+    // (Refs #319), so the locked wording surfaces instead of the
+    // session-expired notice.
+    fetchMock.mockResolvedValue(
+      jsonResponse({ code: 'IDENTITY_LOCKED', message: 'Identity owner is locked after repeated failures.' }, 401),
+    );
+    const wrapper = mountAdmin();
+    await wrapper.find('[data-testid="admin-signin-identity"]').setValue('owner');
+    await wrapper.find('[data-testid="admin-signin-secret"]').setValue('s3cret');
+    await wrapper.find('[data-testid="admin-signin-form"]').trigger('submit');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="admin-signin-error"]').exists()).toBe(true);
+    });
+    expect(wrapper.find('[data-testid="admin-signin-error"]').text()).toContain('locked');
+    expect(wrapper.find('[data-testid="admin-signin-error"]').text()).not.toContain('Session expired');
+    expect(useSessionStore().isSignedIn).toBe(false);
+    expect(wrapper.find('[data-testid="admin-console"]').exists()).toBe(false);
+  });
+
   it('surfaces a non-401 sign-in failure with its real message', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);

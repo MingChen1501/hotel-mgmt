@@ -349,6 +349,14 @@ function isSignedOut(err: unknown): boolean {
   );
 }
 
+function isLocked(err: unknown): boolean {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    (err as ApiError).code === 'IDENTITY_LOCKED'
+  );
+}
+
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : 'Request failed.';
 }
@@ -486,9 +494,16 @@ export default defineComponent({
         role.value = payload.role;
         await refreshAll();
       } catch (err) {
-        // Sign-in holds no session yet, so only a signed-out (401)
-        // failure routes to the session-expired notice — validation
-        // and other failures surface their real message (Refs #312).
+        // Sign-in holds no session yet, so only a signed-out (401
+        // UNAUTHENTICATED) failure routes to the session-expired
+        // notice — validation and other failures surface their real
+        // message (Refs #312). A locked identity answers 401 with
+        // IDENTITY_LOCKED instead: surface the server's locked
+        // wording, never the expired notice (Refs #319).
+        if (isLocked(err)) {
+          signInError.value = errorMessage(err);
+          return;
+        }
         if (isSignedOut(err)) {
           noteSignedOut();
           return;

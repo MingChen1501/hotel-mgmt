@@ -86,11 +86,50 @@ export function resetConnectivityForTests(): void {
   lastFailedRequest = null;
 }
 
-async function handleUnauthorized(status: number, code?: string): Promise<never> {
+async function handleUnauthorized(
+  status: number,
+  code?: string,
+  message?: string,
+  details?: unknown,
+): Promise<never> {
   const store = useSessionStore();
   store.signOut();
   await router.replace('/');
-  throw apiError('Session expired. Sign in again.', status, code ?? 'UNAUTHENTICATED');
+  // A locked identity answers 401 with IDENTITY_LOCKED (Refs #319):
+  // keep the server's locked wording so sign-in screens can show a
+  // locked-specific message. Every other 401 keeps the generic
+  // session-expired notice; callers still branch on codes only.
+  if (code === 'IDENTITY_LOCKED') {
+    throw apiError(
+      message ?? 'This sign-in identity is locked after repeated failures.',
+      status,
+      code,
+      details ?? null,
+    );
+  }
+  throw apiError('Session expired. Sign in again.', status, code ?? 'UNAUTHENTICATED', details ?? null);
+}
+
+async function handleUnauthorizedResponse(res: Response): Promise<never> {
+  let code: string | undefined;
+  let message: string | undefined;
+  let details: unknown = null;
+  try {
+    const text = await res.text();
+    if (text.length > 0) {
+      const body = JSON.parse(text) as { code?: unknown; message?: unknown; details?: unknown };
+      if (typeof body?.code === 'string') {
+        code = body.code;
+      }
+      if (typeof body?.message === 'string') {
+        message = body.message;
+      }
+      details = body?.details ?? null;
+    }
+  } catch {
+    // Non-JSON 401 payload: fall through to the generic notice.
+  }
+  return handleUnauthorized(res.status, code, message, details);
 }
 
 function isUnauthenticatedEnvelope(body: unknown): boolean {
@@ -121,7 +160,7 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
   }
 
   if (res.status === 401) {
-    return handleUnauthorized(res.status);
+    return handleUnauthorizedResponse(res);
   }
 
   const text = await res.text();

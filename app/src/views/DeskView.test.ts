@@ -299,6 +299,24 @@ describe('desk view', () => {
     expect(wrapper.find('[data-testid="desk-dashboard"]').exists()).toBe(false);
   });
 
+  it('surfaces the locked wording on a locked-identity sign-in', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({ code: 'IDENTITY_LOCKED', message: 'Identity owner is locked after repeated failures.' }, 401),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountDesk();
+    await wrapper.find('[data-testid="desk-signin-form"]').trigger('submit');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="desk-signin-error"]').exists()).toBe(true);
+    });
+    // Desk sign-in surfaces the real message (Refs #319): a locked
+    // identity shows the locked wording, not the expired notice.
+    expect(wrapper.find('[data-testid="desk-signin-error"]').text()).toContain('locked');
+    expect(wrapper.find('[data-testid="desk-signin-error"]').text()).not.toContain('Session expired');
+    expect(useSessionStore().isSignedIn).toBe(false);
+    expect(wrapper.find('[data-testid="desk-dashboard"]').exists()).toBe(false);
+  });
+
   it('returns to sign-in with the session-expired string when refresh gets a 401', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
