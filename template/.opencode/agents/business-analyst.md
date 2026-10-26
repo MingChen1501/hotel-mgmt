@@ -57,6 +57,17 @@ here.
 - No FR/NFR without a guard: if no guard exists, name the missing
   guard explicitly instead of leaving the item untestable.
 
+## UI contract gap rule
+
+For a reader-visible UI change, requirements are not complete without
+the T2 UI contract section: if the change touches reader-visible UI
+and no UI contract section exists, call out the missing UI contract
+as a gap. Owner: `product-owner` as part of acceptance criteria, with
+`architect` input on technical layout where needed (canonical shape:
+`spec-gate` skill, UI contract section). No UI contract =
+`SPEC-GATE FAIL`, same as missing acceptance criteria — never word
+FR/NFR around absent UI expectations.
+
 ## Artefacts
 
 - Updated spec files under `docs/requirements/`, plus the matching
