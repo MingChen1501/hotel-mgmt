@@ -1,18 +1,19 @@
 // Guard for FR-SHL-1 (desk screen renders at /) + FR-SHL-3 (print
 // namespace reserved, nothing implemented) at router level
-// (Refs #291, #293, LLD §11.1). Served-shell halves live in
+// (Refs #291, #293, #294, LLD §11.1). Served-shell halves live in
 // `script/shell-served-check.sh`.
 import { describe, expect, it } from 'vitest';
 import { createAppRouter } from './router';
+import BookView from './views/BookView.vue';
 import DeskView from './views/DeskView.vue';
 import PlaceholderView from './views/Placeholder.vue';
 
 describe('migration shell router', () => {
-  it('holds the desk route plus the placeholder catch-all', () => {
+  it('holds the desk and book routes plus the placeholder catch-all', () => {
     const router = createAppRouter();
     const routes = router.getRoutes();
-    expect(routes).toHaveLength(2);
-    expect(routes.map((route) => route.name).sort()).toEqual(['desk', 'placeholder']);
+    expect(routes).toHaveLength(3);
+    expect(routes.map((route) => route.name).sort()).toEqual(['book', 'desk', 'placeholder']);
   });
 
   it('renders the desk screen for /', async () => {
@@ -21,6 +22,14 @@ describe('migration shell router', () => {
     expect(resolved.name).toBe('desk');
     expect(resolved.matched).toHaveLength(1);
     expect(resolved.matched[0]?.components?.default).toBe(DeskView);
+  });
+
+  it('renders the book screen for /book', async () => {
+    const router = createAppRouter();
+    const resolved = router.resolve('/book');
+    expect(resolved.name).toBe('book');
+    expect(resolved.matched).toHaveLength(1);
+    expect(resolved.matched[0]?.components?.default).toBe(BookView);
   });
 
   it.each(['/app/stay/today', '/app/book/quote-1', '/app/unknown-screen'])(

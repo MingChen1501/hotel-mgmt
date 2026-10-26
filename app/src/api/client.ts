@@ -21,6 +21,10 @@ import router from '../router';
 export interface ApiError extends Error {
   status?: number;
   code?: string;
+  // Envelope `details` (e.g. `{ restriction }` on STATE_ILLEGAL),
+  // carried so screens can map code+detail to catalogue strings
+  // without branching on resolved wording (Refs #294).
+  details?: unknown;
 }
 
 interface PendingRequest {
@@ -28,10 +32,11 @@ interface PendingRequest {
   init: RequestInit;
 }
 
-function apiError(message: string, status?: number, code?: string): ApiError {
+function apiError(message: string, status?: number, code?: string, details?: unknown): ApiError {
   const err = new Error(message) as ApiError;
   err.status = status;
   err.code = code;
+  err.details = details ?? null;
   return err;
 }
 
@@ -132,11 +137,17 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
     return handleUnauthorized(res.status, 'UNAUTHENTICATED');
   }
   if (!res.ok) {
-    const code =
+    const envelope =
       typeof body === 'object' && body !== null
-        ? String((body as { code?: unknown }).code ?? res.status)
-        : String(res.status);
-    throw apiError(`Request failed with status ${res.status}.`, res.status, code);
+        ? (body as { code?: unknown; details?: unknown })
+        : null;
+    const code = envelope !== null ? String(envelope.code ?? res.status) : String(res.status);
+    throw apiError(
+      `Request failed with status ${res.status}.`,
+      res.status,
+      code,
+      envelope?.details,
+    );
   }
   setOnline();
   return body as T;
