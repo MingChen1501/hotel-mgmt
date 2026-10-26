@@ -344,6 +344,48 @@ describe('admin view', () => {
     expect(router.replace).toHaveBeenCalledWith('/');
   });
 
+  it('routes a 401 at sign-in to the expired-session message', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    // Wrong secret: the shared client maps every 401 to
+    // UNAUTHENTICATED (DeskView parity), so the expired-session
+    // notice applies here and only here (Refs #312).
+    fetchMock.mockResolvedValue(
+      jsonResponse({ code: 'UNAUTHENTICATED', message: 'Unknown identity or wrong secret.' }, 401),
+    );
+    const wrapper = mountAdmin();
+    await wrapper.find('[data-testid="admin-signin-identity"]').setValue('owner');
+    await wrapper.find('[data-testid="admin-signin-secret"]').setValue('wrong');
+    await wrapper.find('[data-testid="admin-signin-form"]').trigger('submit');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="admin-signin-error"]').exists()).toBe(true);
+    });
+    expect(wrapper.find('[data-testid="admin-signin-error"]').text()).toContain('Session expired');
+    expect(useSessionStore().isSignedIn).toBe(false);
+    expect(wrapper.find('[data-testid="admin-console"]').exists()).toBe(false);
+  });
+
+  it('surfaces a non-401 sign-in failure with its real message', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    // Validation failure: branching only on isSignedOut keeps the
+    // real message instead of the session-expired notice (Refs #312).
+    fetchMock.mockResolvedValue(
+      jsonResponse({ code: 'VALIDATION_FAILED', message: 'secret is required.' }, 400),
+    );
+    const wrapper = mountAdmin();
+    await wrapper.find('[data-testid="admin-signin-identity"]').setValue('owner');
+    await wrapper.find('[data-testid="admin-signin-secret"]').setValue('');
+    await wrapper.find('[data-testid="admin-signin-form"]').trigger('submit');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="admin-signin-error"]').exists()).toBe(true);
+    });
+    expect(wrapper.find('[data-testid="admin-signin-error"]').text()).toContain('Request failed with status 400');
+    expect(wrapper.find('[data-testid="admin-signin-error"]').text()).not.toContain('Session expired');
+    expect(useSessionStore().isSignedIn).toBe(false);
+    expect(wrapper.find('[data-testid="admin-console"]').exists()).toBe(false);
+  });
+
   it('surfaces FORBIDDEN in the users section without signing out', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);

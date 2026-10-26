@@ -486,7 +486,10 @@ export default defineComponent({
         role.value = payload.role;
         await refreshAll();
       } catch (err) {
-        if (isSignedOut(err) || !session.isSignedIn) {
+        // Sign-in holds no session yet, so only a signed-out (401)
+        // failure routes to the session-expired notice — validation
+        // and other failures surface their real message (Refs #312).
+        if (isSignedOut(err)) {
           noteSignedOut();
           return;
         }
