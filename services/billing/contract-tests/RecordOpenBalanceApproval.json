@@ -10,5 +10,8 @@
     "idempotencyKey": "e2e-approval-1",
     "actor": "front-desk"
   },
-  "expect": { "status": 200 }
+  "expect": {
+    "status": 200,
+    "openBalanceApproval": { "approvedBy": "manager", "role": "manager" }
+  }
 }

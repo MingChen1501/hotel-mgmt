@@ -123,25 +123,43 @@ class BillingControllerTest {
     UUID folio = UUID.randomUUID();
     when(service.recordOpenBalanceApproval(anyString(), anyString(), anyString(), any(), any(), anyString()))
         .thenReturn(new BillingService.ApprovalView(folio, UUID.fromString(STAY), 6000,
-            "{\"approvedBy\":\"manager\"}"));
+            Map.of("approvedBy", "manager", "role", "manager")));
     mvc.perform(post("/v1/billing/RecordOpenBalanceApproval").header("Authorization", "Bearer test-token")
         .contentType(MediaType.APPLICATION_JSON)
         .content("{\"stayId\":\"" + STAY + "\",\"approvedBy\":\"manager\",\"role\":\"manager\","
             + "\"actor\":\"front-desk\"}"))
         .andExpect(status().isOk()).andExpect(jsonPath("$.folioId").value(folio.toString()))
-        .andExpect(jsonPath("$.balanceMinor").value(6000));
+        .andExpect(jsonPath("$.balanceMinor").value(6000))
+        .andExpect(jsonPath("$.openBalanceApproval.approvedBy").value("manager"))
+        .andExpect(jsonPath("$.openBalanceApproval.role").value("manager"));
+  }
+
+  @Test
+  void folioBalanceReturnsTheApprovalAsAnObject() throws Exception {
+    UUID folio = UUID.randomUUID();
+    when(service.getFolioBalance(anyString(), anyString())).thenReturn(new BillingService.FolioView(folio,
+        UUID.fromString(STAY), 6000, Map.of("approvedBy", "manager", "role", "manager"), List.of(), List.of()));
+    mvc.perform(post("/v1/billing/GetFolioBalance").header("Authorization", "Bearer test-token")
+        .contentType(MediaType.APPLICATION_JSON)
+        .content("{\"stayId\":\"" + STAY + "\",\"actor\":\"front-desk\"}")).andExpect(status().isOk())
+        .andExpect(jsonPath("$.balanceMinor").value(6000))
+        .andExpect(jsonPath("$.openBalanceApproval.approvedBy").value("manager"))
+        .andExpect(jsonPath("$.openBalanceApproval.role").value("manager"));
   }
 
   @Test
   void invoicePresentsTheFolio() throws Exception {
     UUID folio = UUID.randomUUID();
     when(service.produceInvoice(anyString(), anyString())).thenReturn(new BillingService.InvoiceView(folio, folio,
-        UUID.fromString(STAY), 62500, null, List.of(), List.of(), "2026-10-26T00:00:00Z"));
+        UUID.fromString(STAY), 62500, Map.of("approvedBy", "manager", "role", "manager"), List.of(), List.of(),
+        "2026-10-26T00:00:00Z"));
     mvc.perform(post("/v1/billing/ProduceInvoice").header("Authorization", "Bearer test-token")
         .contentType(MediaType.APPLICATION_JSON)
         .content("{\"folioId\":\"" + folio + "\",\"actor\":\"front-desk\"}")).andExpect(status().isOk())
         .andExpect(jsonPath("$.invoiceId").value(folio.toString()))
-        .andExpect(jsonPath("$.balanceMinor").value(62500));
+        .andExpect(jsonPath("$.balanceMinor").value(62500))
+        .andExpect(jsonPath("$.openBalanceApproval.approvedBy").value("manager"))
+        .andExpect(jsonPath("$.openBalanceApproval.role").value("manager"));
   }
 
   @Test

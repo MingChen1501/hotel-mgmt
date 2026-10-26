@@ -36,7 +36,7 @@ public class BillingService {
     this.repo = repo;
   }
 
-  public record FolioView(UUID folioId, UUID stayId, long balanceMinor, String openBalanceApproval,
+  public record FolioView(UUID folioId, UUID stayId, long balanceMinor, Map<String, Object> openBalanceApproval,
       List<Map<String, Object>> charges, List<Map<String, Object>> payments) {}
 
   public record LineView(UUID lineId, UUID folioId, UUID stayId, String itemKind, String itemName, long amountMinor,
@@ -52,13 +52,13 @@ public class BillingService {
   // stored rows themselves (FR-BIL-4, issue #151): the invoice shows
   // the folio with every line and the running balance exactly, and
   // each receipt matches one recorded payment.
-  public record InvoiceView(UUID invoiceId, UUID folioId, UUID stayId, long balanceMinor, String openBalanceApproval,
+  public record InvoiceView(UUID invoiceId, UUID folioId, UUID stayId, long balanceMinor, Map<String, Object> openBalanceApproval,
       List<Map<String, Object>> charges, List<Map<String, Object>> payments, String producedAt) {}
 
   public record ReceiptView(UUID receiptId, UUID paymentId, UUID folioId, UUID stayId, String method,
       long amountMinor, String paidAt) {}
 
-  public record ApprovalView(UUID folioId, UUID stayId, long balanceMinor, String openBalanceApproval) {}
+  public record ApprovalView(UUID folioId, UUID stayId, long balanceMinor, Map<String, Object> openBalanceApproval) {}
 
   private static Map<String, Object> chargeMap(ChargeLine line) {
     Map<String, Object> body = new LinkedHashMap<>();
@@ -268,7 +268,7 @@ public class BillingService {
       if (winner != null) {
         Folio approved = repo.findFolioByStay(folio.stayId());
         return new ApprovalView(approved.id(), approved.stayId(), approved.balanceMinor(),
-            approved.openBalanceApproval());
+            approvalObject(approved.openBalanceApproval()));
       }
     }
     String approval = approvalJson(approvedBy.strip(), role.strip(), reason == null ? "" : reason.strip());
@@ -277,9 +277,28 @@ public class BillingService {
     repo.outbox("folio", "approval-recorded", payload, who);
     Folio approved = repo.findFolioByStay(folio.stayId());
     return new ApprovalView(approved.id(), approved.stayId(), approved.balanceMinor(),
-        approved.openBalanceApproval());
+        approvalObject(approved.openBalanceApproval()));
   }
 
+  // Parses the stored jsonb approval text into the contracted
+  // object shape (contracts/http/*.json type openBalanceApproval as
+  // an object, never a string): Jackson serialises the returned map
+  // back as a JSON object, and a folio with no approval stays null.
+  // Stored rows are written by recordApproval above, so an
+  // unparseable row is a defect, not a refusal.
+  private static Map<String, Object> approvalObject(String stored) {
+    if (stored == null || stored.isBlank()) {
+      return null;
+    }
+    try {
+      com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+      @SuppressWarnings("unchecked")
+      Map<String, Object> parsed = mapper.readValue(stored, Map.class);
+      return parsed;
+    } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+      throw new IllegalStateException("Unparseable stored open-balance approval.", e);
+    }
+  }
   private static String approvalJson(String approvedBy, String role, String reason) {
     try {
       com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
@@ -347,7 +366,7 @@ public class BillingService {
     for (PaymentLine line : repo.paymentLines(folio.id())) {
       payments.add(paymentMap(line));
     }
-    return new FolioView(folio.id(), folio.stayId(), folio.balanceMinor(), folio.openBalanceApproval(), charges,
+    return new FolioView(folio.id(), folio.stayId(), folio.balanceMinor(), approvalObject(folio.openBalanceApproval()), charges,
         payments);
   }
 
@@ -361,7 +380,7 @@ public class BillingService {
       payments.add(paymentMap(line));
     }
     return new InvoiceView(folio.id(), folio.id(), folio.stayId(), folio.balanceMinor(),
-        folio.openBalanceApproval(), charges, payments, OffsetDateTime.now(ZoneOffset.UTC).toString());
+        approvalObject(folio.openBalanceApproval()), charges, payments, OffsetDateTime.now(ZoneOffset.UTC).toString());
   }
 
   private static LineView lineViewOf(ChargeLine line, Folio folio) {

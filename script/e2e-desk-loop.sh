@@ -400,7 +400,22 @@ step "script.runbook.e2e_step_checkout" "e2e: === check out with folio review (F
 expect_refusal stay CheckOut "{\"stayId\": \"$STAY_ID\", \"folioId\": \"$FOLIO_ID\", \"folioBalanceMinor\": $FOLIO_BALANCE, \"actor\": \"front-desk\"}" "$TOKEN" "SETTLEMENT_REQUIRED" || { teardown; exit 1; }
 pass "script.runbook.e2e_refusal_checkout_ok" "e2e: PASS: open-balance check-out refused, stay remains in house."
 api billing RecordOpenBalanceApproval "{\"stayId\": \"$STAY_ID\", \"approvedBy\": \"owner\", \"role\": \"manager\", \"reason\": \"E2E approved\", \"idempotencyKey\": \"$IDEM-approval\", \"actor\": \"manager\"}" "$TOKEN" >/dev/null || { teardown; exit 1; }
-CHECKOUT_RESP="$(api stay CheckOut "{\"stayId\": \"$STAY_ID\", \"folioId\": \"$FOLIO_ID\", \"folioBalanceMinor\": $FOLIO_BALANCE, \"openBalanceApproval\": {\"approvedBy\": \"owner\", \"role\": \"manager\"}, \"actualDeparture\": \"${TODAY}T14:00:00Z\", \"idempotencyKey\": \"$IDEM-checkout\", \"actor\": \"front-desk\"}" "$TOKEN")" || { teardown; exit 1; }
+# The folio must read the recorded approval back as the contracted
+# object (issue #347): CheckOut carries the folio-read value — never
+# a retyped copy — so the loop proves the produce → read → checkout
+# round trip end to end.
+FOLIO_APPROVED_RESP="$(api billing GetFolioBalance "{\"stayId\": \"$STAY_ID\", \"actor\": \"front-desk\"}" "$TOKEN")" || { teardown; exit 1; }
+CHECKOUT_BODY="$(python3 - "$FOLIO_APPROVED_RESP" "$STAY_ID" "$FOLIO_ID" "$FOLIO_BALANCE" "$TODAY" "$IDEM-checkout" <<'PYEOF'
+import json, sys
+folio, stay_id, folio_id, balance, today, idem = sys.argv[1:7]
+approval = json.loads(folio)["openBalanceApproval"]
+assert isinstance(approval, dict), approval
+print(json.dumps({"stayId": stay_id, "folioId": folio_id, "folioBalanceMinor": int(balance),
+    "openBalanceApproval": approval, "actualDeparture": today + "T14:00:00Z",
+    "idempotencyKey": idem, "actor": "front-desk"}))
+PYEOF
+)" || { echo "$(msg "script.runbook.e2e_approval_shape" "e2e: FAIL: folio approval is not the contracted object: {body}." body="$FOLIO_APPROVED_RESP")" >&2; teardown; exit 1; }
+CHECKOUT_RESP="$(api stay CheckOut "$CHECKOUT_BODY" "$TOKEN")" || { teardown; exit 1; }
 [[ "$(field state "$CHECKOUT_RESP")" == "closed" ]] || { echo "$(msg "script.runbook.e2e_not_closed" "e2e: FAIL: stay not closed: {body}." body="$CHECKOUT_RESP")" >&2; teardown; exit 1; }
 [[ "$(field invoiceRef "$CHECKOUT_RESP")" == "$FOLIO_ID" ]] || { echo "$(msg "script.runbook.e2e_invoice_ref" "e2e: FAIL: invoice is not the folio: {body}." body="$CHECKOUT_RESP")" >&2; teardown; exit 1; }
 expect_refusal stay GetStayRef "{\"stayId\": \"$STAY_ID\"}" "$TOKEN" "STATE_ILLEGAL" || { teardown; exit 1; }
