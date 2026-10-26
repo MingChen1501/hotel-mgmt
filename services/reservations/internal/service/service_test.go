@@ -1,6 +1,7 @@
 package service
 
 import (
+	"net/http"
 	"testing"
 
 	"github.com/MingChen1501/hotel-mgmt/services/reservations/internal/store"
@@ -19,8 +20,19 @@ func loopRequest() CreateRequest {
 	}
 }
 
+// allowHook passes every stay so the non-restriction paths below can
+// book without the pricing client. A nil hook fails closed (see
+// TestCreateNilHookFailsClosed), so tests that expect success must
+// wire this explicitly.
+func allowHook() RestrictionCheck {
+	return func(roomTypeID, arrivalDate, departureDate, bearerToken string) *store.OpError {
+		return nil
+	}
+}
+
 func TestCreateHappyPath(t *testing.T) {
 	svc := New(store.New())
+	svc.CheckRestrictionsHook = allowHook()
 	record, oerr := svc.Create(loopRequest())
 	if oerr != nil {
 		t.Fatalf("Create refused: %v", oerr)
@@ -64,8 +76,21 @@ func TestRestrictionViolationRefusesWithCause(t *testing.T) {
 	}
 }
 
+func TestCreateNilHookFailsClosed(t *testing.T) {
+	st := store.New()
+	svc := New(st)
+	_, oerr := svc.Create(loopRequest())
+	if oerr == nil || oerr.Code != "UPSTREAM_UNAVAILABLE" || oerr.Status != http.StatusServiceUnavailable {
+		t.Fatalf("error = %v, want 503 UPSTREAM_UNAVAILABLE", oerr)
+	}
+	if got := len(st.Query("2026-11-01", "2026-11-03", "deluxe-type")); got != 0 {
+		t.Fatalf("store holds %d reservations after refusal, want 0", got)
+	}
+}
+
 func TestGuardRefusesSecondBookingForLastUnit(t *testing.T) {
 	svc := New(store.New())
+	svc.CheckRestrictionsHook = allowHook()
 	req := loopRequest()
 	req.SellableUnits = 1
 	if _, oerr := svc.Create(req); oerr != nil {
@@ -94,6 +119,7 @@ func loopModify(ref string) ModifyRequest {
 
 func TestModifyHappyPathReprices(t *testing.T) {
 	svc := New(store.New())
+	svc.CheckRestrictionsHook = allowHook()
 	created, oerr := svc.Create(loopRequest())
 	if oerr != nil {
 		t.Fatalf("Create refused: %v", oerr)
@@ -109,6 +135,7 @@ func TestModifyHappyPathReprices(t *testing.T) {
 
 func TestModifyRequiresRepricedTotal(t *testing.T) {
 	svc := New(store.New())
+	svc.CheckRestrictionsHook = allowHook()
 	created, oerr := svc.Create(loopRequest())
 	if oerr != nil {
 		t.Fatalf("Create refused: %v", oerr)
@@ -122,6 +149,7 @@ func TestModifyRequiresRepricedTotal(t *testing.T) {
 
 func TestModifyRestrictionRefusesWithCause(t *testing.T) {
 	svc := New(store.New())
+	svc.CheckRestrictionsHook = allowHook()
 	created, oerr := svc.Create(loopRequest())
 	if oerr != nil {
 		t.Fatalf("Create refused: %v", oerr)
@@ -131,6 +159,27 @@ func TestModifyRestrictionRefusesWithCause(t *testing.T) {
 	}
 	if _, oerr := svc.Modify(loopModify(created.Ref)); oerr == nil || oerr.Code != "STATE_ILLEGAL" {
 		t.Fatalf("error = %v, want STATE_ILLEGAL", oerr)
+	}
+}
+
+func TestModifyNilHookFailsClosed(t *testing.T) {
+	st := store.New()
+	svc := New(st)
+	svc.CheckRestrictionsHook = allowHook()
+	created, oerr := svc.Create(loopRequest())
+	if oerr != nil {
+		t.Fatalf("Create refused: %v", oerr)
+	}
+	svc.CheckRestrictionsHook = nil
+	if _, oerr := svc.Modify(loopModify(created.Ref)); oerr == nil || oerr.Code != "UPSTREAM_UNAVAILABLE" || oerr.Status != http.StatusServiceUnavailable {
+		t.Fatalf("error = %v, want 503 UPSTREAM_UNAVAILABLE", oerr)
+	}
+	kept, oerr := st.Get(created.Ref)
+	if oerr != nil {
+		t.Fatalf("Get refused: %v", oerr)
+	}
+	if kept.ArrivalDate != "2026-11-01" || kept.DepartureDate != "2026-11-03" {
+		t.Fatalf("record = %+v, want the original dates kept", kept)
 	}
 }
 
@@ -144,6 +193,7 @@ func TestModifyUnknownRefIsNotFound(t *testing.T) {
 
 func TestCancelHappyPath(t *testing.T) {
 	svc := New(store.New())
+	svc.CheckRestrictionsHook = allowHook()
 	created, oerr := svc.Create(loopRequest())
 	if oerr != nil {
 		t.Fatalf("Create refused: %v", oerr)
@@ -159,6 +209,7 @@ func TestCancelHappyPath(t *testing.T) {
 
 func TestCancelMissingReasonRefused(t *testing.T) {
 	svc := New(store.New())
+	svc.CheckRestrictionsHook = allowHook()
 	created, oerr := svc.Create(loopRequest())
 	if oerr != nil {
 		t.Fatalf("Create refused: %v", oerr)
@@ -170,6 +221,7 @@ func TestCancelMissingReasonRefused(t *testing.T) {
 
 func TestMarkNoShowHappyPath(t *testing.T) {
 	svc := New(store.New())
+	svc.CheckRestrictionsHook = allowHook()
 	req := loopRequest()
 	req.ArrivalDate = "2020-01-01"
 	req.DepartureDate = "2020-01-03"
@@ -188,6 +240,7 @@ func TestMarkNoShowHappyPath(t *testing.T) {
 
 func TestMarkNoShowTooEarlyRefused(t *testing.T) {
 	svc := New(store.New())
+	svc.CheckRestrictionsHook = allowHook()
 	created, oerr := svc.Create(loopRequest())
 	if oerr != nil {
 		t.Fatalf("Create refused: %v", oerr)
