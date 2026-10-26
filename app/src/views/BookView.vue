@@ -882,3 +882,19 @@ export default defineComponent({
   },
 });
 </script>
+
+<style scoped>
+/* Print isolation (Refs #294, ADR-0003): port of the `@media print`
+   rules in `frontend/book.html:8-19` — staff Print yields a
+   confirmation-only handout, hiding the header, nav, sign-in form,
+   and booking form inputs. Scoped to this view so no other screen
+   is affected. */
+@media print {
+  [data-testid='book-view'] > :not([data-testid='book-booking']) {
+    display: none;
+  }
+  [data-testid='book-booking'] > :not([data-testid='book-confirmation']) {
+    display: none;
+  }
+}
+</style>

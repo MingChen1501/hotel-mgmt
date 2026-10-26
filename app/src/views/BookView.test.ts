@@ -14,6 +14,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { mount } from '@vue/test-utils';
 import BookView from './BookView.vue';
+import bookViewSource from './BookView.vue?raw';
 import { useSessionStore } from '../stores/session';
 import { resetConnectivityForTests } from '../api/client';
 import router from '../router';
@@ -634,5 +635,20 @@ describe('book view', () => {
     await quoteAndConfirm(wrapper);
     await wrapper.find('[data-testid="book-print"]').trigger('click');
     expect(print).toHaveBeenCalledTimes(1);
+  });
+
+  it('isolates the confirmation for print (legacy book.html parity)', () => {
+    // jsdom applies no @media print rules, so this pins the
+    // isolation at the SFC source: the port of
+    // `frontend/book.html:8-19` must hide everything except the
+    // booking wrapper, and within it everything except the
+    // confirmation section.
+    expect(bookViewSource).toContain('@media print');
+    expect(bookViewSource).toContain(
+      "[data-testid='book-view'] > :not([data-testid='book-booking'])",
+    );
+    expect(bookViewSource).toContain(
+      "[data-testid='book-booking'] > :not([data-testid='book-confirmation'])",
+    );
   });
 });
