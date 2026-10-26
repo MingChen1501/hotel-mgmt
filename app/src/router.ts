@@ -11,6 +11,7 @@ import type { Router } from 'vue-router';
 import BookView from './views/BookView.vue';
 import DeskView from './views/DeskView.vue';
 import PlaceholderView from './views/Placeholder.vue';
+import StayView from './views/StayView.vue';
 
 export function createAppRouter(): Router {
   return createRouter({
@@ -25,6 +26,11 @@ export function createAppRouter(): Router {
         path: '/book',
         name: 'book',
         component: BookView,
+      },
+      {
+        path: '/stay',
+        name: 'stay',
+        component: StayView,
       },
       {
         path: '/:pathMatch(.*)*',
