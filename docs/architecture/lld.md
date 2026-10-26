@@ -36,10 +36,11 @@ the FRs leave undecided is marked deferred with a reason.
   (`NFR-PERF-1`).
 - Errors: every refusal uses the envelope in
   `docs/technical/error-handling.md` (`code`, `message`, `details`,
-  `traceId`). Session-expiry/locked-session refusals use code
-  `UNAUTHENTICATED` (assigned here; the envelope lists
-  representative codes and gains this token in the same release
-  train). All other codes are the existing ones.
+  `traceId`). Session-expiry refusals use code `UNAUTHENTICATED`
+  and locked-identity refusals use code `IDENTITY_LOCKED` (both
+  assigned here and registered in
+  `contracts/errors/envelope.json`). All other codes are the
+  existing ones.
 - Time: `timestamptz` everywhere (carries the UTC offset,
   `NFR-TZ-1`); hotel-local rendering is a presentation concern fed
   by the hotel timezone from config.
@@ -359,7 +360,7 @@ Interfaces (provider: `AdminService`):
 | `GetHotelConfig` | — (startup read) | full §3.1 settings snapshot + schema version | — |
 | `UpdateHotelConfig` | changed §3.1 values | saved values + `ConfigChangedEvents` emitted | `VALIDATION_FAILED`, `FORBIDDEN` (role) |
 | `CreateUser`, `UpdateUserRole`, `UnlockIdentity` | name, sign-in identity, role | account record | `FORBIDDEN`, `VALIDATION_FAILED` |
-| `SignIn`, `SignOut` | identity, secret | session token / end | `UNAUTHENTICATED` (wrong secret / locked / expired) |
+| `SignIn`, `SignOut` | identity, secret | session token / end | `UNAUTHENTICATED` (wrong secret / expired), `IDENTITY_LOCKED` (locked) |
 | `ValidateSession` / `CheckRole` | token, required role | valid + role / refuse | `UNAUTHENTICATED` / `FORBIDDEN` |
 | `CollectExportSlice` (fan-out to RES, STAY, BIL, GST, ROOM, RATE) | cut-timestamp | per-module slice + manifest entry | reported failure naming missing scope |
 | `RunBackup` | — | success/failure report with time (`NFR-BKP-2`) | — (failures reported, never silent) |
@@ -380,8 +381,9 @@ required-field choices, cancellation wording + reason lists,
 no-show rule, approval rule, charge items, tax/fee rules,
 restrictions, discounts.
 
-Error mapping: out-of-role -> `FORBIDDEN` (`NFR-SEC-1`); locked or
-signed-out session -> `UNAUTHENTICATED` (`NFR-SEC-2`); incomplete
+Error mapping: out-of-role -> `FORBIDDEN` (`NFR-SEC-1`); locked
+identity -> `IDENTITY_LOCKED` (`NFR-SEC-2`); expired or signed-out
+session -> `UNAUTHENTICATED` (`NFR-SEC-2`); incomplete
 export slice -> reported failure naming the scope (`FR-ADM-5`).
 
 ## 9. Codebase layout (monorepo)
