@@ -141,6 +141,7 @@ docs and plans, not gated specs.
 | A1-lite Vue desk-loop run log | `testing/phase-6-qa-a1-lite-run-log.md` | active | `qa-lead` | post-migration desk-loop record through the Vue SPA: same seed discipline as A1, `/app/*` surfaces + legacy redirects, admin reads, evidence, clean bill (Closes #316) |
 | A2 PERF bounds run log | `testing/phase-6-qa-a2-run-log.md` | active | `qa-lead` | PERF bounds run record: hardware decision, variant numbers with environment labels, CI job/run ids, regression comparison, defects (Closes #268) |
 | A3 exploratory run log | `testing/phase-6-qa-a3-run-log.md` | active | `qa-lead` | exploratory pass per FE screen: time-boxed front-desk sessions per screen + scenario with outcomes, defects filed (Closes #269) |
+| A3 Vue exploratory run log | `testing/phase-6-qa-a3-vue-run-log.md` | active | `qa-lead` | exploratory pass per Vue SPA screen: time-boxed live sessions per screen + scenario with outcomes, defects filed (Closes #317) |
 | A4 full-CI regression run log | `testing/phase-6-qa-a4-run-log.md` | active | `qa-lead` | full CI regression record on the QA build: build SHA, CI run/job ids, per-stack verdicts, all-green (Closes #270) |
 
 ## DevOps / Operations / Release
