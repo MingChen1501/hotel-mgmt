@@ -1,8 +1,9 @@
 // Pinia session store for the /app/ migration shell
 // (Refs #291, LLD §11 shared-client contract, ADR-0003).
 //
-// One shared store replaces the per-page copy-pasted token blocks
-// (`frontend/desk.html`, `book.html`, `admin.html`). The token lives
+// One shared store replaces the former per-page copy-pasted token
+// blocks (deleted with the legacy static pages in #299:
+// `frontend/desk.html`, `book.html`, `admin.html`). The token lives
 // in `sessionStorage`: it survives a tab reload and dies with the
 // tab (threat-model delta in
 // `docs/technical/security-threat-model.md` §4).

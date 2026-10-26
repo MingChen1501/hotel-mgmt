@@ -836,6 +836,38 @@
       "params": {}
     },
     {
+      "key": "desk.entry.backup_heading",
+      "surface": "desk backup report",
+      "sources": [
+        "app/src/views/DeskView.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.entry.backup_loading",
+      "surface": "desk backup report",
+      "sources": [
+        "app/src/views/DeskView.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.entry.backup_missing",
+      "surface": "desk backup report",
+      "sources": [
+        "app/src/views/DeskView.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.entry.backup_support",
+      "surface": "desk backup report",
+      "sources": [
+        "app/src/views/DeskView.vue"
+      ],
+      "params": {}
+    },
+    {
       "key": "rates.validation.date_format",
       "surface": "rates envelope",
       "sources": [

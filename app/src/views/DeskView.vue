@@ -1,7 +1,20 @@
 <template>
   <main data-testid="desk-view">
     <h1>{{ t('desk.today.title', {}, 'Hotel Management — Desk Today') }}</h1>
-    <noscript><p>This page needs JavaScript to sign in and load today's lists.</p></noscript>
+    <noscript><p>This page needs JavaScript to sign in and load today's lists. No recent backup report — treat as failed. Note this message word for word and call support the same day (runbook section 6).</p></noscript>
+
+    <section data-testid="desk-backup">
+      <h2>{{ t('desk.entry.backup_heading', {}, 'Backup report') }}</h2>
+      <p data-testid="desk-backup-report">
+        {{ backupLine }}
+      </p>
+      <p
+        v-if="backupSupport"
+        data-testid="desk-backup-support"
+      >
+        {{ backupSupport }}
+      </p>
+    </section>
 
     <section
       v-if="!session.isSignedIn"
@@ -223,21 +236,26 @@ import { t } from '../i18n';
 import { useSessionStore } from '../stores/session';
 
 // Desk today dashboard as Vue SFCs (Refs #293, ADR-0003).
-// Behavioural port of the inline script in `frontend/desk.html`
-// (read-only morning view: sign-in plus arrivals, in-house stays,
-// departures, rooms needing housekeeping attention, and the
-// DailySheet cross-check counts). The legacy page is untouched and
-// stays served in parallel; this view runs under `/app/`.
+// Behavioural port of the inline script in the former
+// `frontend/desk.html` (read-only morning view: sign-in plus
+// arrivals, in-house stays, departures, rooms needing housekeeping
+// attention, and the DailySheet cross-check counts), plus the backup
+// report line from the former `frontend/index.html` desk entry
+// (Refs #116, #299): the newest `backup-report.json` renders as a
+// human-readable success-or-failure line with the runbook support
+// wording (NFR-BKP-2). The legacy pages are decommissioned and now
+// 301-redirect to this view; it runs under `/app/`.
 //
 // Shared-migration contracts, same as the shell:
 // - Bearer auth comes only from the Pinia session store via the
 //   shared `apiFetch` client; a 401/UNAUTHENTICATED clears the
 //   store and returns to sign-in (the single 401 path).
 // - Every string goes through the catalogue `t()` wrapper with the
-//   same fallbacks as `DeskMessages.msg` in the legacy page.
+//   same fallbacks as `DeskMessages.msg` in the former legacy pages.
 // - Errors switch on envelope codes, never on resolved wording.
 // - Read-only: the only mutating ops are SignIn/SignOut (session,
-//   not domain data).
+//   not domain data). The backup feed is an unauthenticated static
+//   file, so it loads over plain `fetch`, never `apiFetch`.
 
 interface StayRow {
   key: string;
@@ -255,6 +273,16 @@ interface StayRecord {
 interface RoomRecord {
   number: string;
   roomTypeId: string;
+}
+
+// Newest backup report published beside the static frontend by
+// script/publish-backup-report.sh (issue #116): `line` is the
+// runbook section 2 wording, `outcome` is success/failure, and
+// `support` carries the runbook section 6 pointer on failure.
+interface BackupReport {
+  line?: unknown;
+  outcome?: unknown;
+  support?: unknown;
 }
 
 function localBusinessDate(): string {
@@ -290,6 +318,8 @@ export default defineComponent({
     const dirty = ref<RoomRecord[]>([]);
     const uninspected = ref<RoomRecord[]>([]);
     const outOfOrder = ref<RoomRecord[]>([]);
+    const backupLine = ref(t('desk.entry.backup_loading', {}, 'Loading the latest backup report…'));
+    const backupSupport = ref('');
 
     function signOutLocal(): void {
       session.signOut();
@@ -405,6 +435,47 @@ export default defineComponent({
       }
     }
 
+    // Desk surface for the newest backup report (issue #116,
+    // ported from the former `frontend/index.html` in #299): fetch
+    // the static feed with no store, render the `line` verbatim, and
+    // show the support wording on any failure. A missing or
+    // unreadable feed counts as failed (runbook section 1,
+    // NFR-BKP-2), same as the legacy page.
+    async function loadBackupReport(): Promise<void> {
+      backupSupport.value = '';
+      try {
+        const response = await globalThis.fetch('/backup-report.json', { cache: 'no-store' });
+        if (!response.ok) {
+          throw new Error('no report');
+        }
+        const report = (await response.json()) as BackupReport;
+        if (!report || typeof report.line !== 'string' || !report.line) {
+          throw new Error('bad report');
+        }
+        backupLine.value = report.line;
+        if (report.outcome === 'failure') {
+          backupSupport.value = typeof report.support === 'string' && report.support
+            ? report.support
+            : t(
+              'desk.entry.backup_support',
+              {},
+              'Note this message word for word and call support the same day (runbook section 6).',
+            );
+        }
+      } catch {
+        backupLine.value = t(
+          'desk.entry.backup_missing',
+          {},
+          'No recent backup report — treat as failed.',
+        );
+        backupSupport.value = t(
+          'desk.entry.backup_support',
+          {},
+          'Note this message word for word and call support the same day (runbook section 6).',
+        );
+      }
+    }
+
     async function onSignIn(): Promise<void> {
       signInError.value = '';
       try {
@@ -426,6 +497,7 @@ export default defineComponent({
 
     async function onRefresh(): Promise<void> {
       await refreshDashboard();
+      await loadBackupReport();
     }
 
     async function onSignOut(): Promise<void> {
@@ -438,6 +510,9 @@ export default defineComponent({
     }
 
     onMounted(() => {
+      // The backup feed needs no session, so it loads on every
+      // visit; the dashboard lists still wait for sign-in.
+      void loadBackupReport();
       // A reload restores the Bearer token from sessionStorage: go
       // straight back to the dashboard instead of stranding it.
       if (session.isSignedIn) {
@@ -463,6 +538,8 @@ export default defineComponent({
       dirty,
       uninspected,
       outOfOrder,
+      backupLine,
+      backupSupport,
       onSignIn,
       onRefresh,
       onSignOut,

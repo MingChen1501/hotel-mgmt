@@ -5,15 +5,16 @@
 // - Every call carries `Authorization: Bearer <token>` from the
 //   session store, never from page-local state.
 // - Any `401` / `UNAUTHENTICATED` response clears the store token
-//   and routes to sign-in: the single 401 path replacing the
-//   per-page handlers (`frontend/desk.html:83`, `book.html:112`,
+//   and routes to sign-in: the single 401 path replacing the former
+//   per-page handlers (deleted with the legacy static pages in #299:
+//   `frontend/desk.html:83`, `book.html:112`,
 //   `frontend/admin.html:69`).
 // - The client owns connectivity state (`online`/`offline` events
 //   plus failed-fetch detection) and drives the offline banner with
 //   a safe manual retry. Explicitly NO write queueing: desk writes
 //   are synchronous authoritative ops and queueing risks
 //   double-charge, so a disconnect means clearly blocked — the same
-//   as today's static pages.
+//   as the former static pages.
 import { reactive } from 'vue';
 import { useSessionStore } from '../stores/session';
 import router from '../router';
