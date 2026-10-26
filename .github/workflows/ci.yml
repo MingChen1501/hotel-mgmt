@@ -31,6 +31,7 @@ jobs:
       contracts: ${{ steps.gates.outputs.contracts }}
       migrate: ${{ steps.gates.outputs.migrate }}
       e2e: ${{ steps.gates.outputs.e2e }}
+      shell: ${{ steps.gates.outputs.shell }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -55,6 +56,12 @@ jobs:
               - 'services/guests/**'
             node-admin:
               - 'services/admin/**'
+            app-shell:
+              - 'app/**'
+              - 'deploy/nginx/nginx.conf'
+              - 'deploy/compose.yaml'
+              - 'frontend/*.html'
+              - 'script/shell-served-check.sh'
             billing:
               - 'services/billing/**'
             services:
@@ -81,6 +88,7 @@ jobs:
           NODE_ROOMS: ${{ steps.filter.outputs.node-rooms }}
           NODE_GUESTS: ${{ steps.filter.outputs.node-guests }}
           NODE_ADMIN: ${{ steps.filter.outputs.node-admin }}
+          APP_SHELL: ${{ steps.filter.outputs.app-shell }}
           BILLING: ${{ steps.filter.outputs.billing }}
           SERVICES: ${{ steps.filter.outputs.services }}
           CONTRACTS: ${{ steps.filter.outputs.contracts }}
@@ -120,6 +128,10 @@ jobs:
           migrate = full or services_changed or changed('DEPLOY')
           e2e = (full or services_changed or changed('DEPLOY')
                  or changed('SCRIPTS') or changed('CONTRACTS'))
+          # Migration shell (issue #291): the /app/ scaffold, its
+          # nginx block and compose mount, the legacy pages it must
+          # not disturb, and its own served guard.
+          shell = full or changed('APP_SHELL')
 
           def boolean(name, value):
               with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
@@ -132,10 +144,12 @@ jobs:
           boolean('contracts', contracts)
           boolean('migrate', migrate)
           boolean('e2e', e2e)
+          boolean('shell', shell)
 
           print(f'event={e["EVENT_NAME"]} full={full}')
           print(f'go={go} node={node} billing={billing} '
-                f'contracts={contracts} migrate={migrate} e2e={e2e}')
+                f'contracts={contracts} migrate={migrate} e2e={e2e} '
+                f'shell={shell}')
           EOF
 
   ci:
@@ -278,6 +292,42 @@ jobs:
       - name: Test
         working-directory: services/${{ matrix.module }}
         run: npm test
+
+  app-build:
+    # Migration shell (issue #291, NFR-SHL-1): Node 22 + npm ci +
+    # build + lint + test over app/, then the served-shell guard
+    # (placeholder, fallback, print namespace, legacy pages, mirror).
+    needs: changes
+    if: needs.changes.outputs.shell == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install
+        working-directory: app
+        run: npm ci
+
+      - name: Build
+        working-directory: app
+        run: npm run build
+
+      - name: Lint
+        working-directory: app
+        run: npm run lint
+
+      - name: Test
+        working-directory: app
+        run: npm test
+
+      - name: Served-shell guard (placeholder, fallback, legacy, mirror)
+        run: script/shell-served-check.sh
 
   billing-build:
     needs: changes
