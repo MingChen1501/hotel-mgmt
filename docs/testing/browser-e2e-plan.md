@@ -166,7 +166,7 @@ guard.
 | Check-in / move / check-out with folio gate | `app/e2e/stay.spec.ts` | FR-FDK-1/2/3/4, FR-BIL-7 |
 | Charge + pay + balance agreement | `app/e2e/folio.spec.ts` | FR-BIL-1/2/3/5, FR-CUS-3 |
 | Invoice / receipt print isolation | `app/e2e/print.spec.ts` | FR-BIL-4 |
-| Dashboard backup-report line | `app/e2e/desk.spec.ts` (with the MIME smoke in `app/e2e/smoke.spec.ts`) | FR-ADM-5, NFR-BKP-2 |
+| Dashboard backup-report line | `app/e2e/desk.spec.ts` (with the MIME smoke in `app/e2e/smoke.spec.ts` — smoke DONE in PR-1-TBD; `desk.spec.ts` lands in PR 2) | FR-ADM-5, NFR-BKP-2 |
 
 ## 8. Seed and fixture discipline
 
