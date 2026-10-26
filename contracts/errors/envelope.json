@@ -6,7 +6,7 @@
     "properties": {
       "code": {
         "type": "string",
-        "enum": ["VALIDATION_FAILED", "NOT_FOUND", "FORBIDDEN", "CONFLICT", "STATE_ILLEGAL", "SETTLEMENT_REQUIRED", "UNAUTHENTICATED"]
+        "enum": ["VALIDATION_FAILED", "NOT_FOUND", "FORBIDDEN", "CONFLICT", "STATE_ILLEGAL", "SETTLEMENT_REQUIRED", "UNAUTHENTICATED", "IDENTITY_LOCKED"]
       },
       "message": { "type": "string", "description": "Human-readable sentence naming what was refused and why." },
       "details": { "type": "object", "description": "Named field, restriction, room, or conflicting entity.", "additionalProperties": true },
@@ -16,6 +16,7 @@
   "statusMapping": {
     "VALIDATION_FAILED": 400,
     "UNAUTHENTICATED": 401,
+    "IDENTITY_LOCKED": 401,
     "FORBIDDEN": 403,
     "NOT_FOUND": 404,
     "CONFLICT": 409,

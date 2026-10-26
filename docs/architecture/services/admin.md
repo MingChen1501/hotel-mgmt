@@ -39,7 +39,7 @@ flowchart TD
 Edge trace (every edge cites code):
 
 - A: both fields required (`src/store.ts:204-209`).
-- B: unknown identity or wrong secret → `UNAUTHENTICATED` without distinguishing which (:227); an identity locked after repeated failures is refused while the lock holds (:212-214, 5-strike counting via `MAX_FAILURES` at :23).
+- B: unknown identity or wrong secret → `UNAUTHENTICATED` without distinguishing which (:227); an identity locked after repeated failures is refused with `IDENTITY_LOCKED` (401) while the lock holds (:212-214, 5-strike counting via `MAX_FAILURES` at :23).
 - C: match path issues the token; D: sign-in audited; E: `{token, user}` returned (`src/store.ts:117,204-238`).
 - Boot seed: `ensureBootUser` guarantees the first owner exists before traffic (`src/store.ts:116,183-202`).
 
@@ -78,7 +78,8 @@ Same shared Node envelope as Stay (`src/errors.ts`; `docs/technical/error-handli
 | Code | Status | Raised when |
 |---|---|---|
 | `VALIDATION_FAILED` | 400 | missing field, unknown role, duplicate identity, self-role change, last-owner demote, unlock of non-locked identity (:108, :270-341) |
-| `UNAUTHENTICATED` | 401 | unknown identity / wrong secret / locked, bad or expired session (:212-257) |
+| `UNAUTHENTICATED` | 401 | unknown identity / wrong secret, bad or expired session (:212-257) |
+| `IDENTITY_LOCKED` | 401 | identity locked after repeated failures (:216-221) |
 | `FORBIDDEN` | 403 | front-desk account on an admin-only operation (:177) |
 
 ## 7. Operations
