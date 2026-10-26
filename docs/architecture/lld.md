@@ -639,5 +639,254 @@ Failure/rollback: none compensating — blocked actions mutate
 nothing, so there is nothing to roll back; the previous Nginx
 image (without `/app/`) predates the desk UI entirely.
 
+## 12. Desk UI styling design (Refs #338)
+
+Presentation-only slice of the approved Phase 1 UI contract (the
+`product-owner` contract comment on #338; proposed tier T2 —
+reader-visible UI change, no behaviour change). Subsystem boundary
+is in `docs/architecture/hld.md` §12; requirements delta is in
+`docs/requirements/mvp-requirements.md` §8 (`FR-DSP-*`,
+`NFR-DSP-*`, landed via #344). This section is the build-ready
+decomposition the Phase 2 implementation PR must follow, including
+the per-flow diagrams (happy path + failure/rollback path) the T2
+gate requires. No backend, API, contract, schema, or error-code
+change is specified anywhere in this section (see §12.4).
+
+Intended tree deltas (files the Phase 2 implementation PR must
+touch or create; edge traces below cite the existing files):
+
+```text
+app/
+  package.json           add PrimeVue (+ preset theme) as a dependency; no other new runtime dep
+  src/main.ts            install PrimeVue + stock preset theme fed by the §12.1 tokens (extends :10-16)
+  src/App.vue            styled shell: top nav (six destinations + user + sign-out, active highlight),
+                         centred content column, shell-owned sign-in gate; offline banner stays as-is (:1-28)
+  src/router.ts          unchanged routes (the six paths + placeholder fallback stay exactly as at :21-62)
+  src/theme/tokens.ts    NEW: contract §1 tokens as preset-theme inputs (no custom design system)
+  src/views/*.vue        per-screen restyle onto the §12.2 component mapping; data-testid hooks kept;
+                         per-screen sign-in copies removed (moved to the shell gate); print <style> blocks kept
+```
+
+### 12.1 Theme inputs (contract §1 tokens, PrimeVue preset only)
+
+The stock preset theme is fed exactly these values; nothing else
+is a styling input. Money and dates render exactly as today
+(hotel locale settings govern; presentation never changes values).
+
+- Colours: surface `#FFFFFF`; page `#F4F2ED`; ink `#1F2933`;
+  muted `#6B7280`; primary desk blue `#1D4ED8` (actions, active
+  nav); success `#15803D`; warning `#B45309`; danger `#B91C1C`;
+  borders `#E5E7EB`. One accent only (desk blue); state colours
+  are used solely for status, never for branding.
+- Type: system font stack; base 16px; headings 20/24/30px;
+  tabular numerals for money and balances.
+- Spacing/radius: 4px base unit (8/12/16/24px steps); card
+  radius 8px; focus ring 2px desk blue on every interactive
+  element (keyboard-visible, `NFR-DSP-2`).
+
+### 12.2 PrimeVue component mapping (per pattern, no ad-hoc markup)
+
+| Pattern (contract §3) | PrimeVue component | Applied to (existing SFCs) |
+|---|---|---|
+| Forms (book, charge, pay, admin setup) | `InputText`, `Dropdown`/`Select`, `Calendar`/`DatePicker`, `Password` for secrets, `Button` for submits | Book form hooks `book-guest-name` through `book-confirm` (`BookView.vue:86-227`); per-screen sign-in forms (removed to the gate, §12.6) |
+| Lists (reservations, stays, folios, rooms, guests) | `DataTable` with `Column`, paginator on long lists | Arrivals table `desk-arrivals-table` (`DeskView.vue:110-120` and siblings per screen) |
+| Confirmations and destructive actions (cancel, check-out, day-close) | `Dialog` with explicit confirm/cancel buttons | Existing confirm buttons (e.g. `book-confirm` at `BookView.vue:218`) keep their hooks and call order |
+| Feedback (success, validation, refusal, error) | `Message`/`Toast` for page-level notes, inline field errors under the field | Existing alert hooks (`desk-signin-error`, `book-quote-error`, `book-confirm-error`, `desk-dashboard-error`) keep their hooks; wording becomes plain sentences per `FR-DSP-3` |
+| Print (receipt/invoice/confirmation) | existing print CSS preserved; screen shows a print preview card with one Print button | `.print-document` blocks (`PrintView.vue:165,276,348`) under `@media print` (`PrintView.vue:1112-1126`, `BookView.vue:981-989`) |
+
+### 12.3 Shell navigation flowchart
+
+Signed-in staff move between the six screens through the new top
+nav (the nav itself is the only addition; routes are unchanged):
+
+```mermaid
+flowchart TD
+    A[Staff loads any /app/* path] --> B[Shell boots: main.ts]
+    B --> C[Router resolves existing route]
+    C --> D[Top nav renders six destinations + user + Sign out]
+    D --> E[Active route highlighted: bold + desk-blue underline]
+    E --> F[Content column renders the screen SFC]
+    F --> G[Staff selects another destination]
+    G --> C
+```
+
+Edge trace (every edge cites code):
+
+- A–B: Nginx `location /app/` fallback serves `/app/index.html`
+  (LLD §11 edge C–E); `src/main.ts:10-16` installs Pinia, the
+  router, PrimeVue + preset theme (new), and the `$t` catalogue.
+- B–C: `src/router.ts:21-62` — the six paths resolve to their
+  existing SFCs; unknown paths fall through to the placeholder
+  (`:55-59`); no route is added, removed, or renamed.
+- C–D: `src/App.vue` gains the nav (extends the `:1-28` shell
+  that today holds only the offline banner + `RouterView`
+  at `:26`); each item links its existing path in contract §2
+  order (Desk · Book · Stay · Folio · Print · Admin).
+- D–E: active highlight is bold label + desk-blue underline
+  (`#1D4ED8`, §12.1) driven by the router's current route —
+  the stand-in always knows the current screen (`FR-DSP-1`).
+- F–G: screen SFCs render inside the centred column (max
+  1100px, one plain-words page heading each); existing
+  `data-testid` hooks (`*-view`, `offline-banner`) are kept so
+  characterization tests survive.
+
+Failure/rollback:
+
+```mermaid
+flowchart TD
+    P[Unknown path] --> Q[Placeholder renders; nav still shows]
+    R[Theme fails to load] --> S[Unstyled but navigable shell; rebuild, never hand-edit]
+    T[Markup changed] --> U[Characterization tests updated where markup changed; none deleted without replacement]
+```
+
+Edge trace:
+
+- P–Q: router fallback (`src/router.ts:55-59`, LLD §11.1 edge
+  U–V); real 404 semantics stay a later screen concern.
+- R–S: preset-theme failure is a build/packaging defect —
+  rebuild `app/` and repack the image, same as LLD §11.1 S–T.
+- T–U: `FR-DSP-1` handoff (`router.test.ts:16`, per-view render
+  suites) extended with nav + active-highlight assertions.
+
+### 12.4 Sign-in gate flowchart
+
+The shell owns the one sign-in form; per-screen sign-in copies
+are removed (behaviour — token mechanics, lockout, idle
+sign-out — is unchanged, LLD §0):
+
+```mermaid
+flowchart TD
+    A[Signed-out visitor on any /app/* path] --> B[Shell renders sign-in form only]
+    B --> C[Visitor submits identity + secret]
+    C --> D{SignIn result?}
+    D -->|ok| E[Token to sessionStorage; route to requested screen]
+    D -->|wrong secret| F[Plain sentence: sign-in did not work, try again]
+    D -->|locked| G[Plain locked sentence naming unlock by owner/manager]
+    F --> B
+    G --> B
+    H[Signed-in staff selects Sign out] --> I[Token cleared; shell back to sign-in form]
+    J[Any API call answers 401 / UNAUTHENTICATED] --> I
+```
+
+Edge trace:
+
+- A–B: the gate replaces the six per-screen copies
+  (`DeskView.vue:19-63`, `BookView.vue:12-50`,
+  `PrintView.vue:14-52`, and the stay/folio/admin siblings);
+  the per-view sign-in tests move to the gate without deleting
+  coverage (`DeskView.test.ts:134,143,288,341` handoff).
+- C–E: `AdminService.SignIn` contract unchanged
+  (`docs/technical/integration.md` §6 C10); token persists in
+  `sessionStorage` (`src/stores/session.ts:12-43`, key at
+  `:12`, survives reload, dies with the tab).
+- D–F–G: wrong-secret and locked-identity refusals keep their
+  codes (`UNAUTHENTICATED`, `IDENTITY_LOCKED` per LLD §0);
+  only the wording becomes one plain sentence (`FR-DSP-3`).
+- H–I: sign-out clears the store token as today
+  (`session.test.ts:8` handoff; `NFR-SEC-2` holds).
+- J–I: the single 401 path (`src/api/client.ts:89-162`,
+  LLD §11.2) is untouched — clear + route to sign-in; fetch
+  rejection still drives the offline banner (§11.3), never
+  sign-out.
+
+Failure/rollback: no compensation — clearing the store token is
+a single local step; refusals precede any mutation; the
+server-side session rules (15-minute idle sign-out, 5-minute
+revalidation bound, LLD §0) are unchanged. Rollback is reverting
+the Phase 2 PR (per-screen copies return with it).
+
+### 12.5 Representative form flow (book quote-then-confirm)
+
+The book screen is the representative form pattern; charge, pay,
+and admin-setup forms follow the same state machine with their
+own hooks. Behaviour and call order are unchanged — only
+presentation (PrimeVue inputs, plain-words states) changes:
+
+```mermaid
+flowchart TD
+    A[Staff fills guest + dates + type + plan] --> B[QuotePrice: nightly breakdown + total shown]
+    B --> C[Staff confirms]
+    C --> D{CreateReservation result?}
+    D -->|ok| E[Reference + readback + confirmation record shown]
+    D -->|CONFLICT / STATE_ILLEGAL / VALIDATION_FAILED| F[One plain sentence naming the cause]
+    F --> A
+    G[Loading] --> H[Affected region shows Loading; repeat-write buttons disabled]
+    H --> D
+```
+
+Edge trace:
+
+- A: form hooks `book-guest-name` → `book-discount-name`
+  (`BookView.vue:86-179`); guest lookup via
+  `book-find-guest` / `book-register-guest` (`:92-100`);
+  mandatory-field refusals name the field (`FR-CUS-1`,
+  wording only per `FR-DSP-3`).
+- B: quote hooks `book-quote` (`:187`), breakdown
+  `book-quote-nights` (`:206`), total `book-quote-total`
+  (`:214`); `PricingService.QuotePrice` contract unchanged
+  (integration §1 C1); later rate changes still never alter the
+  quoted basis (BR-13).
+- C–D: confirm `book-confirm` (`:218`); `ReservationService.
+  CreateReservation` contract unchanged (integration §1);
+  last-unit race still refuses the loser with `CONFLICT`
+  (`NFR-CON-1` — condition unchanged, sentence plain).
+- D–E: result hooks `book-result`, `book-booking-reference`,
+  `book-booking-readback` (`:236-240`); confirmation record
+  `book-confirmation` (`:259-275`) per `FR-GST-4`.
+- D–F: every refusal keeps its code (`CONFLICT`,
+  `STATE_ILLEGAL`, `VALIDATION_FAILED`,
+  `SETTLEMENT_REQUIRED` on check-out) per
+  `docs/technical/error-handling.md` §§1–2; only the
+  on-screen wording becomes one plain sentence naming the
+  cause and the next step (`FR-DSP-3`).
+- G–H: loading names the affected region while the rest stays
+  visible; write buttons disable until the call returns
+  (no double-charge from repeat taps).
+
+Failure/rollback: refusals precede mutation (nothing to
+compensate); a LAN disconnect mid-form drives the §11.3 banner
++ manual retry (no queued writes). Rollback is reverting the
+Phase 2 PR; characterization tests are updated where markup
+changed, none deleted without replacement.
+
+### 12.6 Technical no-change note (behaviour, APIs, contracts)
+
+Nothing in §12 changes behaviour, and the Phase 2
+implementation PR must not change any of the following; each
+item names its guard so drift is reviewable:
+
+- Routes: the six `/app/` paths and the `/app/print/...`
+  namespace stay exactly as routed (`src/router.ts:21-62`);
+  Nginx `location /app/` fallback stays `/app/index.html`
+  (LLD §11); legacy redirects and `/docs` Swagger mirror stay
+  intact (`FR-SHL-4`, `script/openapi-route-check.sh` green).
+- APIs and contracts: every desk call keeps its operation,
+  payload, and envelope (`docs/technical/api-spec.md` §§1–2,
+  `docs/technical/integration.md` §§1–6 C1–C11,
+  `contracts/openapi.yaml` + `frontend/docs/openapi.yaml`
+  byte-identical mirror — 14 ops, unchanged).
+- Error semantics: all codes and refusal conditions stand
+  (`docs/technical/error-handling.md` §§1–2, LLD §§1–8 error
+  mappings); only on-screen wording becomes plain sentences.
+  Session rules (LLD §0: HMAC token, 5-minute revalidation,
+  15-minute idle sign-out, 5-strike lockout) are untouched.
+- Catalogue: every new plain-words sentence ships in
+  `messages/en.json` and stays covered by
+  `script/catalogue-coverage-check.sh` (`NFR-I18N-1` holds).
+- Print: receipt, invoice, and confirmation output match folio
+  lines and balance exactly (`FR-BIL-4` holds); print
+  isolation CSS preserved (`PrintView.vue:1106-1126`,
+  `BookView.vue:976-989` source-pinned by
+  `PrintView.test.ts:545-560` and `BookView.test.ts:1047-1052`);
+  screen styling must not leak into print.
+- Tests: `data-testid` hooks kept; characterization suites
+  extended where markup changed; no test deleted without
+  replacement (`FR-DSP-1..4` handoffs in
+  `mvp-requirements.md` §8.4 cite the on-disk guards).
+
+Out of scope (contract §6, restated as build constraints): no
+new screens or flows; no Figma mockups; no marketing-grade
+visuals — the bar is MVP-usable, not pixel-perfect.
+
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-137
