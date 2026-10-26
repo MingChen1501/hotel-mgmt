@@ -1,7 +1,7 @@
 {
   "operation": "ProduceConfirmation",
   "contract": "GuestService",
-  "version": "1.0",
+  "version": "1.1",
   "traces": ["docs/architecture/lld.md section 5", "FR-GST-4"],
   "transport": {
     "method": "POST",
@@ -12,16 +12,23 @@
     "type": "object",
     "required": ["reservationRef"],
     "properties": {
-      "reservationRef": { "type": "string", "format": "uuid" }
+      "reservationRef": {
+        "type": "string",
+        "description": "RES-side reservation key: the human reference (RSV-…) the desk reads back from GetReservation, or a reservation UUID."
+      }
     }
   },
   "response": {
     "type": "object",
-    "required": ["reservationRef", "hotel", "guest", "dates", "type", "price"],
+    "required": ["reservationRef", "guest", "dates", "type", "price"],
     "properties": {
-      "reservationRef": { "type": "string", "format": "uuid" },
+      "reservationRef": {
+        "type": "string",
+        "description": "RES-side reservation key as attached (human reference or UUID)."
+      },
       "hotel": {
         "type": "object",
+        "description": "Present once the attaching side knows the hotel (Admin-backed hotel values land in a later slice).",
         "required": ["hotelId", "name"],
         "properties": {
           "hotelId": { "type": "string", "format": "uuid" },
@@ -47,10 +54,13 @@
       "type": { "type": "string" },
       "price": {
         "type": "object",
-        "required": ["amountMinor", "currency"],
+        "required": ["amountMinor"],
         "properties": {
           "amountMinor": { "type": "integer", "minimum": 0 },
-          "currency": { "type": "string" }
+          "currency": {
+            "type": "string",
+            "description": "Present once the attaching side knows it; the desk renders a plain amount meanwhile."
+          }
         }
       }
     }

@@ -277,6 +277,91 @@ describe("guest profiles", () => {
     }
   });
 
+  it("attaches and produces the confirmation for a human reservation ref (issue #323)", async () => {
+    const server = createServiceServer("guests", new GuestStore());
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+    const port = (server.address() as { port: number }).port;
+    try {
+      const reservationRef = "RSV-2HBALL5F";
+      const attached = await request(port, "POST", "/v1/guests/AttachReservation", {
+        reservationRef,
+        hotel: { hotelId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", name: "Hanoi Riverside" },
+        guest: { guestId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", fullName: "QA Booker" },
+        dates: { checkIn: "2026-11-25", checkOut: "2026-11-27" },
+        type: "deluxe",
+        price: { amountMinor: 240000, currency: "VND" },
+      });
+      assert.equal(attached.status, 200);
+
+      const confirmation = await request(port, "POST", "/v1/guests/ProduceConfirmation", { reservationRef });
+      assert.equal(confirmation.status, 200);
+      assert.deepEqual(confirmation.body, {
+        reservationRef,
+        hotel: { hotelId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", name: "Hanoi Riverside" },
+        guest: { guestId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", fullName: "QA Booker" },
+        dates: { checkIn: "2026-11-25", checkOut: "2026-11-27" },
+        type: "deluxe",
+        price: { amountMinor: 240000, currency: "VND" },
+      });
+    } finally {
+      server.close();
+    }
+  });
+
+  it("produces the RES-side snapshot without hotel or currency (issue #323)", async () => {
+    const server = createServiceServer("guests", new GuestStore());
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+    const port = (server.address() as { port: number }).port;
+    try {
+      const reservationRef = "RSV-FZGZ3EBS";
+      const attached = await request(port, "POST", "/v1/guests/AttachReservation", {
+        reservationRef,
+        guest: { guestId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", fullName: "QA Booker" },
+        dates: { checkIn: "2026-11-25", checkOut: "2026-11-27" },
+        type: "00000000-0000-0000-0000-000000000101",
+        price: { amountMinor: 240000 },
+      });
+      assert.equal(attached.status, 200);
+
+      const confirmation = await request(port, "POST", "/v1/guests/ProduceConfirmation", { reservationRef });
+      assert.equal(confirmation.status, 200);
+      assert.deepEqual(confirmation.body, {
+        reservationRef,
+        guest: { guestId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", fullName: "QA Booker" },
+        dates: { checkIn: "2026-11-25", checkOut: "2026-11-27" },
+        type: "00000000-0000-0000-0000-000000000101",
+        price: { amountMinor: 240000 },
+      });
+    } finally {
+      server.close();
+    }
+  });
+
+  it("refuses confirmation for an unknown human ref and a blank ref (issue #323)", async () => {
+    const server = createServiceServer("guests", new GuestStore());
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+    const port = (server.address() as { port: number }).port;
+    try {
+      const refused = await request(port, "POST", "/v1/guests/ProduceConfirmation", {
+        reservationRef: "RSV-UNKNOWN1",
+      });
+      assert.equal(refused.status, 404);
+      assert.equal((refused.body as { code: string }).code, "NOT_FOUND");
+
+      const blank = await request(port, "POST", "/v1/guests/ProduceConfirmation", { reservationRef: "  " });
+      assert.equal(blank.status, 400);
+      assert.equal((blank.body as { code: string }).code, "VALIDATION_FAILED");
+
+      const attachRefused = await request(port, "POST", "/v1/guests/AttachReservation", {
+        guest: { guestId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", fullName: "QA Booker" },
+      });
+      assert.equal(attachRefused.status, 400);
+      assert.equal((attachRefused.body as { code: string }).code, "VALIDATION_FAILED");
+    } finally {
+      server.close();
+    }
+  });
+
   it("refuses confirmation for an unknown reservation ref with NOT_FOUND", async () => {
     const server = createServiceServer("guests", new GuestStore());
     await new Promise<void>((resolve) => server.listen(0, resolve));

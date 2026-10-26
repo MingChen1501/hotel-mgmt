@@ -59,6 +59,15 @@ export function requireString(value: unknown, field: string): string {
   return value.trim();
 }
 
+// Reservation refs are the human-readable RES-side keys (RSV-…,
+// keyed by ref in the Reservations store), not UUIDs: the desk loop
+// reads them back from GetReservation and attaches them here (LLD
+// section 5; FR-GST-4). UUID reservation ids stay accepted so older
+// attached records keep resolving.
+export function requireReservationRef(value: unknown): string {
+  return requireString(value, "reservationRef");
+}
+
 export interface UpsertGuestInput {
   guestId?: unknown;
   fullName?: unknown;
@@ -89,14 +98,17 @@ export interface LinkStayInput {
 
 // Confirmation record (LLD section 5; FR-GST-4): the booking
 // confirmation the hotel shares with the guest. Money follows the
-// module convention (minor units, never float).
+// module convention (minor units, never float). The hotel block and
+// the price currency ride along only when the attaching side knows
+// them (Admin hotel-profile/currency reads land in a later slice),
+// so both stay optional; the desk views render either shape.
 export interface ConfirmationRecord {
   reservationRef: string;
-  hotel: { hotelId: string; name: string };
+  hotel?: { hotelId: string; name: string };
   guest: { guestId: string; fullName: string };
   dates: { checkIn: string; checkOut: string };
   type: string;
-  price: { amountMinor: number; currency: string };
+  price: { amountMinor: number; currency?: string };
 }
 
 // Reservation snapshot attached from reservation reads/events (LLD
@@ -172,20 +184,30 @@ function requirePriceMinor(value: unknown): number {
 }
 
 // Validates one attached reservation snapshot into the confirmation
-// record shape (LLD section 5; FR-GST-4).
+// record shape (LLD section 5; FR-GST-4). The ref is the RES-side
+// human key (RSV-…); the hotel block and the price currency are
+// optional until the Admin-backed hotel values slice lands, but when
+// present they validate strictly.
 export function toConfirmationRecord(input: AttachReservationInput): ConfirmationRecord {
-  const reservationRef = requireUuid(input.reservationRef, "reservationRef");
+  const reservationRef = requireReservationRef(input.reservationRef);
   const hotel = asObject(input.hotel);
+  const hasHotel = input.hotel !== undefined && input.hotel !== null;
   const guest = asObject(input.guest);
   const dates = asObject(input.dates);
   const price = asObject(input.price);
+  const priceCurrency =
+    price.currency === undefined || price.currency === null
+      ? undefined
+      : requireString(price.currency, "price.currency");
   return {
     reservationRef,
-    hotel: { hotelId: requireUuid(hotel.hotelId, "hotel.hotelId"), name: requireString(hotel.name, "hotel.name") },
+    ...(hasHotel
+      ? { hotel: { hotelId: requireUuid(hotel.hotelId, "hotel.hotelId"), name: requireString(hotel.name, "hotel.name") } }
+      : {}),
     guest: { guestId: requireUuid(guest.guestId, "guest.guestId"), fullName: requireString(guest.fullName, "guest.fullName") },
     dates: { checkIn: requireDate(dates.checkIn, "dates.checkIn"), checkOut: requireDate(dates.checkOut, "dates.checkOut") },
     type: requireString(input.type, "type"),
-    price: { amountMinor: requirePriceMinor(price.amountMinor), currency: requireString(price.currency, "price.currency") },
+    price: { amountMinor: requirePriceMinor(price.amountMinor), ...(priceCurrency === undefined ? {} : { currency: priceCurrency }) },
   };
 }
 
@@ -269,7 +291,7 @@ export class GuestStore implements GuestStoreAPI {
   }
 
   async produceConfirmation(input: ProduceConfirmationInput): Promise<ConfirmationRecord> {
-    const reservationRef = requireUuid(input.reservationRef, "reservationRef");
+    const reservationRef = requireReservationRef(input.reservationRef);
     const record = this.confirmations.get(reservationRef);
     if (!record) {
       throw new HttpError("NOT_FOUND", msg("error.notfound.reservation", { ref: reservationRef }), {
