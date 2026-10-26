@@ -507,7 +507,11 @@ import { useSessionStore } from '../stores/session';
 //   when the balance is open -> CheckOut carrying the reviewed
 //   folio id, balance, and the recorded approval. Daily lists come
 //   from ListArrivalsDepartures with guest names via GetGuest; room
-//   numbers resolve through ListRoomsByState. Every mutating click
+//   numbers resolve through ListRoomsByState. The pickable arrival
+//   rows are expected arrivals from the reservation calendar
+//   (QueryCalendar plus a GetReservation read-back per due
+//   reference, Refs #349) because stay rows never carry booking
+//   references in production. Every mutating click
 //   carries an in-flight guard plus a client-generated
 //   idempotencyKey wherever the contract defines one (AssignRoom,
 //   MoveRoom, RecordOpenBalanceApproval, CheckOut).
@@ -530,6 +534,23 @@ interface StayListRow {
   stayId?: string;
 }
 
+interface CalendarEntry {
+  reservationRef?: string;
+  roomTypeId?: string;
+  arrivalDate?: string;
+  departureDate?: string;
+  state?: string;
+}
+
+interface ReservationReadback {
+  reservationRef?: string;
+  roomTypeId?: string;
+  arrivalDate?: string;
+  departureDate?: string;
+  state?: string;
+  guest?: { guestId?: string; fullName?: string };
+}
+
 interface RoomRecord {
   roomId: string;
   number: string;
@@ -547,6 +568,14 @@ function localBusinessDate(): string {
   const now = new Date();
   const pad = (value: number): string => (value < 10 ? '0' : '') + String(value);
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
+function nextDay(dateStr: string): string {
+  const parts = dateStr.split('-').map(Number);
+  const next = new Date(Date.UTC(parts[0] ?? 1970, (parts[1] ?? 1) - 1, parts[2] ?? 1));
+  next.setUTCDate(next.getUTCDate() + 1);
+  const pad = (value: number): string => (value < 10 ? '0' : '') + String(value);
+  return `${next.getUTCFullYear()}-${pad(next.getUTCMonth() + 1)}-${pad(next.getUTCDate())}`;
 }
 
 function plainAmount(minor: number): string {
@@ -731,6 +760,74 @@ export default defineComponent({
       }
     }
 
+    // Expected arrivals (AC-FDK-5, BR-6) come from the
+    // reservation calendar: confirmed bookings due on the
+    // business date. The stay lists never carry booking
+    // references in production (stay rows hold only
+    // reservationId UUIDs), so the "Use for check-in" pick
+    // buttons render from these reference-backed rows instead
+    // (Refs #349). Every row is verified through GetReservation,
+    // so a rendered pick always fills a live reference; a
+    // calendar outage degrades to the stay lists plus the
+    // typed-ref path rather than failing them.
+    async function fetchExpectedArrivals(businessDateValue: string): Promise<StayListRow[]> {
+      let entries: CalendarEntry[];
+      try {
+        const calendar = await apiFetch<{ reservations?: CalendarEntry[] }>(
+          '/v1/reservations/QueryCalendar',
+          {
+            method: 'POST',
+            body: JSON.stringify({ dateFrom: businessDateValue, dateTo: nextDay(businessDateValue) }),
+          },
+        );
+        entries = calendar.reservations ?? [];
+      } catch (err) {
+        if (isSignedOut(err)) {
+          throw err;
+        }
+        return [];
+      }
+      const due = entries.filter(
+        (entry) =>
+          entry.arrivalDate === businessDateValue &&
+          entry.state === 'confirmed' &&
+          typeof entry.reservationRef === 'string' &&
+          entry.reservationRef !== '',
+      );
+      const rows: StayListRow[] = [];
+      for (const entry of due) {
+        const ref = String(entry.reservationRef);
+        try {
+          const booking = await apiFetch<ReservationReadback>('/v1/reservations/GetReservation', {
+            method: 'POST',
+            body: JSON.stringify({ reservationRef: ref }),
+          });
+          if (booking.state !== undefined && booking.state !== 'confirmed') {
+            continue;
+          }
+          const fullName = booking.guest?.fullName;
+          const guestId = booking.guest?.guestId;
+          const guestName = fullName
+            ?? (guestId ? await resolveGuestName(guestId) : t('desk.today.unknown_guest', { guestId: ref }, `Unknown guest (${ref})`));
+          const roomTypeId = booking.roomTypeId ?? entry.roomTypeId ?? '';
+          rows.push({
+            key: ref,
+            guestName,
+            roomLabel: roomTypeId
+              ? t('desk.today.room_type', { roomType: roomTypeId }, `Room type ${roomTypeId}`)
+              : t('desk.today.not_assigned', {}, 'Not assigned'),
+            timesText: t('desk.stay.times_empty', {}, 'No times recorded yet.'),
+            reservationRef: ref,
+          });
+        } catch (err) {
+          if (isSignedOut(err)) {
+            throw err;
+          }
+        }
+      }
+      return rows;
+    }
+
     async function renderRows(rows: StayRow[], kind: 'arrival' | 'stay'): Promise<StayListRow[]> {
       return Promise.all(
         rows.map(async (row, index) => {
@@ -775,7 +872,7 @@ export default defineComponent({
           numbers[room.roomId] = room.number;
         });
         roomNumbers.value = numbers;
-        arrivalRows.value = await renderRows(lists.arrivals ?? [], 'arrival');
+        arrivalRows.value = [...(await fetchExpectedArrivals(businessDate.value)), ...(await renderRows(lists.arrivals ?? [], 'arrival'))];
         inHouseRows.value = await renderRows(lists.inHouse ?? [], 'stay');
         departureRows.value = await renderRows(lists.departures ?? [], 'stay');
       } catch (err) {
