@@ -215,7 +215,7 @@ export class AdminStore implements AdminStoreAPI {
     const identity = signinIdentity.trim();
     const state = this.failures.get(identity);
     if (state?.lockedUntil !== null && state?.lockedUntil !== undefined && state.lockedUntil > Date.now()) {
-      throw new HttpError("UNAUTHENTICATED", msg("error.auth.locked", { identity }), {
+      throw new HttpError("IDENTITY_LOCKED", msg("error.auth.locked", { identity }), {
         signinIdentity: identity,
       });
     }

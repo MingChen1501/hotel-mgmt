@@ -95,6 +95,7 @@ describe("identity and config", () => {
         secret: "owner-secret",
       });
       assert.equal(locked.status, 401);
+      assert.equal((locked.body as { code: string }).code, "IDENTITY_LOCKED");
       assert.match((locked.body as { message: string }).message, /locked/);
     });
   });

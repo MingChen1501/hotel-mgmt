@@ -27,7 +27,8 @@
     }
   },
   "errors": [
-    { "code": "UNAUTHENTICATED", "status": 401, "when": "Unknown identity, wrong secret, or identity locked after 5 consecutive failures." },
+    { "code": "UNAUTHENTICATED", "status": 401, "when": "Unknown identity or wrong secret." },
+    { "code": "IDENTITY_LOCKED", "status": 401, "when": "Identity locked after 5 consecutive failures (NFR-SEC-2); the sign-in screen surfaces a locked-specific message instead of the session-expired notice." },
     { "code": "VALIDATION_FAILED", "status": 400, "when": "Missing signinIdentity or secret." }
   ]
 }

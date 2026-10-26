@@ -80,6 +80,60 @@ describe('shared Bearer API client', () => {
     expect(routerReplace).toHaveBeenCalledWith('/');
   });
 
+  it('preserves the locked code and wording on a locked-identity 401', async () => {
+    useSessionStore().signIn('tok-1');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse(401, {
+          code: 'IDENTITY_LOCKED',
+          message: 'Identity owner is locked after repeated failures.',
+          details: { signinIdentity: 'owner' },
+        }),
+      ),
+    );
+    try {
+      // Locked sign-ins still clear the store and route to sign-in
+      // (the single 401 path), but keep the locked envelope so the
+      // sign-in screens show a locked-specific message instead of
+      // the session-expired notice (Refs #319).
+      const failure = await apiFetch('/v1/admin/SignIn').then(
+        () => null,
+        (err: unknown) => err,
+      );
+      expect(failure).toMatchObject({
+        code: 'IDENTITY_LOCKED',
+        status: 401,
+        details: { signinIdentity: 'owner' },
+      });
+      expect((failure as Error).message).toBe('Identity owner is locked after repeated failures.');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    expect(useSessionStore().token).toBeNull();
+    expect(routerReplace).toHaveBeenCalledWith('/');
+  });
+
+  it('keeps the expired-session notice for a non-locked 401 envelope', async () => {
+    useSessionStore().signIn('tok-1');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse(401, { code: 'UNAUTHENTICATED', message: 'Unknown identity or wrong secret.' }),
+      ),
+    );
+    try {
+      const failure = await apiFetch('/v1/admin/SignIn').then(
+        () => null,
+        (err: unknown) => err,
+      );
+      expect(failure).toMatchObject({ code: 'UNAUTHENTICATED' });
+      expect((failure as Error).message).toBe('Session expired. Sign in again.');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('marks the desk offline on a network failure and queues zero writes', async () => {
     useSessionStore().signIn('tok-1');
     const fetchMock = vi.fn().mockRejectedValue(new TypeError('Load failed'));
