@@ -143,6 +143,7 @@ docs and plans, not gated specs.
 | A3 exploratory run log | `testing/phase-6-qa-a3-run-log.md` | active | `qa-lead` | exploratory pass per FE screen: time-boxed front-desk sessions per screen + scenario with outcomes, defects filed (Closes #269) |
 | A3 Vue exploratory run log | `testing/phase-6-qa-a3-vue-run-log.md` | active | `qa-lead` | exploratory pass per Vue SPA screen: time-boxed live sessions per screen + scenario with outcomes, defects filed (Closes #317) |
 | A4 full-CI regression run log | `testing/phase-6-qa-a4-run-log.md` | active | `qa-lead` | full CI regression record on the QA build: build SHA, CI run/job ids, per-stack verdicts, all-green (Closes #270) |
+| Browser E2E plan | `testing/browser-e2e-plan.md` | active | `qa-lead` | Playwright browser-E2E spec for the Vue desk flows: flows, browsers, CI placement, install/caching, pass criteria incl. MIME smoke (Closes #334) |
 
 ## DevOps / Operations / Release
 
