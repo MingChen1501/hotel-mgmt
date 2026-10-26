@@ -68,7 +68,7 @@ paths:
                     - manager
                     - front-desk
         '401':
-          description: 'UNAUTHENTICATED: Unknown identity, wrong secret, or identity locked after 5 consecutive failures.'
+          description: 'UNAUTHENTICATED: Unknown identity or wrong secret. IDENTITY_LOCKED: Identity locked after 5 consecutive failures.'
           content:
             application/json:
               schema:
