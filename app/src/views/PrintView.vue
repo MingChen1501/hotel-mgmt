@@ -2,10 +2,10 @@
   <main data-testid="print-view">
     <h1>{{ t('desk.print.title', {}, 'Hotel Management — Desk Print') }}</h1>
     <p>
-      <a href="/">{{ t('desk.print.back', {}, 'Back to the desk entry') }}</a> ·
-      <a href="/desk.html">{{ t('desk.print.today_link', {}, "Today's arrivals, in-house, and departures") }}</a> ·
-      <a href="/folio.html">{{ t('desk.print.folio_link', {}, 'Stay folio (charges and payments)') }}</a> ·
-      <a href="/book.html">{{ t('desk.print.book_link', {}, 'Desk booking (price quote and confirm)') }}</a>
+      <a href="/app/">{{ t('desk.print.back', {}, 'Back to the desk entry') }}</a> ·
+      <a href="/app/">{{ t('desk.print.today_link', {}, "Today's arrivals, in-house, and departures") }}</a> ·
+      <a href="/app/folio">{{ t('desk.print.folio_link', {}, 'Stay folio (charges and payments)') }}</a> ·
+      <a href="/app/book">{{ t('desk.print.book_link', {}, 'Desk booking (price quote and confirm)') }}</a>
     </p>
     <noscript><p>This page needs JavaScript to sign in and print invoices, receipts, and confirmations.</p></noscript>
 

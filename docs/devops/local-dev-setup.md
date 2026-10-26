@@ -123,9 +123,9 @@ only to inspect or debug the lab stack step by step.
   15-minute idle expiry (`services/admin/src/server.ts`,
   `services/admin/src/pgstore.ts` sign-in path). Every other admin
   operation requires `Authorization: Bearer <token>`.
-- **First sign-in in the desk UI.** Open `http://127.0.0.1/admin.html`,
+- **First sign-in in the desk UI.** Open `http://127.0.0.1/app/admin`,
   enter the sign-in identity and boot secret, and confirm the desk lands
-  signed in (`frontend/admin.html` sign-in section).
+  signed in (admin console sign-in section).
 
 ## 6. Lockout and unlock
 
@@ -139,7 +139,7 @@ only to inspect or debug the lab stack step by step.
   (`docs/operations/runbook.md`, section 6).
 - **Unlock path 1 — owner/manager in the system.** Another owner or
   manager signs in and calls `UnlockIdentity` (or clicks Unlock in
-  `admin.html`, which lists locked identities with an Unlock button).
+  the admin console at `/app/admin`, which lists locked identities with an Unlock button).
   Refuses with `not_locked` when the identity is not actually locked.
 - **Unlock path 2 — wait it out.** After 15 minutes the lock expires and
   the correct secret signs in again (successful sign-in clears
@@ -221,6 +221,6 @@ A new developer following sections 1–9 reaches, with no outside help:
 
 1. `script/preflight.sh` passes (or its failures name the exact secret/placeholder to fix).
 2. The stack answers on `http://127.0.0.1/v1/<module>/healthz` for all eight modules.
-3. Owner sign-in succeeds in `admin.html` and `POST /v1/admin/SignIn` returns a token.
+3. Owner sign-in succeeds at `/app/admin` and `POST /v1/admin/SignIn` returns a token.
 4. An authenticated call (e.g. `GetHotelConfig`) and one desk-loop write succeed.
 5. `psql` through `compose exec db` reads `admin.users` and module tables.

@@ -89,6 +89,15 @@ function stubHappyPath(fetchMock: ReturnType<typeof vi.fn>): void {
     if (url === '/v1/admin/SignOut') {
       return Promise.resolve(jsonResponse({ ok: true }));
     }
+    if (url === '/backup-report.json') {
+      return Promise.resolve(
+        jsonResponse({
+          outcome: 'success',
+          line: 'Backup succeeded at 02:14 on 22 Oct',
+          support: '',
+        }),
+      );
+    }
     throw new Error(`unexpected call ${url}`);
   });
 }
@@ -139,8 +148,9 @@ describe('desk view', () => {
 
     // Bearer session handling: the shared client attaches the token
     // to every call made after sign-in (the SignIn call itself
-    // carries none — no token exists yet at that point).
-    const calls = fetchMock.mock.calls;
+    // carries none — no token exists yet at that point). The backup
+    // feed loads on mount over plain fetch, so it is excluded here.
+    const calls = fetchMock.mock.calls.filter((call) => call[0] !== '/backup-report.json');
     expect(calls.length).toBeGreaterThan(1);
     expect((calls[0]?.[1]?.headers as Headers).get('Authorization')).toBeNull();
     for (const call of calls.slice(1)) {
@@ -337,5 +347,68 @@ describe('desk view', () => {
       expect(wrapper.find('[data-testid="desk-sheet-line"]').text()).toContain('open balances');
     });
     expect(fetchMock.mock.calls.some((call) => call[0] === '/v1/admin/SignIn')).toBe(false);
+  });
+
+  it('shows the backup success line from the served report feed', async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url === '/backup-report.json') {
+        return Promise.resolve(
+          jsonResponse({ outcome: 'success', line: 'Backup succeeded at 02:14 on 22 Oct' }),
+        );
+      }
+      throw new Error(`unexpected call ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountDesk();
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="desk-backup-report"]').text()).toContain(
+        'Backup succeeded at 02:14 on 22 Oct',
+      );
+    });
+    // No failure, so no support wording (runbook section 1: only
+    // failures point at support).
+    expect(wrapper.find('[data-testid="desk-backup-support"]').exists()).toBe(false);
+  });
+
+  it('shows the failure line plus the support wording when the backup failed', async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url === '/backup-report.json') {
+        return Promise.resolve(
+          jsonResponse({
+            outcome: 'failure',
+            line: 'Backup failed at 02:14 — storage not reachable',
+            support: 'Note this message word for word and call support the same day (runbook section 6).',
+          }),
+        );
+      }
+      throw new Error(`unexpected call ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountDesk();
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="desk-backup-report"]').text()).toContain(
+        'Backup failed at 02:14',
+      );
+    });
+    expect(wrapper.find('[data-testid="desk-backup-support"]').text()).toContain('call support');
+  });
+
+  it('treats a missing backup report as failed with the support line', async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url === '/backup-report.json') {
+        return Promise.resolve(new Response('not found', { status: 404 }));
+      }
+      throw new Error(`unexpected call ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountDesk();
+    // A missing feed counts as failed (runbook section 1,
+    // NFR-BKP-2): the missing line plus the support pointer.
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="desk-backup-report"]').text()).toContain(
+        'No recent backup report',
+      );
+    });
+    expect(wrapper.find('[data-testid="desk-backup-support"]').text()).toContain('call support');
   });
 });

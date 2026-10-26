@@ -407,9 +407,9 @@ contracts/             shared contract library (source of truth):
   openapi.yaml         curated desk-loop OpenAPI subset (14 ops transcribed from `http/` shapes; byte-identical mirror at `frontend/docs/openapi.yaml`, checked by `script/openapi-route-check.sh`)
   errors/              the shared error envelope + code catalogue
   config-schema/       not landed as a `contracts/` tree — the versioned per-hotel configuration schema (§3.1) lives as-built at `deploy/config/schema.json`
-  messages/            no `contracts/messages/` tree — the catalogue lives as-built as per-service catalogues (`services/*/messages*`, `frontend/messages.js`; NFR-I18N-1, no behaviour in wording)
-frontend/              static SPA (framework free choice; served by Nginx, no SSR runtime)
-app/                   Vue 3 + Vite CSR shell (ADR-0003, accepted 2026-10-25): Vite `base '/app/'`, static `dist/` into the Nginx image, `location /app/` + `try_files` fallback to `/app/index.html`; scaffold design in §11 (Refs #291)
+  messages/            no `contracts/messages/` tree — the catalogue lives as-built as per-service catalogues (`services/*/messages*`; NFR-I18N-1, no behaviour in wording)
+frontend/              remainder static dir: `/docs` Swagger UI + byte-identical `docs/openapi.yaml` mirror (served by Nginx, no SSR runtime)
+app/                   Vue 3 + Vite CSR desk UI (ADR-0003, accepted 2026-10-25; legacy static pages decommissioned in #299): Vite `base '/app/'`, static `dist/` into the Nginx image, `location /app/` + `try_files` fallback to `/app/index.html`; old `.html` paths return 301 redirects to the matching `/app/` routes; scaffold design in §11 (Refs #291)
 deploy/ansible/        offline packaging playbooks (release-manager owned; referenced, not added here)
 ```
 
@@ -502,14 +502,14 @@ Shared-client contract (`src/api/client.ts` + `src/stores/session.ts`):
   `docs/technical/security-threat-model.md` §4).
 - Any `401` / `UNAUTHENTICATED` response clears the store token
   and routes to sign-in — the single 401 path, replacing the
-  per-page copy-pasted blocks (`frontend/desk.html:83`,
-  `book.html:112`, `frontend/admin.html:69`).
+  former per-page copy-pasted blocks of the decommissioned
+  static pages (#299).
 - Connectivity state is owned by the client: `online`/`offline`
   events plus failed-fetch detection drive an offline banner with
   safe manual retry. Explicitly NO write queueing: desk actions
   are synchronous authoritative ops (charge, payment, check-in)
   and queueing risks double-charge; disconnect means clearly
-  blocked, same as today's static pages.
+  blocked, as with the former static pages.
 
 CI contract: one new job (Node 22 + `npm ci` + build + test,
 matching the existing Node matrix) builds `app/`; the
@@ -561,8 +561,8 @@ flowchart TD
 Edge trace:
 
 - P–R: rollback is proxy-only (remove the redirect / redeploy
-  the previous Nginx image); old static files at `/` remain in
-  place, so no data migration either way.
+  the previous Nginx image); the static pages were already
+  removed in #299, so no data migration either way.
 - S–T: asset miss means the image packed a stale `dist/`;
   rebuild, never hand-edit.
 - U–V: history-mode unknown paths still boot the placeholder in
@@ -591,8 +591,8 @@ Edge trace:
 - D–E: happy path returns parsed data; the placeholder needs no
   payload shape in this slice.
 - D–F–G: single 401 path — clear + sign-in redirect, replacing
-  the five per-page handlers (`frontend/desk.html:83`,
-  `book.html:112`, `frontend/admin.html:69`); a revoked or
+  the five per-page handlers of the decommissioned static pages
+  (#299); a revoked or
   expired token takes the same path (revocation re-checked per
   LLD §0).
 - D–H: fetch rejection (LAN disconnect) is NOT treated as
@@ -635,7 +635,7 @@ Edge trace:
 
 Failure/rollback: none compensating — blocked actions mutate
 nothing, so there is nothing to roll back; the previous Nginx
-image (without `/app/`) restores the legacy pages instantly.
+image (without `/app/`) predates the desk UI entirely.
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-137

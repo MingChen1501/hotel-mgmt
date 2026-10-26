@@ -74,10 +74,15 @@ the coverage script fails the build otherwise:
 - Spring (`services/billing`): `src/main/resources/messages/en.json`
   (classpath resource), overridable at runtime with
   `MESSAGE_CATALOGUE_PATH`.
-- Browser (`frontend/`): `frontend/messages/en.json` (fetched by
-  `frontend/messages.js`), with the English text kept inline as the
-  no-JS fallback. Static elements carry `data-msg="key"`; inline
-  scripts resolve through `DeskMessages.msg(key, params, fallback)`.
+- Browser (`app/`, Vue 3 + Vite CSR per ADR-0003): the app imports
+  the canonical `messages/en.json` as a static module through
+  `app/src/i18n/` (bundled into `dist/` at build time, so the desk
+  UI works offline with no CDN and no runtime catalogue fetch).
+  Component strings resolve through the `t(key, params, fallback)`
+  wrapper, which keeps the former `DeskMessages.msg(key, params,
+  fallback)` semantics from the decommissioned
+  `frontend/messages.js` (Refs #299). The English fallback text
+  stays inline at each call site as the no-key fallback.
 - Shell (`script/`): no embedded copy — `script/messages.sh`
   reads the canonical `messages/en.json` at runtime (repo-relative),
   with the inline fallback printed when the catalogue is unreadable,
