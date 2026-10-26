@@ -35,7 +35,7 @@ change in `docs/README.md`).
 |---|---|---|
 | **T0 docs-only** | prose/docs/process only, no behaviour change | no gate; `docs/README.md` statuses updated in the same PR when a doc flips stub <-> active |
 | **T1 low risk, no behaviour change** | typo, test-only, dependency bump | no new spec; `docs/README.md` unaffected |
-| **T2 behaviour change** | user-visible feature | acceptance criteria + FR/NFR delta + test traceability + per-flow implementation diagram (happy path + failure/rollback path), written before the implementation PR opens |
+| **T2 behaviour change** | user-visible feature | acceptance criteria + FR/NFR delta + test traceability + per-flow implementation diagram (happy path + failure/rollback path) + UI contract section for any reader-visible UI change (shape and ownership: UI contract section below), written before the implementation PR opens |
 | **T3 architectural** | new subsystem, data-model change (e.g. a new data entity), workflow change, subsystem removal | T2 set + ADR + HLD update (including the per-flow diagrams for new/changed flows) before implementation; ADR status must move `proposed -> accepted` (owner) before code merges |
 | **T4 release-affecting** | workflow/permissions/deployment change | applicable T0-T3 set + deployment/env/runbook deltas + rollback note in the same PR |
 
@@ -59,6 +59,20 @@ notes). `dev-peer-review`/`content-review` check diagram staleness as
 part of the verdict — a PR whose behaviour drifted from its diagram gets
 `CHANGES_REQUESTED` with `file:line` gaps, same as any stale spec.
 
+## UI contract (T2 reader-visible UI changes)
+
+A T2 change with reader-visible UI MUST include a UI contract section
+in the minimum spec set: layout/shell and navigation scope, component
+mapping per pattern, design-token scope, states in plain words
+(loading/empty/error/refusal), and print rules where applicable.
+Owner: `product-owner` as part of acceptance criteria, with `architect`
+input on technical layout where needed. The expected shape is a
+contract covering design tokens, the layout shell (nav + content area +
+sign-in gate where applicable), per-pattern component mapping,
+plain-word state rules, and preserved print rules. A T2 UI change
+with no UI contract section fails the gate the same as missing
+acceptance criteria.
+
 ## Gate procedure
 
 1. The orchestrator spawns the owning spec role(s) for the tier; they
@@ -69,7 +83,8 @@ part of the verdict — a PR whose behaviour drifted from its diagram gets
    exist (`file:line`). A spec that promises a document or a guard
    that does not exist fails the gate the same as a missing spec.
 3. The orchestrator spawns `spec-reviewer`, which checks that the
-   required specs exist, are `active`, and match the change, then posts
+   required specs exist, are `active`, and match the change — including
+   the UI contract section for a T2 reader-visible UI change — then posts
    one COMMENT verdict (`SPEC-GATE PASS` or `SPEC-GATE FAIL` with
    `file:line` gaps, verdict word first — the merge gate counts only
    the leading headline token) on the issue/PR — same mechanics as the
