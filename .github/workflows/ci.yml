@@ -32,6 +32,7 @@ jobs:
       migrate: ${{ steps.gates.outputs.migrate }}
       e2e: ${{ steps.gates.outputs.e2e }}
       shell: ${{ steps.gates.outputs.shell }}
+      browser-e2e: ${{ steps.gates.outputs.browser-e2e }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -132,6 +133,10 @@ jobs:
           # nginx block and compose mount, the legacy pages it must
           # not disturb, and its own served guard.
           shell = full or changed('APP_SHELL')
+          # Browser E2E (issue #337): the Playwright Chromium suite
+          # over /app/. Contract drift must break the screens loudly,
+          # so any services change runs it too.
+          browser_e2e = (full or changed('APP_SHELL') or services_changed)
 
           def boolean(name, value):
               with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
@@ -145,11 +150,12 @@ jobs:
           boolean('migrate', migrate)
           boolean('e2e', e2e)
           boolean('shell', shell)
+          boolean('browser-e2e', browser_e2e)
 
           print(f'event={e["EVENT_NAME"]} full={full}')
           print(f'go={go} node={node} billing={billing} '
                 f'contracts={contracts} migrate={migrate} e2e={e2e} '
-                f'shell={shell}')
+                f'shell={shell} browser_e2e={browser_e2e}')
           EOF
 
   ci:
@@ -459,6 +465,84 @@ jobs:
         run: |
           ls backup-staging/ || true
           cat backup-staging/*.report.json || true
+
+      - name: Tear down the lab
+        if: always()
+        run: docker compose -f deploy/compose.yaml down -v
+
+  browser-e2e:
+    needs: changes
+    if: needs.changes.outputs.browser-e2e == 'true'
+    # Playwright browser E2E for issue #337 (plan
+    # docs/testing/browser-e2e-plan.md): Chromium over the served Vue
+    # SPA (/app/*), proving what the API loop cannot — sign-in,
+    # booking, moves, charges, checkout, and print render and refuse
+    # loudly on screen. Same installer bring-up as e2e-single-host so
+    # the stack under test is identical; bring-up is re-run in-job
+    # (no cross-job stack handoff) and the lab is torn down after.
+    # Browsers install in a dedicated pre-baked step (cached on the
+    # lockfile hash), never lazily at test time; the runner host also
+    # runs the compose lab, so the default runner image is used
+    # instead of the Playwright image (no Docker-in-Docker). The
+    # per-sale secrets below are throwaway CI-only values
+    # (non-default so the fail-closed gates pass).
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      DB_PASSWORD: e2e-ci-db-secret-7q2x
+      ADMIN_BOOT_SECRET: e2e-ci-owner-boot-9m4z
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare the per-hotel configuration set
+        run: |
+          set -euo pipefail
+          cp deploy/config/hotel.example.json deploy/config/hotel.json
+          sed -i 's/EXAMPLE-001/E2E-CI-001/' deploy/config/hotel.json
+          grep -q "E2E-CI-001" deploy/config/hotel.json
+
+      - name: One-hotel installer end to end (issue #153)
+        # Same stack as e2e-single-host: pre-flight, desk-loop proof
+        # with backup and restore drill, stack left up for the suite.
+        run: script/install.sh --config deploy/config/hotel.json --staging-dir ./backup-staging
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install app dependencies
+        working-directory: app
+        run: npm ci
+
+      - name: Build the desk shell
+        working-directory: app
+        run: npm run build
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('app/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+
+      - name: Install Playwright browsers (pre-baked, never at test time)
+        working-directory: app
+        run: npx playwright install --with-deps chromium
+
+      - name: Playwright browser E2E (Chromium, issue #337)
+        working-directory: app
+        run: npx playwright test --project=chromium
+
+      - name: Upload the HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: app/playwright-report/
+          if-no-files-found: warn
 
       - name: Tear down the lab
         if: always()

@@ -1,6 +1,8 @@
 .ao-orchestrator
 node_modules/
 dist/
+playwright-report/
+test-results/
 target/
 .env
 # Per-sale installer state (deploy/README.md): the filled-in hotel
