@@ -33,6 +33,35 @@
       class="shell-column"
     >
       <h1>{{ t('desk.shell.brand', {}, 'Hotel Management') }}</h1>
+      <!-- Locale switcher on the gate too (Refs #339): staff pick VI
+        before signing in so the whole loop, gate included, runs
+        without English. -->
+      <div
+        class="shell-locale"
+        data-testid="locale-switcher"
+        role="group"
+        :aria-label="t('desk.shell.language', {}, 'Language')"
+      >
+        <span class="shell-locale-label">{{ t('desk.shell.language', {}, 'Language') }}:</span>
+        <Button
+          type="button"
+          :label="t('desk.shell.locale_en', {}, 'English')"
+          :severity="localeTag === 'en' ? undefined : 'secondary'"
+          size="small"
+          :aria-pressed="localeTag === 'en'"
+          data-testid="locale-en"
+          @click="onLocale('en')"
+        />
+        <Button
+          type="button"
+          :label="t('desk.shell.locale_vi', {}, 'Tiếng Việt')"
+          :severity="localeTag === 'vi' ? undefined : 'secondary'"
+          size="small"
+          :aria-pressed="localeTag === 'vi'"
+          data-testid="locale-vi"
+          @click="onLocale('vi')"
+        />
+      </div>
       <p>{{ t('desk.shell.signin_intro', {}, 'Sign in to work the desk.') }}</p>
       <form
         data-testid="shell-signin-form"
@@ -117,6 +146,34 @@
         <span class="shell-user">
           <span>{{ t('desk.admin.signed_in_as', {}, 'Signed in as ') }}</span><strong data-testid="shell-user">{{ displayName }}</strong>
         </span>
+        <!-- Locale switcher (Refs #339): EN/VI persisted in
+          localStorage (locale only, never auth data); default stays
+          EN so current behaviour is unchanged until switched. -->
+        <div
+          class="shell-locale"
+          data-testid="locale-switcher"
+          role="group"
+          :aria-label="t('desk.shell.language', {}, 'Language')"
+        >
+          <Button
+            type="button"
+            :label="t('desk.shell.locale_en', {}, 'English')"
+            :severity="localeTag === 'en' ? undefined : 'secondary'"
+            size="small"
+            :aria-pressed="localeTag === 'en'"
+            data-testid="locale-en"
+            @click="onLocale('en')"
+          />
+          <Button
+            type="button"
+            :label="t('desk.shell.locale_vi', {}, 'Tiếng Việt')"
+            :severity="localeTag === 'vi' ? undefined : 'secondary'"
+            size="small"
+            :aria-pressed="localeTag === 'vi'"
+            data-testid="locale-vi"
+            @click="onLocale('vi')"
+          />
+        </div>
         <Button
           type="button"
           :label="t('desk.admin.signout', {}, 'Sign out')"
@@ -144,7 +201,7 @@ import Message from 'primevue/message';
 import Password from 'primevue/password';
 import { apiFetch, connectivity, retryLastRequest } from './api/client';
 import type { ApiError } from './api/client';
-import { t } from './i18n';
+import { localeTag, setLocale, t } from './i18n';
 import { useSessionStore } from './stores/session';
 
 interface NavItem {
@@ -238,14 +295,22 @@ export default defineComponent({
       session.signOut();
     }
 
+    // Locale switch (Refs #339): persists the locale only — auth and
+    // session data stay in sessionStorage per the session store.
+    function onLocale(tag: string): void {
+      setLocale(tag);
+    }
+
     return {
       t,
+      localeTag,
       session,
       route,
       navItems: NAV_ITEMS,
       displayName,
       retryMessage,
       onRetry,
+      onLocale,
       identity,
       secret,
       signingIn,
@@ -396,6 +461,19 @@ export default defineComponent({
 
   #shell .p-message {
     margin: 8px 0;
+  }
+
+  /* Locale switcher (Refs #339): compact EN/VI pair at the end
+     of the header row, before sign-out. */
+  #shell .shell-locale {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  #shell .shell-locale-label {
+    color: #6B7280;
+    margin-right: 2px;
   }
 
   /* Sign-in gate form: narrow, one field per line. */
