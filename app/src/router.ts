@@ -3,16 +3,17 @@
 //
 // The desk screen (Refs #293) is the first real screen migration:
 // `/` renders the desk dashboard SFC. The book screen (Refs #294)
-// follows at `/book`, the stay screen (Refs #295) at `/stay`, and
-// the folio screen (Refs #296) at `/folio`. Every other path still
-// falls through to the placeholder (LLD §11.1 edge U–V); the print
-// route lands in a follow-up issue.
+// follows at `/book`, the stay screen (Refs #295) at `/stay`, the
+// folio screen (Refs #296) at `/folio`, and the print screen
+// (Refs #297) at `/print`. Every other path still falls through to
+// the placeholder (LLD §11.1 edge U–V).
 import { createRouter, createWebHistory } from 'vue-router';
 import type { Router } from 'vue-router';
 import BookView from './views/BookView.vue';
 import DeskView from './views/DeskView.vue';
 import FolioView from './views/FolioView.vue';
 import PlaceholderView from './views/Placeholder.vue';
+import PrintView from './views/PrintView.vue';
 import StayView from './views/StayView.vue';
 
 export function createAppRouter(): Router {
@@ -38,6 +39,11 @@ export function createAppRouter(): Router {
         path: '/folio',
         name: 'folio',
         component: FolioView,
+      },
+      {
+        path: '/print',
+        name: 'print',
+        component: PrintView,
       },
       {
         path: '/:pathMatch(.*)*',

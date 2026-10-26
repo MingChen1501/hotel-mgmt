@@ -17,8 +17,9 @@
 #   `/index.html` — owner-mandated correction) plus its own
 #   root/alias for real file resolution, and every sampled
 #   non-asset /app/* path falls back to it.
-# - Print namespace (FR-SHL-3): /app/print/... returns the shell
-#   entry with no print document markup.
+# - Print route (FR-SHL-3): /app/print/... returns the shell
+#   entry (the print screen renders client-side); the static entry
+#   carries no print document markup.
 # - Legacy preservation (FR-SHL-4 served half): every legacy page at
 #   `/` and the `/docs` Swagger mirror still serve pre-slice
 #   content. The mirror-byte half delegates to
@@ -205,7 +206,7 @@ else
   fail_here "no hashed asset found under app/dist/assets/"
 fi
 
-echo "shell-served-check: print namespace reserved (FR-SHL-3)..."
+echo "shell-served-check: print route served (FR-SHL-3)..."
 code="$(get /app/print/receipt-1)"
 if [[ "$code" == "200" ]] && cmp -s "$BODY" "$DIST/index.html"; then
   pass "GET /app/print/receipt-1 -> 200, shell entry bytes"
@@ -213,9 +214,9 @@ else
   fail_here "GET /app/print/receipt-1 -> $code, not the shell entry"
 fi
 if grep -q 'print-document' "$BODY"; then
-  fail_here "reserved /app/print/... response contains print-document markup"
+  fail_here "/app/print/... response contains print-document markup"
 else
-  pass "reserved /app/print/... response renders no print document"
+  pass "/app/print/... response renders no static print document (client-rendered)"
 fi
 
 echo "shell-served-check: legacy pages + /docs intact (FR-SHL-4 served half)..."
