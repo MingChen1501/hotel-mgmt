@@ -433,6 +433,12 @@ export default defineComponent({
     const guestName = ref('');
     const guestId = ref('');
     const guestStatus = ref('');
+    // Guest snapshot for the booking confirm: the reservation
+    // contract requires the hotel-mandatory guest fields
+    // (FR-CUS-1, e.g. fullName) alongside the guestId, so the
+    // view remembers the fullName returned by find/register
+    // together with the guestId it belongs to.
+    const resolvedGuest = ref<{ guestId: string; fullName: string } | null>(null);
     const arrivalDate = ref('');
     const departureDate = ref('');
     const roomTypeId = ref('');
@@ -524,6 +530,7 @@ export default defineComponent({
           { method: 'POST', body: JSON.stringify({ fullName: name }) },
         );
         guestId.value = guest.guestId;
+        resolvedGuest.value = { guestId: guest.guestId, fullName: guest.fullName };
         guestStatus.value = t(
           'desk.book.guest_found',
           { name: guest.fullName, stays: guest.pastStayCount },
@@ -562,6 +569,7 @@ export default defineComponent({
           { method: 'POST', body: JSON.stringify({ fullName: name, actor: displayName.value }) },
         );
         guestId.value = guest.guestId;
+        resolvedGuest.value = { guestId: guest.guestId, fullName: guest.fullName };
         guestStatus.value = t(
           'desk.book.guest_new',
           { name: guest.fullName },
@@ -683,11 +691,44 @@ export default defineComponent({
       }
       confirming.value = true;
       try {
+        // The reservation contract requires the hotel-mandatory
+        // guest fields (FR-CUS-1): reuse the fullName remembered
+        // by find/register when it belongs to the entered guest
+        // ID, otherwise resolve it by guest ID first so a pasted
+        // ID still confirms with a complete snapshot.
+        let resolvedFullName = '';
+        if (resolvedGuest.value !== null && resolvedGuest.value.guestId === resolvedGuestId) {
+          resolvedFullName = resolvedGuest.value.fullName;
+        } else {
+          try {
+            const named = await apiFetch<{ fullName: string }>('/v1/guests/IdentifyGuest', {
+              method: 'POST',
+              body: JSON.stringify({ guestId: resolvedGuestId }),
+            });
+            resolvedFullName = named.fullName;
+            resolvedGuest.value = { guestId: resolvedGuestId, fullName: named.fullName };
+          } catch (lookupErr) {
+            if (isSignedOut(lookupErr)) {
+              refuseSession();
+              return;
+            }
+            if (errorCode(lookupErr) === 'NOT_FOUND') {
+              confirmError.value = t(
+                'desk.book.guest_notfound',
+                {},
+                'No guest with that name. Check the name, enter the guest ID, or register a walk-in guest.',
+              );
+              return;
+            }
+            confirmError.value = errorMessage(lookupErr);
+            return;
+          }
+        }
         const bookingBody: Record<string, unknown> = {
           roomTypeId: activeQuote.roomTypeId,
           arrivalDate: activeQuote.arrivalDate,
           departureDate: activeQuote.departureDate,
-          guest: { guestId: resolvedGuestId },
+          guest: { guestId: resolvedGuestId, fullName: resolvedFullName },
           sellableUnits: 1,
           priceBasis: {
             totalMinor: activeQuote.totalMinor,
@@ -710,16 +751,10 @@ export default defineComponent({
           method: 'POST',
           body: JSON.stringify({ reservationRef: created.reservationRef }),
         });
-        let readBackName = resolvedGuestId;
-        try {
-          const named = await apiFetch<{ fullName: string }>('/v1/guests/IdentifyGuest', {
-            method: 'POST',
-            body: JSON.stringify({ guestId: resolvedGuestId }),
-          });
-          readBackName = named.fullName;
-        } catch {
-          // The read-back still names the guest ID when lookup fails.
-        }
+        // The confirm already resolved the snapshot name from the
+        // server, so the read-back reuses it (guest ID fallback
+        // only when the lookup returned no name).
+        const readBackName = resolvedFullName !== '' ? resolvedFullName : resolvedGuestId;
         const quotedTotal = readBack.priceBasis?.totalMinor ?? created.quotedTotal ?? 0;
         booking.value = {
           reference: t(
@@ -829,6 +864,7 @@ export default defineComponent({
     function onNewBooking(): void {
       guestName.value = '';
       guestId.value = '';
+      resolvedGuest.value = null;
       arrivalDate.value = '';
       departureDate.value = '';
       roomTypeId.value = '';
