@@ -146,7 +146,7 @@ services:
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ../frontend:/usr/share/nginx/html:ro
-      # Desk UI migration shell (Refs #291): the Vite static build
+      # Desk UI (Refs #291, #299): the Vite static build
       # (`app/dist/`, built by `npm run build` / the CI app-build
       # job, or by script/e2e-desk-loop.sh before compose up) is
       # served under /app/ via the matching `alias` in nginx.conf.

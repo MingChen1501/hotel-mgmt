@@ -294,9 +294,10 @@ jobs:
         run: npm test
 
   app-build:
-    # Migration shell (issue #291, NFR-SHL-1): Node 22 + npm ci +
-    # build + lint + test over app/, then the served-shell guard
-    # (placeholder, fallback, print namespace, legacy pages, mirror).
+    # Desk UI (issue #291, NFR-SHL-1; legacy pages decommissioned in
+    # #299): Node 22 + npm ci + build + lint + test over app/, then
+    # the served-shell guard (placeholder, fallback, print
+    # namespace, cutover redirects, mirror).
     needs: changes
     if: needs.changes.outputs.shell == 'true'
     runs-on: ubuntu-latest
@@ -326,7 +327,7 @@ jobs:
         working-directory: app
         run: npm test
 
-      - name: Served-shell guard (placeholder, fallback, legacy, mirror)
+      - name: Served-shell guard (placeholder, fallback, redirects, mirror)
         run: script/shell-served-check.sh
 
   billing-build:

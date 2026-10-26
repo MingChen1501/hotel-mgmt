@@ -2,9 +2,9 @@
   <main data-testid="stay-view">
     <h1>{{ t('desk.stay.title', {}, 'Hotel Management — Desk Stay') }}</h1>
     <p>
-      <a href="/">{{ t('desk.stay.back', {}, 'Back to the desk entry') }}</a> ·
-      <a href="/desk.html">{{ t('desk.stay.today_link', {}, "Today's arrivals, in-house, and departures") }}</a> ·
-      <a href="/folio.html">{{ t('desk.entry.folio_link', {}, 'Stay folio (charges and payments)') }}</a>
+      <a href="/app/">{{ t('desk.stay.back', {}, 'Back to the desk entry') }}</a> ·
+      <a href="/app/">{{ t('desk.stay.today_link', {}, "Today's arrivals, in-house, and departures") }}</a> ·
+      <a href="/app/folio">{{ t('desk.entry.folio_link', {}, 'Stay folio (charges and payments)') }}</a>
     </p>
     <noscript><p>This page needs JavaScript to sign in and run the stay lifecycle.</p></noscript>
 

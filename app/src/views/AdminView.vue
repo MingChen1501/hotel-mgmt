@@ -3,7 +3,7 @@
     <h1>{{ t('desk.admin.title', {}, 'Hotel Management — Admin Console') }}</h1>
     <p>
       <a
-        href="/"
+        href="/app/"
         data-testid="admin-back"
       >{{ t('desk.admin.back', {}, 'Back to the desk entry') }}</a>
     </p>

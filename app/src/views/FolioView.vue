@@ -2,10 +2,10 @@
   <main data-testid="folio-view">
     <h1>{{ t('desk.folio.title', {}, 'Hotel Management — Desk Folio') }}</h1>
     <p>
-      <a href="/">{{ t('desk.folio.back', {}, 'Back to the desk entry') }}</a> ·
-      <a href="/desk.html">{{ t('desk.folio.today_link', {}, "Today's arrivals, in-house, and departures") }}</a> ·
-      <a href="/stay.html">{{ t('desk.folio.stay_link', {}, 'Stay check-in, move, and check-out') }}</a> ·
-      <a href="/print.html">{{ t('desk.entry.print_link', {}, 'Print invoice, receipt, or confirmation') }}</a>
+      <a href="/app/">{{ t('desk.folio.back', {}, 'Back to the desk entry') }}</a> ·
+      <a href="/app/">{{ t('desk.folio.today_link', {}, "Today's arrivals, in-house, and departures") }}</a> ·
+      <a href="/app/stay">{{ t('desk.folio.stay_link', {}, 'Stay check-in, move, and check-out') }}</a> ·
+      <a href="/app/print">{{ t('desk.entry.print_link', {}, 'Print invoice, receipt, or confirmation') }}</a>
     </p>
     <noscript><p>This page needs JavaScript to sign in and open a folio.</p></noscript>
 

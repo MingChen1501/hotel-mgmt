@@ -86,19 +86,19 @@
         chdir: "{{ bundle_dir }}"
       changed_when: true
 
-    # Desk UI migration shell (Refs #291): the proxy bind-mounts
+    # Desk UI (Refs #291, #299): the proxy bind-mounts
     # app/dist/ at /srv/app-dist (never nested under the :ro
     # frontend mount), and dist/ is gitignored, so the build must
     # exist before the proxy starts. A bundle copied from a checkout
     # with a built dist already carries it (filesystem copy); only
     # build on the target when it is missing.
-    - name: Check for a built desk UI migration shell
+    - name: Check for a built desk UI
       ansible.builtin.stat:
         path: "{{ bundle_dir }}/app/dist/index.html"
       register: app_dist
       changed_when: false
 
-    - name: Build the desk UI migration shell when missing
+    - name: Build the desk UI when missing
       ansible.builtin.command:
         cmd: npm ci && npm run build
         chdir: "{{ bundle_dir }}/app"

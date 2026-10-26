@@ -22,18 +22,20 @@
 #   carries no print document markup.
 # - Admin route (Refs #298): /app/admin returns the shell entry
 #   (the console renders client-side).
-# - Legacy preservation (FR-SHL-4 served half): every legacy page at
-#   `/` and the `/docs` Swagger mirror still serve pre-slice
-#   content. The mirror-byte half delegates to
-#   `script/openapi-route-check.sh`.
+# - Cutover redirects (FR-SHL-4 served half, Refs #299): every
+#   decommissioned legacy path at `/` returns a permanent redirect
+#   to its matching `/app/` route, and the `/docs` Swagger mirror
+#   still serves pre-slice content. The mirror-byte half delegates
+#   to `script/openapi-route-check.sh`.
 #
 # Serving method: docker is not guaranteed where this runs, so the
-# script serves a staged root (legacy `frontend/` + built
-# `app/dist/` at `/app/`) through a small Python server that mirrors
-# the exact nginx block above (`alias /srv/app-dist/;` plus
-# `try_files $uri $uri/ /app/index.html;` inside `location /app/`,
-# legacy `location /` with `index` otherwise). The staged layout
-# mirrors the alias mapping (dist staged at `$STAGE/app`, served for
+# script serves a staged root (remainder `frontend/` — `/docs` only —
+# plus built `app/dist/` at `/app/`) through a small Python server
+# that mirrors the exact nginx blocks above (`return 301` for the
+# decommissioned paths, `alias /srv/app-dist/;` plus `try_files
+# $uri $uri/ /app/index.html;` inside `location /app/`, legacy
+# `location /` with `index` otherwise). The staged layout mirrors
+# the alias mapping (dist staged at `$STAGE/app`, served for
 # `/app/*`), while nginx config *syntax* stays covered by the e2e
 # `nginx -t` step, which runs on every deploy change.
 #
@@ -105,7 +107,7 @@ STAGE="$(mktemp -d)"
 cp -r "$ROOT/frontend/." "$STAGE/"
 mkdir -p "$STAGE/app"
 cp -r "$DIST/." "$STAGE/app/"
-echo "  staged legacy frontend/ + app/dist/ at /app/ under $STAGE"
+echo "  staged remainder frontend/ + app/dist/ at /app/ under $STAGE"
 
 cat > "$STAGE/tryfiles-server.py" <<'EOF'
 import http.server, os, sys, urllib.parse
@@ -118,6 +120,17 @@ MIME = {'.html': 'text/html', '.js': 'application/javascript',
         '.ico': 'image/x-icon', '.svg': 'image/svg+xml'}
 
 class Handler(http.server.BaseHTTPRequestHandler):
+    # Decommissioned legacy paths (Refs #299): exact-match 301s to
+    # the matching SPA route, mirroring the nginx `return 301` block.
+    REDIRECTS = {
+        '/': '/app/',
+        '/desk.html': '/app/',
+        '/book.html': '/app/book',
+        '/stay.html': '/app/stay',
+        '/folio.html': '/app/folio',
+        '/print.html': '/app/print',
+        '/admin.html': '/app/admin',
+    }
     def log_message(self, *args):
         pass
     def serve(self, path):
@@ -128,9 +141,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
         with open(path, 'rb') as fh:
             self.wfile.write(fh.read())
     def do_GET(self):
-        # Mirrors: location /app/ { try_files $uri $uri/ /app/index.html; }
-        # plus the legacy location / { root ...; index index.html; }.
+        # Mirrors: `location = /... { return 301 ...; }` for the
+        # decommissioned paths; `location /app/ { try_files $uri
+        # $uri/ /app/index.html; }` plus the remainder
+        # `location /` with `index` otherwise.
         url = urllib.parse.urlsplit(self.path).path
+        if url in self.REDIRECTS:
+            self.send_response(301)
+            self.send_header('Location', self.REDIRECTS[url])
+            self.end_headers()
+            return
         if url.startswith('/app/'):
             rel = url[len('/app/'):]
             cand = os.path.join(ROOT, 'app', rel)
@@ -183,10 +203,18 @@ if [[ "$code" == "200" ]] && cmp -s "$BODY" "$DIST/index.html"; then
 else
   fail_here "GET /app/ -> $code, not the shell entry"
 fi
-if cmp -s "$BODY" "$ROOT/frontend/index.html"; then
-  fail_here "GET /app/ serves the legacy /index.html (fallback must be /app/index.html)"
+echo "shell-served-check: legacy pages decommissioned (Refs #299)..."
+for legacy in index.html desk.html book.html stay.html folio.html print.html admin.html messages.js messages/en.json; do
+  if [[ -e "$ROOT/frontend/$legacy" ]]; then
+    fail_here "legacy frontend/$legacy still present"
+  else
+    pass "legacy frontend/$legacy removed"
+  fi
+done
+if awk '/location = \//,/}/' "$NGINX_CONF" | grep -qF 'return 301 /app/'; then
+  pass "nginx redirects the legacy desk entry to /app/"
 else
-  pass "GET /app/ is NOT the legacy /index.html"
+  fail_here "nginx $NGINX_CONF lacks the legacy-path 301 redirects to /app/ routes"
 fi
 for p in /app/stay/today /app/no-such-screen /app/book/quote-1; do
   code="$(get "$p")"
@@ -229,7 +257,7 @@ else
   fail_here "GET /app/admin -> $code, not the shell entry"
 fi
 
-echo "shell-served-check: legacy pages + /docs intact (FR-SHL-4 served half)..."
+echo "shell-served-check: legacy paths redirect + /docs intact (FR-SHL-4 served half, Refs #299)..."
 check_marker() { # check_marker <path> <marker>
   local code
   code="$(get "$1")"
@@ -239,13 +267,23 @@ check_marker() { # check_marker <path> <marker>
     fail_here "GET $1 -> $code or pre-slice marker '$2' missing"
   fi
 }
-check_marker / 'Hotel Management — Desk Entry'
-check_marker /desk.html 'Hotel Management — Desk Today'
-check_marker /book.html 'Hotel Management — Desk Booking'
-check_marker /stay.html 'Hotel Management — Desk Stay'
-check_marker /folio.html 'Hotel Management — Desk Folio'
-check_marker /print.html 'Hotel Management — Desk Print'
-check_marker /admin.html 'Hotel Management — Admin Console'
+check_redirect() { # check_redirect <path> <target>
+  local code location
+  code="$(curl -sS -o /dev/null -w '%{http_code}' "$BASE$1")"
+  location="$(curl -sS -o /dev/null -w '%{redirect_url}' "$BASE$1")"
+  if [[ "$code" == "301" && "$location" == "$2" ]]; then
+    pass "GET $1 -> 301 to $2"
+  else
+    fail_here "GET $1 -> $code to '$location', expected 301 to '$2'"
+  fi
+}
+check_redirect / "$BASE/app/"
+check_redirect /desk.html "$BASE/app/"
+check_redirect /book.html "$BASE/app/book"
+check_redirect /stay.html "$BASE/app/stay"
+check_redirect /folio.html "$BASE/app/folio"
+check_redirect /print.html "$BASE/app/print"
+check_redirect /admin.html "$BASE/app/admin"
 check_marker /docs/ 'Hotel Management — Desk-Loop API Docs'
 
 echo "shell-served-check: OpenAPI mirror half (FR-SHL-4 mirror half)..."

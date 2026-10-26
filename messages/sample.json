@@ -1,5 +1,5 @@
 {
-  "description": "Bounded NFR-I18N-1 coverage sample: error envelopes of reservations (Go) + admin (Node) + billing (Spring) and the frontend desk copy (issue #192), plus the remaining services rates/reporting (Go) + rooms/stay/guests (Node) and the script runbook wording (issue #201).",
+  "description": "Bounded NFR-I18N-1 coverage sample: error envelopes of reservations (Go) + admin (Node) + billing (Spring) and the desk copy in the Vue app (issue #192; legacy static pages decommissioned in #299), plus the remaining services rates/reporting (Go) + rooms/stay/guests (Node) and the script runbook wording (issue #201).",
   "sample": [
     {
       "key": "error.transport.bad_json",
@@ -596,326 +596,244 @@
       "params": {}
     },
     {
-      "key": "desk.entry.title",
-      "surface": "frontend desk entry",
-      "sources": [
-        "frontend/index.html"
-      ],
-      "params": {}
-    },
-    {
-      "key": "desk.entry.intro",
-      "surface": "frontend desk entry",
-      "sources": [
-        "frontend/index.html"
-      ],
-      "params": {}
-    },
-    {
-      "key": "desk.entry.backup_heading",
-      "surface": "frontend desk entry",
-      "sources": [
-        "frontend/index.html"
-      ],
-      "params": {}
-    },
-    {
-      "key": "desk.entry.backup_loading",
-      "surface": "frontend desk entry",
-      "sources": [
-        "frontend/index.html"
-      ],
-      "params": {}
-    },
-    {
-      "key": "desk.entry.backup_missing",
-      "surface": "frontend desk entry",
-      "sources": [
-        "frontend/index.html"
-      ],
-      "params": {}
-    },
-    {
-      "key": "desk.entry.backup_support",
-      "surface": "frontend desk entry",
-      "sources": [
-        "frontend/index.html"
-      ],
-      "params": {}
-    },
-    {
-      "key": "desk.entry.noscript_backup",
-      "surface": "frontend desk entry",
-      "sources": [
-        "frontend/index.html"
-      ],
-      "params": {}
-    },
-    {
-      "key": "desk.entry.module_health",
-      "surface": "frontend desk entry",
-      "sources": [
-        "frontend/index.html"
-      ],
-      "params": {}
-    },
-    {
-      "key": "desk.entry.admin_link",
-      "surface": "frontend desk entry",
-      "sources": [
-        "frontend/index.html"
-      ],
-      "params": {}
-    },
-    {
       "key": "desk.admin.title",
-      "surface": "frontend admin console",
+      "surface": "desk admin console",
       "sources": [
-        "frontend/admin.html"
+        "app/src/views/AdminView.vue"
       ],
       "params": {}
     },
     {
       "key": "desk.admin.back",
-      "surface": "frontend admin console",
+      "surface": "desk admin console",
       "sources": [
-        "frontend/admin.html"
+        "app/src/views/AdminView.vue"
       ],
       "params": {}
     },
     {
       "key": "desk.admin.sign_in",
-      "surface": "frontend admin console",
+      "surface": "desk admin console",
       "sources": [
-        "frontend/admin.html"
+        "app/src/views/AdminView.vue"
       ],
       "params": {}
     },
     {
       "key": "desk.admin.signin_identity",
-      "surface": "frontend admin console",
+      "surface": "desk admin console",
       "sources": [
-        "frontend/admin.html"
+        "app/src/views/AdminView.vue"
       ],
       "params": {}
     },
     {
       "key": "desk.admin.secret",
-      "surface": "frontend admin console",
+      "surface": "desk admin console",
       "sources": [
-        "frontend/admin.html"
+        "app/src/views/AdminView.vue"
       ],
       "params": {}
     },
     {
       "key": "desk.admin.signed_in_as",
-      "surface": "frontend admin console",
+      "surface": "desk admin console",
       "sources": [
-        "frontend/admin.html"
+        "app/src/views/AdminView.vue"
       ],
       "params": {}
     },
     {
       "key": "desk.admin.signout",
-      "surface": "frontend admin console",
+      "surface": "desk admin console",
       "sources": [
-        "frontend/admin.html"
+        "app/src/views/AdminView.vue"
       ],
       "params": {}
     },
     {
       "key": "desk.admin.users_heading",
-      "surface": "frontend admin console",
+      "surface": "desk admin console",
       "sources": [
-        "frontend/admin.html"
+        "app/src/views/AdminView.vue"
       ],
       "params": {}
     },
     {
       "key": "desk.admin.th_name",
-      "surface": "frontend admin console",
+      "surface": "desk admin console",
       "sources": [
-        "frontend/admin.html"
+        "app/src/views/AdminView.vue"
       ],
       "params": {}
     },
     {
       "key": "desk.admin.th_identity",
-      "surface": "frontend admin console",
+      "surface": "desk admin console",
       "sources": [
-        "frontend/admin.html"
+        "app/src/views/AdminView.vue"
       ],
       "params": {}
     },
     {
       "key": "desk.admin.th_role",
-      "surface": "frontend admin console",
+      "surface": "desk admin console",
       "sources": [
-        "frontend/admin.html"
+        "app/src/views/AdminView.vue"
       ],
       "params": {}
     },
     {
       "key": "desk.admin.th_locked",
-      "surface": "frontend admin console",
+      "surface": "desk admin console",
       "sources": [
-        "frontend/admin.html"
+        "app/src/views/AdminView.vue"
       ],
       "params": {}
     },
     {
       "key": "desk.admin.th_actions",
-      "surface": "frontend admin console",
+      "surface": "desk admin console",
       "sources": [
-        "frontend/admin.html"
+        "app/src/views/AdminView.vue"
       ],
       "params": {}
     },
     {
       "key": "desk.admin.create_heading",
-      "surface": "frontend admin console",
+      "surface": "desk admin console",
       "sources": [
-        "frontend/admin.html"
+        "app/src/views/AdminView.vue"
       ],
       "params": {}
     },
     {
       "key": "desk.admin.name_label",
-      "surface": "frontend admin console",
+      "surface": "desk admin console",
       "sources": [
-        "frontend/admin.html"
+        "app/src/views/AdminView.vue"
       ],
       "params": {}
     },
     {
       "key": "desk.admin.role_label",
-      "surface": "frontend admin console",
+      "surface": "desk admin console",
       "sources": [
-        "frontend/admin.html"
+        "app/src/views/AdminView.vue"
       ],
       "params": {}
     },
     {
       "key": "desk.admin.create_button",
-      "surface": "frontend admin console",
+      "surface": "desk admin console",
       "sources": [
-        "frontend/admin.html"
+        "app/src/views/AdminView.vue"
       ],
       "params": {}
     },
     {
       "key": "desk.admin.audit_heading",
-      "surface": "frontend admin console",
+      "surface": "desk admin console",
       "sources": [
-        "frontend/admin.html"
+        "app/src/views/AdminView.vue"
       ],
       "params": {}
     },
     {
       "key": "desk.admin.audit_note",
-      "surface": "frontend admin console",
+      "surface": "desk admin console",
       "sources": [
-        "frontend/admin.html"
+        "app/src/views/AdminView.vue"
       ],
       "params": {}
     },
     {
       "key": "desk.admin.refresh",
-      "surface": "frontend admin console",
+      "surface": "desk admin console",
       "sources": [
-        "frontend/admin.html"
+        "app/src/views/AdminView.vue"
       ],
       "params": {}
     },
     {
       "key": "desk.admin.th_time",
-      "surface": "frontend admin console",
+      "surface": "desk admin console",
       "sources": [
-        "frontend/admin.html"
+        "app/src/views/AdminView.vue"
       ],
       "params": {}
     },
     {
       "key": "desk.admin.th_actor",
-      "surface": "frontend admin console",
+      "surface": "desk admin console",
       "sources": [
-        "frontend/admin.html"
+        "app/src/views/AdminView.vue"
       ],
       "params": {}
     },
     {
       "key": "desk.admin.th_action",
-      "surface": "frontend admin console",
+      "surface": "desk admin console",
       "sources": [
-        "frontend/admin.html"
+        "app/src/views/AdminView.vue"
       ],
       "params": {}
     },
     {
       "key": "desk.admin.th_entity",
-      "surface": "frontend admin console",
+      "surface": "desk admin console",
       "sources": [
-        "frontend/admin.html"
+        "app/src/views/AdminView.vue"
       ],
       "params": {}
     },
     {
       "key": "desk.admin.th_detail",
-      "surface": "frontend admin console",
+      "surface": "desk admin console",
       "sources": [
-        "frontend/admin.html"
+        "app/src/views/AdminView.vue"
       ],
       "params": {}
     },
     {
       "key": "desk.admin.no_entries",
-      "surface": "frontend admin console",
+      "surface": "desk admin console",
       "sources": [
-        "frontend/admin.html"
+        "app/src/views/AdminView.vue"
       ],
       "params": {}
     },
     {
       "key": "desk.admin.save_role",
-      "surface": "frontend admin console",
+      "surface": "desk admin console",
       "sources": [
-        "frontend/admin.html"
+        "app/src/views/AdminView.vue"
       ],
       "params": {}
     },
     {
       "key": "desk.admin.unlock",
-      "surface": "frontend admin console",
+      "surface": "desk admin console",
       "sources": [
-        "frontend/admin.html"
+        "app/src/views/AdminView.vue"
       ],
       "params": {}
     },
     {
       "key": "desk.admin.yes",
-      "surface": "frontend admin console",
+      "surface": "desk admin console",
       "sources": [
-        "frontend/admin.html"
+        "app/src/views/AdminView.vue"
       ],
       "params": {}
     },
     {
       "key": "desk.admin.no",
-      "surface": "frontend admin console",
+      "surface": "desk admin console",
       "sources": [
-        "frontend/admin.html"
+        "app/src/views/AdminView.vue"
       ],
       "params": {}
-    },
-    {
-      "key": "desk.admin.request_failed",
-      "surface": "frontend admin console",
-      "sources": [
-        "frontend/admin.html"
-      ],
-      "params": {
-        "operation": "string"
-      }
     },
     {
       "key": "rates.validation.date_format",

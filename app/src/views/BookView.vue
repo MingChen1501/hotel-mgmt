@@ -2,8 +2,8 @@
   <main data-testid="book-view">
     <h1>{{ t('desk.book.title', {}, 'Hotel Management — Desk Booking') }}</h1>
     <p>
-      <a href="/">{{ t('desk.book.back', {}, 'Back to the desk entry') }}</a> ·
-      <a href="/desk.html">{{ t('desk.book.today_link', {}, "Today's arrivals, in-house, and departures") }}</a>
+      <a href="/app/">{{ t('desk.book.back', {}, 'Back to the desk entry') }}</a> ·
+      <a href="/app/">{{ t('desk.book.today_link', {}, "Today's arrivals, in-house, and departures") }}</a>
     </p>
     <noscript><p>This page needs JavaScript to sign in, quote a price, and book.</p></noscript>
 
@@ -241,8 +241,8 @@
           {{ booking.readback }}
         </p>
         <p>
-          <a href="/desk.html">{{ t('desk.book.view_arrivals', {}, "View on today's arrivals") }}</a> ·
-          <a href="/print.html">{{ t('desk.entry.print_link', {}, 'Print invoice, receipt, or confirmation') }}</a>
+          <a href="/app/">{{ t('desk.book.view_arrivals', {}, "View on today's arrivals") }}</a> ·
+          <a href="/app/print">{{ t('desk.entry.print_link', {}, 'Print invoice, receipt, or confirmation') }}</a>
         </p>
         <button
           id="book-new-booking-button"

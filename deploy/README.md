@@ -11,7 +11,7 @@ variant.
 
 - `compose.yaml` — the single-host service map with the start order
   encoded (`depends_on`: database, then modules, then proxy).
-- `nginx/nginx.conf` — Nginx entry: static frontend plus the
+- `nginx/nginx.conf` — Nginx entry: static desk UI plus the
   versioned module routes. Convention: the external contract path
   `/v1/<contract>/<Operation>` passes through to the modules
   unchanged (the services route the full versioned path at their
