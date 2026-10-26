@@ -208,6 +208,47 @@ if catalogue is not None:
                 fail(f"shell nav labelKey {key!r} is missing from messages/en.json")
         ok(f"shell nav: {len(nav_keys)} labelKey entries resolve in the catalogue")
 
+    # 6. Vietnamese locale parity (issue #339): messages/vi.json
+    # carries exactly the en key set (no missing-key fallback in
+    # normal VI use, no stray keys), declares locale "vi", and every
+    # pattern carries exactly the en placeholders so {param}
+    # substitution keeps working after the switch.
+    vi_path = ROOT / "messages" / "vi.json"
+    try:
+        vi_document = json.loads(vi_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        fail(f"messages/vi.json does not parse: {exc}")
+        vi_document = None
+    if vi_document is not None:
+        if vi_document.get("locale") != "vi":
+            fail("messages/vi.json locale must be vi")
+        vi_messages = vi_document.get("messages")
+        if not isinstance(vi_messages, dict) or not vi_messages:
+            fail("messages/vi.json must carry a non-empty messages map")
+            vi_messages = {}
+        else:
+            for key in sorted(set(messages) - set(vi_messages)):
+                fail(f"messages/vi.json is missing catalogue key {key!r}")
+            for key in sorted(set(vi_messages) - set(messages)):
+                fail(f"messages/vi.json carries stray key {key!r} "
+                     f"missing from messages/en.json")
+            matched = 0
+            for key in sorted(messages):
+                if key not in vi_messages:
+                    continue
+                pattern = vi_messages[key]
+                if not isinstance(pattern, str) or not pattern:
+                    fail(f"messages/vi.json key {key!r} must map to a non-empty pattern")
+                    continue
+                if set(placeholder.findall(pattern)) != set(placeholder.findall(messages[key])):
+                    fail(f"messages/vi.json key {key!r} placeholders "
+                         f"{sorted(placeholder.findall(pattern))} differ from "
+                         f"messages/en.json {sorted(placeholder.findall(messages[key]))}")
+                    continue
+                matched += 1
+            ok(f"messages/vi.json carries {matched}/{len(messages)} keys "
+               f"with matching placeholders")
+
 if failures:
     print(f"\ncatalogue-coverage-check: {len(failures)} failure(s)")
     sys.exit(1)

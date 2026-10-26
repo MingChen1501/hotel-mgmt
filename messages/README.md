@@ -3,13 +3,18 @@
 Single source of truth for user-visible strings, per api-spec
 section 1: every user-visible string comes from this catalogue, no
 behaviour depends on English wording, and dates, numbers, and
-currency follow the active locale. Only the default locale (`en`)
-ships; a new locale is a new file with the same keys — no behaviour
+currency follow the active locale. The default locale (`en`)
+always ships; Vietnamese (`vi`) ships beside it for the pilot desk.
+Any further locale is a new file with the same keys — no behaviour
 code changes.
 
 ## Files
 
-- `en.json` — the catalogue: `{"locale": "en", "messages": {key: pattern}}`.
+- `en.json` — the default-locale catalogue: `{"locale": "en", "messages": {key: pattern}}`.
+- `vi.json` — the Vietnamese catalogue for the pilot desk (Refs #339):
+  same key set as `en.json`, receptionist-friendly hotel-domain
+  wording, `{param}` placeholders intact. The desk shell resolves the
+  active locale through `app/src/i18n/` with fallback to `en`.
 - `schema.json` — structural schema for `en.json` (key shape, types).
 - `sample.json` — the bounded coverage sample: every key the
   `script/catalogue-coverage-check.sh` guard enforces, with the
@@ -55,7 +60,7 @@ unit tests). Amounts stay integers in minor units on the wire;
 formatting happens only at render.
 
 The default-locale rendering is byte-identical to the strings this
-catalogue replaces. No translations beyond `en` ship in this change.
+catalogue replaces. Besides `en`, only `vi` ships (Refs #339).
 
 ## Runtime mirrors (one catalogue, embedded copies)
 
