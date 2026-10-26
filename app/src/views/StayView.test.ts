@@ -10,7 +10,9 @@
 // review, RecordOpenBalanceApproval, CheckOut with the reviewed
 // folio id plus balance plus approval, SETTLEMENT_REQUIRED
 // surfacing) — through the shared Bearer client and the catalogue
-// `t()` wrapper. No Playwright harness exists in this repo yet, so
+// `t()` wrapper. Expected arrivals (Refs #349) resolve from the
+// reservation calendar because live stay rows never carry booking
+// references. No Playwright harness exists in this repo yet, so
 // these Vitest component tests are the characterization coverage
 // for the stay flows.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -113,6 +115,14 @@ function stubHappyPath(
       const guestId = String(body.guestId ?? '');
       return Promise.resolve(jsonResponse({ guestId, fullName: names[guestId] ?? guestId }));
     }
+    // Reservation calendar (Refs #349): the expected-arrivals
+    // source for the pick buttons. Empty by default; tests with
+    // live arrival rows override this handler.
+    if (url === '/v1/reservations/QueryCalendar') {
+      return Promise.resolve(
+        jsonResponse({ dateFrom: body.dateFrom ?? null, dateTo: body.dateTo ?? null, reservations: [] }),
+      );
+    }
     if (url === '/v1/reservations/GetReservation') {
       return Promise.resolve(
         jsonResponse({
@@ -198,6 +208,12 @@ function stubHappyPath(
   };
   fetchMock.mockImplementation(happy);
   return happy;
+}
+
+function localToday(): string {
+  const now = new Date();
+  const pad = (value: number): string => (value < 10 ? '0' : '') + String(value);
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
 function mountStay() {
@@ -319,6 +335,141 @@ describe('stay view', () => {
     // Room id comes from the AssignRoom echo, never the picker.
     expect(checkinBody.roomId).toBe('echo-101');
     expect(checkinBody.stayId).toBe(assignBody.stayLink);
+  });
+
+  // Refs #349: live stay rows never carry booking references, so
+  // the pick buttons render from the reservation calendar
+  // (confirmed bookings due today, verified per row) instead.
+  it('picks a live arrival from the reservation calendar without stay-list refs', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const today = localToday();
+    const happy = stubHappyPath(fetchMock);
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/stay/ListArrivalsDepartures') {
+        // Live shape: stay rows carry reservationId UUIDs, never
+        // booking references.
+        return Promise.resolve(
+          jsonResponse({
+            businessDate: today,
+            arrivals: [
+              {
+                stayId: 's-9',
+                reservationId: 'r-9',
+                guestId: 'g-2',
+                roomId: 'room-9',
+                actualArrival: `${today}T06:00:00.000Z`,
+                actualDeparture: null,
+              },
+            ],
+            inHouse: [],
+            departures: [],
+          }),
+        );
+      }
+      if (url === '/v1/reservations/QueryCalendar') {
+        const body = parseBody(init);
+        expect(body.dateFrom).toBe(today);
+        return Promise.resolve(
+          jsonResponse({
+            dateFrom: body.dateFrom,
+            dateTo: body.dateTo,
+            reservations: [
+              {
+                reservationRef: 'RSV-LIVE',
+                roomTypeId: 'standard',
+                arrivalDate: today,
+                departureDate: '2026-10-28',
+                state: 'confirmed',
+              },
+              {
+                reservationRef: 'RSV-OLD',
+                roomTypeId: 'standard',
+                arrivalDate: today,
+                departureDate: '2026-10-28',
+                state: 'checked-in',
+              },
+              {
+                reservationRef: 'RSV-CX',
+                roomTypeId: 'standard',
+                arrivalDate: today,
+                departureDate: '2026-10-28',
+                state: 'cancelled',
+              },
+            ],
+          }),
+        );
+      }
+      if (url === '/v1/reservations/GetReservation') {
+        const body = parseBody(init);
+        if (body.reservationRef === 'RSV-LIVE') {
+          return Promise.resolve(
+            jsonResponse({
+              reservationId: 'r-live',
+              reservationRef: 'RSV-LIVE',
+              roomTypeId: 'standard',
+              arrivalDate: today,
+              departureDate: '2026-10-28',
+              state: 'confirmed',
+              guest: { guestId: 'g-live', fullName: 'Live Guest' },
+            }),
+          );
+        }
+        return happy(url, init);
+      }
+      return happy(url, init);
+    });
+    const wrapper = mountStay();
+    useSessionStore().signIn('tok-1', 'Ada Owner', 'owner');
+    await wrapper.find('[data-testid="stay-refresh"]').trigger('click');
+
+    // Only the verified due reference renders a pick button; the
+    // checked-in and cancelled calendar rows never do.
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-use-arrival-RSV-LIVE"]').exists()).toBe(true);
+    });
+    expect(wrapper.find('[data-testid="stay-use-arrival-RSV-OLD"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="stay-use-arrival-RSV-CX"]').exists()).toBe(false);
+    // The already-checked-in stay row still renders with its guest
+    // name, but without a pick button: there is nothing left to
+    // check in.
+    expect(wrapper.text()).toContain('Guest Two');
+
+    // The pick fills the live reference and drives the check-in
+    // quote step against the real booking.
+    await wrapper.find('[data-testid="stay-use-arrival-RSV-LIVE"]').trigger('click');
+    expect((wrapper.find('[data-testid="stay-booking-ref"]').element as HTMLInputElement).value).toBe(
+      'RSV-LIVE',
+    );
+    await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain('Booked room type');
+    });
+  });
+
+  it('keeps the stay lists when the reservation calendar is down', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const happy = stubHappyPath(fetchMock);
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/reservations/QueryCalendar') {
+        return Promise.resolve(jsonResponse({ code: 'VALIDATION_FAILED', message: 'calendar down' }, 400));
+      }
+      return happy(url, init);
+    });
+    const wrapper = mountStay();
+    useSessionStore().signIn('tok-1', 'Ada Owner', 'owner');
+    await wrapper.find('[data-testid="stay-refresh"]').trigger('click');
+
+    // The stay lists still load (with their stubbed pickable row),
+    // so the typed-ref path keeps working without the calendar.
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-arrivals-table"] tbody tr td').text()).toContain(
+        'Guest One',
+      );
+    });
+    expect(wrapper.find('[data-testid="stay-lists-error"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="stay-use-arrival-RSV-1"]').exists()).toBe(true);
   });
 
   it('maps an unknown booking reference to the catalogue refusal string', async () => {
