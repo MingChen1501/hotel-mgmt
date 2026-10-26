@@ -1,19 +1,23 @@
-# Catalogue layer (`app/src/i18n/`, Refs #292)
+# Catalogue layer (`app/src/i18n/`, Refs #292, #339)
 
-Read-only consumer of the canonical `messages/en.json` catalogue
-(single source of truth; key naming and locale rules live in
-`messages/README.md`). This module owns no keys, adds none, and
-edits none — screen slices (follow-ups 3–8) render catalogue
-strings through `t()` and switch behaviour on envelope codes,
-never on resolved wording.
+Read-only consumer of the canonical catalogues (`messages/en.json`
+default plus `messages/vi.json` for the pilot desk; key naming and
+locale rules live in `messages/README.md`). This module owns no keys,
+adds none, and edits none — screen slices render catalogue strings
+through `t()` and switch behaviour on envelope codes, never on
+resolved wording. The active locale (`localeTag`, default `en`)
+persists in `localStorage` under `hotel-mgmt.desk.locale` — locale
+only, never auth/session data.
 
 ## Import (offline LAN holds)
 
-`index.ts` imports `messages/en.json` as a static module, so Vite
-bundles the catalogue into `app/dist/` at build time: no fetch, no
-CDN, no runtime dependency beyond the served `dist/`. There is no
-vendored copy under `app/`, so no byte-identical mirror guard is
-needed — the bundle always carries the canonical file.
+`index.ts` imports `messages/en.json` and `messages/vi.json` as
+static modules, so Vite bundles both catalogues into `app/dist/` at
+build time: no fetch, no CDN, no runtime dependency beyond the
+served `dist/`. There is no vendored copy under `app/`, so no
+byte-identical mirror guard is needed — the bundle always carries
+the canonical files. `script/catalogue-coverage-check.sh` §6 pins
+the `vi` key set and placeholder parity.
 
 ## Per-service catalogue boundary (who owns which keys)
 
@@ -32,5 +36,7 @@ needed — the bundle always carries the canonical file.
 
 `t(key, params, fallback)` matches `DeskMessages.msg` in
 `frontend/messages.js`: known keys substitute `{param}`
-placeholders (unmatched placeholders stay literal); unknown keys
-return the explicit fallback, else `message-missing:<key>`.
+placeholders (unmatched placeholders stay literal); a key missing
+from the active locale falls back to the `en` pattern first;
+unknown keys return the explicit fallback, else
+`message-missing:<key>`.
