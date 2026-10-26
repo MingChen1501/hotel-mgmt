@@ -111,10 +111,11 @@ function mountDesk() {
 }
 
 async function signIn(wrapper: ReturnType<typeof mountDesk>, fetchMock: ReturnType<typeof vi.fn>) {
+  // The shell owns the one sign-in gate (Refs #338): views mount
+  // with a signed-in session preset, then load like a reload.
   stubHappyPath(fetchMock);
-  await wrapper.find('[data-testid="desk-signin-identity"]').setValue('owner');
-  await wrapper.find('[data-testid="desk-signin-secret"]').setValue('s3cret');
-  await wrapper.find('[data-testid="desk-signin-form"]').trigger('submit');
+  useSessionStore().signIn('tok-1', 'Ada Owner', 'owner');
+  await wrapper.find('[data-testid="desk-refresh"]').trigger('click');
   await vi.waitFor(() => {
     expect(wrapper.find('[data-testid="desk-dashboard"]').exists()).toBe(true);
   });
@@ -131,35 +132,35 @@ describe('desk view', () => {
     vi.clearAllMocks();
   });
 
-  it('renders the sign-in form when signed out', () => {
+  it('renders the dashboard frame with no per-screen sign-in copy', () => {
     const wrapper = mountDesk();
     expect(wrapper.find('[data-testid="desk-view"]').exists()).toBe(true);
     // Catalogue wiring (Refs #292): the heading resolves through t().
-    expect(wrapper.find('[data-testid="desk-view"] h1').text()).toContain('Desk Today');
-    expect(wrapper.find('[data-testid="desk-signin"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="desk-dashboard"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="desk-view"] h1').text()).toContain(
+      'arrivals, stays, and rooms needing attention',
+    );
+    // The shell owns the one sign-in gate (Refs #338, FR-DSP-2):
+    // no per-screen sign-in copy renders here anymore.
+    expect(wrapper.find('[data-testid="desk-signin"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="desk-dashboard"]').exists()).toBe(true);
   });
 
-  it('signs in with identity plus secret and shows the dashboard', async () => {
+  it('loads the dashboard for a signed-in session over Bearer calls', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     const wrapper = mountDesk();
     await signIn(wrapper, fetchMock);
 
     // Bearer session handling: the shared client attaches the token
-    // to every call made after sign-in (the SignIn call itself
-    // carries none — no token exists yet at that point). The backup
-    // feed loads on mount over plain fetch, so it is excluded here.
+    // to every call (the sign-in itself happened in the shell gate).
+    // The backup feed loads on mount over plain fetch, so it is
+    // excluded here.
     const calls = fetchMock.mock.calls.filter((call) => call[0] !== '/backup-report.json');
-    expect(calls.length).toBeGreaterThan(1);
-    expect((calls[0]?.[1]?.headers as Headers).get('Authorization')).toBeNull();
-    for (const call of calls.slice(1)) {
+    expect(calls.length).toBeGreaterThan(0);
+    for (const call of calls) {
       expect((call[1].headers as Headers).get('Authorization')).toBe('Bearer tok-1');
     }
-    // Role display, same as the legacy whoami/myrole line.
-    expect(wrapper.find('[data-testid="desk-whoami"]').text()).toBe('Ada Owner');
-    expect(wrapper.find('[data-testid="desk-myrole"]').text()).toBe('owner');
-    expect(wrapper.find('[data-testid="desk-signin-error"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="desk-dashboard-error"]').exists()).toBe(false);
   });
 
   it('renders arrivals, in-house, and departures with resolved guest names', async () => {
@@ -236,15 +237,14 @@ describe('desk view', () => {
       throw new Error(`unexpected call ${url}`);
     });
     const wrapper = mountDesk();
-    await wrapper.find('[data-testid="desk-signin-identity"]').setValue('owner');
-    await wrapper.find('[data-testid="desk-signin-secret"]').setValue('s3cret');
-    await wrapper.find('[data-testid="desk-signin-form"]').trigger('submit');
+    useSessionStore().signIn('tok-1', 'Ada', 'owner');
+    await wrapper.find('[data-testid="desk-refresh"]').trigger('click');
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="desk-arrivals-table"]').text()).toContain('Unknown guest');
     });
   });
 
-  it('shows the empty catalogue string when every list is empty', async () => {
+  it('shows plain-words empty states when every list is empty', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     fetchMock.mockImplementation((url: string) => {
@@ -276,48 +276,44 @@ describe('desk view', () => {
       throw new Error(`unexpected call ${url}`);
     });
     const wrapper = mountDesk();
-    await wrapper.find('[data-testid="desk-signin-identity"]').setValue('owner');
-    await wrapper.find('[data-testid="desk-signin-secret"]').setValue('s3cret');
-    await wrapper.find('[data-testid="desk-signin-form"]').trigger('submit');
+    useSessionStore().signIn('tok-1', 'Ada', 'owner');
+    await wrapper.find('[data-testid="desk-refresh"]').trigger('click');
     await vi.waitFor(() => {
-      expect(wrapper.find('[data-testid="desk-arrivals-table"]').text()).toContain('No entries yet.');
+      expect(wrapper.find('[data-testid="desk-arrivals-table"]').text()).toContain(
+        'No arrivals today. New bookings appear here.',
+      );
     });
-    expect(wrapper.find('[data-testid="desk-dirty-list"]').text()).toContain('No entries yet.');
+    expect(wrapper.find('[data-testid="desk-inhouse-table"]').text()).toContain(
+      'No guests in house right now.',
+    );
+    expect(wrapper.find('[data-testid="desk-departures-table"]').text()).toContain(
+      'No departures today.',
+    );
+    expect(wrapper.find('[data-testid="desk-dirty-list"]').text()).toContain(
+      'No dirty rooms right now.',
+    );
   });
 
-  it('surfaces sign-in failures without signing in', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      jsonResponse({ code: 'UNAUTHENTICATED', message: 'bad secret' }, 401),
-    );
+  it('reads a transport failure as one plain sentence with no technical code', async () => {
+    const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     const wrapper = mountDesk();
-    await wrapper.find('[data-testid="desk-signin-form"]').trigger('submit');
-    await vi.waitFor(() => {
-      expect(wrapper.find('[data-testid="desk-signin-error"]').exists()).toBe(true);
-    });
-    expect(useSessionStore().isSignedIn).toBe(false);
-    expect(wrapper.find('[data-testid="desk-dashboard"]').exists()).toBe(false);
-  });
+    await signIn(wrapper, fetchMock);
 
-  it('surfaces the locked wording on a locked-identity sign-in', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      jsonResponse({ code: 'IDENTITY_LOCKED', message: 'Identity owner is locked after repeated failures.' }, 401),
+    // A 500 carries no envelope code: the dashboard error must
+    // still read as a plain sentence (FR-DSP-3, M3).
+    fetchMock.mockResolvedValue(new Response('boom', { status: 500 }));
+    await wrapper.find('[data-testid="desk-refresh"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="desk-dashboard-error"]').exists()).toBe(true);
+    });
+    expect(wrapper.find('[data-testid="desk-dashboard-error"]').text()).toContain(
+      'That did not work. Try again; if it keeps failing, tell the manager.',
     );
-    vi.stubGlobal('fetch', fetchMock);
-    const wrapper = mountDesk();
-    await wrapper.find('[data-testid="desk-signin-form"]').trigger('submit');
-    await vi.waitFor(() => {
-      expect(wrapper.find('[data-testid="desk-signin-error"]').exists()).toBe(true);
-    });
-    // Desk sign-in surfaces the real message (Refs #319): a locked
-    // identity shows the locked wording, not the expired notice.
-    expect(wrapper.find('[data-testid="desk-signin-error"]').text()).toContain('locked');
-    expect(wrapper.find('[data-testid="desk-signin-error"]').text()).not.toContain('Session expired');
-    expect(useSessionStore().isSignedIn).toBe(false);
-    expect(wrapper.find('[data-testid="desk-dashboard"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="desk-dashboard-error"]').text()).not.toContain('500');
   });
 
-  it('returns to sign-in with the session-expired string when refresh gets a 401', async () => {
+  it('expires the session with the gate notice when refresh gets a 401', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     const wrapper = mountDesk();
@@ -325,32 +321,21 @@ describe('desk view', () => {
 
     fetchMock.mockResolvedValue(new Response('', { status: 401 }));
     await wrapper.find('[data-testid="desk-refresh"]').trigger('click');
+    // The shared client expires the session and routes to the
+    // gate (the shell shows the expired notice there — covered
+    // in the shell gate suite); the view keeps no sign-in copy.
     await vi.waitFor(() => {
-      expect(wrapper.find('[data-testid="desk-signin"]').exists()).toBe(true);
+      expect(useSessionStore().token).toBeNull();
     });
-    expect(useSessionStore().token).toBeNull();
-    // The expiry string lands a microtask after the sign-out
-    // re-render, so wait for it explicitly (legacy parity: the
-    // session-expired catalogue string on the sign-in form).
-    await vi.waitFor(() => {
-      expect(wrapper.find('[data-testid="desk-signin-error"]').text()).toContain('Session expired');
-    });
+    expect(useSessionStore().signOutNotice).toBe('session-expired');
     expect(router.replace).toHaveBeenCalledWith('/');
   });
 
-  it('signs out back to the sign-in form', async () => {
-    const fetchMock = vi.fn();
-    vi.stubGlobal('fetch', fetchMock);
-    const wrapper = mountDesk();
-    await signIn(wrapper, fetchMock);
-
-    await wrapper.find('[data-testid="desk-signout"]').trigger('click');
-    await vi.waitFor(() => {
-      expect(wrapper.find('[data-testid="desk-signin"]').exists()).toBe(true);
-    });
-    expect(useSessionStore().token).toBeNull();
-    expect(fetchMock.mock.calls.some((call) => call[0] === '/v1/admin/SignOut')).toBe(true);
-  });
+  // Sign-in failure, locked-identity, and sign-out round trips
+  // moved to the shell gate suite (Refs #338, FR-DSP-2): the shell
+  // owns the one sign-in form, so `app/src/App.test.ts` covers the
+  // plain-sentence failure, the distinct locked wording, the
+  // expired notice, and sign-out back to the gate.
 
   it('reloads straight into the dashboard when the token is persisted', async () => {
     sessionStorage.setItem('hotel-mgmt.session.token', 'tok-1');

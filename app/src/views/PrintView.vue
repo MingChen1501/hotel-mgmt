@@ -1,106 +1,45 @@
 <template>
   <main data-testid="print-view">
-    <h1>{{ t('desk.print.title', {}, 'Hotel Management — Desk Print') }}</h1>
-    <p>
-      <a href="/app/">{{ t('desk.print.back', {}, 'Back to the desk entry') }}</a> ·
-      <a href="/app/">{{ t('desk.print.today_link', {}, "Today's arrivals, in-house, and departures") }}</a> ·
-      <a href="/app/folio">{{ t('desk.print.folio_link', {}, 'Stay folio (charges and payments)') }}</a> ·
-      <a href="/app/book">{{ t('desk.print.book_link', {}, 'Desk booking (price quote and confirm)') }}</a>
-    </p>
-    <noscript><p>This page needs JavaScript to sign in and print invoices, receipts, and confirmations.</p></noscript>
+    <h1>{{ t('desk.print.title', {}, 'Print receipts, invoices, and confirmations') }}</h1>
+    <p>{{ t('desk.print.intro', {}, 'Open a folio, check that the screen matches the paper, then print or copy each document.') }}</p>
+    <noscript><p>This page needs JavaScript to print invoices, receipts, and confirmations.</p></noscript>
 
-    <section
-      v-if="!session.isSignedIn"
-      data-testid="print-signin"
-    >
-      <h2>{{ t('desk.admin.sign_in', {}, 'Sign in') }}</h2>
-      <form
-        data-testid="print-signin-form"
-        @submit.prevent="onSignIn"
-      >
-        <label for="print-signin-identity">
-          {{ t('desk.admin.signin_identity', {}, 'Sign-in identity: ') }}
-          <input
-            id="print-signin-identity"
-            v-model="identity"
-            name="signin-identity"
-            autocomplete="username"
-            data-testid="print-signin-identity"
-          >
-        </label>
-        <label for="print-signin-secret">
-          {{ t('desk.admin.secret', {}, 'Secret: ') }}
-          <input
-            id="print-signin-secret"
-            v-model="secret"
-            name="signin-secret"
-            type="password"
-            autocomplete="current-password"
-            data-testid="print-signin-secret"
-          >
-        </label>
-        <button
-          type="submit"
-          data-testid="print-signin-submit"
-        >
-          {{ t('desk.admin.sign_in', {}, 'Sign in') }}
-        </button>
-      </form>
-      <p
-        v-if="signInError"
-        role="alert"
-        data-testid="print-signin-error"
-      >
-        {{ signInError }}
-      </p>
-    </section>
-
-    <section
-      v-else
-      data-testid="print-main"
-    >
-      <p>
-        <span>{{ t('desk.admin.signed_in_as', {}, 'Signed in as ') }}</span><strong data-testid="print-whoami">{{ displayName }}</strong>
-        (<span data-testid="print-myrole">{{ role }}</span>).
-        <button
-          id="print-signout-button"
-          type="button"
-          data-testid="print-signout"
-          @click="onSignOut"
-        >
-          {{ t('desk.admin.signout', {}, 'Sign out') }}
-        </button>
-      </p>
-
+    <section data-testid="print-main">
       <h2>{{ t('desk.print.open_heading', {}, 'Open a folio for printing') }}</h2>
       <div>
         <label for="print-stay-id">
           {{ t('desk.print.stay_id', {}, 'Stay ID: ') }}
-          <input
+          <InputText
             id="print-stay-id"
             v-model="stayId"
             name="print-stay-id"
             autocomplete="off"
             data-testid="print-stay-id"
-            @input="onStayIdInput"
-          >
+            @update:model-value="onStayIdInput"
+          />
         </label>
-        <button
+        <Button
           id="print-open-button"
           type="button"
+          :label="t('desk.print.open_button', {}, 'Open folio')"
           data-testid="print-open"
           :disabled="opening"
           @click="onOpen"
-        >
-          {{ t('desk.print.open_button', {}, 'Open folio') }}
-        </button>
+        />
         <p
+          v-if="opening"
+          data-testid="print-opening"
+        >
+          {{ t('desk.print.opening', {}, 'Opening the folio…') }}
+        </p>
+        <Message
           v-if="openError"
+          severity="error"
           role="alert"
           data-testid="print-open-error"
         >
           {{ openError }}
-        </p>
+        </Message>
       </div>
 
       <h2>{{ t('desk.print.folio_heading', {}, 'Folio on screen (what prints must match this)') }}</h2>
@@ -110,52 +49,48 @@
       >
         {{ folioStatus }}
       </p>
-      <table
+      <DataTable
         id="print-folio-table"
+        :value="entryRows"
         data-testid="print-folio-table"
       >
-        <thead>
-          <tr>
-            <th>{{ t('desk.folio.th_time', {}, 'Time') }}</th>
-            <th>{{ t('desk.folio.th_item', {}, 'Item') }}</th>
-            <th>{{ t('desk.folio.th_amount', {}, 'Amount') }}</th>
-            <th>{{ t('desk.folio.th_balance', {}, 'Running balance') }}</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="(entry, index) in entryRows"
-            :key="index"
-          >
-            <td>{{ entry.at }}</td>
-            <td>{{ entry.item }}</td>
-            <td>{{ entry.amount }}</td>
-            <td>{{ entry.balance }}</td>
-          </tr>
-          <tr v-if="entryRows.length === 0">
-            <td colspan="4">
-              {{ t('desk.folio.no_lines', {}, 'No charges or payments yet.') }}
-            </td>
-          </tr>
-        </tbody>
-      </table>
+        <Column
+          field="at"
+          :header="t('desk.folio.th_time', {}, 'Time')"
+        />
+        <Column
+          field="item"
+          :header="t('desk.folio.th_item', {}, 'Item')"
+        />
+        <Column
+          field="amount"
+          :header="t('desk.folio.th_amount', {}, 'Amount')"
+        />
+        <Column
+          field="balance"
+          :header="t('desk.folio.th_balance', {}, 'Running balance')"
+        />
+        <template #empty>
+          {{ t('desk.folio.no_lines', {}, 'No charges or payments yet. Posted charges and recorded payments appear here.') }}
+        </template>
+      </DataTable>
       <div>
-        <button
+        <Button
           id="print-invoice-button"
           type="button"
+          :label="t('desk.print.invoice_button', {}, 'Show invoice')"
           data-testid="print-invoice"
           :disabled="invoiceButtonDisabled"
           @click="onShowInvoice"
-        >
-          {{ t('desk.print.invoice_button', {}, 'Show invoice') }}
-        </button>
-        <p
+        />
+        <Message
           v-if="invoiceError"
+          severity="error"
           role="alert"
           data-testid="print-invoice-error"
         >
           {{ invoiceError }}
-        </p>
+        </Message>
       </div>
 
       <section
@@ -209,22 +144,20 @@
             </tbody>
           </table>
         </div>
-        <button
+        <Button
           id="print-invoice-print-button"
           type="button"
+          :label="t('desk.print.print_button', {}, 'Print')"
           data-testid="print-invoice-print"
           @click="onPrintInvoice"
-        >
-          {{ t('desk.print.print_button', {}, 'Print') }}
-        </button>
-        <button
+        />
+        <Button
           id="print-invoice-copy-button"
           type="button"
+          :label="t('desk.print.copy_button', {}, 'Copy text')"
           data-testid="print-invoice-copy"
           @click="onCopyInvoice"
-        >
-          {{ t('desk.print.copy_button', {}, 'Copy text') }}
-        </button>
+        />
         <p
           v-if="invoiceCopyStatus"
           role="status"
@@ -248,26 +181,26 @@
           data-testid="print-payment-item"
         >
           {{ payment.label }}
-          <button
+          <Button
             v-if="payment.paymentId !== null"
             type="button"
+            :label="t('desk.print.receipt_button', {}, 'Receipt')"
             data-testid="print-receipt"
             @click="onShowReceipt(payment.paymentId)"
-          >
-            {{ t('desk.print.receipt_button', {}, 'Receipt') }}
-          </button>
+          />
         </li>
         <li v-if="receiptPayments.length === 0">
           {{ t('desk.print.no_payments', {}, 'No payments recorded yet.') }}
         </li>
       </ul>
-      <p
+      <Message
         v-if="receiptError"
+        severity="error"
         role="alert"
         data-testid="print-receipt-error"
       >
         {{ receiptError }}
-      </p>
+      </Message>
 
       <section
         v-if="receiptPairs !== null"
@@ -286,22 +219,20 @@
             </template>
           </dl>
         </div>
-        <button
+        <Button
           id="print-receipt-print-button"
           type="button"
+          :label="t('desk.print.print_button', {}, 'Print')"
           data-testid="print-receipt-print"
           @click="onPrintReceipt"
-        >
-          {{ t('desk.print.print_button', {}, 'Print') }}
-        </button>
-        <button
+        />
+        <Button
           id="print-receipt-copy-button"
           type="button"
+          :label="t('desk.print.copy_button', {}, 'Copy text')"
           data-testid="print-receipt-copy"
           @click="onCopyReceipt"
-        >
-          {{ t('desk.print.copy_button', {}, 'Copy text') }}
-        </button>
+        />
         <p
           v-if="receiptCopyStatus"
           role="status"
@@ -315,30 +246,36 @@
       <div>
         <label for="print-ref">
           {{ t('desk.print.reservation_ref', {}, 'Booking reference: ') }}
-          <input
+          <InputText
             id="print-ref"
             v-model="reservationRef"
             name="print-ref"
             autocomplete="off"
             data-testid="print-ref"
-          >
+          />
         </label>
-        <button
+        <Button
           id="print-load-button"
           type="button"
+          :label="t('desk.print.load_button', {}, 'Load confirmation')"
           data-testid="print-load"
           :disabled="loading"
           @click="onLoad"
-        >
-          {{ t('desk.print.load_button', {}, 'Load confirmation') }}
-        </button>
+        />
         <p
+          v-if="loading"
+          data-testid="print-loading"
+        >
+          {{ t('desk.print.loading_confirmation', {}, 'Loading the confirmation…') }}
+        </p>
+        <Message
           v-if="loadError"
+          severity="error"
           role="alert"
           data-testid="print-load-error"
         >
           {{ loadError }}
-        </p>
+        </Message>
       </div>
 
       <section
@@ -358,22 +295,20 @@
             </template>
           </dl>
         </div>
-        <button
+        <Button
           id="print-confirmation-print-button"
           type="button"
+          :label="t('desk.print.print_button', {}, 'Print')"
           data-testid="print-confirmation-print"
           @click="onPrintConfirmation"
-        >
-          {{ t('desk.print.print_button', {}, 'Print') }}
-        </button>
-        <button
+        />
+        <Button
           id="print-confirmation-copy-button"
           type="button"
+          :label="t('desk.print.copy_button', {}, 'Copy text')"
           data-testid="print-confirmation-copy"
           @click="onCopyConfirmation"
-        >
-          {{ t('desk.print.copy_button', {}, 'Copy text') }}
-        </button>
+        />
         <p
           v-if="confirmationCopyStatus"
           role="status"
@@ -389,6 +324,11 @@
 <script lang="ts">
 import { computed, defineComponent, ref } from 'vue';
 import type { Ref } from 'vue';
+import Button from 'primevue/button';
+import Column from 'primevue/column';
+import DataTable from 'primevue/datatable';
+import InputText from 'primevue/inputtext';
+import Message from 'primevue/message';
 import { apiFetch } from '../api/client';
 import type { ApiError } from '../api/client';
 import { catalogueLocale, t } from '../i18n';
@@ -622,8 +562,22 @@ function isSignedOut(err: unknown): boolean {
   );
 }
 
-function errorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : 'Request failed.';
+function errorCode(err: unknown): string {
+  return typeof err === 'object' && err !== null
+    ? String((err as ApiError).code ?? '')
+    : '';
+}
+
+// Unexpected failures read as one plain sentence (FR-DSP-3,
+// desk.shell.request_failed): call sites map known envelope codes
+// to specific catalogue wordings, so this fallback never surfaces
+// technical codes or statuses.
+function errorMessage(): string {
+  return t(
+    'desk.shell.request_failed',
+    {},
+    'That did not work. Try again; if it keeps failing, tell the manager.',
+  );
 }
 
 // Template-ref element type without naming the DOM global (the
@@ -649,14 +603,10 @@ function pairsText(pairs: DocumentPair[], rows: EntryRow[]): string {
 
 export default defineComponent({
   name: 'PrintView',
+  // eslint-disable-next-line vue/no-reserved-component-names -- PrimeVue registers Button/Dialog under these canonical names (Refs #338 component mapping).
+  components: { Button, Column, DataTable, InputText, Message },
   setup() {
     const session = useSessionStore();
-    const identity = ref('');
-    const secret = ref('');
-    const signInError = ref('');
-    const displayName = ref('');
-    const role = ref('');
-
     const stayId = ref(prefillParam('stayId'));
     const folio = ref<Folio | null>(null);
     const currentFolioId = ref<string | null>(null);
@@ -698,22 +648,13 @@ export default defineComponent({
       () => currentFolioId.value === null || invoicing.value,
     );
 
-    function signOutLocal(): void {
-      session.signOut();
-      secret.value = '';
-      displayName.value = '';
-      role.value = '';
+    // The shell owns the one sign-in gate (Refs #338): a
+    // 401/UNAUTHENTICATED expires the shared session and the gate
+    // takes over with the session-expired notice.
+    function expireToGate(): void {
       folio.value = null;
       currentFolioId.value = null;
-    }
-
-    function refuseSession(): void {
-      signOutLocal();
-      signInError.value = t(
-        'desk.today.session_expired',
-        {},
-        'Session expired. Sign in again.',
-      );
+      session.expireSession();
     }
 
     function renderFolio(next: Folio): void {
@@ -852,33 +793,6 @@ export default defineComponent({
       }
     }
 
-    async function onSignIn(): Promise<void> {
-      signInError.value = '';
-      try {
-        const payload = await apiFetch<{ token: string; displayName: string; role: string }>(
-          '/v1/admin/SignIn',
-          {
-            method: 'POST',
-            body: JSON.stringify({ signinIdentity: identity.value, secret: secret.value }),
-          },
-        );
-        session.signIn(payload.token);
-        displayName.value = payload.displayName;
-        role.value = payload.role;
-      } catch (err) {
-        signInError.value = errorMessage(err);
-      }
-    }
-
-    async function onSignOut(): Promise<void> {
-      try {
-        await apiFetch<unknown>('/v1/admin/SignOut', { method: 'POST', body: '{}' });
-      } catch {
-        // A dead token signs out locally all the same (legacy parity).
-      }
-      signOutLocal();
-    }
-
     async function onOpen(): Promise<void> {
       if (opening.value) {
         return;
@@ -894,15 +808,15 @@ export default defineComponent({
         renderFolio(
           await apiFetch<Folio>('/v1/billing/GetFolioBalance', {
             method: 'POST',
-            body: JSON.stringify({ stayId: id, actor: displayName.value }),
+            body: JSON.stringify({ stayId: id, actor: session.displayName ?? '' }),
           }),
         );
       } catch (err) {
         if (isSignedOut(err)) {
-          refuseSession();
+          expireToGate();
           return;
         }
-        openError.value = errorMessage(err);
+        openError.value = errorMessage();
       } finally {
         opening.value = false;
       }
@@ -927,15 +841,15 @@ export default defineComponent({
         renderInvoice(
           await apiFetch<Invoice>('/v1/billing/ProduceInvoice', {
             method: 'POST',
-            body: JSON.stringify({ folioId: currentFolioId.value, actor: displayName.value }),
+            body: JSON.stringify({ folioId: currentFolioId.value, actor: session.displayName ?? '' }),
           }),
         );
       } catch (err) {
         if (isSignedOut(err)) {
-          refuseSession();
+          expireToGate();
           return;
         }
-        invoiceError.value = errorMessage(err);
+        invoiceError.value = errorMessage();
       } finally {
         invoicing.value = false;
       }
@@ -951,15 +865,15 @@ export default defineComponent({
         renderReceipt(
           await apiFetch<Receipt>('/v1/billing/ProduceReceipt', {
             method: 'POST',
-            body: JSON.stringify({ paymentId, actor: displayName.value }),
+            body: JSON.stringify({ paymentId, actor: session.displayName ?? '' }),
           }),
         );
       } catch (err) {
         if (isSignedOut(err)) {
-          refuseSession();
+          expireToGate();
           return;
         }
-        receiptError.value = errorMessage(err);
+        receiptError.value = errorMessage();
       } finally {
         receipting.value = false;
       }
@@ -1012,10 +926,18 @@ export default defineComponent({
         );
       } catch (err) {
         if (isSignedOut(err)) {
-          refuseSession();
+          expireToGate();
           return;
         }
-        loadError.value = errorMessage(err);
+        if (errorCode(err) === 'NOT_FOUND') {
+          loadError.value = t(
+            'desk.print.refused_unknown_ref',
+            {},
+            'Unknown booking reference. Check the reference and try again.',
+          );
+          return;
+        }
+        loadError.value = errorMessage();
       } finally {
         loading.value = false;
       }
@@ -1053,12 +975,6 @@ export default defineComponent({
 
     return {
       t,
-      session,
-      identity,
-      secret,
-      signInError,
-      displayName,
-      role,
       stayId,
       folioStatus,
       openError,
@@ -1084,8 +1000,6 @@ export default defineComponent({
       loading,
       confirmationCopyStatus,
       confirmationDoc,
-      onSignIn,
-      onSignOut,
       onOpen,
       onStayIdInput,
       onShowInvoice,

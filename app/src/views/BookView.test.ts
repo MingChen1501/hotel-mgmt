@@ -167,13 +167,11 @@ function mountBook() {
 }
 
 async function signIn(wrapper: ReturnType<typeof mountBook>, fetchMock: ReturnType<typeof vi.fn>) {
+  // The shell owns the one sign-in gate (Refs #338): views mount
+  // with a signed-in session preset, then work directly.
   stubHappyPath(fetchMock);
-  await wrapper.find('[data-testid="book-signin-identity"]').setValue('owner');
-  await wrapper.find('[data-testid="book-signin-secret"]').setValue('s3cret');
-  await wrapper.find('[data-testid="book-signin-form"]').trigger('submit');
-  await vi.waitFor(() => {
-    expect(wrapper.find('[data-testid="book-booking"]').exists()).toBe(true);
-  });
+  useSessionStore().signIn('tok-1', 'Ada Owner', 'owner');
+  await wrapper.vm.$nextTick();
 }
 
 async function fillStay(wrapper: ReturnType<typeof mountBook>) {
@@ -207,33 +205,32 @@ describe('book view', () => {
     vi.clearAllMocks();
   });
 
-  it('renders the sign-in form when signed out', () => {
+  it('renders the booking form with no per-screen sign-in copy', () => {
     const wrapper = mountBook();
     expect(wrapper.find('[data-testid="book-view"]').exists()).toBe(true);
     // Catalogue wiring (Refs #292): the heading resolves through t().
-    expect(wrapper.find('[data-testid="book-view"] h1').text()).toContain('Desk Booking');
-    expect(wrapper.find('[data-testid="book-signin"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="book-booking"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="book-view"] h1').text()).toContain('Book a room');
+    // The shell owns the one sign-in gate (Refs #338, FR-DSP-2):
+    // no per-screen sign-in copy renders here anymore.
+    expect(wrapper.find('[data-testid="book-signin"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="book-booking"]').exists()).toBe(true);
   });
 
-  it('signs in with identity plus secret and shows the booking form', async () => {
+  it('works under the shell session with Bearer calls', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     const wrapper = mountBook();
     await signIn(wrapper, fetchMock);
+    await quote(wrapper);
 
     // Bearer session handling: the shared client attaches the token
-    // to every call made after sign-in (the SignIn call itself
-    // carries none — no token exists yet at that point).
+    // to every call (the sign-in itself happened in the shell gate).
     const calls = fetchMock.mock.calls;
     expect(calls.length).toBeGreaterThan(0);
-    expect((calls[0]?.[1]?.headers as Headers).get('Authorization')).toBeNull();
-    for (const call of calls.slice(1)) {
+    for (const call of calls) {
       expect((call[1].headers as Headers).get('Authorization')).toBe('Bearer tok-1');
     }
-    expect(wrapper.find('[data-testid="book-whoami"]').text()).toBe('Ada Owner');
-    expect(wrapper.find('[data-testid="book-myrole"]').text()).toBe('owner');
-    expect(wrapper.find('[data-testid="book-signin-error"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="book-quote-section"]').exists()).toBe(true);
   });
 
   it('finds a returning guest by name and fills the guest id', async () => {
@@ -267,12 +264,7 @@ describe('book view', () => {
       throw new Error(`unexpected call ${url}`);
     });
     const wrapper = mountBook();
-    await wrapper.find('[data-testid="book-signin-identity"]').setValue('owner');
-    await wrapper.find('[data-testid="book-signin-secret"]').setValue('s3cret');
-    await wrapper.find('[data-testid="book-signin-form"]').trigger('submit');
-    await vi.waitFor(() => {
-      expect(wrapper.find('[data-testid="book-booking"]').exists()).toBe(true);
-    });
+    useSessionStore().signIn('tok-1', 'Ada Owner', 'owner');
 
     await wrapper.find('[data-testid="book-guest-name"]').setValue('Nobody Here');
     await wrapper.find('[data-testid="book-find-guest"]').trigger('click');
@@ -471,12 +463,7 @@ describe('book view', () => {
       throw new Error(`unexpected call ${url}`);
     });
     const wrapper = mountBook();
-    await wrapper.find('[data-testid="book-signin-identity"]').setValue('owner');
-    await wrapper.find('[data-testid="book-signin-secret"]').setValue('s3cret');
-    await wrapper.find('[data-testid="book-signin-form"]').trigger('submit');
-    await vi.waitFor(() => {
-      expect(wrapper.find('[data-testid="book-booking"]').exists()).toBe(true);
-    });
+    useSessionStore().signIn('tok-1', 'Ada Owner', 'owner');
 
     // Find/register path: the remembered QA Booker name travels
     // into the confirm without an extra lookup.
@@ -640,12 +627,7 @@ describe('book view', () => {
       throw new Error(`unexpected call ${url}`);
     });
     const wrapper = mountBook();
-    await wrapper.find('[data-testid="book-signin-identity"]').setValue('owner');
-    await wrapper.find('[data-testid="book-signin-secret"]').setValue('s3cret');
-    await wrapper.find('[data-testid="book-signin-form"]').trigger('submit');
-    await vi.waitFor(() => {
-      expect(wrapper.find('[data-testid="book-booking"]').exists()).toBe(true);
-    });
+    useSessionStore().signIn('tok-1', 'Ada Owner', 'owner');
 
     await wrapper.find('[data-testid="book-arrival-date"]').setValue('2026-11-25');
     await wrapper.find('[data-testid="book-departure-date"]').setValue('2026-11-27');
@@ -748,12 +730,7 @@ describe('book view', () => {
       throw new Error(`unexpected call ${url}`);
     });
     const wrapper = mountBook();
-    await wrapper.find('[data-testid="book-signin-identity"]').setValue('owner');
-    await wrapper.find('[data-testid="book-signin-secret"]').setValue('s3cret');
-    await wrapper.find('[data-testid="book-signin-form"]').trigger('submit');
-    await vi.waitFor(() => {
-      expect(wrapper.find('[data-testid="book-booking"]').exists()).toBe(true);
-    });
+    useSessionStore().signIn('tok-1', 'Ada Owner', 'owner');
 
     await fillStay(wrapper);
     await wrapper.find('[data-testid="book-quote"]').trigger('click');
@@ -939,7 +916,7 @@ describe('book view', () => {
     });
   });
 
-  it('returns to sign-in with the session-expired string when quoting gets a 401', async () => {
+  it('expires the session with the gate notice when quoting gets a 401', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     const wrapper = mountBook();
@@ -948,29 +925,18 @@ describe('book view', () => {
     fetchMock.mockResolvedValue(new Response('', { status: 401 }));
     await fillStay(wrapper);
     await wrapper.find('[data-testid="book-quote"]').trigger('click');
+    // The shared client expires the session and routes to the
+    // gate (covered in the shell gate suite); the view keeps no
+    // sign-in copy.
     await vi.waitFor(() => {
-      expect(wrapper.find('[data-testid="book-signin"]').exists()).toBe(true);
+      expect(useSessionStore().token).toBeNull();
     });
-    expect(useSessionStore().token).toBeNull();
-    await vi.waitFor(() => {
-      expect(wrapper.find('[data-testid="book-signin-error"]').text()).toContain('Session expired');
-    });
+    expect(useSessionStore().signOutNotice).toBe('session-expired');
     expect(router.replace).toHaveBeenCalledWith('/');
   });
 
-  it('signs out back to the sign-in form', async () => {
-    const fetchMock = vi.fn();
-    vi.stubGlobal('fetch', fetchMock);
-    const wrapper = mountBook();
-    await signIn(wrapper, fetchMock);
-
-    await wrapper.find('[data-testid="book-signout"]').trigger('click');
-    await vi.waitFor(() => {
-      expect(wrapper.find('[data-testid="book-signin"]').exists()).toBe(true);
-    });
-    expect(useSessionStore().token).toBeNull();
-    expect(fetchMock.mock.calls.some((call) => call[0] === '/v1/admin/SignOut')).toBe(true);
-  });
+  // Sign-out moved to the shell gate (Refs #338, FR-DSP-2):
+  // covered in the shell gate suite in `app/src/App.test.ts`.
 
   it('starts a new booking with cleared fields after a confirmation', async () => {
     const fetchMock = vi.fn();

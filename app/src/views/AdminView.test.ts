@@ -150,11 +150,14 @@ function mountAdmin() {
   });
 }
 
-async function signIn(wrapper: ReturnType<typeof mountAdmin>, fetchMock: ReturnType<typeof vi.fn>, state: StubState) {
+// The shell owns the one sign-in gate (Refs #338) and gates the
+// router on sign-in, so every signed-in visit mounts this view with
+// the session already present: preset the session first, then mount
+// (the onMounted reload path), then wait for the rows.
+async function signIn(fetchMock: ReturnType<typeof vi.fn>, state: StubState) {
   stubBackend(fetchMock, state);
-  await wrapper.find('[data-testid="admin-signin-identity"]').setValue('owner');
-  await wrapper.find('[data-testid="admin-signin-secret"]').setValue('s3cret');
-  await wrapper.find('[data-testid="admin-signin-form"]').trigger('submit');
+  useSessionStore().signIn('tok-1', 'Ada Owner', 'owner');
+  const wrapper = mountAdmin();
   await vi.waitFor(() => {
     expect(wrapper.find('[data-testid="admin-console"]').exists()).toBe(true);
   });
@@ -164,6 +167,7 @@ async function signIn(wrapper: ReturnType<typeof mountAdmin>, fetchMock: ReturnT
   await vi.waitFor(() => {
     expect(wrapper.findAll('[data-testid="admin-audit-row"]')).toHaveLength(state.audit.length);
   });
+  return wrapper;
 }
 
 function callsTo(fetchMock: ReturnType<typeof vi.fn>, url: string): unknown[] {
@@ -180,23 +184,24 @@ describe('admin view', () => {
     vi.clearAllMocks();
   });
 
-  it('renders the sign-in form when signed out', () => {
+  it('renders the console with no per-screen sign-in copy', () => {
     const wrapper = mountAdmin();
     expect(wrapper.find('[data-testid="admin-view"]').exists()).toBe(true);
     // Catalogue wiring (Refs #292): the heading resolves through t().
-    expect(wrapper.find('[data-testid="admin-view"] h1').text()).toContain('Admin Console');
-    expect(wrapper.find('[data-testid="admin-signin"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="admin-console"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="admin-view"] h1').text()).toContain(
+      'Admin: staff, hotel setup, and audit',
+    );
+    // The shell owns the one sign-in gate (Refs #338, FR-DSP-2):
+    // no per-screen sign-in copy renders here anymore.
+    expect(wrapper.find('[data-testid="admin-signin"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="admin-console"]').exists()).toBe(true);
   });
 
-  it('signs in and shows users, config, and audit', async () => {
+  it('loads users, config, and audit under the shell session', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
-    const wrapper = mountAdmin();
-    await signIn(wrapper, fetchMock, freshState());
+    const wrapper = await signIn(fetchMock, freshState());
 
-    expect(wrapper.find('[data-testid="admin-whoami"]').text()).toBe('Ada Owner');
-    expect(wrapper.find('[data-testid="admin-myrole"]').text()).toBe('owner');
     // Users table: both stubbed accounts render with catalogue
     // locked wording (Refs #292) and the Save role / Unlock labels
     // (Refs #275).
@@ -223,13 +228,13 @@ describe('admin view', () => {
   it('attaches the Bearer token to every call after sign-in', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
-    const wrapper = mountAdmin();
-    await signIn(wrapper, fetchMock, freshState());
+    await signIn(fetchMock, freshState());
 
     const calls = fetchMock.mock.calls;
     expect(calls.length).toBeGreaterThan(1);
-    expect((calls[0]?.[1]?.headers as Headers).get('Authorization')).toBeNull();
-    for (const call of calls.slice(1)) {
+    // The sign-in itself happened in the shell gate, so every call
+    // the view makes already carries the session token.
+    for (const call of calls) {
       expect((call[1].headers as Headers).get('Authorization')).toBe('Bearer tok-1');
     }
   });
@@ -238,12 +243,11 @@ describe('admin view', () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     const state = freshState();
-    const wrapper = mountAdmin();
-    await signIn(wrapper, fetchMock, state);
+    const wrapper = await signIn(fetchMock, state);
 
     await wrapper.find('[data-testid="admin-create-name"]').setValue('Bob Manager');
     await wrapper.find('[data-testid="admin-create-identity"]').setValue('bob');
-    await wrapper.find('[data-testid="admin-create-secret"]').setValue('s3cret');
+    await wrapper.find('[data-testid="admin-create-secret"] input').setValue('s3cret');
     await wrapper.find('[data-testid="admin-create-role"]').setValue('manager');
     await wrapper.find('[data-testid="admin-create-form"]').trigger('submit');
     await vi.waitFor(() => {
@@ -264,8 +268,7 @@ describe('admin view', () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     const state = freshState();
-    const wrapper = mountAdmin();
-    await signIn(wrapper, fetchMock, state);
+    const wrapper = await signIn(fetchMock, state);
 
     await wrapper.find('[data-testid="admin-role-select-cara"]').setValue('manager');
     await wrapper.find('[data-testid="admin-role-save-cara"]').trigger('click');
@@ -285,8 +288,7 @@ describe('admin view', () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     const state = freshState();
-    const wrapper = mountAdmin();
-    await signIn(wrapper, fetchMock, state);
+    const wrapper = await signIn(fetchMock, state);
 
     await wrapper.find('[data-testid="admin-unlock-cara"]').trigger('click');
     await vi.waitFor(() => {
@@ -304,8 +306,7 @@ describe('admin view', () => {
   it('re-queries the audit log on refresh', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
-    const wrapper = mountAdmin();
-    await signIn(wrapper, fetchMock, freshState());
+    const wrapper = await signIn(fetchMock, freshState());
 
     expect(callsTo(fetchMock, '/v1/admin/QueryAuditLog')).toHaveLength(1);
     await wrapper.find('[data-testid="admin-audit-refresh"]').trigger('click');
@@ -315,98 +316,34 @@ describe('admin view', () => {
     expect(wrapper.find('[data-testid="admin-audit-error"]').exists()).toBe(false);
   });
 
-  it('returns to sign-in with the expired-session message on 401', async () => {
+  it('expires the session with the gate notice on 401', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
-    const state = freshState();
-    state.listUsersStatus = 401;
-    // A bare 401 signs out through the shared client (DeskView parity).
+    // A bare 401 expires through the shared client.
     fetchMock.mockImplementation((url: string) => {
-      if (url === '/v1/admin/SignIn') {
-        return Promise.resolve(
-          jsonResponse({ token: 'tok-1', userId: 'u-1', displayName: 'Ada Owner', role: 'owner' }),
-        );
-      }
       if (url === '/v1/admin/ListUsers') {
         return Promise.resolve(new Response('{}', { status: 401 }));
       }
       throw new Error(`unexpected call ${url}`);
     });
-    const wrapper = mountAdmin();
-    await wrapper.find('[data-testid="admin-signin-identity"]').setValue('owner');
-    await wrapper.find('[data-testid="admin-signin-secret"]').setValue('s3cret');
-    await wrapper.find('[data-testid="admin-signin-form"]').trigger('submit');
+    useSessionStore().signIn('tok-1', 'Ada Owner', 'owner');
+    mountAdmin();
+    // The shared client expires the session and routes to the
+    // gate (covered in the shell gate suite); the view keeps no
+    // sign-in copy.
     await vi.waitFor(() => {
-      expect(wrapper.find('[data-testid="admin-signin-error"]').exists()).toBe(true);
+      expect(useSessionStore().token).toBeNull();
     });
-    expect(wrapper.find('[data-testid="admin-signin-error"]').text()).toContain('Session expired');
+    expect(useSessionStore().signOutNotice).toBe('session-expired');
     expect(useSessionStore().isSignedIn).toBe(false);
     expect(router.replace).toHaveBeenCalledWith('/');
   });
 
-  it('routes a 401 at sign-in to the expired-session message', async () => {
-    const fetchMock = vi.fn();
-    vi.stubGlobal('fetch', fetchMock);
-    // Wrong secret: the shared client maps every 401 to
-    // UNAUTHENTICATED (DeskView parity), so the expired-session
-    // notice applies here and only here (Refs #312).
-    fetchMock.mockResolvedValue(
-      jsonResponse({ code: 'UNAUTHENTICATED', message: 'Unknown identity or wrong secret.' }, 401),
-    );
-    const wrapper = mountAdmin();
-    await wrapper.find('[data-testid="admin-signin-identity"]').setValue('owner');
-    await wrapper.find('[data-testid="admin-signin-secret"]').setValue('wrong');
-    await wrapper.find('[data-testid="admin-signin-form"]').trigger('submit');
-    await vi.waitFor(() => {
-      expect(wrapper.find('[data-testid="admin-signin-error"]').exists()).toBe(true);
-    });
-    expect(wrapper.find('[data-testid="admin-signin-error"]').text()).toContain('Session expired');
-    expect(useSessionStore().isSignedIn).toBe(false);
-    expect(wrapper.find('[data-testid="admin-console"]').exists()).toBe(false);
-  });
-
-  it('routes a locked-identity 401 at sign-in to the locked message, not the expired notice', async () => {
-    const fetchMock = vi.fn();
-    vi.stubGlobal('fetch', fetchMock);
-    // Locked identity: the server answers 401 with IDENTITY_LOCKED
-    // (Refs #319), so the locked wording surfaces instead of the
-    // session-expired notice.
-    fetchMock.mockResolvedValue(
-      jsonResponse({ code: 'IDENTITY_LOCKED', message: 'Identity owner is locked after repeated failures.' }, 401),
-    );
-    const wrapper = mountAdmin();
-    await wrapper.find('[data-testid="admin-signin-identity"]').setValue('owner');
-    await wrapper.find('[data-testid="admin-signin-secret"]').setValue('s3cret');
-    await wrapper.find('[data-testid="admin-signin-form"]').trigger('submit');
-    await vi.waitFor(() => {
-      expect(wrapper.find('[data-testid="admin-signin-error"]').exists()).toBe(true);
-    });
-    expect(wrapper.find('[data-testid="admin-signin-error"]').text()).toContain('locked');
-    expect(wrapper.find('[data-testid="admin-signin-error"]').text()).not.toContain('Session expired');
-    expect(useSessionStore().isSignedIn).toBe(false);
-    expect(wrapper.find('[data-testid="admin-console"]').exists()).toBe(false);
-  });
-
-  it('surfaces a non-401 sign-in failure with its real message', async () => {
-    const fetchMock = vi.fn();
-    vi.stubGlobal('fetch', fetchMock);
-    // Validation failure: branching only on isSignedOut keeps the
-    // real message instead of the session-expired notice (Refs #312).
-    fetchMock.mockResolvedValue(
-      jsonResponse({ code: 'VALIDATION_FAILED', message: 'secret is required.' }, 400),
-    );
-    const wrapper = mountAdmin();
-    await wrapper.find('[data-testid="admin-signin-identity"]').setValue('owner');
-    await wrapper.find('[data-testid="admin-signin-secret"]').setValue('');
-    await wrapper.find('[data-testid="admin-signin-form"]').trigger('submit');
-    await vi.waitFor(() => {
-      expect(wrapper.find('[data-testid="admin-signin-error"]').exists()).toBe(true);
-    });
-    expect(wrapper.find('[data-testid="admin-signin-error"]').text()).toContain('Request failed with status 400');
-    expect(wrapper.find('[data-testid="admin-signin-error"]').text()).not.toContain('Session expired');
-    expect(useSessionStore().isSignedIn).toBe(false);
-    expect(wrapper.find('[data-testid="admin-console"]').exists()).toBe(false);
-  });
+  // Wrong-secret, locked-identity, and validation sign-in
+  // failures moved to the shell gate suite (Refs #338,
+  // FR-DSP-2): the shell owns the one sign-in form, so
+  // `app/src/App.test.ts` covers the plain-sentence failure, the
+  // distinct locked wording, and the expired notice.
 
   it('surfaces FORBIDDEN in the users section without signing out', async () => {
     const fetchMock = vi.fn();
@@ -414,19 +351,21 @@ describe('admin view', () => {
     const state = freshState();
     state.listUsersStatus = 403;
     stubBackend(fetchMock, state);
+    useSessionStore().signIn('tok-1', 'Cara Clerk', 'front-desk');
     const wrapper = mountAdmin();
-    await wrapper.find('[data-testid="admin-signin-identity"]').setValue('front');
-    await wrapper.find('[data-testid="admin-signin-secret"]').setValue('s3cret');
-    await wrapper.find('[data-testid="admin-signin-form"]').trigger('submit');
-    // Role rules stay server-side: the envelope code surfaces in
-    // the section error and the session survives (Refs #298).
+    // Role rules stay server-side: the refusal surfaces in the
+    // section error as one plain sentence (FR-DSP-3) and the
+    // session survives (Refs #298).
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="admin-console"]').exists()).toBe(true);
     });
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="admin-users-error"]').exists()).toBe(true);
     });
-    expect(wrapper.find('[data-testid="admin-users-error"]').text()).toContain('403');
+    expect(wrapper.find('[data-testid="admin-users-error"]').text()).toContain(
+      'That did not work. Try again; if it keeps failing, tell the manager.',
+    );
+    expect(wrapper.find('[data-testid="admin-users-error"]').text()).not.toContain('403');
     expect(useSessionStore().isSignedIn).toBe(true);
   });
 
@@ -435,28 +374,13 @@ describe('admin view', () => {
     vi.stubGlobal('fetch', fetchMock);
     const state = freshState();
     state.audit = [];
-    const wrapper = mountAdmin();
-    await signIn(wrapper, fetchMock, state);
-    expect(wrapper.find('[data-testid="admin-audit-table"]').text()).toContain('No entries yet.');
+    const wrapper = await signIn(fetchMock, state);
+    expect(wrapper.find('[data-testid="admin-audit-table"]').text()).toContain(
+      'No audit entries yet.',
+    );
   });
 
-  it('signs out locally even when the SignOut call fails', async () => {
-    const fetchMock = vi.fn();
-    vi.stubGlobal('fetch', fetchMock);
-    const state = freshState();
-    const wrapper = mountAdmin();
-    await signIn(wrapper, fetchMock, state);
-
-    fetchMock.mockImplementation((url: string) => {
-      if (url === '/v1/admin/SignOut') {
-        return Promise.resolve(new Response('{}', { status: 401 }));
-      }
-      throw new Error(`unexpected call ${url}`);
-    });
-    await wrapper.find('[data-testid="admin-signout"]').trigger('click');
-    await vi.waitFor(() => {
-      expect(wrapper.find('[data-testid="admin-signin"]').exists()).toBe(true);
-    });
-    expect(useSessionStore().isSignedIn).toBe(false);
-  });
+  // Sign-out moved to the shell gate (Refs #338, FR-DSP-2):
+  // covered in the shell gate suite in `app/src/App.test.ts`, including
+  // the dead-token path that signs out locally all the same.
 });

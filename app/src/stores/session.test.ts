@@ -48,4 +48,57 @@ describe('session store', () => {
     expect(store.isSignedIn).toBe(false);
     expect(sessionStorage.getItem(SESSION_TOKEN_KEY)).toBeNull();
   });
+
+  it('keeps the shell display name and role beside the token', () => {
+    const store = useSessionStore();
+    store.signIn('tok-1', 'Ada Owner', 'owner');
+    expect(store.displayName).toBe('Ada Owner');
+    expect(store.role).toBe('owner');
+    // A reload restores the name and role together with the token.
+    setActivePinia(createPinia());
+    const restored = useSessionStore();
+    expect(restored.token).toBe('tok-1');
+    expect(restored.displayName).toBe('Ada Owner');
+    expect(restored.role).toBe('owner');
+  });
+
+  it('sign-out clears the name, role, and any notice', () => {
+    const store = useSessionStore();
+    store.signIn('tok-1', 'Ada Owner', 'owner');
+    store.signOut();
+    expect(store.displayName).toBeNull();
+    expect(store.role).toBeNull();
+    expect(store.signOutNotice).toBeNull();
+    expect(sessionStorage.getItem('hotel-mgmt.session.displayName')).toBeNull();
+    expect(sessionStorage.getItem('hotel-mgmt.session.role')).toBeNull();
+  });
+
+  it('expiring the session keeps the gate notice without persisting it', () => {
+    const store = useSessionStore();
+    store.signIn('tok-1', 'Ada Owner', 'owner');
+    store.expireSession();
+    expect(store.token).toBeNull();
+    expect(store.isSignedIn).toBe(false);
+    expect(store.signOutNotice).toBe('session-expired');
+    expect(sessionStorage.getItem(SESSION_TOKEN_KEY)).toBeNull();
+    // A reload shows a clean gate: the notice is transient.
+    setActivePinia(createPinia());
+    expect(useSessionStore().signOutNotice).toBeNull();
+  });
+
+  it('signing in clears a previous notice', () => {
+    const store = useSessionStore();
+    store.expireSession();
+    expect(store.signOutNotice).toBe('session-expired');
+    store.signIn('tok-2');
+    expect(store.signOutNotice).toBeNull();
+    expect(store.isSignedIn).toBe(true);
+  });
+
+  it('clears the notice on demand', () => {
+    const store = useSessionStore();
+    store.expireSession();
+    store.clearNotice();
+    expect(store.signOutNotice).toBeNull();
+  });
 });

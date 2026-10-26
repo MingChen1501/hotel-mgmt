@@ -1,85 +1,19 @@
 <template>
   <main data-testid="admin-view">
-    <h1>{{ t('desk.admin.title', {}, 'Hotel Management — Admin Console') }}</h1>
-    <p>
-      <a
-        href="/app/"
-        data-testid="admin-back"
-      >{{ t('desk.admin.back', {}, 'Back to the desk entry') }}</a>
-    </p>
-    <noscript><p>This page needs JavaScript to sign in and manage users, roles, and config.</p></noscript>
+    <h1>{{ t('desk.admin.title', {}, 'Admin: staff, hotel setup, and audit') }}</h1>
+    <p>{{ t('desk.admin.intro', {}, 'Manage staff accounts and roles, review the hotel setup, and read the audit log.') }}</p>
+    <noscript><p>This page needs JavaScript to manage users, roles, and config.</p></noscript>
 
-    <section
-      v-if="!session.isSignedIn"
-      data-testid="admin-signin"
-    >
-      <h2>{{ t('desk.admin.sign_in', {}, 'Sign in') }}</h2>
-      <form
-        data-testid="admin-signin-form"
-        @submit.prevent="onSignIn"
-      >
-        <label for="admin-signin-identity">
-          {{ t('desk.admin.signin_identity', {}, 'Sign-in identity: ') }}
-          <input
-            id="admin-signin-identity"
-            v-model="identity"
-            name="signin-identity"
-            autocomplete="username"
-            data-testid="admin-signin-identity"
-          >
-        </label>
-        <label for="admin-signin-secret">
-          {{ t('desk.admin.secret', {}, 'Secret: ') }}
-          <input
-            id="admin-signin-secret"
-            v-model="secret"
-            name="signin-secret"
-            type="password"
-            autocomplete="current-password"
-            data-testid="admin-signin-secret"
-          >
-        </label>
-        <button
-          type="submit"
-          data-testid="admin-signin-submit"
-        >
-          {{ t('desk.admin.sign_in', {}, 'Sign in') }}
-        </button>
-      </form>
-      <p
-        v-if="signInError"
-        role="alert"
-        data-testid="admin-signin-error"
-      >
-        {{ signInError }}
-      </p>
-    </section>
-
-    <section
-      v-else
-      data-testid="admin-console"
-    >
-      <p>
-        <span>{{ t('desk.admin.signed_in_as', {}, 'Signed in as ') }}</span><strong data-testid="admin-whoami">{{ displayName }}</strong>
-        (<span data-testid="admin-myrole">{{ role }}</span>).
-        <button
-          id="admin-signout-button"
-          type="button"
-          data-testid="admin-signout"
-          @click="onSignOut"
-        >
-          {{ t('desk.admin.signout', {}, 'Sign out') }}
-        </button>
-      </p>
-
+    <section data-testid="admin-console">
       <h2>{{ t('desk.admin.users_heading', {}, 'Users and roles') }}</h2>
-      <p
+      <Message
         v-if="usersError"
+        severity="error"
         role="alert"
         data-testid="admin-users-error"
       >
         {{ usersError }}
-      </p>
+      </Message>
       <table
         id="admin-users-table"
         data-testid="admin-users-table"
@@ -117,26 +51,24 @@
             </td>
             <td>{{ user.locked ? t('desk.admin.yes', {}, 'yes') : t('desk.admin.no', {}, 'no') }}</td>
             <td>
-              <button
+              <Button
                 type="button"
+                :label="t('desk.admin.save_role', {}, 'Save role')"
                 :data-testid="`admin-role-save-${user.signinIdentity}`"
                 @click="onSaveRole(user.signinIdentity)"
-              >
-                {{ t('desk.admin.save_role', {}, 'Save role') }}
-              </button>
-              <button
+              />
+              <Button
                 v-if="user.locked"
                 type="button"
+                :label="t('desk.admin.unlock', {}, 'Unlock')"
                 :data-testid="`admin-unlock-${user.signinIdentity}`"
                 @click="onUnlock(user.signinIdentity)"
-              >
-                {{ t('desk.admin.unlock', {}, 'Unlock') }}
-              </button>
+              />
             </td>
           </tr>
           <tr v-if="users.length === 0">
             <td colspan="5">
-              {{ t('desk.admin.no_entries', {}, 'No entries yet.') }}
+              {{ t('desk.admin.empty_users', {}, 'No staff accounts yet.') }}
             </td>
           </tr>
         </tbody>
@@ -149,31 +81,30 @@
       >
         <label for="admin-create-name">
           {{ t('desk.admin.name_label', {}, 'Name: ') }}
-          <input
+          <InputText
             id="admin-create-name"
             v-model="createName"
             name="create-name"
             data-testid="admin-create-name"
-          >
+          />
         </label>
         <label for="admin-create-identity">
           {{ t('desk.admin.signin_identity', {}, 'Sign-in identity: ') }}
-          <input
+          <InputText
             id="admin-create-identity"
             v-model="createIdentity"
             name="create-identity"
             data-testid="admin-create-identity"
-          >
+          />
         </label>
         <label for="admin-create-secret">
           {{ t('desk.admin.secret', {}, 'Secret: ') }}
-          <input
-            id="admin-create-secret"
+          <Password
             v-model="createSecret"
-            name="create-secret"
-            type="password"
+            :feedback="false"
+            input-id="admin-create-secret"
             data-testid="admin-create-secret"
-          >
+          />
         </label>
         <label for="admin-create-role">
           {{ t('desk.admin.role_label', {}, 'Role: ') }}
@@ -192,23 +123,23 @@
             </option>
           </select>
         </label>
-        <button
+        <Button
           type="submit"
+          :label="t('desk.admin.create_button', {}, 'Create')"
           data-testid="admin-create-submit"
-        >
-          {{ t('desk.admin.create_button', {}, 'Create') }}
-        </button>
+        />
       </form>
 
       <h2>{{ t('desk.admin.config_heading', {}, 'Hotel configuration') }}</h2>
       <p>{{ t('desk.admin.config_note', {}, 'Read-only: the current per-hotel config set.') }}</p>
-      <p
+      <Message
         v-if="configError"
+        severity="error"
         role="alert"
         data-testid="admin-config-error"
       >
         {{ configError }}
-      </p>
+      </Message>
       <div v-else>
         <p data-testid="admin-config-version">
           {{ t('desk.admin.config_version', { schemaVersion: configSchemaVersion }, `Config schema version ${configSchemaVersion}.`) }}
@@ -223,29 +154,29 @@
           </template>
         </dl>
         <p v-if="configEntries.length === 0">
-          {{ t('desk.admin.no_entries', {}, 'No entries yet.') }}
+          {{ t('desk.admin.empty_config', {}, 'No hotel settings to show.') }}
         </p>
       </div>
 
       <h2>{{ t('desk.admin.audit_heading', {}, 'Audit view') }}</h2>
       <p>{{ t('desk.admin.audit_note', {}, 'Read-only: account creations and updates, config writes, and backup reports, newest first.') }}</p>
       <p>
-        <button
+        <Button
           id="admin-audit-refresh"
           type="button"
+          :label="t('desk.admin.refresh', {}, 'Refresh')"
           data-testid="admin-audit-refresh"
           @click="onAuditRefresh"
-        >
-          {{ t('desk.admin.refresh', {}, 'Refresh') }}
-        </button>
+        />
       </p>
-      <p
+      <Message
         v-if="auditError"
+        severity="error"
         role="alert"
         data-testid="admin-audit-error"
       >
         {{ auditError }}
-      </p>
+      </Message>
       <table
         id="admin-audit-table"
         data-testid="admin-audit-table"
@@ -273,7 +204,7 @@
           </tr>
           <tr v-if="auditEntries.length === 0">
             <td colspan="5">
-              {{ t('desk.admin.no_entries', {}, 'No entries yet.') }}
+              {{ t('desk.admin.empty_audit', {}, 'No audit entries yet. Account and config activity appears here.') }}
             </td>
           </tr>
         </tbody>
@@ -284,6 +215,10 @@
 
 <script lang="ts">
 import { defineComponent, onMounted, ref } from 'vue';
+import Button from 'primevue/button';
+import InputText from 'primevue/inputtext';
+import Message from 'primevue/message';
+import Password from 'primevue/password';
 import { apiFetch } from '../api/client';
 import type { ApiError } from '../api/client';
 import { t } from '../i18n';
@@ -349,16 +284,16 @@ function isSignedOut(err: unknown): boolean {
   );
 }
 
-function isLocked(err: unknown): boolean {
-  return (
-    typeof err === 'object' &&
-    err !== null &&
-    (err as ApiError).code === 'IDENTITY_LOCKED'
+// Unexpected failures read as one plain sentence (FR-DSP-3,
+// desk.shell.request_failed): call sites map known envelope codes
+// to specific catalogue wordings, so this fallback never surfaces
+// technical codes or statuses.
+function errorMessage(): string {
+  return t(
+    'desk.shell.request_failed',
+    {},
+    'That did not work. Try again; if it keeps failing, tell the manager.',
   );
-}
-
-function errorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : 'Request failed.';
 }
 
 function formatConfigValue(value: unknown): string {
@@ -374,13 +309,10 @@ function formatConfigValue(value: unknown): string {
 
 export default defineComponent({
   name: 'AdminView',
+  // eslint-disable-next-line vue/no-reserved-component-names -- PrimeVue registers Button/Dialog under these canonical names (Refs #338 component mapping).
+  components: { Button, InputText, Message, Password },
   setup() {
     const session = useSessionStore();
-    const identity = ref('');
-    const secret = ref('');
-    const signInError = ref('');
-    const displayName = ref('');
-    const role = ref('');
     const users = ref<AdminUser[]>([]);
     const usersError = ref('');
     const createName = ref('');
@@ -393,20 +325,11 @@ export default defineComponent({
     const auditEntries = ref<AuditEntry[]>([]);
     const auditError = ref('');
 
-    function signOutLocal(): void {
-      session.signOut();
-      secret.value = '';
-      displayName.value = '';
-      role.value = '';
-    }
-
-    function noteSignedOut(): void {
-      signOutLocal();
-      signInError.value = t(
-        'desk.today.session_expired',
-        {},
-        'Session expired. Sign in again.',
-      );
+    // The shell owns the one sign-in gate (Refs #338): a
+    // 401/UNAUTHENTICATED expires the shared session and the gate
+    // takes over with the session-expired notice.
+    function expireToGate(): void {
+      session.expireSession();
     }
 
     async function refreshUsers(): Promise<void> {
@@ -418,14 +341,14 @@ export default defineComponent({
         users.value = (data.users ?? []).map((user) => ({ ...user, draftRole: user.role }));
         usersError.value = '';
       } catch (err) {
-        // The shared client already cleared the session and routed
-        // to sign-in on 401: mirror the desk SFC by surfacing the
-        // session-expired catalogue string there.
+        // The shared client already expired the session and routed
+        // to the gate on 401: leave the session-expired notice for
+        // the gate to show.
         if (isSignedOut(err) || !session.isSignedIn) {
-          noteSignedOut();
+          expireToGate();
           return;
         }
-        usersError.value = errorMessage(err);
+        usersError.value = errorMessage();
       }
     }
 
@@ -443,10 +366,10 @@ export default defineComponent({
         configError.value = '';
       } catch (err) {
         if (isSignedOut(err) || !session.isSignedIn) {
-          noteSignedOut();
+          expireToGate();
           return;
         }
-        configError.value = errorMessage(err);
+        configError.value = errorMessage();
       }
     }
 
@@ -460,10 +383,10 @@ export default defineComponent({
         auditError.value = '';
       } catch (err) {
         if (isSignedOut(err) || !session.isSignedIn) {
-          noteSignedOut();
+          expireToGate();
           return;
         }
-        auditError.value = errorMessage(err);
+        auditError.value = errorMessage();
       }
     }
 
@@ -477,39 +400,6 @@ export default defineComponent({
         return;
       }
       await refreshAudit();
-    }
-
-    async function onSignIn(): Promise<void> {
-      signInError.value = '';
-      try {
-        const payload = await apiFetch<{ token: string; displayName: string; role: string }>(
-          '/v1/admin/SignIn',
-          {
-            method: 'POST',
-            body: JSON.stringify({ signinIdentity: identity.value, secret: secret.value }),
-          },
-        );
-        session.signIn(payload.token);
-        displayName.value = payload.displayName;
-        role.value = payload.role;
-        await refreshAll();
-      } catch (err) {
-        // Sign-in holds no session yet, so only a signed-out (401
-        // UNAUTHENTICATED) failure routes to the session-expired
-        // notice — validation and other failures surface their real
-        // message (Refs #312). A locked identity answers 401 with
-        // IDENTITY_LOCKED instead: surface the server's locked
-        // wording, never the expired notice (Refs #319).
-        if (isLocked(err)) {
-          signInError.value = errorMessage(err);
-          return;
-        }
-        if (isSignedOut(err)) {
-          noteSignedOut();
-          return;
-        }
-        signInError.value = errorMessage(err);
-      }
     }
 
     async function onCreate(): Promise<void> {
@@ -534,10 +424,10 @@ export default defineComponent({
         await refreshAudit();
       } catch (err) {
         if (isSignedOut(err) || !session.isSignedIn) {
-          noteSignedOut();
+          expireToGate();
           return;
         }
-        usersError.value = errorMessage(err);
+        usersError.value = errorMessage();
       }
     }
 
@@ -558,10 +448,10 @@ export default defineComponent({
         await refreshAudit();
       } catch (err) {
         if (isSignedOut(err) || !session.isSignedIn) {
-          noteSignedOut();
+          expireToGate();
           return;
         }
-        usersError.value = errorMessage(err);
+        usersError.value = errorMessage();
       }
     }
 
@@ -578,24 +468,15 @@ export default defineComponent({
         await refreshAudit();
       } catch (err) {
         if (isSignedOut(err) || !session.isSignedIn) {
-          noteSignedOut();
+          expireToGate();
           return;
         }
-        usersError.value = errorMessage(err);
+        usersError.value = errorMessage();
       }
     }
 
     async function onAuditRefresh(): Promise<void> {
       await refreshAudit();
-    }
-
-    async function onSignOut(): Promise<void> {
-      try {
-        await apiFetch<unknown>('/v1/admin/SignOut', { method: 'POST', body: '{}' });
-      } catch {
-        // A dead token signs out locally all the same (legacy parity).
-      }
-      signOutLocal();
     }
 
     onMounted(() => {
@@ -610,11 +491,6 @@ export default defineComponent({
       t,
       session,
       roleOptions: ROLE_OPTIONS,
-      identity,
-      secret,
-      signInError,
-      displayName,
-      role,
       users,
       usersError,
       createName,
@@ -626,12 +502,10 @@ export default defineComponent({
       configError,
       auditEntries,
       auditError,
-      onSignIn,
       onCreate,
       onSaveRole,
       onUnlock,
       onAuditRefresh,
-      onSignOut,
     };
   },
 });

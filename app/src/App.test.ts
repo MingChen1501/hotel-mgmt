@@ -113,3 +113,340 @@ describe('shell offline banner', () => {
     }
   });
 });
+
+// Shell navigation + single sign-in gate (Refs #338, FR-DSP-1,
+// FR-DSP-2, LLD §12.3–§12.4). The per-screen sign-in round trips
+// moved here from the six view suites: the shell owns the one
+// sign-in form, the top nav, and sign-out.
+describe('shell navigation', () => {
+  beforeEach(async () => {
+    sessionStorage.clear();
+    resetConnectivityForTests();
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+  });
+
+  function quietFetch() {
+    return vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({}), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+  }
+
+  async function mountShellWith(pinia: ReturnType<typeof createPinia>, path: string) {
+    await router.replace(path);
+    const wrapper = mount(ShellApp, {
+      global: { plugins: [pinia, router] },
+    });
+    await router.isReady();
+    return wrapper;
+  }
+
+  it('renders the six destinations in contract order plus the user plus sign-out', async () => {
+    vi.stubGlobal('fetch', quietFetch());
+    try {
+      const pinia = createPinia();
+      setActivePinia(pinia);
+      useSessionStore().signIn('tok-1', 'Ada Owner', 'owner');
+      const wrapper = await mountShellWith(pinia, '/');
+      const items = wrapper.findAll('[data-testid^="shell-nav-"]');
+      expect(items.map((item) => item.text())).toEqual([
+        'Desk',
+        'Book',
+        'Stay',
+        'Folio',
+        'Print',
+        'Admin',
+      ]);
+      expect(items.map((item) => item.attributes('href'))).toEqual([
+        '/app/',
+        '/app/book',
+        '/app/stay',
+        '/app/folio',
+        '/app/print',
+        '/app/admin',
+      ]);
+      expect(wrapper.find('[data-testid="shell-brand"]').text()).toContain('Hotel Management');
+      expect(wrapper.find('[data-testid="shell-user"]').text()).toBe('Ada Owner');
+      expect(wrapper.find('[data-testid="shell-signout"]').exists()).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it.each([
+    ['/', 'shell-nav-desk'],
+    ['/book', 'shell-nav-book'],
+    ['/stay', 'shell-nav-stay'],
+    ['/folio', 'shell-nav-folio'],
+    ['/print', 'shell-nav-print'],
+    ['/admin', 'shell-nav-admin'],
+  ])('highlights exactly the %s destination on %s', async (path, active) => {
+    vi.stubGlobal('fetch', quietFetch());
+    try {
+      const pinia = createPinia();
+      setActivePinia(pinia);
+      useSessionStore().signIn('tok-1', 'Ada Owner', 'owner');
+      const wrapper = await mountShellWith(pinia, path);
+      const highlighted = wrapper.findAll('.shell-nav-active');
+      expect(highlighted).toHaveLength(1);
+      expect(highlighted[0]?.attributes('data-testid')).toBe(active);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('keeps the nav with no active destination on unknown paths', async () => {
+    vi.stubGlobal('fetch', quietFetch());
+    try {
+      const pinia = createPinia();
+      setActivePinia(pinia);
+      useSessionStore().signIn('tok-1', 'Ada Owner', 'owner');
+      const wrapper = await mountShellWith(pinia, '/shell');
+      expect(wrapper.find('[data-testid="shell-nav"]').exists()).toBe(true);
+      expect(wrapper.findAll('.shell-nav-active')).toHaveLength(0);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+describe('shell sign-in gate', () => {
+  beforeEach(async () => {
+    sessionStorage.clear();
+    resetConnectivityForTests();
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+  });
+
+  function jsonResponse(body: unknown, status = 200): Response {
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  async function mountGate(path = '/book') {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    await router.replace(path);
+    const wrapper = mount(ShellApp, {
+      global: { plugins: [pinia, router] },
+    });
+    await router.isReady();
+    return wrapper;
+  }
+
+  it.each(['/', '/book', '/stay', '/folio', '/print', '/admin'])(
+    'shows only the gate to a signed-out visitor on %s',
+    async (path) => {
+      const wrapper = await mountGate(path);
+      expect(wrapper.find('[data-testid="shell-gate"]').exists()).toBe(true);
+      expect(wrapper.find('[data-testid="shell-signin-form"]').exists()).toBe(true);
+      expect(wrapper.find('[data-testid="shell-nav"]').exists()).toBe(false);
+      expect(wrapper.find('[data-testid="shell-signin-error"]').exists()).toBe(false);
+      expect(wrapper.find('[data-testid="shell-expired-notice"]').exists()).toBe(false);
+    },
+  );
+
+  it('signs in through the gate and lands on the requested screen', async () => {
+    const fetchMock: ReturnType<typeof vi.fn> = vi.fn((url: string) => {
+      if (url === '/v1/admin/SignIn') {
+        return Promise.resolve(
+          jsonResponse({ token: 'tok-1', displayName: 'Ada Owner', role: 'owner' }),
+        );
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const wrapper = await mountGate('/book');
+      await wrapper.find('[data-testid="shell-signin-identity"]').setValue('owner');
+      await wrapper.find('[data-testid="shell-signin-secret"] input').setValue('s3cret');
+      await wrapper.find('[data-testid="shell-signin-form"]').trigger('submit');
+      await vi.waitFor(() => {
+        expect(wrapper.find('[data-testid="shell-nav"]').exists()).toBe(true);
+      });
+      // The SignIn call itself carries no token; the session lands
+      // in the store with the display name for the nav.
+      const signInCall = fetchMock.mock.calls.find((call) => call[0] === '/v1/admin/SignIn');
+      expect((signInCall?.[1]?.headers as Headers).get('Authorization')).toBeNull();
+      expect(useSessionStore().token).toBe('tok-1');
+      expect(wrapper.find('[data-testid="shell-user"]').text()).toBe('Ada Owner');
+      expect(wrapper.find('[data-testid="book-view"]').exists()).toBe(true);
+      expect(wrapper.find('[data-testid="shell-gate"]').exists()).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('reads a wrong secret as one plain sentence without signing in', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse({ code: 'UNAUTHENTICATED', message: 'Unknown identity or wrong secret.' }, 401),
+      ),
+    );
+    try {
+      const wrapper = await mountGate('/');
+      await wrapper.find('[data-testid="shell-signin-form"]').trigger('submit');
+      await vi.waitFor(() => {
+        expect(wrapper.find('[data-testid="shell-signin-error"]').exists()).toBe(true);
+      });
+      expect(wrapper.find('[data-testid="shell-signin-error"]').text()).toContain(
+        'That sign-in did not work. Check the name and password and try again.',
+      );
+      expect(useSessionStore().isSignedIn).toBe(false);
+      expect(wrapper.find('[data-testid="shell-nav"]').exists()).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('reads a validation failure as the same plain sentence', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse({ code: 'VALIDATION_FAILED', message: 'secret is required.' }, 400),
+      ),
+    );
+    try {
+      const wrapper = await mountGate('/');
+      await wrapper.find('[data-testid="shell-signin-form"]').trigger('submit');
+      await vi.waitFor(() => {
+        expect(wrapper.find('[data-testid="shell-signin-error"]').exists()).toBe(true);
+      });
+      expect(wrapper.find('[data-testid="shell-signin-error"]').text()).toContain(
+        'That sign-in did not work.',
+      );
+      expect(useSessionStore().isSignedIn).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('reads a locked identity distinctly from a wrong secret', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse(
+          { code: 'IDENTITY_LOCKED', message: 'Identity owner is locked after repeated failures.' },
+          401,
+        ),
+      ),
+    );
+    try {
+      const wrapper = await mountGate('/');
+      await wrapper.find('[data-testid="shell-signin-form"]').trigger('submit');
+      await vi.waitFor(() => {
+        expect(wrapper.find('[data-testid="shell-signin-error"]').exists()).toBe(true);
+      });
+      // Refs #319: a locked identity shows the locked wording, not
+      // the plain failure sentence and not the expired notice.
+      expect(wrapper.find('[data-testid="shell-signin-error"]').text()).toContain('locked');
+      expect(wrapper.find('[data-testid="shell-signin-error"]').text()).not.toContain(
+        'did not work',
+      );
+      expect(wrapper.find('[data-testid="shell-signin-error"]').text()).not.toContain(
+        'Session expired',
+      );
+      expect(useSessionStore().isSignedIn).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('signs out back to the gate and clears the token', async () => {
+    const fetchMock: ReturnType<typeof vi.fn> = vi.fn((url: string) => {
+      if (url === '/v1/admin/SignIn') {
+        return Promise.resolve(
+          jsonResponse({ token: 'tok-1', displayName: 'Ada Owner', role: 'owner' }),
+        );
+      }
+      if (url === '/v1/admin/SignOut') {
+        return Promise.resolve(jsonResponse({ ok: true }));
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const wrapper = await mountGate('/');
+      await wrapper.find('[data-testid="shell-signin-identity"]').setValue('owner');
+      await wrapper.find('[data-testid="shell-signin-secret"] input').setValue('s3cret');
+      await wrapper.find('[data-testid="shell-signin-form"]').trigger('submit');
+      await vi.waitFor(() => {
+        expect(wrapper.find('[data-testid="shell-nav"]').exists()).toBe(true);
+      });
+      await wrapper.find('[data-testid="shell-signout"]').trigger('click');
+      await vi.waitFor(() => {
+        expect(wrapper.find('[data-testid="shell-gate"]').exists()).toBe(true);
+      });
+      expect(useSessionStore().token).toBeNull();
+      expect(wrapper.find('[data-testid="shell-nav"]').exists()).toBe(false);
+      expect(fetchMock.mock.calls.some((call) => call[0] === '/v1/admin/SignOut')).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('signs out locally even when the SignOut call fails', async () => {
+    const fetchMock: ReturnType<typeof vi.fn> = vi.fn((url: string) => {
+      if (url === '/v1/admin/SignIn') {
+        return Promise.resolve(
+          jsonResponse({ token: 'tok-1', displayName: 'Ada Owner', role: 'owner' }),
+        );
+      }
+      if (url === '/v1/admin/SignOut') {
+        return Promise.resolve(new Response('{}', { status: 401 }));
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const wrapper = await mountGate('/');
+      await wrapper.find('[data-testid="shell-signin-form"]').trigger('submit');
+      await vi.waitFor(() => {
+        expect(wrapper.find('[data-testid="shell-nav"]').exists()).toBe(true);
+      });
+      await wrapper.find('[data-testid="shell-signout"]').trigger('click');
+      await vi.waitFor(() => {
+        expect(wrapper.find('[data-testid="shell-gate"]').exists()).toBe(true);
+      });
+      expect(useSessionStore().token).toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('shows the expired notice on the gate after a 401 mid-session', async () => {
+    const fetchMock: ReturnType<typeof vi.fn> = vi.fn((url: string) => {
+      if (url === '/v1/admin/SignIn') {
+        return Promise.resolve(
+          jsonResponse({ token: 'tok-1', displayName: 'Ada Owner', role: 'owner' }),
+        );
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const wrapper = await mountGate('/');
+      await wrapper.find('[data-testid="shell-signin-form"]').trigger('submit');
+      await vi.waitFor(() => {
+        expect(wrapper.find('[data-testid="shell-nav"]').exists()).toBe(true);
+      });
+      fetchMock.mockResolvedValue(new Response('', { status: 401 }));
+      await wrapper.find('[data-testid="desk-refresh"]').trigger('click');
+      await vi.waitFor(() => {
+        expect(wrapper.find('[data-testid="shell-gate"]').exists()).toBe(true);
+      });
+      expect(wrapper.find('[data-testid="shell-expired-notice"]').text()).toContain(
+        'Session expired. Sign in again.',
+      );
+      expect(useSessionStore().token).toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});

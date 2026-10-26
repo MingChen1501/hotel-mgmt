@@ -1,228 +1,150 @@
 <template>
   <main data-testid="stay-view">
-    <h1>{{ t('desk.stay.title', {}, 'Hotel Management — Desk Stay') }}</h1>
-    <p>
-      <a href="/app/">{{ t('desk.stay.back', {}, 'Back to the desk entry') }}</a> ·
-      <a href="/app/">{{ t('desk.stay.today_link', {}, "Today's arrivals, in-house, and departures") }}</a> ·
-      <a href="/app/folio">{{ t('desk.entry.folio_link', {}, 'Stay folio (charges and payments)') }}</a>
-    </p>
-    <noscript><p>This page needs JavaScript to sign in and run the stay lifecycle.</p></noscript>
+    <h1>{{ t('desk.stay.title', {}, 'Check guests in, move them, and check them out') }}</h1>
+    <p>{{ t('desk.stay.intro', {}, 'Work from the lists: pick an arrival to check in, pick a stay to move or check out, then follow each section in order.') }}</p>
+    <noscript><p>This page needs JavaScript to run the stay lifecycle.</p></noscript>
 
-    <section
-      v-if="!session.isSignedIn"
-      data-testid="stay-signin"
-    >
-      <h2>{{ t('desk.admin.sign_in', {}, 'Sign in') }}</h2>
-      <form
-        data-testid="stay-signin-form"
-        @submit.prevent="onSignIn"
-      >
-        <label for="stay-signin-identity">
-          {{ t('desk.admin.signin_identity', {}, 'Sign-in identity: ') }}
-          <input
-            id="stay-signin-identity"
-            v-model="identity"
-            name="signin-identity"
-            autocomplete="username"
-            data-testid="stay-signin-identity"
-          >
-        </label>
-        <label for="stay-signin-secret">
-          {{ t('desk.admin.secret', {}, 'Secret: ') }}
-          <input
-            id="stay-signin-secret"
-            v-model="secret"
-            name="signin-secret"
-            type="password"
-            autocomplete="current-password"
-            data-testid="stay-signin-secret"
-          >
-        </label>
-        <button
-          type="submit"
-          data-testid="stay-signin-submit"
-        >
-          {{ t('desk.admin.sign_in', {}, 'Sign in') }}
-        </button>
-      </form>
-      <p
-        v-if="signInError"
-        role="alert"
-        data-testid="stay-signin-error"
-      >
-        {{ signInError }}
-      </p>
-    </section>
-
-    <section
-      v-else
-      data-testid="stay-main"
-    >
-      <p>
-        <span>{{ t('desk.admin.signed_in_as', {}, 'Signed in as ') }}</span><strong data-testid="stay-whoami">{{ displayName }}</strong>
-        (<span data-testid="stay-myrole">{{ role }}</span>).
-        <button
-          id="stay-signout-button"
-          type="button"
-          data-testid="stay-signout"
-          @click="onSignOut"
-        >
-          {{ t('desk.admin.signout', {}, 'Sign out') }}
-        </button>
-      </p>
-
+    <section data-testid="stay-main">
       <h2>{{ t('desk.stay.lists_heading', {}, 'Stay lists for the business date') }}</h2>
       <p>
         <span>{{ t('desk.today.business_date', {}, 'Business date: ') }}</span><strong data-testid="stay-business-date">{{ businessDate }}</strong>
-        <button
+        <Button
           id="stay-refresh-button"
           type="button"
+          :label="t('desk.today.refresh', {}, 'Refresh')"
           data-testid="stay-refresh"
           @click="onRefresh"
-        >
-          {{ t('desk.today.refresh', {}, 'Refresh') }}
-        </button>
+        />
       </p>
       <p
+        v-if="listsLoading"
+        data-testid="stay-lists-loading"
+      >
+        {{ t('desk.stay.loading_lists', {}, 'Loading the stay lists…') }}
+      </p>
+      <Message
         v-if="listsError"
+        severity="error"
         role="alert"
         data-testid="stay-lists-error"
       >
         {{ listsError }}
-      </p>
+      </Message>
 
       <h3>{{ t('desk.stay.arrivals', {}, 'Arriving today') }}</h3>
-      <table
+      <DataTable
         id="stay-arrivals-table"
+        :value="arrivalRows"
         data-testid="stay-arrivals-table"
       >
-        <thead>
-          <tr>
-            <th>{{ t('desk.stay.th_guest', {}, 'Guest') }}</th>
-            <th>{{ t('desk.stay.th_room', {}, 'Room') }}</th>
-            <th>{{ t('desk.stay.th_times', {}, 'Recorded times') }}</th>
-            <th>{{ t('desk.stay.th_action', {}, 'Action') }}</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="row in arrivalRows"
-            :key="row.key"
-          >
-            <td>{{ row.guestName }}</td>
-            <td>{{ row.roomLabel }}</td>
-            <td>{{ row.timesText }}</td>
-            <td>
-              <button
-                v-if="row.reservationRef"
-                type="button"
-                :data-testid="`stay-use-arrival-${row.reservationRef}`"
-                @click="pickArrival(row.reservationRef)"
-              >
-                {{ t('desk.stay.use_arrival', {}, 'Use for check-in') }}
-              </button>
-            </td>
-          </tr>
-          <tr v-if="arrivalRows.length === 0">
-            <td colspan="4">
-              {{ t('desk.admin.no_entries', {}, 'No entries yet.') }}
-            </td>
-          </tr>
-        </tbody>
-      </table>
+        <Column
+          field="guestName"
+          :header="t('desk.stay.th_guest', {}, 'Guest')"
+        />
+        <Column
+          field="roomLabel"
+          :header="t('desk.stay.th_room', {}, 'Room')"
+        />
+        <Column
+          field="timesText"
+          :header="t('desk.stay.th_times', {}, 'Recorded times')"
+        />
+        <Column :header="t('desk.stay.th_action', {}, 'Action')">
+          <template #body="slotProps">
+            <Button
+              v-if="slotProps.data.reservationRef"
+              type="button"
+              :label="t('desk.stay.use_arrival', {}, 'Use for check-in')"
+              :data-testid="`stay-use-arrival-${slotProps.data.reservationRef}`"
+              @click="pickArrival(slotProps.data.reservationRef)"
+            />
+          </template>
+        </Column>
+        <template #empty>
+          {{ t('desk.today.empty_arrivals', {}, 'No arrivals today. New bookings appear here.') }}
+        </template>
+      </DataTable>
 
       <h3>{{ t('desk.stay.in_house', {}, 'In house') }}</h3>
-      <table
+      <DataTable
         id="stay-inhouse-table"
+        :value="inHouseRows"
         data-testid="stay-inhouse-table"
       >
-        <thead>
-          <tr>
-            <th>{{ t('desk.stay.th_guest', {}, 'Guest') }}</th>
-            <th>{{ t('desk.stay.th_room', {}, 'Room') }}</th>
-            <th>{{ t('desk.stay.th_times', {}, 'Recorded times') }}</th>
-            <th>{{ t('desk.stay.th_action', {}, 'Action') }}</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="row in inHouseRows"
-            :key="row.key"
-          >
-            <td>{{ row.guestName }}</td>
-            <td>{{ row.roomLabel }}</td>
-            <td>{{ row.timesText }}</td>
-            <td>
-              <button
-                v-if="row.stayId"
-                type="button"
-                :data-testid="`stay-use-stay-${row.stayId}`"
-                @click="pickStay(row.stayId)"
-              >
-                {{ t('desk.stay.use_stay', {}, 'Use this stay') }}
-              </button>
-            </td>
-          </tr>
-          <tr v-if="inHouseRows.length === 0">
-            <td colspan="4">
-              {{ t('desk.admin.no_entries', {}, 'No entries yet.') }}
-            </td>
-          </tr>
-        </tbody>
-      </table>
+        <Column
+          field="guestName"
+          :header="t('desk.stay.th_guest', {}, 'Guest')"
+        />
+        <Column
+          field="roomLabel"
+          :header="t('desk.stay.th_room', {}, 'Room')"
+        />
+        <Column
+          field="timesText"
+          :header="t('desk.stay.th_times', {}, 'Recorded times')"
+        />
+        <Column :header="t('desk.stay.th_action', {}, 'Action')">
+          <template #body="slotProps">
+            <Button
+              v-if="slotProps.data.stayId"
+              type="button"
+              :label="t('desk.stay.use_stay', {}, 'Use this stay')"
+              :data-testid="`stay-use-stay-${slotProps.data.stayId}`"
+              @click="pickStay(slotProps.data.stayId)"
+            />
+          </template>
+        </Column>
+        <template #empty>
+          {{ t('desk.today.empty_inhouse', {}, 'No guests in house right now.') }}
+        </template>
+      </DataTable>
 
       <h3>{{ t('desk.stay.departures', {}, 'Leaving today') }}</h3>
-      <table
+      <DataTable
         id="stay-departures-table"
+        :value="departureRows"
         data-testid="stay-departures-table"
       >
-        <thead>
-          <tr>
-            <th>{{ t('desk.stay.th_guest', {}, 'Guest') }}</th>
-            <th>{{ t('desk.stay.th_room', {}, 'Room') }}</th>
-            <th>{{ t('desk.stay.th_times', {}, 'Recorded times') }}</th>
-            <th>{{ t('desk.stay.th_action', {}, 'Action') }}</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="row in departureRows"
-            :key="row.key"
-          >
-            <td>{{ row.guestName }}</td>
-            <td>{{ row.roomLabel }}</td>
-            <td>{{ row.timesText }}</td>
-            <td>
-              <button
-                v-if="row.stayId"
-                type="button"
-                :data-testid="`stay-use-stay-${row.stayId}`"
-                @click="pickStay(row.stayId)"
-              >
-                {{ t('desk.stay.use_stay', {}, 'Use this stay') }}
-              </button>
-            </td>
-          </tr>
-          <tr v-if="departureRows.length === 0">
-            <td colspan="4">
-              {{ t('desk.admin.no_entries', {}, 'No entries yet.') }}
-            </td>
-          </tr>
-        </tbody>
-      </table>
+        <Column
+          field="guestName"
+          :header="t('desk.stay.th_guest', {}, 'Guest')"
+        />
+        <Column
+          field="roomLabel"
+          :header="t('desk.stay.th_room', {}, 'Room')"
+        />
+        <Column
+          field="timesText"
+          :header="t('desk.stay.th_times', {}, 'Recorded times')"
+        />
+        <Column :header="t('desk.stay.th_action', {}, 'Action')">
+          <template #body="slotProps">
+            <Button
+              v-if="slotProps.data.stayId"
+              type="button"
+              :label="t('desk.stay.use_stay', {}, 'Use this stay')"
+              :data-testid="`stay-use-stay-${slotProps.data.stayId}`"
+              @click="pickStay(slotProps.data.stayId)"
+            />
+          </template>
+        </Column>
+        <template #empty>
+          {{ t('desk.today.empty_departures', {}, 'No departures today.') }}
+        </template>
+      </DataTable>
 
       <h2>{{ t('desk.stay.checkin_heading', {}, 'Check in an arrival') }}</h2>
       <div>
         <label for="stay-booking-ref">
           {{ t('desk.stay.booking_ref', {}, 'Booking reference: ') }}
-          <input
+          <InputText
             id="stay-booking-ref"
             v-model="bookingRef"
             name="booking-ref"
             autocomplete="off"
             data-testid="stay-booking-ref"
-            @input="onBookingRefInput"
-          >
+            @update:model-value="onBookingRefInput"
+          />
         </label>
         <label for="stay-checkin-arrival">
           {{ t('desk.stay.actual_arrival', {}, 'Actual arrival (leave blank for now): ') }}
@@ -251,41 +173,47 @@
             </option>
           </select>
         </label>
-        <button
+        <Button
           id="stay-checkin-button"
           type="button"
+          :label="t('desk.stay.checkin_button', {}, 'Check in')"
           data-testid="stay-checkin"
           :disabled="checkingIn"
           @click="onCheckIn"
+        />
+        <p
+          v-if="checkingIn"
+          data-testid="stay-checking-in"
         >
-          {{ t('desk.stay.checkin_button', {}, 'Check in') }}
-        </button>
+          {{ t('desk.stay.checking_in', {}, 'Checking the guest in…') }}
+        </p>
         <p
           role="status"
           data-testid="stay-checkin-status"
         >
           {{ checkinStatus }}
         </p>
-        <p
+        <Message
           v-if="checkinError"
+          severity="error"
           role="alert"
           data-testid="stay-checkin-error"
         >
           {{ checkinError }}
-        </p>
+        </Message>
       </div>
 
       <h2>{{ t('desk.stay.move_heading', {}, 'Move a guest mid-stay') }}</h2>
       <div>
         <label for="stay-move-stay-id">
           {{ t('desk.stay.stay_id', {}, 'Stay ID: ') }}
-          <input
+          <InputText
             id="stay-move-stay-id"
             v-model="moveStayId"
             name="move-stay-id"
             autocomplete="off"
             data-testid="stay-move-stay-id"
-          >
+          />
         </label>
         <label for="stay-move-room">
           {{ t('desk.stay.target_room', {}, 'Move to room: ') }}
@@ -303,41 +231,47 @@
             </option>
           </select>
         </label>
-        <button
+        <Button
           id="stay-move-button"
           type="button"
+          :label="t('desk.stay.move_button', {}, 'Move')"
           data-testid="stay-move"
           :disabled="moving"
           @click="onMove"
+        />
+        <p
+          v-if="moving"
+          data-testid="stay-moving"
         >
-          {{ t('desk.stay.move_button', {}, 'Move') }}
-        </button>
+          {{ t('desk.stay.moving', {}, 'Moving the guest…') }}
+        </p>
         <p
           role="status"
           data-testid="stay-move-status"
         >
           {{ moveStatus }}
         </p>
-        <p
+        <Message
           v-if="moveError"
+          severity="error"
           role="alert"
           data-testid="stay-move-error"
         >
           {{ moveError }}
-        </p>
+        </Message>
       </div>
 
       <h2>{{ t('desk.stay.times_heading', {}, 'Record early arrivals and late departures') }}</h2>
       <div>
         <label for="stay-times-stay-id">
           {{ t('desk.stay.stay_id', {}, 'Stay ID: ') }}
-          <input
+          <InputText
             id="stay-times-stay-id"
             v-model="timesStayId"
             name="times-stay-id"
             autocomplete="off"
             data-testid="stay-times-stay-id"
-          >
+          />
         </label>
         <label for="stay-times-arrival">
           {{ t('desk.stay.actual_arrival', {}, 'Actual arrival (leave blank for now): ') }}
@@ -359,42 +293,48 @@
             data-testid="stay-times-departure"
           >
         </label>
-        <button
+        <Button
           id="stay-times-button"
           type="button"
+          :label="t('desk.stay.times_button', {}, 'Record times')"
           data-testid="stay-times"
           :disabled="recording"
           @click="onRecordTimes"
+        />
+        <p
+          v-if="recording"
+          data-testid="stay-recording"
         >
-          {{ t('desk.stay.times_button', {}, 'Record times') }}
-        </button>
+          {{ t('desk.stay.recording', {}, 'Recording the times…') }}
+        </p>
         <p
           role="status"
           data-testid="stay-times-status"
         >
           {{ timesStatus }}
         </p>
-        <p
+        <Message
           v-if="timesError"
+          severity="error"
           role="alert"
           data-testid="stay-times-error"
         >
           {{ timesError }}
-        </p>
+        </Message>
       </div>
 
       <h2>{{ t('desk.stay.checkout_heading', {}, 'Check out with folio review') }}</h2>
       <div>
         <label for="stay-checkout-stay-id">
           {{ t('desk.stay.stay_id', {}, 'Stay ID: ') }}
-          <input
+          <InputText
             id="stay-checkout-stay-id"
             v-model="checkoutStayId"
             name="checkout-stay-id"
             autocomplete="off"
             data-testid="stay-checkout-stay-id"
-            @input="onCheckoutStayInput"
-          >
+            @update:model-value="onCheckoutStayInput"
+          />
         </label>
         <label for="stay-checkout-departure">
           {{ t('desk.stay.actual_departure', {}, 'Actual departure (leave blank for now): ') }}
@@ -406,15 +346,20 @@
             data-testid="stay-checkout-departure"
           >
         </label>
-        <button
+        <Button
           id="stay-review-button"
           type="button"
+          :label="t('desk.stay.review_button', {}, 'Review folio')"
           data-testid="stay-review"
           :disabled="reviewing"
           @click="onReview"
+        />
+        <p
+          v-if="reviewing"
+          data-testid="stay-reviewing"
         >
-          {{ t('desk.stay.review_button', {}, 'Review folio') }}
-        </button>
+          {{ t('desk.stay.reviewing', {}, 'Reviewing the folio…') }}
+        </p>
         <p
           role="status"
           data-testid="stay-folio-status"
@@ -427,73 +372,113 @@
         >
           <label for="stay-approval-by">
             {{ t('desk.stay.approved_by', {}, 'Approved by: ') }}
-            <input
+            <InputText
               id="stay-approval-by"
               v-model="approvalBy"
               name="approval-by"
               autocomplete="off"
               data-testid="stay-approval-by"
-            >
+            />
           </label>
           <label for="stay-approval-role">
             {{ t('desk.stay.approver_role', {}, 'Approver role: ') }}
-            <input
+            <InputText
               id="stay-approval-role"
               v-model="approvalRole"
               name="approval-role"
               autocomplete="off"
               data-testid="stay-approval-role"
-            >
+            />
           </label>
           <label for="stay-approval-reason">
             {{ t('desk.stay.approval_reason', {}, 'Reason (optional): ') }}
-            <input
+            <InputText
               id="stay-approval-reason"
               v-model="approvalReason"
               name="approval-reason"
               autocomplete="off"
               data-testid="stay-approval-reason"
-            >
+            />
           </label>
-          <button
+          <Button
             id="stay-approve-button"
             type="button"
+            :label="t('desk.stay.approve_button', {}, 'Record approval')"
             data-testid="stay-approve"
             :disabled="approving"
             @click="onApprove"
+          />
+          <p
+            v-if="approving"
+            data-testid="stay-approving"
           >
-            {{ t('desk.stay.approve_button', {}, 'Record approval') }}
-          </button>
+            {{ t('desk.stay.approving', {}, 'Recording the approval…') }}
+          </p>
         </div>
-        <button
+        <Button
           id="stay-checkout-button"
           type="button"
+          :label="t('desk.stay.checkout_button', {}, 'Check out')"
           data-testid="stay-checkout"
           :disabled="!canCheckOut || checkingOut"
-          @click="onCheckOut"
+          @click="checkoutDialog = true"
+        />
+        <Dialog
+          v-model:visible="checkoutDialog"
+          :header="t('desk.shell.checkout_confirm', {}, 'Check out this stay now?')"
+          append-to="self"
+          :modal="true"
+          data-testid="stay-checkout-dialog"
         >
-          {{ t('desk.stay.checkout_button', {}, 'Check out') }}
-        </button>
+          <p>{{ t('desk.shell.checkout_detail', {}, 'The stay closes against the reviewed folio. Continue with check-out?') }}</p>
+          <Button
+            type="button"
+            :label="t('desk.shell.cancel', {}, 'Cancel')"
+            severity="secondary"
+            data-testid="stay-checkout-cancel"
+            @click="checkoutDialog = false"
+          />
+          <Button
+            type="button"
+            :label="t('desk.stay.checkout_button', {}, 'Check out')"
+            :disabled="checkingOut"
+            data-testid="stay-checkout-confirm"
+            @click="onCheckOut"
+          />
+        </Dialog>
+        <p
+          v-if="checkingOut"
+          data-testid="stay-checking-out"
+        >
+          {{ t('desk.stay.checking_out', {}, 'Checking the guest out…') }}
+        </p>
         <p
           role="status"
           data-testid="stay-checkout-status"
         >
           {{ checkoutStatus }}
         </p>
-        <p
+        <Message
           v-if="checkoutError"
+          severity="error"
           role="alert"
           data-testid="stay-checkout-error"
         >
           {{ checkoutError }}
-        </p>
+        </Message>
       </div>
     </section>
   </main>
 </template>
 
 <script lang="ts">
-import { computed, defineComponent, ref } from 'vue';
+import { computed, defineComponent, onMounted, ref } from 'vue';
+import Button from 'primevue/button';
+import Column from 'primevue/column';
+import DataTable from 'primevue/datatable';
+import Dialog from 'primevue/dialog';
+import InputText from 'primevue/inputtext';
+import Message from 'primevue/message';
 import { apiFetch } from '../api/client';
 import type { ApiError } from '../api/client';
 import { t } from '../i18n';
@@ -590,12 +575,44 @@ function errorCode(err: unknown): string {
     : '';
 }
 
-function errorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : 'Request failed.';
+// Unexpected failures read as one plain sentence (FR-DSP-3,
+// desk.shell.request_failed): call sites map known envelope codes
+// to specific catalogue wordings, so this fallback never surfaces
+// technical codes or statuses.
+function errorMessage(): string {
+  return t(
+    'desk.shell.request_failed',
+    {},
+    'That did not work. Try again; if it keeps failing, tell the manager.',
+  );
 }
 
-function newIdempotencyKey(): string {
-  try {
+// Billing serves the recorded approval as a JSON string while the
+// contract (contracts/openapi.yaml) types openBalanceApproval as
+// an object, and the stay gate enforces the object shape: normalize
+// stringly input at the boundary so check-out carries the contracted
+// shape. Objects pass through untouched, so a contract-conforming
+// backend behaves identically (Refs #338 acceptance: the approval
+// check-out must work on the UI alone; backend fix tracked
+// separately).
+function normalizeApproval(value: unknown): Record<string, unknown> | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value === 'string') {
+    try {
+      const parsed: unknown = JSON.parse(value);
+      return typeof parsed === 'object' && parsed !== null
+        ? (parsed as Record<string, unknown>)
+        : null;
+    } catch {
+      return null;
+    }
+  }
+  return typeof value === 'object' ? (value as Record<string, unknown>) : null;
+}
+
+function newIdempotencyKey(): string {  try {
     const randomId = globalThis.crypto?.randomUUID?.();
     if (typeof randomId === 'string' && randomId.length > 0) {
       return randomId;
@@ -608,14 +625,12 @@ function newIdempotencyKey(): string {
 
 export default defineComponent({
   name: 'StayView',
+  // eslint-disable-next-line vue/no-reserved-component-names -- PrimeVue registers Button/Dialog under these canonical names (Refs #338 component mapping).
+  components: { Button, Column, DataTable, Dialog, InputText, Message },
   setup() {
     const session = useSessionStore();
-    const identity = ref('');
-    const secret = ref('');
-    const signInError = ref('');
-    const displayName = ref('');
-    const role = ref('');
     const businessDate = ref(localBusinessDate());
+    const listsLoading = ref(false);
     const listsError = ref('');
     const arrivalRows = ref<StayListRow[]>([]);
     const inHouseRows = ref<StayListRow[]>([]);
@@ -655,6 +670,7 @@ export default defineComponent({
     const reviewing = ref(false);
     const approving = ref(false);
     const checkingOut = ref(false);
+    const checkoutDialog = ref(false);
     const showApproval = ref(false);
     const approvalBy = ref('');
     const approvalRole = ref('');
@@ -667,21 +683,12 @@ export default defineComponent({
         (checkoutCtx.value.balanceMinor === 0 || checkoutCtx.value.approval !== null),
     );
 
-    function signOutLocal(): void {
-      session.signOut();
-      secret.value = '';
-      displayName.value = '';
-      role.value = '';
+    // The shell owns the one sign-in gate (Refs #338): a
+    // 401/UNAUTHENTICATED expires the shared session and the gate
+    // takes over with the session-expired notice.
+    function expireToGate(): void {
       checkoutCtx.value = null;
-    }
-
-    function refuseSession(): void {
-      signOutLocal();
-      signInError.value = t(
-        'desk.today.session_expired',
-        {},
-        'Session expired. Sign in again.',
-      );
+      session.expireSession();
     }
 
     function roomLabel(roomId: string | undefined): string {
@@ -743,6 +750,7 @@ export default defineComponent({
     async function refreshLists(): Promise<void> {
       businessDate.value = localBusinessDate();
       listsError.value = '';
+      listsLoading.value = true;
       try {
         const lists = await apiFetch<{
           arrivals?: StayRow[];
@@ -772,10 +780,12 @@ export default defineComponent({
         departureRows.value = await renderRows(lists.departures ?? [], 'stay');
       } catch (err) {
         if (isSignedOut(err) || !session.isSignedIn) {
-          refuseSession();
+          expireToGate();
           return;
         }
-        listsError.value = errorMessage(err);
+        listsError.value = errorMessage();
+      } finally {
+        listsLoading.value = false;
       }
     }
 
@@ -816,37 +826,18 @@ export default defineComponent({
       checkoutError.value = '';
     }
 
-    async function onSignIn(): Promise<void> {
-      signInError.value = '';
-      try {
-        const payload = await apiFetch<{ token: string; displayName: string; role: string }>(
-          '/v1/admin/SignIn',
-          {
-            method: 'POST',
-            body: JSON.stringify({ signinIdentity: identity.value, secret: secret.value }),
-          },
-        );
-        session.signIn(payload.token);
-        displayName.value = payload.displayName;
-        role.value = payload.role;
-        await refreshLists();
-      } catch (err) {
-        signInError.value = errorMessage(err);
-      }
-    }
-
-    async function onSignOut(): Promise<void> {
-      try {
-        await apiFetch<unknown>('/v1/admin/SignOut', { method: 'POST', body: '{}' });
-      } catch {
-        // A dead token signs out locally all the same (legacy parity).
-      }
-      signOutLocal();
-    }
-
     function onRefresh(): Promise<void> {
       return refreshLists();
     }
+
+    onMounted(() => {
+      // The shell gates this screen on sign-in, so a signed-in
+      // visit loads the lists straight away (same as the desk
+      // screen); signed-out visits never reach this view.
+      if (session.isSignedIn) {
+        void refreshLists();
+      }
+    });
 
     async function onCheckIn(): Promise<void> {
       if (checkingIn.value) {
@@ -872,7 +863,7 @@ export default defineComponent({
             });
           } catch (err) {
             if (isSignedOut(err)) {
-              refuseSession();
+              expireToGate();
               return;
             }
             if (errorCode(err) === 'NOT_FOUND') {
@@ -883,7 +874,7 @@ export default defineComponent({
               );
               return;
             }
-            checkinError.value = errorMessage(err);
+            checkinError.value = errorMessage();
             return;
           }
           const rooms = await apiFetch<{ rooms?: RoomRecord[] }>(
@@ -923,10 +914,10 @@ export default defineComponent({
           checkinError.value = t('desk.stay.need_room', {}, 'Pick a ready room first.');
         } catch (err) {
           if (isSignedOut(err)) {
-            refuseSession();
+            expireToGate();
             return;
           }
-          checkinError.value = errorMessage(err);
+          checkinError.value = errorMessage();
         } finally {
           checkingIn.value = false;
         }
@@ -950,14 +941,14 @@ export default defineComponent({
                 roomNumber: checkinRooms.value[selectedRoomId],
                 businessDate: localBusinessDate(),
                 stayLink: stayId,
-                actor: displayName.value,
+                actor: session.displayName ?? '',
                 idempotencyKey: newIdempotencyKey(),
               }),
             },
           );
         } catch (err) {
           if (isSignedOut(err)) {
-            refuseSession();
+            expireToGate();
             return;
           }
           if (errorCode(err) === 'CONFLICT') {
@@ -969,7 +960,7 @@ export default defineComponent({
             );
             return;
           }
-          checkinError.value = errorMessage(err);
+          checkinError.value = errorMessage();
           return;
         }
         let readback: { reservationId: string; guest?: { guestId?: string } };
@@ -983,10 +974,10 @@ export default defineComponent({
           });
         } catch (err) {
           if (isSignedOut(err)) {
-            refuseSession();
+            expireToGate();
             return;
           }
-          checkinError.value = errorMessage(err);
+          checkinError.value = errorMessage();
           return;
         }
         const checkinBody: Record<string, unknown> = {
@@ -994,7 +985,7 @@ export default defineComponent({
           reservationId: readback.reservationId,
           guestId: readback.guest?.guestId ?? null,
           roomId: assigned.roomId,
-          actor: displayName.value,
+          actor: session.displayName ?? '',
         };
         const actualArrival = toISO(checkinArrival.value);
         if (actualArrival) {
@@ -1007,7 +998,7 @@ export default defineComponent({
           });
         } catch (err) {
           if (isSignedOut(err)) {
-            refuseSession();
+            expireToGate();
             return;
           }
           if (errorCode(err) === 'CONFLICT') {
@@ -1018,20 +1009,20 @@ export default defineComponent({
             );
             return;
           }
-          checkinError.value = errorMessage(err);
+          checkinError.value = errorMessage();
           return;
         }
         try {
           await apiFetch<unknown>('/v1/reservations/CheckInReservation', {
             method: 'POST',
-            body: JSON.stringify({ reservationRef: refValue, stayId, actor: displayName.value }),
+            body: JSON.stringify({ reservationRef: refValue, stayId, actor: session.displayName ?? '' }),
           });
         } catch (err) {
           if (isSignedOut(err)) {
-            refuseSession();
+            expireToGate();
             return;
           }
-          checkinError.value = errorMessage(err);
+          checkinError.value = errorMessage();
           return;
         }
         checkinStatus.value = t(
@@ -1045,10 +1036,10 @@ export default defineComponent({
         await refreshLists();
       } catch (err) {
         if (isSignedOut(err)) {
-          refuseSession();
+          expireToGate();
           return;
         }
-        checkinError.value = errorMessage(err);
+        checkinError.value = errorMessage();
       } finally {
         checkingIn.value = false;
       }
@@ -1082,10 +1073,10 @@ export default defineComponent({
         });
       } catch (err) {
         if (isSignedOut(err)) {
-          refuseSession();
+          expireToGate();
           return;
         }
-        moveError.value = errorMessage(err);
+        moveError.value = errorMessage();
         return;
       }
       moving.value = true;
@@ -1099,7 +1090,7 @@ export default defineComponent({
               roomNumber: target ? target.number : toRoomId,
               businessDate: localBusinessDate(),
               stayLink: stayId,
-              actor: displayName.value,
+              actor: session.displayName ?? '',
               idempotencyKey: newIdempotencyKey(),
             }),
           },
@@ -1109,7 +1100,7 @@ export default defineComponent({
           body: JSON.stringify({
             stayId,
             toRoomId: assigned.roomId,
-            actor: displayName.value,
+            actor: session.displayName ?? '',
             idempotencyKey: newIdempotencyKey(),
           }),
         });
@@ -1125,7 +1116,7 @@ export default defineComponent({
         await refreshLists();
       } catch (err) {
         if (isSignedOut(err)) {
-          refuseSession();
+          expireToGate();
           return;
         }
         if (errorCode(err) === 'CONFLICT') {
@@ -1137,7 +1128,7 @@ export default defineComponent({
           await refreshLists();
           return;
         }
-        moveError.value = errorMessage(err);
+        moveError.value = errorMessage();
       } finally {
         moving.value = false;
       }
@@ -1165,7 +1156,7 @@ export default defineComponent({
       }
       recording.value = true;
       try {
-        const timesBody: Record<string, unknown> = { stayId, actor: displayName.value };
+        const timesBody: Record<string, unknown> = { stayId, actor: session.displayName ?? '' };
         if (actualArrival) {
           timesBody.actualArrival = actualArrival;
         }
@@ -1185,10 +1176,10 @@ export default defineComponent({
         await refreshLists();
       } catch (err) {
         if (isSignedOut(err)) {
-          refuseSession();
+          expireToGate();
           return;
         }
-        timesError.value = errorMessage(err);
+        timesError.value = errorMessage();
       } finally {
         recording.value = false;
       }
@@ -1212,13 +1203,13 @@ export default defineComponent({
           openBalanceApproval?: unknown;
         }>('/v1/billing/GetFolioBalance', {
           method: 'POST',
-          body: JSON.stringify({ stayId, actor: displayName.value }),
+          body: JSON.stringify({ stayId, actor: session.displayName ?? '' }),
         });
         checkoutCtx.value = {
           stayId,
           folioId: folio.folioId,
           balanceMinor: folio.balanceMinor,
-          approval: folio.openBalanceApproval ?? null,
+          approval: normalizeApproval(folio.openBalanceApproval),
         };
         folioStatus.value = t(
           'desk.stay.folio_line',
@@ -1249,10 +1240,10 @@ export default defineComponent({
         }
       } catch (err) {
         if (isSignedOut(err)) {
-          refuseSession();
+          expireToGate();
           return;
         }
-        checkoutError.value = errorMessage(err);
+        checkoutError.value = errorMessage();
       } finally {
         reviewing.value = false;
       }
@@ -1283,7 +1274,7 @@ export default defineComponent({
           stayId: checkoutCtx.value.stayId,
           approvedBy,
           role: approverRole,
-          actor: displayName.value,
+          actor: session.displayName ?? '',
           idempotencyKey: newIdempotencyKey(),
         };
         const reason = approvalReason.value.trim();
@@ -1297,7 +1288,7 @@ export default defineComponent({
           method: 'POST',
           body: JSON.stringify(approvalBody),
         });
-        checkoutCtx.value.approval = recorded.openBalanceApproval;
+        checkoutCtx.value.approval = normalizeApproval(recorded.openBalanceApproval);
         checkoutCtx.value.balanceMinor = recorded.balanceMinor;
         checkoutStatus.value = t(
           'desk.stay.approval_recorded',
@@ -1306,10 +1297,10 @@ export default defineComponent({
         );
       } catch (err) {
         if (isSignedOut(err)) {
-          refuseSession();
+          expireToGate();
           return;
         }
-        checkoutError.value = errorMessage(err);
+        checkoutError.value = errorMessage();
       } finally {
         approving.value = false;
       }
@@ -1332,14 +1323,15 @@ export default defineComponent({
           openBalanceApproval?: unknown;
         }>('/v1/billing/GetFolioBalance', {
           method: 'POST',
-          body: JSON.stringify({ stayId: checkoutCtx.value.stayId, actor: displayName.value }),
+          body: JSON.stringify({ stayId: checkoutCtx.value.stayId, actor: session.displayName ?? '' }),
         });
-        const approval = folio.openBalanceApproval ?? checkoutCtx.value.approval ?? null;
+        const approval = normalizeApproval(folio.openBalanceApproval) ??
+          checkoutCtx.value.approval ?? null;
         const checkoutBody: Record<string, unknown> = {
           stayId: checkoutCtx.value.stayId,
           folioId: folio.folioId,
           folioBalanceMinor: folio.balanceMinor,
-          actor: displayName.value,
+          actor: session.displayName ?? '',
           idempotencyKey: newIdempotencyKey(),
         };
         if (approval) {
@@ -1368,7 +1360,7 @@ export default defineComponent({
         await refreshLists();
       } catch (err) {
         if (isSignedOut(err)) {
-          refuseSession();
+          expireToGate();
           return;
         }
         if (errorCode(err) === 'SETTLEMENT_REQUIRED') {
@@ -1380,21 +1372,17 @@ export default defineComponent({
           );
           return;
         }
-        checkoutError.value = errorMessage(err);
+        checkoutError.value = errorMessage();
       } finally {
         checkingOut.value = false;
+        checkoutDialog.value = false;
       }
     }
 
     return {
       t,
-      session,
-      identity,
-      secret,
-      signInError,
-      displayName,
-      role,
       businessDate,
+      listsLoading,
       listsError,
       arrivalRows,
       inHouseRows,
@@ -1431,12 +1419,11 @@ export default defineComponent({
       approvalRole,
       approvalReason,
       canCheckOut,
+      checkoutDialog,
       pickArrival,
       pickStay,
       onBookingRefInput,
       onCheckoutStayInput,
-      onSignIn,
-      onSignOut,
       onRefresh,
       onCheckIn,
       onMove,
