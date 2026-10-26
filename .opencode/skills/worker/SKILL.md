@@ -79,6 +79,20 @@ describes, confirm with the orchestrator/owner first.
   flow refreshes its per-flow diagram in the same PR (canonical:
   `spec-gate` skill). Code carries only thin `file:line` refs to the
   diagram, never a pasted copy.
+- UI consistency (desk shell, issue #342; decision:
+  `docs/architecture/decisions/adr-0003-desk-ui-vue-vite.md`):
+  PrimeVue-first — use the PrimeVue component for a covered pattern
+  instead of new ad-hoc markup/CSS; inline `<style>` only for print
+  isolation, and only with a comment citing why (`Refs #`, `ADR-`).
+  Every user-visible string resolves via the message catalogue `t()`
+  (no hardcoded UI copy). Every new route is registered in the shell
+  nav (`NAV_ITEMS` in `app/src/App.vue`) and the route table
+  (`app/src/router.ts`) — no orphan screens, no dead nav items.
+  Print CSS is preserved. Split: `script/catalogue-coverage-check.sh`
+  (§5, `app/src` keys) and `script/shell-served-check.sh` (nav match,
+  style-block citations, print source + built bytes) fail closed in
+  CI; the judgement half (covered-pattern choice, dynamic `t()`
+  calls, copy edge cases) is a blocking reviewer checklist item.
 
 ## Per-stack entry points
 

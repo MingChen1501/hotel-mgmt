@@ -51,6 +51,23 @@ Each of these is a `CHANGES_REQUESTED` finding until fixed, with
   README that duplicates or contradicts `docs/`, or traceability
   citing a non-existent guard. Docs in `docs/` are the verification
   surface; every claim must resolve to a real file or job.
+- UI consistency (issue #342; the fail-closed half is pinned by
+  `script/catalogue-coverage-check.sh` for `app/src` catalogue keys
+  and `script/shell-served-check.sh` for the nav match, style-block
+  citations, and print CSS — the items below are the judgement half
+  CI cannot decide, each a `CHANGES_REQUESTED` finding until fixed,
+  with `file:line` evidence):
+  - Library-first: new screens use the PrimeVue component for a
+    covered pattern; new ad-hoc markup/CSS carries a justification,
+    and any new inline `<style>` is print isolation with a comment
+    citing why (`Refs #`, `ADR-`).
+  - No hardcoded user-visible copy: new template/script strings go
+    through the catalogue `t()` with a catalogue key (grandfathered
+    edge cases such as `<noscript>` fallbacks stay explicitly noted).
+  - No orphan screens: a new route is linked from the shell nav and
+    the route table with a catalogue label key.
+  - Print CSS preserved: print views keep their `@media print`
+    rules; the shell screen stylesheet stays `@media screen`-only.
 - Unquoted verdict (self-check before posting): the verdict quotes the
   exact PR head SHA — an unquoted verdict does not count at the merge
   gate, same as a stale one (see Verdict).

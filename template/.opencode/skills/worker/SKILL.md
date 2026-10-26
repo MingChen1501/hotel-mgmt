@@ -77,6 +77,16 @@ describes, confirm with the orchestrator/owner first.
   flow refreshes its per-flow diagram in the same PR (canonical:
   `spec-gate` skill). Code carries only thin `file:line` refs to the
   diagram, never a pasted copy.
+- UI consistency (shell screens): library-first — use the project's
+  UI component library for a covered pattern instead of new ad-hoc
+  markup/CSS; inline `<style>` only for print isolation, and only
+  with a comment citing why. Every user-visible string resolves via
+  the message catalogue (no hardcoded UI copy). Every new route is
+  registered in the shell nav and the route table — no orphan
+  screens, no dead nav items. Print CSS is preserved. Split: the
+  static catalogue/nav/style/print checks fail closed in CI; the
+  judgement half (covered-pattern choice, dynamic catalogue calls,
+  copy edge cases) is a blocking reviewer checklist item.
 
 ## Per-stack entry points
 

@@ -1,17 +1,25 @@
 #!/usr/bin/env bash
 #
-# Catalogue-coverage gate (NFR-I18N-1, issue #192).
+# Catalogue-coverage gate (NFR-I18N-1, issue #192; app/src half, issue #342).
 #
 # Asserts that 100% of the sampled user-visible strings resolve via
 # the shared message catalogue: every sample key exists in
 # messages/en.json with the declared placeholders, every migrated
 # call site references its key, every runtime mirror is byte-identical
-# to the canonical file, and the Vue app call sites (`t()` in
-# `app/src/`) plus the shell runbook wording render the catalogue
-# value in the default locale. (The legacy static pages and their
-# data-msg/inline-script checks were removed with the pages in
+# to the canonical file, every literal `t()` call in the desk shell
+# (`app/src/`, tests excluded) plus every shell nav labelKey resolves
+# in the catalogue, and the shell runbook wording renders the
+# catalogue value in the default locale. (The legacy static pages and
+# their data-msg/inline-script checks were removed with the pages in
 # #299; the Vue `t()` wrapper parity is pinned by the Vitest suite
 # in `app/src/i18n/`.)
+#
+# Fail-closed half of the UI-consistency rules (issue #342): a new
+# screen that renders copy outside the catalogue fails here. Dynamic
+# `t()` calls (variables, template literals) and the PrimeVue-first
+# judgement stay a blocking reviewer checklist item (see
+# `.opencode/agents/dev-peer-review.md`) — the static scan cannot
+# judge them.
 #
 # Usage: script/catalogue-coverage-check.sh (run from anywhere;
 # resolves the repo root). Exits non-zero on the first failure class.
@@ -157,6 +165,48 @@ if catalogue is not None:
         if count == 0:
             fail(f"{script_name}: no catalogue call sites found")
         ok(f"{script_name}: {count} msg() call sites match the catalogue")
+
+    # 5. Desk-shell call sites resolve via the catalogue (issue #342):
+    # every literal t('key') call in app/src (SFCs and TS, tests
+    # excluded — tests deliberately use missing keys and quote
+    # call-site source) must exist in messages/en.json, and every
+    # shell nav labelKey in app/src/App.vue must resolve too.
+    call = re.compile(r"(?<![A-Za-z0-9_.])t\(\s*['\"]([A-Za-z0-9_.]+)['\"]")
+    app_src = ROOT / "app" / "src"
+    app_keys = {}
+    for path in sorted(app_src.rglob("*")):
+        if path.suffix not in (".vue", ".ts") or not path.is_file():
+            continue
+        if path.name.endswith(".test.ts"):
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            fail(f"app source {path.relative_to(ROOT)} is unreadable")
+            continue
+        for match in call.finditer(text):
+            app_keys.setdefault(match.group(1), []).append(
+                str(path.relative_to(ROOT)))
+    if not app_keys:
+        fail("app/src carries no literal t() call sites")
+    checked = 0
+    for key in sorted(app_keys):
+        if key not in messages:
+            fail(f"app call-site key {key!r} is missing from "
+                 f"messages/en.json (first used by {app_keys[key][0]})")
+            continue
+        checked += 1
+    ok(f"app/src: {checked}/{len(app_keys)} literal t() keys resolve "
+       f"in the catalogue")
+    nav_text = (app_src / "App.vue").read_text(encoding="utf-8")
+    nav_keys = re.findall(r"labelKey:\s*'([^']+)'", nav_text)
+    if not nav_keys:
+        fail("app/src/App.vue carries no NAV_ITEMS labelKey entries")
+    else:
+        for key in nav_keys:
+            if key not in messages:
+                fail(f"shell nav labelKey {key!r} is missing from messages/en.json")
+        ok(f"shell nav: {len(nav_keys)} labelKey entries resolve in the catalogue")
 
 if failures:
     print(f"\ncatalogue-coverage-check: {len(failures)} failure(s)")
