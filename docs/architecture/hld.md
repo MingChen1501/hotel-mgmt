@@ -229,5 +229,48 @@ Rollback: revert the single implementation PR and remove the
 `/app/` location block; the old static files remain in place, so
 there is no data migration in either direction.
 
+## 12. Desk UI styling pass (Refs #338) — presentation only
+
+Phase 1 UI contract (product-owner contract comment on #338,
+proposed tier T2 — reader-visible UI change, no behaviour change):
+the Vue desk under `/app/` becomes MVP-usable for a non-technical
+stand-in. The requirements delta lives in
+`docs/requirements/mvp-requirements.md` §8 (`FR-DSP-*`,
+`NFR-DSP-*`, landed via #344); the build-ready decomposition and
+per-flow diagrams live in `docs/architecture/lld.md` §12. This
+section records only the subsystem-boundary position.
+
+No new subsystem, no boundary change, no contract change:
+
+- Presentation only. The six existing routes (`/app/`,
+  `/app/book`, `/app/stay`, `/app/folio`, `/app/print`,
+  `/app/admin` — router in `app/src/router.ts:21-62`) are the
+  complete set; no screen or flow is added, removed, or renamed.
+  All module boundaries (§4), named contracts, and data-store
+  ownership statements stand unchanged.
+- Styled shell. One top-nav shell (Desk · Book · Stay · Folio ·
+  Print · Admin, then the signed-in user name, then Sign out;
+  active-route highlight; single centred content column, max width
+  1100px; shell-owned sign-in gate replacing the per-screen
+  sign-in copies) wraps the existing screen SFCs. The offline
+  banner and manual retry stay exactly as they are
+  (`app/src/App.vue:1-28`, `app/src/api/client.ts:44-83`).
+- Styling mechanism. PrimeVue is added as a dependency with a
+  stock preset theme fed by the contract §1 tokens (colours,
+  type, spacing, 2px focus ring); no custom design system beyond
+  the tokens. The only stylesheet that exists today (print
+  isolation in `app/src/views/PrintView.vue:1106-1126` and
+  `app/src/views/BookView.vue:976-989`) is preserved byte-for-byte
+  in behaviour.
+- State wording. Loading/empty/error/refusal states render as
+  plain non-technical sentences per `FR-DSP-3`; refusal
+  conditions are unchanged — only the wording becomes
+  stand-in readable. All user-visible strings stay in the
+  catalogue (`NFR-I18N-1` holds).
+
+Rollback: revert the single Phase 2 implementation PR; no data
+migration exists in either direction (no contract or schema change
+anywhere in this slice).
+
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-29
