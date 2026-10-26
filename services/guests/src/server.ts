@@ -130,6 +130,10 @@ async function handleRequest(
       });
       return;
     }
+    case "AttachReservation": {
+      writeJson(res, 200, await store.attachReservation(body));
+      return;
+    }
     case "ProduceConfirmation": {
       writeJson(res, 200, await store.produceConfirmation(body));
       return;

@@ -398,7 +398,9 @@ import { useSessionStore } from '../stores/session';
 // Behavioural port of the inline script in `frontend/print.html`
 // (Screen 5: open the folio with GetFolioBalance so the screen shows
 // what the paper must match, ProduceInvoice for the invoice,
-// ProduceReceipt for one receipt per recorded payment, and
+// ProduceReceipt for one receipt per recorded payment, and the
+// confirmation load: GetReservation by the entered ref,
+// AttachReservation with that RES-side snapshot, then
 // ProduceConfirmation for the booking confirmation). The legacy page
 // is untouched and stays served in parallel; this view runs under
 // `/app/` (`/app/print`).
@@ -975,10 +977,37 @@ export default defineComponent({
       loading.value = true;
       loadError.value = '';
       try {
+        // Wire the confirmation end to end (issue #323): resolve
+        // the human ref through the reservation read, attach that
+        // RES-side snapshot for the Guests store, then produce it.
+        const reservation = await apiFetch<{
+          reservationRef: string;
+          roomTypeId: string;
+          arrivalDate: string;
+          departureDate: string;
+          guest?: { guestId?: string; fullName?: string };
+          priceBasis?: { totalMinor?: number };
+        }>('/v1/reservations/GetReservation', {
+          method: 'POST',
+          body: JSON.stringify({ reservationRef: refValue }),
+        });
+        await apiFetch('/v1/guests/AttachReservation', {
+          method: 'POST',
+          body: JSON.stringify({
+            reservationRef: reservation.reservationRef,
+            guest: {
+              guestId: reservation.guest?.guestId ?? '',
+              fullName: reservation.guest?.fullName ?? '',
+            },
+            dates: { checkIn: reservation.arrivalDate, checkOut: reservation.departureDate },
+            type: reservation.roomTypeId,
+            price: { amountMinor: reservation.priceBasis?.totalMinor ?? 0 },
+          }),
+        });
         renderConfirmation(
           await apiFetch<Confirmation>('/v1/guests/ProduceConfirmation', {
             method: 'POST',
-            body: JSON.stringify({ reservationRef: refValue }),
+            body: JSON.stringify({ reservationRef: reservation.reservationRef }),
           }),
         );
       } catch (err) {

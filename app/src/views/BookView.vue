@@ -328,7 +328,8 @@ import { useSessionStore } from '../stores/session';
 //   price), CheckRoomTypeSellability (the searched sellable
 //   count), CreateReservation with that searched count as
 //   sellableUnits (the atomic guard refuses unsellable
-//   combinations), GetReservation read-back, ProduceConfirmation
+//   combinations), GetReservation read-back, AttachReservation
+//   with that RES-side snapshot, then ProduceConfirmation
 //   for the printable/shareable confirmation. Returning guests
 //   resolve through IdentifyGuest; genuinely new walk-ins register
 //   through UpsertGuest before quoting. The quoted price is frozen
@@ -782,6 +783,7 @@ export default defineComponent({
         );
         const readBack = await apiFetch<{
           reservationRef: string;
+          roomTypeId: string;
           arrivalDate: string;
           departureDate: string;
           priceBasis?: { totalMinor?: number };
@@ -812,6 +814,19 @@ export default defineComponent({
           ),
         };
         try {
+          // Wire the confirmation end to end (issue #323): the
+          // Guests store only serves attached snapshots, so attach
+          // the RES-side read-back first, then produce the human ref.
+          await apiFetch('/v1/guests/AttachReservation', {
+            method: 'POST',
+            body: JSON.stringify({
+              reservationRef: readBack.reservationRef,
+              guest: { guestId: resolvedGuestId, fullName: readBackName },
+              dates: { checkIn: readBack.arrivalDate, checkOut: readBack.departureDate },
+              type: readBack.roomTypeId,
+              price: { amountMinor: quotedTotal },
+            }),
+          });
           const confirmation = await apiFetch<{
             hotel?: { name?: string };
             guest?: { fullName?: string };

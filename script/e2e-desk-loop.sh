@@ -313,6 +313,14 @@ python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if any(r.get("re
   || { echo "$(msg "script.runbook.e2e_calendar_missing" "e2e: FAIL: calendar does not list {ref}." ref="$REF")" >&2; teardown; exit 1; }
 pass "script.runbook.e2e_verify_ok" "e2e: PASS: GetReservation and QueryCalendar both show {ref} confirmed." ref="$REF"
 
+step "script.runbook.e2e_step_confirmation" "e2e: === Guests: attach the RES-side snapshot, produce the confirmation (FR-GST-4) ==="
+ATTACH_PAYLOAD="$(python3 -c 'import json,sys; d=json.load(sys.stdin); print(json.dumps({"reservationRef": d["reservationRef"], "guest": {"guestId": d["guest"]["guestId"], "fullName": d["guest"]["fullName"]}, "dates": {"checkIn": d["arrivalDate"], "checkOut": d["departureDate"]}, "type": d["roomTypeId"], "price": {"amountMinor": d["priceBasis"]["totalMinor"]}}))' <<<"$GET_RESP")" || { teardown; exit 1; }
+api guests AttachReservation "$ATTACH_PAYLOAD" "$TOKEN" >/dev/null || { teardown; exit 1; }
+CONFIRM_RESP="$(api guests ProduceConfirmation "{\"reservationRef\": \"$REF\"}" "$TOKEN")" || { teardown; exit 1; }
+python3 -c 'import json,sys; d=json.load(sys.stdin); exp={"ref": sys.argv[1], "guest": sys.argv[2], "checkIn": sys.argv[3], "checkOut": sys.argv[4], "total": int(sys.argv[5])}; sys.exit(0 if (d.get("reservationRef") == exp["ref"] and d.get("guest", {}).get("fullName") == exp["guest"] and d.get("dates", {}).get("checkIn") == exp["checkIn"] and d.get("dates", {}).get("checkOut") == exp["checkOut"] and d.get("price", {}).get("amountMinor") == exp["total"] and "hotel" not in d) else 1)' "$REF" "E2E Guest" "$ARRIVAL" "$DEPARTURE" "$TOTAL" <<<"$CONFIRM_RESP" \
+  || { echo "$(msg "script.runbook.e2e_confirmation_mismatch" "e2e: FAIL: confirmation does not match the booking: {body}." body="$CONFIRM_RESP")" >&2; teardown; exit 1; }
+pass "script.runbook.e2e_confirmation_ok" "e2e: PASS: confirmation produced for {ref} (guest {guest}, {arrival} to {departure}, total {total})." ref="$REF" guest="E2E Guest" arrival="$ARRIVAL" departure="$DEPARTURE" total="$TOTAL"
+
 step "script.runbook.e2e_step_checkin" "e2e: === check in one stay for tonight (FR-FDK-1, NFR-CON-2) ==="
 TODAY="$(date +%F)"
 TOMORROW="$(date -d '+1 day' +%F)"

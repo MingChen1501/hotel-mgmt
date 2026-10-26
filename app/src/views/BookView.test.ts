@@ -125,6 +125,18 @@ function stubHappyPath(
         }),
       );
     }
+    if (url === '/v1/guests/AttachReservation') {
+      return Promise.resolve(
+        jsonResponse({
+          reservationRef: 'RSV-1',
+          hotel: { hotelId: 'h-1', name: 'Grand Hotel' },
+          guest: { guestId: 'g-1', fullName: 'Guest One' },
+          dates: { checkIn: '2026-11-01', checkOut: '2026-11-03' },
+          type: 'standard',
+          price: { amountMinor: 22000, currency: 'USD' },
+        }),
+      );
+    }
     if (url === '/v1/guests/ProduceConfirmation') {
       return Promise.resolve(
         jsonResponse({
@@ -429,6 +441,18 @@ describe('book view', () => {
           }),
         );
       }
+      if (url === '/v1/guests/AttachReservation') {
+        return Promise.resolve(
+          jsonResponse({
+            reservationRef: 'RSV-9',
+            hotel: { hotelId: 'h-1', name: 'Skeleton Hotel' },
+            guest: { guestId: qaGuestId, fullName: 'QA Booker' },
+            dates: { checkIn: '2026-11-25', checkOut: '2026-11-27' },
+            type: qaRoomTypeId,
+            price: { amountMinor: 240000, currency: 'USD' },
+          }),
+        );
+      }
       if (url === '/v1/guests/ProduceConfirmation') {
         return Promise.resolve(
           jsonResponse({
@@ -488,6 +512,23 @@ describe('book view', () => {
     expect(sent.sellableUnits).toBe(2);
     expect(sent.priceBasis).toEqual({ totalMinor: 240000, discountName: null });
     expect(wrapper.find('[data-testid="book-booking-readback"]').text()).toContain('QA Booker');
+    // Issue #323: the RES-side read-back snapshot is attached for
+    // the Guests store before the human ref is produced.
+    const attach = fetchMock.mock.calls.find(
+      (call) => call[0] === '/v1/guests/AttachReservation',
+    );
+    expect(attach).toBeDefined();
+    expect(parseBody(attach?.[1] as RequestInit)).toEqual({
+      reservationRef: 'RSV-9',
+      guest: { guestId: qaGuestId, fullName: 'QA Booker' },
+      dates: { checkIn: '2026-11-25', checkOut: '2026-11-27' },
+      type: qaRoomTypeId,
+      price: { amountMinor: 240000 },
+    });
+    const produce = fetchMock.mock.calls.find(
+      (call) => call[0] === '/v1/guests/ProduceConfirmation',
+    );
+    expect(parseBody(produce?.[1] as RequestInit)).toEqual({ reservationRef: 'RSV-9' });
   });
 
   it('confirms a second overlapping booking with the searched sellable count (issue #322)', async () => {
@@ -566,6 +607,18 @@ describe('book view', () => {
             state: 'confirmed',
             reservationId: 'r-322',
             stayId: null,
+          }),
+        );
+      }
+      if (url === '/v1/guests/AttachReservation') {
+        return Promise.resolve(
+          jsonResponse({
+            reservationRef: 'RSV-QG3DQN4T',
+            hotel: { hotelId: 'h-1', name: 'Skeleton Hotel' },
+            guest: { guestId: qaGuestId, fullName: 'QA Booker' },
+            dates: { checkIn: '2026-11-25', checkOut: '2026-11-27' },
+            type: qaRoomTypeId,
+            price: { amountMinor: 240000, currency: 'USD' },
           }),
         );
       }
@@ -815,6 +868,18 @@ describe('book view', () => {
       }
       if (url === '/v1/guests/IdentifyGuest') {
         return Promise.resolve(jsonResponse({ guestId: body.guestId, fullName: 'Guest One' }));
+      }
+      if (url === '/v1/guests/AttachReservation') {
+        return Promise.resolve(
+          jsonResponse({
+            reservationRef: 'RSV-1',
+            hotel: { hotelId: 'h-1', name: 'Grand Hotel' },
+            guest: { guestId: 'g-1', fullName: 'Guest One' },
+            dates: { checkIn: '2026-11-01', checkOut: '2026-11-03' },
+            type: 'standard',
+            price: { amountMinor: 22000, currency: 'USD' },
+          }),
+        );
       }
       if (url === '/v1/guests/ProduceConfirmation') {
         return Promise.resolve(

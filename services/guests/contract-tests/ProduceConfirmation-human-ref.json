@@ -1,0 +1,15 @@
+{
+  "operation": "ProduceConfirmation",
+  "case": "happy-path-human-ref",
+  "description": "Produces the booking confirmation record for a human reservation ref attached from the RES-side read-back (FR-GST-4, issue #323).",
+  "request": { "reservationRef": "RSV-2HBALL5F" },
+  "expect": {
+    "status": 200,
+    "reservationRef": "RSV-2HBALL5F",
+    "hotel": { "hotelId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "name": "Hanoi Riverside" },
+    "guest": { "guestId": "<guest-id>", "fullName": "E2E Guest" },
+    "dates": { "checkIn": "2026-11-01", "checkOut": "2026-11-03" },
+    "type": "deluxe",
+    "price": { "amountMinor": 2400000, "currency": "VND" }
+  }
+}

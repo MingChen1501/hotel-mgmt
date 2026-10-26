@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { HttpError } from "./errors.js";
 import { msg } from "./messages.js";
 import {
+  requireReservationRef,
   requireString,
   requireUuid,
   mandatoryFieldStatus,
@@ -142,7 +143,7 @@ export class PostgresGuestStore implements GuestStoreAPI {
   }
 
   async produceConfirmation(input: ProduceConfirmationInput): Promise<ConfirmationRecord> {
-    const reservationRef = requireUuid(input.reservationRef, "reservationRef");
+    const reservationRef = requireReservationRef(input.reservationRef);
     const record = this.confirmations.get(reservationRef);
     if (!record) {
       throw new HttpError("NOT_FOUND", msg("error.notfound.reservation", { ref: reservationRef }), {

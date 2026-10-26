@@ -21,7 +21,7 @@ Node.js/TypeScript flat `src/` files over raw `node:http`, wired in `services/gu
 | Errors | `src/errors.ts` | shared `HttpError` envelope (same code set as Stay) |
 | Boot | `src/index.ts` | store selection by `DATABASE_URL`, `listen(PORT)` (default `8086`) |
 
-The operation table (`src/server.ts:87-143`): `UpsertGuest` (:87), `IdentifyGuest` (:100), `GetBookingContext` (:114), `GetGuest` (:118), `ProduceConfirmation` (:133). `LinkStay` is a store-level ingestion entry (`src/store.ts:84,244-263`), not a separate route.
+The operation table (`src/server.ts:87-147`): `UpsertGuest` (:87), `IdentifyGuest` (:100), `GetBookingContext` (:114), `GetGuest` (:118), `AttachReservation` (:133), `ProduceConfirmation` (:137). `LinkStay` is a store-level ingestion entry (`src/store.ts`, `linkStay`), not a separate route.
 
 ## 3. Happy-path flowchart
 
@@ -42,7 +42,7 @@ Edge trace (every edge cites code):
 - C: required fields checked (`requireUuid`/`requireString`, `src/store.ts:48-55`); profile stored and returned (`src/store.ts:198-218`).
 - D: lookup by `guestId` first, then exact `fullName` match (`src/store.ts:220-223` via `findGuest` at :286-303).
 - E: profile returned with linked stays and the returning flag derived from the link count (`src/store.ts:235-242`).
-- F: `ProduceConfirmation` reads the stored record by `reservationRef` (`src/server.ts:133-137` via `src/store.ts:271-280`); unknown refs refuse with `NOT_FOUND`.
+- F: `ProduceConfirmation` reads the stored record by `reservationRef` (`src/server.ts` via `src/store.ts` `produceConfirmation`); unknown refs refuse with `NOT_FOUND`. The key is the RES-side reservation ref (human `RSV-…` or UUID). The desk loop populates the store first through the `AttachReservation` route with the `GetReservation` read-back snapshot (LLD section 5; issue #323); the hotel block and the price currency ride along only once the Admin-backed hotel values land, so the record may omit them and the desk renders either shape.
 
 ## 4. Failure/rollback flowchart
 
@@ -66,7 +66,7 @@ Rollback: none — reads are pure; upserts and link appends are single guarded s
 
 ## 5. Outbound dependencies
 
-None at runtime. Consumes `StayEvents` through `linkStay` ingestion (`src/store.ts:84,244-263`; LLD section 5; FR-GST-1). Supplies the guest block the desk carries into Reservations `Create`/`Modify` (including the hotel-mandatory `fullName` the reservations service enforces). `ProduceConfirmation` serves the stored confirmation record for a printed/emailed confirmation (`src/store.ts:265-280`). Hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (LLD section 0).
+None at runtime. Consumes `StayEvents` through `linkStay` ingestion (LLD section 5; FR-GST-1). The reservation snapshot behind the confirmation arrives over the `AttachReservation` route, sent by the desk loop from its `GetReservation` read-back (the RES-side guest block) — the service keeps no outbound RES reader. Supplies the guest block the desk carries into Reservations `Create`/`Modify` (including the hotel-mandatory `fullName` the reservations service enforces). `ProduceConfirmation` serves the stored confirmation record for a printed/emailed confirmation. Hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (LLD section 0).
 
 See also: [deployment](../system-architecture.md) (§1), [C4 containers](../c4-containers.md), and [event flow](../event-flow.md) (this service's outbox emissions).
 

@@ -1,0 +1,99 @@
+{
+  "operation": "AttachReservation",
+  "contract": "GuestService",
+  "version": "1.0",
+  "traces": ["docs/architecture/lld.md section 5", "FR-GST-4"],
+  "transport": {
+    "method": "POST",
+    "path": "/v1/guests/AttachReservation",
+    "auth": "Bearer session token"
+  },
+  "request": {
+    "type": "object",
+    "required": ["reservationRef", "guest", "dates", "type", "price"],
+    "properties": {
+      "reservationRef": {
+        "type": "string",
+        "description": "RES-side reservation key: the human reference (RSV-…) the desk reads back from GetReservation, or a reservation UUID. Re-delivery of the same ref overwrites, so replay stays idempotent."
+      },
+      "hotel": {
+        "type": "object",
+        "description": "Optional until the Admin-backed hotel values slice lands.",
+        "required": ["hotelId", "name"],
+        "properties": {
+          "hotelId": { "type": "string", "format": "uuid" },
+          "name": { "type": "string" }
+        }
+      },
+      "guest": {
+        "type": "object",
+        "required": ["guestId", "fullName"],
+        "properties": {
+          "guestId": { "type": "string", "format": "uuid" },
+          "fullName": { "type": "string" }
+        }
+      },
+      "dates": {
+        "type": "object",
+        "required": ["checkIn", "checkOut"],
+        "properties": {
+          "checkIn": { "type": "string", "format": "date" },
+          "checkOut": { "type": "string", "format": "date" }
+        }
+      },
+      "type": { "type": "string" },
+      "price": {
+        "type": "object",
+        "required": ["amountMinor"],
+        "properties": {
+          "amountMinor": { "type": "integer", "minimum": 0 },
+          "currency": { "type": "string" }
+        }
+      }
+    }
+  },
+  "response": {
+    "type": "object",
+    "required": ["reservationRef", "guest", "dates", "type", "price"],
+    "properties": {
+      "reservationRef": { "type": "string" },
+      "hotel": {
+        "type": "object",
+        "required": ["hotelId", "name"],
+        "properties": {
+          "hotelId": { "type": "string", "format": "uuid" },
+          "name": { "type": "string" }
+        }
+      },
+      "guest": {
+        "type": "object",
+        "required": ["guestId", "fullName"],
+        "properties": {
+          "guestId": { "type": "string", "format": "uuid" },
+          "fullName": { "type": "string" }
+        }
+      },
+      "dates": {
+        "type": "object",
+        "required": ["checkIn", "checkOut"],
+        "properties": {
+          "checkIn": { "type": "string", "format": "date" },
+          "checkOut": { "type": "string", "format": "date" }
+        }
+      },
+      "type": { "type": "string" },
+      "price": {
+        "type": "object",
+        "required": ["amountMinor"],
+        "properties": {
+          "amountMinor": { "type": "integer", "minimum": 0 },
+          "currency": { "type": "string" }
+        }
+      }
+    }
+  },
+  "errors": [
+    { "code": "UNAUTHENTICATED", "status": 401, "when": "Missing session token." },
+    { "code": "VALIDATION_FAILED", "status": 400, "when": "Missing or malformed snapshot fields." }
+  ]
+}
