@@ -745,6 +745,50 @@ describe('stay view', () => {
     expect(wrapper.find('[data-testid="stay-approval-section"]').exists()).toBe(true);
   });
 
+  it('names an already-closed stay on the second close instead of the raw envelope', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountStay();
+    await signIn(wrapper, fetchMock);
+
+    // The stay service refuses the second close with STATE_ILLEGAL
+    // naming the stay and its closed state (Refs #365): the view
+    // must name the closed stay in plain words.
+    const happy = stubHappyPath(fetchMock);
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/stay/CheckOut') {
+        return Promise.resolve(
+          jsonResponse(
+            {
+              code: 'STATE_ILLEGAL',
+              message: 'Stay s-1 is closed, not in house.',
+              details: { stayId: 's-1', state: 'closed' },
+            },
+            422,
+          ),
+        );
+      }
+      return happy(url, init);
+    });
+
+    await wrapper.find('[data-testid="stay-checkout-stay-id"]').setValue('s-1');
+    await wrapper.find('[data-testid="stay-review"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkout-status"]').text()).toContain(
+        'balance is zero',
+      );
+    });
+    await confirmCheckout(wrapper);
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkout-error"]').text()).toContain(
+        'already checked out',
+      );
+    });
+    expect(wrapper.find('[data-testid="stay-checkout-error"]').text()).toContain(
+      'closing it again is refused',
+    );
+  });
+
   it('normalizes a stringified folio approval to the contracted object on check-out', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
@@ -903,7 +947,7 @@ describe('stay view source', () => {
     expect(stayViewSource).toContain(op);
   });
 
-  it.each(['SETTLEMENT_REQUIRED', 'refused_open_balance', 'idempotencyKey'])(
+  it.each(['SETTLEMENT_REQUIRED', 'STATE_ILLEGAL', 'refused_open_balance', 'refused_already_closed', 'idempotencyKey'])(
     'keeps the folio-gate vocabulary %s',
     (token) => {
       expect(stayViewSource).toContain(token);

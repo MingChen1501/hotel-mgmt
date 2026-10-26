@@ -150,13 +150,10 @@ test('unknown folio shows the refusal state, not a blank page', async ({ page, r
   await signInThroughGate(page);
   await page.goto('/app/print');
   // A stay id outside UUID shape never reaches a folio: billing
-  // answers VALIDATION_FAILED and the refusal must stay on screen
-  // instead of a blank page. The view maps only the unknown
-  // booking reference to a named cause today, so this pins the
-  // visible refusal; a named not-found state for folio and payment
-  // ids is a view follow-up, not this batch.
+  // answers VALIDATION_FAILED and the refusal names the missing
+  // folio in plain words instead of a blank page.
   await page.getByTestId('print-stay-id').fill('not-a-stay-id');
   await page.getByTestId('print-open').click();
-  await expect(page.getByTestId('print-open-error')).toBeVisible();
+  await expect(page.getByTestId('print-open-error')).toContainText('No folio for that stay');
   await expect(page.getByTestId('print-invoice-document')).toHaveCount(0);
 });

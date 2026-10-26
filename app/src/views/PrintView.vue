@@ -568,6 +568,28 @@ function errorCode(err: unknown): string {
     : '';
 }
 
+// Envelope details for the not-found refusals (Refs #365): an
+// unknown folio arrives as NOT_FOUND naming the folio, an unknown
+// payment as NOT_FOUND naming the payment, and a malformed stay or
+// folio id as VALIDATION_FAILED naming the field. Branching stays
+// on code+details, never on resolved wording.
+function refusedField(err: unknown): string {
+  if (typeof err !== 'object' || err === null) {
+    return '';
+  }
+  const details = (err as ApiError).details as { field?: unknown } | null | undefined;
+  return typeof details?.field === 'string' ? details.field : '';
+}
+
+function refusedId(err: unknown, name: 'folioId' | 'paymentId'): string {
+  if (typeof err !== 'object' || err === null) {
+    return '';
+  }
+  const details = (err as ApiError).details as Record<string, unknown> | null | undefined;
+  const value = details?.[name];
+  return typeof value === 'string' ? value : '';
+}
+
 // Unexpected failures read as one plain sentence (FR-DSP-3,
 // desk.shell.request_failed): call sites map known envelope codes
 // to specific catalogue wordings, so this fallback never surfaces
@@ -816,6 +838,21 @@ export default defineComponent({
           expireToGate();
           return;
         }
+        // No folio for the stay: billing refuses an unknown folio
+        // with NOT_FOUND and a malformed stay id with
+        // VALIDATION_FAILED naming the field (Refs #365).
+        if (
+          errorCode(err) === 'NOT_FOUND' ||
+          (errorCode(err) === 'VALIDATION_FAILED' &&
+            (refusedField(err) === 'stayId' || refusedField(err) === 'folioId'))
+        ) {
+          openError.value = t(
+            'desk.print.refused_unknown_folio',
+            {},
+            'No folio for that stay. Check the stay ID and try again.',
+          );
+          return;
+        }
         openError.value = errorMessage();
       } finally {
         opening.value = false;
@@ -849,6 +886,19 @@ export default defineComponent({
           expireToGate();
           return;
         }
+        // An unknown folio refuses the invoice with NOT_FOUND naming
+        // the folio (Refs #365).
+        if (
+          (errorCode(err) === 'NOT_FOUND' && refusedId(err, 'folioId') !== '') ||
+          (errorCode(err) === 'VALIDATION_FAILED' && refusedField(err) === 'folioId')
+        ) {
+          invoiceError.value = t(
+            'desk.print.refused_unknown_folio',
+            {},
+            'No folio for that stay. Check the stay ID and try again.',
+          );
+          return;
+        }
         invoiceError.value = errorMessage();
       } finally {
         invoicing.value = false;
@@ -871,6 +921,19 @@ export default defineComponent({
       } catch (err) {
         if (isSignedOut(err)) {
           expireToGate();
+          return;
+        }
+        // An unknown payment refuses the receipt with NOT_FOUND
+        // naming the payment (Refs #365).
+        if (
+          (errorCode(err) === 'NOT_FOUND' && refusedId(err, 'paymentId') !== '') ||
+          (errorCode(err) === 'VALIDATION_FAILED' && refusedField(err) === 'paymentId')
+        ) {
+          receiptError.value = t(
+            'desk.print.refused_unknown_payment',
+            {},
+            'No payment found with that ID. Open the folio again and try again.',
+          );
           return;
         }
         receiptError.value = errorMessage();

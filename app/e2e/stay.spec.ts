@@ -164,15 +164,13 @@ test('closing an already-closed stay is refused on screen', async ({ page, reque
   await page.getByTestId('stay-checkout-confirm').click();
   await expect(page.getByTestId('stay-checkout-status')).toContainText('Checked out: stay');
   // The second close of the same stay is refused STATE_ILLEGAL by
-  // the stay service: the refusal must stay on screen instead of a
-  // silent accept. The view maps only SETTLEMENT_REQUIRED to a
-  // named cause today, so this pins the visible refusal; naming
-  // STATE_ILLEGAL on screen is a view follow-up, not this batch.
+  // the stay service: the refusal names the already-closed stay in
+  // plain words instead of a silent accept or a raw envelope.
   await page.getByTestId('stay-checkout-stay-id').fill(stayId);
   await page.getByTestId('stay-review').click();
   await page.getByTestId('stay-checkout').click();
   await page.getByTestId('stay-checkout-confirm').click();
-  await expect(page.getByTestId('stay-checkout-error')).toBeVisible();
+  await expect(page.getByTestId('stay-checkout-error')).toContainText('already checked out');
 });
 
 async function checkInStay(

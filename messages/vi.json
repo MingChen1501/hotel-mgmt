@@ -413,6 +413,7 @@
     "desk.stay.refused_unknown_ref": "Mã đặt phòng không tồn tại. Kiểm tra lại mã rồi thử lại.",
     "desk.stay.refused_taken": "Phòng đó vừa có khách. Hãy chọn phòng sẵn sàng khác.",
     "desk.stay.refused_checked_in": "Đặt phòng này đã được nhận phòng rồi.",
+    "desk.stay.refused_already_closed": "Kỳ lưu trú đó đã được trả phòng rồi nên không thể trả phòng lần nữa.",
     "desk.stay.move_heading": "Chuyển phòng giữa kỳ lưu trú",
     "desk.stay.stay_id": "Mã lưu trú:",
     "desk.stay.target_room": "Chuyển đến phòng:",
@@ -543,6 +544,10 @@
     "desk.admin.restricted_notice": "Tài khoản nhân viên, thiết lập khách sạn và nhật ký hoạt động do chủ khách sạn hoặc quản lý quản trị. Nếu cần thay đổi gì, hãy hỏi quản lý.",
     "desk.shell.request_failed": "Thao tác không thành công. Thử lại; nếu vẫn lỗi, báo cho quản lý.",
     "desk.folio.refused_unknown_item": "Khoản thêm này không có trong danh mục khách sạn: {itemName}. Kiểm tra lại tên, hoặc nhờ quản lý bổ sung.",
-    "desk.print.refused_unknown_ref": "Mã đặt phòng không tồn tại. Kiểm tra lại mã rồi thử lại."
+    "desk.folio.refused_bad_method": "Phương thức thanh toán đó không được chấp nhận. Hãy dùng tiền mặt hoặc thẻ.",
+    "desk.folio.refused_unknown_folio": "Không có bảng kê cho kỳ lưu trú đó. Kiểm tra lại mã lưu trú rồi thử lại.",
+    "desk.print.refused_unknown_ref": "Mã đặt phòng không tồn tại. Kiểm tra lại mã rồi thử lại.",
+    "desk.print.refused_unknown_folio": "Không có bảng kê cho kỳ lưu trú đó. Kiểm tra lại mã lưu trú rồi thử lại.",
+    "desk.print.refused_unknown_payment": "Không tìm thấy khoản thanh toán với mã đó. Mở lại bảng kê rồi thử lại."
   }
 }
