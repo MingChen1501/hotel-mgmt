@@ -1,6 +1,7 @@
 package com.hotel.billing.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -147,13 +148,16 @@ class BillingServiceTest {
   @Test
   void recordApprovalStoresTheRecord() {
     when(repo.ensureFolio(eq(STAY), eq("front-desk"))).thenReturn(folio(6000));
-    Folio approved = new Folio(FOLIO, STAY, 6000, "{\"approvedBy\":\"manager\"}");
+    Folio approved = new Folio(FOLIO, STAY, 6000,
+        "{\"approvedBy\":\"manager\",\"role\":\"manager\",\"reason\":\"Guest pays next visit\"}");
     when(repo.findFolioByStay(STAY)).thenReturn(approved);
     BillingService.ApprovalView view = service.recordOpenBalanceApproval(STAY.toString(), "manager", "manager",
         "Guest pays next visit", null, "front-desk");
     assertEquals(FOLIO, view.folioId());
     assertEquals(6000L, view.balanceMinor());
-    assertEquals("{\"approvedBy\":\"manager\"}", view.openBalanceApproval());
+    assertEquals("manager", view.openBalanceApproval().get("approvedBy"));
+    assertEquals("manager", view.openBalanceApproval().get("role"));
+    assertEquals("Guest pays next visit", view.openBalanceApproval().get("reason"));
     verify(repo).recordApproval(eq(FOLIO), anyString(), eq("front-desk"));
     verify(repo).outbox(eq("folio"), eq("approval-recorded"), anyString(), eq("front-desk"));
   }
@@ -163,12 +167,44 @@ class BillingServiceTest {
     when(repo.ensureFolio(eq(STAY), eq("front-desk"))).thenReturn(folio(6000));
     when(repo.claimOrWait(eq("approval-1"), eq("RecordOpenBalanceApproval"), anyString()))
         .thenReturn(FOLIO.toString());
-    Folio approved = new Folio(FOLIO, STAY, 6000, "{\"approvedBy\":\"manager\"}");
+    Folio approved = new Folio(FOLIO, STAY, 6000, "{\"approvedBy\":\"manager\",\"role\":\"manager\"}");
     when(repo.findFolioByStay(STAY)).thenReturn(approved);
     BillingService.ApprovalView view = service.recordOpenBalanceApproval(STAY.toString(), "manager", "manager",
         null, "approval-1", "front-desk");
-    assertEquals("{\"approvedBy\":\"manager\"}", view.openBalanceApproval());
+    assertEquals("manager", view.openBalanceApproval().get("approvedBy"));
+    assertEquals("manager", view.openBalanceApproval().get("role"));
     verify(repo, never()).recordApproval(any(), anyString(), anyString());
+  }
+
+  @Test
+  void folioBalanceReadsTheApprovalAsAnObject() {
+    when(repo.ensureFolio(eq(STAY), eq("front-desk"))).thenReturn(
+        new Folio(FOLIO, STAY, 6000, "{\"approvedBy\":\"manager\",\"role\":\"manager\"}"));
+    when(repo.chargeLines(FOLIO)).thenReturn(java.util.List.of());
+    when(repo.paymentLines(FOLIO)).thenReturn(java.util.List.of());
+    BillingService.FolioView view = service.getFolioBalance(STAY.toString(), "front-desk");
+    assertEquals("manager", view.openBalanceApproval().get("approvedBy"));
+    assertEquals("manager", view.openBalanceApproval().get("role"));
+  }
+
+  @Test
+  void folioBalanceLeavesAMissingApprovalNull() {
+    when(repo.ensureFolio(eq(STAY), eq("front-desk"))).thenReturn(folio(6000));
+    when(repo.chargeLines(FOLIO)).thenReturn(java.util.List.of());
+    when(repo.paymentLines(FOLIO)).thenReturn(java.util.List.of());
+    BillingService.FolioView view = service.getFolioBalance(STAY.toString(), "front-desk");
+    assertNull(view.openBalanceApproval());
+  }
+
+  @Test
+  void produceInvoicePresentsTheApprovalAsAnObject() {
+    when(repo.findFolioById(FOLIO))
+        .thenReturn(new Folio(FOLIO, STAY, 65000, "{\"approvedBy\":\"manager\",\"role\":\"manager\"}"));
+    when(repo.chargeLines(FOLIO)).thenReturn(java.util.List.of());
+    when(repo.paymentLines(FOLIO)).thenReturn(java.util.List.of());
+    BillingService.InvoiceView view = service.produceInvoice(FOLIO.toString(), "front-desk");
+    assertEquals("manager", view.openBalanceApproval().get("approvedBy"));
+    assertEquals("manager", view.openBalanceApproval().get("role"));
   }
 
   @Test

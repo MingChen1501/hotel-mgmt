@@ -282,6 +282,7 @@
     "script.runbook.e2e_receipt_failed": "e2e: FAIL: receipt does not match the recorded payment.",
     "script.runbook.e2e_billing_ok": "e2e: PASS: day-close {date} charges={charges} folio balance={balance}; invoice matches folio, receipt matches cash payment.",
     "script.runbook.e2e_refusal_checkout_ok": "e2e: PASS: open-balance check-out refused, stay remains in house.",
+    "script.runbook.e2e_approval_shape": "e2e: FAIL: folio approval is not the contracted object: {body}.",
     "script.runbook.e2e_not_closed": "e2e: FAIL: stay not closed: {body}.",
     "script.runbook.e2e_invoice_ref": "e2e: FAIL: invoice is not the folio: {body}.",
     "script.runbook.e2e_release2_failed": "e2e: FAIL: room not released vacant-dirty: {body}.",

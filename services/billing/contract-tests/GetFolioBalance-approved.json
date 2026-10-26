@@ -1,0 +1,10 @@
+{
+  "operation": "GetFolioBalance",
+  "case": "approved",
+  "description": "Reads back a folio with a recorded open-balance approval: the approval arrives as the contracted object (issue #347), the same value Stay CheckOut enforces, so the desk passes it through untouched.",
+  "request": { "stayId": "<stay-id>", "actor": "front-desk" },
+  "expect": {
+    "status": 200,
+    "openBalanceApproval": { "approvedBy": "manager", "role": "manager" }
+  }
+}
