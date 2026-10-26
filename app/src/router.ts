@@ -4,11 +4,13 @@
 // The desk screen (Refs #293) is the first real screen migration:
 // `/` renders the desk dashboard SFC. The book screen (Refs #294)
 // follows at `/book`, the stay screen (Refs #295) at `/stay`, the
-// folio screen (Refs #296) at `/folio`, and the print screen
-// (Refs #297) at `/print`. Every other path still falls through to
+// folio screen (Refs #296) at `/folio`, the print screen
+// (Refs #297) at `/print`, and the admin console (Refs #298) at
+// `/admin`. Every other path still falls through to
 // the placeholder (LLD §11.1 edge U–V).
 import { createRouter, createWebHistory } from 'vue-router';
 import type { Router } from 'vue-router';
+import AdminView from './views/AdminView.vue';
 import BookView from './views/BookView.vue';
 import DeskView from './views/DeskView.vue';
 import FolioView from './views/FolioView.vue';
@@ -44,6 +46,11 @@ export function createAppRouter(): Router {
         path: '/print',
         name: 'print',
         component: PrintView,
+      },
+      {
+        path: '/admin',
+        name: 'admin',
+        component: AdminView,
       },
       {
         path: '/:pathMatch(.*)*',

@@ -1,9 +1,11 @@
 // Guard for FR-SHL-1 (desk screen renders at /) + FR-SHL-3 (print
-// route implemented) at router level
-// (Refs #291, #293, #294, #295, #296, #297, LLD §11.1). Served-shell halves
+// route implemented) + the admin console route (Refs #298) at
+// router level
+// (Refs #291, #293, #294, #295, #296, #297, #298, LLD §11.1). Served-shell halves
 // live in `script/shell-served-check.sh`.
 import { describe, expect, it } from 'vitest';
 import { createAppRouter } from './router';
+import AdminView from './views/AdminView.vue';
 import BookView from './views/BookView.vue';
 import DeskView from './views/DeskView.vue';
 import FolioView from './views/FolioView.vue';
@@ -12,11 +14,12 @@ import PrintView from './views/PrintView.vue';
 import StayView from './views/StayView.vue';
 
 describe('migration shell router', () => {
-  it('holds the desk, book, stay, folio, and print routes plus the placeholder catch-all', () => {
+  it('holds the desk, book, stay, folio, print, and admin routes plus the placeholder catch-all', () => {
     const router = createAppRouter();
     const routes = router.getRoutes();
-    expect(routes).toHaveLength(6);
+    expect(routes).toHaveLength(7);
     expect(routes.map((route) => route.name).sort()).toEqual([
+      'admin',
       'book',
       'desk',
       'folio',
@@ -64,6 +67,14 @@ describe('migration shell router', () => {
     expect(resolved.name).toBe('print');
     expect(resolved.matched).toHaveLength(1);
     expect(resolved.matched[0]?.components?.default).toBe(PrintView);
+  });
+
+  it('renders the admin console for /admin', async () => {
+    const router = createAppRouter();
+    const resolved = router.resolve('/admin');
+    expect(resolved.name).toBe('admin');
+    expect(resolved.matched).toHaveLength(1);
+    expect(resolved.matched[0]?.components?.default).toBe(AdminView);
   });
 
   it.each(['/app/stay/today', '/app/book/quote-1', '/app/unknown-screen'])(
