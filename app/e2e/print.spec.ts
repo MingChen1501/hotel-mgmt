@@ -120,6 +120,19 @@ test('invoice, receipt, and confirmation match the folio', async ({ page, reques
   await page.getByTestId('print-invoice-print').click();
   await expect(page).toHaveURL(/\/app\/print/);
   await expect(page.getByTestId('print-invoice-document')).toBeVisible();
+
+  // Print isolation (plan §1 flow 5): under print media only the
+  // active document survives — the folio table and every other
+  // screen section drop out, without ever hiding the active
+  // document's ancestors. The class flip is the same synchronous
+  // step the Print button performs before window.print().
+  await page.getByTestId('print-invoice-document').evaluate((el) => el.classList.add('active'));
+  await page.emulateMedia({ media: 'print' });
+  await expect(page.getByTestId('print-invoice-document')).toBeVisible();
+  await expect(page.getByTestId('print-folio-table')).toBeHidden();
+  await expect(page.getByTestId('print-open')).toBeHidden();
+  await page.emulateMedia({ media: 'screen' });
+  await page.getByTestId('print-invoice-document').evaluate((el) => el.classList.remove('active'));
 });
 
 test('unknown booking reference shows the not-found state', async ({ page, request }) => {
@@ -130,4 +143,20 @@ test('unknown booking reference shows the not-found state', async ({ page, reque
   await page.getByTestId('print-load').click();
   await expect(page.getByTestId('print-load-error')).toContainText('Unknown booking reference');
   await expect(page.getByTestId('print-confirmation-document')).toHaveCount(0);
+});
+
+test('unknown folio shows the refusal state, not a blank page', async ({ page, request }) => {
+  await ownerToken(request);
+  await signInThroughGate(page);
+  await page.goto('/app/print');
+  // A stay id outside UUID shape never reaches a folio: billing
+  // answers VALIDATION_FAILED and the refusal must stay on screen
+  // instead of a blank page. The view maps only the unknown
+  // booking reference to a named cause today, so this pins the
+  // visible refusal; a named not-found state for folio and payment
+  // ids is a view follow-up, not this batch.
+  await page.getByTestId('print-stay-id').fill('not-a-stay-id');
+  await page.getByTestId('print-open').click();
+  await expect(page.getByTestId('print-open-error')).toBeVisible();
+  await expect(page.getByTestId('print-invoice-document')).toHaveCount(0);
 });
