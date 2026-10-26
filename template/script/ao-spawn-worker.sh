@@ -238,7 +238,7 @@ Post exactly one COMMENT verdict on that PR: APPROVE or CHANGES_REQUESTED, with 
     ;;
   specgate)
     body="Spec-gate session: check the required specs for issue #${issue} exist, are active, and match the change (see the spec-gate skill).
-Post exactly one SPEC-GATE verdict as a PR/issue comment: PASS or FAIL with the missing-spec findings. Never implement, never push, never open a PR. Then end your turn. ${footer}"
+Post exactly one SPEC-GATE verdict as a PR/issue comment: PASS or FAIL with the missing-spec findings. Quote the exact PR head SHA you reviewed (from gh pr view <n> --json headRefOid) in the verdict — the merge gate only counts verdicts quoting the exact head, so a re-pushed head needs a fresh verdict. Never implement, never push, never open a PR. Then end your turn. ${footer}"
     ;;
   spec)
     body="Spec-only session: write the specs assigned by issue #${issue} (see the spec-gate skill for your owning doc group). Do not change product code and do not implement behaviour.
