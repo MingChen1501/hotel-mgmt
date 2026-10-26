@@ -522,6 +522,131 @@ describe("user and role management (FR-ADM-2)", () => {
   });
 });
 
+describe("secret rotation (issue #284)", () => {
+  async function ownerTokenOn(port: number): Promise<string> {
+    const signin = await request(port, "POST", "/v1/admin/SignIn", {
+      signinIdentity: "owner",
+      secret: "owner-secret",
+    });
+    assert.equal(signin.status, 200);
+    return (signin.body as { token: string }).token;
+  }
+
+  it("rotates the caller's own secret: old stops, new signs in", async () => {
+    await withServer(await bootStore(), async (port) => {
+      const ownerToken = await ownerTokenOn(port);
+      const rotated = await request(
+        port,
+        "POST",
+        "/v1/admin/ChangeSecret",
+        { currentSecret: "owner-secret", newSecret: "owner-secret-rotated" },
+        ownerToken,
+      );
+      assert.equal(rotated.status, 200);
+      assert.equal((rotated.body as { signinIdentity: string }).signinIdentity, "owner");
+      assert.equal((rotated.body as { role: string }).role, "owner");
+      assert.ok(!("secretHash" in (rotated.body as Record<string, unknown>)));
+
+      const oldSignin = await request(port, "POST", "/v1/admin/SignIn", {
+        signinIdentity: "owner",
+        secret: "owner-secret",
+      });
+      assert.equal(oldSignin.status, 401);
+      assert.equal((oldSignin.body as { code: string }).code, "UNAUTHENTICATED");
+
+      const newSignin = await request(port, "POST", "/v1/admin/SignIn", {
+        signinIdentity: "owner",
+        secret: "owner-secret-rotated",
+      });
+      assert.equal(newSignin.status, 200);
+    });
+  });
+
+  it("refuses a wrong current secret without lockout side effects", async () => {
+    const store = await bootStore();
+    await withServer(store, async (port) => {
+      const ownerToken = await ownerTokenOn(port);
+      const refused = await request(
+        port,
+        "POST",
+        "/v1/admin/ChangeSecret",
+        { currentSecret: "not-the-secret", newSecret: "owner-secret-rotated" },
+        ownerToken,
+      );
+      assert.equal(refused.status, 401);
+      assert.equal((refused.body as { code: string }).code, "UNAUTHENTICATED");
+
+      // The rotation did not happen and the failure counters are
+      // untouched: the real secret still signs in immediately.
+      const retry = await request(port, "POST", "/v1/admin/SignIn", {
+        signinIdentity: "owner",
+        secret: "owner-secret",
+      });
+      assert.equal(retry.status, 200);
+      assert.equal(await store.failureCount("owner"), 0);
+    });
+  });
+
+  it("refuses rotation without a session token or a new secret", async () => {
+    await withServer(await bootStore(), async (port) => {
+      const ownerToken = await ownerTokenOn(port);
+
+      const anonymous = await request(port, "POST", "/v1/admin/ChangeSecret", {
+        currentSecret: "owner-secret",
+        newSecret: "owner-secret-rotated",
+      });
+      assert.equal(anonymous.status, 401);
+      assert.equal((anonymous.body as { code: string }).code, "UNAUTHENTICATED");
+
+      const blank = await request(
+        port,
+        "POST",
+        "/v1/admin/ChangeSecret",
+        { currentSecret: "owner-secret", newSecret: "" },
+        ownerToken,
+      );
+      assert.equal(blank.status, 400);
+      assert.equal((blank.body as { code: string }).code, "VALIDATION_FAILED");
+    });
+  });
+
+  it("lets any role rotate its own secret and records the change in the audit log", async () => {
+    await withServer(await bootStore(), async (port) => {
+      const ownerToken = await ownerTokenOn(port);
+      await request(
+        port,
+        "POST",
+        "/v1/admin/CreateUser",
+        { displayName: "Desk", signinIdentity: "desk-1", secret: "desk-secret", role: "front-desk" },
+        ownerToken,
+      );
+      const deskSignin = await request(port, "POST", "/v1/admin/SignIn", {
+        signinIdentity: "desk-1",
+        secret: "desk-secret",
+      });
+      const deskToken = (deskSignin.body as { token: string }).token;
+
+      const rotated = await request(
+        port,
+        "POST",
+        "/v1/admin/ChangeSecret",
+        { currentSecret: "desk-secret", newSecret: "desk-secret-rotated" },
+        deskToken,
+      );
+      assert.equal(rotated.status, 200);
+
+      const log = await request(port, "POST", "/v1/admin/QueryAuditLog", { limit: 50 }, ownerToken);
+      assert.equal(log.status, 200);
+      const entries = (log.body as { entries: Record<string, unknown>[] }).entries;
+      const rotation = entries.find(
+        (entry) => entry["action"] === "user.updated" && entry["entity"] === "desk-1",
+      );
+      assert.ok(rotation);
+      assert.equal(rotation?.["actor"], "desk-1");
+    });
+  });
+});
+
 describe("read-only audit log (NFR-AUD-1)", () => {
   it("shows account and config changes with actor and time, newest first", async () => {
     await withServer(await bootStore(), async (port) => {
