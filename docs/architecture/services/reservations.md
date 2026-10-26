@@ -15,7 +15,8 @@ Go `handler / service / store`, wired in `services/reservations/cmd/server/main.
 | Layer | Files | Responsibility |
 |---|---|---|
 | Transport + auth + body decoding | `internal/handler/handler.go` | `NewMux` routes `POST /v1/reservations/<Operation>`; every `/v1/*` call requires a Bearer session token; JSON body decoding with `VALIDATION_FAILED` on malformed input |
-| Validation + step order | `internal/service/service.go` | field/date/price/guest validation, mandatory-guest-field check, restriction-hook seam, then the guarded store call |
+| Validation + step order | `internal/service/service.go` | field/date/price/guest validation, mandatory-guest-field check, server-side stay-restriction check, then the guarded store call |
+| Pricing restriction check | `internal/pricing/client.go` | `POST {RATES_BASE_URL}/v1/rates/CheckRestrictions` with the caller Bearer token; rates refusals pass through unchanged, unreachable rates fails closed |
 | Guarded state + storage | `internal/store/store.go` (`Repository`, `Store`), `internal/store/postgres.go` | mutex-guarded overbooking check, idempotency replay, state transitions, change history, domain events |
 | Health | `internal/health/` | `GET /healthz` with the module identity |
 | Boot | `cmd/server/main.go` | selects Postgres storage when `DATABASE_URL` is set, mounts health + booking routes |
@@ -41,7 +42,7 @@ Edge trace (every edge cites code):
 - A: missing/empty Bearer → `UNAUTHENTICATED` 401 (`internal/handler/handler.go:99-117`).
 - B: malformed JSON → `VALIDATION_FAILED` 400 (`internal/handler/handler.go:42-53`).
 - C: `roomTypeId` required (:63-65), dates must be `YYYY-MM-DD` with departure after arrival (:66-76), `priceBasis.totalMinor` required and non-negative (:77-79), `guest.guestId` required (:80-83), hotel-mandatory fields (default `fullName`) required (:84-89) — all in `internal/service/service.go`.
-- D: `CheckRestrictionsHook` seam for the future Pricing/Rooms outbound calls; a refusal returns its `OpError` unchanged (`internal/service/service.go:32,90-91`).
+- D: server-side `POST {RATES_BASE_URL}/v1/rates/CheckRestrictions` with the caller Bearer token forwarded (`internal/pricing/client.go:43-87`); a rates refusal returns its `OpError` unchanged, so the violated restriction stays named in the 422 `STATE_ILLEGAL` envelope (`internal/service/service.go:96-100`); unreachable rates fails closed with 503 `UPSTREAM_UNAVAILABLE`, never a silent allow.
 - E: `sellableUnits >= 1` (:201-203), idempotency-key replay returns the original record (:207-210), overbooking count over same-type active overlapping stays under one mutex (:211-225) — `internal/store/store.go`.
 - F: record stored `confirmed` with a unique ref, `created` event queued (:246-259); G: `reservationId`, `reservationRef`, `state`, `quotedTotal` returned (`internal/handler/handler.go:153-155`).
 
@@ -68,7 +69,7 @@ Rollback: there is none to run — every write is a single mutex-guarded step (`
 
 ## 5. Outbound dependencies
 
-None at runtime. The `CheckRestrictionsHook` (`internal/service/service.go:26`) is the seam the Pricing `CheckRestrictions` and Rooms `CheckRoomTypeSellability` outbound calls plug into; until that slice, the desk loop supplies `sellableUnits` and `priceBasis` search outputs in the request (`internal/service/service.go:9-10`). Hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (LLD section 0). Emits `reservation.created` / `reservation.checked-in` domain events (`internal/store/postgres.go:268,385,560,653,730` outbox INSERTs; in-memory `created` queued at `internal/store/store.go:251-259`, `checked-in` at :313-318).
+Rates stay-restriction check (`POST {RATES_BASE_URL}/v1/rates/CheckRestrictions`, `RATES_BASE_URL` default `http://rates:8082`, wired at boot in `cmd/server/main.go:42-47`): every `Create`/`Modify` consults Pricing `CheckRestrictions` with the caller Bearer token forwarded and fails closed (503 `UPSTREAM_UNAVAILABLE`) when rates is unreachable (`internal/pricing/client.go`). The Rooms `CheckRoomTypeSellability` outbound call remains a future slice; until then, the desk loop supplies `sellableUnits` and `priceBasis` search outputs in the request (`internal/service/service.go:6-11`). Hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (LLD section 0). Emits `reservation.created` / `reservation.checked-in` domain events (`internal/store/postgres.go:268,385,560,653,730` outbox INSERTs; in-memory `created` queued at `internal/store/store.go:251-259`, `checked-in` at :313-318).
 
 See also: [deployment](../system-architecture.md) (§1), [C4 containers](../c4-containers.md), and [event flow](../event-flow.md) (this service's outbox emissions).
 

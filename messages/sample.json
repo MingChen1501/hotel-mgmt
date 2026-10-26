@@ -3230,6 +3230,14 @@
         "app/src/views/PrintView.vue"
       ],
       "params": {}
+    },
+    {
+      "key": "error.upstream.restrictions_unavailable",
+      "surface": "reservations envelope",
+      "sources": [
+        "services/reservations/internal/pricing/client.go"
+      ],
+      "params": {}
     }
   ]
 }

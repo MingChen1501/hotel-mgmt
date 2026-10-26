@@ -1,0 +1,16 @@
+{
+  "operation": "CreateReservation",
+  "case": "restricted-stay-refused",
+  "description": "Booking into a closed-to-arrival window loses the server-side rates restriction check with STATE_ILLEGAL naming the restriction (FR-RTE-4, issue #361).",
+  "request": {
+    "roomTypeId": "<deluxe-type-id>",
+    "arrivalDate": "2026-12-24",
+    "departureDate": "2026-12-26",
+    "guest": { "guestId": "<guest-id-3>", "fullName": "Cuong Vu", "contact": "+84-900-000-003" },
+    "sellableUnits": 2,
+    "priceBasis": { "totalMinor": 24000 },
+    "idempotencyKey": "desk-loop-restricted"
+  },
+  "precondition": "A closed-to-arrival restriction covers the arrival date for the room type.",
+  "expect": { "status": 422, "code": "STATE_ILLEGAL" }
+}

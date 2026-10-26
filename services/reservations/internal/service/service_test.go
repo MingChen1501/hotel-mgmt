@@ -49,7 +49,7 @@ func TestMissingMandatoryGuestFieldNamesField(t *testing.T) {
 func TestRestrictionViolationRefusesWithCause(t *testing.T) {
 	st := store.New()
 	svc := New(st)
-	svc.CheckRestrictionsHook = func(roomTypeID, arrivalDate, departureDate string) *store.OpError {
+	svc.CheckRestrictionsHook = func(roomTypeID, arrivalDate, departureDate, bearerToken string) *store.OpError {
 		return &store.OpError{Code: "STATE_ILLEGAL", Status: 422, Message: "Minimum stay of 2 nights applies.", Details: map[string]any{"roomTypeId": roomTypeID, "restriction": "min-stay"}}
 	}
 	_, oerr := svc.Create(loopRequest())
@@ -126,7 +126,7 @@ func TestModifyRestrictionRefusesWithCause(t *testing.T) {
 	if oerr != nil {
 		t.Fatalf("Create refused: %v", oerr)
 	}
-	svc.CheckRestrictionsHook = func(roomTypeID, arrivalDate, departureDate string) *store.OpError {
+	svc.CheckRestrictionsHook = func(roomTypeID, arrivalDate, departureDate, bearerToken string) *store.OpError {
 		return &store.OpError{Code: "STATE_ILLEGAL", Status: 422, Message: "Closed to arrival.", Details: map[string]any{"restriction": "closed-to-arrival"}}
 	}
 	if _, oerr := svc.Modify(loopModify(created.Ref)); oerr == nil || oerr.Code != "STATE_ILLEGAL" {

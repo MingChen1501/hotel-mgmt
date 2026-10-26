@@ -6,6 +6,7 @@
     "error.transport.body_read_failed": "Failed to read the request body.",
     "error.transport.unexpected": "Unexpected failure handling the request.",
     "error.transport.unknown_path": "unknown path",
+    "error.upstream.restrictions_unavailable": "The stay-restriction check is unavailable, so the booking was refused.",
     "error.auth.missing_token": "Missing session token.",
     "error.auth.locked": "Identity {identity} is locked after repeated failures.",
     "error.auth.bad_credentials": "Unknown identity or wrong secret.",

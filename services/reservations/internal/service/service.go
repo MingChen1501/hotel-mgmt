@@ -1,13 +1,15 @@
 // Package service implements the CreateReservation step order
 // (LLD section 1): validate token and role at the handler, then
-// load hotel values, enforce stay restrictions, check mandatory
-// guest fields, and run the atomic overbooking guard in the store.
+// load hotel values, consult the rates stay-restriction check,
+// check mandatory guest fields, and run the atomic overbooking
+// guard in the store.
 //
-// Server-side outbound calls to Pricing CheckRestrictions and Rooms
-// CheckRoomTypeSellability are the next slice: the restriction hook
-// below is the seam they plug into, and the desk loop supplies the
-// sellableUnits and priceBasis search outputs in the request until
-// then.
+// The restriction check is a server-side call to Pricing
+// CheckRestrictions (FR-RTE-4): the hook below is wired at boot to
+// the pricing client, which forwards the caller Bearer token and
+// fails closed when rates is unreachable. The desk loop still
+// supplies the sellableUnits and priceBasis search outputs in the
+// request.
 package service
 
 import (
@@ -22,8 +24,9 @@ const dateLayout = "2006-01-02"
 
 // RestrictionCheck refuses a stay that violates a manager-set window.
 // It returns nil when the stay passes. The pricing-backed
-// implementation lands with the outbound-call slice.
-type RestrictionCheck func(roomTypeID, arrivalDate, departureDate string) *store.OpError
+// implementation calls rates CheckRestrictions with the caller
+// Bearer token and fails closed when rates is unreachable.
+type RestrictionCheck func(roomTypeID, arrivalDate, departureDate, bearerToken string) *store.OpError
 
 // Service validates booking attempts and runs the store guard.
 type Service struct {
@@ -37,7 +40,9 @@ func New(st store.Repository) *Service {
 	return &Service{store: st, RequiredGuestFields: []string{"fullName"}}
 }
 
-// CreateRequest is one validated booking attempt.
+// CreateRequest is one validated booking attempt. BearerToken is the
+// full caller "Bearer ..." Authorization header value, forwarded to
+// the stay-restriction check.
 type CreateRequest struct {
 	RoomTypeID     string
 	ArrivalDate    string
@@ -49,6 +54,7 @@ type CreateRequest struct {
 	DiscountName   *string
 	IdempotencyKey string
 	Actor          string
+	BearerToken    string
 }
 
 func validation(field, message string, details map[string]any) *store.OpError {
@@ -88,7 +94,7 @@ func (s *Service) Create(req CreateRequest) (*store.Reservation, *store.OpError)
 		}
 	}
 	if s.CheckRestrictionsHook != nil {
-		if oerr := s.CheckRestrictionsHook(req.RoomTypeID, req.ArrivalDate, req.DepartureDate); oerr != nil {
+		if oerr := s.CheckRestrictionsHook(req.RoomTypeID, req.ArrivalDate, req.DepartureDate, req.BearerToken); oerr != nil {
 			return nil, oerr
 		}
 	}
@@ -109,6 +115,8 @@ func (s *Service) Create(req CreateRequest) (*store.Reservation, *store.OpError)
 // Only the fields the desk changed are set; TotalMinor carries the
 // fresh QuotePrice total for the new dates, type, and discount, so a
 // missing total is a desk-step error, not a silent keep of the old price.
+// BearerToken is the full caller "Bearer ..." Authorization header
+// value, forwarded to the stay-restriction check.
 type ModifyRequest struct {
 	Ref            string
 	ArrivalDate    string
@@ -122,6 +130,7 @@ type ModifyRequest struct {
 	DiscountName   *string
 	IdempotencyKey string
 	Actor          string
+	BearerToken    string
 }
 
 // Modify validates one repriced change and runs the guarded store step.
@@ -189,7 +198,7 @@ func (s *Service) Modify(req ModifyRequest) (*store.Reservation, *store.OpError)
 		effectiveDeparture = current.DepartureDate
 	}
 	if s.CheckRestrictionsHook != nil {
-		if oerr := s.CheckRestrictionsHook(effectiveRoomType, effectiveArrival, effectiveDeparture); oerr != nil {
+		if oerr := s.CheckRestrictionsHook(effectiveRoomType, effectiveArrival, effectiveDeparture, req.BearerToken); oerr != nil {
 			return nil, oerr
 		}
 	}
