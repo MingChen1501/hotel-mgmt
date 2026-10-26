@@ -13,6 +13,7 @@
 package service
 
 import (
+	"net/http"
 	"strings"
 	"time"
 
@@ -29,6 +30,10 @@ const dateLayout = "2006-01-02"
 type RestrictionCheck func(roomTypeID, arrivalDate, departureDate, bearerToken string) *store.OpError
 
 // Service validates booking attempts and runs the store guard.
+// CheckRestrictionsHook must be wired at boot (main.go wires the
+// pricing client). It is never optional: a nil hook fails closed
+// with UPSTREAM_UNAVAILABLE so unwired construction can never
+// silently allow a restricted stay.
 type Service struct {
 	store                 store.Repository
 	RequiredGuestFields   []string
@@ -64,6 +69,19 @@ func validation(field, message string, details map[string]any) *store.OpError {
 	return &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: message, Details: details}
 }
 
+// restrictionsUnavailable refuses the booking when the
+// stay-restriction check itself cannot be trusted — including an
+// unwired (nil) CheckRestrictionsHook — instead of silently
+// allowing a restricted stay.
+func restrictionsUnavailable() *store.OpError {
+	return &store.OpError{
+		Code:    "UPSTREAM_UNAVAILABLE",
+		Status:  http.StatusServiceUnavailable,
+		Message: messages.Text("error.upstream.restrictions_unavailable", nil),
+		Details: map[string]any{"upstream": "rates", "operation": "CheckRestrictions"},
+	}
+}
+
 // Create runs one booking attempt through validation and the guard.
 func (s *Service) Create(req CreateRequest) (*store.Reservation, *store.OpError) {
 	if strings.TrimSpace(req.RoomTypeID) == "" {
@@ -93,10 +111,11 @@ func (s *Service) Create(req CreateRequest) (*store.Reservation, *store.OpError)
 			return nil, validation("guest."+field, messages.Text("error.validation.guest_field_missing", map[string]string{"field": field}), map[string]any{"field": field})
 		}
 	}
-	if s.CheckRestrictionsHook != nil {
-		if oerr := s.CheckRestrictionsHook(req.RoomTypeID, req.ArrivalDate, req.DepartureDate, req.BearerToken); oerr != nil {
-			return nil, oerr
-		}
+	if s.CheckRestrictionsHook == nil {
+		return nil, restrictionsUnavailable()
+	}
+	if oerr := s.CheckRestrictionsHook(req.RoomTypeID, req.ArrivalDate, req.DepartureDate, req.BearerToken); oerr != nil {
+		return nil, oerr
 	}
 	return s.store.Create(store.CreateInput{
 		RoomTypeID:    strings.TrimSpace(req.RoomTypeID),
@@ -197,10 +216,11 @@ func (s *Service) Modify(req ModifyRequest) (*store.Reservation, *store.OpError)
 	if effectiveDeparture == "" {
 		effectiveDeparture = current.DepartureDate
 	}
-	if s.CheckRestrictionsHook != nil {
-		if oerr := s.CheckRestrictionsHook(effectiveRoomType, effectiveArrival, effectiveDeparture, req.BearerToken); oerr != nil {
-			return nil, oerr
-		}
+	if s.CheckRestrictionsHook == nil {
+		return nil, restrictionsUnavailable()
+	}
+	if oerr := s.CheckRestrictionsHook(effectiveRoomType, effectiveArrival, effectiveDeparture, req.BearerToken); oerr != nil {
+		return nil, oerr
 	}
 	return s.store.Modify(store.ModifyInput{
 		Ref:           strings.TrimSpace(req.Ref),

@@ -16,7 +16,12 @@ const deskToken = "Bearer skeleton-test-token"
 
 func newMux() *http.ServeMux {
 	st := store.New()
-	return NewMux(service.New(st), st)
+	svc := service.New(st)
+	// The shared desk-loop paths below book without a stubbed rates
+	// server, so wire the pass-through explicitly: a nil hook fails
+	// closed and would refuse every booking here.
+	svc.CheckRestrictionsHook = func(_, _, _, _ string) *store.OpError { return nil }
+	return NewMux(svc, st)
 }
 
 func post(t *testing.T, mux http.Handler, path string, body map[string]any, token string) (int, map[string]any) {

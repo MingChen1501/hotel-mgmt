@@ -80,3 +80,20 @@ func TestBookPathFailsClosedWhenRatesDown(t *testing.T) {
 		t.Fatalf("store holds %d reservations after refusal, want 0", got)
 	}
 }
+
+// TestBookPathFailsClosedWhenHookNil proves unwired construction can
+// never silently allow a restricted stay: with no hook at all the
+// booking is refused 503 and nothing is stored.
+func TestBookPathFailsClosedWhenHookNil(t *testing.T) {
+	st := store.New()
+	svc := service.New(st)
+	mux := NewMux(svc, st)
+
+	code, body := post(t, mux, "/v1/reservations/CreateReservation", loopBody("restriction-nil-hook"), deskToken)
+	if code != http.StatusServiceUnavailable || body["code"] != "UPSTREAM_UNAVAILABLE" {
+		t.Fatalf("CreateReservation = %d %v, want 503 UPSTREAM_UNAVAILABLE", code, body)
+	}
+	if got := len(st.Query("2026-11-01", "2026-11-03", "deluxe-type")); got != 0 {
+		t.Fatalf("store holds %d reservations after refusal, want 0", got)
+	}
+}
