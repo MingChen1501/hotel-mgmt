@@ -325,13 +325,15 @@ import { useSessionStore } from '../stores/session';
 //   same fallbacks as `DeskMessages.msg` in the legacy page.
 // - Errors switch on envelope codes, never on resolved wording.
 // - Op order, same as the legacy page: QuotePrice (read-only
-//   price), CreateReservation with sellableUnits 1 (the atomic
-//   guard refuses unsellable combinations), GetReservation
-//   read-back, ProduceConfirmation for the printable/shareable
-//   confirmation. Returning guests resolve through IdentifyGuest;
-//   genuinely new walk-ins register through UpsertGuest before
-//   quoting. The quoted price is frozen into the booking as the
-//   price basis; later rate changes never alter it (BR-13).
+//   price), CheckRoomTypeSellability (the searched sellable
+//   count), CreateReservation with that searched count as
+//   sellableUnits (the atomic guard refuses unsellable
+//   combinations), GetReservation read-back, ProduceConfirmation
+//   for the printable/shareable confirmation. Returning guests
+//   resolve through IdentifyGuest; genuinely new walk-ins register
+//   through UpsertGuest before quoting. The quoted price is frozen
+//   into the booking as the price basis; later rate changes never
+//   alter it (BR-13).
 
 interface QuoteNight {
   nightDate: string;
@@ -724,12 +726,48 @@ export default defineComponent({
             return;
           }
         }
+        // The reservation contract carries the desk-loop
+        // search-step output: the searched sellable count for the
+        // quoted type and dates, read fresh here so the confirm
+        // never reuses a stale quote-time value. Hardcoding 1
+        // gives every room type capacity-1 semantics (issue #322).
+        let sellableUnits = 0;
+        try {
+          const sellable = await apiFetch<{ sellableCount: number }>(
+            '/v1/rooms/CheckRoomTypeSellability',
+            {
+              method: 'POST',
+              body: JSON.stringify({
+                roomType: activeQuote.roomTypeId,
+                dateFrom: activeQuote.arrivalDate,
+                dateTo: activeQuote.departureDate,
+              }),
+            },
+          );
+          sellableUnits =
+            typeof sellable.sellableCount === 'number' ? sellable.sellableCount : NaN;
+        } catch (sellErr) {
+          if (isSignedOut(sellErr)) {
+            refuseSession();
+            return;
+          }
+          confirmError.value = errorMessage(sellErr);
+          return;
+        }
+        if (!Number.isInteger(sellableUnits) || sellableUnits < 1) {
+          confirmError.value = t(
+            'desk.book.refused_soldout',
+            {},
+            'No rooms of this type are free for these dates.',
+          );
+          return;
+        }
         const bookingBody: Record<string, unknown> = {
           roomTypeId: activeQuote.roomTypeId,
           arrivalDate: activeQuote.arrivalDate,
           departureDate: activeQuote.departureDate,
           guest: { guestId: resolvedGuestId, fullName: resolvedFullName },
-          sellableUnits: 1,
+          sellableUnits,
           priceBasis: {
             totalMinor: activeQuote.totalMinor,
             discountName: activeQuote.discountName ?? null,

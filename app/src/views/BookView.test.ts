@@ -3,7 +3,8 @@
 // `frontend/book.html` inline-script behaviour — sign-in plus the
 // quote-before-book flow (IdentifyGuest / UpsertGuest walk-in,
 // QuotePrice nights plus total, CreateReservation with the guest
-// full-name snapshot, the frozen price basis and sellableUnits 1,
+// full-name snapshot, the frozen price basis and the searched
+// sellable count, GetReservation read-back,
 // GetReservation read-back,
 // ProduceConfirmation with print/copy, the in-flight confirm guard
 // with one idempotencyKey per quote, and the code-switched refusal
@@ -83,6 +84,18 @@ function stubHappyPath(
             { nightDate: '2026-11-02', priceMinor: 12000 },
           ],
           totalMinor: 22000,
+        }),
+      );
+    }
+    if (url === '/v1/rooms/CheckRoomTypeSellability') {
+      return Promise.resolve(
+        jsonResponse({
+          roomTypeId: 'standard',
+          dateFrom: '2026-11-01',
+          dateTo: '2026-11-03',
+          totalCount: 2,
+          sellableCount: 2,
+          blockedRooms: [],
         }),
       );
     }
@@ -294,13 +307,24 @@ describe('book view', () => {
     expect(wrapper.find('[data-testid="book-quote-total"]').text()).toContain('220.00');
   });
 
-  it('confirms the booking with the guest snapshot, frozen price basis, sellableUnits 1, and one idempotency key', async () => {
+  it('confirms the booking with the guest snapshot, frozen price basis, searched sellable count, and one idempotency key', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     const wrapper = mountBook();
     await signIn(wrapper, fetchMock);
 
     await quoteAndConfirm(wrapper);
+    // The confirm reads the searched sellable count first (the
+    // desk-loop search step), using the quoted type and dates.
+    const sellable = fetchMock.mock.calls.find(
+      (call) => call[0] === '/v1/rooms/CheckRoomTypeSellability',
+    );
+    expect(sellable).toBeDefined();
+    expect(parseBody(sellable?.[1] as RequestInit)).toEqual({
+      roomType: 'standard',
+      dateFrom: '2026-11-01',
+      dateTo: '2026-11-03',
+    });
     const create = fetchMock.mock.calls.find(
       (call) => call[0] === '/v1/reservations/CreateReservation',
     );
@@ -310,7 +334,7 @@ describe('book view', () => {
     expect(sent.arrivalDate).toBe('2026-11-01');
     expect(sent.departureDate).toBe('2026-11-03');
     expect(sent.guest).toEqual({ guestId: 'g-1', fullName: 'Guest One' });
-    expect(sent.sellableUnits).toBe(1);
+    expect(sent.sellableUnits).toBe(2);
     expect(sent.priceBasis).toEqual({ totalMinor: 22000, discountName: null });
     expect(typeof sent.idempotencyKey).toBe('string');
     expect(String(sent.idempotencyKey).length).toBeGreaterThan(0);
@@ -364,6 +388,18 @@ describe('book view', () => {
               { nightDate: '2026-11-26', priceMinor: 120000 },
             ],
             totalMinor: 240000,
+          }),
+        );
+      }
+      if (url === '/v1/rooms/CheckRoomTypeSellability') {
+        return Promise.resolve(
+          jsonResponse({
+            roomTypeId: qaRoomTypeId,
+            dateFrom: '2026-11-25',
+            dateTo: '2026-11-27',
+            totalCount: 2,
+            sellableCount: 2,
+            blockedRooms: [],
           }),
         );
       }
@@ -447,9 +483,176 @@ describe('book view', () => {
     expect(create).toBeDefined();
     const sent = parseBody(create?.[1] as RequestInit);
     expect(sent.guest).toEqual({ guestId: qaGuestId, fullName: 'QA Booker' });
-    expect(sent.sellableUnits).toBe(1);
+    // Issue #322: the searched sellable count (2 rooms on the QA
+    // type) travels into the confirm, not the hardcoded 1.
+    expect(sent.sellableUnits).toBe(2);
     expect(sent.priceBasis).toEqual({ totalMinor: 240000, discountName: null });
     expect(wrapper.find('[data-testid="book-booking-readback"]').text()).toContain('QA Booker');
+  });
+
+  it('confirms a second overlapping booking with the searched sellable count (issue #322)', async () => {
+    // Live QA shape: room type with 2 rooms and 1 overlapping
+    // confirmed booking for 2026-11-25 to 2026-11-27. The searched
+    // sellable count is 2, so the confirm must send
+    // sellableUnits 2 — the hardcoded 1 was refused as sold out.
+    const qaGuestId = 'eb9176db-74a8-4a79-805b-60da897d785f';
+    const qaRoomTypeId = '82405026-2acf-4e8d-9943-5c70d2e8a898';
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      const body = parseBody(init);
+      if (url === '/v1/admin/SignIn') {
+        return Promise.resolve(
+          jsonResponse({ token: 'tok-1', userId: 'u-1', displayName: 'Ada Owner', role: 'owner' }),
+        );
+      }
+      if (url === '/v1/guests/IdentifyGuest') {
+        return Promise.resolve(
+          jsonResponse({ guestId: body.guestId ?? qaGuestId, fullName: 'QA Booker' }),
+        );
+      }
+      if (url === '/v1/rates/QuotePrice') {
+        return Promise.resolve(
+          jsonResponse({
+            roomTypeId: qaRoomTypeId,
+            arrivalDate: '2026-11-25',
+            departureDate: '2026-11-27',
+            discountName: null,
+            nights: [
+              { nightDate: '2026-11-25', priceMinor: 120000 },
+              { nightDate: '2026-11-26', priceMinor: 120000 },
+            ],
+            totalMinor: 240000,
+          }),
+        );
+      }
+      if (url === '/v1/rooms/CheckRoomTypeSellability') {
+        expect(body).toEqual({
+          roomType: qaRoomTypeId,
+          dateFrom: '2026-11-25',
+          dateTo: '2026-11-27',
+        });
+        return Promise.resolve(
+          jsonResponse({
+            roomTypeId: qaRoomTypeId,
+            dateFrom: '2026-11-25',
+            dateTo: '2026-11-27',
+            totalCount: 2,
+            sellableCount: 2,
+            blockedRooms: [],
+          }),
+        );
+      }
+      if (url === '/v1/reservations/CreateReservation') {
+        return Promise.resolve(
+          jsonResponse({
+            reservationRef: 'RSV-QG3DQN4T',
+            state: 'confirmed',
+            quotedTotal: 240000,
+            reservationId: 'r-322',
+            stayId: null,
+          }),
+        );
+      }
+      if (url === '/v1/reservations/GetReservation') {
+        return Promise.resolve(
+          jsonResponse({
+            reservationRef: 'RSV-QG3DQN4T',
+            roomTypeId: qaRoomTypeId,
+            arrivalDate: '2026-11-25',
+            departureDate: '2026-11-27',
+            guest: { guestId: qaGuestId, fullName: 'QA Booker' },
+            priceBasis: { totalMinor: 240000, discountName: null },
+            state: 'confirmed',
+            reservationId: 'r-322',
+            stayId: null,
+          }),
+        );
+      }
+      if (url === '/v1/guests/ProduceConfirmation') {
+        return Promise.resolve(
+          jsonResponse({
+            reservationRef: 'RSV-QG3DQN4T',
+            hotel: { hotelId: 'h-1', name: 'Skeleton Hotel' },
+            guest: { guestId: qaGuestId, fullName: 'QA Booker' },
+            dates: { checkIn: '2026-11-25', checkOut: '2026-11-27' },
+            type: qaRoomTypeId,
+            price: { amountMinor: 240000, currency: 'USD' },
+          }),
+        );
+      }
+      if (url === '/v1/admin/SignOut') {
+        return Promise.resolve(jsonResponse({ ok: true }));
+      }
+      throw new Error(`unexpected call ${url}`);
+    });
+    const wrapper = mountBook();
+    await wrapper.find('[data-testid="book-signin-identity"]').setValue('owner');
+    await wrapper.find('[data-testid="book-signin-secret"]').setValue('s3cret');
+    await wrapper.find('[data-testid="book-signin-form"]').trigger('submit');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="book-booking"]').exists()).toBe(true);
+    });
+
+    await wrapper.find('[data-testid="book-arrival-date"]').setValue('2026-11-25');
+    await wrapper.find('[data-testid="book-departure-date"]').setValue('2026-11-27');
+    await wrapper.find('[data-testid="book-room-type-id"]').setValue(qaRoomTypeId);
+    await wrapper.find('[data-testid="book-quote"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="book-quote-section"]').exists()).toBe(true);
+    });
+    await wrapper.find('[data-testid="book-guest-id"]').setValue(qaGuestId);
+    await wrapper.find('[data-testid="book-confirm"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="book-result"]').exists()).toBe(true);
+    });
+
+    const create = fetchMock.mock.calls.find(
+      (call) => call[0] === '/v1/reservations/CreateReservation',
+    );
+    expect(create).toBeDefined();
+    const sent = parseBody(create?.[1] as RequestInit);
+    expect(sent.sellableUnits).toBe(2);
+    expect(wrapper.find('[data-testid="book-booking-reference"]').text()).toContain('RSV-QG3DQN4T');
+  });
+
+  it('refuses to confirm without creating when nothing is sellable (issue #322)', async () => {
+    // The searched count is 0 (fully blocked type): the confirm
+    // surfaces the sold-out string and never calls CreateReservation.
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountBook();
+    await signIn(wrapper, fetchMock);
+
+    const happy = stubHappyPath(fetchMock);
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/rooms/CheckRoomTypeSellability') {
+        return Promise.resolve(
+          jsonResponse({
+            roomTypeId: 'standard',
+            dateFrom: '2026-11-01',
+            dateTo: '2026-11-03',
+            totalCount: 1,
+            sellableCount: 0,
+            blockedRooms: ['101'],
+          }),
+        );
+      }
+      return happy(url, init);
+    });
+
+    await quote(wrapper);
+    await wrapper.find('[data-testid="book-guest-id"]').setValue('g-1');
+    await wrapper.find('[data-testid="book-confirm"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="book-confirm-error"]').text()).toContain(
+        'No rooms of this type are free',
+      );
+    });
+    expect(
+      fetchMock.mock.calls.some((call) => call[0] === '/v1/reservations/CreateReservation'),
+    ).toBe(false);
+    expect(wrapper.find('[data-testid="book-result"]').exists()).toBe(false);
   });
 
   it('refuses to confirm without a guest and without a quote', async () => {
@@ -583,6 +786,18 @@ describe('book view', () => {
         return gate;
       }
       const body = parseBody(init);
+      if (url === '/v1/rooms/CheckRoomTypeSellability') {
+        return Promise.resolve(
+          jsonResponse({
+            roomTypeId: 'standard',
+            dateFrom: '2026-11-01',
+            dateTo: '2026-11-03',
+            totalCount: 2,
+            sellableCount: 2,
+            blockedRooms: [],
+          }),
+        );
+      }
       if (url === '/v1/reservations/GetReservation') {
         return Promise.resolve(
           jsonResponse({
