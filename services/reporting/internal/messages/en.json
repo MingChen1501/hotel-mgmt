@@ -536,6 +536,7 @@
     "desk.folio.intro": "Open a stay folio, post charges, record payments, and watch the running balance.",
     "desk.print.intro": "Open a folio, check that the screen matches the paper, then print or copy each document.",
     "desk.admin.intro": "Manage staff accounts and roles, review the hotel setup, and read the audit log.",
+    "desk.admin.restricted_notice": "Staff accounts, hotel setup, and the audit log are managed by the owner or manager. Ask the manager if something needs changing.",
     "desk.shell.request_failed": "That did not work. Try again; if it keeps failing, tell the manager.",
     "desk.folio.refused_unknown_item": "That extra is not on the hotel list: {itemName}. Check the name, or ask the manager to add it.",
     "desk.print.refused_unknown_ref": "Unknown booking reference. Check the reference and try again."
