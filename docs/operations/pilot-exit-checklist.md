@@ -54,8 +54,8 @@ record, never at memory.
 | 3 | Runbook handover completes with a non-technical stand-in (criterion 3) | Part A above fully filled and signed |
 | 4 | Backup + restore drill recovers inside RTO 4 h with a success report (criterion 4; NFR-BKP-2) | Drill report `hotel-*-restore-drill.report.json` (`outcome: success`, `withinBudget: true`) plus the desk-state verification (arrivals, in-house stay, day-close totals, hotel name/rooms/prices, audit entries) |
 | 5 | 3c exit: the desk loop runs on hotel LAN hardware with a verified backup (plan milestone 3c) | Items 1 + 4 on the hotel LAN host |
-| 6 | Pilot exit: one full operating day — arrivals, in-house stays, departures, day-close totals, printed invoices — with the runbook in the manager's hands (plan milestone 5) | Day-close totals, printed invoice copies, manager sign-off below |
-| 7 | Pilot exit: open risk items for go-live are closed or accepted by the owner (plan milestone 5) | `docs/project/risk-register.md` review entry per sale |
+| 6 | Pilot exit: one full operating day — arrivals, in-house stays, departures, day-close totals, printed invoices — with the runbook in the manager's hands (Pilot standing track) | Day-close totals, printed invoice copies, manager sign-off below |
+| 7 | Pilot exit: open risk items for go-live are closed or accepted by the owner (Pilot standing track) | `docs/project/risk-register.md` review entry per sale |
 | 8 | Open follow-ups are filed as issues, not silently fixed | Part C below |
 | 9 | CI is green on the slice (criterion 6) | CI run for the slice PR |
 
@@ -70,5 +70,5 @@ Pilot sign-off:
 |---|---|---|
 | _[e.g. #nnn]_ | _[one line]_ | _[name]_ |
 
-<!-- ao-role: dev -->
-Role: dev · AO session hotel-mgmt-244
+<!-- ao-role: release-manager -->
+Role: release-manager · AO session hotel-mgmt-501
