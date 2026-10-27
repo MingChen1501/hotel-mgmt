@@ -324,6 +324,13 @@ export class PostgresRoomStore implements RoomStoreAPI {
     return rows.map(PostgresRoomStore.toRoom);
   }
 
+  async listRoomTypes(): Promise<RoomTypeRecord[]> {
+    const { rows } = await this.pool.query(
+      `SELECT id, name, capacity, bed_type, features FROM rooms.room_types ORDER BY name`,
+    );
+    return rows.map(PostgresRoomStore.toRoomType);
+  }
+
   async checkSellability(input: CheckSellabilityInput): Promise<{
     roomTypeId: string;
     dateFrom: string;

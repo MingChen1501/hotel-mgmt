@@ -122,6 +122,18 @@ async function handleRequest(
       });
       return;
     }
+    case "ListRoomTypes": {
+      const types = await store.listRoomTypes();
+      writeJson(res, 200, {
+        roomTypes: types.map((type) => ({
+          id: type.id,
+          name: type.name,
+          capacity: type.capacity,
+          bedType: type.bedType,
+        })),
+      });
+      return;
+    }
     case "CheckRoomTypeSellability": {
       writeJson(res, 200, await store.checkSellability(body));
       return;

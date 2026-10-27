@@ -1,0 +1,7 @@
+{
+  "operation": "ListRoomTypes",
+  "case": "happy-path",
+  "description": "Desk lists every defined room type with its name for the book-form picker and type-name resolution.",
+  "request": {},
+  "expect": { "status": 200, "names": ["Deluxe", "Standard"] }
+}

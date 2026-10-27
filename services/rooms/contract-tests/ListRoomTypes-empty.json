@@ -1,0 +1,7 @@
+{
+  "operation": "ListRoomTypes",
+  "case": "empty-store",
+  "description": "A property with no room types yet lists none, so the desk picker renders its empty state.",
+  "request": {},
+  "expect": { "status": 200, "names": [] }
+}
