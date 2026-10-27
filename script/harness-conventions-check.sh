@@ -26,13 +26,31 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # Harness skill/role files whose path references must resolve.
+# Every .opencode/agents/*.md file present in this repo is scanned;
+# the only agent paths not scanned are the KNOWN_ABSENT fallback files
+# below (documented in AGENTS.md as intentional, not drift).
+# Skills: every shared skill is scanned. The live-only
+# .opencode/skills/using-ao/SKILL.md has no template twin and carries
+# no docs/... or script/... references today, so there is nothing for
+# either check to verify; it stays unscanned until it gains checkable
+# references (revisit if that changes).
 SCAN_FILES=(
   .opencode/skills/orchestrator/SKILL.md
   .opencode/skills/worker/SKILL.md
   .opencode/skills/spec-gate/SKILL.md
   .opencode/skills/hotel-verify/SKILL.md
+  .opencode/skills/architecture/SKILL.md
+  .opencode/skills/go-module/SKILL.md
+  .opencode/skills/node-module/SKILL.md
+  .opencode/skills/spring-module/SKILL.md
+  .opencode/agents/ai-engineer.md
+  .opencode/agents/architect.md
+  .opencode/agents/buffer-worker.md
+  .opencode/agents/business-analyst.md
+  .opencode/agents/content.md
   .opencode/agents/product-owner.md
   .opencode/agents/qa-lead.md
+  .opencode/agents/release-manager.md
   .opencode/agents/dev-peer-review.md
   .opencode/agents/content-review.md
   .opencode/agents/spec-reviewer.md
@@ -41,7 +59,10 @@ SCAN_FILES=(
 )
 
 # Rule -> enforcement table: "file|marker". The file (relative to the
-# root under check) must exist and contain the marker string.
+# root under check) must exist and contain the marker string. Each row
+# must hold in both this repo and the template/ mirror, so enforcement
+# files are shared harness paths only (see the intentionally-rowless
+# notes below for guards enforced through live-only paths).
 RULES=(
   "script/orchestrator-merge.sh|headRefOid"
   ".opencode/opencode.jsonc|gh pr merge"
@@ -50,7 +71,24 @@ RULES=(
   "script/orchestrator-review.sh|orchestrator-review"
   "script/ao-role-footer.sh|ao-role"
   "script/contract-check.sh|contract-check"
+  ".github/PULL_REQUEST_TEMPLATE.md|Conventional Commits"
+  ".opencode/agents/dev-peer-review.md|no nulls"
 )
+
+# Intentionally without a RULE row (issue #395; not drift):
+# - script/markdown-link-check.sh, script/catalogue-coverage-check.sh,
+#   script/shell-served-check.sh: enforced by the CI workflow
+#   (.github/workflows/ci.yml runs each guard), which is a live-only
+#   path with no template/ twin by design, so no shared file|marker
+#   row can cover both mirrors. Deletion/rename of the catalogue and
+#   served-shell guards is additionally caught by check 1 above: the
+#   scanned worker skill and dev-peer-review checklist reference both
+#   script paths, and a missing script fails as a phantom path.
+# - The owner-review label axis (docs/project/issue-conventions.md):
+#   intentionally unenforced by design. It is an optional human-applied
+#   label that never substitutes for a risk label and never changes
+#   merge gating, so no script or checklist marker could mechanically
+#   enforce it; a RULE row asserting enforcement would be false.
 
 # Documented-as-absent paths: named in the scanned files as
 # intentionally missing (not drift). Each entry must keep its
@@ -173,6 +211,32 @@ EOF
     return 1
   fi
   echo "  OK fixture path check correctly red (phantom promise caught)"
+  echo "--- rule-row fixture must hold, then break ---"
+  mkdir -p "$fix/.github"
+  cat >"$fix/.github/PULL_REQUEST_TEMPLATE.md" <<'EOF'
+<!-- One token, matching the `type` in the Conventional Commits PR title. -->
+EOF
+  local saved_rules=("${RULES[@]}")
+  RULES=(".github/PULL_REQUEST_TEMPLATE.md|Conventional Commits")
+  fail=0
+  check_rules "$fix" >/dev/null
+  local rules_green="$fail"
+  printf '<!-- no enforcement marker here -->\n' >"$fix/.github/PULL_REQUEST_TEMPLATE.md"
+  fail=0
+  check_rules "$fix" >/dev/null
+  local rules_red="$fail"
+  RULES=("${saved_rules[@]}")
+  fail=0
+  if [[ "$rules_green" -ne 0 ]]; then
+    echo "SELF-TEST FAIL: rule-row fixture stayed red with the marker present."
+    return 1
+  fi
+  echo "  OK fixture rule row correctly green (enforcement marker present)"
+  if [[ "$rules_red" -eq 0 ]]; then
+    echo "SELF-TEST FAIL: rule-row fixture stayed green with the marker removed."
+    return 1
+  fi
+  echo "  OK fixture rule row correctly red (enforcement marker removed)"
   echo "SELF-TEST PASS: green on live repo, red on phantom fixture."
 }
 
