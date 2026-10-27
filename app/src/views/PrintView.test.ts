@@ -126,6 +126,21 @@ function stubHappyPath(
         }),
       );
     }
+    if (url === '/v1/rooms/ListRoomTypes') {
+      return Promise.resolve(
+        jsonResponse({ roomTypes: [{ id: 'standard', name: 'Standard' }] }),
+      );
+    }
+    if (url === '/v1/stay/GetStay') {
+      return Promise.resolve(
+        jsonResponse({ stayId: body.stayId, guestId: 'g-1' }),
+      );
+    }
+    if (url === '/v1/guests/GetGuest') {
+      return Promise.resolve(
+        jsonResponse({ guestId: body.guestId, fullName: 'Guest One' }),
+      );
+    }
     if (url === '/v1/guests/AttachReservation') {
       return Promise.resolve(
         jsonResponse({
@@ -179,7 +194,7 @@ async function openFolio(wrapper: ReturnType<typeof mountPrint>, stayId: string)
   await wrapper.find('[data-testid="print-stay-id"]').setValue(stayId);
   await wrapper.find('[data-testid="print-open"]').trigger('click');
   await vi.waitFor(() => {
-    expect(wrapper.find('[data-testid="print-folio-status"]').text()).toContain('Folio f-1');
+    expect(wrapper.find('[data-testid="print-folio-status"]').text()).toContain('Folio balance:');
   });
 }
 
@@ -230,8 +245,14 @@ describe('print view', () => {
     expect(rows[1]?.text()).toContain('-30.00');
     expect(rows[1]?.text()).toContain('77.00');
     expect(wrapper.find('[data-testid="print-folio-status"]').text()).toContain(
-      'Folio f-1: balance 77.00.',
+      'Folio balance: 77.00.',
     );
+    // The exact folio and stay IDs hide behind the reference
+    // details (issue #372): the default status names no raw UUID.
+    expect(wrapper.find('[data-testid="print-folio-status"]').text()).not.toContain('f-1');
+    await wrapper.find('[data-testid="print-folio-details-toggle"]').trigger('click');
+    expect(wrapper.find('[data-testid="print-folio-details-body"]').text()).toContain('f-1');
+    expect(wrapper.find('[data-testid="print-folio-details-body"]').text()).toContain('s-1');
 
     // The invoice button unlocks once a folio is open; one receipt
     // button renders per recorded payment.
@@ -258,12 +279,21 @@ describe('print view', () => {
     await showInvoice(wrapper);
 
     const body = wrapper.find('[data-testid="print-invoice-body"]');
-    expect(body.text()).toContain('inv-1');
+    expect(body.text()).toContain('Invoice of 77.00, produced 2026-10-26T10:00:00.000Z.');
+    expect(body.text()).toContain('Folio — balance 77.00.');
+    expect(body.text()).toContain('Stay of Guest One.');
+    expect(body.text()).not.toContain('inv-1');
     expect(body.text()).toContain('Room night (tax 5.00, fee 2.00)');
     expect(body.text()).toContain('77.00');
     expect(wrapper.find('[data-testid="print-folio-status"]').text()).toContain(
-      'Invoice inv-1 for folio f-1: balance 77.00.',
+      'Invoice of 77.00, produced 2026-10-26T10:00:00.000Z.',
     );
+    // The exact invoice, folio, and stay IDs hide behind the
+    // reference details.
+    await wrapper.find('[data-testid="print-invoice-details-toggle"]').trigger('click');
+    expect(wrapper.find('[data-testid="print-invoice-details-body"]').text()).toContain('inv-1');
+    expect(wrapper.find('[data-testid="print-invoice-details-body"]').text()).toContain('f-1');
+    expect(wrapper.find('[data-testid="print-invoice-details-body"]').text()).toContain('s-1');
 
     const invoiceCalls = fetchMock.mock.calls.filter((call) => call[0] === '/v1/billing/ProduceInvoice');
     expect(invoiceCalls).toHaveLength(1);
@@ -286,12 +316,20 @@ describe('print view', () => {
     });
 
     const body = wrapper.find('[data-testid="print-receipt-body"]');
-    expect(body.text()).toContain('r-1');
+    expect(body.text()).toContain('Receipt for cash payment of 30.00 on 2026-10-26T09:00:00.000Z.');
+    expect(body.text()).toContain('Folio — balance 77.00.');
+    expect(body.text()).toContain('Stay of Guest One.');
     expect(body.text()).toContain('cash');
     expect(body.text()).toContain('30.00');
+    expect(body.text()).not.toContain('r-1');
     expect(wrapper.find('[data-testid="print-receipt-status"]').text()).toContain(
-      'Receipt r-1: cash payment of 30.00 on 2026-10-26T09:00:00.000Z.',
+      'Receipt for cash payment of 30.00 on 2026-10-26T09:00:00.000Z.',
     );
+    // The exact receipt, payment, folio, and stay IDs hide behind
+    // the reference details.
+    await wrapper.find('[data-testid="print-receipt-details-toggle"]').trigger('click');
+    expect(wrapper.find('[data-testid="print-receipt-details-body"]').text()).toContain('r-1');
+    expect(wrapper.find('[data-testid="print-receipt-details-body"]').text()).toContain('p-1');
 
     const receiptCalls = fetchMock.mock.calls.filter((call) => call[0] === '/v1/billing/ProduceReceipt');
     expect(receiptCalls).toHaveLength(1);
@@ -591,7 +629,9 @@ describe('print view', () => {
       expect(wrapper.find('[data-testid="print-invoice-copy-status"]').text()).toContain('Copied.');
     });
     expect(writeText).toHaveBeenCalledTimes(1);
-    expect(String(writeText.mock.calls[0]?.[0])).toContain('inv-1');
+    expect(String(writeText.mock.calls[0]?.[0])).toContain('Invoice of 77.00');
+    // The copied pairs name no raw record IDs (issue #372).
+    expect(String(writeText.mock.calls[0]?.[0])).not.toContain('inv-1');
   });
 
   it('reports a copy failure when no clipboard is available', async () => {

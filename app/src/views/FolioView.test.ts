@@ -149,7 +149,7 @@ async function openFolio(wrapper: ReturnType<typeof mountFolio>, stayId: string)
   await wrapper.find('[data-testid="folio-stay-id"]').setValue(stayId);
   await wrapper.find('[data-testid="folio-open"]').trigger('click');
   await vi.waitFor(() => {
-    expect(wrapper.find('[data-testid="folio-status"]').text()).toContain('Folio f-1');
+    expect(wrapper.find('[data-testid="folio-status"]').text()).toContain('Folio balance:');
   });
 }
 
@@ -192,8 +192,14 @@ describe('folio view', () => {
     expect(rows[1]?.text()).toContain('-30.00');
     expect(rows[1]?.text()).toContain('77.00');
     expect(wrapper.find('[data-testid="folio-status"]').text()).toContain(
-      'Folio f-1: balance 77.00.',
+      'Folio balance: 77.00.',
     );
+    // The exact folio and stay IDs hide behind the reference
+    // details (issue #372): the default status names no raw UUID.
+    expect(wrapper.find('[data-testid="folio-status"]').text()).not.toContain('f-1');
+    await wrapper.find('[data-testid="folio-details-toggle"]').trigger('click');
+    expect(wrapper.find('[data-testid="folio-details-body"]').text()).toContain('f-1');
+    expect(wrapper.find('[data-testid="folio-details-body"]').text()).toContain('s-1');
 
     // Bearer session handling: the shared client attaches the token
     // to every call (the sign-in itself happened in the shell gate).
@@ -231,7 +237,7 @@ describe('folio view', () => {
 
     // The re-read picks up the posted line in the running balance.
     await vi.waitFor(() => {
-      expect(wrapper.find('[data-testid="folio-status"]').text()).toContain('balance 89.50.');
+      expect(wrapper.find('[data-testid="folio-status"]').text()).toContain('Folio balance: 89.50.');
     });
   });
 
@@ -262,7 +268,7 @@ describe('folio view', () => {
     expect(payBody.idempotencyKey).toBeTruthy();
 
     await vi.waitFor(() => {
-      expect(wrapper.find('[data-testid="folio-status"]').text()).toContain('balance 70.00.');
+      expect(wrapper.find('[data-testid="folio-status"]').text()).toContain('Folio balance: 70.00.');
     });
   });
 

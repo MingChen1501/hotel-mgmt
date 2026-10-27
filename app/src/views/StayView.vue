@@ -90,7 +90,7 @@
               type="button"
               :label="t('desk.stay.use_stay', {}, 'Use this stay')"
               :data-testid="`stay-use-stay-${slotProps.data.stayId}`"
-              @click="pickStay(slotProps.data.stayId)"
+              @click="pickStay(slotProps.data)"
             />
           </template>
         </Column>
@@ -124,7 +124,7 @@
               type="button"
               :label="t('desk.stay.use_stay', {}, 'Use this stay')"
               :data-testid="`stay-use-stay-${slotProps.data.stayId}`"
-              @click="pickStay(slotProps.data.stayId)"
+              @click="pickStay(slotProps.data)"
             />
           </template>
         </Column>
@@ -193,6 +193,11 @@
         >
           {{ checkinStatus }}
         </p>
+        <ReferenceDetails
+          v-if="checkinDetails.length > 0"
+          :items="checkinDetails"
+          testid-prefix="stay-checkin-details"
+        />
         <Message
           v-if="checkinError"
           severity="error"
@@ -251,6 +256,11 @@
         >
           {{ moveStatus }}
         </p>
+        <ReferenceDetails
+          v-if="moveDetails.length > 0"
+          :items="moveDetails"
+          testid-prefix="stay-move-details"
+        />
         <Message
           v-if="moveError"
           severity="error"
@@ -313,6 +323,11 @@
         >
           {{ timesStatus }}
         </p>
+        <ReferenceDetails
+          v-if="timesDetails.length > 0"
+          :items="timesDetails"
+          testid-prefix="stay-times-details"
+        />
         <Message
           v-if="timesError"
           severity="error"
@@ -366,6 +381,11 @@
         >
           {{ folioStatus }}
         </p>
+        <ReferenceDetails
+          v-if="checkoutDetails.length > 0"
+          :items="checkoutDetails"
+          testid-prefix="stay-checkout-details"
+        />
         <div
           v-if="showApproval"
           data-testid="stay-approval-section"
@@ -483,6 +503,7 @@ import { apiFetch } from '../api/client';
 import type { ApiError } from '../api/client';
 import { t } from '../i18n';
 import { useSessionStore } from '../stores/session';
+import ReferenceDetails, { type ReferenceItem } from '../components/ReferenceDetails.vue';
 
 // Stay screen as Vue SFCs (Refs #295, ADR-0003).
 // Behavioural port of the inline script in `frontend/stay.html`
@@ -655,7 +676,7 @@ function newIdempotencyKey(): string {  try {
 export default defineComponent({
   name: 'StayView',
   // eslint-disable-next-line vue/no-reserved-component-names -- PrimeVue registers Button/Dialog under these canonical names (Refs #338 component mapping).
-  components: { Button, Column, DataTable, Dialog, InputText, Message },
+  components: { Button, Column, DataTable, Dialog, InputText, Message, ReferenceDetails },
   setup() {
     const session = useSessionStore();
     const businessDate = ref(localBusinessDate());
@@ -667,6 +688,17 @@ export default defineComponent({
 
     const roomNumbers = ref<Record<string, string>>({});
     const readyRooms = ref<RoomRecord[]>([]);
+    // Room-type names (issue #372): one ListRoomTypes read fills
+    // this map; typeName resolves the human name and falls back to
+    // the generic label when the type is unknown, never the raw ID.
+    const roomTypeNames = ref<Record<string, string>>({});
+    // Exact record IDs stay hidden by default (issue #372 owner
+    // amendment) and surface only in these per-section reference
+    // details, opened when verification is needed.
+    const checkinDetails = ref<ReferenceItem[]>([]);
+    const moveDetails = ref<ReferenceItem[]>([]);
+    const timesDetails = ref<ReferenceItem[]>([]);
+    const checkoutDetails = ref<ReferenceItem[]>([]);
     const checkinCandidates = ref<RoomRecord[]>([]);
     const checkinRooms = ref<Record<string, string>>({});
     const checkinRef = ref<string | null>(null);
@@ -718,6 +750,106 @@ export default defineComponent({
     function expireToGate(): void {
       checkoutCtx.value = null;
       session.expireSession();
+    }
+
+    function typeName(roomTypeId: string | undefined): string {
+      if (roomTypeId && roomTypeNames.value[roomTypeId]) {
+        return roomTypeNames.value[roomTypeId];
+      }
+      return t('desk.today.room_type_unresolved', {}, 'Room type');
+    }
+
+    // Booked-type status with the human name when the catalogue
+    // knows it (issue #372), else the generic on-file label —
+    // never the raw type UUID.
+    function bookedTypeStatus(roomTypeId: string): string {
+      const name = roomTypeNames.value[roomTypeId];
+      if (name) {
+        return t(
+          'desk.stay.booked_type_named',
+          { type: name },
+          `Booked: ${name}. Pick a ready room of that type below.`,
+        );
+      }
+      return t(
+        'desk.stay.booked_type_unknown',
+        {},
+        'Booked room type on file. Pick a ready room of that type below.',
+      );
+    }
+
+    async function loadRoomTypeNames(): Promise<void> {
+      try {
+        const listed = await apiFetch<{ roomTypes?: Array<{ id: string; name: string }> }>(
+          '/v1/rooms/ListRoomTypes',
+          { method: 'POST', body: JSON.stringify({}) },
+        );
+        const names: Record<string, string> = {};
+        for (const type of listed.roomTypes ?? []) {
+          if (type.id && type.name) {
+            names[type.id] = type.name;
+          }
+        }
+        roomTypeNames.value = names;
+      } catch (err) {
+        // The generic type label covers a failed read (Refs #372):
+        // rows never render the raw type UUID.
+        if (isSignedOut(err)) {
+          throw err;
+        }
+      }
+    }
+
+    // Check-out status names the guest when the stay is on
+    // screen (issue #372), else the bare balance line — the exact
+    // stay ID and invoice ref live in the section reference
+    // details either way.
+    function checkedOutStatus(stayId: string, balanceMinor: number): string {
+      const guestName = guestNameForStay(stayId);
+      const balance = plainAmount(balanceMinor);
+      if (guestName) {
+        return t(
+          'desk.stay.checked_out_named',
+          { guestName, balance },
+          `Checked out for ${guestName}; invoice balance ${balance}.`,
+        );
+      }
+      return t(
+        'desk.stay.checked_out_brief',
+        { balance },
+        `Checked out; invoice balance ${balance}.`,
+      );
+    }
+
+    // Recorded-times status names the guest when the stay is
+    // on screen (issue #372), else the bare kept line — the exact
+    // stay ID lives in the section reference details either way.
+    function recordedTimesStatus(stayId: string, times: string): string {
+      const guestName = guestNameForStay(stayId);
+      if (guestName) {
+        return t(
+          'desk.stay.times_kept_named',
+          { guestName, times },
+          `Recorded times kept for ${guestName} (${times}).`,
+        );
+      }
+      return t(
+        'desk.stay.times_kept_brief',
+        { times },
+        `Recorded times kept (${times}).`,
+      );
+    }
+
+    // Guest name for a stay from already-fetched list data (the
+    // #371 pattern: no extra calls); empty when the stay is not on
+    // screen, e.g. a hand-typed ID.
+    function guestNameForStay(stayId: string): string {
+      for (const row of [...arrivalRows.value, ...inHouseRows.value, ...departureRows.value]) {
+        if (row.stayId === stayId) {
+          return row.guestName;
+        }
+      }
+      return '';
     }
 
     function roomLabel(roomId: string | undefined): string {
@@ -814,7 +946,7 @@ export default defineComponent({
             key: ref,
             guestName,
             roomLabel: roomTypeId
-              ? t('desk.today.room_type_unresolved', {}, 'Room type')
+              ? typeName(roomTypeId)
               : t('desk.today.not_assigned', {}, 'Not assigned'),
             timesText: t('desk.stay.times_empty', {}, 'No times recorded yet.'),
             reservationRef: ref,
@@ -876,6 +1008,7 @@ export default defineComponent({
         }
         readyRooms.value = ready;
         roomNumbers.value = numbers;
+        await loadRoomTypeNames();
         arrivalRows.value = [...(await fetchExpectedArrivals(businessDate.value)), ...(await renderRows(lists.arrivals ?? [], 'arrival'))];
         inHouseRows.value = await renderRows(lists.inHouse ?? [], 'stay');
         departureRows.value = await renderRows(lists.departures ?? [], 'stay');
@@ -901,7 +1034,8 @@ export default defineComponent({
       }
     }
 
-    function pickStay(stayId: string | undefined): void {
+    function pickStay(row: StayListRow | undefined): void {
+      const stayId = row?.stayId;
       if (!stayId) {
         return;
       }
@@ -909,8 +1043,17 @@ export default defineComponent({
       timesStayId.value = stayId;
       checkoutStayId.value = stayId;
       checkoutCtx.value = null;
+      moveDetails.value = [{ label: 'Stay ID', value: stayId }];
+      timesDetails.value = [{ label: 'Stay ID', value: stayId }];
+      // A new working stay invalidates the previous review: drop
+      // its reference details with it (issue #372).
+      checkoutDetails.value = [];
       showApproval.value = false;
-      moveStatus.value = t('desk.stay.stay_ready', { stayId }, `Working with stay ${stayId}.`);
+      moveStatus.value = t(
+        'desk.stay.stay_ready_named',
+        { guestName: row?.guestName ?? '', roomLabel: row?.roomLabel ?? '' },
+        `Working with ${row?.guestName ?? ''} (${row?.roomLabel ?? ''}).`,
+      );
       timesStatus.value = '';
       checkoutStatus.value = '';
       checkoutError.value = '';
@@ -986,11 +1129,7 @@ export default defineComponent({
             (room) => room.roomTypeId === booking.roomTypeId,
           );
           if (candidates.length === 0) {
-            checkinStatus.value = t(
-              'desk.stay.booked_type_unknown',
-              {},
-              'Booked room type on file. Pick a ready room of that type below.',
-            );
+            checkinStatus.value = bookedTypeStatus(booking.roomTypeId);
             checkinError.value = t(
               'desk.stay.no_ready_rooms',
               {},
@@ -1007,11 +1146,7 @@ export default defineComponent({
           checkinRooms.value = roomsById;
           checkinCandidates.value = candidates;
           checkinRoomId.value = '';
-          checkinStatus.value = t(
-            'desk.stay.booked_type_unknown',
-            {},
-            'Booked room type on file. Pick a ready room of that type below.',
-          );
+          checkinStatus.value = bookedTypeStatus(booking.roomTypeId);
           checkinError.value = t('desk.stay.need_room', {}, 'Pick a ready room first.');
         } catch (err) {
           if (isSignedOut(err)) {
@@ -1127,10 +1262,11 @@ export default defineComponent({
           return;
         }
         checkinStatus.value = t(
-          'desk.stay.checked_in',
-          { stayId, roomNumber: assigned.roomNumber },
-          `Checked in: stay ${stayId} in room ${assigned.roomNumber}.`,
+          'desk.stay.checked_in_named',
+          { ref: refValue, roomNumber: assigned.roomNumber },
+          `Checked in for booking ${refValue} in room ${assigned.roomNumber}.`,
         );
+        checkinDetails.value = [{ label: 'Stay ID', value: stayId }];
         bookingRef.value = '';
         checkinArrival.value = '';
         checkinRef.value = null;
@@ -1268,10 +1404,11 @@ export default defineComponent({
           '/v1/stay/RecordActualTimes',
           { method: 'POST', body: JSON.stringify(timesBody) },
         );
-        timesStatus.value =
-          t('desk.stay.times_kept', { stayId }, `Recorded times kept for stay ${stayId}.`) +
-          ' ' +
-          timesLine(recorded.actualArrival, recorded.actualDeparture);
+        timesStatus.value = recordedTimesStatus(
+          stayId,
+          timesLine(recorded.actualArrival, recorded.actualDeparture),
+        );
+        timesDetails.value = [{ label: 'Stay ID', value: stayId }];
         timesArrival.value = '';
         timesDeparture.value = '';
         await refreshLists();
@@ -1313,10 +1450,14 @@ export default defineComponent({
           approval: normalizeApproval(folio.openBalanceApproval),
         };
         folioStatus.value = t(
-          'desk.stay.folio_line',
-          { folioId: folio.folioId, balance: plainAmount(folio.balanceMinor) },
-          `Folio ${folio.folioId}: balance ${plainAmount(folio.balanceMinor)}.`,
+          'desk.stay.folio_balance',
+          { balance: plainAmount(folio.balanceMinor) },
+          `Folio balance: ${plainAmount(folio.balanceMinor)}.`,
         );
+        checkoutDetails.value = [
+          { label: 'Stay ID', value: stayId },
+          { label: 'Folio ID', value: folio.folioId },
+        ];
         if (folio.balanceMinor === 0) {
           showApproval.value = false;
           checkoutStatus.value = t(
@@ -1327,9 +1468,9 @@ export default defineComponent({
         } else if (folio.openBalanceApproval) {
           showApproval.value = false;
           checkoutStatus.value = t(
-            'desk.stay.approval_recorded',
-            { stayId },
-            `Approval recorded for stay ${stayId}.`,
+            'desk.stay.approval_recorded_brief',
+            {},
+            'Approval recorded.',
           );
         } else {
           showApproval.value = true;
@@ -1392,9 +1533,9 @@ export default defineComponent({
         checkoutCtx.value.approval = normalizeApproval(recorded.openBalanceApproval);
         checkoutCtx.value.balanceMinor = recorded.balanceMinor;
         checkoutStatus.value = t(
-          'desk.stay.approval_recorded',
-          { stayId: checkoutCtx.value.stayId },
-          `Approval recorded for stay ${checkoutCtx.value.stayId}.`,
+          'desk.stay.approval_recorded_brief',
+          {},
+          'Approval recorded.',
         );
       } catch (err) {
         if (isSignedOut(err)) {
@@ -1446,11 +1587,11 @@ export default defineComponent({
           '/v1/stay/CheckOut',
           { method: 'POST', body: JSON.stringify(checkoutBody) },
         );
-        checkoutStatus.value = t(
-          'desk.stay.checked_out',
-          { stayId: closed.stayId, invoiceRef: closed.invoiceRef },
-          `Checked out: stay ${closed.stayId}, invoice ${closed.invoiceRef}.`,
-        );
+        checkoutStatus.value = checkedOutStatus(closed.stayId, folio.balanceMinor);
+        checkoutDetails.value = [
+          { label: 'Stay ID', value: closed.stayId },
+          { label: 'Invoice ref', value: closed.invoiceRef },
+        ];
         // The checked-out stay leaves the folio context behind: the
         // next review starts from a fresh stay.
         checkoutCtx.value = null;
@@ -1507,22 +1648,26 @@ export default defineComponent({
       checkinStatus,
       checkinError,
       checkingIn,
+      checkinDetails,
       moveStayId,
       moveRoomId,
       moveStatus,
       moveError,
       moving,
+      moveDetails,
       timesStayId,
       timesArrival,
       timesDeparture,
       timesStatus,
       timesError,
       recording,
+      timesDetails,
       checkoutStayId,
       checkoutDeparture,
       folioStatus,
       checkoutStatus,
       checkoutError,
+      checkoutDetails,
       reviewing,
       approving,
       checkingOut,

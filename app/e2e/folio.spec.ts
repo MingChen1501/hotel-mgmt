@@ -84,7 +84,7 @@ test('charge, pay, and agree with the folio balance', async ({ page, request }) 
   await page.goto('/app/folio');
   await page.getByTestId('folio-stay-id').fill(stayId);
   await page.getByTestId('folio-open').click();
-  await expect(page.getByTestId('folio-status')).toContainText('balance 0.00');
+  await expect(page.getByTestId('folio-status')).toContainText('balance: 0.00');
 
   await page.getByTestId('folio-charge-kind').selectOption('nightly-room-charge');
   await page.getByTestId('folio-charge-name').fill('Room charge');
@@ -108,7 +108,7 @@ test('charge, pay, and agree with the folio balance', async ({ page, request }) 
   const folio = await apiOp(request, 'billing', 'GetFolioBalance', { stayId, actor: 'browser-e2e' }, token);
   const balance = ((folio.balanceMinor as number) / 100).toFixed(2);
   expect(balance).toBe('625.00');
-  await expect(page.getByTestId('folio-status')).toContainText(`balance ${balance}`);
+  await expect(page.getByTestId('folio-status')).toContainText(`balance: ${balance}`);
   const table = await page.getByTestId('folio-table').textContent();
   expect(table).toContain('Room charge');
   expect(table).toContain(extraName);
@@ -160,7 +160,7 @@ test('undefined charge item is refused with the cause named', async ({ page, req
   await page.goto('/app/folio');
   await page.getByTestId('folio-stay-id').fill(stayId);
   await page.getByTestId('folio-open').click();
-  await expect(page.getByTestId('folio-status')).toContainText('balance 0.00');
+  await expect(page.getByTestId('folio-status')).toContainText('balance: 0.00');
   await page.getByTestId('folio-charge-kind').selectOption('charge-item');
   await page.getByTestId('folio-charge-name').fill('No Such Item Anywhere');
   await page.getByTestId('folio-charge-amount').fill('10');
@@ -214,7 +214,7 @@ test('bad payment method is refused on screen', async ({ page, request }) => {
   await page.goto('/app/folio');
   await page.getByTestId('folio-stay-id').fill(stayId);
   await page.getByTestId('folio-open').click();
-  await expect(page.getByTestId('folio-status')).toContainText('balance 0.00');
+  await expect(page.getByTestId('folio-status')).toContainText('balance: 0.00');
   // The method picker offers only cash/card, so the bad method
   // travels the way a mistyped desk integration would: force the
   // bound value, then pay. Billing answers VALIDATION_FAILED and
@@ -229,5 +229,5 @@ test('bad payment method is refused on screen', async ({ page, request }) => {
   await page.getByTestId('folio-pay').click();
   await expect(page.getByTestId('folio-payment-error')).toContainText('not accepted');
   await expect(page.getByTestId('folio-payment-error')).toContainText('cash or card');
-  await expect(page.getByTestId('folio-status')).toContainText('balance 0.00');
+  await expect(page.getByTestId('folio-status')).toContainText('balance: 0.00');
 });

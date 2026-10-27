@@ -3,7 +3,8 @@
 Provider fixtures for `RoomInventoryService` (issue #112), generated
 from `contracts/` per `docs/technical/integration.md` section 9:
 setup (`UpsertRoomType`, `UpsertRoom` plus the unknown-type
-`NOT_FOUND` branch), housekeeping transitions (`UpdateRoomState`
+`NOT_FOUND` branch, `ListRoomTypes` plus the empty-store case for
+the desk type catalogue in issue #372), housekeeping transitions (`UpdateRoomState`
 plus the illegal-transition `STATE_ILLEGAL` branch, `ListRoomsByState`),
 sellability (`CheckRoomTypeSellability` plus the blocked-date
 `STATE_ILLEGAL` branch), assignment (`AssignRoom` plus the

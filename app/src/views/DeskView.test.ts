@@ -80,6 +80,16 @@ function stubHappyPath(fetchMock: ReturnType<typeof vi.fn>): void {
       };
       return Promise.resolve(jsonResponse({ state: body.state, rooms: rooms[body.state] ?? [] }));
     }
+    if (url === '/v1/rooms/ListRoomTypes') {
+      return Promise.resolve(
+        jsonResponse({
+          roomTypes: [
+            { id: 'standard', name: 'Standard' },
+            { id: 'suite', name: 'Suite' },
+          ],
+        }),
+      );
+    }
     if (url === '/v1/reporting/DailySheet') {
       return Promise.resolve(
         jsonResponse({
@@ -198,10 +208,11 @@ describe('desk view', () => {
     expect(wrapper.find('[data-testid="desk-dirty-list"]').text()).toContain('101');
     expect(wrapper.find('[data-testid="desk-uninspected-list"]').text()).toContain('102');
     expect(wrapper.find('[data-testid="desk-outoforder-list"]').text()).toContain('103');
-    // Refs #370: no room-type read exists, so attention rows carry
-    // the generic type label instead of the raw type UUID.
-    expect(wrapper.find('[data-testid="desk-dirty-list"]').text()).toContain('Room type');
+    // Attention rows name the room number with the resolved type
+    // name (issue #372), never the raw type UUID.
+    expect(wrapper.find('[data-testid="desk-dirty-list"]').text()).toContain('Standard');
     expect(wrapper.find('[data-testid="desk-dirty-list"]').text()).not.toContain('standard');
+    expect(wrapper.find('[data-testid="desk-outoforder-list"]').text()).toContain('Suite');
     expect(wrapper.find('[data-testid="desk-outoforder-list"]').text()).not.toContain('suite');
     const sheet = wrapper.find('[data-testid="desk-sheet-line"]').text();
     expect(sheet).toContain('1 arriving');

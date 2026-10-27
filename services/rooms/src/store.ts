@@ -171,6 +171,7 @@ export interface RoomStoreAPI {
   upsertRoom(input: UpsertRoomInput): Promise<RoomRecord>;
   updateRoomState(input: UpdateRoomStateInput): Promise<{ roomNumber: string; oldState: RoomState; newState: RoomState }>;
   listRoomsByState(state: unknown): Promise<RoomRecord[]>;
+  listRoomTypes(): Promise<RoomTypeRecord[]>;
   checkSellability(input: CheckSellabilityInput): Promise<{
     roomTypeId: string;
     dateFrom: string;
@@ -296,6 +297,11 @@ export class RoomStore implements RoomStoreAPI {
       throw new HttpError("VALIDATION_FAILED", msg("rooms.validation.unknown_state", {}), { state });
     }
     return [...this.rooms.values()].filter((room) => room.state === state);
+  }
+
+  async listRoomTypes(): Promise<RoomTypeRecord[]> {
+    // Name order keeps the desk picker stable (issue #372).
+    return [...this.roomTypes.values()].sort((a, b) => a.name.localeCompare(b.name));
   }
 
   async checkSellability(input: CheckSellabilityInput): Promise<{

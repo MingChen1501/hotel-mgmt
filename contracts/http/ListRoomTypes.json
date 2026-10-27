@@ -1,0 +1,38 @@
+{
+  "operation": "ListRoomTypes",
+  "contract": "RoomInventoryService",
+  "version": "1.0",
+  "traces": ["docs/architecture/lld.md section 3", "FR-RMS-4", "FR-ADM-3"],
+  "transport": {
+    "method": "POST",
+    "path": "/v1/rooms/ListRoomTypes",
+    "auth": "Bearer session token"
+  },
+  "request": {
+    "type": "object",
+    "required": [],
+    "properties": {}
+  },
+  "response": {
+    "type": "object",
+    "required": ["roomTypes"],
+    "properties": {
+      "roomTypes": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["id", "name"],
+          "properties": {
+            "id": { "type": "string", "format": "uuid" },
+            "name": { "type": "string" },
+            "capacity": { "type": ["integer", "null"] },
+            "bedType": { "type": ["string", "null"] }
+          }
+        }
+      }
+    }
+  },
+  "errors": [
+    { "code": "UNAUTHENTICATED", "status": 401, "when": "Missing session token." }
+  ]
+}

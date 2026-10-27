@@ -88,6 +88,11 @@ describe('display names instead of IDs (issue #370)', () => {
         }
         return Promise.resolve(jsonResponse({ code: 'NOT_FOUND', message: 'unknown guest' }, 404));
       }
+      if (url === '/v1/rooms/ListRoomTypes') {
+        return Promise.resolve(
+          jsonResponse({ roomTypes: [{ id: ROOM_TYPE_UUID, name: 'Deluxe' }] }),
+        );
+      }
       if (url === '/v1/rooms/ListRoomsByState') {
         if (body.state === 'occupied') {
           return Promise.resolve(
@@ -140,10 +145,10 @@ describe('display names instead of IDs (issue #370)', () => {
     expect(inHouse).toContain('Room number unavailable');
     expect(inHouse).toContain('Unknown guest');
     expect(inHouse).not.toMatch(UUID_PATTERN);
-    // Attention rows name the number with the generic type label.
+    // Attention rows name the number with the resolved type name.
     const dirty = wrapper.find('[data-testid="desk-dirty-list"]').text();
     expect(dirty).toContain('101');
-    expect(dirty).toContain('Room type');
+    expect(dirty).toContain('Deluxe');
     expect(dirty).not.toMatch(UUID_PATTERN);
   });
 
@@ -163,6 +168,11 @@ describe('display names instead of IDs (issue #370)', () => {
             ],
             departures: [],
           }),
+        );
+      }
+      if (url === '/v1/rooms/ListRoomTypes') {
+        return Promise.resolve(
+          jsonResponse({ roomTypes: [{ id: ROOM_TYPE_UUID, name: 'Deluxe' }] }),
         );
       }
       if (url === '/v1/rooms/ListRoomsByState') {
@@ -234,10 +244,10 @@ describe('display names instead of IDs (issue #370)', () => {
     expect(inHouse).toContain('Unknown guest');
     expect(inHouse).not.toMatch(UUID_PATTERN);
     // Expected arrivals (calendar-backed) name the guest with the
-    // generic type label instead of the raw type UUID.
+    // resolved type name instead of the raw type UUID.
     const arrivals = wrapper.find('[data-testid="stay-arrivals-table"]').text();
     expect(arrivals).toContain('Guest Nine');
-    expect(arrivals).toContain('Room type');
+    expect(arrivals).toContain('Deluxe');
     expect(arrivals).not.toMatch(UUID_PATTERN);
   });
 
@@ -281,6 +291,11 @@ describe('display names instead of IDs (issue #370)', () => {
           }),
         );
       }
+      if (url === '/v1/rooms/ListRoomTypes') {
+        return Promise.resolve(
+          jsonResponse({ roomTypes: [{ id: ROOM_TYPE_UUID, name: 'Deluxe' }] }),
+        );
+      }
       if (url === '/v1/guests/AttachReservation') {
         return Promise.resolve(jsonResponse({ ok: true }));
       }
@@ -301,6 +316,11 @@ describe('display names instead of IDs (issue #370)', () => {
     const wrapper = mountView(BookView);
     useSessionStore().signIn('tok-1', 'Ada Owner', 'owner');
     await wrapper.vm.$nextTick();
+    await vi.waitFor(() => {
+      expect(
+        wrapper.find(`[data-testid="book-room-type-id"] option[value="${ROOM_TYPE_UUID}"]`).exists(),
+      ).toBe(true);
+    });
     await wrapper.find('[data-testid="book-arrival-date"]').setValue('2026-11-01');
     await wrapper.find('[data-testid="book-departure-date"]').setValue('2026-11-03');
     await wrapper.find('[data-testid="book-room-type-id"]').setValue(ROOM_TYPE_UUID);
@@ -319,8 +339,11 @@ describe('display names instead of IDs (issue #370)', () => {
     expect(readback).not.toMatch(UUID_PATTERN);
     const confirmation = wrapper.find('[data-testid="book-confirmation-body"]').text();
     expect(confirmation).toContain('Guest One');
-    expect(confirmation).toContain('Room type');
+    expect(confirmation).toContain('Deluxe');
     expect(confirmation).not.toMatch(UUID_PATTERN);
+    // The exact room-type ID hides behind the reference details.
+    await wrapper.find('[data-testid="book-details-toggle"]').trigger('click');
+    expect(wrapper.find('[data-testid="book-details-body"]').text()).toContain(ROOM_TYPE_UUID);
   });
 
   it('folio lines name items and methods, never raw UUIDs', async () => {
@@ -373,6 +396,11 @@ describe('display names instead of IDs (issue #370)', () => {
           }),
         );
       }
+      if (url === '/v1/rooms/ListRoomTypes') {
+        return Promise.resolve(
+          jsonResponse({ roomTypes: [{ id: ROOM_TYPE_UUID, name: 'Deluxe' }] }),
+        );
+      }
       if (url === '/v1/guests/AttachReservation') {
         return Promise.resolve(jsonResponse({ ok: true }));
       }
@@ -401,7 +429,12 @@ describe('display names instead of IDs (issue #370)', () => {
 
     const confirmation = wrapper.find('[data-testid="print-confirmation-body"]').text();
     expect(confirmation).toContain('Guest One');
-    expect(confirmation).toContain('Room type');
+    expect(confirmation).toContain('Deluxe');
     expect(confirmation).not.toMatch(UUID_PATTERN);
+    // The exact room-type ID hides behind the reference details.
+    await wrapper.find('[data-testid="print-confirmation-details-toggle"]').trigger('click');
+    expect(wrapper.find('[data-testid="print-confirmation-details-body"]').text()).toContain(
+      ROOM_TYPE_UUID,
+    );
   });
 });

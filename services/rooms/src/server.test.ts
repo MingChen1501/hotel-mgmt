@@ -102,6 +102,38 @@ describe("desk loop", () => {
     });
   });
 
+  it("lists room types with names for the desk picker", async () => {
+    await withServer(async (port) => {
+      // Name order keeps the desk picker stable (issue #372).
+      for (const name of ["Standard", "Deluxe"]) {
+        const created = await request(port, "POST", "/v1/rooms/UpsertRoomType", {
+          name,
+          capacity: 2,
+          actor: "manager",
+        });
+        assert.equal(created.status, 200);
+      }
+      const { status, body } = await request(port, "POST", "/v1/rooms/ListRoomTypes", {});
+      assert.equal(status, 200);
+      const types = (body as { roomTypes: Array<{ id: string; name: string }> }).roomTypes;
+      assert.deepEqual(
+        types.map((type) => type.name),
+        ["Deluxe", "Standard"],
+      );
+      for (const type of types) {
+        assert.match(type.id, /^[0-9a-f-]{36}$/);
+      }
+    });
+  });
+
+  it("lists no room types for a property with none defined", async () => {
+    await withServer(async (port) => {
+      const { status, body } = await request(port, "POST", "/v1/rooms/ListRoomTypes", {});
+      assert.equal(status, 200);
+      assert.deepEqual((body as { roomTypes: unknown[] }).roomTypes, []);
+    });
+  });
+
   it("refuses an unknown room type with NOT_FOUND", async () => {
     await withServer(async (port) => {
       const { status, body } = await request(port, "POST", "/v1/rooms/UpsertRoom", {

@@ -38,7 +38,7 @@ async function bookOnce(
   await expect(page.getByTestId('book-guest-status')).toContainText('registered');
   await page.getByTestId('book-arrival-date').fill(arrival);
   await page.getByTestId('book-departure-date').fill(departure);
-  await page.getByTestId('book-room-type-id').fill(roomTypeId);
+  await page.getByTestId('book-room-type-id').selectOption(roomTypeId);
   await page.getByTestId('book-rate-plan').fill(ratePlan);
   await page.getByTestId('book-quote').click();
   await expect(page.getByTestId('book-quote-section')).toBeVisible();
@@ -70,7 +70,7 @@ test('unpriced dates refuse the quote in plain words', async ({ page, request })
   await page.goto('/app/book');
   await page.getByTestId('book-arrival-date').fill('2031-01-01');
   await page.getByTestId('book-departure-date').fill('2031-01-03');
-  await page.getByTestId('book-room-type-id').fill(ctx.roomTypeId);
+  await page.getByTestId('book-room-type-id').selectOption(ctx.roomTypeId);
   await page.getByTestId('book-quote').click();
   await expect(page.getByTestId('book-quote-error')).toContainText('No price exists');
 });
@@ -104,7 +104,7 @@ test('confirm without a guest names the missing guest first', async ({ page, req
   // the missing mandatory guest (FR-CUS-1) instead of booking.
   await page.getByTestId('book-arrival-date').fill(window.arrival);
   await page.getByTestId('book-departure-date').fill(window.departure);
-  await page.getByTestId('book-room-type-id').fill(ctx.roomTypeId);
+  await page.getByTestId('book-room-type-id').selectOption(ctx.roomTypeId);
   await page.getByTestId('book-rate-plan').fill(ctx.ratePlan);
   await page.getByTestId('book-quote').click();
   await expect(page.getByTestId('book-quote-section')).toBeVisible();

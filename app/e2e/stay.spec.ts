@@ -68,17 +68,17 @@ test('check-in, move, times, approval, and dialog check-out', async ({ page, req
   // booked type into the picker; pick one, then click again to
   // commit the check-in.
   await page.getByTestId('stay-checkin').click();
-  await expect(page.getByTestId('stay-checkin-status')).toContainText('Booked room type');
+  await expect(page.getByTestId('stay-checkin-status')).toContainText(`Booked: ${ctx.roomTypeName}.`);
   await page.getByTestId('stay-checkin-room').selectOption({ label: ctx.roomNumbers[0] });
   await page.getByTestId('stay-checkin').click();
-  await expect(page.getByTestId('stay-checkin-status')).toContainText('Checked in: stay');
+  await expect(page.getByTestId('stay-checkin-status')).toContainText(`Checked in for booking ${reservationRef} in room ${ctx.roomNumbers[0]}`);
 
   // Move mid-stay to the second ready room.
   const inHouseRow = page
     .getByTestId('stay-inhouse-table')
     .getByRole('row', { name: new RegExp(ctx.guestName) });
   await inHouseRow.getByRole('button', { name: 'Use this stay' }).click();
-  await expect(page.getByTestId('stay-move-status')).toContainText('Working with stay');
+  await expect(page.getByTestId('stay-move-status')).toContainText(`Working with ${ctx.guestName}`);
   await page.getByTestId('stay-move-room').selectOption({ label: ctx.roomNumbers[1] });
   await page.getByTestId('stay-move').click();
   await expect(page.getByTestId('stay-move-status')).toContainText(`to room ${ctx.roomNumbers[1]}`);
@@ -113,7 +113,7 @@ test('check-in, move, times, approval, and dialog check-out', async ({ page, req
   await page.getByTestId('stay-checkout').click();
   await expect(page.getByTestId('stay-checkout-dialog')).toContainText('Check out this stay now?');
   await page.getByTestId('stay-checkout-confirm').click();
-  await expect(page.getByTestId('stay-checkout-status')).toContainText('Checked out: stay');
+  await expect(page.getByTestId('stay-checkout-status')).toContainText(`Checked out for ${ctx.guestName}`);
   // The close carries the invoice ref (FR-FDK-2, FR-BIL-4
   // presentation: the reviewed folio id is the invoice).
   // Room release stays API-loop-covered: the desk loop calls rooms
@@ -162,7 +162,7 @@ test('closing an already-closed stay is refused on screen', async ({ page, reque
   await expect(page.getByTestId('stay-checkout-status')).toContainText('balance is zero');
   await page.getByTestId('stay-checkout').click();
   await page.getByTestId('stay-checkout-confirm').click();
-  await expect(page.getByTestId('stay-checkout-status')).toContainText('Checked out: stay');
+  await expect(page.getByTestId('stay-checkout-status')).toContainText(`Checked out for ${ctx.guestName}`);
   // The second close of the same stay is refused STATE_ILLEGAL by
   // the stay service: the refusal names the already-closed stay in
   // plain words instead of a silent accept or a raw envelope.
@@ -225,11 +225,15 @@ async function checkInStay(
 }
 
 async function stayIdFromStatus(page: Page): Promise<string> {
-  // The check-in status reads "Checked in: stay {stayId} in room …".
-  const text = (await page.getByTestId('stay-checkin-status').textContent()) ?? '';
-  const match = /stay (\S+) in room/.exec(text);
-  if (!match) {
-    throw new Error(`cannot read the stay id from: ${text}`);
+  // The check-in status names the booking ref and room; the exact
+  // stay ID lives in the section reference details (issue #372),
+  // hidden until staff open the disclosure for verification.
+  await page.getByTestId('stay-checkin-details-toggle').click();
+  const body = page.getByTestId('stay-checkin-details-body');
+  await expect(body).toContainText('Stay ID');
+  const stayId = ((await body.getByRole('definition').textContent()) ?? '').trim();
+  if (!stayId) {
+    throw new Error(`cannot read the stay id from: ${(await body.textContent()) ?? ''}`);
   }
-  return match[1];
+  return stayId;
 }

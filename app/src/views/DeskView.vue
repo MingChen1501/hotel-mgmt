@@ -111,7 +111,7 @@
           v-for="room in dirty"
           :key="room.number"
         >
-          {{ room.number }} — {{ t('desk.today.room_type_unresolved', {}, 'Room type') }}
+          {{ room.number }} — {{ typeName(room.roomTypeId) }}
         </li>
         <li v-if="!loading && dirty.length === 0">
           {{ t('desk.today.empty_dirty', {}, 'No dirty rooms right now. Rooms needing cleaning appear here.') }}
@@ -123,7 +123,7 @@
           v-for="room in uninspected"
           :key="room.number"
         >
-          {{ room.number }} — {{ t('desk.today.room_type_unresolved', {}, 'Room type') }}
+          {{ room.number }} — {{ typeName(room.roomTypeId) }}
         </li>
         <li v-if="!loading && uninspected.length === 0">
           {{ t('desk.today.empty_uninspected', {}, 'No rooms waiting for inspection right now.') }}
@@ -135,7 +135,7 @@
           v-for="room in outOfOrder"
           :key="room.number"
         >
-          {{ room.number }} — {{ t('desk.today.room_type_unresolved', {}, 'Room type') }}
+          {{ room.number }} — {{ typeName(room.roomTypeId) }}
         </li>
         <li v-if="!loading && outOfOrder.length === 0">
           {{ t('desk.today.empty_outoforder', {}, 'No rooms out of order right now.') }}
@@ -343,11 +343,15 @@ export default defineComponent({
     // from the stay lists below (Refs #371: already-fetched data
     // only — no extra GetGuest calls).
     const occupantNames = ref<Record<string, string>>({});
-    // Room-type names have no read op behind the desk UI
-    // (Refs #370: follow-up tracks a GetRoomType/ListRoomTypes
-    // read): attention rows render the room number with the generic
-    // type label, never the raw type UUID.
+    // Room-type names resolve through ListRoomTypes (issue
+    // #372): attention rows render the room number with the human
+    // type name, and typeName falls back to the generic label when
+    // the type is unknown — never the raw type UUID.
     const roomNumbers = ref<Record<string, string>>({});
+    // Room-type names (issue #372): one ListRoomTypes read fills
+    // this map; typeName resolves the human name and falls back to
+    // the generic label when the type is unknown, never the raw ID.
+    const roomTypeNames = ref<Record<string, string>>({});
     const backupLine = ref(t('desk.entry.backup_loading', {}, 'Loading the latest backup report…'));
     const backupSupport = ref('');
 
@@ -413,11 +417,41 @@ export default defineComponent({
       return t('desk.today.unknown_guest', {}, 'Unknown guest');
     }
 
+    function typeName(roomTypeId: string | undefined): string {
+      if (roomTypeId && roomTypeNames.value[roomTypeId]) {
+        return roomTypeNames.value[roomTypeId];
+      }
+      return t('desk.today.room_type_unresolved', {}, 'Room type');
+    }
+
+    async function loadRoomTypeNames(): Promise<void> {
+      try {
+        const listed = await apiFetch<{ roomTypes?: Array<{ id: string; name: string }> }>(
+          '/v1/rooms/ListRoomTypes',
+          { method: 'POST', body: JSON.stringify({}) },
+        );
+        const names: Record<string, string> = {};
+        for (const type of listed.roomTypes ?? []) {
+          if (type.id && type.name) {
+            names[type.id] = type.name;
+          }
+        }
+        roomTypeNames.value = names;
+      } catch (err) {
+        // The generic type label covers a failed read (Refs #372):
+        // attention rows never render the raw type UUID.
+        if (isSignedOut(err)) {
+          throw err;
+        }
+      }
+    }
+
     async function refreshDashboard(): Promise<void> {
       businessDate.value = localBusinessDate();
       loading.value = true;
       dashboardError.value = '';
       try {
+        await loadRoomTypeNames();
         const lists = await apiFetch<{
           arrivals?: StayRecord[];
           inHouse?: StayRecord[];
@@ -564,6 +598,7 @@ export default defineComponent({
       occupied,
       ready,
       occupantNameFor,
+      typeName,
       backupLine,
       backupSupport,
       onRefresh,

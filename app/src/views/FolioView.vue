@@ -74,6 +74,11 @@
           {{ t('desk.folio.no_lines', {}, 'No charges or payments yet. Posted charges and recorded payments appear here.') }}
         </template>
       </DataTable>
+      <ReferenceDetails
+        v-if="folioDetails.length > 0"
+        :items="folioDetails"
+        testid-prefix="folio-details"
+      />
 
       <h2>{{ t('desk.folio.charge_heading', {}, 'Post a charge') }}</h2>
       <div>
@@ -215,6 +220,7 @@ import { apiFetch } from '../api/client';
 import type { ApiError } from '../api/client';
 import { t } from '../i18n';
 import { useSessionStore } from '../stores/session';
+import ReferenceDetails, { type ReferenceItem } from '../components/ReferenceDetails.vue';
 
 // Folio screen as Vue SFCs (Refs #296, ADR-0003).
 // Behavioural port of the inline script in `frontend/folio.html`
@@ -404,12 +410,15 @@ function prefilledStayId(): string {
 export default defineComponent({
   name: 'FolioView',
   // eslint-disable-next-line vue/no-reserved-component-names -- PrimeVue registers Button/Dialog under these canonical names (Refs #338 component mapping).
-  components: { Button, Column, DataTable, InputText, Message },
+  components: { Button, Column, DataTable, InputText, Message, ReferenceDetails },
   setup() {
     const session = useSessionStore();
     const stayId = ref(prefilledStayId());
     const folio = ref<Folio | null>(null);
     const folioStatus = ref('');
+    // Exact record IDs stay hidden by default (issue #372 owner
+    // amendment) and surface only in these reference details.
+    const folioDetails = ref<ReferenceItem[]>([]);
     const openError = ref('');
     const opening = ref(false);
 
@@ -473,10 +482,14 @@ export default defineComponent({
     function renderFolio(next: Folio): void {
       folio.value = next;
       folioStatus.value = t(
-        'desk.folio.folio_line',
-        { folioId: next.folioId, balance: plainAmount(next.balanceMinor) },
-        `Folio ${next.folioId}: balance ${plainAmount(next.balanceMinor)}.`,
+        'desk.folio.folio_balance',
+        { balance: plainAmount(next.balanceMinor) },
+        `Folio balance: ${plainAmount(next.balanceMinor)}.`,
       );
+      folioDetails.value = [
+        { label: 'Stay ID', value: next.stayId },
+        { label: 'Folio ID', value: next.folioId },
+      ];
     }
 
     async function readFolio(id: string): Promise<void> {
@@ -490,6 +503,7 @@ export default defineComponent({
     function onStayIdInput(): void {
       folio.value = null;
       folioStatus.value = '';
+      folioDetails.value = [];
       openError.value = '';
     }
 
@@ -664,6 +678,7 @@ export default defineComponent({
       t,
       stayId,
       folioStatus,
+      folioDetails,
       openError,
       opening,
       entryRows,

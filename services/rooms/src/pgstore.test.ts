@@ -29,6 +29,11 @@ describe("rooms postgres store", { skip: DATABASE_URL === undefined || DATABASE_
       assert.equal(room.state, "vacant-inspected");
       const sell = await store.checkSellability({ roomType: "Deluxe", dateFrom: "2026-11-01", dateTo: "2026-11-03" });
       assert.equal(sell.sellableCount, 1);
+      const types = await store.listRoomTypes();
+      assert.deepEqual(
+        types.map((type) => type.name),
+        ["Deluxe"],
+      );
 
       const receipt = await store.assignRoom({
         roomNumber: "101",

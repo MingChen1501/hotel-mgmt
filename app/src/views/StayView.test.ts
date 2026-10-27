@@ -115,6 +115,9 @@ function stubHappyPath(
       const guestId = String(body.guestId ?? '');
       return Promise.resolve(jsonResponse({ guestId, fullName: names[guestId] ?? guestId }));
     }
+    if (url === '/v1/rooms/ListRoomTypes') {
+      return Promise.resolve(jsonResponse({ roomTypes: [{ id: 'standard', name: 'Standard' }] }));
+    }
     // Reservation calendar (Refs #349): the expected-arrivals
     // source for the pick buttons. Empty by default; tests with
     // live arrival rows override this handler.
@@ -305,9 +308,7 @@ describe('stay view', () => {
     // booked type into the picker.
     await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
     await vi.waitFor(() => {
-      expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain(
-        'Booked room type',
-      );
+      expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain('Booked: Standard');
     });
     const options = wrapper.findAll('[data-testid="stay-checkin-room"] option');
     expect(options.map((option) => option.text())).toEqual(['101', '102']);
@@ -443,7 +444,7 @@ describe('stay view', () => {
     );
     await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
     await vi.waitFor(() => {
-      expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain('Booked room type');
+      expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain('Booked: Standard');
     });
   });
 
@@ -514,9 +515,7 @@ describe('stay view', () => {
     await wrapper.find('[data-testid="stay-booking-ref"]').setValue('RSV-1');
     await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
     await vi.waitFor(() => {
-      expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain(
-        'Booked room type',
-      );
+      expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain('Booked: Standard');
     });
     await wrapper.find('[data-testid="stay-checkin-room"]').setValue('room-1');
     await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
@@ -545,9 +544,7 @@ describe('stay view', () => {
     await wrapper.find('[data-testid="stay-booking-ref"]').setValue('RSV-1');
     await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
     await vi.waitFor(() => {
-      expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain(
-        'Booked room type',
-      );
+      expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain('Booked: Standard');
     });
     await wrapper.find('[data-testid="stay-checkin-room"]').setValue('room-2');
     await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
@@ -572,7 +569,15 @@ describe('stay view', () => {
     expect((wrapper.find('[data-testid="stay-times-stay-id"]').element as HTMLInputElement).value).toBe(
       's-1',
     );
-    expect(wrapper.find('[data-testid="stay-move-status"]').text()).toContain('Working with stay');
+    expect(wrapper.find('[data-testid="stay-move-status"]').text()).toContain(
+      'Working with Guest Two (109).',
+    );
+    // The exact stay ID hides behind the move reference details.
+    expect(wrapper.find('[data-testid="stay-move-status"]').text()).not.toMatch(
+      /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
+    );
+    await wrapper.find('[data-testid="stay-move-details-toggle"]').trigger('click');
+    expect(wrapper.find('[data-testid="stay-move-details-body"]').text()).toContain('s-1');
 
     await wrapper.find('[data-testid="stay-move-room"]').setValue('room-1');
     await wrapper.find('[data-testid="stay-move"]').trigger('click');
@@ -600,9 +605,12 @@ describe('stay view', () => {
     await wrapper.find('[data-testid="stay-times"]').trigger('click');
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="stay-times-status"]').text()).toContain(
-        'Recorded times kept for stay s-1',
+        'Recorded times kept for Guest Two',
       );
     });
+    // The exact stay ID hides behind the times reference details.
+    await wrapper.find('[data-testid="stay-times-details-toggle"]').trigger('click');
+    expect(wrapper.find('[data-testid="stay-times-details-body"]').text()).toContain('s-1');
     const timesBody = parseBody(
       fetchMock.mock.calls.find((call) => String(call[0]) === '/v1/stay/RecordActualTimes')?.[1],
     );
@@ -642,14 +650,24 @@ describe('stay view', () => {
         'balance is zero',
       );
     });
-    expect(wrapper.find('[data-testid="stay-folio-status"]').text()).toContain('Folio f-1');
+    expect(wrapper.find('[data-testid="stay-folio-status"]').text()).toContain('Folio balance: 0.00.');
+    // The exact folio and stay IDs hide behind the reference details.
+    expect(wrapper.find('[data-testid="stay-folio-status"]').text()).not.toContain('f-1');
+    await wrapper.find('[data-testid="stay-checkout-details-toggle"]').trigger('click');
+    expect(wrapper.find('[data-testid="stay-checkout-details-body"]').text()).toContain('f-1');
+    expect(wrapper.find('[data-testid="stay-checkout-details-body"]').text()).toContain('s-1');
     expect(wrapper.find('[data-testid="stay-approval-section"]').exists()).toBe(false);
 
     await confirmCheckout(wrapper);
     await vi.waitFor(() => {
-      expect(wrapper.find('[data-testid="stay-checkout-status"]').text()).toContain('Checked out');
+      expect(wrapper.find('[data-testid="stay-checkout-status"]').text()).toContain(
+        'Checked out for Guest Two',
+      );
     });
-    expect(wrapper.find('[data-testid="stay-checkout-status"]').text()).toContain('INV-1');
+    // The invoice ref hides behind the reference details too.
+    expect(wrapper.find('[data-testid="stay-checkout-status"]').text()).toContain('invoice balance 0.00');
+    expect(wrapper.find('[data-testid="stay-checkout-status"]').text()).not.toContain('INV-1');
+    expect(wrapper.find('[data-testid="stay-checkout-details-body"]').text()).toContain('INV-1');
     const checkoutBody = parseBody(
       fetchMock.mock.calls.find((call) => String(call[0]) === '/v1/stay/CheckOut')?.[1],
     );
@@ -687,9 +705,7 @@ describe('stay view', () => {
     await wrapper.find('[data-testid="stay-approval-role"]').setValue('manager');
     await wrapper.find('[data-testid="stay-approve"]').trigger('click');
     await vi.waitFor(() => {
-      expect(wrapper.find('[data-testid="stay-checkout-status"]').text()).toContain(
-        'Approval recorded for stay s-1',
-      );
+      expect(wrapper.find('[data-testid="stay-checkout-status"]').text()).toContain('Approval recorded.');
     });
     expect((wrapper.find('[data-testid="stay-checkout"]').element as HTMLButtonElement).disabled).toBe(
       false,
@@ -816,9 +832,7 @@ describe('stay view', () => {
     await wrapper.find('[data-testid="stay-checkout-stay-id"]').setValue('s-1');
     await wrapper.find('[data-testid="stay-review"]').trigger('click');
     await vi.waitFor(() => {
-      expect(wrapper.find('[data-testid="stay-checkout-status"]').text()).toContain(
-        'Approval recorded for stay s-1',
-      );
+      expect(wrapper.find('[data-testid="stay-checkout-status"]').text()).toContain('Approval recorded.');
     });
     await confirmCheckout(wrapper);
     await vi.waitFor(() => {
@@ -880,9 +894,7 @@ describe('stay view', () => {
     await wrapper.find('[data-testid="stay-booking-ref"]').setValue('RSV-1');
     await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
     await vi.waitFor(() => {
-      expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain(
-        'Booked room type',
-      );
+      expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain('Booked: Standard');
     });
     await wrapper.find('[data-testid="stay-checkin-room"]').setValue('room-1');
     const before = fetchMock.mock.calls.filter(

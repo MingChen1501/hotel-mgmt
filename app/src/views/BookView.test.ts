@@ -72,6 +72,17 @@ function stubHappyPath(
       expect(body.actor).toBe('Ada Owner');
       return Promise.resolve(jsonResponse({ guestId: 'g-2', fullName: body.fullName }));
     }
+    if (url === '/v1/rooms/ListRoomTypes') {
+      return Promise.resolve(
+        jsonResponse({
+          roomTypes: [
+            { id: 'standard', name: 'Standard' },
+            { id: 'suite', name: 'Suite' },
+            { id: '82405026-2acf-4e8d-9943-5c70d2e8a898', name: 'QA Type' },
+          ],
+        }),
+      );
+    }
     if (url === '/v1/rates/QuotePrice') {
       return Promise.resolve(
         jsonResponse({
@@ -175,6 +186,11 @@ async function signIn(wrapper: ReturnType<typeof mountBook>, fetchMock: ReturnTy
 }
 
 async function fillStay(wrapper: ReturnType<typeof mountBook>) {
+  // The type picker loads its catalogue after sign-in; wait for the
+  // options so the select takes the value instead of clearing it.
+  await vi.waitFor(() => {
+    expect(wrapper.find('[data-testid="book-room-type-id"] option[value="standard"]').exists()).toBe(true);
+  });
   await wrapper.find('[data-testid="book-arrival-date"]').setValue('2026-11-01');
   await wrapper.find('[data-testid="book-departure-date"]').setValue('2026-11-03');
   await wrapper.find('[data-testid="book-room-type-id"]').setValue('standard');
@@ -257,6 +273,9 @@ describe('book view', () => {
         return Promise.resolve(
           jsonResponse({ token: 'tok-1', userId: 'u-1', displayName: 'Ada Owner', role: 'owner' }),
         );
+      }
+      if (url === '/v1/rooms/ListRoomTypes') {
+        return Promise.resolve(jsonResponse({ roomTypes: [] }));
       }
       if (url === '/v1/guests/IdentifyGuest') {
         return Promise.resolve(jsonResponse({ code: 'NOT_FOUND', message: 'unknown guest' }, 404));
@@ -375,6 +394,11 @@ describe('book view', () => {
           jsonResponse({ token: 'tok-1', userId: 'u-1', displayName: 'Ada Owner', role: 'owner' }),
         );
       }
+      if (url === '/v1/rooms/ListRoomTypes') {
+        return Promise.resolve(
+          jsonResponse({ roomTypes: [{ id: qaRoomTypeId, name: 'QA Type' }] }),
+        );
+      }
       if (url === '/v1/guests/IdentifyGuest') {
         return Promise.resolve(
           jsonResponse({ guestId: qaGuestId, fullName: 'QA Booker', pastStayCount: 1 }),
@@ -478,6 +502,11 @@ describe('book view', () => {
 
     await wrapper.find('[data-testid="book-arrival-date"]').setValue('2026-11-25');
     await wrapper.find('[data-testid="book-departure-date"]').setValue('2026-11-27');
+    await vi.waitFor(() => {
+      expect(
+        wrapper.find(`[data-testid="book-room-type-id"] option[value="${qaRoomTypeId}"]`).exists(),
+      ).toBe(true);
+    });
     await wrapper.find('[data-testid="book-room-type-id"]').setValue(qaRoomTypeId);
     await wrapper.find('[data-testid="book-quote"]').trigger('click');
     await vi.waitFor(() => {
@@ -532,6 +561,11 @@ describe('book view', () => {
       if (url === '/v1/admin/SignIn') {
         return Promise.resolve(
           jsonResponse({ token: 'tok-1', userId: 'u-1', displayName: 'Ada Owner', role: 'owner' }),
+        );
+      }
+      if (url === '/v1/rooms/ListRoomTypes') {
+        return Promise.resolve(
+          jsonResponse({ roomTypes: [{ id: qaRoomTypeId, name: 'QA Type' }] }),
         );
       }
       if (url === '/v1/guests/IdentifyGuest') {
@@ -631,6 +665,11 @@ describe('book view', () => {
 
     await wrapper.find('[data-testid="book-arrival-date"]').setValue('2026-11-25');
     await wrapper.find('[data-testid="book-departure-date"]').setValue('2026-11-27');
+    await vi.waitFor(() => {
+      expect(
+        wrapper.find(`[data-testid="book-room-type-id"] option[value="${qaRoomTypeId}"]`).exists(),
+      ).toBe(true);
+    });
     await wrapper.find('[data-testid="book-room-type-id"]').setValue(qaRoomTypeId);
     await wrapper.find('[data-testid="book-quote"]').trigger('click');
     await vi.waitFor(() => {
@@ -724,6 +763,9 @@ describe('book view', () => {
           jsonResponse({ token: 'tok-1', userId: 'u-1', displayName: 'Ada Owner', role: 'owner' }),
         );
       }
+      if (url === '/v1/rooms/ListRoomTypes') {
+        return Promise.resolve(jsonResponse({ roomTypes: [{ id: 'standard', name: 'Standard' }] }));
+      }
       if (url === '/v1/rates/QuotePrice') {
         return Promise.resolve(jsonResponse({ code: 'NOT_FOUND', message: 'no price' }, 404));
       }
@@ -814,6 +856,9 @@ describe('book view', () => {
     fetchMock.mockImplementation((url: string, init?: RequestInit) => {
       if (url === '/v1/reservations/CreateReservation') {
         return gate;
+      }
+      if (url === '/v1/rooms/ListRoomTypes') {
+        return Promise.resolve(jsonResponse({ roomTypes: [{ id: 'standard', name: 'Standard' }] }));
       }
       const body = parseBody(init);
       if (url === '/v1/rooms/CheckRoomTypeSellability') {
@@ -922,7 +967,13 @@ describe('book view', () => {
     const wrapper = mountBook();
     await signIn(wrapper, fetchMock);
 
-    fetchMock.mockResolvedValue(new Response('', { status: 401 }));
+    // The picker catalogue stays readable while the quote itself
+    // gets the 401, so the test reaches the quote step.
+    fetchMock.mockImplementation((url: string) =>
+      url === '/v1/rooms/ListRoomTypes'
+        ? Promise.resolve(jsonResponse({ roomTypes: [{ id: 'standard', name: 'Standard' }] }))
+        : Promise.resolve(new Response('', { status: 401 })),
+    );
     await fillStay(wrapper);
     await wrapper.find('[data-testid="book-quote"]').trigger('click');
     // The shared client expires the session and routes to the
