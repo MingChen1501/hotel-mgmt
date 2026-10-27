@@ -66,6 +66,7 @@ installed): labels, cue import, AO project registration with the full
 | `docs/README.md` | same | Document index and taxonomy |
 | `docs/ao-rules.md` | same | Normative role rules |
 | `docs/project/issue-conventions.md` | same | Title+label convention |
+| `docs/project/milestone-conventions.md` | same | Milestone naming, lifecycle, and bookkeeping |
 | `docs/agentic-template/` | same | `bootstrap`, `conventions`, `gate`, `roles`, `extraction-plan` |
 | `script/ao-role-footer.sh` | same | Role footer generator |
 | `script/contract-check.sh` | same | Contract-check gate stub (SKIP until contracts/ lands) |

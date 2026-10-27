@@ -116,6 +116,7 @@ PAYLOAD=(
   "docs/README.md"
   "docs/ao-rules.md"
   "docs/project/issue-conventions.md"
+  "docs/project/milestone-conventions.md"
   "docs/agentic-template/README.md"
   "docs/agentic-template/bootstrap.md"
   "docs/agentic-template/conventions.md"
