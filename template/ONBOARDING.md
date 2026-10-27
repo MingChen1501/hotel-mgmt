@@ -51,7 +51,8 @@ config template), `cues/` (18 project-scoped rule cues),
 `.opencode/` (12 role files, 8 skills, 2 commands, permission config,
 guard plugin), `.github/` (issue form, PR template), `docs/` (index,
 role rules, conventions, starter group), `script/` (footer, spawn,
-merge, review wrappers, contract-check stub, harness self-check, cue installer).
+merge, review wrappers, contract-check stub, harness self-check,
+markdown link gate, cue installer).
 
 Harness ownership: the `ai-engineer` role owns in-repo harness
 engineering (agent/skill/command/plugin/config files, cues, wrapper
