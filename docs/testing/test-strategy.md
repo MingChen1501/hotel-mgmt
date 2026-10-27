@@ -181,6 +181,12 @@ Automated in the MVP (CI guards, once implementation starts):
 - Contract-shape and event checks (`LC`): request/response shapes and
   emitted domain events checked against `api-spec.md` [section 2](../technical/api-spec.md) in
   the per-module contract-check stage.
+- Screen-proof browser checks (`browser-e2e-plan.md`): Playwright
+  specs over the served Vue SPA proving what the API loop cannot
+  see (sign-in, book, move, charge, pay, check-out, and print
+  render plus refusals on screen). These strengthen
+  already-covered matrix rows as additional guards only — no
+  FR/NFR cites the browser suite as its sole guard.
 
 At the Closes #62 frame nothing was automated before implementation
 existed: that frame created no guards, only the slots slices fill.
