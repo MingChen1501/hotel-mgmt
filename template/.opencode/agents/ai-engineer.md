@@ -99,13 +99,35 @@ checks with the orchestrator). Details live there, not here.
   harness edit ships with its `template/` twin (and vice versa), with
   counts and payload lists updated (`docs/README.md` payload rows,
   `ONBOARDING.md` "what you get", installer `PAYLOAD`).
-- Carved out of the twin rule by design (intentional, not drift):
-  live-only project ops scripts (they implement project-specific
-  procedures and are not generic enough to twin) and template-only
-  installers (`template/script/install-cues.sh`,
-  `template/script/install-template.sh` — they exist only to install
-  the template into a new project). Future audits must not re-flag
-  these paths as missing twins.
+- Carved out of the twin rule by design (intentional, not drift).
+  Future audits must not re-flag these paths as missing twins.
+  - Live-only project procedures (project-specific operations, not
+    generic): `script/backup.sh`, `script/restore.sh`,
+    `script/e2e-desk-loop.sh`, `script/preflight.sh`,
+    `script/publish-backup-report.sh`, `script/install.sh`,
+    `script/apply-hotel-config.sh`, `script/validate-hotel-config.sh`,
+    `script/demo-poc.sh`, `script/e2e-perf-check.sh`,
+    `script/test-preflight-fail-closed.sh` (fail-closed proof for
+    `preflight.sh`).
+  - Live-only project guards (assert project-specific contracts: the
+    message catalogue, the served shell bytes, the curated spec set):
+    `script/catalogue-coverage-check.sh`,
+    `script/shell-served-check.sh`, `script/openapi-route-check.sh`,
+    `script/messages.sh` (catalogue loader sourced by the project
+    scripts, never executed).
+  - The live `hotel-verify` skill ships as `project-verify` here by
+    design (new projects fill in their own stack): not drift.
+  - `.opencode/skills/using-ao/` and
+    `.opencode/skills/.using-ao.ao-managed`: git-untracked content
+    synced by the AO daemon itself (see their `.gitignore` files),
+    never shipped through the template installer: not drift.
+  - Template-only installers (`template/script/install-cues.sh`,
+    `template/script/install-template.sh` — they exist only to
+    install the template into a new project) and the template-only
+    `template/.opencode/agents/orchestrator.md` (the live repo
+    resolves the orchestrator role through the `orchestrator` skill
+    fallback documented in `AGENTS.md`; new projects get a
+    standalone role file).
 - New projects must stay generic: `template/` copies keep the four
   placeholders (`{{PROJECT_NAME}}`, `{{REPO_SLUG}}`,
   `{{DEFAULT_BRANCH}}`, `{{DOMAIN}}`) and no project-specific wording.

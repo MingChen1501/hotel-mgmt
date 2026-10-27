@@ -126,6 +126,7 @@ PAYLOAD=(
   "script/ao-role-footer.sh"
   "script/contract-check.sh"
   "script/harness-conventions-check.sh"
+  "script/markdown-link-check.sh"
   "script/ao-spawn-worker.sh"
   "script/orchestrator-merge.sh"
   "script/orchestrator-review.sh"

@@ -71,6 +71,7 @@ installed): labels, cue import, AO project registration with the full
 | `script/ao-role-footer.sh` | same | Role footer generator |
 | `script/contract-check.sh` | same | Contract-check gate stub (SKIP until contracts/ lands) |
 | `script/harness-conventions-check.sh` | same | Harness self-check: fails on phantom paths and unenforced rules |
+| `script/markdown-link-check.sh` | same | Markdown link gate: fails on broken relative links and bare section glyphs |
 | `script/ao-spawn-worker.sh` | same | Only sanctioned spawn path |
 | `script/orchestrator-merge.sh` | same | Only sanctioned merge path |
 | `script/orchestrator-review.sh` | same | Sanctioned review-trigger path (legacy while native review is disabled) |

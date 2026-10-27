@@ -77,9 +77,10 @@ RULES=(
 # Intentionally without a RULE row (live issue #395; not drift):
 # - script/markdown-link-check.sh, script/catalogue-coverage-check.sh,
 #   script/shell-served-check.sh: enforced by the live CI workflow
-#   (.github/workflows/ci.yml runs each guard), which is a live-only
-#   path with no template/ twin by design, so no shared file|marker
-#   row can cover both mirrors. Deletion/rename of the catalogue and
+#   (live .github/workflows/ci.yml runs each guard;
+#   .github/workflows/ has no template/ twin — new projects set up
+#   their own CI per ONBOARDING), so no shared file|marker row can
+#   cover both mirrors. Deletion/rename of the catalogue and
 #   served-shell guards is additionally caught by check 1 above: the
 #   scanned worker skill and dev-peer-review checklist reference both
 #   script paths, and a missing script fails as a phantom path.
