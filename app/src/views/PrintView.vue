@@ -757,7 +757,12 @@ export default defineComponent({
         { label: 'reference', value: confirmation.reservationRef },
         { label: 'check-in', value: confirmation.dates?.checkIn ?? '' },
         { label: 'check-out', value: confirmation.dates?.checkOut ?? '' },
-        { label: 'type', value: confirmation.type ?? '' },
+        // The confirmation `type` carries the booked room-type UUID
+        // and no room-type name read exists behind the desk UI
+        // (Refs #370: follow-up tracks a GetRoomType/ListRoomTypes
+        // read), so the pair renders the generic type label instead
+        // of the raw ID.
+        { label: 'type', value: t('desk.today.room_type_unresolved', {}, 'Room type') },
         { label: 'price', value: money },
       ];
     }

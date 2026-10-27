@@ -111,7 +111,7 @@
           v-for="room in dirty"
           :key="room.number"
         >
-          {{ room.number }} — {{ t('desk.today.room_type', { roomType: room.roomTypeId }, `Room type ${room.roomTypeId}`) }}
+          {{ room.number }} — {{ t('desk.today.room_type_unresolved', {}, 'Room type') }}
         </li>
         <li v-if="!loading && dirty.length === 0">
           {{ t('desk.today.empty_dirty', {}, 'No dirty rooms right now. Rooms needing cleaning appear here.') }}
@@ -123,7 +123,7 @@
           v-for="room in uninspected"
           :key="room.number"
         >
-          {{ room.number }} — {{ t('desk.today.room_type', { roomType: room.roomTypeId }, `Room type ${room.roomTypeId}`) }}
+          {{ room.number }} — {{ t('desk.today.room_type_unresolved', {}, 'Room type') }}
         </li>
         <li v-if="!loading && uninspected.length === 0">
           {{ t('desk.today.empty_uninspected', {}, 'No rooms waiting for inspection right now.') }}
@@ -135,7 +135,7 @@
           v-for="room in outOfOrder"
           :key="room.number"
         >
-          {{ room.number }} — {{ t('desk.today.room_type', { roomType: room.roomTypeId }, `Room type ${room.roomTypeId}`) }}
+          {{ room.number }} — {{ t('desk.today.room_type_unresolved', {}, 'Room type') }}
         </li>
         <li v-if="!loading && outOfOrder.length === 0">
           {{ t('desk.today.empty_outoforder', {}, 'No rooms out of order right now.') }}
@@ -192,6 +192,7 @@ interface StayRecord {
 }
 
 interface RoomRecord {
+  roomId?: string;
   number: string;
   roomTypeId: string;
 }
@@ -236,6 +237,11 @@ export default defineComponent({
     const dirty = ref<RoomRecord[]>([]);
     const uninspected = ref<RoomRecord[]>([]);
     const outOfOrder = ref<RoomRecord[]>([]);
+    // Room-type names have no read op behind the desk UI
+    // (Refs #370: follow-up tracks a GetRoomType/ListRoomTypes
+    // read): attention rows render the room number with the generic
+    // type label, never the raw type UUID.
+    const roomNumbers = ref<Record<string, string>>({});
     const backupLine = ref(t('desk.entry.backup_loading', {}, 'Loading the latest backup report…'));
     const backupSupport = ref('');
 
@@ -249,19 +255,19 @@ export default defineComponent({
 
     async function resolveGuestName(guestId: string | undefined): Promise<string> {
       if (!guestId) {
-        return t('desk.today.unknown_guest', { guestId }, 'Unknown guest ({guestId})');
+        return t('desk.today.unknown_guest', {}, 'Unknown guest');
       }
       try {
         const guest = await apiFetch<{ fullName?: string }>('/v1/guests/GetGuest', {
           method: 'POST',
           body: JSON.stringify({ guestId }),
         });
-        return guest.fullName ?? String(guestId);
+        return guest.fullName ?? t('desk.today.unknown_guest', {}, 'Unknown guest');
       } catch (err) {
         if (isSignedOut(err)) {
           throw err;
         }
-        return t('desk.today.unknown_guest', { guestId }, 'Unknown guest ({guestId})');
+        return t('desk.today.unknown_guest', {}, 'Unknown guest');
       }
     }
 
@@ -270,7 +276,11 @@ export default defineComponent({
       if (!roomRef) {
         return t('desk.today.not_assigned', {}, 'Not assigned');
       }
-      return t('desk.today.room_ref', { roomRef }, `Room ${roomRef}`);
+      const number = roomNumbers.value[roomRef];
+      if (number) {
+        return t('desk.today.room_ref', { roomRef: number }, `Room ${number}`);
+      }
+      return t('desk.today.room_unknown', {}, 'Room number unavailable');
     }
 
     async function resolveStays(stays: StayRecord[]): Promise<StayRow[]> {
@@ -296,24 +306,30 @@ export default defineComponent({
           method: 'POST',
           body: JSON.stringify({ businessDate: businessDate.value }),
         });
+        // Room numbers for the stay lists (Refs #370): stay rows
+        // carry room UUIDs, so every housekeeping state is read to
+        // map each room ID to its human number before resolving.
+        const numbers: Record<string, string> = {};
+        const byState: Record<string, RoomRecord[]> = {};
+        for (const state of ['vacant-dirty', 'vacant-clean', 'vacant-inspected', 'occupied', 'out-of-order']) {
+          const listed = await apiFetch<{ rooms?: RoomRecord[] }>(
+            '/v1/rooms/ListRoomsByState',
+            { method: 'POST', body: JSON.stringify({ state }) },
+          );
+          byState[state] = listed.rooms ?? [];
+          for (const room of byState[state] ?? []) {
+            if (room.roomId) {
+              numbers[room.roomId] = room.number;
+            }
+          }
+        }
+        roomNumbers.value = numbers;
         arrivals.value = await resolveStays(lists.arrivals ?? []);
         inHouse.value = await resolveStays(lists.inHouse ?? []);
         departures.value = await resolveStays(lists.departures ?? []);
-        const dirtyRes = await apiFetch<{ rooms?: RoomRecord[] }>(
-          '/v1/rooms/ListRoomsByState',
-          { method: 'POST', body: JSON.stringify({ state: 'vacant-dirty' }) },
-        );
-        dirty.value = dirtyRes.rooms ?? [];
-        const cleanRes = await apiFetch<{ rooms?: RoomRecord[] }>(
-          '/v1/rooms/ListRoomsByState',
-          { method: 'POST', body: JSON.stringify({ state: 'vacant-clean' }) },
-        );
-        uninspected.value = cleanRes.rooms ?? [];
-        const blockedRes = await apiFetch<{ rooms?: RoomRecord[] }>(
-          '/v1/rooms/ListRoomsByState',
-          { method: 'POST', body: JSON.stringify({ state: 'out-of-order' }) },
-        );
-        outOfOrder.value = blockedRes.rooms ?? [];
+        dirty.value = byState['vacant-dirty'] ?? [];
+        uninspected.value = byState['vacant-clean'] ?? [];
+        outOfOrder.value = byState['out-of-order'] ?? [];
         const sheet = await apiFetch<{
           arrivals?: unknown[];
           inHouse?: unknown[];

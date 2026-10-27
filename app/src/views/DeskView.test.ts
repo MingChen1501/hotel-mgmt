@@ -67,10 +67,16 @@ function stubHappyPath(fetchMock: ReturnType<typeof vi.fn>): void {
       );
     }
     if (url === '/v1/rooms/ListRoomsByState') {
+      // Refs #370: stay rooms resolve through the occupied state,
+      // attention rooms through their own states.
       const rooms: Record<string, unknown[]> = {
         'vacant-dirty': [{ roomId: 'r-1', number: '101', roomTypeId: 'standard', state: 'vacant-dirty' }],
         'vacant-clean': [{ roomId: 'r-2', number: '102', roomTypeId: 'standard', state: 'vacant-clean' }],
         'out-of-order': [{ roomId: 'r-3', number: '103', roomTypeId: 'suite', state: 'out-of-order' }],
+        occupied: [
+          { roomId: 'r-101', number: '201', roomTypeId: 'standard', state: 'occupied' },
+          { roomId: 'r-102', number: '202', roomTypeId: 'standard', state: 'occupied' },
+        ],
       };
       return Promise.resolve(jsonResponse({ state: body.state, rooms: rooms[body.state] ?? [] }));
     }
@@ -172,10 +178,12 @@ describe('desk view', () => {
     expect(wrapper.find('[data-testid="desk-business-date"]').text()).toBe(localBusinessDate());
     const arrivals = wrapper.find('[data-testid="desk-arrivals-table"]').text();
     expect(arrivals).toContain('Guest One');
-    expect(arrivals).toContain('Room r-101');
+    expect(arrivals).toContain('201');
+    expect(arrivals).not.toContain('r-101');
     const inHouse = wrapper.find('[data-testid="desk-inhouse-table"]').text();
     expect(inHouse).toContain('Guest Two');
-    expect(inHouse).toContain('Room r-102');
+    expect(inHouse).toContain('202');
+    expect(inHouse).not.toContain('r-102');
     // A stay with no room reference renders the catalogue fallback.
     const departures = wrapper.find('[data-testid="desk-departures-table"]').text();
     expect(departures).toContain('Not assigned');
@@ -190,6 +198,11 @@ describe('desk view', () => {
     expect(wrapper.find('[data-testid="desk-dirty-list"]').text()).toContain('101');
     expect(wrapper.find('[data-testid="desk-uninspected-list"]').text()).toContain('102');
     expect(wrapper.find('[data-testid="desk-outoforder-list"]').text()).toContain('103');
+    // Refs #370: no room-type read exists, so attention rows carry
+    // the generic type label instead of the raw type UUID.
+    expect(wrapper.find('[data-testid="desk-dirty-list"]').text()).toContain('Room type');
+    expect(wrapper.find('[data-testid="desk-dirty-list"]').text()).not.toContain('standard');
+    expect(wrapper.find('[data-testid="desk-outoforder-list"]').text()).not.toContain('suite');
     const sheet = wrapper.find('[data-testid="desk-sheet-line"]').text();
     expect(sheet).toContain('1 arriving');
     expect(sheet).toContain('1 in house');
