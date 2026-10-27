@@ -114,7 +114,7 @@ doc group.
   on green CI + reviewer APPROVE; `risk-high`, `risk-very-high`, or a
   missing label needs explicit owner approval.
 - Issue and PR titles/labels follow `docs/project/issue-conventions.md`
-  (`[type] Imperative summary`, one type label + one `risk-*` label).
+  (issues: `[type] Imperative summary`; PRs: `type(scope): Subject`; one type label + one `risk-*` label).
 - One worker = one small task = one PR; never review your own PR
   (reviewer role differs from implementer).
 

@@ -8,7 +8,7 @@ Closes #
 
 ## Type
 
-<!-- One token, matching the `[type]` prefix in the PR title: feat, fix, docs, test, ci, perf, a11y, i18n, chore, content, security. -->
+<!-- One token, matching the `type` in the Conventional Commits PR title (`type(scope): Subject`): feat, fix, docs, test, ci, perf, a11y, i18n, chore, content, security. -->
 
 ## Risk label
 

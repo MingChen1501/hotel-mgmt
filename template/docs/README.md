@@ -133,6 +133,7 @@ docs and plans, not gated specs.
 | Decision log | `project/decision-log.md` | stub (not needed yet) | `product-owner` | decision list pointing at ADRs |
 | Meeting notes | `project/meeting-notes.md` | stub (not needed yet) | `product-owner` | dated notes of owner decisions |
 | Issue conventions | `project/issue-conventions.md` | active | `product-owner` | title+label convention for issues and PRs |
+| Milestone conventions | `project/milestone-conventions.md` | active | `product-owner` | milestone naming, lifecycle, and bookkeeping rules |
 
 ## User and Support
 
