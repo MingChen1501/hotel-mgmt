@@ -422,6 +422,10 @@ appears in at least one use case:
 No use case introduces behaviour beyond the mapped FRs. Later
 capabilities from requirements section 6 (waitlist, self-service,
 split folios, custom roles, workflow automation, and the rest) carry
-no use case here.
+no use case here. The migration-shell (`FR-SHL-*`) and desk-presentation
+(`FR-DSP-*`, `NFR-DSP-*`) slice ids in `mvp-requirements.md`
+sections 7–9 are presentation/scaffold deltas outside this
+actor-goal count: they are traced in their own slice handoff
+tables, not in the table above.
 
 Counts: 12 use cases; 43/43 FRs mapped.

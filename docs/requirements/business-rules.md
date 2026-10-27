@@ -100,7 +100,7 @@ front-desk staff, manager, or owner account acting within its access
 | BR-39 | Closed stays, folios, payments, and their audit entries stay retrievable for at least 24 months in the live system, and records newer than the hotel's configured retention floor cannot be purged. | NFR-RET-1; FR-ADM-1 |
 | BR-40 | Every timestamped record carries its UTC offset; every date shown or reported follows the hotel's local calendar day. | NFR-TZ-1; FR-ADM-1 |
 | BR-41 | The desk keeps working through an internet outage: booking, check-in, check-out, charge posting, payment recording, and invoice printing all complete on the on-premise installation as when connected. | NFR-AVL-1; PRD assumptions |
-| BR-42 | A wrong secret entered 5 times in a row locks the identity until the owner or manager unlocks it; a session idle 15 minutes signs out. | NFR-SEC-2 |
+| BR-42 | A wrong secret entered 5 times in a row locks the identity until the owner or manager unlocks it; a sign-in attempt against the locked identity is refused with `IDENTITY_LOCKED` (distinct from `UNAUTHENTICATED`). A session idle 15 minutes signs out. | NFR-SEC-2 |
 
 ## 9. Per-hotel configurable vs fixed split
 
