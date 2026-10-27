@@ -866,5 +866,188 @@ not be read as an FR here. The
 change is separate `product-owner` work under the gate;
 this section traces to the issue-body acceptance only.
 
+## 9. Desk UI client gaps follow-up (Refs #375)
+
+Requirements delta closing the UI client FR/NFR gaps filed while
+the #338 styling implementation is in flight: responsive/mobile
+viewport behaviour, touch target sizes, print multi-page rules,
+and i18n layout robustness, with stand-in story and traceability
+inputs. Presentation-constraining only: routes, APIs, refusal
+conditions, values, and tests stay intact. Design (tokens,
+breakpoints, component mapping) lives with `architect`;
+acceptance criteria live with `product-owner` (issue body plus
+`docs/product/acceptance-criteria.md`, a separate
+`product-owner` slice); test strategy and guards live with
+`qa-lead`. This section records only the requirements delta.
+
+### 9.1 Explicit no-change statements
+
+- Every MVP requirement in sections 1 and 2 is unchanged, and
+  every item in sections 7 and 8 keeps its wording and target.
+  The desk loop behaves exactly as specified; only the
+  presentation guarantees below are added.
+- Refusal semantics are unchanged: `FR-RTE-4`, `FR-CUS-1`, and
+  `FR-BIL-7` refusals still fire on exactly the same
+  conditions — the items below constrain how the screens and
+  prints carrying them lay out, never when they fire.
+- Money, dates, and numbers render exactly as today
+  (`FR-ADM-1`, `NFR-TZ-1` hold); the catalogue stays the
+  source of truth for every user-visible string (`NFR-I18N-1`
+  holds).
+- No data-dictionary entries: this section introduces no data
+  entities or fields (`data-dictionary.md` unchanged).
+- No business rules: this section introduces no domain policy
+  (`business-rules.md` unchanged).
+- The section 4 traceability table and its coverage count are
+  unchanged: this section adds no MVP capability, so the
+  mapped capabilities stand. The handoff table below (§9.5)
+  is separate and does not alter that count.
+
+### 9.2 Presentation-scoped functional requirements
+
+Ids continue the `DSP` (desk presentation) namespace from §8.
+
+FR-DSP-5 — Supported viewports and responsive reflow. Staff
+can work every desk screen on a desktop display, and the
+shell reflows without loss on narrower screens.
+Given staff open any of the six desk routes (Desk, Book,
+Stay, Folio, Print, Admin) at a viewport width of 1024 CSS
+px or wider; when the screen renders; then the full shell
+shows with no horizontal page scroll and every desk action
+is reachable.
+Given any of the six routes at a viewport width from 360 up
+to 1023 CSS px; when the screen renders; then the shell
+stacks to a single column, the nav wraps with no overlap,
+data tables scroll horizontally inside their own region
+(never the page), and every desk action stays reachable —
+nothing is hidden, overlapped, or cut off. Viewports below
+360 CSS px are not targeted. (Whether the full desk loop
+must be phone-operable or readably reflowed only is a
+`product-owner` scope call — see §9.6 decision D1, which
+must be answered before any dev implementation PR opens;
+the widths above assume reflow-usable.)
+
+FR-DSP-6 — Print multi-page rules. Long invoices, receipts,
+and confirmations print readably across pages.
+Given a folio document (invoice, receipt, or confirmation)
+longer than one printed page; when staff print it; then
+every printed page carries the table header row, no line row
+splits across a page break, and the totals-and-balance block
+never splits across pages: it stays on the same page as the
+final lines it totals, or — when they cannot fit together —
+opens a new page whole with the repeated header row above
+it. Printed values still match the folio exactly (`FR-BIL-4`
+and `FR-DSP-4` hold), and every printed string still comes
+from the catalogue (`NFR-I18N-1` holds).
+
+### 9.3 Presentation-scoped non-functional requirements
+
+NFR-DSP-3 — Minimum touch target sizes for desk touch use.
+Staff on a touch display hit every control first time.
+Given any of the six desk routes; when staff use touch; then
+every interactive element (nav items, buttons, links, form
+inputs, table row actions) presents a hit target of at least
+44 by 44 CSS px, and adjacent targets are separated so one
+tap lands on exactly one control. Targets: 100% of
+interactive elements on the six routes meet 44 by 44; 0
+adjacent-target overlaps. (Size follows the 44px desk-touch
+convention; it is a layout guarantee, not a behaviour
+change.)
+
+NFR-DSP-4 — i18n layout robustness. Translated and
+hotel-named strings never break the desk layout.
+Given catalogue strings up to 40% longer than the English
+source, or containing long unbroken words, and given the
+hotel's own long names (charge items, policies, reasons);
+when any of the six routes or any of the three print
+documents renders; then every string wraps inside its region
+(long words break), no catalogue or hotel-named string is
+cut off by a fixed width, an ellipsis, or a no-wrap rule,
+and no region overflows horizontally. Layout never depends
+on the length or wording of any single language
+(`NFR-I18N-1` holds). Targets: 0 truncated catalogue or
+hotel-named strings and 0 horizontal overflows on the six
+routes and the three print documents under the stress
+render; 100% of user-visible strings still sourced from the
+catalogue.
+
+### 9.4 Story inputs for `product-owner` (proposed `US-DSP-*` companions)
+
+Inputs only: story wording and placement belong to
+`product-owner` in `docs/product/user-stories.md`. Each
+input states its `Traces to` line against the new ids. The
+stories stay persona-neutral pending decision D2.
+
+- US-DSP-1 — As a non-technical stand-in working the desk
+  away from the counter PC, I want every screen to reflow
+  readably on the narrower display so that I can serve
+  guests without anything hidden or overlapped. Acceptance:
+  given any of the six routes at 360–1023 CSS px, every desk
+  action stays reachable with no overlap and no page-level
+  sideways scroll. Traces to: FR-DSP-5.
+- US-DSP-2 — As a non-technical stand-in using the touch
+  display, I want every button and field big enough to tap
+  first time so that I never mis-tap a charge or payment.
+  Acceptance: given any of the six routes, every control
+  meets the 44-by-44 minimum with no overlapping neighbour.
+  Traces to: NFR-DSP-3.
+- US-DSP-3 — As front-desk staff, I want long invoices to
+  print with the header on every page and the totals kept
+  whole so that the guest's paper copy is readable and
+  matches the folio. Acceptance: given a multi-page invoice,
+  each page carries the header row and the totals block
+  prints whole beside its final lines (or whole on a fresh
+  headed page). Traces to: FR-DSP-6, FR-BIL-4.
+- US-DSP-4 — As a non-technical stand-in, I want screens and
+  prints to stay readable when hotel wording is long so that
+  our own charge names and policies never break the layout.
+  Acceptance: given long hotel-named strings, nothing is cut
+  off and no region scrolls sideways. Traces to: NFR-DSP-4.
+- US-DSP-5 — As a non-technical stand-in with no guidance
+  beyond the screens, I want to complete the whole loop
+  (book, check-in, charge, pay, check-out, print) on the
+  styled UI so that the demo proves the desk is operable
+  without training. Acceptance: given the demo script, every
+  step completes guided only by what the screens say, meeting
+  any of the new guarantees along the way as plain readable
+  output. Traces to: NFR-DSP-1, FR-DSP-5, NFR-DSP-3,
+  FR-DSP-6, NFR-DSP-4.
+
+### 9.5 Traceability handoff for `qa-lead`
+
+No guard exists yet for any new item below: the dev
+follow-up implementation PR must create them. Each handoff
+note names the missing guard explicitly instead of citing
+one. Existing baselines are named so extensions land on top.
+
+| Item | Guard (existing baseline on disk; follow-up extends or creates) | Handoff note for `qa-lead` |
+|---|---|---|
+| FR-DSP-5 | Missing — viewport reflow assertions (new; e.g. served-shell or component render at 360, 768, and 1280 CSS px asserting single-column stack, in-region table scroll, no overlap, no page scroll). Baseline: viewport meta `app/index.html:5`, wrapping nav + 1100px column (`App.vue`), per-screen render suites (§8.4) | Guard renders each of the six routes at the three widths and checks stack, scroll containment, reachability, and no overlap |
+| NFR-DSP-3 | Missing — touch-target audit (new; e.g. computed-size assertion over every interactive element on the six routes). No existing guard | Guard measures every control on each route and checks 44 by 44 with 0 overlaps; 100% meet it |
+| FR-DSP-6 | Missing — multi-page print CSS pins (new; e.g. header-repeat, row break-avoid, totals keep-whole assertions at print source). Baseline: `PrintView.test.ts:250,275,303,476,544` (exact match + isolation) plus unchanged `FR-BIL-4` backend guards | Guard prints a multi-page folio and checks repeated headers, unsplit rows, and the whole totals block; exact-match guards stay green |
+| NFR-DSP-4 | Missing — expansion stress render (new; e.g. pseudo-locale at +40% length plus long-word catalogue render over the six routes and three print documents, asserting wrap and zero overflow). Baseline: `script/catalogue-coverage-check.sh` (string sourcing only, not layout) | Guard renders the stress catalogue and checks 0 truncated strings and 0 horizontal overflows; catalogue job stays green |
+| US-DSP-1..5 | Inputs for `product-owner` (§9.4); guards ride the four rows above plus the M7 stand-in demo record (`desk-styling-test-traceability.md` §4 — `qa-lead` extends the script so the loop meets a narrow-viewport, touch, long-print, and long-wording moment) | No story invents an FR; every story traces to an item above |
+
+### 9.6 Explicitly not specified here (plus open scope calls)
+
+- No new screens or flows; the six existing routes are the
+  complete set. No backend, API, contract, schema, or
+  error-code change. No new tokens, breakpoints, or component
+  choices (design lives with `architect`).
+- The UI contract section these items will need at
+  implementation time (spec-gate T2 shape) is not written
+  here: it belongs to the dev follow-up's spec set, owned by
+  `product-owner` with `architect` input. This docs-only
+  change is T0 and needs no contract to land.
+- D1 (for `product-owner`, MUST be answered before any dev
+  implementation PR opens): is the full desk loop
+  phone-operable, or is readable reflow to 360 px enough?
+  `FR-DSP-5` assumes reflow-usable; confirm or restate before
+  implementation.
+- D2 (for `product-owner`, MUST be answered before any dev
+  implementation PR opens): stand-in persona — new P4 in
+  `personas.md`, or stand-ins run in a P2 context? Stories in
+  §9.4 stay persona-neutral pending the call.
+
 <!-- ao-role: business-analyst -->
-Role: business-analyst · AO session hotel-mgmt-9
+Role: business-analyst · AO session hotel-mgmt-480
