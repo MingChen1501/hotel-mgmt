@@ -21,9 +21,12 @@ repos/MingChen1501/hotel-mgmt/commits/<sha>/check-runs` returns
 per-module jobs that matter per slice are named in the pass-evidence
 column (`go-build (reservations|rates|reporting)`, `node-build
 (admin|rooms|stay|guests)`, `billing-build`, `contract-check`,
-`migrate-check`, `e2e-single-host`, `perf-reporting-variant`, and the
+`migrate-check`, `e2e-single-host`, `perf-reporting-variant`, `app-build`
+(Node 22 + `npm ci` + build + lint + test over `app/`),
+`browser-e2e` (Playwright over the served Vue SPA), and the
 always-run `ci` job, which also runs
-`script/catalogue-coverage-check.sh`).
+`script/catalogue-coverage-check.sh` and
+`script/markdown-link-check.sh`).
 
 | Slice issue | PR | Merge commit | Merged | CI check-runs |
 |---|---|---|---|---|
@@ -276,6 +279,22 @@ Carried over from the #182 report (PR #194, CI run 40071918989, job `perf-report
 | #191 housekeeping read model + read op | PR #200 | 2026-10-24 (`3cf46eb2`) | FR-RPT-4 filled |
 | #192 message catalogue | PR #202 | 2026-10-24 (`68176cad`) | NFR-I18N-1 filled |
 | #201 remaining catalogue surfaces | PR #207 | 2026-10-24 (`e5d56d60`) | NFR-I18N-1 extended (rates/reporting/rooms/stay/guests + `script/` wording) |
+
+### 8.1 Post-#214 guard extensions (matrix-only, no new gaps)
+
+Slices merged after #207 that extended already-filled matrix cells
+(all recorded in the `traceability-matrix.md` guard cells; the
+57/57 count stands, and the per-slice sections above stay the
+consolidation of record for their own slices):
+
+| Follow-up | Landed in | Matrix cell extended |
+|---|---|---|
+| #216 HousekeepingReport PERF timing (issue #216) | PR #221 (timed in the same harness; the section 4 row above carries the refreshed number) | NFR-PERF-2 harness |
+| #256 stable room UUID in inventory rows and the assignment echo | PR #257 | FR-RMS-1, FR-RMS-4 |
+| #284 self-service secret rotation | PR #315 | FR-ADM-2 |
+| #321/#322 book-confirm payload (guest name + searched sellable count) | PRs #327/#328 | FR-RES-1, FR-CUS-1 |
+| #323 ProduceConfirmation end-to-end wiring | PR #329 | FR-GST-4 |
+| #330/#332 IDENTITY_LOCKED contract naming + #325 locked-specific sign-in message | PRs #325/#330/#332 | NFR-SEC-2 |
 
 ## 9. Open gaps and reproduce pointers
 

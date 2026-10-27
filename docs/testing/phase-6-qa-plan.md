@@ -15,13 +15,16 @@ milestones, never here.
 
 ## 0. Why this pass exists
 
-The system is functionally complete (MVP slices merged, FE 5 screens
-live, POC demo checklist PASS + owner sign-off, matrix 57/57 with
-pass evidence in `test-report.md`) but has never had an independent
-QA pass: no tester-written test plan exists, PERF bounds were never
-asserted on a real 2*4*50 reference host (CI records variants only —
-see `test-report.md` [sections 3–4](test-report.md)), and the FE screens were verified
-by review + smoke tests, not by a structured end-to-end QA run.
+The system is functionally complete (MVP slices merged, Vue SPA
+screens live under `/app/`, POC demo checklist PASS + owner
+sign-off, matrix 57/57 with pass evidence in `test-report.md`)
+but has never had an independent QA pass: no tester-written test
+plan exists, PERF bounds were never asserted on a real 2*4*50
+reference host (CI records variants only — see `test-report.md`
+[sections 3–4](test-report.md)), and the Vue screens were verified
+by unit/characterization tests, the scripted A1-lite desk loop, and
+the A3-Vue exploratory sessions — not by a structured end-to-end
+QA run against the plan below.
 
 ## 1. Entry criteria
 
@@ -37,8 +40,9 @@ The QA pass starts only when all of the following hold:
    identified (commit SHA or install image) and recorded on every
    bug and result.
 3. **CI green on the build under test.** All per-stack jobs plus
-   `contract-check` plus `e2e-single-host` report success on the
-   merge commit, per the method in `test-report.md` [section 0](test-report.md).
+   `contract-check` plus `e2e-single-host` plus `app-build` plus
+   `browser-e2e` report success on the merge commit, per the method
+   in `test-report.md` [section 0](test-report.md).
 4. **Reference-hardware question settled.** Record before the run
    whether a 2*4*50 host (ADR-0001 single-host default: 2 vCPU /
    4 GB RAM / 50 GB disk) is obtainable. If yes, PERF bounds are
@@ -51,17 +55,19 @@ The QA pass starts only when all of the following hold:
 
 ### A1 — Structured desk-loop run on the live stack
 
-A scripted end-to-end run through **all 5 FE screens** (`frontend/desk.html`,
-`frontend/book.html`, `frontend/stay.html`, `frontend/folio.html`,
-`frontend/admin.html`): book → check in → post charges → take
+A scripted end-to-end run through **all 6 Vue screens** (`/app/`,
+`/app/book`, `/app/stay`, `/app/folio`, `/app/print`,
+`/app/admin`): book → check in → post charges → take
 payment → check out → invoice/receipt print comparison against the
 folio, plus the admin console (users/roles, hotel config, audit-log
-view) and the backup-report surface (`frontend/backup-report.json`).
-Each step states its expected observable up front (token returned,
-reservation confirmed, room state transitioned, folio balance exact,
-print matches folio lines); deviations become bugs per section 3,
-not inline fixes. The loop follows the desk order proven in
-`script/e2e-desk-loop.sh`, driven by a person at the screens.
+view) and the backup-report surface (rendered in `DeskView` from
+the served feed). Each step states its expected observable up front
+(token returned, reservation confirmed, room state transitioned,
+folio balance exact, print matches folio lines); deviations become
+bugs per section 3, not inline fixes. The loop follows the desk
+order proven in `script/e2e-desk-loop.sh`, driven by a person at
+the screens; the Vue-loop record for this activity is the A1-lite
+run log (`phase-6-qa-a1-lite-run-log.md`, Closes #316).
 
 ### A2 — PERF bounds
 
@@ -78,13 +84,16 @@ not inline fixes. The loop follows the desk order proven in
 
 ### A3 — Exploratory pass per screen
 
-One time-boxed session per FE screen with a front-desk persona,
+One time-boxed session per Vue screen with a front-desk persona,
 hunting what the scripted loop misses: confusing flows, misleading
 wording (checked against the message catalogue), missing confirmations,
-and error paths (refusals must name the cause, e.g. `CONFLICT` with
-type+dates, `SETTLEMENT_REQUIRED` on open-balance checkout). Every
-session leaves a note (screen + scenario + outcome) even when it
-finds nothing — "nothing found on screen X" is a result.
+and error paths (refusals must name the cause in a plain sentence,
+e.g. sold-out with type+dates, open-balance checkout blocked until
+payment or approval). Every session leaves a note (screen +
+scenario + outcome) even when it finds nothing — "nothing found on
+screen X" is a result. The static-page exploratory record stays in
+the A3 run log; the Vue exploratory record is the A3-Vue run log
+(`phase-6-qa-a3-vue-run-log.md`, Closes #317).
 
 ### A4 — Regression of the 57-cell guard set via CI
 
@@ -99,7 +108,9 @@ from the matrix) goes on the bug.
 Each bug is **one issue under the `Phase 6 - QA` milestone** (QA
 tracking rule in `docs/project/milestone-conventions.md`), titled
 per `docs/project/issue-conventions.md` (`[type] Imperative
-summary`, exactly one type label + one `risk-*` label), with:
+summary`, exactly one type label + one `risk-*` label — add
+`owner-review` when a convention trigger holds; it never
+substitutes for the type or risk label), with:
 
 - **Steps to reproduce** — numbered, from the stated build/seed.
 - **Expected vs actual** — one line each, citing the FR/NFR id
@@ -144,8 +155,10 @@ summary`, exactly one type label + one `risk-*` label), with:
 ## 6. Follow-ups (out of scope for this plan)
 
 Separate issues under `Phase 6 - QA`, one per batch: desk-loop run
-(A1), PERF run (A2), exploratory pass (A3), regression re-run (A4).
-No gate changes, no product code changes, no QA execution here.
+(A1 — Vue loop recorded in the A1-lite log, issue #316), PERF run (A2),
+exploratory pass (A3 — Vue exploratory in the A3-Vue log, issue #317),
+regression re-run (A4). No gate changes, no product code changes,
+no QA execution here.
 
 <!-- ao-role: qa-lead -->
 Role: qa-lead · AO session hotel-mgmt-344

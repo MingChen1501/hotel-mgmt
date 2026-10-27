@@ -2,13 +2,13 @@
 
 Status: active. Testing spec for the real-browser E2E suite over the
 Vue desk SPA (`app/`, served under `/app/`), owned by `qa-lead`.
-It specifies what the implementation PR must build: which flows,
-which browsers/devices, where it runs in CI, how Playwright and its
-browsers are installed without CDN access at runtime, and what
-counts as green — including a MIME-type smoke assertion so the
-blank-desk class fixed in #335 can never regress silently. No
-product or behaviour change lives here; the implementing `dev`
-worker fills the guard cells named in section 7.
+It specifies the suite's flows, browsers, CI placement, Playwright
+install discipline, and pass criteria — including the MIME-type
+smoke assertion that keeps the blank-desk class fixed in #335 from
+regressing silently. The suite is built (scaffold plus all six flow
+specs on disk, `browser-e2e` CI job green); the per-flow guard
+cells in section 7 name the landed specs. No product or behaviour
+change lives here.
 
 ## 0. The two "e2e" levels — named once, used everywhere
 
@@ -152,11 +152,10 @@ API-level, NFR-CON-1/2).
 
 This plan adds a **screen-proof layer**, not new FR/NFR rows:
 every flow above cites existing matrix rows whose guards already
-exist (API/unit level). The implementation PR fills one guard
-cell per flow below by naming the Playwright spec
-(`app/e2e/<flow>.spec.ts:line`) as an *additional* guard on the
-already-covered row — no row flips to TBD, no coverage count
-changes, and no FR/NFR may cite the browser suite as its *only*
+exist (API/unit level). Each flow below names its landed Playwright
+spec (`app/e2e/<flow>.spec.ts`) as an *additional* guard on the
+already-covered row — no row flipped to TBD, no coverage count
+changed, and no FR/NFR may cite the browser suite as its *only*
 guard.
 
 | Flow | Additional browser guard (to be created by the implementation PR) | Existing row(s) it strengthens |
@@ -166,7 +165,7 @@ guard.
 | Check-in / move / check-out with folio gate | `app/e2e/stay.spec.ts` | FR-FDK-1/2/3/4, FR-BIL-7 |
 | Charge + pay + balance agreement | `app/e2e/folio.spec.ts` | FR-BIL-1/2/3/5, FR-CUS-3 |
 | Invoice / receipt print isolation | `app/e2e/print.spec.ts` | FR-BIL-4 |
-| Dashboard backup-report line | `app/e2e/desk.spec.ts` (with the MIME smoke in `app/e2e/smoke.spec.ts` — smoke DONE in PR #341; `desk.spec.ts` lands in PR 2) | FR-ADM-5, NFR-BKP-2 |
+| Dashboard backup-report line | `app/e2e/desk.spec.ts` (with the MIME smoke in `app/e2e/smoke.spec.ts` — scaffold landed in PR #341, flow specs in the follow-ups) | FR-ADM-5, NFR-BKP-2 |
 
 ## 8. Seed and fixture discipline
 
