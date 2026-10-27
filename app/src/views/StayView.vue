@@ -728,7 +728,7 @@ export default defineComponent({
       if (number) {
         return number;
       }
-      return t('desk.today.room_ref', { roomRef: roomId }, `Room ${roomId}`);
+      return t('desk.today.room_unknown', {}, 'Room number unavailable');
     }
 
     function timesLine(arrival: string | null | undefined, departure: string | null | undefined): string {
@@ -744,19 +744,19 @@ export default defineComponent({
 
     async function resolveGuestName(guestId: string | undefined): Promise<string> {
       if (!guestId) {
-        return t('desk.today.unknown_guest', { guestId }, 'Unknown guest ({guestId})');
+        return t('desk.today.unknown_guest', {}, 'Unknown guest');
       }
       try {
         const guest = await apiFetch<{ fullName?: string }>('/v1/guests/GetGuest', {
           method: 'POST',
           body: JSON.stringify({ guestId }),
         });
-        return guest.fullName ?? String(guestId);
+        return guest.fullName ?? t('desk.today.unknown_guest', {}, 'Unknown guest');
       } catch (err) {
         if (isSignedOut(err)) {
           throw err;
         }
-        return t('desk.today.unknown_guest', { guestId }, 'Unknown guest ({guestId})');
+        return t('desk.today.unknown_guest', {}, 'Unknown guest');
       }
     }
 
@@ -808,13 +808,13 @@ export default defineComponent({
           const fullName = booking.guest?.fullName;
           const guestId = booking.guest?.guestId;
           const guestName = fullName
-            ?? (guestId ? await resolveGuestName(guestId) : t('desk.today.unknown_guest', { guestId: ref }, `Unknown guest (${ref})`));
+            ?? (guestId ? await resolveGuestName(guestId) : t('desk.today.unknown_guest', {}, 'Unknown guest'));
           const roomTypeId = booking.roomTypeId ?? entry.roomTypeId ?? '';
           rows.push({
             key: ref,
             guestName,
             roomLabel: roomTypeId
-              ? t('desk.today.room_type', { roomType: roomTypeId }, `Room type ${roomTypeId}`)
+              ? t('desk.today.room_type_unresolved', {}, 'Room type')
               : t('desk.today.not_assigned', {}, 'Not assigned'),
             timesText: t('desk.stay.times_empty', {}, 'No times recorded yet.'),
             reservationRef: ref,
@@ -857,20 +857,24 @@ export default defineComponent({
           method: 'POST',
           body: JSON.stringify({ businessDate: businessDate.value }),
         });
-        const inspected = await apiFetch<{ rooms?: RoomRecord[] }>(
-          '/v1/rooms/ListRoomsByState',
-          { method: 'POST', body: JSON.stringify({ state: 'vacant-inspected' }) },
-        );
-        const occupied = await apiFetch<{ rooms?: RoomRecord[] }>(
-          '/v1/rooms/ListRoomsByState',
-          { method: 'POST', body: JSON.stringify({ state: 'occupied' }) },
-        );
+        // Room numbers for every list (Refs #370): stay rows
+        // carry room UUIDs, so every housekeeping state is read to
+        // map each room ID to its human number.
         const numbers: Record<string, string> = {};
-        const ready = inspected.rooms ?? [];
+        const ready: RoomRecord[] = [];
+        for (const state of ['vacant-dirty', 'vacant-clean', 'vacant-inspected', 'occupied', 'out-of-order']) {
+          const listed = await apiFetch<{ rooms?: RoomRecord[] }>(
+            '/v1/rooms/ListRoomsByState',
+            { method: 'POST', body: JSON.stringify({ state }) },
+          );
+          for (const room of listed.rooms ?? []) {
+            numbers[room.roomId] = room.number;
+            if (state === 'vacant-inspected') {
+              ready.push(room);
+            }
+          }
+        }
         readyRooms.value = ready;
-        [...ready, ...(occupied.rooms ?? [])].forEach((room) => {
-          numbers[room.roomId] = room.number;
-        });
         roomNumbers.value = numbers;
         arrivalRows.value = [...(await fetchExpectedArrivals(businessDate.value)), ...(await renderRows(lists.arrivals ?? [], 'arrival'))];
         inHouseRows.value = await renderRows(lists.inHouse ?? [], 'stay');
@@ -983,9 +987,9 @@ export default defineComponent({
           );
           if (candidates.length === 0) {
             checkinStatus.value = t(
-              'desk.stay.booked_type',
-              { roomTypeId: booking.roomTypeId },
-              `Booked room type: ${booking.roomTypeId}.`,
+              'desk.stay.booked_type_unknown',
+              {},
+              'Booked room type on file. Pick a ready room of that type below.',
             );
             checkinError.value = t(
               'desk.stay.no_ready_rooms',
@@ -1004,9 +1008,9 @@ export default defineComponent({
           checkinCandidates.value = candidates;
           checkinRoomId.value = '';
           checkinStatus.value = t(
-            'desk.stay.booked_type',
-            { roomTypeId: booking.roomTypeId },
-            `Booked room type: ${booking.roomTypeId}.`,
+            'desk.stay.booked_type_unknown',
+            {},
+            'Booked room type on file. Pick a ready room of that type below.',
           );
           checkinError.value = t('desk.stay.need_room', {}, 'Pick a ready room first.');
         } catch (err) {
