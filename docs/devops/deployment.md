@@ -15,6 +15,13 @@ ADR-0001
 Ansible plus plain containers installed offline, Nginx entry,
 Prometheus plus Grafana on-prem, LAN-only networking with Tailscale,
 and the single 2*4*50 host default with a small-cluster variant.
+The desk UI is the Vue 3 + Vite single-page app decided in accepted
+ADR-0003
+(`docs/architecture/decisions/adr-0003-desk-ui-vue-vite.md`,
+accepted 2026-10-25): its static build (`app/dist/`, gitignored) is
+bind-mounted at `/srv/app-dist` and served under `/app/` by Nginx,
+with the legacy static pages redirecting to their `/app/*`
+successors.
 
 ## 1. Placement variants
 
@@ -81,6 +88,11 @@ effect before handing over.
    backup target is reachable.
 2. Copy the release bundle and the hotel's configuration set onto
    the host (single-host) or the designated hosts (small cluster).
+   The desk UI bundle (`app/dist/`, gitignored) must exist before
+   the proxy starts: the installer proof builds it (`npm ci` and
+   `npm run build` in `app/`) when Node is available, reuses an
+   existing build otherwise, and fails closed when neither is
+   possible.
 3. Apply the per-hotel configuration set (section 2) to the
    bundle's configuration files; do not edit images.
 4. Start the database host first, then the module containers, then
