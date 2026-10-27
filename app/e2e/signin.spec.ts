@@ -1,4 +1,4 @@
-// Browser sign-in flow (plan §1 flow 1, #338 M6).
+// Browser sign-in flow (plan section 1 flow 1, #338 M6).
 //
 // The shell owns the one sign-in gate (FR-DSP-2): owner sign-in
 // lands on the desk dashboard, a wrong secret reads as one plain
@@ -52,7 +52,7 @@ test('locked identity surfaces the locked wording distinctly', async ({ page, re
     secret: 'victim-secret-1',
     role: 'front-desk',
   }, token);
-  // Five wrong secrets trip the 5-strike lockout (LLD §0).
+  // Five wrong secrets trip the 5-strike lockout (LLD section 0).
   for (let i = 0; i < 5; i += 1) {
     await request.post('/v1/admin/SignIn', {
       data: { signinIdentity: victim, secret: 'wrong-secret' },

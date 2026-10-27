@@ -6,7 +6,7 @@ Status: active. Source page for the rates & availability module (single source o
 
 Rate plans, per-night prices, availability counts, discounts, and stay restrictions; the price basis behind every reservation quote.
 
-Links: `docs/architecture/lld.md` section 4; `docs/requirements/sequence-diagrams.md` section 1 (availability search) and section 2 (reservation creation, via `QuotePrice`); business rules BR-9, BR-10, BR-13..BR-15.
+Links: `docs/architecture/lld.md` [section 4](../lld.md); `docs/requirements/sequence-diagrams.md` [section 1](../../requirements/sequence-diagrams.md) (availability search) and section 2 (reservation creation, via `QuotePrice`); business rules BR-9, BR-10, BR-13..BR-15.
 
 ## 2. Pattern and layers as-built
 
@@ -70,13 +70,13 @@ Rollback: none — quotes and checks are pure reads; upserts are single guarded 
 
 ## 5. Outbound dependencies
 
-None at runtime. Consumed by the desk loop (availability search, `QuotePrice` totals carried into Reservations `Create`/`Modify` as `priceBasis`) and by the Reservations stay-restriction check wired at boot (issue #361). Hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (LLD section 0).
+None at runtime. Consumed by the desk loop (availability search, `QuotePrice` totals carried into Reservations `Create`/`Modify` as `priceBasis`) and by the Reservations stay-restriction check wired at boot (issue #361). Hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (LLD [section 0](../lld.md)).
 
-See also: [deployment](../system-architecture.md) (§1), [C4 containers](../c4-containers.md), and [event flow](../event-flow.md) (this service's outbox emissions).
+See also: [deployment](../system-architecture.md) (section 1), [C4 containers](../c4-containers.md), and [event flow](../event-flow.md) (this service's outbox emissions).
 
 ## 6. Error mapping
 
-Envelope `{code, message, details, traceId}` (same shape as reservations) to `docs/technical/error-handling.md` section 1. Constructors (`internal/store/store.go:29-37`):
+Envelope `{code, message, details, traceId}` (same shape as reservations) to `docs/technical/error-handling.md` [section 1](../../technical/error-handling.md). Constructors (`internal/store/store.go:29-37`):
 
 | Code | Status | Raised when |
 |---|---|---|
@@ -113,7 +113,7 @@ Run:
 go run ./cmd/server
 ```
 
-Configuration via environment: `PORT` (default `8082`); hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (see LLD section 0) and land in later slices.
+Configuration via environment: `PORT` (default `8082`); hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (see LLD [section 0](../lld.md)) and land in later slices.
 
 Docker:
 

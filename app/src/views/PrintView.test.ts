@@ -748,7 +748,7 @@ describe('print view', () => {
 // English.
 describe('print view source', () => {
   // Sign-in round trips moved to the shell gate (Refs #338,
-  // FR-DSP-2, LLD §12.4): SignIn/SignOut now live in `App.vue`,
+  // FR-DSP-2, LLD section 12.4): SignIn/SignOut now live in `App.vue`,
   // so the per-screen copies are gone from this source.
   const requiredOps = [
     '/v1/billing/GetFolioBalance',

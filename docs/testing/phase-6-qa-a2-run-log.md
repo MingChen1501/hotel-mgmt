@@ -21,7 +21,7 @@ with `REFERENCE_HOST=1` on that host.
 |---|---|---|
 | QA machine (this host) | `nproc=8`, mem 30 GB, disk 117 GB avail | No — larger than 2*4*50 on every axis; faster timings here would not prove the bounds |
 | CI runners (this batch, sections 2–3) | `nproc=4`, mem ~16 GB (`16373452kB` / `16372436kB`), disk ~85 GB avail | No — not the 2*4*50 reference host |
-| Owner POC-demo environment | per `test-report.md` sections 3–4, bound assertion deferred there | Not obtainable for this batch |
+| Owner POC-demo environment | per `test-report.md` [sections 3–4](test-report.md), bound assertion deferred there | Not obtainable for this batch |
 
 **Decision: reference host NOT obtainable → variant-only recording.**
 Both runs below carry `label=ci-e2e-variant` with `referenceHost=0`;
@@ -62,7 +62,7 @@ variant, never compared against single-host bounds).
 Named views (bound 2000 ms on the reference host only — not
 asserted here):
 
-| Operation | Measured (ms, 3 reps, this run) | Consolidated baseline (`test-report.md` section 3) |
+| Operation | Measured (ms, 3 reps, this run) | Consolidated baseline (`test-report.md` [section 3](test-report.md)) |
 |---|---|---|
 | QueryCalendar (full-book range) | 35, 35, 35 | 34, 34, 34 |
 | CheckSellableCount (50 units) | 33, 34, 33 | 33, 33, 33 |
@@ -72,7 +72,7 @@ asserted here):
 Named actions (bound 3000 ms on the reference host only — not
 asserted here):
 
-| Operation | Measured (ms, this run) | Consolidated baseline (`test-report.md` section 3) |
+| Operation | Measured (ms, this run) | Consolidated baseline (`test-report.md` [section 3](test-report.md)) |
 |---|---|---|
 | CheckIn (2 reps, fresh booking + room each) | 36, 37 | 50, 36 |
 | PostCharge (3 reps, folio with balance) | 42, 45, 46 | 39, 39, 42 |
@@ -101,7 +101,7 @@ Environment: `label=ci-e2e-variant go=go1.24.13 cpus=4
 mem=16372436kB disk=87353MiB-avail` (GitHub-hosted runner —
 variant, never compared against single-host bounds).
 
-| Report | Measured (this run) | Consolidated baseline (`test-report.md` section 4) |
+| Report | Measured (this run) | Consolidated baseline (`test-report.md` [section 4](test-report.md)) |
 |---|---|---|
 | Rebuild (126,100 events, for context) | 85 ms | 71 ms |
 | OccupancyReport (731 days x 1 type) | 525 ms | 505 ms |
@@ -118,7 +118,7 @@ bug filed for NFR-PERF-2.
 ## 4. Defects
 
 None. Both PERF batches ran green on the QA build with no FAIL lines
-and no bound/number regression vs `test-report.md` sections 3–4, so
+and no bound/number regression vs `test-report.md` [sections 3–4](test-report.md), so
 per issue #268 no Phase 6 QA bug was filed. Any future regression
 found by re-running these guards files separately under the
 `Phase 6 - QA` milestone in the plan section 3 format; fixes land in

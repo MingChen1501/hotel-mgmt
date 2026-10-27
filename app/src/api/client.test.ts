@@ -1,6 +1,6 @@
 // Guard for FR-SHL-2 (shared-client 401-to-sign-in) + NFR-SHL-3
 // (offline banner with manual retry, zero queued writes) at client
-// level (Refs #291, LLD §11.2–11.3). Served halves live in
+// level (Refs #291, LLD section 11.2–11.3). Served halves live in
 // `script/shell-served-check.sh`; the banner rendering guard lives
 // in `src/App.test.ts`.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -163,7 +163,7 @@ describe('shared Bearer API client', () => {
       });
       expect(fetchMock).toHaveBeenCalledTimes(1);
       window.dispatchEvent(new Event('online'));
-      // No automatic replay on reconnect (LLD §11.3: retry is
+      // No automatic replay on reconnect (LLD section 11.3: retry is
       // always staff-initiated).
       expect(fetchMock).toHaveBeenCalledTimes(1);
       const retried = await retryLastRequest();

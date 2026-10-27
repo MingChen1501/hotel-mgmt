@@ -20,7 +20,7 @@ live, POC demo checklist PASS + owner sign-off, matrix 57/57 with
 pass evidence in `test-report.md`) but has never had an independent
 QA pass: no tester-written test plan exists, PERF bounds were never
 asserted on a real 2*4*50 reference host (CI records variants only —
-see `test-report.md` sections 3–4), and the FE screens were verified
+see `test-report.md` [sections 3–4](test-report.md)), and the FE screens were verified
 by review + smoke tests, not by a structured end-to-end QA run.
 
 ## 1. Entry criteria
@@ -38,7 +38,7 @@ The QA pass starts only when all of the following hold:
    bug and result.
 3. **CI green on the build under test.** All per-stack jobs plus
    `contract-check` plus `e2e-single-host` report success on the
-   merge commit, per the method in `test-report.md` section 0.
+   merge commit, per the method in `test-report.md` [section 0](test-report.md).
 4. **Reference-hardware question settled.** Record before the run
    whether a 2*4*50 host (ADR-0001 single-host default: 2 vCPU /
    4 GB RAM / 50 GB disk) is obtainable. If yes, PERF bounds are
@@ -74,7 +74,7 @@ not inline fixes. The loop follows the desk order proven in
 - Bounds are asserted only on the 2*4*50 reference host
   (`REFERENCE_HOST=1`). Anywhere else the numbers are recorded with
   their environment label as a variant run. Reproduce pointers live
-  in `test-report.md` section 9.
+  in `test-report.md` [section 9](test-report.md).
 
 ### A3 — Exploratory pass per screen
 

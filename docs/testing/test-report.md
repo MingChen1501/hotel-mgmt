@@ -9,7 +9,7 @@ measurements are carried over unchanged in sections 3–4, and the
 #189/#190/#191/#192/#201 slices that filled the remaining cells are
 recorded with their evidence in sections 1–2 and the closure map in
 section 8. Guard wording is condensed here; the full guard text per
-cell lives in `traceability-matrix.md` section 1 (FR) and section 2
+cell lives in `traceability-matrix.md` [section 1](traceability-matrix.md) (FR) and section 2
 (NFR). Levels L1–L5 and LC are defined in `test-strategy.md`.
 
 ## 0. Method and CI evidence
@@ -132,7 +132,7 @@ Desk-loop proof for the slice (PR #115 body): live SignIn → GetHotelConfig →
 | Cell | Guard (test location + case) | Pass evidence |
 |---|---|---|
 | NFR-RET-1 retention floor | Installer applies the hotel's configured retention floor with the configuration set (`script/install.sh` → `script/apply-hotel-config.sh`); restore drill confirms the floor value survives backup and restore | PR #178 merge `b6d94aaf` all 13 check-runs success; PR #178 body: `test-preflight-fail-closed.sh` 4 passed / 0 failed |
-| NFR-AVL-1 offline desk | Pilot runbook walkthrough (`docs/operations/pilot-exit-checklist.md` part A, `runbook.md` section 4): booking, check-in, check-out, charge posting, payment recording, invoice printing all complete with no outside connectivity, confirmed with a non-technical stand-in | PR #178 merge `b6d94aaf` all check-runs success |
+| NFR-AVL-1 offline desk | Pilot runbook walkthrough (`docs/operations/pilot-exit-checklist.md` part A, `runbook.md` [section 4](../operations/runbook.md)): booking, check-in, check-out, charge posting, payment recording, invoice printing all complete with no outside connectivity, confirmed with a non-technical stand-in | PR #178 merge `b6d94aaf` all check-runs success |
 | NFR-BKP-2 desk surface ext (#116) | `script/publish-backup-report.sh` renders the newest staging report to `frontend/backup-report.json` (success line / failure line + support pointer; missing report = failure); `script/e2e-desk-loop.sh` asserts the success outcome through the proxy | PR #119 merge `5d5ec6aa` `e2e-single-host` success (publisher verified locally against crafted staging areas + python-stub E2E asserts, per PR #119 body) |
 | Restore drill state ext (#117) | Drill extension proves the config rows survive (hotel profile name, room states, rate prices) against runbook section 5 owner checks | PR #166 merge `a776aa3c` all 13 check-runs success |
 
@@ -265,7 +265,7 @@ Carried over from the #182 report (PR #194, CI run 40071918989, job `perf-report
 ## 7. L5 per-hotel configuration matrix + LC contract guards
 
 - L5: each L5-tagged row names the two-setup matrix in its guard cell (FR-RES-3/6 reason lists and no-show rules, FR-RTE-3/4 named discounts and restriction types, FR-ADM-1/4 hotel identity/times, FR-BIL-5/7 tax rules and approval setups, FR-CUS-1/2/3 mandatory fields, wording, charge items). Mechanism evidence: `script/validate-hotel-config.sh` (fails closed on defaults), `script/apply-hotel-config.sh` (idempotent save + read-back verification), e2e hotel-values-in-effect asserts (section 1.8). Fixed MVP behaviour (section 3.2) is re-confirmed by the same suites — no slice unlocks what the MVP fixes.
-- LC: every slice touching a module seam passes the per-module contract-check stage against `docs/technical/api-spec.md` section 2. Evidence: `contract-check` is `success` on all 22 merge commits in section 0; all 81 fixture files referenced by the matrix guard cells exist in the tree (verified by filename inventory at report time); `script/contract-check.sh` PASSED locally on the #191 and #192 slices (PR #200, PR #202 bodies).
+- LC: every slice touching a module seam passes the per-module contract-check stage against `docs/technical/api-spec.md` [section 2](../technical/api-spec.md). Evidence: `contract-check` is `success` on all 22 merge commits in section 0; all 81 fixture files referenced by the matrix guard cells exist in the tree (verified by filename inventory at report time); `script/contract-check.sh` PASSED locally on the #191 and #192 slices (PR #200, PR #202 bodies).
 
 ## 8. Follow-up closure map
 

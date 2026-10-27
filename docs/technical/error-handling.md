@@ -14,8 +14,8 @@ Every failed contract call returns the same shape:
   `RATE_LIMIT` is not MVP; representative MVP codes:
   `VALIDATION_FAILED`, `NOT_FOUND`, `UNAUTHENTICATED`
   (session-expiry/lockout refusals, assigned in
-  `docs/architecture/lld.md` §0 and
-  `docs/technical/integration.md` §6 C10), `FORBIDDEN`,
+  `docs/architecture/lld.md` [section 0](../architecture/lld.md) and
+  `docs/technical/integration.md` [section 6](integration.md) C10), `FORBIDDEN`,
   `CONFLICT`, `STATE_ILLEGAL`, `SETTLEMENT_REQUIRED`).
 - `message`: a human-readable sentence naming what was refused and
   why, suitable to show staff at the desk.
@@ -44,8 +44,8 @@ Every failed contract call returns the same shape:
 
 - No retry or backoff policy is set here; synchronous calls are
   HTTP/JSON POST and asynchronous events travel the outbox +
-  dispatcher (`docs/architecture/lld.md` §0;
-  `docs/technical/integration.md` §0 rule).
+  dispatcher (`docs/architecture/lld.md` [section 0](../architecture/lld.md);
+  `docs/technical/integration.md` [section 0](integration.md) rule).
 - No on-screen audit log view in the MVP (recording only,
   `NFR-AUD-1`).
 

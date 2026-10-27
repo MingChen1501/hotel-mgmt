@@ -1,4 +1,4 @@
-// Browser print flow (plan §1 flow 5, #338 M6).
+// Browser print flow (plan section 1 flow 5, #338 M6).
 //
 // The invoice renders with the folio lines and total, each payment
 // yields a matching receipt, the confirmation loads by reference,
@@ -121,7 +121,7 @@ test('invoice, receipt, and confirmation match the folio', async ({ page, reques
   await expect(page).toHaveURL(/\/app\/print/);
   await expect(page.getByTestId('print-invoice-document')).toBeVisible();
 
-  // Print isolation (plan §1 flow 5): under print media only the
+  // Print isolation (plan section 1 flow 5): under print media only the
   // active document survives — the folio table and every other
   // screen section drop out, without ever hiding the active
   // document's ancestors. The class flip is the same synchronous

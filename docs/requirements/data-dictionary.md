@@ -3,7 +3,7 @@
 Status: active. Shared definitions of the MVP data entities and
 fields, owned by `business-analyst`. This document invents no new
 behaviour: each entry uses the audit one-term-per-concept decisions
-from `docs/requirements/domain-consistency-audit.md` (section 6),
+from `docs/requirements/domain-consistency-audit.md` ([section 6](domain-consistency-audit.md)),
 defines the concept, lists its key fields, and names the owning FRs
 from `docs/requirements/mvp-requirements.md`. Behavioural rules that
 constrain these entities live in

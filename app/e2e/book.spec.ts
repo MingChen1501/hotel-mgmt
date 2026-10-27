@@ -1,4 +1,4 @@
-// Browser book flow (plan §1 flow 2, #338 M6).
+// Browser book flow (plan section 1 flow 2, #338 M6).
 //
 // Quote-then-confirm on the restyled book screen: a walk-in
 // registration, a priced quote with nightly lines and a total, and

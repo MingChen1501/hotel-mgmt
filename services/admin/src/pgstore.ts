@@ -30,7 +30,7 @@ function requireUserManager(caller: AuthenticatedUser, operation: string): void 
 }
 
 // Profile-backed config keys: single-homed in admin.hotel_profile,
-// everything else lives in admin.hotel_config_values (schema.md §8).
+// everything else lives in admin.hotel_config_values (schema.md section 8).
 const PROFILE_COLUMNS: Record<string, string> = {
   name: "name",
   timezone: "timezone",

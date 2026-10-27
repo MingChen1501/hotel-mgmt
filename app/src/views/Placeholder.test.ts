@@ -1,6 +1,6 @@
 // Guard for FR-SHL-1/FR-SHL-2 at view level: the placeholder
 // renders, signs in through the session store, and drives the
-// shared client (Refs #291, LLD §11.1–11.2).
+// shared client (Refs #291, LLD section 11.1–11.2).
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { mount } from '@vue/test-utils';

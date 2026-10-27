@@ -2,7 +2,7 @@
 
 Provider and consumer fixtures for `ReservationService` (issues #112
 and #159), generated from `contracts/` per
-`docs/technical/integration.md` section 9: `CreateReservation` (plus
+`docs/technical/integration.md` [section 9](../../../docs/technical/integration.md): `CreateReservation` (plus
 the overbooking `CONFLICT` branch and the missing-guest-field
 `VALIDATION_FAILED` branch), `ModifyReservation` (plus the
 checked-in `STATE_ILLEGAL` and guard-lost `CONFLICT` branches),

@@ -21,7 +21,7 @@ delivery: no real hotel data, no real guests.
   `docs/operations/demo-poc-checklist.md`, section 1, active).
 - Exit evidence the owner can check: the demo prints
   `demo-poc: RESULT: PASS`, and the per-step pass/fail table in
-  `docs/operations/demo-poc-checklist.md` (section 3, active) is
+  `docs/operations/demo-poc-checklist.md` ([section 3](../operations/demo-poc-checklist.md), active) is
   fully marked PASS with the owner's sign-off recorded.
 - Plan pointer: walking-skeleton milestone 3c (desk loop end to
   end with backup and restore drill).

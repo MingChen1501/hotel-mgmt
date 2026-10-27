@@ -27,7 +27,7 @@ variant.
 ## Install on a fresh host
 
 Single-host default sale, following `docs/devops/deployment.md`
-section 3 (installer path proven by issue #153):
+[section 3](../docs/devops/deployment.md) (installer path proven by issue #153):
 
 ```sh
 # 0. From the repo root, with the hotel's configuration set ready.
@@ -71,7 +71,7 @@ Daily operation afterwards is two scripts plus the runbook
 (`docs/operations/runbook.md`): `script/backup.sh` writes each
 backup with its visible success report, and `script/restore.sh
 --verify-only` is the non-disruptive restore drill
-(`docs/operations/backup-dr.md` section 4, RTO 4 hours).
+(`docs/operations/backup-dr.md` [section 4](../docs/operations/backup-dr.md), RTO 4 hours).
 
 ## Run locally (container lab)
 
@@ -87,7 +87,7 @@ script/e2e-desk-loop.sh --staging-dir ./backup-staging
 ```
 
 Stop in reverse order (proxy, modules, database), per the upgrade
-procedure in deployment.md section 4:
+procedure in deployment.md [section 4](../docs/devops/deployment.md):
 
 ```sh
 docker compose -f deploy/compose.yaml stop proxy

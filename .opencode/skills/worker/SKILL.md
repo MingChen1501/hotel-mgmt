@@ -71,7 +71,7 @@ describes, confirm with the orchestrator/owner first.
 - Content conventions: follow the `content` agent file.
 - Docs are the single source of truth: design, operations, and
   per-stack commands live in `docs/` (per-stack build/test/run in
-  `docs/architecture/services/*.md` §7 Operations).
+  `docs/architecture/services/*.md` section 7 Operations).
   `services/*/README.md` files are thin stubs linking there — never
   duplicate design or operations prose into a service README, and
   never treat a service README as authoritative over `docs/`.
@@ -89,7 +89,7 @@ describes, confirm with the orchestrator/owner first.
   nav (`NAV_ITEMS` in `app/src/App.vue`) and the route table
   (`app/src/router.ts`) — no orphan screens, no dead nav items.
   Print CSS is preserved. Split: `script/catalogue-coverage-check.sh`
-  (§5, `app/src` keys) and `script/shell-served-check.sh` (nav match,
+  (section 5, `app/src` keys) and `script/shell-served-check.sh` (nav match,
   style-block citations, print source + built bytes) fail closed in
   CI; the judgement half (covered-pattern choice, dynamic `t()`
   calls, copy edge cases) is a blocking reviewer checklist item.
@@ -97,7 +97,7 @@ describes, confirm with the orchestrator/owner first.
 ## Per-stack entry points
 
 Product code lives in one module directory per deployable service
-(LLD §9, `docs/architecture/lld.md`); each stack has its own
+(LLD [section 9](../../../docs/architecture/lld.md), `docs/architecture/lld.md`); each stack has its own
 sanctioned workflow skill — read it before touching that stack:
 
 - Go (`services/reservations`, `services/rates`,

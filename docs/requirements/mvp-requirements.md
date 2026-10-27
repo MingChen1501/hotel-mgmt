@@ -583,7 +583,7 @@ Coverage: 40 MVP capabilities mapped, 0 unmapped.
   product-level expectation.
 
 OQ-6 and OQ-7 (PRD section 10) are product-owned with no
-requirements wording at stake; see `business-rules.md` section 10.
+requirements wording at stake; see `business-rules.md` [section 10](business-rules.md).
 
 ## 6. Explicitly not specified here
 
@@ -604,8 +604,8 @@ operation (readiness only is `NFR-I18N-1`).
 
 Scaffold slice of ADR-0003 (accepted 2026-10-25): a placeholder
 Vue 3 + Vite shell served under `/app/` with no app routes. Design
-lives in `docs/architecture/hld.md` §11 and
-`docs/architecture/lld.md` §11; acceptance criteria live in the
+lives in `docs/architecture/hld.md` [section 11](../architecture/hld.md) and
+`docs/architecture/lld.md` [section 11](../architecture/lld.md); acceptance criteria live in the
 issue body (the `docs/product/acceptance-criteria.md` slice is
 separate `product-owner` work under gate gap 4). This section
 records only the requirements delta the T3 spec gate requires.
@@ -753,7 +753,7 @@ delta the T2 spec gate requires.
   (`business-rules.md` unchanged).
 - The section 4 traceability table and its coverage count are
   unchanged: the slice adds no MVP capability, so the mapped
-  capabilities stand. The handoff table below (§8.4) is
+  capabilities stand. The handoff table below (section 8.4) is
   separate and does not alter that count.
 
 ### 8.2 Presentation-scoped functional requirements
@@ -827,7 +827,7 @@ NFR-DSP-2 — Keyboard focus visibility. Keyboard users
 always see where focus is.
 Given any interactive element on any `/app/` screen; when
 it receives keyboard focus; then a visible focus indicator
-shows (2px desk-blue outline per the contract §1 tokens).
+shows (2px desk-blue outline per the contract section 1 tokens).
 Target: 100% of interactive elements on the six routes
 show the indicator on focus.
 
@@ -900,12 +900,12 @@ acceptance criteria live with `product-owner` (issue body plus
   (`business-rules.md` unchanged).
 - The section 4 traceability table and its coverage count are
   unchanged: this section adds no MVP capability, so the
-  mapped capabilities stand. The handoff table below (§9.5)
+  mapped capabilities stand. The handoff table below (section 9.5)
   is separate and does not alter that count.
 
 ### 9.2 Presentation-scoped functional requirements
 
-Ids continue the `DSP` (desk presentation) namespace from §8.
+Ids continue the `DSP` (desk presentation) namespace from section 8.
 
 FR-DSP-5 — Supported viewports and responsive reflow. Staff
 can work every desk screen on a desktop display, and the
@@ -923,7 +923,7 @@ data tables scroll horizontally inside their own region
 nothing is hidden, overlapped, or cut off. Viewports below
 360 CSS px are not targeted. (Whether the full desk loop
 must be phone-operable or readably reflowed only is a
-`product-owner` scope call — see §9.6 decision D1, which
+`product-owner` scope call — see section 9.6 decision D1, which
 must be answered before any dev implementation PR opens;
 the widths above assume reflow-usable.)
 
@@ -1022,11 +1022,11 @@ one. Existing baselines are named so extensions land on top.
 
 | Item | Guard (existing baseline on disk; follow-up extends or creates) | Handoff note for `qa-lead` |
 |---|---|---|
-| FR-DSP-5 | Missing — viewport reflow assertions (new; e.g. served-shell or component render at 360, 768, and 1280 CSS px asserting single-column stack, in-region table scroll, no overlap, no page scroll). Baseline: viewport meta `app/index.html:5`, wrapping nav + 1100px column (`App.vue`), per-screen render suites (§8.4) | Guard renders each of the six routes at the three widths and checks stack, scroll containment, reachability, and no overlap |
+| FR-DSP-5 | Missing — viewport reflow assertions (new; e.g. served-shell or component render at 360, 768, and 1280 CSS px asserting single-column stack, in-region table scroll, no overlap, no page scroll). Baseline: viewport meta `app/index.html:5`, wrapping nav + 1100px column (`App.vue`), per-screen render suites (section 8.4) | Guard renders each of the six routes at the three widths and checks stack, scroll containment, reachability, and no overlap |
 | NFR-DSP-3 | Missing — touch-target audit (new; e.g. computed-size assertion over every interactive element on the six routes). No existing guard | Guard measures every control on each route and checks 44 by 44 with 0 overlaps; 100% meet it |
 | FR-DSP-6 | Missing — multi-page print CSS pins (new; e.g. header-repeat, row break-avoid, totals keep-whole assertions at print source). Baseline: `PrintView.test.ts:250,275,303,476,544` (exact match + isolation) plus unchanged `FR-BIL-4` backend guards | Guard prints a multi-page folio and checks repeated headers, unsplit rows, and the whole totals block; exact-match guards stay green |
 | NFR-DSP-4 | Missing — expansion stress render (new; e.g. pseudo-locale at +40% length plus long-word catalogue render over the six routes and three print documents, asserting wrap and zero overflow). Baseline: `script/catalogue-coverage-check.sh` (string sourcing only, not layout) | Guard renders the stress catalogue and checks 0 truncated strings and 0 horizontal overflows; catalogue job stays green |
-| US-DSP-1..5 | Inputs for `product-owner` (§9.4); guards ride the four rows above plus the M7 stand-in demo record (`desk-styling-test-traceability.md` §4 — `qa-lead` extends the script so the loop meets a narrow-viewport, touch, long-print, and long-wording moment) | No story invents an FR; every story traces to an item above |
+| US-DSP-1..5 | Inputs for `product-owner` (section 9.4); guards ride the four rows above plus the M7 stand-in demo record (`desk-styling-test-traceability.md` [section 4](../testing/desk-styling-test-traceability.md) — `qa-lead` extends the script so the loop meets a narrow-viewport, touch, long-print, and long-wording moment) | No story invents an FR; every story traces to an item above |
 
 ### 9.6 Explicitly not specified here (plus open scope calls)
 
@@ -1047,7 +1047,7 @@ one. Existing baselines are named so extensions land on top.
 - D2 (for `product-owner`, MUST be answered before any dev
   implementation PR opens): stand-in persona — new P4 in
   `personas.md`, or stand-ins run in a P2 context? Stories in
-  §9.4 stay persona-neutral pending the call.
+  section 9.4 stay persona-neutral pending the call.
 
 <!-- ao-role: business-analyst -->
 Role: business-analyst · AO session hotel-mgmt-480

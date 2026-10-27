@@ -244,7 +244,7 @@ async function signIn(wrapper: ReturnType<typeof mountStay>, fetchMock: ReturnTy
 }
 
 // Check-out now asks once through the shell confirm dialog
-// (Refs #338, LLD §12.2): open the dialog, then confirm.
+// (Refs #338, LLD section 12.2): open the dialog, then confirm.
 async function confirmCheckout(wrapper: ReturnType<typeof mountStay>) {
   await wrapper.find('[data-testid="stay-checkout"]').trigger('click');
   await vi.waitFor(() => {

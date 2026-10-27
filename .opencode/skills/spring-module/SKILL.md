@@ -7,13 +7,13 @@ trigger: "Working in the Spring Boot module (billing): read this skill first —
 # Spring module workflow (Billing)
 
 Applies to `services/billing`, the one Spring-context service in the
-budget (LLD §6; ADR-0001 primary mapping). The worker skill points
+budget (LLD [section 6](../../../docs/architecture/lld.md); ADR-0001 primary mapping). The worker skill points
 here as the per-stack entry point; this skill covers only what a
 Billing change needs.
 
-Source of truth for behaviour: `docs/architecture/lld.md` (§§0, 6),
-`docs/technical/integration.md` (§§3–4), `docs/technical/schema.md`
-(§6), `docs/technical/error-handling.md`. This skill adds no
+Source of truth for behaviour: `docs/architecture/lld.md` ([sections 0, 6](../../../docs/architecture/lld.md)),
+`docs/technical/integration.md` ([sections 3–4](../../../docs/technical/integration.md)), `docs/technical/schema.md`
+(section 6), `docs/technical/error-handling.md`. This skill adds no
 behaviour.
 
 ## Module on this stack
@@ -40,7 +40,7 @@ sign-off step (OQ-3).
   target/billing-*.jar` (packaged)
 
 The module ships a `Dockerfile` and a README repeating these
-commands (LLD §9).
+commands (LLD [section 9](../../../docs/architecture/lld.md)).
 
 ## Layout
 
@@ -52,7 +52,7 @@ services/billing/
     repo/            SQL/JPA for the billing schema only — never another module's tables
     outbox/          same-transaction event writer + dispatcher relay hooks
     auth/            local token validation (HMAC signature + expiry, bounded revalidation)
-  src/main/resources/db/migration/   Flyway chain: V<n>__*.sql (schema.md §9)
+  src/main/resources/db/migration/   Flyway chain: V<n>__*.sql (schema.md section 9)
   src/test/          unit tests (exact-decimal arithmetic, gate branches, day-close totals)
   contract-tests/    fixtures per provided/consumed operation, incl. refusal branches
   pom.xml
@@ -60,7 +60,7 @@ services/billing/
   README             build/test/run commands
 ```
 
-## Conventions (LLD §0, binding on every module)
+## Conventions (LLD [section 0](../../../docs/architecture/lld.md), binding on every module)
 
 - Transport: synchronous calls are HTTP/JSON POST behind Nginx at
   `/v1/<contract-lowercase>/<Operation>` with a JSON body; the opaque
@@ -82,7 +82,7 @@ services/billing/
 - Outbox: every posted charge/payment and every day-close run is
   written atomically with the change into the schema's `outbox`
   table; a dispatcher relays rows. No cross-schema reads, ever.
-- Config: read §3.1 values at startup via `GetHotelConfig` (charge
+- Config: read section 3.1 values at startup via `GetHotelConfig` (charge
   items `FR-CUS-3`, tax/fee rules `FR-BIL-5`, approval rule
   `FR-BIL-7`), apply `ConfigChangedEvents` idempotently by event id
   afterwards, serve cached values when Admin is unreachable.
@@ -91,7 +91,7 @@ services/billing/
 
 - Consumer fixtures: `contract-tests/` holds request/response pairs
   plus refusal cases generated from `contracts/` for every operation
-  Billing provides or consumes (integration.md §§3–4), including the
+  Billing provides or consumes (integration.md [sections 3–4](../../../docs/technical/integration.md)), including the
   `SETTLEMENT_REQUIRED` gate branch, the undefined-item
   `VALIDATION_FAILED` branch, and the `GetStayRef` read contract.
 - Event checks: every emitted `FolioEvents` payload validates
@@ -104,11 +104,11 @@ services/billing/
 - Versioning: additive changes bump minor (backward compatible);
   removals, renames, type changes, and new required fields are major
   with a deprecation window of at least one release (integration.md
-  §8).
+  section 8).
 
 ## Guard-writing guide (this stack)
 
-The `PostCharge` guard (LLD §6) is a single transaction: validate
+The `PostCharge` guard (LLD [section 6](../../../docs/architecture/lld.md)) is a single transaction: validate
 token + role -> `GetStayRef` (stay in house) -> resolve the item
 against hotel charge items and tax/fee rules with exact decimal
 arithmetic -> append the line, update the running balance, and write

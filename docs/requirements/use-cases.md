@@ -354,7 +354,7 @@ Extensions/exceptions:
   [FR-BIL-6]
 
 Postconditions: new bookings, charges, and prints follow the saved
-setup immediately with no code changes. [Requirements §3.3]
+setup immediately with no code changes. [Requirements section 3.3]
 
 ## UC-12 — Set up the hotel and oversee it (owner)
 

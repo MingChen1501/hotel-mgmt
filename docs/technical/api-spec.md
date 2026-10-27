@@ -10,7 +10,7 @@ section 4).
 ## 1. Conventions (apply to every contract)
 
 - Modules interact only through these named contracts; no shared
-  stores (HLD section 4).
+  stores (HLD [section 4](../architecture/hld.md)).
 - Style: HTTP/gRPC with named operations per service; domain events
   (`ReservationEvents`, `StayEvents`, `RoomStateEvents`,
   `RateEvents`, `GuestEvents`, `FolioEvents`, `ConfigChangedEvents`)
@@ -45,7 +45,7 @@ section 4).
 ## 3. Open points (superseded — decided or deferred elsewhere; kept as history)
 
 Supersede note (round-3 fix, annotation pattern per
-`docs/architecture/candidate-architectures.md` §11): the three items
+`docs/architecture/candidate-architectures.md` [section 11](../architecture/candidate-architectures.md)): the three items
 below were open when this outline was written. Each is now decided or
 explicitly deferred in the LLD/integration pair catalog; the original
 bullets are preserved and annotated, not rewritten.
@@ -54,13 +54,13 @@ bullets are preserved and annotated, not rewritten.
   DECIDED: synchronous calls are HTTP/JSON POST
   `/v1/<contract>/<Operation>` behind Nginx; asynchronous domain
   events travel the per-schema outbox + dispatcher
-  (`docs/architecture/lld.md` §0; `docs/technical/integration.md`
-  §0 rule).
+  (`docs/architecture/lld.md` [section 0](../architecture/lld.md); `docs/technical/integration.md`
+  [section 0](integration.md) rule).
 - Event transport for the on-premise installation — DECIDED:
   transactional outbox table per schema plus a lightweight
   dispatcher; Kafka is excluded
-  (`docs/architecture/lld.md` §0 outbox; `docs/technical/integration.md`
-  §0 rule).
+  (`docs/architecture/lld.md` [section 0](../architecture/lld.md) outbox; `docs/technical/integration.md`
+  [section 0](integration.md) rule).
 - Full OpenAPI (or equivalent) authorship per service — PARTLY
   LANDED, remainder DEFERRED to implementation slices: the
   curated desk-loop subset (`contracts/openapi.yaml`, 14 ops,

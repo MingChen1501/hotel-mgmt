@@ -1,7 +1,7 @@
 # Ansible baseline
 
 Offline-friendly install baseline for the single-host layout (see
-`docs/devops/deployment.md` sections 3-5). Uses only
+`docs/devops/deployment.md` [sections 3-5](../../docs/devops/deployment.md)). Uses only
 `ansible.builtin` modules plus the `docker compose` CLI on the
 target: no Galaxy collections required.
 
@@ -44,4 +44,4 @@ seed, and the desk-loop proof run next via `script/e2e-desk-loop.sh`
 
 Pre-flight (sizing 2 vCPU / 4 GB RAM / 50 GB disk, LAN reachability,
 backup target, schema validation of the config set, first-secret
-handover) and rollback stay procedural per deployment.md sections 5-6.
+handover) and rollback stay procedural per deployment.md [sections 5-6](../../docs/devops/deployment.md).

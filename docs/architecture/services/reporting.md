@@ -6,7 +6,7 @@ Status: active. Source page for the reporting module (single source of truth; `s
 
 Occupancy, revenue, daily-sheet, and housekeeping reads over its own rebuilt read model (FR-RPT-1..4).
 
-Links: `docs/architecture/lld.md` section 7; `docs/requirements/sequence-diagrams.md` section 9 (check-out feeds revenue) and section 12 (housekeeping loop, future); FR-RPT-1..3.
+Links: `docs/architecture/lld.md` [section 7](../lld.md); `docs/requirements/sequence-diagrams.md` [section 9](../../requirements/sequence-diagrams.md) (check-out feeds revenue) and section 12 (housekeeping loop, future); FR-RPT-1..3.
 
 ## 2. Pattern and layers as-built
 
@@ -63,13 +63,13 @@ Rollback: none needed — reads never mutate, and rebuild replaces rather than p
 
 ## 5. Outbound dependencies
 
-None — by design the service never reads other modules' stores (`internal/service/service.go:13-51`). Its only input is the domain-event log via `Apply`/`Rebuild`. Hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (LLD section 0).
+None — by design the service never reads other modules' stores (`internal/service/service.go:13-51`). Its only input is the domain-event log via `Apply`/`Rebuild`. Hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (LLD [section 0](../lld.md)).
 
-See also: [deployment](../system-architecture.md) (§1), [C4 containers](../c4-containers.md), and [event flow](../event-flow.md) (this service's event consumption and rebuild).
+See also: [deployment](../system-architecture.md) (section 1), [C4 containers](../c4-containers.md), and [event flow](../event-flow.md) (this service's event consumption and rebuild).
 
 ## 6. Error mapping
 
-Envelope `{code, message, details, traceId}` (same shape as reservations) to `docs/technical/error-handling.md` section 1. Constructor (`internal/store/store.go:28`):
+Envelope `{code, message, details, traceId}` (same shape as reservations) to `docs/technical/error-handling.md` [section 1](../../technical/error-handling.md). Constructor (`internal/store/store.go:28`):
 
 | Code | Status | Raised when |
 |---|---|---|
@@ -105,7 +105,7 @@ Run:
 go run ./cmd/server
 ```
 
-Configuration via environment: `PORT` (default `8083`); hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (see LLD section 0) and land in later slices.
+Configuration via environment: `PORT` (default `8083`); hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (see LLD [section 0](../lld.md)) and land in later slices.
 
 Docker:
 

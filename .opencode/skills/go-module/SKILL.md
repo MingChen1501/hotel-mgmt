@@ -7,21 +7,21 @@ trigger: "Working in a Go module (reservations, rates, reporting): read this ski
 # Go module workflow (Reservations, Rates, Reporting)
 
 Applies to `services/reservations`, `services/rates`, and
-`services/reporting` (LLD §9; ADR-0001 primary mapping). The worker
+`services/reporting` (LLD [section 9](../../../docs/architecture/lld.md); ADR-0001 primary mapping). The worker
 skill points here as the per-stack entry point; this skill covers only
 what a Go-module change needs.
 
-Source of truth for behaviour: `docs/architecture/lld.md` (§§0, 1, 4,
-7), `docs/technical/integration.md`, `docs/technical/schema.md`,
+Source of truth for behaviour: `docs/architecture/lld.md` ([sections 0, 1, 4,
+7](../../../docs/architecture/lld.md)), `docs/technical/integration.md`, `docs/technical/schema.md`,
 `docs/technical/error-handling.md`. This skill adds no behaviour.
 
 ## Modules on this stack
 
 | Module | Provides | Consumes | Guards |
 |---|---|---|---|
-| Reservations (LLD §1) | `ReservationService` (create/modify/cancel/no-show/calendar) | Pricing `CheckSellableCount`/`CheckRestrictions`/`QuotePrice`, Rooms `CheckRoomTypeSellability`, Guests `IdentifyGuest`/`GetBookingContext` | Overbooking guard in the create/modify transaction (`NFR-CON-1`) |
-| Rates (LLD §4) | `PricingService` (counts, restrictions, quotes, plan setup) | Cached inventory inputs + live calls; authoritative guard stays in Reservations | Quoted basis frozen at booking (BR-13) |
-| Reporting (LLD §7) | Read API (occupancy, revenue, daily sheet, housekeeping) over its own read model | All event families, idempotent apply by event id | Consumer offsets per subscription; as-of timestamp on every report |
+| Reservations (LLD [section 1](../../../docs/architecture/lld.md)) | `ReservationService` (create/modify/cancel/no-show/calendar) | Pricing `CheckSellableCount`/`CheckRestrictions`/`QuotePrice`, Rooms `CheckRoomTypeSellability`, Guests `IdentifyGuest`/`GetBookingContext` | Overbooking guard in the create/modify transaction (`NFR-CON-1`) |
+| Rates (LLD [section 4](../../../docs/architecture/lld.md)) | `PricingService` (counts, restrictions, quotes, plan setup) | Cached inventory inputs + live calls; authoritative guard stays in Reservations | Quoted basis frozen at booking (BR-13) |
+| Reporting (LLD [section 7](../../../docs/architecture/lld.md)) | Read API (occupancy, revenue, daily sheet, housekeeping) over its own read model | All event families, idempotent apply by event id | Consumer offsets per subscription; as-of timestamp on every report |
 
 ## Commands (run from the module directory, e.g. `services/reservations`)
 
@@ -33,7 +33,7 @@ Source of truth for behaviour: `docs/architecture/lld.md` (§§0, 1, 4,
 - Run: `go run ./cmd/server` (config via environment; values from `AdminService.GetHotelConfig` with cached offline-first fallback)
 
 Each module ships a `Dockerfile` and a README repeating these
-commands (LLD §9).
+commands (LLD [section 9](../../../docs/architecture/lld.md)).
 
 ## Layout
 
@@ -46,13 +46,13 @@ services/<module>/
     store/           SQL for this schema only — never another module's tables
     outbox/          same-transaction event writer + dispatcher relay hooks
     auth/            local token validation (HMAC signature + expiry, bounded revalidation)
-  migrations/        this schema's chain only: versioned up/down SQL pairs (schema.md §9)
+  migrations/        this schema's chain only: versioned up/down SQL pairs (schema.md section 9)
   contract-tests/    fixtures per provided/consumed operation, incl. refusal branches
   Dockerfile
   README             build/test/run commands
 ```
 
-## Conventions (LLD §0, binding on every module)
+## Conventions (LLD [section 0](../../../docs/architecture/lld.md), binding on every module)
 
 - Transport: synchronous calls are HTTP/JSON POST behind Nginx at
   `/v1/<contract-lowercase>/<Operation>` with a JSON body; the opaque
@@ -73,7 +73,7 @@ services/<module>/
 - Outbox: every state change other modules must see is written
   atomically with the change into the schema's `outbox` table; a
   dispatcher relays rows. No cross-schema reads, ever.
-- Config: read §3.1 values at startup via `GetHotelConfig`, apply
+- Config: read section 3.1 values at startup via `GetHotelConfig`, apply
   `ConfigChangedEvents` idempotently by event id afterwards, serve
   cached values when Admin is unreachable.
 
@@ -81,7 +81,7 @@ services/<module>/
 
 - Consumer fixtures: `contract-tests/` holds request/response pairs
   plus refusal cases generated from `contracts/` for every operation
-  this module provides or consumes (integration.md §9), including the
+  this module provides or consumes (integration.md [section 9](../../../docs/technical/integration.md)), including the
   `CONFLICT` refusal branches and the paired-concurrency guards run
   against the real store (`NFR-CON-1`).
 - Event checks: every emitted event validates against
@@ -94,11 +94,11 @@ services/<module>/
 - Versioning: additive changes bump minor (backward compatible);
   removals, renames, type changes, and new required fields are major
   with a deprecation window of at least one release (integration.md
-  §8).
+  section 8).
 
 ## Guard-writing guide (this stack)
 
-The Reservations overbooking guard (LLD §1, `NFR-CON-1`): the
+The Reservations overbooking guard (LLD [section 1](../../../docs/architecture/lld.md), `NFR-CON-1`): the
 create/modify transaction counts overlapping `confirmed` and
 `checked-in` rows for the type/dates (checked-in rows cover the
 in-house share, so the guard never reads another store) and inserts
@@ -123,7 +123,7 @@ tx.Commit()
 
 Reporting consumers: upsert read-model rows keyed by event id and
 advance `consumer_offsets` in the same transaction, so replays and
-restarts converge without duplicates (LLD §7).
+restarts converge without duplicates (LLD [section 7](../../../docs/architecture/lld.md)).
 
 ## How to add an endpoint + guard
 

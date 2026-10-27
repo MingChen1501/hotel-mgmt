@@ -70,7 +70,7 @@ proposals only.
 | Rooms | Inventory, housekeeping states, out-of-order blocks, room setup (`FR-RMS-*`) | Owns the room store: rooms, room types, status history, blocks; no other module writes it | `RoomInventoryService` (HTTP/gRPC); emits `RoomStateEvents` | Node.js/TypeScript service (~100–150 MB): shared runtime with Stay; dedicated schema in the shared engine |
 | Rates & Availability | Rate plans, availability counts, discounts, stay restrictions, price basis (`FR-RTE-*`) | Owns the pricing store: rate plans, restrictions, discount definitions, quoted price bases; no other module writes it | `PricingService` (HTTP/gRPC); emits `RateEvents` | Go service (~30–50 MB): quote latency for `NFR-PERF-1`; shares the Go toolchain; dedicated schema in the shared engine |
 | Guests | Profiles, preferences, repeat-guest flag, confirmations (`FR-GST-*`) | Owns the guest store: guest profiles, preferences, stay links; no other module writes it | `GuestService` (HTTP/gRPC); emits `GuestEvents` | Node.js/TypeScript service (~100–150 MB): CRUD fit; shared runtime; dedicated schema in the shared engine |
-| Billing | Folios, charges, payments, taxes/fees, day-close, settlement gate (`FR-BIL-*`) | Owns the folio store: folios, folio lines, payments, tax/fee rules, day-close totals; no other module writes it | `BillingService` (HTTP/gRPC); emits `FolioEvents` | Java 21 on Spring Boot, JVM mode (~350 MB RSS `estimate`): native `BigDecimal` money arithmetic in the team's main-stack framework; footprint math in `candidate-architectures.md` section 8; Quarkus JVM-slim is the named footprint fallback; a second Spring-context service is explicitly out on 2*4*50; dedicated schema in the shared engine |
+| Billing | Folios, charges, payments, taxes/fees, day-close, settlement gate (`FR-BIL-*`) | Owns the folio store: folios, folio lines, payments, tax/fee rules, day-close totals; no other module writes it | `BillingService` (HTTP/gRPC); emits `FolioEvents` | Java 21 on Spring Boot, JVM mode (~350 MB RSS `estimate`): native `BigDecimal` money arithmetic in the team's main-stack framework; footprint math in `candidate-architectures.md` [section 8](candidate-architectures.md); Quarkus JVM-slim is the named footprint fallback; a second Spring-context service is explicitly out on 2*4*50; dedicated schema in the shared engine |
 | Reporting | Occupancy, revenue, daily sheet, housekeeping reports (`FR-RPT-*`) | Owns the reporting read-model store, rebuilt from domain events; source records stay with their owning modules | `ReportingService` (HTTP read API) | Go service (~30–50 MB): event consumer + read API; no Python data stack needed at 50-room scale; own read-model schema in the shared engine |
 | Admin & Config | Hotel profile, users/roles, room/rate setup, export/backup, per-hotel customisation values (`FR-ADM-*`, `FR-CUS-*`) | Owns the config store: hotel profile, users, roles, custom field/policy definitions, backup records; no other module writes it | `AdminService` (HTTP/gRPC); emits `ConfigChangedEvents` | Node.js/TypeScript service (~100–150 MB): config CRUD + identity sessions; shared runtime; dedicated schema in the shared engine |
 
@@ -114,7 +114,7 @@ One property runs one instance: Nginx, one container per module,
 one shared database engine with one dedicated schema per module,
 and an on-premise backup target — all fitting a single 2*4*50
 host by default (per-module resource budget in
-`docs/architecture/system-architecture.md` section 3), with the
+`docs/architecture/system-architecture.md` [section 3](system-architecture.md)), with the
 small-cluster variant spreading the same components across 2–3
 such hosts. Detail — containers, stores, proxy, backup target,
 and the chain-ready non-MVP direction — lives in
@@ -187,7 +187,7 @@ as history and are not re-voted here; the acceptance answers live in
 Decision: ADR-0003 (accepted 2026-10-25) migrates the desk UI to
 Vue 3 + Vite, CSR-only, static `dist/` served by the existing
 Nginx. This section records the scaffold slice only (issue #291,
-follow-up 1 of the ADR-0003 §4 split plan): a placeholder shell
+follow-up 1 of the ADR-0003 section 4 split plan): a placeholder shell
 under `/app/` with no app routes. Real screen routes, the
 catalogue layer, and decommission of the old pages are later
 follow-ups and change nothing here.
@@ -208,7 +208,7 @@ Subsystem shape (parallel run throughout migration):
   the per-page copy-pasted token blocks; single 401-to-sign-out
   path; token persistence is `sessionStorage` (survives reload,
   dies with the tab — see the delta in
-  `docs/technical/security-threat-model.md` §4 and ADR-0003
+  `docs/technical/security-threat-model.md` [section 4](../technical/security-threat-model.md) and ADR-0003
   Consequences).
 - One new CI job (Node 22 + `npm ci` + build + test, matching the
   existing Node matrix) keeps the shell green; the change is
@@ -220,7 +220,7 @@ Subsystem shape (parallel run throughout migration):
 
 Flows with happy path + failure/rollback path (mermaid, with edge
 traces to the intended `app/` files the implementation PR must
-create) live in `docs/architecture/lld.md` §11: placeholder
+create) live in `docs/architecture/lld.md` [section 11](lld.md): placeholder
 render, shared-client 401-to-sign-out, and offline
 banner/manual retry (explicitly no write queueing — desk actions
 are synchronous authoritative ops, per ADR-0003 criterion 9).
@@ -235,9 +235,9 @@ Phase 1 UI contract (product-owner contract comment on #338,
 proposed tier T2 — reader-visible UI change, no behaviour change):
 the Vue desk under `/app/` becomes MVP-usable for a non-technical
 stand-in. The requirements delta lives in
-`docs/requirements/mvp-requirements.md` §8 (`FR-DSP-*`,
+`docs/requirements/mvp-requirements.md` [section 8](../requirements/mvp-requirements.md) (`FR-DSP-*`,
 `NFR-DSP-*`, landed via #344); the build-ready decomposition and
-per-flow diagrams live in `docs/architecture/lld.md` §12. This
+per-flow diagrams live in `docs/architecture/lld.md` [section 12](lld.md). This
 section records only the subsystem-boundary position.
 
 No new subsystem, no boundary change, no contract change:
@@ -246,7 +246,7 @@ No new subsystem, no boundary change, no contract change:
   `/app/book`, `/app/stay`, `/app/folio`, `/app/print`,
   `/app/admin` — router in `app/src/router.ts:21-62`) are the
   complete set; no screen or flow is added, removed, or renamed.
-  All module boundaries (§4), named contracts, and data-store
+  All module boundaries (section 4), named contracts, and data-store
   ownership statements stand unchanged.
 - Styled shell. One top-nav shell (Desk · Book · Stay · Folio ·
   Print · Admin, then the signed-in user name, then Sign out;
@@ -256,7 +256,7 @@ No new subsystem, no boundary change, no contract change:
   banner and manual retry stay exactly as they are
   (`app/src/App.vue:1-28`, `app/src/api/client.ts:44-83`).
 - Styling mechanism. PrimeVue is added as a dependency with a
-  stock preset theme fed by the contract §1 tokens (colours,
+  stock preset theme fed by the contract section 1 tokens (colours,
   type, spacing, 2px focus ring); no custom design system beyond
   the tokens. The only stylesheet that exists today (print
   isolation in `app/src/views/PrintView.vue:1106-1126` and

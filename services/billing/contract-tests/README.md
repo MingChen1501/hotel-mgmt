@@ -1,7 +1,7 @@
 # contract-tests (billing)
 
 Provider/consumer fixtures for `BillingService` land here with the persistence slice (issue #149), generated from `contracts/` per
-`docs/technical/integration.md` sections 3-4 (including the
+`docs/technical/integration.md` [sections 3-4](../../../docs/technical/integration.md) (including the
 `SETTLEMENT_REQUIRED` gate branch, the undefined-item
 `VALIDATION_FAILED` branch, and the `GetStayRef` read contract).
 The stay-flow slice (issue #150) adds the `RecordOpenBalanceApproval`

@@ -6,7 +6,7 @@ Status: active. Source page for the billing module (single source of truth; `ser
 
 Folios, charges, payments, taxes/fees, day-close, and the settlement gate. The one Spring-context service in the budget.
 
-Links: `docs/architecture/lld.md` section 6; `docs/requirements/sequence-diagrams.md` sections 9 (check-out), 10 (folio charge posting), 11 (settlement, receipt, approved open balance); FR-BIL-1..7; BR-17, BR-18, BR-21..BR-26.
+Links: `docs/architecture/lld.md` [section 6](../lld.md); `docs/requirements/sequence-diagrams.md` [sections 9](../../requirements/sequence-diagrams.md) (check-out), 10 (folio charge posting), 11 (settlement, receipt, approved open balance); FR-BIL-1..7; BR-17, BR-18, BR-21..BR-26.
 
 ## 2. Pattern and layers as-built
 
@@ -73,13 +73,13 @@ Rollback: none — each operation is a single validated write with the idempoten
 
 ## 5. Outbound dependencies
 
-None at runtime. Consumed by the desk loop: `GetFolioBalance` feeds the Stay check-out folio gate; `RunDayClose`/`GetDayClose` feed Reporting revenue via `folio.charge-posted` / `folio.payment-recorded` events; `ProduceInvoice`/`ProduceReceipt` present the folio/payment the stay close references. Money is exact (`BigDecimal` in memory, BIGINT minor units persisted). Hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (LLD section 0).
+None at runtime. Consumed by the desk loop: `GetFolioBalance` feeds the Stay check-out folio gate; `RunDayClose`/`GetDayClose` feed Reporting revenue via `folio.charge-posted` / `folio.payment-recorded` events; `ProduceInvoice`/`ProduceReceipt` present the folio/payment the stay close references. Money is exact (`BigDecimal` in memory, BIGINT minor units persisted). Hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (LLD [section 0](../lld.md)).
 
-See also: [deployment](../system-architecture.md) (§1), [C4 containers](../c4-containers.md), and [event flow](../event-flow.md) (this service's outbox emissions).
+See also: [deployment](../system-architecture.md) (section 1), [C4 containers](../c4-containers.md), and [event flow](../event-flow.md) (this service's outbox emissions).
 
 ## 6. Error mapping
 
-Envelope `{code, message, details, traceId}` (`web/ApiExceptionHandler.java:12-23`) to `docs/technical/error-handling.md` section 1. Constructors (`web/ApiException.java:33-42`):
+Envelope `{code, message, details, traceId}` (`web/ApiExceptionHandler.java:12-23`) to `docs/technical/error-handling.md` [section 1](../../technical/error-handling.md). Constructors (`web/ApiException.java:33-42`):
 
 | Code | Status | Raised when |
 |---|---|---|
@@ -128,7 +128,7 @@ Packaged:
 java -jar target/billing-*.jar
 ```
 
-Configuration via environment: `PORT` (default `8087`); `DATABASE_URL`/`DB_USER`/`DB_PASSWORD`; hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (see LLD section 0) and land in later slices. Money is exact (`BigDecimal` in memory, BIGINT minor units persisted) from the first charge slice on.
+Configuration via environment: `PORT` (default `8087`); `DATABASE_URL`/`DB_USER`/`DB_PASSWORD`; hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (see LLD [section 0](../lld.md)) and land in later slices. Money is exact (`BigDecimal` in memory, BIGINT minor units persisted) from the first charge slice on.
 
 Docker:
 

@@ -6,7 +6,7 @@ Status: active. Source page for the guests module (single source of truth; `serv
 
 Guest profiles, preferences and notes, the repeat-guest flag, the confirmation record, and stay-link ingestion from stay events.
 
-Links: `docs/architecture/lld.md` section 5; `docs/requirements/sequence-diagrams.md` sections 2 (creation carries the guest block), 6 (walk-in), 7 (check-in); FR-GST-1..4.
+Links: `docs/architecture/lld.md` [section 5](../lld.md); `docs/requirements/sequence-diagrams.md` [sections 2](../../requirements/sequence-diagrams.md) (creation carries the guest block), 6 (walk-in), 7 (check-in); FR-GST-1..4.
 
 ## 2. Pattern and layers as-built
 
@@ -42,7 +42,7 @@ Edge trace (every edge cites code):
 - C: required fields checked (`requireUuid`/`requireString`, `src/store.ts:48-55`); profile stored and returned (`src/store.ts:198-218`).
 - D: lookup by `guestId` first, then exact `fullName` match (`src/store.ts:220-223` via `findGuest` at :286-303).
 - E: profile returned with linked stays and the returning flag derived from the link count (`src/store.ts:235-242`).
-- F: `ProduceConfirmation` reads the stored record by `reservationRef` (`src/server.ts` via `src/store.ts` `produceConfirmation`); unknown refs refuse with `NOT_FOUND`. The key is the RES-side reservation ref (human `RSV-…` or UUID). The desk loop populates the store first through the `AttachReservation` route with the `GetReservation` read-back snapshot (LLD section 5; issue #323); the hotel block and the price currency ride along only once the Admin-backed hotel values land, so the record may omit them and the desk renders either shape.
+- F: `ProduceConfirmation` reads the stored record by `reservationRef` (`src/server.ts` via `src/store.ts` `produceConfirmation`); unknown refs refuse with `NOT_FOUND`. The key is the RES-side reservation ref (human `RSV-…` or UUID). The desk loop populates the store first through the `AttachReservation` route with the `GetReservation` read-back snapshot (LLD [section 5](../lld.md); issue #323); the hotel block and the price currency ride along only once the Admin-backed hotel values land, so the record may omit them and the desk renders either shape.
 
 ## 4. Failure/rollback flowchart
 
@@ -66,13 +66,13 @@ Rollback: none — reads are pure; upserts and link appends are single guarded s
 
 ## 5. Outbound dependencies
 
-None at runtime. Consumes `StayEvents` through `linkStay` ingestion (LLD section 5; FR-GST-1). The reservation snapshot behind the confirmation arrives over the `AttachReservation` route, sent by the desk loop from its `GetReservation` read-back (the RES-side guest block) — the service keeps no outbound RES reader. Supplies the guest block the desk carries into Reservations `Create`/`Modify` (including the hotel-mandatory `fullName` the reservations service enforces). `ProduceConfirmation` serves the stored confirmation record for a printed/emailed confirmation. Hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (LLD section 0).
+None at runtime. Consumes `StayEvents` through `linkStay` ingestion (LLD [section 5](../lld.md); FR-GST-1). The reservation snapshot behind the confirmation arrives over the `AttachReservation` route, sent by the desk loop from its `GetReservation` read-back (the RES-side guest block) — the service keeps no outbound RES reader. Supplies the guest block the desk carries into Reservations `Create`/`Modify` (including the hotel-mandatory `fullName` the reservations service enforces). `ProduceConfirmation` serves the stored confirmation record for a printed/emailed confirmation. Hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (LLD [section 0](../lld.md)).
 
-See also: [deployment](../system-architecture.md) (§1), [C4 containers](../c4-containers.md), and [event flow](../event-flow.md) (this service's outbox emissions).
+See also: [deployment](../system-architecture.md) (section 1), [C4 containers](../c4-containers.md), and [event flow](../event-flow.md) (this service's outbox emissions).
 
 ## 6. Error mapping
 
-Same shared Node envelope as Stay (`src/errors.ts`; `docs/technical/error-handling.md` section 1). Codes observed in `src/store.ts`:
+Same shared Node envelope as Stay (`src/errors.ts`; `docs/technical/error-handling.md` [section 1](../../technical/error-handling.md)). Codes observed in `src/store.ts`:
 
 | Code | Status | Raised when |
 |---|---|---|
@@ -116,7 +116,7 @@ Local watch (type-checks, runs, and restarts TypeScript directly):
 npm run dev
 ```
 
-Configuration via environment: `PORT` (default `8086`); hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (see LLD section 0) and land in later slices.
+Configuration via environment: `PORT` (default `8086`); hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (see LLD [section 0](../lld.md)) and land in later slices.
 
 Docker:
 

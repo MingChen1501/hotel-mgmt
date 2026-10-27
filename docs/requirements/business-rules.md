@@ -24,11 +24,11 @@ front-desk staff, manager, or owner account acting within its access
 
 | ID | Rule | Trace |
 |---|---|---|
-| BR-1 | A reservation exists in exactly one state at a time: confirmed, checked-in, closed, cancelled, or no-show. The order confirmed to checked-in to closed is never skipped or reordered. | FR-RES-1, FR-FDK-1, FR-FDK-2; state-machine.md; requirements §3.2 |
+| BR-1 | A reservation exists in exactly one state at a time: confirmed, checked-in, closed, cancelled, or no-show. The order confirmed to checked-in to closed is never skipped or reordered. | FR-RES-1, FR-FDK-1, FR-FDK-2; state-machine.md; requirements section 3.2 |
 | BR-2 | A reservation can be modified (dates, room type, or guest) only before check-in. Every modification recalculates the quoted price from the rate plan in force and records who made the change and when. | FR-RES-2; NFR-AUD-1; US-RES-2 |
-| BR-3 | A reservation can be cancelled only before check-in. Cancellation requires a reason from the hotel's own reason list; the reason is kept and the held availability is released for the cancelled dates. | FR-RES-3 (reason list, requirements §3.1); US-RES-3 |
+| BR-3 | A reservation can be cancelled only before check-in. Cancellation requires a reason from the hotel's own reason list; the reason is kept and the held availability is released for the cancelled dates. | FR-RES-3 (reason list, requirements section 3.1); US-RES-3 |
 | BR-4 | The hotel's own cancellation wording is the wording shown at booking, cancellation, and on the guest confirmation. | FR-CUS-2; FR-GST-4; PRD Journey A |
-| BR-5 | A reservation whose arrival date has passed without check-in can be marked no-show. Marking no-show follows the hotel's no-show rule (whether any charge is kept and which reason list applies), releases the held room for sale, and keeps the no-show in the reservation history. | FR-RES-6; requirements §3.1; US-RES-6 |
+| BR-5 | A reservation whose arrival date has passed without check-in can be marked no-show. Marking no-show follows the hotel's no-show rule (whether any charge is kept and which reason list applies), releases the held room for sale, and keeps the no-show in the reservation history. | FR-RES-6; requirements section 3.1; US-RES-6 |
 | BR-6 | A same-day walk-in creates a reservation in the confirmed state, ready for immediate check-in, and places it on today's arrivals list. | FR-RES-4; FR-FDK-5; US-RES-4 |
 | BR-7 | Whether the reservation reason is free text, a fixed list, or both is undecided. Until decided, a modification records the change and a cancellation requires a reason from the hotel's list. | OQ-2 (requirements section 5); FR-RES-2; FR-RES-3 |
 
@@ -55,7 +55,7 @@ front-desk staff, manager, or owner account acting within its access
 | ID | Rule | Trace |
 |---|---|---|
 | BR-16 | Check-in requires a vacant, clean, inspected room of the booked type. On check-in the reservation becomes an in-house stay linked to the room, and the room state becomes occupied. | FR-FDK-1; FR-RMS-2; US-FDK-1 |
-| BR-17 | Check-out with a non-zero folio balance is refused unless an authorised approval for the open balance is recorded against the folio. Whether approval is needed and which role may approve follows the hotel's open-balance rule. | FR-BIL-7; FR-FDK-2; requirements §3.1; US-BIL-7 |
+| BR-17 | Check-out with a non-zero folio balance is refused unless an authorised approval for the open balance is recorded against the folio. Whether approval is needed and which role may approve follows the hotel's open-balance rule. | FR-BIL-7; FR-FDK-2; requirements section 3.1; US-BIL-7 |
 | BR-18 | On check-out the stay is closed, the folio is presented as the final invoice, and the room state becomes vacant and dirty. | FR-FDK-2; FR-BIL-4; US-FDK-2 |
 | BR-19 | A guest can be moved to another vacant, clean, inspected room mid-stay. The stay links to the new room, the old room becomes vacant and dirty, and the move with both room numbers and its time is kept in the stay history. | FR-FDK-3; US-FDK-3 |
 | BR-20 | Actual arrival and departure times falling outside the hotel's standard times are recorded against the stay and stay visible on the arrivals and departures lists. The hotel's own check-in and check-out times are the ones shown and enforced. | FR-FDK-4; FR-CUS-2; FR-ADM-4; US-FDK-4 |
@@ -64,9 +64,9 @@ front-desk staff, manager, or owner account acting within its access
 
 | ID | Rule | Trace |
 |---|---|---|
-| BR-21 | Each stay has exactly one running folio collecting room charges and charge items. Folios cannot be split across payers in the MVP. | FR-BIL-1; requirements §3.2; US-BIL-1 |
+| BR-21 | Each stay has exactly one running folio collecting room charges and charge items. Folios cannot be split across payers in the MVP. | FR-BIL-1; requirements section 3.2; US-BIL-1 |
 | BR-22 | Only hotel-defined charge items can be posted to a folio. Each posted line shows the item, amount, and posting time, and increases the balance by the line amount. | FR-BIL-2; FR-CUS-3; US-BIL-2 |
-| BR-23 | Cash and card are the only payment methods. Each recorded payment shows method and time and decreases the balance by the paid amount. | FR-BIL-3; requirements §3.2; US-BIL-3 |
+| BR-23 | Cash and card are the only payment methods. Each recorded payment shows method and time and decreases the balance by the paid amount. | FR-BIL-3; requirements section 3.2; US-BIL-3 |
 | BR-24 | The printed invoice matches the folio lines and balance exactly; each receipt matches one recorded payment. | FR-BIL-4; US-BIL-4 |
 | BR-25 | Tax and fee amounts on folio lines derive from the hotel's tax and fee rules, and the balance includes them. | FR-BIL-5; US-BIL-5 |
 | BR-26 | Day-close produces the totals of charges and of payments per method for the business date, and the totals agree with the folios posted that day. Which totals must balance and who signs them off is undecided. | FR-BIL-6; OQ-3 (requirements section 5); US-BIL-6 |
@@ -86,7 +86,7 @@ front-desk staff, manager, or owner account acting within its access
 |---|---|---|
 | BR-31 | One record per guest carries details with every past and upcoming stay linked to it. Saved preferences and notes are shown before a new booking for that guest is confirmed. | FR-GST-1; FR-GST-2; US-GST-1; US-GST-2 |
 | BR-32 | A guest with at least one completed stay is flagged as returning at booking time, with the count of past stays visible. | FR-GST-3; US-GST-3 |
-| BR-33 | Which guest details are mandatory at booking and at check-in is set per hotel. Confirming a booking or check-in without a mandatory field is refused and the missing field is named. | FR-CUS-1; requirements §3.1; US-CUS-1 |
+| BR-33 | Which guest details are mandatory at booking and at check-in is set per hotel. Confirming a booking or check-in without a mandatory field is refused and the missing field is named. | FR-CUS-1; requirements section 3.1; US-CUS-1 |
 | BR-34 | Which guest fields, if any, the system must refuse to delete, and the legal minimum retention period if longer than the system floor, are undecided. | OQ-4 (requirements section 5); NFR-RET-1 |
 
 ## 8. Roles, audit, and data protection
@@ -107,7 +107,7 @@ front-desk staff, manager, or owner account acting within its access
 Per requirements section 3. Configurable items change through the
 hotel's settings with immediate effect and no code changes, each
 change recording who made it and when (`NFR-AUD-1`, requirements
-§3.3). Fixed items no hotel may change in the MVP.
+section 3.3). Fixed items no hotel may change in the MVP.
 
 | Part | Configurable (control) | Fixed |
 |---|---|---|

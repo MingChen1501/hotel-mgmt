@@ -41,7 +41,7 @@ start from the service doc, not the stub).
 
 Fastest path to a running desk loop on a dev machine:
 
-1. Run one module from its directory per its §7 Operations section
+1. Run one module from its directory per its section 7 (Operations)
    in `docs/architecture/services/<module>.md`.
 2. Run the full stack locally with `deploy/compose.yaml`
    (see `deploy/README.md` for the service map and start order).

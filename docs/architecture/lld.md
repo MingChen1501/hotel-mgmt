@@ -10,7 +10,7 @@ in `docs/requirements/mvp-requirements.md`, every payload field to an
 entry in `docs/requirements/data-dictionary.md`, every rule to
 `docs/requirements/business-rules.md` (BR-n), and every cross-module
 need to `docs/requirements/integration-contract-needs.md` (BA needs,
-§n below). Technical encodings decided here (transports, token
+section n below). Technical encodings decided here (transports, token
 mechanics, atomicity mechanisms, delivery guarantees) are the
 architect's answers to the BA open questions OQ-C1..OQ-C6; anything
 the FRs leave undecided is marked deferred with a reason.
@@ -45,13 +45,13 @@ the FRs leave undecided is marked deferred with a reason.
   `NFR-TZ-1`); hotel-local rendering is a presentation concern fed
   by the hotel timezone from config.
 - Money: BIGINT minor currency units, never floating point
-  (`api-spec.md` §1; Billing uses `BigDecimal`/exact decimal in
+  (`api-spec.md` [section 1](../technical/api-spec.md); Billing uses `BigDecimal`/exact decimal in
   memory and persists minor units).
 - Audit: every creation, change, state transition, charge, and
   payment persists actor + timestamp on the owning row
   (`NFR-AUD-1`, recording only); each module writes only its own
   audit columns.
-- Config: each module reads its §3.1 values at startup via
+- Config: each module reads its section 3.1 values at startup via
   `AdminService.GetHotelConfig` and applies `ConfigChangedEvents`
   afterwards; if Admin is unreachable a module serves from its last
   cached values (offline-first, `NFR-AVL-1`) and reconciles on
@@ -100,7 +100,7 @@ Outbound calls (consumer): `PricingService.CheckSellableCount`,
 `CheckRestrictions`, `QuotePrice`; `RoomInventoryService.
 CheckRoomTypeSellability`; `GuestService.IdentifyGuest`,
 `GetBookingContext` — all synchronous inside the booking step
-(BA needs §1).
+(BA needs section 1).
 
 Internal data flow (`CreateReservation`): validate token + role ->
 load hotel config values (mandatory guest fields, restrictions) ->
@@ -150,7 +150,7 @@ Outbound calls (consumer): `ReservationService.GetDueReservation`;
 `RecordActualTimes`(room side release on move/check-out);
 `GuestService.GetGuest`; `BillingService.GetFolioBalance`,
 `RequestCheckoutGate` — all synchronous inside desk steps (BA
-needs §§2–3).
+needs sections 2–3).
 
 Internal data flow (`CheckIn`): validate token + role -> fetch due
 reservation -> fetch guest (mandatory check-in fields) -> find/assign
@@ -229,7 +229,7 @@ later rate changes never alter it unless explicitly recalculated
 (BR-13). Availability counts exclude occupied, blocked, and
 already-reserved units (BR-9) and are computed from the pricing
 store's cached inventory inputs plus live calls — the authoritative
-guard stays in the Reservations store transaction (§1).
+guard stays in the Reservations store transaction (section 1).
 
 Outbox events (`RateEvents`): `rate-plan-changed`,
 `restriction-changed`, `discount-changed` — availability-count inputs
@@ -282,7 +282,7 @@ Interfaces (provider: `BillingService`):
 | `GetFolioBalance` | stayLink | folio with every charge/payment line + running balance | `NOT_FOUND` (must not happen — one folio per stay, BR-21) |
 | `RequestCheckoutGate` | — | — | NOT IMPLEMENTED (see D4 below): specified but never built; the settlement gate is enforced stay-side (`StayService.CheckOut` folio gate) fed by `GetFolioBalance` plus recorded approvals |
 | `PostCharge` | stayLink, item (nightly room charge or defined charge item), amount, idempotencyKey | folio line + new balance | `VALIDATION_FAILED` naming undefined item (`FR-CUS-3`, BR-22) |
-| `RecordPayment` | folioLink, method (cash|card — OQ-1 undecided, fixed until decided), amount, idempotencyKey | payment line + new balance | `VALIDATION_FAILED` (other methods, requirements §3.2) |
+| `RecordPayment` | folioLink, method (cash|card — OQ-1 undecided, fixed until decided), amount, idempotencyKey | payment line + new balance | `VALIDATION_FAILED` (other methods, requirements section 3.2) |
 | `ProduceInvoice` / `ProduceReceipt` | folioLink / paymentRef | printable record matching folio/payment exactly | `NOT_FOUND` |
 | `RunDayClose` | businessDate | totals of charges + payments per method | — (no sign-off step until OQ-3 decided, BR-26) |
 | `GetDayClose` | businessDate | stored day-close totals for the date | `NOT_FOUND` (no run for the date) |
@@ -291,7 +291,7 @@ Interfaces (provider: `BillingService`):
 | `RecordOpenBalanceApproval` | stayLink, approvedBy, role, reason? | folio with the recorded approval | `VALIDATION_FAILED` (missing approver/role) |
 
 Outbound calls (consumer): `StayService.GetStayRef` (synchronous
-read so every line matches its stay exactly, BA needs §3b).
+read so every line matches its stay exactly, BA needs section 3b).
 
 Internal data flow (`PostCharge`): validate token + role ->
 `GetStayRef` (stay in house) -> resolve item against hotel charge
@@ -308,7 +308,7 @@ methods for revenue Reporting.
 
 Error mapping: undefined charge item -> `VALIDATION_FAILED` naming
 the item (assigned here per the BA suggestion); non cash/card
-method -> `VALIDATION_FAILED` refusal (requirements §3.2, OQ-1
+method -> `VALIDATION_FAILED` refusal (requirements section 3.2, OQ-1
 pending); open balance without approval ->
 `SETTLEMENT_REQUIRED` (`FR-BIL-7`).
 
@@ -335,7 +335,7 @@ Internal data flow: event consumer subscribes to
 `ConfigChangedEvents` (hotel identity/times/wording for headers,
 `FR-ADM-1`) and upserts read-model tables idempotently by event id;
 reads serve from those tables only, never from other modules'
-stores (HLD §3). Report targets: 2 years of 50-room data within
+stores (HLD [section 3](hld.md)). Report targets: 2 years of 50-room data within
 5 seconds (`NFR-PERF-2`) via pre-aggregated daily tables.
 
 Outbox: none emitted (consumer only); maintains a consumer-offset
@@ -343,7 +343,7 @@ record per subscription for resume after restart.
 
 Error mapping: none refuse at the desk — a lagging feed degrades
 freshness (as-of timestamp shows it) but never blocks desk flows
-(BA needs §7).
+(BA needs section 7).
 
 ## 8. Admin & Config (Node.js/TypeScript)
 
@@ -357,8 +357,8 @@ Interfaces (provider: `AdminService`):
 
 | Operation | Request | Response | Errors |
 |---|---|---|---|
-| `GetHotelConfig` | — (startup read) | full §3.1 settings snapshot + schema version | — |
-| `UpdateHotelConfig` | changed §3.1 values | saved values + `ConfigChangedEvents` emitted | `VALIDATION_FAILED`, `FORBIDDEN` (role) |
+| `GetHotelConfig` | — (startup read) | full section 3.1 settings snapshot + schema version | — |
+| `UpdateHotelConfig` | changed section 3.1 values | saved values + `ConfigChangedEvents` emitted | `VALIDATION_FAILED`, `FORBIDDEN` (role) |
 | `CreateUser`, `UpdateUserRole`, `UnlockIdentity` | name, sign-in identity, role | account record | `FORBIDDEN`, `VALIDATION_FAILED` |
 | `SignIn`, `SignOut` | identity, secret | session token / end | `UNAUTHENTICATED` (wrong secret / expired), `IDENTITY_LOCKED` (locked) |
 | `ValidateSession` / `CheckRole` | token, required role | valid + role / refuse | `UNAUTHENTICATED` / `FORBIDDEN` |
@@ -368,7 +368,7 @@ Interfaces (provider: `AdminService`):
 Internal data flow (config update): validate role ->
 validate against the versioned configuration schema ->
 persist + audit (actor, timestamp) -> emit `ConfigChangedEvents`
-(describes §3.1 values; §3.2 fixed items are never emitted as
+(describes section 3.1 values; section 3.2 fixed items are never emitted as
 configurable). Sign-in: verify secret (rate-limited, 5-strike
 lockout), issue HMAC-signed token. Export: asynchronous job —
 request slices from each owning module as of the cut-timestamp,
@@ -404,14 +404,14 @@ services/
   reporting/           Go — module 7 (consumer + read API)
   admin/               Node.js/TS — module 8 (incl. identity component)
 contracts/             shared contract library (source of truth):
-  events/              JSON Schemas for 5 of the 7 domain event families (Guest and Folio schemas pending — code is the source for those two until they land; see `docs/architecture/event-flow.md` §2)
+  events/              JSON Schemas for 5 of the 7 domain event families (Guest and Folio schemas pending — code is the source for those two until they land; see `docs/architecture/event-flow.md` section 2)
   http/                per-contract operation shapes (requests/responses)
   openapi.yaml         curated desk-loop OpenAPI subset (14 ops transcribed from `http/` shapes; byte-identical mirror at `frontend/docs/openapi.yaml`, checked by `script/openapi-route-check.sh`)
   errors/              the shared error envelope + code catalogue
-  config-schema/       not landed as a `contracts/` tree — the versioned per-hotel configuration schema (§3.1) lives as-built at `deploy/config/schema.json`
+  config-schema/       not landed as a `contracts/` tree — the versioned per-hotel configuration schema (section 3.1) lives as-built at `deploy/config/schema.json`
   messages/            no `contracts/messages/` tree — the catalogue lives as-built as per-service catalogues (`services/*/messages*`; NFR-I18N-1, no behaviour in wording)
 frontend/              remainder static dir: `/docs` Swagger UI + byte-identical `docs/openapi.yaml` mirror (served by Nginx, no SSR runtime)
-app/                   Vue 3 + Vite CSR desk UI (ADR-0003, accepted 2026-10-25; legacy static pages decommissioned in #299): Vite `base '/app/'`, static `dist/` into the Nginx image, `location /app/` + `try_files` fallback to `/app/index.html`; old `.html` paths return 301 redirects to the matching `/app/` routes; scaffold design in §11 (Refs #291)
+app/                   Vue 3 + Vite CSR desk UI (ADR-0003, accepted 2026-10-25; legacy static pages decommissioned in #299): Vite `base '/app/'`, static `dist/` into the Nginx image, `location /app/` + `try_files` fallback to `/app/index.html`; old `.html` paths return 301 redirects to the matching `/app/` routes; scaffold design in section 11 (Refs #291)
 deploy/ansible/        offline packaging playbooks (release-manager owned; referenced, not added here)
 ```
 
@@ -440,10 +440,10 @@ Per-module directory (shape per stack, same obligations):
 - D1 — Conditional RES -> BIL operation for no-show charges (BA
   OQ-C6): no such operation exists in this LLD. Reason: the FRs do
   not decide whether a no-show keeps a charge (requirements OQ-1 /
-  no-show rule, §3.1), and one folio per stay is fixed with no stay
+  no-show rule, section 3.1), and one folio per stay is fixed with no stay
   for a no-show. Re-open when the product decision lands.
 - D2 — Full OpenAPI (or equivalent) authorship per service
-  (api-spec.md §3): still deferred to implementation slices; the
+  (api-spec.md [section 3](../technical/api-spec.md)): still deferred to implementation slices; the
   operation/payload tables here plus `contracts/` schemas are the
   frozen input to it. Landed since: the curated desk-loop subset
   only (`contracts/openapi.yaml`, 14 ops, #240) — not full
@@ -451,7 +451,7 @@ Per-module directory (shape per stack, same obligations):
 - D3 — gRPC adoption per pair: deferred optimisation; HTTP/JSON is
   the MVP transport and any move follows the versioning rules in
   `docs/technical/integration.md`.
-- D4 — Billing `RequestCheckoutGate`: specified in §6 above but
+- D4 — Billing `RequestCheckoutGate`: specified in section 6 above but
   never implemented (no code, no contract manifest as of master).
   Settlement is enforced stay-side instead: Stay `CheckOut` runs
   the folio gate against Billing `GetFolioBalance` plus the
@@ -459,14 +459,14 @@ Per-module directory (shape per stack, same obligations):
   with a product decision that needs a provider-side gate op.
 
 Coverage: 8/8 modules with responsibilities, signatures, data flow,
-outbox events, and error mapping; every BA contract need (§§1–7, §9
+outbox events, and error mapping; every BA contract need (sections 1–7, section 9
 error index) is encoded above or deferred here with reason.
 
 ## 11. Desk UI shell (`/app/`) — scaffold design (Refs #291)
 
 Scaffold slice of ADR-0003 (accepted 2026-10-25): the placeholder
 shell only. No app routes, no catalogue layer, no backend change.
-Subsystem boundary is in `docs/architecture/hld.md` §11; this
+Subsystem boundary is in `docs/architecture/hld.md` [section 11](hld.md); this
 section is the build-ready decomposition the implementation PR
 must follow, including the per-flow diagrams (happy path +
 failure/rollback path) the T3 gate requires.
@@ -501,7 +501,7 @@ Shared-client contract (`src/api/client.ts` + `src/stores/session.ts`):
 - Every API call carries `Authorization: Bearer <token>` from the
   session store; token persistence is `sessionStorage`
   (threat-model delta in
-  `docs/technical/security-threat-model.md` §4).
+  `docs/technical/security-threat-model.md` [section 4](../technical/security-threat-model.md)).
 - Any `401` / `UNAUTHENTICATED` response clears the store token
   and routes to sign-in — the single 401 path, replacing the
   former per-page copy-pasted blocks of the decommissioned
@@ -596,14 +596,14 @@ Edge trace:
   the five per-page handlers of the decommissioned static pages
   (#299); a revoked or
   expired token takes the same path (revocation re-checked per
-  LLD §0).
+  LLD section 0).
 - D–H: fetch rejection (LAN disconnect) is NOT treated as
-  sign-out; it drives the §11.3 banner and manual retry instead.
+  sign-out; it drives the section 11.3 banner and manual retry instead.
 
 Failure/rollback: no compensation — clearing the store token is
 a single local step; refusals precede any mutation, and the
 server-side session rules (15-minute idle sign-out, 5-minute
-revalidation bound, LLD §0) are unchanged.
+revalidation bound, LLD section 0) are unchanged.
 
 ### 11.3 Offline banner / manual-retry flowchart
 
@@ -644,13 +644,13 @@ image (without `/app/`) predates the desk UI entirely.
 Presentation-only slice of the approved Phase 1 UI contract (the
 `product-owner` contract comment on #338; proposed tier T2 —
 reader-visible UI change, no behaviour change). Subsystem boundary
-is in `docs/architecture/hld.md` §12; requirements delta is in
-`docs/requirements/mvp-requirements.md` §8 (`FR-DSP-*`,
+is in `docs/architecture/hld.md` [section 12](hld.md); requirements delta is in
+`docs/requirements/mvp-requirements.md` [section 8](../requirements/mvp-requirements.md) (`FR-DSP-*`,
 `NFR-DSP-*`, landed via #344). This section is the build-ready
 decomposition the Phase 2 implementation PR must follow, including
 the per-flow diagrams (happy path + failure/rollback path) the T2
 gate requires. No backend, API, contract, schema, or error-code
-change is specified anywhere in this section (see §12.4).
+change is specified anywhere in this section (see section 12.4).
 
 Intended tree deltas (files the Phase 2 implementation PR must
 touch or create; edge traces below cite the existing files):
@@ -658,16 +658,16 @@ touch or create; edge traces below cite the existing files):
 ```text
 app/
   package.json           add PrimeVue (+ preset theme) as a dependency; no other new runtime dep
-  src/main.ts            install PrimeVue + stock preset theme fed by the §12.1 tokens (extends :10-16)
+  src/main.ts            install PrimeVue + stock preset theme fed by the section 12.1 tokens (extends :10-16)
   src/App.vue            styled shell: top nav (six destinations + user + sign-out, active highlight),
                          centred content column, shell-owned sign-in gate; offline banner stays as-is (:1-28)
   src/router.ts          unchanged routes (the six paths + placeholder fallback stay exactly as at :21-62)
-  src/theme/tokens.ts    NEW: contract §1 tokens as preset-theme inputs (no custom design system)
-  src/views/*.vue        per-screen restyle onto the §12.2 component mapping; data-testid hooks kept;
+  src/theme/tokens.ts    NEW: contract section 1 tokens as preset-theme inputs (no custom design system)
+  src/views/*.vue        per-screen restyle onto the section 12.2 component mapping; data-testid hooks kept;
                          per-screen sign-in copies removed (moved to the shell gate); print <style> blocks kept
 ```
 
-### 12.1 Theme inputs (contract §1 tokens, PrimeVue preset only)
+### 12.1 Theme inputs (contract section 1 tokens, PrimeVue preset only)
 
 The stock preset theme is fed exactly these values; nothing else
 is a styling input. Money and dates render exactly as today
@@ -686,9 +686,9 @@ is a styling input. Money and dates render exactly as today
 
 ### 12.2 PrimeVue component mapping (per pattern, no ad-hoc markup)
 
-| Pattern (contract §3) | PrimeVue component | Applied to (existing SFCs) |
+| Pattern (contract section 3) | PrimeVue component | Applied to (existing SFCs) |
 |---|---|---|
-| Forms (book, charge, pay, admin setup) | `InputText`, `Dropdown`/`Select`, `Calendar`/`DatePicker`, `Password` for secrets, `Button` for submits | Book form hooks `book-guest-name` through `book-confirm` (`BookView.vue:86-227`); per-screen sign-in forms (removed to the gate, §12.6) |
+| Forms (book, charge, pay, admin setup) | `InputText`, `Dropdown`/`Select`, `Calendar`/`DatePicker`, `Password` for secrets, `Button` for submits | Book form hooks `book-guest-name` through `book-confirm` (`BookView.vue:86-227`); per-screen sign-in forms (removed to the gate, section 12.6) |
 | Lists (reservations, stays, folios, rooms, guests) | `DataTable` with `Column`, paginator on long lists | Arrivals table `desk-arrivals-table` (`DeskView.vue:110-120` and siblings per screen) |
 | Confirmations and destructive actions (cancel, check-out, day-close) | `Dialog` with explicit confirm/cancel buttons | Existing confirm buttons (e.g. `book-confirm` at `BookView.vue:218`) keep their hooks and call order |
 | Feedback (success, validation, refusal, error) | `Message`/`Toast` for page-level notes, inline field errors under the field | Existing alert hooks (`desk-signin-error`, `book-quote-error`, `book-confirm-error`, `desk-dashboard-error`) keep their hooks; wording becomes plain sentences per `FR-DSP-3` |
@@ -713,17 +713,17 @@ flowchart TD
 Edge trace (every edge cites code):
 
 - A–B: Nginx `location /app/` fallback serves `/app/index.html`
-  (LLD §11 edge C–E); `src/main.ts:10-16` installs Pinia, the
+  (LLD section 11 edge C–E); `src/main.ts:10-16` installs Pinia, the
   router, PrimeVue + preset theme (new), and the `$t` catalogue.
 - B–C: `src/router.ts:21-62` — the six paths resolve to their
   existing SFCs; unknown paths fall through to the placeholder
   (`:55-59`); no route is added, removed, or renamed.
 - C–D: `src/App.vue` gains the nav (extends the `:1-28` shell
   that today holds only the offline banner + `RouterView`
-  at `:26`); each item links its existing path in contract §2
+  at `:26`); each item links its existing path in contract section 2
   order (Desk · Book · Stay · Folio · Print · Admin).
 - D–E: active highlight is bold label + desk-blue underline
-  (`#1D4ED8`, §12.1) driven by the router's current route —
+  (`#1D4ED8`, section 12.1) driven by the router's current route —
   the stand-in always knows the current screen (`FR-DSP-1`).
 - F–G: screen SFCs render inside the centred column (max
   1100px, one plain-words page heading each); existing
@@ -741,10 +741,10 @@ flowchart TD
 
 Edge trace:
 
-- P–Q: router fallback (`src/router.ts:55-59`, LLD §11.1 edge
+- P–Q: router fallback (`src/router.ts:55-59`, LLD section 11.1 edge
   U–V); real 404 semantics stay a later screen concern.
 - R–S: preset-theme failure is a build/packaging defect —
-  rebuild `app/` and repack the image, same as LLD §11.1 S–T.
+  rebuild `app/` and repack the image, same as LLD section 11.1 S–T.
 - T–U: `FR-DSP-1` handoff (`router.test.ts:16`, per-view render
   suites) extended with nav + active-highlight assertions.
 
@@ -752,7 +752,7 @@ Edge trace:
 
 The shell owns the one sign-in form; per-screen sign-in copies
 are removed (behaviour — token mechanics, lockout, idle
-sign-out — is unchanged, LLD §0):
+sign-out — is unchanged, LLD section 0):
 
 ```mermaid
 flowchart TD
@@ -776,23 +776,23 @@ Edge trace:
   the per-view sign-in tests move to the gate without deleting
   coverage (`DeskView.test.ts:134,143,288,341` handoff).
 - C–E: `AdminService.SignIn` contract unchanged
-  (`docs/technical/integration.md` §6 C10); token persists in
+  (`docs/technical/integration.md` [section 6](../technical/integration.md) C10); token persists in
   `sessionStorage` (`src/stores/session.ts:12-43`, key at
   `:12`, survives reload, dies with the tab).
 - D–F–G: wrong-secret and locked-identity refusals keep their
-  codes (`UNAUTHENTICATED`, `IDENTITY_LOCKED` per LLD §0);
+  codes (`UNAUTHENTICATED`, `IDENTITY_LOCKED` per LLD section 0);
   only the wording becomes one plain sentence (`FR-DSP-3`).
 - H–I: sign-out clears the store token as today
   (`session.test.ts:8` handoff; `NFR-SEC-2` holds).
 - J–I: the single 401 path (`src/api/client.ts:89-162`,
-  LLD §11.2) is untouched — clear + route to sign-in; fetch
-  rejection still drives the offline banner (§11.3), never
+  LLD section 11.2) is untouched — clear + route to sign-in; fetch
+  rejection still drives the offline banner (section 11.3), never
   sign-out.
 
 Failure/rollback: no compensation — clearing the store token is
 a single local step; refusals precede any mutation; the
 server-side session rules (15-minute idle sign-out, 5-minute
-revalidation bound, LLD §0) are unchanged. Rollback is reverting
+revalidation bound, LLD section 0) are unchanged. Rollback is reverting
 the Phase 2 PR (per-screen copies return with it).
 
 ### 12.5 Representative form flow (book quote-then-confirm)
@@ -824,10 +824,10 @@ Edge trace:
 - B: quote hooks `book-quote` (`:187`), breakdown
   `book-quote-nights` (`:206`), total `book-quote-total`
   (`:214`); `PricingService.QuotePrice` contract unchanged
-  (integration §1 C1); later rate changes still never alter the
+  (integration [section 1](../technical/integration.md) C1); later rate changes still never alter the
   quoted basis (BR-13).
 - C–D: confirm `book-confirm` (`:218`); `ReservationService.
-  CreateReservation` contract unchanged (integration §1);
+  CreateReservation` contract unchanged (integration section 1);
   last-unit race still refuses the loser with `CONFLICT`
   (`NFR-CON-1` — condition unchanged, sentence plain).
 - D–E: result hooks `book-result`, `book-booking-reference`,
@@ -836,7 +836,7 @@ Edge trace:
 - D–F: every refusal keeps its code (`CONFLICT`,
   `STATE_ILLEGAL`, `VALIDATION_FAILED`,
   `SETTLEMENT_REQUIRED` on check-out) per
-  `docs/technical/error-handling.md` §§1–2; only the
+  `docs/technical/error-handling.md` [sections 1–2](../technical/error-handling.md); only the
   on-screen wording becomes one plain sentence naming the
   cause and the next step (`FR-DSP-3`).
 - G–H: loading names the affected region while the rest stays
@@ -844,31 +844,31 @@ Edge trace:
   (no double-charge from repeat taps).
 
 Failure/rollback: refusals precede mutation (nothing to
-compensate); a LAN disconnect mid-form drives the §11.3 banner
+compensate); a LAN disconnect mid-form drives the section 11.3 banner
 + manual retry (no queued writes). Rollback is reverting the
 Phase 2 PR; characterization tests are updated where markup
 changed, none deleted without replacement.
 
 ### 12.6 Technical no-change note (behaviour, APIs, contracts)
 
-Nothing in §12 changes behaviour, and the Phase 2
+Nothing in section 12 changes behaviour, and the Phase 2
 implementation PR must not change any of the following; each
 item names its guard so drift is reviewable:
 
 - Routes: the six `/app/` paths and the `/app/print/...`
   namespace stay exactly as routed (`src/router.ts:21-62`);
   Nginx `location /app/` fallback stays `/app/index.html`
-  (LLD §11); legacy redirects and `/docs` Swagger mirror stay
+  (LLD section 11); legacy redirects and `/docs` Swagger mirror stay
   intact (`FR-SHL-4`, `script/openapi-route-check.sh` green).
 - APIs and contracts: every desk call keeps its operation,
-  payload, and envelope (`docs/technical/api-spec.md` §§1–2,
-  `docs/technical/integration.md` §§1–6 C1–C11,
+  payload, and envelope (`docs/technical/api-spec.md` [sections 1–2](../technical/api-spec.md),
+  `docs/technical/integration.md` [sections 1–6](../technical/integration.md) C1–C11,
   `contracts/openapi.yaml` + `frontend/docs/openapi.yaml`
   byte-identical mirror — 14 ops, unchanged).
 - Error semantics: all codes and refusal conditions stand
-  (`docs/technical/error-handling.md` §§1–2, LLD §§1–8 error
+  (`docs/technical/error-handling.md` [sections 1–2](../technical/error-handling.md), LLD sections 1–8 error
   mappings); only on-screen wording becomes plain sentences.
-  Session rules (LLD §0: HMAC token, 5-minute revalidation,
+  Session rules (LLD section 0: HMAC token, 5-minute revalidation,
   15-minute idle sign-out, 5-strike lockout) are untouched.
 - Catalogue: every new plain-words sentence ships in
   `messages/en.json` and stays covered by
@@ -882,9 +882,9 @@ item names its guard so drift is reviewable:
 - Tests: `data-testid` hooks kept; characterization suites
   extended where markup changed; no test deleted without
   replacement (`FR-DSP-1..4` handoffs in
-  `mvp-requirements.md` §8.4 cite the on-disk guards).
+  `mvp-requirements.md` [section 8.4](../requirements/mvp-requirements.md) cite the on-disk guards).
 
-Out of scope (contract §6, restated as build constraints): no
+Out of scope (contract section 6, restated as build constraints): no
 new screens or flows; no Figma mockups; no marketing-grade
 visuals — the bar is MVP-usable, not pixel-perfect.
 
