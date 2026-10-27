@@ -11,8 +11,8 @@ end-to-end desk loop through the same contract path proven in
 through the proxy (`/app/*` routes, legacy-path redirects, and the
 backup-report line rendered in `DeskView`), plus the admin console
 reads. Each step states its expected observable up front (issue #316
-scope); deviations become bugs per `phase-6-qa-plan.md` [section 3,
-never](phase-6-qa-plan.md) inline fixes. No A3 re-pass here (separate issue, out of
+scope); deviations become bugs per `phase-6-qa-plan.md` [section 3](phase-6-qa-plan.md),
+never inline fixes. No A3 re-pass here (separate issue, out of
 scope per #316).
 
 ## 0. Build, seed, and environment facts

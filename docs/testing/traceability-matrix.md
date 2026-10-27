@@ -9,7 +9,7 @@ No FR/NFR may be marked complete while its guard cell reads TBD.
 The Coverage footer line below is the live count of filled rows.
 Levels L1–L5 are defined in `test-strategy.md`. LC contract coverage
 for touched seams is tracked via the per-module contract-check CI
-stage against `docs/technical/api-spec.md` [section 2, not](../technical/api-spec.md) in per-row
+stage against `docs/technical/api-spec.md` [section 2](../technical/api-spec.md), not in per-row
 Guard cells (see strategy section LC and exit criterion section 3.3).
 
 ## 1. Functional requirements (43)

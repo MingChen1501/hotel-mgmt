@@ -7,11 +7,11 @@
 #   tracked markdown file must resolve to an existing file (a
 #   `#anchor` or `?query` suffix is stripped before the check;
 #   file-level links only, per the issue decision).
-# - Bare section glyphs: no `§` reference may remain in tracked
+# - Bare section-sign glyphs: no section-sign reference may remain in tracked
 #   files. Two deliberate exceptions are allowlisted below and
 #   documented here, not silently skipped:
 #   - `frontend/docs/swagger-ui-bundle.js`: vendored third-party
-#     code (`p:"§"` in a Unicode symbol map), not a section ref.
+#     code (a section-sign entry in a Unicode symbol map), not a section ref.
 #   - The defensive `s/§.*$//` strip rule in
 #     `script/harness-conventions-check.sh` and its `template/`
 #     mirror: harness-owned (ai-engineer follow-up), left untouched.
