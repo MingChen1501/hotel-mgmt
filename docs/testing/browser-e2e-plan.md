@@ -158,7 +158,7 @@ already-covered row — no row flipped to TBD, no coverage count
 changed, and no FR/NFR may cite the browser suite as its *only*
 guard.
 
-| Flow | Additional browser guard (to be created by the implementation PR) | Existing row(s) it strengthens |
+| Flow | Landed browser guard | Existing row(s) it strengthens |
 |---|---|---|
 | Sign-in incl. wrong-secret + locked | `app/e2e/signin.spec.ts` | FR-ADM-2, NFR-SEC-2 |
 | Book with quote incl. refusals | `app/e2e/book.spec.ts` | FR-RES-1, FR-RTE-1/2/4/5, FR-CUS-1/2 |
