@@ -65,7 +65,9 @@ match.
 5. **Desk UI.** A clickable desk UI for the front-desk loop
    (program #248): book, check in, post a charge, check out, and
    print the receipt, plus arrivals and dirty-room visibility,
-   served as static pages through the existing proxy. Exit
+   delivered as a Vue 3 + Vite single-page app served under `/app/`
+   (ADR-0003, accepted 2026-10-25; legacy static pages
+   decommissioned per #313). Exit
    signal: a receptionist operates book-to-receipt on the screens
    alone and the UI is pilot-ready.
 6. **QA.** The QA track — test plans, issue reports, and bugs
