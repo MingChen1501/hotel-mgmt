@@ -1,6 +1,6 @@
 # Rates (Go)
 
-Rate plans, per-night prices, availability counts, discounts, and stay restrictions. Go service (`handler / store`, no service layer); module 4 per `docs/architecture/lld.md` section 4.
+Rate plans, per-night prices, availability counts, discounts, and stay restrictions. Go service (`handler / store`, no service layer); module 4 per `docs/architecture/lld.md` [section 4](../../docs/architecture/lld.md).
 
 Design and operations (single source of truth, no duplication here):
 

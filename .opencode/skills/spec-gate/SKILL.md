@@ -48,7 +48,7 @@ re-checks the tier as part of its verdict.
 Every T2/T3 change ships a per-flow implementation diagram before the
 implementation PR opens: one diagram per touched flow covering the happy
 path plus the failure/rollback path (mermaid `flowchart TD` with an edge
-trace citing code — `docs/architecture/services/rooms.md` §§3–4 is the
+trace citing code — `docs/architecture/services/rooms.md` [sections 3–4](../../../docs/architecture/services/rooms.md) is the
 established shape). The diagram source lives in `docs/` under the owning
 spec (HLD/LLD for T3, requirements or service design note for T2); code
 carries only thin refs (`file:line` pointers), never a pasted copy.

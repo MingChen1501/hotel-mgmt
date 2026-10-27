@@ -1,7 +1,7 @@
 // Guard for FR-SHL-1 (desk screen renders at /) + FR-SHL-3 (print
 // route implemented) + the admin console route (Refs #298) at
 // router level
-// (Refs #291, #293, #294, #295, #296, #297, #298, LLD §11.1). Served-shell halves
+// (Refs #291, #293, #294, #295, #296, #297, #298, LLD section 11.1). Served-shell halves
 // live in `script/shell-served-check.sh`.
 import { describe, expect, it } from 'vitest';
 import { createAppRouter } from './router';

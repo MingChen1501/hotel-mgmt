@@ -1,7 +1,7 @@
 # contract-tests (admin)
 
 Provider fixtures for `AdminService` (issues #112, #163), generated
-from `contracts/` per `docs/technical/integration.md` section 9: the
+from `contracts/` per `docs/technical/integration.md` [section 9](../../../docs/technical/integration.md): the
 `SignIn` happy path plus the `UNAUTHENTICATED` wrong-secret branch,
 the `GetHotelConfig` snapshot, `UpdateHotelConfig` plus its
 `FORBIDDEN` role branch, and `CreateUser` plus its duplicate

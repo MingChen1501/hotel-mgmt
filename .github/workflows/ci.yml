@@ -219,6 +219,9 @@ jobs:
       - name: Catalogue coverage (NFR-I18N-1, issue #192)
         run: script/catalogue-coverage-check.sh
 
+      - name: Markdown links resolve, no bare section glyphs (issue #378)
+        run: script/markdown-link-check.sh
+
       - name: Pre-flight fail-closed proof (issue #153, no docker needed)
         run: script/test-preflight-fail-closed.sh
 

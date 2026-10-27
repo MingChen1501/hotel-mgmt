@@ -4,7 +4,7 @@ Status: active (Closes #97). Owned by `architect`. Physical tables
 for the eight HLD modules on the one shared database engine
 (accepted default PostgreSQL; MySQL stays the named fallback —
 ADR-0001, accepted 2026-10-23). Every table traces to FRs and to a
-`docs/requirements/data-dictionary.md` entry (§n below); lifecycle
+`docs/requirements/data-dictionary.md` entry (section n below); lifecycle
 states follow `docs/architecture/state-machine.md`; audit columns
 satisfy `NFR-AUD-1` (recording only). Modules never share tables and
 never read another schema: cross-module needs travel only through the
@@ -22,18 +22,18 @@ Conventions (all schemas):
   history tables additionally keep the superseded values. No desk,
   manager, or owner operation updates or deletes audit entries.
 - Idempotency: provider operations that take an `idempotencyKey`
-  (LLD §1, §2, §6) persist it with a UNIQUE constraint and return
+  (LLD [section 1](../architecture/lld.md), section 2, section 6) persist it with a UNIQUE constraint and return
   the original result on repeat.
 - Outbox: each of the seven emitting schemas holds an `outbox`
   table (`id UUID PK`, `aggregate TEXT`, `event_type TEXT`,
   `payload JSONB`, `occurred_at TIMESTAMPTZ`, `dispatched_at
   TIMESTAMPTZ NULL`); rows are written in the same transaction as
-  the business change and relayed by the dispatcher (LLD §0).
+  the business change and relayed by the dispatcher (LLD [section 0](../architecture/lld.md)).
 - Retention: rows newer than the hotel's configured retention floor
   cannot be purged (`NFR-RET-1`); purge mechanics belong to a later
   operations slice, not to this schema.
 
-## 1. `reservations` schema (FR-RES-1..6; dictionary §1 Reservation)
+## 1. `reservations` schema (FR-RES-1..6; dictionary section 1 Reservation)
 
 `reservations` — one row per reservation.
 
@@ -61,11 +61,11 @@ Overbooking guard: the create/modify transaction counts overlapping
 `confirmed` and `checked-in` reservation rows for the type/dates
 (`checked-in` covers the in-house share, so no cross-schema read)
 and inserts only if capacity remains (`NFR-CON-1`; mechanism in LLD
-§1). No engine-level
+section 1). No engine-level
 exclusion constraint is assumed across the logical room-type
 reference; the atomic transaction is the guard.
 
-## 2. `stay` schema (FR-FDK-1..5; dictionary §2 Stay)
+## 2. `stay` schema (FR-FDK-1..5; dictionary section 2 Stay)
 
 `stays` — one row per in-house occupation.
 
@@ -83,14 +83,14 @@ reference; the atomic transaction is the guard.
 `from_room_id`, `to_room_id`, `moved_at`, actor, NOT NULL.
 
 `stay_room_assignment` guard: check-in/move assigns through the
-Rooms-schema atomic write (LLD §3); the stay row is inserted only
+Rooms-schema atomic write (LLD [section 3](../architecture/lld.md)); the stay row is inserted only
 after the assignment receipt returns (`NFR-CON-2`).
 
-## 3. `rooms` schema (FR-RMS-1..4, FR-ADM-3; dictionary §§8–9)
+## 3. `rooms` schema (FR-RMS-1..4, FR-ADM-3; dictionary sections 8–9)
 
 `room_types` — `id` UUID PK, `name` UNIQUE NOT NULL, `capacity`,
 `bed_type`, `features` (JSONB), audit columns. Co-edited by owner
-and manager through the same operations (LLD §0).
+and manager through the same operations (LLD [section 0](../architecture/lld.md)).
 
 `rooms` — `id` UUID PK, `number` UNIQUE NOT NULL, `room_type_id` FK
 -> room_types, `floor`, `bed_type`, `capacity`, `features` (JSONB),
@@ -101,7 +101,7 @@ audit columns.
 `room_status_history` — append-only (FR-RMS-2; NFR-AUD-1): `id` PK,
 `room_id` FK, `old_state`, `new_state`, actor + timestamp, NOT NULL.
 Transition legality (dirty -> clean -> inspected; out-of-order only
-from/to vacant) is enforced in module logic (LLD §3), recorded here.
+from/to vacant) is enforced in module logic (LLD [section 3](../architecture/lld.md)), recorded here.
 
 `room_blocks` — out-of-order ranges (FR-RMS-3): `id` PK, `room_id`
 FK, `date_from`, `date_to` (DATE, NOT NULL, `CHECK (date_to >=
@@ -109,7 +109,7 @@ date_from)`), `reason` NOT NULL, actor + timestamp. UNIQUE guard
 against fully overlapping duplicate ranges per room is enforced in
 module logic at block time.
 
-## 4. `rates` schema (FR-RTE-1..5; dictionary §§9, 11)
+## 4. `rates` schema (FR-RTE-1..5; dictionary sections 9, 11)
 
 `rate_plans` — `id` UUID PK, `name` UNIQUE NOT NULL, `description`,
 audit columns.
@@ -127,7 +127,7 @@ BOOLEAN NOT NULL DEFAULT FALSE`, audit columns.
 `name` UNIQUE NOT NULL, `kind` TEXT CHECK (`'percent'`/`'amount'`),
 `value_minor` BIGINT NOT NULL, audit columns.
 
-## 5. `guests` schema (FR-GST-1..4; dictionary §10)
+## 5. `guests` schema (FR-GST-1..4; dictionary section 10)
 
 `guests` — one row per guest: `id` UUID PK, identifying details
 (`full_name` NOT NULL + contact columns; which are mandatory is
@@ -143,7 +143,7 @@ UNIQUE (`guest_id`, `stay_id`).
 Confirmations (FR-GST-4) are produced from reservation + hotel data
 at request time and are not stored rows.
 
-## 6. `billing` schema (FR-BIL-1..7; dictionary §§3–7)
+## 6. `billing` schema (FR-BIL-1..7; dictionary sections 3–7)
 
 `folios` — exactly one per stay (BR-21): `id` UUID PK, `stay_id`
 UUID NOT NULL UNIQUE (logical ref), `balance_minor` BIGINT NOT NULL
@@ -172,7 +172,7 @@ NOT NULL, `charges_total_minor`, `payments_by_method` JSONB NOT
 NULL, `run_at`, actor. Totals must agree with folio lines of the
 date (BR-26); no sign-off columns until OQ-3 is decided.
 
-`idempotency_keys` — as in §1 (charge/payment exactly-once).
+`idempotency_keys` — as in section 1 (charge/payment exactly-once).
 
 Invoices/receipts (FR-BIL-4) are presentations of folio/payment
 rows, not stored rows.
@@ -194,31 +194,31 @@ shows its freshness (OQ-C1 answer).
   needs-work flag (FR-RPT-4; inspected and out-of-order excluded
   from the work list in the serving query).
 - `consumer_offsets` — (`subscription` TEXT PK, `last_event_id`,
-  `last_applied_at`) for resume after restart (LLD §7).
+  `last_applied_at`) for resume after restart (LLD [section 7](../architecture/lld.md)).
 
 No FKs point outside this schema; the read model never reads other
-schemas directly (HLD §3).
+schemas directly (HLD [section 3](../architecture/hld.md)).
 
-## 8. `admin` schema (FR-ADM-1..5, FR-CUS-1..3; dictionary §§12–13)
+## 8. `admin` schema (FR-ADM-1..5, FR-CUS-1..3; dictionary sections 12–13)
 
 `hotel_profile` — single row: `id` PK (fixed singleton guard in
 logic), identity, contact, local settings (timezone, standard
 times, retention floor), cancellation wording + reason lists,
-no-show rule, approval rule (FR-ADM-1; requirements §3.1).
+no-show rule, approval rule (FR-ADM-1; requirements section 3.1).
 
 `users` — `id` UUID PK, `display_name`, `signin_identity` UNIQUE
 NOT NULL, `secret_hash` NOT NULL (never plaintext), `role` TEXT
 CHECK (`'owner'`,`'manager'`,`'front-desk'`) NOT NULL (FR-ADM-2;
-requirements §3.2 fixes the three roles), `locked_until`
+requirements section 3.2 fixes the three roles), `locked_until`
 TIMESTAMPTZ NULL (5-strike lockout, NFR-SEC-2), audit columns.
 
 `sessions` — `token_id` UUID PK, `user_id` FK, `issued_at`,
 `last_activity_at`, `expires_at`, `revoked` BOOLEAN (15-minute
-idle + revocation for LLD §0 token mechanics).
+idle + revocation for LLD [section 0](../architecture/lld.md) token mechanics).
 
-`hotel_config_values` — the §3.1 set as versioned rows:
+`hotel_config_values` — the section 3.1 set as versioned rows:
 (`config_key` TEXT PK, `value` JSONB, `schema_version`, updated by
-+ at). Fixed §3.2 items never appear here.
++ at). Fixed section 3.2 items never appear here.
 
 `backup_runs` — (FR-ADM-5; NFR-BKP-2): `id` PK, `started_at`,
 `finished_at`, `cut_timestamp`, `manifest` JSONB (per-module slice
@@ -251,8 +251,8 @@ owner/manager with time.
   rooms — no hotel values, no credentials) — hotel values enter
   through Admin config operations, never through value seeds.
 
-Traceability: every dictionary entry (§§1–13) has its tables
-above; every FR's stored data has a row home; the fixed §3.2 items
+Traceability: every dictionary entry (sections 1–13) has its tables
+above; every FR's stored data has a row home; the fixed section 3.2 items
 (shape of the lifecycle, one folio per stay, three roles, cash/card)
 appear as CHECK constraints and singletons, never as editable
 config.

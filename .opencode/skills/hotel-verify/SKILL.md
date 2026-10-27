@@ -23,7 +23,7 @@ PostgreSQL engine. Per-stack CI is live in
   (Go), `node-module` (Node.js/TypeScript), `spring-module`
   (Spring Boot).
 - Docs are the single source of truth: concrete build/test/run
-  commands live in each `docs/architecture/services/*.md` (§7
+  commands live in each `docs/architecture/services/*.md` (section 7
   Operations); each `services/*/README.md` is a thin stub linking
   there, never the authority. If a service README and its design
   note disagree, the design note wins — file the README drift as a

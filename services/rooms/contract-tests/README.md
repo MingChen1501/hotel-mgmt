@@ -1,7 +1,7 @@
 # contract-tests (rooms)
 
 Provider fixtures for `RoomInventoryService` (issue #112), generated
-from `contracts/` per `docs/technical/integration.md` section 9:
+from `contracts/` per `docs/technical/integration.md` [section 9](../../../docs/technical/integration.md):
 setup (`UpsertRoomType`, `UpsertRoom` plus the unknown-type
 `NOT_FOUND` branch, `ListRoomTypes` plus the empty-store case for
 the desk type catalogue in issue #372), housekeeping transitions (`UpdateRoomState`

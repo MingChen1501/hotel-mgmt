@@ -1,4 +1,4 @@
-// Loopback-only network guard (issue #337, plan §4.3).
+// Loopback-only network guard (issue #337, plan section 4.3).
 //
 // The lab runs on an offline LAN: at test time nothing may be fetched
 // from a CDN. Every spec installs this guard in `beforeEach` and

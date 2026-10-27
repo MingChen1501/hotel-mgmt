@@ -11,7 +11,7 @@ end-to-end desk loop through the same contract path proven in
 through the proxy (`/app/*` routes, legacy-path redirects, and the
 backup-report line rendered in `DeskView`), plus the admin console
 reads. Each step states its expected observable up front (issue #316
-scope); deviations become bugs per `phase-6-qa-plan.md` section 3,
+scope); deviations become bugs per `phase-6-qa-plan.md` [section 3](phase-6-qa-plan.md),
 never inline fixes. No A3 re-pass here (separate issue, out of
 scope per #316).
 
@@ -65,7 +65,7 @@ All pages fetched from the live stack at `http://127.0.0.1/<route>`
 after the loop completed (stack still up, `--keep-up`). The SPA is
 CSR: every app route serves the same `dist/index.html` shell by
 design (history-mode fallback `try_files … /app/index.html`, LLD
-§11.1); per-view rendering is proven client-side by the
+section 11.1); per-view rendering is proven client-side by the
 characterization suite (`app-build` green, section 3). Legacy static
 pages are decommissioned (#313): the old paths 301-redirect to their
 `/app/*` equivalents.

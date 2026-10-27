@@ -1,4 +1,4 @@
-// Browser stay flow (plan §1 flow 3, #338 M6).
+// Browser stay flow (plan section 1 flow 3, #338 M6).
 //
 // Arrival pick, check-in, mid-stay move, time recording, and
 // check-out behind the folio gate: the open-balance refusal reads

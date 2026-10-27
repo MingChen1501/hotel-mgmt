@@ -6,7 +6,7 @@ strategies with trade-offs so the owner can choose. It decides
 nothing: ADR-0001
 (`docs/architecture/decisions/adr-0001-monorepo-polyglot.md`) stays
 `proposed`, module boundaries stay as defined in
-`docs/architecture/hld.md` section 4, and no technology named here is
+`docs/architecture/hld.md` [section 4](hld.md), and no technology named here is
 locked in — every example stack is marked `proposed` and serves as
 illustration only.
 
@@ -58,7 +58,7 @@ what each candidate will demand from it.
 
 ## 1. What is fixed regardless of candidate
 
-- Eight modules with the HLD section 4 responsibilities and the named
+- Eight modules with the HLD [section 4](hld.md) responsibilities and the named
   contracts in `docs/technical/api-spec.md` (`ReservationService`,
   `StayService`, `RoomInventoryService`, `PricingService`,
   `GuestService`, `BillingService`, `ReportingService`,
@@ -115,7 +115,7 @@ the named footprint fallback and Billing-on-Go the named
 revert if the Spring measurement misses (see OQ-C10).
 
 Data ownership: one logical store per module on the database host(s);
-each module connects only to its own store (HLD section 4, ERD
+each module connects only to its own store (HLD [section 4](hld.md), ERD
 ownership notes). Cross-module reads go through the named contracts;
 the Reporting read model subscribes to domain events. Minimal-subset
 data picks (all `proposed`):
@@ -152,7 +152,7 @@ install time; mini-K8s (k3s-class) is NOT in the default path —
 plain containers via Ansible, with k3s only as the cluster-variant
 option the owner confirms (open question OQ-C6). The full
 per-component RAM/vCPU/disk budget that sums within one host lives
-in `docs/architecture/system-architecture.md` section 3.
+in `docs/architecture/system-architecture.md` [section 3](system-architecture.md).
 
 Monitoring and network (all `proposed`, all owner-listed tooling):
 
@@ -300,7 +300,7 @@ The constraint is identical for all candidates: no code forks — the
 release bundle is identical for every property and each hotel's
 differences are carried in a versioned per-hotel configuration set
 applied at install and re-applied at upgrade
-(`docs/devops/deployment.md` section 2; requirements section 3.1 vs
+(`docs/devops/deployment.md` [section 2](../devops/deployment.md); requirements section 3.1 vs
 3.2). What differs is how configuration is stored, distributed, and
 enforced.
 
@@ -383,7 +383,7 @@ alongside the default) so L5 config-matrix checks run continuously:
 each customisable item in requirements section 3.1 is exercised in
 at least two distinct setups and the desk is re-exercised. The
 delivery team rehearses the deployment handover check
-(`docs/devops/deployment.md` section 3 step 6: hotel name, times,
+(`docs/devops/deployment.md` [section 3](../devops/deployment.md) step 6: hotel name, times,
 charge items, one rate plan, one end-to-end test reservation) on
 every release candidate, not only at first sale.
 
@@ -504,14 +504,14 @@ ADR-0001 stays `proposed` until the owner accepts it.
 ## 9. Open questions for the owner
 
 Resolution note (ADR-0001 accepted 2026-10-23; annotation mirroring
-§11): OQ-C1..OQ-C10 are ANSWERED — C1 minimal-subset rule (accepted
-mapping, §§8/10), C2 skeleton scope (§6.1, plan §3), C3 host reading
+section 11): OQ-C1..OQ-C10 are ANSWERED — C1 minimal-subset rule (accepted
+mapping, sections 8/10), C2 skeleton scope (section 6.1, plan section 3), C3 host reading
 (ADR-0001 OQ-A3), C4 chain direction (ADR-0001 OQ-A4), C5 contract
-style (LLD §0, integration §0), C6 plain-container cluster plumbing,
+style (LLD [section 0](lld.md), integration [section 0](../technical/integration.md)), C6 plain-container cluster plumbing,
 C7 Kafka exclusion, C8 PostgreSQL default, C9 static-SPA frontend,
-C10 Billing-on-Spring placement (§8). OQ-C11 (FastAPI Reporting
+C10 Billing-on-Spring placement (section 8). OQ-C11 (FastAPI Reporting
 fallback confirmation) and OQ-C12 (measurement-spike authorisation)
-stay OPEN — §10 sizes the fallbacks and the spike replaces the
+stay OPEN — section 10 sizes the fallbacks and the spike replaces the
 planning estimates with measurements. The question wordings below
 are kept as history.
 
@@ -530,7 +530,7 @@ are kept as history.
   chain-readiness should weigh now)?
 - OQ-C5 — Contract style: synchronous calls, asynchronous events,
   or per-pair choice (open point in `docs/technical/api-spec.md`
-  section 3; the skeleton in section 6.1 should prove the chosen
+  [section 3](../technical/api-spec.md); the skeleton in section 6.1 should prove the chosen
   style first)?
 - OQ-C6 — Cluster plumbing: plain containers via Ansible on each
   host, or mini-K8s (k3s-class) once more than one host is used
@@ -569,7 +569,7 @@ single host default). The language pool (Java / Python / Node.js /
 Go / Rust) already permits both; the question answered here is
 footprint, not permission. This section revises the proposal with
 numbers; it never decides — ADR-0001 stays `proposed`, module
-boundaries stay as in HLD section 4, and no FR/NFR changes.
+boundaries stay as in HLD [section 4](hld.md), and no FR/NFR changes.
 
 All figures below are steady-state RSS per component on the
 default single host unless stated otherwise. Measured figures
@@ -695,7 +695,7 @@ from the planning figures above and in section 8.
 Small-cluster variant: none of the FITS rows need it — every
 Java-light + Python-light combination inside the caps holds the
 single-host default with burst margin. The cluster variant
-(unchanged, `system-architecture.md` section 1) stays available
+(unchanged, `system-architecture.md` [section 1](system-architecture.md)) stays available
 for growth or for any module that later proves the estimates
 wrong via the OQ-C12 spike; it is not required by this analysis.
 

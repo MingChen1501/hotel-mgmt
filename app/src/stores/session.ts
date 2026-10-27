@@ -1,14 +1,14 @@
 // Pinia session store for the /app/ migration shell
-// (Refs #291, LLD §11 shared-client contract, ADR-0003).
+// (Refs #291, LLD section 11 shared-client contract, ADR-0003).
 //
 // One shared store replaces the former per-page copy-pasted token
 // blocks (deleted with the legacy static pages in #299:
 // `frontend/desk.html`, `book.html`, `admin.html`). The token lives
 // in `sessionStorage`: it survives a tab reload and dies with the
 // tab (threat-model delta in
-// `docs/technical/security-threat-model.md` §4).
+// `docs/technical/security-threat-model.md` section 4).
 //
-// Desk styling pass (Refs #338, LLD §12.4): the shell owns the one
+// Desk styling pass (Refs #338, LLD section 12.4): the shell owns the one
 // sign-in gate, so the store also carries the signed-in display
 // name and role the shell nav shows (persisted beside the token so
 // a reload restores them together) plus a transient sign-out
@@ -82,7 +82,7 @@ export const useSessionStore = defineStore('session', {
       clearStored(SESSION_NAME_KEY);
       clearStored(SESSION_ROLE_KEY);
     },
-    // The single 401 path (LLD §11.2): clear the session like a
+    // The single 401 path (LLD section 11.2): clear the session like a
     // sign-out, but leave the session-expired notice so the shell
     // gate can say what happened in plain words.
     expireSession(): void {

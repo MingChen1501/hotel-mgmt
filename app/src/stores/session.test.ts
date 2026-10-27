@@ -1,6 +1,6 @@
 // Guard for the FR-SHL-2 session half: the token persists in
 // `sessionStorage` (survives reload, dies with the tab) and is the
-// single source the shared client reads (Refs #291, LLD §11.2).
+// single source the shared client reads (Refs #291, LLD section 11.2).
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { SESSION_TOKEN_KEY, useSessionStore } from './session';

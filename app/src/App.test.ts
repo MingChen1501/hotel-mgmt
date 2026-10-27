@@ -1,6 +1,6 @@
 // Guard for NFR-SHL-3 at shell level: the offline banner names
 // the disconnect, offers a safe manual retry, and no desk write is
-// queued (Refs #291, LLD §11.3).
+// queued (Refs #291, LLD section 11.3).
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { mount } from '@vue/test-utils';
@@ -74,7 +74,7 @@ describe('shell offline banner', () => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
       await wrapper.find('[data-testid="offline-retry"]').trigger('click');
       // A successful manual retry clears the offline state, which
-      // hides the banner (LLD §11.3 H–I): there is no result line
+      // hides the banner (LLD section 11.3 H–I): there is no result line
       // left to read, so assert the cleared state instead.
       await vi.waitFor(() => {
         expect(wrapper.find('[data-testid="offline-banner"]').exists()).toBe(false);
@@ -98,7 +98,7 @@ describe('shell offline banner', () => {
         apiFetch('/v1/billing/PostCharge', { method: 'POST', body: '{}' }),
       ).rejects.toMatchObject({ code: 'OFFLINE' });
       await wrapper.find('[data-testid="offline-retry"]').trigger('click');
-      // LLD §11.3 edge H–C: a retry that still fails returns to the
+      // LLD section 11.3 edge H–C: a retry that still fails returns to the
       // blocked banner with the reason shown.
       await vi.waitFor(() => {
         expect(wrapper.find('[data-testid="offline-retry-result"]').text()).toContain(
@@ -115,7 +115,7 @@ describe('shell offline banner', () => {
 });
 
 // Shell navigation + single sign-in gate (Refs #338, FR-DSP-1,
-// FR-DSP-2, LLD §12.3–§12.4). The per-screen sign-in round trips
+// FR-DSP-2, LLD section 12.3–section 12.4). The per-screen sign-in round trips
 // moved here from the six view suites: the shell owns the one
 // sign-in form, the top nav, and sign-out.
 describe('shell navigation', () => {

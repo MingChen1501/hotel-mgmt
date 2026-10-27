@@ -3,7 +3,7 @@
 The release bundle is identical for every property; the hotel's
 differences are carried in a per-hotel configuration set applied at
 install time and re-applied at every upgrade (see
-`docs/devops/deployment.md` section 2). This directory holds the
+`docs/devops/deployment.md` [section 2](../../docs/devops/deployment.md)). This directory holds the
 example set plus the release bundle's configuration schema:
 
 - `hotel.example.json` — example values for every section-2
@@ -62,5 +62,5 @@ NFR-DEP-1).
 Secrets are never stored here and never in plaintext inside the
 bundle. The first secrets for the three role accounts
 (owner/manager/front-desk) are provisioned per the handover step in
-deployment.md section 2: one unique initial secret per account,
+deployment.md [section 2](../../docs/devops/deployment.md): one unique initial secret per account,
 handed over one-to-one, changed on first sign-in.

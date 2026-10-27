@@ -35,7 +35,7 @@ Conventions:
   `SETTLEMENT_REQUIRED`); this document names which code applies to
   which refusal and what the `details` must name, but defines no new
   codes.
-- Per-hotel config values are the requirements §3.1 items that must
+- Per-hotel config values are the requirements section 3.1 items that must
   be visible wherever the pair's operations enforce them; storage and
   distribution mechanics are for the `architect`.
 - Sync/async is a requirements-side recommendation (immediacy the
@@ -229,7 +229,7 @@ Error cases:
   `NOT_FOUND` (FR-BIL-1; BR-21).
 
 Per-hotel config: whether approval is needed and which role may
-approve (FR-BIL-7; requirements §3.1).
+approve (FR-BIL-7; requirements section 3.1).
 
 ### 3b. BIL -> STAY (`StayService`)
 
@@ -286,7 +286,7 @@ Error cases:
   suggestion: `VALIDATION_FAILED`; final code choice belongs to the
   `architect` against `docs/technical/error-handling.md`.
 - Payment method other than cash or card: refusal (FR-BIL-3;
-  requirements §3.2; BR-23) pending OQ-1.
+  requirements section 3.2; BR-23) pending OQ-1.
 - Day-close sign-off and balancing rules: undecided (OQ-3); until
   decided, totals without a sign-off step (BR-26).
 
@@ -335,7 +335,7 @@ configurable (Seq-14; BR-28).
 ## 6. Configuration and identity (ADM -> all consumers)
 
 Hotel setup, users/roles, per-hotel customisation, export/backup
-(Seq-14, UC-11, UC-12; BR-33..BR-42; requirements §3.1–§3.3).
+(Seq-14, UC-11, UC-12; BR-33..BR-42; requirements section 3.1–section 3.3).
 
 ### 6a. Config distribution (`AdminService` -> RES, STAY, RATE, BIL, GST, ROOM)
 
@@ -347,18 +347,18 @@ Operations needed:
   cancellation wording and reason lists; no-show rule; open-balance
   approval rule; tax and fee rules. Payload fields per the Hotel
   entry (Hotel: FR-ADM-1, FR-CUS-1, FR-CUS-2, FR-BIL-5, FR-BIL-7).
-- `ConfigChangedEvents` — async notification of any §3.1 change so
+- `ConfigChangedEvents` — async notification of any section 3.1 change so
   the desk works with the new setup at once with no restart and no
-  technical assistance (requirements §3.3).
+  technical assistance (requirements section 3.3).
 
 Sync/async recommendation: synchronous read at startup plus
 asynchronous change events afterwards. Reason: owning modules must
 enforce current config inside live desk steps (refusals name the
 missing field, restriction, or wording — FR-CUS-1, FR-RTE-4), so
 they need the values locally; but owner/manager edits apply at once
-(requirements §3.3), so changes must propagate without restart.
+(requirements section 3.3), so changes must propagate without restart.
 
-Per-hotel config travelling here (the full §3.1 set): required
+Per-hotel config travelling here (the full section 3.1 set): required
 guest fields (FR-CUS-1); standard times (FR-CUS-2, FR-ADM-4);
 cancellation reasons and wording (FR-RES-3, FR-CUS-2); no-show rule
 (FR-RES-6); open-balance approval rule (FR-BIL-7); charge items
@@ -366,7 +366,7 @@ cancellation reasons and wording (FR-RES-3, FR-CUS-2); no-show rule
 discounts (FR-RTE-3); retention floor (NFR-RET-1, FR-ADM-1).
 
 Fixed items that must NOT travel as configurable (requirements
-§3.2): lifecycle order; one folio per stay; one property per
+section 3.2): lifecycle order; one folio per stay; one property per
 installation; the three roles; no event-driven automation; cash and
 card only.
 
@@ -433,7 +433,7 @@ Operations needed (RPT consumes; owning modules emit):
 Sync/async recommendation: asynchronous domain events into RPT's
 own read model; RPT exposes a synchronous read API. Reason: the HLD
 requires RPT to keep its own read model and never read other
-modules' stores directly (hld.md §3); reports complete within 5
+modules' stores directly (hld.md [section 3](../architecture/hld.md)); reports complete within 5
 seconds over two years of data (NFR-PERF-2), which tolerates a bounded
 event lag but not cross-module fan-out reads at report time.
 
@@ -458,10 +458,10 @@ its UTC offset, every date renders on the hotel-local day).
 | BIL charge/payment/day-close | Sync | Immediate balance feedback in the folio step (Seq-10/11); NFR-PERF-1 3 s |
 | ROOM state/list/block | Sync | Vacant-dirty release and inspected-only assignment are live desk handoffs (Seq-12; BR-28) |
 | ADM -> all (config read) | Sync at startup | Refusals inside desk steps need current values locally (FR-CUS-1, FR-RTE-4) |
-| ADM -> all (`ConfigChangedEvents`) | Async events | §3.1 edits apply at once, no restart (requirements §3.3) |
+| ADM -> all (`ConfigChangedEvents`) | Async events | section 3.1 edits apply at once, no restart (requirements section 3.3) |
 | ADM -> all (identity) | Sync per call | Refuse out-of-role at point of use (NFR-SEC-1) |
 | All -> ADM (export slices) | Async job + visible report | Full copy is not a desk-speed action; owner-visible success/failure (NFR-BKP-2) |
-| All -> RPT (domain events) | Async events; RPT read API sync | Own read model, never cross-reads (HLD §3); 5 s report target tolerates bounded lag (NFR-PERF-2) |
+| All -> RPT (domain events) | Async events; RPT read API sync | Own read model, never cross-reads (HLD [section 3](../architecture/hld.md)); 5 s report target tolerates bounded lag (NFR-PERF-2) |
 
 ## 9. Error cases named (index)
 
@@ -512,7 +512,7 @@ listed, not answered, here):
   sheet ever show yesterday's check-out as in house), and what does
   the desk do if a feed stalls?
 - OQ-C2 — What delivery guarantee do `ConfigChangedEvents` carry
-  (at-least-once with idempotent apply? ordering?), given §3.3
+  (at-least-once with idempotent apply? ordering?), given section 3.3
   requires immediate effect with no restart?
 - OQ-C3 — By what mechanism is the exactly-once assignment behind
   `AssignRoom` and the paired-booking guard achieved
@@ -523,15 +523,15 @@ listed, not answered, here):
 - OQ-C5 — What consistency snapshot do export slices represent when
   the desk keeps working during the run (FR-ADM-5 "complete copy")?
 - OQ-C6 — If the hotel's no-show rule keeps a charge (FR-RES-6,
-  requirements §3.1), does marking no-show post to the folio — i.e.
+  requirements section 3.1), does marking no-show post to the folio — i.e.
   is there a conditional RES -> BIL operation — and against which
   folio, since no stay exists?
 
 ## 11. Coverage statement
 
 Every HLD module boundary has its inbound and outbound needs listed:
-RES (§1, §2a inbound), STAY (§2, §3), ROOM (§1b, §2b, §5),
-RATE (§1a), GST (§1c, §2c), BIL (§3, §4), RPT (§7), ADM (§6).
+RES (section 1, section 2a inbound), STAY (section 2, section 3), ROOM (section 1b, section 2b, section 5),
+RATE (section 1a), GST (section 1c, section 2c), BIL (section 3, section 4), RPT (section 7), ADM (section 6).
 All 43 FRs and the behaviour-constraining NFRs (NFR-CON-1,
 NFR-CON-2, NFR-PERF-1, NFR-PERF-2, NFR-SEC-1, NFR-SEC-2, NFR-AUD-1,
 NFR-AVL-1, NFR-DEP-1, NFR-BKP-1, NFR-BKP-2, NFR-RET-1, NFR-TZ-1)

@@ -16,7 +16,7 @@ static modules, so Vite bundles both catalogues into `app/dist/` at
 build time: no fetch, no CDN, no runtime dependency beyond the
 served `dist/`. There is no vendored copy under `app/`, so no
 byte-identical mirror guard is needed — the bundle always carries
-the canonical files. `script/catalogue-coverage-check.sh` §6 pins
+the canonical files. `script/catalogue-coverage-check.sh` section 6 pins
 the `vi` key set and placeholder parity.
 
 ## Per-service catalogue boundary (who owns which keys)

@@ -1,4 +1,4 @@
-// /app/ migration shell bootstrap (Refs #291, LLD §11.1 edge F–G):
+// /app/ migration shell bootstrap (Refs #291, LLD section 11.1 edge F–G):
 // install Pinia, mount the single-route history router.
 import { createApp } from 'vue';
 import { createPinia } from 'pinia';
@@ -12,7 +12,7 @@ import { DeskPreset } from './theme/tokens';
 const app = createApp(App);
 app.use(createPinia());
 app.use(router);
-// Desk styling pass (Refs #338, LLD §12.1): the PrimeVue stock
+// Desk styling pass (Refs #338, LLD section 12.1): the PrimeVue stock
 // preset fed by the contract tokens. No other styling input.
 app.use(PrimeVue, { theme: { preset: DeskPreset } });
 // Catalogue layer (Refs #292): the shell-wide `$t` is the same

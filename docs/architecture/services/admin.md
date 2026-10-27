@@ -6,7 +6,7 @@ Status: active. Source page for the admin & config module (single source of trut
 
 Hotel profile, users and roles, room/rate setup entry, per-hotel customisation values, and export/backup assembly. Issues every module's session token and serves every module's hotel values.
 
-Links: `docs/architecture/lld.md` section 8; `docs/requirements/sequence-diagrams.md` section 14 (per-hotel customisation overlay); LLD section 0 (identity hardening, offline-first config).
+Links: `docs/architecture/lld.md` [section 8](../lld.md); `docs/requirements/sequence-diagrams.md` [section 14](../../requirements/sequence-diagrams.md) (per-hotel customisation overlay); LLD [section 0](../lld.md) (identity hardening, offline-first config).
 
 ## 2. Pattern and layers as-built
 
@@ -67,13 +67,13 @@ Rollback: none — each admin write is a single guarded step with refusals prece
 
 ## 5. Outbound dependencies
 
-None — Admin is the dependency sink in reverse: every module reads hotel values from `GetHotelConfig` (cached offline-first fallback per LLD section 0) and accepts its session tokens, but Admin calls no sibling at runtime. Deployment values arrive via `UpdateHotelConfig` or the deployment set (`script/apply-hotel-config.sh`) — beyond the minimal boot seed (`deploy/seed/boot.sql`: one hotel profile, one room type, two rooms for the E2E loop; no hotel values, no credentials).
+None — Admin is the dependency sink in reverse: every module reads hotel values from `GetHotelConfig` (cached offline-first fallback per LLD [section 0](../lld.md)) and accepts its session tokens, but Admin calls no sibling at runtime. Deployment values arrive via `UpdateHotelConfig` or the deployment set (`script/apply-hotel-config.sh`) — beyond the minimal boot seed (`deploy/seed/boot.sql`: one hotel profile, one room type, two rooms for the E2E loop; no hotel values, no credentials).
 
-See also: [deployment](../system-architecture.md) (§1), [C4 containers](../c4-containers.md), and [event flow](../event-flow.md) (config distribution; Admin writes no outbox rows in code — see the flagged note there).
+See also: [deployment](../system-architecture.md) (section 1), [C4 containers](../c4-containers.md), and [event flow](../event-flow.md) (config distribution; Admin writes no outbox rows in code — see the flagged note there).
 
 ## 6. Error mapping
 
-Same shared Node envelope as Stay (`src/errors.ts`; `docs/technical/error-handling.md` section 1). Codes observed in `src/store.ts`:
+Same shared Node envelope as Stay (`src/errors.ts`; `docs/technical/error-handling.md` [section 1](../../technical/error-handling.md)). Codes observed in `src/store.ts`:
 
 | Code | Status | Raised when |
 |---|---|---|
@@ -118,7 +118,7 @@ Local watch (type-checks, runs, and restarts TypeScript directly):
 npm run dev
 ```
 
-Configuration via environment: `PORT` (default `8088`); hotel values are served from `AdminService.GetHotelConfig` with a cached offline-first fallback (see LLD section 0) and arrive via the deployment set (`script/apply-hotel-config.sh`, issue #158) or `UpdateHotelConfig` — beyond the minimal boot seed (`deploy/seed/boot.sql`), never via value seeds.
+Configuration via environment: `PORT` (default `8088`); hotel values are served from `AdminService.GetHotelConfig` with a cached offline-first fallback (see LLD [section 0](../lld.md)) and arrive via the deployment set (`script/apply-hotel-config.sh`, issue #158) or `UpdateHotelConfig` — beyond the minimal boot seed (`deploy/seed/boot.sql`), never via value seeds.
 
 Docker:
 

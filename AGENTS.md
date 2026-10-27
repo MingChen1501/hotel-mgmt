@@ -2,7 +2,7 @@
 
 Hotel-management project. Stack decided per ADR-0001 (monorepo polyglot,
 accepted 2026-10-23) with per-stack CI live: concrete build/test/run
-commands live in `docs/architecture/services/*.md` (§7 Operations),
+commands live in `docs/architecture/services/*.md` (section 7 Operations),
 linked from each thin `services/*/README.md` stub — confirm verification with
 the orchestrator per the `hotel-verify` skill.
 
@@ -49,7 +49,7 @@ doc group.
 ## Commands (every task)
 
 - Verify: follow the `hotel-verify` skill (stack decided per ADR-0001;
-  per-stack commands in `docs/architecture/services/*.md` §7 Operations,
+  per-stack commands in `docs/architecture/services/*.md` section 7 Operations,
   linked from each thin `services/*/README.md` stub); never open a PR
   while red.
 - Review the diff read-only before a PR (`dev-peer-review` /

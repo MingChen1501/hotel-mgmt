@@ -38,7 +38,7 @@ erDiagram
     RATE_PLAN["Rate plan"]}|--|{ROOM_TYPE : "prices per date"
     HOTEL_CONFIG["Hotel config"] ||--|{ ROOM : "single-property scope"
     %% HotelConfig also covers users/roles, policies, charge items, and
-    %% tax/fee rules (erd §1) — those are config sections, not entities,
+    %% tax/fee rules (erd section 1) — those are config sections, not entities,
     %% so no further nodes are drawn. Cross-checked against service
     %% migrations (services/*/migrations/, billing V1/V2); migrations win
     %% on any mismatch — none found in this pass.

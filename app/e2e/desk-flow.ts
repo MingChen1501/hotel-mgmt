@@ -1,5 +1,5 @@
 // Shared browser-E2E flow helpers (Refs #338 M6, plan
-// docs/testing/browser-e2e-plan.md §8 seed discipline).
+// docs/testing/browser-e2e-plan.md section 8 seed discipline).
 //
 // Every spec builds its own per-run entities (unique suffix) over
 // the same fresh stack the API loop proves, so reruns and

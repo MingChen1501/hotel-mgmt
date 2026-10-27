@@ -1,7 +1,7 @@
 # contract-tests (stay)
 
 Provider/consumer fixtures for `StayService` land here with the persistence slice (issue #149), generated from `contracts/` per
-`docs/technical/integration.md` section 9 (including the
+`docs/technical/integration.md` [section 9](../../../docs/technical/integration.md) (including the
 `CONFLICT`/`STATE_ILLEGAL` room branches, the
 `SETTLEMENT_REQUIRED` folio-gate branch, and the
 paired-concurrency guard exercised against the real store,

@@ -1,6 +1,6 @@
 # Guests (Node.js/TypeScript)
 
-Guest profiles, preferences and notes, repeat-guest flag, and stay-link ingestion. Node.js/TypeScript service over flat `src/` files; module 5 per `docs/architecture/lld.md` section 5.
+Guest profiles, preferences and notes, repeat-guest flag, and stay-link ingestion. Node.js/TypeScript service over flat `src/` files; module 5 per `docs/architecture/lld.md` [section 5](../../docs/architecture/lld.md).
 
 Design and operations (single source of truth, no duplication here):
 

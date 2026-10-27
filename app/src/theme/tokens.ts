@@ -1,5 +1,5 @@
 // Design tokens for the desk UI styling pass (Refs #338, the
-// approved Phase 1 UI contract §1, LLD §12.1).
+// approved Phase 1 UI contract section 1, LLD section 12.1).
 //
 // These values are the ONLY styling inputs: the PrimeVue stock
 // preset below is fed by them, and the SFC stylesheets reuse the
@@ -40,8 +40,8 @@ export const deskTokens = {
   },
 } as const;
 
-// PrimeVue stock preset fed by the tokens above (contract §3,
-// LLD §12.1): Aura with its primary scale anchored on desk blue
+// PrimeVue stock preset fed by the tokens above (contract section 3,
+// LLD section 12.1): Aura with its primary scale anchored on desk blue
 // (700 is exactly the contract primary). State severities keep
 // their stock hues, which match the contract state colours.
 import Aura from '@primevue/themes/aura';

@@ -33,7 +33,7 @@ section 6 placeholders must not survive handover):
 - Level 2, product support: _[name, phone, email, response time]_
 - Level 3, on-site visit arrangement: _[arrangement]_
 
-First-secret handover (deployment.md section 2): one unique
+First-secret handover (deployment.md [section 2](../devops/deployment.md)): one unique
 initial secret per role account (owner, manager, front-desk),
 each handed only to its matching person, each changed on first
 sign-in, all three changes confirmed before leaving the site.

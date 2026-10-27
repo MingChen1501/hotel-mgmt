@@ -96,8 +96,8 @@ ADR-0001 makes cross-module contract discipline load-bearing
 stage). Every slice that touches a seam therefore also passes a
 contract guard: the request/response shapes and the emitted domain
 events are checked against the architect-owned contract outline in
-`docs/technical/api-spec.md` section 2 (service names match the HLD
-boundary table, `docs/architecture/hld.md` section 4) before the
+`docs/technical/api-spec.md` [section 2](../technical/api-spec.md) (service names match the HLD
+boundary table, `docs/architecture/hld.md` [section 4](../architecture/hld.md)) before the
 slice can exit testing. The contract list is quoted here, not
 invented — eight contracts:
 
@@ -145,7 +145,7 @@ A slice exits testing when all of the following hold:
 2. Every NFR the slice touches passes its L2/L3/L4/L5 verification
    against the numeric target (no target, no pass).
 3. Every module seam the slice touches passes its LC contract guard
-   against the `api-spec.md` section 2 outline.
+   against the `api-spec.md` [section 2](../technical/api-spec.md) outline.
 4. All 57 traceability rows touched by the slice have their guard
    column filled (no TBD left for in-scope rows) — see
    `traceability-matrix.md`.
@@ -179,7 +179,7 @@ Automated in the MVP (CI guards, once implementation starts):
 - Backup-run reporting presence (`NFR-BKP-2`): every run produces a
   visible success-or-failure report with its time.
 - Contract-shape and event checks (`LC`): request/response shapes and
-  emitted domain events checked against `api-spec.md` section 2 in
+  emitted domain events checked against `api-spec.md` [section 2](../technical/api-spec.md) in
   the per-module contract-check stage.
 
 At the Closes #62 frame nothing was automated before implementation

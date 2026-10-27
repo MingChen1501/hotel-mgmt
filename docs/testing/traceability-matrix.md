@@ -9,8 +9,8 @@ No FR/NFR may be marked complete while its guard cell reads TBD.
 The Coverage footer line below is the live count of filled rows.
 Levels L1–L5 are defined in `test-strategy.md`. LC contract coverage
 for touched seams is tracked via the per-module contract-check CI
-stage against `docs/technical/api-spec.md` section 2, not in per-row
-Guard cells (see strategy §LC and exit criterion §3.3).
+stage against `docs/technical/api-spec.md` [section 2](../technical/api-spec.md), not in per-row
+Guard cells (see strategy section LC and exit criterion section 3.3).
 
 ## 1. Functional requirements (43)
 
@@ -71,29 +71,29 @@ Guard cells (see strategy §LC and exit criterion §3.3).
 | NFR-CON-1 — No double-booking under simultaneous bookings | L3 paired simultaneous attempts: 0 double-bookings, exactly one succeeds with the conflict named | Guard: L3 `TestPairedBookingExactlyOneWins` in `services/reservations/internal/store/store_test.go` — paired simultaneous attempts, 0 double-bookings, exactly one succeeds with `CONFLICT` naming type+dates (PR #112 slice); modify-path extension `TestPairedModifyExactlyOneWins` — paired simultaneous moves onto the last sellable unit, exactly one wins with `CONFLICT` naming type+dates (PR #159 slice). |
 | NFR-CON-2 — No double room assignment at check-in | L3 paired simultaneous attempts: 0 double assignments, exactly one takes the room with the conflict named | Guard: L3 `grants exactly one winner for paired simultaneous assignments` in `services/rooms/src/server.test.ts` — paired `AssignRoom` attempts, 0 double assignments, exactly one takes the room with `CONFLICT` (PR #112 slice); stay-side `grants exactly one winner for paired simultaneous check-outs` in `services/stay/src/server.test.ts` — paired `CheckOut` attempts, exactly one closes with `STATE_ILLEGAL` for the loser, plus the conditional in-house `UPDATE` in `PostgresStayStore` (PR #150 slice). |
 | NFR-PERF-1 — Desk response under a full small hotel | L2 timed desk check: named views within 2 s, named actions within 3 s at stated load | Guard: `script/e2e-perf-check.sh` timed run on a full 50-room book with 5 signed-in staff (12 view + 9 action timings, nanosecond clocks); bounds asserted only on the 2*4*50 reference host, CI runs recorded as `ci-e2e-variant` in `test-report.md` (PR #182 slice). |
-| NFR-PERF-2 — Report response | L2 timed check: each standard report within 5 s on two years of 50-room data | Guard: `services/reporting` test `TestPerfTwoYearReportsRecordTimings` (126,100 domain events over 731 days rebuilt in-process; Occupancy/Revenue/DailySheet/HousekeepingReport timed, scale-correctness asserted); CI variant recorded in `test-report.md` §4 (#216 slice times housekeeping; PR #182 slice). |
+| NFR-PERF-2 — Report response | L2 timed check: each standard report within 5 s on two years of 50-room data | Guard: `services/reporting` test `TestPerfTwoYearReportsRecordTimings` (126,100 domain events over 731 days rebuilt in-process; Occupancy/Revenue/DailySheet/HousekeepingReport timed, scale-correctness asserted); CI variant recorded in `test-report.md` [section 4](test-report.md) (#216 slice times housekeeping; PR #182 slice). |
 | NFR-SEC-1 — Role-based access | L2 role-matrix check: 100% of out-of-role attempts refused, 0 guest sign-ins | Guard (PR #163 slice): `services/admin` tests refuse every user/role and audit op for front-desk callers (`refuses role changes from front-desk accounts`, unlock/audit `FORBIDDEN` branches) + `UpdateUserRole-forbidden.json`, `UnlockIdentity-forbidden.json` fixtures; 0 guest sign-ins holds (every op except `SignIn` requires a session token). |
 | NFR-SEC-2 — Authentication | L2 sign-in check: lockout after 5 consecutive failures, sign-out after 15 idle minutes | Guard (PR #163 slice): existing 5-strike lockout test plus `unlocks a locked identity so sign-in works again` (owner/manager `UnlockIdentity` round trip) and `ends the session on sign-out` (token refused after `SignOut`); 15-minute idle expiry unchanged in both stores. |
 | NFR-RET-1 — Data retention | L2 purge check: 24 months minimum retrievable, 0 records removed from within the floor | Guard: the installer applies the hotel's configured retention floor with the configuration set (`script/install.sh` → `script/apply-hotel-config.sh`), and the restore drill confirms the floor value survives backup and restore (PR #153 slice). |
 | NFR-TZ-1 — Date and timezone handling | L2 record check: 100% of sampled records carry a UTC offset and render on the correct local date | Guard: timestamptz columns on every touched table; the drill sample carries UTC offsets on the hotel-local day (PR #149 slice). |
 | NFR-I18N-1 — Internationalisation readiness | L2 catalogue check: 100% of user-visible strings from the catalogue, locale formatting, no behaviour on English wording | Guard (PR #192 slice): `messages/en.json` catalogue with `messages/sample.json` covering the reservations/admin/billing error envelopes and the frontend desk copy, enforced by `script/catalogue-coverage-check.sh` (CI `ci` job; keys/params/call-sites, byte-identical mirrors, default-locale rendering) plus per-stack loader/formatter unit tests (`messages_test.go`, `messages.test.ts`, `MessagesTest`, frontend loader smoke) — default-locale output byte-identical, no behaviour on wording; rates/reporting/rooms/stay/guests plus `script/` wording extend the sample in #201. |
-| NFR-AVL-1 — On-premise availability | L2 offline desk check: 100% of named desk actions succeed with no outside connectivity | Guard: the pilot runbook walkthrough (docs/operations/pilot-exit-checklist.md part A, runbook.md section 4) confirms with a non-technical stand-in that booking, check-in, check-out, charge posting, payment recording, and invoice printing all complete with no outside connectivity (PR #153 slice). |
+| NFR-AVL-1 — On-premise availability | L2 offline desk check: 100% of named desk actions succeed with no outside connectivity | Guard: the pilot runbook walkthrough (docs/operations/pilot-exit-checklist.md part A, runbook.md [section 4](../operations/runbook.md)) confirms with a non-technical stand-in that booking, check-in, check-out, charge posting, payment recording, and invoice printing all complete with no outside connectivity (PR #153 slice). |
 
 ## 3. Migration shell slice (Refs #291)
 
 Scaffold slice of ADR-0003 (accepted 2026-10-25): the Vue 3 +
 Vite placeholder shell under `/app/`. Requirements live in
-`docs/requirements/mvp-requirements.md` §7 (FR-SHL-1..4,
+`docs/requirements/mvp-requirements.md` [section 7](../requirements/mvp-requirements.md) (FR-SHL-1..4,
 NFR-SHL-1..3, owned by `business-analyst`); design and per-flow
 diagrams (happy path + failure/rollback path) live in
-`docs/architecture/hld.md` §11 and
-`docs/architecture/lld.md` §11 (placeholder render §11.1,
-shared-client 401-to-sign-out §11.2, offline banner/manual retry
-§11.3). These are temporary scaffold requirements, superseded
+`docs/architecture/hld.md` [section 11](../architecture/hld.md) and
+`docs/architecture/lld.md` [section 11](../architecture/lld.md) (placeholder render section 11.1,
+shared-client 401-to-sign-out section 11.2, offline banner/manual retry
+section 11.3). These are temporary scaffold requirements, superseded
 per screen as follow-up issues land real routes; they do not
 alter the 57-row MVP coverage count above.
 
-Per the `business-analyst` handoff (`mvp-requirements.md` §7.4),
+Per the `business-analyst` handoff (`mvp-requirements.md` [section 7.4](../requirements/mvp-requirements.md)),
 no guard exists yet for any shell item except the mirror half of
 FR-SHL-4: the implementation PR for #291 must create the rest.
 Guard cells below name the missing guards explicitly instead of
@@ -102,13 +102,13 @@ exists and passes.
 
 | Shell item | Required guard type | Guard |
 |---|---|---|
-| FR-SHL-1 — Placeholder route renders under `/app/` | Served-shell navigation: load `/app/` plus one history-mode deep `/app/*` path (reload included), check exactly one placeholder view renders and no other app route is reachable | Missing — implementation PR must create the placeholder-render check (covers the `lld.md` §11.1 happy path; failure path: stale `dist/` → rebuild, never hand-edit). Guard: TBD. |
-| FR-SHL-2 — Shared Bearer API client plus session store used by the placeholder | Shared-client 401 test: force a `401` / `UNAUTHENTICATED` through the shared client, check the store token clears and the shell routes to sign-in; token survives reload and dies with the tab (`sessionStorage`) | Missing — implementation PR must create the 401 test (covers the `lld.md` §11.2 happy + failure path). Guard: TBD. |
+| FR-SHL-1 — Placeholder route renders under `/app/` | Served-shell navigation: load `/app/` plus one history-mode deep `/app/*` path (reload included), check exactly one placeholder view renders and no other app route is reachable | Missing — implementation PR must create the placeholder-render check (covers the `lld.md` [section 11.1](../architecture/lld.md) happy path; failure path: stale `dist/` → rebuild, never hand-edit). Guard: TBD. |
+| FR-SHL-2 — Shared Bearer API client plus session store used by the placeholder | Shared-client 401 test: force a `401` / `UNAUTHENTICATED` through the shared client, check the store token clears and the shell routes to sign-in; token survives reload and dies with the tab (`sessionStorage`) | Missing — implementation PR must create the 401 test (covers the `lld.md` [section 11.2](../architecture/lld.md) happy + failure path). Guard: TBD. |
 | FR-SHL-3 — Print routes reserved, none implemented | Namespace-reservation check: load `/app/print/...`, check no print document renders while the namespace stays reserved | Missing — implementation PR must create the reservation check (no print route lands in this slice). Guard: TBD. |
 | FR-SHL-4 — Legacy pages and `/docs` mirror intact | Mirror half: byte-identical OpenAPI check; served half: load each legacy page at `/` plus `/docs`, check pre-slice content unchanged | Half-covered: mirror half cites `script/openapi-route-check.sh:46` (`cmp -s` byte-identical assert, CI-green today). Served-legacy half missing — implementation PR must create the legacy-page assertions. Guard: TBD for the served half. |
 | NFR-SHL-1 — CI build job green | New CI job (Node 22 + `npm ci` + build + test over `app/`, matching the existing Node matrix): build and test both pass on every shell commit | Missing — implementation PR must create the job; red blocks that PR. Guard: TBD (the CI job itself). |
 | NFR-SHL-2 — Nginx fallback correctness | Fallback assertion: request sampled non-asset `/app/*` paths (deep link, reload, unknown path), check every response is `/app/index.html` with status 200 — NOT `/index.html` | Missing — implementation PR must create the fallback assertion against the served shell. Guard: TBD. |
-| NFR-SHL-3 — Offline banner with manual retry, no write queueing | Disconnect drill: drop connectivity mid-session, check the banner names the disconnect, a safe manual retry is offered, and 0 desk writes queue | Missing — implementation PR must create the drill (covers the `lld.md` §11.3 happy + failure path; queueing is forbidden because desk writes are synchronous authoritative ops). Guard: TBD. |
+| NFR-SHL-3 — Offline banner with manual retry, no write queueing | Disconnect drill: drop connectivity mid-session, check the banner names the disconnect, a safe manual retry is offered, and 0 desk writes queue | Missing — implementation PR must create the drill (covers the `lld.md` [section 11.3](../architecture/lld.md) happy + failure path; queueing is forbidden because desk writes are synchronous authoritative ops). Guard: TBD. |
 
 Shell-slice coverage (Refs #291): 7 rows mapped, 0 guards
 complete (FR-SHL-4 mirror half has an existing passing check;

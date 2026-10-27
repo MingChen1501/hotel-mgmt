@@ -24,13 +24,13 @@ keep working without internet (`NFR-AVL-1`):
   containers; the decommissioned static page paths return 301
   redirects to their `/app/` routes (Refs #299) and `/docs`
   Swagger stays served; no external exposure. Desk-UI design in
-  `docs/architecture/lld.md` §11 (Refs #291).
+  `docs/architecture/lld.md` [section 11](lld.md) (Refs #291).
 - Module containers: one container per HLD module (Reservations,
   Stay, Rooms, Rates & Availability, Guests, Billing, Reporting,
   Admin & Config), each embedding its own
   (proposed) runtime (primary mapping: Node.js × 4, Go × 3,
   Spring Boot Java × 1 on Billing —
-  `docs/architecture/candidate-architectures.md` section 8).
+  `docs/architecture/candidate-architectures.md` [section 8](candidate-architectures.md)).
 - Database host(s): one shared database engine (accepted
   default PostgreSQL per ADR-0001, accepted 2026-10-23; MySQL stays
   the named fallback) holding
@@ -105,13 +105,13 @@ flowchart TD
     RPT --> DB
     ADMIN --> DB
     MODULES -.-> BK[(Backup target<br/>backup-staging volume<br/>compose.yaml + backup-dr.md<br/>RPO 24h / RTO 4h)]
-    PROM[Prometheus<br/>scrapes module /healthz + /metrics<br/>system-architecture.md §1] -.-> MODULES
+    PROM[Prometheus<br/>scrapes module /healthz + /metrics<br/>system-architecture.md section 1] -.-> MODULES
     GRAF[Grafana dashboards<br/>stoppable, metrics kept] -.-> PROM
     REM[Vendor / owner remote] -.->|Tailscale only<br/>no inbound internet<br/>deployment.md:16| NGINX
 ```
 
 Small-cluster variant (same containers, same contracts, only
-placement differs — `system-architecture.md` §1): host 1 carries
+placement differs — `system-architecture.md` section 1): host 1 carries
 Nginx + desk-facing modules + monitoring; host 2 carries the
 database engine + backup target; optional host 3 carries remaining
 modules; all hosts join the hotel LAN over the same
@@ -147,7 +147,7 @@ state per component on the default single host:
 | Rooms (Node.js) | ~150 MB | ~0.1 | ~0.1 GB | Shared image layers with Stay |
 | Rates & Availability (Go) | ~50 MB | ~0.1 | ~0.1 GB | Static binary |
 | Guests (Node.js) | ~150 MB | ~0.1 | ~0.1 GB | Shared image layers with Stay |
-| Billing (Java 21 on Spring Boot, JVM mode) | ~350 MB `estimate` | ~0.1 | ~0.5 GB `estimate` | Team main stack; RSS/startup sources + math in `candidate-architectures.md` section 8; Quarkus JVM-slim is the named footprint fallback |
+| Billing (Java 21 on Spring Boot, JVM mode) | ~350 MB `estimate` | ~0.1 | ~0.5 GB `estimate` | Team main stack; RSS/startup sources + math in `candidate-architectures.md` [section 8](candidate-architectures.md); Quarkus JVM-slim is the named footprint fallback |
 | Reporting (Go) | ~50 MB | ~0.05 | ~0.1 GB | Read API + event consumer |
 | Admin & Config (Node.js) | ~150 MB | ~0.05 | ~0.1 GB | Config CRUD + identity sessions |
 | Shared database engine (PostgreSQL/MySQL) | ~512 MB | ~0.4 | ~5 GB + data | One engine, 8 schemas; 2-year data ~2–4 GB at 50-room scale |
@@ -166,7 +166,7 @@ billing estimate; no compensating trim is taken because the
 budget holds — the named trims inside the minimal-subset rule
 (Grafana stopped by default to reclaim ~150 MB, narrower
 Prometheus retention, Quarkus JVM-slim fallback freeing ~170 MB)
-are recorded in `candidate-architectures.md` section 8 and would
+are recorded in `candidate-architectures.md` [section 8](candidate-architectures.md) and would
 each be applied explicitly with numbers, never silently. A second
 Spring-context service anywhere else is explicitly excluded by
 the minimal-subset rule and NOT in these totals.

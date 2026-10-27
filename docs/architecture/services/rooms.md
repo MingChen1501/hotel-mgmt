@@ -6,7 +6,7 @@ Status: active. Source page for the rooms module (single source of truth; `servi
 
 Inventory, housekeeping states, out-of-order blocks, room and room-type setup. Room states move `ready` ↔ `occupied`, with `dirty`/`cleaning` turnover and date-ranged out-of-order blocks in between.
 
-Links: `docs/architecture/lld.md` section 3; `docs/requirements/sequence-diagrams.md` sections 8 (room move), 12 (housekeeping cleaning loop), 13 (out-of-order block and release); lifecycle states in `docs/architecture/state-machine.md`.
+Links: `docs/architecture/lld.md` [section 3](../lld.md); `docs/requirements/sequence-diagrams.md` [sections 8](../../requirements/sequence-diagrams.md) (room move), 12 (housekeeping cleaning loop), 13 (out-of-order block and release); lifecycle states in `docs/architecture/state-machine.md`.
 
 ## 2. Pattern and layers as-built
 
@@ -68,13 +68,13 @@ Rollback: none — each transition is a single guarded in-memory step; refusals 
 
 ## 5. Outbound dependencies
 
-None at runtime. Consumed by the desk loop (Stay `MoveRoom` pairs Rooms `AssignRoom`/`ReleaseRoom`) and by the future Reservations restriction seam via `CheckRoomTypeSellability` (`src/store.ts:301`). Hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (LLD section 0).
+None at runtime. Consumed by the desk loop (Stay `MoveRoom` pairs Rooms `AssignRoom`/`ReleaseRoom`) and by the future Reservations restriction seam via `CheckRoomTypeSellability` (`src/store.ts:301`). Hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (LLD [section 0](../lld.md)).
 
-See also: [deployment](../system-architecture.md) (§1), [C4 containers](../c4-containers.md), and [event flow](../event-flow.md) (this service's outbox emissions).
+See also: [deployment](../system-architecture.md) (section 1), [C4 containers](../c4-containers.md), and [event flow](../event-flow.md) (this service's outbox emissions).
 
 ## 6. Error mapping
 
-Same shared Node envelope as Stay (`src/errors.ts`; `docs/technical/error-handling.md` section 1). Codes observed in `src/store.ts`:
+Same shared Node envelope as Stay (`src/errors.ts`; `docs/technical/error-handling.md` [section 1](../../technical/error-handling.md)). Codes observed in `src/store.ts`:
 
 | Code | Status | Raised when |
 |---|---|---|
@@ -120,7 +120,7 @@ Local watch (type-checks, runs, and restarts TypeScript directly):
 npm run dev
 ```
 
-Configuration via environment: `PORT` (default `8085`); hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (see LLD section 0) and land in later slices.
+Configuration via environment: `PORT` (default `8085`); hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (see LLD [section 0](../lld.md)) and land in later slices.
 
 Docker:
 

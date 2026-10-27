@@ -9,7 +9,7 @@ Every control below traces to an FR/NFR (`FR-ADM-2`, `FR-ADM-5`,
 `NFR-DEP-1`); behaviour wording stays with `product-owner` /
 `business-analyst`. Enforcement mechanics it assumes (tokens,
 outbox, config distribution) are defined in
-`docs/architecture/lld.md` §0 and bound per pair in
+`docs/architecture/lld.md` [section 0](../architecture/lld.md) and bound per pair in
 `docs/technical/integration.md`.
 
 ## 1. Assets and actors
@@ -50,7 +50,7 @@ beyond session hygiene.
   implemented as of master — `deploy/nginx/nginx.conf` serves
   plain `:80`; `deploy/README.md` lists TLS/LAN hardening as
   future): all browser-to-Nginx traffic uses TLS with a
-  hotel-local certificate installed at provisioning (§5), and
+  hotel-local certificate installed at provisioning (section 5), and
   session tokens never travel in URLs.
 - B2 — Remote access over Tailscale only. No inbound internet
   exposure: Nginx binds the LAN interface; no port-forwarding, no
@@ -69,13 +69,13 @@ beyond session hygiene.
 - B4 — Backup/export media. The backup target is on-premise (disk
   partition or hotel NAS); media never leaves the property.
   Backups are encrypted at rest with a hotel-held key recorded in
-  the provisioning log (§5); a lost medium without the key exposes
+  the provisioning log (section 5); a lost medium without the key exposes
   nothing readable.
 
 ## 3. RBAC enforcement points and matrix
 
 Every contract call carries the session token; every provider
-enforces role checks before any business logic (LLD §0; C10).
+enforces role checks before any business logic (LLD [section 0](../architecture/lld.md); C10).
 There is no anonymous path and no guest sign-in (`NFR-SEC-1`).
 
 | Capability | front-desk | manager | owner |
@@ -92,7 +92,7 @@ There is no anonymous path and no guest sign-in (`NFR-SEC-1`).
 Out-of-role attempts are refused with `FORBIDDEN` at the provider
 (never hidden client-side only); refusals are audit-recorded with
 actor and timestamp. Co-edited inventory (owner + manager) shares
-one operation set with no primary editor (LLD §0).
+one operation set with no primary editor (LLD [section 0](../architecture/lld.md)).
 
 ## 4. Session and authentication controls (`NFR-SEC-2`)
 
@@ -102,7 +102,7 @@ one operation set with no primary editor (LLD §0).
   or manager unlocks it; lockouts are audit-recorded.
 - 15-minute idle sign-out enforced server-side
   (`last_activity_at`) and client-side; absolute session lifetime
-  is bounded by revalidation (LLD §0: revocation re-checked at
+  is bounded by revalidation (LLD [section 0](../architecture/lld.md): revocation re-checked at
   least every 5 minutes, always on sensitive operations).
 - Locked, revoked, or expired sessions are refused with
   `UNAUTHENTICATED`; a signed-out token cannot be replayed into a
@@ -183,8 +183,8 @@ recording with 24-month retrievability (`NFR-RET-1`), not display.
   the desk segment).
 - R2 — Stale cached config/sessions during an Admin outage:
   bounded by the 5-minute revalidation and offline-first rule
-  (LLD §0); prolonged Admin loss raises a monitoring alert.
-- R3 — Backup media theft: reduced by at-rest encryption (§5);
+  (LLD [section 0](../architecture/lld.md)); prolonged Admin loss raises a monitoring alert.
+- R3 — Backup media theft: reduced by at-rest encryption (section 5);
   key custody is the owner's responsibility, rehearsed at
   handover.
 - R4 — Single-host loss beyond the backup window: bounded by RPO

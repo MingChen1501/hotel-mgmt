@@ -1,4 +1,4 @@
-// Browser desk-dashboard flow (plan §1 flow 6, #338 M6).
+// Browser desk-dashboard flow (plan section 1 flow 6, #338 M6).
 //
 // The newest backup report renders as the success line after the
 // installer's backup, the daily lists and cross-check line render,

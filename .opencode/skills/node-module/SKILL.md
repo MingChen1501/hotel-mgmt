@@ -7,22 +7,22 @@ trigger: "Working in a Node.js module (stay, rooms, guests, admin): read this sk
 # Node module workflow (Stay, Rooms, Guests, Admin)
 
 Applies to `services/stay`, `services/rooms`, `services/guests`,
-and `services/admin` (LLD §9; ADR-0001 primary mapping). The worker
+and `services/admin` (LLD [section 9](../../../docs/architecture/lld.md); ADR-0001 primary mapping). The worker
 skill points here as the per-stack entry point; this skill covers
 only what a Node-module change needs.
 
-Source of truth for behaviour: `docs/architecture/lld.md` (§§0, 2, 3,
-5, 8), `docs/technical/integration.md`, `docs/technical/schema.md`,
+Source of truth for behaviour: `docs/architecture/lld.md` ([sections 0, 2, 3,
+5, 8](../../../docs/architecture/lld.md)), `docs/technical/integration.md`, `docs/technical/schema.md`,
 `docs/technical/error-handling.md`. This skill adds no behaviour.
 
 ## Modules on this stack
 
 | Module | Provides | Consumes | Guards |
 |---|---|---|---|
-| Stay (LLD §2) | `StayService` (check-in/out, moves, actual times, arrivals/departures) | RES `GetDueReservation`, Rooms find/assign/release, Guests `GetGuest`, Billing `GetFolioBalance`/`RequestCheckoutGate` | Folio gate before check-out (`SETTLEMENT_REQUIRED`, BR-17) |
-| Rooms (LLD §3) | `RoomInventoryService` (sellability, find/assign/release, states, blocks, setup) | — (provider-side atomic guard) | `AssignRoom` conditional atomic write (`NFR-CON-2`); dirty -> clean -> inspected order (BR-28) |
-| Guests (LLD §5) | `GuestService` (identify, booking context, upsert, confirmation) | Stay lifecycle links via `StayEvents` | Hotel-mandatory fields from cached config (`FR-CUS-1`) |
-| Admin (LLD §8) | `AdminService` (config, users/roles, identity, export/backup) | Export slices from RES, STAY, BIL, GST, ROOM, RATE | 5-strike lockout, 15-minute idle expiry, role checks |
+| Stay (LLD [section 2](../../../docs/architecture/lld.md)) | `StayService` (check-in/out, moves, actual times, arrivals/departures) | RES `GetDueReservation`, Rooms find/assign/release, Guests `GetGuest`, Billing `GetFolioBalance`/`RequestCheckoutGate` | Folio gate before check-out (`SETTLEMENT_REQUIRED`, BR-17) |
+| Rooms (LLD [section 3](../../../docs/architecture/lld.md)) | `RoomInventoryService` (sellability, find/assign/release, states, blocks, setup) | — (provider-side atomic guard) | `AssignRoom` conditional atomic write (`NFR-CON-2`); dirty -> clean -> inspected order (BR-28) |
+| Guests (LLD [section 5](../../../docs/architecture/lld.md)) | `GuestService` (identify, booking context, upsert, confirmation) | Stay lifecycle links via `StayEvents` | Hotel-mandatory fields from cached config (`FR-CUS-1`) |
+| Admin (LLD [section 8](../../../docs/architecture/lld.md)) | `AdminService` (config, users/roles, identity, export/backup) | Export slices from RES, STAY, BIL, GST, ROOM, RATE | 5-strike lockout, 15-minute idle expiry, role checks |
 
 ## Commands (run from the module directory, e.g. `services/stay`)
 
@@ -34,7 +34,7 @@ Source of truth for behaviour: `docs/architecture/lld.md` (§§0, 2, 3,
 - Run: `npm start` (production build) or `npm run dev` (local watch)
 
 Each module ships a `Dockerfile` and a README repeating these
-commands (LLD §9).
+commands (LLD [section 9](../../../docs/architecture/lld.md)).
 
 ## Layout
 
@@ -46,14 +46,14 @@ services/<module>/
     stores/          SQL for this schema only — never another module's tables
     outbox/          same-transaction event writer + dispatcher relay hooks
     auth/            local token validation (HMAC signature + expiry, bounded revalidation)
-  migrations/        this schema's chain only (schema.md §9)
+  migrations/        this schema's chain only (schema.md section 9)
   contract-tests/    fixtures per provided/consumed operation, incl. refusal branches
   package.json       scripts: build, test, lint, migrate, start, dev
   Dockerfile
   README             build/test/run commands
 ```
 
-## Conventions (LLD §0, binding on every module)
+## Conventions (LLD [section 0](../../../docs/architecture/lld.md), binding on every module)
 
 - Transport: synchronous calls are HTTP/JSON POST behind Nginx at
   `/v1/<contract-lowercase>/<Operation>` with a JSON body; the opaque
@@ -76,7 +76,7 @@ services/<module>/
 - Outbox: every state change other modules must see is written
   atomically with the change into the schema's `outbox` table; a
   dispatcher relays rows. No cross-schema reads, ever.
-- Config: read §3.1 values at startup via `GetHotelConfig`, apply
+- Config: read section 3.1 values at startup via `GetHotelConfig`, apply
   `ConfigChangedEvents` idempotently by event id afterwards, serve
   cached values when Admin is unreachable.
 
@@ -84,7 +84,7 @@ services/<module>/
 
 - Consumer fixtures: `contract-tests/` holds request/response pairs
   plus refusal cases generated from `contracts/` for every operation
-  this module provides or consumes (integration.md §9), including
+  this module provides or consumes (integration.md [section 9](../../../docs/technical/integration.md)), including
   the `CONFLICT`/`STATE_ILLEGAL` room branches and the
   `SETTLEMENT_REQUIRED` folio-gate branch, with the
   paired-concurrency guard exercised against the real store
@@ -99,11 +99,11 @@ services/<module>/
 - Versioning: additive changes bump minor (backward compatible);
   removals, renames, type changes, and new required fields are major
   with a deprecation window of at least one release (integration.md
-  §8).
+  section 8).
 
 ## Guard-writing guide (this stack)
 
-The `AssignRoom` guard (LLD §3, `NFR-CON-2`) is a single conditional
+The `AssignRoom` guard (LLD [section 3](../../../docs/architecture/lld.md), `NFR-CON-2`) is a single conditional
 atomic write: the room row flips to occupied only if it is currently
 vacant-inspected and no block covers the date. Zero rows affected
 means the race was lost. Schematic shape, not production code:

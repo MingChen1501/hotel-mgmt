@@ -59,7 +59,7 @@
 #
 # Precondition: `app/dist/` must exist from `npm run build` in
 # `app/` (a stale or missing dist fails closed here — rebuild,
-# never hand-edit, per LLD §11.1).
+# never hand-edit, per LLD section 11.1).
 #
 # Usage: script/shell-served-check.sh (run from anywhere; resolves
 # repo root). Override the probe port with SHELL_CHECK_PORT.

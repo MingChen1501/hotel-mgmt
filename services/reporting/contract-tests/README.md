@@ -2,7 +2,7 @@
 
 Provider fixtures for `ReportingService` (issue #156; housekeeping
 report added by issue #191), generated from `contracts/` per
-`docs/technical/integration.md` section 9: `OccupancyReport`,
+`docs/technical/integration.md` [section 9](../../../docs/technical/integration.md): `OccupancyReport`,
 `RevenueSummary`, `DailySheet`, and `HousekeepingReport` happy paths.
 All four operations are pure reads, so they carry no refusal
 branches beyond the shared `UNAUTHENTICATED` / `VALIDATION_FAILED`

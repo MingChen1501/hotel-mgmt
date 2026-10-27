@@ -302,12 +302,12 @@ Vue 3 + Vite shell served under `/app/` with no app routes beyond
 the placeholder. This slice records only the shell's
 done-conditions; it adds no product capability and changes no MVP
 behaviour. Requirements wording is owned by `business-analyst`
-(`docs/requirements/mvp-requirements.md` §7: FR-SHL-1..4,
-NFR-SHL-1..3); design lives in `docs/architecture/hld.md` §11 and
-`docs/architecture/lld.md` §11 (placeholder render §11.1,
-shared-client 401-to-sign-out §11.2, offline banner/manual retry
-§11.3); guard mapping lives in
-`docs/testing/traceability-matrix.md` §3. Each condition below is
+(`docs/requirements/mvp-requirements.md` [section 7](../requirements/mvp-requirements.md): FR-SHL-1..4,
+NFR-SHL-1..3); design lives in `docs/architecture/hld.md` [section 11](../architecture/hld.md) and
+`docs/architecture/lld.md` [section 11](../architecture/lld.md) (placeholder render section 11.1,
+shared-client 401-to-sign-out section 11.2, offline banner/manual retry
+section 11.3); guard mapping lives in
+`docs/testing/traceability-matrix.md` [section 3](../testing/traceability-matrix.md). Each condition below is
 testable on a single on-premise instance running the shell
 alongside the untouched legacy pages. No condition traces to an
 MVP user story: the shell precedes all screen migrations, and the
@@ -385,7 +385,7 @@ stories carry them; none is decided here.
 Shell-slice addendum (Refs #291): 7 scaffold done-conditions
 (AC-SHL-1..7) cover the `/app/` migration shell. Each traces to
 its shell requirement (`docs/requirements/mvp-requirements.md`
-§7: FR-SHL-1..4, NFR-SHL-1..3) and to no MVP story — the shell
+[section 7](../requirements/mvp-requirements.md): FR-SHL-1..4, NFR-SHL-1..3) and to no MVP story — the shell
 adds no MVP capability, so the 43-condition MVP count above
 stands unchanged and the section 1–9 done-conditions hold as
 written. The shell conditions are superseded per screen as

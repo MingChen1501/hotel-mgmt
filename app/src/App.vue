@@ -211,7 +211,7 @@ interface NavItem {
   fallback: string;
 }
 
-// Contract §2 order: Desk · Book · Stay · Folio · Print · Admin.
+// Contract section 2 order: Desk · Book · Stay · Folio · Print · Admin.
 const NAV_ITEMS: NavItem[] = [
   { name: 'desk', to: '/', labelKey: 'desk.shell.nav_desk', fallback: 'Desk' },
   { name: 'book', to: '/book', labelKey: 'desk.shell.nav_book', fallback: 'Book' },
@@ -324,7 +324,7 @@ export default defineComponent({
 </script>
 
 <style>
-/* Desk shell stylesheet (Refs #338, contract §§1–2, LLD §12.1).
+/* Desk shell stylesheet (Refs #338, contract sections 1–2, LLD section 12.1).
    Token values duplicated from `src/theme/tokens.ts` (CSS cannot
    import the TS constants; keep both in sync). The ENTIRE block
    lives inside `@media screen` so screen styling can never leak
@@ -346,7 +346,7 @@ export default defineComponent({
     outline-offset: 2px;
   }
 
-  /* Top nav (FR-DSP-1): six destinations in contract §2 order,
+  /* Top nav (FR-DSP-1): six destinations in contract section 2 order,
      then the user name, then sign-out. */
   #shell .shell-nav {
     display: flex;
@@ -384,7 +384,7 @@ export default defineComponent({
     color: #1F2933;
   }
 
-  /* Content area: single centred column (contract §2). */
+  /* Content area: single centred column (contract section 2). */
   #shell .shell-column {
     max-width: 1100px;
     margin: 0 auto;

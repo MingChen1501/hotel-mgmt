@@ -1,4 +1,4 @@
-// MIME-type + blank-screen smoke (issue #337, plan §5.2).
+// MIME-type + blank-screen smoke (issue #337, plan section 5.2).
 //
 // Runs FIRST and blocks the flow specs: the regression net for the
 // #335 white-screen class (missing `mime.types` include → every asset

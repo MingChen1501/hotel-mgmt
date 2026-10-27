@@ -1,7 +1,7 @@
 // Shared Bearer API client for the /app/ migration shell
-// (Refs #291, LLD §11.2–11.3, ADR-0003 criteria 4 and 9).
+// (Refs #291, LLD section 11.2–11.3, ADR-0003 criteria 4 and 9).
 //
-// Contract (LLD §11 shared-client contract):
+// Contract (LLD section 11 shared-client contract):
 // - Every call carries `Authorization: Bearer <token>` from the
 //   session store, never from page-local state.
 // - Any `401` / `UNAUTHENTICATED` response clears the store token
@@ -74,7 +74,7 @@ export function attachConnectivityListeners(): void {
   });
   window.addEventListener('online', () => {
     // Reconnect alone clears nothing until staff retries: the
-    // banner stays until a manual retry succeeds (LLD §11.3 H–C).
+    // banner stays until a manual retry succeeds (LLD section 11.3 H–C).
     // Only the banner state refreshes here; no request is replayed.
     setOnline();
   });
@@ -157,7 +157,7 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
     const reason = err instanceof Error ? err.message : 'Network request failed';
     setOffline(reason, { path, init });
     // The offline reason stays in this message for the shell-owned
-    // retry chrome (contract §2, NFR-SHL-3: the banner names the
+    // retry chrome (contract section 2, NFR-SHL-3: the banner names the
     // disconnect and the retry result keeps the reason — pinned by
     // App.test.ts). View error fields never show it raw: the shared
     // errorMessage helper maps every failure to the plain
@@ -203,7 +203,7 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
 }
 
 // Staff-initiated retry of the last connectivity-failed request
-// (offline banner button, LLD §11.3 E–G). Returns false when there
+// (offline banner button, LLD section 11.3 E–G). Returns false when there
 // is nothing to retry. Never called automatically.
 export async function retryLastRequest<T>(): Promise<T | false> {
   const pending = lastFailedRequest;

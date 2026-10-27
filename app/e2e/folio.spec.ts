@@ -1,4 +1,4 @@
-// Browser folio flow (plan §1 flow 4, #338 M6).
+// Browser folio flow (plan section 1 flow 4, #338 M6).
 //
 // Open a stay folio, post room + extra charges, record a cash
 // payment: every line and the running balance on screen agree with

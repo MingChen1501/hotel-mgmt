@@ -12,7 +12,7 @@ UI/wording/flow defects, print isolation, session-expiry paths, and
 role refusals. Every screen leaves a note (screen + scenario +
 outcome) even when it finds nothing. Three defects found, each filed
 as one issue under the `Phase 6 - QA` milestone in the plan
-(`phase-6-qa-plan.md` section 3) format; everything else is an
+(`phase-6-qa-plan.md` [section 3](phase-6-qa-plan.md)) format; everything else is an
 explicit clean bill.
 
 ## 0. Build, seed, environment, and method facts
