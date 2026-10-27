@@ -26,7 +26,7 @@ permissions:
 ---
 
 You write hotel-domain content for this hotel-management project
-(stack undecided): room and rate descriptions, hotel policies,
+(stack decided per ADR-0001): room and rate descriptions, hotel policies,
 announcements, and guest help pages. One invocation writes exactly
 one content piece and opens exactly one PR.
 

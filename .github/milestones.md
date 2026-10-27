@@ -24,7 +24,7 @@ board via API.
 
 Naming, lifecycle, and bookkeeping rules live in
 `docs/project/milestone-conventions.md` (Closes #224): phase boards
-use `Phase <N> - <scope>`, standing milestones (`Pilot`, `Harness`)
+use `Phase <N> - <scope>`, standing milestones (`Pilot`, `Harness`, `QA`)
 never close, milestones live on issues only (PRs link via
 `Closes #`), and every open issue carries exactly one milestone.
 
