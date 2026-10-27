@@ -244,7 +244,8 @@ No new subsystem, no boundary change, no contract change:
 
 - Presentation only. The six existing routes (`/app/`,
   `/app/book`, `/app/stay`, `/app/folio`, `/app/print`,
-  `/app/admin` — router in `app/src/router.ts:21-62`) are the
+  `/app/admin` — router in `app/src/router.ts:24-60`, plus the
+  placeholder catch-all at :55-59) are the
   complete set; no screen or flow is added, removed, or renamed.
   All module boundaries (section 4), named contracts, and data-store
   ownership statements stand unchanged.
@@ -252,21 +253,29 @@ No new subsystem, no boundary change, no contract change:
   Print · Admin, then the signed-in user name, then Sign out;
   active-route highlight; single centred content column, max width
   1100px; shell-owned sign-in gate replacing the per-screen
-  sign-in copies) wraps the existing screen SFCs. The offline
+  sign-in copies) wraps the existing screen SFCs. The admin
+  console additionally hides every management section from
+  front-desk callers as a cosmetic layer over the server-side
+  `FORBIDDEN` refusals (Refs #355); behaviour — who may do what —
+  is unchanged. The offline
   banner and manual retry stay exactly as they are
-  (`app/src/App.vue:1-28`, `app/src/api/client.ts:44-83`).
+  (`app/src/App.vue:1-28`, `app/src/api/client.ts:44-85`).
 - Styling mechanism. PrimeVue is added as a dependency with a
   stock preset theme fed by the contract section 1 tokens (colours,
   type, spacing, 2px focus ring); no custom design system beyond
-  the tokens. The only stylesheet that exists today (print
-  isolation in `app/src/views/PrintView.vue:1106-1126` and
-  `app/src/views/BookView.vue:976-989`) is preserved byte-for-byte
-  in behaviour.
+  the tokens. The only stylesheets that exist today are the print
+  isolation blocks (`.print-document` markup at
+  `PrintView.vue:105,219,300` under `@media print` at
+  `:1239` within the `:1233-1257` style block, and the book
+  confirmation isolation at `BookView.vue:973-986`) —
+  preserved byte-for-byte in behaviour.
 - State wording. Loading/empty/error/refusal states render as
   plain non-technical sentences per `FR-DSP-3`; refusal
   conditions are unchanged — only the wording becomes
   stand-in readable. All user-visible strings stay in the
-  catalogue (`NFR-I18N-1` holds).
+  catalogue (`NFR-I18N-1` holds): the default-locale `messages/en.json`
+  beside the Vietnamese `messages/vi.json` for the pilot desk (Refs #356),
+  resolved through `app/src/i18n/` with fallback to English.
 
 Rollback: revert the single Phase 2 implementation PR; no data
 migration exists in either direction (no contract or schema change
