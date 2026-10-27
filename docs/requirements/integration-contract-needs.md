@@ -384,9 +384,9 @@ extension 3a; NFR-SEC-1); lockout after 5 consecutive wrong secrets
 and 15-minute idle sign-out are session-liveness decisions
 (NFR-SEC-2).
 
-Error cases: out-of-role attempt: `FORBIDDEN` (NFR-SEC-1); locked or
-signed-out session: authentication refusal (NFR-SEC-2) — exact code
-belongs to the `architect`.
+Error cases: out-of-role attempt: `FORBIDDEN` (NFR-SEC-1); locked
+identity: `IDENTITY_LOCKED` while the lock holds, expired or
+signed-out session: `UNAUTHENTICATED` (NFR-SEC-2; LLD section 0).
 
 ### 6c. Export and backup (ADM fans out to RES, STAY, BIL, GST, ROOM, RATE)
 
@@ -481,7 +481,8 @@ need.
 | Out-of-role attempt | `FORBIDDEN` | — | NFR-SEC-1; BR-35 |
 | Unknown entity (room type, reservation, guest, folio) | `NOT_FOUND` | the reference | guard completeness |
 | Undefined charge item | (architect assigns; suggested `VALIDATION_FAILED`) | the item | FR-BIL-2, FR-CUS-3; BR-22 |
-| Locked / signed-out session | (architect assigns) | — | NFR-SEC-2; BR-42 |
+| Locked identity sign-in | `IDENTITY_LOCKED` | the locked identity (distinct from `UNAUTHENTICATED`) | NFR-SEC-2; BR-42 |
+| Expired or signed-out session | `UNAUTHENTICATED` | — | NFR-SEC-2; BR-42 |
 
 ## 10. Open questions (where the FRs do not decide)
 

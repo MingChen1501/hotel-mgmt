@@ -423,8 +423,10 @@ NFR-SEC-2 — Authentication. Every user signs in with a unique
 identity and a secret, and unattended sessions do not stay open.
 Given sign-in and idle-session rules; when a wrong secret is entered
 5 times in a row for one identity, the identity locks until the
-owner or manager unlocks it; when a session idles 15 minutes, it
-signs out. Targets: lockout after 5 consecutive failures; automatic
+owner or manager unlocks it, and a sign-in attempt against the
+locked identity is refused with code `IDENTITY_LOCKED` (distinct
+from `UNAUTHENTICATED` for a wrong secret or an expired session);
+when a session idles 15 minutes, it signs out. Targets: lockout after 5 consecutive failures; automatic
 sign-out after 15 idle minutes.
 
 NFR-RET-1 — Data retention. Closed stays, folios, payments, and
@@ -448,16 +450,20 @@ date matches the hotel's local calendar day, including across
 daylight-saving changes where applicable. Target: 100% of sampled
 records carry an offset and render on the correct local date.
 
-NFR-I18N-1 — Internationalisation readiness. English ships first and
-Vietnamese can follow without code changes to behaviour.
-Given the running system; when any screen, confirmation, invoice,
-receipt, or report is shown; then every user-visible string comes
-from a message catalogue (no behaviour logic depends on English
-wording), and dates, numbers, and currency follow the active locale
+NFR-I18N-1 — Internationalisation with Vietnamese primary.
+The desk operates in Vietnamese as the primary target language
+with English as the development and fallback language; both ship
+from the message catalogue with no behaviour change between
+locales.
+Given the running system in either locale; when any screen,
+confirmation, invoice, receipt, or report is shown; then every
+user-visible string comes from the message catalogue (no
+behaviour logic depends on either language's wording), a missing
+Vietnamese string falls back to its English source, and dates,
+numbers, and currency follow the active locale
 rules. Targets: 100% of user-visible strings sourced from the
-catalogue; Vietnamese can be added by catalogue content alone.
-(Operating in Vietnamese is not an MVP capability; this requirement
-covers readiness only.)
+catalogue in both locales; the Vietnamese key set stays at
+parity with the English set (every placeholder intact).
 
 NFR-AVL-1 — On-premise availability. The desk keeps working through
 an internet outage.
@@ -597,18 +603,31 @@ shared folios, integrated payment processing, accounting-system
 integration, custom report builder, cross-property and trend
 analytics, the on-screen activity and audit log view, customisable
 folio layout, custom roles beyond the defaults, automated workflow
-rules, multi-property operation of any kind, and multi-language
-operation (readiness only is `NFR-I18N-1`).
+rules, multi-property operation of any kind, and further languages
+beyond English and Vietnamese (`NFR-I18N-1` covers the two
+operating locales).
 
 ## 7. Desk UI migration shell slice (Refs #291)
 
-Scaffold slice of ADR-0003 (accepted 2026-10-25): a placeholder
-Vue 3 + Vite shell served under `/app/` with no app routes. Design
+Scaffold slice of ADR-0003 (accepted 2026-10-25): the placeholder
+Vue 3 + Vite shell served under `/app/` from which the screen
+migrations started. Design
 lives in `docs/architecture/hld.md` [section 11](../architecture/hld.md) and
 `docs/architecture/lld.md` [section 11](../architecture/lld.md); acceptance criteria live in the
 issue body (the `docs/product/acceptance-criteria.md` slice is
 separate `product-owner` work under gate gap 4). This section
 records only the requirements delta the T3 spec gate requires.
+
+Supersession note (second re-review, Refs #381): the screen
+migrations have since landed as real routes — catalogue (#305),
+desk (#306), book (#307), stay (#308), folio (#309), print
+(#310), admin (#311) — with the placeholder kept as the
+unknown-path fallback, and the legacy static pages are
+decommissioned with 301 redirects to the `/app/` routes (#313).
+Placeholder-only items below are marked SUPERSEDED where the
+landed screens replace them; the standing shell behaviours
+(shared client and session store, `/app/` fallback, offline
+banner, CI job, OpenAPI mirror) hold as written.
 
 ### 7.1 Explicit no-change statements
 
@@ -636,7 +655,11 @@ land real routes.
 
 FR-SHL-1 — Placeholder route renders under `/app/`. Staff can
 open the migration shell and see the placeholder view; no app
-routes exist beyond it.
+routes exist beyond it. (SUPERSEDED: real routes landed for
+desk #306, book #307, stay #308, folio #309, print #310, and
+admin #311 — the placeholder now serves as the unknown-path
+fallback only; the single-placeholder assertion held for the
+scaffold slice.)
 Given staff load any `/app/*` path (including a history-mode deep
 link or reload); when the shell boots; then exactly one
 placeholder route renders, and no other app route exists.
@@ -653,7 +676,9 @@ routes to sign-in. The token persists in `sessionStorage`
 
 FR-SHL-3 — Print routes reserved, none implemented. Print URLs
 are reserved to live under `/app/print/`, but this slice
-implements no print route.
+implements no print route. (SUPERSEDED: print screens landed
+under `/app/print/` per #310; the namespace reservation held
+for the scaffold slice only.)
 Given staff load any `/app/print/...` path; when the shell
 routes it; then no print document is rendered by this slice
 (reservation of the namespace only; the print route lands in a
@@ -661,7 +686,9 @@ follow-up issue).
 
 FR-SHL-4 — Legacy pages and `/docs` mirror intact. The old
 static pages and the Swagger mirror keep serving exactly as
-before.
+before. (PARTLY SUPERSEDED: the mirror half stands; the
+served-legacy half is superseded by #313 — legacy pages are
+decommissioned and 301 redirect to the `/app/` routes.)
 Given the shell is deployed; when staff load any legacy page at
 `/` or the `/docs` Swagger mirror; then each serves exactly its
 pre-slice content, and the byte-identical OpenAPI mirror
@@ -696,19 +723,21 @@ and queue 0 writes.
 
 ### 7.4 Traceability handoff for `qa-lead`
 
-No guard exists yet for any item in sections 7.2–7.3: the
-implementation PR for #291 must create them. Each handoff note
-names the missing guard explicitly instead of citing one.
+Guards for the standing shell behaviours live on disk (created
+by the #291 implementation PR and extended per screen since);
+the superseded placeholder-only assertions above held for the
+scaffold slice. Each handoff note names the guard that covers
+the standing behaviour.
 
-| Shell item | Missing guard (implementation PR must create) | Handoff note for `qa-lead` |
+| Shell item | Guard (on disk; follow-up screens extended it) | Handoff note for `qa-lead` |
 |---|---|---|
-| FR-SHL-1 | Placeholder-render check (new; e.g. served-shell navigation asserting the placeholder view at `/app/` and on a deep-link reload) | Guard loads `/app/` plus one deep `/app/*` path and checks the placeholder renders with no other route reachable |
-| FR-SHL-2 | Shared-client 401 test (new; e.g. unit/integration test forcing a 401 through the shared client) | Guard forces a 401 and checks the store token clears and the shell routes to sign-in |
-| FR-SHL-3 | Namespace-reservation check (new; e.g. served-shell assertion that no `/app/print/...` route renders a document) | Guard loads `/app/print/...` and checks no print document renders while the namespace stays reserved |
-| FR-SHL-4 | Mirror + legacy checks (existing `script/openapi-route-check.sh` byte-identical check plus served-legacy page assertions) | Guard runs the byte-identical mirror check and loads each legacy page and `/docs`, checking pre-slice content |
-| NFR-SHL-1 | New CI build job (new workflow job: Node 22 + `npm ci` + build + test over the shell) | Guard is the CI job itself: red blocks the implementation PR |
-| NFR-SHL-2 | Fallback assertion (new; e.g. served-shell curl over sampled non-asset `/app/*` paths) | Guard requests sampled non-asset paths and checks every response is `/app/index.html` with status 200 |
-| NFR-SHL-3 | Disconnect drill (new; e.g. offline simulation asserting banner, retry, and zero queued writes) | Guard drops connectivity mid-session and checks the banner shows, retry is offered, and 0 writes queue |
+| FR-SHL-1 | Placeholder render: `app/src/router.test.ts` (migration shell router suite); per-screen render suites (`DeskView.test.ts`, `BookView.test.ts`, `StayView.test.ts`, `FolioView.test.ts`, `PrintView.test.ts`, `AdminView.test.ts`) | Superseded as an assertion (real routes landed); the suites now cover the six routes with the placeholder as unknown-path fallback |
+| FR-SHL-2 | Shared-client 401 test: `app/src/api/client.test.ts` (token clears, routes to sign-in); session store: `app/src/stores/session.test.ts` | Standing: 401 still clears the store token and routes to sign-in |
+| FR-SHL-3 | Namespace-reservation check (scaffold slice only) | Superseded: print screens landed under `/app/print/` per #310; covered by the print screen suite |
+| FR-SHL-4 | Mirror check: `script/openapi-route-check.sh` (byte-identical mirror); legacy-page assertions | Mirror half standing (check stays green); legacy half superseded by #313 (301 redirects) |
+| NFR-SHL-1 | CI build job (Node 22 + `npm ci` + build + test over the shell) | Standing: the job itself is the guard; red blocks the PR |
+| NFR-SHL-2 | Fallback assertion over sampled non-asset `/app/*` paths | Standing: every response is `/app/index.html` with status 200 |
+| NFR-SHL-3 | Disconnect drill (offline banner, manual retry, zero queued writes) | Standing: banner hooks (`offline-banner`, `offline-text`, `offline-retry`) in `app/src/App.test.ts` |
 
 ### 7.5 Explicitly not specified here
 
@@ -1039,13 +1068,12 @@ one. Existing baselines are named so extensions land on top.
   here: it belongs to the dev follow-up's spec set, owned by
   `product-owner` with `architect` input. This docs-only
   change is T0 and needs no contract to land.
-- D1 (for `product-owner`, MUST be answered before any dev
-  implementation PR opens): is the full desk loop
+- D1 (for `product-owner`, standing open scope call): is the full desk loop
   phone-operable, or is readable reflow to 360 px enough?
-  `FR-DSP-5` assumes reflow-usable; confirm or restate before
-  implementation.
-- D2 (for `product-owner`, MUST be answered before any dev
-  implementation PR opens): stand-in persona — new P4 in
+  `FR-DSP-5` assumes reflow-usable; the styling implementation
+  shipped on that assumption, and the call stays open for a
+  follow-up.
+- D2 (for `product-owner`, standing open scope call): stand-in persona — new P4 in
   `personas.md`, or stand-ins run in a P2 context? Stories in
   section 9.4 stay persona-neutral pending the call.
 
