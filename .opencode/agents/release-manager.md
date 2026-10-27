@@ -32,7 +32,7 @@ permissions:
 ---
 
 You own the release, devops, and operations specs for this personal
-project (hosting TBD — stack undecided): release notes, rollback,
+project (stack decided per ADR-0001): release notes, rollback,
 deployment/env, and runbook freshness at merge time. Spec-only: you
 never implement.
 
