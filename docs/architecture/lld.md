@@ -691,7 +691,7 @@ is a styling input. Money and dates render exactly as today
 | Forms (book, charge, pay, admin setup) | `InputText`, `Dropdown`/`Select`, `Calendar`/`DatePicker`, `Password` for secrets, `Button` for submits | Book form hooks `book-guest-name` (`BookView.vue:13-20`) through `book-confirm` (`:170-173`); guest lookup via `book-find-guest` / `book-register-guest` (`:24-34`); per-screen sign-in forms (removed to the shell gate, section 12.4) |
 | Lists (reservations, stays, folios, rooms, guests) | `DataTable` with `Column`, paginator on long lists | Arrivals table `desk-arrivals-table` (`DeskView.vue:52-54` and siblings per screen) |
 | Confirmations and destructive actions (cancel, check-out, day-close) | `Dialog` with explicit confirm/cancel buttons | Existing confirm buttons (e.g. `book-confirm` at `BookView.vue:170-173`) keep their hooks and call order |
-| Feedback (success, validation, refusal, error) | `Message`/`Toast` for page-level notes, inline field errors under the field | Existing alert hooks (`book-quote-error`, `book-confirm-error`, `desk-dashboard-error`) keep their hooks; sign-in errors render only in the shell gate (`shell-signin-*` in `App.vue:67-101`); wording becomes plain sentences per `FR-DSP-3` |
+| Feedback (success, validation, refusal, error) | `Message`/`Toast` for page-level notes, inline field errors under the field | Existing alert hooks (`book-quote-error`, `book-confirm-error`, `desk-dashboard-error`) keep their hooks; sign-in errors render only in the shell gate (`shell-signin-*` in `App.vue:67-109`); wording becomes plain sentences per `FR-DSP-3` |
 | Print (receipt/invoice/confirmation) | existing print CSS preserved; screen shows a print preview card with one Print button | `.print-document` markup (`PrintView.vue:105,219,300`) under `@media print` (`PrintView.vue:1239` within the `:1233-1257` style block, `BookView.vue:978` within `:973-986`) |
 
 ### 12.3 Shell navigation flowchart
@@ -771,7 +771,7 @@ flowchart TD
 Edge trace:
 
 - A–B: the gate (`App.vue:32` shell-gate, sign-in form at
-  `:67-101`) replaces the six per-screen copies, which were
+  `:67-109`) replaces the six per-screen copies, which were
   deleted with the legacy pages in #299 — no per-screen sign-in
   form remains in any view; the per-view sign-in tests moved to
   the gate without deleting coverage (`DeskView.test.ts:143-164`

@@ -14,7 +14,7 @@ Node.js/TypeScript flat `src/` files over raw `node:http`, wired in `services/ro
 
 | Layer | Files | Responsibility |
 |---|---|---|
-| Transport + routing | `src/server.ts` | `createServiceServer` answers `GET /healthz` (:68), enforces Bearer presence (:78), routes `POST /v1/rooms/<Operation>` by case label |
+| Transport + routing | `src/server.ts` | `createServiceServer` answers `GET /healthz` (:68), enforces Bearer presence (:81), routes `POST /v1/rooms/<Operation>` by case label |
 | Identity | `src/auth.ts` | `extractBearer`: Bearer presence check, same skeleton contract as Stay |
 | Validation + step order | `src/store.ts` (`RoomStore`, `RoomStoreAPI` at :167) | per-operation checks, sellability math, guarded assign/release/block transitions |
 | Row storage | `src/store.ts` (in-memory), `src/pgstore.ts` (`PostgresRoomStore implements RoomStoreAPI` at :36) | identical semantics; Postgres selected at boot when `DATABASE_URL` is set |
@@ -38,7 +38,7 @@ flowchart TD
 
 Edge trace (every edge cites code):
 
-- A–B: same transport contract as Stay (`src/server.ts:68-78`; body read per-operation from :87).
+- A–B: same transport contract as Stay (`src/server.ts:68-81`; body read per-operation from :87).
 - C: unknown room key → `NOT_FOUND` (`src/store.ts:203-212`).
 - D: block overlap for the dates → `STATE_ILLEGAL` (:327, :381); non-ready room → `STATE_ILLEGAL` (:392); a simultaneous last-room race refuses the loser with `CONFLICT` "was just taken" (:389).
 - E: state flips to `occupied` with the stay link kept (`src/store.ts:397-400`); F: `roomNumber`, `stayLink`, `state` returned to the desk, which pairs it with Stay `MoveRoom`.
@@ -82,7 +82,7 @@ Same shared Node envelope as Stay (`src/errors.ts`; `docs/technical/error-handli
 | `NOT_FOUND` | 404 | unknown room type or room (:203, :212) |
 | `CONFLICT` | 409 | room just taken in a race (:389) |
 | `STATE_ILLEGAL` | 422 | blocked dates, wrong room state, occupied block target (:327, :381, :392, :415, :425, :443) |
-| `UNAUTHENTICATED` | 401 | missing session token (`src/server.ts:78`) |
+| `UNAUTHENTICATED` | 401 | missing session token (`src/server.ts:81`) |
 
 ## 7. Operations
 
