@@ -74,6 +74,11 @@
           {{ t('desk.folio.no_lines', {}, 'No charges or payments yet. Posted charges and recorded payments appear here.') }}
         </template>
       </DataTable>
+      <ReferenceDetails
+        v-if="folioDetails.length > 0"
+        :items="folioDetails"
+        testid-prefix="print-folio-details"
+      />
       <div>
         <Button
           id="print-invoice-button"
@@ -166,6 +171,11 @@
           {{ invoiceCopyStatus }}
         </p>
       </section>
+      <ReferenceDetails
+        v-if="invoiceDetails.length > 0"
+        :items="invoiceDetails"
+        testid-prefix="print-invoice-details"
+      />
 
       <h2>{{ t('desk.print.receipt_heading', {}, 'Receipts (one per payment)') }}</h2>
       <p
@@ -241,6 +251,11 @@
           {{ receiptCopyStatus }}
         </p>
       </section>
+      <ReferenceDetails
+        v-if="receiptDetails.length > 0"
+        :items="receiptDetails"
+        testid-prefix="print-receipt-details"
+      />
 
       <h2>{{ t('desk.print.confirmation_heading', {}, 'Booking confirmation') }}</h2>
       <div>
@@ -317,6 +332,11 @@
           {{ confirmationCopyStatus }}
         </p>
       </section>
+      <ReferenceDetails
+        v-if="confirmationDetails.length > 0"
+        :items="confirmationDetails"
+        testid-prefix="print-confirmation-details"
+      />
     </section>
   </main>
 </template>
@@ -333,6 +353,7 @@ import { apiFetch } from '../api/client';
 import type { ApiError } from '../api/client';
 import { catalogueLocale, t } from '../i18n';
 import { useSessionStore } from '../stores/session';
+import ReferenceDetails, { type ReferenceItem } from '../components/ReferenceDetails.vue';
 
 // Print screen as a Vue SFC (Refs #297, ADR-0003).
 // Behavioural port of the inline script in `frontend/print.html`
@@ -626,7 +647,7 @@ function pairsText(pairs: DocumentPair[], rows: EntryRow[]): string {
 export default defineComponent({
   name: 'PrintView',
   // eslint-disable-next-line vue/no-reserved-component-names -- PrimeVue registers Button/Dialog under these canonical names (Refs #338 component mapping).
-  components: { Button, Column, DataTable, InputText, Message },
+  components: { Button, Column, DataTable, InputText, Message, ReferenceDetails },
   setup() {
     const session = useSessionStore();
     const stayId = ref(prefillParam('stayId'));
@@ -635,6 +656,21 @@ export default defineComponent({
     const folioStatus = ref('');
     const openError = ref('');
     const opening = ref(false);
+    // Room-type names (issue #372): one ListRoomTypes read fills
+    // this map for confirmation type names; the generic label
+    // covers unknown or failed reads, never the raw type UUID.
+    const roomTypeNames = ref<Record<string, string>>({});
+    // Guest name for the open folio's stay, resolved best-effort
+    // through the existing GetStay/GetGuest reads (issue #372):
+    // aliases use it when known, else the on-file label.
+    const folioGuestName = ref('');
+    // Exact record IDs stay hidden by default (issue #372 owner
+    // amendment) and surface only in these per-document reference
+    // details, opened when verification is needed.
+    const folioDetails = ref<ReferenceItem[]>([]);
+    const invoiceDetails = ref<ReferenceItem[]>([]);
+    const receiptDetails = ref<ReferenceItem[]>([]);
+    const confirmationDetails = ref<ReferenceItem[]>([]);
 
     const invoicePairs = ref<DocumentPair[] | null>(null);
     const invoiceEntryRows = ref<EntryRow[]>([]);
@@ -679,14 +715,97 @@ export default defineComponent({
       session.expireSession();
     }
 
+    function typeName(roomTypeId: string | undefined): string {
+      if (roomTypeId && roomTypeNames.value[roomTypeId]) {
+        return roomTypeNames.value[roomTypeId];
+      }
+      return t('desk.today.room_type_unresolved', {}, 'Room type');
+    }
+
+    async function ensureRoomTypeNames(): Promise<void> {
+      if (Object.keys(roomTypeNames.value).length > 0) {
+        return;
+      }
+      try {
+        const listed = await apiFetch<{ roomTypes?: Array<{ id: string; name: string }> }>(
+          '/v1/rooms/ListRoomTypes',
+          { method: 'POST', body: JSON.stringify({}) },
+        );
+        const names: Record<string, string> = {};
+        for (const type of listed.roomTypes ?? []) {
+          if (type.id && type.name) {
+            names[type.id] = type.name;
+          }
+        }
+        roomTypeNames.value = names;
+      } catch (err) {
+        // The generic type label covers a failed read (Refs #372):
+        // confirmations never render the raw type UUID.
+        if (isSignedOut(err)) {
+          throw err;
+        }
+      }
+    }
+
+    // Guest name for a folio stay through the existing reads
+    // (Refs #370 pattern: GetStay then GetGuest); best-effort —
+    // failures resolve to the on-file alias, never a raw ID.
+    async function resolveStayGuestName(stayId: string): Promise<string> {
+      try {
+        const stay = await apiFetch<{ guestId?: string }>('/v1/stay/GetStay', {
+          method: 'POST',
+          body: JSON.stringify({ stayId }),
+        });
+        if (!stay.guestId) {
+          return '';
+        }
+        const guest = await apiFetch<{ fullName?: string }>('/v1/guests/GetGuest', {
+          method: 'POST',
+          body: JSON.stringify({ guestId: stay.guestId }),
+        });
+        return guest.fullName ?? '';
+      } catch (err) {
+        if (isSignedOut(err)) {
+          throw err;
+        }
+        return '';
+      }
+    }
+
+    // Human document aliases (issue #372, UI-side only): every
+    // alias composes already-available fields (kind, method,
+    // total, date) and never the bare record ID.
+    function folioAlias(balanceMinor: number): string {
+      return t(
+        'desk.print.folio_alias',
+        { balance: plainAmount(balanceMinor) },
+        `Folio — balance ${plainAmount(balanceMinor)}.`,
+      );
+    }
+
+    function stayAlias(): string {
+      if (folioGuestName.value) {
+        return t(
+          'desk.print.stay_alias_named',
+          { guestName: folioGuestName.value },
+          `Stay of ${folioGuestName.value}.`,
+        );
+      }
+      return t('desk.print.stay_alias_unresolved', {}, 'Stay on file.');
+    }
+
     function renderFolio(next: Folio): void {
       folio.value = next;
       currentFolioId.value = next.folioId;
       folioStatus.value = t(
-        'desk.folio.folio_line',
-        { folioId: next.folioId, balance: plainAmount(next.balanceMinor) },
-        `Folio ${next.folioId}: balance ${plainAmount(next.balanceMinor)}.`,
+        'desk.folio.folio_balance',
+        { balance: plainAmount(next.balanceMinor) },
+        `Folio balance: ${plainAmount(next.balanceMinor)}.`,
       );
+      folioDetails.value = [
+        { label: 'Stay ID', value: next.stayId },
+        { label: 'Folio ID', value: next.folioId },
+      ];
       receiptPayments.value = (next.payments ?? []).map((line: unknown, index: number) => {
         if (!isPayment(line)) {
           return { key: `raw-${index}`, label: rawLineText(line), paymentId: null };
@@ -705,44 +824,60 @@ export default defineComponent({
 
     function renderInvoice(invoice: Invoice): void {
       invoiceEntryRows.value = entriesToRows(ledgerEntries(invoice));
+      // Document pairs show human aliases (issue #372, UI-side
+      // only): the exact record IDs live in the reference details
+      // below, never in the default pairs.
       invoicePairs.value = [
-        { label: 'invoice', value: invoice.invoiceId },
-        { label: 'folio', value: invoice.folioId },
-        { label: 'stay', value: invoice.stayId },
+        {
+          label: 'invoice',
+          value: t(
+            'desk.print.invoice_line_named',
+            { balance: plainAmount(invoice.balanceMinor), producedAt: invoice.producedAt },
+            `Invoice of ${plainAmount(invoice.balanceMinor)}, produced ${invoice.producedAt}.`,
+          ),
+        },
+        { label: 'folio', value: folioAlias(invoice.balanceMinor) },
+        { label: 'stay', value: stayAlias() },
         { label: 'produced at', value: invoice.producedAt },
         { label: 'balance', value: plainAmount(invoice.balanceMinor) },
       ];
+      invoiceDetails.value = [
+        { label: 'Invoice ID', value: invoice.invoiceId },
+        { label: 'Folio ID', value: invoice.folioId },
+        { label: 'Stay ID', value: invoice.stayId },
+      ];
       folioStatus.value = t(
-        'desk.print.invoice_line',
-        {
-          invoiceId: invoice.invoiceId,
-          folioId: invoice.folioId,
-          balance: plainAmount(invoice.balanceMinor),
-        },
-        `Invoice ${invoice.invoiceId} for folio ${invoice.folioId}: balance ${plainAmount(invoice.balanceMinor)}.`,
+        'desk.print.invoice_line_named',
+        { balance: plainAmount(invoice.balanceMinor), producedAt: invoice.producedAt },
+        `Invoice of ${plainAmount(invoice.balanceMinor)}, produced ${invoice.producedAt}.`,
       );
     }
 
     function renderReceipt(receipt: Receipt): void {
-      receiptPairs.value = [
-        { label: 'receipt', value: receipt.receiptId },
-        { label: 'payment', value: receipt.paymentId },
-        { label: 'folio', value: receipt.folioId },
-        { label: 'stay', value: receipt.stayId },
-        { label: 'method', value: receipt.method },
-        { label: 'amount', value: plainAmount(receipt.amountMinor) },
-        { label: 'paid at', value: receipt.paidAt },
-      ];
-      receiptStatus.value = t(
-        'desk.print.receipt_line',
+      const receiptText = t(
+        'desk.print.receipt_line_named',
         {
-          receiptId: receipt.receiptId,
           method: receipt.method,
           amount: plainAmount(receipt.amountMinor),
           paidAt: receipt.paidAt,
         },
-        `Receipt ${receipt.receiptId}: ${receipt.method} payment of ${plainAmount(receipt.amountMinor)} on ${receipt.paidAt}.`,
+        `Receipt for ${receipt.method} payment of ${plainAmount(receipt.amountMinor)} on ${receipt.paidAt}.`,
       );
+      receiptPairs.value = [
+        { label: 'receipt', value: receiptText },
+        { label: 'folio', value: folioAlias(folio.value?.balanceMinor ?? receipt.amountMinor) },
+        { label: 'stay', value: stayAlias() },
+        { label: 'method', value: receipt.method },
+        { label: 'amount', value: plainAmount(receipt.amountMinor) },
+        { label: 'paid at', value: receipt.paidAt },
+      ];
+      receiptDetails.value = [
+        { label: 'Receipt ID', value: receipt.receiptId },
+        { label: 'Payment ID', value: receipt.paymentId },
+        { label: 'Folio ID', value: receipt.folioId },
+        { label: 'Stay ID', value: receipt.stayId },
+      ];
+      receiptStatus.value = receiptText;
     }
 
     function renderConfirmation(confirmation: Confirmation): void {
@@ -757,14 +892,15 @@ export default defineComponent({
         { label: 'reference', value: confirmation.reservationRef },
         { label: 'check-in', value: confirmation.dates?.checkIn ?? '' },
         { label: 'check-out', value: confirmation.dates?.checkOut ?? '' },
-        // The confirmation `type` carries the booked room-type UUID
-        // and no room-type name read exists behind the desk UI
-        // (Refs #370: follow-up tracks a GetRoomType/ListRoomTypes
-        // read), so the pair renders the generic type label instead
-        // of the raw ID.
-        { label: 'type', value: t('desk.today.room_type_unresolved', {}, 'Room type') },
+        // The confirmation `type` carries the booked room-type ID:
+        // the pair renders the resolved name (issue #372) and the
+        // exact ID lives in the reference details below.
+        { label: 'type', value: typeName(confirmation.type) },
         { label: 'price', value: money },
       ];
+      confirmationDetails.value = confirmation.type
+        ? [{ label: 'Room type ID', value: confirmation.type }]
+        : [];
     }
 
     // Marks one document section active and prints it alone: the
@@ -832,12 +968,12 @@ export default defineComponent({
       opening.value = true;
       openError.value = '';
       try {
-        renderFolio(
-          await apiFetch<Folio>('/v1/billing/GetFolioBalance', {
-            method: 'POST',
-            body: JSON.stringify({ stayId: id, actor: session.displayName ?? '' }),
-          }),
-        );
+        const opened = await apiFetch<Folio>('/v1/billing/GetFolioBalance', {
+          method: 'POST',
+          body: JSON.stringify({ stayId: id, actor: session.displayName ?? '' }),
+        });
+        renderFolio(opened);
+        folioGuestName.value = await resolveStayGuestName(id);
       } catch (err) {
         if (isSignedOut(err)) {
           expireToGate();
@@ -868,6 +1004,10 @@ export default defineComponent({
       currentFolioId.value = null;
       folio.value = null;
       folioStatus.value = '';
+      folioGuestName.value = '';
+      folioDetails.value = [];
+      invoiceDetails.value = [];
+      receiptDetails.value = [];
       openError.value = '';
       invoicePairs.value = null;
       invoiceEntryRows.value = [];
@@ -986,6 +1126,7 @@ export default defineComponent({
             price: { amountMinor: reservation.priceBasis?.totalMinor ?? 0 },
           }),
         });
+        await ensureRoomTypeNames();
         renderConfirmation(
           await apiFetch<Confirmation>('/v1/guests/ProduceConfirmation', {
             method: 'POST',
@@ -1045,11 +1186,13 @@ export default defineComponent({
       t,
       stayId,
       folioStatus,
+      folioDetails,
       openError,
       opening,
       entryRows,
       invoiceButtonDisabled,
       invoicePairs,
+      invoiceDetails,
       invoiceEntryRows,
       invoiceError,
       invoicing,
@@ -1060,10 +1203,12 @@ export default defineComponent({
       receiptError,
       receipting,
       receiptPairs,
+      receiptDetails,
       receiptCopyStatus,
       receiptDoc,
       reservationRef,
       confirmationPairs,
+      confirmationDetails,
       loadError,
       loading,
       confirmationCopyStatus,

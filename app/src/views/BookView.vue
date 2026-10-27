@@ -79,16 +79,38 @@
           </label>
           <br>
           <label for="book-room-type-id">
-            {{ t('desk.book.room_type', {}, 'Room type ID: ') }}
-            <InputText
+            {{ t('desk.book.room_type', {}, 'Room type: ') }}
+            <select
               id="book-room-type-id"
               v-model="roomTypeId"
               name="room-type-id"
-              autocomplete="off"
               data-testid="book-room-type-id"
-              @update:model-value="onStayInput"
-            />
+              @change="onStayInput"
+            >
+              <option value="">
+                {{ t('desk.book.room_type_choose', {}, 'Choose a room type…') }}
+              </option>
+              <option
+                v-for="type in roomTypes"
+                :key="type.id"
+                :value="type.id"
+              >
+                {{ type.name }}
+              </option>
+            </select>
           </label>
+          <p
+            v-if="roomTypesLoading"
+            data-testid="book-room-type-loading"
+          >
+            {{ t('desk.book.room_type_loading', {}, 'Loading room types…') }}
+          </p>
+          <p
+            v-if="!roomTypesLoading && roomTypes.length === 0"
+            data-testid="book-room-type-empty"
+          >
+            {{ t('desk.book.room_type_empty', {}, 'No room types defined yet. Ask a manager to define one first.') }}
+          </p>
           <br>
           <label for="book-rate-plan">
             {{ t('desk.book.rate_plan', {}, 'Rate plan (leave blank when only one prices this type): ') }}
@@ -182,6 +204,11 @@
           <a href="/app/">{{ t('desk.book.view_arrivals', {}, "View on today's arrivals") }}</a> ·
           <a href="/app/print">{{ t('desk.entry.print_link', {}, 'Print invoice, receipt, or confirmation') }}</a>
         </p>
+        <ReferenceDetails
+          v-if="bookingDetails.length > 0"
+          :items="bookingDetails"
+          testid-prefix="book-details"
+        />
         <Button
           id="book-new-booking-button"
           type="button"
@@ -240,7 +267,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref } from 'vue';
+import { defineComponent, onMounted, ref, watch } from 'vue';
 import Button from 'primevue/button';
 import InputText from 'primevue/inputtext';
 import Message from 'primevue/message';
@@ -248,6 +275,7 @@ import { apiFetch } from '../api/client';
 import type { ApiError } from '../api/client';
 import { catalogueLocale, t } from '../i18n';
 import { useSessionStore } from '../stores/session';
+import ReferenceDetails, { type ReferenceItem } from '../components/ReferenceDetails.vue';
 
 // Book screen as Vue SFCs (Refs #294, ADR-0003).
 // Behavioural port of the inline script in `frontend/book.html`
@@ -373,7 +401,7 @@ function newIdempotencyKey(): string {
 export default defineComponent({
   name: 'BookView',
   // eslint-disable-next-line vue/no-reserved-component-names -- PrimeVue registers Button/Dialog under these canonical names (Refs #338 component mapping).
-  components: { Button, InputText, Message },
+  components: { Button, InputText, Message, ReferenceDetails },
   setup() {
     const session = useSessionStore();
     const guestName = ref('');
@@ -388,6 +416,14 @@ export default defineComponent({
     const arrivalDate = ref('');
     const departureDate = ref('');
     const roomTypeId = ref('');
+    // Room-type catalogue (issue #372): the picker shows names
+    // and submits IDs, so staff never type a raw type UUID.
+    const roomTypes = ref<Array<{ id: string; name: string }>>([]);
+    const roomTypesLoading = ref(false);
+    const roomTypeNames = ref<Record<string, string>>({});
+    // Exact record IDs stay hidden by default (issue #372 owner
+    // amendment) and surface only in these reference details.
+    const bookingDetails = ref<ReferenceItem[]>([]);
     const ratePlan = ref('');
     const discountName = ref('');
     const quote = ref<Quote | null>(null);
@@ -409,6 +445,39 @@ export default defineComponent({
       quote.value = null;
       quoteKey.value = null;
       session.expireSession();
+    }
+
+    function typeName(roomTypeId: string | undefined): string {
+      if (roomTypeId && roomTypeNames.value[roomTypeId]) {
+        return roomTypeNames.value[roomTypeId];
+      }
+      return t('desk.today.room_type_unresolved', {}, 'Room type');
+    }
+
+    async function loadRoomTypes(): Promise<void> {
+      roomTypesLoading.value = true;
+      try {
+        const listed = await apiFetch<{ roomTypes?: Array<{ id: string; name: string }> }>(
+          '/v1/rooms/ListRoomTypes',
+          { method: 'POST', body: JSON.stringify({}) },
+        );
+        const entries = (listed.roomTypes ?? []).filter((type) => type.id && type.name);
+        roomTypes.value = entries;
+        const names: Record<string, string> = {};
+        for (const type of entries) {
+          names[type.id] = type.name;
+        }
+        roomTypeNames.value = names;
+      } catch (err) {
+        // The picker empty state covers a failed read (Refs #372):
+        // staff never type a raw type UUID.
+        if (isSignedOut(err)) {
+          expireToGate();
+          return;
+        }
+      } finally {
+        roomTypesLoading.value = false;
+      }
     }
 
     function clearQuote(): void {
@@ -565,20 +634,21 @@ export default defineComponent({
         price.amountMinor !== undefined && price.currency
           ? formatMoney(price.amountMinor, price.currency)
           : plainAmount(price.amountMinor ?? 0);
-      // The confirmation `type` carries the booked room-type UUID
-      // and no room-type name read exists behind the desk UI
-      // (Refs #370: follow-up tracks a GetRoomType/ListRoomTypes
-      // read), so the pair renders the generic type label instead
-      // of the raw ID.
+      // The confirmation `type` carries the booked room-type ID:
+      // the pair renders the resolved name (issue #372) and the
+      // exact ID lives in the reference details below.
       confirmationPairs.value = [
         { label: 'hotel', value: confirmation.hotel?.name ?? '' },
         { label: 'guest', value: confirmation.guest?.fullName ?? '' },
         { label: 'reference', value: confirmation.reservationRef },
         { label: 'check-in', value: confirmation.dates?.checkIn ?? '' },
         { label: 'check-out', value: confirmation.dates?.checkOut ?? '' },
-        { label: 'type', value: t('desk.today.room_type_unresolved', {}, 'Room type') },
+        { label: 'type', value: typeName(confirmation.type) },
         { label: 'price', value: money },
       ];
+      bookingDetails.value = confirmation.type
+        ? [{ label: 'Room type ID', value: confirmation.type }]
+        : [];
     }
 
     async function onConfirm(): Promise<void> {
@@ -837,11 +907,31 @@ export default defineComponent({
       discountName.value = '';
       guestStatus.value = '';
       booking.value = null;
+      bookingDetails.value = [];
       confirmationPairs.value = null;
       confirmationError.value = '';
       copyStatus.value = '';
       clearQuote();
     }
+
+    onMounted(() => {
+      // The shell gates this screen on sign-in, so a signed-in
+      // visit loads the type catalogue for the picker straight
+      // away; the watcher below covers mounts that sign in later
+      // (and only then — no unsigned catalogue call).
+      if (session.isSignedIn) {
+        void loadRoomTypes();
+      }
+    });
+
+    watch(
+      () => session.isSignedIn,
+      (signedIn) => {
+        if (signedIn && roomTypes.value.length === 0 && !roomTypesLoading.value) {
+          void loadRoomTypes();
+        }
+      },
+    );
 
     return {
       t,
@@ -851,6 +941,8 @@ export default defineComponent({
       arrivalDate,
       departureDate,
       roomTypeId,
+      roomTypes,
+      roomTypesLoading,
       ratePlan,
       discountName,
       quote,
@@ -860,6 +952,7 @@ export default defineComponent({
       confirming,
       confirmError,
       booking,
+      bookingDetails,
       confirmationPairs,
       confirmationError,
       copyStatus,
