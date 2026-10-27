@@ -89,7 +89,7 @@ test('invoice, receipt, and confirmation match the folio', async ({ page, reques
   await page.goto('/app/print');
   await page.getByTestId('print-stay-id').fill(stayId);
   await page.getByTestId('print-open').click();
-  await expect(page.getByTestId('print-folio-status')).toContainText('balance 600.00');
+  await expect(page.getByTestId('print-folio-status')).toContainText('balance: 600.00');
 
   // Invoice lines and total equal the folio on screen.
   await page.getByTestId('print-invoice').click();

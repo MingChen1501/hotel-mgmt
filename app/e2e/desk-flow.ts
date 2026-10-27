@@ -95,6 +95,7 @@ export interface FlowContext {
   guestId: string;
   guestName: string;
   roomTypeId: string;
+  roomTypeName: string;
   roomNumbers: string[];
   roomIds: string[];
   ratePlan: string;
@@ -120,8 +121,9 @@ export async function setupFlowContext(
     contact: { idDocument: `UI-${suffix}` },
     actor: 'browser-e2e',
   }, token);
+  const roomTypeName = name('UI Standard');
   const roomType = (await apiOp(request, 'rooms', 'UpsertRoomType', {
-    name: name('UI Standard'),
+    name: roomTypeName,
     capacity: 2,
     bedType: 'double',
     actor: 'browser-e2e',
@@ -153,7 +155,7 @@ export async function setupFlowContext(
       priceMinor: 120000,
     }, token);
   }
-  return { tag, guestId, guestName, roomTypeId: roomType, roomNumbers, roomIds, ratePlan, window };
+  return { tag, guestId, guestName, roomTypeId: roomType, roomTypeName, roomNumbers, roomIds, ratePlan, window };
 }
 
 export async function signInThroughGate(page: Page, identity?: string, secret?: string): Promise<void> {
