@@ -2,13 +2,14 @@
 
 Status: active. Naming, lifecycle, and bookkeeping rules for GitHub
 milestones, owned by `product-owner`. Milestones are a lightweight
-manual mirror of `docs/project/plan.md` — no bots, no board sync, no
-extra bookkeeping.
+manual mirror of the project plan — no bots, no board sync, no
+extra bookkeeping. The plan lives at `docs/project/plan.md` once the
+owner scopes it (until then, the open milestones are the plan).
 
 ## Naming format
 
 - **Phase boards:** `Phase <N> - <scope>` where `<N>` is the
-  `docs/project/plan.md` milestone number and `<scope>` is a short
+  project-plan milestone number and `<scope>` is a short
   lowercase descriptor (e.g. `Phase 2 - core slice`).
 - **Standing milestones** (not phases, never closed):
   - `Pilot` — the pilot operation with a real customer (standing
@@ -24,7 +25,7 @@ extra bookkeeping.
 
 - **One live milestone per active phase.** Each active plan phase has
   exactly one open milestone; a new phase milestone opens only when
-  its phase starts. The live list follows `docs/project/plan.md`.
+  its phase starts. The live list follows the project plan.
 - **Close rule.** A phase milestone closes when its plan exit criteria
   are met **and** all its issues are closed. Standing milestones
   (`Pilot`, `Harness`) never close.
