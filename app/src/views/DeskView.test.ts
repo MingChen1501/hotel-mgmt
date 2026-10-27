@@ -210,6 +210,33 @@ describe('desk view', () => {
     expect(sheet).toContain('1 open balances');
   });
 
+  it('renders the five-lane room board with occupants on the occupied lane', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountDesk();
+    await signIn(wrapper, fetchMock);
+
+    // Refs #371: the board reuses the five ListRoomsByState reads —
+    // every room appears exactly once, grouped by state.
+    expect(wrapper.find('[data-testid="desk-board"]').exists()).toBe(true);
+    const occupiedLane = wrapper.find('[data-testid="desk-board-lane-occupied"]');
+    expect(occupiedLane.text()).toContain('201');
+    expect(occupiedLane.text()).toContain('Guest One');
+    expect(occupiedLane.text()).toContain('202');
+    expect(occupiedLane.text()).toContain('Guest Two');
+    expect(wrapper.find('[data-testid="desk-board-lane-dirty"]').text()).toContain('101');
+    expect(wrapper.find('[data-testid="desk-board-lane-clean"]').text()).toContain('102');
+    expect(wrapper.find('[data-testid="desk-board-lane-out-of-order"]').text()).toContain('103');
+    // The inspected-ready lane is empty in this stub: a plain-words
+    // empty state, same pattern as the attention lists.
+    expect(wrapper.find('[data-testid="desk-board-lane-ready"]').text()).toContain(
+      'No rooms in this state right now.',
+    );
+    // Board cells carry human numbers, never raw room UUIDs.
+    expect(wrapper.find('[data-testid="desk-board"]').text()).not.toContain('r-101');
+    expect(wrapper.find('[data-testid="desk-board"]').text()).not.toContain('r-102');
+  });
+
   it('falls back to the unknown-guest catalogue string when GetGuest fails', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
@@ -304,6 +331,10 @@ describe('desk view', () => {
     );
     expect(wrapper.find('[data-testid="desk-dirty-list"]').text()).toContain(
       'No dirty rooms right now.',
+    );
+    // Refs #371: all five board lanes share the same empty wording.
+    expect(wrapper.find('[data-testid="desk-board-lane-occupied"]').text()).toContain(
+      'No rooms in this state right now.',
     );
   });
 

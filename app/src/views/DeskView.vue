@@ -141,6 +141,101 @@
           {{ t('desk.today.empty_outoforder', {}, 'No rooms out of order right now.') }}
         </li>
       </ul>
+
+      <h2>{{ t('desk.board.title', {}, 'Room board') }}</h2>
+      <p>{{ t('desk.board.intro', {}, 'Every room at a glance, grouped by state. Refresh to update.') }}</p>
+      <div data-testid="desk-board">
+        <section data-testid="desk-board-lane-occupied">
+          <h3>{{ t('desk.board.lane_occupied', {}, 'Occupied') }} ({{ occupied.length }})</h3>
+          <ul>
+            <li
+              v-for="room in occupied"
+              :key="room.roomId ?? room.number"
+              :data-testid="'desk-board-cell-' + room.number"
+            >
+              <Tag
+                severity="info"
+                :value="room.number"
+              /> {{ occupantNameFor(room.roomId) }}
+            </li>
+            <li v-if="!loading && occupied.length === 0">
+              {{ t('desk.board.empty_lane', {}, 'No rooms in this state right now.') }}
+            </li>
+          </ul>
+        </section>
+        <section data-testid="desk-board-lane-ready">
+          <h3>{{ t('desk.board.lane_ready', {}, 'Ready (inspected)') }} ({{ ready.length }})</h3>
+          <ul>
+            <li
+              v-for="room in ready"
+              :key="room.roomId ?? room.number"
+              :data-testid="'desk-board-cell-' + room.number"
+            >
+              <Tag
+                severity="success"
+                :value="room.number"
+              />
+            </li>
+            <li v-if="!loading && ready.length === 0">
+              {{ t('desk.board.empty_lane', {}, 'No rooms in this state right now.') }}
+            </li>
+          </ul>
+        </section>
+        <section data-testid="desk-board-lane-clean">
+          <h3>{{ t('desk.board.lane_clean', {}, 'Clean, awaiting inspection') }} ({{ uninspected.length }})</h3>
+          <ul>
+            <li
+              v-for="room in uninspected"
+              :key="room.roomId ?? room.number"
+              :data-testid="'desk-board-cell-' + room.number"
+            >
+              <Tag
+                severity="warning"
+                :value="room.number"
+              />
+            </li>
+            <li v-if="!loading && uninspected.length === 0">
+              {{ t('desk.board.empty_lane', {}, 'No rooms in this state right now.') }}
+            </li>
+          </ul>
+        </section>
+        <section data-testid="desk-board-lane-dirty">
+          <h3>{{ t('desk.board.lane_dirty', {}, 'Dirty') }} ({{ dirty.length }})</h3>
+          <ul>
+            <li
+              v-for="room in dirty"
+              :key="room.roomId ?? room.number"
+              :data-testid="'desk-board-cell-' + room.number"
+            >
+              <Tag
+                severity="warning"
+                :value="room.number"
+              />
+            </li>
+            <li v-if="!loading && dirty.length === 0">
+              {{ t('desk.board.empty_lane', {}, 'No rooms in this state right now.') }}
+            </li>
+          </ul>
+        </section>
+        <section data-testid="desk-board-lane-out-of-order">
+          <h3>{{ t('desk.board.lane_out_of_order', {}, 'Out of order') }} ({{ outOfOrder.length }})</h3>
+          <ul>
+            <li
+              v-for="room in outOfOrder"
+              :key="room.roomId ?? room.number"
+              :data-testid="'desk-board-cell-' + room.number"
+            >
+              <Tag
+                severity="danger"
+                :value="room.number"
+              />
+            </li>
+            <li v-if="!loading && outOfOrder.length === 0">
+              {{ t('desk.board.empty_lane', {}, 'No rooms in this state right now.') }}
+            </li>
+          </ul>
+        </section>
+      </div>
     </section>
   </main>
 </template>
@@ -151,6 +246,7 @@ import Button from 'primevue/button';
 import Column from 'primevue/column';
 import DataTable from 'primevue/datatable';
 import Message from 'primevue/message';
+import Tag from 'primevue/tag';
 import { apiFetch } from '../api/client';
 import type { ApiError } from '../api/client';
 import { t } from '../i18n';
@@ -160,7 +256,8 @@ import { useSessionStore } from '../stores/session';
 // Behavioural port of the inline script in the former
 // `frontend/desk.html` (read-only morning view: sign-in plus
 // arrivals, in-house stays, departures, rooms needing housekeeping
-// attention, and the DailySheet cross-check counts), plus the backup
+// attention, the five-lane room-status board (Refs #371), and the
+// DailySheet cross-check counts), plus the backup
 // report line from the former `frontend/index.html` desk entry
 // (Refs #116, #299): the newest `backup-report.json` renders as a
 // human-readable success-or-failure line with the runbook support
@@ -224,7 +321,7 @@ function isSignedOut(err: unknown): boolean {
 export default defineComponent({
   name: 'DeskView',
   // eslint-disable-next-line vue/no-reserved-component-names -- PrimeVue registers Button/Dialog under these canonical names (Refs #338 component mapping).
-  components: { Button, Column, DataTable, Message },
+  components: { Button, Column, DataTable, Message, Tag },
   setup() {
     const session = useSessionStore();
     const businessDate = ref(localBusinessDate());
@@ -237,6 +334,15 @@ export default defineComponent({
     const dirty = ref<RoomRecord[]>([]);
     const uninspected = ref<RoomRecord[]>([]);
     const outOfOrder = ref<RoomRecord[]>([]);
+    // Board lanes reusing the same state reads (Refs #371): occupied
+    // and ready (vacant-inspected) complete the five-lane board; the
+    // other three lanes render the attention lists above.
+    const occupied = ref<RoomRecord[]>([]);
+    const ready = ref<RoomRecord[]>([]);
+    // Occupant names for occupied board cells, joined client-side
+    // from the stay lists below (Refs #371: already-fetched data
+    // only — no extra GetGuest calls).
+    const occupantNames = ref<Record<string, string>>({});
     // Room-type names have no read op behind the desk UI
     // (Refs #370: follow-up tracks a GetRoomType/ListRoomTypes
     // read): attention rows render the room number with the generic
@@ -285,12 +391,26 @@ export default defineComponent({
 
     async function resolveStays(stays: StayRecord[]): Promise<StayRow[]> {
       return Promise.all(
-        stays.map(async (stay, index) => ({
-          key: stay.stayId ?? `${stay.guestId ?? 'guest'}-${index}`,
-          guestName: await resolveGuestName(stay.guestId),
-          roomLabel: roomLabelFor(stay),
-        })),
+        stays.map(async (stay, index) => {
+          const guestName = await resolveGuestName(stay.guestId);
+          const roomRef = stay.currentRoomId ?? stay.roomId ?? '';
+          if (roomRef) {
+            occupantNames.value[roomRef] = guestName;
+          }
+          return {
+            key: stay.stayId ?? `${stay.guestId ?? 'guest'}-${index}`,
+            guestName,
+            roomLabel: roomLabelFor(stay),
+          };
+        }),
       );
+    }
+
+    function occupantNameFor(roomId: string | undefined): string {
+      if (roomId && occupantNames.value[roomId]) {
+        return occupantNames.value[roomId];
+      }
+      return t('desk.today.unknown_guest', {}, 'Unknown guest');
     }
 
     async function refreshDashboard(): Promise<void> {
@@ -324,12 +444,15 @@ export default defineComponent({
           }
         }
         roomNumbers.value = numbers;
+        occupantNames.value = {};
         arrivals.value = await resolveStays(lists.arrivals ?? []);
         inHouse.value = await resolveStays(lists.inHouse ?? []);
         departures.value = await resolveStays(lists.departures ?? []);
         dirty.value = byState['vacant-dirty'] ?? [];
         uninspected.value = byState['vacant-clean'] ?? [];
         outOfOrder.value = byState['out-of-order'] ?? [];
+        occupied.value = byState['occupied'] ?? [];
+        ready.value = byState['vacant-inspected'] ?? [];
         const sheet = await apiFetch<{
           arrivals?: unknown[];
           inHouse?: unknown[];
@@ -438,6 +561,9 @@ export default defineComponent({
       dirty,
       uninspected,
       outOfOrder,
+      occupied,
+      ready,
+      occupantNameFor,
       backupLine,
       backupSupport,
       onRefresh,
