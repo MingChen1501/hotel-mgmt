@@ -805,7 +805,11 @@ presentation (PrimeVue inputs, plain-words states) changes: the
 #421 restyle groups the same hooks into the two-column design
 cards (guest card above quote card on the left,
 dates/room/discount card on the right) with no hook, field, or
-call-order change.
+call-order change. The #423 restyle groups the charge/pay hooks
+into the folio two-card layout (charges card with the lines
+table plus the post-charge form on the left, payments card with
+the balance due plus the post-payment form on the right), again
+with no hook, field, or call-order change.
 
 ```mermaid
 flowchart TD
