@@ -2,7 +2,7 @@
   <main data-testid="stay-view">
     <h1>{{ t('desk.stay.title', {}, 'Check guests in, move them, and check them out') }}</h1>
     <p>{{ t('desk.stay.intro', {}, 'Work from the lists: pick an arrival to check in, pick a stay to move or check out, then follow each section in order.') }}</p>
-    <noscript><p>This page needs JavaScript to run the stay lifecycle.</p></noscript>
+    <noscript><p>{{ t('desk.entry.noscript_stay', {}, 'This page needs JavaScript to run the stay lifecycle.') }}</p></noscript>
 
     <section data-testid="stay-main">
       <h2>{{ t('desk.stay.lists_heading', {}, 'Stay lists for the business date') }}</h2>

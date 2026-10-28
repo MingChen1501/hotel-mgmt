@@ -1,7 +1,7 @@
 <template>
   <main data-testid="book-view">
     <h1>{{ t('desk.book.title', {}, 'Book a room') }}</h1>
-    <noscript><p>This page needs JavaScript to quote a price and book.</p></noscript>
+    <noscript><p>{{ t('desk.entry.noscript_book', {}, 'This page needs JavaScript to quote a price and book.') }}</p></noscript>
 
     <section data-testid="book-booking">
       <h2>{{ t('desk.book.form_heading', {}, 'New booking') }}</h2>

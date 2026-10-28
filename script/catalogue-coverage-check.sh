@@ -8,7 +8,9 @@
 # call site references its key, every runtime mirror is byte-identical
 # to the canonical file, every literal `t()` call in the desk shell
 # (`app/src/`, tests excluded) plus every shell nav labelKey resolves
-# in the catalogue, and the shell runbook wording renders the
+# in the catalogue (section 7 additionally rejects static aria-label
+# literals and static <noscript> paragraphs, which bypass locale
+# switching), and the shell runbook wording renders the
 # catalogue value in the default locale. (The legacy static pages and
 # their data-msg/inline-script checks were removed with the pages in
 # #299; the Vue `t()` wrapper parity is pinned by the Vitest suite
@@ -248,6 +250,53 @@ if catalogue is not None:
                 matched += 1
             ok(f"messages/vi.json carries {matched}/{len(messages)} keys "
                f"with matching placeholders")
+
+    # 7. No hardcoded user-visible literals in the shell/views
+    # (issue #405): static aria-label attributes and static
+    # <noscript> paragraphs bypass locale switching, so they fail
+    # here even when every t() call site resolves. Tests are
+    # excluded — they deliberately quote call-site source.
+    static_aria = re.compile(r'(?<![A-Za-z0-9_:-])aria-label\s*=\s*["\']')
+    noscript_open = re.compile(r"<noscript[^>]*>", re.IGNORECASE)
+    noscript_close = re.compile(r"</noscript>", re.IGNORECASE)
+    aria_hits = 0
+    noscript_hits = 0
+    for path in sorted(app_src.rglob("*")):
+        if path.suffix not in (".vue", ".ts") or not path.is_file():
+            continue
+        if path.name.endswith(".test.ts"):
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            fail(f"app source {path.relative_to(ROOT)} is unreadable")
+            continue
+        rel = str(path.relative_to(ROOT))
+        if static_aria.search(text):
+            fail(f"{rel} carries a static aria-label literal; "
+                 f"resolve it via :aria-label=\"t(...)\"")
+            aria_hits += 1
+        lower = text.lower()
+        idx = 0
+        while True:
+            start = lower.find("<noscript", idx)
+            if start == -1:
+                break
+            end = lower.find("</noscript>", start)
+            if end == -1:
+                fail(f"{rel} carries an unclosed <noscript> block")
+                noscript_hits += 1
+                break
+            block = text[start:end]
+            if "t(" not in block:
+                fail(f"{rel} carries a static <noscript> paragraph; "
+                     f"resolve it via t(...)")
+                noscript_hits += 1
+            idx = end + len("</noscript>")
+    if aria_hits == 0:
+        ok("app/src carries no static aria-label literals")
+    if noscript_hits == 0:
+        ok("app/src <noscript> blocks all resolve via t()")
 
 if failures:
     print(f"\ncatalogue-coverage-check: {len(failures)} failure(s)")

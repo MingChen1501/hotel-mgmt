@@ -2,7 +2,7 @@
   <main data-testid="print-view">
     <h1>{{ t('desk.print.title', {}, 'Print receipts, invoices, and confirmations') }}</h1>
     <p>{{ t('desk.print.intro', {}, 'Open a folio, check that the screen matches the paper, then print or copy each document.') }}</p>
-    <noscript><p>This page needs JavaScript to print invoices, receipts, and confirmations.</p></noscript>
+    <noscript><p>{{ t('desk.entry.noscript_print', {}, 'This page needs JavaScript to print invoices, receipts, and confirmations.') }}</p></noscript>
 
     <section data-testid="print-main">
       <h2>{{ t('desk.print.open_heading', {}, 'Open a folio for printing') }}</h2>

@@ -2,7 +2,7 @@
   <main data-testid="admin-view">
     <h1>{{ t('desk.admin.title', {}, 'Admin: staff, hotel setup, and audit') }}</h1>
     <p>{{ t('desk.admin.intro', {}, 'Manage staff accounts and roles, review the hotel setup, and read the audit log.') }}</p>
-    <noscript><p>This page needs JavaScript to manage users, roles, and config.</p></noscript>
+    <noscript><p>{{ t('desk.entry.noscript_admin', {}, 'This page needs JavaScript to manage users, roles, and config.') }}</p></noscript>
 
     <Message
       v-if="!canManage"
