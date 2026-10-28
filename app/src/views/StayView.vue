@@ -5,491 +5,530 @@
     <noscript><p>{{ t('desk.entry.noscript_stay', {}, 'This page needs JavaScript to run the stay lifecycle.') }}</p></noscript>
 
     <section data-testid="stay-main">
-      <h2>{{ t('desk.stay.lists_heading', {}, 'Stay lists for the business date') }}</h2>
-      <p>
-        <span>{{ t('desk.today.business_date', {}, 'Business date: ') }}</span><strong data-testid="stay-business-date">{{ businessDate }}</strong>
-        <Button
-          id="stay-refresh-button"
-          type="button"
-          :label="t('desk.today.refresh', {}, 'Refresh')"
-          data-testid="stay-refresh"
-          @click="onRefresh"
-        />
-      </p>
-      <p
-        v-if="listsLoading"
-        data-testid="stay-lists-loading"
-      >
-        {{ t('desk.stay.loading_lists', {}, 'Loading the stay lists…') }}
-      </p>
-      <Message
-        v-if="listsError"
-        severity="error"
-        role="alert"
-        data-testid="stay-lists-error"
-      >
-        {{ listsError }}
-      </Message>
-
-      <h3>{{ t('desk.stay.arrivals', {}, 'Arriving today') }}</h3>
-      <DataTable
-        id="stay-arrivals-table"
-        :value="arrivalRows"
-        data-testid="stay-arrivals-table"
-      >
-        <Column
-          field="guestName"
-          :header="t('desk.stay.th_guest', {}, 'Guest')"
-        />
-        <Column
-          field="roomLabel"
-          :header="t('desk.stay.th_room', {}, 'Room')"
-        />
-        <Column
-          field="timesText"
-          :header="t('desk.stay.th_times', {}, 'Recorded times')"
-        />
-        <Column :header="t('desk.stay.th_action', {}, 'Action')">
-          <template #body="slotProps">
-            <Button
-              v-if="slotProps.data.reservationRef"
-              type="button"
-              :label="t('desk.stay.use_arrival', {}, 'Use for check-in')"
-              :data-testid="`stay-use-arrival-${slotProps.data.reservationRef}`"
-              @click="pickArrival(slotProps.data.reservationRef)"
-            />
-          </template>
-        </Column>
-        <template #empty>
-          {{ t('desk.today.empty_arrivals', {}, 'No arrivals today. New bookings appear here.') }}
+      <Card data-testid="stay-lists-card">
+        <template #title>
+          <h2>{{ t('desk.stay.lists_heading', {}, 'Stay lists for the business date') }}</h2>
         </template>
-      </DataTable>
-
-      <h3>{{ t('desk.stay.in_house', {}, 'In house') }}</h3>
-      <DataTable
-        id="stay-inhouse-table"
-        :value="inHouseRows"
-        data-testid="stay-inhouse-table"
-      >
-        <Column
-          field="guestName"
-          :header="t('desk.stay.th_guest', {}, 'Guest')"
-        />
-        <Column
-          field="roomLabel"
-          :header="t('desk.stay.th_room', {}, 'Room')"
-        />
-        <Column
-          field="timesText"
-          :header="t('desk.stay.th_times', {}, 'Recorded times')"
-        />
-        <Column :header="t('desk.stay.th_action', {}, 'Action')">
-          <template #body="slotProps">
+        <template #content>
+          <p>
+            <span>{{ t('desk.today.business_date', {}, 'Business date: ') }}</span><strong data-testid="stay-business-date">{{ businessDate }}</strong>
             <Button
-              v-if="slotProps.data.stayId"
+              id="stay-refresh-button"
               type="button"
-              :label="t('desk.stay.use_stay', {}, 'Use this stay')"
-              :data-testid="`stay-use-stay-${slotProps.data.stayId}`"
-              @click="pickStay(slotProps.data)"
+              :label="t('desk.today.refresh', {}, 'Refresh')"
+              data-testid="stay-refresh"
+              @click="onRefresh"
             />
-          </template>
-        </Column>
-        <template #empty>
-          {{ t('desk.today.empty_inhouse', {}, 'No guests in house right now.') }}
-        </template>
-      </DataTable>
-
-      <h3>{{ t('desk.stay.departures', {}, 'Leaving today') }}</h3>
-      <DataTable
-        id="stay-departures-table"
-        :value="departureRows"
-        data-testid="stay-departures-table"
-      >
-        <Column
-          field="guestName"
-          :header="t('desk.stay.th_guest', {}, 'Guest')"
-        />
-        <Column
-          field="roomLabel"
-          :header="t('desk.stay.th_room', {}, 'Room')"
-        />
-        <Column
-          field="timesText"
-          :header="t('desk.stay.th_times', {}, 'Recorded times')"
-        />
-        <Column :header="t('desk.stay.th_action', {}, 'Action')">
-          <template #body="slotProps">
-            <Button
-              v-if="slotProps.data.stayId"
-              type="button"
-              :label="t('desk.stay.use_stay', {}, 'Use this stay')"
-              :data-testid="`stay-use-stay-${slotProps.data.stayId}`"
-              @click="pickStay(slotProps.data)"
-            />
-          </template>
-        </Column>
-        <template #empty>
-          {{ t('desk.today.empty_departures', {}, 'No departures today.') }}
-        </template>
-      </DataTable>
-
-      <h2>{{ t('desk.stay.checkin_heading', {}, 'Check in an arrival') }}</h2>
-      <div>
-        <label for="stay-booking-ref">
-          {{ t('desk.stay.booking_ref', {}, 'Booking reference: ') }}
-          <InputText
-            id="stay-booking-ref"
-            v-model="bookingRef"
-            name="booking-ref"
-            autocomplete="off"
-            data-testid="stay-booking-ref"
-            @update:model-value="onBookingRefInput"
-          />
-        </label>
-        <label for="stay-checkin-arrival">
-          {{ t('desk.stay.actual_arrival', {}, 'Actual arrival (leave blank for now): ') }}
-          <input
-            id="stay-checkin-arrival"
-            v-model="checkinArrival"
-            name="checkin-arrival"
-            type="datetime-local"
-            data-testid="stay-checkin-arrival"
-          >
-        </label>
-        <br>
-        <label for="stay-checkin-room">
-          {{ t('desk.stay.room_label', {}, 'Ready room: ') }}
-          <select
-            id="stay-checkin-room"
-            v-model="checkinRoomId"
-            data-testid="stay-checkin-room"
-          >
-            <option value="">
-              {{ t('desk.stay.choose_room', {}, 'Pick a ready room…') }}
-            </option>
-            <option
-              v-for="room in checkinCandidates"
-              :key="room.roomId"
-              :value="room.roomId"
-            >
-              {{ room.number }}
-            </option>
-          </select>
-        </label>
-        <Button
-          id="stay-checkin-button"
-          type="button"
-          :label="t('desk.stay.checkin_button', {}, 'Check in')"
-          data-testid="stay-checkin"
-          :disabled="checkingIn"
-          @click="onCheckIn"
-        />
-        <p
-          v-if="checkingIn"
-          data-testid="stay-checking-in"
-        >
-          {{ t('desk.stay.checking_in', {}, 'Checking the guest in…') }}
-        </p>
-        <p
-          role="status"
-          data-testid="stay-checkin-status"
-        >
-          {{ checkinStatus }}
-        </p>
-        <ReferenceDetails
-          v-if="checkinDetails.length > 0"
-          :items="checkinDetails"
-          testid-prefix="stay-checkin-details"
-        />
-        <Message
-          v-if="checkinError"
-          severity="error"
-          role="alert"
-          data-testid="stay-checkin-error"
-        >
-          {{ checkinError }}
-        </Message>
-      </div>
-
-      <h2>{{ t('desk.stay.move_heading', {}, 'Move a guest mid-stay') }}</h2>
-      <div>
-        <label for="stay-move-stay-id">
-          {{ t('desk.stay.stay_id', {}, 'Stay ID: ') }}
-          <InputText
-            id="stay-move-stay-id"
-            v-model="moveStayId"
-            name="move-stay-id"
-            autocomplete="off"
-            data-testid="stay-move-stay-id"
-          />
-        </label>
-        <label for="stay-move-room">
-          {{ t('desk.stay.target_room', {}, 'Move to room: ') }}
-          <select
-            id="stay-move-room"
-            v-model="moveRoomId"
-            data-testid="stay-move-room"
-          >
-            <option
-              v-for="room in readyRooms"
-              :key="room.roomId"
-              :value="room.roomId"
-            >
-              {{ room.number }}
-            </option>
-          </select>
-        </label>
-        <Button
-          id="stay-move-button"
-          type="button"
-          :label="t('desk.stay.move_button', {}, 'Move')"
-          data-testid="stay-move"
-          :disabled="moving"
-          @click="onMove"
-        />
-        <p
-          v-if="moving"
-          data-testid="stay-moving"
-        >
-          {{ t('desk.stay.moving', {}, 'Moving the guest…') }}
-        </p>
-        <p
-          role="status"
-          data-testid="stay-move-status"
-        >
-          {{ moveStatus }}
-        </p>
-        <ReferenceDetails
-          v-if="moveDetails.length > 0"
-          :items="moveDetails"
-          testid-prefix="stay-move-details"
-        />
-        <Message
-          v-if="moveError"
-          severity="error"
-          role="alert"
-          data-testid="stay-move-error"
-        >
-          {{ moveError }}
-        </Message>
-      </div>
-
-      <h2>{{ t('desk.stay.times_heading', {}, 'Record early arrivals and late departures') }}</h2>
-      <div>
-        <label for="stay-times-stay-id">
-          {{ t('desk.stay.stay_id', {}, 'Stay ID: ') }}
-          <InputText
-            id="stay-times-stay-id"
-            v-model="timesStayId"
-            name="times-stay-id"
-            autocomplete="off"
-            data-testid="stay-times-stay-id"
-          />
-        </label>
-        <label for="stay-times-arrival">
-          {{ t('desk.stay.actual_arrival', {}, 'Actual arrival (leave blank for now): ') }}
-          <input
-            id="stay-times-arrival"
-            v-model="timesArrival"
-            name="times-arrival"
-            type="datetime-local"
-            data-testid="stay-times-arrival"
-          >
-        </label>
-        <label for="stay-times-departure">
-          {{ t('desk.stay.actual_departure', {}, 'Actual departure (leave blank for now): ') }}
-          <input
-            id="stay-times-departure"
-            v-model="timesDeparture"
-            name="times-departure"
-            type="datetime-local"
-            data-testid="stay-times-departure"
-          >
-        </label>
-        <Button
-          id="stay-times-button"
-          type="button"
-          :label="t('desk.stay.times_button', {}, 'Record times')"
-          data-testid="stay-times"
-          :disabled="recording"
-          @click="onRecordTimes"
-        />
-        <p
-          v-if="recording"
-          data-testid="stay-recording"
-        >
-          {{ t('desk.stay.recording', {}, 'Recording the times…') }}
-        </p>
-        <p
-          role="status"
-          data-testid="stay-times-status"
-        >
-          {{ timesStatus }}
-        </p>
-        <ReferenceDetails
-          v-if="timesDetails.length > 0"
-          :items="timesDetails"
-          testid-prefix="stay-times-details"
-        />
-        <Message
-          v-if="timesError"
-          severity="error"
-          role="alert"
-          data-testid="stay-times-error"
-        >
-          {{ timesError }}
-        </Message>
-      </div>
-
-      <h2>{{ t('desk.stay.checkout_heading', {}, 'Check out with folio review') }}</h2>
-      <div>
-        <label for="stay-checkout-stay-id">
-          {{ t('desk.stay.stay_id', {}, 'Stay ID: ') }}
-          <InputText
-            id="stay-checkout-stay-id"
-            v-model="checkoutStayId"
-            name="checkout-stay-id"
-            autocomplete="off"
-            data-testid="stay-checkout-stay-id"
-            @update:model-value="onCheckoutStayInput"
-          />
-        </label>
-        <label for="stay-checkout-departure">
-          {{ t('desk.stay.actual_departure', {}, 'Actual departure (leave blank for now): ') }}
-          <input
-            id="stay-checkout-departure"
-            v-model="checkoutDeparture"
-            name="checkout-departure"
-            type="datetime-local"
-            data-testid="stay-checkout-departure"
-          >
-        </label>
-        <Button
-          id="stay-review-button"
-          type="button"
-          :label="t('desk.stay.review_button', {}, 'Review folio')"
-          data-testid="stay-review"
-          :disabled="reviewing"
-          @click="onReview"
-        />
-        <p
-          v-if="reviewing"
-          data-testid="stay-reviewing"
-        >
-          {{ t('desk.stay.reviewing', {}, 'Reviewing the folio…') }}
-        </p>
-        <p
-          role="status"
-          data-testid="stay-folio-status"
-        >
-          {{ folioStatus }}
-        </p>
-        <ReferenceDetails
-          v-if="checkoutDetails.length > 0"
-          :items="checkoutDetails"
-          testid-prefix="stay-checkout-details"
-        />
-        <div
-          v-if="showApproval"
-          data-testid="stay-approval-section"
-        >
-          <label for="stay-approval-by">
-            {{ t('desk.stay.approved_by', {}, 'Approved by: ') }}
-            <InputText
-              id="stay-approval-by"
-              v-model="approvalBy"
-              name="approval-by"
-              autocomplete="off"
-              data-testid="stay-approval-by"
-            />
-          </label>
-          <label for="stay-approval-role">
-            {{ t('desk.stay.approver_role', {}, 'Approver role: ') }}
-            <InputText
-              id="stay-approval-role"
-              v-model="approvalRole"
-              name="approval-role"
-              autocomplete="off"
-              data-testid="stay-approval-role"
-            />
-          </label>
-          <label for="stay-approval-reason">
-            {{ t('desk.stay.approval_reason', {}, 'Reason (optional): ') }}
-            <InputText
-              id="stay-approval-reason"
-              v-model="approvalReason"
-              name="approval-reason"
-              autocomplete="off"
-              data-testid="stay-approval-reason"
-            />
-          </label>
-          <Button
-            id="stay-approve-button"
-            type="button"
-            :label="t('desk.stay.approve_button', {}, 'Record approval')"
-            data-testid="stay-approve"
-            :disabled="approving"
-            @click="onApprove"
-          />
-          <p
-            v-if="approving"
-            data-testid="stay-approving"
-          >
-            {{ t('desk.stay.approving', {}, 'Recording the approval…') }}
           </p>
-        </div>
-        <Button
-          id="stay-checkout-button"
-          type="button"
-          :label="t('desk.stay.checkout_button', {}, 'Check out')"
-          data-testid="stay-checkout"
-          :disabled="!canCheckOut || checkingOut"
-          @click="checkoutDialog = true"
-        />
-        <Dialog
-          v-model:visible="checkoutDialog"
-          :header="t('desk.shell.checkout_confirm', {}, 'Check out this stay now?')"
-          append-to="self"
-          :modal="true"
-          data-testid="stay-checkout-dialog"
-        >
-          <p>{{ t('desk.shell.checkout_detail', {}, 'The stay closes against the reviewed folio. Continue with check-out?') }}</p>
-          <Button
-            type="button"
-            :label="t('desk.shell.cancel', {}, 'Cancel')"
-            severity="secondary"
-            data-testid="stay-checkout-cancel"
-            @click="checkoutDialog = false"
-          />
-          <Button
-            type="button"
-            :label="t('desk.stay.checkout_button', {}, 'Check out')"
-            :disabled="checkingOut"
-            data-testid="stay-checkout-confirm"
-            @click="onCheckOut"
-          />
-        </Dialog>
-        <p
-          v-if="checkingOut"
-          data-testid="stay-checking-out"
-        >
-          {{ t('desk.stay.checking_out', {}, 'Checking the guest out…') }}
-        </p>
-        <p
-          role="status"
-          data-testid="stay-checkout-status"
-        >
-          {{ checkoutStatus }}
-        </p>
-        <Message
-          v-if="checkoutError"
-          severity="error"
-          role="alert"
-          data-testid="stay-checkout-error"
-        >
-          {{ checkoutError }}
-        </Message>
-      </div>
+          <p
+            v-if="listsLoading"
+            data-testid="stay-lists-loading"
+          >
+            {{ t('desk.stay.loading_lists', {}, 'Loading the stay lists…') }}
+          </p>
+          <Message
+            v-if="listsError"
+            severity="error"
+            role="alert"
+            data-testid="stay-lists-error"
+          >
+            {{ listsError }}
+          </Message>
+
+          <h3>{{ t('desk.stay.arrivals', {}, 'Arriving today') }}</h3>
+          <DataTable
+            id="stay-arrivals-table"
+            :value="arrivalRows"
+            data-testid="stay-arrivals-table"
+          >
+            <Column
+              field="guestName"
+              :header="t('desk.stay.th_guest', {}, 'Guest')"
+            />
+            <Column
+              field="roomLabel"
+              :header="t('desk.stay.th_room', {}, 'Room')"
+            />
+            <Column
+              field="timesText"
+              :header="t('desk.stay.th_times', {}, 'Recorded times')"
+            />
+            <Column :header="t('desk.stay.th_action', {}, 'Action')">
+              <template #body="slotProps">
+                <Button
+                  v-if="slotProps.data.reservationRef"
+                  type="button"
+                  :label="t('desk.stay.use_arrival', {}, 'Use for check-in')"
+                  :data-testid="`stay-use-arrival-${slotProps.data.reservationRef}`"
+                  @click="pickArrival(slotProps.data.reservationRef)"
+                />
+              </template>
+            </Column>
+            <template #empty>
+              {{ t('desk.today.empty_arrivals', {}, 'No arrivals today. New bookings appear here.') }}
+            </template>
+          </DataTable>
+
+          <h3>{{ t('desk.stay.in_house', {}, 'In house') }}</h3>
+          <DataTable
+            id="stay-inhouse-table"
+            :value="inHouseRows"
+            data-testid="stay-inhouse-table"
+          >
+            <Column
+              field="guestName"
+              :header="t('desk.stay.th_guest', {}, 'Guest')"
+            />
+            <Column
+              field="roomLabel"
+              :header="t('desk.stay.th_room', {}, 'Room')"
+            />
+            <Column
+              field="timesText"
+              :header="t('desk.stay.th_times', {}, 'Recorded times')"
+            />
+            <Column :header="t('desk.stay.th_action', {}, 'Action')">
+              <template #body="slotProps">
+                <Button
+                  v-if="slotProps.data.stayId"
+                  type="button"
+                  :label="t('desk.stay.use_stay', {}, 'Use this stay')"
+                  :data-testid="`stay-use-stay-${slotProps.data.stayId}`"
+                  @click="pickStay(slotProps.data)"
+                />
+              </template>
+            </Column>
+            <template #empty>
+              {{ t('desk.today.empty_inhouse', {}, 'No guests in house right now.') }}
+            </template>
+          </DataTable>
+
+          <h3>{{ t('desk.stay.departures', {}, 'Leaving today') }}</h3>
+          <DataTable
+            id="stay-departures-table"
+            :value="departureRows"
+            data-testid="stay-departures-table"
+          >
+            <Column
+              field="guestName"
+              :header="t('desk.stay.th_guest', {}, 'Guest')"
+            />
+            <Column
+              field="roomLabel"
+              :header="t('desk.stay.th_room', {}, 'Room')"
+            />
+            <Column
+              field="timesText"
+              :header="t('desk.stay.th_times', {}, 'Recorded times')"
+            />
+            <Column :header="t('desk.stay.th_action', {}, 'Action')">
+              <template #body="slotProps">
+                <Button
+                  v-if="slotProps.data.stayId"
+                  type="button"
+                  :label="t('desk.stay.use_stay', {}, 'Use this stay')"
+                  :data-testid="`stay-use-stay-${slotProps.data.stayId}`"
+                  @click="pickStay(slotProps.data)"
+                />
+              </template>
+            </Column>
+            <template #empty>
+              {{ t('desk.today.empty_departures', {}, 'No departures today.') }}
+            </template>
+          </DataTable>
+        </template>
+      </Card>
+
+      <Card data-testid="stay-checkin-card">
+        <template #title>
+          <h2>{{ t('desk.stay.checkin_heading', {}, 'Check in an arrival') }}</h2>
+        </template>
+        <template #content>
+          <div>
+            <label for="stay-booking-ref">
+              {{ t('desk.stay.booking_ref', {}, 'Booking reference: ') }}
+              <InputText
+                id="stay-booking-ref"
+                v-model="bookingRef"
+                name="booking-ref"
+                autocomplete="off"
+                data-testid="stay-booking-ref"
+                @update:model-value="onBookingRefInput"
+              />
+            </label>
+            <label for="stay-checkin-arrival">
+              {{ t('desk.stay.actual_arrival', {}, 'Actual arrival (leave blank for now): ') }}
+              <input
+                id="stay-checkin-arrival"
+                v-model="checkinArrival"
+                name="checkin-arrival"
+                type="datetime-local"
+                data-testid="stay-checkin-arrival"
+              >
+            </label>
+            <br>
+            <label for="stay-checkin-room">
+              {{ t('desk.stay.room_label', {}, 'Ready room: ') }}
+              <select
+                id="stay-checkin-room"
+                v-model="checkinRoomId"
+                data-testid="stay-checkin-room"
+              >
+                <option value="">
+                  {{ t('desk.stay.choose_room', {}, 'Pick a ready room…') }}
+                </option>
+                <option
+                  v-for="room in checkinCandidates"
+                  :key="room.roomId"
+                  :value="room.roomId"
+                >
+                  {{ room.number }}
+                </option>
+              </select>
+            </label>
+            <p
+              v-if="checkinRoomId === ''"
+              data-testid="stay-checkin-room-hint"
+            >
+              {{ t('desk.stay.room_hint', {}, 'Choose a ready room below. Check-in stays blocked until one is chosen.') }}
+            </p>
+            <Button
+              id="stay-checkin-button"
+              type="button"
+              :label="t('desk.stay.checkin_button', {}, 'Check in')"
+              data-testid="stay-checkin"
+              :disabled="checkingIn"
+              @click="onCheckIn"
+            />
+            <p
+              v-if="checkingIn"
+              data-testid="stay-checking-in"
+            >
+              {{ t('desk.stay.checking_in', {}, 'Checking the guest in…') }}
+            </p>
+            <p
+              role="status"
+              data-testid="stay-checkin-status"
+            >
+              {{ checkinStatus }}
+            </p>
+            <ReferenceDetails
+              v-if="checkinDetails.length > 0"
+              :items="checkinDetails"
+              testid-prefix="stay-checkin-details"
+            />
+            <Message
+              v-if="checkinError"
+              severity="error"
+              role="alert"
+              data-testid="stay-checkin-error"
+            >
+              {{ checkinError }}
+            </Message>
+          </div>
+        </template>
+      </Card>
+
+      <Card data-testid="stay-move-card">
+        <template #title>
+          <h2>{{ t('desk.stay.move_heading', {}, 'Move a guest mid-stay') }}</h2>
+        </template>
+        <template #content>
+          <div>
+            <label for="stay-move-stay-id">
+              {{ t('desk.stay.stay_id', {}, 'Stay ID: ') }}
+              <InputText
+                id="stay-move-stay-id"
+                v-model="moveStayId"
+                name="move-stay-id"
+                autocomplete="off"
+                data-testid="stay-move-stay-id"
+              />
+            </label>
+            <label for="stay-move-room">
+              {{ t('desk.stay.target_room', {}, 'Move to room: ') }}
+              <select
+                id="stay-move-room"
+                v-model="moveRoomId"
+                data-testid="stay-move-room"
+              >
+                <option
+                  v-for="room in readyRooms"
+                  :key="room.roomId"
+                  :value="room.roomId"
+                >
+                  {{ room.number }}
+                </option>
+              </select>
+            </label>
+            <Button
+              id="stay-move-button"
+              type="button"
+              :label="t('desk.stay.move_button', {}, 'Move')"
+              data-testid="stay-move"
+              :disabled="moving"
+              @click="onMove"
+            />
+            <p
+              v-if="moving"
+              data-testid="stay-moving"
+            >
+              {{ t('desk.stay.moving', {}, 'Moving the guest…') }}
+            </p>
+            <p
+              role="status"
+              data-testid="stay-move-status"
+            >
+              {{ moveStatus }}
+            </p>
+            <ReferenceDetails
+              v-if="moveDetails.length > 0"
+              :items="moveDetails"
+              testid-prefix="stay-move-details"
+            />
+            <Message
+              v-if="moveError"
+              severity="error"
+              role="alert"
+              data-testid="stay-move-error"
+            >
+              {{ moveError }}
+            </Message>
+          </div>
+        </template>
+      </Card>
+
+      <Card data-testid="stay-times-card">
+        <template #title>
+          <h2>{{ t('desk.stay.times_heading', {}, 'Record early arrivals and late departures') }}</h2>
+        </template>
+        <template #content>
+          <div>
+            <label for="stay-times-stay-id">
+              {{ t('desk.stay.stay_id', {}, 'Stay ID: ') }}
+              <InputText
+                id="stay-times-stay-id"
+                v-model="timesStayId"
+                name="times-stay-id"
+                autocomplete="off"
+                data-testid="stay-times-stay-id"
+              />
+            </label>
+            <label for="stay-times-arrival">
+              {{ t('desk.stay.actual_arrival', {}, 'Actual arrival (leave blank for now): ') }}
+              <input
+                id="stay-times-arrival"
+                v-model="timesArrival"
+                name="times-arrival"
+                type="datetime-local"
+                data-testid="stay-times-arrival"
+              >
+            </label>
+            <label for="stay-times-departure">
+              {{ t('desk.stay.actual_departure', {}, 'Actual departure (leave blank for now): ') }}
+              <input
+                id="stay-times-departure"
+                v-model="timesDeparture"
+                name="times-departure"
+                type="datetime-local"
+                data-testid="stay-times-departure"
+              >
+            </label>
+            <Button
+              id="stay-times-button"
+              type="button"
+              :label="t('desk.stay.times_button', {}, 'Record times')"
+              data-testid="stay-times"
+              :disabled="recording"
+              @click="onRecordTimes"
+            />
+            <p
+              v-if="recording"
+              data-testid="stay-recording"
+            >
+              {{ t('desk.stay.recording', {}, 'Recording the times…') }}
+            </p>
+            <p
+              role="status"
+              data-testid="stay-times-status"
+            >
+              {{ timesStatus }}
+            </p>
+            <ReferenceDetails
+              v-if="timesDetails.length > 0"
+              :items="timesDetails"
+              testid-prefix="stay-times-details"
+            />
+            <Message
+              v-if="timesError"
+              severity="error"
+              role="alert"
+              data-testid="stay-times-error"
+            >
+              {{ timesError }}
+            </Message>
+          </div>
+        </template>
+      </Card>
+
+      <Card data-testid="stay-checkout-card">
+        <template #title>
+          <h2>{{ t('desk.stay.checkout_heading', {}, 'Check out with folio review') }}</h2>
+        </template>
+        <template #content>
+          <p data-testid="stay-checkout-gate-note">
+            {{ t('desk.stay.checkout_gate_note', {}, 'Check-out completes only when the folio is fully paid. Review the folio first.') }}
+          </p>
+          <div>
+            <label for="stay-checkout-stay-id">
+              {{ t('desk.stay.stay_id', {}, 'Stay ID: ') }}
+              <InputText
+                id="stay-checkout-stay-id"
+                v-model="checkoutStayId"
+                name="checkout-stay-id"
+                autocomplete="off"
+                data-testid="stay-checkout-stay-id"
+                @update:model-value="onCheckoutStayInput"
+              />
+            </label>
+            <label for="stay-checkout-departure">
+              {{ t('desk.stay.actual_departure', {}, 'Actual departure (leave blank for now): ') }}
+              <input
+                id="stay-checkout-departure"
+                v-model="checkoutDeparture"
+                name="checkout-departure"
+                type="datetime-local"
+                data-testid="stay-checkout-departure"
+              >
+            </label>
+            <Button
+              id="stay-review-button"
+              type="button"
+              :label="t('desk.stay.review_button', {}, 'Review folio')"
+              data-testid="stay-review"
+              :disabled="reviewing"
+              @click="onReview"
+            />
+            <p
+              v-if="reviewing"
+              data-testid="stay-reviewing"
+            >
+              {{ t('desk.stay.reviewing', {}, 'Reviewing the folio…') }}
+            </p>
+            <p
+              role="status"
+              data-testid="stay-folio-status"
+            >
+              {{ folioStatus }}
+            </p>
+            <ReferenceDetails
+              v-if="checkoutDetails.length > 0"
+              :items="checkoutDetails"
+              testid-prefix="stay-checkout-details"
+            />
+            <div
+              v-if="showApproval"
+              data-testid="stay-approval-section"
+            >
+              <label for="stay-approval-by">
+                {{ t('desk.stay.approved_by', {}, 'Approved by: ') }}
+                <InputText
+                  id="stay-approval-by"
+                  v-model="approvalBy"
+                  name="approval-by"
+                  autocomplete="off"
+                  data-testid="stay-approval-by"
+                />
+              </label>
+              <label for="stay-approval-role">
+                {{ t('desk.stay.approver_role', {}, 'Approver role: ') }}
+                <InputText
+                  id="stay-approval-role"
+                  v-model="approvalRole"
+                  name="approval-role"
+                  autocomplete="off"
+                  data-testid="stay-approval-role"
+                />
+              </label>
+              <label for="stay-approval-reason">
+                {{ t('desk.stay.approval_reason', {}, 'Reason (optional): ') }}
+                <InputText
+                  id="stay-approval-reason"
+                  v-model="approvalReason"
+                  name="approval-reason"
+                  autocomplete="off"
+                  data-testid="stay-approval-reason"
+                />
+              </label>
+              <Button
+                id="stay-approve-button"
+                type="button"
+                :label="t('desk.stay.approve_button', {}, 'Record approval')"
+                data-testid="stay-approve"
+                :disabled="approving"
+                @click="onApprove"
+              />
+              <p
+                v-if="approving"
+                data-testid="stay-approving"
+              >
+                {{ t('desk.stay.approving', {}, 'Recording the approval…') }}
+              </p>
+            </div>
+            <Button
+              id="stay-checkout-button"
+              type="button"
+              :label="t('desk.stay.checkout_button', {}, 'Check out')"
+              data-testid="stay-checkout"
+              :disabled="!canCheckOut || checkingOut"
+              @click="checkoutDialog = true"
+            />
+            <Dialog
+              v-model:visible="checkoutDialog"
+              :header="t('desk.shell.checkout_confirm', {}, 'Check out this stay now?')"
+              append-to="self"
+              :modal="true"
+              data-testid="stay-checkout-dialog"
+            >
+              <p>{{ t('desk.shell.checkout_detail', {}, 'The stay closes against the reviewed folio. Continue with check-out?') }}</p>
+              <Button
+                type="button"
+                :label="t('desk.shell.cancel', {}, 'Cancel')"
+                severity="secondary"
+                data-testid="stay-checkout-cancel"
+                @click="checkoutDialog = false"
+              />
+              <Button
+                type="button"
+                :label="t('desk.stay.checkout_button', {}, 'Check out')"
+                :disabled="checkingOut"
+                data-testid="stay-checkout-confirm"
+                @click="onCheckOut"
+              />
+            </Dialog>
+            <p
+              v-if="checkingOut"
+              data-testid="stay-checking-out"
+            >
+              {{ t('desk.stay.checking_out', {}, 'Checking the guest out…') }}
+            </p>
+            <p
+              role="status"
+              data-testid="stay-checkout-status"
+            >
+              {{ checkoutStatus }}
+            </p>
+            <Message
+              v-if="checkoutError"
+              severity="error"
+              role="alert"
+              data-testid="stay-checkout-error"
+            >
+              {{ checkoutError }}
+            </Message>
+          </div>
+        </template>
+      </Card>
     </section>
   </main>
 </template>
@@ -497,6 +536,7 @@
 <script lang="ts">
 import { computed, defineComponent, onMounted, ref } from 'vue';
 import Button from 'primevue/button';
+import Card from 'primevue/card';
 import Column from 'primevue/column';
 import DataTable from 'primevue/datatable';
 import Dialog from 'primevue/dialog';
@@ -539,6 +579,15 @@ import ReferenceDetails, { type ReferenceItem } from '../components/ReferenceDet
 //   carries an in-flight guard plus a client-generated
 //   idempotencyKey wherever the contract defines one (AssignRoom,
 //   MoveRoom, RecordOpenBalanceApproval, CheckOut).
+//
+// Design restyle (Refs #422, rollout #419): the same hooks,
+// fields, order, and call order grouped into design cards
+// (lists, check-in, move, times, check-out) on the shared shell
+// tokens, with no hook, field, or call-order change. The new
+// copy is the pick-a-ready-room hint under the room select
+// (`desk.stay.room_hint`, shown while no room is bound) and the
+// persistent fully-paid gate note on the check-out card
+// (`desk.stay.checkout_gate_note`).
 
 interface StayRow {
   stayId?: string;
@@ -679,7 +728,7 @@ function newIdempotencyKey(): string {  try {
 export default defineComponent({
   name: 'StayView',
   // eslint-disable-next-line vue/no-reserved-component-names -- PrimeVue registers Button/Dialog under these canonical names (Refs #338 component mapping).
-  components: { Button, Column, DataTable, Dialog, InputText, Message, ReferenceDetails },
+  components: { Button, Card, Column, DataTable, Dialog, InputText, Message, ReferenceDetails },
   setup() {
     const session = useSessionStore();
     const businessDate = ref(localBusinessDate());

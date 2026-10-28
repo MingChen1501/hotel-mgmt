@@ -21,6 +21,7 @@ import { mount } from '@vue/test-utils';
 import StayView from './StayView.vue';
 import stayViewSource from './StayView.vue?raw';
 import { useSessionStore } from '../stores/session';
+import { setLocale } from '../i18n';
 import { resetConnectivityForTests } from '../api/client';
 import router from '../router';
 
@@ -1016,6 +1017,82 @@ describe('stay view', () => {
     expect(useSessionStore().signOutNotice).toBe('session-expired');
     expect(useSessionStore().isSignedIn).toBe(false);
     expect(router.replace).toHaveBeenCalledWith('/');
+  });
+
+  // D4 (Refs #422, AC-DSK-4, FR-DSK-4): the Stay screen renders
+  // its design cards — the check-in card carries the room select
+  // with the explicit empty placeholder plus the pick-a-ready-room
+  // hint and the check-in action; the check-out card carries the
+  // folio review, the approver form, the fully-paid gate note, and
+  // the check-out action. Flow, guard, auto-select, and gating
+  // tests above stay untouched (semantics unchanged); only this
+  // layout and the hint wording are new.
+  it('renders the design cards with the room hint and the checkout gate note', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountStay();
+    await signIn(wrapper, fetchMock);
+
+    expect(wrapper.find('[data-testid="stay-lists-card"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="stay-move-card"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="stay-times-card"]').exists()).toBe(true);
+    const checkinCard = wrapper.find('[data-testid="stay-checkin-card"]');
+    const checkoutCard = wrapper.find('[data-testid="stay-checkout-card"]');
+    expect(checkinCard.exists()).toBe(true);
+    expect(checkoutCard.exists()).toBe(true);
+    // Actions ride their design cards: the room select plus
+    // check-in on the check-in card; folio review plus check-out
+    // on the check-out card.
+    expect(checkinCard.find('[data-testid="stay-checkin-room"]').exists()).toBe(true);
+    expect(checkinCard.find('[data-testid="stay-checkin"]').exists()).toBe(true);
+    expect(checkoutCard.find('[data-testid="stay-review"]').exists()).toBe(true);
+    expect(checkoutCard.find('[data-testid="stay-checkout"]').exists()).toBe(true);
+    // The fully-paid gate note names the next step in plain words.
+    expect(checkoutCard.find('[data-testid="stay-checkout-gate-note"]').text()).toContain(
+      'fully paid',
+    );
+
+    // The empty placeholder ships with the hint: with candidates
+    // loaded but nothing picked, the select shows the explicit
+    // empty option, the hint reads the plain-words next step, and
+    // check-in stays blocked without calling AssignRoom.
+    await wrapper.find('[data-testid="stay-booking-ref"]').setValue('RSV-1');
+    await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain(
+        'Booked: Standard',
+      );
+    });
+    expect(
+      (wrapper.find('[data-testid="stay-checkin-room"]').element as HTMLSelectElement).value,
+    ).toBe('');
+    const hint = checkinCard.find('[data-testid="stay-checkin-room-hint"]');
+    expect(hint.exists()).toBe(true);
+    expect(hint.text()).toContain('Check-in stays blocked');
+    await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkin-error"]').text()).toContain(
+        'Pick a ready room first.',
+      );
+    });
+    const urls = fetchMock.mock.calls.map((call) => String(call[0]));
+    expect(urls).not.toContain('/v1/rooms/AssignRoom');
+
+    // VI-primary copy (AC-DSK-8): the cards switch locale with no
+    // mixed-locale copy.
+    try {
+      setLocale('vi');
+      await wrapper.vm.$nextTick();
+      expect(checkinCard.find('[data-testid="stay-checkin-room-hint"]').text()).toContain(
+        'chưa thể nhận phòng',
+      );
+      expect(checkinCard.find('[data-testid="stay-checkin"]').text()).toContain('Nhận phòng');
+      expect(checkoutCard.find('[data-testid="stay-checkout-gate-note"]').text()).toContain(
+        'bảng kê đã thanh toán đủ',
+      );
+    } finally {
+      setLocale('en');
+    }
   });
 });
 

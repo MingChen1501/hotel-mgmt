@@ -944,7 +944,10 @@ room of the booked type is chosen. This resolves the StayView
 check-in room preselection mismatch (#411) by making
 unselected explicit instead of preselecting a possibly wrong
 room. Behaviour and call order are otherwise unchanged
-(`StayService.CheckIn` provider-side guards stand).
+(`StayService.CheckIn` provider-side guards stand). The #422
+restyle groups the same hooks into the design cards (lists,
+check-in, move, times, check-out) with no hook, field, or
+call-order change.
 
 ```mermaid
 flowchart TD
@@ -970,15 +973,15 @@ Edge trace (every edge cites code):
   (`StayView.vue` candidate load; booked-type status via
   `bookedTypeStatus`).
 - B–D: single-candidate auto-select binds directly and clears
-  the hint (`StayView.vue:1155-1157`, Refs #411 comment at
-  :1151-1154).
+  the hint (`StayView.vue:1204-1206`, Refs #411 comment at
+  :1200-1203).
 - B–E–F: zero-or-many opens on the empty option
-  (`StayView.vue:167-168` empty `<option value="">` with the
+  (`StayView.vue:177-178` empty `<option value="">` with the
   `desk.stay.choose_room` key) with `need_room` set
-  (`StayView.vue:1159-1160`); the blocked check re-tests the
-  bound id (`StayView.vue:1175-1178`) and refuses with the
+  (`StayView.vue:1208-1209`); the blocked check re-tests the
+  bound id (`StayView.vue:1223-1226`) and refuses with the
   plain-words next step.
-- G–I: `AssignRoom` (`StayView.vue:1185`,
+- G–I: `AssignRoom` (`StayView.vue:1234`,
   `RoomInventoryService.AssignRoom`, LLD section 3 atomic
   guard, `NFR-CON-2`) then `CheckInReservation` in legacy op
   order with one idempotency key per contract op.
@@ -989,9 +992,9 @@ Edge trace (every edge cites code):
   (LLD section 2 error mapping); only wording is new
   (`FR-DSP-3`).
 - Checkout gating (unchanged, shown for completeness):
-  `GetFolioBalance` (`StayView.vue:1454,1578`) with
-  `RecordOpenBalanceApproval` (`:1541`); open balance without
-  approval still refuses `SETTLEMENT_REQUIRED` (`:1620`,
+  `GetFolioBalance` (`StayView.vue:1503,1627`) with
+  `RecordOpenBalanceApproval` (`:1590`); open balance without
+  approval still refuses `SETTLEMENT_REQUIRED` (`:1669`,
   `FR-BIL-7` holds).
 
 Failure/rollback:
@@ -1261,7 +1264,7 @@ D1–D9):
   (`docs/technical/error-handling.md`, LLD sections 1–8
   error mappings); checkout still requires a settled folio
   or a recorded approval (`FR-BIL-7`, `SETTLEMENT_REQUIRED`
-  at `StayView.vue:1620`). Session rules (LLD section 0:
+  at `StayView.vue:1669`). Session rules (LLD section 0:
   HMAC token, 5-minute revalidation, 15-minute idle
   sign-out, 5-strike lockout) are untouched.
 - Catalogue: every new string ships in `messages/en.json`
