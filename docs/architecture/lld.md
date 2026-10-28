@@ -897,5 +897,384 @@ Out of scope (contract section 6, restated as build constraints): no
 new screens or flows; no Figma mockups; no marketing-grade
 visuals — the bar is MVP-usable, not pixel-perfect.
 
+## 13. Desk UI design-rollout flows (Refs #419)
+
+Build-ready decomposition for the owner-supplied six-screen
+Claude desk UI rollout (tier T2; subsystem-boundary position in
+`docs/architecture/hld.md` [section 13](hld.md)). The T2 UI
+contract lives with `product-owner` (PR #426), the
+`FR-DSK-*`/`NFR-DSK-*` delta with `business-analyst`
+(`docs/requirements/mvp-requirements.md` [section 10](../requirements/mvp-requirements.md),
+PR #427), and guard mapping with `qa-lead` (D1–D9, PR #428).
+This section supplies SPEC-GATE FAIL finding 3 on PR #426: one
+per-flow diagram (happy path + failure/rollback path) for each
+touched flow, with edge traces citing code. All four flows keep
+existing operations, payloads, envelopes, and refusal
+conditions; only presentation and the narrowly-scoped
+screen behaviours in `FR-DSK-2`, `FR-DSK-4`, `FR-DSK-6`, and
+`FR-DSK-7` change (see section 13.5).
+
+Intended tree deltas (files the screen implementation PRs must
+create or extend; edge traces below cite them as `NEW` where
+they do not exist yet on master):
+
+```text
+app/
+  src/router.ts            extend: add /rooms (Rooms map, #424) and /onboarding (wizard, #425);
+                           the 7-route set pinned at router.test.ts:17 grows by exactly two, no rename/removal
+  src/App.vue              extend: NAV_ITEMS (:215-220) to canvas-manifest order
+                           (Main, Stay, Onboarding, Rooms, Book, Folio); brand span shows the
+                           configured hotel name; locale switcher unchanged
+  src/views/DeskView.vue   extend: two housekeeping action buttons on the need-cleaning card (#420)
+  src/views/RoomsMapView.vue   NEW: read-only floor-grouped map with summary chips (#424)
+  src/views/OnboardingView.vue NEW: wizard shell with progress + back/continue, step 1 hotel-name form (#425)
+  messages/en.json + messages/vi.json  extend: desk.rooms.*, desk.onboarding.*,
+                           stay.checkin.* hint, desk.empty.* keys in both locales, placeholders intact
+```
+
+### 13.1 Stay explicit empty placeholder blocking check-in (#422)
+
+The room select opens on an explicit empty option with the
+pick-a-ready-room hint; check-in stays blocked until a ready
+room of the booked type is chosen. This resolves the StayView
+check-in room preselection mismatch (#411) by making
+unselected explicit instead of preselecting a possibly wrong
+room. Behaviour and call order are otherwise unchanged
+(`StayService.CheckIn` provider-side guards stand).
+
+```mermaid
+flowchart TD
+    A[Staff opens Stay check-in for an arrival] --> B[Load ready-room candidates for booked type]
+    B --> C{How many candidates?}
+    C -->|exactly one| D[Bind it directly; placeholder not shown]
+    C -->|zero or many| E[Select opens on empty option with pick-a-ready-room hint]
+    E --> F[Check-in blocked with plain-words next step]
+    D --> G[Staff confirms check-in]
+    F --> H{Staff picks a ready room?}
+    H -->|no| F
+    H -->|yes| G
+    G --> I[AssignRoom then CheckInReservation]
+    I --> J{Result?}
+    J -->|ok| K[Stay in-house; room bound]
+    J -->|CONFLICT / STATE_ILLEGAL| L[One plain sentence naming room and state; staff picks again]
+    L --> B
+```
+
+Edge trace (every edge cites code):
+
+- A–B: arrival pick loads candidates for the booked type
+  (`StayView.vue` candidate load; booked-type status via
+  `bookedTypeStatus`).
+- B–D: single-candidate auto-select binds directly and clears
+  the hint (`StayView.vue:1155-1157`, Refs #411 comment at
+  :1151-1154).
+- B–E–F: zero-or-many opens on the empty option
+  (`StayView.vue:167-168` empty `<option value="">` with the
+  `desk.stay.choose_room` key) with `need_room` set
+  (`StayView.vue:1159-1160`); the blocked check re-tests the
+  bound id (`StayView.vue:1175-1178`) and refuses with the
+  plain-words next step.
+- G–I: `AssignRoom` (`StayView.vue:1185`,
+  `RoomInventoryService.AssignRoom`, LLD section 3 atomic
+  guard, `NFR-CON-2`) then `CheckInReservation` in legacy op
+  order with one idempotency key per contract op.
+- J–K: happy path emits `StayEvents.checked-in` (LLD
+  section 2); the folio opens stay-side per BR-21.
+- J–L–B: room just taken -> `CONFLICT` naming the room;
+  room not ready/blocked -> `STATE_ILLEGAL` naming room+state
+  (LLD section 2 error mapping); only wording is new
+  (`FR-DSP-3`).
+- Checkout gating (unchanged, shown for completeness):
+  `GetFolioBalance` (`StayView.vue:1454,1578`) with
+  `RecordOpenBalanceApproval` (`:1541`); open balance without
+  approval still refuses `SETTLEMENT_REQUIRED` (`:1620`,
+  `FR-BIL-7` holds).
+
+Failure/rollback:
+
+```mermaid
+flowchart TD
+    P[AssignRoom loses the race] --> Q[CONFLICT names the room; no stay row written]
+    Q --> R[Staff reloads candidates and picks again]
+    S[LAN disconnect mid-check-in] --> T[Offline banner + manual retry; no queued writes]
+    U[401 / UNAUTHENTICATED] --> V[Single 401 path: clear token, route to sign-in]
+```
+
+Edge trace:
+
+- P–R: refusals precede mutation — nothing to compensate;
+  the provider-side atomic guard (LLD section 3) means the
+  loser never holds the room.
+- S–T: fetch rejection drives the section 11.3 banner and
+  safe manual retry, never sign-out.
+- U–V: shared-client 401 path (LLD section 11.2) unchanged.
+- Rollback: revert the #422 screen PR; the placeholder,
+  hint, and guard revert with it (no contract or schema
+  change anywhere in this flow).
+
+### 13.2 Main board housekeeping buttons with count refresh (#420)
+
+Two action buttons on the need-cleaning card drive the
+existing dirty-to-clean-to-inspected transitions; the board
+counts refresh to match. No transition logic changes — the
+buttons are callers of the existing state machine only
+(`FR-RMS-2`, `NFR-AUD-1` hold).
+
+```mermaid
+flowchart TD
+    A[Staff opens the Main board] --> B[Load arrivals + in-house + departures + room states + DailySheet]
+    B --> C[Five cards render: arrivals, in-house, departures-or-empty, need-cleaning, out-of-service]
+    C --> D[Staff presses clean on a dirty room, or inspect on a clean room]
+    D --> E[UpdateRoomState with room, target state, actor]
+    E --> F{Transition legal?}
+    F -->|yes| G[State advances with history row + actor + timestamp; outbox RoomStateEvents]
+    G --> H[Board reloads; counts match the rendered lanes]
+    F -->|STATE_ILLEGAL| I[One plain sentence naming room and state; board unchanged]
+    I --> C
+```
+
+Edge trace (every edge cites code):
+
+- A–B: arrivals/in-house/departures via
+  `ListArrivalsDepartures` (`DeskView.vue:455-459`), room
+  lanes via `ListRoomsByState` (`DeskView.vue:469-470`),
+  cross-check via `DailySheet` (`:490-496`).
+- B–C: lanes render at `DeskView.vue:109` (dirty), `:121`
+  (clean-but-uninspected), `:133` (out-of-service), `:147`
+  (board); departures renders its explicit empty state when
+  there are no checkouts today; out-of-service shows reason
+  plus date.
+- D–E: NEW buttons on the need-cleaning card call the LLD
+  section 3 `UpdateRoomState` operation (roomNumber,
+  newState, actor) — clean maps dirty-to-clean, inspect maps
+  clean-to-inspected; one idempotency key per contract op.
+- E–G: provider-side transition check (BR-28) plus history
+  row and outbox event in one transaction (LLD section 3).
+- G–H: `refreshDashboard` (`DeskView.vue:449`,
+  manual trigger `desk-refresh` at :24-28 via `onRefresh` at
+  :570-571) reloads the same queries, so summary counts
+  match the rendered lanes by construction.
+- F–I: illegal transition (e.g. dirty straight to
+  inspected) refuses `STATE_ILLEGAL` naming room+state;
+  wording only is new.
+
+Failure/rollback:
+
+```mermaid
+flowchart TD
+    P[Second staffer advances the same room first] --> Q[STATE_ILLEGAL or CONFLICT names current state; board unchanged]
+    Q --> R[Staff refreshes; board shows the current state]
+    S[LAN disconnect during the transition] --> T[Offline banner + manual retry; staff re-presses after reconnect]
+    U[401 / UNAUTHENTICATED] --> V[Single 401 path: clear token, route to sign-in]
+```
+
+Edge trace:
+
+- P–R: the provider-side guard is the arbiter; the loser
+  reloads — no client-side lock is invented.
+- S–T: blocked action mutates nothing; retry is
+  staff-initiated (no write queueing, LLD section 11.3).
+- Rollback: revert the #420 screen PR; the buttons revert
+  with it (no contract, transition, or schema change
+  anywhere in this flow).
+
+### 13.3 Rooms map counts-match-cards invariant (#424)
+
+New read-only screen: a floor-grouped visual map whose
+summary chips always equal the rendered room cards. Read-only
+over existing room state — per-card actions are not specified
+here and none are invented (open #424 owner call).
+
+```mermaid
+flowchart TD
+    A[Staff opens the Rooms map] --> B[Fetch room state via ListRoomsByState]
+    B --> C[Group the same payload by floor]
+    C --> D[Render summary chips: ready, occupied, needs-cleaning, awaiting-inspection, out-of-service]
+    D --> E[Render per-room cards: status chip, room type, live note]
+    E --> F{Invariant check}
+    F -->|counts equal cards| G[Map shown; refresh offered]
+    F -->|mismatch| H[Plain-words error; staff retries manually]
+    G --> I[Staff refreshes after housekeeping work]
+    I --> B
+```
+
+Edge trace (every edge cites code):
+
+- A–B: NEW `RoomsMapView.vue` reads the existing
+  `RoomInventoryService.ListRoomsByState` operation (LLD
+  section 3; same read the Main board uses at
+  `DeskView.vue:469-470`); no new endpoint, no new store.
+- B–D: chips derive from the one fetched payload — the
+  invariant holds by construction, never by reconciling two
+  sources. New catalogue keys `desk.rooms.*` (chips, card
+  notes) land in both locales via the normal catalogue
+  process (`NFR-DSK-1`).
+- E: each card shows the one chip vocabulary shared with
+  the Main board, the room type, and the live note
+  (occupant + checkout date, out-of-service reason + date,
+  or upcoming arrival) — `FR-DSK-6`.
+- A: NEW `/rooms` route in `src/router.ts` (the 7-route set
+  pinned at `router.test.ts:17` grows by exactly one more
+  here, plus one for the wizard in section 13.4); unknown
+  paths still fall through to the placeholder (LLD
+  section 11.1 edge U–V).
+- F–H: a fetch failure renders one plain sentence
+  (`FR-DSP-3`) with manual retry; refusal conditions are
+  untouched because the map performs no writes.
+
+Failure/rollback:
+
+```mermaid
+flowchart TD
+    P[Room state changes mid-render] --> Q[Next refresh shows current state; chips recomputed from the new payload]
+    S[LAN disconnect on the map] --> T[Offline banner; map keeps last good render marked stale until retry]
+    U[401 / UNAUTHENTICATED] --> V[Single 401 path: clear token, route to sign-in]
+```
+
+Edge trace:
+
+- P–Q: staleness resolves by re-fetch, never by client
+  patching; the Reporting read-model lag bound (LLD
+  section 0, 60 s) does not apply here — the map reads the
+  owning store directly.
+- Rollback: revert the #424 screen PR; the route, view,
+  and keys revert with it (additive only — existing screens
+  are untouched).
+
+### 13.4 Onboarding wizard gating with hotel-name persistence (#425)
+
+New first-run surface: the wizard launches on an empty
+database only, walks staff through setup with progress and
+back/continue navigation, and persists step 1 (hotel name)
+through the existing Admin config surface so the name
+appears in the shell header and on printed documents. Steps
+2–4 need the `product-owner` spec (and owner decision where
+the design is silent) before building beyond step 1 — step 1
+does not ship on assumed later-step content.
+
+```mermaid
+flowchart TD
+    A[App boots on any /app/* path] --> B[Read hotel config: GetHotelConfig]
+    B --> C{Configured hotel identity present?}
+    C -->|yes| D[Normal shell; wizard never launches]
+    C -->|no| E[Wizard launches at step 1 with 25 percent progress]
+    E --> F[Staff enters the hotel name + example placeholder + invoice helper]
+    F --> G[Staff continues]
+    G --> H[Persist via UpdateHotelConfig; FR-ADM-1]
+    H --> I[Header brand + printed documents show the configured name]
+    I --> J[Steps 2 to 4 per the agreed product-owner spec, with back/continue]
+    J --> K[Setup completes; wizard never shows again on a seeded database]
+```
+
+Edge trace (every edge cites code):
+
+- A–B: boot check reuses the existing `GetHotelConfig`
+  read (`AdminView.vue:380` call site; `AdminService.
+  GetHotelConfig` contract unchanged, LLD section 8). No
+  new endpoint decides emptiness; the exact
+  empty-predicate (unconfigured hotel identity) is set by
+  the #425 screen PR per the `product-owner` spec.
+- B–D: seeded databases take the existing shell path
+  unchanged (router `src/router.ts:24-60`, shell gate LLD
+  section 12.4).
+- E–H: NEW `OnboardingView.vue` wizard shell (progress
+  indicator, back/continue navigation); step 1 matches the
+  design (hotel-name input, example placeholder, helper
+  noting the name appears on invoices and receipts, 25
+  percent progress, continue action). Persistence goes
+  through `UpdateHotelConfig` with actor + timestamp
+  (`NFR-AUD-1`); new catalogue keys `desk.onboarding.*` in
+  both locales (`NFR-DSK-1`).
+- H–I: the shell brand span (`App.vue` `shell-brand`)
+  reads the configured name; print output carries it via
+  the preserved print isolation (section 13.5). The design
+  example content is never hardcoded.
+- E: NEW `/onboarding` route in `src/router.ts`
+  (section 13.3 router note applies); deep-linking the
+  wizard on a seeded database redirects to the shell.
+- J: steps 2–4 content, validation, and completion
+  semantics ride the future `product-owner` spec recorded
+  on #425 — this diagram specifies the gate and step 1
+  only.
+
+Failure/rollback:
+
+```mermaid
+flowchart TD
+    P[Name fails validation] --> Q[VALIDATION_FAILED names the field; wizard stays on step 1]
+    R[Front-desk role attempts setup] --> S[FORBIDDEN; setup stays owner/manager only]
+    T[LAN disconnect during persist] --> U[Offline banner + manual retry; nothing half-written]
+    V[401 / UNAUTHENTICATED] --> W[Single 401 path: clear token, route to sign-in]
+```
+
+Edge trace:
+
+- P–Q: config-schema validation (LLD section 8) precedes
+  persistence — nothing to compensate.
+- R–S: server-side role enforcement is unchanged
+  (`FORBIDDEN` per LLD section 8; the cosmetic admin
+  gating note in HLD section 12 stands).
+- Rollback: revert the #425 screen PR; the wizard is
+  additive — seeded desks never saw it, and the config
+  surface is unchanged.
+
+### 13.5 Technical no-change note (behaviour, APIs, contracts)
+
+Nothing in section 13 changes behaviour below the screen
+surface, and no screen implementation PR may change any of
+the following; each item names its guard so drift is
+reviewable. The requirements side of the same statements
+lives with `business-analyst`
+(`docs/requirements/mvp-requirements.md` [section 10.1](../requirements/mvp-requirements.md),
+PR #427); the guard side lives with `qa-lead` (PR #428,
+D1–D9):
+
+- Routes: the six existing `/app/` paths stay exactly as
+  routed (`src/router.ts:24-60`, placeholder catch-all);
+  sections 13.3–13.4 add exactly two routes (`/rooms`,
+  `/onboarding`) — no rename, no removal. Nginx
+  `location /app/` fallback stays `/app/index.html` (LLD
+  section 11); legacy redirects and `/docs` Swagger mirror
+  stay intact.
+- APIs and contracts: every desk call keeps its operation,
+  payload, and envelope
+  (`docs/technical/api-spec.md`,
+  `docs/technical/integration.md` C1–C11,
+  `contracts/openapi.yaml` + `frontend/docs/openapi.yaml`
+  byte-identical mirror — 14 ops, unchanged). The map adds
+  no operation; the wizard adds no operation.
+- Data model and schema: no entity or field is added
+  (`docs/technical/schema.md`,
+  `docs/requirements/data-dictionary.md` unchanged); the map
+  visualises room state, the wizard persists through
+  `FR-ADM-1` config.
+- Error semantics: all codes and refusal conditions stand
+  (`docs/technical/error-handling.md`, LLD sections 1–8
+  error mappings); checkout still requires a settled folio
+  or a recorded approval (`FR-BIL-7`, `SETTLEMENT_REQUIRED`
+  at `StayView.vue:1620`). Session rules (LLD section 0:
+  HMAC token, 5-minute revalidation, 15-minute idle
+  sign-out, 5-strike lockout) are untouched.
+- Catalogue: every new string ships in `messages/en.json`
+  beside `messages/vi.json` (both on disk; `desk.stay.
+  need_room` precedent at `en.json:450`) and stays covered
+  by `script/catalogue-coverage-check.sh`
+  (`NFR-I18N-1`, `NFR-DSK-1` hold); the hotel name shown is
+  the configured value, never the design example content.
+- Print: receipt, invoice, and confirmation output match
+  folio lines and balance exactly (`FR-BIL-4` holds);
+  print isolation CSS preserved
+  (`PrintView.vue:1233-1257`, `BookView.vue:973-986`);
+  screen styling must not leak into print (`NFR-DSK-2`).
+- Tests: `data-testid` hooks kept; the D1–D9 guards (PR
+  #428) are created by the screen PRs named there
+  (#420–#425); characterization suites are extended where
+  markup changed, none deleted without replacement.
+
+Out of scope (restated as build constraints): print, admin,
+and gate/sign-in screens (not in this design batch);
+catalogue restructuring; backend or API changes beyond what
+the screens need (filed as follow-ups if discovered).
+
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-137

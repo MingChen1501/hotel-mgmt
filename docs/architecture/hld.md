@@ -281,5 +281,71 @@ Rollback: revert the single Phase 2 implementation PR; no data
 migration exists in either direction (no contract or schema change
 anywhere in this slice).
 
+## 13. Desk UI design rollout (Refs #419) — six-screen Claude UI
+
+Owner-supplied finished design of six static screens plus a canvas
+manifest as the desk UI target (owner note 2026-10-28,
+authoritative over conflicting parts of #412). Screens in
+canvas-manifest order: Main desk board (#420), Stay check-in/out
+(#422), Onboarding setup wizard (#425), Rooms visual map (#424),
+Book (#421), Folio (#423). Tier T2 (reader-visible UI change;
+the spec-reviewer verdict on PR #426 accepts T2 over T3 on the
+no-new-subsystem analysis recorded here). The product-owner
+contract and done-conditions live in
+`docs/product/desk-ui-design-rollout.md` and
+`docs/product/acceptance-criteria.md` [section 11](../product/acceptance-criteria.md)
+(PR #426); the requirements delta lives in
+`docs/requirements/mvp-requirements.md` [section 10](../requirements/mvp-requirements.md)
+(`FR-DSK-*`, `NFR-DSK-*`, PR #427); guard mapping lives with
+`qa-lead` (D1–D9, PR #428). This section records only the
+subsystem-boundary position; the build-ready decomposition and
+the four per-flow diagrams the T2 gate requires live in
+`docs/architecture/lld.md` [section 13](lld.md).
+
+No new subsystem, no boundary change, no contract change — hence
+no ADR:
+
+- Presentation plus narrowly-scoped screen behaviour only. The
+  four restyles (Main board restyle part of #420, Book #421,
+  Stay restyle part of #422, Folio #423) reuse the existing
+  operations in call order; refusal conditions, payloads, and
+  envelopes stand (`docs/technical/error-handling.md`,
+  `docs/technical/integration.md` C1–C11 unchanged).
+- The Rooms visual map (#424) is a read-only projection over
+  the existing room store: it renders `RoomInventoryService.
+  ListRoomsByState` output grouped by floor with a
+  summary-counts-must-match-cards invariant computed from the
+  same payload. It owns no store, emits no events, and adds no
+  transition — per-card actions are explicitly not specified
+  until the #424 owner decision lands, and none are invented.
+- The Onboarding wizard (#425) is a first-run navigation gate,
+  not a module: it launches on an empty database only and
+  persists step 1 through the existing Admin hotel-config
+  surface (`AdminService.GetHotelConfig` /
+  `UpdateHotelConfig`, `FR-ADM-1`); steps 2–4 need the
+  `product-owner` spec (and owner decision where the design is
+  silent) before building beyond step 1.
+- Shared shell. The six screens share one shell: teal header
+  `#0F4C47` showing the configured hotel name (example content
+  from the design files is never hardcoded), primary buttons
+  `#0F766E`, page `#F4F6F5`, ink `#1B2B2A`, 44px minimum
+  targets, card radius 12px, VI-primary copy, nav tabs in
+  canvas-manifest order (Main, Stay, Onboarding, Rooms, Book,
+  Folio) with the active screen highlighted, plus a locale
+  toggle switching the whole screen EN/VI. Within this
+  rollout's scope the manifest tab set and order supersede the
+  `FR-DSP-1` destination list; print and admin stay reachable
+  as today. The current shell (`app/src/App.vue`
+  `NAV_ITEMS` at :215-220, brand at the `shell-brand` span,
+  locale switcher beside it) is the base the screen PRs extend.
+- Data-store ownership (section 4) stands unchanged: the map
+  reads room state, the wizard writes hotel config through
+  Admin — no store gains a second writer, no module reads
+  another module's tables.
+
+Rollback: revert the per-screen implementation PRs
+independently (#420–#425); the design files themselves are
+unchanged, and no data migration exists in either direction.
+
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-29
