@@ -689,7 +689,7 @@ is a styling input. Money and dates render exactly as today
 | Pattern (contract section 3) | PrimeVue component | Applied to (existing SFCs) |
 |---|---|---|
 | Forms (book, charge, pay, admin setup) | `InputText`, `Dropdown`/`Select`, `Calendar`/`DatePicker`, `Password` for secrets, `Button` for submits | Book form hooks `book-guest-name` (`BookView.vue:13-20`) through `book-confirm` (`:170-173`); guest lookup via `book-find-guest` / `book-register-guest` (`:24-34`); per-screen sign-in forms (removed to the shell gate, section 12.4) |
-| Lists (reservations, stays, folios, rooms, guests) | `DataTable` with `Column`, paginator on long lists | Arrivals table `desk-arrivals-table` (`DeskView.vue:52-54` and siblings per screen) |
+| Lists (reservations, stays, folios, rooms, guests) | `DataTable` with `Column`, paginator on long lists | Arrivals table `desk-arrivals-table` (`DeskView.vue:57-59` and siblings per screen) |
 | Confirmations and destructive actions (cancel, check-out, day-close) | `Dialog` with explicit confirm/cancel buttons | Existing confirm buttons (e.g. `book-confirm` at `BookView.vue:170-173`) keep their hooks and call order |
 | Feedback (success, validation, refusal, error) | `Message`/`Toast` for page-level notes, inline field errors under the field | Existing alert hooks (`book-quote-error`, `book-confirm-error`, `desk-dashboard-error`) keep their hooks; sign-in errors render only in the shell gate (`shell-signin-*` in `App.vue:67-109`); wording becomes plain sentences per `FR-DSP-3` |
 | Print (receipt/invoice/confirmation) | existing print CSS preserved; screen shows a print preview card with one Print button | `.print-document` markup (`PrintView.vue:105,219,300`) under `@media print` (`PrintView.vue:1239` within the `:1233-1257` style block, `BookView.vue:978` within `:973-986`) |
@@ -1036,23 +1036,28 @@ flowchart TD
 Edge trace (every edge cites code):
 
 - A–B: arrivals/in-house/departures via
-  `ListArrivalsDepartures` (`DeskView.vue:455-459`), room
-  lanes via `ListRoomsByState` (`DeskView.vue:469-470`),
-  cross-check via `DailySheet` (`:490-496`).
-- B–C: lanes render at `DeskView.vue:109` (dirty), `:121`
-  (clean-but-uninspected), `:133` (out-of-service), `:147`
-  (board); departures renders its explicit empty state when
-  there are no checkouts today; out-of-service shows reason
-  plus date.
-- D–E: NEW buttons on the need-cleaning card call the LLD
-  section 3 `UpdateRoomState` operation (roomNumber,
+  `ListArrivalsDepartures` (`DeskView.vue:744-747`), room
+  lanes via `ListRoomsByState` (`DeskView.vue:758-759`),
+  checkout dates via `QueryCalendar` (`:660-669`), block notes
+  via `CheckRoomTypeSellability` (`:688-713`), cross-check via
+  `DailySheet` (`:800-812`).
+- B–C: the five design cards render at `DeskView.vue:51`
+  (arrivals with room-type labels), `:76` (in-house with
+  checkout dates), `:101` (departures), `:126`
+  (need-cleaning), `:184` (out-of-service); departures renders
+  its explicit empty state when there are no checkouts today;
+  out-of-service shows reason plus date (`:184-203`); the
+  five-lane board stays below at `:208`.
+- D–E: the two buttons on the need-cleaning card call the LLD
+  section 3 `UpdateRoomState` operation (`DeskView.vue:149`
+  clean, `:170` inspect; call at `:588` with roomNumber,
   newState, actor) — clean maps dirty-to-clean, inspect maps
   clean-to-inspected; one idempotency key per contract op.
 - E–G: provider-side transition check (BR-28) plus history
   row and outbox event in one transaction (LLD section 3).
-- G–H: `refreshDashboard` (`DeskView.vue:449`,
+- G–H: `refreshDashboard` (`DeskView.vue:734`,
   manual trigger `desk-refresh` at :24-28 via `onRefresh` at
-  :570-571) reloads the same queries, so summary counts
+  :874-877) reloads the same queries, so summary counts
   match the rendered lanes by construction.
 - F–I: illegal transition (e.g. dirty straight to
   inspected) refuses `STATE_ILLEGAL` naming room+state;
@@ -1103,7 +1108,7 @@ Edge trace (every edge cites code):
 - A–B: NEW `RoomsMapView.vue` reads the existing
   `RoomInventoryService.ListRoomsByState` operation (LLD
   section 3; same read the Main board uses at
-  `DeskView.vue:469-470`); no new endpoint, no new store.
+  `DeskView.vue:758-759`); no new endpoint, no new store.
 - B–D: chips derive from the one fetched payload — the
   invariant holds by construction, never by reconciling two
   sources. New catalogue keys `desk.rooms.*` (chips, card

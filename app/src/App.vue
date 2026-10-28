@@ -131,7 +131,7 @@
         <span
           data-testid="shell-brand"
           class="shell-brand"
-        >{{ t('desk.shell.brand', {}, 'Hotel Management') }}</span>
+        >{{ hotelName || t('desk.shell.brand', {}, 'Hotel Management') }}</span>
         <RouterLink
           v-for="item in navItems"
           :key="item.name"
@@ -192,7 +192,7 @@
 </template>
 
 <script lang="ts">
-import { computed, defineComponent, ref } from 'vue';
+import { computed, defineComponent, onMounted, ref } from 'vue';
 import { RouterLink, RouterView, useRoute } from 'vue-router';
 import Button from 'primevue/button';
 import InputText from 'primevue/inputtext';
@@ -239,6 +239,27 @@ export default defineComponent({
     const signingIn = ref(false);
     const signInError = ref('');
     const displayName = computed(() => session.displayName ?? '');
+    // Configured hotel name for the teal header (Refs #419, #420,
+    // FR-DSK-1, AC-DSK-8): read from the hotel configuration
+    // surface (`FR-ADM-1`) once signed in, never hardcoded — the
+    // design's hotel name is example content only. The catalogue
+    // brand stays the fallback until the read lands or fails.
+    const hotelName = ref('');
+
+    async function loadHotelName(): Promise<void> {
+      try {
+        const config = await apiFetch<{ values?: Record<string, unknown> }>(
+          '/v1/admin/GetHotelConfig',
+          { method: 'POST', body: '{}' },
+        );
+        const name = config.values?.name;
+        hotelName.value = typeof name === 'string' && name.trim() !== '' ? name : '';
+      } catch {
+        // Unreachable config keeps the catalogue brand: the header
+        // never blanks, and the sign-in gate still owns 401s.
+        hotelName.value = '';
+      }
+    }
 
     async function onRetry(): Promise<void> {
       retryMessage.value = t('desk.shell.retrying', {}, 'Retrying…');
@@ -271,6 +292,7 @@ export default defineComponent({
         );
         session.signIn(payload.token, payload.displayName, payload.role);
         secret.value = '';
+        await loadHotelName();
       } catch (err) {
         // A locked identity keeps the server's locked wording so
         // staff see the locked cause distinctly (Refs #319); every
@@ -294,6 +316,7 @@ export default defineComponent({
       } catch {
         // A dead token signs out locally all the same (legacy parity).
       }
+      hotelName.value = '';
       session.signOut();
     }
 
@@ -303,6 +326,14 @@ export default defineComponent({
       setLocale(tag);
     }
 
+    onMounted(() => {
+      // A reload restores the token from sessionStorage: pick up
+      // the configured hotel name without another sign-in.
+      if (session.isSignedIn) {
+        void loadHotelName();
+      }
+    });
+
     return {
       t,
       localeTag,
@@ -310,6 +341,7 @@ export default defineComponent({
       route,
       navItems: NAV_ITEMS,
       displayName,
+      hotelName,
       retryMessage,
       onRetry,
       onLocale,
@@ -326,7 +358,9 @@ export default defineComponent({
 </script>
 
 <style>
-/* Desk shell stylesheet (Refs #338, contract sections 1–2, LLD section 12.1).
+/* Desk shell stylesheet (Refs #338, #420; contract sections 1–2,
+   rollout tokens `docs/product/desk-ui-design-rollout.md`
+   section 3, LLD section 12.1).
    Token values duplicated from `src/theme/tokens.ts` (CSS cannot
    import the TS constants; keep both in sync). The ENTIRE block
    lives inside `@media screen` so screen styling can never leak
@@ -336,27 +370,29 @@ export default defineComponent({
   #shell {
     font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     font-size: 16px;
-    color: #1F2933;
-    background: #F4F2ED;
+    color: #1B2B2A;
+    background: #F4F6F5;
     min-height: 100vh;
   }
 
-  /* Keyboard focus is always visible (NFR-DSP-2): 2px desk-blue
+  /* Keyboard focus is always visible (NFR-DSP-2): 2px teal
      outline on every interactive element. */
   #shell :focus-visible {
-    outline: 2px solid #1D4ED8;
+    outline: 2px solid #0F766E;
     outline-offset: 2px;
   }
 
-  /* Top nav (FR-DSP-1): six destinations in contract section 2 order,
-     then the user name, then sign-out. */
+  /* Teal header (rollout section 3, Refs #420): the hotel name,
+     the top nav, and sign-out share one #0F4C47 bar so staff
+     always know which property they are working. */
   #shell .shell-nav {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 8px 16px;
-    background: #FFFFFF;
-    border-bottom: 1px solid #E5E7EB;
+    background: #0F4C47;
+    color: #FFFFFF;
+    border-bottom: 1px solid #0F4C47;
     padding: 12px 24px;
   }
 
@@ -364,26 +400,30 @@ export default defineComponent({
     font-weight: 700;
     font-size: 20px;
     margin-right: 8px;
+    color: #FFFFFF;
   }
 
   #shell .shell-nav-item {
-    color: #1F2933;
+    color: #FFFFFF;
     text-decoration: none;
     padding: 4px 2px;
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
   }
 
   #shell .shell-nav-item.shell-nav-active {
     font-weight: 700;
-    border-bottom: 2px solid #1D4ED8;
+    border-bottom: 2px solid #FFFFFF;
   }
 
   #shell .shell-user {
     margin-left: auto;
-    color: #6B7280;
+    color: #D7E8E6;
   }
 
   #shell .shell-user strong {
-    color: #1F2933;
+    color: #FFFFFF;
   }
 
   /* Content area: single centred column (contract section 2). */
@@ -405,6 +445,61 @@ export default defineComponent({
     font-size: 20px;
   }
 
+  /* NFR-DSK-3 (D9): every interactive element on the desk
+     screens presents at least a 44px target (Refs #420). */
+  #shell .p-button {
+    min-height: 44px;
+  }
+
+  #shell .shell-nav .p-button {
+    min-height: 44px;
+  }
+
+  #shell .shell-locale .p-button {
+    min-height: 44px;
+  }
+
+  /* Main board design cards (Refs #420): 12px radius, one idea
+     per card in a responsive grid. Views carry no style blocks
+     (M4), so the shared card presentation lives here. */
+  #shell .desk-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 16px;
+    margin: 16px 0;
+  }
+
+  #shell .desk-cards .p-card {
+    border: 1px solid #E5E7EB;
+    border-radius: 12px;
+    background: #FFFFFF;
+  }
+
+  #shell .desk-cards .p-card-title h2 {
+    font-size: 24px;
+    margin: 0 0 8px;
+  }
+
+  #shell .desk-cards ul {
+    list-style: none;
+    padding: 0;
+    margin: 8px 0 16px;
+  }
+
+  #shell .desk-cards li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+    padding: 8px 0;
+    border-bottom: 1px solid #E5E7EB;
+    min-height: 44px;
+  }
+
+  #shell .desk-cards li:last-child {
+    border-bottom: none;
+  }
+
   /* Native controls stay native (date inputs and selects keep
      their YYYY-MM-DD payloads and setValue semantics; see the
      #338 implementation notes) but wear the tokens. PrimeVue
@@ -413,22 +508,24 @@ export default defineComponent({
   #shell input:not([class]),
   #shell select:not([class]) {
     font: inherit;
-    color: #1F2933;
+    color: #1B2B2A;
     background: #FFFFFF;
     border: 1px solid #E5E7EB;
     border-radius: 4px;
     padding: 8px 12px;
     margin: 4px 0;
+    min-height: 44px;
   }
 
   #shell button:not([class]) {
     font: inherit;
     color: #FFFFFF;
-    background: #1D4ED8;
-    border: 1px solid #1D4ED8;
+    background: #0F766E;
+    border: 1px solid #0F766E;
     border-radius: 4px;
     padding: 8px 16px;
     cursor: pointer;
+    min-height: 44px;
   }
 
   #shell button:not([class]):disabled {
@@ -474,7 +571,7 @@ export default defineComponent({
   }
 
   #shell .shell-locale-label {
-    color: #6B7280;
+    color: #D7E8E6;
     margin-right: 2px;
   }
 

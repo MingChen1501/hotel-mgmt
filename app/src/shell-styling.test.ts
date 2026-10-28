@@ -116,9 +116,9 @@ describe('keyboard-focus visibility (M5)', () => {
     vi.clearAllMocks();
   });
 
-  it('pins the 2px desk-blue focus ring at the shell source', () => {
+  it('pins the 2px teal focus ring at the shell source', () => {
     expect(appSource).toContain(':focus-visible');
-    expect(appSource).toContain('2px solid #1D4ED8');
+    expect(appSource).toContain('2px solid #0F766E');
   });
 
   it.each(['/','/book', '/stay', '/folio', '/print', '/admin'])(

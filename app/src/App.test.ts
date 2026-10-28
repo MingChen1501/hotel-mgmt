@@ -53,15 +53,29 @@ describe('shell offline banner', () => {
 
   it('retries the failed request only on staff action', async () => {
     useSessionStore().signIn('tok-1');
-    const fetchMock = vi
-      .fn()
-      .mockRejectedValueOnce(new TypeError('Load failed'))
-      .mockResolvedValueOnce(
+    // The mount-time hotel-name read (Refs #420) resolves, so the
+    // PostCharge below stays the request under test.
+    let postChargeFailed = false;
+    const fetchMock = vi.fn((url: string) => {
+      if (url === '/v1/admin/GetHotelConfig') {
+        return Promise.resolve(
+          new Response(JSON.stringify({ values: { name: 'T Hotel' } }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        );
+      }
+      if (url === '/v1/billing/PostCharge' && !postChargeFailed) {
+        postChargeFailed = true;
+        return Promise.reject(new TypeError('Load failed'));
+      }
+      return Promise.resolve(
         new Response(JSON.stringify({ ok: true }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         }),
       );
+    });
     vi.stubGlobal('fetch', fetchMock);
     const wrapper = mount(ShellApp, {
       global: { plugins: [createPinia(), router] },
@@ -71,7 +85,8 @@ describe('shell offline banner', () => {
         apiFetch('/v1/billing/PostCharge', { method: 'POST', body: '{}' }),
       ).rejects.toMatchObject({ code: 'OFFLINE' });
       expect(wrapper.find('[data-testid="offline-banner"]').exists()).toBe(true);
-      expect(fetchMock).toHaveBeenCalledTimes(1);
+      // Hotel-name read plus the failed PostCharge (Refs #420).
+      expect(fetchMock).toHaveBeenCalledTimes(2);
       await wrapper.find('[data-testid="offline-retry"]').trigger('click');
       // A successful manual retry clears the offline state, which
       // hides the banner (LLD section 11.3 H–I): there is no result line
@@ -79,7 +94,9 @@ describe('shell offline banner', () => {
       await vi.waitFor(() => {
         expect(wrapper.find('[data-testid="offline-banner"]').exists()).toBe(false);
       });
-      expect(fetchMock).toHaveBeenCalledTimes(2);
+      // Hotel-name read plus the failed PostCharge plus the manual
+      // retry (Refs #420).
+      expect(fetchMock).toHaveBeenCalledTimes(3);
       expect(connectivity.online).toBe(true);
     } finally {
       vi.unstubAllGlobals();
@@ -105,7 +122,9 @@ describe('shell offline banner', () => {
           'Load failed',
         );
       });
-      expect(fetchMock).toHaveBeenCalledTimes(2);
+      // Hotel-name read plus the failed PostCharge plus the failed
+      // manual retry (Refs #420).
+      expect(fetchMock).toHaveBeenCalledTimes(3);
       expect(wrapper.find('[data-testid="offline-banner"]').exists()).toBe(true);
       expect(connectivity.online).toBe(false);
     } finally {
@@ -171,6 +190,57 @@ describe('shell navigation', () => {
       expect(wrapper.find('[data-testid="shell-brand"]').text()).toContain('Hotel Management');
       expect(wrapper.find('[data-testid="shell-user"]').text()).toBe('Ada Owner');
       expect(wrapper.find('[data-testid="shell-signout"]').exists()).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  // D1 header half (Refs #419, #420, FR-DSK-1, AC-DSK-8): the teal
+  // header shows the configured hotel name from the hotel
+  // configuration surface, never the design's example content.
+  it('shows the configured hotel name in the header once signed in', async () => {
+    const fetchMock: ReturnType<typeof vi.fn> = vi.fn((url: string) => {
+      if (url === '/v1/admin/GetHotelConfig') {
+        return Promise.resolve(
+          new Response(JSON.stringify({ schemaVersion: 1, values: { name: 'Sunrise Hotel' } }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        );
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const pinia = createPinia();
+      setActivePinia(pinia);
+      useSessionStore().signIn('tok-1', 'Ada Owner', 'owner');
+      const wrapper = await mountShellWith(pinia, '/');
+      await vi.waitFor(() => {
+        expect(wrapper.find('[data-testid="shell-brand"]').text()).toBe('Sunrise Hotel');
+      });
+      expect(fetchMock.mock.calls.some((call) => call[0] === '/v1/admin/GetHotelConfig')).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('falls back to the catalogue brand when no hotel name is configured', async () => {
+    vi.stubGlobal('fetch', quietFetch());
+    try {
+      const pinia = createPinia();
+      setActivePinia(pinia);
+      useSessionStore().signIn('tok-1', 'Ada Owner', 'owner');
+      const wrapper = await mountShellWith(pinia, '/');
+      await vi.waitFor(() => {
+        expect(wrapper.find('[data-testid="shell-nav"]').exists()).toBe(true);
+      });
+      expect(wrapper.find('[data-testid="shell-brand"]').text()).toContain('Hotel Management');
     } finally {
       vi.unstubAllGlobals();
     }

@@ -1,5 +1,6 @@
-// Design tokens for the desk UI styling pass (Refs #338, the
-// approved Phase 1 UI contract section 1, LLD section 12.1).
+// Design tokens for the desk UI rollout (Refs #419, #420; the
+// shared tokens in `docs/product/desk-ui-design-rollout.md`
+// section 3, LLD section 12.1).
 //
 // These values are the ONLY styling inputs: the PrimeVue stock
 // preset below is fed by them, and the SFC stylesheets reuse the
@@ -11,13 +12,15 @@ export const deskTokens = {
   colors: {
     // Page and surface.
     surface: '#FFFFFF',
-    page: '#F4F2ED',
+    page: '#F4F6F5',
     // Text.
-    ink: '#1F2933',
+    ink: '#1B2B2A',
     muted: '#6B7280',
-    // The single accent (actions, active nav). State colours are
-    // used solely for status, never for branding.
-    primary: '#1D4ED8',
+    // Header teal plus the single action accent (actions, active
+    // nav). State colours are used solely for status, never for
+    // branding.
+    header: '#0F4C47',
+    primary: '#0F766E',
     success: '#15803D',
     warning: '#B45309',
     danger: '#B91C1C',
@@ -31,36 +34,42 @@ export const deskTokens = {
   spacing: {
     unitPx: 4,
     stepsPx: [8, 12, 16, 24],
-    cardRadiusPx: 8,
+    cardRadiusPx: 12,
     contentMaxPx: 1100,
+  },
+  targets: {
+    // Every interactive element meets the 44px minimum touch and
+    // keyboard target (NFR-DSK-3); the shell stylesheet enforces
+    // it, audited per screen in D9.
+    minPx: 44,
   },
   focus: {
     ringPx: 2,
-    ringColor: '#1D4ED8',
+    ringColor: '#0F766E',
   },
 } as const;
 
-// PrimeVue stock preset fed by the tokens above (contract section 3,
-// LLD section 12.1): Aura with its primary scale anchored on desk blue
-// (700 is exactly the contract primary). State severities keep
-// their stock hues, which match the contract state colours.
+// PrimeVue stock preset fed by the tokens above (rollout section 3,
+// LLD section 12.1): Aura with its primary scale anchored on the
+// design teal (700 is exactly the action accent). State severities
+// keep their stock hues, which match the contract state colours.
 import Aura from '@primevue/themes/aura';
 import { definePreset } from '@primevue/themes';
 
 export const DeskPreset = definePreset(Aura, {
   semantic: {
     primary: {
-      50: '#eff6ff',
-      100: '#dbeafe',
-      200: '#bfdbfe',
-      300: '#93c5fd',
-      400: '#60a5fa',
-      500: '#3b82f6',
-      600: '#2563eb',
-      700: '#1D4ED8',
-      800: '#1e40af',
-      900: '#1e3a8a',
-      950: '#172554',
+      50: '#effaf8',
+      100: '#d7f0ec',
+      200: '#b0e0d8',
+      300: '#7fc9be',
+      400: '#4dada1',
+      500: '#279086',
+      600: '#147a71',
+      700: '#0F766E',
+      800: '#0F4C47',
+      900: '#0c3f3c',
+      950: '#072a28',
     },
   },
 });
