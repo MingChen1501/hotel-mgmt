@@ -69,7 +69,12 @@ match.
    (ADR-0003, accepted 2026-10-25; legacy static pages
    decommissioned per #313). Exit
    signal: a receptionist operates book-to-receipt on the screens
-   alone and the UI is pilot-ready.
+   alone and the UI is pilot-ready. Current program: the
+   owner-supplied six-screen Claude UI rollout (Refs #419, product
+   spec `docs/product/desk-ui-design-rollout.md`) restyles Main,
+   Stay, Book, and Folio per the design and adds the Rooms map
+   and Onboarding wizard as new screens; tracked per screen in
+   #420–#425, one small task and one PR each.
 6. **QA.** The QA track — test plans, issue reports, and bugs
    found; the fix for a bug lands in its phase milestone. Exit
    signal: every QA issue for a phase is closed or accepted by
@@ -104,4 +109,4 @@ Each item links its gate issue above; the PR that closes the
 issue carries the exit signal.
 
 <!-- ao-role: product-owner -->
-Role: product-owner · AO session hotel-mgmt-342
+Role: product-owner · AO session hotel-mgmt-540
