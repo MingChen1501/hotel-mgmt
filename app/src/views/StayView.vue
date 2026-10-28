@@ -164,6 +164,9 @@
             v-model="checkinRoomId"
             data-testid="stay-checkin-room"
           >
+            <option value="">
+              {{ t('desk.stay.choose_room', {}, 'Pick a ready room…') }}
+            </option>
             <option
               v-for="room in checkinCandidates"
               :key="room.roomId"

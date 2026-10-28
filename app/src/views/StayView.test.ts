@@ -311,7 +311,10 @@ describe('stay view', () => {
       expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain('Booked: Standard');
     });
     const options = wrapper.findAll('[data-testid="stay-checkin-room"] option');
-    expect(options.map((option) => option.text())).toEqual(['101', '102']);
+    // Refs #411: the picker opens on an explicit empty placeholder
+    // so the shown value always matches the bound room id.
+    expect(options.map((option) => option.text())).toEqual(['Pick a ready room…', '101', '102']);
+    expect(options[0].element.getAttribute('value')).toBe('');
 
     // Second click commits: AssignRoom (roomNumber plus stayLink)
     // then CheckIn with the roomId from the AssignRoom echo, then
@@ -336,6 +339,39 @@ describe('stay view', () => {
     // Room id comes from the AssignRoom echo, never the picker.
     expect(checkinBody.roomId).toBe('echo-101');
     expect(checkinBody.stayId).toBe(assignBody.stayLink);
+  });
+
+  // Refs #411: with candidates loaded but no room picked, the
+  // select shows the empty placeholder (no phantom selection) and
+  // a second Check in click keeps the need_room guard without
+  // calling AssignRoom.
+  it('keeps the need_room guard when no ready room is picked', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountStay();
+    await signIn(wrapper, fetchMock);
+
+    await wrapper.find('[data-testid="stay-booking-ref"]').setValue('RSV-1');
+    await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain('Booked: Standard');
+    });
+    // The placeholder is selected: nothing is bound yet.
+    expect(
+      (wrapper.find('[data-testid="stay-checkin-room"]').element as HTMLSelectElement).value,
+    ).toBe('');
+    expect(wrapper.find('[data-testid="stay-checkin-room"]').text()).toContain(
+      'Pick a ready room…',
+    );
+
+    await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkin-error"]').text()).toContain(
+        'Pick a ready room first.',
+      );
+    });
+    const urls = fetchMock.mock.calls.map((call) => String(call[0]));
+    expect(urls).not.toContain('/v1/rooms/AssignRoom');
   });
 
   // Refs #349: live stay rows never carry booking references, so
