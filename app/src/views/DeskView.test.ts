@@ -11,6 +11,7 @@ import { createPinia, setActivePinia } from 'pinia';
 import { mount } from '@vue/test-utils';
 import DeskView from './DeskView.vue';
 import { useSessionStore } from '../stores/session';
+import { setLocale } from '../i18n';
 import { resetConnectivityForTests } from '../api/client';
 import router from '../router';
 
@@ -87,6 +88,50 @@ function stubHappyPath(fetchMock: ReturnType<typeof vi.fn>): void {
             { id: 'standard', name: 'Standard' },
             { id: 'suite', name: 'Suite' },
           ],
+        }),
+      );
+    }
+    if (url === '/v1/rooms/UpdateRoomState') {
+      return Promise.resolve(
+        jsonResponse({
+          roomNumber: body.roomNumber,
+          oldState: body.newState === 'vacant-inspected' ? 'vacant-clean' : 'vacant-dirty',
+          newState: body.newState,
+        }),
+      );
+    }
+    if (url === '/v1/rooms/CheckRoomTypeSellability') {
+      // Room 103 carries a covering block (reason plus date per
+      // the design); every other room reads as sellable today.
+      if (body.roomNumber === '103') {
+        return Promise.resolve(
+          jsonResponse(
+            {
+              code: 'STATE_ILLEGAL',
+              message: 'Room 103 is blocked.',
+              details: {
+                roomNumber: '103',
+                dateFrom: '2026-10-28',
+                dateTo: '2026-10-30',
+                reason: 'Pipe repair',
+              },
+            },
+            422,
+          ),
+        );
+      }
+      return Promise.resolve(
+        jsonResponse({ roomTypeId: body.roomType, dateFrom: body.dateFrom, dateTo: body.dateTo, totalCount: 1, sellableCount: 1, blockedRooms: [] }),
+      );
+    }
+    if (url === '/v1/reservations/QueryCalendar') {
+      // Stay-b is the only in-house stay: its planned checkout
+      // date rides the calendar join (Refs #420).
+      return Promise.resolve(
+        jsonResponse({
+          dateFrom: body.dateFrom,
+          dateTo: body.dateTo,
+          reservations: [{ reservationRef: 'RSV-1', roomTypeId: 'standard', arrivalDate: '2026-10-26', departureDate: '2026-11-02', state: 'checked-in', stayId: 'stay-b' }],
         }),
       );
     }
@@ -190,13 +235,212 @@ describe('desk view', () => {
     expect(arrivals).toContain('Guest One');
     expect(arrivals).toContain('201');
     expect(arrivals).not.toContain('r-101');
+    // Design card detail (Refs #420): arrivals name the room with
+    // its human type label.
+    expect(arrivals).toContain('Standard');
     const inHouse = wrapper.find('[data-testid="desk-inhouse-table"]').text();
     expect(inHouse).toContain('Guest Two');
     expect(inHouse).toContain('202');
     expect(inHouse).not.toContain('r-102');
+    // Design card detail (Refs #420): in-house rows name the
+    // planned checkout date joined from the calendar.
+    expect(inHouse).toContain('Standard');
+    expect(inHouse).toContain('Checkout 2026-11-02');
     // A stay with no room reference renders the catalogue fallback.
     const departures = wrapper.find('[data-testid="desk-departures-table"]').text();
     expect(departures).toContain('Not assigned');
+  });
+
+  // D2 (Refs #420, AC-DSK-2, FR-DSK-2): the Main board renders its
+  // five design cards — arrivals, in-house, departures (or its
+  // explicit empty state), need-cleaning with the two housekeeping
+  // buttons, and out-of-service with reason and date.
+  it('renders the five design cards with housekeeping buttons and the out-of-service note', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountDesk();
+    await signIn(wrapper, fetchMock);
+
+    for (const card of [
+      'desk-arrivals-card',
+      'desk-inhouse-card',
+      'desk-departures-card',
+      'desk-need-cleaning-card',
+      'desk-outofservice-card',
+    ]) {
+      expect(wrapper.find(`[data-testid="${card}"]`).exists()).toBe(true);
+    }
+    // The two housekeeping buttons ride the need-cleaning card.
+    expect(wrapper.find('[data-testid="desk-mark-cleaned-101"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="desk-mark-cleaned-101"]').text()).toContain('Mark cleaned');
+    expect(wrapper.find('[data-testid="desk-mark-inspected-102"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="desk-mark-inspected-102"]').text()).toContain('Mark inspected');
+    // Out-of-service room 103 names its covering-block reason plus
+    // date (Refs #420), never a bare number.
+    const note = wrapper.find('[data-testid="desk-outoforder-note-103"]').text();
+    expect(note).toContain('Pipe repair');
+    expect(note).toContain('2026-10-28');
+    expect(note).toContain('2026-10-30');
+    // VI-primary copy (AC-DSK-8): the whole card switches locale
+    // with no mixed-locale copy.
+    try {
+      setLocale('vi');
+      await wrapper.vm.$nextTick();
+      expect(wrapper.find('[data-testid="desk-mark-cleaned-101"]').text()).toContain('Đánh dấu đã dọn');
+      expect(wrapper.find('[data-testid="desk-mark-inspected-102"]').text()).toContain('Đánh dấu đã kiểm tra');
+    } finally {
+      setLocale('en');
+    }
+  });
+
+  // Refs #420: the out-of-service note resolves through the
+  // CheckRoomTypeSellability contract, whose request field is
+  // `roomType` (name or id) — never `roomTypeId`.
+  it('queries sellability with the contract roomType field', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountDesk();
+    await signIn(wrapper, fetchMock);
+
+    const sellabilityCalls = fetchMock.mock.calls.filter(
+      (call) => call[0] === '/v1/rooms/CheckRoomTypeSellability',
+    );
+    expect(sellabilityCalls.length).toBeGreaterThan(0);
+    for (const call of sellabilityCalls) {
+      const body = JSON.parse(call[1].body as string);
+      expect(body.roomType).toBeTruthy();
+      expect(body).not.toHaveProperty('roomTypeId');
+    }
+    // Room 103 (a suite) still resolves its covering-block note.
+    const bodies = sellabilityCalls.map((call) => JSON.parse(call[1].body as string));
+    expect(bodies.find((body) => body.roomNumber === '103')?.roomType).toBe('suite');
+  });
+
+  it('advances dirty-to-clean through the clean button and refreshes the board counts', async () => {
+    const states: Record<string, Array<{ roomId: string; number: string; roomTypeId: string; state: string }>> = {
+      'vacant-dirty': [{ roomId: 'r-1', number: '101', roomTypeId: 'standard', state: 'vacant-dirty' }],
+      'vacant-clean': [{ roomId: 'r-2', number: '102', roomTypeId: 'standard', state: 'vacant-clean' }],
+      'vacant-inspected': [],
+      occupied: [],
+      'out-of-order': [],
+    };
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      const body = init?.body !== undefined ? JSON.parse(init.body as string) : {};
+      if (url === '/v1/stay/ListArrivalsDepartures') {
+        return Promise.resolve(jsonResponse({ businessDate: body.businessDate, arrivals: [], inHouse: [], departures: [] }));
+      }
+      if (url === '/v1/rooms/ListRoomTypes') {
+        return Promise.resolve(jsonResponse({ roomTypes: [{ id: 'standard', name: 'Standard' }] }));
+      }
+      if (url === '/v1/rooms/ListRoomsByState') {
+        return Promise.resolve(jsonResponse({ state: body.state, rooms: states[body.state] ?? [] }));
+      }
+      if (url === '/v1/rooms/UpdateRoomState') {
+        expect(body.roomNumber).toBe('101');
+        expect(body.newState).toBe('vacant-clean');
+        expect(body.actor).toBe('Ada Owner');
+        for (const list of Object.values(states)) {
+          const at = list.findIndex((room) => room.number === body.roomNumber);
+          if (at >= 0) {
+            const [moved] = list.splice(at, 1);
+            states[body.newState]?.push({ ...(moved as { roomId: string; number: string; roomTypeId: string; state: string }), state: body.newState });
+          }
+        }
+        return Promise.resolve(jsonResponse({ roomNumber: body.roomNumber, oldState: 'vacant-dirty', newState: body.newState }));
+      }
+      if (url === '/v1/reporting/DailySheet') {
+        return Promise.resolve(
+          jsonResponse({ businessDate: body.businessDate, arrivals: [], inHouse: [], departures: [], openBalances: [], asOf: '' }),
+        );
+      }
+      if (url === '/backup-report.json') {
+        return Promise.resolve(jsonResponse({ outcome: 'success', line: 'Backup ok', support: '' }));
+      }
+      throw new Error(`unexpected call ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountDesk();
+    useSessionStore().signIn('tok-1', 'Ada Owner', 'owner');
+    await wrapper.find('[data-testid="desk-refresh"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="desk-mark-cleaned-101"]').exists()).toBe(true);
+    });
+    expect(wrapper.find('[data-testid="desk-board-lane-dirty"]').text()).toContain('(1)');
+
+    await wrapper.find('[data-testid="desk-mark-cleaned-101"]').trigger('click');
+    // Success reloads the board: room 101 leaves the dirty lane and
+    // the counts match the rendered lanes by construction.
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="desk-dirty-list"]').text()).not.toContain('101');
+    });
+    expect(wrapper.find('[data-testid="desk-uninspected-list"]').text()).toContain('101');
+    expect(wrapper.find('[data-testid="desk-board-lane-dirty"]').text()).toContain('(0)');
+    expect(wrapper.find('[data-testid="desk-board-lane-clean"]').text()).toContain('(2)');
+    expect(wrapper.find('[data-testid="desk-housekeeping-error"]').exists()).toBe(false);
+  });
+
+  it('advances clean-to-inspected through the inspect button', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    stubHappyPath(fetchMock);
+    const happyImpl = fetchMock.getMockImplementation();
+    // Inspect moves room 102 clean-to-inspected (Refs #420).
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/rooms/UpdateRoomState') {
+        const body = init?.body !== undefined ? JSON.parse(init.body as string) : {};
+        expect(body).toMatchObject({ roomNumber: '102', newState: 'vacant-inspected', actor: 'Ada Owner' });
+        return Promise.resolve(jsonResponse({ roomNumber: '102', oldState: 'vacant-clean', newState: 'vacant-inspected' }));
+      }
+      return (happyImpl as (url: string, init?: RequestInit) => Promise<Response>)(url, init);
+    });
+    const wrapper = mountDesk();
+    useSessionStore().signIn('tok-1', 'Ada Owner', 'owner');
+    await wrapper.find('[data-testid="desk-refresh"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="desk-mark-inspected-102"]').exists()).toBe(true);
+    });
+    await wrapper.find('[data-testid="desk-mark-inspected-102"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(
+          (call) => call[0] === '/v1/rooms/UpdateRoomState' && JSON.parse(call[1].body as string).newState === 'vacant-inspected',
+        ),
+      ).toBe(true);
+    });
+    expect(wrapper.find('[data-testid="desk-housekeeping-error"]').exists()).toBe(false);
+  });
+
+  it('reads a refused housekeeping transition as one plain sentence with the board untouched', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    stubHappyPath(fetchMock);
+    const happyImpl = fetchMock.getMockImplementation();
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/rooms/UpdateRoomState') {
+        return Promise.resolve(
+          jsonResponse(
+            { code: 'STATE_ILLEGAL', message: 'Illegal transition.', details: { roomNumber: '101', oldState: 'vacant-dirty', newState: 'vacant-clean' } },
+            422,
+          ),
+        );
+      }
+      return (happyImpl as (url: string, init?: RequestInit) => Promise<Response>)(url, init);
+    });
+    const wrapper = mountDesk();
+    useSessionStore().signIn('tok-1', 'Ada Owner', 'owner');
+    await wrapper.find('[data-testid="desk-refresh"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="desk-mark-cleaned-101"]').exists()).toBe(true);
+    });
+    await wrapper.find('[data-testid="desk-mark-cleaned-101"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="desk-housekeeping-error"]').exists()).toBe(true);
+    });
+    // Plain words naming the room (FR-DSP-3): no technical code.
+    expect(wrapper.find('[data-testid="desk-housekeeping-error"]').text()).toContain('Could not update room 101');
+    expect(wrapper.find('[data-testid="desk-housekeeping-error"]').text()).not.toContain('STATE_ILLEGAL');
+    // The refused press changes nothing: room 101 still needs cleaning.
+    expect(wrapper.find('[data-testid="desk-dirty-list"]').text()).toContain('101');
   });
 
   it('renders the attention lists and the DailySheet cross-check line', async () => {
