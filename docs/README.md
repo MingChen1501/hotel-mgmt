@@ -53,6 +53,7 @@ Development table, which use a `../` prefix.
 | Acceptance criteria | `product/acceptance-criteria.md` | active | `product-owner` | done-conditions per slice (Closes #59) |
 | Phase glossary | `product/phase-glossary.md` | active | `product-owner` | project phase definitions with entry/exit evidence (Closes #226) |
 | UX flows and wireframes | `product/ux-flows-wireframes.md` | active | `product-owner` | full-system journey flow maps, screen inventory, wireframes, wording rules, prototype record (Closes #412) |
+| Desk UI design rollout | `product/desk-ui-design-rollout.md` | active | `product-owner` | six-screen Claude UI rollout scope, tokens, UI contract, per-screen breakdown (Closes #419) |
 | Scope | `product/scope.md` | stub (not needed yet) | `product-owner` | in/out scope statement for the product (`product/mvp-scope.md` is the operative scope statement) |
 
 ## Requirements

@@ -384,6 +384,87 @@ non-asset `/app/*` path falls back to `/app/index.html` (never
 `/index.html`), and a dropped connection shows the banner with a
 manual retry and queues zero writes.
 
+## 11. Desk UI design rollout (Refs #419)
+
+Product-owner rollout spec: `docs/product/desk-ui-design-rollout.md`
+(active). The owner-supplied Claude UI design is authoritative over
+conflicting parts of the #412 journey record (D-12 in
+`docs/project/decision-log.md`); each conflict found during
+implementation is recorded on the affected sub-issue with the
+owner decision. These 8 conditions cover the six screens
+(Main #420, Stay #422, Onboarding #425, Rooms #424, Book #421,
+Folio #423) plus the shared shell and the catalogue rule. They
+add no MVP capability: the four restyles change presentation
+only, the Rooms map visualises existing room state
+(`US-RMS-1`), and the wizard operationalises first-run setup
+of existing hotel configuration (`US-ADM-1`, `US-ADM-3`).
+Refusal semantics are unchanged throughout (`FR-RTE-4`,
+`FR-CUS-1`, `FR-BIL-7` fire on exactly the same conditions).
+FR/NFR wording is owned by `business-analyst` and guard mapping
+by `qa-lead` (see the rollout spec, section 8); the conditions
+below check behaviour only.
+
+- AC-DSK-1 — Given staff are signed in on any of the six
+  screens, when they look at the shell, then the teal header
+  shows the configured hotel name, the nav tabs appear in
+  canvas-manifest order (Main, Stay, Onboarding, Rooms, Book,
+  Folio) with the active screen highlighted, and the locale
+  toggle switches the whole screen between EN and VI with no
+  mixed-locale copy. Traces to: US-FDK-5; FR-FDK-5 (no MVP
+  story change; shared shell only).
+- AC-DSK-2 — Given today has arrivals, in-house stays, rooms
+  needing cleaning, and an out-of-service room, when staff open
+  the Main board, then arrivals-today, in-house, departures
+  (or its empty state), need-cleaning with the two action
+  buttons, and out-of-service with reason and date each render
+  per the design, and the two housekeeping buttons change room
+  state with the board counts refreshing accordingly. Traces
+  to: US-FDK-5, US-RMS-2; FR-FDK-5, FR-RMS-2.
+- AC-DSK-3 — Given a guest and sellable dates, when staff work
+  the Book screen, then guest search, guest registration,
+  get-quote, and confirm-booking complete exactly as today in
+  the new two-column layout (guest card above quote card left;
+  dates/room/discount card right). Traces to: US-RES-1,
+  US-GST-3; FR-RES-1, FR-GST-3.
+- AC-DSK-4 — Given a booking with no room preselected, when
+  staff open Stay check-in, then the room select shows the
+  explicit placeholder and hint, and check-in stays blocked
+  until a ready room is chosen; given a ready room chosen,
+  check-in completes as today, and checkout still requires a
+  fully-paid folio. Traces to: US-FDK-1, US-FDK-2; FR-FDK-1,
+  FR-FDK-2, FR-BIL-7.
+- AC-DSK-5 — Given an in-house stay with charges and payments,
+  when staff work the Folio screen, then posting a charge and
+  recording a payment update the running balance exactly as
+  today in the new charges/payments two-card layout with
+  locale-correct amount formatting. Traces to: US-BIL-1,
+  US-BIL-2, US-BIL-3; FR-BIL-1, FR-BIL-2, FR-BIL-3.
+- AC-DSK-6 — Given rooms across three floors in a mix of the
+  five statuses, when staff open the Rooms map, then the
+  summary counts always match the rendered room cards, and each
+  card shows its status chip, room type, and the live note
+  (occupant plus checkout date, out-of-service reason plus
+  date, or upcoming arrival) per the design. Traces to:
+  US-RMS-1, US-RMS-2, US-RMS-3; FR-RMS-1, FR-RMS-2, FR-RMS-3.
+- AC-DSK-7 — Given an empty database, when the app loads, then
+  the Onboarding wizard launches and walks staff through setup
+  with progress and back/continue navigation; step 1 persists
+  the hotel name, which then appears in the shell header and on
+  printed documents; given a seeded database, the wizard never
+  launches. Traces to: US-ADM-1, US-ADM-3; FR-ADM-1, FR-ADM-3.
+- AC-DSK-8 — Given any of the six screens in either locale,
+  when staff read the screen, then every user-visible string
+  resolves through the VI-primary catalogue with the coverage
+  check green, and the hotel name shown is the configured
+  value, never hardcoded example content. Traces to: US-ADM-1;
+  FR-ADM-1 (catalogue rule; no behaviour change).
+
+Rollout done when: the six sub-issues each close with a merged
+implementation PR, every screen checks against its design file
+card by card, the #412 conflicts (if any) carry owner
+decisions on the affected sub-issues, and the shell, catalogue,
+and print-preservation rules above hold on all six screens.
+
 ## Traceability summary
 
 43 done-conditions cover all 9 MVP slices from the roadmap
@@ -410,5 +491,12 @@ served-legacy half of AC-SHL-4 are superseded as marked above;
 AC-SHL-2, AC-SHL-5, AC-SHL-6, AC-SHL-7, and the mirror half of
 AC-SHL-4 stand.
 
+Rollout addendum (Refs #419): 8 desk-UI conditions (AC-DSK-1..8,
+section 11) cover the six-screen Claude design rollout. Each
+traces to its existing MVP story and FR; no condition adds an
+MVP capability, invents a story, or changes FR wording, so the
+43-condition MVP count above stands unchanged and the sections
+1–9 done-conditions hold as written.
+
 <!-- ao-role: product-owner -->
-Role: product-owner · AO session hotel-mgmt-384
+Role: product-owner · AO session hotel-mgmt-540
