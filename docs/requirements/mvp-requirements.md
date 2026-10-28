@@ -1077,5 +1077,242 @@ one. Existing baselines are named so extensions land on top.
   `personas.md`, or stand-ins run in a P2 context? Stories in
   section 9.4 stay persona-neutral pending the call.
 
+## 10. Desk UI design rollout (Refs #419)
+
+Requirements delta for the owner-supplied six-screen Claude desk UI
+design rollout: Main desk board (#420), Book (#421), Stay
+check-in/out (#422), Folio (#423), Rooms visual map (#424), and the
+4-step Onboarding setup wizard (#425). The T2 UI contract for this
+change lives with `product-owner` in
+`docs/product/desk-ui-design-rollout.md` sections 3–4, the
+done-conditions live with `product-owner` as AC-DSK-1..8 in
+`docs/product/acceptance-criteria.md` section 11, flow diagrams and
+the two-new-screen placement note live with `architect`, and guard
+mapping lives with `qa-lead`. This section records only the
+requirements delta the T2 spec gate requires.
+
+### 10.1 Explicit no-change statements
+
+- Every MVP requirement in sections 1 and 2 is unchanged by this
+  rollout: all `FR-RES-*`, `FR-FDK-*`, `FR-RMS-*`, `FR-RTE-*`,
+  `FR-GST-*`, `FR-BIL-*`, `FR-RPT-*`, `FR-ADM-*`, and `FR-CUS-*`
+  keep their wording, and every NFR keeps its target. The four
+  restyles (Main board restyle part of #420, Book #421, Stay
+  restyle part of #422, Folio #423) are presentation-only: the
+  booking, check-in/out, charge, pay, and print flows behave
+  exactly as specified, except for the narrow screen-scoped
+  items in section 10.2.
+- Refusal semantics are unchanged: `FR-RTE-4`, `FR-CUS-1`, and
+  `FR-BIL-7` refusals still fire on exactly the same
+  conditions — only their on-screen wording becomes
+  stand-in-readable plain sentences (the `FR-DSP-3` rule
+  holds), and checkout still requires a settled folio or a
+  recorded approval.
+- Data-model impact: none. The rollout introduces no data
+  entities or fields (`data-dictionary.md` unchanged): the
+  Rooms map visualises existing room state, and the wizard
+  persists through the existing hotel-configuration surface
+  (`FR-ADM-1`).
+- No business rules: the rollout introduces no domain policy
+  (`business-rules.md` unchanged). Wizard launch gating in
+  `FR-DSK-7` is a navigation rule over existing configuration,
+  not a hotel-domain policy; check-in and checkout gating in
+  `FR-DSK-4` restate `FR-FDK-1` and `FR-BIL-7`.
+- Money, dates, and numbers render exactly as today:
+  hotel locale settings govern (`FR-ADM-1`, `NFR-TZ-1` hold);
+  the catalogue stays the source of truth for every
+  user-visible string (`NFR-I18N-1` holds).
+- The section 4 traceability table and its coverage count are
+  unchanged: the rollout adds no MVP capability, so the mapped
+  capabilities stand. The handoff table below (section 10.4) is
+  separate and does not alter that count.
+- Sections 8 and 9 stand: `FR-DSP-3` plain-words states,
+  `FR-DSP-4` print preservation, and `NFR-DSP-3` 44px targets
+  hold and are extended by section 10.3, not replaced.
+
+### 10.2 Presentation-scoped functional requirements
+
+Ids use the `DSK` (desk rollout) namespace, tracing one-to-one to
+`AC-DSK-1..8`. They constrain presentation and narrowly-scoped
+screen behaviour only: APIs, refusal conditions, print output,
+and values stay intact, and no new screen or flow beyond the six
+is specified here.
+
+FR-DSK-1 — Shared shell across the six screens. Staff always
+know which screen they are on and can switch locale anywhere.
+Given staff are signed in on any of the six screens; when they
+look at the shell; then the teal header shows the configured
+hotel name, the nav tabs appear in canvas-manifest order (Main,
+Stay, Onboarding, Rooms, Book, Folio) with the active screen
+highlighted, and the locale toggle switches the whole screen
+between EN and VI with no mixed-locale copy. The sign-in gate
+behaves exactly as today (`FR-DSP-2` holds). Within this
+rollout's scope, the tab set and order above supersede the
+`FR-DSP-1` six-destination list, which named a different screen
+set; print and admin destinations stay reachable as today.
+
+FR-DSK-2 — Main desk board per the design. Staff see the whole
+desk state on one board and act on housekeeping without leaving
+it.
+Given today has arrivals, in-house stays, rooms needing
+cleaning, and an out-of-service room; when staff open the Main
+board; then arrivals-today, in-house, departures (or its
+explicit empty state), need-cleaning with the two housekeeping
+action buttons, and out-of-service with reason and date each
+render per the design grouping; when staff use the two
+housekeeping buttons; then the room state advances through the
+existing dirty-to-clean-to-inspected transitions (`FR-RMS-2`
+holds) with who did it and when recorded (`NFR-AUD-1` holds),
+and the board counts refresh to match. No backend or transition
+change: the buttons drive the existing state machine only.
+
+FR-DSK-3 — Book screen two-column layout. Staff book exactly as
+today in the new layout.
+Given a guest and sellable dates; when staff work the Book
+screen; then guest search, guest registration, get-quote, and
+confirm-booking complete exactly as specified (`FR-RES-1`,
+`FR-GST-3` hold) in the new two-column layout (guest card above
+quote card on the left; dates/room/discount card on the right).
+
+FR-DSK-4 — Stay explicit empty room placeholder with hint.
+Staff never check a guest into an unchosen room.
+Given a booking with no room selection bound; when staff open
+Stay check-in; then the room select shows the explicit empty
+placeholder with the pick-a-ready-room hint, and check-in stays
+blocked with the plain-words next step until a ready room of
+the booked type is chosen; given exactly one ready candidate,
+the existing single-room auto-select (Refs #411) binds it and
+the placeholder does not show, since a selection is bound.
+Checkout still requires a settled folio or a recorded approval
+(`FR-FDK-2`, `FR-BIL-7` hold).
+
+FR-DSK-5 — Folio screen charges/payments layout. Staff settle
+folios exactly as today in the new layout.
+Given an in-house stay with charges and payments; when staff
+work the Folio screen; then posting a charge and recording a
+payment update the running balance exactly as specified
+(`FR-BIL-1`, `FR-BIL-2`, `FR-BIL-3` hold) in the new
+charges/payments two-card layout with locale-correct amount
+formatting.
+
+FR-DSK-6 — Rooms visual map over existing room state. Staff see
+every room at a glance with counts they can trust.
+Given rooms across floors in a mix of the five statuses; when
+staff open the Rooms map; then the floor-grouped map shows the
+summary counts and the rendered room cards with the counts
+always matching the cards; each card shows its status chip
+(the one chip vocabulary shared with the Main board), room
+type, and the live note (occupant plus checkout date,
+out-of-service reason plus date, or upcoming arrival). The map
+is read-only over existing room state (`FR-RMS-1`, `FR-RMS-2`,
+`FR-RMS-3` hold); per-card actions are not specified here —
+action placement needs a `product-owner` decision before
+building, and no actions are invented.
+
+FR-DSK-7 — Onboarding wizard gated to first run. First-run
+setup completes through the wizard; a seeded desk never sees
+it.
+Given an empty database; when the app loads; then the
+Onboarding wizard launches and walks staff through setup with
+progress and back/continue navigation; step 1 persists the
+hotel name through the existing hotel-configuration surface
+(`FR-ADM-1` holds), which then appears in the shell header and
+on printed documents; given a seeded database; then the wizard
+never launches. Wizard steps 2–4 need a `product-owner` spec
+(and owner decision where the design is silent) before
+building beyond step 1; step 1 does not ship on assumed
+later-step content.
+
+### 10.3 Presentation-scoped non-functional requirements
+
+NFR-DSK-1 — VI-primary catalogue coverage across all six
+screens. The pilot desk reads fully in Vietnamese with English
+parity and no hardcoded copy.
+Given any of the six screens in either locale; when staff read
+the screen; then every user-visible string resolves through
+the catalogue (`NFR-I18N-1` holds): new or changed copy ships
+in both `messages/en.json` and `messages/vi.json` with
+placeholders intact, `script/catalogue-coverage-check.sh` is
+green on every screen PR, and the hotel name shown is the
+configured value — never the design's example content
+hardcoded. Targets: 100% of user-visible strings sourced from
+the catalogue in both locales; coverage check green on every
+screen PR; 0 hardcoded hotel-name occurrences. New keys land
+through the normal catalogue process: `desk.rooms.*` (map
+summary chips and card notes), `desk.onboarding.*` (wizard
+steps, placeholders, helper text),
+`stay.checkin.room_placeholder` plus hint, and `desk.empty.*`
+per-list empty states where the design needs one with no key
+yet.
+
+NFR-DSK-2 — Print isolation preserved. Screen styling never
+leaks into print.
+Given a folio with charges and payments; when staff print the
+receipt, invoice, or confirmation from any of the six screens;
+then the printed document matches the folio lines and balance
+exactly (`FR-BIL-4` and `FR-DSP-4` hold byte-for-byte in
+behaviour), the existing print stylesheet is preserved, and
+the configured hotel name appears on every printed document.
+Target: 0 print-output differences attributable to the
+rollout; printed values still match the folio exactly.
+
+NFR-DSK-3 — 44px minimum targets on all six screens. Touch and
+keyboard users hit every control first time, including on the
+two new screens.
+Given any of the six screens; when staff use touch or
+keyboard; then every interactive element (nav items, buttons,
+links, form inputs, per-card actions, wizard navigation)
+presents a hit target of at least 44 by 44 CSS px, and
+adjacent targets are separated so one tap lands on exactly one
+control (`NFR-DSP-3` holds, extended from the restyle routes
+to the full rollout set including the Rooms map and the
+wizard). Targets: 100% of interactive elements on the six
+screens meet 44 by 44; 0 adjacent-target overlaps.
+
+### 10.4 Traceability handoff for `qa-lead`
+
+No new MVP capability is added, so each row traces to its
+`AC-DSK-n` condition and its underlying MVP FRs. Existing
+guards are named `file:line`; where no guard exists, the row
+names the missing guard explicitly and the screen
+implementation PR must create it.
+
+| Item | Guard (existing on disk; follow-up extends or creates) | Handoff note for `qa-lead` |
+|---|---|---|
+| FR-DSK-1 | Baseline: shell suites `app/src/App.test.ts` (banner hooks) and `app/src/router.test.ts` (migration shell router suite); per-screen render suites (`DeskView.test.ts`, `BookView.test.ts`, `StayView.test.ts`, `FolioView.test.ts`) | Extend with six-screen shell render: configured hotel name in teal header, canvas-manifest tab order with active highlight, whole-screen EN/VI toggle with no mixed-locale copy |
+| FR-DSK-2 | Baseline lanes: `app/src/views/DeskView.vue:109` (dirty list), `:121` (uninspected list), `:133` (out-of-service list), `:147` (board lanes); suite `app/src/views/DeskView.test.ts`. Buttons: Missing — no clean/inspect action buttons exist on the need-cleaning card | Guard renders the five design cards (incl. departures empty state and out-of-service reason plus date), drives both housekeeping buttons, and checks state advance plus refreshed board counts |
+| FR-DSK-3 | Characterization suite `app/src/views/BookView.test.ts` (quote-before-book flow, refusals code-switched) | Extend with two-column layout assertions only; flow and refusal tests stay untouched (semantics unchanged) |
+| FR-DSK-4 | Placeholder: `app/src/views/StayView.vue:162` (explicit empty option) with hint text; guards `app/src/views/StayView.test.ts:313` (placeholder-first options incl. empty value), `:348` (need_room guard, no AssignRoom call), `:380` (single-candidate auto-select, Refs #411) | Extend with hint-wording assertion; refusal-condition and auto-select tests stay untouched (only wording is new) |
+| FR-DSK-5 | Characterization suite `app/src/views/FolioView.test.ts` (folio open, postings, payments, plain-words refusals) | Extend with two-card layout plus locale-amount assertions; posting and balance tests stay untouched |
+| FR-DSK-6 | Missing — no Rooms map view or route exists (`app/src/router.ts` has no map route; the design is the only source) | Guard renders seeded floors/statuses and checks the summary-counts-match-cards invariant plus per-card chip, type, and live note; refusal/transition tests ride the existing room-state guards |
+| FR-DSK-7 | Missing — no wizard view or route exists (empty-database path has no screen) | Guard checks wizard launch on empty database, step-1 hotel-name persistence surfacing in header and prints, and no launch on a seeded database; steps 2–4 ride the future product-owner spec |
+| NFR-DSK-1 | `script/catalogue-coverage-check.sh` plus `messages/en.json` and `messages/vi.json` (both exist) | Coverage job stays green on every screen PR; new `desk.rooms.*`, `desk.onboarding.*`, `stay.checkin.*`, `desk.empty.*` keys land through the normal catalogue process |
+| NFR-DSK-2 | `app/src/views/PrintView.test.ts` (print screen incl. exact-match and isolation pins) plus unchanged `FR-BIL-4` backend guards | Add a served-print assertion that no rollout styling leaks into print and the configured hotel name appears on every printed document |
+| NFR-DSK-3 | Missing automated audit (section 9.5 names the same gap for the restyle routes; no touch-target guard exists) | Guard measures every interactive element on all six screens incl. the map and wizard and checks 44 by 44 with 0 overlaps |
+
+### 10.5 Explicitly not specified here
+
+- The T2 UI contract section (token set, shell, component
+  mapping, plain-word states, print rules) is not written here:
+  it lives with `product-owner` in
+  `docs/product/desk-ui-design-rollout.md` sections 3–4, which
+  satisfies the T2 UI-contract minimum, so requirements here do
+  not reword absent UI expectations.
+- No new screens or flows beyond the six; print, admin, and
+  gate/sign-in screens are out of this design batch and keep
+  their current presentation.
+- No backend, API, contract, schema, or error-code change. No
+  new design tokens, breakpoints, or component choices (design
+  lives with `architect`).
+- The `docs/product/acceptance-criteria.md` slice (`AC-DSK-1`
+  through `AC-DSK-8`) is separate `product-owner` work under
+  the gate; the test strategy and run records are separate
+  `qa-lead` work. This section traces to the issue-body
+  acceptance only through the `AC-DSK-n` ids above.
+- Open owner calls carried from the rollout spec (recorded on
+  the affected sub-issue with the owner decision per its
+  section 6, never assumed): Rooms-map action placement
+  (#424) and wizard steps 2–4 content (#425).
+
 <!-- ao-role: business-analyst -->
-Role: business-analyst · AO session hotel-mgmt-480
+Role: business-analyst · AO session hotel-mgmt-542
