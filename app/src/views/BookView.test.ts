@@ -18,6 +18,7 @@ import { mount } from '@vue/test-utils';
 import BookView from './BookView.vue';
 import bookViewSource from './BookView.vue?raw';
 import { useSessionStore } from '../stores/session';
+import { setLocale } from '../i18n';
 import { resetConnectivityForTests } from '../api/client';
 import router from '../router';
 
@@ -230,6 +231,69 @@ describe('book view', () => {
     // no per-screen sign-in copy renders here anymore.
     expect(wrapper.find('[data-testid="book-signin"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="book-booking"]').exists()).toBe(true);
+  });
+
+  // D3 (Refs #421, AC-DSK-3, FR-DSK-3): the Book screen renders
+  // its two-column design layout — the guest card above the quote
+  // card on the left, the dates/room/discount card on the right.
+  // Flow and refusal tests below stay untouched (semantics
+  // unchanged); only this layout is new.
+  it('renders the two-column design cards with the guest card above the quote card', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountBook();
+    await signIn(wrapper, fetchMock);
+
+    expect(wrapper.find('[data-testid="book-layout"]').exists()).toBe(true);
+    const left = wrapper.find('[data-testid="book-left"]');
+    const right = wrapper.find('[data-testid="book-right"]');
+    expect(left.exists()).toBe(true);
+    expect(right.exists()).toBe(true);
+    // DOM order carries the design columns: the left column holds
+    // the guest card above the quote card, the right column holds
+    // the stay card.
+    const leftHtml = left.html();
+    expect(leftHtml.indexOf('book-guest-card')).toBeLessThan(
+      leftHtml.indexOf('book-quote-card'),
+    );
+    expect(wrapper.find('[data-testid="book-guest-card"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="book-quote-card"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="book-stay-card"]').exists()).toBe(true);
+    // Actions ride their design cards: guest search/register on
+    // the guest card, get-quote on the stay card.
+    expect(
+      wrapper.find('[data-testid="book-guest-card"] [data-testid="book-find-guest"]').exists(),
+    ).toBe(true);
+    expect(
+      wrapper.find('[data-testid="book-guest-card"] [data-testid="book-register-guest"]').exists(),
+    ).toBe(true);
+    expect(
+      wrapper.find('[data-testid="book-stay-card"] [data-testid="book-quote"]').exists(),
+    ).toBe(true);
+    // Pre-quote empty state names the next step in plain words.
+    expect(wrapper.find('[data-testid="book-quote-empty"]').text()).toContain(
+      'Get a price first',
+    );
+
+    await quote(wrapper);
+    // Confirm rides the quote card with the night count, the
+    // nightly lines, and the total.
+    expect(
+      wrapper.find('[data-testid="book-quote-card"] [data-testid="book-confirm"]').exists(),
+    ).toBe(true);
+    expect(wrapper.find('[data-testid="book-quote-nights-count"]').text()).toContain('2');
+
+    // VI-primary copy (AC-DSK-8): the cards switch locale with no
+    // mixed-locale copy.
+    try {
+      setLocale('vi');
+      await wrapper.vm.$nextTick();
+      expect(wrapper.find('[data-testid="book-find-guest"]').text()).toContain('Tìm khách');
+      expect(wrapper.find('[data-testid="book-quote"]').text()).toContain('Lấy báo giá');
+      expect(wrapper.find('[data-testid="book-quote-nights-count"]').text()).toContain('Số đêm: 2');
+    } finally {
+      setLocale('en');
+    }
   });
 
   it('works under the shell session with Bearer calls', async () => {

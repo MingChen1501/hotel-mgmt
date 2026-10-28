@@ -500,6 +500,36 @@ export default defineComponent({
     border-bottom: none;
   }
 
+  /* Book two-column design cards (Refs #421): the guest card
+     above the quote card on the left, the dates/room/discount
+     card on the right. Same 12px radius and tokens as the Main
+     board cards above. */
+  #shell .book-layout {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 16px;
+    margin: 16px 0;
+    align-items: start;
+  }
+
+  #shell .book-left {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-width: 0;
+  }
+
+  #shell .book-layout .p-card {
+    border: 1px solid #E5E7EB;
+    border-radius: 12px;
+    background: #FFFFFF;
+  }
+
+  #shell .book-layout .p-card-title h2 {
+    font-size: 24px;
+    margin: 0 0 8px;
+  }
+
   /* Native controls stay native (date inputs and selects keep
      their YYYY-MM-DD payloads and setValue semantics; see the
      #338 implementation notes) but wear the tokens. PrimeVue

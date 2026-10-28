@@ -688,11 +688,11 @@ is a styling input. Money and dates render exactly as today
 
 | Pattern (contract section 3) | PrimeVue component | Applied to (existing SFCs) |
 |---|---|---|
-| Forms (book, charge, pay, admin setup) | `InputText`, `Dropdown`/`Select`, `Calendar`/`DatePicker`, `Password` for secrets, `Button` for submits | Book form hooks `book-guest-name` (`BookView.vue:13-20`) through `book-confirm` (`:170-173`); guest lookup via `book-find-guest` / `book-register-guest` (`:24-34`); per-screen sign-in forms (removed to the shell gate, section 12.4) |
+| Forms (book, charge, pay, admin setup) | `InputText`, `Dropdown`/`Select`, `Calendar`/`DatePicker`, `Password` for secrets, `Button` for submits | Book form hooks `book-guest-name` (`BookView.vue:24-32`) through `book-confirm` (`:88-96`); guest lookup via `book-find-guest` / `book-register-guest` (`:38-45`); per-screen sign-in forms (removed to the shell gate, section 12.4) |
 | Lists (reservations, stays, folios, rooms, guests) | `DataTable` with `Column`, paginator on long lists | Arrivals table `desk-arrivals-table` (`DeskView.vue:57-59` and siblings per screen) |
-| Confirmations and destructive actions (cancel, check-out, day-close) | `Dialog` with explicit confirm/cancel buttons | Existing confirm buttons (e.g. `book-confirm` at `BookView.vue:170-173`) keep their hooks and call order |
+| Confirmations and destructive actions (cancel, check-out, day-close) | `Dialog` with explicit confirm/cancel buttons | Existing confirm buttons (e.g. `book-confirm` at `BookView.vue:88-96`) keep their hooks and call order |
 | Feedback (success, validation, refusal, error) | `Message`/`Toast` for page-level notes, inline field errors under the field | Existing alert hooks (`book-quote-error`, `book-confirm-error`, `desk-dashboard-error`) keep their hooks; sign-in errors render only in the shell gate (`shell-signin-*` in `App.vue:67-109`); wording becomes plain sentences per `FR-DSP-3` |
-| Print (receipt/invoice/confirmation) | existing print CSS preserved; screen shows a print preview card with one Print button | `.print-document` markup (`PrintView.vue:105,219,300`) under `@media print` (`PrintView.vue:1239` within the `:1233-1257` style block, `BookView.vue:978` within `:973-986`) |
+| Print (receipt/invoice/confirmation) | existing print CSS preserved; screen shows a print preview card with one Print button | `.print-document` markup (`PrintView.vue:105,219,300`) under `@media print` (`PrintView.vue:1239` within the `:1233-1257` style block, `BookView.vue:1018` within `:1008-1029`) |
 
 ### 12.3 Shell navigation flowchart
 
@@ -801,7 +801,11 @@ the Phase 2 PR (per-screen copies return with it).
 The book screen is the representative form pattern; charge, pay,
 and admin-setup forms follow the same state machine with their
 own hooks. Behaviour and call order are unchanged — only
-presentation (PrimeVue inputs, plain-words states) changes:
+presentation (PrimeVue inputs, plain-words states) changes: the
+#421 restyle groups the same hooks into the two-column design
+cards (guest card above quote card on the left,
+dates/room/discount card on the right) with no hook, field, or
+call-order change.
 
 ```mermaid
 flowchart TD
@@ -817,23 +821,23 @@ flowchart TD
 
 Edge trace:
 
-- A: form hooks `book-guest-name` (`BookView.vue:13-20`)
-  through `book-discount-name` (`:126-133`); guest lookup via
-  `book-find-guest` / `book-register-guest` (`:24-34`);
+- A: form hooks `book-guest-name` (`BookView.vue:24-32`)
+  through `book-discount-name` (`:196-206`); guest lookup via
+  `book-find-guest` / `book-register-guest` (`:38-45`);
   mandatory-field refusals name the field (`FR-CUS-1`,
   wording only per `FR-DSP-3`).
-- B: quote hooks `book-quote` (`:139-142`), breakdown
-  `book-quote-nights` (`:160`), total `book-quote-total`
-  (`:168`); `PricingService.QuotePrice` contract unchanged
+- B: quote hooks `book-quote` (`:207-213`), breakdown
+  `book-quote-nights` (`:79`), total `book-quote-total`
+  (`:87`); `PricingService.QuotePrice` contract unchanged
   (integration [section 1](../technical/integration.md) C1); later rate changes still never alter the
   quoted basis (BR-13).
-- C–D: confirm `book-confirm` (`:170-173`); `ReservationService.
+- C–D: confirm `book-confirm` (`:88-96`); `ReservationService.
   CreateReservation` contract unchanged (integration section 1);
   last-unit race still refuses the loser with `CONFLICT`
   (`NFR-CON-1` — condition unchanged, sentence plain).
-- D–E: result hooks `book-result` (`:196`),
-  `book-booking-reference` (`:199`), `book-booking-readback`
-  (`:200`); confirmation record `book-confirmation` (`:223-239`)
+- D–E: result hooks `book-result` (`:228-230`),
+  `book-booking-reference` (`:233`), `book-booking-readback`
+  (`:234`); confirmation record `book-confirmation` (`:255-273`)
   per `FR-GST-4`.
 - D–F: every refusal keeps its code (`CONFLICT`,
   `STATE_ILLEGAL`, `VALIDATION_FAILED`,
