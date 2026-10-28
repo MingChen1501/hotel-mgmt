@@ -530,6 +530,46 @@ export default defineComponent({
     margin: 0 0 8px;
   }
 
+  /* Folio two-card design layout (Refs #423): the charges card
+     (lines table plus the post-charge form) on the left, the
+     payments card (balance due plus the post-payment form) on
+     the right. Same 12px radius and tokens as the cards above.
+     The balance-due figure echoes the design's large amber
+     amount in the shared warning token (the design's #8A4B08
+     carries no token). */
+  #shell .folio-layout {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 16px;
+    margin: 16px 0;
+    align-items: start;
+  }
+
+  #shell .folio-left {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-width: 0;
+  }
+
+  #shell .folio-layout .p-card {
+    border: 1px solid #E5E7EB;
+    border-radius: 12px;
+    background: #FFFFFF;
+  }
+
+  #shell .folio-layout .p-card-title h2 {
+    font-size: 24px;
+    margin: 0 0 8px;
+  }
+
+  #shell .folio-balance-due {
+    font-size: 30px;
+    font-weight: 700;
+    color: #B45309;
+    margin: 0 0 8px;
+  }
+
   /* Native controls stay native (date inputs and selects keep
      their YYYY-MM-DD payloads and setValue semantics; see the
      #338 implementation notes) but wear the tokens. PrimeVue

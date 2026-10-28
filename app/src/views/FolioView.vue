@@ -5,205 +5,239 @@
     <noscript><p>{{ t('desk.entry.noscript_folio', {}, 'This page needs JavaScript to open a folio.') }}</p></noscript>
 
     <section data-testid="folio-main">
-      <h2>{{ t('desk.folio.open_heading', {}, 'Open a stay folio') }}</h2>
-      <div>
-        <label for="folio-stay-id">
-          {{ t('desk.folio.stay_id', {}, 'Stay ID: ') }}
-          <InputText
-            id="folio-stay-id"
-            v-model="stayId"
-            name="folio-stay-id"
-            autocomplete="off"
-            data-testid="folio-stay-id"
-            @update:model-value="onStayIdInput"
-          />
-        </label>
-        <Button
-          id="folio-open-button"
-          type="button"
-          :label="t('desk.folio.open_button', {}, 'Open folio')"
-          data-testid="folio-open"
-          :disabled="opening"
-          @click="onOpen"
-        />
-        <p
-          v-if="opening"
-          data-testid="folio-opening"
-        >
-          {{ t('desk.folio.opening', {}, 'Opening the folio…') }}
-        </p>
-        <Message
-          v-if="openError"
-          severity="error"
-          role="alert"
-          data-testid="folio-open-error"
-        >
-          {{ openError }}
-        </Message>
-      </div>
-
-      <h2>{{ t('desk.folio.folio_heading', {}, 'Folio lines and running balance') }}</h2>
-      <p
-        role="status"
-        data-testid="folio-status"
-      >
-        {{ folioStatus }}
-      </p>
-      <DataTable
-        id="folio-table"
-        :value="entryRows"
-        data-testid="folio-table"
-      >
-        <Column
-          field="at"
-          :header="t('desk.folio.th_time', {}, 'Time')"
-        />
-        <Column
-          field="item"
-          :header="t('desk.folio.th_item', {}, 'Item')"
-        />
-        <Column
-          field="amount"
-          :header="t('desk.folio.th_amount', {}, 'Amount')"
-        />
-        <Column
-          field="balance"
-          :header="t('desk.folio.th_balance', {}, 'Running balance')"
-        />
-        <template #empty>
-          {{ t('desk.folio.no_lines', {}, 'No charges or payments yet. Posted charges and recorded payments appear here.') }}
+      <Card data-testid="folio-open-card">
+        <template #title>
+          <h2>{{ t('desk.folio.open_heading', {}, 'Open a stay folio') }}</h2>
         </template>
-      </DataTable>
-      <ReferenceDetails
-        v-if="folioDetails.length > 0"
-        :items="folioDetails"
-        testid-prefix="folio-details"
-      />
+        <template #content>
+          <div>
+            <label for="folio-stay-id">
+              {{ t('desk.folio.stay_id', {}, 'Stay ID: ') }}
+              <InputText
+                id="folio-stay-id"
+                v-model="stayId"
+                name="folio-stay-id"
+                autocomplete="off"
+                data-testid="folio-stay-id"
+                @update:model-value="onStayIdInput"
+              />
+            </label>
+            <Button
+              id="folio-open-button"
+              type="button"
+              :label="t('desk.folio.open_button', {}, 'Open folio')"
+              data-testid="folio-open"
+              :disabled="opening"
+              @click="onOpen"
+            />
+            <p
+              v-if="opening"
+              data-testid="folio-opening"
+            >
+              {{ t('desk.folio.opening', {}, 'Opening the folio…') }}
+            </p>
+            <Message
+              v-if="openError"
+              severity="error"
+              role="alert"
+              data-testid="folio-open-error"
+            >
+              {{ openError }}
+            </Message>
+          </div>
+        </template>
+      </Card>
 
-      <h2>{{ t('desk.folio.charge_heading', {}, 'Post a charge') }}</h2>
-      <div>
-        <label for="folio-charge-kind">
-          <span>{{ t('desk.folio.item_kind', {}, 'Charge kind: ') }}</span>
-          <select
-            id="folio-charge-kind"
-            v-model="chargeKind"
-            data-testid="folio-charge-kind"
-          >
-            <option value="nightly-room-charge">
-              {{ t('desk.folio.kind_room', {}, 'Room charge') }}
-            </option>
-            <option value="charge-item">
-              {{ t('desk.folio.kind_extra', {}, 'Hotel extra (breakfast, parking, minibar)') }}
-            </option>
-          </select>
-        </label>
-        <label for="folio-charge-name">
-          {{ t('desk.folio.item_name', {}, 'Item name: ') }}
-          <InputText
-            id="folio-charge-name"
-            v-model="chargeName"
-            name="charge-name"
-            autocomplete="off"
-            data-testid="folio-charge-name"
-          />
-        </label>
-        <label for="folio-charge-amount">
-          {{ t('desk.folio.amount_label', {}, 'Amount: ') }}
-          <InputText
-            id="folio-charge-amount"
-            v-model="chargeAmount"
-            name="charge-amount"
-            inputmode="decimal"
-            autocomplete="off"
-            data-testid="folio-charge-amount"
-          />
-        </label>
-        <Button
-          id="folio-charge-button"
-          type="button"
-          :label="t('desk.folio.charge_button', {}, 'Post charge')"
-          data-testid="folio-charge"
-          :disabled="charging"
-          @click="onCharge"
-        />
-        <p
-          v-if="charging"
-          data-testid="folio-charging"
+      <div
+        class="folio-layout"
+        data-testid="folio-layout"
+      >
+        <div
+          class="folio-left"
+          data-testid="folio-left"
         >
-          {{ t('desk.folio.charging', {}, 'Posting the charge…') }}
-        </p>
-        <p
-          role="status"
-          data-testid="folio-charge-status"
-        >
-          {{ chargeStatus }}
-        </p>
-        <Message
-          v-if="chargeError"
-          severity="error"
-          role="alert"
-          data-testid="folio-charge-error"
-        >
-          {{ chargeError }}
-        </Message>
-      </div>
+          <Card data-testid="folio-charges-card">
+            <template #title>
+              <h2>{{ t('desk.folio.folio_heading', {}, 'Folio lines and running balance') }}</h2>
+            </template>
+            <template #content>
+              <DataTable
+                id="folio-table"
+                :value="entryRows"
+                data-testid="folio-table"
+              >
+                <Column
+                  field="at"
+                  :header="t('desk.folio.th_time', {}, 'Time')"
+                />
+                <Column
+                  field="item"
+                  :header="t('desk.folio.th_item', {}, 'Item')"
+                />
+                <Column
+                  field="amount"
+                  :header="t('desk.folio.th_amount', {}, 'Amount')"
+                />
+                <Column
+                  field="balance"
+                  :header="t('desk.folio.th_balance', {}, 'Running balance')"
+                />
+                <template #empty>
+                  {{ t('desk.folio.no_lines', {}, 'No charges or payments yet. Posted charges and recorded payments appear here.') }}
+                </template>
+              </DataTable>
+              <ReferenceDetails
+                v-if="folioDetails.length > 0"
+                :items="folioDetails"
+                testid-prefix="folio-details"
+              />
 
-      <h2>{{ t('desk.folio.payment_heading', {}, 'Record a payment') }}</h2>
-      <div>
-        <label for="folio-payment-method">
-          <span>{{ t('desk.folio.method_label', {}, 'Method: ') }}</span>
-          <select
-            id="folio-payment-method"
-            v-model="paymentMethod"
-            data-testid="folio-payment-method"
-          >
-            <option value="cash">
-              cash
-            </option>
-            <option value="card">
-              card
-            </option>
-          </select>
-        </label>
-        <label for="folio-payment-amount">
-          {{ t('desk.folio.amount_label', {}, 'Amount: ') }}
-          <InputText
-            id="folio-payment-amount"
-            v-model="paymentAmount"
-            name="payment-amount"
-            inputmode="decimal"
-            autocomplete="off"
-            data-testid="folio-payment-amount"
-          />
-        </label>
-        <Button
-          id="folio-pay-button"
-          type="button"
-          :label="t('desk.folio.pay_button', {}, 'Record payment')"
-          data-testid="folio-pay"
-          :disabled="paying"
-          @click="onPay"
-        />
-        <p
-          v-if="paying"
-          data-testid="folio-paying"
+              <h3>{{ t('desk.folio.charge_heading', {}, 'Post a charge') }}</h3>
+              <div>
+                <label for="folio-charge-kind">
+                  <span>{{ t('desk.folio.item_kind', {}, 'Charge kind: ') }}</span>
+                  <select
+                    id="folio-charge-kind"
+                    v-model="chargeKind"
+                    data-testid="folio-charge-kind"
+                  >
+                    <option value="nightly-room-charge">
+                      {{ t('desk.folio.kind_room', {}, 'Room charge') }}
+                    </option>
+                    <option value="charge-item">
+                      {{ t('desk.folio.kind_extra', {}, 'Hotel extra (breakfast, parking, minibar)') }}
+                    </option>
+                  </select>
+                </label>
+                <label for="folio-charge-name">
+                  {{ t('desk.folio.item_name', {}, 'Item name: ') }}
+                  <InputText
+                    id="folio-charge-name"
+                    v-model="chargeName"
+                    name="charge-name"
+                    autocomplete="off"
+                    data-testid="folio-charge-name"
+                  />
+                </label>
+                <label for="folio-charge-amount">
+                  {{ t('desk.folio.amount_label', {}, 'Amount: ') }}
+                  <InputText
+                    id="folio-charge-amount"
+                    v-model="chargeAmount"
+                    name="charge-amount"
+                    inputmode="decimal"
+                    autocomplete="off"
+                    data-testid="folio-charge-amount"
+                  />
+                </label>
+                <Button
+                  id="folio-charge-button"
+                  type="button"
+                  :label="t('desk.folio.charge_button', {}, 'Post charge')"
+                  data-testid="folio-charge"
+                  :disabled="charging"
+                  @click="onCharge"
+                />
+                <p
+                  v-if="charging"
+                  data-testid="folio-charging"
+                >
+                  {{ t('desk.folio.charging', {}, 'Posting the charge…') }}
+                </p>
+                <p
+                  role="status"
+                  data-testid="folio-charge-status"
+                >
+                  {{ chargeStatus }}
+                </p>
+                <Message
+                  v-if="chargeError"
+                  severity="error"
+                  role="alert"
+                  data-testid="folio-charge-error"
+                >
+                  {{ chargeError }}
+                </Message>
+              </div>
+            </template>
+          </Card>
+        </div>
+
+        <div
+          class="folio-right"
+          data-testid="folio-right"
         >
-          {{ t('desk.folio.paying', {}, 'Recording the payment…') }}
-        </p>
-        <p
-          role="status"
-          data-testid="folio-payment-status"
-        >
-          {{ paymentStatus }}
-        </p>
-        <Message
-          v-if="paymentError"
-          severity="error"
-          role="alert"
-          data-testid="folio-payment-error"
-        >
-          {{ paymentError }}
-        </Message>
+          <Card data-testid="folio-payments-card">
+            <template #title>
+              <h2>{{ t('desk.folio.payment_heading', {}, 'Record a payment') }}</h2>
+            </template>
+            <template #content>
+              <p
+                role="status"
+                data-testid="folio-status"
+                class="folio-balance-due"
+              >
+                {{ folioStatus }}
+              </p>
+              <div>
+                <label for="folio-payment-method">
+                  <span>{{ t('desk.folio.method_label', {}, 'Method: ') }}</span>
+                  <select
+                    id="folio-payment-method"
+                    v-model="paymentMethod"
+                    data-testid="folio-payment-method"
+                  >
+                    <option value="cash">
+                      cash
+                    </option>
+                    <option value="card">
+                      card
+                    </option>
+                  </select>
+                </label>
+                <label for="folio-payment-amount">
+                  {{ t('desk.folio.amount_label', {}, 'Amount: ') }}
+                  <InputText
+                    id="folio-payment-amount"
+                    v-model="paymentAmount"
+                    name="payment-amount"
+                    inputmode="decimal"
+                    autocomplete="off"
+                    data-testid="folio-payment-amount"
+                  />
+                </label>
+                <Button
+                  id="folio-pay-button"
+                  type="button"
+                  :label="t('desk.folio.pay_button', {}, 'Record payment')"
+                  data-testid="folio-pay"
+                  :disabled="paying"
+                  @click="onPay"
+                />
+                <p
+                  v-if="paying"
+                  data-testid="folio-paying"
+                >
+                  {{ t('desk.folio.paying', {}, 'Recording the payment…') }}
+                </p>
+                <p
+                  role="status"
+                  data-testid="folio-payment-status"
+                >
+                  {{ paymentStatus }}
+                </p>
+                <Message
+                  v-if="paymentError"
+                  severity="error"
+                  role="alert"
+                  data-testid="folio-payment-error"
+                >
+                  {{ paymentError }}
+                </Message>
+              </div>
+            </template>
+          </Card>
+        </div>
       </div>
     </section>
   </main>
@@ -212,13 +246,14 @@
 <script lang="ts">
 import { computed, defineComponent, ref } from 'vue';
 import Button from 'primevue/button';
+import Card from 'primevue/card';
 import Column from 'primevue/column';
 import DataTable from 'primevue/datatable';
 import InputText from 'primevue/inputtext';
 import Message from 'primevue/message';
 import { apiFetch } from '../api/client';
 import type { ApiError } from '../api/client';
-import { t } from '../i18n';
+import { catalogueLocale, t } from '../i18n';
 import { useSessionStore } from '../stores/session';
 import ReferenceDetails, { type ReferenceItem } from '../components/ReferenceDetails.vue';
 
@@ -230,6 +265,13 @@ import ReferenceDetails, { type ReferenceItem } from '../components/ReferenceDet
 // balance always re-read from the server so the screen agrees with
 // what the guest owes). The legacy page is untouched and stays
 // served in parallel; this view runs under `/app/` (`/app/folio`).
+//
+// The #423 restyle groups the same hooks into the design
+// two-card layout (charges card with the lines table plus the
+// post-charge form on the left, payments card with the balance
+// due plus the post-payment form on the right) with no hook,
+// field, or call-order change; amounts render with the active
+// locale grouping via `formatAmount` (values unchanged).
 //
 // Shared-migration contracts, same as the desk, book, and stay
 // screens:
@@ -272,8 +314,11 @@ interface EntryRow {
   balance: string;
 }
 
-function plainAmount(minor: number): string {
-  return (minor / 100).toFixed(2);
+function formatAmount(minor: number): string {
+  return new Intl.NumberFormat(catalogueLocale(), {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(minor / 100);
 }
 
 function parseMinor(text: string): number | null {
@@ -321,10 +366,10 @@ function chargeTotal(line: ChargeLine): number {
 function chargeItemText(line: ChargeLine): string {
   const extras: string[] = [];
   if (line.taxMinor) {
-    extras.push(`tax ${plainAmount(line.taxMinor)}`);
+    extras.push(`tax ${formatAmount(line.taxMinor)}`);
   }
   if (line.feeMinor) {
-    extras.push(`fee ${plainAmount(line.feeMinor)}`);
+    extras.push(`fee ${formatAmount(line.feeMinor)}`);
   }
   return extras.length > 0 ? `${line.itemName} (${extras.join(', ')})` : line.itemName;
 }
@@ -410,12 +455,29 @@ function prefilledStayId(): string {
 export default defineComponent({
   name: 'FolioView',
   // eslint-disable-next-line vue/no-reserved-component-names -- PrimeVue registers Button/Dialog under these canonical names (Refs #338 component mapping).
-  components: { Button, Column, DataTable, InputText, Message, ReferenceDetails },
+  components: { Button, Card, Column, DataTable, InputText, Message, ReferenceDetails },
   setup() {
     const session = useSessionStore();
     const stayId = ref(prefilledStayId());
     const folio = ref<Folio | null>(null);
-    const folioStatus = ref('');
+    // Transient open-form notice (e.g. missing stay id). The
+    // balance line below derives from the folio, so switching
+    // locale re-formats it with no re-read (Refs #423, AC-DSK-5).
+    const folioNotice = ref('');
+    const folioStatus = computed<string>(() => {
+      if (folioNotice.value) {
+        return folioNotice.value;
+      }
+      const current = folio.value;
+      if (!current) {
+        return '';
+      }
+      return t(
+        'desk.folio.folio_balance',
+        { balance: formatAmount(current.balanceMinor) },
+        `Folio balance: ${formatAmount(current.balanceMinor)}.`,
+      );
+    });
     // Exact record IDs stay hidden by default (issue #372 owner
     // amendment) and surface only in these reference details.
     const folioDetails = ref<ReferenceItem[]>([]);
@@ -465,8 +527,8 @@ export default defineComponent({
         return {
           at: entry.at,
           item: entry.item,
-          amount: plainAmount(entry.delta),
-          balance: plainAmount(running),
+          amount: formatAmount(entry.delta),
+          balance: formatAmount(running),
         };
       });
     });
@@ -481,11 +543,7 @@ export default defineComponent({
 
     function renderFolio(next: Folio): void {
       folio.value = next;
-      folioStatus.value = t(
-        'desk.folio.folio_balance',
-        { balance: plainAmount(next.balanceMinor) },
-        `Folio balance: ${plainAmount(next.balanceMinor)}.`,
-      );
+      folioNotice.value = '';
       folioDetails.value = [
         { label: 'Stay ID', value: next.stayId },
         { label: 'Folio ID', value: next.folioId },
@@ -502,7 +560,7 @@ export default defineComponent({
 
     function onStayIdInput(): void {
       folio.value = null;
-      folioStatus.value = '';
+      folioNotice.value = '';
       folioDetails.value = [];
       openError.value = '';
     }
@@ -513,7 +571,7 @@ export default defineComponent({
       }
       const id = stayId.value.trim();
       if (!id) {
-        folioStatus.value = t('desk.folio.need_stay', {}, 'Enter a stay ID first.');
+        folioNotice.value = t('desk.folio.need_stay', {}, 'Enter a stay ID first.');
         return;
       }
       opening.value = true;
@@ -583,10 +641,10 @@ export default defineComponent({
           'desk.folio.charged',
           {
             itemName: posted.itemName,
-            amount: plainAmount(chargeTotal(posted)),
+            amount: formatAmount(chargeTotal(posted)),
             postedAt: posted.postedAt,
           },
-          `Posted ${posted.itemName}: ${plainAmount(chargeTotal(posted))} at ${posted.postedAt}.`,
+          `Posted ${posted.itemName}: ${formatAmount(chargeTotal(posted))} at ${posted.postedAt}.`,
         );
         chargeName.value = '';
         chargeAmount.value = '';
@@ -645,10 +703,10 @@ export default defineComponent({
           'desk.folio.paid',
           {
             method: recorded.method,
-            amount: plainAmount(recorded.amountMinor),
+            amount: formatAmount(recorded.amountMinor),
             paidAt: recorded.paidAt,
           },
-          `Recorded ${recorded.method} payment: ${plainAmount(recorded.amountMinor)} at ${recorded.paidAt}.`,
+          `Recorded ${recorded.method} payment: ${formatAmount(recorded.amountMinor)} at ${recorded.paidAt}.`,
         );
         paymentAmount.value = '';
         await readFolio(id);

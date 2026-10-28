@@ -15,7 +15,9 @@ import { createPinia, setActivePinia } from 'pinia';
 import { mount } from '@vue/test-utils';
 import FolioView from './FolioView.vue';
 import folioViewSource from './FolioView.vue?raw';
+import appSource from '../App.vue?raw';
 import { useSessionStore } from '../stores/session';
+import { setLocale } from '../i18n';
 import { resetConnectivityForTests } from '../api/client';
 import router from '../router';
 
@@ -487,6 +489,83 @@ describe('folio view', () => {
     expect(useSessionStore().signOutNotice).toBe('session-expired');
     expect(useSessionStore().isSignedIn).toBe(false);
     expect(router.replace).toHaveBeenCalledWith('/');
+  });
+
+  // D5 (Refs #423, AC-DSK-5, FR-DSK-5): the Folio screen renders
+  // its design two-card layout — the charges card (lines table
+  // plus the post-charge form) on the left, the payments card
+  // (balance due plus the post-payment form) on the right — with
+  // amounts formatted per the active locale. Flow, refusal, and
+  // balance tests above stay untouched (semantics unchanged);
+  // only this layout and the locale grouping are new.
+  it('renders the charges/payments design cards with locale-correct amounts', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountFolio();
+    await signIn(wrapper, fetchMock);
+    await openFolio(wrapper, 's-1');
+
+    expect(wrapper.find('[data-testid="folio-open-card"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="folio-layout"]').exists()).toBe(true);
+    const left = wrapper.find('[data-testid="folio-left"]');
+    const right = wrapper.find('[data-testid="folio-right"]');
+    expect(left.exists()).toBe(true);
+    expect(right.exists()).toBe(true);
+    const chargesCard = wrapper.find('[data-testid="folio-charges-card"]');
+    const paymentsCard = wrapper.find('[data-testid="folio-payments-card"]');
+    expect(chargesCard.exists()).toBe(true);
+    expect(paymentsCard.exists()).toBe(true);
+    // DOM order carries the design columns: the charges card
+    // sits in the left column, the payments card in the right.
+    expect(left.html()).toContain('folio-charges-card');
+    expect(right.html()).toContain('folio-payments-card');
+    // Actions ride their design cards: the lines table plus
+    // post-charge on the charges card; balance due plus
+    // post-payment on the payments card.
+    expect(chargesCard.find('[data-testid="folio-table"]').exists()).toBe(true);
+    expect(chargesCard.find('[data-testid="folio-charge"]').exists()).toBe(true);
+    expect(paymentsCard.find('[data-testid="folio-status"]').exists()).toBe(true);
+    expect(paymentsCard.find('[data-testid="folio-pay"]').exists()).toBe(true);
+    // EN amounts use dot decimals with comma grouping.
+    expect(paymentsCard.find('[data-testid="folio-status"]').text()).toContain(
+      'Folio balance: 77.00.',
+    );
+
+    // A design-scale charge proves the grouping (the design shows
+    // 1.800.000 for a two-night room charge).
+    await wrapper.find('[data-testid="folio-charge-name"]').setValue('Room night');
+    await wrapper.find('[data-testid="folio-charge-amount"]').setValue('18000');
+    await wrapper.find('[data-testid="folio-charge"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="folio-charge-status"]').text()).toContain('18,000.00');
+    });
+
+    // VI-primary copy (AC-DSK-8): the cards switch locale with no
+    // mixed-locale copy, and amounts use VI grouping.
+    try {
+      setLocale('vi');
+      await wrapper.vm.$nextTick();
+      expect(paymentsCard.find('[data-testid="folio-pay"]').text()).toContain('Nhận thanh toán');
+      expect(chargesCard.find('[data-testid="folio-charge"]').text()).toContain('Ghi phí');
+      expect(paymentsCard.find('[data-testid="folio-status"]').text()).toContain(
+        'Số dư bảng kê: 18.077,00.',
+      );
+      expect(chargesCard.find('[data-testid="folio-table"]').text()).toContain('18.000,00');
+    } finally {
+      setLocale('en');
+    }
+  });
+
+  // D8 (Refs #423, NFR-DSK-2): the folio restyle stays out of
+  // print — the view carries no `<style>` block, so the shell
+  // screen stylesheet owns every new rule (the M4 suite pins
+  // that stylesheet to `@media screen`), and printed values
+  // still match the folio exactly (pinned by the PrintView
+  // suite, untouched here).
+  it('keeps the folio restyle out of print', () => {
+    expect(folioViewSource).not.toContain('<style');
+    expect(appSource).toContain('.folio-layout');
+    expect(appSource).toContain('.folio-balance-due');
   });
 });
 
