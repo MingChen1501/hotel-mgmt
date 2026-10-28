@@ -440,6 +440,7 @@
     "desk.stay.booked_type_unknown": "Booked room type on file. Pick a ready room of that type below.",
     "desk.stay.booked_type_named": "Booked: {type}. Pick a ready room of that type below.",
     "desk.stay.room_label": "Ready room:",
+    "desk.stay.choose_room": "Pick a ready room…",
     "desk.stay.no_ready_rooms": "No ready rooms of the booked type right now.",
     "desk.stay.actual_arrival": "Actual arrival (leave blank for now):",
     "desk.stay.checkin_button": "Check in",

@@ -164,6 +164,9 @@
             v-model="checkinRoomId"
             data-testid="stay-checkin-room"
           >
+            <option value="">
+              {{ t('desk.stay.choose_room', {}, 'Pick a ready room…') }}
+            </option>
             <option
               v-for="room in checkinCandidates"
               :key="room.roomId"
@@ -1145,9 +1148,18 @@ export default defineComponent({
           });
           checkinRooms.value = roomsById;
           checkinCandidates.value = candidates;
-          checkinRoomId.value = '';
+          // Refs #411: with exactly one ready room there is nothing
+          // to choose, so bind it directly and clear the hint;
+          // otherwise open on the empty placeholder so the shown
+          // value always matches the (empty) bound id.
+          if (candidates.length === 1) {
+            checkinRoomId.value = candidates[0].roomId;
+            checkinError.value = '';
+          } else {
+            checkinRoomId.value = '';
+            checkinError.value = t('desk.stay.need_room', {}, 'Pick a ready room first.');
+          }
           checkinStatus.value = bookedTypeStatus(booking.roomTypeId);
-          checkinError.value = t('desk.stay.need_room', {}, 'Pick a ready room first.');
         } catch (err) {
           if (isSignedOut(err)) {
             expireToGate();
