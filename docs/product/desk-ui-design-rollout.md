@@ -10,7 +10,7 @@ conditions; the matching Given/When/Then done-conditions live in
 `docs/product/acceptance-criteria.md` [section 11](acceptance-criteria.md).
 FR/NFR wording is owned by `business-analyst`, flow diagrams and
 technical design by `architect`, and guard mapping by `qa-lead`
-(section 8 names each handoff without writing it).
+(section 8 points at each landed handoff without repeating it).
 
 ## 1. Scope in / out
 
@@ -187,21 +187,38 @@ rule.
   the shell header and on printed documents; the design's hotel
   name is example content only.
 
-## 8. Follow-up spec ownership (not written here)
+## 8. Spec handoffs (landed)
 
-- `business-analyst`: FR/NFR delta — expected to be a
-  no-change statement for the four restyles plus narrow
-  presentation-scoped items for the room-select placeholder
-  (#422), the Rooms map live-state rendering (#424), and the
-  wizard gating plus hotel-name persistence (#425), mirroring
-  the section 8 precedent in
-  `docs/requirements/mvp-requirements.md`.
-- `architect`: HLD/LLD placement note for the two new screens
-  (map and wizard as presentation over existing
-  rooms/admin-config surfaces; no new subsystem or contract).
-- `qa-lead`: test strategy and guard mapping per screen,
-  including the Rooms count-vs-cards invariant and the
-  wizard empty-database gating.
+Each owning role's slice has landed on `master` and is referenced
+here by section, not repeated:
+
+- `business-analyst`: FR/NFR delta in
+  `docs/requirements/mvp-requirements.md` section 10 ("Desk UI
+  design rollout (Refs #419)"): `FR-DSK-1`..`FR-DSK-7` plus
+  `NFR-DSK-1`..`NFR-DSK-3` — a no-change statement for the four
+  restyles plus narrow presentation-scoped items for the Stay
+  room-select placeholder (#422), the Rooms map live-state
+  rendering (#424), and the wizard gating plus hotel-name
+  persistence (#425) — merged via PR #427.
+- `architect`: subsystem-boundary note in
+  `docs/architecture/hld.md` section 13 ("Desk UI design rollout
+  (Refs #419) — six-screen Claude UI"; map and wizard as
+  presentation over existing rooms/admin-config surfaces, no new
+  subsystem or contract), plus the four per-flow diagrams with
+  happy path and failure/rollback path in
+  `docs/architecture/lld.md` section 13 ("Desk UI
+  design-rollout flows (Refs #419)") — 13.1 Stay explicit empty
+  placeholder blocking check-in (#422), 13.2 Main housekeeping buttons with
+  count refresh (#420), 13.3 Rooms counts-match-cards invariant
+  (#424), 13.4 Onboarding gating with hotel-name persistence
+  (#425) — merged via PR #429.
+- `qa-lead`: test strategy and guard mapping in
+  `docs/testing/desk-ui-rollout-test-traceability.md` (parity
+  guards by `file:line` for all six screens plus new guards
+  D1–D9 created by the screen PRs #420–#425), with the
+  AC-DSK-1..8 rollout slice in
+  `docs/testing/traceability-matrix.md` section 4 ("Desk UI
+  rollout slice (Refs #419)") — merged via PR #428.
 - `spec-reviewer`: gates each screen on the tier minimum set
   before its implementation PR opens.
 
@@ -216,4 +233,4 @@ rule.
 | Shared top nav and locale toggle consistent across all six screens | Section 4.1; AC-DSK-1 |
 
 <!-- ao-role: product-owner -->
-Role: product-owner · AO session hotel-mgmt-540
+Role: product-owner · AO session hotel-mgmt-547
