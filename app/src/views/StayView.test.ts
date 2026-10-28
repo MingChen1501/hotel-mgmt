@@ -374,6 +374,51 @@ describe('stay view', () => {
     expect(urls).not.toContain('/v1/rooms/AssignRoom');
   });
 
+  // Refs #411: with exactly one ready room there is nothing to
+  // choose, so the picker binds it directly and a second Check in
+  // click commits without touching the guard.
+  it('auto-selects the single ready room candidate', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountStay();
+    await signIn(wrapper, fetchMock);
+    const happy = fetchMock.getMockImplementation() as (
+      url: string,
+      init?: RequestInit,
+    ) => Promise<Response>;
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/rooms/ListRoomsByState' && parseBody(init).state === 'vacant-inspected') {
+        return Promise.resolve(
+          jsonResponse({
+            state: 'vacant-inspected',
+            rooms: [
+              { roomId: 'room-1', number: '101', roomTypeId: 'standard', state: 'vacant-inspected' },
+            ],
+          }),
+        );
+      }
+      return happy(url, init);
+    });
+
+    await wrapper.find('[data-testid="stay-booking-ref"]').setValue('RSV-1');
+    await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain('Booked: Standard');
+    });
+    // Bound directly: no placeholder selection, no guard message.
+    expect(
+      (wrapper.find('[data-testid="stay-checkin-room"]').element as HTMLSelectElement).value,
+    ).toBe('room-1');
+    expect(wrapper.find('[data-testid="stay-checkin-error"]').exists()).toBe(false);
+
+    await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain('Checked in');
+    });
+    const urls = fetchMock.mock.calls.map((call) => String(call[0]));
+    expect(urls).toContain('/v1/rooms/AssignRoom');
+  });
+
   // Refs #349: live stay rows never carry booking references, so
   // the pick buttons render from the reservation calendar
   // (confirmed bookings due today, verified per row) instead.
