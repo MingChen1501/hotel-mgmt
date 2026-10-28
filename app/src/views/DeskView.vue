@@ -698,7 +698,7 @@ export default defineComponent({
           await apiFetch('/v1/rooms/CheckRoomTypeSellability', {
             method: 'POST',
             body: JSON.stringify({
-              roomTypeId: room.roomTypeId,
+              roomType: room.roomTypeId,
               roomNumber: room.number,
               dateFrom: day,
               dateTo: day,

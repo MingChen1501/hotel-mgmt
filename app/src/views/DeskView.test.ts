@@ -121,7 +121,7 @@ function stubHappyPath(fetchMock: ReturnType<typeof vi.fn>): void {
         );
       }
       return Promise.resolve(
-        jsonResponse({ roomTypeId: body.roomTypeId, dateFrom: body.dateFrom, dateTo: body.dateTo, totalCount: 1, sellableCount: 1, blockedRooms: [] }),
+        jsonResponse({ roomTypeId: body.roomType, dateFrom: body.dateFrom, dateTo: body.dateTo, totalCount: 1, sellableCount: 1, blockedRooms: [] }),
       );
     }
     if (url === '/v1/reservations/QueryCalendar') {
@@ -291,6 +291,29 @@ describe('desk view', () => {
     } finally {
       setLocale('en');
     }
+  });
+
+  // Refs #420: the out-of-service note resolves through the
+  // CheckRoomTypeSellability contract, whose request field is
+  // `roomType` (name or id) — never `roomTypeId`.
+  it('queries sellability with the contract roomType field', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountDesk();
+    await signIn(wrapper, fetchMock);
+
+    const sellabilityCalls = fetchMock.mock.calls.filter(
+      (call) => call[0] === '/v1/rooms/CheckRoomTypeSellability',
+    );
+    expect(sellabilityCalls.length).toBeGreaterThan(0);
+    for (const call of sellabilityCalls) {
+      const body = JSON.parse(call[1].body as string);
+      expect(body.roomType).toBeTruthy();
+      expect(body).not.toHaveProperty('roomTypeId');
+    }
+    // Room 103 (a suite) still resolves its covering-block note.
+    const bodies = sellabilityCalls.map((call) => JSON.parse(call[1].body as string));
+    expect(bodies.find((body) => body.roomNumber === '103')?.roomType).toBe('suite');
   });
 
   it('advances dirty-to-clean through the clean button and refreshes the board counts', async () => {
