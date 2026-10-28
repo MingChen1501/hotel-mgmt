@@ -2,7 +2,7 @@
   <main data-testid="folio-view">
     <h1>{{ t('desk.folio.title', {}, 'Folio: charges, payments, and balance') }}</h1>
     <p>{{ t('desk.folio.intro', {}, 'Open a stay folio, post charges, record payments, and watch the running balance.') }}</p>
-    <noscript><p>This page needs JavaScript to open a folio.</p></noscript>
+    <noscript><p>{{ t('desk.entry.noscript_folio', {}, 'This page needs JavaScript to open a folio.') }}</p></noscript>
 
     <section data-testid="folio-main">
       <h2>{{ t('desk.folio.open_heading', {}, 'Open a stay folio') }}</h2>

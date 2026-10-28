@@ -2,7 +2,7 @@
   <main data-testid="desk-view">
     <h1>{{ t('desk.today.title', {}, 'Desk today: arrivals, stays, and rooms needing attention') }}</h1>
     <p>{{ t('desk.today.intro', {}, 'The morning view: who arrives, who is in house, who leaves, and which rooms need attention.') }}</p>
-    <noscript><p>This page needs JavaScript to load today's lists. No recent backup report — treat as failed. Note this message word for word and call support the same day (runbook section 6).</p></noscript>
+    <noscript><p>{{ t('desk.entry.noscript_desk_lead', {}, "This page needs JavaScript to load today's lists.") }} {{ t('desk.entry.noscript_backup', {}, 'No recent backup report — treat as failed. Note this message word for word and call support the same day (runbook section 6).') }}</p></noscript>
 
     <section data-testid="desk-backup">
       <h2>{{ t('desk.entry.backup_heading', {}, 'Backup report') }}</h2>

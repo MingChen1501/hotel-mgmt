@@ -6,15 +6,14 @@
       data-testid="offline-banner"
     >
       <p data-testid="offline-text">
-        Connection lost{{ connectivity.lastError ? ` — ${connectivity.lastError}` : '' }}.
-        Desk actions are blocked until the connection returns; nothing is queued.
+        {{ t('desk.shell.offline_lost', {}, 'Connection lost') }}{{ connectivity.lastError ? ` — ${connectivity.lastError}` : '' }}. {{ t('desk.shell.offline_blocked', {}, 'Desk actions are blocked until the connection returns; nothing is queued.') }}
       </p>
       <button
         type="button"
         data-testid="offline-retry"
         @click="onRetry"
       >
-        Retry now
+        {{ t('desk.shell.retry_now', {}, 'Retry now') }}
       </button>
       <p
         v-if="retryMessage"
@@ -127,7 +126,7 @@
       <nav
         data-testid="shell-nav"
         class="shell-nav"
-        aria-label="Desk screens"
+        :aria-label="t('desk.shell.nav_label', {}, 'Desk screens')"
       >
         <span
           data-testid="shell-brand"
@@ -242,13 +241,16 @@ export default defineComponent({
     const displayName = computed(() => session.displayName ?? '');
 
     async function onRetry(): Promise<void> {
-      retryMessage.value = 'Retrying…';
+      retryMessage.value = t('desk.shell.retrying', {}, 'Retrying…');
       try {
         const result = await retryLastRequest();
         retryMessage.value =
-          result === false ? 'Nothing to retry.' : 'Retry succeeded.';
+          result === false
+            ? t('desk.shell.retry_empty', {}, 'Nothing to retry.')
+            : t('desk.shell.retry_ok', {}, 'Retry succeeded.');
       } catch (err) {
-        retryMessage.value = err instanceof Error ? err.message : 'Retry failed.';
+        retryMessage.value =
+          err instanceof Error ? err.message : t('desk.shell.retry_failed', {}, 'Retry failed.');
       }
     }
 

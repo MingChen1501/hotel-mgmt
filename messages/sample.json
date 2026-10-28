@@ -3278,6 +3278,246 @@
         "services/reservations/internal/pricing/client.go"
       ],
       "params": {}
+    },
+    {
+      "key": "desk.shell.nav_label",
+      "surface": "desk shell",
+      "sources": [
+        "app/src/App.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.shell.offline_lost",
+      "surface": "desk shell",
+      "sources": [
+        "app/src/App.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.shell.offline_blocked",
+      "surface": "desk shell",
+      "sources": [
+        "app/src/App.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.shell.retry_now",
+      "surface": "desk shell",
+      "sources": [
+        "app/src/App.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.shell.retrying",
+      "surface": "desk shell",
+      "sources": [
+        "app/src/App.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.shell.retry_empty",
+      "surface": "desk shell",
+      "sources": [
+        "app/src/App.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.shell.retry_ok",
+      "surface": "desk shell",
+      "sources": [
+        "app/src/App.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.shell.retry_failed",
+      "surface": "desk shell",
+      "sources": [
+        "app/src/App.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.entry.noscript_admin",
+      "surface": "desk noscript",
+      "sources": [
+        "app/src/views/AdminView.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.entry.noscript_book",
+      "surface": "desk noscript",
+      "sources": [
+        "app/src/views/BookView.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.entry.noscript_desk_lead",
+      "surface": "desk noscript",
+      "sources": [
+        "app/src/views/DeskView.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.entry.noscript_backup",
+      "surface": "desk noscript",
+      "sources": [
+        "app/src/views/DeskView.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.entry.noscript_folio",
+      "surface": "desk noscript",
+      "sources": [
+        "app/src/views/FolioView.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.entry.noscript_print",
+      "surface": "desk noscript",
+      "sources": [
+        "app/src/views/PrintView.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.entry.noscript_stay",
+      "surface": "desk noscript",
+      "sources": [
+        "app/src/views/StayView.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.placeholder.title",
+      "surface": "desk placeholder",
+      "sources": [
+        "app/src/views/Placeholder.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.placeholder.intro_before",
+      "surface": "desk placeholder",
+      "sources": [
+        "app/src/views/Placeholder.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.placeholder.intro_after",
+      "surface": "desk placeholder",
+      "sources": [
+        "app/src/views/Placeholder.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.placeholder.signin_heading",
+      "surface": "desk placeholder",
+      "sources": [
+        "app/src/views/Placeholder.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.placeholder.signin_intro",
+      "surface": "desk placeholder",
+      "sources": [
+        "app/src/views/Placeholder.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.placeholder.token_label",
+      "surface": "desk placeholder",
+      "sources": [
+        "app/src/views/Placeholder.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.placeholder.signin_button",
+      "surface": "desk placeholder",
+      "sources": [
+        "app/src/views/Placeholder.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.placeholder.token_empty",
+      "surface": "desk placeholder",
+      "sources": [
+        "app/src/views/Placeholder.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.placeholder.session_heading",
+      "surface": "desk placeholder",
+      "sources": [
+        "app/src/views/Placeholder.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.placeholder.session_state",
+      "surface": "desk placeholder",
+      "sources": [
+        "app/src/views/Placeholder.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.placeholder.check_connection",
+      "surface": "desk placeholder",
+      "sources": [
+        "app/src/views/Placeholder.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.placeholder.signout",
+      "surface": "desk placeholder",
+      "sources": [
+        "app/src/views/Placeholder.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.placeholder.checking",
+      "surface": "desk placeholder",
+      "sources": [
+        "app/src/views/Placeholder.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.placeholder.reachable",
+      "surface": "desk placeholder",
+      "sources": [
+        "app/src/views/Placeholder.vue"
+      ],
+      "params": {}
+    },
+    {
+      "key": "desk.placeholder.check_failed",
+      "surface": "desk placeholder",
+      "sources": [
+        "app/src/views/Placeholder.vue"
+      ],
+      "params": {}
     }
   ]
 }
