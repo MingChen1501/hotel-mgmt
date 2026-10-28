@@ -727,7 +727,14 @@ describe('print view', () => {
     // signed-in section, everything inside it except the documents,
     // every non-active document, and the buttons inside the active
     // one — without ever hiding the active document's ancestors.
+    // Shell chrome (Refs #406): the shell nav lives outside this
+    // view, so the scoped selectors cannot reach it — the one
+    // `:global` selector hides it on paper while this view is
+    // mounted.
     expect(printViewSource).toContain('@media print');
+    expect(printViewSource).toContain(
+      ":global([data-testid='shell-nav'])",
+    );
     expect(printViewSource).toContain(
       "[data-testid='print-view'] > :not([data-testid='print-main'])",
     );

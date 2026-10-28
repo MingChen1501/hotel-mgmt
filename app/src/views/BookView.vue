@@ -974,8 +974,15 @@ export default defineComponent({
    rules in `frontend/book.html:8-19` — staff Print yields a
    confirmation-only handout, hiding the header, nav, sign-in form,
    and booking form inputs. Scoped to this view so no other screen
-   is affected. */
+   is affected.
+   Shell chrome (Refs #406): the shell nav lives outside this view,
+   so the scoped selectors below cannot reach it — the one `:global`
+   selector hides the shell header/nav on paper while this view is
+   mounted. Screen rendering is unchanged (print medium only). */
 @media print {
+  :global([data-testid='shell-nav']) {
+    display: none;
+  }
   [data-testid='book-view'] > :not([data-testid='book-booking']) {
     display: none;
   }

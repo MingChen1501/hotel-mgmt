@@ -1235,8 +1235,15 @@ export default defineComponent({
    document alone (invoice, receipt, or confirmation), hiding the
    header, nav, sign-in form, folio table, and every non-active
    document, without ever hiding the active document's ancestors.
-   Scoped to this view so no other screen is affected. */
+   Scoped to this view so no other screen is affected.
+   Shell chrome (Refs #406): the shell nav lives outside this view,
+   so the scoped selectors below cannot reach it — the one `:global`
+   selector hides the shell header/nav on paper while this view is
+   mounted. Screen rendering is unchanged (print medium only). */
 @media print {
+  :global([data-testid='shell-nav']) {
+    display: none;
+  }
   [data-testid='print-view'] > :not([data-testid='print-main']) {
     display: none;
   }

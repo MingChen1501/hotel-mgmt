@@ -1065,8 +1065,14 @@ describe('book view', () => {
     // isolation at the SFC source: the port of
     // `frontend/book.html:8-19` must hide everything except the
     // booking wrapper, and within it everything except the
-    // confirmation section.
+    // confirmation section. Shell chrome (Refs #406): the shell
+    // nav lives outside this view, so the scoped selectors cannot
+    // reach it — the one `:global` selector hides it on paper
+    // while this view is mounted.
     expect(bookViewSource).toContain('@media print');
+    expect(bookViewSource).toContain(
+      ":global([data-testid='shell-nav'])",
+    );
     expect(bookViewSource).toContain(
       "[data-testid='book-view'] > :not([data-testid='book-booking'])",
     );

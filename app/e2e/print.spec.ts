@@ -122,15 +122,17 @@ test('invoice, receipt, and confirmation match the folio', async ({ page, reques
   await expect(page.getByTestId('print-invoice-document')).toBeVisible();
 
   // Print isolation (plan section 1 flow 5): under print media only the
-  // active document survives — the folio table and every other
-  // screen section drop out, without ever hiding the active
-  // document's ancestors. The class flip is the same synchronous
-  // step the Print button performs before window.print().
+  // active document survives — the folio table, every other
+  // screen section, and the shell header/nav drop out (Refs #406),
+  // without ever hiding the active document's ancestors. The class
+  // flip is the same synchronous step the Print button performs
+  // before window.print().
   await page.getByTestId('print-invoice-document').evaluate((el) => el.classList.add('active'));
   await page.emulateMedia({ media: 'print' });
   await expect(page.getByTestId('print-invoice-document')).toBeVisible();
   await expect(page.getByTestId('print-folio-table')).toBeHidden();
   await expect(page.getByTestId('print-open')).toBeHidden();
+  await expect(page.getByTestId('shell-nav')).toBeHidden();
   await page.emulateMedia({ media: 'screen' });
   await page.getByTestId('print-invoice-document').evaluate((el) => el.classList.remove('active'));
 });
