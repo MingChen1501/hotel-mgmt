@@ -147,6 +147,7 @@ docs and plans, not gated specs.
 | A4 full-CI regression run log | `testing/phase-6-qa-a4-run-log.md` | active | `qa-lead` | full CI regression record on the QA build: build SHA, CI run/job ids, per-stack verdicts, all-green (Closes #270) |
 | Browser E2E plan | `testing/browser-e2e-plan.md` | active | `qa-lead` | Playwright browser-E2E spec for the Vue desk flows: flows, browsers, CI placement, install/caching, pass criteria incl. MIME smoke (Closes #334) |
 | Desk styling test traceability | `testing/desk-styling-test-traceability.md` | active | `qa-lead` | parity + missing-guard traceability for the #338 desk styling pass: existing guards by `file:line`, TBD guards M1–M7, stand-in demo run record spec (Refs #338) |
+| Desk UI rollout test traceability | `testing/desk-ui-rollout-test-traceability.md` | active | `qa-lead` | parity + new-guard traceability for the #419 six-screen rollout: AC-DSK-1..8 to guards, D1–D9 created by the screen PRs (Refs #419) |
 
 ## DevOps / Operations / Release
 

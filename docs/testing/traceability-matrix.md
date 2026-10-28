@@ -112,7 +112,46 @@ complete (implementation #291–#313, scaffold checks #341,
 styling #348). The MVP Coverage line above stands unchanged at
 57/57.
 
+## 4. Desk UI rollout slice (Refs #419)
+
+Rollout-slice rows for the owner-supplied six-screen Claude desk
+UI design (Main board #420, Book #421, Stay check-in/out #422,
+Folio #423, Rooms visual map #424, 4-step Onboarding wizard
+#425). Each row traces its done-condition (AC-DSK-1..8, owned by
+`product-owner` in `docs/product/acceptance-criteria.md`
+[section 11](../product/acceptance-criteria.md), PR #426) and its
+presentation requirement (FR-DSK-1..7, NFR-DSK-1..3, owned by
+`business-analyst` in `docs/requirements/mvp-requirements.md`
+[section 10](../requirements/mvp-requirements.md), PR #427) to its
+guard. Full guard detail — parity baselines plus the new guards
+D1–D9 — lives in
+`docs/testing/desk-ui-rollout-test-traceability.md`
+(desk-ui-rollout-test-traceability.md). Like the shell slice
+above, these 8 rows do not alter the 57-row MVP coverage count:
+the rollout adds no MVP capability, and no existing matrix row
+may cite this rollout as its guard. A rollout row is complete
+only when its D-guard exists and passes; until then the row
+names the screen PR that must create it.
+
+| Rollout item | Required guard type | Guard |
+|---|---|---|
+| AC-DSK-1 — Shared shell in canvas-manifest order with locale toggle (FR-DSK-1) | Presentational shell check: configured hotel name in the teal header, tabs in canvas-manifest order with active highlight, whole-screen EN/VI toggle, gate unchanged | Baseline: `app/src/router.test.ts:17` route shape + `:32,40,48,56,64,72` per-route render + `:91` print-namespace pin; `app/src/App.test.ts:147` nav destinations + `:186` active highlight + `:201` unknown paths + `:216` gate suite; `app/src/stores/session.test.ts:21,33,43`; `app/src/api/client.test.ts:55,68,83,117,137,154`. New: D1 six-screen shell render, created by the shell screen PR (recorded on #420) |
+| AC-DSK-2 — Main board with housekeeping buttons and refreshed counts (FR-DSK-2) | Presentational board check: five design cards render, both housekeeping buttons advance state, board counts refresh | Baseline: `app/src/views/DeskView.test.ts:182` arrivals/in-house/departures + `:202` attention lists + `:224` five-lane board + `:298` empty states + `:352` plain-words failure; `app/src/views/DeskView.vue:109,121,133,147` lanes; unchanged `FR-RMS-2` / `NFR-AUD-1` guards. New: D2 board design assertions, created by #420 |
+| AC-DSK-3 — Book two-column layout with the flow unchanged (FR-DSK-3) | Presentational layout check: guest card above quote card left, dates/room/discount card right; flow and refusal tests untouched | Baseline: `app/src/views/BookView.test.ts:333` confirm + `:381` guest snapshot + `:550` sellable count + `:757,787,811` refusal mapping + `:844` double-submit guard + `:1063` print isolation; unchanged `FR-RES-1` / `FR-GST-3` guards. New: D3 layout assertions, created by #421 |
+| AC-DSK-4 — Stay explicit empty placeholder with hint, check-in blocked (FR-DSK-4) | Presentational placeholder check: empty option plus pick-a-ready-room hint, `need_room` block, single-candidate auto-select intact | Baseline: `app/src/views/StayView.vue:167` empty option; `app/src/views/StayView.test.ts:295,314-317` placeholder-first options + `:348` need_room guard + `:380` auto-select (Refs #411); checkout gates `:721,759,803`; unchanged `FR-FDK-1/2` / `FR-BIL-7` guards. New: D4 hint-wording assertion, created by #422 |
+| AC-DSK-5 — Folio two-card layout with the balance unchanged (FR-DSK-5) | Presentational layout check: charges/payments cards, locale-correct amounts in EN and VI; posting and balance tests untouched | Baseline: `app/src/views/FolioView.test.ts:177` open + balance + `:213` charge post + `:244` payment + `:275,309,346,383` plain-words validation + `:419` in-flight guard; unchanged `FR-BIL-1/2/3` guards. New: D5 layout plus locale-amount assertions, created by #423 |
+| AC-DSK-6 — Rooms map with counts matching cards (FR-DSK-6) | Presentational map check: floor-grouped map, summary counts equal rendered cards, per-card chip plus type plus live note, read-only | Baseline: unchanged `FR-RMS-1/2/3` guards (no map view or route exists; `router.test.ts:17` pins the 7-route set). New: D6 map assertions, created by #424 (read-only; per-card actions gated on the #424 owner decision) |
+| AC-DSK-7 — Onboarding wizard gated to first run with step-1 name persisted (FR-DSK-7) | Presentational wizard check: launch on empty database, progress plus back/continue, step-1 hotel name in header and prints, no launch on seeded database | Baseline: unchanged `FR-ADM-1` guards; `app/src/views/PrintView.test.ts:342` confirmation wording (no wizard view exists). New: D7 wizard assertions, created by #425 (steps 2–4 ride the future `product-owner` spec); D8 served-print name assertion, created by #423 |
+| AC-DSK-8 — VI-primary catalogue with the hotel name configurable (NFR-DSK-1) | L2 catalogue check: 100% of user-visible strings from the catalogue in both locales, coverage check green, zero hardcoded hotel names | Baseline: `script/catalogue-coverage-check.sh` green + `messages/en.json` + `messages/vi.json` on disk. New keys (`desk.rooms.*`, `desk.onboarding.*`, `stay.checkin.*`, `desk.empty.*`) land through the normal catalogue process on each screen PR; served assertions D1 (header name) and D8 (printed name) |
+
+Rollout-slice coverage (Refs #419): 8 rows mapped; parity
+baselines exist for AC-DSK-1..5,7,8 and state baselines for
+AC-DSK-6/7 ride the unchanged MVP guards; new guards D1–D9 are
+pending the screen PRs (#420–#425). The MVP Coverage line below
+stands unchanged at 57/57.
+
 Coverage: 43 FRs mapped, 14 NFRs mapped, 57 rows total, 57 guards
+filled (PR #112 slice: FR-RES-1, FR-RMS-1..4, FR-RTE-1/2/4/5, FR-ADM-1/2, FR-CUS-1, NFR-CON-1/2; PR #149 slice: FR-FDK-1, FR-FDK-5, FR-BIL-1/2/3/6, FR-ADM-5, NFR-BKP-1/2, NFR-AUD-1, NFR-TZ-1, plus FR-RES-1 persistence; PR #150 slice: FR-FDK-2, FR-FDK-3, FR-FDK-4, FR-BIL-7, plus the NFR-CON-2 stay-side checkout guard; PR #151 slice: FR-BIL-4, FR-CUS-3; PR #156 slice: FR-RPT-1..3; PR #157 slice: FR-GST-1..3; PR #158 slice: NFR-DEP-1, FR-ADM-4 config level, plus the FR-ADM-1 deployment extension; PR #159 slice: FR-RES-2/3/5/6 plus the NFR-CON-1 modify-path extension; PR #160 slice: ReleaseBlock plus rooms-side move coordination (FR-RMS-3, FR-FDK-3); PR #161 slice: full rates handling (FR-RTE-3 filled, FR-RTE-4/5 extended — remaining TBD cells fill in later slices); count corrected to the live total 48 (later slices filled cells without updating this line); PR #153 slice: NFR-RET-1, NFR-AVL-1; PR #182 slice: FR-RES-4, FR-ADM-3, FR-CUS-2, NFR-PERF-1/2 filled (5 guards — count corrected to the live total 53); FR-GST-4, FR-BIL-5, FR-RPT-4 point at follow-ups #189, #190, #191 and fill with those issues; NFR-I18N-1 filled by the #192 slice (count corrected to the live total 54); #189/#190/#191/#192/#201 slices filled FR-GST-4, FR-BIL-5, FR-RPT-4, NFR-I18N-1 (plus the #201 extension) — count corrected to the live total 57 (Closes #214)).
 filled (PR #112 slice: FR-RES-1, FR-RMS-1..4, FR-RTE-1/2/4/5, FR-ADM-1/2, FR-CUS-1, NFR-CON-1/2; PR #149 slice: FR-FDK-1, FR-FDK-5, FR-BIL-1/2/3/6, FR-ADM-5, NFR-BKP-1/2, NFR-AUD-1, NFR-TZ-1, plus FR-RES-1 persistence; PR #150 slice: FR-FDK-2, FR-FDK-3, FR-FDK-4, FR-BIL-7, plus the NFR-CON-2 stay-side checkout guard; PR #151 slice: FR-BIL-4, FR-CUS-3; PR #156 slice: FR-RPT-1..3; PR #157 slice: FR-GST-1..3; PR #158 slice: NFR-DEP-1, FR-ADM-4 config level, plus the FR-ADM-1 deployment extension; PR #159 slice: FR-RES-2/3/5/6 plus the NFR-CON-1 modify-path extension; PR #160 slice: ReleaseBlock plus rooms-side move coordination (FR-RMS-3, FR-FDK-3); PR #161 slice: full rates handling (FR-RTE-3 filled, FR-RTE-4/5 extended — remaining TBD cells fill in later slices); count corrected to the live total 48 (later slices filled cells without updating this line); PR #153 slice: NFR-RET-1, NFR-AVL-1; PR #182 slice: FR-RES-4, FR-ADM-3, FR-CUS-2, NFR-PERF-1/2 filled (5 guards — count corrected to the live total 53); FR-GST-4, FR-BIL-5, FR-RPT-4 point at follow-ups #189, #190, #191 and fill with those issues; NFR-I18N-1 filled by the #192 slice (count corrected to the live total 54); #189/#190/#191/#192/#201 slices filled FR-GST-4, FR-BIL-5, FR-RPT-4, NFR-I18N-1 (plus the #201 extension) — count corrected to the live total 57 (Closes #214)).
 
 <!-- ao-role: qa-lead -->
