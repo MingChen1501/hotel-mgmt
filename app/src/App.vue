@@ -210,11 +210,16 @@ interface NavItem {
   fallback: string;
 }
 
-// Contract section 2 order: Desk · Book · Stay · Folio · Print · Admin.
+// Canvas-manifest-relative order (rollout section 4.1, Refs #419,
+// FR-DSK-1, D1): Desk · Stay · Rooms · Book · Folio · Print ·
+// Admin. Onboarding (#425) is still missing, so Rooms sits in its
+// canvas-relative spot between Stay and Book; #425 inserts
+// Onboarding ahead of it to complete the six-screen tab order.
 const NAV_ITEMS: NavItem[] = [
   { name: 'desk', to: '/', labelKey: 'desk.shell.nav_desk', fallback: 'Desk' },
-  { name: 'book', to: '/book', labelKey: 'desk.shell.nav_book', fallback: 'Book' },
   { name: 'stay', to: '/stay', labelKey: 'desk.shell.nav_stay', fallback: 'Stay' },
+  { name: 'rooms', to: '/rooms', labelKey: 'desk.shell.nav_rooms', fallback: 'Rooms' },
+  { name: 'book', to: '/book', labelKey: 'desk.shell.nav_book', fallback: 'Book' },
   { name: 'folio', to: '/folio', labelKey: 'desk.shell.nav_folio', fallback: 'Folio' },
   { name: 'print', to: '/print', labelKey: 'desk.shell.nav_print', fallback: 'Print' },
   { name: 'admin', to: '/admin', labelKey: 'desk.shell.nav_admin', fallback: 'Admin' },
@@ -568,6 +573,45 @@ export default defineComponent({
     font-weight: 700;
     color: #B45309;
     margin: 0 0 8px;
+  }
+
+  /* Rooms visual-map design cards (Refs #424, FR-DSK-6): the
+     status-chip summary row plus one floor-grouped responsive grid
+     of per-room cards. Same 12px radius and tokens as the cards
+     above. Views carry no style blocks (M4), so the shared
+     presentation lives here. */
+  #shell .rooms-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 16px;
+    margin: 16px 0;
+  }
+
+  #shell .rooms-grid .p-card {
+    border: 1px solid #E5E7EB;
+    border-radius: 12px;
+    background: #FFFFFF;
+  }
+
+  #shell .rooms-grid .p-card-title h3 {
+    font-size: 20px;
+    margin: 0 0 8px;
+  }
+
+  #shell [data-testid="rooms-summary"] ul {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    list-style: none;
+    padding: 0;
+    margin: 8px 0 16px;
+  }
+
+  #shell [data-testid="rooms-summary"] li {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 44px;
   }
 
   /* Native controls stay native (date inputs and selects keep

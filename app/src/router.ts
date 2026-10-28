@@ -16,6 +16,7 @@ import DeskView from './views/DeskView.vue';
 import FolioView from './views/FolioView.vue';
 import PlaceholderView from './views/Placeholder.vue';
 import PrintView from './views/PrintView.vue';
+import RoomsView from './views/RoomsView.vue';
 import StayView from './views/StayView.vue';
 
 export function createAppRouter(): Router {
@@ -36,6 +37,11 @@ export function createAppRouter(): Router {
         path: '/stay',
         name: 'stay',
         component: StayView,
+      },
+      {
+        path: '/rooms',
+        name: 'rooms',
+        component: RoomsView,
       },
       {
         path: '/folio',

@@ -163,7 +163,11 @@ describe('shell navigation', () => {
     return wrapper;
   }
 
-  it('renders the six destinations in contract order plus the user plus sign-out', async () => {
+  // D1 canvas-manifest-relative order (Refs #419, #424, FR-DSK-1):
+  // Desk, Stay, Rooms, Book, Folio, Print, Admin — Rooms sits in
+  // its canvas-relative spot between Stay and Book; #425 inserts
+  // Onboarding ahead of it to complete the six-screen tab order.
+  it('renders the seven destinations in canvas-manifest-relative order plus the user plus sign-out', async () => {
     vi.stubGlobal('fetch', quietFetch());
     try {
       const pinia = createPinia();
@@ -173,16 +177,18 @@ describe('shell navigation', () => {
       const items = wrapper.findAll('[data-testid^="shell-nav-"]');
       expect(items.map((item) => item.text())).toEqual([
         'Desk',
-        'Book',
         'Stay',
+        'Rooms',
+        'Book',
         'Folio',
         'Print',
         'Admin',
       ]);
       expect(items.map((item) => item.attributes('href'))).toEqual([
         '/app/',
-        '/app/book',
         '/app/stay',
+        '/app/rooms',
+        '/app/book',
         '/app/folio',
         '/app/print',
         '/app/admin',
