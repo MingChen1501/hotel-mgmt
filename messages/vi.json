@@ -412,6 +412,7 @@
     "desk.book.discount": "Giảm giá (không bắt buộc):",
     "desk.book.quote_button": "Lấy báo giá",
     "desk.book.quote_heading": "Giá đã báo",
+    "desk.book.night_count": "Số đêm: {count}",
     "desk.book.quote_night": "Đêm {nightDate}: {amount}",
     "desk.book.quote_total": "Tổng cộng: {amount}",
     "desk.book.confirm_button": "Xác nhận đặt phòng",

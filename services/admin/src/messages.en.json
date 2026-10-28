@@ -412,6 +412,7 @@
     "desk.book.discount": "Discount (optional):",
     "desk.book.quote_button": "Get price",
     "desk.book.quote_heading": "Quoted price",
+    "desk.book.night_count": "Nights: {count}",
     "desk.book.quote_night": "Night {nightDate}: {amount}",
     "desk.book.quote_total": "Total: {amount}",
     "desk.book.confirm_button": "Confirm booking",
