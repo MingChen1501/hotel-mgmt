@@ -108,6 +108,13 @@ no new issuer, and no behaviour change:
 | Reporting (occupancy, revenue) | no | yes | yes |
 | Admin (users, roles, hotel setup, export, backup) | no | backup view only | yes |
 
+Provenance note: the Guests row (front-desk yes on profile CRUD)
+has no direct counterpart row in the section 3 matrix; it is
+derived from the booking and check-in flows, where front desk
+identifies and upserts the guest profile before confirming
+(`docs/requirements/sequence-diagrams.md` sections 2, 6, 7;
+FR-GST-1..4).
+
 - Server-to-server calls inside a desk flow carry the originating desk
   session token, so provider-side `ValidateSession`/`CheckRole`
   (`docs/technical/integration.md` C10) keeps working unchanged.
@@ -197,7 +204,10 @@ decommission timing (companion #416); any code, contract, or CI change.
 - Enforcement points: the extended fail-closed contract-check (D1),
   a `/v2` OpenAPI mirror check modelled on
   `script/openapi-route-check.sh` when the #415 spec lands, and
-  dual-run CI per #368. No enforcement code changes in this issue.
+  dual-run CI per #368. The #415 resource-surface spec restates the
+  D1 rule that response-status changes are major, giving that mirror
+  check its direct normative hook. No enforcement code changes in
+  this issue.
 - This ADR starts at `proposed`; only the owner flips it to
   `accepted`. Implementation slices start only after owner acceptance
   plus the T3 spec-gate PASS recorded on #368.
