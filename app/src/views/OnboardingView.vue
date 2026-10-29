@@ -224,7 +224,9 @@ export default defineComponent({
             'Setup is for the owner or manager. Ask the manager if something needs changing.',
           );
         } else {
-          formError.value = err instanceof Error ? err.message : errorMessage();
+          // Unknown failures read as the plain catalogue sentence
+          // (FR-DSP-3): the raw server/offline text never surfaces.
+          formError.value = errorMessage();
         }
       } finally {
         saving.value = false;

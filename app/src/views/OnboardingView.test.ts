@@ -187,6 +187,40 @@ describe('onboarding wizard step 1', () => {
     }
   });
 
+  it('reads an unexpected save failure as the plain retry sentence and stays on step 1', async () => {
+    const fetchMock = vi.fn();
+    fetchMock.mockImplementation((url: string) =>
+      url === '/v1/admin/GetHotelConfig'
+        ? Promise.resolve(jsonResponse({ schemaVersion: 1, values: {} }))
+        : Promise.resolve(
+          errorResponse('INTERNAL', 'Request failed: database exploded', 500),
+        ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const { wrapper, router } = await mountWizard();
+      await vi.waitFor(() => {
+        expect(wrapper.find('[data-testid="onboarding-step-1"]').exists()).toBe(true);
+      });
+      await wrapper.find('[data-testid="onboarding-hotel-name"]').setValue('Sunrise Hotel');
+      await wrapper.find('[data-testid="onboarding-step1-form"]').trigger('submit');
+      await vi.waitFor(() => {
+        expect(wrapper.find('[data-testid="onboarding-error"]').exists()).toBe(true);
+      });
+      // FR-DSP-3: the raw server text never surfaces; staff see the
+      // catalogued plain-word sentence instead.
+      expect(wrapper.find('[data-testid="onboarding-error"]').text()).toContain(
+        'That did not work.',
+      );
+      expect(wrapper.find('[data-testid="onboarding-error"]').text()).not.toContain(
+        'database exploded',
+      );
+      expect(router.currentRoute.value.path).toBe('/onboarding');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('renders the wizard in Vietnamese with no missing-key fallback', async () => {
     setLocale('vi');
     const fetchMock = vi.fn();
