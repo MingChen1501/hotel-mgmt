@@ -1,8 +1,9 @@
-// D6 guards for the Rooms visual map (Refs #424, AC-DSK-6,
-// FR-DSK-6, LLD section 13.3): a read-only floor-grouped map whose
-// summary counts always match the rendered cards, with per-card
-// status chip, room type, and live note — and no per-card action
-// buttons until the product-owner action-placement decision lands.
+// D6 guards for the Rooms visual map (Refs #424, #435, AC-DSK-6,
+// FR-DSK-6, LLD section 13.3): a floor-grouped map whose summary
+// counts always match the rendered cards, with per-card status
+// chip, room type, live note, and clean/inspect buttons appropriate
+// to each card state calling the existing UpdateRoomState
+// transitions.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { mount } from '@vue/test-utils';
@@ -238,21 +239,206 @@ describe('rooms view', () => {
     expect(wrapper.find('[data-testid="rooms-card-type-106"]').text()).toBe('Deluxe');
   });
 
-  // D6 read-only half (Refs #424 open question): the map offers
-  // refresh only — no per-card action buttons render.
-  it('is read-only with refresh as the only action', async () => {
+  // D6 card actions (Refs #435): dirty cards carry a Mark
+  // cleaned button and clean cards a Mark inspected button; cards
+  // in every other state carry no action button.
+  it('exposes clean/inspect actions appropriate to each card state', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     const wrapper = mountRooms();
     await loadMap(wrapper, fetchMock);
 
-    const cardNodes = wrapper.findAll('[data-testid^="rooms-card-"]')
-      .filter((node) => /^rooms-card-\d+$/.test(String(node.attributes('data-testid'))));
-    for (const card of cardNodes) {
-      expect(card.find('button').exists()).toBe(false);
+    // Dirty card: clean only.
+    expect(wrapper.find('[data-testid="rooms-mark-cleaned-201"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="rooms-mark-cleaned-201"]').text()).toBe('Mark cleaned');
+    expect(wrapper.find('[data-testid="rooms-mark-inspected-201"]').exists()).toBe(false);
+    // Clean card: inspect only.
+    expect(wrapper.find('[data-testid="rooms-mark-inspected-202"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="rooms-mark-inspected-202"]').text()).toBe('Mark inspected');
+    expect(wrapper.find('[data-testid="rooms-mark-cleaned-202"]').exists()).toBe(false);
+    // Ready, occupied, and out-of-service cards: no buttons.
+    for (const number of ['103', '106', '301', '101', '104', '102', '105', '401']) {
+      expect(wrapper.find(`[data-testid="rooms-mark-cleaned-${number}"]`).exists()).toBe(false);
+      expect(wrapper.find(`[data-testid="rooms-mark-inspected-${number}"]`).exists()).toBe(false);
     }
-    expect(wrapper.findAll('button')).toHaveLength(1);
-    expect(wrapper.findAll('button')[0]?.attributes('data-testid')).toBe('rooms-refresh');
+  });
+
+  // Refs #435: clean advances a vacant-dirty room to clean through
+  // the existing UpdateRoomState transition, and the summary chips
+  // refresh with the cards.
+  it('advances dirty-to-clean through the clean button and refreshes the counts', async () => {
+    const states: Record<string, Array<{ roomId: string; number: string; roomTypeId: string; state: string; floor: string }>> = {
+      'vacant-dirty': [{ roomId: 'r-201', number: '201', roomTypeId: 'standard', state: 'vacant-dirty', floor: '2' }],
+      'vacant-clean': [{ roomId: 'r-202', number: '202', roomTypeId: 'standard', state: 'vacant-clean', floor: '2' }],
+      'vacant-inspected': [],
+      occupied: [],
+      'out-of-order': [],
+    };
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      const body = init?.body !== undefined ? JSON.parse(init.body as string) : {};
+      if (url === '/v1/rooms/ListRoomTypes') {
+        return Promise.resolve(jsonResponse({ roomTypes: [{ id: 'standard', name: 'Standard' }] }));
+      }
+      if (url === '/v1/rooms/ListRoomsByState') {
+        return Promise.resolve(jsonResponse({ state: body.state, rooms: states[body.state] ?? [] }));
+      }
+      if (url === '/v1/stay/ListArrivalsDepartures') {
+        return Promise.resolve(jsonResponse({ businessDate: body.businessDate, arrivals: [], inHouse: [], departures: [] }));
+      }
+      if (url === '/v1/rooms/UpdateRoomState') {
+        expect(body.roomNumber).toBe('201');
+        expect(body.newState).toBe('vacant-clean');
+        expect(body.actor).toBe('Ada Owner');
+        for (const list of Object.values(states)) {
+          const at = list.findIndex((room) => room.number === body.roomNumber);
+          if (at >= 0) {
+            const [moved] = list.splice(at, 1);
+            states[body.newState]?.push({ ...(moved as { roomId: string; number: string; roomTypeId: string; state: string; floor: string }), state: body.newState });
+          }
+        }
+        return Promise.resolve(jsonResponse({ roomNumber: body.roomNumber, oldState: 'vacant-dirty', newState: body.newState }));
+      }
+      throw new Error(`unexpected call ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    useSessionStore().signIn('tok-1', 'Ada Owner', 'owner');
+    const wrapper = mount(RoomsView, { global: { plugins: [pinia] } });
+    await wrapper.find('[data-testid="rooms-refresh"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="rooms-mark-cleaned-201"]').exists()).toBe(true);
+    });
+    expect(wrapper.find('[data-testid="rooms-chip-needs-cleaning"]').text()).toContain('(1)');
+
+    await wrapper.find('[data-testid="rooms-mark-cleaned-201"]').trigger('click');
+    // Success re-reads the map: room 201 leaves the dirty lane for
+    // the awaiting-inspection lane and the chips match the cards.
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="rooms-mark-inspected-201"]').exists()).toBe(true);
+    });
+    expect(wrapper.find('[data-testid="rooms-mark-cleaned-201"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="rooms-chip-needs-cleaning"]').text()).toContain('(0)');
+    expect(wrapper.find('[data-testid="rooms-chip-awaiting-inspection"]').text()).toContain('(2)');
+    expect(wrapper.find('[data-testid="rooms-housekeeping-error"]').exists()).toBe(false);
+  });
+
+  // Refs #435: inspect advances a clean room to inspected through
+  // the existing UpdateRoomState transition.
+  it('advances clean-to-inspected through the inspect button', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountRooms();
+    await loadMap(wrapper, fetchMock);
+
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/rooms/UpdateRoomState') {
+        const body = init?.body !== undefined ? JSON.parse(init.body as string) : {};
+        expect(body).toMatchObject({ roomNumber: '202', newState: 'vacant-inspected', actor: 'Ada Owner' });
+        return Promise.resolve(jsonResponse({ roomNumber: '202', oldState: 'vacant-clean', newState: 'vacant-inspected' }));
+      }
+      const body = init?.body !== undefined ? JSON.parse(init.body as string) : {};
+      if (url === '/v1/rooms/ListRoomsByState') {
+        return Promise.resolve(jsonResponse({ state: body.state, rooms: roomsByState(body.state) }));
+      }
+      if (url === '/v1/rooms/ListRoomTypes') {
+        return Promise.resolve(
+          jsonResponse({
+            roomTypes: [
+              { id: 'standard', name: 'Standard' },
+              { id: 'suite', name: 'Suite' },
+              { id: 'deluxe', name: 'Deluxe' },
+            ],
+          }),
+        );
+      }
+      if (url === '/v1/stay/ListArrivalsDepartures') {
+        return Promise.resolve(jsonResponse({ businessDate: body.businessDate, arrivals: [], inHouse: [], departures: [] }));
+      }
+      if (url === '/v1/guests/GetGuest') {
+        return Promise.resolve(jsonResponse({ guestId: body.guestId, fullName: body.guestId }));
+      }
+      if (url === '/v1/reservations/QueryCalendar') {
+        return Promise.resolve(jsonResponse({ dateFrom: body.dateFrom, dateTo: body.dateTo, reservations: [] }));
+      }
+      if (url === '/v1/rooms/CheckRoomTypeSellability') {
+        return Promise.resolve(
+          jsonResponse({ roomType: body.roomType, dateFrom: body.dateFrom, dateTo: body.dateTo, totalCount: 1, sellableCount: 1, blockedRooms: [] }),
+        );
+      }
+      throw new Error(`unexpected call ${url}`);
+    });
+
+    await wrapper.find('[data-testid="rooms-mark-inspected-202"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(
+          (call) => call[0] === '/v1/rooms/UpdateRoomState' && JSON.parse(call[1].body as string).newState === 'vacant-inspected',
+        ),
+      ).toBe(true);
+    });
+    expect(wrapper.find('[data-testid="rooms-housekeeping-error"]').exists()).toBe(false);
+  });
+
+  // Refs #435: a refused transition names the room in plain words
+  // and leaves the map untouched.
+  it('reads a refused housekeeping transition as one plain sentence with the map untouched', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountRooms();
+    await loadMap(wrapper, fetchMock);
+
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/rooms/UpdateRoomState') {
+        return Promise.resolve(
+          jsonResponse(
+            { code: 'STATE_ILLEGAL', message: 'Illegal transition.', details: { roomNumber: '201', oldState: 'vacant-dirty', newState: 'vacant-clean' } },
+            422,
+          ),
+        );
+      }
+      const body = init?.body !== undefined ? JSON.parse(init.body as string) : {};
+      if (url === '/v1/rooms/ListRoomsByState') {
+        return Promise.resolve(jsonResponse({ state: body.state, rooms: roomsByState(body.state) }));
+      }
+      if (url === '/v1/rooms/ListRoomTypes') {
+        return Promise.resolve(
+          jsonResponse({
+            roomTypes: [
+              { id: 'standard', name: 'Standard' },
+              { id: 'suite', name: 'Suite' },
+              { id: 'deluxe', name: 'Deluxe' },
+            ],
+          }),
+        );
+      }
+      if (url === '/v1/stay/ListArrivalsDepartures') {
+        return Promise.resolve(jsonResponse({ businessDate: body.businessDate, arrivals: [], inHouse: [], departures: [] }));
+      }
+      if (url === '/v1/guests/GetGuest') {
+        return Promise.resolve(jsonResponse({ guestId: body.guestId, fullName: body.guestId }));
+      }
+      if (url === '/v1/reservations/QueryCalendar') {
+        return Promise.resolve(jsonResponse({ dateFrom: body.dateFrom, dateTo: body.dateTo, reservations: [] }));
+      }
+      if (url === '/v1/rooms/CheckRoomTypeSellability') {
+        return Promise.resolve(
+          jsonResponse({ roomType: body.roomType, dateFrom: body.dateFrom, dateTo: body.dateTo, totalCount: 1, sellableCount: 1, blockedRooms: [] }),
+        );
+      }
+      throw new Error(`unexpected call ${url}`);
+    });
+
+    await wrapper.find('[data-testid="rooms-mark-cleaned-201"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="rooms-housekeeping-error"]').exists()).toBe(true);
+    });
+    // Plain words naming the room: no technical code.
+    expect(wrapper.find('[data-testid="rooms-housekeeping-error"]').text()).toContain('201');
+    expect(wrapper.find('[data-testid="rooms-housekeeping-error"]').text()).not.toContain('STATE_ILLEGAL');
+    // The map is untouched: room 201 still renders its clean button.
+    expect(wrapper.find('[data-testid="rooms-mark-cleaned-201"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="rooms-chip-needs-cleaning"]').text()).toContain('(1)');
   });
 
   it('groups cards by floor with an unknown-floor section for rooms without one', async () => {
