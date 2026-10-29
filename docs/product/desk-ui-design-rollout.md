@@ -246,9 +246,13 @@ implementation runs as one small task in one PR. Tier T2
 `AC-DSK-9` through `AC-DSK-11` in
 `docs/product/acceptance-criteria.md` [section 11](acceptance-criteria.md).
 This section sets scope, priority, and the wizard UI-contract
-extension; FR/NFR wording is owned by `business-analyst`, flow
-diagrams and technical design by `architect`, and guard mapping by
-`qa-lead` (handoffs in section 10.6, named here, not written here).
+extension; the three companion handoffs have landed: exact fields
+plus validation per step in `FR-DSK-8` through `FR-DSK-10` with the
+NFR no-change statement in
+`docs/requirements/mvp-requirements.md` [section 11](../requirements/mvp-requirements.md)
+(PR #442), the steps 2–4 flow (happy path + failure/rollback path)
+in LLD section 13.4 nodes J1–J12 (PR #443), and the guard
+assertions D10–D12 (section 10.6).
 
 Priority P1 (next); Size M (one worker session, one PR).
 
@@ -300,20 +304,24 @@ govern field meaning and persistence.
   the name appears in the shell header and on printed
   documents.
 - Step 2: the remaining `FR-ADM-1` hotel profile —
-  identity, contact details, and local settings. Saved
-  details appear on confirmations, invoices, and receipts,
-  and the local settings govern dates, times, and stay
-  policies hotel-wide. Exact field wording is owned by
-  `business-analyst`; the wizard collects exactly what
-  `FR-ADM-1` defines, nothing assumed.
+  identity, contact details, and local settings, with exact
+  fields plus validation per `FR-DSK-8` (PR #442): contact
+  details optional and stored verbatim, timezone required,
+  retention floor defaulting to 365 days. Saved details
+  appear on confirmations, invoices, and receipts, and the
+  local settings govern dates, times, and stay policies
+  hotel-wide. The wizard collects exactly what the FRs
+  define, nothing assumed.
 - Step 3: the `FR-ADM-3` room and room-type setup — rooms
-  with numbers, room types, floors, and capacity. Saved
+  with numbers, room types, floors, and capacity, with exact
+  fields plus validation per `FR-DSK-9` (PR #442). Saved
   rooms appear in the inventory, availability, and
   calendar with the defined capacity and type. The
   implementation seeds through the existing seed path;
   no new endpoint decides seed shape.
 - Step 4: the `FR-ADM-2` first owner account — name,
-  sign-in identity, and the owner role, created through
+  sign-in identity, and the owner role, with exact fields
+  plus validation per `FR-DSK-10` (PR #442), created through
   the existing admin user surface. The wizard completes
   only when a working owner sign-in exists; the owner
   then reaches exactly the owner-permitted functions
@@ -367,18 +375,22 @@ Section 4 stays the rollout-wide contract; for steps 2–4:
   on prints through the existing print paths; styling
   does not leak into print.
 
-### 10.6 Spec handoffs (pending, owned elsewhere)
+### 10.6 Spec handoffs (landed)
 
-- `business-analyst`: FR/NFR delta for #438 — expected
-  shape is a no-change statement (steps reuse
-  `FR-ADM-1`, `FR-ADM-3`, `FR-ADM-2` with no new FR),
-  or a narrow delta if the design implies one.
-- `architect`: extend LLD section 13.4 with the steps
-  2–4 flow (happy path + failure/rollback path) and the
+- `business-analyst` (PR #442): exact fields plus validation
+  per step in `FR-DSK-8` through `FR-DSK-10` with the NFR
+  no-change statement in
+  `docs/requirements/mvp-requirements.md` [section 11](../requirements/mvp-requirements.md) —
+  steps reuse `FR-ADM-1`, `FR-ADM-3`, `FR-ADM-2` with no new
+  MVP capability.
+- `architect` (PR #443): steps 2–4 flow in LLD section 13.4
+  nodes J1–J12 (happy path + failure/rollback path) with the
   edge trace to the config/seed/admin call sites.
-- `qa-lead`: extend guard D7 with steps 2–4 assertions
-  (per-step persist + surfacing, back/continue, gate,
-  catalogue) in the rollout traceability note.
+- `qa-lead` (PR #444): steps 2–4 guard assertions D10–D12 in
+  `docs/testing/desk-ui-rollout-test-traceability.md`
+  ([section 3](../testing/desk-ui-rollout-test-traceability.md)),
+  plus the AC-DSK-9..11 rows in
+  `docs/testing/traceability-matrix.md`.
 - `spec-reviewer`: gates the steps 2–4 implementation PR
   on this section plus the three handoffs above.
 
@@ -394,4 +406,4 @@ Section 4 stays the rollout-wide contract; for steps 2–4:
 | All new copy from the VI-primary catalogue with the coverage check green | Section 10.1; AC-DSK-8 (unchanged) |
 
 <!-- ao-role: product-owner -->
-Role: product-owner · AO session hotel-mgmt-576
+Role: product-owner · AO session hotel-mgmt-587
