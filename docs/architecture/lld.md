@@ -1295,25 +1295,42 @@ Edge trace (every edge cites code):
   365 else integer >= 0); no new operation, no schema
   change (`docs/technical/schema.md` unchanged). Saved
   values surface through the existing reads (shell brand
-  at `App.vue:259`, print payloads per section 13.5).
+  span at `App.vue:132-134`, fed by the `GetHotelConfig`
+  read in `loadHotelName` at `App.vue:256-264`; print
+  payloads per section 13.5).
 - J5–J8: step 3 introduces the first desk-client calls to
   the existing `UpsertRoomType` / `UpsertRoom` operations
   (LLD section 3 ops table; contracts unchanged,
   `VALIDATION_FAILED` only). Order is types first, then
   rooms linked to the saved types; each room number unique
-  within the hotel. Provider guards stand
+  within this step's batch — a repeated number is refused
+  client-side before anything persists (wizard client-side
+  validation: `UpsertRoom` updates on duplicate
+  server-side, `services/rooms/src/store.ts:237-260`,
+  `services/rooms/src/pgstore.ts:194-213`, and the wizard
+  gates to an empty database, so only intra-batch
+  duplicates can occur). Provider guards stand
   (`services/rooms/src/server.test.ts:70` type upsert,
-  `:79` room upsert, `:139` duplicate-number refusal).
-  Saved rooms appear via the existing inventory,
-  availability, and calendar reads (`FR-ADM-3` holds).
+  `:79` room upsert, `:137`–`:147` unknown-type
+  `NOT_FOUND`). Saved rooms appear via the existing
+  inventory, availability, and calendar reads
+  (`FR-ADM-3` holds).
 - J9–J12: step 4 introduces the first wizard-client call
   to the existing `CreateUser` operation (LLD section 8
   ops table; same `'/v1/admin/CreateUser'` call shape as
   `AdminView.vue:439`), with the role fixed to owner and
   the secret required hashed (`NFR-SEC-2`). Provider
   guards stand (`services/admin/src/server.test.ts:122`
-  create, `:132` duplicate identity, `:343` secret
-  required, `:289` front-desk `FORBIDDEN`). Completion
+  create, `:132` duplicate identity refused); the
+  empty-secret rule is code-enforced at
+  `services/admin/src/pgstore.ts:209`
+  (`VALIDATION_FAILED` naming `secret`), and the
+  front-desk refusal of `CreateUser` is code-enforced at
+  `services/admin/src/pgstore.ts:204-205` (`FORBIDDEN`) —
+  no on-disk guard test exercises either rule through
+  `CreateUser`; the nearest on-disk `FORBIDDEN` guards
+  cover the sibling operations (`:177`–`:185` config
+  write, `:390`–`:398` role change). Completion
   routes to the desk; the gate predicate (A–B) then reads
   a seeded database, so the wizard never shows again
   (`FR-DSK-7` holds).
@@ -1329,7 +1346,7 @@ Failure/rollback:
 flowchart TD
     P[Name fails validation] --> Q[VALIDATION_FAILED names the field; wizard stays on step 1]
     P2[Step 2 fails validation: blank timezone, or bad retention floor] --> Q2[Plain sentence names the field; wizard stays on step 2; nothing persisted for the step]
-    P3[Step 3 fails validation: blank type name, blank number, duplicate number, or unlinked type] --> Q3[Plain sentence names the field; wizard stays on step 3; nothing persisted for the step]
+    P3[Step 3 fails validation: blank type name, blank number, repeated number in the batch, or unlinked type] --> Q3[Plain sentence names the field; wizard stays on step 3; nothing persisted for the step]
     P4[Step 4 fails validation: blank name, blank or taken identity, or empty secret] --> Q4[Plain sentence names the field; wizard stays on step 4; nothing persisted]
     R[Front-desk role attempts setup] --> S[FORBIDDEN; setup stays owner/manager only]
     T[LAN disconnect during persist] --> U[Offline banner + manual retry; nothing half-written]
@@ -1348,12 +1365,16 @@ Edge trace:
   refused step writes nothing.
 - P3–Q3: step-3 validation restates the server-enforced
   rules named in `FR-DSK-9` (required type name/number,
-  unique number, linked type) before the
+  linked type) plus the intra-batch number-uniqueness rule
+  (wizard client-side: `UpsertRoom` updates on duplicate
+  server-side, `services/rooms/src/store.ts:237-260`,
+  `services/rooms/src/pgstore.ts:194-213`) before the
   `UpsertRoomType` / `UpsertRoom` calls; a refused step
   writes nothing, and a mid-step partial save (T3–U3)
   needs no compensation because saved records are valid
   inventory the staff member completes by retrying the
-  step — the seed path is idempotent by number.
+  step — the seed path is retry-safe by number (a repeated
+  number re-upserts in place).
 - P4–Q4: step-4 validation restates the server-enforced
   rules named in `FR-DSK-10` (required name/identity/
   secret, unique identity, fixed owner role) before the
