@@ -1375,7 +1375,13 @@ persistence path with its server-enforced rules named so no
 validation is invented: blank-vs-valid and uniqueness rules
 below restate what `UpdateHotelConfig`, `UpsertRoomType` /
 `UpsertRoom`, and `CreateUser` already enforce (guards in
-section 11.4).
+section 11.4), except the step-3 intra-batch room-number
+duplicate rule, which is wizard client-side validation:
+`UpsertRoom` updates on duplicate server-side
+(`services/rooms/src/store.ts:237-260`,
+`services/rooms/src/pgstore.ts:194-213`), and the wizard
+gates to an empty database, so only intra-batch duplicates
+can occur.
 
 FR-DSK-8 — Wizard step 2: remaining hotel profile. Staff
 complete the `FR-ADM-1` profile started in step 1 (hotel
@@ -1410,8 +1416,11 @@ Given the wizard at step 3; when staff enter room types
 (name required: blank is refused naming the room-type
 name; capacity and bed type per `FR-RMS-4`) and rooms
 (number required: blank is refused naming the room
-number; each number unique within the hotel — a
-duplicate is refused naming the number; each room
+number; each number unique within this step's batch — a
+repeated number is refused client-side naming the number
+before anything persists (the wizard gates to an empty
+database, so only intra-batch duplicates can occur);
+each room
 linked to a room type saved in this step; floor
 optional), then continue persists them through
 `UpsertRoomType` / `UpsertRoom` with actor and
@@ -1486,8 +1495,8 @@ the steps 2–4 implementation PR must create it.
 | Item | Guard (existing on disk; follow-up extends or creates) | Handoff note for `qa-lead` |
 |---|---|---|
 | FR-DSK-8 | `UpdateHotelConfig` guards: `services/admin/src/server.test.ts:148` (persist), `:170` (values round trip), `:180` (front-desk `FORBIDDEN`), `:207` (actor recorded); `services/admin/src/pgstore.test.ts:103` (timezone write) | Extend with step-2 view assertions: contact fields optional and stored verbatim, blank timezone refused naming the field, non-integer or negative retention floor refused naming the field, back-to-step-1 keeps values, nothing persisted on failure |
-| FR-DSK-9 | Seed-path guards: `services/rooms/src/server.test.ts:70` (type upsert), `:79` (room upsert), `:109` (second type), `:139` (duplicate-number refusal), `:209`–`:246` (room lifecycle over seeded rooms); `script/e2e-desk-loop.sh` rooms step (type + two rooms, sellability check) | Create step-3 view assertions: per-field blank/duplicate/unlinked refusals naming the field, inventory/availability/calendar uptake, back-to-step-2 keeps values, nothing persisted on failure |
-| FR-DSK-10 | `CreateUser` guards: `services/admin/src/server.test.ts:122` (create), `:132` (duplicate identity refused), `:250` (role validation), `:289` (front-desk `FORBIDDEN`), `:343` (secret required), `:380` (lockout path), `:409` (unlock), `:446` (role change), `:507` (last-owner guard), `:620` (sign-in round trip) | Create step-4 view assertions: blank/taken/empty-secret refusals naming the field, fixed-owner role, completion routes to the desk with a working owner sign-in, back-to-step-3 keeps values, wizard never shows again on the seeded database |
+| FR-DSK-9 | Seed-path guards: `services/rooms/src/server.test.ts:70` (type upsert), `:79` (room upsert), `:109` (second type), `:137`–`:147` (unknown-type `NOT_FOUND`), `:149`–`:202` (owner defines rooms; inventory + availability uptake); `script/e2e-desk-loop.sh` rooms step (type + two rooms, sellability check) | Create step-3 view assertions: per-field blank/unlinked refusals plus the intra-batch duplicate view refusal, each naming the field, inventory/availability/calendar uptake, back-to-step-2 keeps values, nothing persisted on failure |
+| FR-DSK-10 | `CreateUser` guards: `services/admin/src/server.test.ts:122` (create), `:132` (duplicate identity refused), `:283`–`:335` (role validation incl. bad-role), `:289` (front-desk `FORBIDDEN`), `:82`–`:101` (lockout path), `:409` (unlock), `:440`–`:486` (unlock refusals), `:374`–`:400` (front-desk role change refused), `:337`–`:372` (last-owner guard), `:620` (sign-in round trip); secret-required enforced in code at `services/admin/src/pgstore.ts:209` | Create step-4 view assertions: blank/taken/empty-secret refusals naming the field, fixed-owner role, completion routes to the desk with a working owner sign-in, back-to-step-3 keeps values, wizard never shows again on the seeded database |
 | Navigation + gate (FR-DSK-7 holds) | `app/src/views/OnboardingView.test.ts:61` (step 1 on empty database), `:90` (seeded redirect), `:104` (blank stays), `:126` (persist + complete), `:161` (forbidden sentence), `:190` (plain retry), `:224` (VI render) | Extend with steps 2–4 navigation: 25/50/75/100 progress, back/continue on every step with values kept, per-step validation naming the field |
 | Catalogue (NFR-DSK-1) | `script/catalogue-coverage-check.sh` plus `messages/en.json` / `messages/vi.json` (both exist) | Coverage job stays green on the steps 2–4 PR; new `desk.onboarding.*` keys land en + vi through the normal catalogue process |
 | NFR-DSK-3 on wizard | Missing automated audit (sections 9.5 and 10.4 name the same gap for the other routes; no touch-target guard exists) | Guard measures every step-2–4 control and checks 44 by 44 with 0 overlaps |
