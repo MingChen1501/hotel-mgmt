@@ -20,8 +20,9 @@ Inputs this record builds on:
   `Idempotency-Key` next, admin last, no-behaviour-change rule,
   dual-run CI, decommission with deprecation window). Still open; its
   ADR is the migration record, this plan sits under it. The owner-cited
-  input draft `rest-migration-plan.md` (§3 strangler recommendation,
-  §4 slice order, §5 technical rules, §6 risks, §7 gates) is an
+  input draft `rest-migration-plan.md` (section 3 strangler recommendation,
+  section 4 slice order, section 5 technical rules, section 6 risks,
+  section 7 gates) is an
   orchestrator artifact, not on disk; this plan cites the #368 issue
   body as the input record.
 - Issue #369 (versioning and upgrade strategy — deprecation policy and
@@ -38,7 +39,7 @@ Inputs this record builds on:
 - The per-module surface (`docs/architecture/rest-resource-surface.md`,
   Closes #415): every operation mapped to an endpoint, reads as GETs,
   keyed writes with `Idempotency-Key`, admin paths reserved to land
-  last. Phase references below (surface §§1–8) point at that record.
+  last. Phase references below (surface sections 1–8) point at that record.
 
 ## 0. Standing rules (inherited, not re-decided)
 
@@ -63,7 +64,7 @@ alone; the normative hooks stay where they were decided.
 ## 1. Migration path: strangler in four phases
 
 Each phase ships one slice of the surface (section references below
-are to `docs/architecture/rest-resource-surface.md` §§1–8), dual-serves
+are to `docs/architecture/rest-resource-surface.md` sections 1–8), dual-serves
 it with v1, flips the desk UI to it, then exits through its gate. v1 is
 removed only in Phase 4, after the deprecation window.
 
@@ -84,11 +85,11 @@ No client moves until then.
 ### Phase 1 — Read slice (GETs first, per #368)
 
 Every safe read dual-serves first: reservation lookup and calendar
-(surface §1), stay reads including arrivals/departures and the stay-ref
-link (§2), room and sellability reads (§3), quote/availability/
-restriction checks (§4), guest reads and the confirmation record (§5),
-folio/invoice/receipt reads (§6), all four reports (§7), and the admin
-reads (§8: user list, hotel config, audit log). The session endpoints
+(surface section 1), stay reads including arrivals/departures and the stay-ref
+link (section 2), room and sellability reads (section 3), quote/availability/
+restriction checks (section 4), guest reads and the confirmation record (section 5),
+folio/invoice/receipt reads (section 6), all four reports (section 7), and the admin
+reads (section 8: user list, hotel config, audit log). The session endpoints
 (`POST /v2/sessions`, `DELETE /v2/sessions/current`) ship here too:
 every `/v2` call needs a token from day one, and issuing one changes no
 behaviour. User, role, secret, and config management stay v1-only until
@@ -104,9 +105,9 @@ desk UI at zero.
 ### Phase 2 — Desk-write slice (booking/stay writes, per #368)
 
 The keyed writes: reservation create/modify/cancel/no-show/check-in-link
-(§1), stay check-in/check-out/moves/actual-times (§2), folio charges,
-payments, and open-balance approvals (§6), and `AssignRoom`/`ReleaseRoom`
-(§3). Every one of them requires `Idempotency-Key` with the surface §0
+(section 1), stay check-in/check-out/moves/actual-times (section 2), folio charges,
+payments, and open-balance approvals (section 6), and `AssignRoom`/`ReleaseRoom`
+(section 3). Every one of them requires `Idempotency-Key` with the surface section 0
 semantics: missing key is `400 VALIDATION_FAILED`; same key plus same
 payload replays the stored result; same key plus different payload is
 `422 STATE_ILLEGAL`.
@@ -123,10 +124,10 @@ dual-serve window for the replaced v1 writes formally open and dated.
 ### Phase 3 — Setup and admin slice (admin last, per #368)
 
 Everything remaining, in this order: rooms and rates setup upserts
-(§§3–4), guest upsert/attach (§5), charge-item and tax-fee setup plus
-day-close (§6), the export/backup async jobs (§8), and finally the admin
+(sections 3–4), guest upsert/attach (section 5), charge-item and tax-fee setup plus
+day-close (section 6), the export/backup async jobs (section 8), and finally the admin
 writes — user creation, role updates, unlocks, secret changes, hotel
-config updates (§8). Admin lands last because it guards identities,
+config updates (section 8). Admin lands last because it guards identities,
 roles, and hotel settings: the smallest blast radius stays latest.
 
 Exit gate: comparator clean on the remaining slice; desk loop green
