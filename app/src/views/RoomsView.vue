@@ -33,6 +33,14 @@
     </Message>
 
     <template v-if="!loading && !loadError">
+      <Message
+        v-if="housekeepingError"
+        severity="error"
+        role="alert"
+        data-testid="rooms-housekeeping-error"
+      >
+        {{ housekeepingError }}
+      </Message>
       <p
         v-if="totalRooms === 0"
         data-testid="rooms-empty"
@@ -85,6 +93,26 @@
                 <p :data-testid="`rooms-card-note-${room.number}`">
                   {{ noteFor(room) }}
                 </p>
+                <p v-if="room.display === 'needs-cleaning'">
+                  <Button
+                    type="button"
+                    :label="t('desk.today.mark_cleaned', {}, 'Mark cleaned')"
+                    :data-testid="`rooms-mark-cleaned-${room.number}`"
+                    :disabled="isBusy(room.number)"
+                    :loading="isBusy(room.number)"
+                    @click="onMarkCleaned(room)"
+                  />
+                </p>
+                <p v-if="room.display === 'awaiting-inspection'">
+                  <Button
+                    type="button"
+                    :label="t('desk.today.mark_inspected', {}, 'Mark inspected')"
+                    :data-testid="`rooms-mark-inspected-${room.number}`"
+                    :disabled="isBusy(room.number)"
+                    :loading="isBusy(room.number)"
+                    @click="onMarkInspected(room)"
+                  />
+                </p>
               </template>
             </Card>
           </div>
@@ -105,27 +133,30 @@ import type { ApiError } from '../api/client';
 import { t } from '../i18n';
 import { useSessionStore } from '../stores/session';
 
-// Rooms visual map (Refs #424, FR-DSK-6, LLD section 13.3, AC-DSK-6).
-// Read-only floor-grouped map over existing room state: the summary
+// Rooms visual map (Refs #424, #435, FR-DSK-6, LLD section 13.3,
+// AC-DSK-6). Floor-grouped map over existing room state: the summary
 // chips and the rendered cards derive from the one fetched payload,
 // so counts match cards by construction. Per-room cards show the one
 // status-chip vocabulary shared with the Main board, the room type,
 // and one live note line (occupant plus checkout date,
-// out-of-service reason plus date, or upcoming arrival). The only
-// action is refresh — no per-card buttons exist until the
-// product-owner action-placement decision recorded on #424 lands,
-// so no housekeeping transition is reachable from this screen
-// (FR-RMS-2, NFR-AUD-1 hold; reuse only, never new transitions).
+// out-of-service reason plus date, or upcoming arrival). Dirty cards
+// carry a Mark cleaned button and clean cards a Mark inspected
+// button, advancing vacant-dirty to clean and clean to inspected
+// through the existing `UpdateRoomState` transitions only (reuse,
+// never new transitions); success re-reads the map so the chips
+// match the cards again.
 //
 // Shared-migration contracts, same as the desk shell:
 // - Bearer auth comes only from the Pinia session store via the
 //   shared `apiFetch` client; a 401/UNAUTHENTICATED clears the
 //   store and returns to sign-in (the single 401 path).
-// - Every string goes through the catalogue `t()` wrapper; new copy
-//   ships as `desk.rooms.*` keys in both locales.
+// - Every string goes through the catalogue `t()` wrapper; the
+//   housekeeping buttons reuse the `desk.today.*` catalogue keys
+//   shared with the Main board so both surfaces stay worded alike.
 // - Errors switch on envelope codes, never on resolved wording.
-// - The map performs no writes: refresh re-reads, staleness
-//   resolves by re-fetch, never by client patching.
+// - The only writes are the two housekeeping buttons above;
+//   refresh re-reads, and other staleness resolves by re-fetch,
+//   never by client patching.
 
 type DisplayStatus =
   | 'ready'
@@ -216,6 +247,12 @@ export default defineComponent({
     // (no new endpoint) — rooms with no covering block render the
     // catalogue unknown-reason line.
     const blockNotes = ref<Record<string, { reason: string; date: string }>>({});
+    // Housekeeping action state (Refs #435, same as the Main
+    // board): each button stays disabled until its own call
+    // returns, and a refusal names the room in plain words
+    // without touching the map.
+    const housekeepingError = ref('');
+    const busyRooms = ref<Record<string, boolean>>({});
 
     // The shell owns the one sign-in gate (Refs #338): a
     // 401/UNAUTHENTICATED expires the shared session and the gate
@@ -473,6 +510,9 @@ export default defineComponent({
       businessDate.value = localBusinessDate();
       loading.value = true;
       loadError.value = '';
+      // Refs #435: a refresh re-reads the map, so a stale refusal
+      // banner clears instead of lingering after a resolved failure.
+      housekeepingError.value = '';
       try {
         const listed = await apiFetch<{ roomTypes?: Array<{ id: string; name: string }> }>(
           '/v1/rooms/ListRoomTypes',
@@ -562,6 +602,59 @@ export default defineComponent({
       await refreshMap();
     }
 
+    function isBusy(roomNumber: string): boolean {
+      return busyRooms.value[roomNumber] === true;
+    }
+
+    // Housekeeping buttons (Refs #435): clean advances
+    // dirty-to-clean, inspect advances clean-to-inspected through
+    // the existing `UpdateRoomState` transitions only. Success
+    // re-reads the map so the chips match the cards by
+    // construction; a refusal names the room in plain words and
+    // leaves the map untouched.
+    async function markRoom(
+      room: DisplayRoom,
+      newState: 'vacant-clean' | 'vacant-inspected',
+    ): Promise<void> {
+      const number = room.number;
+      if (isBusy(number)) {
+        return;
+      }
+      busyRooms.value[number] = true;
+      housekeepingError.value = '';
+      try {
+        await apiFetch('/v1/rooms/UpdateRoomState', {
+          method: 'POST',
+          body: JSON.stringify({
+            roomNumber: number,
+            newState,
+            actor: session.displayName ?? '',
+          }),
+        });
+        await refreshMap();
+      } catch (err) {
+        if (isSignedOut(err) || !session.isSignedIn) {
+          expireToGate();
+          return;
+        }
+        housekeepingError.value = t(
+          'desk.today.housekeeping_failed',
+          { room: number },
+          `Could not update room ${number}. It may have changed; refresh and try again.`,
+        );
+      } finally {
+        busyRooms.value[number] = false;
+      }
+    }
+
+    async function onMarkCleaned(room: DisplayRoom): Promise<void> {
+      await markRoom(room, 'vacant-clean');
+    }
+
+    async function onMarkInspected(room: DisplayRoom): Promise<void> {
+      await markRoom(room, 'vacant-inspected');
+    }
+
     onMounted(() => {
       // A reload restores the Bearer token from sessionStorage: go
       // straight back to the map instead of stranding it.
@@ -575,6 +668,7 @@ export default defineComponent({
       businessDate,
       loading,
       loadError,
+      housekeepingError,
       chips,
       totalRooms,
       floors,
@@ -582,6 +676,9 @@ export default defineComponent({
       chipSeverity,
       chipLabel,
       noteFor,
+      isBusy,
+      onMarkCleaned,
+      onMarkInspected,
       onRefresh,
     };
   },
