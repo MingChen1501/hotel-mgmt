@@ -11,8 +11,11 @@ import { LOCALE_STORAGE_KEY, setLocale, t } from './index';
 import { useSessionStore } from '../stores/session';
 import { resetConnectivityForTests } from '../api/client';
 
-const EN_NAV = ['Desk', 'Book', 'Stay', 'Folio', 'Print', 'Admin'];
-const VI_NAV = ['Lễ tân', 'Đặt phòng', 'Lưu trú', 'Bảng kê', 'In ấn', 'Quản trị'];
+// D1 canvas-manifest-relative order (Refs #419, #424): Rooms sits
+// in its canvas-relative spot between Stay and Book; #425 inserts
+// Onboarding ahead of it to complete the six-screen tab order.
+const EN_NAV = ['Desk', 'Stay', 'Rooms', 'Book', 'Folio', 'Print', 'Admin'];
+const VI_NAV = ['Lễ tân', 'Lưu trú', 'Sơ đồ phòng', 'Đặt phòng', 'Bảng kê', 'In ấn', 'Quản trị'];
 
 describe('shell locale switch (EN/VI)', () => {
   beforeEach(async () => {

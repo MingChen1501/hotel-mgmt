@@ -929,12 +929,14 @@ they do not exist yet on master):
 ```text
 app/
   src/router.ts            extend: add /rooms (Rooms map, #424) and /onboarding (wizard, #425);
-                           the 7-route set pinned at router.test.ts:17 grows by exactly two, no rename/removal
-  src/App.vue              extend: NAV_ITEMS (:215-220) to canvas-manifest order
-                           (Main, Stay, Onboarding, Rooms, Book, Folio); brand span shows the
+                           the 8-route set pinned at router.test.ts:17 grows by exactly one
+                           more for the wizard, no rename/removal
+  src/App.vue              extend: NAV_ITEMS to canvas-manifest-relative order
+                           (Desk, Stay, Rooms, Book, Folio; #425 inserts Onboarding
+                           ahead of Rooms to complete the tab order); brand span shows the
                            configured hotel name; locale switcher unchanged
   src/views/DeskView.vue   extend: two housekeeping action buttons on the need-cleaning card (#420)
-  src/views/RoomsMapView.vue   NEW: read-only floor-grouped map with summary chips (#424)
+  src/views/RoomsView.vue   NEW: read-only floor-grouped map with summary chips (#424)
   src/views/OnboardingView.vue NEW: wizard shell with progress + back/continue, step 1 hotel-name form (#425)
   messages/en.json + messages/vi.json  extend: desk.rooms.*, desk.onboarding.*,
                            stay.checkin.* hint, desk.empty.* keys in both locales, placeholders intact
@@ -1116,7 +1118,7 @@ flowchart TD
 
 Edge trace (every edge cites code):
 
-- A–B: NEW `RoomsMapView.vue` reads the existing
+- A–B: NEW `RoomsView.vue` reads the existing
   `RoomInventoryService.ListRoomsByState` operation (LLD
   section 3; same read the Main board uses at
   `DeskView.vue:758-759`); no new endpoint, no new store.
@@ -1129,9 +1131,9 @@ Edge trace (every edge cites code):
   the Main board, the room type, and the live note
   (occupant + checkout date, out-of-service reason + date,
   or upcoming arrival) — `FR-DSK-6`.
-- A: NEW `/rooms` route in `src/router.ts` (the 7-route set
-  pinned at `router.test.ts:17` grows by exactly one more
-  here, plus one for the wizard in section 13.4); unknown
+- A: NEW `/rooms` route in `src/router.ts` (the 8-route set
+  pinned at `router.test.ts:17`, plus one more for the wizard in
+  section 13.4); unknown
   paths still fall through to the placeholder (LLD
   section 11.1 edge U–V).
 - F–H: a fetch failure renders one plain sentence
