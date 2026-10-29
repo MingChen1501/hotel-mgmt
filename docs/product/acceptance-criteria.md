@@ -391,9 +391,10 @@ Product-owner rollout spec: `docs/product/desk-ui-design-rollout.md`
 conflicting parts of the #412 journey record (D-12 in
 `docs/project/decision-log.md`); each conflict found during
 implementation is recorded on the affected sub-issue with the
-owner decision. These 8 conditions cover the six screens
-(Main #420, Stay #422, Onboarding #425, Rooms #424, Book #421,
-Folio #423) plus the shared shell and the catalogue rule. They
+owner decision. These 11 conditions cover the six screens
+(Main #420, Stay #422, Onboarding #425 plus steps 2–4 in #438,
+Rooms #424, Book #421, Folio #423) plus the shared shell and
+the catalogue rule. They
 add no MVP capability: the four restyles change presentation
 only, the Rooms map visualises existing room state
 (`US-RMS-1`), and the wizard operationalises first-run setup
@@ -452,15 +453,48 @@ below check behaviour only.
   the hotel name, which then appears in the shell header and on
   printed documents; given a seeded database, the wizard never
   launches. Traces to: US-ADM-1, US-ADM-3; FR-ADM-1, FR-ADM-3.
+  (Gate plus step 1; steps 2–4 carry their own conditions
+  AC-DSK-9..11 below.)
 - AC-DSK-8 — Given any of the six screens in either locale,
   when staff read the screen, then every user-visible string
   resolves through the VI-primary catalogue with the coverage
   check green, and the hotel name shown is the configured
   value, never hardcoded example content. Traces to: US-ADM-1;
   FR-ADM-1 (catalogue rule; no behaviour change).
+- AC-DSK-9 — Given the wizard at step 2 with the hotel name
+  already saved, when staff enter the remaining hotel config
+  details (identity, contact, local settings) and continue,
+  then the details persist through the existing
+  hotel-configuration path and appear on confirmations,
+  invoices, and receipts with the local settings governing
+  dates, times, and stay policies; back returns to step 1
+  with entered values kept, and a validation failure keeps
+  staff on step 2 naming the missing field with nothing
+  persisted. Traces to: US-ADM-1; FR-ADM-1 (Refs #438; no
+  MVP capability added).
+- AC-DSK-10 — Given the wizard at step 3, when staff enter
+  rooms with numbers, room types, floors, and capacity and
+  continue, then the rooms persist through the existing seed
+  path and appear in the inventory, availability, and
+  calendar with the defined capacity and type; back returns
+  to step 2 with entered values kept, and a validation
+  failure keeps staff on step 3 naming the missing field
+  with nothing persisted. Traces to: US-ADM-3; FR-ADM-3
+  (Refs #438; no MVP capability added).
+- AC-DSK-11 — Given the wizard at step 4, when staff create
+  the first owner account (name, sign-in identity, owner
+  role) and finish, then the account persists through the
+  existing admin user path, the owner can sign in and reach
+  exactly the owner-permitted functions, and the wizard
+  completes to the desk and never shows again; back returns
+  to step 3 with entered values kept, and a validation
+  failure keeps staff on step 4 naming the missing field.
+  Traces to: US-ADM-2; FR-ADM-2 (Refs #438; no MVP
+  capability added).
 
 Rollout done when: the six sub-issues each close with a merged
-implementation PR, every screen checks against its design file
+implementation PR (the wizard slice spans #425 step 1 plus the
+#438 steps 2–4 PR), every screen checks against its design file
 card by card, the #412 conflicts (if any) carry owner
 decisions on the affected sub-issues, and the shell, catalogue,
 and print-preservation rules above hold on all six screens.
@@ -491,12 +525,13 @@ served-legacy half of AC-SHL-4 are superseded as marked above;
 AC-SHL-2, AC-SHL-5, AC-SHL-6, AC-SHL-7, and the mirror half of
 AC-SHL-4 stand.
 
-Rollout addendum (Refs #419): 8 desk-UI conditions (AC-DSK-1..8,
-section 11) cover the six-screen Claude design rollout. Each
-traces to its existing MVP story and FR; no condition adds an
+Rollout addendum (Refs #419, plus #438): 11 desk-UI conditions (AC-DSK-1..11,
+section 11) cover the six-screen Claude design rollout plus the
+onboarding steps 2–4 follow-up. Each traces to its existing
+MVP story and FR; no condition adds an
 MVP capability, invents a story, or changes FR wording, so the
 43-condition MVP count above stands unchanged and the sections
 1–9 done-conditions hold as written.
 
 <!-- ao-role: product-owner -->
-Role: product-owner · AO session hotel-mgmt-540
+Role: product-owner · AO session hotel-mgmt-576
