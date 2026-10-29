@@ -441,6 +441,36 @@ describe('rooms view', () => {
     expect(wrapper.find('[data-testid="rooms-chip-needs-cleaning"]').text()).toContain('(1)');
   });
 
+  it('clears a resolved housekeeping failure on manual refresh', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountRooms();
+    await loadMap(wrapper, fetchMock);
+
+    // The clean transition is refused once, so the banner shows.
+    fetchMock.mockImplementationOnce(() =>
+      Promise.resolve(
+        jsonResponse(
+          { code: 'STATE_ILLEGAL', message: 'Illegal transition.', details: { roomNumber: '201', oldState: 'vacant-dirty', newState: 'vacant-clean' } },
+          422,
+        ),
+      ),
+    );
+    await wrapper.find('[data-testid="rooms-mark-cleaned-201"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="rooms-housekeeping-error"]').exists()).toBe(true);
+    });
+
+    // The failure is resolved elsewhere; a manual refresh re-reads
+    // the map and the stale banner clears (Refs #435).
+    stubHappyPath(fetchMock);
+    await wrapper.find('[data-testid="rooms-refresh"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="rooms-summary"]').exists()).toBe(true);
+    });
+    expect(wrapper.find('[data-testid="rooms-housekeeping-error"]').exists()).toBe(false);
+  });
+
   it('groups cards by floor with an unknown-floor section for rooms without one', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);

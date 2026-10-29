@@ -510,6 +510,9 @@ export default defineComponent({
       businessDate.value = localBusinessDate();
       loading.value = true;
       loadError.value = '';
+      // Refs #435: a refresh re-reads the map, so a stale refusal
+      // banner clears instead of lingering after a resolved failure.
+      housekeepingError.value = '';
       try {
         const listed = await apiFetch<{ roomTypes?: Array<{ id: string; name: string }> }>(
           '/v1/rooms/ListRoomTypes',
