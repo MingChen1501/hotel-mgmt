@@ -146,11 +146,23 @@ describe('shell navigation', () => {
   });
 
   function quietFetch() {
-    return vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({}), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      }),
+    // Seeded desk: GetHotelConfig carries a hotel name, so the
+    // empty-database wizard (Refs #425) never launches under this
+    // stub and the shell assertions stay route-stable.
+    return vi.fn((url: string) =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify(
+            url === '/v1/admin/GetHotelConfig'
+              ? { schemaVersion: 1, values: { name: 'Seeded Hotel' } }
+              : {},
+          ),
+          {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          },
+        ),
+      ),
     );
   }
 
@@ -163,11 +175,12 @@ describe('shell navigation', () => {
     return wrapper;
   }
 
-  // D1 canvas-manifest-relative order (Refs #419, #424, FR-DSK-1):
-  // Desk, Stay, Rooms, Book, Folio, Print, Admin — Rooms sits in
-  // its canvas-relative spot between Stay and Book; #425 inserts
-  // Onboarding ahead of it to complete the six-screen tab order.
-  it('renders the seven destinations in canvas-manifest-relative order plus the user plus sign-out', async () => {
+  // D1 canvas-manifest-relative order (Refs #419, #424, #425,
+  // FR-DSK-1): Desk, Stay, Onboarding, Rooms, Book, Folio, Print,
+  // Admin — Onboarding sits in its canvas-relative spot between
+  // Stay and Rooms and launches unprompted on an empty database
+  // only.
+  it('renders the eight destinations in canvas-manifest-relative order plus the user plus sign-out', async () => {
     vi.stubGlobal('fetch', quietFetch());
     try {
       const pinia = createPinia();
@@ -178,6 +191,7 @@ describe('shell navigation', () => {
       expect(items.map((item) => item.text())).toEqual([
         'Desk',
         'Stay',
+        'Onboarding',
         'Rooms',
         'Book',
         'Folio',
@@ -187,6 +201,7 @@ describe('shell navigation', () => {
       expect(items.map((item) => item.attributes('href'))).toEqual([
         '/app/',
         '/app/stay',
+        '/app/onboarding',
         '/app/rooms',
         '/app/book',
         '/app/folio',
@@ -236,8 +251,22 @@ describe('shell navigation', () => {
     }
   });
 
-  it('falls back to the catalogue brand when no hotel name is configured', async () => {
-    vi.stubGlobal('fetch', quietFetch());
+  it('falls back to the catalogue brand and launches the wizard when no hotel name is configured', async () => {
+    // Empty-database first run (Refs #425, LLD section 13.4): an
+    // owner session with no configured name belongs in the
+    // wizard, while the header keeps the catalogue brand.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(
+        () =>
+          Promise.resolve(
+            new Response(JSON.stringify({}), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            }),
+          ),
+      ),
+    );
     try {
       const pinia = createPinia();
       setActivePinia(pinia);
@@ -247,6 +276,39 @@ describe('shell navigation', () => {
         expect(wrapper.find('[data-testid="shell-nav"]').exists()).toBe(true);
       });
       expect(wrapper.find('[data-testid="shell-brand"]').text()).toContain('Hotel Management');
+      await vi.waitFor(() => {
+        expect(router.currentRoute.value.path).toBe('/onboarding');
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('leaves a front-desk session on the shell when no hotel name is configured', async () => {
+    // Setup stays owner/manager only (Refs #425, LLD section 13.4
+    // R–S): a front-desk session never moves into the wizard.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(
+        () =>
+          Promise.resolve(
+            new Response(JSON.stringify({}), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            }),
+          ),
+      ),
+    );
+    try {
+      const pinia = createPinia();
+      setActivePinia(pinia);
+      useSessionStore().signIn('tok-1', 'Freddy Desk', 'front-desk');
+      const wrapper = await mountShellWith(pinia, '/');
+      await vi.waitFor(() => {
+        expect(wrapper.find('[data-testid="shell-nav"]').exists()).toBe(true);
+      });
+      expect(router.currentRoute.value.path).toBe('/');
+      expect(wrapper.find('[data-testid="shell-nav-onboarding"]').exists()).toBe(true);
     } finally {
       vi.unstubAllGlobals();
     }
@@ -256,6 +318,7 @@ describe('shell navigation', () => {
     ['/', 'shell-nav-desk'],
     ['/book', 'shell-nav-book'],
     ['/stay', 'shell-nav-stay'],
+    ['/onboarding', 'shell-nav-onboarding'],
     ['/folio', 'shell-nav-folio'],
     ['/print', 'shell-nav-print'],
     ['/admin', 'shell-nav-admin'],
@@ -332,6 +395,13 @@ describe('shell sign-in gate', () => {
       if (url === '/v1/admin/SignIn') {
         return Promise.resolve(
           jsonResponse({ token: 'tok-1', displayName: 'Ada Owner', role: 'owner' }),
+        );
+      }
+      if (url === '/v1/admin/GetHotelConfig') {
+        // Seeded desk: the empty-database wizard (Refs #425)
+        // never launches, so the sign-in lands on /book.
+        return Promise.resolve(
+          jsonResponse({ schemaVersion: 1, values: { name: 'Seeded Hotel' } }),
         );
       }
       return Promise.resolve(jsonResponse({}));
@@ -441,6 +511,13 @@ describe('shell sign-in gate', () => {
           jsonResponse({ token: 'tok-1', displayName: 'Ada Owner', role: 'owner' }),
         );
       }
+      if (url === '/v1/admin/GetHotelConfig') {
+        // Seeded desk: the empty-database wizard (Refs #425)
+        // never launches, so the sign-in lands on /.
+        return Promise.resolve(
+          jsonResponse({ schemaVersion: 1, values: { name: 'Seeded Hotel' } }),
+        );
+      }
       if (url === '/v1/admin/SignOut') {
         return Promise.resolve(jsonResponse({ ok: true }));
       }
@@ -474,6 +551,13 @@ describe('shell sign-in gate', () => {
           jsonResponse({ token: 'tok-1', displayName: 'Ada Owner', role: 'owner' }),
         );
       }
+      if (url === '/v1/admin/GetHotelConfig') {
+        // Seeded desk: the empty-database wizard (Refs #425)
+        // never launches, so the sign-in lands on /.
+        return Promise.resolve(
+          jsonResponse({ schemaVersion: 1, values: { name: 'Seeded Hotel' } }),
+        );
+      }
       if (url === '/v1/admin/SignOut') {
         return Promise.resolve(new Response('{}', { status: 401 }));
       }
@@ -501,6 +585,13 @@ describe('shell sign-in gate', () => {
       if (url === '/v1/admin/SignIn') {
         return Promise.resolve(
           jsonResponse({ token: 'tok-1', displayName: 'Ada Owner', role: 'owner' }),
+        );
+      }
+      if (url === '/v1/admin/GetHotelConfig') {
+        // Seeded desk: the empty-database wizard (Refs #425)
+        // never launches, so the sign-in lands on /.
+        return Promise.resolve(
+          jsonResponse({ schemaVersion: 1, values: { name: 'Seeded Hotel' } }),
         );
       }
       return Promise.resolve(jsonResponse({}));
