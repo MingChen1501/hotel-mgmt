@@ -88,6 +88,7 @@ Development table, which use a `../` prefix.
 | ADR-0003 desk UI framework | `architecture/decisions/adr-0003-desk-ui-vue-vite.md` | active | `architect` | desk UI migrates to Vue 3 + Vite CSR static build served by Nginx (Refs #285; accepted 2026-10-25) |
 | ADR-0004 REST versioning, auth, errors | `architecture/decisions/adr-0004-rest-versioning-auth-errors.md` | active | `architect` | versioned REST cross-cutting design: URL+contract versioning, session auth, problem+json error envelope (Closes #414; proposed) |
 | REST resource surface | `architecture/rest-resource-surface.md` | active | `architect` | per-module REST surface: resource naming, methods, statuses, shape refs, Idempotency-Key rule (Closes #415; proposed) |
+| REST migration rollout | `architecture/rest-migration-rollout.md` | active | `architect` | migration path and rollout plan: strangler phases, gates, rollback, compat matrix, decommission (Closes #416; proposed) |
 | Candidate architectures | `architecture/candidate-architectures.md` | active | `architect` | candidate structures, customisation, strategies, trade-offs, recommendation (Closes #67) |
 | Contract readiness | `architecture/contract-readiness.md` | active | `architect` | walking-skeleton contract/file checklist with traces, stub boundary, CI gate, open questions (Closes #108) |
 | C4 containers | `architecture/c4-containers.md` | active | `architect` | container + component diagrams with per-edge sources (Closes #193) |
