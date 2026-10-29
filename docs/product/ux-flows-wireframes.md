@@ -51,23 +51,54 @@ Catalogue keys cited are existing keys unless marked NEW.
 Covers QA finding 3: first run on an empty database has no guided
 onboarding today. The gate must detect the unseeded state and route
 the owner through setup before the desk loop is reachable.
+Step 1 shipped per the rollout spec (Refs #425); steps 2–4 follow
+the steps 2–4 scope decision in
+`docs/product/desk-ui-design-rollout.md` [section 10](../product/desk-ui-design-rollout.md)
+(Refs #438). Rate-plan and stay-policy setup is not a wizard
+step: after the wizard completes, the manager enters rate plans,
+standard times, and stay policies in Admin as today.
 
 ```mermaid
 flowchart TD
     A[Open /app/ on empty database] --> B{Admin store seeded?}
-    B -- No --> C[Onboarding wizard: hotel name, rooms + room types, rate plans, first owner account]
-    C --> D{Setup valid?}
-    D -- No --> C
-    D -- Yes --> E[Seed and sign in as owner]
-    B -- Yes --> F[Sign-in gate]
-    E --> G[Desk dashboard with today-empty state]
-    F --> G
-    G --> H[Guided next step: create first booking]
+    B -- No --> C[Wizard step 1: hotel name]
+    C --> D{Step 1 valid?}
+    D -- No: name the field --> C
+    D -- Yes: persist via hotel-config path --> E[Wizard step 2: hotel config details]
+    E --> F{Step 2 valid?}
+    F -- No: name the field --> E
+    F -- Back --> C
+    F -- Yes: persist via hotel-config path --> G[Wizard step 3: rooms + room types]
+    G --> H{Step 3 valid?}
+    H -- No: name the field --> G
+    H -- Back --> E
+    H -- Yes: persist via seed path --> I[Wizard step 4: first owner account]
+    I --> J{Step 4 valid?}
+    J -- No: name the field --> I
+    J -- Back --> G
+    J -- Yes: persist via admin user path --> K[Seed and sign in as owner]
+    B -- Yes --> F2[Sign-in gate]
+    K --> G2[Desk dashboard with today-empty state]
+    F2 --> G2
+    G2 --> H2[Guided next step: create first booking]
 ```
+
+Failure/rollback edges: validation failure on any step keeps
+staff on that step and names the missing field — nothing
+persists for a failing step. A front-desk role attempting
+setup meets the existing refusal (setup stays owner/manager
+only). A LAN disconnect during persist shows the offline
+banner with a safe manual retry and nothing half-written; a
+401 clears the session and routes to the sign-in gate.
+Rollback is the single implementation PR: the wizard is
+additive, seeded desks never saw it, and the
+config/seed/admin surfaces are unchanged.
 
 Acceptance notes: the wizard is an owner-only path; skipping is not
 offered (an unconfigured desk must not accept bookings). Every wizard
-field carries an explicit empty-state hint; the seeded desk shows a
+field carries an explicit empty-state hint; back returns to the
+previous step with entered values kept; progress reads
+25/50/75/100 across the four steps. The seeded desk shows a
 "no arrivals today" empty state, never a blank table.
 
 ### J1. Book-to-checkout (front-desk loop)
@@ -400,4 +431,4 @@ five journey-spec follow-ups to it.
 | Design milestone accepted or alternative assigned | Section 8 (proposal + alternative, owner decision on #412) |
 
 <!-- ao-role: product-owner -->
-Role: product-owner · AO session hotel-mgmt-527
+Role: product-owner · AO session hotel-mgmt-576

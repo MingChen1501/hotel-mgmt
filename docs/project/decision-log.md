@@ -21,6 +21,7 @@ recorded as ADRs under `docs/architecture/decisions/`.
 | D-10 | 2026-10-24 | Owner decision (recorded here, not relitigated): PRD open questions — payment methods, day-close sign-off, retention promise, and siblings — are OUT of MVP scope. Slices proceed on baselines; OQ-dependent extensions are tracked as Later. Consequence: the folio/billing slice ships its cash-only recording baseline (plain recording of cash and card payments against the folio as scoped, with no integrated payment processing — OQ-1 methods beyond cash and card are Later); day-close ships manual totals with no sign-off workflow (OQ-3); retention follows the NFR defaults (OQ-4); all other OQ-dependent extensions are tracked as Later. | Issue #148 |
 | D-11 | 2026-10-25 | ADR-0003 accepted: desk UI migrates to Vue 3 + Vite (CSR-only static build served by Nginx under `/app/`), with the owner's two mandatory corrections (option-C total 375, not 395; Nginx fallback serves `/app/index.html` with print routes namespaced `/app/print/...`) carried in the ADR file (owner acceptance on #285). | `docs/architecture/decisions/adr-0003-desk-ui-vue-vite.md` (accepted; OWNER ACCEPTANCE on #285) |
 | D-12 | 2026-10-28 | Owner-supplied Claude desk UI design is authoritative: the six static HTML screens plus the canvas manifest (ordered Main, Stay, Onboarding, Rooms, Book, Folio) are the desk UI target (issue #419); where the design conflicts with the #412 journey/spec record, the design wins and each conflict is recorded on the affected per-screen sub-issue (#420–#425) with the owner decision. | Issue #419; product spec `docs/product/desk-ui-design-rollout.md` |
+| D-13 | 2026-10-29 | Onboarding wizard steps 2–4 scope decided per the owner UI design (issue #438): step 2 collects the remaining hotel config details (`FR-ADM-1`), step 3 seeds rooms and room types (`FR-ADM-3`), step 4 creates the first owner account (`FR-ADM-2`) — each persisting through its existing config/seed/admin path with no new capability and no new FR. Rate-plan and stay-policy setup (`FR-ADM-4`) stays in Admin after the wizard, not in the wizard. | Issue #438; product spec `docs/product/desk-ui-design-rollout.md` (section 10) |
 
 Dates above are the owner-approved order date from issue #63 (spec
 batch 2), not project milestones — the plan itself
@@ -32,4 +33,4 @@ on #28). The D-2 entry above is preserved as history; the freeze
 it records no longer applies. (Append-only note; no rewrite.)
 
 <!-- ao-role: product-owner -->
-Role: product-owner · AO session hotel-mgmt-540
+Role: product-owner · AO session hotel-mgmt-576
