@@ -1096,22 +1096,34 @@ Edge trace:
   with it (no contract, transition, or schema change
   anywhere in this flow).
 
-### 13.3 Rooms map counts-match-cards invariant (#424)
+### 13.3 Rooms map counts-match-cards invariant (#424) with per-card housekeeping actions (#435)
 
-New read-only screen: a floor-grouped visual map whose
-summary chips always equal the rendered room cards. Read-only
-over existing room state — per-card actions are not specified
-here and none are invented (open #424 owner call).
+Floor-grouped visual map whose summary chips always equal
+the rendered room cards. The #424 screen shipped read-only
+over existing room state; #435 adds per-card housekeeping
+actions on top: dirty cards carry Mark cleaned (vacant-dirty
+to vacant-clean) and clean cards carry Mark inspected
+(vacant-clean to vacant-inspected) through the existing
+`UpdateRoomState` transitions only — no transition logic
+changes (`FR-RMS-2`, `NFR-AUD-1` hold). Success re-reads the
+map so the chips match the cards again.
 
 ```mermaid
 flowchart TD
     A[Staff opens the Rooms map] --> B[Fetch room state via ListRoomsByState]
     B --> C[Group the same payload by floor]
     C --> D[Render summary chips: ready, occupied, needs-cleaning, awaiting-inspection, out-of-service]
-    D --> E[Render per-room cards: status chip, room type, live note]
+    D --> E[Render per-room cards: status chip, room type, live note, clean/inspect button where applicable]
     E --> F{Invariant check}
     F -->|counts equal cards| G[Map shown; refresh offered]
     F -->|mismatch| H[Plain-words error; staff retries manually]
+    G --> J[Staff presses clean on a dirty card, or inspect on a clean card]
+    J --> K[UpdateRoomState with room, target state, actor]
+    K --> L{Transition legal?}
+    L -->|yes| M[State advances; map reloads; chips match cards]
+    L -->|STATE_ILLEGAL| N[One plain sentence naming the room; map unchanged]
+    N --> G
+    M --> G
     G --> I[Staff refreshes after housekeeping work]
     I --> B
 ```
@@ -1130,15 +1142,36 @@ Edge trace (every edge cites code):
 - E: each card shows the one chip vocabulary shared with
   the Main board, the room type, and the live note
   (occupant + checkout date, out-of-service reason + date,
-  or upcoming arrival) — `FR-DSK-6`.
+  or upcoming arrival) — `FR-DSK-6`. Dirty cards add a Mark
+  cleaned button (`RoomsView.vue:96-105`) and clean cards a
+  Mark inspected button (`:106-115`); other states carry no
+  button (#435).
 - A: NEW `/rooms` route in `src/router.ts` (the 8-route set
   pinned at `router.test.ts:17`, plus one more for the wizard in
   section 13.4); unknown
   paths still fall through to the placeholder (LLD
   section 11.1 edge U–V).
 - F–H: a fetch failure renders one plain sentence
-  (`FR-DSP-3`) with manual retry; refusal conditions are
-  untouched because the map performs no writes.
+  (`FR-DSP-3`) with manual retry; the only writes are the
+  two card buttons below (J–N), so every other refusal
+  condition is untouched.
+- J–K: the two card buttons call the LLD section 3
+  `UpdateRoomState` operation via `markRoom`
+  (`RoomsView.vue:615-656`; call at `:626` with roomNumber,
+  newState, actor) — clean maps dirty-to-clean
+  (`onMarkCleaned` at `:650-652`), inspect maps
+  clean-to-inspected (`onMarkInspected` at `:654-656`); the
+  per-room busy guard (`isBusy` at `:605-607`, set at
+  `:620-623`) disables the button until the call returns.
+- K–M: provider-side transition check (BR-28) plus history
+  row and outbox event in one transaction (LLD section 3);
+  success re-reads via `refreshMap` (`:634`, manual trigger
+  `onRefresh` at `:601-603`), so summary chips match the
+  rendered cards by construction.
+- L–N: illegal transition (e.g. a room already advanced by
+  another staffer) refuses `STATE_ILLEGAL`; one plain
+  sentence names the room (`:640-644`) and the map is left
+  untouched; a manual refresh clears a resolved banner.
 
 Failure/rollback:
 
@@ -1155,9 +1188,9 @@ Edge trace:
   patching; the Reporting read-model lag bound (LLD
   section 0, 60 s) does not apply here — the map reads the
   owning store directly.
-- Rollback: revert the #424 screen PR; the route, view,
-  and keys revert with it (additive only — existing screens
-  are untouched).
+- Rollback: revert the #424 screen PR for the route, view,
+  and keys, plus the #435 buttons PR for the card actions
+  (additive only — existing screens are untouched).
 
 ### 13.4 Onboarding wizard gating with hotel-name persistence (#425)
 
