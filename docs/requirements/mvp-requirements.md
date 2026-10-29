@@ -1314,5 +1314,209 @@ implementation PR must create it.
   section 6, never assumed): Rooms-map action placement
   (#424) and wizard steps 2–4 content (#425).
 
+## 11. Onboarding wizard steps 2–4 (Refs #438)
+
+Requirements delta for the deferred wizard steps: step 2 (hotel
+config details), step 3 (rooms/room-types seed), and step 4 (first
+owner account), built on the wizard shell and step 1 shipped in
+PR #437. Scope and done-conditions live with `product-owner`
+(`docs/product/desk-ui-design-rollout.md` [section 10](../product/desk-ui-design-rollout.md),
+`AC-DSK-9` through `AC-DSK-11`); the four-step flow with per-step
+validation, back edges, and failure/rollback edges lives with
+`architect` (J0 in `docs/product/ux-flows-wireframes.md`); guard
+mapping lives with `qa-lead` (handoff table in section 11.4
+below). This section records only the requirements delta the T2
+spec gate requires: the exact wizard fields plus validation per
+step (section 11.2), and the NFR delta (section 11.3: none —
+existing NFRs hold, stated explicitly).
+
+### 11.1 Explicit no-change statements
+
+- Every MVP requirement in sections 1 and 2 is unchanged by
+  this change: `FR-ADM-1`, `FR-ADM-2`, `FR-ADM-3`,
+  `FR-RMS-4`, `FR-CUS-1`, `FR-CUS-2`, and every NFR keep
+  their wording and targets. Steps 2–4 add no MVP
+  capability: each step is first-run entry of an existing
+  admin capability through its existing persistence path,
+  and the referenced FR acceptance criteria govern field
+  meaning and persistence.
+- No new FR ids are added in the `ADM`, `RMS`, or `CUS`
+  namespaces. The wizard-scoped `FR-DSK-8` through
+  `FR-DSK-10` below (continuing the section 10 namespace)
+  constrain first-run entry only and must not be read as
+  new capabilities.
+- The section 4 traceability table and its coverage count
+  are unchanged: the 40 mapped capabilities stand. The
+  handoff table below (section 11.4) is separate and does
+  not alter that count.
+- No data-dictionary entries: this section introduces no
+  data entities or fields. Every wizard field is covered
+  by an existing entry — hotel identity, contact details,
+  and local settings by section 12 (Hotel, owning FRs
+  `FR-ADM-1`, `FR-CUS-1`, `FR-CUS-2`); room numbers, room
+  types, floors, and capacity by the room/room-type entries
+  (owning FRs `FR-ADM-3`, `FR-RMS-4`); the owner account by
+  the user entry (owning FR `FR-ADM-2`)
+  (`data-dictionary.md` unchanged).
+- No business rules: this section introduces no domain
+  policy (`business-rules.md` unchanged). Wizard launch
+  gating stays a navigation rule over existing
+  configuration (section 10.1), and validation failures
+  below refuse entry, never business outcomes.
+- Sections 7, 8, 9, and 10 stand with their wording and
+  targets unchanged.
+
+### 11.2 Wizard-scoped functional requirements
+
+Ids continue the `DSK` (desk rollout) namespace from section
+10. Each item states the exact wizard fields, the validation
+that keeps staff on the failing step, and the existing
+persistence path with its server-enforced rules named so no
+validation is invented: blank-vs-valid and uniqueness rules
+below restate what `UpdateHotelConfig`, `UpsertRoomType` /
+`UpsertRoom`, and `CreateUser` already enforce (guards in
+section 11.4).
+
+FR-DSK-8 — Wizard step 2: remaining hotel profile. Staff
+complete the `FR-ADM-1` profile started in step 1 (hotel
+name already saved) through the existing
+hotel-configuration path.
+Given the wizard at step 2; when staff enter contact
+details (address, phone, email — each optional, stored
+verbatim when entered and left unset when blank), the
+local timezone (required: blank is refused naming the
+timezone field), and the retention floor in days
+(optional: blank keeps the 365-day default; a entered
+value must be an integer of 0 or more, else refused
+naming the retention-floor field), then continue
+persists the values through `UpdateHotelConfig` with
+actor and timestamp recorded (`NFR-AUD-1` holds). The
+saved details appear on confirmations, invoices, and
+receipts, and the local settings govern dates, times,
+and stay policies hotel-wide (`FR-ADM-1` holds).
+Back returns to step 1 with entered values kept; a
+validation failure keeps staff on step 2, names the
+missing or invalid field in plain words, and persists
+nothing for the step. Standard check-in/out times,
+rate plans, cancellation wording and reason lists, and
+charge and tax rules are not wizard fields: the manager
+enters them in Admin after the wizard as today
+(`FR-ADM-4`, `FR-CUS-1`, `FR-CUS-2`, `FR-BIL-5` hold).
+
+FR-DSK-9 — Wizard step 3: rooms and room-types seed.
+Staff define the `FR-ADM-3` property inventory through
+the existing seed path.
+Given the wizard at step 3; when staff enter room types
+(name required: blank is refused naming the room-type
+name; capacity and bed type per `FR-RMS-4`) and rooms
+(number required: blank is refused naming the room
+number; each number unique within the hotel — a
+duplicate is refused naming the number; each room
+linked to a room type saved in this step; floor
+optional), then continue persists them through
+`UpsertRoomType` / `UpsertRoom` with actor and
+timestamp recorded (`NFR-AUD-1` holds). The saved
+rooms appear in the inventory, availability, and
+calendar with the defined capacity and type
+(`FR-ADM-3` holds). Back returns to step 2 with
+entered values kept; a validation failure keeps staff
+on step 3, names the missing, duplicate, or unlinked
+field in plain words, and persists nothing for the
+step.
+
+FR-DSK-10 — Wizard step 4: first owner account. Staff
+create the `FR-ADM-2` owner sign-in through the
+existing admin user path, completing setup with a
+working owner sign-in.
+Given the wizard at step 4; when staff enter the
+display name (required: blank is refused naming the
+name field), the sign-in identity (required: blank is
+refused naming the identity field; an identity already
+in use is refused naming the identity), and a secret
+(required: empty is refused naming the secret field;
+`NFR-SEC-2` holds), with the role fixed to owner,
+then finishing persists the account through
+`CreateUser` with the creator recorded, and the wizard
+completes to the desk — the owner signs in and reaches
+exactly the owner-permitted functions. Manager and
+front-desk accounts are created in Admin afterwards
+(`FR-ADM-2` holds). Back returns to step 3 with
+entered values kept; a validation failure keeps staff
+on step 4, names the missing or taken field in plain
+words, and persists nothing. The wizard never shows
+again on the now-seeded database (`FR-DSK-7` holds).
+
+### 11.3 Non-functional requirements delta: no-change statement
+
+No new NFR is added by this change. The existing NFRs
+cover steps 2–4 as stated:
+
+- Catalogue coverage (`NFR-DSK-1`, `NFR-I18N-1` hold):
+  every new step-2–4 string ships in
+  `desk.onboarding.*` in both `messages/en.json` and
+  `messages/vi.json` with placeholders intact, and
+  `script/catalogue-coverage-check.sh` stays green; the
+  configured values shown are never hardcoded example
+  content.
+- Role enforcement (`NFR-SEC-1` holds): setup stays
+  owner-or-manager pathing with server-side enforcement
+  unchanged — a front-desk `UpdateHotelConfig` or
+  `CreateUser` attempt is refused `FORBIDDEN`, and the
+  wizard surfaces the existing owner/manager sentence.
+- Authentication (`NFR-SEC-2` holds): the step-4 secret
+  is required and stored hashed; lockout and idle
+  sign-out behave exactly as specified.
+- Audit (`NFR-AUD-1` holds): every step persist records
+  the acting user and timestamp.
+- Timezone rendering (`NFR-TZ-1` holds): the step-2
+  timezone governs the hotel's local date exactly as
+  specified.
+- Touch targets (`NFR-DSK-3` holds, extended to the
+  wizard): every step-2–4 control meets 44 by 44 CSS
+  px with 0 adjacent-target overlaps.
+
+### 11.4 Traceability handoff for `qa-lead`
+
+No new MVP capability is added, so each row traces to
+its `AC-DSK-n` condition and its underlying MVP FRs.
+Existing guards are named `file:line`; where no guard
+exists, the row names the missing guard explicitly and
+the steps 2–4 implementation PR must create it.
+
+| Item | Guard (existing on disk; follow-up extends or creates) | Handoff note for `qa-lead` |
+|---|---|---|
+| FR-DSK-8 | `UpdateHotelConfig` guards: `services/admin/src/server.test.ts:148` (persist), `:170` (values round trip), `:180` (front-desk `FORBIDDEN`), `:207` (actor recorded); `services/admin/src/pgstore.test.ts:103` (timezone write) | Extend with step-2 view assertions: contact fields optional and stored verbatim, blank timezone refused naming the field, non-integer or negative retention floor refused naming the field, back-to-step-1 keeps values, nothing persisted on failure |
+| FR-DSK-9 | Seed-path guards: `services/rooms/src/server.test.ts:70` (type upsert), `:79` (room upsert), `:109` (second type), `:139` (duplicate-number refusal), `:209`–`:246` (room lifecycle over seeded rooms); `script/e2e-desk-loop.sh` rooms step (type + two rooms, sellability check) | Create step-3 view assertions: per-field blank/duplicate/unlinked refusals naming the field, inventory/availability/calendar uptake, back-to-step-2 keeps values, nothing persisted on failure |
+| FR-DSK-10 | `CreateUser` guards: `services/admin/src/server.test.ts:122` (create), `:132` (duplicate identity refused), `:250` (role validation), `:289` (front-desk `FORBIDDEN`), `:343` (secret required), `:380` (lockout path), `:409` (unlock), `:446` (role change), `:507` (last-owner guard), `:620` (sign-in round trip) | Create step-4 view assertions: blank/taken/empty-secret refusals naming the field, fixed-owner role, completion routes to the desk with a working owner sign-in, back-to-step-3 keeps values, wizard never shows again on the seeded database |
+| Navigation + gate (FR-DSK-7 holds) | `app/src/views/OnboardingView.test.ts:61` (step 1 on empty database), `:90` (seeded redirect), `:104` (blank stays), `:126` (persist + complete), `:161` (forbidden sentence), `:190` (plain retry), `:224` (VI render) | Extend with steps 2–4 navigation: 25/50/75/100 progress, back/continue on every step with values kept, per-step validation naming the field |
+| Catalogue (NFR-DSK-1) | `script/catalogue-coverage-check.sh` plus `messages/en.json` / `messages/vi.json` (both exist) | Coverage job stays green on the steps 2–4 PR; new `desk.onboarding.*` keys land en + vi through the normal catalogue process |
+| NFR-DSK-3 on wizard | Missing automated audit (sections 9.5 and 10.4 name the same gap for the other routes; no touch-target guard exists) | Guard measures every step-2–4 control and checks 44 by 44 with 0 overlaps |
+
+### 11.5 Explicitly not specified here
+
+- The T2 UI contract section for steps 2–4 is not
+  written here: it lives with `product-owner` in
+  `docs/product/desk-ui-design-rollout.md` section 10.5,
+  which satisfies the T2 UI-contract minimum, so
+  requirements here do not reword absent UI
+  expectations (per the UI contract gap rule, the
+  contract exists and is referenced, not missing).
+- No new screens or flows beyond the four wizard steps;
+  rate-plan and stay-policy setup stays in Admin
+  post-wizard (`FR-ADM-4`); print, admin, and
+  gate/sign-in screens keep their current presentation.
+- No backend, API, contract, schema, or error-code
+  change: `UpdateHotelConfig`, `UpsertRoomType` /
+  `UpsertRoom`, and `CreateUser` behave exactly as
+  specified, with the server-side rules above restated,
+  not extended.
+- The `docs/product/acceptance-criteria.md` slice
+  (`AC-DSK-9` through `AC-DSK-11`) is separate
+  `product-owner` work already on the #438 stack
+  (PR #441); the test strategy and run records are
+  separate `qa-lead` work. This section traces to the
+  issue-body acceptance only through the `AC-DSK-n`
+  ids above.
+
 <!-- ao-role: business-analyst -->
-Role: business-analyst · AO session hotel-mgmt-542
+Role: business-analyst · AO session hotel-mgmt-578
