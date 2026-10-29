@@ -185,7 +185,7 @@
         data-testid="shell-content"
         class="shell-column"
       >
-        <RouterView />
+        <RouterView @setup-complete="loadHotelName" />
       </div>
     </div>
   </div>
@@ -193,7 +193,7 @@
 
 <script lang="ts">
 import { computed, defineComponent, onMounted, ref } from 'vue';
-import { RouterLink, RouterView, useRoute } from 'vue-router';
+import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router';
 import Button from 'primevue/button';
 import InputText from 'primevue/inputtext';
 import Message from 'primevue/message';
@@ -211,13 +211,14 @@ interface NavItem {
 }
 
 // Canvas-manifest-relative order (rollout section 4.1, Refs #419,
-// FR-DSK-1, D1): Desk · Stay · Rooms · Book · Folio · Print ·
-// Admin. Onboarding (#425) is still missing, so Rooms sits in its
-// canvas-relative spot between Stay and Book; #425 inserts
-// Onboarding ahead of it to complete the six-screen tab order.
+// FR-DSK-1, D1): Desk · Stay · Onboarding · Rooms · Book · Folio ·
+// Print · Admin. Onboarding (#425) launches unprompted on an
+// empty database only and redirects back to the shell on a
+// seeded one; it never interrupts a seeded desk.
 const NAV_ITEMS: NavItem[] = [
   { name: 'desk', to: '/', labelKey: 'desk.shell.nav_desk', fallback: 'Desk' },
   { name: 'stay', to: '/stay', labelKey: 'desk.shell.nav_stay', fallback: 'Stay' },
+  { name: 'onboarding', to: '/onboarding', labelKey: 'desk.shell.nav_onboarding', fallback: 'Onboarding' },
   { name: 'rooms', to: '/rooms', labelKey: 'desk.shell.nav_rooms', fallback: 'Rooms' },
   { name: 'book', to: '/book', labelKey: 'desk.shell.nav_book', fallback: 'Book' },
   { name: 'folio', to: '/folio', labelKey: 'desk.shell.nav_folio', fallback: 'Folio' },
@@ -238,6 +239,7 @@ export default defineComponent({
   setup() {
     const session = useSessionStore();
     const route = useRoute();
+    const router = useRouter();
     const retryMessage = ref('');
     const identity = ref('');
     const secret = ref('');
@@ -259,11 +261,36 @@ export default defineComponent({
         );
         const name = config.values?.name;
         hotelName.value = typeof name === 'string' && name.trim() !== '' ? name : '';
+        await maybeLaunchWizard();
       } catch {
         // Unreachable config keeps the catalogue brand: the header
-        // never blanks, and the sign-in gate still owns 401s.
+        // never blanks, and the sign-in gate still owns 401s. No
+        // wizard launch either — setup cannot persist while the
+        // backend is unreachable.
         hotelName.value = '';
       }
+    }
+
+    async function maybeLaunchWizard(): Promise<void> {
+      // Empty-database first run (Refs #425, LLD section 13.4):
+      // an owner/manager session with no configured hotel name
+      // belongs in the wizard. Seeded desks keep the existing
+      // shell path, and front-desk sessions never move — setup
+      // stays owner/manager only (the server still refuses them
+      // with FORBIDDEN).
+      if (!session.isSignedIn) {
+        return;
+      }
+      if (hotelName.value !== '') {
+        return;
+      }
+      if (session.role !== 'owner' && session.role !== 'manager') {
+        return;
+      }
+      if (route.name === 'onboarding') {
+        return;
+      }
+      await router.replace('/onboarding');
     }
 
     async function onRetry(): Promise<void> {
@@ -347,6 +374,7 @@ export default defineComponent({
       navItems: NAV_ITEMS,
       displayName,
       hotelName,
+      loadHotelName,
       retryMessage,
       onRetry,
       onLocale,

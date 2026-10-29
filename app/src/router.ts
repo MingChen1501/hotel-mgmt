@@ -14,6 +14,7 @@ import AdminView from './views/AdminView.vue';
 import BookView from './views/BookView.vue';
 import DeskView from './views/DeskView.vue';
 import FolioView from './views/FolioView.vue';
+import OnboardingView from './views/OnboardingView.vue';
 import PlaceholderView from './views/Placeholder.vue';
 import PrintView from './views/PrintView.vue';
 import RoomsView from './views/RoomsView.vue';
@@ -37,6 +38,11 @@ export function createAppRouter(): Router {
         path: '/stay',
         name: 'stay',
         component: StayView,
+      },
+      {
+        path: '/onboarding',
+        name: 'onboarding',
+        component: OnboardingView,
       },
       {
         path: '/rooms',
