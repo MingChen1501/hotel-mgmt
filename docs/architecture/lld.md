@@ -1192,16 +1192,28 @@ Edge trace:
   and keys, plus the #435 buttons PR for the card actions
   (additive only — existing screens are untouched).
 
-### 13.4 Onboarding wizard gating with hotel-name persistence (#425)
+### 13.4 Onboarding wizard gating with hotel-name persistence (#425) plus steps 2–4 (Refs #438)
 
 New first-run surface: the wizard launches on an empty
 database only, walks staff through setup with progress and
 back/continue navigation, and persists step 1 (hotel name)
 through the existing Admin config surface so the name
 appears in the shell header and on printed documents. Steps
-2–4 need the `product-owner` spec (and owner decision where
-the design is silent) before building beyond step 1 — step 1
-does not ship on assumed later-step content.
+2–4 (Refs #438) extend the shipped #425/#437 shell with one
+idea per step — step 2 remaining hotel profile
+(`FR-DSK-8`), step 3 rooms/room-types seed (`FR-DSK-9`),
+step 4 first owner account (`FR-DSK-10`) — each persisted
+through its existing operation with no new endpoint, no new
+entity, and no new error code. Scope and done-conditions live
+with `product-owner`
+(`docs/product/desk-ui-design-rollout.md` [section 10](../product/desk-ui-design-rollout.md),
+`AC-DSK-9` through `AC-DSK-11`, PR #441); exact fields and
+validation live with `business-analyst`
+(`docs/requirements/mvp-requirements.md` [section 11](../requirements/mvp-requirements.md),
+`FR-DSK-8` through `FR-DSK-10`, PR #442); guard mapping lives
+with `qa-lead`. This section supplies the T2 per-flow
+implementation diagram (happy path + failure/rollback path)
+with edge traces citing code.
 
 ```mermaid
 flowchart TD
@@ -1243,18 +1255,85 @@ Edge trace (every edge cites code):
 - E: NEW `/onboarding` route in `src/router.ts`
   (section 13.3 router note applies); deep-linking the
   wizard on a seeded database redirects to the shell.
-- J: steps 2–4 content, validation, and completion
-  semantics ride the future `product-owner` spec recorded
-  on #425 — this diagram specifies the gate and step 1
-  only.
+- J: steps 2–4 flow (Refs #438) — the happy path below;
+  per-step validation, back edges, and failure/rollback
+  edges follow. Client state keeps already-entered values
+  across back/continue; a failing step persists nothing.
+
+Steps 2–4 happy path (extends the gate + step 1 diagram
+above; node J expanded):
+
+```mermaid
+flowchart TD
+    J1[Step 2 at 50 percent: remaining hotel profile per FR-DSK-8] --> J2[Staff enters contact + timezone + retention floor]
+    J2 --> J3[Continue validates step 2]
+    J3 -->|valid| J4[Persist via UpdateHotelConfig with actor + timestamp]
+    J4 --> J5[Step 3 at 75 percent: rooms + room types per FR-DSK-9]
+    J5 --> J6[Staff enters room types + rooms with numbers, floors, capacity]
+    J6 --> J7[Continue validates step 3]
+    J7 -->|valid| J8[Persist via UpsertRoomType then UpsertRoom with actor + timestamp]
+    J8 --> J9[Step 4 at 100 percent: first owner account per FR-DSK-10]
+    J9 --> J10[Staff enters display name + sign-in identity + secret, role fixed to owner]
+    J10 --> J11[Finish validates step 4]
+    J11 -->|valid| J12[Persist via CreateUser with creator recorded]
+    J12 --> K[Setup completes to the desk; wizard never shows again on the seeded database]
+    J3 -->|back| E[Step 1 with entered values kept]
+    J7 -->|back| J1[Step 2 with entered values kept]
+    J11 -->|back| J5[Step 3 with entered values kept]
+```
+
+Edge trace (every edge cites code):
+
+- J1–J4: step 2 reuses the existing `UpdateHotelConfig`
+  operation (LLD section 8 ops table; same
+  `'/v1/admin/UpdateHotelConfig'` call shape the wizard
+  already uses at `OnboardingView.vue:203` for step 1,
+  mirroring the Admin read at `AdminView.vue:380`). The
+  implementation PR extends `OnboardingView.vue` with the
+  step-2 fields from `FR-DSK-8` (contact details optional
+  verbatim, timezone required, retention floor blank-keeps-
+  365 else integer >= 0); no new operation, no schema
+  change (`docs/technical/schema.md` unchanged). Saved
+  values surface through the existing reads (shell brand
+  at `App.vue:259`, print payloads per section 13.5).
+- J5–J8: step 3 introduces the first desk-client calls to
+  the existing `UpsertRoomType` / `UpsertRoom` operations
+  (LLD section 3 ops table; contracts unchanged,
+  `VALIDATION_FAILED` only). Order is types first, then
+  rooms linked to the saved types; each room number unique
+  within the hotel. Provider guards stand
+  (`services/rooms/src/server.test.ts:70` type upsert,
+  `:79` room upsert, `:139` duplicate-number refusal).
+  Saved rooms appear via the existing inventory,
+  availability, and calendar reads (`FR-ADM-3` holds).
+- J9–J12: step 4 introduces the first wizard-client call
+  to the existing `CreateUser` operation (LLD section 8
+  ops table; same `'/v1/admin/CreateUser'` call shape as
+  `AdminView.vue:439`), with the role fixed to owner and
+  the secret required hashed (`NFR-SEC-2`). Provider
+  guards stand (`services/admin/src/server.test.ts:122`
+  create, `:132` duplicate identity, `:343` secret
+  required, `:289` front-desk `FORBIDDEN`). Completion
+  routes to the desk; the gate predicate (A–B) then reads
+  a seeded database, so the wizard never shows again
+  (`FR-DSK-7` holds).
+- Back edges: client-side only — no persist, no
+  compensation; entered values are kept in the wizard
+  view state while each completed step's saved values
+  stay saved (per-step atomicity, never a cross-step
+  transaction).
 
 Failure/rollback:
 
 ```mermaid
 flowchart TD
     P[Name fails validation] --> Q[VALIDATION_FAILED names the field; wizard stays on step 1]
+    P2[Step 2 fails validation: blank timezone, or bad retention floor] --> Q2[Plain sentence names the field; wizard stays on step 2; nothing persisted for the step]
+    P3[Step 3 fails validation: blank type name, blank number, duplicate number, or unlinked type] --> Q3[Plain sentence names the field; wizard stays on step 3; nothing persisted for the step]
+    P4[Step 4 fails validation: blank name, blank or taken identity, or empty secret] --> Q4[Plain sentence names the field; wizard stays on step 4; nothing persisted]
     R[Front-desk role attempts setup] --> S[FORBIDDEN; setup stays owner/manager only]
     T[LAN disconnect during persist] --> U[Offline banner + manual retry; nothing half-written]
+    T3[Seed partially saved then a later room write fails] --> U3[Saved types and rooms stay saved; staff fixes the named field and retries the step; no cross-step compensation]
     V[401 / UNAUTHENTICATED] --> W[Single 401 path: clear token, route to sign-in]
 ```
 
@@ -1262,12 +1341,32 @@ Edge trace:
 
 - P–Q: config-schema validation (LLD section 8) precedes
   persistence — nothing to compensate.
+- P2–Q2: step-2 validation restates the server-enforced
+  rules named in `FR-DSK-8` (required timezone,
+  integer >= 0 retention floor) before the
+  `UpdateHotelConfig` call; per-step atomicity means a
+  refused step writes nothing.
+- P3–Q3: step-3 validation restates the server-enforced
+  rules named in `FR-DSK-9` (required type name/number,
+  unique number, linked type) before the
+  `UpsertRoomType` / `UpsertRoom` calls; a refused step
+  writes nothing, and a mid-step partial save (T3–U3)
+  needs no compensation because saved records are valid
+  inventory the staff member completes by retrying the
+  step — the seed path is idempotent by number.
+- P4–Q4: step-4 validation restates the server-enforced
+  rules named in `FR-DSK-10` (required name/identity/
+  secret, unique identity, fixed owner role) before the
+  `CreateUser` call; a refused finish creates no
+  account, and the wizard stays completable — setup
+  completes only when a working owner sign-in exists.
 - R–S: server-side role enforcement is unchanged
   (`FORBIDDEN` per LLD section 8; the cosmetic admin
   gating note in HLD section 12 stands).
-- Rollback: revert the #425 screen PR; the wizard is
-  additive — seeded desks never saw it, and the config
-  surface is unchanged.
+- Rollback: revert the #438 steps 2–4 screen PR; the
+  steps are additive to the shipped #437 shell — seeded
+  desks never saw them, and the config, seed, and admin
+  surfaces are unchanged.
 
 ### 13.5 Technical no-change note (behaviour, APIs, contracts)
 
