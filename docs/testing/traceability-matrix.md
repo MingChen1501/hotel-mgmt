@@ -117,17 +117,20 @@ styling #348). The MVP Coverage line above stands unchanged at
 Rollout-slice rows for the owner-supplied six-screen Claude desk
 UI design (Main board #420, Book #421, Stay check-in/out #422,
 Folio #423, Rooms visual map #424, 4-step Onboarding wizard
-#425). Each row traces its done-condition (AC-DSK-1..8, owned by
+#425). Each row traces its done-condition (AC-DSK-1..11, owned by
 `product-owner` in `docs/product/acceptance-criteria.md`
-[section 11](../product/acceptance-criteria.md), PR #426) and its
+[section 11](../product/acceptance-criteria.md), PR #426 plus
+AC-DSK-9..11 on the #438 stack in PR #441) and its
 presentation requirement (FR-DSK-1..7, NFR-DSK-1..3, owned by
 `business-analyst` in `docs/requirements/mvp-requirements.md`
-[section 10](../requirements/mvp-requirements.md), PR #427) to its
+[section 10](../requirements/mvp-requirements.md), PR #427, plus
+wizard-scoped FR-DSK-8..10 in section 11 on the #438 stack in
+PR #442) to its
 guard. Full guard detail — parity baselines plus the new guards
-D1–D9 — lives in
+D1–D12 — lives in
 `docs/testing/desk-ui-rollout-test-traceability.md`
 (desk-ui-rollout-test-traceability.md). Like the shell slice
-above, these 8 rows do not alter the 57-row MVP coverage count:
+above, these 11 rows do not alter the 57-row MVP coverage count:
 the rollout adds no MVP capability, and no existing matrix row
 may cite this rollout as its guard. A rollout row is complete
 only when its D-guard exists and passes; until then the row
@@ -141,13 +144,19 @@ names the screen PR that must create it.
 | AC-DSK-4 — Stay explicit empty placeholder with hint, check-in blocked (FR-DSK-4) | Presentational placeholder check: empty option plus pick-a-ready-room hint, `need_room` block, single-candidate auto-select intact | Baseline: `app/src/views/StayView.vue:167` empty option; `app/src/views/StayView.test.ts:295,314-317` placeholder-first options + `:348` need_room guard + `:380` auto-select (Refs #411); checkout gates `:721,759,803`; unchanged `FR-FDK-1/2` / `FR-BIL-7` guards. New: D4 hint-wording assertion, created by #422 |
 | AC-DSK-5 — Folio two-card layout with the balance unchanged (FR-DSK-5) | Presentational layout check: charges/payments cards, locale-correct amounts in EN and VI; posting and balance tests untouched | Baseline: `app/src/views/FolioView.test.ts:177` open + balance + `:213` charge post + `:244` payment + `:275,309,346,383` plain-words validation + `:419` in-flight guard; unchanged `FR-BIL-1/2/3` guards. New: D5 layout plus locale-amount assertions, created by #423 |
 | AC-DSK-6 — Rooms map with counts matching cards (FR-DSK-6) | Presentational map check: floor-grouped map, summary counts equal rendered cards, per-card chip plus type plus live note, per-card clean/inspect actions advancing state with refreshed counts | Baseline: unchanged `FR-RMS-1/2/3` guards (`UpdateRoomState` transitions reused, never reimplemented; `router.test.ts:17` pins the route set with the map route). New: D6 map assertions, created by #424 (read-only at the time); extended by #435 with per-card clean/inspect buttons — `RoomsView.test.ts:245` button presence per state + `:269` dirty-to-clean with count refresh + `:328` clean-to-inspected + `:385` refused transition leaves the map untouched + `:444` manual refresh clears a resolved failure |
-| AC-DSK-7 — Onboarding wizard gated to first run with step-1 name persisted (FR-DSK-7) | Presentational wizard check: launch on empty database, progress plus back/continue, step-1 hotel name in header and prints, no launch on seeded database | Baseline: unchanged `FR-ADM-1` guards; `app/src/views/PrintView.test.ts:342` confirmation wording (no wizard view exists). New: D7 wizard assertions, created by #425 (steps 2–4 ride the future `product-owner` spec); D8 served-print name assertion, created by #423 |
-| AC-DSK-8 — VI-primary catalogue with the hotel name configurable (NFR-DSK-1) | L2 catalogue check: 100% of user-visible strings from the catalogue in both locales, coverage check green, zero hardcoded hotel names | Baseline: `script/catalogue-coverage-check.sh` green + `messages/en.json` + `messages/vi.json` on disk. New keys (`desk.rooms.*`, `desk.onboarding.*`, `stay.checkin.*`, `desk.empty.*`) land through the normal catalogue process on each screen PR; served assertions D1 (header name) and D8 (printed name) |
+| AC-DSK-7 — Onboarding wizard gated to first run with step-1 name persisted (FR-DSK-7) | Presentational wizard check: launch on empty database, progress plus back/continue, step-1 hotel name in header and prints, no launch on seeded database | Baseline: unchanged `FR-ADM-1` guards; `app/src/views/PrintView.test.ts:342` confirmation wording (wizard step-1 view shipped in PR #437). New: D7 wizard assertions, created by #425; D8 served-print name assertion, created by #423. Steps 2–4 carry their own rows below (Refs #438) |
+| AC-DSK-8 — VI-primary catalogue with the hotel name configurable (NFR-DSK-1) | L2 catalogue check: 100% of user-visible strings from the catalogue in both locales, coverage check green, zero hardcoded hotel names | Baseline: `script/catalogue-coverage-check.sh` green + `messages/en.json` + `messages/vi.json` on disk. New keys (`desk.rooms.*`, `desk.onboarding.*`, `stay.checkin.*`, `desk.empty.*`) land through the normal catalogue process on each screen PR, including the steps 2–4 `desk.onboarding.*` keys en + vi on the #438 screen PR; served assertions D1 (header name) and D8 (printed name) |
+| AC-DSK-9 — Wizard step 2: remaining hotel profile persisted via the config path (FR-DSK-8) | Presentational step-2 check: 50 percent progress, optional contacts stored verbatim, blank timezone refused, bad retention floor refused, back keeps values, nothing persisted on failure | Baseline: `UpdateHotelConfig` guards `services/admin/src/server.test.ts:148` (persist; values round trip `:155`–`:165`), `:170` (blank name refused), `:180` (front-desk `FORBIDDEN`), `:189`–`:245` (stay-times/wording save with read-back); `services/admin/src/pgstore.test.ts:103` (timezone write with actor in audit log). New: D10 step-2 view assertions, created by the #438 steps 2–4 screen PR (extends `app/src/views/OnboardingView.test.ts`) |
+| AC-DSK-10 — Wizard step 3: rooms and room types persisted via the seed path (FR-DSK-9) | Presentational step-3 check: 75 percent progress, blank/duplicate/unlinked refusals naming the field, inventory/availability/calendar uptake, back keeps values, nothing persisted on failure | Baseline: `UpsertRoomType` / `UpsertRoom` guards `services/rooms/src/server.test.ts:70` (type upsert), `:79` (room upsert), `:109` (second type), `:137`–`:147` (unknown-type `NOT_FOUND`), `:149`–`:202` (owner defines rooms; inventory + availability uptake); `script/e2e-desk-loop.sh:266` rooms step (type plus two rooms, sellability check); no server guard for duplicate numbers — the wizard refuses intra-batch repeats client-side (FR-DSK-9, PR #442). New: D11 step-3 view assertions, created by the #438 steps 2–4 screen PR |
+| AC-DSK-11 — Wizard step 4: first owner account persisted via the admin user path (FR-DSK-10) | Presentational step-4 check: 100 percent progress, blank/taken/empty-secret refusals naming the field, fixed owner role, working owner sign-in, completion to the desk, wizard never shows again, back keeps values, no account created on failure | Baseline: `CreateUser` guards `services/admin/src/server.test.ts:122` (create), `:132` (duplicate identity refused), `:283`–`:335` (role validation incl. bad-role), `:337`–`:372` (last-owner guard), `:374`–`:400` (front-desk role change `FORBIDDEN`), `:82`–`:101` (lockout path), `:402`–`:437` (unlock), `:440`–`:486` (unlock refusals), `:536`–`:563` (rotation round trip), `:614`–`:647` (rotation audit); `services/admin/src/pgstore.ts:209`–`:210` (empty secret refused, code-enforced) and `:204`–`:205` (front-desk `CreateUser` `FORBIDDEN`, code-enforced). New: D12 step-4 view assertions, created by the #438 steps 2–4 screen PR |
 
-Rollout-slice coverage (Refs #419): 8 rows mapped; parity
-baselines exist for AC-DSK-1..5,7,8 and state baselines for
-AC-DSK-6/7 ride the unchanged MVP guards; new guards D1–D9 are
-pending the screen PRs (#420–#425). The MVP Coverage line below
+Rollout-slice coverage (Refs #419, #438): 11 rows mapped; parity
+baselines exist for AC-DSK-1..5,7,8, state baselines for
+AC-DSK-6/7 ride the unchanged MVP guards, and provider-side
+baselines for AC-DSK-9..11 ride the unchanged `UpdateHotelConfig`,
+seed-path, and `CreateUser` guards; new guards D1–D9 are
+pending the screen PRs (#420–#425) and D10–D12 are pending the
+#438 steps 2–4 screen PR. The MVP Coverage line below
 stands unchanged at 57/57.
 
 Coverage: 43 FRs mapped, 14 NFRs mapped, 57 rows total, 57 guards
@@ -155,4 +164,4 @@ filled (PR #112 slice: FR-RES-1, FR-RMS-1..4, FR-RTE-1/2/4/5, FR-ADM-1/2, FR-CUS
 filled (PR #112 slice: FR-RES-1, FR-RMS-1..4, FR-RTE-1/2/4/5, FR-ADM-1/2, FR-CUS-1, NFR-CON-1/2; PR #149 slice: FR-FDK-1, FR-FDK-5, FR-BIL-1/2/3/6, FR-ADM-5, NFR-BKP-1/2, NFR-AUD-1, NFR-TZ-1, plus FR-RES-1 persistence; PR #150 slice: FR-FDK-2, FR-FDK-3, FR-FDK-4, FR-BIL-7, plus the NFR-CON-2 stay-side checkout guard; PR #151 slice: FR-BIL-4, FR-CUS-3; PR #156 slice: FR-RPT-1..3; PR #157 slice: FR-GST-1..3; PR #158 slice: NFR-DEP-1, FR-ADM-4 config level, plus the FR-ADM-1 deployment extension; PR #159 slice: FR-RES-2/3/5/6 plus the NFR-CON-1 modify-path extension; PR #160 slice: ReleaseBlock plus rooms-side move coordination (FR-RMS-3, FR-FDK-3); PR #161 slice: full rates handling (FR-RTE-3 filled, FR-RTE-4/5 extended — remaining TBD cells fill in later slices); count corrected to the live total 48 (later slices filled cells without updating this line); PR #153 slice: NFR-RET-1, NFR-AVL-1; PR #182 slice: FR-RES-4, FR-ADM-3, FR-CUS-2, NFR-PERF-1/2 filled (5 guards — count corrected to the live total 53); FR-GST-4, FR-BIL-5, FR-RPT-4 point at follow-ups #189, #190, #191 and fill with those issues; NFR-I18N-1 filled by the #192 slice (count corrected to the live total 54); #189/#190/#191/#192/#201 slices filled FR-GST-4, FR-BIL-5, FR-RPT-4, NFR-I18N-1 (plus the #201 extension) — count corrected to the live total 57 (Closes #214)).
 
 <!-- ao-role: qa-lead -->
-Role: qa-lead · AO session hotel-mgmt-77
+Role: qa-lead · AO session hotel-mgmt-580
