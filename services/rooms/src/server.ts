@@ -113,11 +113,15 @@ async function handleRequest(
       const rooms = await store.listRoomsByState(body["state"]);
       writeJson(res, 200, {
         state: body["state"],
+        // Issue #436: expose the stored room floor as an additive
+        // optional field. Rows without a floor omit it so existing
+        // consumers see byte-identical payloads.
         rooms: rooms.map((room) => ({
           roomId: room.id,
           number: room.number,
           roomTypeId: room.roomTypeId,
           state: room.state,
+          ...(typeof room.floor === "string" && room.floor !== "" ? { floor: room.floor } : {}),
         })),
       });
       return;

@@ -1,7 +1,7 @@
 {
   "operation": "ListRoomsByState",
   "contract": "RoomInventoryService",
-  "version": "1.0",
+  "version": "1.1",
   "traces": ["docs/architecture/lld.md section 3", "FR-RMS-1"],
   "transport": {
     "method": "POST",
@@ -29,7 +29,8 @@
             "roomId": { "type": "string", "format": "uuid" },
             "number": { "type": "string" },
             "roomTypeId": { "type": "string", "format": "uuid" },
-            "state": { "type": "string" }
+            "state": { "type": "string" },
+            "floor": { "type": "string", "description": "Stored room floor; omitted when the room has none." }
           }
         }
       }

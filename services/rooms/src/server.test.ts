@@ -238,6 +238,36 @@ describe("desk loop", () => {
     });
   });
 
+  it("includes the stored floor in inventory rows when set", async () => {
+    // Issue #436: the floor is an additive optional field — rooms with
+    // a stored floor carry it, rooms without one omit it so existing
+    // consumers keep working unchanged.
+    await withServer(async (port) => {
+      await request(port, "POST", "/v1/rooms/UpsertRoomType", { name: "Deluxe", actor: "manager" });
+      await request(port, "POST", "/v1/rooms/UpsertRoom", {
+        number: "201",
+        roomType: "Deluxe",
+        floor: "2",
+        actor: "manager",
+      });
+      await request(port, "POST", "/v1/rooms/UpsertRoom", {
+        number: "202",
+        roomType: "Deluxe",
+        actor: "manager",
+      });
+
+      const inventory = await request(port, "POST", "/v1/rooms/ListRoomsByState", {
+        state: "vacant-inspected",
+      });
+      assert.equal(inventory.status, 200);
+      const rooms = (inventory.body as { rooms: Record<string, unknown>[] }).rooms;
+      const floored = rooms.find((room) => room["number"] === "201");
+      const unfloored = rooms.find((room) => room["number"] === "202");
+      assert.equal(floored?.["floor"], "2");
+      assert.ok(unfloored && !("floor" in unfloored));
+    });
+  });
+
   it("walks dirty to inspected and refuses dirty straight to inspected", async () => {
     const store = new RoomStore();
     await store.upsertRoomType({ name: "Standard", actor: "owner" });
