@@ -9,10 +9,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { mount } from '@vue/test-utils';
+import { createMemoryHistory, createRouter } from 'vue-router';
 import BookView from './BookView.vue';
 import StayView from './StayView.vue';
 import FolioView from './FolioView.vue';
 import RoomsView from './RoomsView.vue';
+import OnboardingView from './OnboardingView.vue';
 import { useSessionStore } from '../stores/session';
 import { setLocale } from '../i18n';
 import { resetConnectivityForTests } from '../api/client';
@@ -558,8 +560,82 @@ describe('QA-EDGE-3 departure before arrival', () => {
 
 // QA-EDGE-4 (trace AC-DSK-3, AC-DSK-4, AC-DSK-5), scriptable half
 // only: every blank required field blocks the submit and persists
-// nothing. Highlight/focus/tab order stay human-only.
+// nothing. Highlight/focus/tab order stay human-only. The stay
+// no-room (need_room) half rides the existing StayView guard
+// (StayView.test.ts keeps the need_room guard when no ready room
+// is picked: placeholder plus blocked check-in with no AssignRoom
+// call), and the folio no-stay (need_stay) half rides the existing
+// FolioView guard (FolioView.test.ts refuses empty stays in plain
+// words with no GetFolioBalance call); both are cited, not
+// re-pinned, to avoid duplicate guards.
 describe('QA-EDGE-4 empty required fields', () => {
+  it('book: find with a blank name names no guest and reads nothing', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountBook();
+    await signInBook(wrapper, fetchMock);
+
+    await wrapper.find('[data-testid="book-find-guest"]').trigger('click');
+    expect(wrapper.find('[data-testid="book-guest-status"]').text()).toContain(
+      'No guest with that name.',
+    );
+    const urls = fetchMock.mock.calls.map((call) => String(call[0]));
+    expect(urls).not.toContain('/v1/guests/IdentifyGuest');
+    expect(urls).not.toContain('/v1/guests/UpsertGuest');
+  });
+
+  it('book: quote without dates passes through and the refusal reads plain', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountBook();
+    await signInBook(wrapper, fetchMock);
+
+    // Current behaviour: the desk has no client-side date-blank
+    // block, so the (blank) dates travel to the pricer and the
+    // server-side refusal renders as one plain sentence.
+    const happy = stubBookHappy(fetchMock);
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/rates/QuotePrice') {
+        return Promise.resolve(
+          jsonResponse({ code: 'VALIDATION_FAILED', message: 'arrival after departure' }, 400),
+        );
+      }
+      return happy(url, init);
+    });
+
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="book-room-type-id"] option[value="standard"]').exists()).toBe(true);
+    });
+    await wrapper.find('[data-testid="book-room-type-id"]').setValue('standard');
+    await wrapper.find('[data-testid="book-quote"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="book-quote-error"]').exists()).toBe(true);
+    });
+    const sent = fetchMock.mock.calls.find((call) => call[0] === '/v1/rates/QuotePrice');
+    expect(parseBody(sent?.[1] as RequestInit).arrivalDate).toBe('');
+    expect(parseBody(sent?.[1] as RequestInit).departureDate).toBe('');
+    const errorText = wrapper.find('[data-testid="book-quote-error"]').text();
+    expect(errorText).toContain('That did not work');
+    expectNoRawLeak(errorText);
+    expect(wrapper.find('[data-testid="book-quote-section"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="book-result"]').exists()).toBe(false);
+    const urls = fetchMock.mock.calls.map((call) => String(call[0]));
+    expect(urls).not.toContain('/v1/reservations/CreateReservation');
+  });
+
+  it('book: without a quote the screen reads no_quote with no confirm to press', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountBook();
+    await signInBook(wrapper, fetchMock);
+
+    expect(wrapper.find('[data-testid="book-quote-empty"]').text()).toContain(
+      'Get a price first, then confirm.',
+    );
+    expect(wrapper.find('[data-testid="book-confirm"]').exists()).toBe(false);
+    const urls = fetchMock.mock.calls.map((call) => String(call[0]));
+    expect(urls).not.toContain('/v1/reservations/CreateReservation');
+  });
   it('stay: an empty booking ref names the field and reads nothing', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
@@ -737,8 +813,14 @@ describe('QA-EDGE-7 concurrent check-in to the same room', () => {
 
 // QA-EDGE-8 (trace AC-DSK-4, AC-DSK-6): check-in candidates come
 // from vacant-inspected rooms only, so a dirty room is never
-// offered. The dirty-to-clean-to-inspected walk itself rides the
-// existing RoomsView guards.
+// offered. The checkout-to-dirty turn itself happens server-side
+// on CheckOut: the desk writes no room state of its own and
+// re-reads the lists, so the just-freed room re-enters through
+// the dirty pile, never the candidate picker. The rest of the
+// loop (dirty-to-clean, clean-to-inspected) rides the existing
+// RoomsView guards (RoomsView.test.ts advances dirty-to-clean
+// through the clean button, advances clean-to-inspected through
+// the inspect button).
 describe('QA-EDGE-8 dirty-room checkout flow', () => {
   it('never offers the dirty room as a check-in candidate', async () => {
     const fetchMock = vi.fn();
@@ -800,11 +882,54 @@ describe('QA-EDGE-8 dirty-room checkout flow', () => {
     expect(pickerText).toContain('101');
     expect(pickerText).not.toContain('109');
   });
+
+  it('closes the stay once, writes no room state, and re-reads the lists', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountStay();
+    await signInStay(wrapper, fetchMock);
+
+    const listsBefore = fetchMock.mock.calls.filter(
+      (call) => call[0] === '/v1/stay/ListArrivalsDepartures',
+    ).length;
+
+    await wrapper.find('[data-testid="stay-checkout-stay-id"]').setValue('s-1');
+    await wrapper.find('[data-testid="stay-review"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkout-status"]').text()).toContain(
+        'balance is zero',
+      );
+    });
+
+    await wrapper.find('[data-testid="stay-checkout"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkout-dialog"]').exists()).toBe(true);
+    });
+    await wrapper.find('[data-testid="stay-checkout-confirm"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkout-status"]').text()).toContain('Checked out');
+    });
+
+    // Exactly one stay close, and the desk never writes room state
+    // itself: the vacant-dirty turn is the server side of CheckOut.
+    const urls = fetchMock.mock.calls.map((call) => String(call[0]));
+    expect(urls.filter((url) => url === '/v1/stay/CheckOut')).toHaveLength(1);
+    expect(urls).not.toContain('/v1/rooms/UpdateRoomState');
+    expect(urls).not.toContain('/v1/rooms/UpsertRoom');
+    // The post-checkout world is re-read, so the freed room
+    // re-enters through its (dirty) state read, not the picker.
+    expect(
+      fetchMock.mock.calls.filter((call) => call[0] === '/v1/stay/ListArrivalsDepartures'),
+    ).toHaveLength(listsBefore + 1);
+  });
 });
 
 // QA-EDGE-9 (trace AC-DSK-3, AC-DSK-8), scriptable half only: on
 // an API failure every screen reads the plain catalogue sentence
-// with no raw leak. Wording naturalness stays human-only.
+// with no raw leak. Wording naturalness stays human-only, as does
+// the VI re-read: the desk stores the resolved error sentence at
+// failure time, so switching locale afterwards cannot re-render
+// it — that whole-screen single-language re-read stays manual.
 describe('QA-EDGE-9 API-error rendering without raw leak', () => {
   it('book: a failed quote reads one plain sentence', async () => {
     const fetchMock = vi.fn();
@@ -912,8 +1037,9 @@ describe('QA-EDGE-9 API-error rendering without raw leak', () => {
 // writes exactly once per screen. The book-confirm and
 // stay-check-in halves ride the existing in-flight guards
 // (BookView.test.ts double-click confirm, StayView.test.ts
-// double-click check-in); the folio-pay and stay-checkout halves
-// are pinned here.
+// double-click check-in), as does the folio charge half
+// (FolioView.test.ts guards the charge click while a post is in
+// flight); the folio-pay and stay-checkout halves are pinned here.
 describe('QA-EDGE-10 double-submit', () => {
   it('folio: a double-clicked pay records one payment', async () => {
     const fetchMock = vi.fn();
@@ -1005,8 +1131,9 @@ describe('QA-EDGE-10 double-submit', () => {
 
 // QA-EDGE-11 (trace AC-DSK-3, AC-DSK-4, AC-DSK-7), scriptable half
 // only: a mid-flow reload creates no half-record and lands valid.
-// Wizard back-keeps-values rides the existing OnboardingView
-// guards; focus/scroll position stay human-only.
+// Wizard back-keeps-values rides the existing OnboardingView guard
+// (OnboardingView.test.ts saves an entered retention floor and
+// keeps values on back); focus/scroll position stay human-only.
 describe('QA-EDGE-11 mid-flow refresh', () => {
   it('book: a reload after quoting creates no booking and lands valid', async () => {
     const fetchMock = vi.fn();
@@ -1030,6 +1157,105 @@ describe('QA-EDGE-11 mid-flow refresh', () => {
     expect(
       fetchMock.mock.calls.filter((call) => call[0] === '/v1/reservations/CreateReservation'),
     ).toHaveLength(0);
+  });
+
+  it('stay: a back/forward return keeps the explicit placeholder with check-in blocked', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountStay();
+    await signInStay(wrapper, fetchMock);
+
+    await wrapper.find('[data-testid="stay-booking-ref"]').setValue('RSV-1');
+    await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain('Booked: Standard');
+    });
+
+    // A browser back/forward keeps the component state, so the
+    // returned-to screen must still read the explicit placeholder
+    // (choose_room plus room_hint) with nothing bound.
+    expect(
+      (wrapper.find('[data-testid="stay-checkin-room"]').element as HTMLSelectElement).value,
+    ).toBe('');
+    expect(wrapper.find('[data-testid="stay-checkin-room"]').text()).toContain('Pick a ready room…');
+    expect(wrapper.find('[data-testid="stay-checkin-room-hint"]').text()).toContain(
+      'Choose a ready room below.',
+    );
+
+    // And the returned-to check-in is still blocked: one more
+    // click names the missing room and starts no stay.
+    await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkin-error"]').text()).toContain(
+        'Pick a ready room first.',
+      );
+    });
+    const urls = fetchMock.mock.calls.map((call) => String(call[0]));
+    expect(urls).not.toContain('/v1/rooms/AssignRoom');
+    expect(urls).not.toContain('/v1/stay/CheckIn');
+    expect(urls).not.toContain('/v1/reservations/CheckInReservation');
+  });
+
+  it('onboarding: a reload mid-step-3 creates no half-room and lands valid', async () => {
+    const fetchMock = vi.fn();
+    fetchMock.mockImplementation((url: string) => {
+      if (url === '/v1/admin/GetHotelConfig') {
+        return Promise.resolve(jsonResponse({ schemaVersion: 1, values: {} }));
+      }
+      if (url === '/v1/admin/UpdateHotelConfig') {
+        return Promise.resolve(jsonResponse({ schemaVersion: 2, values: {} }));
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    async function mountWizard() {
+      const pinia = createPinia();
+      setActivePinia(pinia);
+      useSessionStore().signIn('tok-1', 'Ada Owner', 'owner');
+      const router = createRouter({
+        history: createMemoryHistory(),
+        routes: [
+          { path: '/', component: { template: '<div />' } },
+          { path: '/onboarding', component: OnboardingView },
+        ],
+      });
+      await router.replace('/onboarding');
+      const wrapper = mount(OnboardingView, {
+        global: { plugins: [pinia, router] },
+      });
+      await router.isReady();
+      return wrapper;
+    }
+
+    const wrapper = await mountWizard();
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="onboarding-step-1"]').exists()).toBe(true);
+    });
+    await wrapper.find('[data-testid="onboarding-hotel-name"]').setValue('Sunrise Hotel');
+    await wrapper.find('[data-testid="onboarding-step1-form"]').trigger('submit');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="onboarding-step-2"]').exists()).toBe(true);
+    });
+    await wrapper.find('[data-testid="onboarding-timezone"]').setValue('Asia/Ho_Chi_Minh');
+    await wrapper.find('[data-testid="onboarding-step2-form"]').trigger('submit');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="onboarding-step-3"]').exists()).toBe(true);
+    });
+
+    // Entered but never continued: a reload here must persist no
+    // room-type or room half-record.
+    await wrapper.find('[data-testid="onboarding-type-name-0"]').setValue('Standard');
+    await wrapper.find('[data-testid="onboarding-room-number-0"]').setValue('101');
+    wrapper.unmount();
+
+    const reloaded = await mountWizard();
+    await vi.waitFor(() => {
+      expect(reloaded.find('[data-testid="onboarding-step-1"]').exists()).toBe(true);
+    });
+    const urls = fetchMock.mock.calls.map((call) => String(call[0]));
+    expect(urls).not.toContain('/v1/rooms/UpsertRoomType');
+    expect(urls).not.toContain('/v1/rooms/UpsertRoom');
   });
 });
 
