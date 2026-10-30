@@ -151,7 +151,7 @@ docs and plans, not gated specs.
 | Browser E2E plan | `testing/browser-e2e-plan.md` | active | `qa-lead` | Playwright browser-E2E spec for the Vue desk flows: flows, browsers, CI placement, install/caching, pass criteria incl. MIME smoke (Closes #334) |
 | Desk styling test traceability | `testing/desk-styling-test-traceability.md` | active | `qa-lead` | parity + missing-guard traceability for the #338 desk styling pass: existing guards by `file:line`, TBD guards M1–M7, stand-in demo run record spec (Refs #338) |
 | Desk UI rollout test traceability | `testing/desk-ui-rollout-test-traceability.md` | active | `qa-lead` | parity + new-guard traceability for the #419 six-screen rollout: AC-DSK-1..8 to guards, D1–D9 created by the screen PRs (Refs #419) |
-| Manual QA testsuite (6-screen desk UI) | `testing/manual-qa-testsuite.md` | active | `qa-lead` | Vietnamese-first manual QA cases per screen plus end-to-end journey, each with preconditions, steps, expected results, and AC-DSK trace (Closes #448) |
+| Manual QA testsuite (6-screen desk UI) | `testing/manual-qa-testsuite.md` | active | `qa-lead` | Vietnamese-first manual QA cases per screen plus end-to-end journey, each with preconditions, steps, expected results, and AC-DSK trace (Closes #448); validation + edge-case matrix QA-EDGE-1..12 with scriptable/human-only split (Refs #450) |
 
 ## DevOps / Operations / Release
 
