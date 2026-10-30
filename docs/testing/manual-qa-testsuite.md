@@ -1,6 +1,6 @@
 # Bộ kiểm thử thủ công cho giao diện desk 6 màn hình (Manual QA Testsuite)
 
-Trạng thái: active. Chủ sở hữu: `qa-lead`. Refs #448.
+Trạng thái: active. Chủ sở hữu: `qa-lead`. Refs #448, #450 (mục 9: ma trận biên + xác thực).
 
 Tài liệu này là bộ kiểm thử thủ công (manual QA testsuite) cho 6 màn hình
 desk UI, dùng TRƯỚC buổi kiểm thử trực tiếp trên máy của chủ sở hữu (owner machine).
@@ -435,18 +435,296 @@ Trước khi chạy case của từng màn hình, xác nhận vỏ chung đạt 
   AC-DSK-5 (folio) → AC-DSK-2 (clean/inspect trên Main); AC-DSK-1 và AC-DSK-8
   (vỏ chung + catalogue) kiểm tra xuyên suốt mọi bước.
 
-## 8. Bảng truy vết AC-DSK tới case
+## 9. Ma trận biên + xác thực (Validation + edge-case matrix, Refs #450)
+
+Mục này mở rộng bộ kiểm thử với ma trận biên và xác thực cho 6 màn
+hình desk UI, theo yêu cầu của chủ sở hữu: đầu vào sai, trùng lặp/
+idempotency, overbooking, nhận phòng đồng thời, luồng trả phòng khi
+phòng bẩn, hiển thị lỗi API không rò rỉ kỹ thuật, bấm đôi, tải lại/
+back giữa luồng, đổi locale giữa luồng.
+
+### 9.0. Quy ước phân loại mỗi case
+
+Mỗi case mang một dòng **Phân loại** với đúng một trong ba giá trị:
+
+- **Scriptable:** assertion kiểm tra được bằng guard tự động trong
+  follow-up của `dev` (điều kiện + từ chối + trạng thái cuối đều quan
+  sát được qua API/DOM, kèm AC-DSK trace cho guard tương lai). Người
+  kiểm thử tay vẫn chạy case để lấy bằng chứng câu chữ.
+- **Human-only:** chỉ người kiểm thử đánh giá được (cảm nhận UX, câu
+  chữ tự nhiên, highlight màn hình đang mở, thứ tự tab, vị trí focus)
+  — không viết guard cho phần này.
+- **Hỗn hợp (Mixed):** liệt kê tách bạch assertion nào scriptable
+  (cho guard tương lai) và điểm nào human-only.
+
+Mọi case vẫn giữ đúng cấu trúc 4 mục (điều kiện tiên quyết, các bước,
+kết quả mong đợi kèm key catalogue, truy vết AC-DSK). Quy tắc câu chữ
+lỗi áp dụng chung: mọi lỗi và từ chối phải đọc thành câu rõ ràng, nêu
+đúng lý do, không rò rỉ mã kỹ thuật thô (quy tắc plain-words
+`FR-DSP-3`; kiểm tra đối chiếu ở cả hai locale EN/VI).
+
+### QA-EDGE-1 — Mã đặt phòng không tồn tại (unknown booking ref)
+
+- **Phân loại:** Scriptable (guard tương lai: nhập ref lạ → từ chối
+  đúng key, không gọi gán phòng; trace AC-DSK-4).
+- **Điều kiện tiên quyết:** DB đã seed; mở `/stay`.
+- **Các bước thực hiện:**
+  1. Tại ô mã đặt phòng (`desk.stay.booking_ref`), nhập một mã không
+     tồn tại (ví dụ `NOPE-0000`), bấm nhận phòng
+     (`desk.stay.checkin_button`).
+  2. Đọc câu từ chối; kiểm tra danh sách in-house
+     (`desk.stay.in_house`) không đổi.
+- **Kết quả mong đợi:** hiển thị
+  `desk.stay.refused_unknown_ref` (mã đặt phòng không tồn tại, kèm gợi
+  ý kiểm tra lại mã); không tạo stay nào, không đổi trạng thái phòng
+  nào.
+- **Truy vết:** AC-DSK-4.
+
+### QA-EDGE-2 — Số tiền âm (negative amounts)
+
+- **Phân loại:** Scriptable (guard tương lai: charge/payment âm → từ
+  chối đúng key, số dư giữ nguyên; trace AC-DSK-5).
+- **Điều kiện tiên quyết:** 1 stay in-house đã có folio; mở `/folio`,
+  mở folio của stay, ghi nhớ số dư.
+- **Các bước thực hiện:**
+  1. Ghi charge với số tiền âm: kỳ vọng `desk.folio.need_charge`
+     (nhập tên khoản và số tiền không âm).
+  2. Ghi payment với số tiền âm hoặc bằng 0: kỳ vọng
+     `desk.folio.need_payment` (nhập số tiền dương).
+  3. Đọc lại số dư (`desk.folio.folio_balance`).
+- **Kết quả mong đợi:** cả hai thao tác đều bị chặn bằng lời rõ ràng
+  nêu đúng trường số tiền; không ghi dòng sai nào vào folio, số dư
+  giữ nguyên.
+- **Truy vết:** AC-DSK-5.
+
+### QA-EDGE-3 — Ngày đi trước ngày đến (departure-before-arrival)
+
+- **Phân loại:** Scriptable (guard tương lai: khoảng ngày đảo ngược →
+  từ chối nêu đúng vấn đề ngày, không tạo đặt phòng; trace AC-DSK-3).
+- **Điều kiện tiên quyết:** DB đã seed hạng phòng có giá; đã chọn
+  khách ở `/book`.
+- **Các bước thực hiện:**
+  1. Nhập ngày đến (`desk.book.arrival`) SAU ngày đi
+     (`desk.book.departure`), bấm `desk.book.quote_button`.
+  2. Nếu báo giá bị chặn, thử tiếp bấm `desk.book.confirm_button` (khi
+     nút hiện) và đọc kết quả; kiểm tra không có mã tham chiếu mới
+     (`desk.book.reference`).
+- **Kết quả mong đợi:** báo giá/xác nhận bị từ chối bằng câu rõ ràng
+  nêu đúng vấn đề thứ tự ngày (người kiểm thử ghi lại câu chữ thực tế
+  quan sát được ở cả hai locale để đối chiếu catalogue); không tạo đặt
+  phòng nào.
+- **Truy vết:** AC-DSK-3.
+
+### QA-EDGE-4 — Trường bắt buộc bỏ trống (empty required fields)
+
+- **Phân loại:** Hỗn hợp — Scriptable: mọi lần bỏ trống đều bị chặn và
+  nêu đúng tên trường (guard tương lai trace AC-DSK-3, AC-DSK-4,
+  AC-DSK-5); Human-only: trường lỗi được highlight trực quan, focus
+  rơi vào trường lỗi đầu tiên, thứ tự tab đi qua các trường theo đúng
+  thứ tự hiển thị.
+- **Điều kiện tiên quyết:** DB đã seed; mở `/book`, `/stay`, `/folio`.
+- **Các bước thực hiện:**
+  1. Book: bấm `desk.book.find_button` khi tên khách trống — kỳ vọng
+     câu nêu đúng trường tên; bấm `desk.book.quote_button` khi chưa
+     nhập ngày — kỳ vọng câu nêu đúng trường ngày; bấm
+     `desk.book.confirm_button` khi chưa báo giá — kỳ vọng
+     `desk.book.no_quote`.
+  2. Stay: bấm nhận phòng khi chưa nhập mã đặt phòng — kỳ vọng
+     `desk.stay.need_ref`; bấm khi chưa chọn phòng — kỳ vọng
+     `desk.stay.need_room`.
+  3. Folio: bấm `desk.folio.open_button` khi chưa nhập stay — kỳ vọng
+     `desk.folio.need_stay`.
+- **Kết quả mong đợi:** mỗi thao tác đều bị chặn bằng lời rõ ràng nêu
+  đúng trường thiếu, không tạo bản ghi nửa vời nào; về cảm nhận,
+  trường lỗi được làm nổi bật và focus/tab đi đúng thứ tự.
+- **Truy vết:** AC-DSK-3, AC-DSK-4, AC-DSK-5.
+
+### QA-EDGE-5 — Xác nhận trùng / idempotency (duplicates)
+
+- **Phân loại:** Scriptable (guard tương lai: gửi xác nhận trùng →
+  đúng một đặt phòng tồn tại; trace AC-DSK-3).
+- **Điều kiện tiên quyết:** DB đã seed hạng phòng có giá cho ngày
+  đến/đi; đã chọn khách và đã lấy báo giá ở `/book`.
+- **Các bước thực hiện:**
+  1. Bấm `desk.book.confirm_button`, ghi lại mã tham chiếu
+     (`desk.book.reference`).
+  2. Gửi lại cùng xác nhận (bấm lại / thử lại khi mạng chập chờn),
+     rồi kiểm tra danh sách đặt phòng và số lượng bản ghi đã tạo.
+- **Kết quả mong đợi:** đúng một đặt phòng tồn tại với một mã tham
+  chiếu duy nhất; lần gửi trùng không tạo đặt phòng thứ hai (trả về
+  cùng mã tham chiếu hoặc từ chối trùng bằng lời rõ ràng, không rò rỉ
+  mã kỹ thuật).
+- **Truy vết:** AC-DSK-3.
+
+### QA-EDGE-6 — Overbooking vượt số phòng bán được
+
+- **Phân loại:** Scriptable (guard tương lai: đặt vượt sellable units
+  → `refused_soldout`, không tạo đặt phòng; trace AC-DSK-3).
+- **Điều kiện tiên quyết:** hạng phòng chỉ còn đúng 1 đơn vị bán được
+  cho khoảng ngày kiểm thử (đặt trước các đơn vị còn lại); mở `/book`
+  với khách đã chọn.
+- **Các bước thực hiện:**
+  1. Đặt 1 phòng trong khoảng ngày đó: xác nhận thành công, ghi lại mã
+     tham chiếu.
+  2. Đặt thêm 1 phòng cùng hạng cùng khoảng ngày: đọc kết quả.
+- **Kết quả mong đợi:** lần đặt thứ hai bị từ chối với
+  `desk.book.refused_soldout` (hết phòng trống trong các ngày đã
+  chọn); không tạo đặt phòng nào thêm.
+- **Truy vết:** AC-DSK-3.
+
+### QA-EDGE-7 — Hai lễ tân nhận phòng cùng phòng đồng thời (concurrent check-in)
+
+- **Phân loại:** Hỗn hợp — Scriptable: đúng một check-in chiếm được
+  phòng, bên còn lại nhận `refused_taken` và không tạo stay trùng
+  (guard tương lai trace AC-DSK-4); Human-only: câu từ chối đọc thân
+  thiện, gợi ý chọn phòng sẵn sàng khác, không đổ lỗi cho người dùng.
+- **Điều kiện tiên quyết:** 2 đặt phòng đã xác nhận cùng hạng phòng;
+  chỉ còn đúng 1 phòng `vacant-inspected` thuộc hạng đó; mở `/stay`
+  trên 2 phiên (2 tab trình duyệt hoặc 2 máy).
+- **Các bước thực hiện:**
+  1. Cả hai phiên cùng chọn 2 đặt phòng khác nhau và cùng chọn chung
+     một phòng sẵn sàng, rồi bấm `desk.stay.checkin_button` càng đồng
+     thời càng tốt.
+  2. Đọc kết quả cả hai phiên; kiểm tra trạng thái phòng và danh sách
+     in-house (`desk.stay.in_house`).
+- **Kết quả mong đợi:** đúng một phiên hiển thị
+  `desk.stay.checked_in`/`desk.stay.checked_in_named`; phiên còn lại
+  hiển thị `desk.stay.refused_taken` (phòng vừa có khách, gợi ý chọn
+  phòng khác); phòng thành occupied gắn đúng một stay, không có stay
+  trùng phòng.
+- **Truy vết:** AC-DSK-4.
+
+### QA-EDGE-8 — Trả phòng khi phòng bẩn (dirty-room checkout flow)
+
+- **Phân loại:** Scriptable (guard tương lai: checkout → vacant-dirty;
+  phòng dirty không được gán nhận phòng; sau clean+inspect lại gán
+  được; trace AC-DSK-4, AC-DSK-6).
+- **Điều kiện tiên quyết:** 1 stay in-house có folio số dư 0; mở
+  `/stay`.
+- **Các bước thực hiện:**
+  1. Trả phòng (`desk.stay.checkout_button`): kỳ vọng
+     `desk.stay.checked_out`/`desk.stay.checked_out_named`.
+  2. Mở `/rooms`: kiểm tra chip phòng vừa trả là
+     `desk.rooms.chip_needs_cleaning` (ghi chú
+     `desk.rooms.note_needs_cleaning`).
+  3. Mở `/stay` với một đặt phòng cùng hạng: xác nhận phòng bẩn KHÔNG
+     xuất hiện trong danh sách phòng sẵn sàng (kỳ vọng gợi ý
+     `desk.stay.room_hint` hoặc `desk.stay.no_ready_rooms` nếu không
+     còn phòng sạch).
+  4. Bấm `desk.today.mark_cleaned` rồi `desk.today.mark_inspected`
+     trên phòng đó; thử gán nhận phòng lại.
+- **Kết quả mong đợi:** phòng đi đúng vòng dirty → clean →
+  inspected; khi còn bẩn thì không gán được cho nhận phòng; sau khi
+  kiểm tra xong thì gán được bình thường.
+- **Truy vết:** AC-DSK-4, AC-DSK-6.
+
+### QA-EDGE-9 — Lỗi API hiển thị bằng lời rõ ràng, không rò rỉ kỹ thuật
+
+- **Phân loại:** Hỗn hợp — Scriptable: khi API lỗi, màn hình hiển thị
+  đúng key catalogue thân thiện (guard tương lai trace AC-DSK-3,
+  AC-DSK-8); Human-only: câu chữ đọc tự nhiên với lễ tân, không còn
+  sót mã trạng thái/mã lỗi/JSON thô trên màn hình.
+- **Điều kiện tiên quyết:** DB đã seed; mở `/book` (màn hình đại diện
+  cho quy tắc hiển thị lỗi, Refs FR-DSK-3 trong issue #450 tức quy tắc
+  plain-words `FR-DSP-3`).
+- **Các bước thực hiện:**
+  1. Gây lỗi phía máy chủ khi đang thao tác Book (ví dụ dừng backend
+     rồi bấm `desk.book.quote_button`, hoặc thao tác trên dữ liệu vừa
+     bị xóa ở phiên khác).
+  2. Đọc toàn bộ thông báo lỗi hiện trên màn hình ở locale VI rồi
+     chuyển sang EN đọc lại.
+- **Kết quả mong đợi:** màn hình hiển thị câu thân thiện (ví dụ
+  `desk.shell.request_failed`: thao tác không thành công, gợi ý thử
+  lại và báo quản lý); tuyệt đối không lộ mã HTTP, mã lỗi nội bộ,
+  stack trace hay JSON thô; câu chữ đúng locale đang bật, không lẫn
+  lộn hai ngôn ngữ.
+- **Truy vết:** AC-DSK-3, AC-DSK-8.
+
+### QA-EDGE-10 — Bấm đôi nút ghi (double-submit)
+
+- **Phân loại:** Scriptable (guard tương lai: bấm đôi → đúng một tác
+  vụ có hiệu lực trên mỗi màn hình; trace AC-DSK-3, AC-DSK-4,
+  AC-DSK-5).
+- **Điều kiện tiên quyết:** DB đã seed; có đặt phòng confirmed, stay
+  in-house có folio; mở `/book`, `/stay`, `/folio`.
+- **Các bước thực hiện:**
+  1. Book: đã có báo giá, bấm đúp `desk.book.confirm_button`; đếm số
+     đặt phòng được tạo (kỳ vọng nút chuyển trạng thái bận
+     `desk.book.confirming` và chỉ một lần xác nhận có hiệu lực).
+  2. Stay: bấm đúp `desk.stay.checkin_button` trên một đặt phòng +
+     phòng sẵn sàng (kỳ vọng `desk.stay.checking_in`, một stay duy
+     nhất; lần thứ hai nếu lọt qua phải nhận
+     `desk.stay.refused_checked_in`).
+  3. Folio: bấm đúp `desk.folio.charge_button` và
+     `desk.folio.pay_button` (kỳ vọng `desk.folio.charging`/
+     `desk.folio.paying`, mỗi loại đúng một dòng mới, số dư đổi đúng
+     một lần).
+- **Kết quả mong đợi:** không nút nào tạo bản ghi trùng khi bị bấm
+  đôi; nút thể hiện trạng thái bận trong lúc gọi API.
+- **Truy vết:** AC-DSK-3, AC-DSK-4, AC-DSK-5.
+
+### QA-EDGE-11 — Tải lại / back giữa luồng (mid-flow refresh/back)
+
+- **Phân loại:** Hỗn hợp — Scriptable: sau tải lại/back, không tồn tại
+  bản ghi nửa vời và màn hình ở trạng thái hợp lệ (guard tương lai
+  trace AC-DSK-3, AC-DSK-4, AC-DSK-7); Human-only: vị trí focus/cuộn
+  hợp lý, người dùng hiểu mình đang ở bước nào (tiến trình wizard,
+  gợi ý chọn phòng).
+- **Điều kiện tiên quyết:** DB đã seed (cho Book/Stay) và một DB trống
+  (cho wizard); mở `/book`, `/stay`, `/onboarding`.
+- **Các bước thực hiện:**
+  1. Book: nhập khách + ngày + hạng phòng, lấy báo giá NHƯNG chưa xác
+     nhận, rồi tải lại trang: đọc lại màn hình, kiểm tra chưa có đặt
+     phòng nào được tạo.
+  2. Stay: chọn đặt phòng ở danh sách arrivals nhưng chưa chọn phòng,
+     rồi bấm back trình duyệt và tiến lại (forward): kiểm tra màn
+     hình vẫn hiển thị placeholder tường minh (`desk.stay.choose_room`,
+     `desk.stay.room_hint`), không kẹt trạng thái.
+  3. Onboarding (DB trống): nhập tên khách sạn ở bước 1, sang bước 2
+     rồi bấm back về bước 1: kỳ vọng giá trị đã nhập được giữ; tải
+     lại trang giữa bước 3: kỳ vọng wizard không tạo phòng nửa vời
+     trong tồn kho.
+- **Kết quả mong đợi:** không có đặt phòng/stay/phòng nửa vời nào được
+  tạo bởi thao tác tải lại/back; màn hình sau điều hướng ở trạng thái
+  hợp lệ, dữ liệu đã nhập hợp lệ được giữ lại, người dùng luôn biết
+  mình đang ở bước nào.
+- **Truy vết:** AC-DSK-3, AC-DSK-4, AC-DSK-7.
+
+### QA-EDGE-12 — Đổi locale giữa luồng (mid-flow locale switch)
+
+- **Phân loại:** Hỗn hợp — Scriptable: sau khi đổi locale, toàn màn
+  hình đúng một ngôn ngữ và giá trị đã nhập/số tiền được giữ
+  (guard tương lai trace AC-DSK-1, AC-DSK-8); Human-only: câu chữ dịch
+  tự nhiên, không cắt/tràn bố cục, thứ tự tab không đổi.
+- **Điều kiện tiên quyết:** DB đã seed; có stay in-house có folio;
+  mở `/book`, `/folio`.
+- **Các bước thực hiện:**
+  1. Book: nhập khách + ngày + hạng phòng, lấy báo giá, rồi bật nút
+     chuyển ngôn ngữ giữa EN và VI (`desk.shell.locale_en`,
+     `desk.shell.locale_vi`): đọc lại toàn màn hình, kiểm tra giá trị
+     đã nhập còn nguyên, rồi xác nhận đặt phòng và đọc
+     `desk.book.readback`.
+  2. Folio: mở folio, ghi 1 charge, rồi đổi locale và đọc lại các số
+     tiền: kỳ vọng định dạng tiền đúng theo từng locale, số dư không
+     đổi giá trị.
+- **Kết quả mong đợi:** sau mỗi lần đổi, TOÀN BỘ màn hình đúng một
+  ngôn ngữ (không lẫn lộn EN/VI trên cùng màn hình); mọi giá trị đã
+  nhập, báo giá và số dư được giữ nguyên giá trị, chỉ đổi cách diễn
+  đạt/định dạng theo locale.
+- **Truy vết:** AC-DSK-1, AC-DSK-8.
+
+## 10. Bảng truy vết AC-DSK tới case
 
 | AC-DSK | Case kiểm tra |
 |---|---|
-| AC-DSK-1 — Vỏ chung đúng thứ tự tab, toggle locale toàn màn hình | Mục 0.4 (mọi màn hình) + mọi bước của QA-E2E-1 |
-| AC-DSK-2 — Bảng Main + 2 nút housekeeping, số liệu làm mới | QA-MAIN-1, QA-MAIN-2, QA-MAIN-3; QA-E2E-1 bước 7 |
-| AC-DSK-3 — Book bố cục 2 cột, luồng giữ nguyên | QA-BOOK-1..4; QA-E2E-1 bước 3 |
-| AC-DSK-4 — Stay placeholder tường minh + gợi ý, chặn nhận phòng, trả phòng cần folio thanh toán | QA-STAY-1..3; QA-E2E-1 bước 4 và 6 |
-| AC-DSK-5 — Folio bố cục 2 thẻ, số dư giữ nguyên | QA-FOLIO-1..4; QA-E2E-1 bước 5 |
-| AC-DSK-6 — Sơ đồ phòng, số tổng khớp thẻ | QA-ROOMS-1..3; QA-E2E-1 bước 2 |
-| AC-DSK-7 — Wizard chỉ chạy lần đầu, bước 1 lưu tên khách sạn | QA-ONB-0, QA-ONB-1; QA-E2E-1 bước 1 và 4 |
-| AC-DSK-8 — Catalogue VI-first, tên khách sạn là giá trị cấu hình | Mục 0.4 + QA-ONB-1 + QA-FOLIO-3; xuyên suốt QA-E2E-1 |
+| AC-DSK-1 — Vỏ chung đúng thứ tự tab, toggle locale toàn màn hình | Mục 0.4 (mọi màn hình) + mọi bước của QA-E2E-1; QA-EDGE-12 (đổi locale giữa luồng) |
+| AC-DSK-2 — Bảng Main + 2 nút housekeeping, số liệu làm mới | QA-MAIN-1, QA-MAIN-2, QA-MAIN-3; QA-E2E-1 bước 7; QA-EDGE-8 (vòng dirty → clean → inspected) |
+| AC-DSK-3 — Book bố cục 2 cột, luồng giữ nguyên | QA-BOOK-1..4; QA-E2E-1 bước 3; QA-EDGE-3, QA-EDGE-4, QA-EDGE-5, QA-EDGE-6, QA-EDGE-9, QA-EDGE-10, QA-EDGE-11 |
+| AC-DSK-4 — Stay placeholder tường minh + gợi ý, chặn nhận phòng, trả phòng cần folio thanh toán | QA-STAY-1..3; QA-E2E-1 bước 4 và 6; QA-EDGE-1, QA-EDGE-4, QA-EDGE-7, QA-EDGE-8, QA-EDGE-10, QA-EDGE-11 |
+| AC-DSK-5 — Folio bố cục 2 thẻ, số dư giữ nguyên | QA-FOLIO-1..4; QA-E2E-1 bước 5; QA-EDGE-2, QA-EDGE-4, QA-EDGE-10 |
+| AC-DSK-6 — Sơ đồ phòng, số tổng khớp thẻ | QA-ROOMS-1..3; QA-E2E-1 bước 2; QA-EDGE-8 (phòng bẩn không gán được) |
+| AC-DSK-7 — Wizard chỉ chạy lần đầu, bước 1 lưu tên khách sạn | QA-ONB-0, QA-ONB-1; QA-E2E-1 bước 1 và 4; QA-EDGE-11 (tải lại/back giữa wizard) |
+| AC-DSK-8 — Catalogue VI-first, tên khách sạn là giá trị cấu hình | Mục 0.4 + QA-ONB-1 + QA-FOLIO-3; xuyên suốt QA-E2E-1; QA-EDGE-9 (lỗi API không rò rỉ kỹ thuật), QA-EDGE-12 |
 | AC-DSK-9 — Bước 2: hồ sơ khách sạn còn lại qua đường config | QA-ONB-2; QA-E2E-1 bước 1 |
 | AC-DSK-10 — Bước 3: phòng và hạng phòng qua đường seed | QA-ONB-3; QA-E2E-1 bước 1 |
 | AC-DSK-11 — Bước 4: tài khoản owner đầu tiên qua đường admin user | QA-ONB-4; QA-E2E-1 bước 1 |
