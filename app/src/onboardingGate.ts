@@ -14,6 +14,14 @@
 // (`OnboardingView.vue`) stay consistent.
 export const SKELETON_HOTEL_NAME = 'Skeleton Hotel';
 
+// The boot-seed placeholder is not a hotel name staff can keep:
+// the gate above would read it back as unconfigured and relaunch
+// the wizard on every visit, so step 1 rejects it (Refs #456) with
+// the reserved-name sentence instead of persisting a setup loop.
+export function isPlaceholderHotelName(name: string): boolean {
+  return name.trim() === SKELETON_HOTEL_NAME;
+}
+
 export function configuredHotelName(values: unknown): string {
   if (typeof values !== 'object' || values === null) {
     return '';
@@ -23,7 +31,7 @@ export function configuredHotelName(values: unknown): string {
     return '';
   }
   const trimmed = name.trim();
-  if (trimmed === '' || trimmed === SKELETON_HOTEL_NAME) {
+  if (trimmed === '' || isPlaceholderHotelName(trimmed)) {
     return '';
   }
   return trimmed;

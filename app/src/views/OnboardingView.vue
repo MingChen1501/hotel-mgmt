@@ -391,7 +391,7 @@ import ProgressBar from 'primevue/progressbar';
 import { apiFetch } from '../api/client';
 import type { ApiError } from '../api/client';
 import { t } from '../i18n';
-import { configuredHotelName } from '../onboardingGate';
+import { SKELETON_HOTEL_NAME, configuredHotelName, isPlaceholderHotelName } from '../onboardingGate';
 import { useSessionStore } from '../stores/session';
 
 // First-run setup wizard (Refs #425 step 1, #438 steps 2–4, LLD
@@ -580,6 +580,18 @@ export default defineComponent({
           'desk.onboarding.name_required',
           {},
           'Enter the hotel name to continue.',
+        );
+        return;
+      }
+      if (isPlaceholderHotelName(name)) {
+        // The gate reads the boot-seed placeholder back as
+        // unconfigured (Refs #456), so persisting it would relaunch
+        // the wizard on every visit: step 1 names the placeholder
+        // and keeps staff on the step, nothing persists.
+        formError.value = t(
+          'desk.onboarding.name_placeholder_reserved',
+          { name: SKELETON_HOTEL_NAME },
+          `The name ${SKELETON_HOTEL_NAME} is reserved for fresh setups. Enter the hotel's real name to continue.`,
         );
         return;
       }
