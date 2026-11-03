@@ -114,6 +114,7 @@ Development table, which use a `../` prefix.
 |---|---|---|---|---|
 | API spec | `technical/api-spec.md` | active | `architect` | contracts for service interfaces and endpoints (outline, Closes #11) |
 | Schema | `technical/schema.md` | active | `architect` | data schemas and validation rules (Closes #97) |
+| Desk UI fact schema | `technical/desk-ui-fact-schema.md` | active | `architect` | DOM-vs-design UI fact schema contract for the six desk screens: fields, record shape, provenance convention, determinism and zero-binary requirements (Closes #465) |
 | Integration | `technical/integration.md` | active | `architect` | third-party and cross-system integration contracts (Closes #97) |
 | Error handling | `technical/error-handling.md` | active | `architect` | error taxonomy and handling conventions (outline, Closes #11) |
 | Security threat model | `technical/security-threat-model.md` | active | `architect` | threats, mitigations, and trust boundaries (Closes #97) |
