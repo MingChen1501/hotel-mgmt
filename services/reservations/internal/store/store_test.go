@@ -3,6 +3,7 @@ package store
 import (
 	"sync"
 	"testing"
+	"time"
 )
 
 func loopInput(roomTypeID string) CreateInput {
@@ -287,6 +288,16 @@ func pastInput(roomTypeID string) CreateInput {
 	return input
 }
 
+// futureInput builds a booking whose arrival has not passed yet, so
+// the BR-5 too-early refusal can be exercised without depending on
+// fixed fixture dates. Dates derive from the clock, never fixtures.
+func futureInput(roomTypeID string) CreateInput {
+	input := loopInput(roomTypeID)
+	input.ArrivalDate = time.Now().UTC().AddDate(0, 0, 1).Format("2006-01-02")
+	input.DepartureDate = time.Now().UTC().AddDate(0, 0, 3).Format("2006-01-02")
+	return input
+}
+
 // TestMarkNoShowReleasesAndKeepsHistory is the FR-RES-6 guard: marking
 // a past-arrival unarrived reservation no-show releases the held room
 // and keeps the no-show in the reservation history with its reason.
@@ -326,7 +337,7 @@ func TestMarkNoShowReleasesAndKeepsHistory(t *testing.T) {
 // both STATE_ILLEGAL, and a missing reason is VALIDATION_FAILED.
 func TestMarkNoShowRefusals(t *testing.T) {
 	st := New()
-	future, oerr := st.Create(loopInput("deluxe-type"), "")
+	future, oerr := st.Create(futureInput("deluxe-type"), "")
 	if oerr != nil {
 		t.Fatalf("booking refused: %v", oerr)
 	}

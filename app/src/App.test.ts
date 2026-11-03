@@ -284,6 +284,63 @@ describe('shell navigation', () => {
     }
   });
 
+  it('launches the wizard at step 1 on a fresh database carrying the placeholder name', async () => {
+    // Regression guard (Refs #456, FR-DSK-7): both admin stores
+    // answer GetHotelConfig on an unconfigured database with the
+    // boot-seed placeholder values (`services/admin/src/store.ts`
+    // seed, `services/admin/src/pgstore.ts` CONFIG_DEFAULTS,
+    // `deploy/seed/boot.sql`). The placeholder name is not a
+    // configured hotel, so /app shows the onboarding gate at step 1
+    // with the catalogue brand instead of the desk.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: string) =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify(
+              url === '/v1/admin/GetHotelConfig'
+                ? {
+                  schemaVersion: 1,
+                  values: {
+                    name: 'Skeleton Hotel',
+                    timezone: 'UTC',
+                    standardCheckinTime: '14:00',
+                    standardCheckoutTime: '12:00',
+                    retentionFloorDays: 365,
+                    requiredGuestFields: ['fullName'],
+                    cancellationReasons: [],
+                    noshowRule: {},
+                    approvalRule: { required: false },
+                  },
+                }
+                : {},
+            ),
+            {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            },
+          ),
+        ),
+      ),
+    );
+    try {
+      const pinia = createPinia();
+      setActivePinia(pinia);
+      useSessionStore().signIn('tok-1', 'Ada Owner', 'owner');
+      const wrapper = await mountShellWith(pinia, '/');
+      await vi.waitFor(() => {
+        expect(router.currentRoute.value.path).toBe('/onboarding');
+      });
+      await vi.waitFor(() => {
+        expect(wrapper.find('[data-testid="onboarding-step-1"]').exists()).toBe(true);
+      });
+      expect(wrapper.find('[data-testid="shell-brand"]').text()).toContain('Hotel Management');
+      expect(wrapper.find('[data-testid="onboarding-progress"]').text()).toBe('Step 1 of 4');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('leaves a front-desk session on the shell when no hotel name is configured', async () => {
     // Setup stays owner/manager only (Refs #425, LLD section 13.4
     // R–S): a front-desk session never moves into the wizard.

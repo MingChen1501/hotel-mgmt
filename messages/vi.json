@@ -636,6 +636,7 @@
     "desk.onboarding.loading": "Đang kiểm tra trạng thái thiết lập…",
     "desk.onboarding.saving": "Đang lưu…",
     "desk.onboarding.name_required": "Vui lòng nhập tên khách sạn để tiếp tục.",
+    "desk.onboarding.name_placeholder_reserved": "Tên {name} dành riêng cho thiết lập mới. Vui lòng nhập tên thật của khách sạn để tiếp tục.",
     "desk.onboarding.forbidden": "Việc thiết lập dành cho chủ khách sạn hoặc quản lý. Hãy hỏi quản lý nếu cần thay đổi.",
     "desk.onboarding.noscript": "Trang này cần JavaScript để thiết lập khách sạn.",
     "desk.onboarding.finish": "Hoàn tất",

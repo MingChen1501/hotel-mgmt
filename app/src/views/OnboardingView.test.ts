@@ -87,6 +87,40 @@ describe('onboarding wizard step 1', () => {
     }
   });
 
+  it('shows step 1 on a fresh database carrying the boot-seed placeholder name', async () => {
+    // Regression guard (Refs #456, FR-DSK-7): both admin stores
+    // answer GetHotelConfig on an unconfigured database with the
+    // placeholder values (`services/admin/src/store.ts` seed,
+    // `services/admin/src/pgstore.ts` CONFIG_DEFAULTS,
+    // `deploy/seed/boot.sql`). The placeholder name is not a
+    // configured hotel, so the gate stays on step 1 instead of
+    // bouncing to the shell.
+    const fetchMock = vi.fn();
+    stubConfig(fetchMock, {
+      name: 'Skeleton Hotel',
+      timezone: 'UTC',
+      standardCheckinTime: '14:00',
+      standardCheckoutTime: '12:00',
+      retentionFloorDays: 365,
+      requiredGuestFields: ['fullName'],
+      cancellationReasons: [],
+      noshowRule: {},
+      approvalRule: { required: false },
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const { wrapper, router } = await mountWizard();
+      await vi.waitFor(() => {
+        expect(wrapper.find('[data-testid="onboarding-step-1"]').exists()).toBe(true);
+      });
+      expect(wrapper.find('[data-testid="onboarding-progress"]').text()).toBe('Step 1 of 4');
+      expect(router.currentRoute.value.path).toBe('/onboarding');
+      expect(wrapper.html()).not.toContain('message-missing:');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('redirects to the shell when the hotel name is already configured', async () => {
     const fetchMock = vi.fn();
     stubConfig(fetchMock, { name: 'Seeded Hotel' });
@@ -119,6 +153,44 @@ describe('onboarding wizard step 1', () => {
       );
       expect(router.currentRoute.value.path).toBe('/onboarding');
     } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('keeps staff on step 1 when the name is the boot-seed placeholder', async () => {
+    // Regression guard (Refs #456): the gate reads the placeholder
+    // back as unconfigured, so persisting it would relaunch the
+    // wizard on every visit. Step 1 rejects it with the
+    // reserved-name sentence and persists nothing.
+    const fetchMock = vi.fn();
+    stubConfig(fetchMock, {});
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const { wrapper, router } = await mountWizard();
+      await vi.waitFor(() => {
+        expect(wrapper.find('[data-testid="onboarding-step-1"]').exists()).toBe(true);
+      });
+      await wrapper.find('[data-testid="onboarding-hotel-name"]').setValue('Skeleton Hotel');
+      await wrapper.find('[data-testid="onboarding-step1-form"]').trigger('submit');
+      expect(wrapper.find('[data-testid="onboarding-error"]').text()).toContain(
+        'The name Skeleton Hotel is reserved for fresh setups.',
+      );
+      expect(fetchMock.mock.calls.some((call) => call[0] === '/v1/admin/UpdateHotelConfig')).toBe(
+        false,
+      );
+      expect(wrapper.find('[data-testid="onboarding-step-1"]').exists()).toBe(true);
+      expect(router.currentRoute.value.path).toBe('/onboarding');
+      expect(wrapper.html()).not.toContain('message-missing:');
+      // The Vietnamese catalogue carries the same reserved-name
+      // sentence with the same placeholder (issue #339 parity).
+      setLocale('vi');
+      await wrapper.find('[data-testid="onboarding-step1-form"]').trigger('submit');
+      expect(wrapper.find('[data-testid="onboarding-error"]').text()).toContain(
+        'Tên Skeleton Hotel dành riêng cho thiết lập mới.',
+      );
+      expect(wrapper.html()).not.toContain('message-missing:');
+    } finally {
+      setLocale('en');
       vi.unstubAllGlobals();
     }
   });

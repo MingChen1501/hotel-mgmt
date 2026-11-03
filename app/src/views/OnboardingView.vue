@@ -391,6 +391,7 @@ import ProgressBar from 'primevue/progressbar';
 import { apiFetch } from '../api/client';
 import type { ApiError } from '../api/client';
 import { t } from '../i18n';
+import { SKELETON_HOTEL_NAME, configuredHotelName, isPlaceholderHotelName } from '../onboardingGate';
 import { useSessionStore } from '../stores/session';
 
 // First-run setup wizard (Refs #425 step 1, #438 steps 2–4, LLD
@@ -447,14 +448,6 @@ function errorMessage(): string {
     {},
     'That did not work. Try again; if it keeps failing, tell the manager.',
   );
-}
-
-function configuredName(values: unknown): string {
-  if (typeof values !== 'object' || values === null) {
-    return '';
-  }
-  const name = (values as Record<string, unknown>)['name'];
-  return typeof name === 'string' && name.trim() !== '' ? name : '';
 }
 
 function isWholeNumber(raw: string): boolean {
@@ -521,8 +514,10 @@ export default defineComponent({
           '/v1/admin/GetHotelConfig',
           { method: 'POST', body: '{}' },
         );
-        if (configuredName(config.values) !== '') {
+        if (configuredHotelName(config.values) !== '') {
           // Seeded database: the wizard never launches (Refs #425).
+          // The boot-seed placeholder counts as unconfigured
+          // (Refs #456), so a fresh database stays on step 1.
           await router.replace('/');
           return;
         }
@@ -585,6 +580,18 @@ export default defineComponent({
           'desk.onboarding.name_required',
           {},
           'Enter the hotel name to continue.',
+        );
+        return;
+      }
+      if (isPlaceholderHotelName(name)) {
+        // The gate reads the boot-seed placeholder back as
+        // unconfigured (Refs #456), so persisting it would relaunch
+        // the wizard on every visit: step 1 names the placeholder
+        // and keeps staff on the step, nothing persists.
+        formError.value = t(
+          'desk.onboarding.name_placeholder_reserved',
+          { name: SKELETON_HOTEL_NAME },
+          `The name ${SKELETON_HOTEL_NAME} is reserved for fresh setups. Enter the hotel's real name to continue.`,
         );
         return;
       }

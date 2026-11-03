@@ -636,6 +636,7 @@
     "desk.onboarding.loading": "Checking setup status…",
     "desk.onboarding.saving": "Saving…",
     "desk.onboarding.name_required": "Enter the hotel name to continue.",
+    "desk.onboarding.name_placeholder_reserved": "The name {name} is reserved for fresh setups. Enter the hotel's real name to continue.",
     "desk.onboarding.forbidden": "Setup is for the owner or manager. Ask the manager if something needs changing.",
     "desk.onboarding.noscript": "This page needs JavaScript to set up the hotel.",
     "desk.onboarding.finish": "Finish",
