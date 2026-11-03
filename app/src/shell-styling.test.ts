@@ -108,6 +108,51 @@ describe('served-print style isolation (M4)', () => {
   });
 });
 
+describe('locale-label contrast (Refs #455)', () => {
+  // Relative luminance per WCAG 2.1, sRGB branch.
+  function luminance(hexColor: string): number {
+    const hex = hexColor.replace('#', '');
+    const channels = [0, 2, 4].map((i) => {
+      const value = parseInt(hex.slice(i, i + 2), 16) / 255;
+      return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+  }
+
+  function contrastRatio(foreground: string, background: string): number {
+    const lighter = luminance(foreground) > luminance(background)
+      ? luminance(foreground)
+      : luminance(background);
+    const darker = lighter === luminance(foreground)
+      ? luminance(background)
+      : luminance(foreground);
+    return (lighter + 0.05) / (darker + 0.05);
+  }
+
+  // First `color` declaration inside the given selector's rule.
+  function ruleColor(css: string, selector: string): string {
+    const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const match = new RegExp(`${escaped}\\s*\\{[^}]*?color\\s*:\\s*(#[0-9A-Fa-f]{6})`).exec(css);
+    expect(match, `missing color rule for ${selector}`).not.toBeNull();
+    return (match as RegExpExecArray)[1].toUpperCase();
+  }
+
+  it('keeps the gate locale label readable on the page background', () => {
+    const blocks = styleBlocks(appSource);
+    // The base (non-header) rule is what the sign-in gate inherits:
+    // it must not be the header mint, which is invisible on #F4F6F5.
+    const label = ruleColor(blocks[0], '#shell .shell-locale-label');
+    expect(label).not.toBe('#D7E8E6');
+    expect(contrastRatio(label, '#F4F6F5')).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('keeps the header-scoped locale label readable on the teal bar', () => {
+    const blocks = styleBlocks(appSource);
+    const label = ruleColor(blocks[0], '#shell .shell-nav .shell-locale-label');
+    expect(contrastRatio(label, '#0F4C47')).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
 describe('keyboard-focus visibility (M5)', () => {
   beforeEach(() => {
     sessionStorage.clear();
