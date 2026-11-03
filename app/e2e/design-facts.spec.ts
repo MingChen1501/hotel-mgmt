@@ -303,7 +303,7 @@ test.describe('live shell conformance on the running app DOM', () => {
         );
       }
       await signInVi(page);
-      await page.goto(`/app${entry.route === '/' ? '' : entry.route}`);
+      await page.goto(entry.route === '/' ? '/app/' : `/app${entry.route}`);
       await expect(page.getByTestId(entry.viewHook)).toBeVisible();
       const actual = await page.evaluate(collectAppFacts, entry.viewHook);
       const record = recordFor(entry.screen);
