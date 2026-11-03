@@ -201,6 +201,7 @@ import Password from 'primevue/password';
 import { apiFetch, connectivity, retryLastRequest } from './api/client';
 import type { ApiError } from './api/client';
 import { localeTag, setLocale, t } from './i18n';
+import { configuredHotelName } from './onboardingGate';
 import { useSessionStore } from './stores/session';
 
 interface NavItem {
@@ -259,8 +260,10 @@ export default defineComponent({
           '/v1/admin/GetHotelConfig',
           { method: 'POST', body: '{}' },
         );
-        const name = config.values?.name;
-        hotelName.value = typeof name === 'string' && name.trim() !== '' ? name : '';
+        // The gate predicate (Refs #456) treats the boot-seed
+        // placeholder as unconfigured: on a fresh database the
+        // header keeps the catalogue brand and the wizard launches.
+        hotelName.value = configuredHotelName(config.values);
         await maybeLaunchWizard();
       } catch {
         // Unreachable config keeps the catalogue brand: the header

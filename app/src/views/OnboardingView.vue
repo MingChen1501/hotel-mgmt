@@ -391,6 +391,7 @@ import ProgressBar from 'primevue/progressbar';
 import { apiFetch } from '../api/client';
 import type { ApiError } from '../api/client';
 import { t } from '../i18n';
+import { configuredHotelName } from '../onboardingGate';
 import { useSessionStore } from '../stores/session';
 
 // First-run setup wizard (Refs #425 step 1, #438 steps 2–4, LLD
@@ -447,14 +448,6 @@ function errorMessage(): string {
     {},
     'That did not work. Try again; if it keeps failing, tell the manager.',
   );
-}
-
-function configuredName(values: unknown): string {
-  if (typeof values !== 'object' || values === null) {
-    return '';
-  }
-  const name = (values as Record<string, unknown>)['name'];
-  return typeof name === 'string' && name.trim() !== '' ? name : '';
 }
 
 function isWholeNumber(raw: string): boolean {
@@ -521,8 +514,10 @@ export default defineComponent({
           '/v1/admin/GetHotelConfig',
           { method: 'POST', body: '{}' },
         );
-        if (configuredName(config.values) !== '') {
+        if (configuredHotelName(config.values) !== '') {
           // Seeded database: the wizard never launches (Refs #425).
+          // The boot-seed placeholder counts as unconfigured
+          // (Refs #456), so a fresh database stays on step 1.
           await router.replace('/');
           return;
         }

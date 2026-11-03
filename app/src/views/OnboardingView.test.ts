@@ -87,6 +87,40 @@ describe('onboarding wizard step 1', () => {
     }
   });
 
+  it('shows step 1 on a fresh database carrying the boot-seed placeholder name', async () => {
+    // Regression guard (Refs #456, FR-DSK-7): both admin stores
+    // answer GetHotelConfig on an unconfigured database with the
+    // placeholder values (`services/admin/src/store.ts` seed,
+    // `services/admin/src/pgstore.ts` CONFIG_DEFAULTS,
+    // `deploy/seed/boot.sql`). The placeholder name is not a
+    // configured hotel, so the gate stays on step 1 instead of
+    // bouncing to the shell.
+    const fetchMock = vi.fn();
+    stubConfig(fetchMock, {
+      name: 'Skeleton Hotel',
+      timezone: 'UTC',
+      standardCheckinTime: '14:00',
+      standardCheckoutTime: '12:00',
+      retentionFloorDays: 365,
+      requiredGuestFields: ['fullName'],
+      cancellationReasons: [],
+      noshowRule: {},
+      approvalRule: { required: false },
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const { wrapper, router } = await mountWizard();
+      await vi.waitFor(() => {
+        expect(wrapper.find('[data-testid="onboarding-step-1"]').exists()).toBe(true);
+      });
+      expect(wrapper.find('[data-testid="onboarding-progress"]').text()).toBe('Step 1 of 4');
+      expect(router.currentRoute.value.path).toBe('/onboarding');
+      expect(wrapper.html()).not.toContain('message-missing:');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('redirects to the shell when the hotel name is already configured', async () => {
     const fetchMock = vi.fn();
     stubConfig(fetchMock, { name: 'Seeded Hotel' });
