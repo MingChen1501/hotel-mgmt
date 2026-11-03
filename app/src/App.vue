@@ -716,8 +716,16 @@ export default defineComponent({
   }
 
   #shell .shell-locale-label {
-    color: #D7E8E6;
+    color: #1B2B2A;
     margin-right: 2px;
+  }
+
+  /* The same label inside the teal header keeps the light mint:
+     it is readable on #0F4C47 (7.7:1) but invisible on the page
+     background (1.2:1, Refs #455), so the header scope re-applies
+     it explicitly instead of inheriting the gate-safe ink above. */
+  #shell .shell-nav .shell-locale-label {
+    color: #D7E8E6;
   }
 
   /* Sign-in gate form: narrow, one field per line. */
