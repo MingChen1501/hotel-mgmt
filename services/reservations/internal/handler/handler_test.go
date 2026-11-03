@@ -197,7 +197,13 @@ func TestDeskLifecycleModifyCancelNoShowCalendar(t *testing.T) {
 		t.Fatalf("ModifyReservation cancelled = %d %v, want 422 STATE_ILLEGAL", code, repeat)
 	}
 
-	code, rebooked := post(t, mux, "/v1/reservations/CreateReservation", loopBody("lifecycle-2"), deskToken)
+	rebook := loopBody("lifecycle-2")
+	// The too-early refusal below depends on the wall clock: rebook
+	// a future stay so the arrival still reads as not started. Dates
+	// derive from the clock, never fixtures.
+	rebook["arrivalDate"] = time.Now().UTC().AddDate(0, 0, 1).Format("2006-01-02")
+	rebook["departureDate"] = time.Now().UTC().AddDate(0, 0, 3).Format("2006-01-02")
+	code, rebooked := post(t, mux, "/v1/reservations/CreateReservation", rebook, deskToken)
 	if code != http.StatusOK {
 		t.Fatalf("rebooking released dates = %d (%v), want 200", code, rebooked)
 	}
@@ -222,7 +228,7 @@ func TestDeskLifecycleModifyCancelNoShowCalendar(t *testing.T) {
 		t.Fatalf("MarkNoShow = %d %v, want no-show with kept reason", code, marked)
 	}
 
-	code, calendar := post(t, mux, "/v1/reservations/QueryCalendar", map[string]any{"dateFrom": "2020-01-01", "dateTo": "2026-11-04"}, deskToken)
+	code, calendar := post(t, mux, "/v1/reservations/QueryCalendar", map[string]any{"dateFrom": "2020-01-01", "dateTo": time.Now().UTC().AddDate(0, 0, 4).Format("2006-01-02")}, deskToken)
 	if code != http.StatusOK {
 		t.Fatalf("QueryCalendar status = %d", code)
 	}

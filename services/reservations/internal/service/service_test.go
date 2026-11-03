@@ -3,6 +3,7 @@ package service
 import (
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/MingChen1501/hotel-mgmt/services/reservations/internal/store"
 )
@@ -241,7 +242,13 @@ func TestMarkNoShowHappyPath(t *testing.T) {
 func TestMarkNoShowTooEarlyRefused(t *testing.T) {
 	svc := New(store.New())
 	svc.CheckRestrictionsHook = allowHook()
-	created, oerr := svc.Create(loopRequest())
+	req := loopRequest()
+	// The refusal depends on the wall clock: arrive in the future so
+	// the stay still reads as not started. Dates derive from the
+	// clock, never fixtures.
+	req.ArrivalDate = time.Now().UTC().AddDate(0, 0, 1).Format("2006-01-02")
+	req.DepartureDate = time.Now().UTC().AddDate(0, 0, 3).Format("2006-01-02")
+	created, oerr := svc.Create(req)
 	if oerr != nil {
 		t.Fatalf("Create refused: %v", oerr)
 	}
