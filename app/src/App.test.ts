@@ -390,6 +390,12 @@ describe('shell navigation', () => {
       const highlighted = wrapper.findAll('.shell-nav-active');
       expect(highlighted).toHaveLength(1);
       expect(highlighted[0]?.attributes('data-testid')).toBe(active);
+      // The design's active tab is also the current page for
+      // assistive tech (Refs #458): exactly one nav item carries
+      // aria-current, and it is the highlighted one.
+      const current = wrapper.findAll('[aria-current="page"]');
+      expect(current).toHaveLength(1);
+      expect(current[0]?.attributes('data-testid')).toBe(active);
     } finally {
       vi.unstubAllGlobals();
     }
