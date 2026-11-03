@@ -376,6 +376,7 @@ describe('shell navigation', () => {
     ['/book', 'shell-nav-book'],
     ['/stay', 'shell-nav-stay'],
     ['/onboarding', 'shell-nav-onboarding'],
+    ['/rooms', 'shell-nav-rooms'],
     ['/folio', 'shell-nav-folio'],
     ['/print', 'shell-nav-print'],
     ['/admin', 'shell-nav-admin'],

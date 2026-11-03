@@ -14,9 +14,11 @@ import { resetConnectivityForTests } from '../api/client';
 // D1 canvas-manifest-relative order (Refs #419, #424, #425):
 // Desk, Stay, Onboarding, Rooms, Book, Folio, Print, Admin —
 // Onboarding sits in its canvas-relative spot between Stay and
-// Rooms.
+// Rooms. VI labels follow the design nav bars verbatim
+// (Refs #458): the folio tab reads Hoá đơn and the print tab
+// reads In, exactly as in the six .dc.html headers.
 const EN_NAV = ['Desk', 'Stay', 'Onboarding', 'Rooms', 'Book', 'Folio', 'Print', 'Admin'];
-const VI_NAV = ['Lễ tân', 'Lưu trú', 'Thiết lập', 'Sơ đồ phòng', 'Đặt phòng', 'Bảng kê', 'In ấn', 'Quản trị'];
+const VI_NAV = ['Lễ tân', 'Lưu trú', 'Thiết lập', 'Sơ đồ phòng', 'Đặt phòng', 'Hoá đơn', 'In', 'Quản trị'];
 
 describe('shell locale switch (EN/VI)', () => {
   beforeEach(async () => {
