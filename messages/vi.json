@@ -497,7 +497,7 @@
     "desk.stay.checked_out_named": "Đã trả phòng cho {guestName}; số dư hóa đơn {balance}.",
     "desk.stay.checked_out_brief": "Đã trả phòng; số dư hóa đơn {balance}.",
     "desk.stay.refused_open_balance": "Bảng kê vẫn còn số dư chưa thanh toán nên chưa thể trả phòng, khách vẫn đang lưu trú. Hãy ghi nhận phê duyệt trước.",
-    "desk.folio.title": "Bảng kê: phí, thanh toán và số dư",
+    "desk.folio.title": "Hoá đơn: phí, thanh toán và số dư",
     "desk.folio.back": "Về trang lễ tân",
     "desk.folio.today_link": "Khách đến, đang lưu trú và khách đi hôm nay",
     "desk.folio.stay_link": "Nhận phòng, chuyển phòng và trả phòng",
