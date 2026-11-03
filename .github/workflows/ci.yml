@@ -67,6 +67,17 @@ jobs:
               - 'services/billing/**'
             services:
               - 'services/**'
+            # DOM-vs-design gate (issue #467): the Playwright
+            # assertions compare the six design boards against the
+            # running app DOM, so a change on either side (boards,
+            # fact schema, extractor, or the gate itself — the gate
+            # sources under app/** are already covered by app-shell)
+            # must run the browser-e2e suite.
+            design-boards:
+              - 'docs/design/**'
+            design-facts-harness:
+              - 'tests/design-facts/**'
+              - 'docs/technical/desk-ui-fact-schema.md'
             contracts:
               - 'contracts/**'
             openapi-docs:
@@ -97,6 +108,8 @@ jobs:
           DEPLOY: ${{ steps.filter.outputs.deploy }}
           SCRIPTS: ${{ steps.filter.outputs.scripts }}
           WORKFLOW: ${{ steps.filter.outputs.workflow }}
+          DESIGN_BOARDS: ${{ steps.filter.outputs.design-boards }}
+          DESIGN_FACTS: ${{ steps.filter.outputs.design-facts-harness }}
         run: |
           python3 - <<'EOF'
           import json
@@ -135,8 +148,12 @@ jobs:
           shell = full or changed('APP_SHELL')
           # Browser E2E (issue #337): the Playwright Chromium suite
           # over /app/. Contract drift must break the screens loudly,
-          # so any services change runs it too.
-          browser_e2e = (full or changed('APP_SHELL') or services_changed)
+          # so any services change runs it too. DOM-vs-design gate
+          # (issue #467): design-board, fact-schema, or extractor
+          # changes re-run it as well, since either side of the
+          # comparison may have moved.
+          design_changed = full or changed('DESIGN_BOARDS') or changed('DESIGN_FACTS')
+          browser_e2e = (full or changed('APP_SHELL') or services_changed or design_changed)
 
           def boolean(name, value):
               with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
@@ -489,11 +506,18 @@ jobs:
     # instead of the Playwright image (no Docker-in-Docker). The
     # per-sale secrets below are throwaway CI-only values
     # (non-default so the fail-closed gates pass).
+    #
+    # DOM-vs-design gate (issue #467): the design-facts specs in this
+    # same suite compare the six design boards against the running app
+    # DOM (computed styles, no screenshots). The extractor runs here
+    # first so the specs always read fresh, byte-identical records;
+    # DESIGN_FACTS_DIR points the specs at them.
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
       DB_PASSWORD: e2e-ci-db-secret-7q2x
       ADMIN_BOOT_SECRET: e2e-ci-owner-boot-9m4z
+      DESIGN_FACTS_DIR: /tmp/design-facts
     steps:
       - uses: actions/checkout@v4
 
@@ -534,6 +558,23 @@ jobs:
       - name: Install Playwright browsers (pre-baked, never at test time)
         working-directory: app
         run: npx playwright install --with-deps chromium
+
+      - name: Extract design UI facts (issue #467, deterministic UTF-8 JSON only)
+        # Fresh records every run: the design-facts specs refuse to run
+        # without them (DESIGN_FACTS_DIR) and refuse schema drift.
+        run: node tests/design-facts/extract-design-facts.mjs --out "$DESIGN_FACTS_DIR"
+
+      - name: Zero-binary-artifact guard for the DOM-vs-design gate (issue #467)
+        # The gate asserts through the DOM and computed styles only.
+        # This fails closed if screenshot, video, or snapshot APIs
+        # ever enter the gate sources (prose mentions do not match:
+        # only API-shape patterns are grepped).
+        working-directory: app
+        run: |
+          if grep -RInE 'toHaveScreenshot|toMatchSnapshot|page\.screenshot|screenshot:|video:' e2e/design-facts.ts e2e/design-facts.spec.ts; then
+            echo 'The DOM-vs-design gate must not capture screenshots, video, or snapshots.'
+            exit 1
+          fi
 
       - name: Playwright browser E2E (Chromium, issue #337)
         working-directory: app
