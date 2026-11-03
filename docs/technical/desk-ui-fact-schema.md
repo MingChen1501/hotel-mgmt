@@ -93,7 +93,7 @@ wording beyond the static headings above, and print output.
       "kind": "text",
       "label": "Tên khách sạn",
       "placeholder": "Ví dụ: Khách sạn Hoa Mai",
-      "design": "docs/design/Onboarding.dc.html:1",
+      "design": "docs/design/Onboarding.dc.html:2",
       "app": "[data-testid=\"onboarding-hotel-name\"] input"
     },
     {
@@ -101,7 +101,7 @@ wording beyond the static headings above, and print output.
       "label": "Phòng",
       "placeholder": "Chọn phòng...",
       "design": "docs/design/Stay.dc.html:2",
-      "app": "[data-testid=\"stay-room-select\"] select"
+      "app": "[data-testid=\"stay-checkin-room\"] select"
     }
   ],
   "tokens": {
