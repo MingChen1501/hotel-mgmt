@@ -23,6 +23,15 @@ otherwise.
 The board map (positions and titles) in `manifest.json` is the source of
 truth for how the six boards relate to each other.
 
+## Rendering note
+
+Each `.dc.html` board loads its canvas runtime from `./support.js`
+in its `<head>` (e.g. `Main.dc.html`), which is not housed in this
+directory — so the boards do not render standalone from these files
+alone. Housing that runtime is outside the scope of #462; do not
+vendor a copy here without an owner-supplied revision (see Rules
+below).
+
 ## Rules
 
 - Do not edit the `.dc.html` files or `manifest.json` to "fix"
