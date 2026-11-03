@@ -121,7 +121,7 @@
 
     <!-- Signed-in shell: top nav plus the centred content column
       (Refs #338, FR-DSP-1). Each item routes to its existing path;
-      the active route is bold with a desk-blue underline. -->
+      the active route shows the design's white pill (Refs #458). -->
     <div v-else>
       <nav
         data-testid="shell-nav"
@@ -448,9 +448,18 @@ export default defineComponent({
     min-height: 44px;
   }
 
+  /* Active tab (Refs #458): the owner design marks the current
+     screen with a white pill — white background, teal text,
+     semibold, 8px radius — so the active state copies that
+     treatment instead of an underline. The pill keeps the 44px
+     target from the base item above, and the teal focus outline
+     below stays visible on the white background. */
   #shell .shell-nav-item.shell-nav-active {
-    font-weight: 700;
-    border-bottom: 2px solid #FFFFFF;
+    font-weight: 600;
+    color: #0F4C47;
+    background: #FFFFFF;
+    border-radius: 8px;
+    padding: 10px 16px;
   }
 
   #shell .shell-user {
