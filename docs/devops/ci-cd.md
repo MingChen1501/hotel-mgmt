@@ -64,11 +64,19 @@ Needed pipeline changes become issues.
   validation, pre-flight gate (fails closed on default secrets),
   then the desk loop end to end (book, verify, backup, restore,
   verify) with teardown.
-- **browser-e2e.** When the shell or any service changed: installer
-  bring-up, then the Playwright Chromium suite over the served Vue
-  SPA (`/app/*`: sign-in, booking, moves, charges, checkout, print),
-  with the HTML report uploaded as an artefact and the lab torn
-  down after.
+- **browser-e2e.** When the shell, any service, or the design
+  boards/facts harness changed: installer bring-up, then the
+  Playwright Chromium suite over the served Vue SPA (`/app/*`:
+  sign-in, booking, moves, charges, checkout, print), excluding the
+  full-tree DOM diff spec (dedicated `dom-diff` job below), with the
+  HTML report uploaded as an artefact and the lab torn down after.
+- **dom-diff.** Only on FE PRs — `app/**`, `docs/design/**`, and
+  gate files (`tests/design-facts/**`,
+  `docs/technical/desk-ui-fact-schema.md`): installer bring-up,
+  then only the full-tree DOM diff spec
+  (`app/e2e/dom-diff.spec.ts`, text-only, no screenshots) with its
+  own HTML report artefact and teardown. Backend-only PRs report
+  SKIPPED and never block.
 - **perf-reporting-variant.** Always runs: rebuilds two years of
   50-room data in-process and times each standard report (NFR-PERF-2
   record for `docs/testing/test-report.md`; CI runners are variants,

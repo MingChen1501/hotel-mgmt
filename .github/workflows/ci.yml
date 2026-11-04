@@ -33,6 +33,7 @@ jobs:
       e2e: ${{ steps.gates.outputs.e2e }}
       shell: ${{ steps.gates.outputs.shell }}
       browser-e2e: ${{ steps.gates.outputs.browser-e2e }}
+      dom-diff: ${{ steps.gates.outputs.dom-diff }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -78,6 +79,15 @@ jobs:
             design-facts-harness:
               - 'tests/design-facts/**'
               - 'docs/technical/desk-ui-fact-schema.md'
+            # DOM diff gate (issue #481): runs ONLY on FE PRs — the
+            # desk UI, the design boards it is diffed against, and
+            # the gate's own sources. The app-side gate specs live
+            # under app/**, covered by the first pattern.
+            dom-diff:
+              - 'app/**'
+              - 'docs/design/**'
+              - 'tests/design-facts/**'
+              - 'docs/technical/desk-ui-fact-schema.md'
             contracts:
               - 'contracts/**'
             openapi-docs:
@@ -110,6 +120,7 @@ jobs:
           WORKFLOW: ${{ steps.filter.outputs.workflow }}
           DESIGN_BOARDS: ${{ steps.filter.outputs.design-boards }}
           DESIGN_FACTS: ${{ steps.filter.outputs.design-facts-harness }}
+          DOM_DIFF: ${{ steps.filter.outputs.dom-diff }}
         run: |
           python3 - <<'EOF'
           import json
@@ -154,6 +165,12 @@ jobs:
           # comparison may have moved.
           design_changed = full or changed('DESIGN_BOARDS') or changed('DESIGN_FACTS')
           browser_e2e = (full or changed('APP_SHELL') or services_changed or design_changed)
+          # DOM diff gate (issue #481): FE-only. Backend-only PRs
+          # (services/**, contracts, migrations) match none of the
+          # dom-diff patterns, so the job reports SKIPPED and never
+          # blocks. Mixed PRs resolve deterministically: any FE-side
+          # match runs the gate.
+          dom_diff = full or changed('DOM_DIFF')
 
           def boolean(name, value):
               with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
@@ -168,11 +185,13 @@ jobs:
           boolean('e2e', e2e)
           boolean('shell', shell)
           boolean('browser-e2e', browser_e2e)
+          boolean('dom-diff', dom_diff)
 
           print(f'event={e["EVENT_NAME"]} full={full}')
           print(f'go={go} node={node} billing={billing} '
                 f'contracts={contracts} migrate={migrate} e2e={e2e} '
-                f'shell={shell} browser_e2e={browser_e2e}')
+                f'shell={shell} browser_e2e={browser_e2e} '
+                f'dom_diff={dom_diff}')
           EOF
 
   ci:
@@ -511,7 +530,9 @@ jobs:
     # same suite compare the six design boards against the running app
     # DOM (computed styles, no screenshots). The extractor runs here
     # first so the specs always read fresh, byte-identical records;
-    # DESIGN_FACTS_DIR points the specs at them.
+    # DESIGN_FACTS_DIR points the specs at them. The full-tree DOM
+    # diff spec (issue #481) is excluded here — it runs in the
+    # dedicated dom-diff job on FE PRs only.
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
@@ -578,13 +599,108 @@ jobs:
 
       - name: Playwright browser E2E (Chromium, issue #337)
         working-directory: app
-        run: npx playwright test --project=chromium
+        run: |
+          # DOM diff gate (issue #481) runs in the dedicated dom-diff
+          # job on FE PRs only — exclude it here so backend-only PRs
+          # never execute it and mixed PRs never run it twice.
+          # The '|| true' keeps the step green under 'bash -e' if the
+          # suite ever shrinks to only the dom-diff spec (grep -v
+          # exits 1 when it selects nothing).
+          specs=$(ls e2e/*.spec.ts | grep -v 'e2e/dom-diff.spec.ts' || true | tr '\n' ' ')
+          npx playwright test --project=chromium $specs
 
       - name: Upload the HTML report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
+          path: app/playwright-report/
+          if-no-files-found: warn
+
+      - name: Tear down the lab
+        if: always()
+        run: docker compose -f deploy/compose.yaml down -v
+
+  dom-diff:
+    needs: changes
+    if: needs.changes.outputs.dom-diff == 'true'
+    # Full-tree DOM diff gate (issue #481): the owner design HTML
+    # files diffed against the running desk UI
+    # (app/e2e/dom-diff.spec.ts, text-only, no screenshots). Runs
+    # ONLY on FE PRs — the paths-filter limits triggers to app/**,
+    # docs/design/**, and gate files, so backend-only PRs report
+    # SKIPPED and never block. Same installer bring-up as
+    # browser-e2e (the live extraction tests sign in against the
+    # real lab stack); only the dom-diff spec runs here, and
+    # browser-e2e excludes it, so the gate executes in exactly one
+    # place.
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      DB_PASSWORD: e2e-ci-db-secret-7q2x
+      ADMIN_BOOT_SECRET: e2e-ci-owner-boot-9m4z
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare the per-hotel configuration set
+        run: |
+          set -euo pipefail
+          cp deploy/config/hotel.example.json deploy/config/hotel.json
+          sed -i 's/EXAMPLE-001/E2E-CI-001/' deploy/config/hotel.json
+          grep -q "E2E-CI-001" deploy/config/hotel.json
+
+      - name: One-hotel installer end to end (issue #153)
+        # Same stack as e2e-single-host: pre-flight, desk-loop proof
+        # with backup and restore drill, stack left up for the suite.
+        run: script/install.sh --config deploy/config/hotel.json --staging-dir ./backup-staging
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install app dependencies
+        working-directory: app
+        run: npm ci
+
+      - name: Build the desk shell
+        working-directory: app
+        run: npm run build
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('app/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+
+      - name: Install Playwright browsers (pre-baked, never at test time)
+        working-directory: app
+        run: npx playwright install --with-deps chromium
+
+      - name: Zero-binary-artifact guard for the DOM diff gate (issue #481)
+        # The gate asserts through the DOM and computed styles only.
+        # This fails closed if screenshot, video, or snapshot APIs
+        # ever enter the gate sources (prose mentions do not match:
+        # only API-shape patterns are grepped).
+        working-directory: app
+        run: |
+          if grep -RInE 'toHaveScreenshot|toMatchSnapshot|page\.screenshot|screenshot:|video:' e2e/dom-diff.ts e2e/dom-diff.spec.ts; then
+            echo 'The DOM diff gate must not capture screenshots, video, or snapshots.'
+            exit 1
+          fi
+
+      - name: Playwright DOM diff gate (Chromium, issue #481)
+        working-directory: app
+        run: npx playwright test --project=chromium e2e/dom-diff.spec.ts
+
+      - name: Upload the HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-dom-diff
           path: app/playwright-report/
           if-no-files-found: warn
 
