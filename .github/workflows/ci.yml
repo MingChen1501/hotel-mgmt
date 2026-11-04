@@ -603,7 +603,10 @@ jobs:
           # DOM diff gate (issue #481) runs in the dedicated dom-diff
           # job on FE PRs only — exclude it here so backend-only PRs
           # never execute it and mixed PRs never run it twice.
-          specs=$(ls e2e/*.spec.ts | grep -v 'e2e/dom-diff.spec.ts' | tr '\n' ' ')
+          # The '|| true' keeps the step green under 'bash -e' if the
+          # suite ever shrinks to only the dom-diff spec (grep -v
+          # exits 1 when it selects nothing).
+          specs=$(ls e2e/*.spec.ts | grep -v 'e2e/dom-diff.spec.ts' || true | tr '\n' ' ')
           npx playwright test --project=chromium $specs
 
       - name: Upload the HTML report
