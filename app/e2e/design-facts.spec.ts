@@ -42,6 +42,26 @@
 //   the nav drift the other way: the shell visible set is exactly the
 //   six design header tabs (onboarding/rooms are tab-less deep
 //   routes), so the live tests pin that decided set.
+// - Lab-state matrix (issue #474): the CI lab runs on a configured
+//   database (the e2e job applies `deploy/config/hotel.json` with a
+//   real hotel name), so `/onboarding` would redirect to `/` and one
+//   lab state cannot render all 6 screens. Five screens run against
+//   the real configured stack; Onboarding renders through a targeted
+//   `page.route` mock of `POST /v1/admin/GetHotelConfig` answering
+//   unconfigured (`{ values: { name: '' } }`) — both redirect readers
+//   (the shell auto-launch in `app/src/App.vue` and the wizard guard
+//   in `app/src/views/OnboardingView.vue`, both via
+//   `configuredHotelName` in `app/src/onboardingGate.ts`) consult
+//   that one endpoint, so the single mock covers both while every
+//   other API call still reaches the real lab stack. Product redirect
+//   behavior is untouched. No-silent-skip rule: the Onboarding live
+//   test asserts the mock was actually consulted and the URL is still
+//   `/app/onboarding` after navigation, so a redirect regression
+//   fails loudly naming the redirect instead of timing out on the
+//   view hook. Future redirect-gated screens follow the same pattern:
+//   add the screen to this matrix with a route mock for the gating
+//   read, keep the product redirect as-is, and assert the gating read
+//   plus the final URL.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
@@ -296,22 +316,39 @@ test.describe('live shell conformance on the running app DOM', () => {
 
   for (const entry of SCREEN_TABLE) {
     test(`${entry.screen}: tokens, tab labels, and active state conform`, async ({ page }) => {
+      // Lab-state matrix (issue #474, see the header): the wizard
+      // renders on an unconfigured database only. Mock just the
+      // hotel-config read as unconfigured so the wizard renders;
+      // every other API call reaches the real lab stack. The hit
+      // counter below proves the mock was consulted (no vacuous
+      // pass); product redirect behavior is untouched.
+      let configReads = 0;
       if (entry.screen === 'Onboarding') {
-        // The onboarding wizard only renders on an unconfigured
-        // database: the shell auto-launches it on a fresh database
-        // and redirects away from it once configured. Mock just the
-        // hotel-config read as unconfigured so the wizard renders;
-        // every other API call reaches the real lab stack.
-        await page.route('**/v1/admin/GetHotelConfig', (route) =>
-          route.fulfill({
+        await page.route('**/v1/admin/GetHotelConfig', (route) => {
+          configReads += 1;
+          return route.fulfill({
             status: 200,
             contentType: 'application/json',
             body: JSON.stringify({ values: { name: '' } }),
-          }),
-        );
+          });
+        });
       }
       await signInVi(page);
       await page.goto(entry.route === '/' ? '/app/' : `/app${entry.route}`);
+      if (entry.screen === 'Onboarding') {
+        // No screen silently skipped by the onboarding redirect: the
+        // config mock must have been consulted and the URL must still
+        // be the wizard route — a redirect regression fails here
+        // naming the redirect, not as a view-hook timeout.
+        expect(
+          configReads,
+          'onboarding gate never read GetHotelConfig: the unconfigured mock may be bypassed, so wizard coverage is unproven',
+        ).toBeGreaterThan(0);
+        expect(
+          page.url(),
+          'onboarding redirect fired on the configured lab DB: /app/onboarding did not survive navigation',
+        ).toContain('/app/onboarding');
+      }
       await expect(page.getByTestId(entry.viewHook)).toBeVisible();
       if (entry.screen === 'Rooms') {
         // The floor map renders only after its reads complete
