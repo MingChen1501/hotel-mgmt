@@ -230,6 +230,7 @@ footer="End every artefact with the footer from script/ao-role-footer.sh ${sign_
 case "${role_class}" in
   implement)
     body="Branch: create your work from your session root branch as ao/<session>/${issue}-<slug> (never the default branch).
+Shared-machine defaults (see the worker skill): throttled tests only — scoped vitest --maxWorkers=1, full suite pre-push only with --maxWorkers=2; Playwright --workers=1 on touched specs, reuse the built app/dist, never rebuild unnecessarily; never run test+build+e2e concurrently — and isolated compose labs only: never down/up/-v against the shared hotel-mgmt project, use docker compose -p hotel-lab-<session> with isolated volumes, run script/compose-lab-guard.sh first.
 Every PR body must contain: a Summary section, \"Closes #${issue}\", the Type section, the Risk label copied from the issue labels (${issue_labels}), and a Test evidence section. ${footer}"
     ;;
   review)

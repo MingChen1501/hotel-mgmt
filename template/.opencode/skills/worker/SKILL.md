@@ -88,6 +88,29 @@ describes, confirm with the orchestrator/owner first.
   judgement half (covered-pattern choice, dynamic catalogue calls,
   copy edge cases) is a blocking reviewer checklist item.
 
+## Shared-machine test and lab discipline
+
+Workers share the owner's machine: throttled, sequenced runs are the
+default — never a per-task reminder:
+
+- Test runner: scoped-file runs with a single worker during
+  iteration (for example `vitest --maxWorkers=1`); the full suite
+  runs only pre-push with a small worker cap (for example
+  `--maxWorkers=2`).
+- E2E runner: a single worker on touched specs only (for example
+  Playwright `--workers=1`); reuse the built app bundle, never
+  rebuild it unnecessarily.
+- Never run test + build + e2e concurrently. Keep full-suite runs
+  out of owner testing hours (confirm the window with the
+  orchestrator).
+- Compose labs are isolated: never run `docker compose down` / `up`
+  / `teardown` (and never `-v` / `--volumes`) against the shared
+  compose project — that tears down the owner's live lab (containers
+  + data volumes destroyed). A worker lab uses an isolated project
+  (`docker compose -p <isolated>-<session> -f <compose-file> ...`)
+  with isolated volumes, and runs
+  `script/compose-lab-guard.sh` before any lab compose command.
+
 ## Per-stack entry points
 
 Product code lives in one module directory per deployable service

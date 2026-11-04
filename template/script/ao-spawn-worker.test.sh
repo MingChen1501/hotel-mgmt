@@ -200,5 +200,19 @@ make_issue_json "CLOSED" >"${TEST_ISSUE_JSON}"
 expect_refuse "refuse-closed-issue" "${work}/marked" \
   --issue 184 --role buffer-worker --name "closed"
 
+# 10. Implement prompt carries the shared-machine defaults (issue #483):
+# throttled tests plus isolated compose labs, not a per-task reminder.
+make_issue_json "OPEN" >"${TEST_ISSUE_JSON}"
+if implement_out="$(cd "${work}/marked" && bash "${SCRIPT_UNDER_TEST}" --issue 184 --role dev --name "implement-defaults" --dry-run 2>&1)"; then
+  if [[ "${implement_out}" == *"Shared-machine defaults"* ]] \
+    && [[ "${implement_out}" == *"compose-lab-guard"* ]]; then
+    ok "implement-prompt-shared-machine-defaults"
+  else
+    notok "implement-prompt-shared-machine-defaults (defaults missing)" "${implement_out}"
+  fi
+else
+  notok "implement-prompt-shared-machine-defaults (should succeed)" "${implement_out:-}"
+fi
+
 echo "test result: ${pass} passed, ${fail} failed"
 [[ "${fail}" -eq 0 ]]

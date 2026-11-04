@@ -94,6 +94,26 @@ describes, confirm with the orchestrator/owner first.
   CI; the judgement half (covered-pattern choice, dynamic `t()`
   calls, copy edge cases) is a blocking reviewer checklist item.
 
+## Shared-machine test and lab discipline
+
+Workers share the owner's 8-core machine (owner complaint: load-17
+from vitest defaulting to all-cores). Throttled, sequenced runs are
+the default — never a per-task reminder:
+
+- Vitest: scoped-file runs with `--maxWorkers=1` during iteration;
+  the full suite runs only pre-push with `--maxWorkers=2`.
+- Playwright: `--workers=1` on touched specs only; reuse the built
+  `app/dist`, never rebuild it unnecessarily.
+- Never run test + build + e2e concurrently. Keep full-suite runs
+  out of owner testing hours.
+- Compose labs are isolated: never run `docker compose down` / `up`
+  / `teardown` (and never `-v` / `--volumes`) against the shared
+  `hotel-mgmt` project — that tears down the owner's live lab
+  (containers + `pgdata` volume destroyed). A worker lab uses an
+  isolated project (`docker compose -p hotel-lab-<session> -f
+  deploy/compose.yaml ...`) with isolated volumes, and runs
+  `script/compose-lab-guard.sh` before any lab compose command.
+
 ## Per-stack entry points
 
 Product code lives in one module directory per deployable service
