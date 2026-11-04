@@ -62,6 +62,23 @@ export function isAllowlisted(path: string, allowlist: DomDiffAllowlist): boolea
   );
 }
 
+// Allowlist entries that match zero nodes on either side. A stale
+// entry (after unrelated structural drift) silently stops exempting
+// anything, turning owner-approved dynamic data back into gate noise
+// with no signal — callers should surface these.
+export function unusedAllowlistEntries(
+  design: DomNode[],
+  actual: DomNode[],
+  allowlist: DomDiffAllowlist,
+): string[] {
+  return allowlist.skipPaths.filter(
+    (entry) =>
+      ![...design, ...actual].some(
+        (node) => node.path === entry || node.path.startsWith(`${entry}/`),
+      ),
+  );
+}
+
 // Browser-side full-tree extraction. This function is serialised into
 // the page by `page.evaluate`, so it must stay self-contained: no
 // imports, no closure references, DOM APIs only. `script`, `style`,
@@ -76,7 +93,7 @@ export function collectDomTree(): DomNode[] {
   const SKIP_TAGS = new Set(['script', 'style', 'noscript', 'template']);
   const norm = (value: string): string =>
     value.normalize('NFC').replace(/\s+/g, ' ').trim();
-  const normColour = (raw: string, context: string): string => {
+  const normColour = (raw: string): string => {
     const value = raw.trim().toLowerCase();
     if (value === 'transparent') return 'transparent';
     const hex = value.match(/^#([0-9a-f]{3}|[0-9a-f]{6})\b/);
@@ -93,13 +110,12 @@ export function collectDomTree(): DomNode[] {
       const alpha = rgb[4] === undefined ? 1 : Number(rgb[4]);
       if (alpha === 0) return 'transparent';
       if (alpha !== 1) return value;
-      const parts = [rgb[1], rgb[2], rgb[3]].map((n) => {
+      const parts: string[] = [];
+      for (const n of [rgb[1], rgb[2], rgb[3]]) {
         const v = Number(n);
-        if (!Number.isInteger(v) || v < 0 || v > 255) {
-          throw new Error(`dom-diff: colour out of range "${raw}" (${context})`);
-        }
-        return v.toString(16).padStart(2, '0');
-      });
+        if (!Number.isInteger(v) || v < 0 || v > 255) return value;
+        parts.push(v.toString(16).padStart(2, '0'));
+      }
       return `#${parts.join('')}`;
     }
     return value;
@@ -118,8 +134,8 @@ export function collectDomTree(): DomNode[] {
       path,
       tag: el.tagName.toLowerCase(),
       text: norm(ownTextParts.join('')),
-      color: normColour(style.getPropertyValue('color'), path),
-      background: normColour(style.getPropertyValue('background-color'), path),
+      color: normColour(style.getPropertyValue('color')),
+      background: normColour(style.getPropertyValue('background-color')),
       fontFamily: norm(style.getPropertyValue('font-family')),
       fontSize: norm(style.getPropertyValue('font-size')),
       fontWeight: norm(style.getPropertyValue('font-weight')),
@@ -133,7 +149,7 @@ export function collectDomTree(): DomNode[] {
     const counters: Record<string, number> = {};
     for (const child of [...el.children]) {
       const tag = child.tagName.toLowerCase();
-      if (SKIP_TAGS.has(tag)) return;
+      if (SKIP_TAGS.has(tag)) continue;
       const index = counters[tag] ?? 0;
       counters[tag] = index + 1;
       walk(child, `${path}/${tag}[${index}]`);
@@ -156,11 +172,17 @@ export function diffDomTrees(
   const diffs: DomDiff[] = [];
   const actualByPath = new Map(actual.map((node) => [node.path, node]));
   const designPaths = new Set(design.map((node) => node.path));
+  for (const entry of unusedAllowlistEntries(design, actual, allowlist)) {
+    console.warn(`dom-diff: allowlist entry matched no nodes: ${entry}`);
+  }
   const push = (path: string, field: string, expected: unknown, observed: unknown): void => {
-    const left = JSON.stringify(expected);
-    const right = JSON.stringify(observed);
+    // JSON.stringify(undefined) yields undefined (not a string), so a
+    // genuinely absent value renders explicitly instead of crashing
+    // the push or printing nothing.
+    const left = JSON.stringify(expected) ?? '(absent)';
+    const right = JSON.stringify(observed) ?? '(absent)';
     if (left !== right) {
-      diffs.push({ path, field, expected: left, actual: right ?? '(absent)' });
+      diffs.push({ path, field, expected: left, actual: right });
     }
   };
   for (const designNode of design) {

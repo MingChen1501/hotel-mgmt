@@ -43,6 +43,7 @@ import {
   serializeDomTree,
   type DomDiffAllowlist,
   type DomNode,
+  unusedAllowlistEntries,
 } from './dom-diff';
 import { SCREEN_TABLE } from './design-facts';
 import { installLoopbackGuard, type LoopbackGuard } from './loopback-guard';
@@ -118,6 +119,22 @@ test.describe('matching fixture DOMs pass with zero diffs (criterion 1)', () => 
     const { design, actual } = await extractPair(browser, styled, inline);
     const diffs = diffDomTrees(design, actual);
     expect(diffs, diffs.length > 0 ? `unexpected diffs:\n${formatDomDiffs(diffs)}` : 'unexpected diffs').toEqual([]);
+  });
+
+  test('siblings after a skipped script/style node are still extracted', async ({ page }) => {
+    // Regression: the sibling loop must skip one child, not abort the
+    // whole parent walk — nodes after a mid-tree script/style must
+    // still appear in the tree.
+    await page.setContent(
+      fixtureDom(
+        `${MATCHING_BODY}<script>window.__domDiffProbe = 1;</script><p>After script</p>`,
+        '<style>#shell h1{color:#0f4c47}</style>',
+      ),
+    );
+    const tree = await page.evaluate(collectDomTree);
+    const paths = tree.map((node) => node.path);
+    expect(paths).toContain('/html[0]/body[0]/div[0]/p[1]');
+    expect(tree.every((node) => node.tag !== 'script' && node.tag !== 'style')).toBe(true);
   });
 });
 
@@ -210,6 +227,10 @@ test.describe('allowlist exempts owner-approved dynamic data (criterion 3)', () 
     expect(diffs, `expected only the non-allowlisted drift, got:\n${formatDomDiffs(diffs)}`).toHaveLength(1);
     expect(diffs[0].field).toBe('text');
     expect(diffs[0].path).toBe('/html[0]/body[0]/div[0]/button[0]');
+    expect(unusedAllowlistEntries(design, actual, allowlist)).toEqual([]);
+    expect(
+      unusedAllowlistEntries(design, actual, { skipPaths: ['/html[0]/body[0]/div[0]/p[9]'] }),
+    ).toEqual(['/html[0]/body[0]/div[0]/p[9]']);
   });
 });
 
@@ -307,11 +328,12 @@ test.describe('live extraction from design HTML and the running desk UI (criteri
         // the approved allowlist data list is a separate issue — so
         // the run reports the diff count for that follow-up instead
         // of gating on it.
-        const formatted = formatDomDiffs(diffDomTrees(design, actual));
+        const diffs = diffDomTrees(design, actual);
+        const formatted = formatDomDiffs(diffs);
         expect(typeof formatted).toBe('string');
         test.info().annotations.push({
           type: 'dom-diff-count',
-          description: `${entry.screen}: ${diffDomTrees(design, actual).length} non-allowlisted diffs`,
+          description: `${entry.screen}: ${diffs.length} non-allowlisted diffs`,
         });
       } finally {
         await designPage.close();
