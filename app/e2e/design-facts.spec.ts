@@ -33,7 +33,9 @@
 //   for Stay and Book; Rooms pins its static heading prefix plus the
 //   seed room labels and checks the data-driven tail structurally;
 //   required-button-label subsets everywhere so dynamic extras never
-//   break the gate). Full-record live parity
+//   break the gate) plus the Main room-map section (Refs #479: Main
+//   pins its static heading prefix through the embedded map heads
+//   with the same structural tail rule and seed labels as Rooms). Full-record live parity
 //   stays deferred for the data-driven and flow-state panels the
 //   decision excludes (stay list rows, room-card bodies, approval,
 //   dialogs, quote/result/confirmation): the fixture tests above
@@ -356,6 +358,12 @@ test.describe('live shell conformance on the running app DOM', () => {
         // signal the decided content is on screen. A broken map
         // fails here loudly instead of extracting a half-empty DOM.
         await expect(page.getByTestId('rooms-summary')).toBeVisible();
+      }
+      if (entry.screen === 'Main') {
+        // The embedded room map (Refs #479) renders only after the
+        // dashboard reads complete; its section root is the positive
+        // signal the decided map content is on screen.
+        await expect(page.getByTestId('desk-roommap')).toBeVisible();
       }
       const actual = await page.evaluate(collectAppFacts, entry.viewHook);
       const record = recordFor(entry.screen);

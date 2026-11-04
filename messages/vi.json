@@ -697,6 +697,7 @@
     "desk.rooms.note_arrival": "{guest} · Đến {date}",
     "desk.rooms.note_ready": "Sẵn sàng nhận phòng.",
     "desk.rooms.note_needs_cleaning": "Cần dọn phòng.",
-    "desk.rooms.note_awaiting_inspection": "Đã dọn, chờ kiểm tra."
+    "desk.rooms.note_awaiting_inspection": "Đã dọn, chờ kiểm tra.",
+    "desk.map.manage": "Quản lý phòng"
   }
 }
