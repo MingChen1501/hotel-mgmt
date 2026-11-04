@@ -27,14 +27,16 @@
 //   computed styles, never from attribute parsing or screenshots.
 // - Live conformance tests: the same extraction against the running
 //   app DOM, asserting the design-anchored subset that conforms today
-//   (header/page/ink tokens, design-known tab labels, per-screen
-//   active tab). Full-record live parity is deferred to
-//   product-alignment follow-ups (see the scope note on #467): the
-//   shell intentionally carries onboarding/rooms tabs the design
-//   header does not render, the views carry richer content than the
-//   boards, and PrimeVue defaults render primary-500 instead of the
-//   design primary-700. The fixture tests above prove the gate
-//   catches every one of those drift classes with proper diffs.
+//   (header/page/ink tokens, design-known tab labels, the decided
+//   six-tab visible set, per-screen active tab). Full-record live
+//   parity is deferred to product-alignment follow-ups (see the scope
+//   note on #467): the views carry richer content than the boards,
+//   and PrimeVue defaults render primary-500 instead of the design
+//   primary-700. The fixture tests above prove the gate catches every
+//   one of those drift classes with proper diffs. Refs #472 resolved
+//   the nav drift the other way: the shell visible set is exactly the
+//   six design header tabs (onboarding/rooms are tab-less deep
+//   routes), so the live tests pin that decided set.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
@@ -338,9 +340,10 @@ test.describe('live shell conformance on the running app DOM', () => {
         check(`tokens.${key}`, record.tokens[key], actual.tokens[key], record.designFile, '[data-testid="shell-nav"]');
       }
 
-      // Labels of the tabs that exist on both sides. The shell's
-      // onboarding/rooms tabs have no design header counterpart and
-      // are excluded (documented shell contract, not drift).
+      // Labels of the tabs that exist on both sides. Refs #472:
+      // the visible shell nav is exactly the six design header
+      // tabs, so every ROUTE_KEY_TO_DESIGN_KEY entry must resolve
+      // on both sides now.
       for (const [routeKey, designKey] of Object.entries(ROUTE_KEY_TO_DESIGN_KEY)) {
         const expectedLabel: string | undefined = record.nav.labels[designKey];
         if (expectedLabel === undefined) continue;
@@ -348,17 +351,29 @@ test.describe('live shell conformance on the running app DOM', () => {
         check(`nav.labels.${designKey}`, expectedLabel, observedLabel, record.nav.design, record.nav.app);
       }
 
+      // The visible tab set matches the decided set (Refs #472):
+      // the Main design record's tab order mapped back onto shell
+      // route keys. The shell nav is shell-level, identical on
+      // every screen, so the Main record anchors all six screens.
+      const designToRoute = Object.fromEntries(
+        Object.entries(ROUTE_KEY_TO_DESIGN_KEY).map(([routeKey, designKey]) => [designKey, routeKey]),
+      );
+      const mainRecord = recordFor('Main');
+      const expectedOrder = mainRecord.nav.order.map((designKey) => designToRoute[designKey]);
+      check('nav.order', expectedOrder, actual.nav.order, mainRecord.nav.design, mainRecord.nav.app);
+
       // The active pill sits on the current screen's tab; where the
       // design names an active tab for this screen, the mapped live
-      // tab matches it. Rooms/Onboarding boards show a foreign or
-      // empty nav, so only the pill-on-current-tab binding is
-      // asserted there.
+      // tab matches it. Onboarding/Rooms have no visible tab
+      // (Refs #472): they render with no active pill while staying
+      // reachable as deep routes.
+      const TAB_LESS_SCREENS = new Set(['Onboarding', 'Rooms']);
       const routeKey = Object.keys(ROUTE_KEY_TO_DESIGN_KEY).find(
         (key) => ROUTE_KEY_TO_DESIGN_KEY[key] === entry.screen || key === entry.screen.toLowerCase(),
       );
       check(
         'nav.active.binding',
-        routeKey ?? entry.screen.toLowerCase(),
+        TAB_LESS_SCREENS.has(entry.screen) ? '' : (routeKey ?? entry.screen.toLowerCase()),
         actual.nav.active,
         record.nav.design,
         `${record.nav.app} .shell-nav-active`,

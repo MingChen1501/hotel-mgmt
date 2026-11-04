@@ -11,14 +11,14 @@ import { LOCALE_STORAGE_KEY, setLocale, t } from './index';
 import { useSessionStore } from '../stores/session';
 import { resetConnectivityForTests } from '../api/client';
 
-// D1 canvas-manifest-relative order (Refs #419, #424, #425):
-// Desk, Stay, Onboarding, Rooms, Book, Folio, Print, Admin —
-// Onboarding sits in its canvas-relative spot between Stay and
-// Rooms. VI labels follow the design nav bars verbatim
+// D1 design-header order (Refs #472): Desk, Book, Stay, Folio,
+// Print, Admin — the six tabs of the `.dc.html` headers.
+// Onboarding and Rooms have no design-header tab (deep routes
+// only). VI labels follow the design nav bars verbatim
 // (Refs #458): the folio tab reads Hoá đơn and the print tab
 // reads In, exactly as in the six .dc.html headers.
-const EN_NAV = ['Desk', 'Stay', 'Onboarding', 'Rooms', 'Book', 'Folio', 'Print', 'Admin'];
-const VI_NAV = ['Lễ tân', 'Lưu trú', 'Thiết lập', 'Sơ đồ phòng', 'Đặt phòng', 'Hoá đơn', 'In', 'Quản trị'];
+const EN_NAV = ['Desk', 'Book', 'Stay', 'Folio', 'Print', 'Admin'];
+const VI_NAV = ['Lễ tân', 'Đặt phòng', 'Lưu trú', 'Hoá đơn', 'In', 'Quản trị'];
 
 describe('shell locale switch (EN/VI)', () => {
   beforeEach(async () => {

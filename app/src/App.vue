@@ -211,17 +211,16 @@ interface NavItem {
   fallback: string;
 }
 
-// Canvas-manifest-relative order (rollout section 4.1, Refs #419,
-// FR-DSK-1, D1): Desk · Stay · Onboarding · Rooms · Book · Folio ·
-// Print · Admin. Onboarding (#425) launches unprompted on an
-// empty database only and redirects back to the shell on a
-// seeded one; it never interrupts a seeded desk.
+// Design-header order (Refs #472, FR-DSK-1, D1): Desk · Book · Stay ·
+// Folio · Print · Admin — the six tabs of the `.dc.html` headers.
+// Onboarding and Rooms have no design-header tab: /onboarding stays
+// reachable through the empty-database auto-launch plus its deep
+// route, /rooms through its deep route (both routes stay registered
+// in `router.ts`; this list is the visible set only).
 const NAV_ITEMS: NavItem[] = [
   { name: 'desk', to: '/', labelKey: 'desk.shell.nav_desk', fallback: 'Desk' },
-  { name: 'stay', to: '/stay', labelKey: 'desk.shell.nav_stay', fallback: 'Stay' },
-  { name: 'onboarding', to: '/onboarding', labelKey: 'desk.shell.nav_onboarding', fallback: 'Onboarding' },
-  { name: 'rooms', to: '/rooms', labelKey: 'desk.shell.nav_rooms', fallback: 'Rooms' },
   { name: 'book', to: '/book', labelKey: 'desk.shell.nav_book', fallback: 'Book' },
+  { name: 'stay', to: '/stay', labelKey: 'desk.shell.nav_stay', fallback: 'Stay' },
   { name: 'folio', to: '/folio', labelKey: 'desk.shell.nav_folio', fallback: 'Folio' },
   { name: 'print', to: '/print', labelKey: 'desk.shell.nav_print', fallback: 'Print' },
   { name: 'admin', to: '/admin', labelKey: 'desk.shell.nav_admin', fallback: 'Admin' },

@@ -22,8 +22,10 @@
 // `Lưu trú` -> `Stay`, `Hoá đơn` -> `Folio`, `In` -> `print`,
 // `Quản trị` -> `admin`); the shell route names map onto the screen
 // keys through ROUTE_KEY_TO_DESIGN_KEY where a tab exists on both
-// sides (the shell intentionally also carries onboarding/rooms tabs
-// that the design header does not render — see the live spec).
+// sides. Refs #472: the visible shell nav is exactly the six design
+// header tabs, so every design tab key has a shell route-name
+// counterpart; onboarding/rooms are tab-less deep routes and map to
+// nothing — see the live spec.
 
 export const FACT_SCHEMA_VERSION = 1;
 
@@ -107,10 +109,11 @@ export const SCREEN_TABLE: readonly ScreenTableEntry[] = [
   { screen: 'Folio', route: '/folio', viewHook: 'folio-view' },
 ];
 
-// Shell route-name tab keys to design tab keys, for tabs that exist
-// on both sides. The shell's onboarding/rooms tabs have no design
-// header counterpart (the design boards predate those tabs), so they
-// map to nothing and are excluded from label/active comparisons.
+// Shell route-name tab keys to design tab keys. Refs #472: the
+// visible shell nav is exactly the six design header tabs, so every
+// key here has a design counterpart. Onboarding/rooms are tab-less
+// deep routes (no design-header tab) and map to nothing — they are
+// excluded from label/active comparisons in the live spec.
 export const ROUTE_KEY_TO_DESIGN_KEY: Record<string, string> = {
   desk: 'Main',
   stay: 'Stay',
