@@ -109,6 +109,107 @@ export const SCREEN_TABLE: readonly ScreenTableEntry[] = [
   { screen: 'Folio', route: '/folio', viewHook: 'folio-view' },
 ];
 
+// Decided per-screen content (issue #473, extend-the-design for
+// Stay, Rooms, and Book). The #467 gate deliberately deferred
+// full-record live parity because the views carry richer content
+// than the boards; #473 records the product decision (the app's
+// operational content stands, the boards now carry the same static
+// content) and this table pins what the live spec asserts per
+// screen:
+//
+// - `headings` / `inputs`: exact sequences in DOM order. Data-driven
+//   repetitions and flow-state panels stay out (stay list rows with
+//   per-row pick buttons, room-card bodies, the stay approval
+//   section and checkout dialog, the book quote/result/confirmation
+//   sections, conditional housekeeping buttons): those remain covered
+//   by their flow specs (`stay.spec.ts`, `book.spec.ts`,
+//   `desk.spec.ts`).
+// - `buttons`: required-label subset. The live DOM legitimately
+//   renders extras (per-row pick buttons, dialog confirmations), so
+//   the gate asserts presence, never exact equality.
+// - Rooms room-number headings are seed data, not static copy:
+//   `deploy/seed/boot.sql` seeds exactly rooms 101 and 102 on floor
+//   1, and no desk flow creates rooms, so the live sequence pins
+//   those two numbers.
+export interface DecidedScreenContent {
+  screen: string;
+  headings: FactHeading[];
+  buttons: string[];
+  inputs: FactInput[];
+  // Rooms only: the exact leading headings. The tail is
+  // data-driven (floor sections from room payloads, room-number
+  // cards per room), so the gate checks it structurally instead:
+  // every remaining h2 is a floor title or the unknown-floor
+  // caption, every h3 is a non-empty room label, and
+  // `requiredRoomLabels` (seed-anchored) all render. The installer
+  // desk loop upserts two floorless E2E rooms, so the live tail
+  // always carries the unknown-floor section plus those extras —
+  // exact tail equality would couple the gate to that fixture.
+  headingPrefix?: FactHeading[];
+  requiredRoomLabels?: string[];
+}
+
+export const DECIDED_CONTENT: readonly DecidedScreenContent[] = [
+  {
+    screen: 'Stay',
+    headings: [
+      { level: 1, text: 'Nhận phòng, chuyển phòng và trả phòng cho khách' },
+      { level: 2, text: 'Danh sách lưu trú theo ngày làm việc' },
+      { level: 3, text: 'Khách đến hôm nay' },
+      { level: 3, text: 'Đang lưu trú' },
+      { level: 3, text: 'Khách đi hôm nay' },
+      { level: 2, text: 'Nhận phòng cho khách đến' },
+      { level: 2, text: 'Chuyển phòng giữa kỳ lưu trú' },
+      { level: 2, text: 'Ghi nhận đến sớm và đi trễ' },
+      { level: 2, text: 'Trả phòng kèm đối chiếu bảng kê' },
+    ],
+    buttons: ['Tải lại', 'Nhận phòng', 'Chuyển phòng', 'Ghi nhận giờ', 'Đối chiếu bảng kê', 'Trả phòng'],
+    inputs: [
+      { kind: 'text', label: 'Mã đặt phòng:', placeholder: null },
+      { kind: 'text', label: 'Giờ đến thực tế (để trống nếu chưa cần):', placeholder: null },
+      { kind: 'select', label: 'Phòng sẵn sàng:', placeholder: 'Hãy chọn một phòng sẵn sàng…' },
+      { kind: 'text', label: 'Mã lưu trú:', placeholder: null },
+      { kind: 'select', label: 'Chuyển đến phòng:', placeholder: null },
+      { kind: 'text', label: 'Mã lưu trú:', placeholder: null },
+      { kind: 'text', label: 'Giờ đến thực tế (để trống nếu chưa cần):', placeholder: null },
+      { kind: 'text', label: 'Giờ đi thực tế (để trống nếu chưa cần):', placeholder: null },
+      { kind: 'text', label: 'Mã lưu trú:', placeholder: null },
+      { kind: 'text', label: 'Giờ đi thực tế (để trống nếu chưa cần):', placeholder: null },
+    ],
+  },
+  {
+    screen: 'Rooms',
+    headings: [],
+    headingPrefix: [
+      { level: 1, text: 'Sơ đồ phòng' },
+      { level: 2, text: 'Phòng theo trạng thái' },
+      { level: 2, text: 'Tầng 1' },
+    ],
+    requiredRoomLabels: ['101', '102'],
+    buttons: ['Tải lại'],
+    inputs: [],
+  },
+  {
+    screen: 'Book',
+    headings: [
+      { level: 1, text: 'Đặt phòng' },
+      { level: 2, text: 'Đặt phòng mới' },
+      { level: 2, text: 'Khách' },
+      { level: 2, text: 'Giá đã báo' },
+      { level: 2, text: 'Lưu trú' },
+    ],
+    buttons: ['Tìm khách', 'Đăng ký khách vãng lai', 'Lấy báo giá'],
+    inputs: [
+      { kind: 'text', label: 'Tên khách:', placeholder: null },
+      { kind: 'text', label: 'Mã khách:', placeholder: null },
+      { kind: 'text', label: 'Ngày đến:', placeholder: null },
+      { kind: 'text', label: 'Ngày đi:', placeholder: null },
+      { kind: 'select', label: 'Hạng phòng:', placeholder: 'Chọn hạng phòng…' },
+      { kind: 'text', label: 'Gói giá (để trống khi chỉ một gói áp giá cho hạng phòng này):', placeholder: null },
+      { kind: 'text', label: 'Giảm giá (không bắt buộc):', placeholder: null },
+    ],
+  },
+];
 // Shell route-name tab keys to design tab keys. Refs #472: the
 // visible shell nav is exactly the six design header tabs, so every
 // key here has a design counterpart. Onboarding/rooms are tab-less

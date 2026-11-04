@@ -187,12 +187,92 @@ test("inputs: labels, text placeholders, and select first-option captions", () =
       input.label,
       input.placeholder,
     ]),
+    // Decided #473 content: the check-in, move, times, and
+    // check-out cards in app DOM order (the `Mã lưu trú:` label
+    // repeats once per card, exactly as in the running view).
     [
-      ["select", "Khách đến", null],
-      ["select", "Phòng", "Chọn phòng..."],
-      ["select", "Khách đi", null],
-      ["text", "Người duyệt", null],
+      ["text", "Mã đặt phòng:", null],
+      ["text", "Giờ đến thực tế (để trống nếu chưa cần):", null],
+      ["select", "Phòng sẵn sàng:", "Hãy chọn một phòng sẵn sàng…"],
+      ["text", "Mã lưu trú:", null],
+      ["select", "Chuyển đến phòng:", null],
+      ["text", "Mã lưu trú:", null],
+      ["text", "Giờ đến thực tế (để trống nếu chưa cần):", null],
+      ["text", "Giờ đi thực tế (để trống nếu chưa cần):", null],
+      ["text", "Mã lưu trú:", null],
+      ["text", "Giờ đi thực tế (để trống nếu chưa cần):", null],
     ],
+  );
+  assert.deepEqual(
+    records.Book.inputs.map((input) => [
+      input.kind,
+      input.label,
+      input.placeholder,
+    ]),
+    // Decided #473 content: guest card, then stay card in app DOM
+    // order (rate plan before discount).
+    [
+      ["text", "Tên khách:", null],
+      ["text", "Mã khách:", null],
+      ["text", "Ngày đến:", null],
+      ["text", "Ngày đi:", null],
+      ["select", "Hạng phòng:", "Chọn hạng phòng…"],
+      ["text", "Gói giá (để trống khi chỉ một gói áp giá cho hạng phòng này):", null],
+      ["text", "Giảm giá (không bắt buộc):", null],
+    ],
+  );
+  assert.deepEqual(records.Rooms.inputs, []);
+});
+
+test("decided #473 board content: headings and buttons per screen", () => {
+  const { outDir } = extractToFreshDir();
+  const records = readRecords(outDir);
+  assert.deepEqual(
+    records.Stay.headings.map((heading) => [heading.level, heading.text]),
+    [
+      [1, "Nhận phòng, chuyển phòng và trả phòng cho khách"],
+      [2, "Danh sách lưu trú theo ngày làm việc"],
+      [3, "Khách đến hôm nay"],
+      [3, "Đang lưu trú"],
+      [3, "Khách đi hôm nay"],
+      [2, "Nhận phòng cho khách đến"],
+      [2, "Chuyển phòng giữa kỳ lưu trú"],
+      [2, "Ghi nhận đến sớm và đi trễ"],
+      [2, "Trả phòng kèm đối chiếu bảng kê"],
+    ],
+  );
+  assert.deepEqual(
+    records.Stay.buttons.map((button) => button.label),
+    ["Tải lại", "Nhận phòng", "Chuyển phòng", "Ghi nhận giờ", "Đối chiếu bảng kê", "Trả phòng"],
+  );
+  // Rooms carries the static shell (title, summary, floor titles);
+  // the room-number cards below are illustrative mock data, so only
+  // the static prefix is pinned here.
+  assert.deepEqual(
+    records.Rooms.headings.slice(0, 3).map((heading) => [heading.level, heading.text]),
+    [
+      [1, "Sơ đồ phòng"],
+      [2, "Phòng theo trạng thái"],
+      [2, "Tầng 1"],
+    ],
+  );
+  assert.deepEqual(
+    records.Rooms.buttons.map((button) => button.label),
+    ["Tải lại"],
+  );
+  assert.deepEqual(
+    records.Book.headings.map((heading) => [heading.level, heading.text]),
+    [
+      [1, "Đặt phòng"],
+      [2, "Đặt phòng mới"],
+      [2, "Khách"],
+      [2, "Giá đã báo"],
+      [2, "Lưu trú"],
+    ],
+  );
+  assert.deepEqual(
+    records.Book.buttons.map((button) => button.label),
+    ["Tìm khách", "Đăng ký khách vãng lai", "Xác nhận đặt phòng", "Lấy báo giá"],
   );
 });
 

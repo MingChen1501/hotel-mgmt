@@ -28,12 +28,17 @@
 // - Live conformance tests: the same extraction against the running
 //   app DOM, asserting the design-anchored subset that conforms today
 //   (header/page/ink tokens, design-known tab labels, the decided
-//   six-tab visible set, per-screen active tab). Full-record live
-//   parity is deferred to product-alignment follow-ups (see the scope
-//   note on #467): the views carry richer content than the boards,
-//   and PrimeVue defaults render primary-500 instead of the design
-//   primary-700. The fixture tests above prove the gate catches every
-//   one of those drift classes with proper diffs. Refs #472 resolved
+//   six-tab visible set, per-screen active tab) plus the decided
+//   per-screen content from issue #473 (exact heading/input sequences
+//   for Stay and Book; Rooms pins its static heading prefix plus the
+//   seed room labels and checks the data-driven tail structurally;
+//   required-button-label subsets everywhere so dynamic extras never
+//   break the gate). Full-record live parity
+//   stays deferred for the data-driven and flow-state panels the
+//   decision excludes (stay list rows, room-card bodies, approval,
+//   dialogs, quote/result/confirmation): the fixture tests above
+//   prove the gate catches every one of those drift classes with
+//   proper diffs. Refs #472 resolved
 //   the nav drift the other way: the shell visible set is exactly the
 //   six design header tabs (onboarding/rooms are tab-less deep
 //   routes), so the live tests pin that decided set.
@@ -43,6 +48,7 @@ import { expect, test, type Page } from '@playwright/test';
 import {
   buildMatchingDom,
   collectAppFacts,
+  DECIDED_CONTENT,
   diffFactRecords,
   FACT_SCHEMA_VERSION,
   formatFactDiffs,
@@ -307,6 +313,13 @@ test.describe('live shell conformance on the running app DOM', () => {
       await signInVi(page);
       await page.goto(entry.route === '/' ? '/app/' : `/app${entry.route}`);
       await expect(page.getByTestId(entry.viewHook)).toBeVisible();
+      if (entry.screen === 'Rooms') {
+        // The floor map renders only after its reads complete
+        // (loading flag); the summary section is the positive
+        // signal the decided content is on screen. A broken map
+        // fails here loudly instead of extracting a half-empty DOM.
+        await expect(page.getByTestId('rooms-summary')).toBeVisible();
+      }
       const actual = await page.evaluate(collectAppFacts, entry.viewHook);
       const record = recordFor(entry.screen);
       const failures: FactDiff[] = [];
@@ -386,6 +399,133 @@ test.describe('live shell conformance on the running app DOM', () => {
           record.nav.design,
           `${record.nav.app} .shell-nav-active`,
         );
+      }
+
+      // Decided per-screen content (issue #473, extend-the-design):
+      // exact heading/input sequences plus required button labels.
+      // Buttons stay a subset check because the live DOM
+      // legitimately renders extras (per-row pick buttons, dialog
+      // confirmations); data-driven and flow-state panels stay out
+      // (see DECIDED_CONTENT) and remain covered by their flow specs.
+      const decided = DECIDED_CONTENT.find((candidate) => candidate.screen === entry.screen);
+      if (decided !== undefined) {
+        const contentApp = `[data-testid="${entry.viewHook}"]`;
+        const expectedHeadings = decided.headingPrefix ?? decided.headings;
+        const prefixLength = decided.headingPrefix !== undefined ? decided.headingPrefix.length : expectedHeadings.length;
+        const headingCount = Math.max(expectedHeadings.length, actual.headings.length);
+        for (let index = 0; index < headingCount; index += 1) {
+          // A prefix-pinned screen (Rooms) checks the data-driven
+          // tail structurally below; exact per-index checks cover
+          // the static prefix only.
+          if (decided.headingPrefix !== undefined && index >= decided.headingPrefix.length) break;
+          const expected = expectedHeadings[index];
+          const observed = actual.headings[index];
+          check(
+            `headings[${index}].level`,
+            expected?.level ?? '(absent)',
+            observed?.level ?? '(absent)',
+            record.designFile,
+            `${contentApp} h1`,
+          );
+          check(
+            `headings[${index}].text`,
+            expected?.text ?? '(absent)',
+            observed?.text ?? '(absent)',
+            record.designFile,
+            `${contentApp} h1`,
+          );
+        }
+        if (decided.headingPrefix !== undefined) {
+          const tail = actual.headings.slice(prefixLength);
+          const roomLabels = tail.filter((heading) => heading.level === 3).map((heading) => heading.text);
+          tail.forEach((heading, offset) => {
+            const index = prefixLength + offset;
+            if (heading.level === 2) {
+              const floorTitle = /^Tầng \S+$/.test(heading.text) || heading.text === 'Phòng chưa xếp tầng';
+              if (!floorTitle) {
+                failures.push({
+                  screen: entry.screen,
+                  field: `headings[${index}].text`,
+                  expected: 'a floor title ("Tầng <n>") or "Phòng chưa xếp tầng"',
+                  actual: JSON.stringify(heading.text),
+                  design: record.designFile,
+                  app: `${contentApp} h2`,
+                });
+              }
+            } else if (heading.level === 3) {
+              if (heading.text === '') {
+                failures.push({
+                  screen: entry.screen,
+                  field: `headings[${index}].text`,
+                  expected: 'a non-empty room label',
+                  actual: JSON.stringify(heading.text),
+                  design: record.designFile,
+                  app: `${contentApp} h3`,
+                });
+              }
+            } else {
+              failures.push({
+                screen: entry.screen,
+                field: `headings[${index}].level`,
+                expected: '2 or 3',
+                actual: JSON.stringify(heading.level),
+                design: record.designFile,
+                app: `${contentApp} h1`,
+              });
+            }
+          });
+          for (const label of decided.requiredRoomLabels ?? []) {
+            if (!roomLabels.includes(label)) {
+              failures.push({
+                screen: entry.screen,
+                field: `headings[room=${label}]`,
+                expected: JSON.stringify(label),
+                actual: '(absent)',
+                design: record.designFile,
+                app: `${contentApp} h3`,
+              });
+            }
+          }
+        }
+        for (const label of decided.buttons) {
+          const found = actual.buttons.some((button) => button.label === label);
+          if (!found) {
+            failures.push({
+              screen: entry.screen,
+              field: `buttons[label=${label}]`,
+              expected: JSON.stringify(label),
+              actual: '(absent)',
+              design: record.designFile,
+              app: `${contentApp} button`,
+            });
+          }
+        }
+        const inputCount = Math.max(decided.inputs.length, actual.inputs.length);
+        for (let index = 0; index < inputCount; index += 1) {
+          const expected = decided.inputs[index];
+          const observed = actual.inputs[index];
+          check(
+            `inputs[${index}].kind`,
+            expected?.kind ?? '(absent)',
+            observed?.kind ?? '(absent)',
+            record.designFile,
+            `${contentApp} input`,
+          );
+          check(
+            `inputs[${index}].label`,
+            expected?.label ?? '(absent)',
+            observed?.label ?? '(absent)',
+            record.designFile,
+            `${contentApp} input`,
+          );
+          check(
+            `inputs[${index}].placeholder`,
+            expected?.placeholder ?? null,
+            observed?.placeholder ?? null,
+            record.designFile,
+            `${contentApp} input`,
+          );
+        }
       }
 
       expect(
