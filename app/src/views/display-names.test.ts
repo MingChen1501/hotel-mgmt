@@ -11,7 +11,7 @@
 // item lines, confirmation pairs) rather than the whole view text.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
-import { mount } from '@vue/test-utils';
+import { mount, RouterLinkStub } from '@vue/test-utils';
 import BookView from './BookView.vue';
 import DeskView from './DeskView.vue';
 import FolioView from './FolioView.vue';
@@ -54,8 +54,11 @@ const UNMAPPED_ROOM_UUID = '00000000-1111-2222-3333-444444444444';
 function mountView(component: Parameters<typeof mount>[0]) {
   const pinia = createPinia();
   setActivePinia(pinia);
+  // DeskView renders RouterLink entries for its room map (Refs
+  // #479): the canonical stub keeps every mounted view free of a
+  // router instance while preserving the link targets.
   return mount(component, {
-    global: { plugins: [pinia] },
+    global: { plugins: [pinia], stubs: { RouterLink: RouterLinkStub } },
   });
 }
 

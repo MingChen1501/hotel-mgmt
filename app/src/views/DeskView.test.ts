@@ -8,7 +8,7 @@
 // characterization coverage for the desk flows.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
-import { mount } from '@vue/test-utils';
+import { mount, RouterLinkStub } from '@vue/test-utils';
 import DeskView from './DeskView.vue';
 import { useSessionStore } from '../stores/session';
 import { setLocale } from '../i18n';
@@ -69,14 +69,15 @@ function stubHappyPath(fetchMock: ReturnType<typeof vi.fn>): void {
     }
     if (url === '/v1/rooms/ListRoomsByState') {
       // Refs #370: stay rooms resolve through the occupied state,
-      // attention rooms through their own states.
+      // attention rooms through their own states. Floors ride the
+      // same payload (Refs #479): the desk room map groups by them.
       const rooms: Record<string, unknown[]> = {
-        'vacant-dirty': [{ roomId: 'r-1', number: '101', roomTypeId: 'standard', state: 'vacant-dirty' }],
-        'vacant-clean': [{ roomId: 'r-2', number: '102', roomTypeId: 'standard', state: 'vacant-clean' }],
+        'vacant-dirty': [{ roomId: 'r-1', number: '101', roomTypeId: 'standard', state: 'vacant-dirty', floor: '1' }],
+        'vacant-clean': [{ roomId: 'r-2', number: '102', roomTypeId: 'standard', state: 'vacant-clean', floor: '1' }],
         'out-of-order': [{ roomId: 'r-3', number: '103', roomTypeId: 'suite', state: 'out-of-order' }],
         occupied: [
-          { roomId: 'r-101', number: '201', roomTypeId: 'standard', state: 'occupied' },
-          { roomId: 'r-102', number: '202', roomTypeId: 'standard', state: 'occupied' },
+          { roomId: 'r-101', number: '201', roomTypeId: 'standard', state: 'occupied', floor: '2' },
+          { roomId: 'r-102', number: '202', roomTypeId: 'standard', state: 'occupied', floor: '2' },
         ],
       };
       return Promise.resolve(jsonResponse({ state: body.state, rooms: rooms[body.state] ?? [] }));
@@ -166,9 +167,20 @@ function stubHappyPath(fetchMock: ReturnType<typeof vi.fn>): void {
 function mountDesk() {
   const pinia = createPinia();
   setActivePinia(pinia);
+  // RouterLink renders through the canonical stub: navigation stays
+  // declarative (`:to="{ name: 'rooms' }"`) while tests assert the
+  // target without a router instance (Refs #479).
   return mount(DeskView, {
-    global: { plugins: [pinia] },
+    global: { plugins: [pinia], stubs: { RouterLink: RouterLinkStub } },
   });
+}
+
+function roomLinkTo(wrapper: ReturnType<typeof mountDesk>, testid: string): unknown {
+  const link = wrapper
+    .findAllComponents(RouterLinkStub)
+    .find((candidate) => candidate.attributes('data-testid') === testid);
+  expect(link !== undefined, `expected a room-map link ${testid}`).toBe(true);
+  return link?.props('to');
 }
 
 async function signIn(wrapper: ReturnType<typeof mountDesk>, fetchMock: ReturnType<typeof vi.fn>) {
@@ -712,5 +724,172 @@ describe('desk view', () => {
       );
     });
     expect(wrapper.find('[data-testid="desk-backup-support"]').text()).toContain('call support');
+  });
+
+  // Refs #479: the embedded room map shows floor groups with
+  // per-status chips and counts, reusing the /rooms vocabulary.
+  it('renders the room-map section with chips, counts, and floor groups', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountDesk();
+    await signIn(wrapper, fetchMock);
+
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="desk-roommap"]').exists()).toBe(true);
+    });
+    expect(wrapper.find('[data-testid="desk-roommap"] h2').text()).toContain('Room map');
+    const summary = wrapper.find('[data-testid="desk-roommap-summary"]');
+    expect(summary.text()).toContain('Rooms by status');
+    // Chips match the cards by construction: two occupied, one
+    // dirty, one awaiting inspection, one out of service, none
+    // ready.
+    expect(wrapper.find('[data-testid="desk-roommap-chip-occupied"]').text()).toContain('(2)');
+    expect(wrapper.find('[data-testid="desk-roommap-chip-needs-cleaning"]').text()).toContain('(1)');
+    expect(wrapper.find('[data-testid="desk-roommap-chip-awaiting-inspection"]').text()).toContain('(1)');
+    expect(wrapper.find('[data-testid="desk-roommap-chip-out-of-service"]').text()).toContain('(1)');
+    expect(wrapper.find('[data-testid="desk-roommap-chip-ready"]').text()).toContain('(0)');
+    // Floor groups from the same payload: floor 1, floor 2, then
+    // the room without a listed floor.
+    const floors = wrapper.findAll('[data-testid="desk-roommap-floor"]');
+    expect(floors.map((floor) => floor.find('h2').text())).toEqual(['Floor 1', 'Floor 2']);
+    expect(wrapper.find('[data-testid="desk-roommap-floor-unknown"] h2').text()).toContain(
+      'Rooms without a listed floor',
+    );
+    expect(wrapper.find('[data-testid="desk-roommap-room-101"]').text()).toContain('101');
+    expect(wrapper.find('[data-testid="desk-roommap-room-103"]').exists()).toBe(true);
+    // Map rows resolve the human type name, never the raw type id.
+    expect(wrapper.find('[data-testid="desk-roommap-card-type-101"]').text()).toContain('Standard');
+    expect(wrapper.find('[data-testid="desk-roommap-card-type-101"]').text()).not.toContain('standard');
+    // VI-primary copy (AC-DSK-8): the map switches locale with no
+    // mixed-locale copy.
+    try {
+      setLocale('vi');
+      await wrapper.vm.$nextTick();
+      expect(wrapper.find('[data-testid="desk-roommap"] h2').text()).toContain('Sơ đồ phòng');
+      expect(wrapper.find('[data-testid="desk-roommap-manage"]').text()).toContain('Quản lý phòng');
+      expect(wrapper.find('[data-testid="desk-roommap-chip-needs-cleaning"]').text()).toContain('Phòng bẩn');
+    } finally {
+      setLocale('en');
+    }
+  });
+
+  // Refs #479: every map entry links through to /rooms for actions;
+  // the desk screen itself performs no room writes for the map.
+  it('links every room-map entry through to the rooms screen', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountDesk();
+    await signIn(wrapper, fetchMock);
+
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="desk-roommap-manage"]').exists()).toBe(true);
+    });
+    expect(roomLinkTo(wrapper, 'desk-roommap-manage')).toEqual({ name: 'rooms' });
+    for (const number of ['101', '102', '103', '201', '202']) {
+      expect(roomLinkTo(wrapper, `desk-roommap-open-${number}`)).toEqual({ name: 'rooms' });
+    }
+    // Read-only render: the map derives from the five state reads
+    // plus the dashboard joins, with no room writes.
+    const urls = fetchMock.mock.calls.map((call) => String(call[0]));
+    expect(urls).not.toContain('/v1/rooms/UpdateRoomState');
+    expect(urls.filter((url) => url === '/v1/rooms/ListRoomsByState')).toHaveLength(5);
+  });
+
+  // Refs #479: an empty estate renders the catalogue empty state,
+  // never a blank map.
+  it('renders the room-map empty state when no rooms exist', async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url === '/v1/stay/ListArrivalsDepartures') {
+        return Promise.resolve(
+          jsonResponse({ businessDate: localBusinessDate(), arrivals: [], inHouse: [], departures: [] }),
+        );
+      }
+      if (url === '/v1/rooms/ListRoomTypes') {
+        return Promise.resolve(jsonResponse({ roomTypes: [] }));
+      }
+      if (url === '/v1/rooms/ListRoomsByState') {
+        return Promise.resolve(jsonResponse({ state: 'x', rooms: [] }));
+      }
+      if (url === '/v1/reporting/DailySheet') {
+        return Promise.resolve(
+          jsonResponse({
+            businessDate: localBusinessDate(),
+            arrivals: [],
+            inHouse: [],
+            departures: [],
+            openBalances: [],
+            asOf: '',
+          }),
+        );
+      }
+      if (url === '/backup-report.json') {
+        return Promise.resolve(jsonResponse({ outcome: 'success', line: 'Backup ok', support: '' }));
+      }
+      throw new Error(`unexpected call ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountDesk();
+    useSessionStore().signIn('tok-1', 'Ada', 'owner');
+    await wrapper.find('[data-testid="desk-refresh"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="desk-roommap-empty"]').exists()).toBe(true);
+    });
+    expect(wrapper.find('[data-testid="desk-roommap-empty"]').text()).toContain(
+      'No rooms yet. Rooms appear here once they are set up.',
+    );
+  });
+
+  // Refs #479: padded floor labels merge into one group instead of
+  // splitting a floor into duplicate sections.
+  it('merges padded floor labels into a single floor group', async () => {
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url === '/v1/rooms/ListRoomsByState') {
+        const state = String(JSON.parse(String(init?.body ?? '{}')).state ?? '');
+        const rooms: Record<string, unknown[]> = {
+          'vacant-dirty': [
+            { roomId: 'r-1', number: '101', roomTypeId: 'standard', state, floor: '1' },
+          ],
+          'vacant-clean': [
+            { roomId: 'r-2', number: '102', roomTypeId: 'standard', state, floor: ' 1 ' },
+          ],
+        };
+        return Promise.resolve(jsonResponse({ state, rooms: rooms[state] ?? [] }));
+      }
+      if (url === '/v1/stay/ListArrivalsDepartures') {
+        return Promise.resolve(
+          jsonResponse({ businessDate: localBusinessDate(), arrivals: [], inHouse: [], departures: [] }),
+        );
+      }
+      if (url === '/v1/rooms/ListRoomTypes') {
+        return Promise.resolve(jsonResponse({ roomTypes: [] }));
+      }
+      if (url === '/v1/reporting/DailySheet') {
+        return Promise.resolve(
+          jsonResponse({
+            businessDate: localBusinessDate(),
+            arrivals: [],
+            inHouse: [],
+            departures: [],
+            openBalances: [],
+            asOf: '',
+          }),
+        );
+      }
+      if (url === '/backup-report.json') {
+        return Promise.resolve(jsonResponse({ outcome: 'success', line: 'Backup ok', support: '' }));
+      }
+      throw new Error(`unexpected call ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountDesk();
+    useSessionStore().signIn('tok-1', 'Ada', 'owner');
+    await wrapper.find('[data-testid="desk-refresh"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="desk-roommap"]').exists()).toBe(true);
+    });
+    const floors = wrapper.findAll('[data-testid="desk-roommap-floor"]');
+    expect(floors.map((floor) => floor.find('h2').text())).toEqual(['Floor 1']);
+    expect(wrapper.find('[data-testid="desk-roommap-room-101"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="desk-roommap-room-102"]').exists()).toBe(true);
   });
 });

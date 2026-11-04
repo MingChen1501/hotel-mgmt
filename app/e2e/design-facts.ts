@@ -110,7 +110,8 @@ export const SCREEN_TABLE: readonly ScreenTableEntry[] = [
 ];
 
 // Decided per-screen content (issue #473, extend-the-design for
-// Stay, Rooms, and Book). The #467 gate deliberately deferred
+// Stay, Rooms, and Book; issue #479 adds the Main room-map
+// section, which has no board counterpart yet). The #467 gate deliberately deferred
 // full-record live parity because the views carry richer content
 // than the boards; #473 records the product decision (the app's
 // operational content stands, the boards now carry the same static
@@ -136,7 +137,7 @@ export interface DecidedScreenContent {
   headings: FactHeading[];
   buttons: string[];
   inputs: FactInput[];
-  // Rooms only: the exact leading headings. The tail is
+  // Rooms and Main only: the exact leading headings. The tail is
   // data-driven (floor sections from room payloads, room-number
   // cards per room), so the gate checks it structurally instead:
   // every remaining h2 is a floor title or the unknown-floor
@@ -150,6 +151,38 @@ export interface DecidedScreenContent {
 }
 
 export const DECIDED_CONTENT: readonly DecidedScreenContent[] = [
+  {
+    // Main (Refs #479): the desk screen pins its static heading
+    // prefix — dashboard cards, the five-lane board, then the
+    // embedded room-map section heads — while the data-driven tail
+    // (floor sections from room payloads, room-number links per
+    // room) follows the same structural rule as Rooms. Seed rooms
+    // 101 and 102 anchor the required labels.
+    screen: 'Main',
+    headings: [],
+    headingPrefix: [
+      { level: 1, text: 'Lễ tân hôm nay: khách đến, lưu trú và phòng cần chú ý' },
+      { level: 2, text: 'Báo cáo sao lưu' },
+      { level: 2, text: 'Khách đến hôm nay' },
+      { level: 2, text: 'Đang lưu trú' },
+      { level: 2, text: 'Khách đi hôm nay' },
+      { level: 2, text: 'Phòng cần dọn' },
+      { level: 3, text: 'Phòng bẩn' },
+      { level: 3, text: 'Sạch nhưng chưa kiểm tra' },
+      { level: 2, text: 'Ngưng bán' },
+      { level: 2, text: 'Bảng trạng thái phòng' },
+      { level: 3, text: 'Đang có khách' },
+      { level: 3, text: 'Sẵn sàng (đã kiểm tra)' },
+      { level: 3, text: 'Sạch, chờ kiểm tra' },
+      { level: 3, text: 'Phòng bẩn' },
+      { level: 3, text: 'Ngưng bán' },
+      { level: 2, text: 'Sơ đồ phòng' },
+      { level: 2, text: 'Phòng theo trạng thái' },
+    ],
+    requiredRoomLabels: ['101', '102'],
+    buttons: ['Tải lại'],
+    inputs: [],
+  },
   {
     screen: 'Stay',
     headings: [

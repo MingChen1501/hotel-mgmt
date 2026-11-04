@@ -697,6 +697,7 @@
     "desk.rooms.note_arrival": "{guest} · Arriving {date}",
     "desk.rooms.note_ready": "Ready for check-in.",
     "desk.rooms.note_needs_cleaning": "Needs cleaning.",
-    "desk.rooms.note_awaiting_inspection": "Cleaned, awaiting inspection."
+    "desk.rooms.note_awaiting_inspection": "Cleaned, awaiting inspection.",
+    "desk.map.manage": "Manage rooms"
   }
 }

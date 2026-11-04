@@ -297,18 +297,92 @@
           </ul>
         </section>
       </div>
+
+      <section
+        v-if="!loading && !dashboardError"
+        data-testid="desk-roommap"
+      >
+        <h2>{{ t('desk.rooms.title', {}, 'Room map') }}</h2>
+        <p>{{ t('desk.rooms.intro', {}, 'Every room at a glance, grouped by floor. Refresh to update.') }}</p>
+        <p>
+          <RouterLink
+            :to="{ name: 'rooms' }"
+            data-testid="desk-roommap-manage"
+          >
+            {{ t('desk.map.manage', {}, 'Manage rooms') }}
+          </RouterLink>
+        </p>
+        <p
+          v-if="totalMapRooms === 0"
+          data-testid="desk-roommap-empty"
+        >
+          {{ t('desk.rooms.empty', {}, 'No rooms yet. Rooms appear here once they are set up.') }}
+        </p>
+        <template v-else>
+          <section data-testid="desk-roommap-summary">
+            <h2>{{ t('desk.rooms.summary_heading', {}, 'Rooms by status') }}</h2>
+            <ul>
+              <li
+                v-for="chip in mapChips"
+                :key="chip.status"
+                :data-testid="`desk-roommap-chip-${chip.status}`"
+              >
+                <Tag
+                  :severity="chip.severity"
+                  :value="chip.label"
+                /> ({{ chip.count }})
+              </li>
+            </ul>
+          </section>
+
+          <section
+            v-for="floor in mapFloors"
+            :key="floor.key"
+            :data-testid="floor.unknown ? 'desk-roommap-floor-unknown' : 'desk-roommap-floor'"
+          >
+            <h2>{{ floor.title }}</h2>
+            <ul>
+              <li
+                v-for="room in floor.rooms"
+                :key="room.number"
+                :data-testid="`desk-roommap-room-${room.number}`"
+              >
+                <h3>
+                  <RouterLink
+                    :to="{ name: 'rooms' }"
+                    :data-testid="`desk-roommap-open-${room.number}`"
+                  >
+                    {{ room.number }}
+                  </RouterLink>
+                </h3>
+                <p>
+                  <Tag
+                    :severity="mapChipSeverity(room.display)"
+                    :value="mapChipLabel(room.display)"
+                    :data-testid="`desk-roommap-card-chip-${room.number}`"
+                  />
+                </p>
+                <p :data-testid="`desk-roommap-card-type-${room.number}`">
+                  {{ typeName(room.roomTypeId) }}
+                </p>
+              </li>
+            </ul>
+          </section>
+        </template>
+      </section>
     </section>
   </main>
 </template>
 
 <script lang="ts">
-import { defineComponent, onMounted, ref } from 'vue';
+import { computed, defineComponent, onMounted, ref } from 'vue';
 import Button from 'primevue/button';
 import Card from 'primevue/card';
 import Column from 'primevue/column';
 import DataTable from 'primevue/datatable';
 import Message from 'primevue/message';
 import Tag from 'primevue/tag';
+import { RouterLink } from 'vue-router';
 import { apiFetch } from '../api/client';
 import type { ApiError } from '../api/client';
 import { t } from '../i18n';
@@ -333,6 +407,12 @@ import { useSessionStore } from '../stores/session';
 // advances clean-to-inspected through the existing
 // `UpdateRoomState` transitions only (LLD section 13.2, FR-RMS-2,
 // NFR-AUD-1 hold) — no transition logic changes here.
+// The #479 room-map section reuses the same five state reads: the
+// lane lists above are retagged into the /rooms display vocabulary
+// (floor groups, status chips with counts) with PrimeVue Tag
+// styling, and every entry links through to the `rooms` route —
+// actions stay on /rooms, so this view performs no room writes
+// beyond the two housekeeping buttons above.
 //
 // Shared-migration contracts, same as the shell:
 // - Bearer auth comes only from the Pinia session store via the
@@ -364,6 +444,30 @@ interface RoomRecord {
   roomId?: string;
   number: string;
   roomTypeId: string;
+  floor?: string | null;
+}
+
+// Room-map display vocabulary (Refs #479, FR-DSK-6): the same five
+// display states, chip labels, and severities as the /rooms screen,
+// so both surfaces stay worded and coloured alike. The map derives
+// from the five lane lists the dashboard already reads — no new
+// endpoints, no backend changes.
+type MapDisplayStatus =
+  | 'ready'
+  | 'occupied'
+  | 'needs-cleaning'
+  | 'awaiting-inspection'
+  | 'out-of-service';
+
+interface MapRoom extends RoomRecord {
+  display: MapDisplayStatus;
+}
+
+interface MapFloorGroup {
+  key: string;
+  title: string;
+  unknown: boolean;
+  rooms: MapRoom[];
 }
 
 // Newest backup report published beside the static frontend by
@@ -393,7 +497,7 @@ function isSignedOut(err: unknown): boolean {
 export default defineComponent({
   name: 'DeskView',
   // eslint-disable-next-line vue/no-reserved-component-names -- PrimeVue registers Button/Dialog under these canonical names (Refs #338 component mapping).
-  components: { Button, Card, Column, DataTable, Message, Tag },
+  components: { Button, Card, Column, DataTable, Message, RouterLink, Tag },
   setup() {
     const session = useSessionStore();
     const businessDate = ref(localBusinessDate());
@@ -411,6 +515,81 @@ export default defineComponent({
     // other three lanes render the attention lists above.
     const occupied = ref<RoomRecord[]>([]);
     const ready = ref<RoomRecord[]>([]);
+    // Room-map section (Refs #479, FR-DSK-6): the same rooms the
+    // lanes above already list, retagged into the /rooms display
+    // vocabulary and grouped by floor. The summary chips and the
+    // floor cards derive from this one computed list, so counts
+    // match cards by construction — no new endpoints, no backend
+    // changes. Entries link through to /rooms; actions stay there.
+    const mapRooms = computed<MapRoom[]>(() => [
+      ...occupied.value.map((room) => ({ ...room, display: 'occupied' as const })),
+      ...ready.value.map((room) => ({ ...room, display: 'ready' as const })),
+      ...dirty.value.map((room) => ({ ...room, display: 'needs-cleaning' as const })),
+      ...uninspected.value.map((room) => ({ ...room, display: 'awaiting-inspection' as const })),
+      ...outOfOrder.value.map((room) => ({ ...room, display: 'out-of-service' as const })),
+    ]);
+
+    const totalMapRooms = computed(() => mapRooms.value.length);
+
+    const mapChips = computed(() => {
+      const counts: Record<MapDisplayStatus, number> = {
+        ready: 0,
+        occupied: 0,
+        'needs-cleaning': 0,
+        'awaiting-inspection': 0,
+        'out-of-service': 0,
+      };
+      for (const room of mapRooms.value) {
+        counts[room.display] += 1;
+      }
+      return (Object.keys(counts) as MapDisplayStatus[]).map((status) => ({
+        status,
+        label: mapChipLabel(status),
+        severity: mapChipSeverity(status),
+        count: counts[status],
+      }));
+    });
+
+    const mapFloors = computed<MapFloorGroup[]>(() => {
+      const groups = new Map<string, MapRoom[]>();
+      const unknown: MapRoom[] = [];
+      for (const room of mapRooms.value) {
+        // Trim the grouping key (Refs #479): payloads may pad the
+        // floor label, and untrimmed keys would split one floor
+        // into duplicate groups.
+        const key = typeof room.floor === 'string' ? room.floor.trim() : '';
+        if (key !== '') {
+          const list = groups.get(key);
+          if (list) {
+            list.push(room);
+          } else {
+            groups.set(key, [room]);
+          }
+        } else {
+          unknown.push(room);
+        }
+      }
+      const byNumber = (a: MapRoom, b: MapRoom): number =>
+        a.number.localeCompare(b.number, undefined, { numeric: true });
+      const ordered = [...groups.entries()]
+        .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
+        .map(([key, list]) => ({
+          key,
+          title: t('desk.rooms.floor_title', { floor: key }, `Floor ${key}`),
+          unknown: false,
+          rooms: [...list].sort(byNumber),
+        }));
+      if (unknown.length > 0) {
+        ordered.push({
+          key: 'unknown',
+          title: t('desk.rooms.floor_unknown', {}, 'Rooms without a listed floor'),
+          unknown: true,
+          rooms: [...unknown].sort(byNumber),
+        });
+      }
+      return ordered;
+    });
+
     // Occupant names for occupied board cells, joined client-side
     // from the stay lists below (Refs #371: already-fetched data
     // only — no extra GetGuest calls).
@@ -629,6 +808,37 @@ export default defineComponent({
         return roomTypeNames.value[roomTypeId];
       }
       return t('desk.today.room_type_unresolved', {}, 'Room type');
+    }
+
+    // Room-map chip vocabulary (Refs #479): identical wording and
+    // colour meaning to the /rooms screen on both surfaces.
+    function mapChipSeverity(status: MapDisplayStatus): string {
+      switch (status) {
+        case 'occupied':
+          return 'info';
+        case 'ready':
+          return 'success';
+        case 'needs-cleaning':
+        case 'awaiting-inspection':
+          return 'warning';
+        case 'out-of-service':
+          return 'danger';
+      }
+    }
+
+    function mapChipLabel(status: MapDisplayStatus): string {
+      switch (status) {
+        case 'ready':
+          return t('desk.rooms.chip_ready', {}, 'Ready (inspected)');
+        case 'occupied':
+          return t('desk.rooms.chip_occupied', {}, 'Occupied');
+        case 'needs-cleaning':
+          return t('desk.rooms.chip_needs_cleaning', {}, 'Dirty');
+        case 'awaiting-inspection':
+          return t('desk.rooms.chip_awaiting_inspection', {}, 'Clean, awaiting inspection');
+        case 'out-of-service':
+          return t('desk.rooms.chip_out_of_service', {}, 'Out of order');
+      }
     }
 
     async function loadRoomTypeNames(): Promise<void> {
@@ -904,6 +1114,11 @@ export default defineComponent({
       occupantNameFor,
       typeName,
       outOfServiceNote,
+      mapChips,
+      mapFloors,
+      totalMapRooms,
+      mapChipSeverity,
+      mapChipLabel,
       isBusy,
       onMarkCleaned,
       onMarkInspected,
