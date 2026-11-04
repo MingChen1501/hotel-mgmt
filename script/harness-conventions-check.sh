@@ -68,6 +68,8 @@ RULES=(
   ".opencode/opencode.jsonc|gh pr merge"
   ".opencode/opencode.jsonc|ao spawn"
   "script/ao-spawn-worker.sh|ao-spawn-worker"
+  "script/ao-spawn-worker.sh|Shared-machine"
+  "script/compose-lab-guard.sh|compose-lab-guard"
   "script/orchestrator-review.sh|orchestrator-review"
   "script/ao-role-footer.sh|ao-role"
   "script/contract-check.sh|contract-check"
