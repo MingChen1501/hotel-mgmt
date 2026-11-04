@@ -838,4 +838,58 @@ describe('desk view', () => {
       'No rooms yet. Rooms appear here once they are set up.',
     );
   });
+
+  // Refs #479: padded floor labels merge into one group instead of
+  // splitting a floor into duplicate sections.
+  it('merges padded floor labels into a single floor group', async () => {
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url === '/v1/rooms/ListRoomsByState') {
+        const state = String(JSON.parse(String(init?.body ?? '{}')).state ?? '');
+        const rooms: Record<string, unknown[]> = {
+          'vacant-dirty': [
+            { roomId: 'r-1', number: '101', roomTypeId: 'standard', state, floor: '1' },
+          ],
+          'vacant-clean': [
+            { roomId: 'r-2', number: '102', roomTypeId: 'standard', state, floor: ' 1 ' },
+          ],
+        };
+        return Promise.resolve(jsonResponse({ state, rooms: rooms[state] ?? [] }));
+      }
+      if (url === '/v1/stay/ListArrivalsDepartures') {
+        return Promise.resolve(
+          jsonResponse({ businessDate: localBusinessDate(), arrivals: [], inHouse: [], departures: [] }),
+        );
+      }
+      if (url === '/v1/rooms/ListRoomTypes') {
+        return Promise.resolve(jsonResponse({ roomTypes: [] }));
+      }
+      if (url === '/v1/reporting/DailySheet') {
+        return Promise.resolve(
+          jsonResponse({
+            businessDate: localBusinessDate(),
+            arrivals: [],
+            inHouse: [],
+            departures: [],
+            openBalances: [],
+            asOf: '',
+          }),
+        );
+      }
+      if (url === '/backup-report.json') {
+        return Promise.resolve(jsonResponse({ outcome: 'success', line: 'Backup ok', support: '' }));
+      }
+      throw new Error(`unexpected call ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountDesk();
+    useSessionStore().signIn('tok-1', 'Ada', 'owner');
+    await wrapper.find('[data-testid="desk-refresh"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="desk-roommap"]').exists()).toBe(true);
+    });
+    const floors = wrapper.findAll('[data-testid="desk-roommap-floor"]');
+    expect(floors.map((floor) => floor.find('h2').text())).toEqual(['Floor 1']);
+    expect(wrapper.find('[data-testid="desk-roommap-room-101"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="desk-roommap-room-102"]').exists()).toBe(true);
+  });
 });

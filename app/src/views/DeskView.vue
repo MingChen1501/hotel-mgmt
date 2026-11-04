@@ -554,8 +554,11 @@ export default defineComponent({
       const groups = new Map<string, MapRoom[]>();
       const unknown: MapRoom[] = [];
       for (const room of mapRooms.value) {
-        if (typeof room.floor === 'string' && room.floor.trim() !== '') {
-          const key = room.floor;
+        // Trim the grouping key (Refs #479): payloads may pad the
+        // floor label, and untrimmed keys would split one floor
+        // into duplicate groups.
+        const key = typeof room.floor === 'string' ? room.floor.trim() : '';
+        if (key !== '') {
           const list = groups.get(key);
           if (list) {
             list.push(room);
