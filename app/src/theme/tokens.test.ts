@@ -3,15 +3,22 @@
 // Aura renders filled primary buttons from `{primary.color}` (the
 // 500 step, `#279086`); the design token is the 700 step
 // (`#0F766E`). The DeskPreset pins only the resting primary-button
-// fill to the token, so these tests pin the override and the
-// untouched scale together: the override carries the fix, and the
-// scale still feeds every other component exactly as before.
+// fill and its keyboard focus ring to the tokens, so these tests pin
+// the overrides and the untouched scale together: the overrides carry
+// the fix, and the scale still feeds every other component exactly as
+// before.
 import { describe, expect, it } from 'vitest';
 import { deskTokens, DeskPreset } from './tokens';
 
 interface PrimaryFill {
   background: string;
   borderColor: string;
+  hoverBackground: string;
+  activeBackground: string;
+  focusRing: {
+    color: string;
+    shadow: string;
+  };
 }
 
 interface ButtonScheme {
@@ -37,6 +44,23 @@ describe('desk primary-button token (Refs #471)', () => {
       const primary = buttonScheme(mode).root.primary;
       expect(primary.background).toBe(deskTokens.colors.primary);
       expect(primary.borderColor).toBe(deskTokens.colors.primary);
+    }
+  });
+
+  it('pins the primary-button focus ring to the focus token', () => {
+    expect(deskTokens.focus.ringColor).toBe('#0F766E');
+    for (const mode of ['light', 'dark'] as const) {
+      const primary = buttonScheme(mode).root.primary;
+      expect(primary.focusRing.color).toBe(deskTokens.focus.ringColor);
+      expect(primary.focusRing.shadow).toBe('none');
+    }
+  });
+
+  it('leaves hover/active fills on their stock scale bindings', () => {
+    for (const mode of ['light', 'dark'] as const) {
+      const primary = buttonScheme(mode).root.primary;
+      expect(primary.hoverBackground).toBe('{primary.hover.color}');
+      expect(primary.activeBackground).toBe('{primary.active.color}');
     }
   });
 

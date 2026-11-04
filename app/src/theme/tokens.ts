@@ -76,9 +76,11 @@ export const DeskPreset = definePreset(Aura, {
     // Refs #471: Aura renders filled primary buttons from
     // `{primary.color}` (the 500 step, `#279086`); the design
     // token is the 700 step, so only the resting primary-button
-    // fill is pinned to the token. Hover/active states, the
-    // outlined/text/link variants, and every other component keep
-    // their stock scale bindings.
+    // fill and its keyboard focus ring are pinned to the tokens.
+    // Hover/active states, the outlined/text/link variants, and
+    // every other component keep their stock scale bindings. The
+    // focus ring uses the focus token (same `#0F766E` value),
+    // matching the shell `:focus-visible` outline in `App.vue`.
     button: {
       colorScheme: {
         light: {
@@ -86,6 +88,9 @@ export const DeskPreset = definePreset(Aura, {
             primary: {
               background: deskTokens.colors.primary,
               borderColor: deskTokens.colors.primary,
+              focusRing: {
+                color: deskTokens.focus.ringColor,
+              },
             },
           },
         },
@@ -94,6 +99,9 @@ export const DeskPreset = definePreset(Aura, {
             primary: {
               background: deskTokens.colors.primary,
               borderColor: deskTokens.colors.primary,
+              focusRing: {
+                color: deskTokens.focus.ringColor,
+              },
             },
           },
         },
