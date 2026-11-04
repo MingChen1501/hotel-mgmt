@@ -15,8 +15,10 @@
 //
 // Dynamic data (criterion 3): nodes the owner approves as dynamic
 // (dates, counts, names) are exempted through `DomDiffAllowlist`, a
-// path-prefix hook. The approved data list itself is documented
-// separately; this module only owns the hook.
+// path-prefix hook. The approved data list is documented in
+// `docs/testing/dom-diff-allowlist.md` (Closes #482): every
+// `skipPaths` entry must cite an entry ID from that document, and
+// no exemption exists outside it. This module only owns the hook.
 //
 // CI workflow wiring and path-filter triggers are a separate issue:
 // this module plus `dom-diff.spec.ts` is the gate, runnable today via
@@ -49,7 +51,8 @@ export interface DomDiff {
 // Allowlist hook for owner-approved dynamic data (criterion 3). Each
 // entry is a node path: it exempts that node and its whole subtree
 // (`entry` itself plus anything under `entry + '/'`). The approved
-// data list is documented separately; wire it here when it lands.
+// data list is `docs/testing/dom-diff-allowlist.md` (Closes #482):
+// wire a path here only with a comment citing its allowlist entry ID.
 export interface DomDiffAllowlist {
   skipPaths: string[];
 }
