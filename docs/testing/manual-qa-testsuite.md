@@ -52,10 +52,12 @@ Trước khi chạy case của từng màn hình, xác nhận vỏ chung đạt 
 
 - Header xanh (teal) hiển thị đúng tên khách sạn đã cấu hình, không phải nội
   dung ví dụ của bản thiết kế (AC-DSK-1, AC-DSK-8).
-- Các tab điều hướng theo đúng thứ tự canvas-manifest: Main, Stay, Onboarding,
-  Rooms, Book, Folio; màn hình đang mở được làm nổi bật (AC-DSK-1,
-  key `desk.shell.nav_desk`, `desk.shell.nav_stay`, `desk.shell.nav_onboarding`,
-  `desk.shell.nav_rooms`, `desk.shell.nav_book`, `desk.shell.nav_folio`).
+- Các tab điều hướng theo đúng thứ tự design header: Desk, Book, Stay,
+  Folio, Print, Admin; màn hình đang mở được làm nổi bật (AC-DSK-1,
+  key `desk.shell.nav_desk`, `desk.shell.nav_book`, `desk.shell.nav_stay`,
+  `desk.shell.nav_folio`, `desk.shell.nav_print`, `desk.shell.nav_admin`).
+  Onboarding và Rooms không có tab hiển thị, vẫn mở được qua deep route
+  (`/onboarding`, `/rooms`).
 - Nút chuyển ngôn ngữ đổi TOÀN BỘ màn hình giữa EN và VI, không lẫn lộn hai
   ngôn ngữ trên cùng một màn hình (AC-DSK-1, AC-DSK-8; key `desk.shell.locale_en`,
   `desk.shell.locale_vi`).

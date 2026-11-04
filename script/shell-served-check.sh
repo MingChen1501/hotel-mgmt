@@ -24,11 +24,14 @@
 #   `<style>` block under app/src carries a why-comment citing its
 #   issue/ADR (inline styling is print isolation only — the Vitest
 #   suite pins the screen/print separation, this script pins the
-#   citation); every non-catch-all route in `app/src/router.ts`
-#   matches a shell-nav entry in `app/src/App.vue` by name and path
-#   (no orphan screens, no dead nav items); the print source keeps
-#   its `@media print` rules and the built bytes carry them too. The
-#   judgement half (PrimeVue-first for covered patterns, dynamic
+#   citation); every visible shell-nav entry in `app/src/App.vue`
+#   matches a route in `app/src/router.ts` by name and path (no dead
+#   nav items), and every non-catch-all route either matches a
+#   shell-nav entry or is a documented deep route (Refs #472:
+#   onboarding and rooms have no design-header tab but stay
+#   reachable — no orphan screens outside that decided set); the
+#   print source keeps its `@media print` rules and the built bytes
+#   carry them too. The judgement half (PrimeVue-first for covered patterns, dynamic
 #   `t()` calls, hardcoded-copy edge cases) stays a blocking
 #   reviewer checklist item in
 #   `.opencode/agents/dev-peer-review.md`.
@@ -182,26 +185,32 @@ if blocks == 0:
 else:
     ok(f"{blocks} <style> block(s) checked")
 
-# 2. No orphan screens, no dead nav items: every non-catch-all
-# route in the route table matches a shell-nav entry by name and
-# path, and vice versa.
+# 2. No dead nav items and no orphan screens outside the decided
+# deep-route set: every shell-nav entry matches a route by name and
+# path, and every non-catch-all route either matches a shell-nav
+# entry or is a documented deep route (Refs #472: onboarding and
+# rooms have no design-header tab but stay reachable).
 router_text = (APP_SRC / "router.ts").read_text(encoding="utf-8")
 routes = re.findall(r"path:\s*'([^']+)'\s*,\s*\n?\s*name:\s*'([^']+)'", router_text)
 routes = [(name, path) for path, name in routes if "pathMatch" not in path]
 app_text = (APP_SRC / "App.vue").read_text(encoding="utf-8")
 nav = re.findall(r"\{\s*name:\s*'([^']+)',\s*to:\s*'([^']+)'", app_text)
+# Documented deep routes (Refs #472): registered screens with no
+# visible nav tab. Keep this set in sync with the NAV_ITEMS comment
+# in app/src/App.vue.
+deep_routes = {('onboarding', '/onboarding'), ('rooms', '/rooms')}
 if not routes:
     fail("app/src/router.ts carries no named routes")
 if not nav:
     fail("app/src/App.vue carries no NAV_ITEMS entries")
 for name, path in routes:
-    if (name, path) not in nav:
+    if (name, path) not in nav and (name, path) not in deep_routes:
         fail(f"route {name} ({path}) has no matching shell-nav entry (orphan screen)")
 for name, path in nav:
     if (name, path) not in routes:
         fail(f"shell-nav entry {name} ({path}) matches no route (dead nav item)")
-if routes and nav and sorted(routes) == sorted(nav):
-    ok(f"route table and shell nav match ({len(routes)} routes)")
+if routes and nav and sorted(r for r in routes if r not in deep_routes) == sorted(nav):
+    ok(f"route table and shell nav match ({len(nav)} visible tabs, {len(deep_routes)} documented deep routes)")
 
 # 3. Print CSS is preserved at the source: the print view keeps
 # its @media print rules with a why-comment.
