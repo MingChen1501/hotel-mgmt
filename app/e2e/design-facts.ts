@@ -133,6 +133,13 @@ export const SCREEN_TABLE: readonly ScreenTableEntry[] = [
 //   row must carry one cell per header. Row bodies stay structural
 //   because names, codes, and dates are dynamic data (out of schema
 //   scope); row content shapes are pinned by the Vitest suite.
+// - `roomMap` (Main only, Refs #491): the five status chips in
+//   decided order plus structural counts (each chip count equals
+//   its card count), floor-group titles, and one card per room
+//   carrying its number, status chip, type line, and note line.
+//   Chip labels pin the catalogue wording; type/note bodies stay
+//   structural (occupants, dates, block reasons are dynamic) with
+//   content shapes pinned by `DeskView.test.ts`.
 // - Rooms room-number headings are seed data, not static copy:
 //   `deploy/seed/boot.sql` seeds exactly rooms 101 and 102 on floor
 //   1, and no desk flow creates rooms, so the live sequence pins
@@ -155,6 +162,8 @@ export interface DecidedScreenContent {
   requiredRoomLabels?: string[];
   // Main only (Refs #490): the decided table shapes below.
   tables?: DecidedTable[];
+  // Main only (Refs #491): the decided room-map shapes below.
+  roomMap?: DecidedRoomMap;
 }
 
 export const DECIDED_CONTENT: readonly DecidedScreenContent[] = [
@@ -222,6 +231,21 @@ export const DECIDED_CONTENT: readonly DecidedScreenContent[] = [
         emptyDesign: 'docs/design/Main.dc.html:2',
       },
     ],
+    // Refs #491: the room-map chips pin the five catalogue labels
+    // in status order; counts, floor groups, and card internals are
+    // asserted structurally by `diffRoomMapFacts` (counts equal
+    // cards, every floor is a floor title, every card carries
+    // number, chip, type, and note).
+    roomMap: {
+      chips: [
+        'Sẵn sàng (đã kiểm tra)',
+        'Đang có khách',
+        'Phòng bẩn',
+        'Sạch, chờ kiểm tra',
+        'Ngưng bán',
+      ],
+      design: 'docs/design/Rooms.dc.html:2',
+    },
   },
   {
     screen: 'Stay',
@@ -299,6 +323,42 @@ export interface DecidedTable {
   empty: string;
   design: string;
   emptyDesign: string;
+}
+// Decided room-map shapes (Refs #491): the desk room-map section
+// mirrors the design Rooms board (`docs/design/Rooms.dc.html`) —
+// five status chips with counts, floor groups, and one card per
+// room carrying its number, status chip, type line, and live note
+// line. Chips pin the catalogue wording in the gate locale (vi):
+// the design illustration carries bare labels (`Sẵn sàng`,
+// `Có khách`, ...) while the app shares the qualified /rooms
+// vocabulary (`Sẵn sàng (đã kiểm tra)`, `Đang có khách`, ...) —
+// same precedent as the #490 table empty states. Counts stay
+// structural (each chip count equals its card count) because counts
+// are dynamic data out of schema scope; card type/note bodies stay
+// structural for the same reason (occupant names, dates, and block
+// reasons are dynamic) while `DeskView.test.ts` pins their content
+// shapes.
+export interface DecidedRoomMap {
+  chips: string[];
+  design: string;
+}
+
+export interface RoomMapChipFact {
+  label: string;
+  count: number;
+}
+
+export interface RoomMapCardFact {
+  number: string;
+  chip: string;
+  type: string;
+  note: string;
+}
+
+export interface RoomMapFacts {
+  chips: RoomMapChipFact[];
+  floors: string[];
+  cards: RoomMapCardFact[];
 }
 // Shell route-name tab keys to design tab keys. Refs #472: the
 // visible shell nav is exactly the six design header tabs, so every
@@ -585,6 +645,167 @@ export function collectTableFacts(tableTestId: string): {
     }
   });
   return { headers, rows, empty };
+}
+
+// Browser-side room-map extraction (Refs #491). This function is
+// serialised into the page by `page.evaluate`, so it must stay
+// self-contained: no imports, no closure references, DOM APIs only.
+// Reads the five summary chips (label from the chip node, count
+// from the trailing parenthesised number), the floor-group titles,
+// and one fact per card (number, status chip, type line, note
+// line). A chip with no trailing count fails loudly instead of
+// passing silently.
+export function collectRoomMapFacts(): RoomMapFacts {
+  const norm = (value: string): string =>
+    value.normalize('NFC').replace(/\s+/g, ' ').trim();
+  const root = document.querySelector('[data-testid="desk-roommap"]');
+  if (root === null) {
+    throw new Error('design-facts: room map [data-testid="desk-roommap"] not found');
+  }
+  const chips: RoomMapChipFact[] = [];
+  // The chip testid sits on the `li` itself (matching the
+  // DeskView/RoomsView markup, where the PrimeVue Tag inside carries
+  // no testid), so the label is the item text minus the trailing
+  // count — robust against Tag internals on both surfaces.
+  root.querySelectorAll('[data-testid="desk-roommap-summary"] li').forEach((item) => {
+    const text = norm(item.textContent ?? '');
+    const countMatch = text.match(/\((\d+)\)\s*$/);
+    if (countMatch === null || countMatch.index === undefined) {
+      throw new Error(
+        'design-facts: room-map chip with no trailing count (expected "<label> (<n>)")',
+      );
+    }
+    const label = text.slice(0, countMatch.index).trim();
+    chips.push({ label, count: Number(countMatch[1]) });
+  });
+  const floors: string[] = [];
+  root
+    .querySelectorAll(
+      '[data-testid="desk-roommap-floor"] h2, [data-testid="desk-roommap-floor-unknown"] h2',
+    )
+    .forEach((heading) => {
+      floors.push(norm(heading.textContent ?? ''));
+    });
+  const cards: RoomMapCardFact[] = [];
+  root.querySelectorAll('[data-testid^="desk-roommap-room-"]').forEach((card) => {
+    const number = card.querySelector('h3');
+    const chip = card.querySelector('[data-testid^="desk-roommap-card-chip-"]');
+    const type = card.querySelector('[data-testid^="desk-roommap-card-type-"]');
+    const note = card.querySelector('[data-testid^="desk-roommap-card-note-"]');
+    cards.push({
+      number: norm(number?.textContent ?? ''),
+      chip: norm(chip?.textContent ?? ''),
+      type: norm(type?.textContent ?? ''),
+      note: norm(note?.textContent ?? ''),
+    });
+  });
+  return { chips, floors, cards };
+}
+
+// Field-by-field room-map diff (Refs #491, schema section 4):
+// `expected` always comes from the decided content, `actual` always
+// from the app DOM; every failing fact cites the design `file:line`
+// and the app selector so a reader can open both nodes without
+// searching. Structural rules: chips match the decided labels in
+// order with integer counts that equal their card counts; every
+// floor is a floor title or the unknown-floor caption; every card
+// carries a non-empty number, a decided status chip, and non-empty
+// type and note lines.
+export function diffRoomMapFacts(
+  screen: string,
+  decided: DecidedRoomMap,
+  actual: RoomMapFacts,
+  contentApp: string,
+): FactDiff[] {
+  const diffs: FactDiff[] = [];
+  const push = (
+    field: string,
+    expected: unknown,
+    observed: unknown,
+    app: string,
+  ): void => {
+    const left = JSON.stringify(expected);
+    const right = JSON.stringify(observed);
+    if (left !== right) {
+      diffs.push({
+        screen,
+        field,
+        expected: left,
+        actual: right ?? '(absent)',
+        design: decided.design,
+        app,
+      });
+    }
+  };
+
+  const chipsApp = `${contentApp}-summary li`;
+  push(
+    'roomMap.chips',
+    decided.chips,
+    actual.chips.map((chip) => chip.label),
+    chipsApp,
+  );
+  for (const [index, chip] of actual.chips.entries()) {
+    const cardsWithChip = actual.cards.filter((card) => card.chip === chip.label).length;
+    push(
+      `roomMap.chips[${index}].count`,
+      cardsWithChip,
+      chip.count,
+      chipsApp,
+    );
+  }
+  const floorsApp = `${contentApp} h2`;
+  // Refs #491: a room map that dropped the floor section entirely
+  // (chips intact) must fail the gate instead of passing silently.
+  if (actual.floors.length === 0) {
+    diffs.push({
+      screen,
+      field: 'roomMap.floors',
+      expected: '"at least one floor group"',
+      actual: '"(absent)"',
+      design: decided.design,
+      app: floorsApp,
+    });
+  }
+  for (const [index, floor] of actual.floors.entries()) {
+    const floorTitle = /^Tầng \S+$/.test(floor) || floor === 'Phòng chưa xếp tầng';
+    if (!floorTitle) {
+      diffs.push({
+        screen,
+        field: `roomMap.floors[${index}].text`,
+        expected: 'a floor title ("Tầng <n>") or "Phòng chưa xếp tầng"',
+        actual: JSON.stringify(floor),
+        design: decided.design,
+        app: floorsApp,
+      });
+    }
+  }
+  const cardsApp = `${contentApp} [data-testid^="desk-roommap-room-"]`;
+  for (const [index, card] of actual.cards.entries()) {
+    for (const key of ['number', 'type', 'note'] as const) {
+      if (card[key] === '') {
+        diffs.push({
+          screen,
+          field: `roomMap.cards[${index}].${key}`,
+          expected: '"a non-empty card line"',
+          actual: '"(absent)"',
+          design: decided.design,
+          app: cardsApp,
+        });
+      }
+    }
+    if (!decided.chips.includes(card.chip)) {
+      diffs.push({
+        screen,
+        field: `roomMap.cards[${index}].chip`,
+        expected: `one of ${JSON.stringify(decided.chips)}`,
+        actual: JSON.stringify(card.chip === '' ? '(absent)' : card.chip),
+        design: decided.design,
+        app: cardsApp,
+      });
+    }
+  }
+  return diffs;
 }
 
 // Field-by-field diff (schema section 4): `expected` always comes

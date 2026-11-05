@@ -672,6 +672,9 @@ describe('desk view', () => {
 
   // Refs #479: the embedded room map shows floor groups with
   // per-status chips and counts, reusing the /rooms vocabulary.
+  // Refs #491: the floor card grid mirrors the design Rooms board
+  // (`docs/design/Rooms.dc.html`) — one card per room with its
+  // number, status chip, type line, and live note line.
   it('renders the room-map section with chips, counts, and floor groups', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
@@ -704,6 +707,23 @@ describe('desk view', () => {
     // Map rows resolve the human type name, never the raw type id.
     expect(wrapper.find('[data-testid="desk-roommap-card-type-101"]').text()).toContain('Standard');
     expect(wrapper.find('[data-testid="desk-roommap-card-type-101"]').text()).not.toContain('standard');
+    // Refs #491: every card carries the design board's detail line —
+    // the occupied card joins the occupant to the planned checkout
+    // date, the out-of-service card names the covering block, and
+    // the attention cards render the catalogue line.
+    const floorGrid = wrapper.find('[data-testid="desk-roommap-floor"] .rooms-grid');
+    expect(floorGrid.exists()).toBe(true);
+    expect(wrapper.find('[data-testid="desk-roommap-card-note-202"]').text()).toBe(
+      'Guest Two · Checkout 2026-11-02',
+    );
+    expect(wrapper.find('[data-testid="desk-roommap-card-note-201"]').text()).toBe('Guest One');
+    expect(wrapper.find('[data-testid="desk-roommap-card-note-101"]').text()).toBe('Needs cleaning.');
+    expect(wrapper.find('[data-testid="desk-roommap-card-note-102"]').text()).toBe(
+      'Cleaned, awaiting inspection.',
+    );
+    expect(wrapper.find('[data-testid="desk-roommap-card-note-103"]').text()).toBe(
+      'Pipe repair · 2026-10-28–2026-10-30',
+    );
     // VI-primary copy (AC-DSK-8): the map switches locale with no
     // mixed-locale copy.
     try {
@@ -712,9 +732,73 @@ describe('desk view', () => {
       expect(wrapper.find('[data-testid="desk-roommap"] h2').text()).toContain('Sơ đồ phòng');
       expect(wrapper.find('[data-testid="desk-roommap-manage"]').text()).toContain('Quản lý phòng');
       expect(wrapper.find('[data-testid="desk-roommap-chip-needs-cleaning"]').text()).toContain('Phòng bẩn');
+      expect(wrapper.find('[data-testid="desk-roommap-card-note-101"]').text()).toContain('Cần dọn phòng.');
     } finally {
       setLocale('en');
     }
+  });
+
+  // Refs #491: ready cards name the upcoming arrival joined from
+  // today's arrivals, and ready cards with no linked arrival render
+  // the plain catalogue line — the design board's `Sắp đón` vs
+  // `Trống, sẵn sàng` detail lines.
+  it('renders arrival and ready notes on ready room-map cards', async () => {
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      const body = init?.body !== undefined ? JSON.parse(init.body as string) : {};
+      if (url === '/v1/rooms/ListRoomsByState') {
+        const rooms: Record<string, unknown[]> = {
+          'vacant-inspected': [
+            { roomId: 'r-301', number: '301', roomTypeId: 'standard', state: 'vacant-inspected', floor: '3' },
+            { roomId: 'r-302', number: '302', roomTypeId: 'standard', state: 'vacant-inspected', floor: '3' },
+          ],
+        };
+        return Promise.resolve(jsonResponse({ state: body.state, rooms: rooms[body.state] ?? [] }));
+      }
+      if (url === '/v1/stay/ListArrivalsDepartures') {
+        return Promise.resolve(
+          jsonResponse({
+            businessDate: localBusinessDate(),
+            arrivals: [{ stayId: 'stay-a', guestId: 'g-1', currentRoomId: 'r-301' }],
+            inHouse: [],
+            departures: [],
+          }),
+        );
+      }
+      if (url === '/v1/guests/GetGuest') {
+        return Promise.resolve(jsonResponse({ guestId: body.guestId, fullName: 'Guest One' }));
+      }
+      if (url === '/v1/rooms/ListRoomTypes') {
+        return Promise.resolve(
+          jsonResponse({ roomTypes: [{ id: 'standard', name: 'Standard' }] }),
+        );
+      }
+      if (url === '/v1/reservations/QueryCalendar') {
+        return Promise.resolve(jsonResponse({ reservations: [] }));
+      }
+      if (url === '/v1/reporting/DailySheet') {
+        return Promise.resolve(
+          jsonResponse({
+            businessDate: localBusinessDate(),
+            arrivals: [],
+            inHouse: [],
+            departures: [],
+            openBalances: [],
+            asOf: '',
+          }),
+        );
+      }
+      throw new Error(`unexpected call ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountDesk();
+    useSessionStore().signIn('tok-1', 'Ada', 'owner');
+    await wrapper.find('[data-testid="desk-refresh"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="desk-roommap-card-note-301"]').exists()).toBe(true);
+    });
+    expect(wrapper.find('[data-testid="desk-roommap-card-note-301"]').text()).toContain('Guest One');
+    expect(wrapper.find('[data-testid="desk-roommap-card-note-301"]').text()).toContain('Arriving');
+    expect(wrapper.find('[data-testid="desk-roommap-card-note-302"]').text()).toBe('Ready for check-in.');
   });
 
   // Refs #479: every map entry links through to /rooms for actions;
