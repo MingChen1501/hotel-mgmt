@@ -49,7 +49,7 @@ change).
 | 3 | Check-in / move / check-out with folio gate (`/app/stay`: `stay-checkin`, `stay-checkin-status`, `stay-move-status`, `stay-checkout`, `stay-checkout-status`, `stay-review`, `stay-approval-section`) | tonight check-in → move to a ready room (old room `vacant-dirty`) → open-balance check-out refused → record approval → check-out closes with invoice ref | `SETTLEMENT_REQUIRED` refusal stays on screen with the balance shown; second close refused `STATE_ILLEGAL`; move to a taken room refused with the cause named; early/late times kept and visible (`stay-times-status`) | FR-FDK-1/2/3/4, FR-BIL-7 |
 | 4 | Charge + pay + balance agreement (`/app/folio`: `folio-open`, `folio-charge`, `folio-charge-status`, `folio-payment-status`, `folio-status`) | open stay folio → post room + extra lines → record cash payment → every line and the running balance on screen agree with a direct `GetFolio` read | undefined charge item refused with the cause named; bad payment method refused; balance after each step equals the API folio balance (screen-vs-API agreement assert) | FR-BIL-1/2/3/5, FR-CUS-3 |
 | 5 | Invoice / receipt print isolation (`/app/print`: `print-open`, `print-invoice`, `print-invoice-document`, `print-folio-status`) | invoice document renders with lines + total equal to the folio; receipt equals the recorded payment | unknown folio / unknown payment show the not-found state, not a blank page; print CSS scope: the invoice document carries the print stylesheet link and non-print chrome is excluded by the print-media rule — asserted by DOM/CSSOM inspection where headless allows; hard limits (real paper layout, multi-page breaks) are documented as manual-only in the run log | FR-BIL-4 |
-| 6 | Dashboard backup-report line (`/app/`: `desk-backup-report`, `desk-arrivals-table`, `desk-sheet-line`) | newest `backup-report.json` renders as the success line with its time after a loop backup | missing/stale report renders the failed-report warning, never an empty section | FR-ADM-5, NFR-BKP-2 |
+| 6 | Dashboard lists with no backup section (`/app/`: `desk-arrivals-table`, `desk-sheet-line`, absence of `desk-backup`) | arrivals/in-house/departures lists plus the DailySheet cross-check line render | the legacy backup-report section stays absent — no design counterpart (Refs #489); the report belongs to the admin audit surface | FR-ADM-5, NFR-BKP-2 |
 
 Admin console (`/app/admin`: `admin-console`, `admin-signin-error`)
 is covered for sign-in reach only (flow 1); full user/role matrix
@@ -165,7 +165,7 @@ guard.
 | Check-in / move / check-out with folio gate | `app/e2e/stay.spec.ts` | FR-FDK-1/2/3/4, FR-BIL-7 |
 | Charge + pay + balance agreement | `app/e2e/folio.spec.ts` | FR-BIL-1/2/3/5, FR-CUS-3 |
 | Invoice / receipt print isolation | `app/e2e/print.spec.ts` | FR-BIL-4 |
-| Dashboard backup-report line | `app/e2e/desk.spec.ts` (with the MIME smoke in `app/e2e/smoke.spec.ts` — scaffold landed in PR #341, flow specs in the follow-ups) | FR-ADM-5, NFR-BKP-2 |
+| Dashboard lists + backup-section absence | `app/e2e/desk.spec.ts` (absence assertion `desk-backup` count 0, Refs #489; MIME smoke in `app/e2e/smoke.spec.ts` — scaffold landed in PR #341, flow specs in the follow-ups) | FR-ADM-5, NFR-BKP-2 |
 
 ## 8. Seed and fixture discipline
 
