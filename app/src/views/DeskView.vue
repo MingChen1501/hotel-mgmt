@@ -104,7 +104,7 @@
                 :header="t('desk.today.th_room_type', {}, 'Room type')"
               />
               <template #empty>
-                <span v-if="!loading">{{ t('desk.today.empty_departures', {}, 'No departures today.') }}</span>
+                <span v-if="!loading">{{ t('desk.today.empty_departures', {}, 'No check-outs today.') }}</span>
               </template>
             </DataTable>
           </template>
