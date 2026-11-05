@@ -126,13 +126,17 @@ function stubHappyPath(fetchMock: ReturnType<typeof vi.fn>): void {
       );
     }
     if (url === '/v1/reservations/QueryCalendar') {
-      // Stay-b is the only in-house stay: its planned checkout
-      // date rides the calendar join (Refs #420).
+      // Calendar joins (Refs #490): stay-b is the only in-house
+      // stay (its planned checkout date rides the join) and stay-a
+      // carries the human booking code for the arrivals card.
       return Promise.resolve(
         jsonResponse({
           dateFrom: body.dateFrom,
           dateTo: body.dateTo,
-          reservations: [{ reservationRef: 'RSV-1', roomTypeId: 'standard', arrivalDate: '2026-10-26', departureDate: '2026-11-02', state: 'checked-in', stayId: 'stay-b' }],
+          reservations: [
+            { reservationRef: 'RSV-1', roomTypeId: 'standard', arrivalDate: '2026-10-26', departureDate: '2026-11-02', state: 'checked-in', stayId: 'stay-b' },
+            { reservationRef: 'RSV-9', roomTypeId: 'standard', arrivalDate: '2026-10-26', departureDate: '2026-11-05', state: 'confirmed', stayId: 'stay-a' },
+          ],
         }),
       );
     }
@@ -234,24 +238,26 @@ describe('desk view', () => {
     await signIn(wrapper, fetchMock);
 
     expect(wrapper.find('[data-testid="desk-business-date"]').text()).toBe(localBusinessDate());
+    // Design card rows (Refs #490): arrivals pair the guest with
+    // the booking code and the booked room type — no room number.
     const arrivals = wrapper.find('[data-testid="desk-arrivals-table"]').text();
     expect(arrivals).toContain('Guest One');
-    expect(arrivals).toContain('201');
-    expect(arrivals).not.toContain('r-101');
-    // Design card detail (Refs #420): arrivals name the room with
-    // its human type label.
+    expect(arrivals).toContain('RSV-9');
     expect(arrivals).toContain('Standard');
+    expect(arrivals).not.toContain('201');
+    expect(arrivals).not.toContain('r-101');
+    // In-house rows pair the guest with the room number and the
+    // planned checkout date in design short form.
     const inHouse = wrapper.find('[data-testid="desk-inhouse-table"]').text();
     expect(inHouse).toContain('Guest Two');
-    expect(inHouse).toContain('202');
+    expect(inHouse).toContain('Room 202');
     expect(inHouse).not.toContain('r-102');
-    // Design card detail (Refs #420): in-house rows name the
-    // planned checkout date joined from the calendar.
-    expect(inHouse).toContain('Standard');
-    expect(inHouse).toContain('Checkout 2026-11-02');
+    expect(inHouse).toContain('until 02/11');
     // A stay with no room reference renders the catalogue fallback.
     const departures = wrapper.find('[data-testid="desk-departures-table"]').text();
+    expect(departures).toContain('Unknown guest');
     expect(departures).toContain('Not assigned');
+    expect(departures).toContain('Room type');
   });
 
   // D2 (Refs #420, AC-DSK-2, FR-DSK-2): the Main board renders its
@@ -506,7 +512,7 @@ describe('desk view', () => {
           jsonResponse({
             businessDate: localBusinessDate(),
             arrivals: [{ stayId: 'stay-x', guestId: 'g-missing' } as StayPayload],
-            inHouse: [],
+            inHouse: [{ stayId: 'stay-y', guestId: 'g-missing' } as StayPayload],
             departures: [],
           }),
         );
@@ -537,6 +543,14 @@ describe('desk view', () => {
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="desk-arrivals-table"]').text()).toContain('Unknown guest');
     });
+    // Refs #490: with no calendar join, the arrival row renders the
+    // guest name alone — no code separator, never a raw UUID — and
+    // the dateless in-house row falls back to catalogue wording.
+    expect(wrapper.find('[data-testid="desk-arrivals-table"]').text()).not.toContain('·');
+    const inHouse = wrapper.find('[data-testid="desk-inhouse-table"]').text();
+    expect(inHouse).toContain('Unknown guest');
+    expect(inHouse).toContain('Not assigned');
+    expect(inHouse).not.toContain('stay-y');
   });
 
   it('shows plain-words empty states when every list is empty', async () => {
@@ -582,7 +596,7 @@ describe('desk view', () => {
       'No guests in house right now.',
     );
     expect(wrapper.find('[data-testid="desk-departures-table"]').text()).toContain(
-      'No departures today.',
+      'No check-outs today.',
     );
     expect(wrapper.find('[data-testid="desk-dirty-list"]').text()).toContain(
       'No dirty rooms right now.',

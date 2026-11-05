@@ -46,12 +46,12 @@
               data-testid="desk-arrivals-table"
             >
               <Column
-                field="guestName"
+                field="primary"
                 :header="t('desk.today.th_guest', {}, 'Guest')"
               />
               <Column
-                field="roomLabel"
-                :header="t('desk.today.th_room', {}, 'Room')"
+                field="secondary"
+                :header="t('desk.today.th_room_type', {}, 'Room type')"
               />
               <template #empty>
                 <span v-if="!loading">{{ t('desk.today.empty_arrivals', {}, 'No arrivals today. New bookings appear here.') }}</span>
@@ -71,12 +71,12 @@
               data-testid="desk-inhouse-table"
             >
               <Column
-                field="guestName"
+                field="primary"
                 :header="t('desk.today.th_guest', {}, 'Guest')"
               />
               <Column
-                field="roomLabel"
-                :header="t('desk.today.th_room', {}, 'Room')"
+                field="secondary"
+                :header="t('desk.today.th_checkout', {}, 'Checkout')"
               />
               <template #empty>
                 <span v-if="!loading">{{ t('desk.today.empty_inhouse', {}, 'No guests in house right now.') }}</span>
@@ -96,12 +96,12 @@
               data-testid="desk-departures-table"
             >
               <Column
-                field="guestName"
+                field="primary"
                 :header="t('desk.today.th_guest', {}, 'Guest')"
               />
               <Column
-                field="roomLabel"
-                :header="t('desk.today.th_room', {}, 'Room')"
+                field="secondary"
+                :header="t('desk.today.th_room_type', {}, 'Room type')"
               />
               <template #empty>
                 <span v-if="!loading">{{ t('desk.today.empty_departures', {}, 'No departures today.') }}</span>
@@ -406,6 +406,17 @@ import { useSessionStore } from '../stores/session';
 // advances clean-to-inspected through the existing
 // `UpdateRoomState` transitions only (LLD section 13.2, FR-RMS-2,
 // NFR-AUD-1 hold) — no transition logic changes here.
+// The #490 alignment shapes the three stay-table internals
+// node by node against the `Main.dc.html` card rows: each table
+// renders two cells guest-first (arrivals pair the guest with the
+// booking code from the calendar join and the booked room type;
+// in-house pairs the guest with the room number and the planned
+// checkout date in design DD/MM form; departures extend the same
+// pattern with the freeing room and its type — the design card is
+// empty-state-only, so no departure row shape exists to copy), and
+// the departures empty state repeats the design wording. A stay
+// with no joined code or date still renders guest plus catalogue
+// wording, never a raw UUID.
 // The #479 room-map section reuses the same five state reads: the
 // lane lists above are retagged into the /rooms display vocabulary
 // (floor groups, status chips with counts) with PrimeVue Tag
@@ -426,8 +437,11 @@ import { useSessionStore } from '../stores/session';
 
 interface StayRow {
   key: string;
-  guestName: string;
-  roomLabel: string;
+  // Design two-cell rows (Refs #490): the guest-first primary cell
+  // plus the card-specific secondary cell (room type, checkout
+  // date), matching the left/right spans of each design card row.
+  primary: string;
+  secondary: string;
 }
 
 interface StayRecord {
@@ -582,10 +596,9 @@ export default defineComponent({
     // only — no extra GetGuest calls).
     const occupantNames = ref<Record<string, string>>({});
     // Room-type names resolve through ListRoomTypes (issue
-    // #372): attention rows render the room number with the human
-    // type name, and typeName falls back to the generic label when
-    // the type is unknown — never the raw type UUID.
-    const roomNumbers = ref<Record<string, string>>({});
+    // #372): room rows render the human type name, and typeName
+    // falls back to the generic label when the type is unknown —
+    // never the raw type UUID.
     // Room-type names (issue #372): one ListRoomTypes read fills
     // this map; typeName resolves the human name and falls back to
     // the generic label when the type is unknown, never the raw ID.
@@ -621,10 +634,12 @@ export default defineComponent({
     // lists carry room UUIDs, so this map resolves each stay row
     // to its human number plus type name for the design cards.
     const roomsById = ref<Record<string, RoomRecord>>({});
-    // Planned checkout dates keyed by stay UUID (Refs #420): joined
-    // client-side from the reservation calendar below, so each
-    // in-house row names its checkout date per the design.
+    // Planned checkout dates plus booking codes keyed by stay UUID
+    // (Refs #490): joined client-side from the reservation calendar
+    // below, so each in-house row names its checkout date and each
+    // arrival row names its booking code per the design.
     const checkoutDates = ref<Record<string, string>>({});
+    const bookingRefs = ref<Record<string, string>>({});
     // Out-of-service notes keyed by room UUID (Refs #420): the
     // covering block reason plus date, resolved through the
     // existing sellability read (no new endpoint) — rooms with no
@@ -645,32 +660,20 @@ export default defineComponent({
       if (!room) {
         return t('desk.today.room_unknown', {}, 'Room number unavailable');
       }
-      const roomType = roomTypeNames.value[room.roomTypeId];
-      if (roomType) {
-        return t(
-          'desk.today.arrival_detail',
-          { room: room.number, roomType },
-          `Room ${room.number} · ${roomType}`,
-        );
-      }
-      return t('desk.today.room_ref', { roomRef: room.number }, `Room ${room.number}`);
+      return joinDetail(shortRoom(room), typeName(room.roomTypeId));
     }
 
-    function roomLabelFor(stay: StayRecord): string {
-      const roomRef = stay.currentRoomId ?? stay.roomId ?? '';
-      if (!roomRef) {
-        return t('desk.today.not_assigned', {}, 'Not assigned');
-      }
-      const number = roomNumbers.value[roomRef];
-      if (number) {
-        return t('desk.today.room_ref', { roomRef: number }, `Room ${number}`);
-      }
-      return t('desk.today.room_unknown', {}, 'Room number unavailable');
+    function joinDetail(name: string, detail: string): string {
+      return t('desk.today.name_detail', { name, detail }, `${name} · ${detail}`);
+    }
+
+    function shortRoom(room: RoomRecord): string {
+      return t('desk.today.room_short', { room: room.number }, `Room ${room.number}`);
     }
 
     async function resolveStays(
       stays: StayRecord[],
-      detail: (stay: StayRecord) => string,
+      build: (stay: StayRecord, guestName: string) => { primary: string; secondary: string },
     ): Promise<StayRow[]> {
       return Promise.all(
         stays.map(async (stay, index) => {
@@ -681,32 +684,63 @@ export default defineComponent({
           }
           return {
             key: stay.stayId ?? `${stay.guestId ?? 'guest'}-${index}`,
-            guestName,
-            roomLabel: detail(stay),
+            ...build(stay, guestName),
           };
         }),
       );
     }
 
-    // In-house rows name the checkout date per the design (Refs
-    // #420): the calendar join below fills this map, and a stay
-    // with no joined date still renders its room and type.
-    function inHouseDetail(stay: StayRecord): string {
+    // Design card rows (Refs #490, docs/design/Main.dc.html): each
+    // row is two cells, guest first. The arrivals card pairs the
+    // guest with the booking code and the room type (arrivals hold
+    // no room yet, only the booked type); the in-house card pairs
+    // the guest with the room number and the planned checkout date;
+    // the departures card is empty in the design, so its rows extend
+    // the same two-cell pattern with the freeing room and its type.
+    // A stay with no joined code or date still renders its guest
+    // plus catalogue wording — never a raw UUID.
+    function arrivalCells(stay: StayRecord, guestName: string): { primary: string; secondary: string } {
+      const code = stay.stayId ? bookingRefs.value[stay.stayId] : undefined;
+      const primary = code ? joinDetail(guestName, code) : guestName;
       const roomRef = stay.currentRoomId ?? stay.roomId ?? '';
       const room = roomRef ? roomsById.value[roomRef] : undefined;
-      if (!room) {
-        return roomLabelFor(stay);
-      }
-      const roomType = roomTypeNames.value[room.roomTypeId];
+      return { primary, secondary: typeName(room?.roomTypeId) };
+    }
+
+    function inHouseCells(stay: StayRecord, guestName: string): { primary: string; secondary: string } {
+      const roomRef = stay.currentRoomId ?? stay.roomId ?? '';
+      const room = roomRef ? roomsById.value[roomRef] : undefined;
+      const primary = room
+        ? joinDetail(guestName, shortRoom(room))
+        : joinDetail(guestName, t('desk.today.not_assigned', {}, 'Not assigned'));
       const date = stay.stayId ? checkoutDates.value[stay.stayId] : undefined;
-      if (roomType && date) {
-        return t(
-          'desk.today.inhouse_detail',
-          { room: room.number, roomType, date },
-          `Room ${room.number} · ${roomType} · Checkout ${date}`,
-        );
+      if (date) {
+        return {
+          primary,
+          secondary: t('desk.today.until_date', { date: formatShortDate(date) }, `until ${formatShortDate(date)}`),
+        };
       }
-      return roomDetail(roomRef);
+      return { primary, secondary: roomDetail(roomRef) };
+    }
+
+    function departureCells(stay: StayRecord, guestName: string): { primary: string; secondary: string } {
+      const roomRef = stay.currentRoomId ?? stay.roomId ?? '';
+      const room = roomRef ? roomsById.value[roomRef] : undefined;
+      const primary = room
+        ? joinDetail(guestName, shortRoom(room))
+        : joinDetail(guestName, t('desk.today.not_assigned', {}, 'Not assigned'));
+      return { primary, secondary: typeName(room?.roomTypeId) };
+    }
+
+    // Design short date (Refs #490: "đến 30/10"): the calendar
+    // carries ISO dates, so design-facing cells render DD/MM.
+    // Unparseable input renders as-is rather than blanking the row.
+    function formatShortDate(iso: string): string {
+      const parts = iso.split('-');
+      if (parts.length === 3 && parts[0].length === 4 && parts[1].length === 2 && parts[2].length === 2) {
+        return `${parts[2]}/${parts[1]}`;
+      }
+      return iso;
     }
 
     // Out-of-service note per the design (Refs #420): the covering
@@ -848,30 +882,39 @@ export default defineComponent({
       }
     }
 
-    // Planned checkout dates for the in-house design card
-    // (Refs #420): one single-day calendar read joined on stay ID.
-    // Best effort — a calendar outage leaves the map empty and the
-    // rows fall back to room plus type, never a raw UUID.
-    async function loadCheckoutDates(day: string): Promise<Record<string, string>> {
+    // Planned checkout dates plus booking codes for the design
+    // cards (Refs #490): one single-day calendar read joined on
+    // stay ID — dates feed the in-house checkout cells, refs feed
+    // the arrivals booking-code cells. Best effort — a calendar
+    // outage leaves both maps empty and the rows fall back to
+    // catalogue wording, never a raw UUID.
+    async function loadCalendarMaps(day: string): Promise<{ dates: Record<string, string>; refs: Record<string, string> }> {
       try {
         const calendar = await apiFetch<{
-          reservations?: Array<{ stayId?: string; departureDate?: string }>;
+          reservations?: Array<{ stayId?: string; reservationRef?: string; departureDate?: string }>;
         }>('/v1/reservations/QueryCalendar', {
           method: 'POST',
           body: JSON.stringify({ dateFrom: day, dateTo: day }),
         });
         const dates: Record<string, string> = {};
+        const refs: Record<string, string> = {};
         for (const entry of calendar.reservations ?? []) {
-          if (entry.stayId && entry.departureDate) {
+          if (!entry.stayId) {
+            continue;
+          }
+          if (entry.departureDate) {
             dates[entry.stayId] = entry.departureDate;
           }
+          if (entry.reservationRef) {
+            refs[entry.stayId] = entry.reservationRef;
+          }
         }
-        return dates;
+        return { dates, refs };
       } catch (err) {
         if (isSignedOut(err)) {
           throw err;
         }
-        return {};
+        return { dates: {}, refs: {} };
       }
     }
 
@@ -940,12 +983,11 @@ export default defineComponent({
           method: 'POST',
           body: JSON.stringify({ businessDate: businessDate.value }),
         });
-        // Room numbers for the stay lists (Refs #370): stay rows
+        // Room records for the stay lists (Refs #370): stay rows
         // carry room UUIDs, so every housekeeping state is read to
-        // map each room ID to its human number before resolving.
-        // The same payload fills the room-by-ID map backing the
-        // design-card details (Refs #420: number plus type name).
-        const numbers: Record<string, string> = {};
+        // map each room ID to its record before resolving. The same
+        // payload fills the room-by-ID map backing the design-card
+        // details (Refs #490: number plus type name).
         const byId: Record<string, RoomRecord> = {};
         const byState: Record<string, RoomRecord[]> = {};
         for (const state of ['vacant-dirty', 'vacant-clean', 'vacant-inspected', 'occupied', 'out-of-order']) {
@@ -956,28 +998,26 @@ export default defineComponent({
           byState[state] = listed.rooms ?? [];
           for (const room of byState[state] ?? []) {
             if (room.roomId) {
-              numbers[room.roomId] = room.number;
               byId[room.roomId] = room;
             }
           }
         }
-        roomNumbers.value = numbers;
         roomsById.value = byId;
-        // Planned checkout dates for the in-house card (Refs #420):
+        // Planned checkout dates plus booking codes (Refs #490):
         // the reservation calendar joined on stay ID. Skipped when
-        // nobody is in house, and a calendar outage degrades to
-        // room-and-type rows rather than failing the board.
-        checkoutDates.value = (lists.inHouse ?? []).length > 0
-          ? await loadCheckoutDates(businessDate.value)
-          : {};
+        // every stay list is empty, and a calendar outage degrades
+        // to catalogue-worded rows rather than failing the board.
+        const calendarMaps = (lists.arrivals ?? []).length > 0
+          || (lists.inHouse ?? []).length > 0
+          || (lists.departures ?? []).length > 0
+          ? await loadCalendarMaps(businessDate.value)
+          : { dates: {}, refs: {} };
+        checkoutDates.value = calendarMaps.dates;
+        bookingRefs.value = calendarMaps.refs;
         occupantNames.value = {};
-        arrivals.value = await resolveStays(lists.arrivals ?? [], (stay) =>
-          roomDetail(stay.currentRoomId ?? stay.roomId ?? ''),
-        );
-        inHouse.value = await resolveStays(lists.inHouse ?? [], inHouseDetail);
-        departures.value = await resolveStays(lists.departures ?? [], (stay) =>
-          roomDetail(stay.currentRoomId ?? stay.roomId ?? ''),
-        );
+        arrivals.value = await resolveStays(lists.arrivals ?? [], arrivalCells);
+        inHouse.value = await resolveStays(lists.inHouse ?? [], inHouseCells);
+        departures.value = await resolveStays(lists.departures ?? [], departureCells);
         dirty.value = byState['vacant-dirty'] ?? [];
         uninspected.value = byState['vacant-clean'] ?? [];
         outOfOrder.value = byState['out-of-order'] ?? [];

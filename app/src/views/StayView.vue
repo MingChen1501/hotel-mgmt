@@ -133,7 +133,7 @@
               </template>
             </Column>
             <template #empty>
-              {{ t('desk.today.empty_departures', {}, 'No departures today.') }}
+              {{ t('desk.today.empty_departures', {}, 'No check-outs today.') }}
             </template>
           </DataTable>
         </template>
