@@ -37,7 +37,9 @@
 //   pins its static heading prefix through the embedded map heads
 //   with the same structural tail rule and seed labels as Rooms;
 //   Refs #489 pins the removed backup-report section's absence so
-//   its return fails the gate). Full-record live parity
+//   its return fails the gate; Refs #490 pins the three Main
+//   stay-table header orders plus the empty-state wording with one
+//   structural cell-per-header rule per data row). Full-record live parity
 //   stays deferred for the data-driven and flow-state panels the
 //   decision excludes (stay list rows, room-card bodies, approval,
 //   dialogs, quote/result/confirmation): the fixture tests above
@@ -72,6 +74,7 @@ import { expect, test, type Page } from '@playwright/test';
 import {
   buildMatchingDom,
   collectAppFacts,
+  collectTableFacts,
   DECIDED_CONTENT,
   diffFactRecords,
   FACT_SCHEMA_VERSION,
@@ -166,6 +169,69 @@ test.describe('matching app DOM passes for all 6 desk screens (criterion 1)', ()
       guard.assertClean();
     });
   }
+});
+
+test.describe('stay-table facts extract from matching table DOM (Refs #490)', () => {
+  let guard!: LoopbackGuard;
+
+  test.beforeEach(async ({ page }) => {
+    guard = installLoopbackGuard(page);
+  });
+
+  test.afterEach(() => {
+    guard.assertClean();
+  });
+
+  const ARRIVALS_BODY =
+    '<table data-testid="desk-arrivals-table">' +
+    '<thead><tr><th>Khách</th><th>Hạng phòng</th></tr></thead>' +
+    '<tbody>' +
+    '<tr><td>Nguyễn Văn An · ABC123</td><td>Phòng đôi</td></tr>' +
+    '<tr><td>Trần Thị Bình · XYZ456</td><td>Phòng đơn</td></tr>' +
+    '</tbody></table>';
+
+  async function extractTable(page: Page, body: string, testId: string) {
+    await page.setContent(
+      `<!doctype html><html lang="vi"><head><meta charset="utf-8"></head><body>${body}</body></html>`,
+    );
+    return page.evaluate(collectTableFacts, testId);
+  }
+
+  test('data rows extract headers plus one cell array per row', async ({ page }) => {
+    const facts = await extractTable(page, ARRIVALS_BODY, 'desk-arrivals-table');
+    expect(facts.headers).toEqual(['Khách', 'Hạng phòng']);
+    expect(facts.rows).toEqual([
+      ['Nguyễn Văn An · ABC123', 'Phòng đôi'],
+      ['Trần Thị Bình · XYZ456', 'Phòng đơn'],
+    ]);
+    expect(facts.empty).toBeNull();
+  });
+
+  test('empty table extracts the empty message with zero rows', async ({ page }) => {
+    const facts = await extractTable(
+      page,
+      '<table data-testid="desk-departures-table">' +
+        '<thead><tr><th>Khách</th><th>Hạng phòng</th></tr></thead>' +
+        '<tbody><tr><td colspan="2">Hôm nay chưa có khách trả phòng.</td></tr></tbody></table>',
+      'desk-departures-table',
+    );
+    expect(facts.headers).toEqual(['Khách', 'Hạng phòng']);
+    expect(facts.rows).toEqual([]);
+    expect(facts.empty).toBe('Hôm nay chưa có khách trả phòng.');
+  });
+
+  test('a ragged row fails loudly instead of passing silently', async ({ page }) => {
+    await page.setContent(
+      '<!doctype html><html lang="vi"><head><meta charset="utf-8"></head><body>' +
+        '<table data-testid="desk-inhouse-table">' +
+        '<thead><tr><th>Khách</th><th>Trả phòng</th></tr></thead>' +
+        '<tbody><tr><td>Lê Minh</td><td>P.201</td><td>đến 30/10</td></tr></tbody></table>' +
+        '</body></html>',
+    );
+    await expect(page.evaluate(collectTableFacts, 'desk-inhouse-table')).rejects.toThrow(
+      /3-cell row against 2 headers/,
+    );
+  });
 });
 
 test.describe('mismatches fail with design file:line vs app selector (criterion 2)', () => {
@@ -575,6 +641,40 @@ test.describe('live shell conformance on the running app DOM', () => {
             record.designFile,
             `${contentApp} input`,
           );
+        }
+        // Decided table shapes (Refs #490, Main only): exact header
+        // order per table, one cell per header on every data row,
+        // and the exact empty-state wording whenever a table renders
+        // no data rows. Row copy stays out (dynamic data per schema
+        // section 5; the Vitest suite pins the content shapes).
+        for (const table of decided.tables ?? []) {
+          const tableApp = `[data-testid="${table.testId}"]`;
+          const observed = await page.evaluate(collectTableFacts, table.testId);
+          check(
+            `tables[${table.testId}].headers`,
+            table.headers,
+            observed.headers,
+            table.design,
+            `${tableApp} thead th`,
+          );
+          for (const [index, row] of observed.rows.entries()) {
+            check(
+              `tables[${table.testId}].rows[${index}].cells`,
+              table.headers.length,
+              row.length,
+              table.design,
+              `${tableApp} tbody tr`,
+            );
+          }
+          if (observed.rows.length === 0) {
+            check(
+              `tables[${table.testId}].empty`,
+              table.empty,
+              observed.empty ?? '(absent)',
+              table.emptyDesign,
+              `${tableApp} tbody tr`,
+            );
+          }
         }
       }
 

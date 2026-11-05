@@ -128,6 +128,11 @@ export const SCREEN_TABLE: readonly ScreenTableEntry[] = [
 // - `buttons`: required-label subset. The live DOM legitimately
 //   renders extras (per-row pick buttons, dialog confirmations), so
 //   the gate asserts presence, never exact equality.
+// - `tables` (Main only, Refs #490): exact two-column header
+//   sequences in DOM order plus the empty-state wording; every data
+//   row must carry one cell per header. Row bodies stay structural
+//   because names, codes, and dates are dynamic data (out of schema
+//   scope); row content shapes are pinned by the Vitest suite.
 // - Rooms room-number headings are seed data, not static copy:
 //   `deploy/seed/boot.sql` seeds exactly rooms 101 and 102 on floor
 //   1, and no desk flow creates rooms, so the live sequence pins
@@ -148,6 +153,8 @@ export interface DecidedScreenContent {
   // exact tail equality would couple the gate to that fixture.
   headingPrefix?: FactHeading[];
   requiredRoomLabels?: string[];
+  // Main only (Refs #490): the decided table shapes below.
+  tables?: DecidedTable[];
 }
 
 export const DECIDED_CONTENT: readonly DecidedScreenContent[] = [
@@ -189,6 +196,32 @@ export const DECIDED_CONTENT: readonly DecidedScreenContent[] = [
     requiredRoomLabels: ['101', '102'],
     buttons: ['Tải lại'],
     inputs: [],
+    // Refs #490: the three stay tables pin their two-column header
+    // order plus the empty-state wording (vi gate locale), matching
+    // the two-cell card rows in docs/design/Main.dc.html.
+    tables: [
+      {
+        testId: 'desk-arrivals-table',
+        headers: ['Khách', 'Hạng phòng'],
+        empty: 'Hôm nay không có khách đến. Đặt phòng mới sẽ hiện ở đây.',
+        design: 'docs/design/Main.dc.html:2',
+        emptyDesign: 'messages/vi.json:desk.today.empty_arrivals',
+      },
+      {
+        testId: 'desk-inhouse-table',
+        headers: ['Khách', 'Trả phòng'],
+        empty: 'Hiện không có khách đang lưu trú.',
+        design: 'docs/design/Main.dc.html:2',
+        emptyDesign: 'messages/vi.json:desk.today.empty_inhouse',
+      },
+      {
+        testId: 'desk-departures-table',
+        headers: ['Khách', 'Hạng phòng'],
+        empty: 'Hôm nay chưa có khách trả phòng.',
+        design: 'docs/design/Main.dc.html:2',
+        emptyDesign: 'docs/design/Main.dc.html:2',
+      },
+    ],
   },
   {
     screen: 'Stay',
@@ -250,6 +283,23 @@ export const DECIDED_CONTENT: readonly DecidedScreenContent[] = [
     ],
   },
 ];
+// Decided table shape for a Main desk card (Refs #490): the exact
+// column-header sequence left to right plus the exact empty-state
+// wording, both in the gate locale (vi). Row bodies stay structural
+// (every data row carries one cell per header) because names, codes,
+// and dates are dynamic data, out of schema scope per section 5 —
+// row content shapes are pinned by `app/src/views/DeskView.test.ts`
+// instead. The departures empty state repeats the design card
+// (`Hôm nay chưa có khách trả phòng.`); the arrivals/in-house cards
+// are non-empty in the design, so their empty wording is pinned to
+// the catalogue entries instead.
+export interface DecidedTable {
+  testId: string;
+  headers: string[];
+  empty: string;
+  design: string;
+  emptyDesign: string;
+}
 // Shell route-name tab keys to design tab keys. Refs #472: the
 // visible shell nav is exactly the six design header tabs, so every
 // key here has a design counterpart. Onboarding/rooms are tab-less
@@ -494,6 +544,47 @@ export function collectAppFacts(viewHook: string): AppFactSnapshot {
       ink: computed(shell, 'color'),
     },
   };
+}
+
+// Browser-side table extraction (Refs #490). This function is
+// serialised into the page by `page.evaluate`, so it must stay
+// self-contained: no imports, no closure references, DOM APIs only.
+// Reads the PrimeVue DataTable header sequence plus one cell-text
+// array per body row; a lone single-cell body row is the `#empty`
+// message (data rows always carry one cell per header), reported as
+// `empty` with no data rows. A multi-cell row that matches neither
+// shape fails loudly instead of silently passing.
+export function collectTableFacts(tableTestId: string): {
+  headers: string[];
+  rows: string[][];
+  empty: string | null;
+} {
+  const norm = (value: string): string =>
+    value.normalize('NFC').replace(/\s+/g, ' ').trim();
+  const table = document.querySelector(`[data-testid="${tableTestId}"]`);
+  if (table === null) {
+    throw new Error(`design-facts: table [data-testid="${tableTestId}"] not found`);
+  }
+  const headers: string[] = [];
+  table.querySelectorAll('thead th').forEach((cell) => {
+    headers.push(norm(cell.textContent ?? ''));
+  });
+  const rows: string[][] = [];
+  let empty: string | null = null;
+  table.querySelectorAll('tbody tr').forEach((row) => {
+    const cells = [...row.querySelectorAll('td')].map((cell) => norm(cell.textContent ?? ''));
+    if (cells.length === 0) return;
+    if (headers.length > 0 && cells.length === headers.length) {
+      rows.push(cells);
+    } else if (cells.length === 1) {
+      empty = cells[0];
+    } else {
+      throw new Error(
+        `design-facts: table [data-testid="${tableTestId}"] has a ${cells.length}-cell row against ${headers.length} headers`,
+      );
+    }
+  });
+  return { headers, rows, empty };
 }
 
 // Field-by-field diff (schema section 4): `expected` always comes

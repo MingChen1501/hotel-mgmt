@@ -137,12 +137,15 @@ describe('display names instead of IDs (issue #370)', () => {
     });
 
     const arrivals = wrapper.find('[data-testid="desk-arrivals-table"]').text();
-    expect(arrivals).toContain('201');
+    // Design card rows (Refs #490): arrivals pair the guest with the
+    // booked room type, never the room number or a raw UUID.
+    expect(arrivals).toContain('Deluxe');
+    expect(arrivals).not.toContain('201');
     expect(arrivals).not.toMatch(UUID_PATTERN);
     // A stay whose room is in no housekeeping state names no number,
     // and a failed guest lookup names no guest ID.
     const inHouse = wrapper.find('[data-testid="desk-inhouse-table"]').text();
-    expect(inHouse).toContain('Room number unavailable');
+    expect(inHouse).toContain('Not assigned');
     expect(inHouse).toContain('Unknown guest');
     expect(inHouse).not.toMatch(UUID_PATTERN);
     // Attention rows name the number with the resolved type name.
