@@ -354,6 +354,26 @@ test.describe('room-map facts extract from matching grid DOM (Refs #491)', () =>
     );
     await expect(page.evaluate(collectRoomMapFacts)).rejects.toThrow(/no trailing count/);
   });
+
+  test('a room map with no floor groups fails with a diff', async ({ page }) => {
+    const facts = await extractMap(
+      page,
+      '<main data-testid="desk-roommap">' +
+        '<section data-testid="desk-roommap-summary"><h2>Phòng theo trạng thái</h2><ul>' +
+        '<li data-testid="desk-roommap-chip-ready"><span>Sẵn sàng (đã kiểm tra)</span> (0)</li>' +
+        '<li data-testid="desk-roommap-chip-occupied"><span>Đang có khách</span> (0)</li>' +
+        '<li data-testid="desk-roommap-chip-needs-cleaning"><span>Phòng bẩn</span> (0)</li>' +
+        '<li data-testid="desk-roommap-chip-awaiting-inspection"><span>Sạch, chờ kiểm tra</span> (0)</li>' +
+        '<li data-testid="desk-roommap-chip-out-of-service"><span>Ngưng bán</span> (0)</li>' +
+        '</ul></section></main>',
+    );
+    expect(facts.floors).toEqual([]);
+    const diffs = diffRoomMapFacts('Main', decidedRoomMap(), facts, '[data-testid="desk-roommap"]');
+    expect(diffs).toHaveLength(1);
+    expect(diffs[0].field).toBe('roomMap.floors');
+    expect(diffs[0].actual).toBe('"(absent)"');
+    expect(diffs[0].design).toBe('docs/design/Rooms.dc.html:2');
+  });
 });
 
 test.describe('mismatches fail with design file:line vs app selector (criterion 2)', () => {

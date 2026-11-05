@@ -755,6 +755,18 @@ export function diffRoomMapFacts(
     );
   }
   const floorsApp = `${contentApp} h2`;
+  // Refs #491: a room map that dropped the floor section entirely
+  // (chips intact) must fail the gate instead of passing silently.
+  if (actual.floors.length === 0) {
+    diffs.push({
+      screen,
+      field: 'roomMap.floors',
+      expected: '"at least one floor group"',
+      actual: '"(absent)"',
+      design: decided.design,
+      app: floorsApp,
+    });
+  }
   for (const [index, floor] of actual.floors.entries()) {
     const floorTitle = /^Tầng \S+$/.test(floor) || floor === 'Phòng chưa xếp tầng';
     if (!floorTitle) {
