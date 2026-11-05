@@ -152,17 +152,24 @@ export interface DecidedScreenContent {
 
 export const DECIDED_CONTENT: readonly DecidedScreenContent[] = [
   {
-    // Main (Refs #479): the desk screen pins its static heading
+    // Main (Refs #479, #489): the desk screen pins its static heading
     // prefix — dashboard cards, the five-lane board, then the
     // embedded room-map section heads — while the data-driven tail
     // (floor sections from room payloads, room-number links per
     // room) follows the same structural rule as Rooms. Seed rooms
-    // 101 and 102 anchor the required labels.
+    // 101 and 102 anchor the required labels. Refs #489 removed the
+    // legacy backup-report h2 (no design counterpart; the report
+    // belongs to the owner/manager via the admin audit surface) and
+    // records the deliberately kept extras here so their return is
+    // a gate failure: the h1 plus intro (screen title), the merged
+    // need-cleaning card (the design's dirty plus awaiting-inspection
+    // content with the same two buttons), the cross-check line, the
+    // #371 five-lane board, and the #479 room map (alignment owned
+    // by #491).
     screen: 'Main',
     headings: [],
     headingPrefix: [
       { level: 1, text: 'Lễ tân hôm nay: khách đến, lưu trú và phòng cần chú ý' },
-      { level: 2, text: 'Báo cáo sao lưu' },
       { level: 2, text: 'Khách đến hôm nay' },
       { level: 2, text: 'Đang lưu trú' },
       { level: 2, text: 'Khách đi hôm nay' },
