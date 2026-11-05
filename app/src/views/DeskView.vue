@@ -328,32 +328,46 @@
             :data-testid="floor.unknown ? 'desk-roommap-floor-unknown' : 'desk-roommap-floor'"
           >
             <h2>{{ floor.title }}</h2>
-            <ul>
-              <li
+            <!-- Refs #491: the floor card grid mirrors the design
+              Rooms board (`docs/design/Rooms.dc.html`): one card per
+              room with its number, status chip, type line, and live
+              note line. The shared `rooms-grid` presentation lives in
+              the shell (`app/src/App.vue`); views carry no style
+              blocks. Every entry links through to the `rooms`
+              route — actions stay on /rooms. -->
+            <div class="rooms-grid">
+              <Card
                 v-for="room in floor.rooms"
                 :key="room.number"
                 :data-testid="`desk-roommap-room-${room.number}`"
               >
-                <h3>
-                  <RouterLink
-                    :to="{ name: 'rooms' }"
-                    :data-testid="`desk-roommap-open-${room.number}`"
-                  >
-                    {{ room.number }}
-                  </RouterLink>
-                </h3>
-                <p>
-                  <Tag
-                    :severity="mapChipSeverity(room.display)"
-                    :value="mapChipLabel(room.display)"
-                    :data-testid="`desk-roommap-card-chip-${room.number}`"
-                  />
-                </p>
-                <p :data-testid="`desk-roommap-card-type-${room.number}`">
-                  {{ typeName(room.roomTypeId) }}
-                </p>
-              </li>
-            </ul>
+                <template #title>
+                  <h3>
+                    <RouterLink
+                      :to="{ name: 'rooms' }"
+                      :data-testid="`desk-roommap-open-${room.number}`"
+                    >
+                      {{ room.number }}
+                    </RouterLink>
+                  </h3>
+                </template>
+                <template #content>
+                  <p>
+                    <Tag
+                      :severity="mapChipSeverity(room.display)"
+                      :value="mapChipLabel(room.display)"
+                      :data-testid="`desk-roommap-card-chip-${room.number}`"
+                    />
+                  </p>
+                  <p :data-testid="`desk-roommap-card-type-${room.number}`">
+                    {{ typeName(room.roomTypeId) }}
+                  </p>
+                  <p :data-testid="`desk-roommap-card-note-${room.number}`">
+                    {{ mapNoteFor(room) }}
+                  </p>
+                </template>
+              </Card>
+            </div>
           </section>
         </template>
       </section>
@@ -595,6 +609,13 @@ export default defineComponent({
     // from the stay lists below (Refs #371: already-fetched data
     // only — no extra GetGuest calls).
     const occupantNames = ref<Record<string, string>>({});
+    // Stay UUID per room UUID for in-house stays plus arrival guest
+    // names per room UUID (Refs #491): the room-map card note joins
+    // the occupant to the planned checkout date and names the
+    // upcoming arrival on ready cards — the same joins as /rooms,
+    // no new endpoints.
+    const stayForRoom = ref<Record<string, string>>({});
+    const arrivalGuests = ref<Record<string, string>>({});
     // Room-type names resolve through ListRoomTypes (issue
     // #372): room rows render the human type name, and typeName
     // falls back to the generic label when the type is unknown —
@@ -674,6 +695,7 @@ export default defineComponent({
     async function resolveStays(
       stays: StayRecord[],
       build: (stay: StayRecord, guestName: string) => { primary: string; secondary: string },
+      recordGuest?: (stay: StayRecord, guestName: string, roomRef: string) => void,
     ): Promise<StayRow[]> {
       return Promise.all(
         stays.map(async (stay, index) => {
@@ -681,6 +703,9 @@ export default defineComponent({
           const roomRef = stay.currentRoomId ?? stay.roomId ?? '';
           if (roomRef) {
             occupantNames.value[roomRef] = guestName;
+            if (recordGuest) {
+              recordGuest(stay, guestName, roomRef);
+            }
           }
           return {
             key: stay.stayId ?? `${stay.guestId ?? 'guest'}-${index}`,
@@ -813,6 +838,57 @@ export default defineComponent({
 
     async function onMarkInspected(room: RoomRecord): Promise<void> {
       await markRoom(room, 'vacant-inspected');
+    }
+
+    // One live note per room-map card (Refs #491): the same join
+    // vocabulary as the /rooms cards — occupant plus checkout date,
+    // out-of-service reason plus date, upcoming arrival, or the
+    // plain catalogue line — so the desk grid matches the design
+    // Rooms board card for card. States with no live data render a
+    // plain catalogue line, never a blank note. Every key below
+    // already exists in `messages/en.json` and `messages/vi.json`
+    // (shared with RoomsView); no catalogue entries added here.
+    function mapNoteFor(room: MapRoom): string {
+      if (room.display === 'occupied') {
+        const guest = room.roomId ? (occupantNames.value[room.roomId] ?? '') : '';
+        const name = guest !== '' ? guest : t('desk.today.unknown_guest', {}, 'Unknown guest');
+        const stayId = room.roomId ? stayForRoom.value[room.roomId] : undefined;
+        const date = stayId ? checkoutDates.value[stayId] : undefined;
+        if (date) {
+          return t('desk.rooms.note_occupied', { guest: name, date }, `${name} · Checkout ${date}`);
+        }
+        return t('desk.rooms.note_occupied_no_date', { guest: name }, name);
+      }
+      if (room.display === 'out-of-service') {
+        const note = room.roomId ? blockNotes.value[room.roomId] : undefined;
+        if (note) {
+          return t(
+            'desk.rooms.note_out_of_service',
+            { reason: note.reason, date: note.date },
+            `${note.reason} · ${note.date}`,
+          );
+        }
+        return t(
+          'desk.today.out_of_service_unknown',
+          {},
+          'Reason not recorded. Ask the manager.',
+        );
+      }
+      if (room.display === 'ready') {
+        const guest = room.roomId ? arrivalGuests.value[room.roomId] : undefined;
+        if (guest) {
+          return t(
+            'desk.rooms.note_arrival',
+            { guest, date: businessDate.value },
+            `${guest} · Arriving ${businessDate.value}`,
+          );
+        }
+        return t('desk.rooms.note_ready', {}, 'Ready for check-in.');
+      }
+      if (room.display === 'needs-cleaning') {
+        return t('desk.rooms.note_needs_cleaning', {}, 'Needs cleaning.');
+      }
+      return t('desk.rooms.note_awaiting_inspection', {}, 'Cleaned, awaiting inspection.');
     }
 
     function occupantNameFor(roomId: string | undefined): string {
@@ -1015,8 +1091,16 @@ export default defineComponent({
         checkoutDates.value = calendarMaps.dates;
         bookingRefs.value = calendarMaps.refs;
         occupantNames.value = {};
-        arrivals.value = await resolveStays(lists.arrivals ?? [], arrivalCells);
-        inHouse.value = await resolveStays(lists.inHouse ?? [], inHouseCells);
+        stayForRoom.value = {};
+        arrivalGuests.value = {};
+        arrivals.value = await resolveStays(lists.arrivals ?? [], arrivalCells, (_stay, guestName, roomRef) => {
+          arrivalGuests.value[roomRef] = guestName;
+        });
+        inHouse.value = await resolveStays(lists.inHouse ?? [], inHouseCells, (stay, _guestName, roomRef) => {
+          if (stay.stayId) {
+            stayForRoom.value[roomRef] = stay.stayId;
+          }
+        });
         departures.value = await resolveStays(lists.departures ?? [], departureCells);
         dirty.value = byState['vacant-dirty'] ?? [];
         uninspected.value = byState['vacant-clean'] ?? [];
@@ -1100,6 +1184,7 @@ export default defineComponent({
       totalMapRooms,
       mapChipSeverity,
       mapChipLabel,
+      mapNoteFor,
       isBusy,
       onMarkCleaned,
       onMarkInspected,

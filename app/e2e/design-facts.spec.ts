@@ -39,8 +39,11 @@
 //   Refs #489 pins the removed backup-report section's absence so
 //   its return fails the gate; Refs #490 pins the three Main
 //   stay-table header orders plus the empty-state wording with one
-//   structural cell-per-header rule per data row). Full-record live parity
-//   stays deferred for the data-driven and flow-state panels the
+//   structural cell-per-header rule per data row) plus the Main
+//   room-map section (Refs #491: the five status chips in decided
+//   order with counts equal to their cards, floor-group titles, and
+//   one card per room carrying number, chip, type, and note lines).
+//   Full-record live parity stays deferred for the data-driven and flow-state panels the
 //   decision excludes (stay list rows, room-card bodies, approval,
 //   dialogs, quote/result/confirmation): the fixture tests above
 //   prove the gate catches every one of those drift classes with
@@ -74,9 +77,11 @@ import { expect, test, type Page } from '@playwright/test';
 import {
   buildMatchingDom,
   collectAppFacts,
+  collectRoomMapFacts,
   collectTableFacts,
   DECIDED_CONTENT,
   diffFactRecords,
+  diffRoomMapFacts,
   FACT_SCHEMA_VERSION,
   formatFactDiffs,
   ROUTE_KEY_TO_DESIGN_KEY,
@@ -231,6 +236,123 @@ test.describe('stay-table facts extract from matching table DOM (Refs #490)', ()
     await expect(page.evaluate(collectTableFacts, 'desk-inhouse-table')).rejects.toThrow(
       /3-cell row against 2 headers/,
     );
+  });
+});
+
+test.describe('room-map facts extract from matching grid DOM (Refs #491)', () => {
+  let guard!: LoopbackGuard;
+
+  test.beforeEach(async ({ page }) => {
+    guard = installLoopbackGuard(page);
+  });
+
+  test.afterEach(() => {
+    guard.assertClean();
+  });
+
+  // The five catalogue chips in status order, one floor group, and
+  // one card per room carrying number, status chip, type line, and
+  // note line — the decided Main room-map shape.
+  const GRID_BODY =
+    '<main data-testid="desk-roommap">' +
+    '<section data-testid="desk-roommap-summary"><h2>Phòng theo trạng thái</h2><ul>' +
+    '<li data-testid="desk-roommap-chip-ready"><span>Sẵn sàng (đã kiểm tra)</span> (1)</li>' +
+    '<li data-testid="desk-roommap-chip-occupied"><span>Đang có khách</span> (1)</li>' +
+    '<li data-testid="desk-roommap-chip-needs-cleaning"><span>Phòng bẩn</span> (1)</li>' +
+    '<li data-testid="desk-roommap-chip-awaiting-inspection"><span>Sạch, chờ kiểm tra</span> (0)</li>' +
+    '<li data-testid="desk-roommap-chip-out-of-service"><span>Ngưng bán</span> (0)</li>' +
+    '</ul></section>' +
+    '<section data-testid="desk-roommap-floor"><h2>Tầng 1</h2>' +
+    '<div class="rooms-grid">' +
+    '<div data-testid="desk-roommap-room-101"><h3>101</h3>' +
+    '<span data-testid="desk-roommap-card-chip-101">Phòng bẩn</span>' +
+    '<span data-testid="desk-roommap-card-type-101">Đơn</span>' +
+    '<span data-testid="desk-roommap-card-note-101">Cần dọn phòng.</span></div>' +
+    '<div data-testid="desk-roommap-room-201"><h3>201</h3>' +
+    '<span data-testid="desk-roommap-card-chip-201">Đang có khách</span>' +
+    '<span data-testid="desk-roommap-card-type-201">Đôi</span>' +
+    '<span data-testid="desk-roommap-card-note-201">Lê Minh · Trả phòng 30/10</span></div>' +
+    '<div data-testid="desk-roommap-room-301"><h3>301</h3>' +
+    '<span data-testid="desk-roommap-card-chip-301">Sẵn sàng (đã kiểm tra)</span>' +
+    '<span data-testid="desk-roommap-card-type-301">Đôi</span>' +
+    '<span data-testid="desk-roommap-card-note-301">Trống, sẵn sàng</span></div>' +
+    '</div></section></main>';
+
+  function decidedRoomMap() {
+    const decided = DECIDED_CONTENT.find((candidate) => candidate.screen === 'Main')?.roomMap;
+    if (!decided) throw new Error('design-facts: no decided room map for Main');
+    return decided;
+  }
+
+  async function extractMap(page: Page, body: string) {
+    await page.setContent(
+      `<!doctype html><html lang="vi"><head><meta charset="utf-8"></head><body>${body}</body></html>`,
+    );
+    return page.evaluate(collectRoomMapFacts);
+  }
+
+  test('extracts chips, floors, and cards from a matching grid', async ({ page }) => {
+    const facts = await extractMap(page, GRID_BODY);
+    expect(facts.chips).toEqual([
+      { label: 'Sẵn sàng (đã kiểm tra)', count: 1 },
+      { label: 'Đang có khách', count: 1 },
+      { label: 'Phòng bẩn', count: 1 },
+      { label: 'Sạch, chờ kiểm tra', count: 0 },
+      { label: 'Ngưng bán', count: 0 },
+    ]);
+    expect(facts.floors).toEqual(['Tầng 1']);
+    expect(facts.cards).toEqual([
+      { number: '101', chip: 'Phòng bẩn', type: 'Đơn', note: 'Cần dọn phòng.' },
+      { number: '201', chip: 'Đang có khách', type: 'Đôi', note: 'Lê Minh · Trả phòng 30/10' },
+      { number: '301', chip: 'Sẵn sàng (đã kiểm tra)', type: 'Đôi', note: 'Trống, sẵn sàng' },
+    ]);
+  });
+
+  test('matching room-map facts produce zero diffs', async ({ page }) => {
+    const facts = await extractMap(page, GRID_BODY);
+    expect(diffRoomMapFacts('Main', decidedRoomMap(), facts, '[data-testid="desk-roommap"]')).toEqual([]);
+  });
+
+  test('a count that disagrees with its cards fails with a diff', async ({ page }) => {
+    const facts = await extractMap(
+      page,
+      GRID_BODY.replace(
+        '<li data-testid="desk-roommap-chip-needs-cleaning"><span>Phòng bẩn</span> (1)</li>',
+        '<li data-testid="desk-roommap-chip-needs-cleaning"><span>Phòng bẩn</span> (2)</li>',
+      ),
+    );
+    const diffs = diffRoomMapFacts('Main', decidedRoomMap(), facts, '[data-testid="desk-roommap"]');
+    expect(diffs).toHaveLength(1);
+    expect(diffs[0].field).toBe('roomMap.chips[2].count');
+    expect(diffs[0].expected).toBe('1');
+    expect(diffs[0].actual).toBe('2');
+    expect(diffs[0].design).toBe('docs/design/Rooms.dc.html:2');
+    expect(diffs[0].app).toBe('[data-testid="desk-roommap"]-summary li');
+  });
+
+  test('a card with a blank note line fails with a diff', async ({ page }) => {
+    const facts = await extractMap(
+      page,
+      GRID_BODY.replace(
+        '<span data-testid="desk-roommap-card-note-101">Cần dọn phòng.</span>',
+        '<span data-testid="desk-roommap-card-note-101"></span>',
+      ),
+    );
+    const diffs = diffRoomMapFacts('Main', decidedRoomMap(), facts, '[data-testid="desk-roommap"]');
+    expect(diffs).toHaveLength(1);
+    expect(diffs[0].field).toBe('roomMap.cards[0].note');
+    expect(diffs[0].design).toBe('docs/design/Rooms.dc.html:2');
+  });
+
+  test('a chip with no trailing count fails loudly instead of passing silently', async ({ page }) => {
+    await page.setContent(
+      '<!doctype html><html lang="vi"><head><meta charset="utf-8"></head><body>' +
+        '<main data-testid="desk-roommap">' +
+        '<section data-testid="desk-roommap-summary"><h2>Phòng theo trạng thái</h2><ul>' +
+        '<li data-testid="desk-roommap-chip-ready"><span>Sẵn sàng (đã kiểm tra)</span></li>' +
+        '</ul></section></main></body></html>',
+    );
+    await expect(page.evaluate(collectRoomMapFacts)).rejects.toThrow(/no trailing count/);
   });
 });
 
@@ -674,6 +796,18 @@ test.describe('live shell conformance on the running app DOM', () => {
               table.emptyDesign,
               `${tableApp} tbody tr`,
             );
+          }
+        }
+        // Decided room-map shapes (Refs #491, Main only): the five
+        // status chips in decided order with counts equal to their
+        // cards, floor-group titles, and one card per room carrying
+        // its number, status chip, type line, and note line — the
+        // design Rooms board (`docs/design/Rooms.dc.html`).
+        if (decided.roomMap !== undefined) {
+          const roomMapApp = '[data-testid="desk-roommap"]';
+          const observedMap = await page.evaluate(collectRoomMapFacts);
+          for (const diff of diffRoomMapFacts(entry.screen, decided.roomMap, observedMap, roomMapApp)) {
+            failures.push(diff);
           }
         }
       }
