@@ -4,19 +4,6 @@
     <p>{{ t('desk.today.intro', {}, 'The morning view: who arrives, who is in house, who leaves, and which rooms need attention.') }}</p>
     <noscript><p>{{ t('desk.entry.noscript_desk_lead', {}, "This page needs JavaScript to load today's lists.") }} {{ t('desk.entry.noscript_backup', {}, 'No recent backup report — treat as failed. Note this message word for word and call support the same day (runbook section 6).') }}</p></noscript>
 
-    <section data-testid="desk-backup">
-      <h2>{{ t('desk.entry.backup_heading', {}, 'Backup report') }}</h2>
-      <p data-testid="desk-backup-report">
-        {{ backupLine }}
-      </p>
-      <p
-        v-if="backupSupport"
-        data-testid="desk-backup-support"
-      >
-        {{ backupSupport }}
-      </p>
-    </section>
-
     <section data-testid="desk-dashboard">
       <p>
         <span>{{ t('desk.today.business_date', {}, 'Business date: ') }}</span><strong data-testid="desk-business-date">{{ businessDate }}</strong>
@@ -394,12 +381,24 @@ import { useSessionStore } from '../stores/session';
 // `frontend/desk.html` (read-only morning view: sign-in plus
 // arrivals, in-house stays, departures, rooms needing housekeeping
 // attention, the five-lane room-status board (Refs #371), and the
-// DailySheet cross-check counts), plus the backup
-// report line from the former `frontend/index.html` desk entry
-// (Refs #116, #299): the newest `backup-report.json` renders as a
-// human-readable success-or-failure line with the runbook support
-// wording (NFR-BKP-2). The legacy pages are decommissioned and now
-// 301-redirect to this view; it runs under `/app/`.
+// DailySheet cross-check counts). The legacy pages are decommissioned
+// and now 301-redirect to this view; it runs under `/app/`.
+// Node-by-node against the owner design `docs/design/Main.dc.html`
+// (Refs #489): the design carries the business-date row plus six
+// cards and nothing else, so the legacy backup-report section from
+// the former `frontend/index.html` desk entry (Refs #116, #299) is
+// gone — FR-ADM-5/NFR-BKP-2 direct the backup report to the
+// owner/manager, and the admin audit surface already lists backup
+// reports, so the reception board is not its surface. Deliberately
+// kept with justification: the h1 plus intro (screen title,
+// accessibility, consistent with every screen); the merged
+// need-cleaning card (holds exactly the design's dirty plus
+// awaiting-inspection content with the same two buttons; splitting
+// it into two cards would collide with the #490 empty-state
+// alignment); the DailySheet cross-check line (its open-balances
+// count exists nowhere else on the desk screen); the five-lane
+// room-status board (owner-requested in #371); and the room-map
+// section (owner-requested in #479, alignment owned by #491).
 // The #420 restyle groups the morning lists into the five design
 // cards (arrivals, in-house, departures-or-empty, need-cleaning,
 // out-of-service) and adds the two housekeeping action buttons on
@@ -424,8 +423,6 @@ import { useSessionStore } from '../stores/session';
 // - The only mutating ops are SignIn/SignOut (session,
 //   not domain data) plus the two housekeeping buttons
 //   (`UpdateRoomState` on room numbers the board already lists).
-//   The backup feed is an unauthenticated static
-//   file, so it loads over plain `fetch`, never `apiFetch`.
 
 interface StayRow {
   key: string;
@@ -468,16 +465,6 @@ interface MapFloorGroup {
   title: string;
   unknown: boolean;
   rooms: MapRoom[];
-}
-
-// Newest backup report published beside the static frontend by
-// script/publish-backup-report.sh (issue #116): `line` is the
-// runbook section 2 wording, `outcome` is success/failure, and
-// `support` carries the runbook section 6 pointer on failure.
-interface BackupReport {
-  line?: unknown;
-  outcome?: unknown;
-  support?: unknown;
 }
 
 function localBusinessDate(): string {
@@ -603,8 +590,6 @@ export default defineComponent({
     // this map; typeName resolves the human name and falls back to
     // the generic label when the type is unknown, never the raw ID.
     const roomTypeNames = ref<Record<string, string>>({});
-    const backupLine = ref(t('desk.entry.backup_loading', {}, 'Loading the latest backup report…'));
-    const backupSupport = ref('');
 
     // The shell owns the one sign-in gate (Refs #338): a
     // 401/UNAUTHENTICATED expires the shared session, the gate
@@ -1040,58 +1025,14 @@ export default defineComponent({
       }
     }
 
-    // Desk surface for the newest backup report (issue #116,
-    // ported from the former `frontend/index.html` in #299): fetch
-    // the static feed with no store, render the `line` verbatim, and
-    // show the support wording on any failure. A missing or
-    // unreadable feed counts as failed (runbook section 1,
-    // NFR-BKP-2), same as the legacy page.
-    async function loadBackupReport(): Promise<void> {
-      backupSupport.value = '';
-      try {
-        const response = await globalThis.fetch('/backup-report.json', { cache: 'no-store' });
-        if (!response.ok) {
-          throw new Error('no report');
-        }
-        const report = (await response.json()) as BackupReport;
-        if (!report || typeof report.line !== 'string' || !report.line) {
-          throw new Error('bad report');
-        }
-        backupLine.value = report.line;
-        if (report.outcome === 'failure') {
-          backupSupport.value = typeof report.support === 'string' && report.support
-            ? report.support
-            : t(
-              'desk.entry.backup_support',
-              {},
-              'Note this message word for word and call support the same day (runbook section 6).',
-            );
-        }
-      } catch {
-        backupLine.value = t(
-          'desk.entry.backup_missing',
-          {},
-          'No recent backup report — treat as failed.',
-        );
-        backupSupport.value = t(
-          'desk.entry.backup_support',
-          {},
-          'Note this message word for word and call support the same day (runbook section 6).',
-        );
-      }
-    }
-
     async function onRefresh(): Promise<void> {
       await refreshDashboard();
-      await loadBackupReport();
     }
 
     onMounted(() => {
-      // The backup feed needs no session, so it loads on every
-      // visit; the dashboard lists still wait for sign-in.
-      void loadBackupReport();
       // A reload restores the Bearer token from sessionStorage: go
       // straight back to the dashboard instead of stranding it.
+      // The dashboard lists still wait for sign-in.
       if (session.isSignedIn) {
         void refreshDashboard();
       }
@@ -1123,8 +1064,6 @@ export default defineComponent({
       onMarkCleaned,
       onMarkInspected,
       housekeepingError,
-      backupLine,
-      backupSupport,
       onRefresh,
     };
   },

@@ -35,7 +35,9 @@
 //   required-button-label subsets everywhere so dynamic extras never
 //   break the gate) plus the Main room-map section (Refs #479: Main
 //   pins its static heading prefix through the embedded map heads
-//   with the same structural tail rule and seed labels as Rooms). Full-record live parity
+//   with the same structural tail rule and seed labels as Rooms;
+//   Refs #489 pins the removed backup-report section's absence so
+//   its return fails the gate). Full-record live parity
 //   stays deferred for the data-driven and flow-state panels the
 //   decision excludes (stay list rows, room-card bodies, approval,
 //   dialogs, quote/result/confirmation): the fixture tests above
@@ -364,6 +366,9 @@ test.describe('live shell conformance on the running app DOM', () => {
         // dashboard reads complete; its section root is the positive
         // signal the decided map content is on screen.
         await expect(page.getByTestId('desk-roommap')).toBeVisible();
+        // Refs #489: the legacy backup-report section has no design
+        // counterpart and stays removed — its return fails here.
+        await expect(page.getByTestId('desk-backup')).toHaveCount(0);
       }
       const actual = await page.evaluate(collectAppFacts, entry.viewHook);
       const record = recordFor(entry.screen);

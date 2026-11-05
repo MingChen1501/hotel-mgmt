@@ -127,9 +127,6 @@ describe('display names instead of IDs (issue #370)', () => {
           }),
         );
       }
-      if (url === '/backup-report.json') {
-        return Promise.resolve(jsonResponse({ outcome: 'success', line: 'Backup ok', support: '' }));
-      }
       throw new Error(`unexpected call ${url}`);
     });
     const wrapper = mountView(DeskView);
