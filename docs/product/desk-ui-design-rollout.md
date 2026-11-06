@@ -344,6 +344,59 @@ design — live shell conformance).
   payment row, exempted under DD-16), so the app's `cash` /
   `card` select stays an F4 flow extra, not a parity gap.
 
+### 6.5 Rooms parity-sweep resolutions (Refs #499)
+
+The 2026-11-06 full-tree sweep of the Rooms board vs
+`docs/design/Rooms.dc.html` (222 diffs, isolated lab
+`hotel-lab-697`, `vi` locale) closed with no code change to the
+view itself and gate-harness wiring only; no design intent was
+guessed. The served title already matches the board
+(`Sơ đồ phòng`, verified live) via the #495 S2 follow-through,
+and the fact-level gate passes 2/2 (matching app DOM incl. the
+decided heading prefix/required labels/buttons, live shell
+conformance).
+
+- R1 tree shape — same accepted S1 as Main: 147 design-side
+  `x-dc` subtree nodes plus 75 app-side shell/PrimeVue/head
+  extras, zero text/colour/font/visibility diffs. Full-tree
+  literalism stays rejected.
+- R2 document title — already closed (#495 S2), verified live
+  on `/app/rooms` (`Sơ đồ phòng`).
+- R3 chip vocabulary — REPORTED, not changed. The design
+  carries bare labels (`Sẵn sàng`, `Có khách`, `Cần dọn`,
+  `Chờ kiểm tra`, `Ngừng sử dụng`); the app shares the
+  qualified Rooms/Main vocabulary (`Sẵn sàng (đã kiểm tra)`,
+  `Đang có khách`, `Phòng bẩn`, `Sạch, chờ kiểm tra`,
+  `Ngưng bán`) pinned by the fact-level decided room map
+  (Refs #491) and the #495 S5/S6 resolutions. User-visible
+  copy: product call.
+- R4 app extras — KEPT with justification (same precedent as
+  the Main deliberately kept extras, Book B4, Stay T4, and
+  Folio F4): the h1+intro, the business-date line, the empty
+  state, the per-card PrimeVue Card/Tag structure with type
+  and note lines, the housekeeping buttons, and the
+  unknown-floor section are flow states the static board
+  cannot show. The fact-level decided content pins the static
+  copy; extras render no decided copy.
+- R5 dynamic data — allowlist entries DD-17 (shared shell
+  hotel name, same paths as Main DD-02, Book DD-08, Stay DD-10,
+  and Folio DD-14), DD-18 (design-side summary line with counts
+  plus frozen date, app-side business-date strong),
+  DD-19 (all five design-side chip spans plus all five
+  app-side chip lis, count-bearing nodes exempted wholesale,
+  same note as Main DD-07), and DD-20 (all three design-side
+  floor card grids with their children) wired as
+  `ROOMS_SCREEN_ALLOWLIST`: 222 → 82 residual diffs, all
+  `node` presence mismatches, zero stale entries. The static
+  board copy around the exempted values (the h1, both h2s, the
+  `Tải lại` button) carries no entry — S1 residuals; app-side
+  room cards carry no entry yet (fresh-lab cards for seed rooms
+  101/102 are flow-state, rows proposed when a run with richer
+  room data shows them). Owner veto welcome.
+- R6 refresh copy — no diff: both sides render `Tải lại`; the
+  Rooms board agrees with the app (unlike the Main-board
+  outlier in #495 S3).
+
 ## 7. Catalogue and locale rule
 
 - Single source of truth stays `messages/` (`messages/README.md`):
