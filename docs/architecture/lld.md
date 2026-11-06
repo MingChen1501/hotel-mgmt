@@ -1627,5 +1627,102 @@ Out of scope: implementation of the format change
 follow-up); any API, validation, catalogue-key, or
 allowlist change.
 
+## 15. Desk UI pixel-faithful restyle decomposition (Refs #517)
+
+Build-ready decomposition for owner decision B (2026-11-07,
+Refs #517): the shell (#518) plus the six screens (Main
+#519, Book #520, Stay #521, Folio #522, Rooms #523,
+Onboarding #524) are rebuilt markup-and-style to the
+owner-supplied boards. Subsystem boundary is in
+`docs/architecture/hld.md` [section 14](hld.md); the T2 UI
+contract, tokens, and per-surface mappings live with
+`product-owner` (`docs/product/desk-ui-pixel-faithful-restyle.md`
+sections 3–6, PR #525); the `FR-RST-*`/`NFR-RST-*` delta
+lives with `business-analyst`
+(`docs/requirements/mvp-requirements.md` [section 13](../requirements/mvp-requirements.md),
+PR #526); guard mapping lives with `qa-lead`. This section
+supplies SPEC-GATE FAIL finding 2 on PR #525 (the
+architect-owned half): the ADR-0003 partial-supersession
+record (kept in the ADR file itself) plus the flow-detail
+refresh the rebuild needs — which is an explicit no-flow-change
+statement with standing-diagram pointers, since no flow is
+added, removed, or reordered. No backend, API, contract,
+schema, catalogue-key, or error-code change is specified
+anywhere in this section.
+
+Intended tree deltas (files the seven child implementation
+PRs must touch or extend; edge traces below cite the
+existing files):
+
+```text
+app/
+  src/theme/tokens.ts    extend: token values move to the restyle-spec section 3 set
+                         (single source; already the mechanism at :22-23 header/primary,
+                         :47-50 focus ring; no per-surface forks, NFR-RST-3)
+  src/theme/presets      extend: preset scale re-anchored on the section 3 values
+                         (same DeskPreset mechanism; no residual stock default,
+                         pinned by tokens.test.ts:43-58)
+  src/App.vue            rebuild shell chrome to restyle-spec section 4 (teal header,
+                         tab inversion, locale pill); router table, NAV_ITEMS visible
+                         set (:222-227), session store, 401 path, sign-in gate unchanged
+  src/views/*.vue        rebuild per-screen markup/styling to restyle-spec sections 5.1-5.6;
+                         hooks, call order, fields, flows, copy, print <style> blocks kept
+  src/router.ts          unchanged (the eight paths at :47-96 stay exactly as-is)
+  src/api/client.ts      unchanged (shared Bearer client, offline banner, manual retry)
+  messages/*.json        unchanged (zero new keys expected; any needed key lands en + vi)
+```
+
+Re-skin-vs-rebuild rule (the ADR-0003 partial-supersession
+mechanism): a PrimeVue component stays wherever it carries
+behaviour (focus management, keyboard operation, ARIA
+roles, validation states, dialogs, tables, date pickers)
+and is re-skinned through the token-fed preset; where stock
+markup cannot reach the board values, the surface is rebuilt
+as plain markup carrying the same `data-testid` hooks, call
+order, field order, and state semantics. Characterization
+suites survive by hook, not by markup.
+
+Standing flows (no new diagram — each flow below keeps its
+happy path plus failure/rollback path verbatim):
+
+- Shell boot, 401-to-sign-out, and offline banner/manual
+  retry: LLD sections 11.1–11.3 hold (no write queueing —
+  desk actions stay synchronous authoritative ops).
+- Shell navigation, sign-in gate, and book
+  quote-then-confirm: LLD sections 12.3–12.5 hold (routes,
+  gate ownership, and call order unchanged).
+- Rollout flows (Stay placeholder gate, Main housekeeping
+  buttons with count refresh, Rooms counts-match-cards
+  invariant with per-card actions, Onboarding gating with
+  hotel-name persistence): LLD sections 13.1–13.4 hold
+  (refusal conditions, payloads, envelopes unchanged).
+
+Failure/rollback for the restyle work itself:
+
+```mermaid
+flowchart TD
+    A[Child PR re-skins or rebuilds one surface] --> B{Tokens single-sourced?}
+    B -->|No fork| C[Design-facts gate + screenshot evidence on the child PR]
+    B -->|Fork found| D[Move the value into tokens.ts; surface reads the token]
+    C --> E{Owner review per screen}
+    E -->|Approved| F[Merge; next child PR]
+    E -->|Divergence found| G[Record on the child issue; never change copy/flow silently]
+```
+
+Edge trace (every edge cites code):
+
+- A–B: the child diff touches only `src/theme/tokens.ts`,
+  the preset, `src/App.vue`, and its own
+  `src/views/<Screen>.vue` (+ tests); `src/router.ts:47-96`,
+  `src/api/client.ts`, and `messages/*.json` show no diff.
+- B–C/D: `app/src/theme/tokens.test.ts:43-58` pins stay
+  green; the no-fork audit (`qa-lead` handoff) resolves
+  every rendered colour/radius/spacing through
+  `tokens.ts`.
+- C–E/F/G: each child issue (#518–#524) and PR carries
+  before/after screenshots and the per-screen owner
+  review; copy/flow divergences stay REPORTED on the
+  issue for an owner decision.
+
 <!-- ao-role: architect -->
-Role: architect · AO session hotel-mgmt-137
+Role: architect · AO session hotel-mgmt-720

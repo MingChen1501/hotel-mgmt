@@ -347,5 +347,59 @@ Rollback: revert the per-screen implementation PRs
 independently (#420–#425); the design files themselves are
 unchanged, and no data migration exists in either direction.
 
+## 14. Desk UI pixel-faithful restyle (Refs #517) — presentation only
+
+Owner decision B (2026-11-07, recorded in #517) restyles all
+seven desk surfaces to the owner-supplied boards as closely as
+possible (exact colors including the `#0F766E` primary, fonts,
+spacing, radii, layout per the `docs/design/*.dc.html` inline
+styles). Tier T2 (reader-visible UI change; no new subsystem,
+no boundary change, no contract change — hence no new ADR:
+the decision record is the partial-supersession section in
+`docs/architecture/decisions/adr-0003-desk-ui-vue-vite.md`).
+The product-owner scope, tokens, per-surface mappings, and UI
+contract live in `docs/product/desk-ui-pixel-faithful-restyle.md`
+(PR #525); the requirements delta lives with `business-analyst`
+(`docs/requirements/mvp-requirements.md` section 13,
+`FR-RST-*`/`NFR-RST-*`, PR #526); guard mapping lives with
+`qa-lead`. This section records only the subsystem-boundary
+position; the build-ready decomposition lives in
+`docs/architecture/lld.md` [section 15](lld.md).
+
+No new subsystem, no boundary change, no contract change:
+
+- Presentation only. The shell (#518) plus the six screens
+  (Main #519, Book #520, Stay #521, Folio #522, Rooms #523,
+  Onboarding #524) are rebuilt markup-and-style to the board
+  values; logic, hooks, stores, routers, API calls, request
+  fields, state transitions, validation, copy, catalogue
+  keys, and print output stay exactly as today. All module
+  boundaries (section 4), named contracts, and data-store
+  ownership statements stand unchanged.
+- PrimeVue boundary. PrimeVue components stay as logic
+  carriers (focus, keyboard, ARIA, validation states,
+  dialogs, tables); only their rendered visual styling is
+  replaced wherever it diverges from the design values. The
+  single styling source is `app/src/theme/tokens.ts`
+  (header `#0F4C47` at `:22`, primary `#0F766E` at `:23`,
+  focus ring at `tokens.ts:47-50` pinned by
+  `tokens.test.ts:43-58`); no per-surface token forks.
+- Flows unchanged. No flow is added, removed, or reordered,
+  so no new per-flow diagram is specified here: the standing
+  diagrams in LLD sections 11.1–11.3 (shell render, 401
+  sign-out, offline retry), 12.3–12.5 (navigation, sign-in
+  gate, quote-then-confirm), and 13.1–13.4 (rollout flows)
+  keep their happy paths and failure/rollback paths
+  verbatim for this restyle.
+- Non-desk surfaces out. Print routes and documents, the
+  admin console, and the sign-in gate keep their current
+  presentation and stay reachable as today. The
+  owner-supplied `docs/design/*` files are never edited.
+
+Rollback: revert the per-screen implementation PRs
+independently in reverse merge order (#518–#524); the design
+files themselves are unchanged, and no data migration exists
+in either direction.
+
 <!-- ao-role: architect -->
-Role: architect · AO session hotel-mgmt-29
+Role: architect · AO session hotel-mgmt-720
