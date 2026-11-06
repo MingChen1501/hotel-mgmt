@@ -61,6 +61,17 @@ describe('shell document titles', () => {
     expect(document.title).toBe('Hotel Management — Desk');
   });
 
+  it('falls back to the default title on unknown deep-link paths', async () => {
+    mount(ShellApp, {
+      global: { plugins: [createPinia(), router] },
+    });
+    await router.push('/no-such-screen');
+    await nextTick();
+    // The catch-all placeholder carries no title meta, so the served
+    // title falls back to the static default (Refs #495 S2).
+    expect(document.title).toBe('Hotel Management — Desk');
+  });
+
   it('tracks the staff locale into Vietnamese board titles', async () => {
     mount(ShellApp, {
       global: { plugins: [createPinia(), router] },
