@@ -1,4 +1,5 @@
-// Full-tree DOM diff gate: owner design HTML vs running desk UI (Closes #480).
+// Full-tree DOM diff gate: owner design HTML vs running desk UI (Closes #480;
+// deepened to a full computed inventory per screen by #515).
 //
 // Playwright-based gate that opens both the local owner design HTML
 // (`docs/design/*.dc.html`) and the running desk UI, extracts the full
@@ -7,11 +8,17 @@
 // snapshots anywhere in this gate; no product behaviour change and no
 // design-file changes (harness/test code only).
 //
-// What each node carries (acceptance criterion 2): the tag, the node's
-// own direct text, the computed `color` and `background-color`, the
-// computed font family/size/weight, a computed visibility flag, and the
-// document order (the node's path carries its sibling position, and the
-// tree serialises in document order).
+// What each node carries (acceptance criteria 1-2, #515 full
+// computed inventory):
+// - every text node: the node's own direct text (exact content —
+//   redundant characters fail as text diffs), the computed `color`,
+//   font family/size/weight, `line-height`, and a computed
+//   visibility flag;
+// - every block container: the computed `display`, flex/grid
+//   direction (`flex-direction`), `gap`, `padding` (four sides),
+//   `margin` (four sides), plus `background-color`;
+// - structural location: the document order (the node's path carries
+//   its sibling position, and the tree serialises in document order).
 //
 // Dynamic data (criterion 3): nodes the owner approves as dynamic
 // (dates, counts, names) are exempted through `DomDiffAllowlist`, a
@@ -29,6 +36,13 @@
 // index among same-tag siblings under the same parent). `text` is the
 // node's own direct text only (descendant element text stays on the
 // descendant's record), normalised (NFC, whitespace collapsed).
+// Layout fields (`lineHeight`, `display`, `flexDirection`, `gap`,
+// `padding`, `margin`) carry the computed value on every node, so the
+// gate inventories every text node and every block container per
+// #515: text-bearing nodes are pinned by their typography, containers
+// by their box model, and any layout drift fails with a path-named
+// diff. `padding`/`margin` join the four computed sides in CSS order
+// (top right bottom left); `gap` joins row and column.
 export interface DomNode {
   path: string;
   tag: string;
@@ -38,6 +52,12 @@ export interface DomNode {
   fontFamily: string;
   fontSize: string;
   fontWeight: string;
+  lineHeight: string;
+  display: string;
+  flexDirection: string;
+  gap: string;
+  padding: string;
+  margin: string;
   visible: boolean;
 }
 
@@ -352,6 +372,11 @@ export function collectDomTree(): DomNode[] {
         ownTextParts.push(child.textContent ?? '');
       }
     });
+    // Full computed inventory (#515): typography plus box model on
+    // every node. Multi-value shorthands join in CSS order so the
+    // serialisation stays a plain deterministic string per field.
+    const box = (sides: string[]): string =>
+      sides.map((side) => norm(style.getPropertyValue(side))).join(' ');
     nodes.push({
       path,
       tag: el.tagName.toLowerCase(),
@@ -361,6 +386,12 @@ export function collectDomTree(): DomNode[] {
       fontFamily: norm(style.getPropertyValue('font-family')),
       fontSize: norm(style.getPropertyValue('font-size')),
       fontWeight: norm(style.getPropertyValue('font-weight')),
+      lineHeight: norm(style.getPropertyValue('line-height')),
+      display: norm(style.getPropertyValue('display')),
+      flexDirection: norm(style.getPropertyValue('flex-direction')),
+      gap: `${norm(style.getPropertyValue('row-gap'))} ${norm(style.getPropertyValue('column-gap'))}`,
+      padding: box(['padding-top', 'padding-right', 'padding-bottom', 'padding-left']),
+      margin: box(['margin-top', 'margin-right', 'margin-bottom', 'margin-left']),
       visible:
         style.getPropertyValue('display') !== 'none' &&
         style.getPropertyValue('visibility') !== 'hidden' &&
@@ -381,10 +412,12 @@ export function collectDomTree(): DomNode[] {
   return nodes;
 }
 
-// Node-by-node diff (criterion 2): every non-allowlisted design node
-// must exist at the same path on the app side with identical tag,
-// text, computed colours, fonts, and visibility; app-side nodes with
-// no design counterpart fail as extras. Output order is deterministic:
+// Node-by-node diff (criterion 2, full inventory per #515): every
+// non-allowlisted design node must exist at the same path on the app
+// side with identical tag, exact text, computed colours, fonts,
+// line-height, layout (display, flex-direction, gap, padding,
+// margin), and visibility; app-side nodes with no design counterpart
+// fail as extras. Output order is deterministic:
 // design document order first, then app document order for extras.
 export function diffDomTrees(
   design: DomNode[],
@@ -421,6 +454,12 @@ export function diffDomTrees(
     push(designNode.path, 'fontFamily', designNode.fontFamily, observed.fontFamily);
     push(designNode.path, 'fontSize', designNode.fontSize, observed.fontSize);
     push(designNode.path, 'fontWeight', designNode.fontWeight, observed.fontWeight);
+    push(designNode.path, 'lineHeight', designNode.lineHeight, observed.lineHeight);
+    push(designNode.path, 'display', designNode.display, observed.display);
+    push(designNode.path, 'flexDirection', designNode.flexDirection, observed.flexDirection);
+    push(designNode.path, 'gap', designNode.gap, observed.gap);
+    push(designNode.path, 'padding', designNode.padding, observed.padding);
+    push(designNode.path, 'margin', designNode.margin, observed.margin);
     push(designNode.path, 'visible', designNode.visible, observed.visible);
   }
   for (const observed of actual) {
