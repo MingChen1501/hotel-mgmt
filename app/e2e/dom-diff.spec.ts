@@ -43,6 +43,7 @@ import {
   formatDomDiffs,
   isAllowlisted,
   MAIN_SCREEN_ALLOWLIST,
+  BOOK_SCREEN_ALLOWLIST,
   serializeDomTree,
   type DomDiffAllowlist,
   type DomNode,
@@ -292,6 +293,67 @@ test.describe('allowlist exempts owner-approved dynamic data (criterion 3)', () 
     expect(unused).not.toContain('/html[0]/body[0]/div[0]/div[0]/div[0]/nav[0]/span[0]');
     expect(unused).toContain('/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[1]/h3[0]');
   });
+
+  // Refs #496: the Book-screen allowlist carries exactly the
+  // owner-approved dynamic-data paths (DD-08..DD-09 in
+  // docs/testing/dom-diff-allowlist.md section 3) — no more, no
+  // fewer — so wiring drift fails here instead of silently
+  // re-noising the gate. The design quote rows carry no entry:
+  // the fresh lab renders the empty quote state instead, a
+  // flow-state divergence reported on #496 rather than exempted.
+  test('BOOK_SCREEN_ALLOWLIST exempts the approved Book dynamic paths only', () => {
+    const bookNode = (path: string, tag: string, text: string): DomNode => ({
+      path,
+      tag,
+      text,
+      color: '#111111',
+      background: '#ffffff',
+      fontFamily: 'Arial',
+      fontSize: '16px',
+      fontWeight: '400',
+      visible: true,
+    });
+    const design: DomNode[] = [
+      bookNode('/html[0]/body[0]/x-dc[0]/div[0]/div[0]/strong[0]', 'strong', 'Khách sạn Hoa Mai'),
+      bookNode(
+        '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[1]/div[0]/label[2]/select[0]/option[1]',
+        'option',
+        'Phòng đôi',
+      ),
+      bookNode('/html[0]/body[0]/x-dc[0]/div[0]/div[2]/h2[0]', 'h2', 'Đặt phòng mới'),
+    ];
+    const actual: DomNode[] = [
+      bookNode('/html[0]/body[0]/div[0]/div[0]/div[0]/nav[0]/span[0]', 'span', 'Lab Parity Hotel'),
+      bookNode(
+        '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/form[0]/div[0]/div[1]/div[0]/div[0]/div[1]/label[2]/select[0]/option[1]',
+        'option',
+        'Standard Double',
+      ),
+      bookNode(
+        '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/form[0]/div[0]/div[1]/div[0]/div[0]/div[1]/button[0]',
+        'button',
+        'Lấy báo giá',
+      ),
+    ];
+    expect(BOOK_SCREEN_ALLOWLIST.skipPaths).toHaveLength(4);
+    const withoutAllowlist = diffDomTrees(design, actual);
+    expect(withoutAllowlist.length).toBeGreaterThan(1);
+    const diffs = diffDomTrees(design, actual, BOOK_SCREEN_ALLOWLIST);
+    expect(
+      diffs,
+      `expected only the non-allowlisted nodes, got:\n${formatDomDiffs(diffs)}`,
+    ).toHaveLength(2);
+    expect(diffs.map((diff) => diff.path).sort()).toEqual([
+      '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/form[0]/div[0]/div[1]/div[0]/div[0]/div[1]/button[0]',
+      '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/h2[0]',
+    ]);
+    // Stale-entry detection tracks the wired design paths: the
+    // hotel-name strong and both option-bearing selects are
+    // covered by the fixture nodes beneath them, so nothing is
+    // reported stale.
+    const unused = unusedAllowlistEntries(design, actual, BOOK_SCREEN_ALLOWLIST);
+    expect(unused).toEqual([]);
+  });
 });
 
 test.describe('output is deterministic text only (criteria 2 and 4)', () => {
@@ -392,11 +454,16 @@ test.describe('live extraction from design HTML and the running desk UI (criteri
         // Text-only output (criteria 2 and 5): the diff renders as a
         // string, never binary. Full parity is NOT asserted here —
         // owner-approved dynamic data is exempted through the
-        // per-screen allowlist (Refs #495 S7) while the accepted
+        // per-screen allowlist (Refs #495 S7, #496) while the accepted
         // structural divergence (PrimeVue shell vs design-literal
         // markup) still reports — so the run reports the remaining
         // diff count for that follow-up instead of gating on it.
-        const allowlist = entry.screen === 'Main' ? MAIN_SCREEN_ALLOWLIST : EMPTY_ALLOWLIST;
+        const allowlist =
+          entry.screen === 'Main'
+            ? MAIN_SCREEN_ALLOWLIST
+            : entry.screen === 'Book'
+              ? BOOK_SCREEN_ALLOWLIST
+              : EMPTY_ALLOWLIST;
         const diffs = diffDomTrees(design, actual, allowlist);
         const formatted = formatDomDiffs(diffs);
         expect(typeof formatted).toBe('string');
