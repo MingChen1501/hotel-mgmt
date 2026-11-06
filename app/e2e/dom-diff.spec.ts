@@ -28,7 +28,7 @@
 //   diffs: full structural parity stays an architecture decision
 //   (Refs #495 S1, PrimeVue-first shell vs design-literal markup),
 //   and owner-approved dynamic data is exempted through the
-//   per-screen allowlist (Refs #495 S7) — so the live run reports
+//   per-screen allowlist (Refs #495 S7, #496, #497) — so the live run reports
 //   the remaining diff count instead of gating on it.
 // - No screenshots, video, or snapshots anywhere in this gate (a CI
 //   guard greps the gate sources for those APIs); the lab-state matrix
@@ -44,6 +44,7 @@ import {
   isAllowlisted,
   MAIN_SCREEN_ALLOWLIST,
   BOOK_SCREEN_ALLOWLIST,
+  STAY_SCREEN_ALLOWLIST,
   serializeDomTree,
   type DomDiffAllowlist,
   type DomNode,
@@ -354,6 +355,101 @@ test.describe('allowlist exempts owner-approved dynamic data (criterion 3)', () 
     const unused = unusedAllowlistEntries(design, actual, BOOK_SCREEN_ALLOWLIST);
     expect(unused).toEqual([]);
   });
+
+  // Refs #497: the Stay-screen allowlist carries exactly the
+  // owner-approved dynamic-data paths (DD-10..DD-13 in
+  // docs/testing/dom-diff-allowlist.md section 3) — no more, no
+  // fewer — so wiring drift fails here instead of silently
+  // re-noising the gate. The design list headings carry no entry:
+  // unlike the Main board they bear no counts, so they stay pinned
+  // as static copy by the fact-level decided headings; app-side
+  // list rows carry no entry yet (the fresh lab renders empty
+  // tables — flow-state, not dynamic data).
+  test('STAY_SCREEN_ALLOWLIST exempts the approved Stay dynamic paths only', () => {
+    const stayNode = (path: string, tag: string, text: string): DomNode => ({
+      path,
+      tag,
+      text,
+      color: '#111111',
+      background: '#ffffff',
+      fontFamily: 'Arial',
+      fontSize: '16px',
+      fontWeight: '400',
+      visible: true,
+    });
+    const design: DomNode[] = [
+      stayNode('/html[0]/body[0]/x-dc[0]/div[0]/div[0]/strong[0]', 'strong', 'Khách sạn Hoa Mai'),
+      stayNode('/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[0]/div[0]/strong[0]', 'strong', '28/10/2026'),
+      stayNode(
+        '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[0]/div[1]',
+        'div',
+        'Nguyễn Văn An · Phòng 205',
+      ),
+      stayNode(
+        '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[1]/label[2]/select[0]/option[1]',
+        'option',
+        '205',
+      ),
+      stayNode(
+        '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[0]/div[2]',
+        'div',
+        'Lê Minh · Phòng 201',
+      ),
+      stayNode(
+        '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[0]/div[3]',
+        'div',
+        'Phạm Hoa · Phòng 203',
+      ),
+      stayNode(
+        '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[2]/label[1]/select[0]/option[0]',
+        'option',
+        '202',
+      ),
+      stayNode('/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[0]/h3[0]', 'h3', 'Khách đến hôm nay'),
+    ];
+    const actual: DomNode[] = [
+      stayNode('/html[0]/body[0]/div[0]/div[0]/div[0]/nav[0]/span[0]', 'span', 'Lab Parity Hotel'),
+      stayNode(
+        '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/div[0]/div[0]/div[1]/p[0]/strong[0]',
+        'strong',
+        '2026-11-06',
+      ),
+      stayNode(
+        '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/div[2]/div[0]/div[1]/div[0]/label[1]/select[0]/option[1]',
+        'option',
+        '204',
+      ),
+      stayNode(
+        '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/div[1]/div[0]/div[1]/div[0]/label[2]/select[0]/option[0]',
+        'option',
+        'Hãy chọn một phòng sẵn sàng…',
+      ),
+      stayNode(
+        '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/div[1]/div[0]/div[1]/div[0]/button[0]',
+        'button',
+        'Nhận phòng',
+      ),
+    ];
+    expect(STAY_SCREEN_ALLOWLIST.skipPaths).toHaveLength(11);
+    const withoutAllowlist = diffDomTrees(design, actual);
+    expect(withoutAllowlist.length).toBeGreaterThan(1);
+    const diffs = diffDomTrees(design, actual, STAY_SCREEN_ALLOWLIST);
+    expect(
+      diffs,
+      `expected only the non-allowlisted nodes, got:\n${formatDomDiffs(diffs)}`,
+    ).toHaveLength(2);
+    expect(diffs.map((diff) => diff.path).sort()).toEqual([
+      '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/div[1]/div[0]/div[1]/div[0]/button[0]',
+      '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[0]/h3[0]',
+    ]);
+    // Stale-entry detection tracks every wired path: the
+    // hotel-name strong, both business-date strongs, all three
+    // example rows, and all four option-bearing selects are covered
+    // by the fixture nodes beneath them, so nothing is reported
+    // stale.
+    const unused = unusedAllowlistEntries(design, actual, STAY_SCREEN_ALLOWLIST);
+    expect(unused).toEqual([]);
+  });
 });
 
 test.describe('output is deterministic text only (criteria 2 and 4)', () => {
@@ -454,7 +550,7 @@ test.describe('live extraction from design HTML and the running desk UI (criteri
         // Text-only output (criteria 2 and 5): the diff renders as a
         // string, never binary. Full parity is NOT asserted here —
         // owner-approved dynamic data is exempted through the
-        // per-screen allowlist (Refs #495 S7, #496) while the accepted
+        // per-screen allowlist (Refs #495 S7, #496, #497) while the accepted
         // structural divergence (PrimeVue shell vs design-literal
         // markup) still reports — so the run reports the remaining
         // diff count for that follow-up instead of gating on it.
@@ -463,7 +559,9 @@ test.describe('live extraction from design HTML and the running desk UI (criteri
             ? MAIN_SCREEN_ALLOWLIST
             : entry.screen === 'Book'
               ? BOOK_SCREEN_ALLOWLIST
-              : EMPTY_ALLOWLIST;
+              : entry.screen === 'Stay'
+                ? STAY_SCREEN_ALLOWLIST
+                : EMPTY_ALLOWLIST;
         const diffs = diffDomTrees(design, actual, allowlist);
         const formatted = formatDomDiffs(diffs);
         expect(typeof formatted).toBe('string');
