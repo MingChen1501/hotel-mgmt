@@ -1722,5 +1722,367 @@ implementation PR must create it.
   acceptance only through the decision and `FR-DSK-11`
   above.
 
+## 13. Desk UI pixel-faithful restyle (Refs #517)
+
+Requirements delta for owner decision B (2026-11-07): the desk
+shell (#518) plus the six screens — Main (#519), Book (#520),
+Stay (#521), Folio (#522), Rooms (#523), Onboarding (#524) — are
+rebuilt markup-and-style to the owner-supplied boards
+(`docs/design/Main.dc.html`, `Book.dc.html`, `Stay.dc.html`,
+`Folio.dc.html`, `Rooms.dc.html`, `Onboarding.dc.html`, each
+screen on its long line 2, plus `manifest.json` and
+`docs/design/README.md`). The T2 UI contract for this change
+lives with `product-owner` in
+`docs/product/desk-ui-pixel-faithful-restyle.md` sections 6.1–6.5
+(layout shell and navigation scope, component mapping,
+token scope, plain-words states, print rules); the binding
+done-conditions live with `product-owner` as `AC-RST-1` through
+`AC-RST-8` in `docs/product/acceptance-criteria.md` section 12;
+flow detail and the ADR-0003 partial-supersession record live
+with `architect`; guard mapping lives with `qa-lead`. This
+section records only the requirements delta the T2 spec gate
+requires: the exact rebuild-vs-keep scope (section 13.1), the
+per-surface FRs (section 13.2), the NFRs (section 13.3), and the
+traceability inputs (section 13.4).
+
+Exact scope: markup and styling on all seven surfaces are
+rebuilt to the design values (shared tokens plus the per-surface
+layouts in the restyle spec sections 3–5); logic, hooks,
+stores, routers, API calls, request fields, state transitions,
+validation, copy, catalogue keys, and print output stay exactly
+as today. Concretely unchanged: the Vue Router table and
+history-mode `/app/` serving with fallback, the session store
+with `sessionStorage` token and the single 401-to-sign-in path,
+the one shared Bearer API client, the one `t()` catalogue
+wrapper, every `businessDate` request field in ISO form, every
+housekeeping and folio state transition, every per-step wizard
+validation naming the missing field with nothing persisted on
+failure, and every print route and document.
+
+### 13.1 Explicit no-change statements
+
+- Every MVP requirement in sections 1 and 2 is unchanged by
+  this restyle: all `FR-RES-*`, `FR-FDK-*`, `FR-RMS-*`,
+  `FR-RTE-*`, `FR-GST-*`, `FR-BIL-*`, `FR-RPT-*`, `FR-ADM-*`,
+  and `FR-CUS-*` keep their wording, and every NFR keeps its
+  target. The desk loop (guest search, walk-in registration,
+  get-quote then confirm, two-step check-in, move and times,
+  charge posting, payment recording, settled-folio checkout,
+  print) behaves exactly as specified; only markup and styling
+  move to the design values, except for the narrowly-scoped
+  presentation items in section 13.2.
+- Refusal semantics are unchanged: `FR-RTE-4`, `FR-CUS-1`,
+  and `FR-BIL-7` refusals still fire on exactly the same
+  conditions — only their on-screen visuals move to the design
+  values (the `FR-DSP-3` plain-words rule holds); checkout
+  still requires a settled folio or a recorded approval, and
+  check-in still blocks until a ready room of the booked type
+  is chosen (`FR-DSK-4` holds).
+- Data-model impact: none. The restyle introduces no data
+  entities or fields (`data-dictionary.md` unchanged): the
+  Rooms map still visualises existing room state, and the
+  wizard still persists through the existing
+  hotel-configuration, seed, and user paths (`FR-ADM-1`,
+  `FR-ADM-3`, `FR-ADM-2`).
+- No business rules: the restyle introduces no domain policy
+  (`business-rules.md` unchanged). Shell tab order, wizard
+  launch gating, and check-in/checkout gating stay navigation
+  and restatements of `FR-FDK-1` / `FR-BIL-7`, never new
+  policy.
+- Money, dates, and numbers render exactly as today: hotel
+  locale settings govern (`FR-ADM-1`, `NFR-TZ-1` hold); the
+  business-date headers keep the locale long-weekday display
+  form derived from canonical ISO (`FR-DSK-11`, `BR-43`
+  hold); amounts keep locale-correct grouping; the catalogue
+  stays the source of truth for every user-visible string
+  (`NFR-I18N-1` holds).
+- The section 4 traceability table and its coverage count are
+  unchanged: the restyle adds no MVP capability, so the 40
+  mapped capabilities stand. The handoff table below
+  (section 13.4) is separate and does not alter that count.
+- Sections 7 through 12 stand with their wording and targets
+  unchanged: `FR-DSP-3` plain-words states, `FR-DSP-4` print
+  preservation, `NFR-DSK-1` catalogue coverage,
+  `NFR-DSK-2` print isolation, `NFR-DSK-3` 44px targets, and
+  `FR-DSK-1` through `FR-DSK-11` hold and are extended by
+  section 13.3, not replaced.
+
+### 13.2 Presentation-scoped functional requirements
+
+Ids use the `RST` (restyle) namespace, tracing one-to-one to
+`AC-RST-1..7`. They constrain presentation only: routes, APIs,
+refusal conditions, values, copy, and print output stay
+intact, and no new screen or flow beyond the seven surfaces is
+specified here. Design values below cite the boards per the
+fact-schema provenance convention (each board keeps its screen
+on one long line 2, cited as `:<line>`); token values are the
+section 13.3 single source, not per-surface forks.
+
+FR-RST-1 — Shared shell rebuild across the seven surfaces.
+Staff always know which screen they are on and can switch
+locale anywhere.
+Given staff are signed in on any of the seven surfaces; when
+they look at the shell; then the teal header bar
+(`height:60px`, `background:#0F4C47`, `color:#fff`,
+`padding:0 24px`, brand `18px`) shows the configured hotel
+name (never the boards' example content hardcoded), the nav
+tabs render the design padding, radius (`8px`), and
+active-tab inversion (`background:#fff`,
+`color:#0F4C47`, `font-weight:600`), and the locale pill
+(`1px solid #9CC9C4`, `radius:8px`, `padding:6px 12px`,
+`margin-left:auto`) switches the whole screen between EN and
+VI with no mixed-locale copy. Keep: the router table,
+history-mode `/app/` serving and fallback, the session store
+with `sessionStorage` token and the single 401-to-sign-in
+path, locale-toggle behaviour, and the sign-in gate
+(`FR-DSP-2` holds); print and admin destinations stay
+reachable as today. The tab-set conflict the restyle spec
+records (five tabbed boards show six tabs without
+Onboarding/Rooms tabs; the Rooms board highlights its own
+non-tab) is resolved by an owner decision on #518 before its
+implementation PR merges — no FR here assumes the outcome.
+Traces to: US-FDK-5; FR-FDK-5.
+
+FR-RST-2 — Main desk board per the design. Staff see the
+whole desk state on one board and act on housekeeping
+without leaving it.
+Given today has arrivals, in-house stays, rooms needing
+cleaning, and an out-of-service room; when staff open the
+Main board; then the business-date row (muted `14px` label,
+`26px/700` value, primary refresh button), the two
+`repeat(3,1fr)` card-grid rows (`gap:16px`), row dividers
+(`1px solid #EEF1F0` top), the departures explicit empty
+state (muted `15px`), and the two housekeeping action
+buttons render the design values per
+`docs/design/Main.dc.html:2`; when staff use the two
+housekeeping buttons; then the room state advances through
+the existing dirty-to-clean-to-inspected transitions
+(`FR-RMS-2` holds) with who did it and when recorded
+(`NFR-AUD-1` holds), and the board counts refresh to match.
+No backend or transition change: the buttons drive the
+existing state machine only; desk reads keep the
+`businessDate` request field unchanged and the weekday-long
+display (`FR-DSK-11` holds).
+Traces to: US-FDK-5, US-RMS-2; FR-FDK-5, FR-RMS-2;
+`AC-RST-2`.
+
+FR-RST-3 — Book screen two-column layout. Staff book
+exactly as today in the new layout.
+Given a guest and sellable dates; when staff work the Book
+screen; then the h1 `22px` title, the `1.3fr 1fr`
+two-column grid (guest card above quote card left; stay
+card right), the `repeat(4,1fr)` stay field grid, labels
+`14px`, full-width `min-height:44px` inputs/selects with
+`margin-top:6px`, `15px` quote rows with dividers, and muted
+`14px` helper copy render the design values per
+`docs/design/Book.dc.html:2`–`:5`; guest search, walk-in
+registration, get-quote then confirm-booking, and the
+empty-vs-quoted presentation complete exactly as specified
+(`FR-RES-1`, `FR-GST-3` hold). The B3 quote-copy REPORTED
+item stays reported: empty-vs-quoted wording is unchanged
+unless the owner decides on #520.
+Traces to: US-RES-1, US-GST-3; FR-RES-1, FR-GST-3;
+`AC-RST-3`.
+
+FR-RST-4 — Stay check-in/out stacked cards. Staff check in
+and out exactly as today in the new layout.
+Given bookings and stays for the business date; when staff
+work Stay check-in/out; then the h1 `22px` intro, the five
+stacked cards (daily lists; check-in; move; times;
+checkout with folio-reconciliation hint in muted `14px`),
+labels `14px`, and full-width `min-height:44px` controls
+render the design values per
+`docs/design/Stay.dc.html:2`–`:7`; the two-step check-in
+flow (load booking then commit), the explicit empty
+room-select placeholder with hint blocking check-in until a
+ready room is chosen (`FR-DSK-4` holds, including the
+single-candidate auto-select), move and times flows, and
+checkout gated on a settled folio or a recorded approval
+(`FR-FDK-1`, `FR-FDK-2`, `FR-BIL-7` hold) behave exactly as
+specified, with all request fields unchanged. The T3
+single-vs-two-step REPORTED item stays reported: step
+structure is unchanged unless the owner decides on #521.
+Traces to: US-FDK-1, US-FDK-2; FR-FDK-1, FR-FDK-2,
+FR-BIL-7; `AC-RST-4`.
+
+FR-RST-5 — Folio screen charges/payments layout. Staff
+settle folios exactly as today in the new layout.
+Given an in-house stay with charges and payments; when
+staff work the Folio screen; then the `1fr 1fr` two-card
+grid (charges card; payment card with muted label and
+`30px/700 #8A4B08` balance), `15px` example lines with
+dividers, labels `14px`, and full-width `min-height:44px`
+inputs render the design values per
+`docs/design/Folio.dc.html:2`; the per-stay open form
+(stay-ID entry stays), charge posting and payment recording
+with the running balance (`FR-BIL-1`, `FR-BIL-2`,
+`FR-BIL-3` hold), locale-correct amount formatting, and
+print output (`FR-BIL-4`, `FR-DSP-4` hold) behave exactly
+as specified. The F3 stay-ID REPORTED item stays reported:
+the open form is unchanged unless the owner decides on
+#522.
+Traces to: US-BIL-1, US-BIL-2, US-BIL-3; FR-BIL-1,
+FR-BIL-2, FR-BIL-3; `AC-RST-5`.
+
+FR-RST-6 — Rooms map over existing room state. Staff see
+every room at a glance with counts they can trust.
+Given rooms across floors in a mix of the five statuses;
+when staff open the Rooms map; then the title row
+(`26px/700` h1, muted `14px` summary line, primary reload
+button), the status-chip row (`999px` chips, `12px` dots at
+radius `3px`), floor sections (h2 `18px`,
+`margin:0 0 8px`), `repeat(6,1fr)` floor grids
+(`gap:12px`), and room cards (status tint background,
+`radius:12px`, `padding:14px`, `gap:6px`,
+`min-height:104px`; `22px` number; `12px/600` badge with
+`radius:6px padding:4px 8px`; `13px` type in `#3B4A48`;
+`14px` note line) render the design values per
+`docs/design/Rooms.dc.html:2`; live room-state rendering,
+the summary-counts-match-cards invariant, housekeeping
+buttons, floor grouping, and all reads behave exactly as
+specified (`FR-RMS-1`, `FR-RMS-2`, `FR-RMS-3` hold) with
+chip wording unchanged. The R3 chip-vocabulary REPORTED
+item stays reported: wording is unchanged unless the owner
+decides on #523.
+Traces to: US-RMS-1, US-RMS-2, US-RMS-3; FR-RMS-1,
+FR-RMS-2, FR-RMS-3; `AC-RST-6`.
+
+FR-RST-7 — Onboarding wizard per the design. First-run
+setup completes through the wizard; a seeded desk never
+sees it.
+Given an empty database; when the app loads; then the slim
+setup header (`height:60px`, teal, `18px/700`), the
+centred `560px` column (`gap:16px`), the muted progress
+line, the `8px` track (`#D9E0DE`, `radius:4px`) with the
+primary bar at 25/50/75/100 percent, the card (`radius:12px`,
+`padding:18px`) with `16px` h3, the `min-height:44px`
+input, the muted `14px` helper, and the primary continue
+action render the design values per
+`docs/design/Onboarding.dc.html:2`; launch gating on the
+empty database with seeded redirect, all four steps with
+progress and back/continue navigation, per-step validation
+naming the missing field with nothing persisted on
+failure, hotel-name persistence and its surfacing
+(`FR-ADM-1`, `FR-DSK-7`, `FR-DSK-8` through `FR-DSK-10`
+hold), and step wording behave exactly as specified;
+given a seeded database, the wizard never launches. The
+O3/O4 step-naming and helper/placeholder REPORTED items
+stay reported: wording is unchanged unless the owner
+decides on #524.
+Traces to: US-ADM-1, US-ADM-3; FR-ADM-1, FR-ADM-3;
+`AC-RST-7`.
+
+### 13.3 Presentation-scoped non-functional requirements
+
+NFR-RST-1 — VI-primary catalogue coverage with zero
+hardcoded copy across all seven surfaces. The pilot desk
+reads fully in Vietnamese with English parity and no
+hardcoded strings or hotel name.
+Given any of the seven surfaces in either locale; when
+staff read the screen; then every user-visible string
+resolves through the catalogue (`NFR-I18N-1` holds): any
+new or changed copy ships in both `messages/en.json` and
+`messages/vi.json` with placeholders intact,
+`script/catalogue-coverage-check.sh` is green on every
+child PR, and the hotel name shown is the configured value
+— never the boards' example content hardcoded. This
+restyle is expected to add zero keys; any key a worker
+needs follows the normal catalogue process and is recorded
+in the child PR body. Targets: 100% of user-visible
+strings sourced from the catalogue in both locales; the
+Vietnamese key set stays at parity with the English set
+(every placeholder intact); coverage check green on every
+child PR; 0 hardcoded hotel-name occurrences.
+
+NFR-RST-2 — Print isolation preserved. Screen styling
+never leaks into print.
+Given a folio with charges and payments; when staff print
+the receipt, invoice, or confirmation from any of the
+seven surfaces; then the printed document matches the
+folio lines and balance exactly (`FR-BIL-4` and
+`FR-DSP-4` hold byte-for-byte in behaviour), the existing
+print stylesheet is preserved, and the configured hotel
+name appears on every printed document. Target: 0
+print-output differences attributable to the restyle;
+printed values still match the folio exactly.
+
+NFR-RST-3 — Single token source with 44px minimum targets
+on all seven surfaces. Tokens land once and every control
+stays hittable by touch and keyboard.
+Given any of the seven surfaces; when staff use touch or
+keyboard; then every interactive element (nav items,
+buttons, links, form inputs, per-card and housekeeping
+actions, wizard navigation) presents a hit target of at
+least 44 by 44 CSS px with 0 adjacent-target overlaps, and
+every rendered colour, radius, and spacing value resolves
+through the one shared source `app/src/theme/tokens.ts`
+(header `#0F4C47`, primary `#0F766E`, page `#F4F6F5`,
+ink `#1B2B2A`, card `12px`, pill/tab `8px`): no
+per-surface colour, radius, or target-size deviations — a
+surface that needs one files it as a follow-up instead of
+forking a token. Targets: 100% of interactive elements on
+the seven surfaces meet 44 by 44; 0 adjacent-target
+overlaps; 0 per-surface token forks.
+
+### 13.4 Traceability handoff for `qa-lead`
+
+No new MVP capability is added, so each row traces to its
+`AC-RST-n` condition and its underlying MVP FRs. Existing
+guards are named `file:line`; where no guard exists, the
+row names the missing guard explicitly and the child
+implementation PR must create it.
+
+| Item | Guard (existing on disk; follow-up extends or creates) | Handoff note for `qa-lead` |
+|---|---|---|
+| FR-RST-1 | Shell render: `app/src/App.vue:127` (`shell-nav`), `:139` (`shell-nav-<route>` tabs), `:141` (`shell-nav-active`); visible set `app/src/App.vue:222`–`227` (`NAV_ITEMS`); routes `app/src/router.ts:47` (desk), `:53` (book), `:59` (stay), `:65` (onboarding), `:74` (rooms), `:80` (folio), `:86` (print), `:91` (admin); suites `app/src/App.test.ts:189` (shell-nav items), `:217` (configured hotel name in header), `:374` (per-destination active highlight) | Extend with seven-surface shell render: teal-header hotel name, design padding/radius/active inversion, locale-pill whole-screen EN/VI switch with no mixed-locale copy, and the #518 board-conflict owner decision recorded before merge; keep the `shell-nav-*` hooks so characterization tests survive |
+| FR-RST-2 | Board frame: `app/src/views/DeskView.test.ts:286` (five design cards incl. departures empty state and out-of-service reason plus date), `:268` (weekday-long business-date header), `:347` (dirty-to-clean with count refresh), `:407` (clean-to-inspected); sellability field `app/src/views/DeskView.test.ts:327` (`roomType`, never `roomTypeId`) | Extend with design-value assertions only (date row, grid rows, dividers, two housekeeping buttons); transition, count-refresh, and payload tests stay untouched (semantics unchanged) |
+| FR-RST-3 | Layout: `app/src/views/BookView.test.ts:241` (two-column design cards, guest above quote); flow: `:382` (quote with nightly lines and total), `:397` (confirm with snapshot, frozen price basis, sellable count, one idempotency key); refusals `:851` (sold-out), `:875` (restriction) | Extend with two-column/grid/label/control assertions only; search, walk-in, quote, confirm, and refusal tests stay untouched |
+| FR-RST-4 | Lists: `app/src/views/StayView.test.ts:296` (three daily lists under shell session), `:282` (weekday-long business-date header); gate: `:367` (need_room guard, no AssignRoom call), `:399` (single-candidate auto-select); cards: `:1048` (design cards with room hint and checkout gate note); checkout: `:740` (zero-balance close), `:778` (open-balance approval gate) | Extend with stacked-cards/labels/controls assertions only; two-step flow, placeholder gate, auto-select, move/times, and checkout-gate tests stay untouched |
+| FR-RST-5 | Layout: `app/src/views/FolioView.test.ts:501` (charges/payments two-card layout with locale-correct amounts); postings: `:215` (room charge with idempotency key and re-read), `:246` (card payment with idempotency key); print pin `:565` (restyle stays out of print) | Extend with two-card grid/balance-accent/labels/controls assertions only; open, posting, balance, and print tests stay untouched |
+| FR-RST-6 | Map: `app/src/views/RoomsView.test.ts:193` (summary-counts-match-cards invariant across five statuses), `:228` (per-card chips, types, live notes), `:176` (weekday-long business-date header); actions: `:286` (dirty-to-clean with count refresh), `:345` (clean-to-inspected) | Extend with title-row/chip-row/floor/card design-value assertions only; live-state, invariant, button, grouping, and wording tests stay untouched (chip vocabulary unchanged) |
+| FR-RST-7 | Wizard: `app/src/views/OnboardingView.test.ts:61` (step 1 per design on empty database), `:198` (hotel-name persist and advance), `:391` (step 2 at 50 percent with back), `:537` (step 3 at 75 percent), `:709` (step 4 at 100 percent with owner fixed); gate `:124` (seeded redirect) | Extend with slim-header/column/progress/card/input/helper/continue design-value assertions only; gating, four-step flow, validation, persistence, and wording tests stay untouched |
+| NFR-RST-1 | `script/catalogue-coverage-check.sh` plus `messages/en.json:568` (`desk.shell.brand`) and `:569`–`:574` (nav keys) with `messages/vi.json` parity (both exist) | Coverage job stays green on every child PR; this restyle is expected to add zero keys — any needed key lands en + vi through the normal catalogue process and is recorded in the child PR body; 0 hardcoded hotel-name occurrences |
+| NFR-RST-2 | `app/src/views/PrintView.test.ts:208` (print screen incl. exact-match and isolation pins) plus unchanged `FR-BIL-4` backend guards; folio pin `app/src/views/FolioView.test.ts:565` (restyle stays out of print) | Add a served-print assertion that no restyle styling leaks into print and the configured hotel name appears on every printed document |
+| NFR-RST-3 | Tokens single source: `app/src/theme/tokens.ts:22` (header `#0F4C47`), `:23` (primary `#0F766E`), `:15` (page `#F4F6F5`), `:17` (ink `#1B2B2A`), `:37` (card `12px`), `:44` (targets `44px`); pins `app/src/theme/tokens.test.ts:43` (primary fill), `:52` (focus ring), `:69` (scale alignment), `:75` (no residual PrimeVue default) | Missing automated audit — no touch-target or token-fork guard exists: the child PRs must create the seven-surface 44-by-44 audit (100% meet, 0 overlaps) and the no-fork pin (every rendered colour/radius/spacing resolves through `tokens.ts`) |
+| Design-facts gate + screenshots | Facts gate: `app/e2e/design-facts.spec.ts:159` (matching app DOM passes for all six screens), `:379` (mismatches fail with design `file:line` vs app selector), `:485` (token colours resolve through computed styles), `:511` (live shell conformance) | `qa-lead` owns the per-surface gate rule: design-facts green (nav order/labels, headings, buttons, inputs, token colours per the fact schema) plus side-by-side before/after screenshots covering what schema v1 excludes (layout geometry, typography, radii, spacing) with per-screen owner review on every child PR — screenshots and owner review have no automated guard by design and must not be read as passing without both |
+
+### 13.5 Explicitly not specified here (plus gate dependencies)
+
+- The T2 UI contract section (layout shell and navigation
+  scope, component mapping, token scope, plain-words states,
+  print rules) is not written here: it lives with
+  `product-owner` in
+  `docs/product/desk-ui-pixel-faithful-restyle.md` sections
+  6.1–6.5, which satisfies the T2 UI-contract minimum, so
+  requirements here do not reword absent UI expectations
+  (per the UI contract gap rule, the contract exists and is
+  referenced, not missing).
+- No new screens or flows beyond the seven surfaces; the
+  sign-in gate keeps its current behaviour; print and admin
+  keep their current presentation and stay reachable.
+- No backend, API, contract, schema, validation, or
+  error-code change. No new design tokens, breakpoints, or
+  component choices (design lives with `architect`; token
+  edits land once in `app/src/theme/tokens.ts`).
+- No data-dictionary or business-rule change (both
+  documents unchanged, stated in section 13.1).
+- The `docs/product/acceptance-criteria.md` slice
+  (`AC-RST-1` through `AC-RST-8`) is separate
+  `product-owner` work already on the #517 stack (PR #525);
+  the ADR-0003 partial-supersession record and any
+  flow-detail refresh are separate `architect` work; the
+  test strategy and run records are separate `qa-lead`
+  work. This section traces to the issue-body acceptance
+  only through the `AC-RST-n` ids above.
+- The specified change is tier T2 (reader-visible UI
+  across seven surfaces; no new subsystem, data-model, API,
+  flow, copy, or refusal-semantics change). This section is
+  its FR/NFR part. The remaining T2 minimum set — acceptance
+  criteria, the UI contract above, traceability completion,
+  and the gate verdict — belongs to `product-owner` /
+  `architect` / `qa-lead` / `spec-reviewer`; no child
+  implementation PR (#518–#524) opens until `SPEC-GATE
+  PASS` on the re-pushed head.
+
 <!-- ao-role: business-analyst -->
-Role: business-analyst · AO session hotel-mgmt-703
+Role: business-analyst · AO session hotel-mgmt-719
