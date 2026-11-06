@@ -192,7 +192,7 @@
 </template>
 
 <script lang="ts">
-import { computed, defineComponent, onMounted, ref } from 'vue';
+import { computed, defineComponent, onMounted, ref, watch } from 'vue';
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router';
 import Button from 'primevue/button';
 import InputText from 'primevue/inputtext';
@@ -202,6 +202,7 @@ import { apiFetch, connectivity, retryLastRequest } from './api/client';
 import type { ApiError } from './api/client';
 import { localeTag, setLocale, t } from './i18n';
 import { configuredHotelName } from './onboardingGate';
+import { DEFAULT_DOC_TITLE, type DocTitleMeta } from './router';
 import { useSessionStore } from './stores/session';
 
 interface NavItem {
@@ -360,12 +361,36 @@ export default defineComponent({
       setLocale(tag);
     }
 
+    // Per-route document titles (Refs #495 S2): the served document
+    // title follows the design board per screen through the route
+    // title meta (`router.ts`), resolving via the catalogue so the
+    // title tracks the staff locale; routes outside the design batch
+    // fall back to the default title.
+    function applyDocumentTitle(): void {
+      const meta = route.meta as DocTitleMeta;
+      // globalThis (not bare `document`): the flat eslint config
+      // carries no browser env, so the bare global trips no-undef
+      // in SFC script blocks; TS still types it via the DOM lib.
+      globalThis.document.title = t(
+        typeof meta.docTitleKey === 'string' ? meta.docTitleKey : DEFAULT_DOC_TITLE.key,
+        {},
+        typeof meta.docTitleFallback === 'string'
+          ? meta.docTitleFallback
+          : DEFAULT_DOC_TITLE.fallback,
+      );
+    }
+
     onMounted(() => {
       // A reload restores the token from sessionStorage: pick up
       // the configured hotel name without another sign-in.
+      applyDocumentTitle();
       if (session.isSignedIn) {
         void loadHotelName();
       }
+    });
+
+    watch([() => route.name, localeTag], () => {
+      applyDocumentTitle();
     });
 
     return {

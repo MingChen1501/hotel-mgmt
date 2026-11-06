@@ -20,6 +20,25 @@ import PrintView from './views/PrintView.vue';
 import RoomsView from './views/RoomsView.vue';
 import StayView from './views/StayView.vue';
 
+// Per-route document titles (Refs #495 S2): the SPA shell serves one
+// static title from `app/index.html` for every screen while each of
+// the six design boards carries its own `<title>` (Main `Bảng lễ
+// tân`, Book `Đặt phòng`, Stay `Nhận phòng`, Folio `Hoá đơn`, Rooms
+// `Sơ đồ phòng`, Onboarding `Thiết lập lần đầu`). The shell applies
+// the route's catalogue title on navigation (see `App.vue`), so the
+// served document title matches the design board per screen. Routes
+// outside the design batch (print, admin, placeholder) carry no
+// title meta and fall back to the default below.
+export interface DocTitleMeta {
+  docTitleKey?: unknown;
+  docTitleFallback?: unknown;
+}
+
+export const DEFAULT_DOC_TITLE = {
+  key: 'desk.shell.doc_title_default',
+  fallback: 'Hotel Management — Desk',
+} as const;
+
 export function createAppRouter(): Router {
   return createRouter({
     history: createWebHistory('/app/'),
@@ -28,31 +47,40 @@ export function createAppRouter(): Router {
         path: '/',
         name: 'desk',
         component: DeskView,
+        meta: { docTitleKey: 'desk.shell.doc_title_desk', docTitleFallback: 'Desk board' },
       },
       {
         path: '/book',
         name: 'book',
         component: BookView,
+        meta: { docTitleKey: 'desk.shell.doc_title_book', docTitleFallback: 'Book a room' },
       },
       {
         path: '/stay',
         name: 'stay',
         component: StayView,
+        meta: { docTitleKey: 'desk.shell.doc_title_stay', docTitleFallback: 'Check-in / check-out' },
       },
       {
         path: '/onboarding',
         name: 'onboarding',
         component: OnboardingView,
+        meta: {
+          docTitleKey: 'desk.shell.doc_title_onboarding',
+          docTitleFallback: 'First-time setup',
+        },
       },
       {
         path: '/rooms',
         name: 'rooms',
         component: RoomsView,
+        meta: { docTitleKey: 'desk.shell.doc_title_rooms', docTitleFallback: 'Room map' },
       },
       {
         path: '/folio',
         name: 'folio',
         component: FolioView,
+        meta: { docTitleKey: 'desk.shell.doc_title_folio', docTitleFallback: 'Folio' },
       },
       {
         path: '/print',

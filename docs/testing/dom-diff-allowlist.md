@@ -43,22 +43,37 @@ the mechanism; the approved data list lives here:
   these as warnings; a stale entry (after unrelated structural
   drift) silently stops exempting anything, so a warning here is
   the signal to re-point or retire the entry.
-- `EMPTY_ALLOWLIST` (`skipPaths: []`): the default. The gate
-  runs with no exemptions until section 3 approves entries and a
-  follow-up wires them in with their entry IDs.
+- `EMPTY_ALLOWLIST` (`skipPaths: []`): the default for screens
+  with no approved entries. The Main screen wires its section 3
+  entries through `MAIN_SCREEN_ALLOWLIST`; the other five screens
+  still run with no exemptions until their entries are approved
+  and wired the same way.
 
 ## 3. Approved entries
 
 | ID | Screen | Node path | Exempted field | Dynamic data | Why exempt | Approved |
 |---|---|---|---|---|---|---|
-| — | — | — | — | — | — | — |
+| DD-01 | Main | design `/html[0]/body[0]/x-dc[0]/div[0]/div[1]/div[0]/div[1]`; app `/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/p[0]/strong[0]` | text | Business date (design `Thứ Tư, 28/10/2026` vs live clock `2026-11-06`) | Frozen snapshot vs the business clock; differs on every run by nature (display format itself is Refs #495 S9, separate issue) | #495 orchestrator decision (owner-delegated) 2026-11-06 |
+| DD-02 | Main | design `/html[0]/body[0]/x-dc[0]/div[0]/div[0]/strong[0]`; app `/html[0]/body[0]/div[0]/div[0]/div[0]/nav[0]/span[0]` | text | Hotel name (design `Khách sạn Hoa Mai` vs configured hotel) | Example content vs the configured hotel name, never hardcoded by design | #495 orchestrator decision (owner-delegated) 2026-11-06 |
+| DD-03 | Main | design `/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[0]/h3[0]` + `/div[0]/div[0]/span[0]` + `/div[0]/div[1]/span[0]` | text | Arrival count `(2)` plus guest name/code rows (`Nguyễn Văn An · ABC123`, `Trần Thị Bình · XYZ456`) | Seed- and action-dependent arrivals; the count-bearing heading is exempted wholesale (one text node), static prefix stays pinned by the fact-level decided content | #495 orchestrator decision (owner-delegated) 2026-11-06 |
+| DD-04 | Main | design `/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[1]/h3[0]` + `/div[1]/div[0]/span[0]` + `/div[1]/div[0]/span[1]` + `/div[1]/div[1]/span[0]` + `/div[1]/div[1]/span[1]` | text | In-house count `(5)` plus guest name/code/checkout rows (`Lê Minh · P.201`, `đến 30/10`, `Phạm Hoa · P.305`, `đến 29/10`) | Seed- and action-dependent occupancy; same wholesale-heading note as DD-03 | #495 orchestrator decision (owner-delegated) 2026-11-06 |
+| DD-05 | Main | design `/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[2]/h3[0]` | text | Departure count (`Khách đi hôm nay (0)`) | Seed- and action-dependent departures; same wholesale-heading note as DD-03 | #495 orchestrator decision (owner-delegated) 2026-11-06 |
+| DD-06 | Main | design `/html[0]/body[0]/x-dc[0]/div[0]/div[3]/div[0]/div[0]/span[0]` + `/div[3]/div[1]/div[0]/span[0]` + `/div[3]/div[2]/div[0]/span[0]` + `/div[3]/div[2]/div[0]/span[1]` | text | Housekeeping room refs (`P.101`, `P.102`, `P.103 · hỏng điều hoà`) and date (`đến 01/11`) | Seed-dependent room state and block reason/date | #495 orchestrator decision (owner-delegated) 2026-11-06 |
+| DD-07 | Main | app `/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/div[1]/section[0..4]/h3[0]` (one entry per lane, five entries; settled post-load paths — the loading skeleton shifts the lane board from `div[2]` to `div[1]`, so the gate waits for `desk-roommap` visible before extracting) | text | Room-map lane counts (`Đang có khách (0)`, `Sẵn sàng (đã kiểm tra) (2)`, `Sạch, chờ kiểm tra (0)`, `Phòng bẩn (0)`, `Ngưng bán (0)`) | Seed-driven counts; headings exempted wholesale, lane chip labels stay pinned by the fact-level decided room map (#491) | #495 orchestrator decision (owner-delegated) 2026-11-06 |
 
-No entries are approved yet: the gate runs with
-`EMPTY_ALLOWLIST`, so every dynamic node currently diffs visibly
-instead of being silently exempted. Full parity and the first
-approved data remain follow-ups; each approval adds a row here
-with its owner reference before any `skipPaths` entry may cite
-it.
+Wired into the gate as `MAIN_SCREEN_ALLOWLIST` in
+`app/e2e/dom-diff.ts` (each `skipPaths` entry cites its DD-ID);
+the live gate (`app/e2e/dom-diff.spec.ts`) applies it to the Main
+screen and keeps `EMPTY_ALLOWLIST` for the other five screens.
+Lab evidence (isolated `hotel-lab-686`, 2026-11-06, settled
+post-load extraction): Main `252` non-allowlisted diffs before
+wiring (the prior sweep's `253` minus the S2 title diff, now
+closed) → `230` after, all remaining diffs `node` presence
+mismatches from the accepted PrimeVue-shell-vs-design-markup
+divergence (Refs #495 S1); zero stale entries. Table body rows
+carry no entries yet: the lab seed renders no stay rows, and
+section 5 requires observed gate output before any path may be
+cited — rows are proposed when a run with stay data shows them.
 
 ## 4. Eligible categories
 

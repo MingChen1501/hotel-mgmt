@@ -59,6 +59,51 @@ export interface DomDiffAllowlist {
 
 export const EMPTY_ALLOWLIST: DomDiffAllowlist = { skipPaths: [] };
 
+// Main-screen dynamic-data exemptions (Refs #495 S7). Every path
+// below cites its owner-approved entry in
+// `docs/testing/dom-diff-allowlist.md` section 3: the design side
+// carries the static snapshot values (example hotel name, frozen
+// business date, example guests/counts) while the app side renders
+// live values (configured hotel, business clock, seed-driven
+// counts), so these nodes can never coincide. Count-bearing
+// headings are exempted wholesale (static prefix plus dynamic
+// count share one text node); the static copy stays pinned by the
+// fact-level gate decided content (`design-facts.ts`
+// `DECIDED_CONTENT`), which these path exemptions do not touch.
+export const MAIN_SCREEN_ALLOWLIST: DomDiffAllowlist = {
+  skipPaths: [
+    // DD-01 business date: design snapshot vs live business clock.
+    '/html[0]/body[0]/x-dc[0]/div[0]/div[1]/div[0]/div[1]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/p[0]/strong[0]',
+    // DD-02 hotel name: design example content vs configured hotel.
+    '/html[0]/body[0]/x-dc[0]/div[0]/div[0]/strong[0]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/nav[0]/span[0]',
+    // DD-03 arrival count plus guest name/code rows.
+    '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[0]/h3[0]',
+    '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[0]/div[0]/span[0]',
+    '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[0]/div[1]/span[0]',
+    // DD-04 in-house count plus guest name/code/checkout rows.
+    '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[1]/h3[0]',
+    '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[1]/div[0]/span[0]',
+    '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[1]/div[0]/span[1]',
+    '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[1]/div[1]/span[0]',
+    '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[1]/div[1]/span[1]',
+    // DD-05 departure count.
+    '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[2]/h3[0]',
+    // DD-06 housekeeping room references, block reason, and date.
+    '/html[0]/body[0]/x-dc[0]/div[0]/div[3]/div[0]/div[0]/span[0]',
+    '/html[0]/body[0]/x-dc[0]/div[0]/div[3]/div[1]/div[0]/span[0]',
+    '/html[0]/body[0]/x-dc[0]/div[0]/div[3]/div[2]/div[0]/span[0]',
+    '/html[0]/body[0]/x-dc[0]/div[0]/div[3]/div[2]/div[0]/span[1]',
+    // DD-07 app room-map lane counts (seed-driven, zero or more).
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/div[1]/section[0]/h3[0]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/div[1]/section[1]/h3[0]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/div[1]/section[2]/h3[0]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/div[1]/section[3]/h3[0]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/div[1]/section[4]/h3[0]',
+  ],
+};
+
 export function isAllowlisted(path: string, allowlist: DomDiffAllowlist): boolean {
   return allowlist.skipPaths.some(
     (entry) => path === entry || path.startsWith(`${entry}/`),
