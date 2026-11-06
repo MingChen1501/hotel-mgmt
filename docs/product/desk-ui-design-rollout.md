@@ -291,6 +291,59 @@ decided headings/buttons/inputs, live shell conformance).
   Stay board agrees with the app (unlike the Main-board
   outlier in #495 S3).
 
+### 6.4 Folio parity-sweep resolutions (Refs #498)
+
+The 2026-11-06 full-tree sweep of the Folio board vs
+`docs/design/Folio.dc.html` (137 diffs, isolated lab
+`hotel-lab-695`, `vi` locale) closed with no code change to the
+view itself and gate-harness wiring only; no design intent was
+guessed. The served title already matches the board
+(`Hoá đơn`, verified live in both locales) via the #495 S2
+follow-through, and the fact-level gate passes (matching app DOM
+incl. tokens, tab labels, and active state; the Folio screen
+carries no decided content, so the decided block is skipped by
+design — live shell conformance).
+
+- F1 tree shape — same accepted S1 as Main: 36 design-side
+  `x-dc` subtree nodes plus 101 app-side shell/PrimeVue/head
+  extras, zero text/colour/font/visibility diffs. Full-tree
+  literalism stays rejected.
+- F2 document title — already closed (#495 S2), verified live
+  on `/app/folio` (`Hoá đơn` in `vi`, `Folio` fallback in `en`).
+- F3 open-folio flow — REPORTED, not changed. The design shows a
+  folio already open for guest Lê Minh in P.201 (two charge
+  lines, one payment, balance due); the app opens with an
+  explicit stay-ID form (open card, folio table with the empty
+  state, post-charge and record-payment forms) because the folio
+  is per-stay data the static board cannot pre-select. The entry
+  step is user-visible flow: product call.
+- F4 app extras — KEPT with justification (same precedent as
+  the Main deliberately kept extras, Book B4, and Stay T4): the
+  h1+intro, the open-folio card with the stay-ID input, the
+  folio-lines DataTable with the empty state, the charge-kind
+  select plus name/amount inputs with status lines, the
+  payment-method select plus amount input with status lines,
+  and the reference details are flow states the static board
+  cannot show. Extras render no decided copy (no Folio decided
+  content exists).
+- F5 dynamic data — allowlist entries DD-14 (shared shell
+  hotel name, same paths as Main DD-02, Book DD-08, and Stay
+  DD-10), DD-15 (design-side charge heading plus both charge
+  rows with their `span`/`strong` children, guest + amounts),
+  and DD-16 (design-side balance-due value plus the payment row
+  with its children) wired as `FOLIO_SCREEN_ALLOWLIST`:
+  137 → 124 residual diffs, all `node` presence mismatches,
+  zero stale entries. The static board copy around the exempted
+  values (both card headings, the `Còn phải trả` due label, all
+  four input labels, both buttons) carries no entry — S1
+  residuals; app-side folio lines carry no entry yet (fresh-lab
+  empty folio state is flow-state, rows proposed when a run with
+  folio data shows them). Owner veto welcome.
+- F6 payment-method options — no diff vs the board: the design
+  carries no method picker (its `Tiền mặt` line is an example
+  payment row, exempted under DD-16), so the app's `cash` /
+  `card` select stays an F4 flow extra, not a parity gap.
+
 ## 7. Catalogue and locale rule
 
 - Single source of truth stays `messages/` (`messages/README.md`):

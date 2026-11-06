@@ -46,8 +46,9 @@ the mechanism; the approved data list lives here:
 - `EMPTY_ALLOWLIST` (`skipPaths: []`): the default for screens
   with no approved entries. The Main screen wires its section 3
   entries through `MAIN_SCREEN_ALLOWLIST`, the Book screen through
-  `BOOK_SCREEN_ALLOWLIST`, and the Stay screen through
-  `STAY_SCREEN_ALLOWLIST`; the other three screens
+  `BOOK_SCREEN_ALLOWLIST`, the Stay screen through
+  `STAY_SCREEN_ALLOWLIST`, and the Folio screen through
+  `FOLIO_SCREEN_ALLOWLIST`; the other two screens
   still run with no exemptions until their entries are approved
   and wired the same way.
 
@@ -68,13 +69,17 @@ the mechanism; the approved data list lives here:
 | DD-11 | Stay | design `/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[0]/div[0]/strong[0]`; app `/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/div[0]/div[0]/div[1]/p[0]/strong[0]` | text | Business date (design `28/10/2026` vs live clock ISO) | Frozen snapshot vs the business clock; only the date-bearing strong is exempted, the surrounding line (static prefix, `Tải lại` button) stays pinned by the fact-level decided content (display format itself is Refs #495 S9, separate issue) | #497 orchestrator pattern approval (owner-delegated, same categories as #495); owner veto welcome |
 | DD-12 | Stay | design `/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[0]/div[1]` + `/div[2]` + `/div[3]` | text | Stay-list example rows (`Nguyễn Văn An · Phòng 205`, `Lê Minh · Phòng 201`, `Phạm Hoa · Phòng 203`) | Seed- and action-dependent lists; example content that can never coincide with live data. The list headings carry no entry (unlike the Main board they bear no counts — static copy pinned by the fact-level decided headings); app-side rows carry no entry yet (fresh lab renders empty tables; rows proposed when a run with stay data shows them, same note as Main DD-03..DD-05) | #497 orchestrator pattern approval (owner-delegated, same categories as #495); owner veto welcome |
 | DD-13 | Stay | design `/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[1]/label[2]/select[0]` subtree + `/div[2]/div[2]/label[1]/select[0]` subtree; app `/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/div[1]/div[0]/div[1]/div[0]/label[2]/select[0]` subtree + `/div[2]/div[0]/div[1]/div[0]/label[1]/select[0]` subtree | text | Room options (design illustration check-in `205`, move `202`/`204` vs API-driven ready-room catalogue, boot seed rooms) | Seed-dependent catalogue; both select subtrees exempted wholesale (current and future options), static label/placeholder copy stays pinned by the fact-level decided inputs | #497 orchestrator pattern approval (owner-delegated, same categories as #495); owner veto welcome |
+| DD-14 | Folio | design `/html[0]/body[0]/x-dc[0]/div[0]/div[0]/strong[0]`; app `/html[0]/body[0]/div[0]/div[0]/div[0]/nav[0]/span[0]` | text | Hotel name (design `Khách sạn Hoa Mai` vs configured hotel) | Same shared shell header as Main DD-02, Book DD-08, and Stay DD-10 (identical paths): example content vs the configured hotel name, never hardcoded by design | #498 orchestrator pattern approval (owner-delegated, same categories as #495); owner veto welcome |
+| DD-15 | Folio | design `/html[0]/body[0]/x-dc[0]/div[0]/div[1]/div[0]/h3[0]` + `/div[1]/div[0]/div[0]` + `/div[1]/div[0]/div[1]` | text | Charge examples (`Khoản phí · Lê Minh · P.201`, `Tiền phòng 2 đêm` / `1.800.000 đ`, `Nước uống` / `60.000 đ`) | Seed- and action-dependent folio lines; example content that can never coincide with live data. Only the value-bearing nodes are exempted (the charge rows exempt wholesale with their `span`/`strong` children via subtree prefix); the static board copy around them (card heading shape aside, both input labels, the charge button) stays out as S1 residuals | #498 orchestrator pattern approval (owner-delegated, same categories as #495); owner veto welcome |
+| DD-16 | Folio | design `/html[0]/body[0]/x-dc[0]/div[0]/div[1]/div[1]/div[1]` + `/div[1]/div[1]/div[2]` | text | Payment examples (`960.000 đ` balance due, `Tiền mặt` / `900.000 đ` payment row) | Seed- and action-dependent folio balance and payment lines; example content that can never coincide with live data (fresh lab opens no folio, balance line empty). Only the value-bearing nodes are exempted; the static `Còn phải trả` due label stays out as an S1 residual. App-side folio lines carry no entry yet (fresh lab renders the empty folio state; rows proposed when a run with folio data shows them, same note as Stay DD-12) | #498 orchestrator pattern approval (owner-delegated, same categories as #495); owner veto welcome |
 
 Wired into the gate as `MAIN_SCREEN_ALLOWLIST` (Main DD-01..DD-07),
-`BOOK_SCREEN_ALLOWLIST` (Book DD-08..DD-09), and
-`STAY_SCREEN_ALLOWLIST` (Stay DD-10..DD-13) in
+`BOOK_SCREEN_ALLOWLIST` (Book DD-08..DD-09),
+`STAY_SCREEN_ALLOWLIST` (Stay DD-10..DD-13), and
+`FOLIO_SCREEN_ALLOWLIST` (Folio DD-14..DD-16) in
 `app/e2e/dom-diff.ts` (each `skipPaths` entry cites its DD-ID);
 the live gate (`app/e2e/dom-diff.spec.ts`) applies the matching
-screen allowlist and keeps `EMPTY_ALLOWLIST` for the other three
+screen allowlist and keeps `EMPTY_ALLOWLIST` for the other two
 screens.
 Lab evidence (isolated `hotel-lab-686`, 2026-11-06, settled
 post-load extraction): Main `252` non-allowlisted diffs before
@@ -112,6 +117,23 @@ carry no entry (no counts — static copy pinned by the fact-level
 decided headings); app-side list rows carry no entry yet (fresh
 lab renders empty DataTables — flow-state, rows proposed when a
 run with stay data shows them).
+
+Lab evidence (isolated `hotel-lab-695`, 2026-11-06, `vi` locale,
+Chromium, `--workers=1`): Folio `137` non-allowlisted diffs before
+wiring (design 41 nodes, app 106 nodes: 36 design-side `x-dc`
+subtree nodes plus 101 app-side shell/PrimeVue/head extras, zero
+text/colour/font/visibility diffs — the accepted S1 shape
+divergence; served title already `Hoá đơn` via the #495 S2
+follow-through, verified live in both locales) → `124` after
+DD-14..DD-16 (hotel name, charge heading plus both charge rows
+with their `span`/`strong` children, balance-due value and payment
+row with its children); all remaining diffs `node` presence
+mismatches; zero stale entries. The static board copy around the
+exempted values (both card headings, the `Còn phải trả` due label,
+all four input labels, both buttons) carries no entry — S1
+residuals. App-side folio lines carry no entry yet (fresh lab
+opens no folio and renders the empty folio state — flow-state,
+rows proposed when a run with folio data shows them).
 
 ## 4. Eligible categories
 

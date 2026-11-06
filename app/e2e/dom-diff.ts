@@ -178,6 +178,44 @@ export const STAY_SCREEN_ALLOWLIST: DomDiffAllowlist = {
   ],
 };
 
+// Folio-screen dynamic-data exemptions (Refs #498). Every path
+// below cites its owner-approved entry in
+// `docs/testing/dom-diff-allowlist.md` section 3: the design side
+// carries the static snapshot values (example hotel name, one
+// illustrative guest folio with two charge lines and one payment)
+// while the app side renders live values (configured hotel,
+// API-driven folio for the opened stay), so these nodes can never
+// coincide. Only the value-bearing example nodes are exempted: the
+// static board copy around them (both card headings, the
+// `Còn phải trả` due label, all four input labels, both buttons)
+// stays out, remaining as residual `node` diffs under the accepted
+// S1 shape divergence. The fresh lab opens no folio, so app-side
+// folio lines carry no entry yet (same note as Stay app rows in
+// DD-12): rows are proposed when a run with folio data shows them.
+export const FOLIO_SCREEN_ALLOWLIST: DomDiffAllowlist = {
+  skipPaths: [
+    // DD-14 hotel name: design example content vs configured hotel
+    // (same shared shell-header paths as Main DD-02, Book DD-08,
+    // Stay DD-10).
+    '/html[0]/body[0]/x-dc[0]/div[0]/div[0]/strong[0]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/nav[0]/span[0]',
+    // DD-15 charge examples: design illustration for guest Lê Minh
+    // in P.201 (`Khoản phí · Lê Minh · P.201`, `Tiền phòng 2 đêm` /
+    // `1.800.000 đ`, `Nước uống` / `60.000 đ`) vs the live folio
+    // lines of the opened stay (fresh lab: the empty-folio state).
+    '/html[0]/body[0]/x-dc[0]/div[0]/div[1]/div[0]/h3[0]',
+    '/html[0]/body[0]/x-dc[0]/div[0]/div[1]/div[0]/div[0]',
+    '/html[0]/body[0]/x-dc[0]/div[0]/div[1]/div[0]/div[1]',
+    // DD-16 payment examples: design illustration (`960.000 đ`
+    // balance due, `Tiền mặt` / `900.000 đ` payment row) vs the live
+    // folio balance and payment lines (fresh lab: no folio opened,
+    // balance line empty). Only the value-bearing nodes: the static
+    // `Còn phải trả` due label stays out as an S1 residual.
+    '/html[0]/body[0]/x-dc[0]/div[0]/div[1]/div[1]/div[1]',
+    '/html[0]/body[0]/x-dc[0]/div[0]/div[1]/div[1]/div[2]',
+  ],
+};
+
 export function isAllowlisted(path: string, allowlist: DomDiffAllowlist): boolean {
   return allowlist.skipPaths.some(
     (entry) => path === entry || path.startsWith(`${entry}/`),
