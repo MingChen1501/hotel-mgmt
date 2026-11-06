@@ -104,6 +104,33 @@ export const MAIN_SCREEN_ALLOWLIST: DomDiffAllowlist = {
   ],
 };
 
+// Book-screen dynamic-data exemptions (Refs #496). Every path
+// below cites its owner-approved entry in
+// `docs/testing/dom-diff-allowlist.md` section 3: the design side
+// carries the static snapshot values (example hotel name, one
+// illustrative room-type option) while the app side renders live
+// values (configured hotel, API-driven room-type catalogue), so
+// these nodes can never coincide. The option-bearing selects are
+// exempted wholesale (the static label/placeholder copy stays
+// pinned by the fact-level decided inputs in `design-facts.ts`
+// `DECIDED_CONTENT`, which these path exemptions do not touch).
+// The design quote rows (`Số đêm 2`, `Tổng tiền 1.800.000 đ`) carry
+// no entry: the fresh lab renders the empty quote state instead,
+// a flow-state divergence reported on #496 rather than exempted.
+export const BOOK_SCREEN_ALLOWLIST: DomDiffAllowlist = {
+  skipPaths: [
+    // DD-08 hotel name: design example content vs configured hotel
+    // (same shared shell-header paths as Main DD-02).
+    '/html[0]/body[0]/x-dc[0]/div[0]/div[0]/strong[0]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/nav[0]/span[0]',
+    // DD-09 room-type options: design illustration (`Phòng đôi`)
+    // vs API-driven catalogue (boot seed `Standard Double`, plus
+    // any later-defined types under the same select subtree).
+    '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[1]/div[0]/label[2]/select[0]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/form[0]/div[0]/div[1]/div[0]/div[0]/div[1]/label[2]/select[0]',
+  ],
+};
+
 export function isAllowlisted(path: string, allowlist: DomDiffAllowlist): boolean {
   return allowlist.skipPaths.some(
     (entry) => path === entry || path.startsWith(`${entry}/`),

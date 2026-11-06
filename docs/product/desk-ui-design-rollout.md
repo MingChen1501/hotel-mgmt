@@ -203,6 +203,46 @@ no design intent was guessed. The desk-side follow-through
   format — separate follow-up issues (button fix #471 landed;
   display formatting touches the shared display+API ref).
 
+### 6.2 Book parity-sweep resolutions (Refs #496)
+
+The 2026-11-06 full-tree sweep of the Book board vs
+`docs/design/Book.dc.html` (130 diffs, isolated lab
+`hotel-lab-691`, `vi` locale) closed with no code change to the
+view itself and gate-harness wiring only; no design intent was
+guessed. The served title already matches the board
+(`Đặt phòng`, verified live) via the #495 S2 follow-through,
+and the fact-level gate passes 2/2 (matching app DOM incl. the
+decided headings/buttons/inputs, live shell conformance).
+
+- B1 tree shape — same accepted S1 as Main: 59 design-side
+  `x-dc` subtree nodes plus 71 app-side shell/PrimeVue/head
+  extras, zero text/colour/font/visibility diffs on shared
+  paths. Full-tree literalism stays rejected.
+- B2 document title — already closed (#495 S2), verified live
+  on `/app/book`.
+- B3 quote copy — REPORTED, not changed. The design shows a
+  quoted state (`Số đêm 2`, `Tổng tiền 1.800.000 đ`); the app
+  renders `Số đêm: {count}` / `Tổng cộng: {amount}` only after
+  a quote, and an empty state before. The labels and the
+  empty-vs-quoted presentation are user-visible copy/flow:
+  product call.
+- B4 app extras — KEPT with justification (same precedent as
+  the Main deliberately kept extras): the walk-in actor note,
+  guest-status line, room-type loading/empty states, and the
+  post-booking result/confirmation panels are flow states the
+  static board cannot show. The fact-level decided content
+  pins the static copy; extras render no decided copy.
+- B5 dynamic data — allowlist entries DD-08 (shared shell
+  hotel name, same paths as Main DD-02) and DD-09 (room-type
+  option subtrees, design illustration vs API catalogue)
+  wired as `BOOK_SCREEN_ALLOWLIST`: 130 → 122 residual diffs,
+  all `node` presence mismatches, zero stale entries. The
+  design quote rows carry no entry (fresh-lab empty state is
+  flow-state, not dynamic data). Owner veto welcome.
+- B6 select placeholder — no diff: both sides render
+  `Chọn hạng phòng…`; the placeholder stays pinned by the
+  fact-level decided input.
+
 ## 7. Catalogue and locale rule
 
 - Single source of truth stays `messages/` (`messages/README.md`):
