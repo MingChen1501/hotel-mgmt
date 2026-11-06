@@ -144,7 +144,7 @@ appears on every printed document.
 
 ## 5. Acceptance criteria summary
 
-The binding done-conditions are `AC-DSK-1` through `AC-DSK-11`
+The binding done-conditions are `AC-DSK-1` through `AC-DSK-12`
 in `docs/product/acceptance-criteria.md` [section 11](acceptance-criteria.md)
 (`AC-DSK-9`..`AC-DSK-11` cover the steps 2–4 follow-up, Refs
 #438; see section 10).
@@ -155,7 +155,9 @@ placeholder blocks check-in until a ready room is chosen;
 checkout still requires a settled folio; Rooms summary counts
 always match the rendered cards; the wizard launches on empty
 database only and the configured hotel name surfaces across
-desk and folio; all copy comes from the VI-primary catalogue.
+desk and folio; all copy comes from the VI-primary catalogue;
+and the business-date lines render the weekday-long locale form
+per section 6.7 (`AC-DSK-12`).
 
 ## 6. Conflict rule with #412
 
@@ -461,6 +463,74 @@ Folio F4).
   actions shows value-bearing dynamic nodes (section 5 of
   the allowlist doc).
 
+### 6.7 Business-date display format (Refs #503)
+
+Status: product-owner scope decision for the S9 follow-up from the
+#495 Main parity sweep. Tier T2 (reader-visible UI change on three
+screens; no data-model, API, or refusal-semantics change). No
+implementation in this change; the binding done-condition is
+`AC-DSK-12` in
+`docs/product/acceptance-criteria.md` [section 11](acceptance-criteria.md).
+FR/NFR wording is owned by `business-analyst`, flow detail by
+`architect`, and guard mapping by `qa-lead`; the downstream
+implementation issue references this section plus those handoffs.
+
+Decision: display-only. The rendered business-date lines switch
+from raw ISO (`YYYY-MM-DD`) to a locale weekday-long form at
+render time; every API and request payload keeps ISO `YYYY-MM-DD`
+unchanged.
+
+Rationale: the Main design shows weekday long form
+(`Thứ Tư, 28/10/2026`); the app renders the client-computed ISO
+date (pinned by `DeskView.test.ts:240`) through a ref that is
+also sent verbatim as the `businessDate` request field on desk,
+stay, and rooms reads. Changing the wire format would move
+validation (`error.validation.business_date` pins `YYYY-MM-DD`),
+day-close lookups, and every consumer of the shared ref for a
+purely presentational gain. Display-only keeps the contract
+stable and confines the change to three render sites.
+
+Affected screens and keys:
+
+- Main board — `DeskView.vue`
+  `[data-testid="desk-business-date"]`.
+- Rooms map — `RoomsView.vue`
+  `[data-testid="rooms-business-date"]`.
+- Stay check-in/out — `StayView.vue`
+  `[data-testid="stay-business-date"]`.
+- The label key `desk.today.business_date` (`Ngày làm việc: ` /
+  `Business date: `) is unchanged: the label stays, only the
+  date value reformats. No new catalogue key is added.
+- Out of the render path: all `businessDate` request fields,
+  the `YYYY-MM-DD` validation messages, and the allowlist
+  date entries (Stay DD-11, Rooms DD-18) stay valid — they
+  exempt the value-bearing nodes regardless of format.
+
+Locale format: format the ISO business date with
+`Intl.DateTimeFormat` per active locale — `weekday: 'long'`,
+`day: '2-digit'`, `month: '2-digit'`, `year: 'numeric'`.
+Normative examples for business date `2026-10-28` (a Wednesday):
+
+- VI: `Thứ Tư, 28/10/2026` (matches the Main design).
+- EN: `Wednesday, 10/28/2026`.
+
+The short-form snapshots in the Stay and Rooms design boards
+(`28/10/2026` without weekday) are superseded by the Main
+design's weekday long form, so all three lines read identically;
+the Main design wins per the section 6 conflict rule. The
+surrounding line (label, `Tải lại` button) is untouched.
+
+UI-contract delta (T2): nil — the rollout-wide contract in
+section 4 holds verbatim (same shell, nav, tokens, plain-words
+states, and print rules; formatting the date value adds no
+layout, component, or token change).
+
+Out: implementation of the format change (downstream `dev`
+issue/PR, which updates the three render sites plus the ISO
+display assertions such as `DeskView.test.ts:240`); S8 token
+drift (separate follow-up); any API, validation, or catalogue
+key change.
+
 ## 7. Catalogue and locale rule
 
 - Single source of truth stays `messages/` (`messages/README.md`):
@@ -698,5 +768,12 @@ Section 4 stays the rollout-wide contract; for steps 2–4:
 | Wizard still launches on empty database only and does not interrupt existing data | Section 10.4; AC-DSK-7 (gate half, unchanged) |
 | All new copy from the VI-primary catalogue with the coverage check green | Section 10.1; AC-DSK-8 (unchanged) |
 
+## 12. Acceptance mapping (issue #503)
+
+| Criterion | Evidence in this spec |
+|---|---|
+| Business-date lines render the weekday-long locale form on Main, Rooms, and Stay with ISO kept on the wire | Section 6.7; AC-DSK-12 |
+| No API, validation, or catalogue key change ships with the format change | Section 6.7 (out-of-render-path list); AC-DSK-12 |
+
 <!-- ao-role: product-owner -->
-Role: product-owner · AO session hotel-mgmt-587
+Role: product-owner · AO session hotel-mgmt-704
