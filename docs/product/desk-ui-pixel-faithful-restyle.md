@@ -54,8 +54,10 @@ Out:
 ADR-0003 (Vue 3 + Vite CSR static build served by Nginx under `/app/`)
 stands in full for platform, serving, auth, catalogue plumbing, print
 routes, and CI. It is PARTIALLY SUPERSEDED for desk surfaces only, as
-follows — the `architect` records this boundary in the ADR file itself
-(section 9, handoff A-517-1); the wording here is the product-owner
+follows — the `architect` has recorded this boundary in the ADR file itself
+(`docs/architecture/decisions/adr-0003-desk-ui-vue-vite.md`,
+"Partial supersession for desk surfaces", PR #527 — section 9
+handoff A-517-1, now LANDED); the wording here remains the product-owner
 scope statement, not the ADR edit:
 
 - Stays: Vue 3 + Vite CSR static `dist/`, `/app/` location block with
@@ -329,24 +331,31 @@ radii, and spacing — out of scope for schema v1 — are covered by
 the per-screen owner screenshot review; and every child issue and
 PR carries its evidence with an owner review before merge.
 
-## 9. Spec handoffs (required before any child implementation PR opens)
+## 9. Spec handoffs (landed; required before any child implementation PR opens)
 
-Each owning role's slice is required by the spec gate; this spec
-references them by section, never repeats them:
+Each owning role's slice has landed on `master` via the #517 stack;
+this spec references them by section, never repeats them:
 
-- `business-analyst`: FR/NFR delta for #517 — expected shape is a
-  no-change statement (four restyles plus shell change presentation
-  only; Rooms map and wizard keep their #419/#438 FRs; refusal
-  semantics unchanged), or narrow deltas if a real wording need is
-  found. Status: PENDING at the time this spec ships.
+- `business-analyst`: FR/NFR delta for #517 landed as
+  `docs/requirements/mvp-requirements.md`
+  [section 13](../requirements/mvp-requirements.md) (PR #526) —
+  13.1 explicit no-change statements, 13.2 `FR-RST-1`..`FR-RST-7`,
+  13.3 `NFR-RST-1`..`NFR-RST-3`, 13.4 traceability handoff for
+  `qa-lead`. Status: LANDED.
 - `architect`: ADR-0003 partial-supersession record for desk
-  surfaces per section 2 (status stays `accepted`; a supersession
-  note, not a new decision gate), plus any flow-detail refresh the
-  rebuild needs. Status: PENDING at the time this spec ships.
-- `qa-lead`: guard mapping for #517 — design-facts gate green per
-  surface plus the side-by-side screenshot-evidence rule and the
-  coverage-check requirement per child PR. Status: PENDING at the
-  time this spec ships.
+  surfaces landed as `docs/architecture/decisions/adr-0003-desk-ui-vue-vite.md`
+  ("Partial supersession for desk surfaces", PR #527), with the
+  subsystem boundary in `docs/architecture/hld.md`
+  [section 14](../architecture/hld.md) and the build-ready
+  decomposition in `docs/architecture/lld.md`
+  [section 15](../architecture/lld.md); ADR status stays
+  `accepted`. Status: LANDED.
+- `qa-lead`: guard mapping for #517 landed as
+  `docs/testing/desk-restyle-test-traceability.md`
+  [sections 1–5](../testing/desk-restyle-test-traceability.md)
+  (PR #528) — scope and no-change statements, parity guards, new
+  restyle guards R1–R9, the AC-RST traceability map, and exit
+  criteria. Status: LANDED.
 - `spec-reviewer`: gates each child implementation PR (#518–#524)
   on this spec plus the three handoffs above; implementation starts
   only on PASS.
@@ -356,7 +365,7 @@ references them by section, never repeats them:
 | Criterion | Evidence in this spec |
 |---|---|
 | 7 child issues exist (shell/nav + Main + Book + Stay + Folio + Rooms + Onboarding), each with design refs, catalogue impact, screenshot-evidence requirement | #518–#524 open with per-issue scope; design refs sections 4–5; catalogue section 7; evidence section 8 / AC-RST-8 |
-| ADR-0003 supersession for desk surfaces recorded in-tree | Section 2 boundary; decision-log D-15; architect ADR update (section 9, PENDING) |
+| ADR-0003 supersession for desk surfaces recorded in-tree | Section 2 boundary; decision-log D-15; architect ADR record LANDED (`adr-0003-desk-ui-vue-vite.md` Partial-supersession section + `hld.md` s14 + `lld.md` s15, PR #527) |
 | Product-owner restyle spec written and active (spec-reviewer PASS) before any child implementation PR opens | This document (active) + AC-RST-1..8 ([section 12](acceptance-criteria.md)); gate section 9 |
 | Every child issue and its PR carry before/after screenshot evidence and per-screen owner review | Section 8 / AC-RST-8; owner-review labels on #517–#524 |
 
