@@ -8,6 +8,7 @@ import {
   DEFAULT_LOCALE,
   LOCALE_STORAGE_KEY,
   catalogueLocale,
+  formatBusinessDate,
   hasMessage,
   setLocale,
   t,
@@ -141,5 +142,22 @@ describe('desk locale (en/vi)', () => {
     expect(format(catalogueLocale())).toBe('1,234,567.89');
     setLocale('vi');
     expect(format(catalogueLocale())).toBe('1.234.567,89');
+  });
+});
+
+describe('business-date display form (Refs #503, FR-DSK-11)', () => {
+  it('renders the design long-weekday form per locale for a fixed date', () => {
+    // Normative examples from FR-DSK-11 / AC-DSK-12: 2026-10-28 is a
+    // Wednesday; the VI form matches docs/design/Main.dc.html.
+    expect(formatBusinessDate('2026-10-28', 'vi')).toBe('Thứ Tư, 28/10/2026');
+    expect(formatBusinessDate('2026-10-28', 'en')).toBe('Wednesday, 10/28/2026');
+  });
+
+  it('falls back to the canonical value when the input is not a calendar date', () => {
+    expect(formatBusinessDate('', 'en')).toBe('');
+    expect(formatBusinessDate('not-a-date', 'vi')).toBe('not-a-date');
+    expect(formatBusinessDate('2026-10-28T00:00:00.000Z', 'en')).toBe('2026-10-28T00:00:00.000Z');
+    expect(formatBusinessDate('2026-02-30', 'en')).toBe('2026-02-30');
+    expect(formatBusinessDate('2026-13-01', 'vi')).toBe('2026-13-01');
   });
 });

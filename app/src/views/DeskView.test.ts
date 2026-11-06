@@ -11,7 +11,7 @@ import { createPinia, setActivePinia } from 'pinia';
 import { mount, RouterLinkStub } from '@vue/test-utils';
 import DeskView from './DeskView.vue';
 import { useSessionStore } from '../stores/session';
-import { setLocale } from '../i18n';
+import { formatBusinessDate, setLocale } from '../i18n';
 import { resetConnectivityForTests } from '../api/client';
 import router from '../router';
 
@@ -237,7 +237,9 @@ describe('desk view', () => {
     const wrapper = mountDesk();
     await signIn(wrapper, fetchMock);
 
-    expect(wrapper.find('[data-testid="desk-business-date"]').text()).toBe(localBusinessDate());
+    expect(wrapper.find('[data-testid="desk-business-date"]').text()).toBe(
+      formatBusinessDate(localBusinessDate(), 'en'),
+    );
     // Design card rows (Refs #490): arrivals pair the guest with
     // the booking code and the booked room type — no room number.
     const arrivals = wrapper.find('[data-testid="desk-arrivals-table"]').text();
@@ -258,6 +260,23 @@ describe('desk view', () => {
     expect(departures).toContain('Unknown guest');
     expect(departures).toContain('Not assigned');
     expect(departures).toContain('Room type');
+  });
+
+  // Refs #503 (FR-DSK-11, AC-DSK-12): the header renders the locale
+  // long-weekday form derived from the canonical ISO ref — VI
+  // matches the Main design file, EN is the fallback-locale form.
+  it('renders the business-date header in the locale long-weekday form', async () => {
+    const wrapper = mountDesk();
+    wrapper.vm.businessDate = '2026-10-28';
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find('[data-testid="desk-business-date"]').text()).toBe('Wednesday, 10/28/2026');
+    try {
+      setLocale('vi');
+      await wrapper.vm.$nextTick();
+      expect(wrapper.find('[data-testid="desk-business-date"]').text()).toBe('Thứ Tư, 28/10/2026');
+    } finally {
+      setLocale('en');
+    }
   });
 
   // D2 (Refs #420, AC-DSK-2, FR-DSK-2): the Main board renders its
