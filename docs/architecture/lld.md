@@ -1447,5 +1447,185 @@ and gate/sign-in screens (not in this design batch);
 catalogue restructuring; backend or API changes beyond what
 the screens need (filed as follow-ups if discovered).
 
+## 14. Business-date display-only render mapping (Refs #503)
+
+Build-ready decomposition for the S9 follow-up display-only
+business-date change (issue #503, Phase 5 desk UI). Tier T2
+(reader-visible UI on three screens, values unchanged). This
+section supplies the T2 per-flow implementation diagram
+(happy path + failure/rollback path) the spec gate requires
+(SPEC-GATE FAIL on #503 routed this gap to `architect`).
+The decision and rationale live with `business-analyst`
+(`docs/requirements/mvp-requirements.md` [section 12](../requirements/mvp-requirements.md),
+`FR-DSK-11`, PR #510); scope, UI contract, and
+done-conditions live with `product-owner`
+(`docs/product/desk-ui-design-rollout.md` [section 6.7](../product/desk-ui-design-rollout.md),
+`AC-DSK-12`, PR #511); guard mapping lives with `qa-lead`.
+This section records only the architect-owned flow detail:
+the render mapping, its failure/rollback paths, and the
+technical no-change boundary. No new subsystem, no boundary
+change, no contract change — hence no ADR.
+
+Intended tree deltas (files the downstream `dev`
+implementation PR must touch; edge traces below cite the
+existing lines):
+
+```text
+app/src/views/DeskView.vue    render site: header strong at :9 (data-testid="desk-business-date")
+app/src/views/StayView.vue    render site: header strong at :14 (data-testid="stay-business-date")
+app/src/views/RoomsView.vue    render site: header strong at :8 (data-testid="rooms-business-date")
+```
+
+The canonical `businessDate` ref stays ISO `YYYY-MM-DD`
+everywhere (computed by `localBusinessDate()` —
+`DeskView.vue:498`, `StayView.vue:640`,
+`RoomsView.vue:202` — and sent verbatim as the
+`businessDate` request field at `DeskView.vue:1060,1121`,
+`StayView.vue:1042`, `RoomsView.vue:549`). The dev PR adds
+one pure view-layer derivation per screen (canonical ISO
+ref -> `Intl.DateTimeFormat` weekday-long locale form) and
+binds the three header strongs to it; the refs themselves
+are untouched.
+
+### 14.1 Business-date render flowchart
+
+Staff open any of the three screens; the already-loaded
+canonical date renders in the design's locale long-weekday
+form while every downstream use keeps ISO:
+
+```mermaid
+flowchart TD
+    A[Staff opens Desk, Stay, or Rooms] --> B[Screen computes canonical businessDate via localBusinessDate]
+    B --> C[Screen sends businessDate verbatim as the request field]
+    C --> D[Screen derives the locale form at render time: Intl.DateTimeFormat weekday long]
+    D --> E{Active locale?}
+    E -->|VI| F[Header strong shows weekday long + dd/MM/yyyy: Thứ Tư, 28/10/2026 for 2026-10-28]
+    E -->|EN| G[Header strong shows weekday long + MM/dd/yyyy: Wednesday, 10/28/2026 for 2026-10-28]
+    F --> H[Arrival, sheet, calendar, and block-note reads proceed on the ISO ref unchanged]
+    G --> H
+```
+
+Edge trace (every edge cites code):
+
+- A–B: the canonical ref is client-computed ISO
+  (`localBusinessDate()` at `DeskView.vue:498`,
+  `StayView.vue:640`, `RoomsView.vue:202`; bound into
+  `businessDate` refs at `DeskView.vue:518`,
+  `StayView.vue:734`, `RoomsView.vue:222`).
+- B–C: the same ref is sent verbatim as the
+  `businessDate` request field (`DeskView.vue:1060,1121`
+  `ListArrivalsDepartures` / `DailySheet`;
+  `StayView.vue:1042`; `RoomsView.vue:549`) — the wire
+  stays `{"type": "string", "format": "date"}` per
+  `contracts/http/DailySheet.json`,
+  `contracts/http/ListArrivalsDepartures.json`,
+  `contracts/http/AssignRoom.json`, and
+  `contracts/http/RunDayClose.json`.
+- C–D: the locale form is a pure derivation of the
+  canonical ref at render time (platform locale
+  formatter — `weekday: 'long'`, `day: '2-digit'`,
+  `month: '2-digit'`, `year: 'numeric'` — not catalogue
+  strings, so no new catalogue keys land and
+  `script/catalogue-coverage-check.sh` stays green;
+  `desk.today.business_date` at `messages/en.json:347`
+  keeps its label wording in both locales).
+- E–F–G: normative examples for business date
+  `2026-10-28` (a Wednesday): VI
+  `Thứ Tư, 28/10/2026` (matches
+  `docs/design/Main.dc.html` exactly), EN
+  `Wednesday, 10/28/2026` (`FR-DSK-11`, `AC-DSK-12`).
+- F–H / G–H: every downstream read keeps the ISO ref:
+  arrival guest/date pairs (`DeskView.vue:882-883`,
+  `RoomsView.vue:338-339` — e.g. `Arriving ${ISO}`),
+  calendar maps (`DeskView.vue:1089`,
+  `RoomsView.vue:577`), block notes
+  (`DeskView.vue:1112`), checkout dates
+  (`RoomsView.vue:581`), and expected-arrival fetches
+  (`StayView.vue:957-976`); day-close totals still key on
+  the ISO business date (`FR-BIL-6`, BR-26 holds).
+- Load/error states are the existing `FR-DSP-3` paths
+  (loading banners, empty states, refusal sentences,
+  offline banner per LLD section 11.3) — unchanged, shown
+  for completeness in section 14.2.
+
+Failure/rollback:
+
+```mermaid
+flowchart TD
+    P[Formatter throws or locale data missing] --> Q[Header falls back to the canonical ISO string; screen stays usable]
+    R[Server refuses businessDate] --> S[VALIDATION_FAILED names the field; ISO wire unchanged so no new refusal path]
+    T[LAN disconnect during lists load] --> U[Offline banner + manual retry; no queued writes]
+    V[401 / UNAUTHENTICATED] --> W[Single 401 path: clear token, route to sign-in]
+```
+
+Edge trace:
+
+- P–Q: the derived form must never break the screen —
+  on any formatting failure the header renders the
+  canonical ISO value (today's rendering), which is
+  always a valid date because validation refuses
+  anything else (`messages/en.json:39` —
+  `error.validation.business_date` pins `YYYY-MM-DD`).
+- R–S: refusal semantics stand (`FR-RTE-4`,
+  `FR-CUS-1`, `FR-BIL-7` fire on exactly the same
+  conditions); the e2e harness keeps building ISO dates
+  (`script/e2e-desk-loop.sh:267-270,325-327,337-353`),
+  so harness and contract checks stay green by
+  construction.
+- T–U: blocked loads mutate nothing; retry is
+  staff-initiated (no write queueing, LLD section 11.3).
+- V–W: shared-client 401 path (LLD section 11.2)
+  unchanged.
+- Rollback: revert the single downstream `dev` PR; the
+  three strongs return to `{{ businessDate }}` ISO with
+  it (no contract, schema, validation, catalogue, or
+  harness change anywhere in this flow).
+
+### 14.2 Technical no-change note (APIs, contracts, schemas)
+
+Nothing in section 14 changes behaviour below the screen
+surface, and the downstream implementation PR must not
+change any of the following; each item names its guard so
+drift is reviewable. The requirements side of the same
+statements lives with `business-analyst`
+(`docs/requirements/mvp-requirements.md` [section 12.2](../requirements/mvp-requirements.md),
+PR #510); the acceptance side lives with `product-owner`
+(`AC-DSK-12`, PR #511):
+
+- Routes and shell: no route, nav, token, or layout
+  change (LLD sections 11–12 hold, including the shell
+  nav, `FR-DSP-1` destinations, and print isolation).
+- APIs and contracts: every desk call keeps its
+  operation, payload, and envelope
+  (`docs/technical/api-spec.md`,
+  `docs/technical/integration.md` C1–C11,
+  `contracts/openapi.yaml` + `frontend/docs/openapi.yaml`
+  byte-identical mirror — 14 ops, unchanged).
+- Data model and schema: no entity or field is added
+  (`docs/technical/schema.md`,
+  `docs/requirements/data-dictionary.md` Business date
+  entry unchanged — canonical ISO stored/transmitted,
+  locale form derived at render).
+- Error semantics: all codes and refusal conditions stand
+  (`docs/technical/error-handling.md`, LLD sections 1–8
+  error mappings; canonical-vs-display boundary BR-43
+  holds). Session rules (LLD section 0) are untouched.
+- Existing ISO pins stay green: the Desk display pin the
+  dev PR updates (`DeskView.test.ts:240`) plus the
+  standing payload pins it must keep green
+  (`DeskView.test.ts:54,513,529,576,760,781,832`;
+  `StayView.test.ts:64,142`; contract `format: date`
+  guards); API-echoed card-note ISO assertions stay
+  untouched (`RoomsView.test.ts:231`). The missing
+  formatted-display assertion (fixed date, both locales,
+  all three screens) is created by the dev PR per the
+  `qa-lead` handoff — it is explicitly declared missing,
+  never promised as existing.
+
+Out of scope: implementation of the format change
+(downstream `dev` issue/PR); S8 token drift (separate
+follow-up); any API, validation, catalogue-key, or
+allowlist change.
+
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-137
