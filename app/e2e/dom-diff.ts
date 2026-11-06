@@ -131,6 +131,53 @@ export const BOOK_SCREEN_ALLOWLIST: DomDiffAllowlist = {
   ],
 };
 
+// Stay-screen dynamic-data exemptions (Refs #497). Every path
+// below cites its owner-approved entry in
+// `docs/testing/dom-diff-allowlist.md` section 3: the design side
+// carries the static snapshot values (example hotel name, frozen
+// business date, three illustrative stay-list rows, two
+// illustrative room options) while the app side renders live
+// values (configured hotel, business clock, API-driven room
+// catalogue), so these nodes can never coincide. The option-bearing
+// selects are exempted wholesale (the static label/placeholder copy
+// stays pinned by the fact-level decided inputs in `design-facts.ts`
+// `DECIDED_CONTENT`, which these path exemptions do not touch).
+// The design list headings (`Khách đến hôm nay`, `Đang lưu trú`,
+// `Khách đi hôm nay`) carry no entry: unlike the Main board they
+// bear no counts, so they stay pinned as static copy by the
+// fact-level decided headings. The fresh lab renders empty stay
+// tables, so app-side list rows carry no entry yet (same note as
+// Main DD-03..DD-05): rows are proposed when a run with stay data
+// shows them.
+export const STAY_SCREEN_ALLOWLIST: DomDiffAllowlist = {
+  skipPaths: [
+    // DD-10 hotel name: design example content vs configured hotel
+    // (same shared shell-header paths as Main DD-02, Book DD-08).
+    '/html[0]/body[0]/x-dc[0]/div[0]/div[0]/strong[0]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/nav[0]/span[0]',
+    // DD-11 business date: design snapshot (`28/10/2026`) vs live
+    // business clock (ISO). Only the strong carries the date; the
+    // surrounding line (static prefix, `Tải lại` button) stays
+    // pinned by the fact-level decided content.
+    '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[0]/div[0]/strong[0]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/div[0]/div[0]/div[1]/p[0]/strong[0]',
+    // DD-12 stay-list example rows: design illustration
+    // (`Nguyễn Văn An · Phòng 205`, `Lê Minh · Phòng 201`,
+    // `Phạm Hoa · Phòng 203`) vs seed- and action-dependent lists.
+    '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[0]/div[1]',
+    '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[0]/div[2]',
+    '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[0]/div[3]',
+    // DD-13 room options: design illustration (check-in `205`,
+    // move `202`/`204`) vs API-driven ready-room catalogue (boot
+    // seed rooms, plus any later-defined rooms under the same
+    // select subtrees).
+    '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[1]/label[2]/select[0]',
+    '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[2]/label[1]/select[0]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/div[1]/div[0]/div[1]/div[0]/label[2]/select[0]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/div[2]/div[0]/div[1]/div[0]/label[1]/select[0]',
+  ],
+};
+
 export function isAllowlisted(path: string, allowlist: DomDiffAllowlist): boolean {
   return allowlist.skipPaths.some(
     (entry) => path === entry || path.startsWith(`${entry}/`),

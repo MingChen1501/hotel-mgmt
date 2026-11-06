@@ -243,6 +243,54 @@ decided headings/buttons/inputs, live shell conformance).
   `Chọn hạng phòng…`; the placeholder stays pinned by the
   fact-level decided input.
 
+### 6.3 Stay parity-sweep resolutions (Refs #497)
+
+The 2026-11-06 full-tree sweep of the Stay board vs
+`docs/design/Stay.dc.html` (243 diffs, isolated lab
+`hotel-lab-693`, `vi` locale) closed with no code change to the
+view itself and gate-harness wiring only; no design intent was
+guessed. The served title already matches the board
+(`Nhận phòng`, verified live) via the #495 S2 follow-through,
+and the fact-level gate passes (matching app DOM incl. the
+decided headings/buttons/inputs, live shell conformance).
+
+- T1 tree shape — same accepted S1 as Main: 69 design-side
+  `x-dc` subtree nodes plus 174 app-side shell/PrimeVue/head
+  extras, zero text/colour/font/visibility diffs. Full-tree
+  literalism stays rejected.
+- T2 document title — already closed (#495 S2), verified live
+  on `/app/stay`.
+- T3 check-in flow — REPORTED, not changed. The design shows a
+  single-step form (reference + arrival + room + one button);
+  the app runs a two-step flow (first click loads the booking
+  and the ready rooms of the booked type, second click commits)
+  with a room hint, status lines, and reference details. The
+  step structure is user-visible flow: product call.
+- T4 app extras — KEPT with justification (same precedent as
+  the Main deliberately kept extras and Book B4): the h1+intro,
+  the lists DataTables with empty states and per-row pick
+  buttons, the move/times/checkout status lines and reference
+  details, the folio approval section, and the checkout
+  confirmation dialog are flow states the static board cannot
+  show. The fact-level decided content pins the static copy;
+  extras render no decided copy.
+- T5 dynamic data — allowlist entries DD-10 (shared shell
+  hotel name, same paths as Main DD-02 and Book DD-08), DD-11
+  (business-date strongs, design snapshot vs live clock),
+  DD-12 (three design-side example list rows), and DD-13
+  (check-in + move room-option select subtrees, design
+  illustration vs API catalogue) wired as
+  `STAY_SCREEN_ALLOWLIST`: 243 → 225 residual diffs, all
+  `node` presence mismatches, zero stale entries. The design
+  list headings carry no entry (no counts — static copy pinned
+  by the fact-level decided headings); app-side list rows
+  carry no entry yet (fresh-lab empty tables are flow-state,
+  rows proposed when a run with stay data shows them). Owner
+  veto welcome.
+- T6 refresh copy — no diff: both sides render `Tải lại`; the
+  Stay board agrees with the app (unlike the Main-board
+  outlier in #495 S3).
+
 ## 7. Catalogue and locale rule
 
 - Single source of truth stays `messages/` (`messages/README.md`):

@@ -45,8 +45,9 @@ the mechanism; the approved data list lives here:
   the signal to re-point or retire the entry.
 - `EMPTY_ALLOWLIST` (`skipPaths: []`): the default for screens
   with no approved entries. The Main screen wires its section 3
-  entries through `MAIN_SCREEN_ALLOWLIST` and the Book screen
-  through `BOOK_SCREEN_ALLOWLIST`; the other four screens
+  entries through `MAIN_SCREEN_ALLOWLIST`, the Book screen through
+  `BOOK_SCREEN_ALLOWLIST`, and the Stay screen through
+  `STAY_SCREEN_ALLOWLIST`; the other three screens
   still run with no exemptions until their entries are approved
   and wired the same way.
 
@@ -63,12 +64,17 @@ the mechanism; the approved data list lives here:
 | DD-07 | Main | app `/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/div[1]/section[0..4]/h3[0]` (one entry per lane, five entries; settled post-load paths — the loading skeleton shifts the lane board from `div[2]` to `div[1]`, so the gate waits for `desk-roommap` visible before extracting) | text | Room-map lane counts (`Đang có khách (0)`, `Sẵn sàng (đã kiểm tra) (2)`, `Sạch, chờ kiểm tra (0)`, `Phòng bẩn (0)`, `Ngưng bán (0)`) | Seed-driven counts; headings exempted wholesale, lane chip labels stay pinned by the fact-level decided room map (#491) | #495 orchestrator decision (owner-delegated) 2026-11-06 |
 | DD-08 | Book | design `/html[0]/body[0]/x-dc[0]/div[0]/div[0]/strong[0]`; app `/html[0]/body[0]/div[0]/div[0]/div[0]/nav[0]/span[0]` | text | Hotel name (design `Khách sạn Hoa Mai` vs configured hotel) | Same shared shell header as Main DD-02 (identical paths): example content vs the configured hotel name, never hardcoded by design | #496 orchestrator pattern approval (owner-delegated, same categories as #495); owner veto welcome |
 | DD-09 | Book | design `/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[1]/div[0]/label[2]/select[0]` subtree; app `/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/form[0]/div[0]/div[1]/div[0]/div[0]/div[1]/label[2]/select[0]` subtree | text | Room-type options (design illustration `Phòng đôi` vs API-driven catalogue, boot seed `Standard Double`) | Seed-dependent catalogue; the whole select subtree is exempted (current and future options), static label/placeholder copy stays pinned by the fact-level decided inputs | #496 orchestrator pattern approval (owner-delegated, same categories as #495); owner veto welcome |
+| DD-10 | Stay | design `/html[0]/body[0]/x-dc[0]/div[0]/div[0]/strong[0]`; app `/html[0]/body[0]/div[0]/div[0]/div[0]/nav[0]/span[0]` | text | Hotel name (design `Khách sạn Hoa Mai` vs configured hotel) | Same shared shell header as Main DD-02 and Book DD-08 (identical paths): example content vs the configured hotel name, never hardcoded by design | #497 orchestrator pattern approval (owner-delegated, same categories as #495); owner veto welcome |
+| DD-11 | Stay | design `/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[0]/div[0]/strong[0]`; app `/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/div[0]/div[0]/div[1]/p[0]/strong[0]` | text | Business date (design `28/10/2026` vs live clock ISO) | Frozen snapshot vs the business clock; only the date-bearing strong is exempted, the surrounding line (static prefix, `Tải lại` button) stays pinned by the fact-level decided content (display format itself is Refs #495 S9, separate issue) | #497 orchestrator pattern approval (owner-delegated, same categories as #495); owner veto welcome |
+| DD-12 | Stay | design `/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[0]/div[1]` + `/div[2]` + `/div[3]` | text | Stay-list example rows (`Nguyễn Văn An · Phòng 205`, `Lê Minh · Phòng 201`, `Phạm Hoa · Phòng 203`) | Seed- and action-dependent lists; example content that can never coincide with live data. The list headings carry no entry (unlike the Main board they bear no counts — static copy pinned by the fact-level decided headings); app-side rows carry no entry yet (fresh lab renders empty tables; rows proposed when a run with stay data shows them, same note as Main DD-03..DD-05) | #497 orchestrator pattern approval (owner-delegated, same categories as #495); owner veto welcome |
+| DD-13 | Stay | design `/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[1]/label[2]/select[0]` subtree + `/div[2]/div[2]/label[1]/select[0]` subtree; app `/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/div[1]/div[0]/div[1]/div[0]/label[2]/select[0]` subtree + `/div[2]/div[0]/div[1]/div[0]/label[1]/select[0]` subtree | text | Room options (design illustration check-in `205`, move `202`/`204` vs API-driven ready-room catalogue, boot seed rooms) | Seed-dependent catalogue; both select subtrees exempted wholesale (current and future options), static label/placeholder copy stays pinned by the fact-level decided inputs | #497 orchestrator pattern approval (owner-delegated, same categories as #495); owner veto welcome |
 
-Wired into the gate as `MAIN_SCREEN_ALLOWLIST` (Main DD-01..DD-07)
-and `BOOK_SCREEN_ALLOWLIST` (Book DD-08..DD-09) in
+Wired into the gate as `MAIN_SCREEN_ALLOWLIST` (Main DD-01..DD-07),
+`BOOK_SCREEN_ALLOWLIST` (Book DD-08..DD-09), and
+`STAY_SCREEN_ALLOWLIST` (Stay DD-10..DD-13) in
 `app/e2e/dom-diff.ts` (each `skipPaths` entry cites its DD-ID);
 the live gate (`app/e2e/dom-diff.spec.ts`) applies the matching
-screen allowlist and keeps `EMPTY_ALLOWLIST` for the other four
+screen allowlist and keeps `EMPTY_ALLOWLIST` for the other three
 screens.
 Lab evidence (isolated `hotel-lab-686`, 2026-11-06, settled
 post-load extraction): Main `252` non-allowlisted diffs before
@@ -91,6 +97,21 @@ presence mismatches; zero stale entries. The design quote rows
 (`Số đêm 2`, `Tổng tiền 1.800.000 đ`) carry no entry: the fresh
 lab renders the empty quote state (`book-quote-empty`), a
 flow-state divergence reported on #496 rather than exempted.
+
+Lab evidence (isolated `hotel-lab-693`, 2026-11-06, `vi` locale,
+Chromium, `--workers=1`): Stay `243` non-allowlisted diffs before
+wiring (design 74 nodes, app 179 nodes: 69 design-side `x-dc`
+subtree nodes plus 174 app-side shell/PrimeVue/head extras, zero
+text/colour/font/visibility diffs — the accepted S1 shape
+divergence; served title already `Nhận phòng` via the #495 S2
+follow-through) → `225` after DD-10..DD-13 (hotel name,
+business-date strongs, three example list rows, all four
+room-option select subtrees); all remaining diffs `node`
+presence mismatches; zero stale entries. The design list headings
+carry no entry (no counts — static copy pinned by the fact-level
+decided headings); app-side list rows carry no entry yet (fresh
+lab renders empty DataTables — flow-state, rows proposed when a
+run with stay data shows them).
 
 ## 4. Eligible categories
 
