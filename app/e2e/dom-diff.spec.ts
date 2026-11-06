@@ -12,7 +12,8 @@
 // - Fixture gate tests (criteria 1-4): both pages open fixture DOMs via
 //   `setContent`, the gate extracts a full tree from each live Chromium
 //   page and diffs them. A matching pair passes with zero diffs; each
-//   drift class (tag, text, color, background, font, visibility, order)
+//   drift class (tag, exact text incl. redundant characters, color,
+//   background, font, line-height, layout, visibility, order)
 //   fails with a diff naming the node path. Colors resolve through
 //   computed styles even when applied via stylesheet.
 // - Allowlist test (criterion 3): a dynamic node whose text differs on
@@ -73,6 +74,19 @@ const MATCHING_BODY =
   '<p>Today: <span>static</span></p>' +
   '<button type="button" style="background:#0f766e;color:#ffffff">Refresh</button>' +
   '<button type="button" style="background:#0f766e;color:#ffffff">Reload</button>';
+
+// Full-inventory defaults (#515): fixture-built nodes carry the same
+// computed typography/layout values on both sides, so the drift
+// tests below exercise only the field under test. Live-extracted
+// trees always carry real computed values from `collectDomTree`.
+const LAYOUT_DEFAULTS = {
+  lineHeight: 'normal',
+  display: 'block',
+  flexDirection: 'row',
+  gap: 'normal normal',
+  padding: '0px 0px 0px 0px',
+  margin: '0px 0px 0px 0px',
+} as const;
 
 // Opens both pages like the gate does (design source on its own page,
 // app DOM on another) and extracts a full tree from each live page.
@@ -187,21 +201,102 @@ test.describe('each drift class fails with a path-named diff (criterion 2)', () 
     const diffs = diffDomTrees(design, actual);
     // The span inherits the changed size/weight, so it diffs too: the
     // gate compares computed values per node, inheritance included.
+    // The paragraph's UA-stylesheet margin (`1em`) resolves against
+    // the font size, so the deeper box-model inventory reports the
+    // resulting margin shift as well.
     expect(diffs.map((diff) => `${diff.path} ${diff.field}`).sort()).toEqual([
       '/html[0]/body[0]/div[0]/p[0] fontSize',
       '/html[0]/body[0]/div[0]/p[0] fontWeight',
+      '/html[0]/body[0]/div[0]/p[0] margin',
       '/html[0]/body[0]/div[0]/p[0]/span[0] fontSize',
       '/html[0]/body[0]/div[0]/p[0]/span[0] fontWeight',
     ]);
   });
 
-  test('visibility drift fails with a visible diff', async ({ browser }) => {
+  test('redundant characters fail with an exact-text diff', async ({ browser }) => {
+    // The "gate green but eyes red" class from #515: a stray
+    // character the eye catches must fail the text gate.
+    const { design, actual } = await extractPair(
+      browser,
+      fixtureDom(MATCHING_BODY),
+      fixtureDom(MATCHING_BODY.replace('<h1>Desk board</h1>', '<h1>Desk board *</h1>')),
+    );
+    expectSingleFieldDiff(design, actual, '/html[0]/body[0]/div[0]/h1[0]', 'text');
+    const diffs = diffDomTrees(design, actual);
+    expect(diffs[0].expected).toBe('"Desk board"');
+    expect(diffs[0].actual).toBe('"Desk board *"');
+  });
+
+  test('line-height drift fails with lineHeight diffs', async ({ browser }) => {
+    const { design, actual } = await extractPair(
+      browser,
+      fixtureDom(MATCHING_BODY),
+      fixtureDom(MATCHING_BODY.replace('<p>Today:', '<p style="line-height:32px">Today:')),
+    );
+    const diffs = diffDomTrees(design, actual);
+    // The span inherits the changed line-height, so it diffs too: the
+    // gate compares computed values per node, inheritance included.
+    expect(diffs.map((diff) => `${diff.path} ${diff.field}`).sort()).toEqual([
+      '/html[0]/body[0]/div[0]/p[0] lineHeight',
+      '/html[0]/body[0]/div[0]/p[0]/span[0] lineHeight',
+    ]);
+  });
+
+  test('display drift fails with display and flex-direction diffs', async ({ browser }) => {
+    const box = '<div><span>box</span></div>';
+    const { design, actual } = await extractPair(
+      browser,
+      fixtureDom(`${MATCHING_BODY}${box}`),
+      fixtureDom(`${MATCHING_BODY}${box.replace('<div>', '<div style="display:flex;flex-direction:column">')}`),
+    );
+    const diffs = diffDomTrees(design, actual);
+    // The container's display and flex-direction diff; the child
+    // span is blockified into a flex item, so its computed display
+    // diffs too — the inventory records what the engine computes,
+    // not what the markup declares.
+    expect(diffs.map((diff) => `${diff.path} ${diff.field}`).sort()).toEqual([
+      '/html[0]/body[0]/div[0]/div[0] display',
+      '/html[0]/body[0]/div[0]/div[0] flexDirection',
+      '/html[0]/body[0]/div[0]/div[0]/span[0] display',
+    ]);
+  });
+
+  test('box-model drift fails with gap, padding, and margin diffs', async ({ browser }) => {
+    const box =
+      '<div style="display:flex;flex-direction:column;gap:8px;padding:4px;margin:2px"><span>a</span><span>b</span></div>';
+    const drifted = box
+      .replace('gap:8px', 'gap:16px')
+      .replace('padding:4px', 'padding:12px')
+      .replace('margin:2px', 'margin:6px');
+    const { design, actual } = await extractPair(
+      browser,
+      fixtureDom(`${MATCHING_BODY}${box}`),
+      fixtureDom(`${MATCHING_BODY}${drifted}`),
+    );
+    const diffs = diffDomTrees(design, actual);
+    // Only the container diffs: gap, padding, and margin do not
+    // inherit, so the child spans stay clean.
+    expect(diffs.map((diff) => `${diff.path} ${diff.field}`).sort()).toEqual([
+      '/html[0]/body[0]/div[0]/div[0] gap',
+      '/html[0]/body[0]/div[0]/div[0] margin',
+      '/html[0]/body[0]/div[0]/div[0] padding',
+    ]);
+  });
+
+  test('visibility drift fails with visible and display diffs', async ({ browser }) => {
     const { design, actual } = await extractPair(
       browser,
       fixtureDom(MATCHING_BODY),
       fixtureDom(MATCHING_BODY.replace('<h1>Desk board</h1>', '<h1 style="display:none">Desk board</h1>')),
     );
-    expectSingleFieldDiff(design, actual, '/html[0]/body[0]/div[0]/h1[0]', 'visible');
+    // Hiding the node flips both the computed display and the
+    // visibility flag: the deeper inventory names the display change
+    // behind the visibility change.
+    const diffs = diffDomTrees(design, actual);
+    expect(diffs.map((diff) => `${diff.path} ${diff.field}`).sort()).toEqual([
+      '/html[0]/body[0]/div[0]/h1[0] display',
+      '/html[0]/body[0]/div[0]/h1[0] visible',
+    ]);
   });
 
   test('order drift fails with path-named diffs', async ({ browser }) => {
@@ -258,6 +353,7 @@ test.describe('allowlist exempts owner-approved dynamic data (criterion 3)', () 
       fontSize: '16px',
       fontWeight: '400',
       visible: true,
+      ...LAYOUT_DEFAULTS,
     });
     const design: DomNode[] = [
       node('/html[0]/body[0]/x-dc[0]/div[0]/div[1]/div[0]/div[1]', 'Thứ Tư, 28/10/2026'),
@@ -317,6 +413,7 @@ test.describe('allowlist exempts owner-approved dynamic data (criterion 3)', () 
       fontSize: '16px',
       fontWeight: '400',
       visible: true,
+      ...LAYOUT_DEFAULTS,
     });
     const design: DomNode[] = [
       bookNode('/html[0]/body[0]/x-dc[0]/div[0]/div[0]/strong[0]', 'strong', 'Khách sạn Hoa Mai'),
@@ -380,6 +477,7 @@ test.describe('allowlist exempts owner-approved dynamic data (criterion 3)', () 
       fontSize: '16px',
       fontWeight: '400',
       visible: true,
+      ...LAYOUT_DEFAULTS,
     });
     const design: DomNode[] = [
       stayNode('/html[0]/body[0]/x-dc[0]/div[0]/div[0]/strong[0]', 'strong', 'Khách sạn Hoa Mai'),
@@ -477,6 +575,7 @@ test.describe('allowlist exempts owner-approved dynamic data (criterion 3)', () 
       fontSize: '16px',
       fontWeight: '400',
       visible: true,
+      ...LAYOUT_DEFAULTS,
     });
     const design: DomNode[] = [
       folioNode('/html[0]/body[0]/x-dc[0]/div[0]/div[0]/strong[0]', 'strong', 'Khách sạn Hoa Mai'),
@@ -566,6 +665,7 @@ test.describe('allowlist exempts owner-approved dynamic data (criterion 3)', () 
       fontSize: '16px',
       fontWeight: '400',
       visible: true,
+      ...LAYOUT_DEFAULTS,
     });
     const design: DomNode[] = [
       roomsNode('/html[0]/body[0]/x-dc[0]/div[0]/div[0]/strong[0]', 'strong', 'Khách sạn Hoa Mai'),
