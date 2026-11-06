@@ -101,6 +101,16 @@ describe('R1 shell/nav design values (Refs #518)', () => {
   it('centres the content column at the design width', () => {
     expect(ruleBody('#shell .shell-column')).toContain('max-width: 1200px');
   });
+
+  it('keeps focus visible on the header sign-out button', () => {
+    // NFR-DSP-2 on the teal bar (Refs #518): the shell default
+    // teal ring would vanish on #0F4C47, so the sign-out button
+    // takes the white ring like the other header controls.
+    expect(appSource).toContain('[data-testid="shell-signout"]:focus-visible');
+    const override = /([^{}]*shell-signout[^:{\n]*:focus-visible[^{}]*)\{([^}]*)\}/.exec(appSource);
+    expect(override, 'missing sign-out focus override').not.toBeNull();
+    expect((override as RegExpExecArray)[2]).toContain('outline-color: #FFFFFF');
+  });
 });
 
 describe('R1 shell/nav render contract (Refs #518)', () => {

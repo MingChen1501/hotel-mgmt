@@ -797,12 +797,14 @@ export default defineComponent({
   }
 
   /* Focus stays visible on the teal bar (NFR-DSP-2): the shell
-     default teal ring would vanish on #0F4C47, so header
-     interactive elements take the white ring instead — except the
-     inverted active tab, where the teal ring reads on the white
-     pill (Refs #458). */
+     default teal ring would vanish on #0F4C47, so every header
+     interactive element — nav tabs, locale pill buttons, and the
+     header sign-out button — takes the white ring instead, except
+     the inverted active tab, where the teal ring reads on the
+     white pill (Refs #458, Refs #518). */
   #shell .shell-nav .shell-nav-item:not(.shell-nav-active):focus-visible,
-  #shell .shell-locale .p-button:focus-visible {
+  #shell .shell-locale .p-button:focus-visible,
+  #shell .shell-nav [data-testid="shell-signout"]:focus-visible {
     outline-color: #FFFFFF;
   }
 
