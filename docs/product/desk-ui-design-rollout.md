@@ -520,6 +520,11 @@ design's weekday long form, so all three lines read identically;
 the Main design wins per the section 6 conflict rule. The
 surrounding line (label, `Tải lại` button) is untouched.
 
+UI-contract delta (T2): nil — the rollout-wide contract in
+section 4 holds verbatim (same shell, nav, tokens, plain-words
+states, and print rules; formatting the date value adds no
+layout, component, or token change).
+
 Out: implementation of the format change (downstream `dev`
 issue/PR, which updates the three render sites plus the ISO
 display assertions such as `DeskView.test.ts:240`); S8 token
