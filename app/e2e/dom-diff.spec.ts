@@ -25,9 +25,11 @@
 //   file bytes and the running desk UI route for each of the six
 //   screens, extracts both full trees, and proves the output is
 //   text-only and deterministic across runs. It does NOT assert zero
-//   diffs: full parity and the approved allowlist data list are
-//   separate issues, so the live run reports the diff count instead of
-//   gating on it.
+//   diffs: full structural parity stays an architecture decision
+//   (Refs #495 S1, PrimeVue-first shell vs design-literal markup),
+//   and owner-approved dynamic data is exempted through the
+//   per-screen allowlist (Refs #495 S7) — so the live run reports
+//   the remaining diff count instead of gating on it.
 // - No screenshots, video, or snapshots anywhere in this gate (a CI
 //   guard greps the gate sources for those APIs); the lab-state matrix
 //   (Onboarding redirect mock) mirrors `design-facts.spec.ts`.
@@ -40,6 +42,7 @@ import {
   EMPTY_ALLOWLIST,
   formatDomDiffs,
   isAllowlisted,
+  MAIN_SCREEN_ALLOWLIST,
   serializeDomTree,
   type DomDiffAllowlist,
   type DomNode,
@@ -232,6 +235,63 @@ test.describe('allowlist exempts owner-approved dynamic data (criterion 3)', () 
       unusedAllowlistEntries(design, actual, { skipPaths: ['/html[0]/body[0]/div[0]/p[9]'] }),
     ).toEqual(['/html[0]/body[0]/div[0]/p[9]']);
   });
+
+  // Refs #495 S7: the Main-screen allowlist carries exactly the
+  // owner-approved dynamic-data paths (DD-01..DD-07 in
+  // docs/testing/dom-diff-allowlist.md section 3) — no more, no
+  // fewer — so wiring drift fails here instead of silently
+  // re-noising the gate.
+  test('MAIN_SCREEN_ALLOWLIST exempts the approved Main dynamic paths only', () => {
+    const node = (path: string, text: string): DomNode => ({
+      path,
+      tag: path.endsWith('strong[0]') ? 'strong' : 'div',
+      text,
+      color: '#111111',
+      background: '#ffffff',
+      fontFamily: 'Arial',
+      fontSize: '16px',
+      fontWeight: '400',
+      visible: true,
+    });
+    const design: DomNode[] = [
+      node('/html[0]/body[0]/x-dc[0]/div[0]/div[1]/div[0]/div[1]', 'Thứ Tư, 28/10/2026'),
+      node('/html[0]/body[0]/x-dc[0]/div[0]/div[0]/strong[0]', 'Khách sạn Hoa Mai'),
+      node('/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[0]/h3[0]', 'Khách đến hôm nay (2)'),
+      node('/html[0]/body[0]/x-dc[0]/div[0]/div[9]/p[0]', 'static copy'),
+    ];
+    const actual: DomNode[] = [
+      node(
+        '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/p[0]/strong[0]',
+        '2026-11-06',
+      ),
+      node('/html[0]/body[0]/div[0]/div[0]/div[0]/nav[0]/span[0]', 'Lab Parity Hotel'),
+      node(
+        '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/div[1]/section[0]/h3[0]',
+        'Đang có khách (0)',
+      ),
+      node('/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/p[1]', 'changed copy'),
+    ];
+    expect(MAIN_SCREEN_ALLOWLIST.skipPaths).toHaveLength(22);
+    const withoutAllowlist = diffDomTrees(design, actual);
+    expect(withoutAllowlist.length).toBeGreaterThan(1);
+    const diffs = diffDomTrees(design, actual, MAIN_SCREEN_ALLOWLIST);
+    expect(
+      diffs,
+      `expected only the non-allowlisted nodes, got:\n${formatDomDiffs(diffs)}`,
+    ).toHaveLength(2);
+    expect(diffs.map((diff) => diff.path).sort()).toEqual([
+      '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/p[1]',
+      '/html[0]/body[0]/x-dc[0]/div[0]/div[9]/p[0]',
+    ]);
+    // Stale-entry detection still sees every wired path: the
+    // fixture covers the DD-01/DD-02 samples (not reported stale)
+    // while the uncovered DD-04 in-house heading is reported, proving
+    // the hook tracks the wired strings exactly.
+    const unused = unusedAllowlistEntries(design, actual, MAIN_SCREEN_ALLOWLIST);
+    expect(unused).not.toContain('/html[0]/body[0]/x-dc[0]/div[0]/div[1]/div[0]/div[1]');
+    expect(unused).not.toContain('/html[0]/body[0]/div[0]/div[0]/div[0]/nav[0]/span[0]');
+    expect(unused).toContain('/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[1]/h3[0]');
+  });
 });
 
 test.describe('output is deterministic text only (criteria 2 and 4)', () => {
@@ -311,6 +371,12 @@ test.describe('live extraction from design HTML and the running desk UI (criteri
       await signInThroughGate(page);
       await page.goto(entry.route === '/' ? '/app/' : `/app${entry.route}`);
       await expect(page.getByTestId(entry.viewHook)).toBeVisible();
+      if (entry.screen === 'Main') {
+        // The room-map lanes (DD-07 allowlist paths) render only
+        // once the dashboard load clears; extracting earlier would
+        // race the load and spam stale-entry warnings.
+        await expect(page.getByTestId('desk-roommap')).toBeVisible({ timeout: 30000 });
+      }
 
       const designPage = await page.context().newPage();
       try {
@@ -325,10 +391,13 @@ test.describe('live extraction from design HTML and the running desk UI (criteri
         expect(second).toBe(serializeDomTree(actual));
         // Text-only output (criteria 2 and 5): the diff renders as a
         // string, never binary. Full parity is NOT asserted here —
-        // the approved allowlist data list is a separate issue — so
-        // the run reports the diff count for that follow-up instead
-        // of gating on it.
-        const diffs = diffDomTrees(design, actual);
+        // owner-approved dynamic data is exempted through the
+        // per-screen allowlist (Refs #495 S7) while the accepted
+        // structural divergence (PrimeVue shell vs design-literal
+        // markup) still reports — so the run reports the remaining
+        // diff count for that follow-up instead of gating on it.
+        const allowlist = entry.screen === 'Main' ? MAIN_SCREEN_ALLOWLIST : EMPTY_ALLOWLIST;
+        const diffs = diffDomTrees(design, actual, allowlist);
         const formatted = formatDomDiffs(diffs);
         expect(typeof formatted).toBe('string');
         test.info().annotations.push({

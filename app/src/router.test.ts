@@ -134,3 +134,66 @@ describe('migration shell router', () => {
     },
   );
 });
+
+// Per-route document titles (Refs #495 S2): the six design screens
+// carry their board title in the route meta so the shell can apply
+// it as the served document title; print, admin, and the
+// placeholder stay on the default title.
+describe('per-route document titles', () => {
+  const expected: Record<string, { key: string; fallback: string }> = {
+    desk: { key: 'desk.shell.doc_title_desk', fallback: 'Desk board' },
+    book: { key: 'desk.shell.doc_title_book', fallback: 'Book a room' },
+    stay: { key: 'desk.shell.doc_title_stay', fallback: 'Check-in / check-out' },
+    onboarding: { key: 'desk.shell.doc_title_onboarding', fallback: 'First-time setup' },
+    rooms: { key: 'desk.shell.doc_title_rooms', fallback: 'Room map' },
+    folio: { key: 'desk.shell.doc_title_folio', fallback: 'Folio' },
+  };
+
+  it('carries the design-board title meta on the six design screens', () => {
+    const router = createAppRouter();
+    const routes = router.getRoutes();
+    expect(Object.keys(expected)).toHaveLength(6);
+    for (const [name, title] of Object.entries(expected)) {
+      const route = routes.find((candidate) => candidate.name === name);
+      expect(route, `route ${name} is registered`).toBeDefined();
+      expect(route?.meta.docTitleKey).toBe(title.key);
+      expect(route?.meta.docTitleFallback).toBe(title.fallback);
+    }
+  });
+
+  it('leaves print, admin, and the placeholder on the default title', () => {
+    const router = createAppRouter();
+    const routes = router.getRoutes();
+    for (const name of ['print', 'admin', 'placeholder']) {
+      const route = routes.find((candidate) => candidate.name === name);
+      expect(route, `route ${name} is registered`).toBeDefined();
+      expect(route?.meta.docTitleKey).toBeUndefined();
+      expect(route?.meta.docTitleFallback).toBeUndefined();
+    }
+  });
+
+  it('every title key resolves in both catalogue locales', async () => {
+    const en = (await import('../../messages/en.json')).default as {
+      messages: Record<string, string>;
+    };
+    const vi = (await import('../../messages/vi.json')).default as {
+      messages: Record<string, string>;
+    };
+    // The served vi titles match the six design-board <title> values
+    // plus the default (see docs/design/*.dc.html).
+    const viTitles: Record<string, string> = {
+      desk: 'Bảng lễ tân',
+      book: 'Đặt phòng',
+      stay: 'Nhận phòng',
+      onboarding: 'Thiết lập lần đầu',
+      rooms: 'Sơ đồ phòng',
+      folio: 'Hoá đơn',
+    };
+    for (const [name, title] of Object.entries(expected)) {
+      expect(en.messages[title.key], `en ${title.key}`).toBe(title.fallback);
+      expect(vi.messages[title.key], `vi ${title.key}`).toBe(viTitles[name]);
+    }
+    expect(en.messages['desk.shell.doc_title_default']).toBe('Hotel Management — Desk');
+    expect(vi.messages['desk.shell.doc_title_default']).toBe('Quản lý khách sạn — Lễ tân');
+  });
+});

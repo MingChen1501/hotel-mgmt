@@ -168,6 +168,41 @@ placeholder wording against the J1/S3 wireframe hint text, and
 the Rooms-map action placement against the J2 inline-action
 rule.
 
+### 6.1 Main parity-sweep resolutions (Refs #495)
+
+The 2026-11-06 full-tree sweep of the Main board vs
+`docs/design/Main.dc.html` (253 diffs, isolated lab) closed with
+owner-delegated product decisions on every residual diff class;
+no design intent was guessed. The desk-side follow-through
+(per-route titles S2, dynamic-data allowlist S7) lands in the
+#495 PR; S8/S9 file as separate follow-ups.
+
+- S1 tree shape — ACCEPT PrimeVue shell (ADR-0003
+  PrimeVue-first stands). The design renders the board in a
+  custom `<x-dc>` wrapper with flat markup; the app renders the
+  Vue shell plus PrimeVue components. Full-tree literalism is
+  rejected: the gates compare facts plus decided content, not
+  markup.
+- S2 document title — APPROVED per-route titles (Main
+  `Bảng lễ tân`, Book `Đặt phòng`, Stay `Nhận phòng`, Folio
+  `Hoá đơn`, Rooms `Sơ đồ phòng`, Onboarding `Thiết lập lần
+  đầu`); the single static SPA title cannot match six boards.
+- S3 refresh copy — KEEP `Tải lại`. The Main board (`Làm
+  mới`) is the outlier: the Rooms board agrees with the app,
+  and the key is shared across four screens' decided content.
+- S5/S6 vocabulary — KEEP app copy (`Ngưng bán`,
+  `Sạch nhưng chưa kiểm tra`): consistent across screens and
+  pinned by decided content, while the two design files
+  disagree with each other. Owner may override both wordings
+  in one copy call covering #495 + #499.
+- S7 dynamic data — allowlist entries DD-01..DD-07 approved
+  as patterns (dates, guest names/codes, counts, hotel name);
+  wired into the gate for Main, other screens on their own
+  sweeps. Owner veto welcome.
+- S8 `tokens.primary` residual and S9 business-date display
+  format — separate follow-up issues (button fix #471 landed;
+  display formatting touches the shared display+API ref).
+
 ## 7. Catalogue and locale rule
 
 - Single source of truth stays `messages/` (`messages/README.md`):
