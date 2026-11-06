@@ -47,10 +47,12 @@ the mechanism; the approved data list lives here:
   with no approved entries. The Main screen wires its section 3
   entries through `MAIN_SCREEN_ALLOWLIST`, the Book screen through
   `BOOK_SCREEN_ALLOWLIST`, the Stay screen through
-  `STAY_SCREEN_ALLOWLIST`, and the Folio screen through
-  `FOLIO_SCREEN_ALLOWLIST`; the other two screens
-  still run with no exemptions until their entries are approved
-  and wired the same way.
+  `STAY_SCREEN_ALLOWLIST`, the Folio screen through
+  `FOLIO_SCREEN_ALLOWLIST`, and the Rooms screen through
+  `ROOMS_SCREEN_ALLOWLIST`; Onboarding still runs with no
+  exemptions (Refs #500: no dynamic-data nodes surface on that
+  screen — every diff is the accepted shape divergence, so there
+  is nothing to approve or wire).
 
 ## 3. Approved entries
 
@@ -155,6 +157,25 @@ stale entries. The static board copy around the exempted values
 residuals. App-side room cards carry no entry yet (fresh-lab
 cards for seed rooms 101/102 are flow-state, rows proposed when
 a run with richer room data shows them).
+
+Lab evidence (isolated `hotel-lab-699`, 2026-11-06, `vi` locale,
+Chromium, `--workers=1`): Onboarding `54` non-allowlisted diffs
+with `EMPTY_ALLOWLIST` (design 18 nodes, app 46 nodes: 13
+design-side `x-dc` subtree nodes plus 41 app-side extras — the 2
+SPA head tags (`meta`, `link`) and 39 shell/PrimeVue nodes — zero
+text/colour/font/visibility diffs on shared paths —
+the accepted S1 shape divergence; served title already
+`Thiết lập lần đầu` via the #495 S2 follow-through, verified
+live, byte-identical to the design `<title>` so no title diff
+surfaces). No wiring follows: no dynamic-data nodes surface on
+either side (Refs #500 O6 — the only example name lives in the
+input `placeholder` attribute, which the gate never extracts,
+and the step counter is flow-state plus a format divergence
+reported, not exempted), so Onboarding keeps `EMPTY_ALLOWLIST`
+with zero stale entries trivially. The static copy around the
+shape divergence (header, progress line, step naming, helper,
+placeholder example) carries no entry — product-copy observations
+reported on #500, not gate exemptions.
 
 ## 4. Eligible categories
 

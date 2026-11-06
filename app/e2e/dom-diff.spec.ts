@@ -28,7 +28,9 @@
 //   diffs: full structural parity stays an architecture decision
 //   (Refs #495 S1, PrimeVue-first shell vs design-literal markup),
 //   and owner-approved dynamic data is exempted through the
-//   per-screen allowlist (Refs #495 S7, #496, #497, #498, #499) — so the live run reports
+//   per-screen allowlist (Refs #495 S7, #496, #497, #498, #499; #500
+//   confirms Onboarding carries no dynamic-data nodes and stays on
+//   EMPTY_ALLOWLIST) — so the live run reports
 //   the remaining diff count instead of gating on it.
 // - No screenshots, video, or snapshots anywhere in this gate (a CI
 //   guard greps the gate sources for those APIs); the lab-state matrix

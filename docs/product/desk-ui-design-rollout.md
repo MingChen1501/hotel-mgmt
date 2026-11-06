@@ -397,6 +397,70 @@ conformance).
   Rooms board agrees with the app (unlike the Main-board
   outlier in #495 S3).
 
+### 6.6 Onboarding parity-sweep resolutions (Refs #500)
+
+The 2026-11-06 full-tree sweep of the Onboarding board vs
+`docs/design/Onboarding.dc.html` (54 diffs, isolated lab
+`hotel-lab-699`, `vi` locale) closed with no code change to the
+view itself and no allowlist wiring; no design intent was
+guessed. The served title already matches the board
+(`Thiết lập lần đầu`, verified live) via the #495 S2
+follow-through — byte-identical to the design `<title>`, so no
+title diff surfaces — and the fact-level gate passes 2/2
+(matching app DOM, live shell conformance; the Onboarding
+screen carries no decided content, so the decided block is
+skipped by design — live shell conformance, same note as
+Folio F4).
+
+- O1 tree shape — same accepted S1 as Main: 13 design-side
+  `x-dc` subtree nodes plus 41 app-side extras (the 2 SPA head
+  tags plus 39 shell/PrimeVue nodes), zero text/colour/font/
+  visibility diffs on shared paths. Full-tree literalism stays
+  rejected.
+- O2 document title — already closed (#495 S2), verified live
+  on `/app/onboarding` (`Thiết lập lần đầu`).
+- O3 wizard scope — REPORTED, not changed. The design shows
+  step 1 as `Thông tin khách sạn` under the header
+  `Thiết lập khách sạn` with the progress line
+  `Bước 1 / 4 · Thông tin khách sạn`; the app runs step 1 as
+  `Đặt tên khách sạn` (step 2 carries `Thông tin khách sạn`)
+  under the h1 `Thiết lập lần đầu` — which matches the
+  design's own `<title>` — with the progress line
+  `Bước {current} trên {total}` (Refs #425 step 1, #438 steps
+  2–4). Step naming, header, and progress format are
+  user-visible copy/flow: product call.
+- O4 helper and placeholder copy — REPORTED, not changed. The
+  design helper reads `Tên này hiện trên hoá đơn và biên nhận.`
+  while the app renders
+  `Tên này sẽ hiển thị trên hóa đơn và biên lai.`; the design
+  placeholder example is `Ví dụ: Khách sạn Hoa Mai` while the
+  app renders `Ví dụ: Khách sạn Sunrise Riverside`. The app
+  wording is consistent catalogue-wide (`hóa đơn` / `biên lai`
+  across print, stay, billing, and onboarding keys — the
+  design's `hoá đơn` / `biên nhận` is the outlier, same
+  rationale as #495 S3), and the app cannot reuse the
+  design's example name (the boot-seed `Hoa Mai` placeholder
+  is reserved, Refs #456). User-visible copy: product call.
+- O5 app extras — KEPT with justification (same precedent as
+  the Main deliberately kept extras, Book B4, Stay T4, Folio
+  F4, and Rooms R4): the h1+intro, the shell nav, the progress
+  bar widget, the disabled step-1 Back button, steps 2–4 with
+  their forms, and the loading/error/retry/noscript states are
+  flow states the static step-1 board cannot show. Extras
+  render no decided copy (no Onboarding decided content
+  exists).
+- O6 dynamic data — no entries. No dynamic-data nodes surface
+  on either side: every one of the 54 diffs is a `node`
+  presence mismatch, the only example name lives in the input
+  `placeholder` attribute (which the gate never extracts —
+  text content only), and the step counter is flow-state plus
+  the O3 format divergence, reported rather than exempted
+  (same rule as the Book quote rows in #496 B5). Onboarding
+  keeps `EMPTY_ALLOWLIST` with zero stale entries trivially;
+  entries are proposed only if a future run with wizard
+  actions shows value-bearing dynamic nodes (section 5 of
+  the allowlist doc).
+
 ## 7. Catalogue and locale rule
 
 - Single source of truth stays `messages/` (`messages/README.md`):
