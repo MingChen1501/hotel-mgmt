@@ -1527,5 +1527,200 @@ the steps 2–4 implementation PR must create it.
   issue-body acceptance only through the `AC-DSK-n`
   ids above.
 
+## 12. Business-date display format (Refs #503)
+
+Requirements delta recording the #495 S9 follow-up decision:
+the desk renders the business date in the design's locale
+long-weekday form (Main design `Thứ Tư, 28/10/2026`) while
+the API canonical form stays ISO `YYYY-MM-DD`. The change
+is display-only: no API, contract, validation, stored-value,
+or e2e-harness change. Scope and done-conditions live with
+`product-owner` (issue #503 body); the UI contract section
+this T2 change needs lives with `product-owner` (section
+12.6 names the gap per the UI contract gap rule); guard
+mapping lives with `qa-lead`. This section records only the
+requirements delta the T2 spec gate requires: the decision
+with rationale (section 12.1), the FR delta (section 12.3),
+and the traceability inputs (section 12.5).
+
+### 12.1 Decision: display-only (not display+API)
+
+The business-date header on the desk screens changes
+presentation only. The canonical `businessDate` stays ISO
+`YYYY-MM-DD` everywhere it is stored or transmitted.
+
+Rationale:
+
+- The canonical form is load-bearing across the stack.
+  `businessDate` is `{"type": "string", "format": "date"}`
+  (described as `YYYY-MM-DD`) in
+  `contracts/http/DailySheet.json`,
+  `contracts/http/ListArrivalsDepartures.json`,
+  `contracts/http/AssignRoom.json`, and
+  `contracts/http/RunDayClose.json` (mirrored in
+  `contracts/openapi.yaml` and `frontend/docs/openapi.yaml`).
+  Server validation refuses anything else
+  (`messages/en.json:39` — "businessDate must be a
+  YYYY-MM-DD date"). The e2e harness builds ISO dates
+  (`script/e2e-desk-loop.sh`), and day-close totals key on
+  the business date (`FR-BIL-6`, `BR-26`). A display+API
+  change would ripple across services, validation messages,
+  the harness, and API consumers for a presentation need.
+- The design gap is presentation-only:
+  `docs/design/Main.dc.html` shows `Thứ Tư, 28/10/2026`
+  where the app renders the raw `{{ businessDate }}` ISO
+  value.
+- The existing NFRs already point this way: `NFR-I18N-1`
+  requires dates to follow the active locale rules, and
+  `NFR-TZ-1` requires the displayed date to match the
+  hotel's local calendar day. Formatting in the view layer
+  satisfies both without touching values.
+
+Affected screens and keys (each renders the same catalogue
+label plus the raw ISO value today):
+
+- Desk board — `app/src/views/DeskView.vue:9`
+  (`data-testid="desk-business-date"`).
+- Stay — `app/src/views/StayView.vue:14`
+  (`data-testid="stay-business-date"`).
+- Rooms map — `app/src/views/RoomsView.vue:8`
+  (`data-testid="rooms-business-date"`).
+- Catalogue label key `desk.today.business_date`
+  (`messages/en.json:347`, `messages/vi.json:347`) is
+  unchanged in both locales. Formatting uses the platform
+  locale formatter, not catalogue strings, so no new
+  catalogue keys land and `NFR-DSK-1` coverage is
+  unaffected.
+
+Out of the display change: request/response payloads,
+validation messages, stored values, e2e and shell scripts,
+print documents (no business-date line there), the
+dom-diff allowlist patterns (DD-01..DD-07 — the
+frozen-vs-live date exemption stands regardless of
+format), and per-card arrival/checkout notes (for example
+`Arriving ${ISO}` in `RoomsView.test.ts:231` and
+`until 02/11` in `DeskView.test.ts` — API-echoed values
+that keep today's rendering).
+
+### 12.2 Explicit no-change statements
+
+- Every MVP requirement in sections 1 and 2 is unchanged
+  by this change, and every item in sections 7 through 11
+  keeps its wording and target. The desk loop (book,
+  check-in, charge, pay, check-out, print) behaves exactly
+  as specified; only the three header strongs above change
+  presentation.
+- Refusal semantics are unchanged: `FR-RTE-4`,
+  `FR-CUS-1`, and `FR-BIL-7` refusals still fire on
+  exactly the same conditions.
+- `FR-BIL-6` day-close, `BR-26`, `NFR-TZ-1`,
+  `NFR-I18N-1`, and `NFR-DSK-1` hold unchanged: totals
+  still key on the ISO business date, the displayed date
+  still matches the hotel's local calendar day, and no new
+  user-visible strings land.
+- One new data-dictionary entry (Business date, a
+  previously undefined term referenced by `FR-BIL-6`) and
+  one new business rule (BR-43, the canonical-vs-display
+  boundary) land with this section; every other entry and
+  rule keeps its wording.
+- The section 4 traceability table and its coverage count
+  are unchanged: this section adds no MVP capability, so
+  the 40 mapped capabilities stand. The handoff table
+  below (section 12.5) is separate and does not alter that
+  count.
+
+### 12.3 Presentation-scoped functional requirement
+
+Ids continue the `DSK` (desk rollout) namespace from
+sections 10 and 11.
+
+FR-DSK-11 — Business-date locale display (display-only).
+Staff see the business date in the design's long-weekday
+form on every screen that shows it; every value behind
+the screens stays ISO.
+Given the hotel's local business date in canonical
+`YYYY-MM-DD` form; when any of the Desk, Stay, or Rooms
+screens renders the business-date header; then the shown
+value is the locale long-weekday form derived from the
+canonical date and never a re-parsed display string: VI
+shows weekday long plus `dd/MM/yyyy` (for 2026-10-28:
+`Thứ Tư, 28/10/2026`, matching
+`docs/design/Main.dc.html` exactly), EN shows weekday
+long plus `MM/dd/yyyy` (for 2026-10-28: `Wednesday,
+10/28/2026`).
+Given the same render; when the screen calls any API;
+then every sent `businessDate` stays `YYYY-MM-DD`, every
+validation message, stored value, and printed document
+keeps the ISO form, and no consumer parses the displayed
+string (`BR-43` holds).
+
+### 12.4 Non-functional requirements delta: no-change statement
+
+No new NFR is added by this change. The existing NFRs
+cover the display format as stated:
+
+- Locale date rules (`NFR-I18N-1` holds): the weekday
+  form follows the active locale, with the VI form above
+  as the primary and the EN form as the fallback-locale
+  equivalent.
+- Timezone rendering (`NFR-TZ-1` holds): the formatted
+  value derives from the canonical date on the hotel's
+  local calendar day, including across daylight-saving
+  changes where applicable.
+- Catalogue coverage (`NFR-DSK-1` holds): no new strings
+  land, `script/catalogue-coverage-check.sh` stays green,
+  and the configured hotel name rule is untouched.
+
+### 12.5 Traceability handoff for `qa-lead`
+
+No new MVP capability is added, so the row traces to the
+#503 issue-body acceptance. The existing display pin is
+named `file:line`; where no guard exists, the row names
+the missing guard explicitly and the dev follow-up
+implementation PR must create it.
+
+| Item | Guard (existing on disk; follow-up extends or creates) | Handoff note for `qa-lead` |
+|---|---|---|
+| FR-DSK-11 display | Existing display pin the dev PR updates (display only): `app/src/views/DeskView.test.ts:240` (strong text equals `localBusinessDate()` ISO). No display pin exists for the Stay or Rooms header strongs (their suites assert ISO only on API-echoed card notes, e.g. `RoomsView.test.ts:231`, which stay ISO) | Guard renders each of the three screens in both locales and checks the header strong shows the section 12.3 form for a fixed date (VI `Thứ Tư, 28/10/2026`, EN `Wednesday, 10/28/2026`); card-note ISO assertions stay untouched |
+| FR-DSK-11 payloads unchanged | Standing ISO assertions the dev PR must keep green: request-body pins `app/src/views/DeskView.test.ts:54` (`ListArrivalsDepartures` body), `:513`, `:529`, `:576` (payload echoes), `:760`, `:781`, `:832` (sheet payloads); `StayView.test.ts:64` (fixed `2026-10-26` body), `:142` (truthy body); contract guards `contracts/http/*.json` (`format: date`) | Any red here means the boundary leaked: the dev PR changes display assertions only, never payload, contract, or validation behaviour |
+| Missing guard | Missing — no formatted-display assertion exists (no guard renders the weekday form today) | The dev follow-up PR creates the section-12.3 render assertions (fixed date, both locales) while keeping every payload row above green |
+
+### 12.6 Explicitly not specified here (plus gate dependencies)
+
+- No new screens or flows; the three header strongs are
+  the complete surface. No backend, API, contract, schema,
+  validation, or error-code change. No new design tokens
+  or component choices (design lives with `architect`).
+- No touched flow changes behaviour — formatting is a
+  pure presentation mapping of an already-loaded value —
+  so no new per-flow implementation diagram ships here;
+  the existing load/error states (`FR-DSP-3` holds) cover
+  the failure paths. `architect` confirms the diagram
+  position in its spec slice.
+- UI contract gap (per the UI contract gap rule, stated
+  not worded around): this T2 reader-visible change needs
+  a UI contract section, owned by `product-owner` as part
+  of acceptance criteria with `architect` input on layout.
+  It is not written here. Expected home: the S9
+  resolution in `docs/product/desk-ui-design-rollout.md`
+  (with `architect` input), or the #503 acceptance slice
+  in `docs/product/acceptance-criteria.md`. No UI
+  contract = `SPEC-GATE FAIL`; the dev implementation PR
+  opens only after the contract exists and the gate
+  passes.
+- The specified change is tier T2 (reader-visible UI,
+  values unchanged). This section is its FR/NFR part. The
+  remaining T2 minimum set — acceptance criteria, the UI
+  contract above, traceability completion, and the gate
+  verdict — belongs to `product-owner` / `architect` /
+  `qa-lead` / `spec-reviewer`; the dev implementation PR
+  opens only on `SPEC-GATE PASS`.
+- The `docs/product/acceptance-criteria.md` slice for
+  this change is separate `product-owner` work under the
+  gate; the test strategy and run records are separate
+  `qa-lead` work. This section traces to the issue-body
+  acceptance only through the decision and `FR-DSK-11`
+  above.
+
 <!-- ao-role: business-analyst -->
-Role: business-analyst · AO session hotel-mgmt-578
+Role: business-analyst · AO session hotel-mgmt-703
