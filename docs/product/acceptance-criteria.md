@@ -512,6 +512,113 @@ and print-preservation rules above hold on all six screens,
 and the business-date lines render per AC-DSK-12 with ISO kept
 on the wire.
 
+## 12. Desk UI pixel-faithful restyle (Refs #517)
+
+Product-owner restyle spec:
+`docs/product/desk-ui-pixel-faithful-restyle.md` (active). Owner
+decision B (2026-11-07, D-15 in `docs/project/decision-log.md`):
+the desk UI matches the owner-supplied boards as closely as
+possible — exact colors including the `#0F766E` primary, fonts,
+spacing, radii, and layout per the `docs/design/*.dc.html` inline
+styles — abandoning PrimeVue default styling wherever it diverges,
+with full markup rebuild per surface authorized. ADR-0003 is
+partially superseded for desk surfaces only (platform, serving,
+auth, catalogue plumbing, print routes, and CI stand; PrimeVue
+stays as a logic carrier where needed, its default visuals
+replaced by the design tokens); the `architect` records the ADR
+update. These 8 conditions cover the shell (#518) plus the six
+screens (Main #519, Book #520, Stay #521, Folio #522, Rooms #523,
+Onboarding #524). They add no MVP capability and change no
+behaviour: logic, hooks, stores, API calls, flows, copy,
+catalogue keys, validation, and refusal semantics hold exactly as
+today — only markup and styling move to the design values. FR/NFR
+wording is owned by `business-analyst` and guard mapping by
+`qa-lead` (see the restyle spec, section 9); the conditions below
+check behaviour and evidence only. Conformance evidence is twofold
+on every child PR: the design-facts gate is green (nav order and
+labels, headings, buttons, inputs, token colours per the fact
+schema), and side-by-side before/after screenshots cover what
+schema v1 excludes (layout geometry, typography, radii, spacing),
+reviewed by the owner per screen.
+
+- AC-RST-1 — Given staff are signed in on any desk surface, when
+  they look at the shell, then the teal header shows the
+  configured hotel name at the design height, padding, and brand
+  size, the nav tabs render the design padding, radius, and
+  active-tab inversion with the shared-shell tab set, and the
+  locale pill renders the design border, radius, and padding
+  with the whole screen switching between EN and VI. Traces to:
+  US-FDK-5; FR-FDK-5 (no MVP story change; shell visuals only).
+- AC-RST-2 — Given today has arrivals, in-house stays, rooms
+  needing cleaning, and an out-of-service room, when staff open
+  the Main board, then the business-date row, the two card-grid
+  rows, row dividers, the departures empty state, and the two
+  housekeeping action buttons render the design tokens and layout
+  per the restyle spec, while desk reads, housekeeping state
+  transitions with count refresh, and the weekday-long
+  business-date render behave exactly as today. Traces to:
+  US-FDK-5, US-RMS-2; FR-FDK-5, FR-RMS-2.
+- AC-RST-3 — Given a guest and sellable dates, when staff work
+  the Book screen, then the title, the two-column grid, the stay
+  field grid, labels, controls, quote rows, and helper copy render
+  the design tokens and layout per the restyle spec, while guest
+  search, walk-in registration, get-quote-then-confirm, and the
+  empty-vs-quoted presentation complete exactly as today. Traces
+  to: US-RES-1, US-GST-3; FR-RES-1, FR-GST-3.
+- AC-RST-4 — Given bookings and stays for the business date, when
+  staff work Stay check-in/out, then the intro, the five stacked
+  cards, labels, controls, and the folio-reconciliation hint
+  render the design tokens and layout per the restyle spec, while
+  the two-step check-in flow, the empty room-select placeholder
+  blocking check-in until a ready room is chosen, move and times
+  flows, and the settled-folio checkout gate behave exactly as
+  today. Traces to: US-FDK-1, US-FDK-2; FR-FDK-1, FR-FDK-2,
+  FR-BIL-7.
+- AC-RST-5 — Given an in-house stay with charges and payments,
+  when staff work the Folio screen, then the two-card grid, the
+  balance-due accent size and colour, example lines, labels, and
+  controls render the design tokens and layout per the restyle
+  spec, while the per-stay open form, charge posting, payment
+  recording, the running balance, and print output behave exactly
+  as today. Traces to: US-BIL-1, US-BIL-2, US-BIL-3; FR-BIL-1,
+  FR-BIL-2, FR-BIL-3.
+- AC-RST-6 — Given rooms across floors in a mix of the five
+  statuses, when staff open the Rooms map, then the title row,
+  the status-chip row with dots, floor sections and grids, and
+  room cards with numbers, badges, type lines, and note lines
+  render the design tokens and layout per the restyle spec, while
+  live state rendering, the summary-counts-match-cards invariant,
+  housekeeping buttons, and floor grouping behave exactly as
+  today with chip wording unchanged. Traces to: US-RMS-1,
+  US-RMS-2, US-RMS-3; FR-RMS-1, FR-RMS-2, FR-RMS-3.
+- AC-RST-7 — Given an empty database, when the app loads, then
+  the Onboarding wizard header, centred column, progress line and
+  bar, card, input, helper, and continue action render the design
+  tokens and layout per the restyle spec, while launch gating,
+  all four steps with progress and back/continue navigation,
+  per-step validation, hotel-name persistence and surfacing, and
+  step wording behave exactly as today; given a seeded database,
+  the wizard never launches. Traces to: US-ADM-1, US-ADM-3;
+  FR-ADM-1, FR-ADM-3.
+- AC-RST-8 — Given any of the seven surfaces in either locale,
+  when its child implementation PR is reviewed, then the PR body
+  carries side-by-side before/after screenshots matching the
+  board closely enough for card-by-card review, the design-facts
+  gate is green for the surface, every user-visible string
+  resolves through the VI-primary catalogue with the coverage
+  check green, the hotel name shown is the configured value, and
+  the screen carries a per-screen owner review before merge.
+  Traces to: US-ADM-1; FR-ADM-1 (evidence and catalogue rule; no
+  behaviour change).
+
+Restyle done when: the seven child issues each close with a merged
+implementation PR, every surface checks against its board
+screenshot side by side, the #518 board-conflict call carries an
+owner decision on that issue, the shell, catalogue, and
+print-preservation rules above hold on all seven surfaces, and no
+child PR ships a behaviour, copy, API, or refusal-semantics change
+without an owner decision recorded on its issue.
+
 ## Traceability summary
 
 43 done-conditions cover all 9 MVP slices from the roadmap
@@ -546,6 +653,14 @@ MVP story and FR; no condition adds an
 MVP capability, invents a story, or changes FR wording, so the
 43-condition MVP count above stands unchanged and the sections
 1–9 done-conditions hold as written.
+
+Restyle addendum (Refs #517): 8 pixel-faithful conditions
+(AC-RST-1..8, section 12) cover the shell plus the six-screen
+owner-design rebuild. Each traces to its existing MVP story and
+FR; no condition adds an MVP capability, invents a story, or
+changes FR wording, so the 43-condition MVP count above stands
+unchanged and the sections 1–9 and 11 done-conditions hold as
+written.
 
 <!-- ao-role: product-owner -->
 Role: product-owner · AO session hotel-mgmt-704
