@@ -602,12 +602,13 @@ test.describe('live shell conformance on the running app DOM', () => {
         }
       };
 
-      // Design-anchored tokens that conform today. tokens.primary is
-      // excluded: PrimeVue defaults render primary-500 (#279086)
-      // while the design token is primary-700 (#0f766e) — known
-      // product drift for a follow-up; the token-color mismatch
-      // test above proves the gate catches it.
-      for (const key of ['header', 'page', 'ink'] as const) {
+      // Design-anchored tokens that conform today. Refs #502: the
+      // semantic primary 500 step now carries the design token, so
+      // `tokens.primary` (the first-button computed fill) conforms
+      // alongside header/page/ink — no computed surface keeps the
+      // PrimeVue default `#279086`. The token-color mismatch test
+      // above still proves the gate catches drift.
+      for (const key of ['header', 'primary', 'page', 'ink'] as const) {
         check(`tokens.${key}`, record.tokens[key], actual.tokens[key], record.designFile, '[data-testid="shell-nav"]');
       }
 

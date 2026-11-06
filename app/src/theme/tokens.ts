@@ -64,7 +64,12 @@ export const DeskPreset = definePreset(Aura, {
       200: '#b0e0d8',
       300: '#7fc9be',
       400: '#4dada1',
-      500: '#279086',
+      // Refs #502: the 500 step carries the design token, so
+      // `{primary.color}` — which Aura resolves from this step —
+      // renders the design teal on every component bound to it,
+      // not the stock `#279086`. The remaining steps keep their
+      // stock hues, which match the contract state colours.
+      500: deskTokens.colors.primary,
       600: '#147a71',
       700: '#0F766E',
       800: '#0F4C47',
@@ -73,14 +78,16 @@ export const DeskPreset = definePreset(Aura, {
     },
   },
   components: {
-    // Refs #471: Aura renders filled primary buttons from
-    // `{primary.color}` (the 500 step, `#279086`); the design
-    // token is the 700 step, so only the resting primary-button
-    // fill and its keyboard focus ring are pinned to the tokens.
-    // Hover/active states, the outlined/text/link variants, and
-    // every other component keep their stock scale bindings. The
-    // focus ring uses the focus token (same `#0F766E` value),
-    // matching the shell `:focus-visible` outline in `App.vue`.
+    // Refs #471: the resting primary-button fill and its keyboard
+    // focus ring are pinned to the tokens. Refs #502: the semantic
+    // 500 step now carries the design token too, so this resting
+    // pin coincides with `{primary.color}`; the explicit pin stays
+    // as the guard. Hover/active states and the outlined/text/link
+    // variants keep their stock scale bindings; every other
+    // component bound to the 500 step resolves the design token by
+    // construction. The focus ring uses the focus token (same
+    // `#0F766E` value), matching the shell `:focus-visible`
+    // outline in `App.vue`.
     button: {
       colorScheme: {
         light: {
