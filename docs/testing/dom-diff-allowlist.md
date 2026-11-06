@@ -72,15 +72,20 @@ the mechanism; the approved data list lives here:
 | DD-14 | Folio | design `/html[0]/body[0]/x-dc[0]/div[0]/div[0]/strong[0]`; app `/html[0]/body[0]/div[0]/div[0]/div[0]/nav[0]/span[0]` | text | Hotel name (design `Khách sạn Hoa Mai` vs configured hotel) | Same shared shell header as Main DD-02, Book DD-08, and Stay DD-10 (identical paths): example content vs the configured hotel name, never hardcoded by design | #498 orchestrator pattern approval (owner-delegated, same categories as #495); owner veto welcome |
 | DD-15 | Folio | design `/html[0]/body[0]/x-dc[0]/div[0]/div[1]/div[0]/h3[0]` + `/div[1]/div[0]/div[0]` + `/div[1]/div[0]/div[1]` | text | Charge examples (`Khoản phí · Lê Minh · P.201`, `Tiền phòng 2 đêm` / `1.800.000 đ`, `Nước uống` / `60.000 đ`) | Seed- and action-dependent folio lines; example content that can never coincide with live data. Only the value-bearing nodes are exempted (the charge rows exempt wholesale with their `span`/`strong` children via subtree prefix); the static board copy around them (card heading shape aside, both input labels, the charge button) stays out as S1 residuals | #498 orchestrator pattern approval (owner-delegated, same categories as #495); owner veto welcome |
 | DD-16 | Folio | design `/html[0]/body[0]/x-dc[0]/div[0]/div[1]/div[1]/div[1]` + `/div[1]/div[1]/div[2]` | text | Payment examples (`960.000 đ` balance due, `Tiền mặt` / `900.000 đ` payment row) | Seed- and action-dependent folio balance and payment lines; example content that can never coincide with live data (fresh lab opens no folio, balance line empty). Only the value-bearing nodes are exempted; the static `Còn phải trả` due label stays out as an S1 residual. App-side folio lines carry no entry yet (fresh lab renders the empty folio state; rows proposed when a run with folio data shows them, same note as Stay DD-12) | #498 orchestrator pattern approval (owner-delegated, same categories as #495); owner veto welcome |
+| DD-17 | Rooms | design `/html[0]/body[0]/x-dc[0]/div[0]/div[0]/strong[0]`; app `/html[0]/body[0]/div[0]/div[0]/div[0]/nav[0]/span[0]` | text | Hotel name (design `Khách sạn Hoa Mai` vs configured hotel) | Same shared shell header as Main DD-02, Book DD-08, Stay DD-10, and Folio DD-14 (identical paths): example content vs the configured hotel name, never hardcoded by design | #499 orchestrator pattern approval (owner-delegated, same categories as #495); owner veto welcome |
+| DD-18 | Rooms | design `/html[0]/body[0]/x-dc[0]/div[0]/div[1]/div[0]/div[0]`; app `/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/p[1]/strong[0]` | text | Summary line (design `18 phòng minh hoạ, 6 phòng có khách · 28/10/2026` — counts plus frozen date — vs live business-date strong) | Frozen snapshot counts plus the business clock vs live values; differ on every run by nature. Only the value-bearing nodes are exempted (the design summary wholesale, the app date strong alone); the static h1 stays pinned by the fact-level decided headings | #499 orchestrator pattern approval (owner-delegated, same categories as #495); owner veto welcome |
+| DD-19 | Rooms | design `/html[0]/body[0]/x-dc[0]/div[0]/div[3]/span[0..4]` (five entries); app `/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/ul[0]/li[0..4]` (five entries) | text | Summary chips (design `Sẵn sàng · 8`, `Có khách · 6`, `Cần dọn · 2`, `Chờ kiểm tra · 1`, `Ngừng sử dụng · 1` vs seed-driven live chips, fresh lab `2/0/0/0/0`) | Seed-dependent counts; the count-bearing nodes are exempted wholesale (one entry per chip, same note as Main DD-07), while the qualified app chip labels stay pinned by the fact-level decided room map (#491) | #499 orchestrator pattern approval (owner-delegated, same categories as #495); owner veto welcome |
+| DD-20 | Rooms | design `/html[0]/body[0]/x-dc[0]/div[0]/div[4]/div[0]` + `/div[5]/div[0]` + `/div[6]/div[0]` | text | Example room cards (three floors, 18 cards: numbers, statuses, type lines, notes with guest names, checkout dates, and the block reason) | Seed- and action-dependent room state; example content that can never coincide with live data. The whole card grids are exempted (current and future rooms under the same floor subtrees); the floor titles above them stay out as S1 residuals. App-side cards carry no entry yet (fresh-lab cards for seed rooms 101/102 are flow-state, same note as Stay DD-12) | #499 orchestrator pattern approval (owner-delegated, same categories as #495); owner veto welcome |
 
 Wired into the gate as `MAIN_SCREEN_ALLOWLIST` (Main DD-01..DD-07),
 `BOOK_SCREEN_ALLOWLIST` (Book DD-08..DD-09),
-`STAY_SCREEN_ALLOWLIST` (Stay DD-10..DD-13), and
-`FOLIO_SCREEN_ALLOWLIST` (Folio DD-14..DD-16) in
+`STAY_SCREEN_ALLOWLIST` (Stay DD-10..DD-13),
+`FOLIO_SCREEN_ALLOWLIST` (Folio DD-14..DD-16), and
+`ROOMS_SCREEN_ALLOWLIST` (Rooms DD-17..DD-20) in
 `app/e2e/dom-diff.ts` (each `skipPaths` entry cites its DD-ID);
 the live gate (`app/e2e/dom-diff.spec.ts`) applies the matching
-screen allowlist and keeps `EMPTY_ALLOWLIST` for the other two
-screens.
+screen allowlist and keeps `EMPTY_ALLOWLIST` for the one
+remaining screen without approved entries (Onboarding).
 Lab evidence (isolated `hotel-lab-686`, 2026-11-06, settled
 post-load extraction): Main `252` non-allowlisted diffs before
 wiring (the prior sweep's `253` minus the S2 title diff, now
@@ -134,6 +139,22 @@ all four input labels, both buttons) carries no entry — S1
 residuals. App-side folio lines carry no entry yet (fresh lab
 opens no folio and renders the empty folio state — flow-state,
 rows proposed when a run with folio data shows them).
+
+Lab evidence (isolated `hotel-lab-697`, 2026-11-06, `vi` locale,
+Chromium, `--workers=1`): Rooms `222` non-allowlisted diffs before
+wiring (design 152 nodes, app 80 nodes: 147 design-side `x-dc`
+subtree nodes plus 75 app-side shell/PrimeVue/head extras, zero
+text/colour/font/visibility diffs — the accepted S1 shape
+divergence; served title already `Sơ đồ phòng` via the #495 S2
+follow-through, verified live) → `82` after DD-17..DD-20 (hotel
+name, summary line plus business-date strong, all five chip
+spans plus all five chip lis, all three card grids with their
+children); all remaining diffs `node` presence mismatches; zero
+stale entries. The static board copy around the exempted values
+(the h1, both h2s, the `Tải lại` button) carries no entry — S1
+residuals. App-side room cards carry no entry yet (fresh-lab
+cards for seed rooms 101/102 are flow-state, rows proposed when
+a run with richer room data shows them).
 
 ## 4. Eligible categories
 

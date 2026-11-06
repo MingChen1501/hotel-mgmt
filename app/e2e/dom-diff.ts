@@ -216,6 +216,68 @@ export const FOLIO_SCREEN_ALLOWLIST: DomDiffAllowlist = {
   ],
 };
 
+// Rooms-screen dynamic-data exemptions (Refs #499). Every path
+// below cites its owner-approved entry in
+// `docs/testing/dom-diff-allowlist.md` section 3: the design side
+// carries the static snapshot values (example hotel name, one
+// illustrative summary line, five illustrative status chips, three
+// floors of example room cards) while the app side renders live
+// values (configured hotel, business clock, seed-driven counts),
+// so these nodes can never coincide. Only the value-bearing
+// example nodes are exempted: the static board copy around them
+// (the h1, both h2s, the `Tải lại` button) stays out, remaining
+// as residual `node` diffs under the accepted S1 shape divergence.
+// App-side room cards carry no entry yet (the fresh-lab cards for
+// seed rooms 101/102 are flow-state, same note as Stay app rows in
+// DD-12): rows are proposed when a run with richer room data shows
+// them.
+export const ROOMS_SCREEN_ALLOWLIST: DomDiffAllowlist = {
+  skipPaths: [
+    // DD-17 hotel name: design example content vs configured hotel
+    // (same shared shell-header paths as Main DD-02, Book DD-08,
+    // Stay DD-10, Folio DD-14).
+    '/html[0]/body[0]/x-dc[0]/div[0]/div[0]/strong[0]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/nav[0]/span[0]',
+    // DD-18 summary line: design illustration (`18 phòng minh
+    // hoạ, 6 phòng có khách · 28/10/2026`, counts plus frozen
+    // date) vs the live business-date strong (fresh lab: the ISO
+    // clock; the design counts never coincide with seed-driven
+    // rooms). Only the value-bearing nodes: the static h1 stays
+    // out as an S1 residual.
+    '/html[0]/body[0]/x-dc[0]/div[0]/div[1]/div[0]/div[0]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/p[1]/strong[0]',
+    // DD-19 summary chips: design illustration (`Sẵn sàng · 8`,
+    // `Có khách · 6`, `Cần dọn · 2`, `Chờ kiểm tra · 1`,
+    // `Ngừng sử dụng · 1`) vs the seed-driven live chips (fresh
+    // lab: 2 ready, 0 elsewhere). Count-bearing nodes are exempted
+    // wholesale (same note as Main DD-07): the qualified app chip
+    // labels stay pinned by the fact-level decided room map
+    // (`design-facts.ts`, Refs #491), which these path exemptions
+    // do not touch.
+    '/html[0]/body[0]/x-dc[0]/div[0]/div[3]/span[0]',
+    '/html[0]/body[0]/x-dc[0]/div[0]/div[3]/span[1]',
+    '/html[0]/body[0]/x-dc[0]/div[0]/div[3]/span[2]',
+    '/html[0]/body[0]/x-dc[0]/div[0]/div[3]/span[3]',
+    '/html[0]/body[0]/x-dc[0]/div[0]/div[3]/span[4]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/ul[0]/li[0]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/ul[0]/li[1]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/ul[0]/li[2]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/ul[0]/li[3]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/ul[0]/li[4]',
+    // DD-20 example room cards: design illustration for three
+    // floors (room numbers, statuses, type lines, notes with guest
+    // names, checkout dates, and the block reason) vs the live
+    // seed-driven cards (fresh lab: rooms 101/102 on floor 1 with
+    // catalogue type names and live note lines). The whole card
+    // grids are exempted (current and future rooms under the same
+    // floor subtrees); the floor titles above them (`Tầng 1` ..)
+    // stay out as S1 residuals.
+    '/html[0]/body[0]/x-dc[0]/div[0]/div[4]/div[0]',
+    '/html[0]/body[0]/x-dc[0]/div[0]/div[5]/div[0]',
+    '/html[0]/body[0]/x-dc[0]/div[0]/div[6]/div[0]',
+  ],
+};
+
 export function isAllowlisted(path: string, allowlist: DomDiffAllowlist): boolean {
   return allowlist.skipPaths.some(
     (entry) => path === entry || path.startsWith(`${entry}/`),

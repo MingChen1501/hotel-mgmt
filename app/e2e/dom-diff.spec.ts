@@ -28,7 +28,7 @@
 //   diffs: full structural parity stays an architecture decision
 //   (Refs #495 S1, PrimeVue-first shell vs design-literal markup),
 //   and owner-approved dynamic data is exempted through the
-//   per-screen allowlist (Refs #495 S7, #496, #497, #498) — so the live run reports
+//   per-screen allowlist (Refs #495 S7, #496, #497, #498, #499) — so the live run reports
 //   the remaining diff count instead of gating on it.
 // - No screenshots, video, or snapshots anywhere in this gate (a CI
 //   guard greps the gate sources for those APIs); the lab-state matrix
@@ -46,6 +46,7 @@ import {
   BOOK_SCREEN_ALLOWLIST,
   STAY_SCREEN_ALLOWLIST,
   FOLIO_SCREEN_ALLOWLIST,
+  ROOMS_SCREEN_ALLOWLIST,
   serializeDomTree,
   type DomDiffAllowlist,
   type DomNode,
@@ -540,6 +541,99 @@ test.describe('allowlist exempts owner-approved dynamic data (criterion 3)', () 
     const unused = unusedAllowlistEntries(design, actual, FOLIO_SCREEN_ALLOWLIST);
     expect(unused).toEqual([]);
   });
+
+  // Refs #499: the Rooms-screen allowlist carries exactly the
+  // owner-approved dynamic-data paths (DD-17..DD-20 in
+  // docs/testing/dom-diff-allowlist.md section 3) — no more, no
+  // fewer — so wiring drift fails here instead of silently
+  // re-noising the gate. Only value-bearing example nodes are
+  // exempted: the static board copy around them (the h1, both
+  // h2s, the `Tải lại` button) stays out and keeps reporting as
+  // `node` diffs under the accepted S1 shape divergence;
+  // app-side room cards carry no entry yet (the fresh-lab cards
+  // for seed rooms 101/102 are flow-state, rows proposed when a
+  // run with richer room data shows them).
+  test('ROOMS_SCREEN_ALLOWLIST exempts the approved Rooms dynamic paths only', () => {
+    const roomsNode = (path: string, tag: string, text: string): DomNode => ({
+      path,
+      tag,
+      text,
+      color: '#111111',
+      background: '#ffffff',
+      fontFamily: 'Arial',
+      fontSize: '16px',
+      fontWeight: '400',
+      visible: true,
+    });
+    const design: DomNode[] = [
+      roomsNode('/html[0]/body[0]/x-dc[0]/div[0]/div[0]/strong[0]', 'strong', 'Khách sạn Hoa Mai'),
+      roomsNode(
+        '/html[0]/body[0]/x-dc[0]/div[0]/div[1]/div[0]/div[0]',
+        'div',
+        '18 phòng minh hoạ, 6 phòng có khách · 28/10/2026',
+      ),
+      roomsNode(
+        '/html[0]/body[0]/x-dc[0]/div[0]/div[3]/span[0]',
+        'span',
+        'Sẵn sàng · 8',
+      ),
+      roomsNode(
+        '/html[0]/body[0]/x-dc[0]/div[0]/div[4]/div[0]/div[0]/div[0]/h3[0]',
+        'h3',
+        '101',
+      ),
+      roomsNode(
+        '/html[0]/body[0]/x-dc[0]/div[0]/div[1]/div[0]/h1[0]',
+        'h1',
+        'Sơ đồ phòng',
+      ),
+    ];
+    const actual: DomNode[] = [
+      roomsNode('/html[0]/body[0]/div[0]/div[0]/div[0]/nav[0]/span[0]', 'span', 'Lab Parity Hotel'),
+      roomsNode(
+        '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/p[1]/strong[0]',
+        'strong',
+        '2026-11-06',
+      ),
+      roomsNode(
+        '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/ul[0]/li[0]/span[0]/span[0]',
+        'span',
+        'Sẵn sàng (đã kiểm tra)',
+      ),
+      roomsNode(
+        '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[1]/div[0]/div[0]/div[0]/div[1]/p[1]',
+        'p',
+        'Standard Double',
+      ),
+    ];
+    expect(ROOMS_SCREEN_ALLOWLIST.skipPaths).toHaveLength(17);
+    const withoutAllowlist = diffDomTrees(design, actual);
+    expect(withoutAllowlist.length).toBeGreaterThan(1);
+    const diffs = diffDomTrees(design, actual, ROOMS_SCREEN_ALLOWLIST);
+    expect(
+      diffs,
+      `expected only the non-allowlisted nodes, got:\n${formatDomDiffs(diffs)}`,
+    ).toHaveLength(2);
+    expect(diffs.map((diff) => diff.path).sort()).toEqual([
+      '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[1]/div[0]/div[0]/div[0]/div[1]/p[1]',
+      '/html[0]/body[0]/x-dc[0]/div[0]/div[1]/div[0]/h1[0]',
+    ]);
+    // Stale-entry detection tracks every wired path: the
+    // hotel-name strong, the summary line, the first chip span and
+    // chip li (via the fixture nodes beneath them), and the first
+    // card-grid h3 are covered — the remaining chips, lis, and
+    // grids are reported, proving the hook tracks the wired
+    // strings exactly.
+    const unused = unusedAllowlistEntries(design, actual, ROOMS_SCREEN_ALLOWLIST);
+    expect(unused).not.toContain('/html[0]/body[0]/x-dc[0]/div[0]/div[0]/strong[0]');
+    expect(unused).not.toContain('/html[0]/body[0]/x-dc[0]/div[0]/div[1]/div[0]/div[0]');
+    expect(unused).not.toContain('/html[0]/body[0]/x-dc[0]/div[0]/div[3]/span[0]');
+    expect(unused).not.toContain(
+      '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/ul[0]/li[0]',
+    );
+    expect(unused).not.toContain('/html[0]/body[0]/x-dc[0]/div[0]/div[4]/div[0]');
+    expect(unused).toContain('/html[0]/body[0]/x-dc[0]/div[0]/div[3]/span[4]');
+  });
 });
 
 test.describe('output is deterministic text only (criteria 2 and 4)', () => {
@@ -640,7 +734,7 @@ test.describe('live extraction from design HTML and the running desk UI (criteri
         // Text-only output (criteria 2 and 5): the diff renders as a
         // string, never binary. Full parity is NOT asserted here —
         // owner-approved dynamic data is exempted through the
-        // per-screen allowlist (Refs #495 S7, #496, #497, #498) while the accepted
+        // per-screen allowlist (Refs #495 S7, #496, #497, #498, #499) while the accepted
         // structural divergence (PrimeVue shell vs design-literal
         // markup) still reports — so the run reports the remaining
         // diff count for that follow-up instead of gating on it.
@@ -653,7 +747,9 @@ test.describe('live extraction from design HTML and the running desk UI (criteri
                 ? STAY_SCREEN_ALLOWLIST
                 : entry.screen === 'Folio'
                   ? FOLIO_SCREEN_ALLOWLIST
-                  : EMPTY_ALLOWLIST;
+                  : entry.screen === 'Rooms'
+                    ? ROOMS_SCREEN_ALLOWLIST
+                    : EMPTY_ALLOWLIST;
         const diffs = diffDomTrees(design, actual, allowlist);
         const formatted = formatDomDiffs(diffs);
         expect(typeof formatted).toBe('string');
