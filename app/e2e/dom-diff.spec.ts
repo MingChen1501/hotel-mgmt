@@ -28,7 +28,7 @@
 //   diffs: full structural parity stays an architecture decision
 //   (Refs #495 S1, PrimeVue-first shell vs design-literal markup),
 //   and owner-approved dynamic data is exempted through the
-//   per-screen allowlist (Refs #495 S7, #496, #497) — so the live run reports
+//   per-screen allowlist (Refs #495 S7, #496, #497, #498) — so the live run reports
 //   the remaining diff count instead of gating on it.
 // - No screenshots, video, or snapshots anywhere in this gate (a CI
 //   guard greps the gate sources for those APIs); the lab-state matrix
@@ -45,6 +45,7 @@ import {
   MAIN_SCREEN_ALLOWLIST,
   BOOK_SCREEN_ALLOWLIST,
   STAY_SCREEN_ALLOWLIST,
+  FOLIO_SCREEN_ALLOWLIST,
   serializeDomTree,
   type DomDiffAllowlist,
   type DomNode,
@@ -450,6 +451,95 @@ test.describe('allowlist exempts owner-approved dynamic data (criterion 3)', () 
     const unused = unusedAllowlistEntries(design, actual, STAY_SCREEN_ALLOWLIST);
     expect(unused).toEqual([]);
   });
+
+  // Refs #498: the Folio-screen allowlist carries exactly the
+  // owner-approved dynamic-data paths (DD-14..DD-16 in
+  // docs/testing/dom-diff-allowlist.md section 3) — no more, no
+  // fewer — so wiring drift fails here instead of silently
+  // re-noising the gate. Only value-bearing example nodes are
+  // exempted: the static board copy around them (both card
+  // headings, the `Còn phải trả` due label, all four input labels,
+  // both buttons) stays out and keeps reporting as `node` diffs
+  // under the accepted S1 shape divergence; app-side folio lines
+  // carry no entry yet (the fresh lab opens no folio — flow-state,
+  // rows proposed when a run with folio data shows them).
+  test('FOLIO_SCREEN_ALLOWLIST exempts the approved Folio dynamic paths only', () => {
+    const folioNode = (path: string, tag: string, text: string): DomNode => ({
+      path,
+      tag,
+      text,
+      color: '#111111',
+      background: '#ffffff',
+      fontFamily: 'Arial',
+      fontSize: '16px',
+      fontWeight: '400',
+      visible: true,
+    });
+    const design: DomNode[] = [
+      folioNode('/html[0]/body[0]/x-dc[0]/div[0]/div[0]/strong[0]', 'strong', 'Khách sạn Hoa Mai'),
+      folioNode(
+        '/html[0]/body[0]/x-dc[0]/div[0]/div[1]/div[0]/h3[0]',
+        'h3',
+        'Khoản phí · Lê Minh · P.201',
+      ),
+      folioNode(
+        '/html[0]/body[0]/x-dc[0]/div[0]/div[1]/div[0]/div[0]/span[0]',
+        'span',
+        'Tiền phòng 2 đêm',
+      ),
+      folioNode(
+        '/html[0]/body[0]/x-dc[0]/div[0]/div[1]/div[0]/div[0]/strong[0]',
+        'strong',
+        '1.800.000 đ',
+      ),
+      folioNode(
+        '/html[0]/body[0]/x-dc[0]/div[0]/div[1]/div[0]/div[1]/span[0]',
+        'span',
+        'Nước uống',
+      ),
+      folioNode(
+        '/html[0]/body[0]/x-dc[0]/div[0]/div[1]/div[1]/div[1]',
+        'div',
+        '960.000 đ',
+      ),
+      folioNode(
+        '/html[0]/body[0]/x-dc[0]/div[0]/div[1]/div[1]/div[2]/strong[0]',
+        'strong',
+        '900.000 đ',
+      ),
+      folioNode(
+        '/html[0]/body[0]/x-dc[0]/div[0]/div[1]/div[1]/h3[0]',
+        'h3',
+        'Thanh toán',
+      ),
+    ];
+    const actual: DomNode[] = [
+      folioNode('/html[0]/body[0]/div[0]/div[0]/div[0]/nav[0]/span[0]', 'span', 'Lab Parity Hotel'),
+      folioNode(
+        '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/div[1]/div[0]/div[0]/div[0]/div[1]/div[1]/button[0]/span[0]',
+        'span',
+        'Ghi phí',
+      ),
+    ];
+    expect(FOLIO_SCREEN_ALLOWLIST.skipPaths).toHaveLength(7);
+    const withoutAllowlist = diffDomTrees(design, actual);
+    expect(withoutAllowlist.length).toBeGreaterThan(1);
+    const diffs = diffDomTrees(design, actual, FOLIO_SCREEN_ALLOWLIST);
+    expect(
+      diffs,
+      `expected only the non-allowlisted nodes, got:\n${formatDomDiffs(diffs)}`,
+    ).toHaveLength(2);
+    expect(diffs.map((diff) => diff.path).sort()).toEqual([
+      '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/div[1]/div[0]/div[0]/div[0]/div[1]/div[1]/button[0]/span[0]',
+      '/html[0]/body[0]/x-dc[0]/div[0]/div[1]/div[1]/h3[0]',
+    ]);
+    // Stale-entry detection tracks every wired path: the
+    // hotel-name strong, the charge heading plus both charge rows
+    // (via the fixture nodes beneath them), and both payment value
+    // nodes are covered, so nothing is reported stale.
+    const unused = unusedAllowlistEntries(design, actual, FOLIO_SCREEN_ALLOWLIST);
+    expect(unused).toEqual([]);
+  });
 });
 
 test.describe('output is deterministic text only (criteria 2 and 4)', () => {
@@ -550,7 +640,7 @@ test.describe('live extraction from design HTML and the running desk UI (criteri
         // Text-only output (criteria 2 and 5): the diff renders as a
         // string, never binary. Full parity is NOT asserted here —
         // owner-approved dynamic data is exempted through the
-        // per-screen allowlist (Refs #495 S7, #496, #497) while the accepted
+        // per-screen allowlist (Refs #495 S7, #496, #497, #498) while the accepted
         // structural divergence (PrimeVue shell vs design-literal
         // markup) still reports — so the run reports the remaining
         // diff count for that follow-up instead of gating on it.
@@ -561,7 +651,9 @@ test.describe('live extraction from design HTML and the running desk UI (criteri
               ? BOOK_SCREEN_ALLOWLIST
               : entry.screen === 'Stay'
                 ? STAY_SCREEN_ALLOWLIST
-                : EMPTY_ALLOWLIST;
+                : entry.screen === 'Folio'
+                  ? FOLIO_SCREEN_ALLOWLIST
+                  : EMPTY_ALLOWLIST;
         const diffs = diffDomTrees(design, actual, allowlist);
         const formatted = formatDomDiffs(diffs);
         expect(typeof formatted).toBe('string');
