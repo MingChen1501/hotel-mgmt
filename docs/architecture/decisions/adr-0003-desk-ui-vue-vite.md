@@ -2,7 +2,9 @@
 
 Status: accepted (owner acceptance 2026-10-25, recorded on #285 as
 issuecomment-6396779605, with two mandatory corrections carried in
-this file). Owned by `architect`.
+this file); partially superseded for desk-surface visuals by owner
+decision B (2026-11-07, Refs #517) — see the Partial supersession
+section below. Owned by `architect`.
 
 Date: 2026-10-25 (proposed); accepted 2026-10-25.
 
@@ -266,3 +268,85 @@ native/mobile, chain-scale concerns, offline write queueing.
 - [x] On acceptance the architect flips this ADR status from
   `proposed` to `accepted` (done in this change: status `accepted`
   2026-10-25).
+
+## Partial supersession for desk surfaces (owner decision B, 2026-11-07, Refs #517)
+
+Owner decision B (recorded in #517; product-owner scope in
+`docs/product/desk-ui-pixel-faithful-restyle.md` PR #525,
+requirements delta in `docs/requirements/mvp-requirements.md`
+section 13 PR #526) PARTIALLY SUPERSEDES this ADR for desk
+surfaces only: the desk UI must match the owner-supplied boards
+(`docs/design/Main.dc.html`, `Book.dc.html`, `Stay.dc.html`,
+`Folio.dc.html`, `Rooms.dc.html`, `Onboarding.dc.html`, each
+screen on its long line 2, plus `manifest.json` and
+`docs/design/README.md`) as closely as possible — exact colors
+including the `#0F766E` primary, fonts, spacing, radii, and
+layout per the boards' inline styles — abandoning PrimeVue
+default styling wherever it diverges, with full markup rebuild
+per screen authorized where patching cannot reach the design
+values. This section is the `architect`-owned ADR record the
+SPEC-GATE FAIL verdict on PR #525 requires (finding 2); the
+product-owner wording in restyle-spec section 2 is the scope
+statement, this section is the decision record.
+
+Stays — this ADR stands in full for everything below; no
+re-vote, no replacement decision:
+
+- Vue 3 + Vite CSR-only static `dist/` served by Nginx under
+  `/app/` with Vite `base '/app/'`; the `location /app/` block
+  with `try_files $uri $uri/ /app/index.html;` fallback;
+  history routing; print routes under `/app/print/...`.
+- One shared Bearer API client (`sessionStorage` token, single
+  401-to-sign-in path, connectivity state with failed-fetch
+  banner and safe manual retry, explicitly no write queueing).
+- One Pinia session store; one `t()` catalogue wrapper over
+  the existing `messages/` keys (fallback + `{param}`
+  semantics preserved; no `contracts/messages/` change).
+- Contracts unchanged (`contracts/openapi.yaml` +
+  `frontend/docs/openapi.yaml` byte-identical mirror stays
+  green); `/docs` Swagger preserved; the one Node CI job.
+- The #495–#500 parity-sweep flow/copy REPORTED items stay
+  reported, not decided (visual restyle only; any copy or
+  flow divergence a worker finds is recorded on the affected
+  child issue for an owner decision, never changed silently).
+
+Stays as logic carriers — PrimeVue components may remain where
+they carry behaviour (focus management, keyboard operation,
+ARIA roles, validation states, dialogs, tables, date pickers):
+what is replaced is their rendered visual styling wherever it
+diverges from the design values. Concretely, the stock preset
+theme stays as the mechanism but is fed only by the restyle
+token set (single source `app/src/theme/tokens.ts`, already
+the implementation point at `tokens.ts:22-23` for header
+`#0F4C47` and primary `#0F766E`), and any component whose
+stock markup cannot reach the board values is rebuilt as
+plain markup carrying the same hooks, call order, and states.
+
+Changes — desk surfaces only (shell #518 plus six screens
+#519–#524, one worker = one PR each downstream):
+
+- Every desk surface renders the restyle-spec section 3 token
+  values and the per-surface layouts in restyle-spec sections
+  4–5; PrimeVue default visual styling (stock fills, radii,
+  spacing, typography) is overridden or the markup is rebuilt
+  outright to reach the design values.
+- The #495–#500 S1 resolutions ("PrimeVue shell accepted,
+  full-tree literalism rejected") are superseded by owner
+  decision B for visuals: closeness to the boards is now the
+  goal, with full rebuild authorized.
+
+Out of scope of this supersession (unchanged surfaces):
+print routes and documents, the admin console, and the
+sign-in gate keep their current presentation and stay
+reachable as today; behaviour, data, flow, copy,
+catalogue keys, APIs, validation, and refusal semantics are
+unchanged everywhere (visual restyle only). The
+owner-supplied `docs/design/*` files are never edited to fit
+implementation.
+
+Consequences: the per-screen child PRs (#518–#524) re-skin
+or rebuild presentation against the token single source;
+each carries before/after screenshot evidence and per-screen
+owner review. Rollback is per-screen revert in reverse
+merge order; this ADR record itself reverts as one
+docs-only change with no product-code effect.
