@@ -99,6 +99,7 @@ front-desk staff, manager, or owner account acting within its access
 | BR-38 | Daily backups bound data loss to at most one operating day (RPO at most 24 hours); restore on equivalent on-premise hardware completes within half a working day (RTO at most 4 hours); every backup run reports plain success or failure with its time. | NFR-BKP-1; NFR-BKP-2; FR-ADM-5 |
 | BR-39 | Closed stays, folios, payments, and their audit entries stay retrievable for at least 24 months in the live system, and records newer than the hotel's configured retention floor cannot be purged. | NFR-RET-1; FR-ADM-1 |
 | BR-40 | Every timestamped record carries its UTC offset; every date shown or reported follows the hotel's local calendar day. | NFR-TZ-1; FR-ADM-1 |
+| BR-43 | The business date has one canonical form and one display form. Stored, transmitted, validated, and day-close values stay ISO `YYYY-MM-DD`; the desk header renders the locale long-weekday form derived from the canonical value (VI weekday long plus `dd/MM/yyyy`, EN weekday long plus `MM/dd/yyyy`). No consumer parses the displayed string. | FR-DSK-11; FR-BIL-6; NFR-I18N-1; NFR-TZ-1; contracts/http/DailySheet.json |
 | BR-41 | The desk keeps working through an internet outage: booking, check-in, check-out, charge posting, payment recording, and invoice printing all complete on the on-premise installation as when connected. | NFR-AVL-1; PRD assumptions |
 | BR-42 | A wrong secret entered 5 times in a row locks the identity until the owner or manager unlocks it; a sign-in attempt against the locked identity is refused with `IDENTITY_LOCKED` (distinct from `UNAUTHENTICATED`). A session idle 15 minutes signs out. | NFR-SEC-2 |
 
@@ -147,11 +148,14 @@ are product-owned with no requirements wording at stake.
 
 Every domain policy stated in `FR-CUS-*`, requirements section 3,
 the PRD journeys and assumptions, and the sequence diagrams appears
-exactly once above (BR-1..BR-42); policies with no decided source
+exactly once above (BR-1..BR-42); BR-43 states the
+canonical-vs-display boundary for the #503 business-date decision
+(tracing `FR-DSK-11`, requirements section 12) without adding
+behaviour beyond the traced FRs/NFRs. Policies with no decided source
 appear as open questions OQ-1..OQ-5. No rule introduces behaviour
 beyond the traced FRs/NFRs/stories. Later capabilities from
 requirements section 6 (waitlist, split folios, integrated payments,
 automated workflow rules, multi-property operation, and the rest)
 carry no rule here.
 
-Counts: 42 business rules, 5 open questions.
+Counts: 43 business rules, 5 open questions.

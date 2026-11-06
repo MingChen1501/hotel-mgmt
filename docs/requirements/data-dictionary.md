@@ -184,7 +184,22 @@ stays, folios, payments).
 
 Owning FRs: FR-ADM-3, FR-ADM-5; NFR-DEP-1, NFR-BKP-1, NFR-BKP-2.
 
-## 14. Coverage statement
+## 14. Business date
+
+The hotel's operating calendar day: the single date every
+daily desk list, report, and day-close run keys on. The
+canonical form is `YYYY-MM-DD` (stored and transmitted;
+see BR-43); the desk header renders the locale long-weekday
+form derived from it (see FR-DSK-11).
+
+Key fields: canonical date (`YYYY-MM-DD` on the hotel's
+local calendar day, `NFR-TZ-1`); derived display form per
+active locale (`FR-DSK-11` — VI `Thứ Tư, 28/10/2026`,
+EN `Wednesday, 10/28/2026` for 2026-10-28).
+
+Owning FRs: FR-BIL-6, FR-FDK-5, FR-RPT-3, FR-DSK-11.
+
+## 15. Coverage statement
 
 Every audit terminology concept (T-1 reservation/booking, T-2
 room/room type/bed type, T-3 folio/invoice/receipt, T-4 guest, T-5
@@ -193,6 +208,8 @@ appears above with a definition, key fields, and owning FRs. Bare
 **bill** is deprecated per T-3 and appears nowhere as a term;
 **extra/extras** is kept only as informal prose shorthand, never in
 normative wording, per T-5. No entry introduces behaviour beyond the
-owning FRs.
+owning FRs. The Business date entry (section 14) defines a
+previously undefined term referenced by `FR-BIL-6`; it adds no
+behaviour beyond the owning FRs.
 
-Counts: 13 dictionary entries covering the 7 entity terminology concepts (T-1..T-7); T-8 is a spelling convention with no entry.
+Counts: 14 dictionary entries covering the 7 entity terminology concepts (T-1..T-7); T-8 is a spelling convention with no entry.
