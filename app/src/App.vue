@@ -442,34 +442,50 @@ export default defineComponent({
     outline-offset: 2px;
   }
 
-  /* Teal header (rollout section 3, Refs #420): the hotel name,
-     the top nav, and sign-out share one #0F4C47 bar so staff
-     always know which property they are working. */
+  /* Teal header (restyle spec section 4, Refs #518): exact
+     design bar from the header block on line 2 of every board
+     (`docs/design/Main.dc.html:2` — `display:flex;align-items:
+     center;gap:8px;padding:0 24px;height:60px;background:#0F4C47;
+     color:#fff`; all five tabbed boards agree, `Onboarding.dc.html:2`
+     carries the slimmer setup header). Token values live in
+     `src/theme/tokens.ts` (`shell`); this rule duplicates them
+     because CSS cannot import the TS constants. */
   #shell .shell-nav {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 8px 16px;
+    gap: 8px;
     background: #0F4C47;
     color: #FFFFFF;
     border-bottom: 1px solid #0F4C47;
-    padding: 12px 24px;
+    padding: 0 24px;
+    min-height: 60px;
+    box-sizing: border-box;
   }
 
+  /* Brand (every tabbed board line 2: `font-size:18px;
+     margin-right:24px`). */
   #shell .shell-brand {
     font-weight: 700;
-    font-size: 20px;
-    margin-right: 8px;
+    font-size: 18px;
+    margin-right: 24px;
     color: #FFFFFF;
   }
 
+  /* Nav tabs (every tabbed board line 2: `padding:10px 16px;
+     border-radius:8px` on every tab; the base rule carries the
+     design box so inactive tabs match the boards, not the old
+     underline treatment). min-height:44px keeps the NFR-DSK-3
+     target on every tab. */
   #shell .shell-nav-item {
     color: #FFFFFF;
     text-decoration: none;
-    padding: 4px 2px;
+    padding: 10px 16px;
+    border-radius: 8px;
     display: inline-flex;
     align-items: center;
     min-height: 44px;
+    box-sizing: border-box;
   }
 
   /* Active tab (Refs #458): the owner design marks the current
@@ -486,8 +502,11 @@ export default defineComponent({
     padding: 10px 16px;
   }
 
+  /* The trailing group (user, locale pill, sign-out) sits right
+     via the pill's design `margin-left:auto` (Refs #518) — a second
+     auto margin here would split the free space and drift the group
+     off the right edge, so this span carries none. */
   #shell .shell-user {
-    margin-left: auto;
     color: #D7E8E6;
   }
 
@@ -495,9 +514,10 @@ export default defineComponent({
     color: #FFFFFF;
   }
 
-  /* Content area: single centred column (contract section 2). */
+  /* Content area: single centred column (restyle spec
+     section 3: content width 1200px; `tokens.spacing.contentMaxPx`). */
   #shell .shell-column {
-    max-width: 1100px;
+    max-width: 1200px;
     margin: 0 auto;
     padding: 16px 24px 48px;
   }
@@ -521,10 +541,6 @@ export default defineComponent({
   }
 
   #shell .shell-nav .p-button {
-    min-height: 44px;
-  }
-
-  #shell .shell-locale .p-button {
     min-height: 44px;
   }
 
@@ -740,12 +756,54 @@ export default defineComponent({
     margin: 8px 0;
   }
 
-  /* Locale switcher (Refs #339): compact EN/VI pair at the end
-     of the header row, before sign-out. */
+  /* Locale switcher (Refs #339, #518): the design locale pill
+     from every tabbed board line 2 (`margin-left:auto;border:1px
+     solid #9CC9C4;border-radius:8px;padding:6px 12px`;
+     `tokens.shell.pill*`). Behaviour is unchanged (EN/VI persisted
+     to localStorage, whole-screen switch, default EN) — only the
+     container wears the design pill instead of bare buttons. */
   #shell .shell-locale {
     display: inline-flex;
     align-items: center;
     gap: 4px;
+    margin-left: auto;
+    border: 1px solid #9CC9C4;
+    border-radius: 8px;
+    padding: 6px 12px;
+    box-sizing: border-box;
+  }
+
+  /* Inside the pill the PrimeVue button defaults are abandoned
+     (restyle spec section 2: PrimeVue stays as logic carrier only
+     where it diverges — filled teal/grey rounded buttons would
+     fight the `VI | EN` pill text on the design bar). The buttons
+     keep their behaviour, testids, aria-pressed, and 44px targets;
+     only the fill, border, and radius are dropped so the pill
+     container owns the visuals. The active locale reads semibold,
+     mirroring the design's active-tab emphasis. */
+  #shell .shell-locale .p-button {
+    min-height: 44px;
+    background: transparent;
+    border-color: transparent;
+    border-radius: 8px;
+    color: #FFFFFF;
+    padding: 6px 8px;
+  }
+
+  #shell .shell-locale .p-button[aria-pressed="true"] {
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  /* Focus stays visible on the teal bar (NFR-DSP-2): the shell
+     default teal ring would vanish on #0F4C47, so header
+     interactive elements take the white ring instead — except the
+     inverted active tab, where the teal ring reads on the white
+     pill (Refs #458). */
+  #shell .shell-nav .shell-nav-item:not(.shell-nav-active):focus-visible,
+  #shell .shell-locale .p-button:focus-visible {
+    outline-color: #FFFFFF;
   }
 
   #shell .shell-locale-label {
