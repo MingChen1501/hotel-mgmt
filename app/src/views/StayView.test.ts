@@ -275,6 +275,24 @@ describe('stay view', () => {
     expect(wrapper.find('[data-testid="stay-main"]').exists()).toBe(true);
   });
 
+  // Refs #503 (FR-DSK-11, AC-DSK-12): the header renders the locale
+  // long-weekday form derived from the canonical ISO ref — the wire
+  // field stays ISO (pinned by the ListArrivalsDepartures body
+  // assertions elsewhere in this file).
+  it('renders the business-date header in the locale long-weekday form', async () => {
+    const wrapper = mountStay();
+    wrapper.vm.businessDate = '2026-10-28';
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find('[data-testid="stay-business-date"]').text()).toBe('Wednesday, 10/28/2026');
+    try {
+      setLocale('vi');
+      await wrapper.vm.$nextTick();
+      expect(wrapper.find('[data-testid="stay-business-date"]').text()).toBe('Thứ Tư, 28/10/2026');
+    } finally {
+      setLocale('en');
+    }
+  });
+
   it('loads the three daily lists with bearer auth under the shell session', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);

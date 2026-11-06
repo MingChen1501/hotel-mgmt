@@ -101,6 +101,43 @@ export function catalogueLocale(): string {
   return localeTag.value;
 }
 
+// Business-date display form (Refs #503, FR-DSK-11, BR-43): pure
+// derivation from the canonical ISO `YYYY-MM-DD` ref to the locale
+// long-weekday form (VI `Thứ Tư, 28/10/2026`, EN
+// `Wednesday, 10/28/2026` for 2026-10-28). The parts are built in
+// local time so the hotel's calendar day never shifts, and any
+// unparseable input or formatter failure falls back to the canonical
+// value (today's rendering) so the screen stays usable. No catalogue
+// keys are involved, so catalogue coverage is untouched.
+export function formatBusinessDate(canonical: string, locale: LocaleTag): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(canonical);
+  if (!match) {
+    return canonical;
+  }
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(year, month - 1, day);
+  if (
+    Number.isNaN(date.getTime()) ||
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return canonical;
+  }
+  try {
+    return new Intl.DateTimeFormat(locale, {
+      weekday: 'long',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    }).format(date);
+  } catch {
+    return canonical;
+  }
+}
+
 export function hasMessage(key: string): boolean {
   return enCatalogue[key] !== undefined;
 }

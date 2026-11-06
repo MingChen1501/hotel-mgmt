@@ -170,6 +170,23 @@ describe('rooms view', () => {
     expect(wrapper.find('[data-testid="rooms-refresh"]').exists()).toBe(true);
   });
 
+  // Refs #503 (FR-DSK-11, AC-DSK-12): the header renders the locale
+  // long-weekday form derived from the canonical ISO ref — the card
+  // notes keep ISO (RoomsView.test.ts card-note pins stay untouched).
+  it('renders the business-date header in the locale long-weekday form', async () => {
+    const wrapper = mountRooms();
+    wrapper.vm.businessDate = '2026-10-28';
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find('[data-testid="rooms-business-date"]').text()).toBe('Wednesday, 10/28/2026');
+    try {
+      setLocale('vi');
+      await wrapper.vm.$nextTick();
+      expect(wrapper.find('[data-testid="rooms-business-date"]').text()).toBe('Thứ Tư, 28/10/2026');
+    } finally {
+      setLocale('en');
+    }
+  });
+
   // D6 (Refs #424, AC-DSK-6, FR-DSK-6, LLD section 13.3): the
   // summary counts always match the rendered room cards across all
   // five statuses — chips and cards derive from the one payload.

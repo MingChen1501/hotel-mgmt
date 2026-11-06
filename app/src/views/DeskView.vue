@@ -6,7 +6,7 @@
 
     <section data-testid="desk-dashboard">
       <p>
-        <span>{{ t('desk.today.business_date', {}, 'Business date: ') }}</span><strong data-testid="desk-business-date">{{ businessDate }}</strong>
+        <span>{{ t('desk.today.business_date', {}, 'Business date: ') }}</span><strong data-testid="desk-business-date">{{ businessDateDisplay }}</strong>
         <Button
           id="desk-refresh-button"
           type="button"
@@ -386,7 +386,7 @@ import Tag from 'primevue/tag';
 import { RouterLink } from 'vue-router';
 import { apiFetch } from '../api/client';
 import type { ApiError } from '../api/client';
-import { t } from '../i18n';
+import { formatBusinessDate, localeTag, t } from '../i18n';
 import { useSessionStore } from '../stores/session';
 
 // Desk today dashboard as Vue SFCs (Refs #293, ADR-0003; Main board
@@ -516,6 +516,10 @@ export default defineComponent({
   setup() {
     const session = useSessionStore();
     const businessDate = ref(localBusinessDate());
+    // Business-date display form (Refs #503, FR-DSK-11): pure
+    // derivation of the canonical ISO ref into the locale
+    // long-weekday form; the ref itself stays ISO for the wire.
+    const businessDateDisplay = computed(() => formatBusinessDate(businessDate.value, localeTag.value));
     const loading = ref(false);
     const dashboardError = ref('');
     const sheetLine = ref('');
@@ -1165,6 +1169,7 @@ export default defineComponent({
     return {
       t,
       businessDate,
+      businessDateDisplay,
       loading,
       dashboardError,
       sheetLine,

@@ -11,7 +11,7 @@
         </template>
         <template #content>
           <p>
-            <span>{{ t('desk.today.business_date', {}, 'Business date: ') }}</span><strong data-testid="stay-business-date">{{ businessDate }}</strong>
+            <span>{{ t('desk.today.business_date', {}, 'Business date: ') }}</span><strong data-testid="stay-business-date">{{ businessDateDisplay }}</strong>
             <Button
               id="stay-refresh-button"
               type="button"
@@ -544,7 +544,7 @@ import InputText from 'primevue/inputtext';
 import Message from 'primevue/message';
 import { apiFetch } from '../api/client';
 import type { ApiError } from '../api/client';
-import { t } from '../i18n';
+import { formatBusinessDate, localeTag, t } from '../i18n';
 import { useSessionStore } from '../stores/session';
 import ReferenceDetails, { type ReferenceItem } from '../components/ReferenceDetails.vue';
 
@@ -732,6 +732,10 @@ export default defineComponent({
   setup() {
     const session = useSessionStore();
     const businessDate = ref(localBusinessDate());
+    // Business-date display form (Refs #503, FR-DSK-11): pure
+    // derivation of the canonical ISO ref into the locale
+    // long-weekday form; the ref itself stays ISO for the wire.
+    const businessDateDisplay = computed(() => formatBusinessDate(businessDate.value, localeTag.value));
     const listsLoading = ref(false);
     const listsError = ref('');
     const arrivalRows = ref<StayListRow[]>([]);
@@ -1696,6 +1700,7 @@ export default defineComponent({
     return {
       t,
       businessDate,
+      businessDateDisplay,
       listsLoading,
       listsError,
       arrivalRows,

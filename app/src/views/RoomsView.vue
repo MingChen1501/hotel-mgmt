@@ -5,7 +5,7 @@
     <noscript><p>{{ t('desk.rooms.noscript', {}, 'This page needs JavaScript to load the room map.') }}</p></noscript>
 
     <p>
-      <span>{{ t('desk.today.business_date', {}, 'Business date: ') }}</span><strong data-testid="rooms-business-date">{{ businessDate }}</strong>
+      <span>{{ t('desk.today.business_date', {}, 'Business date: ') }}</span><strong data-testid="rooms-business-date">{{ businessDateDisplay }}</strong>
       <Button
         id="rooms-refresh-button"
         type="button"
@@ -130,7 +130,7 @@ import Message from 'primevue/message';
 import Tag from 'primevue/tag';
 import { apiFetch } from '../api/client';
 import type { ApiError } from '../api/client';
-import { t } from '../i18n';
+import { formatBusinessDate, localeTag, t } from '../i18n';
 import { useSessionStore } from '../stores/session';
 
 // Rooms visual map (Refs #424, #435, FR-DSK-6, LLD section 13.3,
@@ -220,6 +220,10 @@ export default defineComponent({
   setup() {
     const session = useSessionStore();
     const businessDate = ref(localBusinessDate());
+    // Business-date display form (Refs #503, FR-DSK-11): pure
+    // derivation of the canonical ISO ref into the locale
+    // long-weekday form; the ref itself stays ISO for the wire.
+    const businessDateDisplay = computed(() => formatBusinessDate(businessDate.value, localeTag.value));
     const loading = ref(false);
     const loadError = ref('');
     const rooms = ref<DisplayRoom[]>([]);
@@ -666,6 +670,7 @@ export default defineComponent({
     return {
       t,
       businessDate,
+      businessDateDisplay,
       loading,
       loadError,
       housekeepingError,
