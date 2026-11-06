@@ -54,6 +54,7 @@ Development table, which use a `../` prefix.
 | Phase glossary | `product/phase-glossary.md` | active | `product-owner` | project phase definitions with entry/exit evidence (Closes #226) |
 | UX flows and wireframes | `product/ux-flows-wireframes.md` | active | `product-owner` | full-system journey flow maps, screen inventory, wireframes, wording rules, prototype record (Closes #412) |
 | Desk UI design rollout | `product/desk-ui-design-rollout.md` | active | `product-owner` | six-screen Claude UI rollout scope, tokens, UI contract, per-screen breakdown (Closes #419) |
+| Desk UI pixel-faithful restyle | `product/desk-ui-pixel-faithful-restyle.md` | active | `product-owner` | shell-plus-six-screen owner-design rebuild scope, tokens, rebuild-vs-keep mappings, UI contract, per-surface breakdown (Closes #517) |
 | FE design reference | `design/README.md` | active | `product-owner` | owner-supplied authoritative FE designs: six `.dc.html` boards plus `manifest.json` that implementation must follow (Closes #462) |
 | Scope | `product/scope.md` | stub (not needed yet) | `product-owner` | in/out scope statement for the product (`product/mvp-scope.md` is the operative scope statement) |
 

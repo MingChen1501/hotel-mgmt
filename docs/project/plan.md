@@ -74,7 +74,20 @@ match.
    spec `docs/product/desk-ui-design-rollout.md`) restyles Main,
    Stay, Book, and Folio per the design and adds the Rooms map
    and Onboarding wizard as new screens; tracked per screen in
-   #420–#425, one small task and one PR each.
+   #420–#425, one small task and one PR each. Pixel-faithful
+   rebuild follow-up (epic #517, owner decision B 2026-11-07): the
+   desk UI is rebuilt as closely as possible to the owner boards —
+   exact colors including the `#0F766E` primary, fonts, spacing,
+   radii, and layout per the `docs/design/*.dc.html` inline styles
+   — abandoning PrimeVue default styling wherever it diverges, with
+   full markup rebuild per surface authorized (product spec
+   `docs/product/desk-ui-pixel-faithful-restyle.md`,
+   done-conditions `AC-RST-1`..`AC-RST-8`); tracked per surface in
+   #518 (shell/nav) plus #519–#524 (six screens), one small task
+   and one PR each, each with side-by-side screenshot evidence and
+   per-screen owner review. The restyle spec plus the
+   analyst/architect/QA handoffs pass the spec gate before any
+   child implementation PR opens.
 6. **QA.** The QA track — test plans, issue reports, and bugs
    found; the fix for a bug lands in its phase milestone. Exit
    signal: every QA issue for a phase is closed or accepted by
