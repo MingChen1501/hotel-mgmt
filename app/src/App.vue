@@ -544,45 +544,152 @@ export default defineComponent({
     min-height: 44px;
   }
 
-  /* Main board design cards (Refs #420): 12px radius, one idea
-     per card in a responsive grid. Views carry no style blocks
-     (M4), so the shared card presentation lives here. */
+  /* Main desk board (Refs #519; restyle spec section 5.1,
+     AC-RST-2): pixel-faithful to `docs/design/Main.dc.html:2` —
+     business-date row (muted 14px label, 26px/700 value, primary
+     refresh button) above the `repeat(3,1fr)` card grids
+     (`gap:16px`); cards (`background:#fff;border:1px solid
+     #D9E0DE;border-radius:12px;padding:18px`, 16px titles);
+     15px rows with `1px solid #EEF1F0` top dividers; muted 15px
+     empty states; primary action buttons (`min-height:44px;
+     padding:0 18px;border-radius:8px;border:0;background:#0F766E;
+     color:#fff;font-weight:600`). PrimeVue stays as logic
+     carrier only: Card/DataTable/Button defaults are overridden
+     here wherever they diverge from the design (restyle spec
+     section 2). Token values live in `src/theme/tokens.ts`
+     (`colors.primary/muted/cardBorder/rowDivider`); this rule
+     duplicates them because CSS cannot import the TS constants.
+     Views carry no style blocks (M4), so the presentation lives
+     here. The five-lane board and room-map sections below keep
+     their current presentation (decided extras; accents owned by
+     #523, alignment by #491). */
+  #shell .desk-date-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin: 16px 0;
+  }
+
+  #shell .desk-date-label {
+    display: block;
+    font-size: 14px;
+    color: #4B5D5B;
+  }
+
+  #shell [data-testid="desk-business-date"] {
+    font-size: 26px;
+    font-weight: 700;
+    color: #1B2B2A;
+  }
+
   #shell .desk-cards {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 16px;
     margin: 16px 0;
   }
 
   #shell .desk-cards .p-card {
-    border: 1px solid #E5E7EB;
+    border: 1px solid #D9E0DE;
     border-radius: 12px;
     background: #FFFFFF;
+    box-shadow: none;
+  }
+
+  #shell .desk-cards .p-card-body {
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  #shell .desk-cards .p-card-caption,
+  #shell .desk-cards .p-card-content {
+    padding: 0;
   }
 
   #shell .desk-cards .p-card-title h2 {
-    font-size: 24px;
-    margin: 0 0 8px;
+    font-size: 16px;
+    margin: 0;
+    color: #1B2B2A;
+  }
+
+  /* Stay-table rows render the design two-cell rows (Refs #490):
+     guest-first 15px cells with `#EEF1F0` top dividers. The header
+     row carries no design counterpart (the board shows rows
+     only), so it renders quiet 14px muted labels while the
+     decided header sequences stay exact (design-facts gate). */
+  #shell .desk-cards .p-datatable .p-datatable-table {
+    width: 100%;
+    font-size: 15px;
+    color: #1B2B2A;
+  }
+
+  #shell .desk-cards .p-datatable th {
+    font-size: 14px;
+    font-weight: 400;
+    color: #4B5D5B;
+    text-align: left;
+    padding: 10px 0;
+    border: 0;
+    background: transparent;
+  }
+
+  #shell .desk-cards .p-datatable td {
+    font-size: 15px;
+    text-align: left;
+    padding: 10px 0;
+    border: 0;
+    border-top: 1px solid #EEF1F0;
+    background: transparent;
+  }
+
+  #shell .desk-cards .p-datatable tbody tr {
+    background: transparent;
+  }
+
+  #shell .desk-cards .p-datatable .p-datatable-emptymessage td {
+    padding: 18px 0;
+    color: #4B5D5B;
+    font-size: 15px;
+    border-top: 1px solid #EEF1F0;
   }
 
   #shell .desk-cards ul {
     list-style: none;
     padding: 0;
-    margin: 8px 0 16px;
+    margin: 0;
   }
 
   #shell .desk-cards li {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 8px 12px;
-    padding: 8px 0;
-    border-bottom: 1px solid #E5E7EB;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 10px 0;
+    border-top: 1px solid #EEF1F0;
+    font-size: 15px;
     min-height: 44px;
+    box-sizing: border-box;
   }
 
   #shell .desk-cards li:last-child {
     border-bottom: none;
+  }
+
+  /* Design action buttons: the refresh button plus the two
+     housekeeping buttons (`docs/design/Main.dc.html:2`). */
+  #shell [data-testid="desk-view"] .desk-refresh.p-button,
+  #shell [data-testid="desk-view"] .desk-action.p-button {
+    min-height: 44px;
+    padding: 0 18px;
+    border-radius: 8px;
+    border: 0;
+    background: #0F766E;
+    color: #FFFFFF;
+    font-weight: 600;
   }
 
   /* Book two-column design cards (Refs #421): the guest card

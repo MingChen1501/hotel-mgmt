@@ -15,7 +15,10 @@ export const deskTokens = {
     page: '#F4F6F5',
     // Text.
     ink: '#1B2B2A',
-    muted: '#6B7280',
+    // Restyle spec section 3 (Refs #519): the boards' muted ink is
+    // `#4B5D5B` (labels, hints, empty states;
+    // `docs/design/Main.dc.html:2` — all six boards agree).
+    muted: '#4B5D5B',
     // Header teal plus the single action accent (actions, active
     // nav). State colours are used solely for status, never for
     // branding.
@@ -25,6 +28,14 @@ export const deskTokens = {
     warning: '#B45309',
     danger: '#B91C1C',
     border: '#E5E7EB',
+    // Restyle spec section 3 (Refs #519): design card borders are
+    // `#D9E0DE` and row dividers `#EEF1F0`
+    // (`docs/design/Main.dc.html:2` — all boards except Stay agree
+    // on the divider). Surfaces migrate per screen (#519–#524); the
+    // legacy `border` token above stays until its last consumer
+    // migrates.
+    cardBorder: '#D9E0DE',
+    rowDivider: '#EEF1F0',
   },
   type: {
     fontStack: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
