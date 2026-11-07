@@ -1,28 +1,37 @@
 #!/usr/bin/env node
-// Design-side UI fact extractor for the six desk screens (Closes #466).
+// Design-side UI fact extractor for the seven desk screens (Closes #548).
 //
-// Reads docs/design/manifest.json (screen order) plus the six
+// Reads docs/design/manifest.json (screen order) plus the seven
 // docs/design/*.dc.html boards and emits one deterministic JSON fact
 // record per screen, following the contract in
 // docs/technical/desk-ui-fact-schema.md (schemaVersion 1).
 // Harness/test code only: no product behaviour change, no design-file
 // changes, no binary artifacts (UTF-8 JSON text only).
 //
+// Board envelope (v2, bundle 07-11): each .dc.html file is a bundler
+// shell whose design markup is embedded as an escaped JS string in
+// <script type="__bundler/template">. The extractor decodes that
+// template and parses the design markup only; the inline React runtime
+// scripts are never executed and never enter facts. Boards without the
+// envelope (the v1 static <x-dc> files) still parse directly, so the
+// direct path keeps working as a fallback.
+//
 // Usage:
 //   node tests/design-facts/extract-design-facts.mjs --out <dir>
 //
-// The output directory receives exactly six files,
+// The output directory receives exactly seven files,
 // <Screen>.facts.json, one per manifest screen. Repeated runs over
 // identical inputs produce byte-identical output.
 //
 // Design-tab-to-key mapping (definitive table owned by this extractor
 // per the schema): the rendered header tab set is not identical to the
-// six screen keys (the design header carries no Onboarding/Rooms tabs;
-// print/admin destinations are out of the restyle batch), so tab keys
-// for non-screen destinations use their route keys:
+// seven screen keys (the design header carries no Onboarding tab; print/
+// admin destinations use their route keys), so tab keys for non-screen
+// destinations use their route keys:
 //
-//   "Lễ tân" -> "Main", "Đặt phòng" -> "Book", "Lưu trú" -> "Stay",
-//   "Hoá đơn" -> "Folio", "In" -> "print", "Quản trị" -> "admin"
+//   "Lễ tân" -> "Main", "Sơ đồ phòng" -> "Rooms", "Đặt phòng" -> "Book",
+//   "Lưu trú" -> "Stay", "Hoá đơn" -> "Folio", "In" -> "print",
+//   "Quản trị" -> "admin"
 //
 // Screen-to-app-view-hook mapping (per-fact `app` provenance hints; the
 // hooks below exist in app/src/views and match the schema examples.
@@ -30,7 +39,8 @@
 // assertions; the design-side `design` pointers are authoritative):
 //
 //   Main -> desk-view, Stay -> stay-view, Onboarding -> onboarding-view,
-//   Rooms -> rooms-view, Book -> book-view, Folio -> folio-view
+//   Rooms -> rooms-view, Book -> book-view, Folio -> folio-view,
+//   Admin -> admin-view
 //
 // Notes on honest extraction corners:
 // - Onboarding's board has no header tab bar, so it extracts an empty
@@ -55,6 +65,7 @@ const SCHEMA_VERSION = 1;
 
 const TAB_KEY_BY_LABEL = {
   "Lễ tân": "Main",
+  "Sơ đồ phòng": "Rooms",
   "Đặt phòng": "Book",
   "Lưu trú": "Stay",
   "Hoá đơn": "Folio",
@@ -69,6 +80,7 @@ const VIEW_HOOK_BY_SCREEN = {
   Rooms: "rooms-view",
   Book: "book-view",
   Folio: "folio-view",
+  Admin: "admin-view",
 };
 
 // Fixed token key set for schema version 1 (schema section 2).
@@ -94,8 +106,42 @@ const VOID_ELEMENTS = new Set([
 const RAW_TEXT_ELEMENTS = new Set(["script", "style"]);
 const SKIPPED_SUBTREES = new Set(["script", "style"]);
 
+// Tags carrying dropdown options. The v2 boards render native options
+// inside the <sc-raw-select> custom element; both count as selects.
+const SELECT_TAGS = new Set(["select", "sc-raw-select"]);
+
+// The v2 bundler envelope: design markup embedded as one escaped JS
+// string literal in <script type="__bundler/template">. Matched on the
+// raw board source before HTML parsing so the runtime scripts are
+// never parsed as markup.
+const BUNDLER_TEMPLATE_PATTERN =
+  /<script[^>]*type="__bundler\/template"[^>]*>\s*"((?:[^"\\]|\\.)*)"\s*<\/script\s*>/;
+
 function fail(message) {
   throw new Error(`extract-design-facts: ${message}`);
+}
+
+// Decode the bundler template string to the design document. The
+// payload uses standard JSON string escapes (\n, \", \\, \uXXXX such
+// as \u002F for "/"), so JSON.parse is the decoder; anything else is
+// a loud error, never a silent partial decode.
+function decodeBundlerTemplate(payload, designFile) {
+  try {
+    return JSON.parse(`"${payload}"`);
+  } catch {
+    fail(`${designFile}: <script type="__bundler/template"> payload is not a decodable string`);
+    return "";
+  }
+}
+
+// Resolve the design document to parse: the decoded bundler template
+// when the envelope is present, otherwise the board source itself
+// (v1 static <x-dc> files). Runtime <script> bundles are excluded by
+// construction — only the template string enters the parser.
+function resolveDesignDocument(source, designFile) {
+  const match = source.match(BUNDLER_TEMPLATE_PATTERN);
+  if (match) return decodeBundlerTemplate(match[1], designFile);
+  return source;
 }
 
 function decodeEntities(text) {
@@ -341,7 +387,7 @@ function wrappingLabelText(labelNode) {
       return;
     }
     if (SKIPPED_SUBTREES.has(node.tag)) return;
-    if (node.tag === "input" || node.tag === "select" || node.tag === "textarea") return;
+    if (node.tag === "input" || node.tag === "textarea" || SELECT_TAGS.has(node.tag)) return;
     for (const child of node.children) collect(child);
   };
   for (const child of labelNode.children) collect(child);
@@ -379,7 +425,10 @@ function nearestAncestorLabel(root, target) {
 }
 
 export function extractScreenFacts({ screen, designFile, source, viewHook }) {
-  const root = parseHtml(source);
+  // Provenance lines below index this resolved design document: the
+  // decoded bundler template for v2 boards, the board file itself for
+  // v1 static boards (see the schema doc provenance note).
+  const root = parseHtml(resolveDesignDocument(source, designFile));
   const dcNodes = findElements(root, (node) => node.tag === "x-dc");
   if (dcNodes.length !== 1) fail(`${designFile}: expected exactly one <x-dc> root`);
   const dc = dcNodes[0];
@@ -464,13 +513,13 @@ export function extractScreenFacts({ screen, designFile, source, viewHook }) {
   const controls = findElements(
     dc,
     (node) =>
-      node.tag === "input" || node.tag === "textarea" || node.tag === "select",
+      node.tag === "input" || node.tag === "textarea" || SELECT_TAGS.has(node.tag),
   );
   const inputs = controls.map((node) => {
     if (node.tag === "input" && (node.attrs.type || "").toLowerCase() === "hidden") {
       return null;
     }
-    const kind = node.tag === "select" ? "select" : "text";
+    const kind = SELECT_TAGS.has(node.tag) ? "select" : "text";
     let label = null;
     const wrapper = nearestAncestorLabel(root, node);
     if (wrapper) label = wrappingLabelText(wrapper);
