@@ -260,6 +260,13 @@ No new subsystem, no boundary change, no contract change:
   is unchanged. The offline
   banner and manual retry stay exactly as they are
   (`app/src/App.vue:1-28`, `app/src/api/client.ts:44-85`).
+- Restyle pointer. Desk shell/nav chrome was later restyled
+  pixel-faithful to the owner design tokens (1200px column;
+  PrimeVue fills abandoned on desk surfaces where they diverge) —
+  the 1100px/stock-preset wording above is the pre-restyle rollout
+  record, and the restyle spec
+  `docs/product/desk-ui-pixel-faithful-restyle.md` is authoritative
+  (Refs #518).
 - Styling mechanism. PrimeVue is added as a dependency with a
   stock preset theme fed by the contract section 1 tokens (colours,
   type, spacing, 2px focus ring); no custom design system beyond

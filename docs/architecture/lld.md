@@ -730,6 +730,14 @@ Edge trace (every edge cites code):
   `data-testid` hooks (`*-view`, `offline-banner`) are kept so
   characterization tests survive.
 
+  Pointer: desk shell/nav chrome was later restyled pixel-faithful
+  to the owner design tokens (1200px column; active-tab inversion
+  instead of the desk-blue underline; PrimeVue fills abandoned on
+  desk surfaces where they diverge) — the rollout record above is
+  history, and the restyle spec
+  `docs/product/desk-ui-pixel-faithful-restyle.md` is authoritative
+  (Refs #518).
+
 Failure/rollback:
 
 ```mermaid

@@ -35,7 +35,33 @@ export const deskTokens = {
     unitPx: 4,
     stepsPx: [8, 12, 16, 24],
     cardRadiusPx: 12,
-    contentMaxPx: 1100,
+    // Restyle spec section 3 (Refs #518): the design boards render
+    // a 1200px content column (`docs/design/Main.dc.html:2` root
+    // `width:1200px`; every tabbed board agrees).
+    contentMaxPx: 1200,
+  },
+  // Shell/nav chrome tokens (Refs #518; restyle spec section 4).
+  // Read verbatim from the header block on line 2 of every board
+  // (`docs/design/Main.dc.html:2`, `Book.dc.html:2`, `Stay.dc.html:2`,
+  // `Folio.dc.html:2`, `Rooms.dc.html:2`; `Onboarding.dc.html:2`
+  // carries the slimmer setup header). The shell stylesheet cites
+  // these values; CSS cannot import the TS constants, so both stay
+  // in sync by hand.
+  shell: {
+    headerHeightPx: 60,
+    headerPadXPx: 24,
+    brandPx: 18,
+    brandGapPx: 24,
+    tabPadYPx: 10,
+    tabPadXPx: 16,
+    tabRadiusPx: 8,
+    // Locale pill (`margin-left:auto;border:1px solid
+    // #9CC9C4;border-radius:8px;padding:6px 12px`, every tabbed
+    // board line 2).
+    pillBorder: '#9CC9C4',
+    pillRadiusPx: 8,
+    pillPadYPx: 6,
+    pillPadXPx: 12,
   },
   targets: {
     // Every interactive element meets the 44px minimum touch and
