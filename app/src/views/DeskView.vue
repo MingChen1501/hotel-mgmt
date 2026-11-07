@@ -133,11 +133,17 @@
             >
               {{ housekeepingError }}
             </Message>
-            <h3>{{ t('desk.today.dirty', {}, 'Dirty') }}</h3>
-            <ul data-testid="desk-dirty-list">
+            <!-- Unified clean-up list (Refs #540, `docs/design/Main.dc.html`):
+              one mixed list of dirty plus awaiting-inspection rooms
+              with per-row action buttons; the old split h3 subsections
+              are gone. Dirty rows ride first with the mark-cleaned
+              button, awaiting-inspection rows follow with the
+              mark-inspected button; one empty line covers both groups
+              being empty. -->
+            <ul data-testid="desk-cleanup-list">
               <li
                 v-for="room in dirty"
-                :key="room.number"
+                :key="`dirty-${room.number}`"
                 :data-testid="`desk-dirty-${room.number}`"
               >
                 {{ room.number }} — {{ typeName(room.roomTypeId) }}
@@ -151,15 +157,9 @@
                   @click="onMarkCleaned(room)"
                 />
               </li>
-              <li v-if="!loading && dirty.length === 0">
-                {{ t('desk.today.empty_dirty', {}, 'No dirty rooms right now. Rooms needing cleaning appear here.') }}
-              </li>
-            </ul>
-            <h3>{{ t('desk.today.uninspected', {}, 'Clean but uninspected') }}</h3>
-            <ul data-testid="desk-uninspected-list">
               <li
                 v-for="room in uninspected"
-                :key="room.number"
+                :key="`inspect-${room.number}`"
                 :data-testid="`desk-clean-${room.number}`"
               >
                 {{ room.number }} — {{ typeName(room.roomTypeId) }}
@@ -173,8 +173,8 @@
                   @click="onMarkInspected(room)"
                 />
               </li>
-              <li v-if="!loading && uninspected.length === 0">
-                {{ t('desk.today.empty_uninspected', {}, 'No rooms waiting for inspection right now.') }}
+              <li v-if="!loading && dirty.length === 0 && uninspected.length === 0">
+                {{ t('desk.today.empty_dirty', {}, 'No dirty rooms right now. Rooms needing cleaning appear here.') }}
               </li>
             </ul>
           </template>
@@ -417,11 +417,11 @@ import { useSessionStore } from '../stores/session';
 // owner/manager, and the admin audit surface already lists backup
 // reports, so the reception board is not its surface. Deliberately
 // kept with justification: the h1 plus intro (screen title,
-// accessibility, consistent with every screen); the merged
-// need-cleaning card (holds exactly the design's dirty plus
-// awaiting-inspection content with the same two buttons; splitting
-// it into two cards would collide with the #490 empty-state
-// alignment); the DailySheet cross-check line (its open-balances
+// accessibility, consistent with every screen); the unified clean-up
+// list on the need-cleaning card (Refs #540: one mixed list holding
+// the design's dirty plus awaiting-inspection rows with the same two
+// per-row buttons; the old split h3 subsections are gone); the
+// DailySheet cross-check line (its open-balances
 // count exists nowhere else on the desk screen); the five-lane
 // room-status board (owner-requested in #371); and the room-map
 // section (owner-requested in #479, alignment owned by #491).
@@ -462,6 +462,14 @@ import { useSessionStore } from '../stores/session';
 // from the design. The five-lane board and the room-map section
 // keep their current presentation (decided extras; board accents
 // owned by #523, map alignment by #491).
+//
+// The #540 unification (bundle 07-11, `docs/design/Main.dc.html`)
+// turns the need-cleaning card's two split h3 subsections into one
+// mixed clean-up list: dirty rows first with the mark-cleaned button,
+// awaiting-inspection rows next with the mark-inspected button, one
+// empty line when both groups are empty. Reads, transitions, buttons,
+// and catalogue keys above hold unchanged — only the list markup and
+// the three orphaned split keys move.
 //
 // Shared-migration contracts, same as the shell:
 // - Bearer auth comes only from the Pinia session store via the

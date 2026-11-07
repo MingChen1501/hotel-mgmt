@@ -2993,14 +2993,6 @@
       "params": {}
     },
     {
-      "key": "desk.today.empty_uninspected",
-      "surface": "desk today",
-      "sources": [
-        "app/src/views/DeskView.vue"
-      ],
-      "params": {}
-    },
-    {
       "key": "desk.today.empty_outoforder",
       "surface": "desk today",
       "sources": [

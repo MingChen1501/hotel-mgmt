@@ -177,8 +177,8 @@ export interface DecidedScreenContent {
 
 export const DECIDED_CONTENT: readonly DecidedScreenContent[] = [
   {
-    // Main (Refs #479, #489): the desk screen pins its static heading
-    // prefix — dashboard cards, the five-lane board, then the
+    // Main (Refs #479, #489, #540): the desk screen pins its static
+    // heading prefix — dashboard cards, the five-lane board, then the
     // embedded room-map section heads — while the data-driven tail
     // (floor sections from room payloads, room-number links per
     // room) follows the same structural rule as Rooms. Seed rooms
@@ -186,9 +186,10 @@ export const DECIDED_CONTENT: readonly DecidedScreenContent[] = [
     // legacy backup-report h2 (no design counterpart; the report
     // belongs to the owner/manager via the admin audit surface) and
     // records the deliberately kept extras here so their return is
-    // a gate failure: the h1 plus intro (screen title), the merged
-    // need-cleaning card (the design's dirty plus awaiting-inspection
-    // content with the same two buttons), the cross-check line, the
+    // a gate failure: the h1 plus intro (screen title), the unified
+    // clean-up list (Refs #540: one mixed list holding the design's
+    // dirty plus awaiting-inspection rows with per-row buttons — the
+    // old split h3 subsections are gone), the cross-check line, the
     // #371 five-lane board, and the #479 room map (alignment owned
     // by #491).
     screen: 'Main',
@@ -199,8 +200,6 @@ export const DECIDED_CONTENT: readonly DecidedScreenContent[] = [
       { level: 2, text: 'Đang lưu trú' },
       { level: 2, text: 'Khách đi hôm nay' },
       { level: 2, text: 'Phòng cần dọn' },
-      { level: 3, text: 'Phòng bẩn' },
-      { level: 3, text: 'Sạch nhưng chưa kiểm tra' },
       { level: 2, text: 'Ngưng bán' },
       { level: 2, text: 'Bảng trạng thái phòng' },
       { level: 3, text: 'Đang có khách' },

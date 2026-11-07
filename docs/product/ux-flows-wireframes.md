@@ -161,7 +161,7 @@ flowchart TD
 Acceptance notes: clean and inspect are separate explicit actions
 with confirmation status (never a silent toggle); out-of-order blocks
 always carry a reason and a date range; the desk board shows all three
-lists at a glance (desk-dirty-list, desk-uninspected-list,
+lists at a glance (desk-cleanup-list,
 desk-outoforder-list).
 
 ### J3. Folio / billing

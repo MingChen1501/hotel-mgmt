@@ -303,6 +303,15 @@ describe('desk view', () => {
     expect(wrapper.find('[data-testid="desk-mark-cleaned-101"]').text()).toContain('Mark cleaned');
     expect(wrapper.find('[data-testid="desk-mark-inspected-102"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="desk-mark-inspected-102"]').text()).toContain('Mark inspected');
+    // Refs #540: one mixed clean-up list holds both the dirty and
+    // the awaiting-inspection rows with per-row buttons; the old
+    // split h3 subsections and lists are gone.
+    const cleanup = wrapper.find('[data-testid="desk-cleanup-list"]');
+    expect(cleanup.exists()).toBe(true);
+    expect(cleanup.text()).toContain('101');
+    expect(cleanup.text()).toContain('102');
+    expect(wrapper.find('[data-testid="desk-dirty-list"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="desk-uninspected-list"]').exists()).toBe(false);
     // Out-of-service room 103 names its covering-block reason plus
     // date (Refs #420), never a bare number.
     const note = wrapper.find('[data-testid="desk-outoforder-note-103"]').text();
@@ -393,12 +402,14 @@ describe('desk view', () => {
     expect(wrapper.find('[data-testid="desk-board-lane-dirty"]').text()).toContain('(1)');
 
     await wrapper.find('[data-testid="desk-mark-cleaned-101"]').trigger('click');
-    // Success reloads the board: room 101 leaves the dirty lane and
+    // Success reloads the board: room 101 leaves the dirty rows and
+    // rejoins as awaiting inspection inside the same mixed list, and
     // the counts match the rendered lanes by construction.
     await vi.waitFor(() => {
-      expect(wrapper.find('[data-testid="desk-dirty-list"]').text()).not.toContain('101');
+      expect(wrapper.find('[data-testid="desk-cleanup-list"]').text()).toContain('101');
+      expect(wrapper.find('[data-testid="desk-mark-cleaned-101"]').exists()).toBe(false);
     });
-    expect(wrapper.find('[data-testid="desk-uninspected-list"]').text()).toContain('101');
+    expect(wrapper.find('[data-testid="desk-mark-inspected-101"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="desk-board-lane-dirty"]').text()).toContain('(0)');
     expect(wrapper.find('[data-testid="desk-board-lane-clean"]').text()).toContain('(2)');
     expect(wrapper.find('[data-testid="desk-housekeeping-error"]').exists()).toBe(false);
@@ -465,7 +476,7 @@ describe('desk view', () => {
     expect(wrapper.find('[data-testid="desk-housekeeping-error"]').text()).toContain('Could not update room 101');
     expect(wrapper.find('[data-testid="desk-housekeeping-error"]').text()).not.toContain('STATE_ILLEGAL');
     // The refused press changes nothing: room 101 still needs cleaning.
-    expect(wrapper.find('[data-testid="desk-dirty-list"]').text()).toContain('101');
+    expect(wrapper.find('[data-testid="desk-cleanup-list"]').text()).toContain('101');
   });
 
   it('renders the attention lists and the DailySheet cross-check line', async () => {
@@ -474,13 +485,13 @@ describe('desk view', () => {
     const wrapper = mountDesk();
     await signIn(wrapper, fetchMock);
 
-    expect(wrapper.find('[data-testid="desk-dirty-list"]').text()).toContain('101');
-    expect(wrapper.find('[data-testid="desk-uninspected-list"]').text()).toContain('102');
+    expect(wrapper.find('[data-testid="desk-cleanup-list"]').text()).toContain('101');
+    expect(wrapper.find('[data-testid="desk-cleanup-list"]').text()).toContain('102');
     expect(wrapper.find('[data-testid="desk-outoforder-list"]').text()).toContain('103');
     // Attention rows name the room number with the resolved type
     // name (issue #372), never the raw type UUID.
-    expect(wrapper.find('[data-testid="desk-dirty-list"]').text()).toContain('Standard');
-    expect(wrapper.find('[data-testid="desk-dirty-list"]').text()).not.toContain('standard');
+    expect(wrapper.find('[data-testid="desk-cleanup-list"]').text()).toContain('Standard');
+    expect(wrapper.find('[data-testid="desk-cleanup-list"]').text()).not.toContain('standard');
     expect(wrapper.find('[data-testid="desk-outoforder-list"]').text()).toContain('Suite');
     expect(wrapper.find('[data-testid="desk-outoforder-list"]').text()).not.toContain('suite');
     const sheet = wrapper.find('[data-testid="desk-sheet-line"]').text();
@@ -617,7 +628,7 @@ describe('desk view', () => {
     expect(wrapper.find('[data-testid="desk-departures-table"]').text()).toContain(
       'No check-outs today.',
     );
-    expect(wrapper.find('[data-testid="desk-dirty-list"]').text()).toContain(
+    expect(wrapper.find('[data-testid="desk-cleanup-list"]').text()).toContain(
       'No dirty rooms right now.',
     );
     // Refs #371: all five board lanes share the same empty wording.
