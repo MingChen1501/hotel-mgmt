@@ -323,10 +323,12 @@ Trước khi chạy case của từng màn hình, xác nhận vỏ chung đạt 
 - **Các bước thực hiện:**
   1. Mở app trên DB trống.
   2. Mở app (kể cả đường dẫn `/onboarding`) trên DB đã seed.
-- **Kết quả mong đợi:** DB trống tự mở trình hướng dẫn với tiến trình và điều
-  hướng back/continue (`desk.onboarding.title`, `desk.onboarding.intro`,
-  `desk.onboarding.progress`, `desk.onboarding.continue`,
-  `desk.onboarding.back`); DB đã seed không bao giờ mở trình hướng dẫn.
+- **Kết quả mong đợi:** DB trống tự mở trình hướng dẫn với dòng tiến trình
+  theo pha của board và điều hướng continue/back
+  (`desk.onboarding.progress` + `desk.onboarding.progress_step1_name`,
+  `desk.onboarding.continue`, `desk.onboarding.back` — bước 1 vẽ một nút
+  Tiếp tục duy nhất, không có tiêu đề/intro màn hình hay nút Back);
+  DB đã seed không bao giờ mở trình hướng dẫn.
 - **Truy vết:** AC-DSK-7.
 
 ### QA-ONB-1 — Bước 1: tên khách sạn được lưu, hiện lên header và bản in
@@ -336,7 +338,9 @@ Trước khi chạy case của từng màn hình, xác nhận vỏ chung đạt 
 - **Các bước thực hiện:**
   1. Bấm `desk.onboarding.continue` khi để trống tên: kỳ vọng
      `desk.onboarding.name_required`.
-  2. Nhập tên khách sạn (`desk.onboarding.hotel_name_label`,
+  2. Nhập tên khách sạn vào ô nhập trần dưới h3
+     (`desk.onboarding.step1_heading`, tên truy cập
+     `desk.onboarding.hotel_name_label`, ví dụ
      `desk.onboarding.hotel_name_placeholder`), bấm tiếp tục.
   3. Kiểm tra header vỏ chung và mở một bản in (confirmation/invoice).
 - **Kết quả mong đợi:** tên trống bị từ chối nêu đúng trường tên; sau khi lưu,

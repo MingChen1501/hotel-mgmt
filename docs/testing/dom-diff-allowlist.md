@@ -209,24 +209,28 @@ residuals. App-side room cards carry no entry yet (fresh-lab
 cards for seed rooms 101/102 are flow-state, rows proposed when
 a run with richer room data shows them).
 
-Lab evidence (isolated `hotel-lab-699`, 2026-11-06, `vi` locale,
-Chromium, `--workers=1`): Onboarding `54` non-allowlisted diffs
-with `EMPTY_ALLOWLIST` (design 18 nodes, app 46 nodes: 13
-design-side `x-dc` subtree nodes plus 41 app-side extras — the 2
-SPA head tags (`meta`, `link`) and 39 shell/PrimeVue nodes — zero
-text/colour/font/visibility diffs on shared paths —
+Lab evidence (isolated `hotel-lab-771`, 2026-11-07, `vi` locale,
+Chromium, `--workers=1`): Onboarding `61` non-allowlisted diffs
+with `EMPTY_ALLOWLIST` (design 18 nodes, app 43 nodes: the 2
+SPA head tags (`meta`, `link`) plus shell/PrimeVue structure —
 the accepted S1 shape divergence; served title already
 `Thiết lập lần đầu` via the #495 S2 follow-through, verified
 live, byte-identical to the design `<title>` so no title diff
-surfaces). No wiring follows: no dynamic-data nodes surface on
-either side (Refs #500 O6 — the only example name lives in the
-input `placeholder` attribute, which the gate never extracts,
-and the step counter is flow-state plus a format divergence
-reported, not exempted), so Onboarding keeps `EMPTY_ALLOWLIST`
-with zero stale entries trivially. The static copy around the
-shape divergence (header, progress line, step naming, helper,
-placeholder example) carries no entry — product-copy observations
-reported on #500, not gate exemptions.
+surfaces). The `61` split into `43` `node` presence mismatches
+(shell/PrimeVue structure vs design-literal markup) plus `18`
+top-level pairing diffs where the shell page and the bare board
+align positionally: `17` box/typography pairings on the shell
+wrappers and the board header bar, and `1` text pairing of the
+board header-bar text (`Thiết lập khách sạn`) against shell
+structure that carries no text — the header stays shell-owned
+with no app counterpart (same rule as the Stay board header
+mapping to the shell nav, Refs #541). No wiring follows: no
+dynamic-data nodes surface on either side, so Onboarding keeps
+`EMPTY_ALLOWLIST` with zero stale entries trivially. The drawn
+step-1 copy (phase progress line, h3, helper, placeholder
+example, Continue) matches the board byte-for-byte in the live
+VI DOM and is pinned by the `DECIDED_CONTENT` Onboarding entry
+(`app/e2e/design-facts.ts`, Refs #542), not by this gate.
 
 ## 4. Eligible categories
 

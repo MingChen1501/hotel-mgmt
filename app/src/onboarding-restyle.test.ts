@@ -1,18 +1,18 @@
-// R7 Onboarding design-value guard (Refs #524; restyle spec section 5.6,
-// AC-RST-7; traceability `docs/testing/desk-restyle-test-traceability.md`
-// section 3 R7) plus the onboarding-surface R9 halves (traceability section
+// Onboarding design-value guard (Refs #542; v2 board
+// `docs/design/Onboarding.dc.html:3`, AC-RST-7) plus the onboarding-surface R9 halves (traceability section
 // 3 R9: each child PR audits its own surface for the 44px touch targets
 // and the no-token-fork pin) plus the seven-surface R9 rollup (this is the
 // last child PR to merge, so it records the rollup for all seven surfaces).
 //
-// Pins the owner-design Onboarding wizard at the source plus the live
-// render contract: the centred `560px` column, the muted `14px` progress
+// Pins the v2 Onboarding board at the source plus the live
+// render contract: no screen title or intro (zero extras), the
+// centred `560px` column, the muted `14px` board-phase progress
 // line, the `8px` track (`#D9E0DE`, radius `4px`) with the primary bar at
 // 25/50/75/100 percent, the white cards (`radius:12px`, `padding:18px`,
 // `gap:10px`) with `16px` step heads, full-width `44px` controls with
 // `margin-top:6px`, muted `14px` helpers, and the full-width primary
-// continue action with the secondary Back, all per
-// `docs/design/Onboarding.dc.html:2`, while launch gating, the four steps
+// continue action with the secondary Back (steps 2–4 only), all per
+// `docs/design/Onboarding.dc.html:3`, while launch gating, the four steps
 // with progress and back/continue navigation, per-step validation,
 // hotel-name persistence and surfacing, and the step wording run exactly
 // as today (parity suite `OnboardingView.test.ts` owns the behaviour half;
@@ -43,14 +43,14 @@ function combinedRuleBody(marker: string): string {
   return appSource.slice(open + 1, close);
 }
 
-describe('R7 Onboarding design values (Refs #524)', () => {
+describe('R7 Onboarding design values (Refs #542)', () => {
   it('pins the Onboarding design tokens to the design board', () => {
-    // `docs/design/Onboarding.dc.html:2` (restyle spec section 3):
+    // `docs/design/Onboarding.dc.html:3` (Refs #542):
     // header teal `#0F4C47`, primary action `#0F766E`, page
     // `#F4F6F5`, ink `#1B2B2A`, muted `#4B5D5B`, surface `#FFFFFF`,
     // card border `#D9E0DE`, 1200px content column. The wizard
     // introduces no new token: every value resolves through the
-    // shared tokens (catalogue impact recorded on #524).
+    // shared tokens (catalogue impact recorded on #542).
     expect(deskTokens.colors.header).toBe('#0F4C47');
     expect(deskTokens.colors.primary).toBe('#0F766E');
     expect(deskTokens.colors.page).toBe('#F4F6F5');
@@ -105,6 +105,20 @@ describe('R7 Onboarding design values (Refs #524)', () => {
     ]) {
       expect(onboardingViewSource, `missing hook ${hook}`).toContain(hook);
     }
+    // Zero extras vs the board (Refs #542): the removed screen
+    // title/intro catalogue keys never render (the noscript
+    // fallback keeps the muted intro class for its own note),
+    // card heads are h3 per the board, and the step-1 input
+    // carries its catalogue name as an accessible name instead
+    // of a visible label line.
+    expect(onboardingViewSource).not.toContain('desk.onboarding.title');
+    expect(onboardingViewSource).not.toContain('desk.onboarding.intro,');
+    expect(onboardingViewSource).not.toContain('<h1');
+    expect(onboardingViewSource).not.toContain('<h2');
+    expect(onboardingViewSource).toContain('<h3 class="onboarding-card-title"');
+    expect(onboardingViewSource).toContain(':aria-label=');
+    expect(onboardingViewSource).toContain('stepName');
+    expect(onboardingViewSource).toContain('progress_step1_name');
   });
 
   it('keeps the logic carriers and reads PrimeVue-only behaviour relies on', () => {
@@ -130,28 +144,31 @@ describe('R7 Onboarding design values (Refs #524)', () => {
       'goBack',
       'onRetry',
       'stepProgress',
+      'stepName',
       'enteredTypeNames',
     ]) {
       expect(onboardingViewSource, `missing logic ${logic}`).toContain(logic);
     }
   });
 
-  it('renders the centred 560px wizard column with the 22px title and muted intro', () => {
+  it('renders the centred 560px wizard column with no title or intro', () => {
     const view = ruleBody('#shell [data-testid="onboarding-view"]');
     expect(view).toContain('width: 560px');
     expect(view).toContain('margin: 0 auto');
     expect(view).toContain('display: flex');
     expect(view).toContain('flex-direction: column');
     expect(view).toContain('gap: 16px');
-    const title = ruleBody('#shell [data-testid="onboarding-view"] .onboarding-title');
-    expect(title).toContain('font-size: 22px');
-    expect(title).toContain('margin: 0');
-    const intro = ruleBody('#shell [data-testid="onboarding-view"] .onboarding-intro');
-    expect(intro).toContain('font-size: 14px');
-    expect(intro).toContain('color: #4B5D5B');
-    expect(onboardingViewSource).toContain('class="onboarding-view"');
-    expect(onboardingViewSource).toContain('class="onboarding-title"');
-    expect(onboardingViewSource).toContain('class="onboarding-intro"');
+    // Zero extras vs the v2 board (Refs #542,
+    // `docs/design/Onboarding.dc.html:3`): the board carries no
+    // screen title or intro, so neither rule exists and neither
+    // element renders.
+    expect(appSource).not.toContain(
+      '#shell [data-testid="onboarding-view"] .onboarding-title',
+    );
+    expect(appSource).not.toContain(
+      '#shell [data-testid="onboarding-view"] .onboarding-intro',
+    );
+    expect(onboardingViewSource).not.toContain('class="onboarding-title"');
   });
 
   it('renders the muted progress line with the 8px track and primary bar', () => {
@@ -170,10 +187,13 @@ describe('R7 Onboarding design values (Refs #524)', () => {
     expect(bar).toContain('background: #0F766E');
     expect(bar).toContain('border-radius: 4px');
     // The step math is untouched: 25/50/75/100 percent across the
-    // four steps (`docs/design/Onboarding.dc.html:2` shows step 1
-    // at 25 percent).
+    // four steps (`docs/design/Onboarding.dc.html:3` shows step 1
+    // at 25 percent). The progress line reads the board phase
+    // format with the drawn step-1 section name.
     expect(onboardingViewSource).toContain('step.value * 25');
     expect(onboardingViewSource).toContain(':value="stepProgress"');
+    expect(onboardingViewSource).toContain('step: stepName');
+    expect(onboardingViewSource).toContain('desk.onboarding.progress_step1_name');
     expect(onboardingViewSource).toContain('class="onboarding-progress"');
     expect(onboardingViewSource).toContain('class="onboarding-progress-bar"');
   });
@@ -208,10 +228,17 @@ describe('R7 Onboarding design values (Refs #524)', () => {
     expect(controls).toContain('min-height: 44px');
     expect(controls).toContain('margin-top: 6px');
     expect(controls).toContain('box-sizing: border-box');
+    // The drawn step 1 shows its input bare under the h3 with no
+    // label line (Refs #542): the hotel-name catalogue string
+    // reaches the input as its accessible name exactly once, and
+    // no step-1 label element renders.
+    const nameLabelUses = onboardingViewSource.match(/desk\.onboarding\.hotel_name_label/g) ?? [];
+    expect(nameLabelUses).toHaveLength(1);
+    expect(onboardingViewSource).toContain(':aria-label="t(\'desk.onboarding.hotel_name_label\'');
     const helper = ruleBody('#shell [data-testid="onboarding-view"] .onboarding-helper');
     expect(helper).toContain('font-size: 14px');
     expect(helper).toContain('color: #4B5D5B');
-    // Steps 2–4 carry no board counterpart (O5): fieldsets render
+    // Steps 2–4 carry no board counterpart (Refs #542): fieldsets render
     // borderless in the card rhythm with quiet group titles.
     const group = ruleBody('#shell [data-testid="onboarding-view"] .onboarding-group');
     expect(group).toContain('border: 0');
@@ -227,7 +254,7 @@ describe('R7 Onboarding design values (Refs #524)', () => {
     expect(onboardingViewSource).not.toContain('<br');
   });
 
-  it('renders the full-width primary continue with the secondary Back', () => {
+  it('renders the full-width primary continue with the secondary Back from step 2', () => {
     const actions = ruleBody('#shell [data-testid="onboarding-view"] .onboarding-actions');
     expect(actions).toContain('display: flex');
     expect(actions).toContain('flex-direction: column');
@@ -243,13 +270,17 @@ describe('R7 Onboarding design values (Refs #524)', () => {
     expect(action).toContain('color: #FFFFFF');
     expect(action).toContain('font-weight: 600');
     expect(action).toContain('width: 100%');
-    // Back keeps its secondary logic-carrier styling (Stay #521
-    // dialog-cancel precedent); only the target is pinned.
+    // Back renders from step 2 on (the drawn step shows a
+    // single button) with its secondary logic-carrier styling
+    // (Stay #521 dialog-cancel precedent); only the target is pinned.
     const back = ruleBody('#shell [data-testid="onboarding-view"] .onboarding-back.p-button');
     expect(back).toContain('min-height: 44px');
     expect(onboardingViewSource).toContain('class="onboarding-actions"');
     expect(onboardingViewSource).toContain('class="onboarding-action"');
     expect(onboardingViewSource).toContain('class="onboarding-back"');
+    const backCount = onboardingViewSource.match(/data-testid="onboarding-back"/g) ?? [];
+    // Steps 2–4 carry the Back hook; step 1 carries none.
+    expect(backCount).toHaveLength(3);
   });
 
   it('audits the onboarding-surface 44px targets (R9 onboarding-surface half)', () => {
@@ -275,7 +306,7 @@ describe('R7 Onboarding design values (Refs #524)', () => {
       ...Object.values(deskTokens.shell).filter((value) => typeof value === 'string'),
     ]);
     const onboardingCss = appSource.slice(
-      appSource.indexOf('Onboarding wizard (Refs #524'),
+      appSource.indexOf('Onboarding wizard (Refs #542'),
       appSource.indexOf('Native controls stay native'),
     );
     expect(onboardingCss.length).toBeGreaterThan(0);
@@ -293,12 +324,12 @@ describe('R7 Onboarding design values (Refs #524)', () => {
     // so no screen rule can leak into print).
     expect(appSource.indexOf('@media screen')).toBeGreaterThanOrEqual(0);
     expect(appSource.indexOf('@media screen')).toBeLessThan(
-      appSource.indexOf('Onboarding wizard (Refs #524'),
+      appSource.indexOf('Onboarding wizard (Refs #542'),
     );
   });
 });
 
-describe('R9 seven-surface rollup (Refs #524, last child PR)', () => {
+describe('R9 seven-surface rollup (Refs #542, last child PR)', () => {
   it('holds the 44px touch target on every interactive element of all seven surfaces', () => {
     // Shell/nav (#518): tabs and locale-pill buttons.
     expect(ruleBody('#shell .shell-nav-item')).toContain('min-height: 44px');
@@ -315,7 +346,7 @@ describe('R9 seven-surface rollup (Refs #524, last child PR)', () => {
       );
       expect(action, `${surface} primary action`).toContain('min-height: 44px');
     }
-    // Onboarding wizard navigation (#524): Back plus every input.
+    // Onboarding wizard navigation (Refs #542): Back (steps 2–4) plus every input.
     expect(ruleBody('#shell [data-testid="onboarding-view"] .onboarding-back.p-button')).toContain(
       'min-height: 44px',
     );

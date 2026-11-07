@@ -332,7 +332,9 @@ describe('shell navigation', () => {
         expect(wrapper.find('[data-testid="onboarding-step-1"]').exists()).toBe(true);
       });
       expect(wrapper.find('[data-testid="shell-brand"]').text()).toContain('Hotel Management');
-      expect(wrapper.find('[data-testid="onboarding-progress"]').text()).toBe('Step 1 of 4');
+      expect(wrapper.find('[data-testid="onboarding-progress"]').text()).toBe(
+        'Step 1 / 4 · Hotel information',
+      );
     } finally {
       vi.unstubAllGlobals();
     }

@@ -1462,42 +1462,44 @@ export default defineComponent({
     margin: 0;
   }
 
-  /* Onboarding wizard (Refs #524; restyle spec section 5.6,
-     AC-RST-7): pixel-faithful to
-     `docs/design/Onboarding.dc.html:2` — the wizard renders as
-     the centred `560px` column (`margin:0 auto`, flex column
-     `gap:16px`) under the shell nav (the board's slim setup
-     header maps to the shell teal bar, R1; the header stays
-     shell-owned per the O5 kept extras). The h1/intro extras
-     keep the shared sibling treatment (h1 `22px`, intro muted
-     `14px`, Folio #522 precedent); the muted `14px` progress
-     line keeps the app format (O3 stays reported); the `8px`
+  /* Onboarding wizard (Refs #542): pixel-faithful to the v2
+     board `docs/design/Onboarding.dc.html:3` — the view opens
+     directly on the centred `560px` column (`margin:0 auto`,
+     flex column `gap:16px`) under the shell nav (the board's
+     slim setup header maps to the shell teal bar, R1; the header
+     stays shell-owned). The board carries no screen title or
+     intro, so neither renders (zero extras, Stay #541
+     precedent). The muted `14px` progress line reads the board
+     phase format (`{current} / {total} · {step}`); the `8px`
      track (`#D9E0DE`, radius `4px`) carries the primary bar at
      25/50/75/100 percent; every step card renders
      `background:#fff;border:1px solid #D9E0DE;border-radius:12px;
      padding:18px` as a flex column with `gap:10px`, step heads
-     (kept as h2 elements) at the board card-h3 `margin:0;
-     font-size:16px`; labels are `14px`, controls full-width
-     `44px` with `margin-top:6px`; helpers muted `14px`; the
-     primary advance action is full-width
+     as h3 elements at the board card-h3 `margin:0;
+     font-size:16px`; the step-1 hotel-name input renders bare
+     under its h3 with no label line (accessible name via
+     aria-label), while steps 2–4 labels are `14px` and their
+     controls full-width `44px` with `margin-top:6px`; helpers
+     muted `14px`; the primary advance action is full-width
      (`min-height:44px;padding:0 18px;border-radius:8px;border:0;
      background:#0F766E;color:#fff;font-weight:600`) while Back
-     keeps its secondary logic-carrier styling with a 44px target
-     (Stay #521 dialog-cancel precedent). Steps 2–4 fieldsets,
-     row add/remove controls, and flow states carry no board
-     counterpart: fieldsets render borderless in the card rhythm
-     with quiet `14px/600` group titles, rows stack with the card
-     gap, and the fixed `560px` column squeezes on narrow
-     viewports (same accepted divergence as the Folio `1fr 1fr`
-     grid, Refs #522). PrimeVue stays as logic carrier only:
-     InputText/Button/Message/ProgressBar defaults are overridden
-     here wherever they diverge from the design (restyle spec
-     section 2). Token values live in `src/theme/tokens.ts`
+     (steps 2–4 only) keeps its secondary logic-carrier styling
+     with a 44px target (Stay #521 dialog-cancel precedent).
+     Steps 2–4 fieldsets, row add/remove controls, and flow
+     states carry no board counterpart: fieldsets render
+     borderless in the card rhythm with quiet `14px/600` group
+     titles, rows stack with the card gap, and the fixed `560px`
+     column squeezes on narrow viewports (same accepted
+     divergence as the Folio `1fr 1fr` grid, Refs #522). PrimeVue
+     stays as logic carrier only: InputText/Button/Message/
+     ProgressBar defaults are overridden here wherever they
+     diverge from the design (restyle spec section 2). Token
+     values live in `src/theme/tokens.ts`
      (`colors.surface/page/ink/muted/header/primary/cardBorder`);
      this rule duplicates them because CSS cannot import the TS
      constants. Views carry no style blocks (M4), so the
-     presentation lives here. Behaviour, flow, copy, and hooks
-     hold exactly as today (O3/O4 stay reported). */
+     presentation lives here. Behaviour, flow, and hooks hold
+     exactly as today. */
   #shell [data-testid="onboarding-view"] {
     width: 560px;
     max-width: 100%;
@@ -1506,18 +1508,6 @@ export default defineComponent({
     flex-direction: column;
     gap: 16px;
     box-sizing: border-box;
-  }
-
-  #shell [data-testid="onboarding-view"] .onboarding-title {
-    font-size: 22px;
-    margin: 0;
-    color: #1B2B2A;
-  }
-
-  #shell [data-testid="onboarding-view"] .onboarding-intro {
-    font-size: 14px;
-    color: #4B5D5B;
-    margin: 0;
   }
 
   #shell [data-testid="onboarding-view"] .onboarding-progress {
@@ -1557,9 +1547,9 @@ export default defineComponent({
     box-sizing: border-box;
   }
 
-  /* Step heads keep their h2 elements (heading hooks and the
-     parity suite stay exact) and render the board card-h3
-     `16px` values (`docs/design/Onboarding.dc.html:2`). */
+  /* Step heads are h3 elements per the board card-h3
+     (`docs/design/Onboarding.dc.html:3`) and render its `16px`
+     values. */
   #shell [data-testid="onboarding-view"] .onboarding-card-title {
     font-size: 16px;
     margin: 0;
