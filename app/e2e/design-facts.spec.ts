@@ -1,5 +1,6 @@
-// Playwright DOM-vs-design assertions and CI gate for the six desk
-// screens (Closes #467).
+// Playwright DOM-vs-design assertions and CI gate for the six covered
+// desk screens (Closes #467; the seventh v2 board, Admin, is deferred
+// — no app screen yet, Refs #546, Refs #549).
 //
 // Owner direction 2026-11-03: no screenshot snapshots (heavy,
 // brittle). This spec asserts UI facts extracted from the running DOM
@@ -16,8 +17,8 @@
 //
 // Structure:
 // - Matching-DOM tests (acceptance criterion 1): for each of the 6
-//   screens, a matching app-like DOM built from that screen's real
-//   design record passes with zero diffs. The DOM renders in live
+//   covered screens, a matching app-like DOM built from that screen's
+//   real design record passes with zero diffs. The DOM renders in live
 //   Chromium, so every token still resolves through `getComputedStyle`.
 // - Mismatch tests (criterion 2): a mismatched label, tab order,
 //   active state, placeholder, and token color each fail with a diff
@@ -28,7 +29,7 @@
 // - Live conformance tests: the same extraction against the running
 //   app DOM, asserting the design-anchored subset that conforms today
 //   (header/page/ink tokens, design-known tab labels, the decided
-//   six-tab visible set, per-screen active tab) plus the decided
+//   seven-tab visible set, per-screen active tab) plus the decided
 //   per-screen content from issue #473 (exact heading/input sequences
 //   for Stay and Book; Rooms pins its static heading prefix plus the
 //   seed room labels and checks the data-driven tail structurally;
@@ -156,7 +157,7 @@ function expectSingleDiff(
   expect(formatted).toContain(`app:      ${app}`);
 }
 
-test.describe('matching app DOM passes for all 6 desk screens (criterion 1)', () => {
+test.describe('matching app DOM passes for all 6 covered desk screens (criterion 1)', () => {
   for (const entry of SCREEN_TABLE) {
     test(`${entry.screen}: matching app DOM passes`, async ({ page }) => {
       const guard = installLoopbackGuard(page);
@@ -632,7 +633,7 @@ test.describe('live shell conformance on the running app DOM', () => {
       // The visible tab set matches the decided set (Refs #472):
       // the Main design record's tab order mapped back onto shell
       // route keys. The shell nav is shell-level, identical on
-      // every screen, so the Main record anchors all six screens.
+      // every screen, so the Main record anchors all six covered screens.
       const designToRoute = Object.fromEntries(
         Object.entries(ROUTE_KEY_TO_DESIGN_KEY).map(([routeKey, designKey]) => [designKey, routeKey]),
       );

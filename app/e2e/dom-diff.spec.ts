@@ -24,9 +24,11 @@
 //   byte-identical output twice.
 // - Live extraction test (criterion 1): opens the real local design
 //   file bytes and the running desk UI route for each of the six
-//   screens, extracts both full trees, and proves the output is
-//   text-only and deterministic across runs. It does NOT assert zero
-//   diffs: full structural parity stays an architecture decision
+//   covered screens (the seventh v2 board, Admin, is deferred — no
+//   app screen yet, Refs #546, Refs #549), waits for the bundler
+//   shell to finish rendering the board, extracts both full trees,
+//   and proves the output is text-only and deterministic across
+//   runs. It does NOT assert zero diffs: full structural parity stays an architecture decision
 //   (Refs #495 S1, PrimeVue-first shell vs design-literal markup),
 //   and owner-approved dynamic data is exempted through the
 //   per-screen allowlist (Refs #495 S7, #496, #497, #498, #499; #500
@@ -341,7 +343,10 @@ test.describe('allowlist exempts owner-approved dynamic data (criterion 3)', () 
   // owner-approved dynamic-data paths (DD-01..DD-07 in
   // docs/testing/dom-diff-allowlist.md section 3) — no more, no
   // fewer — so wiring drift fails here instead of silently
-  // re-noising the gate.
+  // re-noising the gate. Refs #549: design paths target the rendered
+  // v2 board root (no `<x-dc>` wrapper); the v2 Main board keeps the
+  // v1 node structure, so the fixture below is the same tree with
+  // the root re-pointed.
   test('MAIN_SCREEN_ALLOWLIST exempts the approved Main dynamic paths only', () => {
     const node = (path: string, text: string): DomNode => ({
       path,
@@ -356,10 +361,10 @@ test.describe('allowlist exempts owner-approved dynamic data (criterion 3)', () 
       ...LAYOUT_DEFAULTS,
     });
     const design: DomNode[] = [
-      node('/html[0]/body[0]/x-dc[0]/div[0]/div[1]/div[0]/div[1]', 'Thứ Tư, 28/10/2026'),
-      node('/html[0]/body[0]/x-dc[0]/div[0]/div[0]/strong[0]', 'Khách sạn Hoa Mai'),
-      node('/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[0]/h3[0]', 'Khách đến hôm nay (2)'),
-      node('/html[0]/body[0]/x-dc[0]/div[0]/div[9]/p[0]', 'static copy'),
+      node('/html[0]/body[0]/div[0]/div[0]/div[0]/div[1]/div[0]/div[1]', 'Thứ Tư, 28/10/2026'),
+      node('/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/strong[0]', 'Khách sạn Hoa Mai'),
+      node('/html[0]/body[0]/div[0]/div[0]/div[0]/div[2]/div[0]/h3[0]', 'Khách đến hôm nay (2)'),
+      node('/html[0]/body[0]/div[0]/div[0]/div[0]/div[9]/p[0]', 'static copy'),
     ];
     const actual: DomNode[] = [
       node(
@@ -383,16 +388,16 @@ test.describe('allowlist exempts owner-approved dynamic data (criterion 3)', () 
     ).toHaveLength(2);
     expect(diffs.map((diff) => diff.path).sort()).toEqual([
       '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/p[1]',
-      '/html[0]/body[0]/x-dc[0]/div[0]/div[9]/p[0]',
+      '/html[0]/body[0]/div[0]/div[0]/div[0]/div[9]/p[0]',
     ]);
     // Stale-entry detection still sees every wired path: the
     // fixture covers the DD-01/DD-02 samples (not reported stale)
     // while the uncovered DD-04 in-house heading is reported, proving
     // the hook tracks the wired strings exactly.
     const unused = unusedAllowlistEntries(design, actual, MAIN_SCREEN_ALLOWLIST);
-    expect(unused).not.toContain('/html[0]/body[0]/x-dc[0]/div[0]/div[1]/div[0]/div[1]');
+    expect(unused).not.toContain('/html[0]/body[0]/div[0]/div[0]/div[0]/div[1]/div[0]/div[1]');
     expect(unused).not.toContain('/html[0]/body[0]/div[0]/div[0]/div[0]/nav[0]/span[0]');
-    expect(unused).toContain('/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[1]/h3[0]');
+    expect(unused).toContain('/html[0]/body[0]/div[0]/div[0]/div[0]/div[2]/div[1]/h3[0]');
   });
 
   // Refs #496: the Book-screen allowlist carries exactly the
@@ -402,6 +407,12 @@ test.describe('allowlist exempts owner-approved dynamic data (criterion 3)', () 
   // re-noising the gate. The design quote rows carry no entry:
   // the fresh lab renders the empty quote state instead, a
   // flow-state divergence reported on #496 rather than exempted.
+  // Refs #549: the fixture below is v2-shaped (rendered root, no
+  // `<x-dc>` wrapper). DD-08 re-points to the rendered root; the
+  // DD-09 design select has no v2 counterpart (the v2 board carries
+  // no select) and stays wired, so the v2-shaped option node no
+  // longer exempts and the entry surfaces as stale — the section-5
+  // tracking signal, asserted below.
   test('BOOK_SCREEN_ALLOWLIST exempts the approved Book dynamic paths only', () => {
     const bookNode = (path: string, tag: string, text: string): DomNode => ({
       path,
@@ -416,13 +427,13 @@ test.describe('allowlist exempts owner-approved dynamic data (criterion 3)', () 
       ...LAYOUT_DEFAULTS,
     });
     const design: DomNode[] = [
-      bookNode('/html[0]/body[0]/x-dc[0]/div[0]/div[0]/strong[0]', 'strong', 'Khách sạn Hoa Mai'),
+      bookNode('/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/strong[0]', 'strong', 'Khách sạn Hoa Mai'),
       bookNode(
-        '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[1]/div[0]/label[2]/select[0]/option[1]',
+        '/html[0]/body[0]/div[0]/div[0]/div[0]/div[1]/div[0]/label[2]/select[0]/option[1]',
         'option',
         'Phòng đôi',
       ),
-      bookNode('/html[0]/body[0]/x-dc[0]/div[0]/div[2]/h2[0]', 'h2', 'Đặt phòng mới'),
+      bookNode('/html[0]/body[0]/div[0]/div[0]/div[0]/div[1]/div[1]/h3[0]', 'h3', 'Báo giá'),
     ];
     const actual: DomNode[] = [
       bookNode('/html[0]/body[0]/div[0]/div[0]/div[0]/nav[0]/span[0]', 'span', 'Lab Parity Hotel'),
@@ -444,28 +455,36 @@ test.describe('allowlist exempts owner-approved dynamic data (criterion 3)', () 
     expect(
       diffs,
       `expected only the non-allowlisted nodes, got:\n${formatDomDiffs(diffs)}`,
-    ).toHaveLength(2);
+    ).toHaveLength(3);
     expect(diffs.map((diff) => diff.path).sort()).toEqual([
       '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/form[0]/div[0]/div[1]/div[0]/div[0]/div[1]/button[0]',
-      '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/h2[0]',
+      '/html[0]/body[0]/div[0]/div[0]/div[0]/div[1]/div[0]/label[2]/select[0]/option[1]',
+      '/html[0]/body[0]/div[0]/div[0]/div[0]/div[1]/div[1]/h3[0]',
     ]);
-    // Stale-entry detection tracks the wired design paths: the
-    // hotel-name strong and both option-bearing selects are
-    // covered by the fixture nodes beneath them, so nothing is
-    // reported stale.
+    // Stale-entry detection tracks the wired paths: the hotel-name
+    // strong and the app-side option select are covered, while the
+    // DD-09 design select (no v2 counterpart, Refs #549) is reported
+    // stale — that warning, not a silent pass, is the section-5
+    // signal to retire it.
     const unused = unusedAllowlistEntries(design, actual, BOOK_SCREEN_ALLOWLIST);
-    expect(unused).toEqual([]);
+    expect(unused).toEqual([
+      '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[1]/div[0]/label[2]/select[0]',
+    ]);
   });
 
   // Refs #497: the Stay-screen allowlist carries exactly the
   // owner-approved dynamic-data paths (DD-10..DD-13 in
   // docs/testing/dom-diff-allowlist.md section 3) — no more, no
   // fewer — so wiring drift fails here instead of silently
-  // re-noising the gate. The design list headings carry no entry:
-  // unlike the Main board they bear no counts, so they stay pinned
-  // as static copy by the fact-level decided headings; app-side
-  // list rows carry no entry yet (the fresh lab renders empty
-  // tables — flow-state, not dynamic data).
+  // re-noising the gate. Refs #549: the fixture below is v2-shaped
+  // (rendered root, check-in/checkout panels): DD-10 re-points to
+  // the rendered root, DD-13 re-points to the three reshaped panel
+  // selects (orchestrator decision on #549), and the static panel
+  // heading carries no entry — while DD-11 (business date) and
+  // DD-12 (example list rows) have no v2 counterpart, stay wired,
+  // and surface as stale below (the section-5 tracking signal).
+  // App-side list rows carry no entry yet (the fresh lab renders
+  // empty tables — flow-state, not dynamic data).
   test('STAY_SCREEN_ALLOWLIST exempts the approved Stay dynamic paths only', () => {
     const stayNode = (path: string, tag: string, text: string): DomNode => ({
       path,
@@ -480,34 +499,23 @@ test.describe('allowlist exempts owner-approved dynamic data (criterion 3)', () 
       ...LAYOUT_DEFAULTS,
     });
     const design: DomNode[] = [
-      stayNode('/html[0]/body[0]/x-dc[0]/div[0]/div[0]/strong[0]', 'strong', 'Khách sạn Hoa Mai'),
-      stayNode('/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[0]/div[0]/strong[0]', 'strong', '28/10/2026'),
+      stayNode('/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/strong[0]', 'strong', 'Khách sạn Hoa Mai'),
       stayNode(
-        '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[0]/div[1]',
-        'div',
-        'Nguyễn Văn An · Phòng 205',
-      ),
-      stayNode(
-        '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[1]/label[2]/select[0]/option[1]',
+        '/html[0]/body[0]/div[0]/div[0]/div[0]/div[1]/div[0]/label[0]/select[0]/option[0]',
         'option',
-        '205',
+        'Nguyễn Văn An · ABC123',
       ),
       stayNode(
-        '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[0]/div[2]',
-        'div',
-        'Lê Minh · Phòng 201',
-      ),
-      stayNode(
-        '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[0]/div[3]',
-        'div',
-        'Phạm Hoa · Phòng 203',
-      ),
-      stayNode(
-        '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[2]/label[1]/select[0]/option[0]',
+        '/html[0]/body[0]/div[0]/div[0]/div[0]/div[1]/div[0]/label[1]/select[0]/option[0]',
         'option',
-        '202',
+        'Chọn phòng...',
       ),
-      stayNode('/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[0]/h3[0]', 'h3', 'Khách đến hôm nay'),
+      stayNode(
+        '/html[0]/body[0]/div[0]/div[0]/div[0]/div[1]/div[1]/label[0]/select[0]/option[0]',
+        'option',
+        'Lê Minh · P.201',
+      ),
+      stayNode('/html[0]/body[0]/div[0]/div[0]/div[0]/div[1]/div[0]/h3[0]', 'h3', 'Nhận phòng'),
     ];
     const actual: DomNode[] = [
       stayNode('/html[0]/body[0]/div[0]/div[0]/div[0]/nav[0]/span[0]', 'span', 'Lab Parity Hotel'),
@@ -532,7 +540,7 @@ test.describe('allowlist exempts owner-approved dynamic data (criterion 3)', () 
         'Nhận phòng',
       ),
     ];
-    expect(STAY_SCREEN_ALLOWLIST.skipPaths).toHaveLength(11);
+    expect(STAY_SCREEN_ALLOWLIST.skipPaths).toHaveLength(12);
     const withoutAllowlist = diffDomTrees(design, actual);
     expect(withoutAllowlist.length).toBeGreaterThan(1);
     const diffs = diffDomTrees(design, actual, STAY_SCREEN_ALLOWLIST);
@@ -542,22 +550,32 @@ test.describe('allowlist exempts owner-approved dynamic data (criterion 3)', () 
     ).toHaveLength(2);
     expect(diffs.map((diff) => diff.path).sort()).toEqual([
       '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/div[1]/div[0]/div[1]/div[0]/button[0]',
-      '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[0]/h3[0]',
+      '/html[0]/body[0]/div[0]/div[0]/div[0]/div[1]/div[0]/h3[0]',
     ]);
-    // Stale-entry detection tracks every wired path: the
-    // hotel-name strong, both business-date strongs, all three
-    // example rows, and all four option-bearing selects are covered
-    // by the fixture nodes beneath them, so nothing is reported
-    // stale.
+    // Stale-entry detection tracks every wired path: the hotel-name
+    // pair, the app-side business-date strong, and all five wired
+    // catalogue selects (three reshaped design panel selects plus
+    // both app selects) are covered — while the DD-11 design date
+    // and the three DD-12 example rows (no v2 counterpart, Refs
+    // #549) are reported stale. That warning, not a silent pass, is
+    // the section-5 signal to retire them.
     const unused = unusedAllowlistEntries(design, actual, STAY_SCREEN_ALLOWLIST);
-    expect(unused).toEqual([]);
+    expect(unused).toEqual([
+      '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[0]/div[0]/strong[0]',
+      '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[0]/div[1]',
+      '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[0]/div[2]',
+      '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[0]/div[3]',
+    ]);
   });
 
   // Refs #498: the Folio-screen allowlist carries exactly the
   // owner-approved dynamic-data paths (DD-14..DD-16 in
   // docs/testing/dom-diff-allowlist.md section 3) — no more, no
   // fewer — so wiring drift fails here instead of silently
-  // re-noising the gate. Only value-bearing example nodes are
+  // re-noising the gate. Refs #549: the fixture below is v2-shaped
+  // (rendered root, no `<x-dc>` wrapper); the v2 Folio board keeps
+  // the v1 node structure, so this is the same tree re-pointed.
+  // Only value-bearing example nodes are
   // exempted: the static board copy around them (both card
   // headings, the `Còn phải trả` due label, all four input labels,
   // both buttons) stays out and keeps reporting as `node` diffs
@@ -578,39 +596,39 @@ test.describe('allowlist exempts owner-approved dynamic data (criterion 3)', () 
       ...LAYOUT_DEFAULTS,
     });
     const design: DomNode[] = [
-      folioNode('/html[0]/body[0]/x-dc[0]/div[0]/div[0]/strong[0]', 'strong', 'Khách sạn Hoa Mai'),
+      folioNode('/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/strong[0]', 'strong', 'Khách sạn Hoa Mai'),
       folioNode(
-        '/html[0]/body[0]/x-dc[0]/div[0]/div[1]/div[0]/h3[0]',
+        '/html[0]/body[0]/div[0]/div[0]/div[0]/div[1]/div[0]/h3[0]',
         'h3',
         'Khoản phí · Lê Minh · P.201',
       ),
       folioNode(
-        '/html[0]/body[0]/x-dc[0]/div[0]/div[1]/div[0]/div[0]/span[0]',
+        '/html[0]/body[0]/div[0]/div[0]/div[0]/div[1]/div[0]/div[0]/span[0]',
         'span',
         'Tiền phòng 2 đêm',
       ),
       folioNode(
-        '/html[0]/body[0]/x-dc[0]/div[0]/div[1]/div[0]/div[0]/strong[0]',
+        '/html[0]/body[0]/div[0]/div[0]/div[0]/div[1]/div[0]/div[0]/strong[0]',
         'strong',
         '1.800.000 đ',
       ),
       folioNode(
-        '/html[0]/body[0]/x-dc[0]/div[0]/div[1]/div[0]/div[1]/span[0]',
+        '/html[0]/body[0]/div[0]/div[0]/div[0]/div[1]/div[0]/div[1]/span[0]',
         'span',
         'Nước uống',
       ),
       folioNode(
-        '/html[0]/body[0]/x-dc[0]/div[0]/div[1]/div[1]/div[1]',
+        '/html[0]/body[0]/div[0]/div[0]/div[0]/div[1]/div[1]/div[1]',
         'div',
         '960.000 đ',
       ),
       folioNode(
-        '/html[0]/body[0]/x-dc[0]/div[0]/div[1]/div[1]/div[2]/strong[0]',
+        '/html[0]/body[0]/div[0]/div[0]/div[0]/div[1]/div[1]/div[2]/strong[0]',
         'strong',
         '900.000 đ',
       ),
       folioNode(
-        '/html[0]/body[0]/x-dc[0]/div[0]/div[1]/div[1]/h3[0]',
+        '/html[0]/body[0]/div[0]/div[0]/div[0]/div[1]/div[1]/h3[0]',
         'h3',
         'Thanh toán',
       ),
@@ -633,7 +651,7 @@ test.describe('allowlist exempts owner-approved dynamic data (criterion 3)', () 
     ).toHaveLength(2);
     expect(diffs.map((diff) => diff.path).sort()).toEqual([
       '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/div[1]/div[0]/div[0]/div[0]/div[1]/div[1]/button[0]/span[0]',
-      '/html[0]/body[0]/x-dc[0]/div[0]/div[1]/div[1]/h3[0]',
+      '/html[0]/body[0]/div[0]/div[0]/div[0]/div[1]/div[1]/h3[0]',
     ]);
     // Stale-entry detection tracks every wired path: the
     // hotel-name strong, the charge heading plus both charge rows
@@ -647,13 +665,18 @@ test.describe('allowlist exempts owner-approved dynamic data (criterion 3)', () 
   // owner-approved dynamic-data paths (DD-17..DD-20 in
   // docs/testing/dom-diff-allowlist.md section 3) — no more, no
   // fewer — so wiring drift fails here instead of silently
-  // re-noising the gate. Only value-bearing example nodes are
-  // exempted: the static board copy around them (the h1, both
-  // h2s, the `Tải lại` button) stays out and keeps reporting as
-  // `node` diffs under the accepted S1 shape divergence;
-  // app-side room cards carry no entry yet (the fresh-lab cards
-  // for seed rooms 101/102 are flow-state, rows proposed when a
-  // run with richer room data shows them).
+  // re-noising the gate. Refs #549: the fixture below is v2-shaped
+  // (rendered root, no `<x-dc>` wrapper): DD-17 re-points to the
+  // rendered root, DD-18 to the date node only (the split-off
+  // counts line deliberately stays out — orchestrator decision on
+  // #549 — and serves as the static residual below, proving the
+  // tight coverage), DD-19/DD-20 shift one level with identical
+  // nodes. Only value-bearing example nodes are exempted: the
+  // static board copy around them (the title lines, the `Làm mới`
+  // button) stays out and keeps reporting as `node` diffs under the
+  // accepted S1 shape divergence; app-side room cards carry no entry
+  // yet (the fresh-lab cards for seed rooms 101/102 are flow-state,
+  // rows proposed when a run with richer room data shows them).
   test('ROOMS_SCREEN_ALLOWLIST exempts the approved Rooms dynamic paths only', () => {
     const roomsNode = (path: string, tag: string, text: string): DomNode => ({
       path,
@@ -668,26 +691,26 @@ test.describe('allowlist exempts owner-approved dynamic data (criterion 3)', () 
       ...LAYOUT_DEFAULTS,
     });
     const design: DomNode[] = [
-      roomsNode('/html[0]/body[0]/x-dc[0]/div[0]/div[0]/strong[0]', 'strong', 'Khách sạn Hoa Mai'),
+      roomsNode('/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/strong[0]', 'strong', 'Khách sạn Hoa Mai'),
       roomsNode(
-        '/html[0]/body[0]/x-dc[0]/div[0]/div[1]/div[0]/div[0]',
+        '/html[0]/body[0]/div[0]/div[0]/div[0]/div[1]/div[0]/div[0]',
         'div',
-        '18 phòng minh hoạ, 6 phòng có khách · 28/10/2026',
+        'Sơ đồ phòng · 28/10/2026',
       ),
       roomsNode(
-        '/html[0]/body[0]/x-dc[0]/div[0]/div[3]/span[0]',
+        '/html[0]/body[0]/div[0]/div[0]/div[0]/div[2]/span[0]',
         'span',
         'Sẵn sàng · 8',
       ),
       roomsNode(
-        '/html[0]/body[0]/x-dc[0]/div[0]/div[4]/div[0]/div[0]/div[0]/h3[0]',
-        'h3',
+        '/html[0]/body[0]/div[0]/div[0]/div[0]/div[3]/div[1]/div[0]/div[0]/strong[0]',
+        'strong',
         '101',
       ),
       roomsNode(
-        '/html[0]/body[0]/x-dc[0]/div[0]/div[1]/div[0]/h1[0]',
-        'h1',
-        'Sơ đồ phòng',
+        '/html[0]/body[0]/div[0]/div[0]/div[0]/div[1]/div[0]/div[1]',
+        'div',
+        '18 phòng, 6 phòng có khách',
       ),
     ];
     const actual: DomNode[] = [
@@ -718,23 +741,23 @@ test.describe('allowlist exempts owner-approved dynamic data (criterion 3)', () 
     ).toHaveLength(2);
     expect(diffs.map((diff) => diff.path).sort()).toEqual([
       '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[1]/div[0]/div[0]/div[0]/div[1]/p[1]',
-      '/html[0]/body[0]/x-dc[0]/div[0]/div[1]/div[0]/h1[0]',
+      '/html[0]/body[0]/div[0]/div[0]/div[0]/div[1]/div[0]/div[1]',
     ]);
     // Stale-entry detection tracks every wired path: the
-    // hotel-name strong, the summary line, the first chip span and
-    // chip li (via the fixture nodes beneath them), and the first
-    // card-grid h3 are covered — the remaining chips, lis, and
-    // grids are reported, proving the hook tracks the wired
+    // hotel-name strong, the summary date node, the first chip span
+    // and chip li (via the fixture nodes beneath them), and the
+    // first card-grid number are covered — the remaining chips, lis,
+    // and grids are reported, proving the hook tracks the wired
     // strings exactly.
     const unused = unusedAllowlistEntries(design, actual, ROOMS_SCREEN_ALLOWLIST);
-    expect(unused).not.toContain('/html[0]/body[0]/x-dc[0]/div[0]/div[0]/strong[0]');
-    expect(unused).not.toContain('/html[0]/body[0]/x-dc[0]/div[0]/div[1]/div[0]/div[0]');
-    expect(unused).not.toContain('/html[0]/body[0]/x-dc[0]/div[0]/div[3]/span[0]');
+    expect(unused).not.toContain('/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/strong[0]');
+    expect(unused).not.toContain('/html[0]/body[0]/div[0]/div[0]/div[0]/div[1]/div[0]/div[0]');
+    expect(unused).not.toContain('/html[0]/body[0]/div[0]/div[0]/div[0]/div[2]/span[0]');
     expect(unused).not.toContain(
       '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/ul[0]/li[0]',
     );
-    expect(unused).not.toContain('/html[0]/body[0]/x-dc[0]/div[0]/div[4]/div[0]');
-    expect(unused).toContain('/html[0]/body[0]/x-dc[0]/div[0]/div[3]/span[4]');
+    expect(unused).not.toContain('/html[0]/body[0]/div[0]/div[0]/div[0]/div[3]/div[1]');
+    expect(unused).toContain('/html[0]/body[0]/div[0]/div[0]/div[0]/div[2]/span[4]');
   });
 });
 
@@ -825,6 +848,22 @@ test.describe('live extraction from design HTML and the running desk UI (criteri
       const designPage = await page.context().newPage();
       try {
         await designPage.setContent(readFileSync(designFileFor(entry.screen), 'utf8'));
+        // v2 boards are bundler shells (Refs #538, Refs #549): the
+        // shell replaces the document with the template payload and
+        // React renders it without the `<x-dc>` wrapper, so the design
+        // tree only exists after that async render. Both conjuncts
+        // are load-bearing with no race: the fresh shell has the
+        // loading marker but no `x-dc`, the installed template has
+        // `x-dc` but no loading marker, and only the rendered board
+        // has neither. A timeout here names a broken shell or a
+        // blocked CDN render — never design drift.
+        await designPage.waitForFunction(
+          () =>
+            document.getElementById('__bundler_loading') === null &&
+            document.querySelector('x-dc') === null,
+          undefined,
+          { timeout: 60000 },
+        );
         const design = await designPage.evaluate(collectDomTree);
         const actual = await page.evaluate(collectDomTree);
         expect(design.length).toBeGreaterThan(0);
@@ -840,6 +879,10 @@ test.describe('live extraction from design HTML and the running desk UI (criteri
         // structural divergence (PrimeVue shell vs design-literal
         // markup) still reports — so the run reports the remaining
         // diff count for that follow-up instead of gating on it.
+        // The loop covers SCREEN_TABLE (the six screens with a
+        // running app screen); the Admin board never reaches this
+        // switch — it is DEFERRED with no app screen and no
+        // allowlist entry (Refs #546, Refs #549).
         const allowlist =
           entry.screen === 'Main'
             ? MAIN_SCREEN_ALLOWLIST
