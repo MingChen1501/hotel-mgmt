@@ -8,6 +8,16 @@
 // snapshots anywhere in this gate; no product behaviour change and no
 // design-file changes (harness/test code only).
 //
+// Board format (Refs #538, Refs #549): each `.dc.html` file is a v2
+// bundler shell whose template payload React renders without the
+// `<x-dc>` wrapper, so the design side extracts the RENDERED board
+// (the spec waits for the shell loading marker to detach and the
+// template root to resolve) — the raw shell bytes never enter a
+// diff. Design-side allowlist paths are rooted at that rendered root
+// (see the hook comment below); the Admin board has no app screen
+// yet and stays out of both gates (DEFERRED per
+// `docs/testing/dom-diff-allowlist.md` section 2, Refs #546).
+//
 // What each node carries (acceptance criteria 1-2, #515 full
 // computed inventory):
 // - every text node: the node's own direct text (exact content —
@@ -73,6 +83,12 @@ export interface DomDiff {
 // (`entry` itself plus anything under `entry + '/'`). The approved
 // data list is `docs/testing/dom-diff-allowlist.md` (Closes #482):
 // wire a path here only with a comment citing its allowlist entry ID.
+// Design-side paths are rooted at the RENDERED v2 board root
+// (`/html[0]/body[0]/div[0]/div[0]`): each `.dc.html` file is a
+// bundler shell whose template payload React renders without the
+// `<x-dc>` wrapper (Refs #538, Refs #549) — the raw shell bytes never
+// enter a diff. App-side paths are rooted at the desk shell and are
+// unaffected by the board swap.
 export interface DomDiffAllowlist {
   skipPaths: string[];
 }
@@ -85,7 +101,10 @@ export const EMPTY_ALLOWLIST: DomDiffAllowlist = { skipPaths: [] };
 // carries the static snapshot values (example hotel name, frozen
 // business date, example guests/counts) while the app side renders
 // live values (configured hotel, business clock, seed-driven
-// counts), so these nodes can never coincide. Count-bearing
+// counts), so these nodes can never coincide. Refs #549: the design
+// paths below target the rendered v2 board root (no `<x-dc>`
+// wrapper); the v2 Main board keeps the v1 node structure, so this
+// is a pure root re-point with identical exempted nodes. Count-bearing
 // headings are exempted wholesale (static prefix plus dynamic
 // count share one text node); the static copy stays pinned by the
 // fact-level gate decided content (`design-facts.ts`
@@ -93,28 +112,28 @@ export const EMPTY_ALLOWLIST: DomDiffAllowlist = { skipPaths: [] };
 export const MAIN_SCREEN_ALLOWLIST: DomDiffAllowlist = {
   skipPaths: [
     // DD-01 business date: design snapshot vs live business clock.
-    '/html[0]/body[0]/x-dc[0]/div[0]/div[1]/div[0]/div[1]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[1]/div[0]/div[1]',
     '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/p[0]/strong[0]',
     // DD-02 hotel name: design example content vs configured hotel.
-    '/html[0]/body[0]/x-dc[0]/div[0]/div[0]/strong[0]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/strong[0]',
     '/html[0]/body[0]/div[0]/div[0]/div[0]/nav[0]/span[0]',
     // DD-03 arrival count plus guest name/code rows.
-    '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[0]/h3[0]',
-    '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[0]/div[0]/span[0]',
-    '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[0]/div[1]/span[0]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[2]/div[0]/h3[0]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[2]/div[0]/div[0]/span[0]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[2]/div[0]/div[1]/span[0]',
     // DD-04 in-house count plus guest name/code/checkout rows.
-    '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[1]/h3[0]',
-    '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[1]/div[0]/span[0]',
-    '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[1]/div[0]/span[1]',
-    '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[1]/div[1]/span[0]',
-    '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[1]/div[1]/span[1]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[2]/div[1]/h3[0]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[2]/div[1]/div[0]/span[0]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[2]/div[1]/div[0]/span[1]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[2]/div[1]/div[1]/span[0]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[2]/div[1]/div[1]/span[1]',
     // DD-05 departure count.
-    '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[2]/h3[0]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[2]/div[2]/h3[0]',
     // DD-06 housekeeping room references, block reason, and date.
-    '/html[0]/body[0]/x-dc[0]/div[0]/div[3]/div[0]/div[0]/span[0]',
-    '/html[0]/body[0]/x-dc[0]/div[0]/div[3]/div[1]/div[0]/span[0]',
-    '/html[0]/body[0]/x-dc[0]/div[0]/div[3]/div[2]/div[0]/span[0]',
-    '/html[0]/body[0]/x-dc[0]/div[0]/div[3]/div[2]/div[0]/span[1]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[3]/div[0]/div[0]/span[0]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[3]/div[1]/div[0]/span[0]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[3]/div[2]/div[0]/span[0]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[3]/div[2]/div[0]/span[1]',
     // DD-07 app room-map lane counts (seed-driven, zero or more).
     '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/div[1]/section[0]/h3[0]',
     '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/div[1]/section[1]/h3[0]',
@@ -141,11 +160,16 @@ export const BOOK_SCREEN_ALLOWLIST: DomDiffAllowlist = {
   skipPaths: [
     // DD-08 hotel name: design example content vs configured hotel
     // (same shared shell-header paths as Main DD-02).
-    '/html[0]/body[0]/x-dc[0]/div[0]/div[0]/strong[0]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/strong[0]',
     '/html[0]/body[0]/div[0]/div[0]/div[0]/nav[0]/span[0]',
-    // DD-09 room-type options: design illustration (`Phòng đôi`)
-    // vs API-driven catalogue (boot seed `Standard Double`, plus
-    // any later-defined types under the same select subtree).
+    // DD-09 room-type options: v1 design illustration (`Phòng
+    // đôi`) vs API-driven catalogue (boot seed `Standard Double`,
+    // plus any later-defined types under the same select subtree).
+    // Refs #549: the v2 Book board carries no select (room type is
+    // a text input with no illustrated options), so this design path
+    // has no v2 counterpart and stays wired until a section-5
+    // retirement is owner-approved — the stale-entry warning (not a
+    // silent pass) is the tracking signal.
     '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[1]/div[0]/label[2]/select[0]',
     '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/form[0]/div[0]/div[1]/div[0]/div[0]/div[1]/label[2]/select[0]',
   ],
@@ -154,45 +178,62 @@ export const BOOK_SCREEN_ALLOWLIST: DomDiffAllowlist = {
 // Stay-screen dynamic-data exemptions (Refs #497). Every path
 // below cites its owner-approved entry in
 // `docs/testing/dom-diff-allowlist.md` section 3: the design side
-// carries the static snapshot values (example hotel name, frozen
-// business date, three illustrative stay-list rows, two
-// illustrative room options) while the app side renders live
-// values (configured hotel, business clock, API-driven room
-// catalogue), so these nodes can never coincide. The option-bearing
-// selects are exempted wholesale (the static label/placeholder copy
-// stays pinned by the fact-level decided inputs in `design-facts.ts`
-// `DECIDED_CONTENT`, which these path exemptions do not touch).
-// The design list headings (`Khách đến hôm nay`, `Đang lưu trú`,
-// `Khách đi hôm nay`) carry no entry: unlike the Main board they
-// bear no counts, so they stay pinned as static copy by the
-// fact-level decided headings. The fresh lab renders empty stay
-// tables, so app-side list rows carry no entry yet (same note as
-// Main DD-03..DD-05): rows are proposed when a run with stay data
-// shows them.
+// carries the static snapshot values (example hotel name, catalogue
+// options) while the app side renders live values (configured
+// hotel, business clock, API-driven room catalogue), so these nodes
+// can never coincide. Refs #549: the v2 Stay board reshaped the v1
+// list layout into check-in/checkout panels — DD-10 re-points to the
+// rendered root, DD-13 re-points to the three reshaped panel selects
+// (orchestrator decision on #549: same functional elements), while
+// DD-11 (business date) and DD-12 (example list rows) have no v2
+// counterpart and stay wired until a section-5 retirement is
+// owner-approved. The option-bearing selects are exempted wholesale
+// (the static label/placeholder copy stays pinned by the fact-level
+// decided inputs in `design-facts.ts` `DECIDED_CONTENT`, which these
+// path exemptions do not touch). The v2 Stay board carries no list
+// headings or rows (check-in/checkout panels only), so only the
+// catalogue selects above are exempted on the design side. The fresh
+// lab renders empty stay tables, so app-side list rows carry no entry
+// yet (same note as Main DD-03..DD-05): rows are proposed when a run
+// with stay data shows them.
 export const STAY_SCREEN_ALLOWLIST: DomDiffAllowlist = {
   skipPaths: [
     // DD-10 hotel name: design example content vs configured hotel
     // (same shared shell-header paths as Main DD-02, Book DD-08).
-    '/html[0]/body[0]/x-dc[0]/div[0]/div[0]/strong[0]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/strong[0]',
     '/html[0]/body[0]/div[0]/div[0]/div[0]/nav[0]/span[0]',
-    // DD-11 business date: design snapshot (`28/10/2026`) vs live
-    // business clock (ISO). Only the strong carries the date; the
-    // surrounding line (static prefix, `Tải lại` button) stays
-    // pinned by the fact-level decided content.
+    // DD-11 business date: v1 design snapshot (`28/10/2026`) vs
+    // live business clock (ISO). Refs #549: the v2 Stay board shows
+    // no business date (check-in/checkout panels only), so this
+    // design path has no v2 counterpart and stays wired until a
+    // section-5 retirement is owner-approved — the stale-entry
+    // warning (not a silent pass) is the tracking signal.
+    // Only the strong carries the date; the surrounding line
+    // (static prefix, `Tải lại` button) stays pinned by the
+    // fact-level decided content.
     '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[0]/div[0]/strong[0]',
     '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/div[0]/div[0]/div[1]/p[0]/strong[0]',
-    // DD-12 stay-list example rows: design illustration
+    // DD-12 stay-list example rows: v1 design illustration
     // (`Nguyễn Văn An · Phòng 205`, `Lê Minh · Phòng 201`,
     // `Phạm Hoa · Phòng 203`) vs seed- and action-dependent lists.
+    // Refs #549: the v2 Stay board carries no list rows (check-in/
+    // checkout panels only), so these design paths have no v2
+    // counterpart and stay wired until a section-5 retirement is
+    // owner-approved — the stale-entry warning (not a silent pass)
+    // is the tracking signal.
     '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[0]/div[1]',
     '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[0]/div[2]',
     '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[0]/div[3]',
-    // DD-13 room options: design illustration (check-in `205`,
-    // move `202`/`204`) vs API-driven ready-room catalogue (boot
-    // seed rooms, plus any later-defined rooms under the same
-    // select subtrees).
-    '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[1]/label[2]/select[0]',
-    '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[2]/label[1]/select[0]',
+    // DD-13 catalogue options: the v2 Stay board reshaped the two v1
+    // option selects into three panel selects (orchestrator decision
+    // on #549: same functional elements, so this re-points rather
+    // than widens) — the check-in guest-name options, the room
+    // prompt plus ready-room options, and the checkout stay options
+    // — vs the API-driven catalogues (boot seed rooms, plus any
+    // later-defined options under the same select subtrees).
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[1]/div[0]/label[0]/select[0]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[1]/div[0]/label[1]/select[0]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[1]/div[1]/label[0]/select[0]',
     '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/div[1]/div[0]/div[1]/div[0]/label[2]/select[0]',
     '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/div[2]/div[0]/div[1]/div[0]/label[1]/select[0]',
   ],
@@ -205,7 +246,10 @@ export const STAY_SCREEN_ALLOWLIST: DomDiffAllowlist = {
 // illustrative guest folio with two charge lines and one payment)
 // while the app side renders live values (configured hotel,
 // API-driven folio for the opened stay), so these nodes can never
-// coincide. Only the value-bearing example nodes are exempted: the
+// coincide. Refs #549: the v2 Folio board keeps the v1 node
+// structure, so the design paths below are a pure root re-point
+// with identical exempted nodes. Only the value-bearing example
+// nodes are exempted: the
 // static board copy around them (both card headings, the
 // `Còn phải trả` due label, all four input labels, both buttons)
 // stays out, remaining as residual `node` diffs under the accepted
@@ -217,22 +261,22 @@ export const FOLIO_SCREEN_ALLOWLIST: DomDiffAllowlist = {
     // DD-14 hotel name: design example content vs configured hotel
     // (same shared shell-header paths as Main DD-02, Book DD-08,
     // Stay DD-10).
-    '/html[0]/body[0]/x-dc[0]/div[0]/div[0]/strong[0]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/strong[0]',
     '/html[0]/body[0]/div[0]/div[0]/div[0]/nav[0]/span[0]',
     // DD-15 charge examples: design illustration for guest Lê Minh
     // in P.201 (`Khoản phí · Lê Minh · P.201`, `Tiền phòng 2 đêm` /
     // `1.800.000 đ`, `Nước uống` / `60.000 đ`) vs the live folio
     // lines of the opened stay (fresh lab: the empty-folio state).
-    '/html[0]/body[0]/x-dc[0]/div[0]/div[1]/div[0]/h3[0]',
-    '/html[0]/body[0]/x-dc[0]/div[0]/div[1]/div[0]/div[0]',
-    '/html[0]/body[0]/x-dc[0]/div[0]/div[1]/div[0]/div[1]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[1]/div[0]/h3[0]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[1]/div[0]/div[0]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[1]/div[0]/div[1]',
     // DD-16 payment examples: design illustration (`960.000 đ`
     // balance due, `Tiền mặt` / `900.000 đ` payment row) vs the live
     // folio balance and payment lines (fresh lab: no folio opened,
     // balance line empty). Only the value-bearing nodes: the static
     // `Còn phải trả` due label stays out as an S1 residual.
-    '/html[0]/body[0]/x-dc[0]/div[0]/div[1]/div[1]/div[1]',
-    '/html[0]/body[0]/x-dc[0]/div[0]/div[1]/div[1]/div[2]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[1]/div[1]/div[1]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[1]/div[1]/div[2]',
   ],
 };
 
@@ -243,10 +287,13 @@ export const FOLIO_SCREEN_ALLOWLIST: DomDiffAllowlist = {
 // illustrative summary line, five illustrative status chips, three
 // floors of example room cards) while the app side renders live
 // values (configured hotel, business clock, seed-driven counts),
-// so these nodes can never coincide. Only the value-bearing
-// example nodes are exempted: the static board copy around them
-// (the h1, both h2s, the `Tải lại` button) stays out, remaining
-// as residual `node` diffs under the accepted S1 shape divergence.
+// so these nodes can never coincide. Refs #549: the design paths
+// target the rendered v2 board root; DD-19/DD-20 shifted one level
+// (same nodes), DD-18 re-points to the date node only. Only the
+// value-bearing example nodes are exempted: the static board copy
+// around them (the title lines, the `Làm mới` button) stays out,
+// remaining as residual `node` diffs under the accepted S1 shape
+// divergence.
 // App-side room cards carry no entry yet (the fresh-lab cards for
 // seed rooms 101/102 are flow-state, same note as Stay app rows in
 // DD-12): rows are proposed when a run with richer room data shows
@@ -256,29 +303,32 @@ export const ROOMS_SCREEN_ALLOWLIST: DomDiffAllowlist = {
     // DD-17 hotel name: design example content vs configured hotel
     // (same shared shell-header paths as Main DD-02, Book DD-08,
     // Stay DD-10, Folio DD-14).
-    '/html[0]/body[0]/x-dc[0]/div[0]/div[0]/strong[0]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/strong[0]',
     '/html[0]/body[0]/div[0]/div[0]/div[0]/nav[0]/span[0]',
-    // DD-18 summary line: design illustration (`18 phòng minh
-    // hoạ, 6 phòng có khách · 28/10/2026`, counts plus frozen
-    // date) vs the live business-date strong (fresh lab: the ISO
-    // clock; the design counts never coincide with seed-driven
-    // rooms). Only the value-bearing nodes: the static h1 stays
-    // out as an S1 residual.
-    '/html[0]/body[0]/x-dc[0]/div[0]/div[1]/div[0]/div[0]',
+    // DD-18 summary line: the v2 board splits the v1 summary into
+    // the date head (`Sơ đồ phòng · 28/10/2026`, this entry) plus
+    // the counts line (`18 phòng, 6 phòng có khách`, no entry —
+    // orchestrator decision on #549: date node only, never the
+    // parent div; the counts line gets its own entry if needed) vs
+    // the live business-date strong (fresh lab: the ISO clock; the
+    // design counts never coincide with seed-driven rooms).
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[1]/div[0]/div[0]',
     '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/p[1]/strong[0]',
     // DD-19 summary chips: design illustration (`Sẵn sàng · 8`,
     // `Có khách · 6`, `Cần dọn · 2`, `Chờ kiểm tra · 1`,
     // `Ngừng sử dụng · 1`) vs the seed-driven live chips (fresh
-    // lab: 2 ready, 0 elsewhere). Count-bearing nodes are exempted
-    // wholesale (same note as Main DD-07): the qualified app chip
-    // labels stay pinned by the fact-level decided room map
+    // lab: 2 ready, 0 elsewhere). Refs #549: the v2 board dropped
+    // one wrapper level, so the chips moved from `div[3]` to
+    // `div[2]` with identical nodes. Count-bearing nodes are
+    // exempted wholesale (same note as Main DD-07): the qualified
+    // app chip labels stay pinned by the fact-level decided room map
     // (`design-facts.ts`, Refs #491), which these path exemptions
     // do not touch.
-    '/html[0]/body[0]/x-dc[0]/div[0]/div[3]/span[0]',
-    '/html[0]/body[0]/x-dc[0]/div[0]/div[3]/span[1]',
-    '/html[0]/body[0]/x-dc[0]/div[0]/div[3]/span[2]',
-    '/html[0]/body[0]/x-dc[0]/div[0]/div[3]/span[3]',
-    '/html[0]/body[0]/x-dc[0]/div[0]/div[3]/span[4]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[2]/span[0]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[2]/span[1]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[2]/span[2]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[2]/span[3]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[2]/span[4]',
     '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/ul[0]/li[0]',
     '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/ul[0]/li[1]',
     '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/ul[0]/li[2]',
@@ -288,13 +338,16 @@ export const ROOMS_SCREEN_ALLOWLIST: DomDiffAllowlist = {
     // floors (room numbers, statuses, type lines, notes with guest
     // names, checkout dates, and the block reason) vs the live
     // seed-driven cards (fresh lab: rooms 101/102 on floor 1 with
-    // catalogue type names and live note lines). The whole card
-    // grids are exempted (current and future rooms under the same
-    // floor subtrees); the floor titles above them (`Tầng 1` ..)
-    // stay out as S1 residuals.
-    '/html[0]/body[0]/x-dc[0]/div[0]/div[4]/div[0]',
-    '/html[0]/body[0]/x-dc[0]/div[0]/div[5]/div[0]',
-    '/html[0]/body[0]/x-dc[0]/div[0]/div[6]/div[0]',
+    // catalogue type names and live note lines). Refs #549: the v2
+    // board dropped one wrapper level, so the floor sections moved
+    // from `div[4..6]` to `div[3..5]`; within each section the entry
+    // is the card grid `div[1]` (the title `div[0]` stays out, same
+    // as v1). The whole card grids are exempted (current and future
+    // rooms under the same floor subtrees); the floor titles above
+    // them (`Tầng 1` ..) stay out as S1 residuals.
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[3]/div[1]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[4]/div[1]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[5]/div[1]',
   ],
 };
 

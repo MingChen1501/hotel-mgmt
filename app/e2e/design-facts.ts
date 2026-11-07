@@ -1,13 +1,15 @@
-// DOM-vs-design comparison for the six desk screens (Closes #467).
+// DOM-vs-design comparison for the six covered desk screens (Closes #467).
 //
 // App-side counterpart of the design-side extractor
 // (`tests/design-facts/extract-design-facts.mjs`, issue #466). Both
 // sides implement the contract in
 // `docs/technical/desk-ui-fact-schema.md` (schemaVersion 1, owned by
-// `architect`): the design side parses the static
-// `docs/design/*.dc.html` boards with Node, this module extracts the
-// same fact shape from the live Chromium DOM through Playwright and
-// diffs the two field-by-field.
+// `architect`): the design side decodes the v2 bundler template
+// embedded in each `docs/design/*.dc.html` board (Refs #538, Refs
+// #548 — the inline React runtime scripts are never executed and
+// never enter facts) and parses the design markup only, while this
+// module extracts the same fact shape from the live Chromium DOM
+// through Playwright and diffs the two field-by-field.
 //
 // Owner direction 2026-11-03: no screenshot snapshots (heavy,
 // brittle). Colors are asserted through `getComputedStyle` only —
@@ -101,6 +103,12 @@ export interface ScreenTableEntry {
 // Manifest screen order (docs/design/manifest.json `order`,
 // `.dc.html` suffix stripped) with the app route and view root hook
 // per screen (hooks match `app/src/views/*` and the schema examples).
+// Six of the seven v2 manifest screens: the Admin board (`Quản trị`)
+// is DEFERRED — it has no app screen yet (open #546), so neither
+// gate asserts it and it carries no allowlist entry (disposition
+// recorded in `docs/testing/dom-diff-allowlist.md` section 2, Refs
+// #549). When #546 lands, Admin joins this table with its
+// `admin-view` hook (the extractor already emits `Admin.facts.json`).
 export const SCREEN_TABLE: readonly ScreenTableEntry[] = [
   { screen: 'Main', route: '/', viewHook: 'desk-view' },
   { screen: 'Stay', route: '/stay', viewHook: 'stay-view' },
