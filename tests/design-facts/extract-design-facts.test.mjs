@@ -20,6 +20,7 @@ import { fileURLToPath } from "node:url";
 import {
   extractScreenFacts,
   parseHtml,
+  resolveDesignDocument,
   runExtraction,
 } from "./extract-design-facts.mjs";
 
@@ -92,7 +93,7 @@ function assertNoNulls(value, path) {
 
 test("emits one record per manifest screen with the full schema shape", () => {
   const { outDir, written } = extractToFreshDir();
-  assert.equal(written.length, 7);
+  assert.equal(written.length, SCREENS.length);
   assert.deepEqual(
     readdirSync(outDir).sort(),
     SCREENS.map((screen) => `${screen}.facts.json`).sort(),
@@ -141,9 +142,11 @@ test("Main nav matches the v2 header: seven tabs, order, labels, active tab", ()
 test("active tab follows each board; Onboarding-adjacent Admin rests on admin", () => {
   const { outDir } = extractToFreshDir();
   const records = readRecords(outDir);
+  assert.equal(records.Main.nav.active, "Main");
   assert.equal(records.Stay.nav.active, "Stay");
   assert.equal(records.Rooms.nav.active, "Rooms");
   assert.equal(records.Book.nav.active, "Book");
+  assert.equal(records.Rooms.nav.active, "Rooms");
   assert.equal(records.Folio.nav.active, "Folio");
   assert.equal(records.Admin.nav.active, "admin");
   for (const screen of ["Main", "Stay", "Rooms", "Book", "Folio", "Admin"]) {
@@ -211,7 +214,7 @@ test("inputs: labels, text placeholders, and select first-option captions", () =
       ["select", "Phòng", "Chọn phòng..."],
       ["select", "Khách đi", null],
       ["text", "Người duyệt", null],
-    ],
+    ]
   );
   assert.deepEqual(
     records.Book.inputs.map((input) => [
@@ -219,6 +222,10 @@ test("inputs: labels, text placeholders, and select first-option captions", () =
       input.label,
       input.placeholder,
     ]),
+    // v2 Book board (bundle 07-11): guest and date/room fields as
+    // plain text inputs; the v1 rate-plan select and discount
+    // phrasing are gone from the board (per-screen content follows
+    // in child issues).
     [
       ["text", "Tên khách", null],
       ["text", "Ngày đến", null],
@@ -227,6 +234,8 @@ test("inputs: labels, text placeholders, and select first-option captions", () =
       ["text", "Giảm giá", null],
     ],
   );
+  // v2 Folio board (bundle 07-11): charge/settlement entry fields
+  // as plain text inputs with wrapping labels.
   assert.deepEqual(
     records.Folio.inputs.map((input) => [
       input.kind,
@@ -288,6 +297,8 @@ test("v2 board content: headings and buttons per screen", () => {
     records.Book.buttons.map((button) => button.label),
     ["Tìm", "Đăng ký khách mới", "Xác nhận đặt phòng", "Lấy báo giá"],
   );
+  // v2 Admin board (new in bundle 07-11): user/role, account
+  // creation, hotel config, and audit-log sections.
   assert.deepEqual(
     records.Admin.headings.map((heading) => [heading.level, heading.text]),
     [
@@ -468,13 +479,9 @@ test("icon-only buttons fail loudly instead of passing silently", () => {
     join(REPO_ROOT, "docs", "design", "Main.dc.html"),
     "utf8",
   );
-  // Anchors below use the escaped template form (<\u002F): the design
-  // markup lives inside the bundler template string.
-  const iconOnly = source.replace("Làm mới<\\u002Fbutton>", "<\\u002Fbutton>");
-  assert.ok(
-    iconOnly !== source,
-    "v2 Main board no longer carries the anchor button",
-  );
+  const decodedMain = resolveDesignDocument(source, "docs/design/Main.dc.html");
+  const iconOnly = decodedMain.replace("Làm mới</button>", "</button>");
+  assert.notEqual(iconOnly, decodedMain);
   assert.throws(
     () =>
       extractScreenFacts({
@@ -492,11 +499,9 @@ test("unknown nav tab labels fail loudly instead of guessing a key", () => {
     join(REPO_ROOT, "docs", "design", "Main.dc.html"),
     "utf8",
   );
-  const renamed = source.replace("Lễ tân<\\u002Fspan>", "Tổng quan<\\u002Fspan>");
-  assert.ok(
-    renamed !== source,
-    "v2 Main board no longer carries the anchor tab",
-  );
+  const decodedNav = resolveDesignDocument(source, "docs/design/Main.dc.html");
+  const renamed = decodedNav.replace("Lễ tân</span>", "Tổng quan</span>");
+  assert.notEqual(renamed, decodedNav);
   assert.throws(
     () =>
       extractScreenFacts({
@@ -514,13 +519,14 @@ test("form controls without any label source fail loudly", () => {
     join(REPO_ROOT, "docs", "design", "Onboarding.dc.html"),
     "utf8",
   );
-  const stripped = source
-    .replace(/<h3[^>]*>Tên khách sạn<\\u002Fh3>/, "")
-    .replace(/placeholder=\\"[^\\]*?\\"/, "");
-  assert.ok(
-    stripped !== source,
-    "v2 Onboarding board no longer carries the anchors",
+  const decodedOnboarding = resolveDesignDocument(
+    source,
+    "docs/design/Onboarding.dc.html",
   );
+  const stripped = decodedOnboarding
+    .replace(/<h3[^>]*>Tên khách sạn<\/h3>/, "")
+    .replace(/placeholder="[^"]*"/, "");
+  assert.notEqual(stripped, decodedOnboarding);
   assert.throws(
     () =>
       extractScreenFacts({
@@ -546,4 +552,65 @@ test("parser tracks real line numbers for moved design nodes", () => {
   visit(root);
   assert.equal(headings.length, 1);
   assert.equal(headings[0].line, 3);
+});
+
+test("v2 bundler envelope decodes to the design document on every board", () => {
+  for (const file of MANIFEST.order) {
+    const designFile = `docs/design/${file}`;
+    const source = readFileSync(join(REPO_ROOT, designFile), "utf8");
+    const decoded = resolveDesignDocument(source, designFile);
+    assert.notEqual(decoded, source);
+    const root = parseHtml(decoded);
+    const dc = [];
+    const visit = (node) => {
+      if (node.tag === "x-dc") dc.push(node);
+      for (const child of node.children || []) {
+        if (child.text === undefined) visit(child);
+      }
+    };
+    visit(root);
+    assert.equal(dc.length, 1, `${designFile} decodes to exactly one <x-dc> root`);
+  }
+});
+
+test("v1 boards without the envelope pass through untouched", () => {
+  const source =
+    "<!doctype html><html><body><x-dc><h1>T</h1></x-dc></body></html>";
+  assert.equal(
+    resolveDesignDocument(source, "docs/design/Main.dc.html"),
+    source,
+  );
+});
+
+test("a board with no x-dc root and no template payload fails loudly", () => {
+  assert.throws(
+    () =>
+      resolveDesignDocument(
+        "<!doctype html><html><body><div>No design here</div></body></html>",
+        "docs/design/Main.dc.html",
+      ),
+    /expected exactly one <x-dc> root and no __bundler\/template payload/,
+  );
+});
+
+test("a template payload that is not a JSON string fails loudly", () => {
+  assert.throws(
+    () =>
+      resolveDesignDocument(
+        '<!doctype html><html><body><script type="__bundler/template">not json</script></body></html>',
+        "docs/design/Main.dc.html",
+      ),
+    /__bundler\/template payload is not a JSON string/,
+  );
+});
+
+test("a template payload without an x-dc document fails loudly", () => {
+  assert.throws(
+    () =>
+      resolveDesignDocument(
+        '<!doctype html><html><body><script type="__bundler/template">"just a string"</script></body></html>',
+        "docs/design/Main.dc.html",
+      ),
+    /__bundler\/template payload carries no <x-dc> document/,
+  );
 });

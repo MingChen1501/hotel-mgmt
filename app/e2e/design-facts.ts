@@ -18,14 +18,15 @@
 //
 // Screen sources: design `docs/design/<Screen>.dc.html` (manifest
 // order); app routes below. Design tab keys follow the extractor's
-// definitive table (`Lễ tân` -> `Main`, `Đặt phòng` -> `Book`,
-// `Lưu trú` -> `Stay`, `Hoá đơn` -> `Folio`, `In` -> `print`,
+// definitive table (`Lễ tân` -> `Main`, `Sơ đồ phòng` -> `Rooms`,
+// `Đặt phòng` -> `Book`, `Lưu trú` -> `Stay`,
+// `Hoá đơn` -> `Folio`, `In` -> `print`,
 // `Quản trị` -> `admin`); the shell route names map onto the screen
 // keys through ROUTE_KEY_TO_DESIGN_KEY where a tab exists on both
-// sides. Refs #472: the visible shell nav is exactly the six design
-// header tabs, so every design tab key has a shell route-name
-// counterpart; onboarding/rooms are tab-less deep routes and map to
-// nothing — see the live spec.
+// sides. Refs #539: the visible shell nav is exactly the seven
+// design header tabs, so every design tab key has a shell
+// route-name counterpart; onboarding is the tab-less deep route
+// and maps to nothing — see the live spec.
 
 export const FACT_SCHEMA_VERSION = 1;
 
@@ -360,13 +361,14 @@ export interface RoomMapFacts {
   floors: string[];
   cards: RoomMapCardFact[];
 }
-// Shell route-name tab keys to design tab keys. Refs #472: the
-// visible shell nav is exactly the six design header tabs, so every
-// key here has a design counterpart. Onboarding/rooms are tab-less
-// deep routes (no design-header tab) and map to nothing — they are
-// excluded from label/active comparisons in the live spec.
+// Shell route-name tab keys to design tab keys. Refs #539: the
+// visible shell nav is exactly the seven design header tabs, so
+// every key here has a design counterpart. Onboarding is the
+// tab-less deep route (no design-header tab) and maps to nothing —
+// it is excluded from label/active comparisons in the live spec.
 export const ROUTE_KEY_TO_DESIGN_KEY: Record<string, string> = {
   desk: 'Main',
+  rooms: 'Rooms',
   stay: 'Stay',
   book: 'Book',
   folio: 'Folio',

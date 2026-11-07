@@ -27,9 +27,9 @@
 #   citation); every visible shell-nav entry in `app/src/App.vue`
 #   matches a route in `app/src/router.ts` by name and path (no dead
 #   nav items), and every non-catch-all route either matches a
-#   shell-nav entry or is a documented deep route (Refs #472:
-#   onboarding and rooms have no design-header tab but stay
-#   reachable — no orphan screens outside that decided set); the
+#   shell-nav entry or is a documented deep route (Refs #539:
+#   onboarding has no design-header tab but stays reachable — no
+#   orphan screens outside that decided set); the
 #   print source keeps its `@media print` rules and the built bytes
 #   carry them too. The judgement half (PrimeVue-first for covered patterns, dynamic
 #   `t()` calls, hardcoded-copy edge cases) stays a blocking
@@ -188,17 +188,17 @@ else:
 # 2. No dead nav items and no orphan screens outside the decided
 # deep-route set: every shell-nav entry matches a route by name and
 # path, and every non-catch-all route either matches a shell-nav
-# entry or is a documented deep route (Refs #472: onboarding and
-# rooms have no design-header tab but stay reachable).
+# entry or is a documented deep route (Refs #539: onboarding has
+# no design-header tab but stays reachable).
 router_text = (APP_SRC / "router.ts").read_text(encoding="utf-8")
 routes = re.findall(r"path:\s*'([^']+)'\s*,\s*\n?\s*name:\s*'([^']+)'", router_text)
 routes = [(name, path) for path, name in routes if "pathMatch" not in path]
 app_text = (APP_SRC / "App.vue").read_text(encoding="utf-8")
 nav = re.findall(r"\{\s*name:\s*'([^']+)',\s*to:\s*'([^']+)'", app_text)
-# Documented deep routes (Refs #472): registered screens with no
+# Documented deep routes (Refs #539): registered screens with no
 # visible nav tab. Keep this set in sync with the NAV_ITEMS comment
 # in app/src/App.vue.
-deep_routes = {('onboarding', '/onboarding'), ('rooms', '/rooms')}
+deep_routes = {('onboarding', '/onboarding')}
 if not routes:
     fail("app/src/router.ts carries no named routes")
 if not nav:

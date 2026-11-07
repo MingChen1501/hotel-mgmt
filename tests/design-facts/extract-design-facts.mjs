@@ -110,38 +110,8 @@ const SKIPPED_SUBTREES = new Set(["script", "style"]);
 // inside the <sc-raw-select> custom element; both count as selects.
 const SELECT_TAGS = new Set(["select", "sc-raw-select"]);
 
-// The v2 bundler envelope: design markup embedded as one escaped JS
-// string literal in <script type="__bundler/template">. Matched on the
-// raw board source before HTML parsing so the runtime scripts are
-// never parsed as markup.
-const BUNDLER_TEMPLATE_PATTERN =
-  /<script[^>]*type="__bundler\/template"[^>]*>\s*"((?:[^"\\]|\\.)*)"\s*<\/script\s*>/;
-
 function fail(message) {
   throw new Error(`extract-design-facts: ${message}`);
-}
-
-// Decode the bundler template string to the design document. The
-// payload uses standard JSON string escapes (\n, \", \\, \uXXXX such
-// as \u002F for "/"), so JSON.parse is the decoder; anything else is
-// a loud error, never a silent partial decode.
-function decodeBundlerTemplate(payload, designFile) {
-  try {
-    return JSON.parse(`"${payload}"`);
-  } catch {
-    fail(`${designFile}: <script type="__bundler/template"> payload is not a decodable string`);
-    return "";
-  }
-}
-
-// Resolve the design document to parse: the decoded bundler template
-// when the envelope is present, otherwise the board source itself
-// (v1 static <x-dc> files). Runtime <script> bundles are excluded by
-// construction — only the template string enters the parser.
-function resolveDesignDocument(source, designFile) {
-  const match = source.match(BUNDLER_TEMPLATE_PATTERN);
-  if (match) return decodeBundlerTemplate(match[1], designFile);
-  return source;
 }
 
 function decodeEntities(text) {
@@ -299,6 +269,45 @@ function findElements(root, predicate) {
     if (predicate(node)) found.push(node);
   });
   return found;
+}
+
+// Design document resolution (v2 bundle envelope, Closes #538): the
+// owner-supplied boards embed the design document as a JSON string in
+// `<script type="__bundler/template">`, so the outer shell parses to
+// zero `<x-dc>` roots. When the outer parse carries exactly one
+// `<x-dc>` root the source is already a design document (v1 shape)
+// and passes through untouched; otherwise the template payload is
+// decoded and returned. Anything else fails loudly — the harness
+// never guesses at an unknown board format.
+export function resolveDesignDocument(source, designFile) {
+  const outer = parseHtml(source);
+  if (findElements(outer, (node) => node.tag === "x-dc").length === 1) {
+    return source;
+  }
+  const templates = findElements(
+    outer,
+    (node) => node.tag === "script" && node.attrs.type === "__bundler/template",
+  );
+  if (templates.length !== 1) {
+    fail(
+      `${designFile}: expected exactly one <x-dc> root and no __bundler/template payload to decode`,
+    );
+  }
+  const payload = templates[0].children
+    .filter((child) => child.text !== undefined)
+    .map((child) => child.text)
+    .join("")
+    .trim();
+  let decoded;
+  try {
+    decoded = JSON.parse(payload);
+  } catch {
+    fail(`${designFile}: __bundler/template payload is not a JSON string`);
+  }
+  if (typeof decoded !== "string" || !decoded.includes("<x-dc>")) {
+    fail(`${designFile}: __bundler/template payload carries no <x-dc> document`);
+  }
+  return decoded;
 }
 
 function parseStyleDeclarations(style) {
