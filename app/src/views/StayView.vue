@@ -1,7 +1,16 @@
 <template>
   <main data-testid="stay-view">
-    <h1>{{ t('desk.stay.title', {}, 'Check guests in, move them, and check them out') }}</h1>
-    <p>{{ t('desk.stay.intro', {}, 'Work from the lists: pick an arrival to check in, pick a stay to move or check out, then follow each section in order.') }}</p>
+    <!-- Stay screen title (restyle Refs #521, `docs/design/Stay.dc.html:2`:
+      h1 `margin:0;font-size:22px`; hooks and copy unchanged). -->
+    <h1 class="stay-title">
+      {{ t('desk.stay.title', {}, 'Check guests in, move them, and check them out') }}
+    </h1>
+    <!-- Stay intro (restyle Refs #521): lead copy with no design
+      counterpart; muted `14px` helper treatment per the shared
+      tokens (restyle spec section 3), copy unchanged. -->
+    <p class="stay-intro">
+      {{ t('desk.stay.intro', {}, 'Work from the lists: pick an arrival to check in, pick a stay to move or check out, then follow each section in order.') }}
+    </p>
     <noscript><p>{{ t('desk.entry.noscript_stay', {}, 'This page needs JavaScript to run the stay lifecycle.') }}</p></noscript>
 
     <section data-testid="stay-main">
@@ -10,11 +19,16 @@
           <h2>{{ t('desk.stay.lists_heading', {}, 'Stay lists for the business date') }}</h2>
         </template>
         <template #content>
-          <p>
-            <span>{{ t('desk.today.business_date', {}, 'Business date: ') }}</span><strong data-testid="stay-business-date">{{ businessDateDisplay }}</strong>
+          <!-- Business-date row (restyle Refs #521,
+            `docs/design/Stay.dc.html:3`: `14px` label, primary
+            reload button; the value keeps the landed weekday-long
+            render, hooks unchanged). -->
+          <p class="stay-business-row">
+            <span class="stay-business-label">{{ t('desk.today.business_date', {}, 'Business date: ') }}</span><strong data-testid="stay-business-date">{{ businessDateDisplay }}</strong>
             <Button
               id="stay-refresh-button"
               type="button"
+              class="stay-action"
               :label="t('desk.today.refresh', {}, 'Refresh')"
               data-testid="stay-refresh"
               @click="onRefresh"
@@ -58,6 +72,7 @@
                 <Button
                   v-if="slotProps.data.reservationRef"
                   type="button"
+                  class="stay-action"
                   :label="t('desk.stay.use_arrival', {}, 'Use for check-in')"
                   :data-testid="`stay-use-arrival-${slotProps.data.reservationRef}`"
                   @click="pickArrival(slotProps.data.reservationRef)"
@@ -92,6 +107,7 @@
                 <Button
                   v-if="slotProps.data.stayId"
                   type="button"
+                  class="stay-action"
                   :label="t('desk.stay.use_stay', {}, 'Use this stay')"
                   :data-testid="`stay-use-stay-${slotProps.data.stayId}`"
                   @click="pickStay(slotProps.data)"
@@ -126,6 +142,7 @@
                 <Button
                   v-if="slotProps.data.stayId"
                   type="button"
+                  class="stay-action"
                   :label="t('desk.stay.use_stay', {}, 'Use this stay')"
                   :data-testid="`stay-use-stay-${slotProps.data.stayId}`"
                   @click="pickStay(slotProps.data)"
@@ -166,7 +183,6 @@
                 data-testid="stay-checkin-arrival"
               >
             </label>
-            <br>
             <label for="stay-checkin-room">
               {{ t('desk.stay.room_label', {}, 'Ready room: ') }}
               <select
@@ -186,8 +202,11 @@
                 </option>
               </select>
             </label>
+            <!-- Room-picker hint (restyle Refs #521): muted `14px`
+              helper treatment, copy unchanged. -->
             <p
               v-if="checkinRoomId === ''"
+              class="stay-hint"
               data-testid="stay-checkin-room-hint"
             >
               {{ t('desk.stay.room_hint', {}, 'Choose a ready room below. Check-in stays blocked until one is chosen.') }}
@@ -195,6 +214,7 @@
             <Button
               id="stay-checkin-button"
               type="button"
+              class="stay-action"
               :label="t('desk.stay.checkin_button', {}, 'Check in')"
               data-testid="stay-checkin"
               :disabled="checkingIn"
@@ -264,6 +284,7 @@
             <Button
               id="stay-move-button"
               type="button"
+              class="stay-action"
               :label="t('desk.stay.move_button', {}, 'Move')"
               data-testid="stay-move"
               :disabled="moving"
@@ -337,6 +358,7 @@
             <Button
               id="stay-times-button"
               type="button"
+              class="stay-action"
               :label="t('desk.stay.times_button', {}, 'Record times')"
               data-testid="stay-times"
               :disabled="recording"
@@ -376,7 +398,13 @@
           <h2>{{ t('desk.stay.checkout_heading', {}, 'Check out with folio review') }}</h2>
         </template>
         <template #content>
-          <p data-testid="stay-checkout-gate-note">
+          <!-- Folio-reconciliation hint (restyle Refs #521,
+            `docs/design/Stay.dc.html:7`: `font-size:14px;
+            color:#4B5D5B`; copy unchanged). -->
+          <p
+            class="stay-hint"
+            data-testid="stay-checkout-gate-note"
+          >
             {{ t('desk.stay.checkout_gate_note', {}, 'Check-out completes only when the folio is fully paid. Review the folio first.') }}
           </p>
           <div>
@@ -404,6 +432,7 @@
             <Button
               id="stay-review-button"
               type="button"
+              class="stay-action"
               :label="t('desk.stay.review_button', {}, 'Review folio')"
               data-testid="stay-review"
               :disabled="reviewing"
@@ -463,6 +492,7 @@
               <Button
                 id="stay-approve-button"
                 type="button"
+                class="stay-action"
                 :label="t('desk.stay.approve_button', {}, 'Record approval')"
                 data-testid="stay-approve"
                 :disabled="approving"
@@ -478,6 +508,7 @@
             <Button
               id="stay-checkout-button"
               type="button"
+              class="stay-action"
               :label="t('desk.stay.checkout_button', {}, 'Check out')"
               data-testid="stay-checkout"
               :disabled="!canCheckOut || checkingOut"
@@ -500,6 +531,7 @@
               />
               <Button
                 type="button"
+                class="stay-action"
                 :label="t('desk.stay.checkout_button', {}, 'Check out')"
                 :disabled="checkingOut"
                 data-testid="stay-checkout-confirm"
@@ -580,14 +612,19 @@ import ReferenceDetails, { type ReferenceItem } from '../components/ReferenceDet
 //   idempotencyKey wherever the contract defines one (AssignRoom,
 //   MoveRoom, RecordOpenBalanceApproval, CheckOut).
 //
-// Design restyle (Refs #422, rollout #419): the same hooks,
-// fields, order, and call order grouped into design cards
-// (lists, check-in, move, times, check-out) on the shared shell
-// tokens, with no hook, field, or call-order change. The new
-// copy is the pick-a-ready-room hint under the room select
-// (`desk.stay.room_hint`, shown while no room is bound) and the
-// persistent fully-paid gate note on the check-out card
-// (`desk.stay.checkout_gate_note`).
+// Design restyle (Refs #422, rollout #419; rebuilt Refs #521,
+// restyle spec section 5.3, AC-RST-4): the same hooks, fields,
+// order, and call order grouped into the five design stacked
+// cards (lists, check-in, move, times, check-out) on the shared
+// shell tokens, with the shell stylesheet carrying the design
+// values (`Stay.dc.html:2-:7`: h1 `22px`, h2 `18px`, h3 `16px`,
+// `14px` labels, full-width `44px` controls, `14px` rows with no
+// dividers, muted `14px` hints, primary `#0F766E` buttons).
+// PrimeVue stays as logic carrier only. No hook, field, or
+// call-order change. The new copy is the pick-a-ready-room hint
+// under the room select (`desk.stay.room_hint`, shown while no
+// room is bound) and the persistent fully-paid gate note on the
+// check-out card (`desk.stay.checkout_gate_note`).
 
 interface StayRow {
   stayId?: string;
