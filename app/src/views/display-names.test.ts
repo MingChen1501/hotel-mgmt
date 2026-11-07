@@ -149,10 +149,10 @@ describe('display names instead of IDs (issue #370)', () => {
     expect(inHouse).toContain('Unknown guest');
     expect(inHouse).not.toMatch(UUID_PATTERN);
     // Attention rows name the number with the resolved type name.
-    const dirty = wrapper.find('[data-testid="desk-dirty-list"]').text();
-    expect(dirty).toContain('101');
-    expect(dirty).toContain('Deluxe');
-    expect(dirty).not.toMatch(UUID_PATTERN);
+    const cleanup = wrapper.find('[data-testid="desk-cleanup-list"]').text();
+    expect(cleanup).toContain('101');
+    expect(cleanup).toContain('Deluxe');
+    expect(cleanup).not.toMatch(UUID_PATTERN);
   });
 
   it('stay lists and check-in status show names and numbers, never raw UUIDs', async () => {

@@ -110,7 +110,7 @@ Trước khi chạy case của từng màn hình, xác nhận vỏ chung đạt 
 - **Kết quả mong đợi:** mỗi danh sách trống hiển thị một câu rỗng tường minh
   thay vì bảng trắng: `desk.today.empty_arrivals`,
   `desk.today.empty_inhouse`, `desk.today.empty_departures`,
-  `desk.today.empty_dirty`, `desk.today.empty_uninspected`,
+  `desk.today.empty_dirty`,
   `desk.today.empty_outoforder`.
 - **Truy vết:** AC-DSK-2.
 
