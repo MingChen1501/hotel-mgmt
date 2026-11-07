@@ -5,16 +5,26 @@
     <noscript><p>{{ t('desk.entry.noscript_desk_lead', {}, "This page needs JavaScript to load today's lists.") }} {{ t('desk.entry.noscript_backup', {}, 'No recent backup report — treat as failed. Note this message word for word and call support the same day (runbook section 6).') }}</p></noscript>
 
     <section data-testid="desk-dashboard">
-      <p>
-        <span>{{ t('desk.today.business_date', {}, 'Business date: ') }}</span><strong data-testid="desk-business-date">{{ businessDateDisplay }}</strong>
+      <!-- Business-date row (restyle Refs #519, `docs/design/Main.dc.html:2`:
+        muted 14px label above the 26px/700 value, primary refresh
+        button right; classes carry the design values from the shell
+        stylesheet, hooks and logic unchanged). -->
+      <div class="desk-date-row">
+        <div>
+          <span class="desk-date-label">{{ t('desk.today.business_date', {}, 'Business date: ') }}</span><strong
+            class="desk-date-value"
+            data-testid="desk-business-date"
+          >{{ businessDateDisplay }}</strong>
+        </div>
         <Button
           id="desk-refresh-button"
           type="button"
+          class="desk-refresh"
           :label="t('desk.today.refresh', {}, 'Refresh')"
           data-testid="desk-refresh"
           @click="onRefresh"
         />
-      </p>
+      </div>
       <Message
         v-if="loading"
         severity="info"
@@ -133,6 +143,7 @@
                 {{ room.number }} — {{ typeName(room.roomTypeId) }}
                 <Button
                   type="button"
+                  class="desk-action"
                   :label="t('desk.today.mark_cleaned', {}, 'Mark cleaned')"
                   :data-testid="`desk-mark-cleaned-${room.number}`"
                   :disabled="isBusy(room.number)"
@@ -154,6 +165,7 @@
                 {{ room.number }} — {{ typeName(room.roomTypeId) }}
                 <Button
                   type="button"
+                  class="desk-action"
                   :label="t('desk.today.mark_inspected', {}, 'Mark inspected')"
                   :data-testid="`desk-mark-inspected-${room.number}`"
                   :disabled="isBusy(room.number)"
@@ -437,6 +449,19 @@ import { useSessionStore } from '../stores/session';
 // styling, and every entry links through to the `rooms` route —
 // actions stay on /rooms, so this view performs no room writes
 // beyond the two housekeeping buttons above.
+//
+// The #519 restyle re-skins this surface to the owner design
+// (`docs/design/Main.dc.html:2`, restyle spec section 5.1,
+// AC-RST-2): the business-date row, the two card-grid rows with
+// row dividers and the departures empty state, and the two
+// housekeeping action buttons render the design tokens and layout
+// while every read, transition, and catalogue key above holds
+// unchanged. PrimeVue components stay as logic carriers only —
+// their default visual styling is overridden in the shell
+// stylesheet (`app/src/App.vue`, Refs #519) wherever it diverges
+// from the design. The five-lane board and the room-map section
+// keep their current presentation (decided extras; board accents
+// owned by #523, map alignment by #491).
 //
 // Shared-migration contracts, same as the shell:
 // - Bearer auth comes only from the Pinia session store via the
