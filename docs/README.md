@@ -157,6 +157,7 @@ docs and plans, not gated specs.
 | Manual QA testsuite (6-screen desk UI) | `testing/manual-qa-testsuite.md` | active | `qa-lead` | Vietnamese-first manual QA cases per screen plus end-to-end journey, each with preconditions, steps, expected results, and AC-DSK trace (Closes #448); validation + edge-case matrix QA-EDGE-1..12 with scriptable/human-only split (Refs #450) |
 | DOM diff dynamic-data allowlist | `testing/dom-diff-allowlist.md` | active | `qa-lead` | owner-approved dynamic-data exemptions for the DOM diff gate: what is exempt, why, and how the gate references it (Closes #482) |
 | Desk restyle test traceability | `testing/desk-restyle-test-traceability.md` | active | `qa-lead` | parity + new-guard traceability for the #517 pixel-faithful restyle: AC-RST-1..8 and FR/NFR-RST to guards, R1–R9 created by the screen PRs (Refs #517) |
+| V2 evidence re-baseline plan | `testing/v2-evidence-rebaseline-plan.md` | active | `qa-lead` | side-by-side re-baseline cases, stale-disposition table, and traceability for the v2 boards (Closes #550) |
 
 ## DevOps / Operations / Release
 
