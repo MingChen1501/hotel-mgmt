@@ -1,20 +1,22 @@
 // Characterization guard for the stay screen migration
-// (Refs #295, ADR-0003): StayView replicates the
-// `frontend/stay.html` inline-script behaviour — sign-in plus the
-// arrival pick (two-click check-in: GetReservation plus ready rooms
-// of the booked type, then AssignRoom with the client-generated
-// stayId as stayLink, CheckIn carrying the roomId from the AssignRoom
-// echo, and CheckInReservation), mid-stay move (AssignRoom plus
-// MoveRoom with the echoed roomId and both room numbers visible),
-// RecordActualTimes, and the folio-gated check-out (GetFolioBalance
-// review, RecordOpenBalanceApproval, CheckOut with the reviewed
-// folio id plus balance plus approval, SETTLEMENT_REQUIRED
-// surfacing) — through the shared Bearer client and the catalogue
-// `t()` wrapper. Expected arrivals (Refs #349) resolve from the
-// reservation calendar because live stay rows never carry booking
-// references. No Playwright harness exists in this repo yet, so
-// these Vitest component tests are the characterization coverage
-// for the stay flows.
+// (Refs #295, ADR-0003; v2 board rebuild Refs #541): StayView
+// replicates the `frontend/stay.html` inline-script behaviour —
+// sign-in plus the arrival select (two-click check-in:
+// GetReservation plus ready rooms of the booked type, then
+// AssignRoom with the client-generated stayId as stayLink,
+// CheckIn carrying the roomId from the AssignRoom echo, and
+// CheckInReservation) and the folio-gated check-out
+// (GetFolioBalance review, RecordOpenBalanceApproval, CheckOut
+// with the reviewed folio id plus balance plus approval,
+// SETTLEMENT_REQUIRED surfacing) — through the shared Bearer
+// client and the catalogue `t()` wrapper. Expected arrivals
+// (Refs #349) resolve from the reservation calendar because live
+// stay rows never carry booking references; the departing pick
+// resolves from the in-house and departures lists. The pre-v2
+// lists, move, and actual-times sections are gone (zero extras
+// vs the v2 board). No Playwright harness exists in this repo
+// yet, so these Vitest component tests are the characterization
+// coverage for the stay flows.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { mount } from '@vue/test-utils';
@@ -44,10 +46,10 @@ function parseBody(init?: RequestInit): Record<string, unknown> {
 // Full happy-path backend: sign-in, daily lists (one arrival, one
 // in-house stay, one departure) with guest names, ready plus
 // occupied rooms, the booking read-back, the assign/check-in/
-// check-in-reservation chain, the move chain, time recording, and
-// the folio review/approval/check-out chain. Returns the handler so
-// a test can wrap it (e.g. to fail only one op) while the rest of
-// the flow stays on the happy path.
+// check-in-reservation chain, and the folio
+// review/approval/check-out chain. Returns the handler so a test
+// can wrap it (e.g. to fail only one op) while the rest of the
+// flow stays on the happy path.
 function stubHappyPath(
   fetchMock: ReturnType<typeof vi.fn>,
 ): (url: string, init?: RequestInit) => Promise<Response> {
@@ -120,7 +122,7 @@ function stubHappyPath(
       return Promise.resolve(jsonResponse({ roomTypes: [{ id: 'standard', name: 'Standard' }] }));
     }
     // Reservation calendar (Refs #349): the expected-arrivals
-    // source for the pick buttons. Empty by default; tests with
+    // source for the arrival select. Empty by default; tests with
     // live arrival rows override this handler.
     if (url === '/v1/reservations/QueryCalendar') {
       return Promise.resolve(
@@ -165,28 +167,6 @@ function stubHappyPath(
       expect(body.reservationRef).toBe('RSV-1');
       return Promise.resolve(jsonResponse({ reservationRef: 'RSV-1', stayId: body.stayId }));
     }
-    if (url === '/v1/stay/MoveRoom') {
-      expect(String(body.toRoomId)).toMatch(/^echo-/);
-      return Promise.resolve(
-        jsonResponse({
-          stayId: body.stayId,
-          reservationId: 'r-1',
-          guestId: 'g-2',
-          roomId: body.toRoomId,
-          state: 'in-house',
-          move: { movedAt: '2026-10-26T10:00:00.000Z' },
-        }),
-      );
-    }
-    if (url === '/v1/stay/RecordActualTimes') {
-      return Promise.resolve(
-        jsonResponse({
-          stayId: body.stayId,
-          actualArrival: body.actualArrival ?? '2026-10-25T14:00:00.000Z',
-          actualDeparture: body.actualDeparture ?? null,
-        }),
-      );
-    }
     if (url === '/v1/billing/GetFolioBalance') {
       return Promise.resolve(
         jsonResponse({ folioId: 'f-1', stayId: body.stayId, balanceMinor: 0, openBalanceApproval: null }),
@@ -228,20 +208,26 @@ function mountStay() {
   });
 }
 
-async function signIn(wrapper: ReturnType<typeof mountStay>, fetchMock: ReturnType<typeof vi.fn>) {
-  // The shell owns the one sign-in gate (Refs #338): views mount
-  // with a signed-in session preset, then load like a reload.
+// The v2 screen loads its panel data on mount for a signed-in
+// session (same as the desk screen): preset the session, mount,
+// then wait for the arrival option the list reads resolve.
+async function mountSignedIn(fetchMock: ReturnType<typeof vi.fn>) {
   stubHappyPath(fetchMock);
+  const pinia = createPinia();
+  setActivePinia(pinia);
   useSessionStore().signIn('tok-1', 'Ada Owner', 'owner');
-  await wrapper.find('[data-testid="stay-refresh"]').trigger('click');
+  const wrapper = mount(StayView, { global: { plugins: [pinia] } });
   await vi.waitFor(() => {
-    expect(wrapper.find('[data-testid="stay-main"]').exists()).toBe(true);
+    expect(
+      wrapper.find('[data-testid="stay-checkin-arrival"] option[value="RSV-1"]').exists(),
+    ).toBe(true);
   });
   await vi.waitFor(() => {
-    expect(wrapper.find('[data-testid="stay-arrivals-table"] tbody tr td').text()).toContain(
-      'Guest One',
-    );
+    expect(
+      wrapper.find('[data-testid="stay-checkout-stay"] option[value="s-1"]').exists(),
+    ).toBe(true);
   });
+  return wrapper;
 }
 
 // Check-out now asks once through the shell confirm dialog
@@ -262,42 +248,36 @@ describe('stay view', () => {
     vi.clearAllMocks();
   });
 
-  it('renders the stay lists with no per-screen sign-in copy', () => {
+  it('renders the two v2 panels with no v1 sections and no per-screen sign-in copy', () => {
     const wrapper = mountStay();
     expect(wrapper.find('[data-testid="stay-view"]').exists()).toBe(true);
-    // Catalogue wiring (Refs #292): the heading resolves through t().
-    expect(wrapper.find('[data-testid="stay-view"] h1').text()).toContain(
-      'Check guests in, move them, and check them out',
-    );
+    // The v2 board carries no screen title: no h1 renders here.
+    expect(wrapper.find('[data-testid="stay-view"] h1').exists()).toBe(false);
     // The shell owns the one sign-in gate (Refs #338, FR-DSP-2):
     // no per-screen sign-in copy renders here anymore.
     expect(wrapper.find('[data-testid="stay-signin"]').exists()).toBe(false);
-    expect(wrapper.find('[data-testid="stay-main"]').exists()).toBe(true);
-  });
-
-  // Refs #503 (FR-DSK-11, AC-DSK-12): the header renders the locale
-  // long-weekday form derived from the canonical ISO ref — the wire
-  // field stays ISO (pinned by the ListArrivalsDepartures body
-  // assertions elsewhere in this file).
-  it('renders the business-date header in the locale long-weekday form', async () => {
-    const wrapper = mountStay();
-    wrapper.vm.businessDate = '2026-10-28';
-    await wrapper.vm.$nextTick();
-    expect(wrapper.find('[data-testid="stay-business-date"]').text()).toBe('Wednesday, 10/28/2026');
-    try {
-      setLocale('vi');
-      await wrapper.vm.$nextTick();
-      expect(wrapper.find('[data-testid="stay-business-date"]').text()).toBe('Thứ Tư, 28/10/2026');
-    } finally {
-      setLocale('en');
+    // Two-panel board: check-in left, check-out right.
+    expect(wrapper.find('[data-testid="stay-panels"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="stay-checkin-card"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="stay-checkout-card"]').exists()).toBe(true);
+    // Zero extras vs the board: the lists, move, and times
+    // sections are gone.
+    for (const hook of [
+      'stay-main',
+      'stay-lists-card',
+      'stay-business-date',
+      'stay-move-card',
+      'stay-times-card',
+      'stay-booking-ref',
+    ]) {
+      expect(wrapper.find(`[data-testid="${hook}"]`).exists()).toBe(false);
     }
   });
 
-  it('loads the three daily lists with bearer auth under the shell session', async () => {
+  it('loads the panel data with bearer auth under the shell session', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
-    const wrapper = mountStay();
-    await signIn(wrapper, fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
 
     // Bearer session handling: the shared client attaches the token
     // to every call (the sign-in itself happened in the shell gate).
@@ -306,22 +286,33 @@ describe('stay view', () => {
     for (const call of calls) {
       expect((call[1].headers as Headers).get('Authorization')).toBe('Bearer tok-1');
     }
-    expect(wrapper.text()).toContain('Guest Two');
-    expect(wrapper.text()).toContain('Guest Three');
-    expect(wrapper.find('[data-testid="stay-lists-error"]').exists()).toBe(false);
+    // The reads still go out on the wire (business date stays ISO).
+    const listBody = parseBody(
+      fetchMock.mock.calls.find((call) => String(call[0]) === '/v1/stay/ListArrivalsDepartures')?.[1],
+    );
+    expect(listBody.businessDate).toBe(localToday());
+    // Panel options resolve names through GetGuest: arrivals feed
+    // the check-in select, in-house plus departures feed the
+    // departing select.
+    expect(wrapper.find('[data-testid="stay-checkin-arrival"] option[value="RSV-1"]').text()).toContain(
+      'Guest One',
+    );
+    expect(wrapper.find('[data-testid="stay-checkout-stay"] option[value="s-1"]').text()).toContain(
+      'Guest Two',
+    );
+    expect(wrapper.find('[data-testid="stay-checkout-stay"] option[value="s-2"]').text()).toContain(
+      'Guest Three',
+    );
+    expect(wrapper.find('[data-testid="stay-checkin-error"]').exists()).toBe(false);
   });
 
-  it('drives the arrival pick to a checked-in stay through the echoed room id', async () => {
+  it('drives the arrival select to a checked-in stay through the echoed room id', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
-    const wrapper = mountStay();
-    await signIn(wrapper, fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
 
-    // Arrival pick fills the booking reference (legacy parity).
-    await wrapper.find('[data-testid="stay-use-arrival-RSV-1"]').trigger('click');
-    expect((wrapper.find('[data-testid="stay-booking-ref"]').element as HTMLInputElement).value).toBe(
-      'RSV-1',
-    );
+    // The arrival select replaces the retired booking-ref entry.
+    await wrapper.find('[data-testid="stay-checkin-arrival"]').setValue('RSV-1');
 
     // First click loads the booking plus the ready rooms of the
     // booked type into the picker.
@@ -332,7 +323,7 @@ describe('stay view', () => {
     const options = wrapper.findAll('[data-testid="stay-checkin-room"] option');
     // Refs #411: the picker opens on an explicit empty placeholder
     // so the shown value always matches the bound room id.
-    expect(options.map((option) => option.text())).toEqual(['Pick a ready room…', '101', '102']);
+    expect(options.map((option) => option.text())).toEqual(['Choose a room...', '101', '102']);
     expect(options[0].element.getAttribute('value')).toBe('');
 
     // Second click commits: AssignRoom (roomNumber plus stayLink)
@@ -360,6 +351,19 @@ describe('stay view', () => {
     expect(checkinBody.stayId).toBe(assignBody.stayLink);
   });
 
+  it('keeps the need_arrival guard when no arriving guest is picked', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
+
+    await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
+    expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain(
+      'Choose an arriving guest first.',
+    );
+    const urls = fetchMock.mock.calls.map((call) => String(call[0]));
+    expect(urls).not.toContain('/v1/reservations/GetReservation');
+  });
+
   // Refs #411: with candidates loaded but no room picked, the
   // select shows the empty placeholder (no phantom selection) and
   // a second Check in click keeps the need_room guard without
@@ -367,10 +371,9 @@ describe('stay view', () => {
   it('keeps the need_room guard when no ready room is picked', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
-    const wrapper = mountStay();
-    await signIn(wrapper, fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
 
-    await wrapper.find('[data-testid="stay-booking-ref"]').setValue('RSV-1');
+    await wrapper.find('[data-testid="stay-checkin-arrival"]').setValue('RSV-1');
     await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain('Booked: Standard');
@@ -380,7 +383,7 @@ describe('stay view', () => {
       (wrapper.find('[data-testid="stay-checkin-room"]').element as HTMLSelectElement).value,
     ).toBe('');
     expect(wrapper.find('[data-testid="stay-checkin-room"]').text()).toContain(
-      'Pick a ready room…',
+      'Choose a room...',
     );
 
     await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
@@ -399,8 +402,7 @@ describe('stay view', () => {
   it('auto-selects the single ready room candidate', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
-    const wrapper = mountStay();
-    await signIn(wrapper, fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
     const happy = fetchMock.getMockImplementation() as (
       url: string,
       init?: RequestInit,
@@ -419,7 +421,7 @@ describe('stay view', () => {
       return happy(url, init);
     });
 
-    await wrapper.find('[data-testid="stay-booking-ref"]').setValue('RSV-1');
+    await wrapper.find('[data-testid="stay-checkin-arrival"]').setValue('RSV-1');
     await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain('Booked: Standard');
@@ -439,7 +441,7 @@ describe('stay view', () => {
   });
 
   // Refs #349: live stay rows never carry booking references, so
-  // the pick buttons render from the reservation calendar
+  // the arrival select renders from the reservation calendar
   // (confirmed bookings due today, verified per row) instead.
   it('picks a live arrival from the reservation calendar without stay-list refs', async () => {
     const fetchMock = vi.fn();
@@ -520,35 +522,33 @@ describe('stay view', () => {
       }
       return happy(url, init);
     });
-    const wrapper = mountStay();
     useSessionStore().signIn('tok-1', 'Ada Owner', 'owner');
-    await wrapper.find('[data-testid="stay-refresh"]').trigger('click');
+    const wrapper = mountStay();
 
-    // Only the verified due reference renders a pick button; the
+    // Only the verified due reference renders an option; the
     // checked-in and cancelled calendar rows never do.
     await vi.waitFor(() => {
-      expect(wrapper.find('[data-testid="stay-use-arrival-RSV-LIVE"]').exists()).toBe(true);
+      expect(
+        wrapper.find('[data-testid="stay-checkin-arrival"] option[value="RSV-LIVE"]').exists(),
+      ).toBe(true);
     });
-    expect(wrapper.find('[data-testid="stay-use-arrival-RSV-OLD"]').exists()).toBe(false);
-    expect(wrapper.find('[data-testid="stay-use-arrival-RSV-CX"]').exists()).toBe(false);
-    // The already-checked-in stay row still renders with its guest
-    // name, but without a pick button: there is nothing left to
-    // check in.
-    expect(wrapper.text()).toContain('Guest Two');
+    expect(
+      wrapper.find('[data-testid="stay-checkin-arrival"] option[value="RSV-OLD"]').exists(),
+    ).toBe(false);
+    expect(
+      wrapper.find('[data-testid="stay-checkin-arrival"] option[value="RSV-CX"]').exists(),
+    ).toBe(false);
 
-    // The pick fills the live reference and drives the check-in
-    // quote step against the real booking.
-    await wrapper.find('[data-testid="stay-use-arrival-RSV-LIVE"]').trigger('click');
-    expect((wrapper.find('[data-testid="stay-booking-ref"]').element as HTMLInputElement).value).toBe(
-      'RSV-LIVE',
-    );
+    // The select drives the check-in quote step against the real
+    // booking.
+    await wrapper.find('[data-testid="stay-checkin-arrival"]').setValue('RSV-LIVE');
     await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain('Booked: Standard');
     });
   });
 
-  it('keeps the stay lists when the reservation calendar is down', async () => {
+  it('keeps the panel data when the reservation calendar is down', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     const happy = stubHappyPath(fetchMock);
@@ -558,26 +558,23 @@ describe('stay view', () => {
       }
       return happy(url, init);
     });
-    const wrapper = mountStay();
     useSessionStore().signIn('tok-1', 'Ada Owner', 'owner');
-    await wrapper.find('[data-testid="stay-refresh"]').trigger('click');
+    const wrapper = mountStay();
 
-    // The stay lists still load (with their stubbed pickable row),
-    // so the typed-ref path keeps working without the calendar.
+    // The stay lists still load (with their stubbed reference row),
+    // so the arrival select keeps working without the calendar.
     await vi.waitFor(() => {
-      expect(wrapper.find('[data-testid="stay-arrivals-table"] tbody tr td').text()).toContain(
-        'Guest One',
-      );
+      expect(
+        wrapper.find('[data-testid="stay-checkin-arrival"] option[value="RSV-1"]').exists(),
+      ).toBe(true);
     });
-    expect(wrapper.find('[data-testid="stay-lists-error"]').exists()).toBe(false);
-    expect(wrapper.find('[data-testid="stay-use-arrival-RSV-1"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="stay-checkin-error"]').exists()).toBe(false);
   });
 
   it('maps an unknown booking reference to the catalogue refusal string', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
-    const wrapper = mountStay();
-    await signIn(wrapper, fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
 
     const happy = stubHappyPath(fetchMock);
     fetchMock.mockImplementation((url: string, init?: RequestInit) => {
@@ -587,7 +584,7 @@ describe('stay view', () => {
       return happy(url, init);
     });
 
-    await wrapper.find('[data-testid="stay-booking-ref"]').setValue('RSV-NOPE');
+    await wrapper.find('[data-testid="stay-checkin-arrival"]').setValue('RSV-1');
     await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="stay-checkin-error"]').text()).toContain(
@@ -599,8 +596,7 @@ describe('stay view', () => {
   it('maps a taken room to the catalogue refusal string', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
-    const wrapper = mountStay();
-    await signIn(wrapper, fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
 
     const happy = stubHappyPath(fetchMock);
     let assigns = 0;
@@ -612,7 +608,7 @@ describe('stay view', () => {
       return happy(url, init);
     });
 
-    await wrapper.find('[data-testid="stay-booking-ref"]').setValue('RSV-1');
+    await wrapper.find('[data-testid="stay-checkin-arrival"]').setValue('RSV-1');
     await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain('Booked: Standard');
@@ -630,8 +626,7 @@ describe('stay view', () => {
   it('maps an already-checked-in booking to the catalogue refusal string', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
-    const wrapper = mountStay();
-    await signIn(wrapper, fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
 
     const happy = stubHappyPath(fetchMock);
     fetchMock.mockImplementation((url: string, init?: RequestInit) => {
@@ -641,7 +636,7 @@ describe('stay view', () => {
       return happy(url, init);
     });
 
-    await wrapper.find('[data-testid="stay-booking-ref"]').setValue('RSV-1');
+    await wrapper.find('[data-testid="stay-checkin-arrival"]').setValue('RSV-1');
     await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain('Booked: Standard');
@@ -655,95 +650,12 @@ describe('stay view', () => {
     });
   });
 
-  it('moves a stay to the echoed room with both room numbers visible', async () => {
-    const fetchMock = vi.fn();
-    vi.stubGlobal('fetch', fetchMock);
-    const wrapper = mountStay();
-    await signIn(wrapper, fetchMock);
-
-    // Use-this-stay fills all three stay id fields (legacy parity).
-    await wrapper.find('[data-testid="stay-use-stay-s-1"]').trigger('click');
-    expect((wrapper.find('[data-testid="stay-move-stay-id"]').element as HTMLInputElement).value).toBe(
-      's-1',
-    );
-    expect((wrapper.find('[data-testid="stay-times-stay-id"]').element as HTMLInputElement).value).toBe(
-      's-1',
-    );
-    expect(wrapper.find('[data-testid="stay-move-status"]').text()).toContain(
-      'Working with Guest Two (109).',
-    );
-    // The exact stay ID hides behind the move reference details.
-    expect(wrapper.find('[data-testid="stay-move-status"]').text()).not.toMatch(
-      /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
-    );
-    await wrapper.find('[data-testid="stay-move-details-toggle"]').trigger('click');
-    expect(wrapper.find('[data-testid="stay-move-details-body"]').text()).toContain('s-1');
-
-    await wrapper.find('[data-testid="stay-move-room"]').setValue('room-1');
-    await wrapper.find('[data-testid="stay-move"]').trigger('click');
-    await vi.waitFor(() => {
-      expect(wrapper.find('[data-testid="stay-move-status"]').text()).toContain('Moved from room');
-    });
-    // Both the old room (109, resolved through ListRoomsByState)
-    // and the new room (101) surface in the status line.
-    expect(wrapper.find('[data-testid="stay-move-status"]').text()).toContain('109');
-    expect(wrapper.find('[data-testid="stay-move-status"]').text()).toContain('101');
-    const moveBody = parseBody(
-      fetchMock.mock.calls.find((call) => String(call[0]) === '/v1/stay/MoveRoom')?.[1],
-    );
-    expect(moveBody.toRoomId).toBe('echo-101');
-  });
-
-  it('records actual times and keeps the recorded values in the status', async () => {
-    const fetchMock = vi.fn();
-    vi.stubGlobal('fetch', fetchMock);
-    const wrapper = mountStay();
-    await signIn(wrapper, fetchMock);
-
-    await wrapper.find('[data-testid="stay-times-stay-id"]').setValue('s-1');
-    await wrapper.find('[data-testid="stay-times-arrival"]').setValue('2026-10-25T14:00');
-    await wrapper.find('[data-testid="stay-times"]').trigger('click');
-    await vi.waitFor(() => {
-      expect(wrapper.find('[data-testid="stay-times-status"]').text()).toContain(
-        'Recorded times kept for Guest Two',
-      );
-    });
-    // The exact stay ID hides behind the times reference details.
-    await wrapper.find('[data-testid="stay-times-details-toggle"]').trigger('click');
-    expect(wrapper.find('[data-testid="stay-times-details-body"]').text()).toContain('s-1');
-    const timesBody = parseBody(
-      fetchMock.mock.calls.find((call) => String(call[0]) === '/v1/stay/RecordActualTimes')?.[1],
-    );
-    expect(timesBody.stayId).toBe('s-1');
-    expect(timesBody.actualArrival).toBeTruthy();
-  });
-
-  it('requires a stay and at least one time before recording', async () => {
-    const fetchMock = vi.fn();
-    vi.stubGlobal('fetch', fetchMock);
-    const wrapper = mountStay();
-    await signIn(wrapper, fetchMock);
-
-    await wrapper.find('[data-testid="stay-times"]').trigger('click');
-    expect(wrapper.find('[data-testid="stay-times-status"]').text()).toContain(
-      'Choose a stay from the lists first',
-    );
-    await wrapper.find('[data-testid="stay-times-stay-id"]').setValue('s-1');
-    await wrapper.find('[data-testid="stay-times"]').trigger('click');
-    expect(wrapper.find('[data-testid="stay-times-status"]').text()).toContain(
-      'Enter an arrival or a departure time first',
-    );
-    const urls = fetchMock.mock.calls.map((call) => String(call[0]));
-    expect(urls).not.toContain('/v1/stay/RecordActualTimes');
-  });
-
   it('reviews a zero-balance folio and checks out without approval', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
-    const wrapper = mountStay();
-    await signIn(wrapper, fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
 
-    await wrapper.find('[data-testid="stay-checkout-stay-id"]').setValue('s-1');
+    await wrapper.find('[data-testid="stay-checkout-stay"]').setValue('s-1');
     await wrapper.find('[data-testid="stay-review"]').trigger('click');
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="stay-checkout-status"]').text()).toContain(
@@ -778,8 +690,7 @@ describe('stay view', () => {
   it('gates check-out behind the approval form for an open balance', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
-    const wrapper = mountStay();
-    await signIn(wrapper, fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
 
     const happy = stubHappyPath(fetchMock);
     fetchMock.mockImplementation((url: string, init?: RequestInit) => {
@@ -791,7 +702,7 @@ describe('stay view', () => {
       return happy(url, init);
     });
 
-    await wrapper.find('[data-testid="stay-checkout-stay-id"]').setValue('s-1');
+    await wrapper.find('[data-testid="stay-checkout-stay"]').setValue('s-1');
     await wrapper.find('[data-testid="stay-review"]').trigger('click');
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="stay-checkout-error"]').text()).toContain('open balance');
@@ -822,8 +733,7 @@ describe('stay view', () => {
   it('surfaces SETTLEMENT_REQUIRED by reopening the approval form', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
-    const wrapper = mountStay();
-    await signIn(wrapper, fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
 
     let folioCalls = 0;
     const happy = stubHappyPath(fetchMock);
@@ -847,7 +757,7 @@ describe('stay view', () => {
       return happy(url, init);
     });
 
-    await wrapper.find('[data-testid="stay-checkout-stay-id"]').setValue('s-1');
+    await wrapper.find('[data-testid="stay-checkout-stay"]').setValue('s-1');
     await wrapper.find('[data-testid="stay-review"]').trigger('click');
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="stay-checkout-status"]').text()).toContain(
@@ -864,8 +774,7 @@ describe('stay view', () => {
   it('names an already-closed stay on the second close instead of the raw envelope', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
-    const wrapper = mountStay();
-    await signIn(wrapper, fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
 
     // The stay service refuses the second close with STATE_ILLEGAL
     // naming the stay and its closed state (Refs #365): the view
@@ -887,7 +796,7 @@ describe('stay view', () => {
       return happy(url, init);
     });
 
-    await wrapper.find('[data-testid="stay-checkout-stay-id"]').setValue('s-1');
+    await wrapper.find('[data-testid="stay-checkout-stay"]').setValue('s-1');
     await wrapper.find('[data-testid="stay-review"]').trigger('click');
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="stay-checkout-status"]').text()).toContain(
@@ -908,8 +817,7 @@ describe('stay view', () => {
   it('normalizes a stringified folio approval to the contracted object on check-out', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
-    const wrapper = mountStay();
-    await signIn(wrapper, fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
 
     // Billing serves the recorded approval as a JSON string while
     // the contract types it as an object (Refs #338): the view
@@ -929,7 +837,7 @@ describe('stay view', () => {
       return happy(url, init);
     });
 
-    await wrapper.find('[data-testid="stay-checkout-stay-id"]').setValue('s-1');
+    await wrapper.find('[data-testid="stay-checkout-stay"]').setValue('s-1');
     await wrapper.find('[data-testid="stay-review"]').trigger('click');
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="stay-checkout-status"]').text()).toContain('Approval recorded.');
@@ -947,12 +855,12 @@ describe('stay view', () => {
     });
   });
 
-  it('asks once through the confirm dialog before checking out', async () => {    const fetchMock = vi.fn();
+  it('asks once through the confirm dialog before checking out', async () => {
+    const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
-    const wrapper = mountStay();
-    await signIn(wrapper, fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
 
-    await wrapper.find('[data-testid="stay-checkout-stay-id"]').setValue('s-1');
+    await wrapper.find('[data-testid="stay-checkout-stay"]').setValue('s-1');
     await wrapper.find('[data-testid="stay-review"]').trigger('click');
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="stay-checkout-status"]').text()).toContain(
@@ -988,10 +896,9 @@ describe('stay view', () => {
   it('returns the in-flight guard: a double-clicked check-in assigns once', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
-    const wrapper = mountStay();
-    await signIn(wrapper, fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
 
-    await wrapper.find('[data-testid="stay-booking-ref"]').setValue('RSV-1');
+    await wrapper.find('[data-testid="stay-checkin-arrival"]').setValue('RSV-1');
     await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain('Booked: Standard');
@@ -1016,8 +923,7 @@ describe('stay view', () => {
   it('expires the session with the gate notice on 401', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
-    const wrapper = mountStay();
-    await signIn(wrapper, fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
 
     fetchMock.mockImplementation((url: string) => {
       if (url === '/v1/stay/ListArrivalsDepartures') {
@@ -1025,7 +931,10 @@ describe('stay view', () => {
       }
       return Promise.resolve(jsonResponse({ code: 'UNAUTHENTICATED', message: 'expired' }, 401));
     });
-    await wrapper.find('[data-testid="stay-refresh"]').trigger('click');
+    // Any panel action hits the expired session: reviewing the
+    // picked stay surfaces the gate through the shared client.
+    await wrapper.find('[data-testid="stay-checkout-stay"]').setValue('s-1');
+    await wrapper.find('[data-testid="stay-review"]').trigger('click');
     // The shared client expires the session and routes to the
     // gate (covered in the shell gate suite); the view keeps no
     // sign-in copy.
@@ -1037,44 +946,44 @@ describe('stay view', () => {
     expect(router.replace).toHaveBeenCalledWith('/');
   });
 
-  // D4 (Refs #422, AC-DSK-4, FR-DSK-4): the Stay screen renders
-  // its design cards — the check-in card carries the room select
-  // with the explicit empty placeholder plus the pick-a-ready-room
-  // hint and the check-in action; the check-out card carries the
-  // folio review, the approver form, the fully-paid gate note, and
-  // the check-out action. Flow, guard, auto-select, and gating
-  // tests above stay untouched (semantics unchanged); only this
-  // layout and the hint wording are new.
-  it('renders the design cards with the room hint and the checkout gate note', async () => {
+  // Stay v2 board (Refs #541, `docs/design/Stay.dc.html:3`): the
+  // check-in card carries the arrival select and the room select
+  // with the explicit empty prompt plus the amber pick-a-ready-room
+  // note and the check-in action; the check-out card carries the
+  // departing-guest select, the reviewer input, the review-folio
+  // action, and the fully-paid gate note.
+  it('renders the v2 panels with the board copy in both locales', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
-    const wrapper = mountStay();
-    await signIn(wrapper, fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
 
-    expect(wrapper.find('[data-testid="stay-lists-card"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="stay-move-card"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="stay-times-card"]').exists()).toBe(true);
     const checkinCard = wrapper.find('[data-testid="stay-checkin-card"]');
     const checkoutCard = wrapper.find('[data-testid="stay-checkout-card"]');
-    expect(checkinCard.exists()).toBe(true);
-    expect(checkoutCard.exists()).toBe(true);
-    // Actions ride their design cards: the room select plus
-    // check-in on the check-in card; folio review plus check-out
-    // on the check-out card.
+    // Actions ride their design cards: arrival plus room plus
+    // check-in on the check-in card; departing guest plus reviewer
+    // plus review on the check-out card.
+    expect(checkinCard.find('[data-testid="stay-checkin-arrival"]').exists()).toBe(true);
     expect(checkinCard.find('[data-testid="stay-checkin-room"]').exists()).toBe(true);
     expect(checkinCard.find('[data-testid="stay-checkin"]').exists()).toBe(true);
+    expect(checkoutCard.find('[data-testid="stay-checkout-stay"]').exists()).toBe(true);
+    expect(checkoutCard.find('[data-testid="stay-approval-by"]').exists()).toBe(true);
     expect(checkoutCard.find('[data-testid="stay-review"]').exists()).toBe(true);
-    expect(checkoutCard.find('[data-testid="stay-checkout"]').exists()).toBe(true);
+    // The static board carries no check-out button: it appears only
+    // once a folio review produces a context (flow state).
+    expect(checkoutCard.find('[data-testid="stay-checkout"]').exists()).toBe(false);
+    // The card titles match the board.
+    expect(checkinCard.find('h3').text()).toBe('Check in');
+    expect(checkoutCard.find('h3').text()).toBe('Check out');
     // The fully-paid gate note names the next step in plain words.
     expect(checkoutCard.find('[data-testid="stay-checkout-gate-note"]').text()).toContain(
       'fully paid',
     );
 
-    // The empty placeholder ships with the hint: with candidates
+    // The empty prompt ships with the hint: with candidates
     // loaded but nothing picked, the select shows the explicit
     // empty option, the hint reads the plain-words next step, and
     // check-in stays blocked without calling AssignRoom.
-    await wrapper.find('[data-testid="stay-booking-ref"]').setValue('RSV-1');
+    await wrapper.find('[data-testid="stay-checkin-arrival"]').setValue('RSV-1');
     await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain(
@@ -1086,7 +995,7 @@ describe('stay view', () => {
     ).toBe('');
     const hint = checkinCard.find('[data-testid="stay-checkin-room-hint"]');
     expect(hint.exists()).toBe(true);
-    expect(hint.text()).toContain('Check-in stays blocked');
+    expect(hint.text()).toContain('Choose a ready room first.');
     await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="stay-checkin-error"]').text()).toContain(
@@ -1096,26 +1005,28 @@ describe('stay view', () => {
     const urls = fetchMock.mock.calls.map((call) => String(call[0]));
     expect(urls).not.toContain('/v1/rooms/AssignRoom');
 
-    // VI-primary copy (AC-DSK-8): the cards switch locale with no
+    // VI-primary copy (AC-DSK-8): the panels switch locale with no
     // mixed-locale copy.
     try {
       setLocale('vi');
       await wrapper.vm.$nextTick();
+      expect(checkinCard.find('h3').text()).toBe('Nhận phòng');
+      expect(checkoutCard.find('h3').text()).toBe('Trả phòng');
       expect(checkinCard.find('[data-testid="stay-checkin-room-hint"]').text()).toContain(
-        'chưa thể nhận phòng',
+        'Hãy chọn một phòng sẵn sàng trước.',
       );
-      expect(checkinCard.find('[data-testid="stay-checkin"]').text()).toContain('Nhận phòng');
       expect(checkoutCard.find('[data-testid="stay-checkout-gate-note"]').text()).toContain(
-        'bảng kê đã thanh toán đủ',
+        'Hoá đơn phải thanh toán đủ trước khi trả phòng.',
       );
+      expect(checkoutCard.find('[data-testid="stay-review"]').text()).toContain('Xem hoá đơn');
     } finally {
       setLocale('en');
     }
   });
 });
 
-// Source-level pins: the port keeps every legacy op and the folio
-// gate vocabulary, and every paragraph stays in English.
+// Source-level pins: the port keeps every check-in/out op and the
+// folio gate vocabulary, and every paragraph stays in English.
 describe('stay view source', () => {
   const requiredOps = [
     '/v1/stay/ListArrivalsDepartures',
@@ -1124,14 +1035,12 @@ describe('stay view source', () => {
     '/v1/rooms/AssignRoom',
     '/v1/stay/CheckIn',
     '/v1/reservations/CheckInReservation',
-    '/v1/stay/MoveRoom',
-    '/v1/stay/RecordActualTimes',
     '/v1/billing/GetFolioBalance',
     '/v1/billing/RecordOpenBalanceApproval',
     '/v1/stay/CheckOut',
   ];
 
-  it.each(requiredOps)('keeps the legacy op %s', (op) => {
+  it.each(requiredOps)('keeps the check-in/out op %s', (op) => {
     expect(stayViewSource).toContain(op);
   });
 

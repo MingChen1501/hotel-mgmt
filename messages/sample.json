@@ -2961,8 +2961,7 @@
       "key": "desk.today.empty_arrivals",
       "surface": "desk today",
       "sources": [
-        "app/src/views/DeskView.vue",
-        "app/src/views/StayView.vue"
+        "app/src/views/DeskView.vue"
       ],
       "params": {}
     },
@@ -2970,8 +2969,7 @@
       "key": "desk.today.empty_inhouse",
       "surface": "desk today",
       "sources": [
-        "app/src/views/DeskView.vue",
-        "app/src/views/StayView.vue"
+        "app/src/views/DeskView.vue"
       ],
       "params": {}
     },
@@ -2979,8 +2977,7 @@
       "key": "desk.today.empty_departures",
       "surface": "desk today",
       "sources": [
-        "app/src/views/DeskView.vue",
-        "app/src/views/StayView.vue"
+        "app/src/views/DeskView.vue"
       ],
       "params": {}
     },
@@ -3001,39 +2998,7 @@
       "params": {}
     },
     {
-      "key": "desk.stay.intro",
-      "surface": "desk stay",
-      "sources": [
-        "app/src/views/StayView.vue"
-      ],
-      "params": {}
-    },
-    {
-      "key": "desk.stay.loading_lists",
-      "surface": "desk stay",
-      "sources": [
-        "app/src/views/StayView.vue"
-      ],
-      "params": {}
-    },
-    {
       "key": "desk.stay.checking_in",
-      "surface": "desk stay",
-      "sources": [
-        "app/src/views/StayView.vue"
-      ],
-      "params": {}
-    },
-    {
-      "key": "desk.stay.moving",
-      "surface": "desk stay",
-      "sources": [
-        "app/src/views/StayView.vue"
-      ],
-      "params": {}
-    },
-    {
-      "key": "desk.stay.recording",
       "surface": "desk stay",
       "sources": [
         "app/src/views/StayView.vue"

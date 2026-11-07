@@ -155,7 +155,7 @@ describe('display names instead of IDs (issue #370)', () => {
     expect(cleanup).not.toMatch(UUID_PATTERN);
   });
 
-  it('stay lists and check-in status show names and numbers, never raw UUIDs', async () => {
+  it('stay selects show names and numbers, never raw UUIDs', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     fetchMock.mockImplementation((url: string, init?: RequestInit) => {
@@ -234,23 +234,34 @@ describe('display names instead of IDs (issue #370)', () => {
       }
       throw new Error(`unexpected call ${url}`);
     });
-    const wrapper = mountView(StayView);
+    // The v2 screen loads its panel data on mount for a signed-in
+    // session, so the session presets the mount.
+    const pinia = createPinia();
+    setActivePinia(pinia);
     useSessionStore().signIn('tok-1', 'Ada Owner', 'owner');
-    await wrapper.find('[data-testid="stay-refresh"]').trigger('click');
+    const wrapper = mount(StayView, {
+      global: { plugins: [pinia], stubs: { RouterLink: RouterLinkStub } },
+    });
     await vi.waitFor(() => {
-      expect(wrapper.find('[data-testid="stay-inhouse-table"]').text()).toContain('Guest One');
+      expect(
+        wrapper.find('[data-testid="stay-checkout-stay"] option[value="stay-1"]').exists(),
+      ).toBe(true);
     });
 
-    const inHouse = wrapper.find('[data-testid="stay-inhouse-table"]').text();
-    expect(inHouse).toContain('201');
-    expect(inHouse).toContain('Room number unavailable');
-    expect(inHouse).toContain('Unknown guest');
-    expect(inHouse).not.toMatch(UUID_PATTERN);
+    // The departing-guest options pair each name with its room
+    // number; an unmapped room or a failed guest lookup names no
+    // UUID.
+    const departing = wrapper.find('[data-testid="stay-checkout-stay"]').text();
+    expect(departing).toContain('Guest One');
+    expect(departing).toContain('201');
+    expect(departing).toContain('Room number unavailable');
+    expect(departing).toContain('Unknown guest');
+    expect(departing).not.toMatch(UUID_PATTERN);
     // Expected arrivals (calendar-backed) name the guest with the
-    // resolved type name instead of the raw type UUID.
-    const arrivals = wrapper.find('[data-testid="stay-arrivals-table"]').text();
+    // booking reference instead of the raw reservation UUID.
+    const arrivals = wrapper.find('[data-testid="stay-checkin-arrival"]').text();
     expect(arrivals).toContain('Guest Nine');
-    expect(arrivals).toContain('Deluxe');
+    expect(arrivals).toContain('RSV-9');
     expect(arrivals).not.toMatch(UUID_PATTERN);
   });
 

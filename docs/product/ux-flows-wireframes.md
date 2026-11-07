@@ -218,7 +218,7 @@ printable surfaces.
 | 0 | Sign-in gate + shell | all (gate) | `App.vue` | gate form (`shell-gate`), locale switch, top nav, restricted notice |
 | 1 | Desk dashboard | `/` | `DeskView.vue` | business date, arrivals / in-house / departures tables, dirty + uninspected + out-of-order lists, board, backup report |
 | 2 | Book | `/book` | `BookView.vue` | guest find-or-register, dates + room type + rate + discount, quote, confirm, reference readback, confirmation + print/copy |
-| 3 | Stay | `/stay` | `StayView.vue` | arrivals / in-house / departures, check-in with room select, room move, early/late recording, checkout review + approval |
+| 3 | Stay | `/stay` | `StayView.vue` | v2 board (Refs #541): check-in panel (arrival + room selects), check-out panel (departing-guest select + reviewer + folio review), review-to-checkout flow state (approval, check-out, dialog) |
 | 4 | Folio | `/folio` | `FolioView.vue` | charge list + post charge, payments + record payment, balance, errors |
 | 5 | Print | `/print` | `PrintView.vue` | receipt/invoice preview, print action |
 | 6 | Admin | `/admin` | `AdminView.vue` | users + roles, hotel configuration, audit view |
@@ -285,20 +285,22 @@ read-back verification.
 ### S3. Stay (`/stay`)
 
 ```text
-* Business date: <date>                     {Refresh}
-Arrivals | In-house | Departures tables (as desk)
-Check in:  arrival (ref....)  room (Pick a room...) {Check in}
-  ! Pick a ready room first  (only when truly nothing selected)
+Check in:  arrival (....)  room (Choose a room...) {Check in}
+  ! Choose a ready room first  (amber note, only when no room picked)
   * status line
-Move:      stay (....)  new room (....) {Move}  * status
-Early/late: arrival [....] departure [....] {Record} * status
-Checkout:  departure (....) {Review folio} * folio status
-  approval-by [....] {Check out}  * status
+Check out: departing guest (....)  reviewer [....] {Review folio}
+  * folio status  * gate note (fully paid before check-out)
+  approval-role [....] reason [....] {Record approval} (only on open balance)
+  {Check out} + confirm dialog  * status
 ```
 
-Rules: the room select always opens on an explicit placeholder
-("Pick a room...") until a real candidate binds (QA finding 1 / #411
-fix point); the `need_room` guard stays for the truly-empty case.
+Rules (v2 board, Refs #541, zero extras: no lists, no move, no
+times): the arrival select replaces the booking-ref entry; the
+reviewer input is board-static; role/reason plus check-out plus
+dialog are post-review flow state. The room select always opens on
+an explicit placeholder ("Choose a room...") until a real
+candidate binds (QA finding 1 / #411 fix point); the `need_room`
+guard stays for the truly-empty case.
 
 ### S4. Folio (`/folio`)
 

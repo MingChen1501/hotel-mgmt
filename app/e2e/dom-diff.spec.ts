@@ -520,24 +520,24 @@ test.describe('allowlist exempts owner-approved dynamic data (criterion 3)', () 
     const actual: DomNode[] = [
       stayNode('/html[0]/body[0]/div[0]/div[0]/div[0]/nav[0]/span[0]', 'span', 'Lab Parity Hotel'),
       stayNode(
-        '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/div[0]/div[0]/div[1]/p[0]/strong[0]',
-        'strong',
-        '2026-11-06',
-      ),
-      stayNode(
-        '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/div[2]/div[0]/div[1]/div[0]/label[1]/select[0]/option[1]',
+        '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/div[0]/div[0]/div[0]/div[1]/label[0]/select[0]/option[1]',
         'option',
-        '204',
+        'Guest One',
       ),
       stayNode(
-        '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/div[1]/div[0]/div[1]/div[0]/label[2]/select[0]/option[0]',
+        '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/div[0]/div[0]/div[0]/div[1]/label[1]/select[0]/option[1]',
         'option',
-        'Hãy chọn một phòng sẵn sàng…',
+        '101',
       ),
       stayNode(
-        '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/div[1]/div[0]/div[1]/div[0]/button[0]',
+        '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/div[0]/div[1]/div[0]/div[1]/label[0]/select[0]/option[1]',
+        'option',
+        'Guest Two',
+      ),
+      stayNode(
+        '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/div[0]/div[0]/div[0]/div[1]/button[0]',
         'button',
-        'Nhận phòng',
+        'Check in',
       ),
     ];
     expect(STAY_SCREEN_ALLOWLIST.skipPaths).toHaveLength(12);
@@ -549,13 +549,13 @@ test.describe('allowlist exempts owner-approved dynamic data (criterion 3)', () 
       `expected only the non-allowlisted nodes, got:\n${formatDomDiffs(diffs)}`,
     ).toHaveLength(2);
     expect(diffs.map((diff) => diff.path).sort()).toEqual([
-      '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/div[1]/div[0]/div[1]/div[0]/button[0]',
+      '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/div[0]/div[0]/div[0]/div[1]/button[0]',
       '/html[0]/body[0]/div[0]/div[0]/div[0]/div[1]/div[0]/h3[0]',
     ]);
     // Stale-entry detection tracks every wired path: the hotel-name
-    // pair, the app-side business-date strong, and all five wired
-    // catalogue selects (three reshaped design panel selects plus
-    // both app selects) are covered — while the DD-11 design date
+    // pair and all six wired catalogue selects (three reshaped
+    // design panel selects plus the three v2 app panel selects) are
+    // covered — while the DD-11 design date
     // and the three DD-12 example rows (no v2 counterpart, Refs
     // #549) are reported stale. That warning, not a silent pass, is
     // the section-5 signal to retire them.
