@@ -1042,44 +1042,187 @@ export default defineComponent({
     font-weight: 600;
   }
 
-  /* Folio two-card design layout (Refs #423): the charges card
-     (lines table plus the post-charge form) on the left, the
-     payments card (balance due plus the post-payment form) on
-     the right. Same 12px radius and tokens as the cards above.
-     The balance-due figure echoes the design's large amber
-     amount in the shared warning token (the design's #8A4B08
-     carries no token). */
-  #shell .folio-layout {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-    gap: 16px;
-    margin: 16px 0;
-    align-items: start;
+  /* Folio invoice screen (Refs #522; restyle spec section 5.4,
+     AC-RST-5): pixel-faithful to `docs/design/Folio.dc.html:2` —
+     h1 `22px` with a muted `14px` intro (the board carries no h1
+     of its own, so the app keeps its screen title and intro for
+     context at the shared sibling treatment); `folio-main`
+     stacks the open card above the design grid in one column
+     (`gap:16px`); the grid is exactly `1fr 1fr` with `gap:16px`
+     (charges card left, payments card right); every folio card
+     renders `background:#fff;border:1px solid #D9E0DE;
+     border-radius:12px;padding:18px` as a flex column with
+     `gap:10px`, card titles (kept as h2 elements) and the
+     charge-form h3 at `margin:0;font-size:16px`; the lines table
+     renders `15px` rows with `padding:10px 0` and `1px solid
+     #EEF1F0` top dividers (the header row carries no design
+     counterpart, so it renders quiet `14px` muted labels while
+     the decided header sequences stay exact); labels are `14px`
+     with full-width controls (`min-height:44px;
+     margin-top:6px`); the balance-due figure renders `30px/700`
+     in the balance-due accent; the open, post-charge, and
+     record-payment buttons take the primary action treatment
+     (`min-height:44px;padding:0 18px;border-radius:8px;border:0;
+     background:#0F766E;color:#fff;font-weight:600`).
+     PrimeVue stays as logic carrier only: Card/DataTable/Button/
+     InputText defaults are overridden here wherever they diverge
+     from the design (restyle spec section 2). Token values live
+     in `src/theme/tokens.ts` (`colors.primary/muted/cardBorder/
+     rowDivider/balanceDue`); this rule duplicates them because
+     CSS cannot import the TS constants. Views carry no style
+     blocks (M4), so the presentation lives here. The open form
+     (stay-ID entry, the F3 REPORTED item #498) and the folio/
+     invoice print output are unchanged — behaviour, flow, copy,
+     and hooks hold exactly as today. */
+  #shell [data-testid="folio-view"] .folio-title {
+    font-size: 22px;
+    margin: 0;
+    color: #1B2B2A;
   }
 
-  #shell .folio-left {
+  #shell [data-testid="folio-view"] .folio-intro {
+    font-size: 14px;
+    color: #4B5D5B;
+    margin: 0;
+  }
+
+  #shell [data-testid="folio-main"] {
     display: flex;
     flex-direction: column;
     gap: 16px;
-    min-width: 0;
   }
 
-  #shell .folio-layout .p-card {
-    border: 1px solid #E5E7EB;
+  #shell .folio-layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    align-items: start;
+  }
+
+  #shell [data-testid="folio-open-card"].p-card,
+  #shell [data-testid="folio-charges-card"].p-card,
+  #shell [data-testid="folio-payments-card"].p-card {
+    border: 1px solid #D9E0DE;
     border-radius: 12px;
     background: #FFFFFF;
+    box-shadow: none;
+    margin: 0;
   }
 
-  #shell .folio-layout .p-card-title h2 {
-    font-size: 24px;
-    margin: 0 0 8px;
+  #shell [data-testid="folio-open-card"] .p-card-body,
+  #shell [data-testid="folio-charges-card"] .p-card-body,
+  #shell [data-testid="folio-payments-card"] .p-card-body {
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
   }
 
+  #shell [data-testid="folio-open-card"] .p-card-caption,
+  #shell [data-testid="folio-open-card"] .p-card-content,
+  #shell [data-testid="folio-charges-card"] .p-card-caption,
+  #shell [data-testid="folio-charges-card"] .p-card-content,
+  #shell [data-testid="folio-payments-card"] .p-card-caption,
+  #shell [data-testid="folio-payments-card"] .p-card-content {
+    padding: 0;
+  }
+
+  /* Card titles keep their h2 elements (heading hooks and the
+     design-facts gate stay exact) and render the design h3
+     `16px` values (`docs/design/Folio.dc.html:2`). */
+  #shell [data-testid="folio-open-card"] .p-card-title h2,
+  #shell [data-testid="folio-charges-card"] .p-card-title h2,
+  #shell [data-testid="folio-payments-card"] .p-card-title h2,
+  #shell [data-testid="folio-view"] .folio-section-title {
+    font-size: 16px;
+    margin: 0;
+    color: #1B2B2A;
+  }
+
+  /* Folio lines render the design `15px` example-line rows
+     (`docs/design/Folio.dc.html:2`): `padding:10px 0` with
+     `1px solid #EEF1F0` top dividers. The header row carries no
+     design counterpart (the board shows rows only), so it
+     renders quiet `14px` muted labels while the decided header
+     sequences stay exact (design-facts gate). */
+  #shell [data-testid="folio-charges-card"] .p-datatable .p-datatable-table {
+    width: 100%;
+    font-size: 15px;
+    color: #1B2B2A;
+  }
+
+  #shell [data-testid="folio-charges-card"] .p-datatable th {
+    font-size: 14px;
+    font-weight: 400;
+    color: #4B5D5B;
+    text-align: left;
+    padding: 10px 0;
+    border: 0;
+    background: transparent;
+  }
+
+  #shell [data-testid="folio-charges-card"] .p-datatable td {
+    font-size: 15px;
+    text-align: left;
+    padding: 10px 0;
+    border: 0;
+    border-top: 1px solid #EEF1F0;
+    background: transparent;
+  }
+
+  #shell [data-testid="folio-charges-card"] .p-datatable tbody tr {
+    background: transparent;
+  }
+
+  #shell [data-testid="folio-charges-card"] .p-datatable .p-datatable-emptymessage td {
+    padding: 18px 0;
+    border-top: 0;
+    color: #4B5D5B;
+    font-size: 15px;
+  }
+
+  #shell [data-testid="folio-view"] label {
+    display: block;
+    font-size: 14px;
+    color: #1B2B2A;
+  }
+
+  #shell [data-testid="folio-view"] label input,
+  #shell [data-testid="folio-view"] label select,
+  #shell [data-testid="folio-view"] label .p-inputtext {
+    display: block;
+    width: 100%;
+    min-height: 44px;
+    margin-top: 6px;
+    box-sizing: border-box;
+    font: inherit;
+  }
+
+  /* Balance due (`docs/design/Folio.dc.html:2`: the muted
+     `Còn phải trả` label above `font-size:30px;font-weight:700;
+     color:#8A4B08`). The app keeps its single combined status
+     line (copy and catalogue keys unchanged) and renders the
+     design size and accent on it; the accent resolves through
+     the shared `balanceDue` token, never a per-surface fork. */
   #shell .folio-balance-due {
     font-size: 30px;
     font-weight: 700;
-    color: #B45309;
-    margin: 0 0 8px;
+    color: #8A4B08;
+    margin: 0;
+  }
+
+  /* Design action buttons: open folio, post charge, and record
+     payment (`docs/design/Folio.dc.html:2`:
+     `min-height:44px;padding:0 18px;border-radius:8px;border:0;
+     background:#0F766E;color:#fff;font-weight:600`). */
+  #shell [data-testid="folio-view"] .folio-action.p-button {
+    min-height: 44px;
+    padding: 0 18px;
+    border-radius: 8px;
+    border: 0;
+    background: #0F766E;
+    color: #FFFFFF;
+    font-weight: 600;
   }
 
   /* Rooms visual-map design cards (Refs #424, FR-DSK-6): the

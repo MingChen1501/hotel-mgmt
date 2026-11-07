@@ -492,13 +492,15 @@ describe('folio view', () => {
   });
 
   // D5 (Refs #423, AC-DSK-5, FR-DSK-5): the Folio screen renders
-  // its design two-card layout — the charges card (lines table
-  // plus the post-charge form) on the left, the payments card
-  // (balance due plus the post-payment form) on the right — with
-  // amounts formatted per the active locale. Flow, refusal, and
-  // balance tests above stay untouched (semantics unchanged);
-  // only this layout and the locale grouping are new.
-  it('renders the charges/payments design cards with locale-correct amounts', async () => {
+  // D8 (Refs #522, AC-RST-5, FR-RST-5; restyle spec section 5.4):
+  // the Folio screen renders its design two-card grid — the
+  // charges card (lines table plus the post-charge form) left,
+  // the payments card (balance due plus the post-payment form)
+  // right in a `1fr 1fr` grid — with the open card full-width
+  // above and no left/right column wrappers. Flow, refusal, and
+  // balance tests below stay untouched (semantics unchanged);
+  // only this layout is new.
+  it('renders the design two-card grid with the open card above', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     const wrapper = mountFolio();
@@ -507,18 +509,19 @@ describe('folio view', () => {
 
     expect(wrapper.find('[data-testid="folio-open-card"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="folio-layout"]').exists()).toBe(true);
-    const left = wrapper.find('[data-testid="folio-left"]');
-    const right = wrapper.find('[data-testid="folio-right"]');
-    expect(left.exists()).toBe(true);
-    expect(right.exists()).toBe(true);
+    // DOM order carries the design columns: the grid holds the
+    // charges card left and the payments card right with no
+    // left/right column wrappers.
+    expect(wrapper.find('[data-testid="folio-left"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="folio-right"]').exists()).toBe(false);
+    const layoutHtml = wrapper.find('[data-testid="folio-layout"]').html();
+    expect(layoutHtml.indexOf('folio-charges-card')).toBeLessThan(
+      layoutHtml.indexOf('folio-payments-card'),
+    );
     const chargesCard = wrapper.find('[data-testid="folio-charges-card"]');
     const paymentsCard = wrapper.find('[data-testid="folio-payments-card"]');
     expect(chargesCard.exists()).toBe(true);
     expect(paymentsCard.exists()).toBe(true);
-    // DOM order carries the design columns: the charges card
-    // sits in the left column, the payments card in the right.
-    expect(left.html()).toContain('folio-charges-card');
-    expect(right.html()).toContain('folio-payments-card');
     // Actions ride their design cards: the lines table plus
     // post-charge on the charges card; balance due plus
     // post-payment on the payments card.

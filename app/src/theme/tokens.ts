@@ -36,6 +36,9 @@ export const deskTokens = {
     // migrates.
     cardBorder: '#D9E0DE',
     rowDivider: '#EEF1F0',
+    // Balance-due accent (restyle spec section 3, Refs #522):
+    // `#8A4B08` (`docs/design/Folio.dc.html:2`).
+    balanceDue: '#8A4B08',
   },
   type: {
     fontStack: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
