@@ -857,6 +857,191 @@ export default defineComponent({
     font-weight: 600;
   }
 
+  /* Stay check-in/out screen (Refs #521; restyle spec section 5.3,
+     AC-RST-4): pixel-faithful to `docs/design/Stay.dc.html:2-:7` —
+     h1 `22px`; five stacked cards (`gap:16px`; card
+     `background:#fff;border:1px solid #D9E0DE;border-radius:12px;
+     padding:18px`, flex column `gap:10px`, h2 `margin:0;
+     font-size:18px`); the lists card (`Stay.dc.html:3`) carries
+     the `14px` business-date label, h3 `margin:0;font-size:16px`,
+     and `14px` rows with no dividers (Stay uses the card border
+     only, restyle spec section 3); the form cards
+     (`Stay.dc.html:4-:7`) carry `14px` labels, full-width `44px`
+     controls with `margin-top:6px`, muted `14px` hints, and
+     primary action buttons (`min-height:44px;padding:0 18px;
+     border-radius:8px;border:0;background:#0F766E;color:#fff;
+     font-weight:600`); the checkout card carries the
+     reconciliation hint (`font-size:14px;color:#4B5D5B`).
+     PrimeVue stays as logic carrier only: Card/DataTable/Button/
+     InputText defaults are overridden here wherever they diverge
+     from the design (restyle spec section 2). Token values live
+     in `src/theme/tokens.ts`
+     (`colors.primary/muted/cardBorder`); this rule duplicates
+     them because CSS cannot import the TS constants. Views carry
+     no style blocks (M4), so the presentation lives here. The
+     review/approval/dialog flow-state blocks keep their current
+     presentation (post-review states with no design counterpart;
+     copy and hooks unchanged). */
+  #shell [data-testid="stay-view"] .stay-title {
+    font-size: 22px;
+    margin: 0;
+    color: #1B2B2A;
+  }
+
+  #shell [data-testid="stay-view"] .stay-intro {
+    font-size: 14px;
+    color: #4B5D5B;
+    margin: 0;
+  }
+
+  #shell [data-testid="stay-main"] {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  #shell [data-testid="stay-lists-card"].p-card,
+  #shell [data-testid="stay-checkin-card"].p-card,
+  #shell [data-testid="stay-move-card"].p-card,
+  #shell [data-testid="stay-times-card"].p-card,
+  #shell [data-testid="stay-checkout-card"].p-card {
+    border: 1px solid #D9E0DE;
+    border-radius: 12px;
+    background: #FFFFFF;
+    box-shadow: none;
+    margin: 0;
+  }
+
+  #shell [data-testid="stay-lists-card"] .p-card-body,
+  #shell [data-testid="stay-checkin-card"] .p-card-body,
+  #shell [data-testid="stay-move-card"] .p-card-body,
+  #shell [data-testid="stay-times-card"] .p-card-body,
+  #shell [data-testid="stay-checkout-card"] .p-card-body {
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  #shell [data-testid="stay-lists-card"] .p-card-caption,
+  #shell [data-testid="stay-lists-card"] .p-card-content,
+  #shell [data-testid="stay-checkin-card"] .p-card-caption,
+  #shell [data-testid="stay-checkin-card"] .p-card-content,
+  #shell [data-testid="stay-move-card"] .p-card-caption,
+  #shell [data-testid="stay-move-card"] .p-card-content,
+  #shell [data-testid="stay-times-card"] .p-card-caption,
+  #shell [data-testid="stay-times-card"] .p-card-content,
+  #shell [data-testid="stay-checkout-card"] .p-card-caption,
+  #shell [data-testid="stay-checkout-card"] .p-card-content {
+    padding: 0;
+  }
+
+  #shell [data-testid="stay-lists-card"] .p-card-title h2,
+  #shell [data-testid="stay-checkin-card"] .p-card-title h2,
+  #shell [data-testid="stay-move-card"] .p-card-title h2,
+  #shell [data-testid="stay-times-card"] .p-card-title h2,
+  #shell [data-testid="stay-checkout-card"] .p-card-title h2 {
+    font-size: 18px;
+    margin: 0;
+    color: #1B2B2A;
+  }
+
+  #shell [data-testid="stay-lists-card"] h3 {
+    font-size: 16px;
+    margin: 0;
+    color: #1B2B2A;
+  }
+
+  #shell [data-testid="stay-view"] .stay-business-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 10px;
+    margin: 0;
+  }
+
+  #shell [data-testid="stay-view"] .stay-business-label {
+    font-size: 14px;
+    color: #1B2B2A;
+  }
+
+  /* Stay list rows render the design `14px` rows
+     (`docs/design/Stay.dc.html:3`): no dividers — Stay uses the
+     card border only (restyle spec section 3). The header row
+     carries no design counterpart (the board shows rows only),
+     so it renders quiet `14px` muted labels while the decided
+     header sequences stay exact (design-facts gate). */
+  #shell [data-testid="stay-lists-card"] .p-datatable .p-datatable-table {
+    width: 100%;
+    font-size: 14px;
+    color: #1B2B2A;
+  }
+
+  #shell [data-testid="stay-lists-card"] .p-datatable th {
+    font-size: 14px;
+    font-weight: 400;
+    color: #4B5D5B;
+    text-align: left;
+    padding: 10px 0;
+    border: 0;
+    background: transparent;
+  }
+
+  #shell [data-testid="stay-lists-card"] .p-datatable td {
+    font-size: 14px;
+    text-align: left;
+    padding: 10px 0;
+    border: 0;
+    background: transparent;
+  }
+
+  #shell [data-testid="stay-lists-card"] .p-datatable tbody tr {
+    background: transparent;
+  }
+
+  #shell [data-testid="stay-lists-card"] .p-datatable .p-datatable-emptymessage td {
+    padding: 18px 0;
+    color: #4B5D5B;
+    font-size: 14px;
+  }
+
+  #shell [data-testid="stay-view"] label {
+    display: block;
+    font-size: 14px;
+    color: #1B2B2A;
+  }
+
+  #shell [data-testid="stay-view"] label input,
+  #shell [data-testid="stay-view"] label select,
+  #shell [data-testid="stay-view"] label .p-inputtext {
+    display: block;
+    width: 100%;
+    min-height: 44px;
+    margin-top: 6px;
+    box-sizing: border-box;
+    font: inherit;
+  }
+
+  #shell [data-testid="stay-view"] .stay-hint {
+    font-size: 14px;
+    color: #4B5D5B;
+    margin: 0;
+  }
+
+  /* Design action buttons: refresh, per-row picks, check-in,
+     move, record-times, review, approval, check-out, and the
+     dialog confirm (`docs/design/Stay.dc.html:3-:7`). The dialog
+     cancel keeps its secondary logic-carrier styling. */
+  #shell [data-testid="stay-view"] .stay-action.p-button {
+    min-height: 44px;
+    padding: 0 18px;
+    border-radius: 8px;
+    border: 0;
+    background: #0F766E;
+    color: #FFFFFF;
+    font-weight: 600;
+  }
+
   /* Folio two-card design layout (Refs #423): the charges card
      (lines table plus the post-charge form) on the left, the
      payments card (balance due plus the post-payment form) on
