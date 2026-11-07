@@ -1,7 +1,12 @@
 <template>
   <main data-testid="folio-view">
-    <h1>{{ t('desk.folio.title', {}, 'Folio: charges, payments, and balance') }}</h1>
-    <p>{{ t('desk.folio.intro', {}, 'Open a stay folio, post charges, record payments, and watch the running balance.') }}</p>
+    <!-- Folio screen title (restyle Refs #522,
+      `docs/design/Folio.dc.html:2`: the board carries no h1 of its
+      own, so the app keeps its screen title and intro for context
+      at the shared sibling treatment (h1 `22px`, muted `14px`
+      intro per restyle spec section 3); hooks and copy unchanged). -->
+    <h1 class="folio-title">{{ t('desk.folio.title', {}, 'Folio: charges, payments, and balance') }}</h1>
+    <p class="folio-intro">{{ t('desk.folio.intro', {}, 'Open a stay folio, post charges, record payments, and watch the running balance.') }}</p>
     <noscript><p>{{ t('desk.entry.noscript_folio', {}, 'This page needs JavaScript to open a folio.') }}</p></noscript>
 
     <section data-testid="folio-main">
@@ -25,6 +30,7 @@
             <Button
               id="folio-open-button"
               type="button"
+              class="folio-action"
               :label="t('desk.folio.open_button', {}, 'Open folio')"
               data-testid="folio-open"
               :disabled="opening"
@@ -48,15 +54,16 @@
         </template>
       </Card>
 
+      <!-- Restyle Refs #522 (`docs/design/Folio.dc.html:2`): the
+        design grid carries the two cards directly
+        (`grid-template-columns:1fr 1fr`), so the old left/right
+        column wrappers are gone (same precedent as the Book
+        restyle, Refs #520); hooks and copy unchanged. -->
       <div
         class="folio-layout"
         data-testid="folio-layout"
       >
-        <div
-          class="folio-left"
-          data-testid="folio-left"
-        >
-          <Card data-testid="folio-charges-card">
+        <Card data-testid="folio-charges-card">
             <template #title>
               <h2>{{ t('desk.folio.folio_heading', {}, 'Folio lines and running balance') }}</h2>
             </template>
@@ -92,7 +99,12 @@
                 testid-prefix="folio-details"
               />
 
-              <h3>{{ t('desk.folio.charge_heading', {}, 'Post a charge') }}</h3>
+              <!-- Charge form heading (restyle Refs #522): the
+                design card titles render h3 `margin:0;
+                font-size:16px` (`docs/design/Folio.dc.html:2`);
+                this form heading takes the same treatment, copy
+                and hooks unchanged. -->
+              <h3 class="folio-section-title">{{ t('desk.folio.charge_heading', {}, 'Post a charge') }}</h3>
               <div>
                 <label for="folio-charge-kind">
                   <span>{{ t('desk.folio.item_kind', {}, 'Charge kind: ') }}</span>
@@ -133,6 +145,7 @@
                 <Button
                   id="folio-charge-button"
                   type="button"
+                  class="folio-action"
                   :label="t('desk.folio.charge_button', {}, 'Post charge')"
                   data-testid="folio-charge"
                   :disabled="charging"
@@ -161,12 +174,7 @@
               </div>
             </template>
           </Card>
-        </div>
 
-        <div
-          class="folio-right"
-          data-testid="folio-right"
-        >
           <Card data-testid="folio-payments-card">
             <template #title>
               <h2>{{ t('desk.folio.payment_heading', {}, 'Record a payment') }}</h2>
@@ -209,6 +217,7 @@
                 <Button
                   id="folio-pay-button"
                   type="button"
+                  class="folio-action"
                   :label="t('desk.folio.pay_button', {}, 'Record payment')"
                   data-testid="folio-pay"
                   :disabled="paying"
@@ -237,7 +246,6 @@
               </div>
             </template>
           </Card>
-        </div>
       </div>
     </section>
   </main>
