@@ -1,21 +1,36 @@
 <template>
   <main data-testid="rooms-view">
-    <h1>{{ t('desk.rooms.title', {}, 'Room map') }}</h1>
-    <p>{{ t('desk.rooms.intro', {}, 'Every room at a glance, grouped by floor. Refresh to update.') }}</p>
+    <!-- Rooms title row (restyle Refs #523,
+      `docs/design/Rooms.dc.html:2`: the board title row is a flex
+      row with `justify-content:space-between` carrying the h1 plus
+      muted `14px` summary line left and the primary reload button
+      right; the app keeps its intro and the weekday-long
+      business-date readout (AC-DSK-12, #513) at the muted `14px`
+      treatment — hooks and copy unchanged). -->
+    <div class="rooms-title-row">
+      <div class="rooms-title-block">
+        <h1 class="rooms-title">
+          {{ t('desk.rooms.title', {}, 'Room map') }}
+        </h1>
+        <p class="rooms-intro">
+          {{ t('desk.rooms.intro', {}, 'Every room at a glance, grouped by floor. Refresh to update.') }}
+        </p>
+      </div>
+      <p class="rooms-business-row">
+        <span class="rooms-business-label">{{ t('desk.today.business_date', {}, 'Business date: ') }}</span><strong data-testid="rooms-business-date">{{ businessDateDisplay }}</strong>
+        <Button
+          id="rooms-refresh-button"
+          type="button"
+          class="rooms-action"
+          :label="t('desk.rooms.refresh', {}, 'Refresh')"
+          data-testid="rooms-refresh"
+          :disabled="loading"
+          :loading="loading"
+          @click="onRefresh"
+        />
+      </p>
+    </div>
     <noscript><p>{{ t('desk.rooms.noscript', {}, 'This page needs JavaScript to load the room map.') }}</p></noscript>
-
-    <p>
-      <span>{{ t('desk.today.business_date', {}, 'Business date: ') }}</span><strong data-testid="rooms-business-date">{{ businessDateDisplay }}</strong>
-      <Button
-        id="rooms-refresh-button"
-        type="button"
-        :label="t('desk.rooms.refresh', {}, 'Refresh')"
-        data-testid="rooms-refresh"
-        :disabled="loading"
-        :loading="loading"
-        @click="onRefresh"
-      />
-    </p>
     <Message
       v-if="loading"
       severity="info"
@@ -44,19 +59,41 @@
       <p
         v-if="totalRooms === 0"
         data-testid="rooms-empty"
+        class="rooms-empty"
       >
         {{ t('desk.rooms.empty', {}, 'No rooms yet. Rooms appear here once they are set up.') }}
       </p>
       <template v-else>
-        <section data-testid="rooms-summary">
-          <h2>{{ t('desk.rooms.summary_heading', {}, 'Rooms by status') }}</h2>
-          <ul>
+        <section
+          data-testid="rooms-summary"
+          class="rooms-summary"
+        >
+          <!-- Summary heading (restyle Refs #523,
+            `docs/design/Rooms.dc.html:2`: section h2 renders
+            `margin:0 0 8px;font-size:18px`; copy unchanged). -->
+          <h2 class="rooms-section-title">
+            {{ t('desk.rooms.summary_heading', {}, 'Rooms by status') }}
+          </h2>
+          <!-- Status-chip row (restyle Refs #523,
+            `docs/design/Rooms.dc.html:2`: `display:flex;gap:10px`
+            with wrap; each chip is a white `999px` pill
+            (`8px 14px`, `14px`) with a `12px` status dot at
+            radius `3px`; the app keeps its qualified chip wording
+            (the R3 REPORTED item #499 stays reported) and the live
+            counts — hooks and copy unchanged). -->
+          <ul class="rooms-chips">
             <li
               v-for="chip in chips"
               :key="chip.status"
               :data-testid="`rooms-chip-${chip.status}`"
+              :class="['rooms-chip', `rooms-chip-${chip.status}`]"
             >
+              <i
+                class="rooms-chip-dot"
+                aria-hidden="true"
+              />
               <Tag
+                class="rooms-chip-tag"
                 :severity="chip.severity"
                 :value="chip.label"
               /> ({{ chip.count }})
@@ -64,38 +101,72 @@
           </ul>
         </section>
 
+        <!-- Floor sections (restyle Refs #523,
+          `docs/design/Rooms.dc.html:2`: floor h2 renders
+          `margin:0 0 8px;font-size:18px` above a
+          `repeat(6,1fr)` grid with `gap:12px`; grouping and
+          unknown-floor behaviour unchanged). -->
         <section
           v-for="floor in floors"
           :key="floor.key"
           :data-testid="floor.unknown ? 'rooms-floor-unknown' : 'rooms-floor'"
+          class="rooms-floor"
         >
-          <h2>{{ floor.title }}</h2>
+          <h2 class="rooms-section-title">
+            {{ floor.title }}
+          </h2>
           <div class="rooms-grid">
+            <!-- Room cards (restyle Refs #523,
+              `docs/design/Rooms.dc.html:2`): status-tint cards at
+              `radius:12px;padding:14px;gap:6px;min-height:104px`;
+              the head row carries the `22px` number left and the
+              `12px/600` status badge (`radius:6px;padding:4px 8px`,
+              white on the status accent) right; the type line
+              renders `13px #3B4A48` and the live note `14px`.
+              PrimeVue Card/Tag/Button stay as logic carriers only.
+              Housekeeping buttons keep their transitions and take
+              the primary treatment (the board shows no buttons;
+              they stay because the transitions are behaviour).
+              Hooks, notes, and copy unchanged. -->
             <Card
               v-for="room in floor.rooms"
               :key="room.number"
               :data-testid="`rooms-card-${room.number}`"
+              :class="['room-card', `room-card-${room.display}`]"
             >
               <template #title>
-                <h3>{{ room.number }}</h3>
-              </template>
-              <template #content>
-                <p>
+                <div class="room-card-head">
+                  <h3 class="room-card-number">
+                    {{ room.number }}
+                  </h3>
                   <Tag
+                    class="room-card-badge"
                     :severity="chipSeverity(room.display)"
                     :value="chipLabel(room.display)"
                     :data-testid="`rooms-card-chip-${room.number}`"
                   />
-                </p>
-                <p :data-testid="`rooms-card-type-${room.number}`">
+                </div>
+              </template>
+              <template #content>
+                <p
+                  class="room-card-type"
+                  :data-testid="`rooms-card-type-${room.number}`"
+                >
                   {{ typeName(room.roomTypeId) }}
                 </p>
-                <p :data-testid="`rooms-card-note-${room.number}`">
+                <p
+                  class="room-card-note"
+                  :data-testid="`rooms-card-note-${room.number}`"
+                >
                   {{ noteFor(room) }}
                 </p>
-                <p v-if="room.display === 'needs-cleaning'">
+                <p
+                  v-if="room.display === 'needs-cleaning'"
+                  class="room-card-action"
+                >
                   <Button
                     type="button"
+                    class="rooms-action"
                     :label="t('desk.today.mark_cleaned', {}, 'Mark cleaned')"
                     :data-testid="`rooms-mark-cleaned-${room.number}`"
                     :disabled="isBusy(room.number)"
@@ -103,9 +174,13 @@
                     @click="onMarkCleaned(room)"
                   />
                 </p>
-                <p v-if="room.display === 'awaiting-inspection'">
+                <p
+                  v-if="room.display === 'awaiting-inspection'"
+                  class="room-card-action"
+                >
                   <Button
                     type="button"
+                    class="rooms-action"
                     :label="t('desk.today.mark_inspected', {}, 'Mark inspected')"
                     :data-testid="`rooms-mark-inspected-${room.number}`"
                     :disabled="isBusy(room.number)"
