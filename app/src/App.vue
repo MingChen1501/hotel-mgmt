@@ -212,14 +212,15 @@ interface NavItem {
   fallback: string;
 }
 
-// Design-header order (Refs #472, FR-DSK-1, D1): Desk · Book · Stay ·
-// Folio · Print · Admin — the six tabs of the `.dc.html` headers.
-// Onboarding and Rooms have no design-header tab: /onboarding stays
-// reachable through the empty-database auto-launch plus its deep
-// route, /rooms through its deep route (both routes stay registered
-// in `router.ts`; this list is the visible set only).
+// Design-header order (Refs #539, #472, FR-DSK-1, D1): Desk ·
+// Rooms · Book · Stay · Folio · Print · Admin — the seven tabs of
+// the v2 `.dc.html` headers. Onboarding has no design-header tab:
+// /onboarding stays reachable through the empty-database
+// auto-launch plus its deep route (the route stays registered in
+// `router.ts`; this list is the visible set only).
 const NAV_ITEMS: NavItem[] = [
   { name: 'desk', to: '/', labelKey: 'desk.shell.nav_desk', fallback: 'Desk' },
+  { name: 'rooms', to: '/rooms', labelKey: 'desk.shell.nav_rooms', fallback: 'Rooms' },
   { name: 'book', to: '/book', labelKey: 'desk.shell.nav_book', fallback: 'Book' },
   { name: 'stay', to: '/stay', labelKey: 'desk.shell.nav_stay', fallback: 'Stay' },
   { name: 'folio', to: '/folio', labelKey: 'desk.shell.nav_folio', fallback: 'Folio' },

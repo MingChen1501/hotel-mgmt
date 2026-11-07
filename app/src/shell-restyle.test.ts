@@ -22,8 +22,8 @@ import { useSessionStore } from './stores/session';
 import { deskTokens } from './theme/tokens';
 import appSource from './App.vue?raw';
 
-const EN_NAV = ['Desk', 'Book', 'Stay', 'Folio', 'Print', 'Admin'];
-const VI_NAV = ['Lễ tân', 'Đặt phòng', 'Lưu trú', 'Hoá đơn', 'In', 'Quản trị'];
+const EN_NAV = ['Desk', 'Rooms', 'Book', 'Stay', 'Folio', 'Print', 'Admin'];
+const VI_NAV = ['Lễ tân', 'Sơ đồ phòng', 'Đặt phòng', 'Lưu trú', 'Hoá đơn', 'In', 'Quản trị'];
 
 // First rule body for a selector inside the shell stylesheet.
 function ruleBody(selector: string): string {

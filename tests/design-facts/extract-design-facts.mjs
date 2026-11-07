@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// Design-side UI fact extractor for the six desk screens (Closes #466).
+// Design-side UI fact extractor for the seven desk screens (Closes #466).
 //
-// Reads docs/design/manifest.json (screen order) plus the six
+// Reads docs/design/manifest.json (screen order) plus the seven
 // docs/design/*.dc.html boards and emits one deterministic JSON fact
 // record per screen, following the contract in
 // docs/technical/desk-ui-fact-schema.md (schemaVersion 1).
@@ -11,17 +11,25 @@
 // Usage:
 //   node tests/design-facts/extract-design-facts.mjs --out <dir>
 //
-// The output directory receives exactly six files,
-// <Screen>.facts.json, one per manifest screen. Repeated runs over
-// identical inputs produce byte-identical output.
+// The output directory receives one file per manifest screen,
+// <Screen>.facts.json. Repeated runs over identical inputs produce
+// byte-identical output.
+//
+// v2 bundle envelope (bundle 07-11, Closes #538): the owner-supplied
+// `.dc.html` boards are standalone bundler shells — the design
+// document is embedded as a JSON string inside
+// `<script type="__bundler/template">`, so the outer shell carries no
+// literal `<x-dc>` root. `resolveDesignDocument` decodes that payload
+// before parsing; boards without the envelope parse as-is.
 //
 // Design-tab-to-key mapping (definitive table owned by this extractor
-// per the schema): the rendered header tab set is not identical to the
-// six screen keys (the design header carries no Onboarding/Rooms tabs;
-// print/admin destinations are out of the restyle batch), so tab keys
-// for non-screen destinations use their route keys:
+// per the schema): the seven v2 header tabs map onto the screen keys
+// for screen destinations and onto route keys for the print/admin
+// destinations (out of the restyle batch), so tab keys for
+// non-screen destinations use their route keys:
 //
-//   "Lễ tân" -> "Main", "Đặt phòng" -> "Book", "Lưu trú" -> "Stay",
+//   "Lễ tân" -> "Main", "Sơ đồ phòng" -> "Rooms",
+//   "Đặt phòng" -> "Book", "Lưu trú" -> "Stay",
 //   "Hoá đơn" -> "Folio", "In" -> "print", "Quản trị" -> "admin"
 //
 // Screen-to-app-view-hook mapping (per-fact `app` provenance hints; the
@@ -30,7 +38,8 @@
 // assertions; the design-side `design` pointers are authoritative):
 //
 //   Main -> desk-view, Stay -> stay-view, Onboarding -> onboarding-view,
-//   Rooms -> rooms-view, Book -> book-view, Folio -> folio-view
+//   Rooms -> rooms-view, Book -> book-view, Folio -> folio-view,
+//   Admin -> admin-view
 //
 // Notes on honest extraction corners:
 // - Onboarding's board has no header tab bar, so it extracts an empty
@@ -55,6 +64,7 @@ const SCHEMA_VERSION = 1;
 
 const TAB_KEY_BY_LABEL = {
   "Lễ tân": "Main",
+  "Sơ đồ phòng": "Rooms",
   "Đặt phòng": "Book",
   "Lưu trú": "Stay",
   "Hoá đơn": "Folio",
@@ -69,6 +79,7 @@ const VIEW_HOOK_BY_SCREEN = {
   Rooms: "rooms-view",
   Book: "book-view",
   Folio: "folio-view",
+  Admin: "admin-view",
 };
 
 // Fixed token key set for schema version 1 (schema section 2).
@@ -255,6 +266,45 @@ function findElements(root, predicate) {
   return found;
 }
 
+// Design document resolution (v2 bundle envelope, Closes #538): the
+// owner-supplied boards embed the design document as a JSON string in
+// `<script type="__bundler/template">`, so the outer shell parses to
+// zero `<x-dc>` roots. When the outer parse carries exactly one
+// `<x-dc>` root the source is already a design document (v1 shape)
+// and passes through untouched; otherwise the template payload is
+// decoded and returned. Anything else fails loudly — the harness
+// never guesses at an unknown board format.
+export function resolveDesignDocument(source, designFile) {
+  const outer = parseHtml(source);
+  if (findElements(outer, (node) => node.tag === "x-dc").length === 1) {
+    return source;
+  }
+  const templates = findElements(
+    outer,
+    (node) => node.tag === "script" && node.attrs.type === "__bundler/template",
+  );
+  if (templates.length !== 1) {
+    fail(
+      `${designFile}: expected exactly one <x-dc> root and no __bundler/template payload to decode`,
+    );
+  }
+  const payload = templates[0].children
+    .filter((child) => child.text !== undefined)
+    .map((child) => child.text)
+    .join("")
+    .trim();
+  let decoded;
+  try {
+    decoded = JSON.parse(payload);
+  } catch {
+    fail(`${designFile}: __bundler/template payload is not a JSON string`);
+  }
+  if (typeof decoded !== "string" || !decoded.includes("<x-dc>")) {
+    fail(`${designFile}: __bundler/template payload carries no <x-dc> document`);
+  }
+  return decoded;
+}
+
 function parseStyleDeclarations(style) {
   const declarations = {};
   for (const part of (style || "").split(";")) {
@@ -379,7 +429,7 @@ function nearestAncestorLabel(root, target) {
 }
 
 export function extractScreenFacts({ screen, designFile, source, viewHook }) {
-  const root = parseHtml(source);
+  const root = parseHtml(resolveDesignDocument(source, designFile));
   const dcNodes = findElements(root, (node) => node.tag === "x-dc");
   if (dcNodes.length !== 1) fail(`${designFile}: expected exactly one <x-dc> root`);
   const dc = dcNodes[0];

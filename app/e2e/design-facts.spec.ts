@@ -48,9 +48,9 @@
 //   dialogs, quote/result/confirmation): the fixture tests above
 //   prove the gate catches every one of those drift classes with
 //   proper diffs. Refs #472 resolved
-//   the nav drift the other way: the shell visible set is exactly the
-//   six design header tabs (onboarding/rooms are tab-less deep
-//   routes), so the live tests pin that decided set.
+//   the nav drift the other way: the shell visible set is exactly
+//   the seven v2 design header tabs (onboarding is the tab-less
+//   deep route), so the live tests pin that decided set.
 // - Lab-state matrix (issue #474): the CI lab runs on a configured
 //   database (the e2e job applies `deploy/config/hotel.json` with a
 //   real hotel name), so `/onboarding` would redirect to `/` and one
@@ -612,8 +612,8 @@ test.describe('live shell conformance on the running app DOM', () => {
         check(`tokens.${key}`, record.tokens[key], actual.tokens[key], record.designFile, '[data-testid="shell-nav"]');
       }
 
-      // Labels of the tabs that exist on both sides. Refs #472:
-      // the visible shell nav is exactly the six design header
+      // Labels of the tabs that exist on both sides. Refs #539:
+      // the visible shell nav is exactly the seven design header
       // tabs, so every ROUTE_KEY_TO_DESIGN_KEY entry must resolve
       // on both sides now.
       for (const [routeKey, designKey] of Object.entries(ROUTE_KEY_TO_DESIGN_KEY)) {
@@ -636,10 +636,10 @@ test.describe('live shell conformance on the running app DOM', () => {
 
       // The active pill sits on the current screen's tab; where the
       // design names an active tab for this screen, the mapped live
-      // tab matches it. Onboarding/Rooms have no visible tab
-      // (Refs #472): they render with no active pill while staying
-      // reachable as deep routes.
-      const TAB_LESS_SCREENS = new Set(['Onboarding', 'Rooms']);
+      // tab matches it. Onboarding has no visible tab (Refs #539):
+      // it renders with no active pill while staying reachable as
+      // a deep route.
+      const TAB_LESS_SCREENS = new Set(['Onboarding']);
       const routeKey = Object.keys(ROUTE_KEY_TO_DESIGN_KEY).find(
         (key) => ROUTE_KEY_TO_DESIGN_KEY[key] === entry.screen || key === entry.screen.toLowerCase(),
       );
@@ -650,7 +650,7 @@ test.describe('live shell conformance on the running app DOM', () => {
         record.nav.design,
         `${record.nav.app} .shell-nav-active`,
       );
-      if (record.nav.active !== '' && ['Main', 'Stay', 'Book', 'Folio'].includes(entry.screen)) {
+      if (record.nav.active !== '' && ['Main', 'Stay', 'Book', 'Rooms', 'Folio'].includes(entry.screen)) {
         check(
           'nav.active',
           record.nav.active,

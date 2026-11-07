@@ -16,6 +16,7 @@ import { fileURLToPath } from "node:url";
 import {
   extractScreenFacts,
   parseHtml,
+  resolveDesignDocument,
   runExtraction,
 } from "./extract-design-facts.mjs";
 
@@ -70,7 +71,7 @@ function assertNoNulls(value, path) {
 
 test("emits one record per manifest screen with the full schema shape", () => {
   const { outDir, written } = extractToFreshDir();
-  assert.equal(written.length, 6);
+  assert.equal(written.length, SCREENS.length);
   assert.deepEqual(
     readdirSync(outDir).sort(),
     SCREENS.map((screen) => `${screen}.facts.json`).sort(),
@@ -113,6 +114,7 @@ test("Main nav matches the schema example: order, labels, active tab", () => {
   const main = readRecords(outDir).Main;
   assert.deepEqual(main.nav.order, [
     "Main",
+    "Rooms",
     "Book",
     "Stay",
     "Folio",
@@ -123,6 +125,7 @@ test("Main nav matches the schema example: order, labels, active tab", () => {
     Book: "Đặt phòng",
     Folio: "Hoá đơn",
     Main: "Lễ tân",
+    Rooms: "Sơ đồ phòng",
     Stay: "Lưu trú",
     admin: "Quản trị",
     print: "In",
@@ -130,13 +133,15 @@ test("Main nav matches the schema example: order, labels, active tab", () => {
   assert.equal(main.nav.active, "Main");
 });
 
-test("active tab follows each board: Stay, Book, Folio; Rooms rests on Main", () => {
+test("active tab follows each board: Stay, Book, Rooms, Folio, Admin", () => {
   const { outDir } = extractToFreshDir();
   const records = readRecords(outDir);
+  assert.equal(records.Main.nav.active, "Main");
   assert.equal(records.Stay.nav.active, "Stay");
   assert.equal(records.Book.nav.active, "Book");
+  assert.equal(records.Rooms.nav.active, "Rooms");
   assert.equal(records.Folio.nav.active, "Folio");
-  assert.equal(records.Rooms.nav.active, "Main");
+  assert.equal(records.Admin.nav.active, "admin");
 });
 
 test("Onboarding has no tab bar and extracts an honest empty nav", () => {
@@ -177,7 +182,7 @@ test("inputs: labels, text placeholders, and select first-option captions", () =
       kind: "text",
       label: "Tên khách sạn",
       placeholder: "Ví dụ: Khách sạn Hoa Mai",
-      design: "docs/design/Onboarding.dc.html:2",
+      design: "docs/design/Onboarding.dc.html:3",
       app: '[data-testid="onboarding-view"] input',
     },
   ]);
@@ -187,21 +192,10 @@ test("inputs: labels, text placeholders, and select first-option captions", () =
       input.label,
       input.placeholder,
     ]),
-    // Decided #473 content: the check-in, move, times, and
-    // check-out cards in app DOM order (the `Mã lưu trú:` label
-    // repeats once per card, exactly as in the running view).
-    [
-      ["text", "Mã đặt phòng:", null],
-      ["text", "Giờ đến thực tế (để trống nếu chưa cần):", null],
-      ["select", "Phòng sẵn sàng:", "Hãy chọn một phòng sẵn sàng…"],
-      ["text", "Mã lưu trú:", null],
-      ["select", "Chuyển đến phòng:", null],
-      ["text", "Mã lưu trú:", null],
-      ["text", "Giờ đến thực tế (để trống nếu chưa cần):", null],
-      ["text", "Giờ đi thực tế (để trống nếu chưa cần):", null],
-      ["text", "Mã lưu trú:", null],
-      ["text", "Giờ đi thực tế (để trống nếu chưa cần):", null],
-    ],
+    // v2 Stay board (bundle 07-11): a single reviewer field; the
+    // v1 check-in/move/times/check-out cards are gone from the
+    // board (per-screen content follows in child issues).
+    [["text", "Người duyệt", null]],
   );
   assert.deepEqual(
     records.Book.inputs.map((input) => [
@@ -209,70 +203,78 @@ test("inputs: labels, text placeholders, and select first-option captions", () =
       input.label,
       input.placeholder,
     ]),
-    // Decided #473 content: guest card, then stay card in app DOM
-    // order (rate plan before discount).
+    // v2 Book board (bundle 07-11): guest and date/room fields as
+    // plain text inputs; the v1 rate-plan select and discount
+    // phrasing are gone from the board (per-screen content follows
+    // in child issues).
     [
-      ["text", "Tên khách:", null],
-      ["text", "Mã khách:", null],
-      ["text", "Ngày đến:", null],
-      ["text", "Ngày đi:", null],
-      ["select", "Hạng phòng:", "Chọn hạng phòng…"],
-      ["text", "Gói giá (để trống khi chỉ một gói áp giá cho hạng phòng này):", null],
-      ["text", "Giảm giá (không bắt buộc):", null],
+      ["text", "Tên khách", null],
+      ["text", "Ngày đến", null],
+      ["text", "Ngày đi", null],
+      ["text", "Loại phòng", null],
+      ["text", "Giảm giá", null],
     ],
   );
   assert.deepEqual(records.Rooms.inputs, []);
+  assert.deepEqual(
+    records.Folio.inputs.map((input) => [
+      input.kind,
+      input.label,
+      input.placeholder,
+    ]),
+    // v2 Folio board (bundle 07-11): charge/settlement entry fields
+    // as plain text inputs with wrapping labels.
+    [
+      ["text", "Mô tả", null],
+      ["text", "Số tiền", null],
+      ["text", "Số tiền", null],
+    ],
+  );
 });
 
-test("decided #473 board content: headings and buttons per screen", () => {
+test("v2 board content: headings and buttons per screen", () => {
   const { outDir } = extractToFreshDir();
   const records = readRecords(outDir);
   assert.deepEqual(
     records.Stay.headings.map((heading) => [heading.level, heading.text]),
     [
-      [1, "Nhận phòng, chuyển phòng và trả phòng cho khách"],
-      [2, "Danh sách lưu trú theo ngày làm việc"],
-      [3, "Khách đến hôm nay"],
-      [3, "Đang lưu trú"],
-      [3, "Khách đi hôm nay"],
-      [2, "Nhận phòng cho khách đến"],
-      [2, "Chuyển phòng giữa kỳ lưu trú"],
-      [2, "Ghi nhận đến sớm và đi trễ"],
-      [2, "Trả phòng kèm đối chiếu bảng kê"],
+      [3, "Nhận phòng"],
+      [3, "Trả phòng"],
     ],
   );
   assert.deepEqual(
     records.Stay.buttons.map((button) => button.label),
-    ["Tải lại", "Nhận phòng", "Chuyển phòng", "Ghi nhận giờ", "Đối chiếu bảng kê", "Trả phòng"],
+    ["Nhận phòng", "Xem hoá đơn"],
   );
-  // Rooms carries the static shell (title, summary, floor titles);
-  // the room-number cards below are illustrative mock data, so only
-  // the static prefix is pinned here.
-  assert.deepEqual(
-    records.Rooms.headings.slice(0, 3).map((heading) => [heading.level, heading.text]),
-    [
-      [1, "Sơ đồ phòng"],
-      [2, "Phòng theo trạng thái"],
-      [2, "Tầng 1"],
-    ],
-  );
+  // v2 Rooms board carries no headings (room cards render without
+  // heading elements); the static shell pins only the reload button.
+  assert.deepEqual(records.Rooms.headings, []);
   assert.deepEqual(
     records.Rooms.buttons.map((button) => button.label),
-    ["Tải lại"],
+    ["Làm mới"],
   );
   assert.deepEqual(
     records.Book.headings.map((heading) => [heading.level, heading.text]),
     [
-      [1, "Đặt phòng"],
-      [2, "Đặt phòng mới"],
-      [2, "Khách"],
-      [2, "Giá đã báo"],
-      [2, "Lưu trú"],
+      [3, "1. Khách"],
+      [3, "Báo giá"],
+      [3, "2. Ngày và phòng"],
     ],
   );
   assert.deepEqual(
     records.Book.buttons.map((button) => button.label),
-    ["Tìm khách", "Đăng ký khách vãng lai", "Xác nhận đặt phòng", "Lấy báo giá"],
+    ["Tìm", "Đăng ký khách mới", "Xác nhận đặt phòng", "Lấy báo giá"],
+  );
+  // v2 Admin board (new in bundle 07-11): user/role, account
+  // creation, hotel config, and audit-log sections.
+  assert.deepEqual(
+    records.Admin.headings.map((heading) => [heading.level, heading.text]),
+    [
+      [3, "Người dùng và vai trò"],
+      [3, "Tạo tài khoản mới"],
+      [3, "Cấu hình khách sạn"],
+      [3, "Nhật ký thao tác"],
+    ],
   );
 });
 
@@ -351,7 +353,9 @@ test("icon-only buttons fail loudly instead of passing silently", () => {
     join(REPO_ROOT, "docs", "design", "Main.dc.html"),
     "utf8",
   );
-  const iconOnly = source.replace("Làm mới</button>", "</button>");
+  const decodedMain = resolveDesignDocument(source, "docs/design/Main.dc.html");
+  const iconOnly = decodedMain.replace("Làm mới</button>", "</button>");
+  assert.notEqual(iconOnly, decodedMain);
   assert.throws(
     () =>
       extractScreenFacts({
@@ -369,7 +373,9 @@ test("unknown nav tab labels fail loudly instead of guessing a key", () => {
     join(REPO_ROOT, "docs", "design", "Main.dc.html"),
     "utf8",
   );
-  const renamed = source.replace("Lễ tân</span>", "Tổng quan</span>");
+  const decodedNav = resolveDesignDocument(source, "docs/design/Main.dc.html");
+  const renamed = decodedNav.replace("Lễ tân</span>", "Tổng quan</span>");
+  assert.notEqual(renamed, decodedNav);
   assert.throws(
     () =>
       extractScreenFacts({
@@ -387,9 +393,14 @@ test("form controls without any label source fail loudly", () => {
     join(REPO_ROOT, "docs", "design", "Onboarding.dc.html"),
     "utf8",
   );
-  const stripped = source
+  const decodedOnboarding = resolveDesignDocument(
+    source,
+    "docs/design/Onboarding.dc.html",
+  );
+  const stripped = decodedOnboarding
     .replace(/<h3[^>]*>Tên khách sạn<\/h3>/, "")
     .replace(/placeholder="[^"]*"/, "");
+  assert.notEqual(stripped, decodedOnboarding);
   assert.throws(
     () =>
       extractScreenFacts({
@@ -415,4 +426,65 @@ test("parser tracks real line numbers for moved design nodes", () => {
   visit(root);
   assert.equal(headings.length, 1);
   assert.equal(headings[0].line, 3);
+});
+
+test("v2 bundler envelope decodes to the design document on every board", () => {
+  for (const file of MANIFEST.order) {
+    const designFile = `docs/design/${file}`;
+    const source = readFileSync(join(REPO_ROOT, designFile), "utf8");
+    const decoded = resolveDesignDocument(source, designFile);
+    assert.notEqual(decoded, source);
+    const root = parseHtml(decoded);
+    const dc = [];
+    const visit = (node) => {
+      if (node.tag === "x-dc") dc.push(node);
+      for (const child of node.children || []) {
+        if (child.text === undefined) visit(child);
+      }
+    };
+    visit(root);
+    assert.equal(dc.length, 1, `${designFile} decodes to exactly one <x-dc> root`);
+  }
+});
+
+test("v1 boards without the envelope pass through untouched", () => {
+  const source =
+    "<!doctype html><html><body><x-dc><h1>T</h1></x-dc></body></html>";
+  assert.equal(
+    resolveDesignDocument(source, "docs/design/Main.dc.html"),
+    source,
+  );
+});
+
+test("a board with no x-dc root and no template payload fails loudly", () => {
+  assert.throws(
+    () =>
+      resolveDesignDocument(
+        "<!doctype html><html><body><div>No design here</div></body></html>",
+        "docs/design/Main.dc.html",
+      ),
+    /expected exactly one <x-dc> root and no __bundler\/template payload/,
+  );
+});
+
+test("a template payload that is not a JSON string fails loudly", () => {
+  assert.throws(
+    () =>
+      resolveDesignDocument(
+        '<!doctype html><html><body><script type="__bundler/template">not json</script></body></html>',
+        "docs/design/Main.dc.html",
+      ),
+    /__bundler\/template payload is not a JSON string/,
+  );
+});
+
+test("a template payload without an x-dc document fails loudly", () => {
+  assert.throws(
+    () =>
+      resolveDesignDocument(
+        '<!doctype html><html><body><script type="__bundler/template">"just a string"</script></body></html>',
+        "docs/design/Main.dc.html",
+      ),
+    /__bundler\/template payload carries no <x-dc> document/,
+  );
 });
