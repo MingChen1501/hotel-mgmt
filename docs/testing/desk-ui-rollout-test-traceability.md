@@ -20,6 +20,13 @@ plus failure/rollback path (owned by `architect`, SPEC-GATE FAIL
 finding 3 on PR #426). This spec supplies SPEC-GATE FAIL finding 2
 on PR #426; it implements no screen and changes no product code.
 
+Supersession note (Refs #538, Refs #549): the board refs below
+are the v1 six-screen set this rollout implemented. Owner bundle
+07-11 (seven v2 boards, Closes #538) supersedes them; the current
+DOM-vs-design gate rules — including the Admin-board deferral —
+live in `docs/testing/dom-diff-allowlist.md` and
+`docs/testing/desk-restyle-test-traceability.md`, not here.
+
 ## 1. Scope and no-change statements
 
 - Presentation plus narrowly-scoped screen behaviour only. The
