@@ -1,8 +1,24 @@
 <template>
-  <main data-testid="onboarding-view">
-    <h1>{{ t('desk.onboarding.title', {}, 'First-time setup') }}</h1>
-    <p>{{ t('desk.onboarding.intro', {}, 'Complete the steps below to get the hotel running.') }}</p>
-    <noscript><p>{{ t('desk.onboarding.noscript', {}, 'This page needs JavaScript to set up the hotel.') }}</p></noscript>
+  <!-- Onboarding wizard column (restyle Refs #524,
+    `docs/design/Onboarding.dc.html:2`): the board column is a
+    centred `560px` flex column (`gap:16px`) carrying the muted
+    progress line, the `8px` track with the primary bar, the white
+    card (`radius:12px;padding:18px`), and the full-width primary
+    action. The app keeps its h1+intro, shell nav, four steps with
+    back/continue navigation, and flow states (O5 kept extras);
+    wording is unchanged (O3/O4 stay reported). PrimeVue stays as
+    logic carrier only (restyle spec section 2). -->
+  <main
+    data-testid="onboarding-view"
+    class="onboarding-view"
+  >
+    <h1 class="onboarding-title">
+      {{ t('desk.onboarding.title', {}, 'First-time setup') }}
+    </h1>
+    <p class="onboarding-intro">
+      {{ t('desk.onboarding.intro', {}, 'Complete the steps below to get the hotel running.') }}
+    </p>
+    <noscript><p class="onboarding-intro">{{ t('desk.onboarding.noscript', {}, 'This page needs JavaScript to set up the hotel.') }}</p></noscript>
 
     <Message
       v-if="loading"
@@ -12,51 +28,79 @@
       {{ t('desk.onboarding.loading', {}, 'Checking setup status…') }}
     </Message>
     <template v-else>
-      <p data-testid="onboarding-progress">
+      <p
+        data-testid="onboarding-progress"
+        class="onboarding-progress"
+      >
         {{ t('desk.onboarding.progress', { current: step, total: TOTAL_STEPS }, 'Step 1 of 4') }}
       </p>
       <ProgressBar
         :value="stepProgress"
         :show-value="false"
         data-testid="onboarding-progress-bar"
+        class="onboarding-progress-bar"
       />
       <section
         v-if="step === 1"
         data-testid="onboarding-step-1"
+        class="onboarding-step"
       >
-        <h2>{{ t('desk.onboarding.step1_heading', {}, 'Name the hotel') }}</h2>
         <form
           data-testid="onboarding-step1-form"
+          class="onboarding-step-form"
           @submit.prevent="onContinueStep1"
         >
-          <label for="onboarding-hotel-name">
-            {{ t('desk.onboarding.hotel_name_label', {}, 'Hotel name') }}
-            <InputText
-              id="onboarding-hotel-name"
-              v-model="hotelName"
-              name="hotel-name"
-              autocomplete="organization"
-              :placeholder="t('desk.onboarding.hotel_name_placeholder', {}, 'Example: Sunrise Riverside Hotel')"
-              data-testid="onboarding-hotel-name"
-            />
-          </label>
-          <p data-testid="onboarding-hotel-name-helper">
-            {{ t('desk.onboarding.hotel_name_helper', {}, 'This name appears on invoices and receipts.') }}
-          </p>
-          <Message
-            v-if="formError"
-            severity="error"
-            role="alert"
-            data-testid="onboarding-error"
-          >
-            {{ formError }}
-          </Message>
-          <p>
+          <!-- Step-1 card (restyle Refs #524,
+            `docs/design/Onboarding.dc.html:2`: `background:#fff;
+            border:1px solid #D9E0DE;border-radius:12px;
+            padding:18px`, flex column `gap:10px`, card title
+            `margin:0;font-size:16px`, input `min-height:44px`,
+            muted `14px` helper). -->
+          <div class="onboarding-card">
+            <h2 class="onboarding-card-title">
+              {{ t('desk.onboarding.step1_heading', {}, 'Name the hotel') }}
+            </h2>
+            <label
+              for="onboarding-hotel-name"
+              class="onboarding-field"
+            >
+              {{ t('desk.onboarding.hotel_name_label', {}, 'Hotel name') }}
+              <InputText
+                id="onboarding-hotel-name"
+                v-model="hotelName"
+                name="hotel-name"
+                autocomplete="organization"
+                :placeholder="t('desk.onboarding.hotel_name_placeholder', {}, 'Example: Sunrise Riverside Hotel')"
+                data-testid="onboarding-hotel-name"
+              />
+            </label>
+            <p
+              data-testid="onboarding-hotel-name-helper"
+              class="onboarding-helper"
+            >
+              {{ t('desk.onboarding.hotel_name_helper', {}, 'This name appears on invoices and receipts.') }}
+            </p>
+            <Message
+              v-if="formError"
+              severity="error"
+              role="alert"
+              data-testid="onboarding-error"
+            >
+              {{ formError }}
+            </Message>
+          </div>
+          <!-- Wizard actions (no board counterpart beyond the
+            single primary Continue, O5): the primary advance
+            action renders full-width per the board button; Back
+            keeps its secondary logic-carrier styling (Stay #521
+            dialog-cancel precedent). -->
+          <div class="onboarding-actions">
             <Button
               type="button"
               :label="t('desk.onboarding.back', {}, 'Back')"
               disabled
               data-testid="onboarding-back"
+              class="onboarding-back"
             />
             <Button
               type="submit"
@@ -64,99 +108,128 @@
               :disabled="saving"
               :loading="saving"
               data-testid="onboarding-continue"
+              class="onboarding-action"
             />
-          </p>
-          <p v-if="loadFailed">
             <Button
+              v-if="loadFailed"
               type="button"
               :label="t('desk.shell.retry_now', {}, 'Retry now')"
               :disabled="loading"
               data-testid="onboarding-retry"
+              class="onboarding-action"
               @click="onRetry"
             />
-          </p>
+          </div>
         </form>
       </section>
       <section
         v-if="step === 2"
         data-testid="onboarding-step-2"
+        class="onboarding-step"
       >
-        <h2>{{ t('desk.onboarding.step2_heading', {}, 'Hotel details') }}</h2>
-        <p data-testid="onboarding-step2-note">
-          {{ t('desk.onboarding.step2_optional_note', {}, 'Address, phone, and email are optional.') }}
-        </p>
         <form
           data-testid="onboarding-step2-form"
+          class="onboarding-step-form"
           @submit.prevent="onContinueStep2"
         >
-          <label for="onboarding-address">
-            {{ t('desk.onboarding.address_label', {}, 'Address') }}
-            <InputText
-              id="onboarding-address"
-              v-model="address"
-              name="address"
-              autocomplete="street-address"
-              data-testid="onboarding-address"
-            />
-          </label>
-          <label for="onboarding-phone">
-            {{ t('desk.onboarding.phone_label', {}, 'Phone') }}
-            <InputText
-              id="onboarding-phone"
-              v-model="phone"
-              name="phone"
-              autocomplete="tel"
-              data-testid="onboarding-phone"
-            />
-          </label>
-          <label for="onboarding-email">
-            {{ t('desk.onboarding.email_label', {}, 'Email') }}
-            <InputText
-              id="onboarding-email"
-              v-model="email"
-              name="email"
-              autocomplete="email"
-              data-testid="onboarding-email"
-            />
-          </label>
-          <label for="onboarding-timezone">
-            {{ t('desk.onboarding.timezone_label', {}, 'Timezone') }}
-            <InputText
-              id="onboarding-timezone"
-              v-model="timezone"
-              name="timezone"
-              :placeholder="t('desk.onboarding.timezone_placeholder', {}, 'Example: Asia/Ho_Chi_Minh')"
-              data-testid="onboarding-timezone"
-            />
-          </label>
-          <label for="onboarding-retention-floor">
-            {{ t('desk.onboarding.retention_floor_label', {}, 'Keep records for at least (days)') }}
-            <InputText
-              id="onboarding-retention-floor"
-              v-model="retentionFloor"
-              name="retention-floor"
-              inputmode="numeric"
-              :placeholder="t('desk.onboarding.retention_floor_placeholder', {}, 'Example: 365')"
-              data-testid="onboarding-retention-floor"
-            />
-          </label>
-          <p data-testid="onboarding-retention-floor-helper">
-            {{ t('desk.onboarding.retention_floor_helper', {}, 'Leave blank to keep the 365-day default.') }}
-          </p>
-          <Message
-            v-if="formError"
-            severity="error"
-            role="alert"
-            data-testid="onboarding-error"
-          >
-            {{ formError }}
-          </Message>
-          <p>
+          <div class="onboarding-card">
+            <h2 class="onboarding-card-title">
+              {{ t('desk.onboarding.step2_heading', {}, 'Hotel details') }}
+            </h2>
+            <p
+              data-testid="onboarding-step2-note"
+              class="onboarding-helper"
+            >
+              {{ t('desk.onboarding.step2_optional_note', {}, 'Address, phone, and email are optional.') }}
+            </p>
+            <label
+              for="onboarding-address"
+              class="onboarding-field"
+            >
+              {{ t('desk.onboarding.address_label', {}, 'Address') }}
+              <InputText
+                id="onboarding-address"
+                v-model="address"
+                name="address"
+                autocomplete="street-address"
+                data-testid="onboarding-address"
+              />
+            </label>
+            <label
+              for="onboarding-phone"
+              class="onboarding-field"
+            >
+              {{ t('desk.onboarding.phone_label', {}, 'Phone') }}
+              <InputText
+                id="onboarding-phone"
+                v-model="phone"
+                name="phone"
+                autocomplete="tel"
+                data-testid="onboarding-phone"
+              />
+            </label>
+            <label
+              for="onboarding-email"
+              class="onboarding-field"
+            >
+              {{ t('desk.onboarding.email_label', {}, 'Email') }}
+              <InputText
+                id="onboarding-email"
+                v-model="email"
+                name="email"
+                autocomplete="email"
+                data-testid="onboarding-email"
+              />
+            </label>
+            <label
+              for="onboarding-timezone"
+              class="onboarding-field"
+            >
+              {{ t('desk.onboarding.timezone_label', {}, 'Timezone') }}
+              <InputText
+                id="onboarding-timezone"
+                v-model="timezone"
+                name="timezone"
+                :placeholder="t('desk.onboarding.timezone_placeholder', {}, 'Example: Asia/Ho_Chi_Minh')"
+                data-testid="onboarding-timezone"
+              />
+            </label>
+            <label
+              for="onboarding-retention-floor"
+              class="onboarding-field"
+            >
+              {{ t('desk.onboarding.retention_floor_label', {}, 'Keep records for at least (days)') }}
+              <InputText
+                id="onboarding-retention-floor"
+                v-model="retentionFloor"
+                name="retention-floor"
+                inputmode="numeric"
+                :placeholder="t('desk.onboarding.retention_floor_placeholder', {}, 'Example: 365')"
+                data-testid="onboarding-retention-floor"
+              />
+            </label>
+            <p
+              data-testid="onboarding-retention-floor-helper"
+              class="onboarding-helper"
+            >
+              {{ t('desk.onboarding.retention_floor_helper', {}, 'Leave blank to keep the 365-day default.') }}
+            </p>
+            <Message
+              v-if="formError"
+              severity="error"
+              role="alert"
+              data-testid="onboarding-error"
+            >
+              {{ formError }}
+            </Message>
+          </div>
+          <div class="onboarding-actions">
             <Button
               type="button"
               :label="t('desk.onboarding.back', {}, 'Back')"
               :disabled="saving"
               data-testid="onboarding-back"
+              class="onboarding-back"
               @click="goBack"
             />
             <Button
@@ -165,137 +238,177 @@
               :disabled="saving"
               :loading="saving"
               data-testid="onboarding-continue"
+              class="onboarding-action"
             />
-          </p>
+          </div>
         </form>
       </section>
       <section
         v-if="step === 3"
         data-testid="onboarding-step-3"
+        class="onboarding-step"
       >
-        <h2>{{ t('desk.onboarding.step3_heading', {}, 'Rooms and room types') }}</h2>
         <form
           data-testid="onboarding-step3-form"
+          class="onboarding-step-form"
           @submit.prevent="onContinueStep3"
         >
-          <fieldset>
-            <legend>{{ t('desk.onboarding.room_type_label', {}, 'Room type') }}</legend>
-            <div
-              v-for="(typeRow, typeIndex) in roomTypes"
-              :key="`type-${typeIndex}`"
-            >
-              <label :for="`onboarding-type-name-${typeIndex}`">
-                {{ t('desk.onboarding.room_type_name_label', {}, 'Room type name') }}
-                <InputText
-                  :id="`onboarding-type-name-${typeIndex}`"
-                  v-model="typeRow.name"
-                  :data-testid="`onboarding-type-name-${typeIndex}`"
-                />
-              </label>
-              <label :for="`onboarding-type-capacity-${typeIndex}`">
-                {{ t('desk.onboarding.room_type_capacity_label', {}, 'Capacity (guests)') }}
-                <InputText
-                  :id="`onboarding-type-capacity-${typeIndex}`"
-                  v-model="typeRow.capacity"
-                  inputmode="numeric"
-                  :data-testid="`onboarding-type-capacity-${typeIndex}`"
-                />
-              </label>
-              <label :for="`onboarding-type-bed-${typeIndex}`">
-                {{ t('desk.onboarding.room_type_bed_label', {}, 'Bed type (optional)') }}
-                <InputText
-                  :id="`onboarding-type-bed-${typeIndex}`"
-                  v-model="typeRow.bedType"
-                  :data-testid="`onboarding-type-bed-${typeIndex}`"
-                />
-              </label>
-              <Button
-                v-if="roomTypes.length > 1"
-                type="button"
-                :label="t('desk.onboarding.remove_row', {}, 'Remove')"
-                :disabled="saving"
-                :data-testid="`onboarding-remove-type-${typeIndex}`"
-                @click="removeTypeRow(typeIndex)"
-              />
-            </div>
-            <Button
-              type="button"
-              :label="t('desk.onboarding.add_room_type', {}, 'Add room type')"
-              :disabled="saving"
-              data-testid="onboarding-add-type"
-              @click="addTypeRow"
-            />
-          </fieldset>
-          <fieldset>
-            <legend>{{ t('desk.onboarding.room_number_label', {}, 'Room number') }}</legend>
-            <div
-              v-for="(roomRow, roomIndex) in rooms"
-              :key="`room-${roomIndex}`"
-            >
-              <label :for="`onboarding-room-number-${roomIndex}`">
-                {{ t('desk.onboarding.room_number_label', {}, 'Room number') }}
-                <InputText
-                  :id="`onboarding-room-number-${roomIndex}`"
-                  v-model="roomRow.number"
-                  :data-testid="`onboarding-room-number-${roomIndex}`"
-                />
-              </label>
-              <label :for="`onboarding-room-floor-${roomIndex}`">
-                {{ t('desk.onboarding.room_floor_label', {}, 'Floor (optional)') }}
-                <InputText
-                  :id="`onboarding-room-floor-${roomIndex}`"
-                  v-model="roomRow.floor"
-                  :data-testid="`onboarding-room-floor-${roomIndex}`"
-                />
-              </label>
-              <label :for="`onboarding-room-type-${roomIndex}`">
+          <div class="onboarding-card">
+            <h2 class="onboarding-card-title">
+              {{ t('desk.onboarding.step3_heading', {}, 'Rooms and room types') }}
+            </h2>
+            <!-- Steps 2–4 carry no board counterpart (O5): the
+              fieldsets render borderless in the card rhythm with
+              quiet group titles, and every row stacks its fields
+              with the card gap. -->
+            <fieldset class="onboarding-group">
+              <legend class="onboarding-group-title">
                 {{ t('desk.onboarding.room_type_label', {}, 'Room type') }}
-                <select
-                  :id="`onboarding-room-type-${roomIndex}`"
-                  v-model="roomRow.roomType"
-                  :data-testid="`onboarding-room-type-${roomIndex}`"
+              </legend>
+              <div
+                v-for="(typeRow, typeIndex) in roomTypes"
+                :key="`type-${typeIndex}`"
+                class="onboarding-row"
+              >
+                <label
+                  :for="`onboarding-type-name-${typeIndex}`"
+                  class="onboarding-field"
                 >
-                  <option value="" />
-                  <option
-                    v-for="name in enteredTypeNames"
-                    :key="name"
-                    :value="name"
-                  >
-                    {{ name }}
-                  </option>
-                </select>
-              </label>
+                  {{ t('desk.onboarding.room_type_name_label', {}, 'Room type name') }}
+                  <InputText
+                    :id="`onboarding-type-name-${typeIndex}`"
+                    v-model="typeRow.name"
+                    :data-testid="`onboarding-type-name-${typeIndex}`"
+                  />
+                </label>
+                <label
+                  :for="`onboarding-type-capacity-${typeIndex}`"
+                  class="onboarding-field"
+                >
+                  {{ t('desk.onboarding.room_type_capacity_label', {}, 'Capacity (guests)') }}
+                  <InputText
+                    :id="`onboarding-type-capacity-${typeIndex}`"
+                    v-model="typeRow.capacity"
+                    inputmode="numeric"
+                    :data-testid="`onboarding-type-capacity-${typeIndex}`"
+                  />
+                </label>
+                <label
+                  :for="`onboarding-type-bed-${typeIndex}`"
+                  class="onboarding-field"
+                >
+                  {{ t('desk.onboarding.room_type_bed_label', {}, 'Bed type (optional)') }}
+                  <InputText
+                    :id="`onboarding-type-bed-${typeIndex}`"
+                    v-model="typeRow.bedType"
+                    :data-testid="`onboarding-type-bed-${typeIndex}`"
+                  />
+                </label>
+                <Button
+                  v-if="roomTypes.length > 1"
+                  type="button"
+                  :label="t('desk.onboarding.remove_row', {}, 'Remove')"
+                  :disabled="saving"
+                  :data-testid="`onboarding-remove-type-${typeIndex}`"
+                  class="onboarding-action"
+                  @click="removeTypeRow(typeIndex)"
+                />
+              </div>
               <Button
-                v-if="rooms.length > 1"
                 type="button"
-                :label="t('desk.onboarding.remove_row', {}, 'Remove')"
+                :label="t('desk.onboarding.add_room_type', {}, 'Add room type')"
                 :disabled="saving"
-                :data-testid="`onboarding-remove-room-${roomIndex}`"
-                @click="removeRoomRow(roomIndex)"
+                data-testid="onboarding-add-type"
+                class="onboarding-action"
+                @click="addTypeRow"
               />
-            </div>
-            <Button
-              type="button"
-              :label="t('desk.onboarding.add_room', {}, 'Add room')"
-              :disabled="saving"
-              data-testid="onboarding-add-room"
-              @click="addRoomRow"
-            />
-          </fieldset>
-          <Message
-            v-if="formError"
-            severity="error"
-            role="alert"
-            data-testid="onboarding-error"
-          >
-            {{ formError }}
-          </Message>
-          <p>
+            </fieldset>
+            <fieldset class="onboarding-group">
+              <legend class="onboarding-group-title">
+                {{ t('desk.onboarding.room_number_label', {}, 'Room number') }}
+              </legend>
+              <div
+                v-for="(roomRow, roomIndex) in rooms"
+                :key="`room-${roomIndex}`"
+                class="onboarding-row"
+              >
+                <label
+                  :for="`onboarding-room-number-${roomIndex}`"
+                  class="onboarding-field"
+                >
+                  {{ t('desk.onboarding.room_number_label', {}, 'Room number') }}
+                  <InputText
+                    :id="`onboarding-room-number-${roomIndex}`"
+                    v-model="roomRow.number"
+                    :data-testid="`onboarding-room-number-${roomIndex}`"
+                  />
+                </label>
+                <label
+                  :for="`onboarding-room-floor-${roomIndex}`"
+                  class="onboarding-field"
+                >
+                  {{ t('desk.onboarding.room_floor_label', {}, 'Floor (optional)') }}
+                  <InputText
+                    :id="`onboarding-room-floor-${roomIndex}`"
+                    v-model="roomRow.floor"
+                    :data-testid="`onboarding-room-floor-${roomIndex}`"
+                  />
+                </label>
+                <label
+                  :for="`onboarding-room-type-${roomIndex}`"
+                  class="onboarding-field"
+                >
+                  {{ t('desk.onboarding.room_type_label', {}, 'Room type') }}
+                  <select
+                    :id="`onboarding-room-type-${roomIndex}`"
+                    v-model="roomRow.roomType"
+                    :data-testid="`onboarding-room-type-${roomIndex}`"
+                  >
+                    <option value="" />
+                    <option
+                      v-for="name in enteredTypeNames"
+                      :key="name"
+                      :value="name"
+                    >
+                      {{ name }}
+                    </option>
+                  </select>
+                </label>
+                <Button
+                  v-if="rooms.length > 1"
+                  type="button"
+                  :label="t('desk.onboarding.remove_row', {}, 'Remove')"
+                  :disabled="saving"
+                  :data-testid="`onboarding-remove-room-${roomIndex}`"
+                  class="onboarding-action"
+                  @click="removeRoomRow(roomIndex)"
+                />
+              </div>
+              <Button
+                type="button"
+                :label="t('desk.onboarding.add_room', {}, 'Add room')"
+                :disabled="saving"
+                data-testid="onboarding-add-room"
+                class="onboarding-action"
+                @click="addRoomRow"
+              />
+            </fieldset>
+            <Message
+              v-if="formError"
+              severity="error"
+              role="alert"
+              data-testid="onboarding-error"
+            >
+              {{ formError }}
+            </Message>
+          </div>
+          <div class="onboarding-actions">
             <Button
               type="button"
               :label="t('desk.onboarding.back', {}, 'Back')"
               :disabled="saving"
               data-testid="onboarding-back"
+              class="onboarding-back"
               @click="goBack"
             />
             <Button
@@ -304,67 +417,87 @@
               :disabled="saving"
               :loading="saving"
               data-testid="onboarding-continue"
+              class="onboarding-action"
             />
-          </p>
+          </div>
         </form>
       </section>
       <section
         v-if="step === 4"
         data-testid="onboarding-step-4"
+        class="onboarding-step"
       >
-        <h2>{{ t('desk.onboarding.step4_heading', {}, 'Create the owner account') }}</h2>
-        <p data-testid="onboarding-role-note">
-          {{ t('desk.onboarding.role_owner_note', {}, 'Role: owner. This account manages users and hotel setup.') }}
-        </p>
         <form
           data-testid="onboarding-step4-form"
+          class="onboarding-step-form"
           @submit.prevent="onFinish"
         >
-          <label for="onboarding-display-name">
-            {{ t('desk.onboarding.display_name_label', {}, 'Your name') }}
-            <InputText
-              id="onboarding-display-name"
-              v-model="displayName"
-              name="display-name"
-              autocomplete="name"
-              data-testid="onboarding-display-name"
-            />
-          </label>
-          <label for="onboarding-signin-identity">
-            {{ t('desk.onboarding.signin_identity_label', {}, 'Sign-in name') }}
-            <InputText
-              id="onboarding-signin-identity"
-              v-model="signinIdentity"
-              name="username"
-              autocomplete="username"
-              data-testid="onboarding-signin-identity"
-            />
-          </label>
-          <label for="onboarding-secret">
-            {{ t('desk.onboarding.secret_label', {}, 'Password') }}
-            <InputText
-              id="onboarding-secret"
-              v-model="secret"
-              type="password"
-              name="new-password"
-              autocomplete="new-password"
-              data-testid="onboarding-secret"
-            />
-          </label>
-          <Message
-            v-if="formError"
-            severity="error"
-            role="alert"
-            data-testid="onboarding-error"
-          >
-            {{ formError }}
-          </Message>
-          <p>
+          <div class="onboarding-card">
+            <h2 class="onboarding-card-title">
+              {{ t('desk.onboarding.step4_heading', {}, 'Create the owner account') }}
+            </h2>
+            <p
+              data-testid="onboarding-role-note"
+              class="onboarding-helper"
+            >
+              {{ t('desk.onboarding.role_owner_note', {}, 'Role: owner. This account manages users and hotel setup.') }}
+            </p>
+            <label
+              for="onboarding-display-name"
+              class="onboarding-field"
+            >
+              {{ t('desk.onboarding.display_name_label', {}, 'Your name') }}
+              <InputText
+                id="onboarding-display-name"
+                v-model="displayName"
+                name="display-name"
+                autocomplete="name"
+                data-testid="onboarding-display-name"
+              />
+            </label>
+            <label
+              for="onboarding-signin-identity"
+              class="onboarding-field"
+            >
+              {{ t('desk.onboarding.signin_identity_label', {}, 'Sign-in name') }}
+              <InputText
+                id="onboarding-signin-identity"
+                v-model="signinIdentity"
+                name="username"
+                autocomplete="username"
+                data-testid="onboarding-signin-identity"
+              />
+            </label>
+            <label
+              for="onboarding-secret"
+              class="onboarding-field"
+            >
+              {{ t('desk.onboarding.secret_label', {}, 'Password') }}
+              <InputText
+                id="onboarding-secret"
+                v-model="secret"
+                type="password"
+                name="new-password"
+                autocomplete="new-password"
+                data-testid="onboarding-secret"
+              />
+            </label>
+            <Message
+              v-if="formError"
+              severity="error"
+              role="alert"
+              data-testid="onboarding-error"
+            >
+              {{ formError }}
+            </Message>
+          </div>
+          <div class="onboarding-actions">
             <Button
               type="button"
               :label="t('desk.onboarding.back', {}, 'Back')"
               :disabled="saving"
               data-testid="onboarding-back"
+              class="onboarding-back"
               @click="goBack"
             />
             <Button
@@ -373,8 +506,9 @@
               :disabled="saving"
               :loading="saving"
               data-testid="onboarding-continue"
+              class="onboarding-action"
             />
-          </p>
+          </div>
         </form>
       </section>
     </template>

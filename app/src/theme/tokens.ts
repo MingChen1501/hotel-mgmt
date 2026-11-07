@@ -97,6 +97,11 @@ export const deskTokens = {
     pillRadiusPx: 8,
     pillPadYPx: 6,
     pillPadXPx: 12,
+    // Header locale label mint (Refs #455, #518): readable on the
+    // teal bar (7.7:1) while the gate-safe ink would vanish there.
+    // Added for the R9 seven-surface rollup (Refs #524): every
+    // rendered colour resolves through this file, zero forks.
+    localeLabelOnTeal: '#D7E8E6',
   },
   targets: {
     // Every interactive element meets the 44px minimum touch and
