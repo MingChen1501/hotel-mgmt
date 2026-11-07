@@ -39,6 +39,27 @@ export const deskTokens = {
     // Balance-due accent (restyle spec section 3, Refs #522):
     // `#8A4B08` (`docs/design/Folio.dc.html:2`).
     balanceDue: '#8A4B08',
+    // Room-status accents, card tints, and note ink (restyle spec
+    // section 3, Refs #523): the Rooms board carries five statuses
+    // (`docs/design/Rooms.dc.html:2`) — ready `#0F766E` (the
+    // primary action accent, reused for status, never redefined),
+    // occupied `#1D4E89`, needs-clean `#8A4B08` (the balance-due
+    // hue, reused for status), awaiting-inspection `#5B3F9A`,
+    // out-of-service `#4B5563`; card tints `#E3F3EC` (ready),
+    // `#E1ECF9` (occupied), `#FCEBD2` (needs-clean), `#ECE6F7`
+    // (inspection), `#E6E8E7` (out-of-service); room-note ink
+    // `#3B4A48` (type lines; note lines render the page ink).
+    roomReady: '#0F766E',
+    roomOccupied: '#1D4E89',
+    roomNeedsClean: '#8A4B08',
+    roomAwaitingInspection: '#5B3F9A',
+    roomOutOfService: '#4B5563',
+    roomTintReady: '#E3F3EC',
+    roomTintOccupied: '#E1ECF9',
+    roomTintNeedsClean: '#FCEBD2',
+    roomTintAwaitingInspection: '#ECE6F7',
+    roomTintOutOfService: '#E6E8E7',
+    roomNoteInk: '#3B4A48',
   },
   type: {
     fontStack: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',

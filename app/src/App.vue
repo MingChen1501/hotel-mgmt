@@ -1225,43 +1225,307 @@ export default defineComponent({
     font-weight: 600;
   }
 
-  /* Rooms visual-map design cards (Refs #424, FR-DSK-6): the
-     status-chip summary row plus one floor-grouped responsive grid
-     of per-room cards. Same 12px radius and tokens as the cards
-     above. Views carry no style blocks (M4), so the shared
-     presentation lives here. */
-  #shell .rooms-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  /* Rooms map screen (Refs #523; restyle spec section 5.5,
+     AC-RST-6): pixel-faithful to `docs/design/Rooms.dc.html:2` —
+     the title row is a flex row with `justify-content:space-between`
+     carrying the `26px/700` h1 with the muted `14px` intro left and
+     the business-date readout with the primary reload button
+     right (the app keeps its intro and the weekday-long
+     business-date readout, AC-DSK-12 #513, at the muted `14px`
+     treatment — the board summary line carries counts plus a date
+     with no app counterpart); section h2 elements render
+     `margin:0 0 8px;font-size:18px`; the status-chip row is a
+     wrapped flex row (`gap:10px`) of white `999px` pills
+     (`8px 14px`, `14px`) with `12px` status dots at radius `3px`
+     (app chip wording stays — the R3 REPORTED item #499 stays
+     reported); floor grids are exactly `repeat(6,1fr)` with
+     `gap:12px`; room cards render their status tint with
+     `border-radius:12px;padding:14px;gap:6px;min-height:104px`,
+     the head row carries the `22px` number left and the
+     `12px/600` badge (`radius:6px;padding:4px 8px`, white on the
+     status accent) right, the type line renders `13px #3B4A48`,
+     the live note `14px`, and the housekeeping buttons take the
+     primary action treatment (`min-height:44px;padding:0 18px;
+     border-radius:8px;border:0;background:#0F766E;color:#fff;
+     font-weight:600`).
+     PrimeVue stays as logic carrier only: Card/Tag/Button defaults
+     are overridden here wherever they diverge from the design
+     (restyle spec section 2). Token values live in
+     `src/theme/tokens.ts` (`colors.primary/muted/roomReady/
+     roomOccupied/roomNeedsClean/roomAwaitingInspection/
+     roomOutOfService`, the `roomTint...` tints, `roomNoteInk`,
+     `cardBorder`); this rule
+     duplicates them because CSS cannot import the TS constants.
+     Views carry no style blocks (M4), so the presentation lives
+     here. Recorded divergence: the fixed `repeat(6,1fr)` grid
+     matches the board verbatim and squeezes on narrow viewports
+     (same accepted divergence as the Folio `1fr 1fr` grid, Refs
+     #522). Behaviour, reads, transitions, grouping, copy, and
+     hooks hold exactly as today. */
+  #shell [data-testid="rooms-view"] {
+    display: flex;
+    flex-direction: column;
     gap: 16px;
-    margin: 16px 0;
   }
 
-  #shell .rooms-grid .p-card {
-    border: 1px solid #E5E7EB;
-    border-radius: 12px;
-    background: #FFFFFF;
+  #shell [data-testid="rooms-view"] .rooms-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 0 24px;
   }
 
-  #shell .rooms-grid .p-card-title h3 {
-    font-size: 20px;
+  #shell [data-testid="rooms-view"] .rooms-title-block {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  #shell [data-testid="rooms-view"] .rooms-title {
+    font-size: 26px;
+    font-weight: 700;
+    margin: 0;
+    color: #1B2B2A;
+  }
+
+  #shell [data-testid="rooms-view"] .rooms-intro {
+    font-size: 14px;
+    color: #4B5D5B;
+    margin: 0;
+  }
+
+  #shell [data-testid="rooms-view"] .rooms-business-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    font-size: 14px;
+    color: #4B5D5B;
+    white-space: nowrap;
+  }
+
+  #shell [data-testid="rooms-view"] .rooms-business-row strong {
+    color: #1B2B2A;
+    font-weight: 600;
+  }
+
+  #shell [data-testid="rooms-view"] .rooms-action.p-button {
+    min-height: 44px;
+    padding: 0 18px;
+    border-radius: 8px;
+    border: 0;
+    background: #0F766E;
+    color: #FFFFFF;
+    font-weight: 600;
+  }
+
+  #shell [data-testid="rooms-view"] .rooms-empty {
+    font-size: 15px;
+    color: #4B5D5B;
+    padding: 0 24px;
+    margin: 0;
+  }
+
+  #shell [data-testid="rooms-summary"] {
+    padding: 0 24px;
+  }
+
+  #shell [data-testid="rooms-view"] .rooms-section-title {
+    font-size: 18px;
     margin: 0 0 8px;
+    color: #1B2B2A;
   }
 
-  #shell [data-testid="rooms-summary"] ul {
+  #shell [data-testid="rooms-summary"] .rooms-chips {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px 16px;
+    gap: 10px;
     list-style: none;
     padding: 0;
-    margin: 8px 0 16px;
+    margin: 0;
   }
 
-  #shell [data-testid="rooms-summary"] li {
-    display: inline-flex;
+  #shell [data-testid="rooms-summary"] .rooms-chip {
+    display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 8px;
+    background: #FFFFFF;
+    border: 1px solid #D9E0DE;
+    border-radius: 999px;
+    padding: 8px 14px;
+    font-size: 14px;
+    color: #1B2B2A;
     min-height: 44px;
+    box-sizing: border-box;
+  }
+
+  /* Summary-chip Tags keep their hooks and wording (the R3
+     REPORTED item #499 stays reported) and render as the
+     design pill labels: no PrimeVue fill, ink `14px` text. */
+  #shell [data-testid="rooms-summary"] .rooms-chip-tag.p-tag {
+    background: transparent;
+    border: 0;
+    color: #1B2B2A;
+    font-size: 14px;
+    font-weight: 400;
+    padding: 0;
+  }
+
+  #shell [data-testid="rooms-summary"] .rooms-chip-tag.p-tag .p-tag-value {
+    padding: 0;
+  }
+
+  #shell [data-testid="rooms-summary"] .rooms-chip-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+    flex: none;
+  }
+
+  #shell [data-testid="rooms-summary"] .rooms-chip-ready .rooms-chip-dot {
+    background: #0F766E;
+  }
+
+  #shell [data-testid="rooms-summary"] .rooms-chip-occupied .rooms-chip-dot {
+    background: #1D4E89;
+  }
+
+  #shell [data-testid="rooms-summary"] .rooms-chip-needs-cleaning .rooms-chip-dot {
+    background: #8A4B08;
+  }
+
+  #shell [data-testid="rooms-summary"] .rooms-chip-awaiting-inspection .rooms-chip-dot {
+    background: #5B3F9A;
+  }
+
+  #shell [data-testid="rooms-summary"] .rooms-chip-out-of-service .rooms-chip-dot {
+    background: #4B5563;
+  }
+
+  #shell [data-testid="rooms-view"] .rooms-floor {
+    padding: 0 24px;
+  }
+
+  #shell [data-testid="rooms-view"] .rooms-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 12px;
+  }
+
+  /* Room cards keep their PrimeVue Card hooks (logic carrier
+     only): the tint carries the status, the stock fill, border,
+     shadow, and padding are gone, and the body is the design
+     `14px` column with `gap:6px`. */
+  #shell [data-testid="rooms-view"] .room-card.p-card {
+    border: 0;
+    border-radius: 12px;
+    box-shadow: none;
+    margin: 0;
+  }
+
+  #shell [data-testid="rooms-view"] .room-card-ready.p-card {
+    background: #E3F3EC;
+  }
+
+  #shell [data-testid="rooms-view"] .room-card-occupied.p-card {
+    background: #E1ECF9;
+  }
+
+  #shell [data-testid="rooms-view"] .room-card-needs-cleaning.p-card {
+    background: #FCEBD2;
+  }
+
+  #shell [data-testid="rooms-view"] .room-card-awaiting-inspection.p-card {
+    background: #ECE6F7;
+  }
+
+  #shell [data-testid="rooms-view"] .room-card-out-of-service.p-card {
+    background: #E6E8E7;
+  }
+
+  #shell [data-testid="rooms-view"] .room-card .p-card-body {
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-height: 104px;
+    box-sizing: border-box;
+  }
+
+  #shell [data-testid="rooms-view"] .room-card .p-card-caption,
+  #shell [data-testid="rooms-view"] .room-card .p-card-content {
+    padding: 0;
+  }
+
+  #shell [data-testid="rooms-view"] .room-card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+  }
+
+  #shell [data-testid="rooms-view"] .room-card-number {
+    font-size: 22px;
+    margin: 0;
+    color: #1B2B2A;
+    font-weight: 700;
+  }
+
+  /* Card badges keep their Tag hooks and the shared chip wording
+     and render the design `12px/600` white-on-accent pills. */
+  #shell [data-testid="rooms-view"] .room-card-badge.p-tag {
+    border: 0;
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #FFFFFF;
+  }
+
+  #shell [data-testid="rooms-view"] .room-card-badge.p-tag .p-tag-value {
+    padding: 0;
+  }
+
+  #shell [data-testid="rooms-view"] .room-card-ready .room-card-badge.p-tag {
+    background: #0F766E;
+  }
+
+  #shell [data-testid="rooms-view"] .room-card-occupied .room-card-badge.p-tag {
+    background: #1D4E89;
+  }
+
+  #shell [data-testid="rooms-view"] .room-card-needs-cleaning .room-card-badge.p-tag {
+    background: #8A4B08;
+  }
+
+  #shell [data-testid="rooms-view"] .room-card-awaiting-inspection .room-card-badge.p-tag {
+    background: #5B3F9A;
+  }
+
+  #shell [data-testid="rooms-view"] .room-card-out-of-service .room-card-badge.p-tag {
+    background: #4B5563;
+  }
+
+  #shell [data-testid="rooms-view"] .room-card-type {
+    font-size: 13px;
+    color: #3B4A48;
+    margin: 0;
+  }
+
+  #shell [data-testid="rooms-view"] .room-card-note {
+    font-size: 14px;
+    color: #1B2B2A;
+    margin: 0;
+  }
+
+  #shell [data-testid="rooms-view"] .room-card-action {
+    margin: 4px 0 0;
+  }
+
+  #shell [data-testid="rooms-view"] .room-card-action .rooms-action.p-button {
+    width: 100%;
   }
 
   /* Native controls stay native (date inputs and selects keep
