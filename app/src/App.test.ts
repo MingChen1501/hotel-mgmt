@@ -175,11 +175,11 @@ describe('shell navigation', () => {
     return wrapper;
   }
 
-  // D1 design-header order (Refs #472, FR-DSK-1): Desk, Book, Stay,
-  // Folio, Print, Admin. Onboarding and Rooms have no design-header
-  // tab: /onboarding stays reachable through the empty-database
-  // auto-launch plus its deep route, /rooms through its deep route.
-  it('renders the six design-header destinations in design order plus the user plus sign-out', async () => {
+  // D1 design-header order (Refs #539, #472, FR-DSK-1): Desk,
+  // Rooms, Book, Stay, Folio, Print, Admin. Onboarding has no
+  // design-header tab: /onboarding stays reachable through the
+  // empty-database auto-launch plus its deep route.
+  it('renders the seven design-header destinations in design order plus the user plus sign-out', async () => {
     vi.stubGlobal('fetch', quietFetch());
     try {
       const pinia = createPinia();
@@ -189,6 +189,7 @@ describe('shell navigation', () => {
       const items = wrapper.findAll('[data-testid^="shell-nav-"]');
       expect(items.map((item) => item.text())).toEqual([
         'Desk',
+        'Rooms',
         'Book',
         'Stay',
         'Folio',
@@ -197,6 +198,7 @@ describe('shell navigation', () => {
       ]);
       expect(items.map((item) => item.attributes('href'))).toEqual([
         '/app/',
+        '/app/rooms',
         '/app/book',
         '/app/stay',
         '/app/folio',
@@ -360,7 +362,7 @@ describe('shell navigation', () => {
         expect(wrapper.find('[data-testid="shell-nav"]').exists()).toBe(true);
       });
       expect(router.currentRoute.value.path).toBe('/');
-      // No visible onboarding tab (Refs #472): the wizard stays
+      // No visible onboarding tab (Refs #539): the wizard stays
       // reachable through the empty-database auto-launch above and
       // its registered deep route, never through the visible nav.
       expect(wrapper.find('[data-testid="shell-nav-onboarding"]').exists()).toBe(false);
@@ -372,6 +374,7 @@ describe('shell navigation', () => {
 
   it.each([
     ['/', 'shell-nav-desk'],
+    ['/rooms', 'shell-nav-rooms'],
     ['/book', 'shell-nav-book'],
     ['/stay', 'shell-nav-stay'],
     ['/folio', 'shell-nav-folio'],
@@ -398,26 +401,23 @@ describe('shell navigation', () => {
     }
   });
 
-  it.each(['/onboarding', '/rooms'])(
-    'keeps %s reachable as a deep route with no visible nav tab',
-    async (path) => {
-      // Refs #472: tab-less screens render through the registered
-      // route with no active pill, exactly like unknown paths.
-      vi.stubGlobal('fetch', quietFetch());
-      try {
-        const pinia = createPinia();
-        setActivePinia(pinia);
-        useSessionStore().signIn('tok-1', 'Ada Owner', 'owner');
-        const wrapper = await mountShellWith(pinia, path);
-        expect(router.currentRoute.value.path).toBe(path);
-        expect(wrapper.find('[data-testid="shell-nav"]').exists()).toBe(true);
-        expect(wrapper.findAll('.shell-nav-active')).toHaveLength(0);
-        expect(wrapper.findAll('[aria-current="page"]')).toHaveLength(0);
-      } finally {
-        vi.unstubAllGlobals();
-      }
-    },
-  );
+  it('keeps /onboarding reachable as a deep route with no visible nav tab', async () => {
+    // Refs #539: the tab-less wizard renders through the registered
+    // route with no active pill, exactly like unknown paths.
+    vi.stubGlobal('fetch', quietFetch());
+    try {
+      const pinia = createPinia();
+      setActivePinia(pinia);
+      useSessionStore().signIn('tok-1', 'Ada Owner', 'owner');
+      const wrapper = await mountShellWith(pinia, '/onboarding');
+      expect(router.currentRoute.value.path).toBe('/onboarding');
+      expect(wrapper.find('[data-testid="shell-nav"]').exists()).toBe(true);
+      expect(wrapper.findAll('.shell-nav-active')).toHaveLength(0);
+      expect(wrapper.findAll('[aria-current="page"]')).toHaveLength(0);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 
   it('keeps the nav with no active destination on unknown paths', async () => {
     vi.stubGlobal('fetch', quietFetch());
