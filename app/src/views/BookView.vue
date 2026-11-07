@@ -1,39 +1,53 @@
 <template>
   <main data-testid="book-view">
-    <h1>{{ t('desk.book.title', {}, 'Book a room') }}</h1>
+    <!-- Book screen title (restyle Refs #520, `docs/design/Book.dc.html:2`:
+      h1 `margin:0;font-size:22px`; hooks and copy unchanged). -->
+    <h1 class="book-title">
+      {{ t('desk.book.title', {}, 'Book a room') }}
+    </h1>
     <noscript><p>{{ t('desk.entry.noscript_book', {}, 'This page needs JavaScript to quote a price and book.') }}</p></noscript>
 
     <section data-testid="book-booking">
-      <h2>{{ t('desk.book.form_heading', {}, 'New booking') }}</h2>
+      <!-- Section heading (restyle Refs #520, `docs/design/Book.dc.html:3`:
+        h2 `margin:0;font-size:18px` above the design grid). -->
+      <h2 class="book-section-title">
+        {{ t('desk.book.form_heading', {}, 'New booking') }}
+      </h2>
       <form @submit.prevent="">
+        <!-- Top grid (restyle Refs #520, `docs/design/Book.dc.html:3-:4`:
+          `display:grid;grid-template-columns:1.3fr 1fr;gap:16px` —
+          guest card left, quote card right; the stay card sits
+          full-width below this grid. Hooks, copy, and logic unchanged. -->
         <div
           class="book-layout"
           data-testid="book-layout"
         >
-          <div
-            class="book-left"
-            data-testid="book-left"
-          >
-            <Card data-testid="book-guest-card">
-              <template #title>
-                <h2>{{ t('desk.book.guest_heading', {}, 'Guest') }}</h2>
-              </template>
-              <template #content>
-                <p>{{ t('desk.book.guest_note', {}, 'Find a returning guest by name, enter a known guest ID, or register a walk-in guest by name.') }}</p>
-                <p>{{ t('desk.book.actor_note', {}, 'Walk-in registrations are recorded under your sign-in name.') }}</p>
-                <label for="book-guest-name">
-                  {{ t('desk.book.guest_name', {}, 'Guest name: ') }}
-                  <InputText
-                    id="book-guest-name"
-                    v-model="guestName"
-                    name="guest-name"
-                    autocomplete="off"
-                    data-testid="book-guest-name"
-                  />
-                </label>
+          <Card data-testid="book-guest-card">
+            <template #title>
+              <h2>{{ t('desk.book.guest_heading', {}, 'Guest') }}</h2>
+            </template>
+            <template #content>
+              <p class="book-helper">
+                {{ t('desk.book.guest_note', {}, 'Find a returning guest by name, enter a known guest ID, or register a walk-in guest by name.') }}
+              </p>
+              <p class="book-helper">
+                {{ t('desk.book.actor_note', {}, 'Walk-in registrations are recorded under your sign-in name.') }}
+              </p>
+              <label for="book-guest-name">
+                {{ t('desk.book.guest_name', {}, 'Guest name: ') }}
+                <InputText
+                  id="book-guest-name"
+                  v-model="guestName"
+                  name="guest-name"
+                  autocomplete="off"
+                  data-testid="book-guest-name"
+                />
+              </label>
+              <div class="book-guest-actions">
                 <Button
                   id="book-find-guest-button"
                   type="button"
+                  class="book-action"
                   :label="t('desk.book.find_button', {}, 'Find guest')"
                   data-testid="book-find-guest"
                   @click="onFindGuest"
@@ -41,188 +55,198 @@
                 <Button
                   id="book-register-guest-button"
                   type="button"
+                  class="book-action"
                   :label="t('desk.book.register_button', {}, 'Register walk-in guest')"
                   data-testid="book-register-guest"
                   @click="onRegisterGuest"
                 />
-                <label for="book-guest-id">
-                  {{ t('desk.book.guest_id', {}, 'Guest ID: ') }}
-                  <InputText
-                    id="book-guest-id"
-                    v-model="guestId"
-                    name="guest-id"
-                    autocomplete="off"
-                    data-testid="book-guest-id"
-                  />
-                </label>
-                <p
-                  role="status"
-                  data-testid="book-guest-status"
-                >
-                  {{ guestStatus }}
-                </p>
-              </template>
-            </Card>
+              </div>
+              <label for="book-guest-id">
+                {{ t('desk.book.guest_id', {}, 'Guest ID: ') }}
+                <InputText
+                  id="book-guest-id"
+                  v-model="guestId"
+                  name="guest-id"
+                  autocomplete="off"
+                  data-testid="book-guest-id"
+                />
+              </label>
+              <p
+                role="status"
+                class="book-helper"
+                data-testid="book-guest-status"
+              >
+                {{ guestStatus }}
+              </p>
+            </template>
+          </Card>
 
-            <Card data-testid="book-quote-card">
-              <template #title>
-                <h2>{{ t('desk.book.quote_heading', {}, 'Quoted price') }}</h2>
-              </template>
-              <template #content>
-                <div
-                  v-if="quote !== null"
-                  data-testid="book-quote-section"
-                >
-                  <p data-testid="book-quote-nights-count">
-                    {{ t('desk.book.night_count', { count: quoteNights.length }, 'Nights: {count}') }}
-                  </p>
-                  <ul data-testid="book-quote-nights">
-                    <li
-                      v-for="night in quoteNights"
-                      :key="night.nightDate"
-                    >
-                      {{ night.label }}
-                    </li>
-                  </ul>
-                  <p><strong data-testid="book-quote-total">{{ quoteTotal }}</strong></p>
+          <Card data-testid="book-quote-card">
+            <template #title>
+              <h2>{{ t('desk.book.quote_heading', {}, 'Quoted price') }}</h2>
+            </template>
+            <template #content>
+              <div
+                v-if="quote !== null"
+                data-testid="book-quote-section"
+              >
+                <p data-testid="book-quote-nights-count">
+                  {{ t('desk.book.night_count', { count: quoteNights.length }, 'Nights: {count}') }}
+                </p>
+                <ul data-testid="book-quote-nights">
+                  <li
+                    v-for="night in quoteNights"
+                    :key="night.nightDate"
+                  >
+                    {{ night.label }}
+                  </li>
+                </ul>
+                <p><strong data-testid="book-quote-total">{{ quoteTotal }}</strong></p>
+                <div>
                   <Button
                     id="book-confirm-button"
                     type="button"
+                    class="book-action"
                     :label="t('desk.book.confirm_button', {}, 'Confirm booking')"
                     data-testid="book-confirm"
                     :disabled="confirming"
                     @click="onConfirm"
                   />
-                  <p
-                    v-if="confirming"
-                    data-testid="book-confirming"
-                  >
-                    {{ t('desk.book.confirming', {}, 'Confirming the booking…') }}
-                  </p>
-                  <Message
-                    v-if="confirmError"
-                    severity="error"
-                    role="alert"
-                    data-testid="book-confirm-error"
-                  >
-                    {{ confirmError }}
-                  </Message>
                 </div>
                 <p
-                  v-else
-                  data-testid="book-quote-empty"
+                  v-if="confirming"
+                  data-testid="book-confirming"
                 >
-                  {{ t('desk.book.no_quote', {}, 'Get a price first, then confirm.') }}
+                  {{ t('desk.book.confirming', {}, 'Confirming the booking…') }}
                 </p>
-              </template>
-            </Card>
-          </div>
-
-          <div
-            class="book-right"
-            data-testid="book-right"
-          >
-            <Card data-testid="book-stay-card">
-              <template #title>
-                <h2>{{ t('desk.book.stay_heading', {}, 'Stay') }}</h2>
-              </template>
-              <template #content>
-                <label for="book-arrival-date">
-                  {{ t('desk.book.arrival', {}, 'Arrival date: ') }}
-                  <input
-                    id="book-arrival-date"
-                    v-model="arrivalDate"
-                    name="arrival-date"
-                    type="date"
-                    data-testid="book-arrival-date"
-                    @input="onStayInput"
-                  >
-                </label>
-                <label for="book-departure-date">
-                  {{ t('desk.book.departure', {}, 'Departure date: ') }}
-                  <input
-                    id="book-departure-date"
-                    v-model="departureDate"
-                    name="departure-date"
-                    type="date"
-                    data-testid="book-departure-date"
-                    @input="onStayInput"
-                  >
-                </label>
-                <label for="book-room-type-id">
-                  {{ t('desk.book.room_type', {}, 'Room type: ') }}
-                  <select
-                    id="book-room-type-id"
-                    v-model="roomTypeId"
-                    name="room-type-id"
-                    data-testid="book-room-type-id"
-                    @change="onStayInput"
-                  >
-                    <option value="">
-                      {{ t('desk.book.room_type_choose', {}, 'Choose a room type…') }}
-                    </option>
-                    <option
-                      v-for="type in roomTypes"
-                      :key="type.id"
-                      :value="type.id"
-                    >
-                      {{ type.name }}
-                    </option>
-                  </select>
-                </label>
-                <p
-                  v-if="roomTypesLoading"
-                  data-testid="book-room-type-loading"
-                >
-                  {{ t('desk.book.room_type_loading', {}, 'Loading room types…') }}
-                </p>
-                <p
-                  v-if="!roomTypesLoading && roomTypes.length === 0"
-                  data-testid="book-room-type-empty"
-                >
-                  {{ t('desk.book.room_type_empty', {}, 'No room types defined yet. Ask a manager to define one first.') }}
-                </p>
-                <label for="book-rate-plan">
-                  {{ t('desk.book.rate_plan', {}, 'Rate plan (leave blank when only one prices this type): ') }}
-                  <InputText
-                    id="book-rate-plan"
-                    v-model="ratePlan"
-                    name="rate-plan"
-                    autocomplete="off"
-                    data-testid="book-rate-plan"
-                    @update:model-value="onStayInput"
-                  />
-                </label>
-                <label for="book-discount-name">
-                  {{ t('desk.book.discount', {}, 'Discount (optional): ') }}
-                  <InputText
-                    id="book-discount-name"
-                    v-model="discountName"
-                    name="discount-name"
-                    autocomplete="off"
-                    data-testid="book-discount-name"
-                    @update:model-value="onStayInput"
-                  />
-                </label>
-                <Button
-                  id="book-quote-button"
-                  type="button"
-                  :label="t('desk.book.quote_button', {}, 'Get price')"
-                  data-testid="book-quote"
-                  @click="onQuote"
-                />
                 <Message
-                  v-if="quoteError"
+                  v-if="confirmError"
                   severity="error"
                   role="alert"
-                  data-testid="book-quote-error"
+                  data-testid="book-confirm-error"
                 >
-                  {{ quoteError }}
+                  {{ confirmError }}
                 </Message>
-              </template>
-            </Card>
-          </div>
+              </div>
+              <p
+                v-else
+                data-testid="book-quote-empty"
+              >
+                {{ t('desk.book.no_quote', {}, 'Get a price first, then confirm.') }}
+              </p>
+            </template>
+          </Card>
         </div>
+        <!-- Stay card full-width below the top grid (restyle Refs #520,
+          `docs/design/Book.dc.html:5`: same design card; stay fields in
+          a `repeat(4,1fr)` grid; full-width rate-plan/discount labels;
+          primary quote button. Hooks, copy, and logic unchanged). -->
+        <Card data-testid="book-stay-card">
+          <template #title>
+            <h2>{{ t('desk.book.stay_heading', {}, 'Stay') }}</h2>
+          </template>
+          <template #content>
+            <div class="book-stay-grid">
+              <label for="book-arrival-date">
+                {{ t('desk.book.arrival', {}, 'Arrival date: ') }}
+                <input
+                  id="book-arrival-date"
+                  v-model="arrivalDate"
+                  name="arrival-date"
+                  type="date"
+                  data-testid="book-arrival-date"
+                  @input="onStayInput"
+                >
+              </label>
+              <label for="book-departure-date">
+                {{ t('desk.book.departure', {}, 'Departure date: ') }}
+                <input
+                  id="book-departure-date"
+                  v-model="departureDate"
+                  name="departure-date"
+                  type="date"
+                  data-testid="book-departure-date"
+                  @input="onStayInput"
+                >
+              </label>
+              <label for="book-room-type-id">
+                {{ t('desk.book.room_type', {}, 'Room type: ') }}
+                <select
+                  id="book-room-type-id"
+                  v-model="roomTypeId"
+                  name="room-type-id"
+                  data-testid="book-room-type-id"
+                  @change="onStayInput"
+                >
+                  <option value="">
+                    {{ t('desk.book.room_type_choose', {}, 'Choose a room type…') }}
+                  </option>
+                  <option
+                    v-for="type in roomTypes"
+                    :key="type.id"
+                    :value="type.id"
+                  >
+                    {{ type.name }}
+                  </option>
+                </select>
+              </label>
+            </div>
+            <p
+              v-if="roomTypesLoading"
+              class="book-helper"
+              data-testid="book-room-type-loading"
+            >
+              {{ t('desk.book.room_type_loading', {}, 'Loading room types…') }}
+            </p>
+            <p
+              v-if="!roomTypesLoading && roomTypes.length === 0"
+              class="book-helper"
+              data-testid="book-room-type-empty"
+            >
+              {{ t('desk.book.room_type_empty', {}, 'No room types defined yet. Ask a manager to define one first.') }}
+            </p>
+            <label for="book-rate-plan">
+              {{ t('desk.book.rate_plan', {}, 'Rate plan (leave blank when only one prices this type): ') }}
+              <InputText
+                id="book-rate-plan"
+                v-model="ratePlan"
+                name="rate-plan"
+                autocomplete="off"
+                data-testid="book-rate-plan"
+                @update:model-value="onStayInput"
+              />
+            </label>
+            <label for="book-discount-name">
+              {{ t('desk.book.discount', {}, 'Discount (optional): ') }}
+              <InputText
+                id="book-discount-name"
+                v-model="discountName"
+                name="discount-name"
+                autocomplete="off"
+                data-testid="book-discount-name"
+                @update:model-value="onStayInput"
+              />
+            </label>
+            <div>
+              <Button
+                id="book-quote-button"
+                type="button"
+                class="book-action"
+                :label="t('desk.book.quote_button', {}, 'Get price')"
+                data-testid="book-quote"
+                @click="onQuote"
+              />
+            </div>
+            <Message
+              v-if="quoteError"
+              severity="error"
+              role="alert"
+              data-testid="book-quote-error"
+            >
+              {{ quoteError }}
+            </Message>
+          </template>
+        </Card>
       </form>
 
       <section
@@ -314,6 +338,20 @@ import ReferenceDetails, { type ReferenceItem } from '../components/ReferenceDet
 
 // Book screen as Vue SFCs (Refs #294, ADR-0003; two-column
 // restyle Refs #421 per the owner design rollout #419).
+//
+// The #520 restyle re-skins this surface to the owner design
+// (`docs/design/Book.dc.html:2-:5`, restyle spec section 5.2,
+// AC-RST-3): h1 `22px`, section h2 `18px`, the `1.3fr 1fr` top
+// grid (guest card left, quote card right) with the stay card
+// full-width below, stay fields in a `repeat(4,1fr)` grid,
+// `14px` labels, full-width `44px` controls with `margin-top:6px`,
+// `15px` quote rows with dividers, muted `14px` helpers, and
+// primary action buttons. PrimeVue components stay as logic
+// carriers only — their default visual styling is overridden in
+// the shell stylesheet (`app/src/App.vue`, Refs #520) wherever it
+// diverges from the design. Behaviour, reads, transitions,
+// catalogue keys, and hooks hold unchanged (the B3 quote-copy
+// REPORTED item stays reported).
 // Behavioural port of the inline script in `frontend/book.html`
 // (quote the price before anything is booked, then confirm the
 // reservation). The legacy page is untouched and stays served in

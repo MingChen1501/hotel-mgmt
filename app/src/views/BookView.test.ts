@@ -233,28 +233,26 @@ describe('book view', () => {
     expect(wrapper.find('[data-testid="book-booking"]').exists()).toBe(true);
   });
 
-  // D3 (Refs #421, AC-DSK-3, FR-DSK-3): the Book screen renders
-  // its two-column design layout — the guest card above the quote
-  // card on the left, the dates/room/discount card on the right.
-  // Flow and refusal tests below stay untouched (semantics
-  // unchanged); only this layout is new.
-  it('renders the two-column design cards with the guest card above the quote card', async () => {
+  // D3 (Refs #520, AC-RST-3, FR-RST-3; restyle spec section 5.2):
+  // the Book screen renders its design top grid — the guest card
+  // left and the quote card right in a `1.3fr 1fr` grid — with the
+  // stay card full-width below. Flow and refusal tests below stay
+  // untouched (semantics unchanged); only this layout is new.
+  it('renders the design top grid with the stay card full-width below', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     const wrapper = mountBook();
     await signIn(wrapper, fetchMock);
 
     expect(wrapper.find('[data-testid="book-layout"]').exists()).toBe(true);
-    const left = wrapper.find('[data-testid="book-left"]');
-    const right = wrapper.find('[data-testid="book-right"]');
-    expect(left.exists()).toBe(true);
-    expect(right.exists()).toBe(true);
-    // DOM order carries the design columns: the left column holds
-    // the guest card above the quote card, the right column holds
-    // the stay card.
-    const leftHtml = left.html();
-    expect(leftHtml.indexOf('book-guest-card')).toBeLessThan(
-      leftHtml.indexOf('book-quote-card'),
+    // DOM order carries the design columns: the top grid holds the
+    // guest card left and the quote card right, the stay card sits
+    // full-width below the grid (no left/right column wrappers).
+    expect(wrapper.find('[data-testid="book-left"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="book-right"]').exists()).toBe(false);
+    const layoutHtml = wrapper.find('[data-testid="book-layout"]').html();
+    expect(layoutHtml.indexOf('book-guest-card')).toBeLessThan(
+      layoutHtml.indexOf('book-quote-card'),
     );
     expect(wrapper.find('[data-testid="book-guest-card"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="book-quote-card"]').exists()).toBe(true);

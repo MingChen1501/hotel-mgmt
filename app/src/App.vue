@@ -692,34 +692,169 @@ export default defineComponent({
     font-weight: 600;
   }
 
-  /* Book two-column design cards (Refs #421): the guest card
-     above the quote card on the left, the dates/room/discount
-     card on the right. Same 12px radius and tokens as the Main
-     board cards above. */
-  #shell .book-layout {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-    gap: 16px;
-    margin: 16px 0;
-    align-items: start;
+  /* Book screen (Refs #520; restyle spec section 5.2, AC-RST-3):
+     pixel-faithful to `docs/design/Book.dc.html:2-:5` — h1 `22px`,
+     section h2 `18px`, the `1.3fr 1fr` top grid (guest card left,
+     quote card right, `gap:16px`) with the stay card full-width
+     below, stay fields in a `repeat(4,1fr)` grid (`gap:12px`),
+     `14px` labels, full-width `44px` controls with
+     `margin-top:6px`, `15px` quote rows with `1px solid #EEF1F0`
+     top dividers, muted `14px` helpers, primary action buttons
+     (`min-height:44px;padding:0 18px;border-radius:8px;border:0;
+     background:#0F766E;color:#fff;font-weight:600`). PrimeVue
+     stays as logic carrier only: Card/Button/InputText defaults
+     are overridden here wherever they diverge from the design
+     (restyle spec section 2). Token values live in
+     `src/theme/tokens.ts`
+     (`colors.primary/muted/cardBorder/rowDivider`); this rule
+     duplicates them because CSS cannot import the TS constants.
+     Views carry no style blocks (M4), so the presentation lives
+     here. Result/confirmation sections below the form keep their
+     current presentation (post-booking states with no design
+     counterpart; copy and hooks unchanged). */
+  #shell [data-testid="book-view"] .book-title {
+    font-size: 22px;
+    margin: 0;
+    color: #1B2B2A;
   }
 
-  #shell .book-left {
+  #shell [data-testid="book-booking"] {
     display: flex;
     flex-direction: column;
     gap: 16px;
-    min-width: 0;
   }
 
-  #shell .book-layout .p-card {
-    border: 1px solid #E5E7EB;
+  #shell [data-testid="book-booking"] .book-section-title {
+    font-size: 18px;
+    margin: 0;
+    color: #1B2B2A;
+  }
+
+  #shell [data-testid="book-booking"] form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin: 0;
+  }
+
+  #shell .book-layout {
+    display: grid;
+    grid-template-columns: 1.3fr 1fr;
+    gap: 16px;
+    margin: 0;
+    align-items: start;
+  }
+
+  #shell .book-layout .p-card,
+  #shell [data-testid="book-stay-card"].p-card {
+    border: 1px solid #D9E0DE;
     border-radius: 12px;
     background: #FFFFFF;
+    box-shadow: none;
+    margin: 0;
   }
 
-  #shell .book-layout .p-card-title h2 {
-    font-size: 24px;
-    margin: 0 0 8px;
+  #shell .book-layout .p-card-body,
+  #shell [data-testid="book-stay-card"] .p-card-body {
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  #shell .book-layout .p-card-caption,
+  #shell .book-layout .p-card-content,
+  #shell [data-testid="book-stay-card"] .p-card-caption,
+  #shell [data-testid="book-stay-card"] .p-card-content {
+    padding: 0;
+  }
+
+  #shell .book-layout .p-card-title h2,
+  #shell [data-testid="book-stay-card"] .p-card-title h2 {
+    font-size: 18px;
+    margin: 0;
+    color: #1B2B2A;
+  }
+
+  #shell [data-testid="book-view"] .book-helper {
+    font-size: 14px;
+    color: #4B5D5B;
+    margin: 0;
+  }
+
+  #shell [data-testid="book-view"] label {
+    display: block;
+    font-size: 14px;
+    color: #1B2B2A;
+  }
+
+  #shell [data-testid="book-view"] label input,
+  #shell [data-testid="book-view"] label select,
+  #shell [data-testid="book-view"] label .p-inputtext {
+    display: block;
+    width: 100%;
+    min-height: 44px;
+    margin-top: 6px;
+    box-sizing: border-box;
+    font: inherit;
+  }
+
+  #shell [data-testid="book-view"] .book-guest-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  #shell [data-testid="book-view"] .book-stay-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  #shell [data-testid="book-view"] [data-testid="book-quote-nights-count"],
+  #shell [data-testid="book-view"] [data-testid="book-quote-total"] {
+    font-size: 15px;
+    margin: 0;
+    padding: 10px 0;
+    border-top: 1px solid #EEF1F0;
+    color: #1B2B2A;
+  }
+
+  #shell [data-testid="book-view"] [data-testid="book-quote-nights"] {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+
+  #shell [data-testid="book-view"] [data-testid="book-quote-nights"] li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 10px 0;
+    border-top: 1px solid #EEF1F0;
+    font-size: 15px;
+    color: #1B2B2A;
+    box-sizing: border-box;
+  }
+
+  #shell [data-testid="book-view"] [data-testid="book-quote-empty"] {
+    font-size: 14px;
+    color: #4B5D5B;
+    margin: 0;
+  }
+
+  /* Design action buttons: guest search/register, confirm, and
+     get-price (`docs/design/Book.dc.html:3-:5`). */
+  #shell [data-testid="book-view"] .book-action.p-button {
+    min-height: 44px;
+    padding: 0 18px;
+    border-radius: 8px;
+    border: 0;
+    background: #0F766E;
+    color: #FFFFFF;
+    font-weight: 600;
   }
 
   /* Folio two-card design layout (Refs #423): the charges card
