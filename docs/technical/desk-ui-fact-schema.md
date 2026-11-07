@@ -3,7 +3,7 @@
 Status: active (Closes #465). Owned by `architect`.
 
 Owner direction 2026-11-03: no screenshot snapshots (heavy, brittle).
-Conformance between the six desk screens and the owner-supplied designs
+Conformance between the seven desk screens and the owner-supplied designs
 is checked by comparing lightweight UI facts extracted from the DOM
 against facts extracted from the design files. This document is the
 schema contract both sides build on: the design-side extractor (#466)
@@ -18,7 +18,7 @@ wiring ships in this change.
   `docs/design/README.md`; never edited to fix implementation drift).
 - Screen keys follow the manifest `order` field, stripped of the
   `.dc.html` suffix: `Main`, `Stay`, `Onboarding`, `Rooms`, `Book`,
-  `Folio`.
+  `Folio`, `Admin`.
 - App source of truth: the Vue desk SPA under `app/src/` (shell in
   `app/src/App.vue`, screens in `app/src/views/`, tokens in
   `app/src/theme/tokens.ts`).
@@ -37,7 +37,7 @@ across screens.
 
 | Field | Type | Meaning |
 |---|---|---|
-| `nav.order` | `string[]` | Rendered tab sequence on the screen, in left-to-right DOM order. Design side: the header tab spans. App side: the rendered `shell-nav` tabs. The sequence must be identical on all six screens (one shared shell); manifest `order` governs the screen/record sequence (section 1), not this field. Compares as an ordered list. |
+| `nav.order` | `string[]` | Rendered tab sequence on the screen, in left-to-right DOM order. Design side: the header tab spans. App side: the rendered `shell-nav` tabs. The sequence must be identical on all seven screens (one shared shell); manifest `order` governs the screen/record sequence (section 1), not this field. Compares as an ordered list. |
 | `nav.labels` | `object<string,string>` | Visible label per tab key (e.g. `Main` -> `Lễ tân`). Design side: the text of each header tab span. App side: the rendered label of each `shell-nav-<route>` tab. Tab keys are the screen keys from section 1 where a tab maps to a screen; tabs with no corresponding screen (e.g. print/admin destinations, which are out of the restyle batch) are recorded under their route key with their rendered label. |
 | `nav.active` | `string` | Tab key highlighted on this screen. Design side: the tab span carrying the inverted inline style (`background:#fff` on the teal header). App side: the tab carrying the `shell-nav-active` class (matching `route.name`). |
 | `headings` | `{ level: number, text: string }[]` | Visible section headings in DOM order. Design side: `h1`–`h6` elements (`Main.dc.html` uses `h3` cards). App side: rendered heading elements inside `<screen>-view`. `level` is the numeric heading rank; `text` is the exact visible copy. |
@@ -121,7 +121,7 @@ Notes on the example above:
   non-screen destinations under their route keys `print`/`admin`)
   is illustrative — the extractor (#466) owns the definitive
   mapping table and records it alongside its implementation, since
-  the rendered tab set is not identical to the six screen keys
+  the rendered tab set is not identical to the seven screen keys
   (e.g. the design header carries no Onboarding/Rooms tabs).
 - `headings` shows the heading field; the `(2)` count suffix from the
   design card title is stripped per section 5.
@@ -137,6 +137,16 @@ Notes on the example above:
   provenance may point at the same file (normal case).
 
 ## 4. Provenance mapping convention for mismatch diffs
+
+### v2 board envelope note (no shape change, `schemaVersion` stays 1)
+
+Boards shipped as bundler shells (bundle 07-11) embed the design
+markup as an escaped string in `<script type="__bundler/template">`.
+The extractor decodes that string and parses the design markup only;
+inline runtime scripts are never executed and never enter facts. For
+these boards the `design` line numbers below index the decoded design
+document, not the shell file. No field was added, removed, or retyped
+for the envelope, so the version does not bump.
 
 Every comparable fact (each `nav` block, each entry of `headings`,
 `buttons`, `inputs`) carries two provenance pointers:
@@ -212,11 +222,11 @@ on every run, machine, and timezone.
 - Records, extractions, and diffs are UTF-8 JSON text only. No PNG,
   JPEG, video, font, or other binary artifact may be produced,
   committed, or required by the extractor or the assertions.
-- Reference data lives in the repo as text: the six `.dc.html`
+- Reference data lives in the repo as text: the seven `.dc.html`
   boards plus `manifest.json` are the only design inputs. No
   vendored renderings, no base64-embedded images inside records.
 - Size discipline: each screen record must stay under 16 KB; the
-  full six-screen fact set under 100 KB. If a screen outgrows the
+  full seven-screen fact set under 100 KB. If a screen outgrows the
   budget, the schema (this document) is revised first — the
   extractor does not silently truncate.
 - Known gap (not a binary backdoor): icon-only buttons with no
@@ -227,7 +237,7 @@ on every run, machine, and timezone.
 
 ## 7. Consumers and versioning
 
-- Producer (design side): #466 reads the six boards plus the
+- Producer (design side): #466 reads the seven boards plus the
   manifest `order` field and emits one record per screen in exactly
   this shape.
 - Consumer (app side): #467 renders each screen, extracts the same

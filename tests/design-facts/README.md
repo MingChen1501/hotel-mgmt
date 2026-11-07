@@ -1,9 +1,15 @@
-# Design-side UI fact extractor (issue #466)
+# Design-side UI fact extractor (issues #466, #548)
 
 Harness/test code only. Extracts UI facts from the seven owner-supplied
 design boards per the contract in
 [docs/technical/desk-ui-fact-schema.md](../../docs/technical/desk-ui-fact-schema.md)
 (schema version 1, owned by `architect`).
+
+The v2 boards (bundle 07-11) are bundler shells: the extractor decodes
+the embedded `<script type="__bundler/template">` payload and parses
+the design markup only — inline runtime scripts never enter facts.
+Boards without the envelope (v1 static `<x-dc>` files) still parse
+directly.
 
 ## Run
 
@@ -32,9 +38,13 @@ only — no image or binary artifacts.
 
 - Onboarding's board has no header tab bar, so it extracts an empty
   nav (`order`/`labels` empty, `active` `""`).
-- A select holding a real value extracts a `null` placeholder; only a
-  prompt-like first option with no preselected option counts as a
-  select placeholder.
+- The Stay guest selects hold real values, so their placeholders are
+  `null`; only a prompt-like first option with no preselected option
+  counts as a select placeholder. The v2 boards render options inside
+  the `<sc-raw-select>` custom element, which counts as `select` kind.
+- Rooms carries no heading elements in v2 (floor titles are plain
+  `div`s), so it extracts an empty `headings` array; Admin role
+  selects outside any label fall back to the preceding heading.
 - Headings record the static prefix: parenthesised counts (`(2)`) and
   trailing `·`-separated dynamic context (guest names, room refs) are
   excluded per schema section 5.
