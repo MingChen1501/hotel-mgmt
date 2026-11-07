@@ -1520,6 +1520,187 @@ export default defineComponent({
     margin: 0;
   }
 
+  /* Onboarding wizard (Refs #524; restyle spec section 5.6,
+     AC-RST-7): pixel-faithful to
+     `docs/design/Onboarding.dc.html:2` — the wizard renders as
+     the centred `560px` column (`margin:0 auto`, flex column
+     `gap:16px`) under the shell nav (the board's slim setup
+     header maps to the shell teal bar, R1; the header stays
+     shell-owned per the O5 kept extras). The h1/intro extras
+     keep the shared sibling treatment (h1 `22px`, intro muted
+     `14px`, Folio #522 precedent); the muted `14px` progress
+     line keeps the app format (O3 stays reported); the `8px`
+     track (`#D9E0DE`, radius `4px`) carries the primary bar at
+     25/50/75/100 percent; every step card renders
+     `background:#fff;border:1px solid #D9E0DE;border-radius:12px;
+     padding:18px` as a flex column with `gap:10px`, step heads
+     (kept as h2 elements) at the board card-h3 `margin:0;
+     font-size:16px`; labels are `14px`, controls full-width
+     `44px` with `margin-top:6px`; helpers muted `14px`; the
+     primary advance action is full-width
+     (`min-height:44px;padding:0 18px;border-radius:8px;border:0;
+     background:#0F766E;color:#fff;font-weight:600`) while Back
+     keeps its secondary logic-carrier styling with a 44px target
+     (Stay #521 dialog-cancel precedent). Steps 2–4 fieldsets,
+     row add/remove controls, and flow states carry no board
+     counterpart: fieldsets render borderless in the card rhythm
+     with quiet `14px/600` group titles, rows stack with the card
+     gap, and the fixed `560px` column squeezes on narrow
+     viewports (same accepted divergence as the Folio `1fr 1fr`
+     grid, Refs #522). PrimeVue stays as logic carrier only:
+     InputText/Button/Message/ProgressBar defaults are overridden
+     here wherever they diverge from the design (restyle spec
+     section 2). Token values live in `src/theme/tokens.ts`
+     (`colors.surface/page/ink/muted/header/primary/cardBorder`);
+     this rule duplicates them because CSS cannot import the TS
+     constants. Views carry no style blocks (M4), so the
+     presentation lives here. Behaviour, flow, copy, and hooks
+     hold exactly as today (O3/O4 stay reported). */
+  #shell [data-testid="onboarding-view"] {
+    width: 560px;
+    max-width: 100%;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    box-sizing: border-box;
+  }
+
+  #shell [data-testid="onboarding-view"] .onboarding-title {
+    font-size: 22px;
+    margin: 0;
+    color: #1B2B2A;
+  }
+
+  #shell [data-testid="onboarding-view"] .onboarding-intro {
+    font-size: 14px;
+    color: #4B5D5B;
+    margin: 0;
+  }
+
+  #shell [data-testid="onboarding-view"] .onboarding-progress {
+    font-size: 14px;
+    color: #4B5D5B;
+    margin: 0;
+  }
+
+  #shell [data-testid="onboarding-view"] .onboarding-progress-bar.p-progressbar {
+    height: 8px;
+    background: #D9E0DE;
+    border: 0;
+    border-radius: 4px;
+  }
+
+  #shell [data-testid="onboarding-view"] .onboarding-progress-bar.p-progressbar .p-progressbar-value {
+    background: #0F766E;
+    border-radius: 4px;
+  }
+
+  #shell [data-testid="onboarding-view"] .onboarding-step-form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin: 0;
+  }
+
+  #shell [data-testid="onboarding-view"] .onboarding-card {
+    background: #FFFFFF;
+    border: 1px solid #D9E0DE;
+    border-radius: 12px;
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 0;
+    box-sizing: border-box;
+  }
+
+  /* Step heads keep their h2 elements (heading hooks and the
+     parity suite stay exact) and render the board card-h3
+     `16px` values (`docs/design/Onboarding.dc.html:2`). */
+  #shell [data-testid="onboarding-view"] .onboarding-card-title {
+    font-size: 16px;
+    margin: 0;
+    color: #1B2B2A;
+  }
+
+  #shell [data-testid="onboarding-view"] label {
+    display: block;
+    font-size: 14px;
+    color: #1B2B2A;
+  }
+
+  #shell [data-testid="onboarding-view"] label input,
+  #shell [data-testid="onboarding-view"] label select,
+  #shell [data-testid="onboarding-view"] label .p-inputtext {
+    display: block;
+    width: 100%;
+    min-height: 44px;
+    margin-top: 6px;
+    box-sizing: border-box;
+    font: inherit;
+  }
+
+  #shell [data-testid="onboarding-view"] .onboarding-helper {
+    font-size: 14px;
+    color: #4B5D5B;
+    margin: 0;
+  }
+
+  #shell [data-testid="onboarding-view"] .onboarding-group {
+    border: 0;
+    padding: 0;
+    margin: 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  #shell [data-testid="onboarding-view"] .onboarding-group-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #1B2B2A;
+    padding: 0;
+    margin: 0;
+  }
+
+  #shell [data-testid="onboarding-view"] .onboarding-row {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  #shell [data-testid="onboarding-view"] .onboarding-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  /* Design advance action: Continue/Finish, row add/remove, and
+     retry (`docs/design/Onboarding.dc.html:2`:
+     `min-height:44px;padding:0 18px;border-radius:8px;border:0;
+     background:#0F766E;color:#fff;font-weight:600`), full-width
+     per the board button. */
+  #shell [data-testid="onboarding-view"] .onboarding-action.p-button {
+    min-height: 44px;
+    padding: 0 18px;
+    border-radius: 8px;
+    border: 0;
+    background: #0F766E;
+    color: #FFFFFF;
+    font-weight: 600;
+    width: 100%;
+  }
+
+  /* Back keeps its secondary logic-carrier styling (Stay #521
+     dialog-cancel precedent); only the 44px target is pinned so
+     the wizard navigation meets NFR-DSK-3. */
+  #shell [data-testid="onboarding-view"] .onboarding-back.p-button {
+    min-height: 44px;
+    width: 100%;
+  }
+
   #shell [data-testid="rooms-view"] .room-card-action {
     margin: 4px 0 0;
   }
@@ -1650,7 +1831,10 @@ export default defineComponent({
   /* The same label inside the teal header keeps the light mint:
      it is readable on #0F4C47 (7.7:1) but invisible on the page
      background (1.2:1, Refs #455), so the header scope re-applies
-     it explicitly instead of inheriting the gate-safe ink above. */
+     it explicitly instead of inheriting the gate-safe ink above.
+     The value resolves through `src/theme/tokens.ts`
+     (`shell.localeLabelOnTeal`); this rule duplicates it because
+     CSS cannot import the TS constants. */
   #shell .shell-nav .shell-locale-label {
     color: #D7E8E6;
   }
