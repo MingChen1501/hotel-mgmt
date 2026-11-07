@@ -445,15 +445,21 @@ test.describe('mismatches fail with design file:line vs app selector (criterion 
   });
 
   test('mismatched placeholder fails with a diff', async ({ page }) => {
-    const record = recordFor('Stay');
+    // v2 Stay board carries no placeholder-bearing input (bundle
+    // 07-11 re-pin: Stay extracts exactly [[text, Người duyệt,
+    // null]] — `tests/design-facts/extract-design-facts.test.mjs`),
+    // so the placeholder-mismatch fixture uses the Onboarding
+    // record, the one v2 screen with a placeholder input (a text
+    // field, hence the attribute — not first-option — mutation).
+    const record = recordFor('Onboarding');
     const index = record.inputs.findIndex((input) => input.placeholder !== null);
     expect(index).toBeGreaterThanOrEqual(0);
     const placeholder = record.inputs[index].placeholder as string;
-    const dom = buildMatchingDom(record, 'stay-view').replace(
-      `<option value="">${placeholder}</option>`,
-      `<option value="">${placeholder} khác</option>`,
+    const dom = buildMatchingDom(record, 'onboarding-view').replace(
+      `placeholder="${placeholder}"`,
+      `placeholder="${placeholder} khác"`,
     );
-    const actual = await extractFromDom(page, 'stay-view', dom);
+    const actual = await extractFromDom(page, 'onboarding-view', dom);
     expectSingleDiff(
       diffFactRecords(record, actual),
       `inputs[${index}].placeholder`,
