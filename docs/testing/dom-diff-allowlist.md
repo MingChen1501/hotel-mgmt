@@ -12,6 +12,17 @@ is traceable to an entry in section 3, and section 5 states the
 owner-approval path to add one. Docs only; no product behaviour
 change, no gate script change, no CI workflow change.
 
+Design source is the v2 7-board bundle (bundle 07-11, Closes #538):
+`docs/design/*.dc.html` plus the board order in
+`docs/design/manifest.json` (Main, Stay, Onboarding, Rooms, Book,
+Folio, Admin). Each v2 file is a bundler shell; the gate design
+side is the decoded design markup (the extractor decodes the
+embedded template payload, Refs #548, PR #551) — the raw shell
+bytes never enter a diff. The gate covers the six boards with a
+running app screen; the seventh board (Admin) has no app screen
+yet and is deferred, never allowlisted (section 2 records the
+disposition, Refs #546, Refs #549).
+
 ## 1. Rule
 
 The gate exempts dynamic data only via the owner-approved
@@ -87,7 +98,38 @@ Wired into the gate as `MAIN_SCREEN_ALLOWLIST` (Main DD-01..DD-07),
 `app/e2e/dom-diff.ts` (each `skipPaths` entry cites its DD-ID);
 the live gate (`app/e2e/dom-diff.spec.ts`) applies the matching
 screen allowlist and keeps `EMPTY_ALLOWLIST` for the one
-remaining screen without approved entries (Onboarding).
+remaining covered screen without approved entries (Onboarding).
+
+Gate coverage follows the seven-board manifest
+(`docs/design/manifest.json` order, bundle 07-11, Closes #538)
+minus the deferred Admin board: `SCREEN_TABLE`
+(`app/e2e/design-facts.ts:104`) carries the six boards with a
+running app screen (Main, Stay, Onboarding, Rooms, Book, Folio).
+Extraction coverage is seven boards — the extractor already
+emits the seventh record (`Admin.facts.json`, Refs #548, PR
+#551) — while gate assertion coverage is six screens.
+
+Admin-board disposition (Refs #549): DEFERRED. The Admin board
+(`Admin.dc.html`, `Quản trị`) has no app counterpart: the board
+is new in bundle 07-11 with no predecessor screen, and the
+Admin screen is unbuilt (open issue #546). Neither the
+design-facts gate nor the dom-diff gate asserts the Admin board,
+and the Admin board carries no allowlist entry — entries exempt
+dynamic data on covered screens and require observed gate
+output per section 5, neither of which exists for Admin. When
+#546 lands, the dev fixture update adds the Admin screen to the
+gate tables and proposes entries from observed output through
+section 5; this document records the new entries, it does not
+pre-approve them.
+
+The lab-evidence paragraphs below were recorded against the v1
+boards and stand as the v1 baseline: entry validity against the
+v2 decoded markup is re-verified by the #549 dev fixture update,
+and the counts are re-baselined by the separate evidence issue
+(#550). A DD entry whose v2 decoded path no longer matches any
+node surfaces as an `unusedAllowlistEntries` warning — that
+warning, not a silent pass, is the signal to re-point or retire
+the entry per section 5.
 Lab evidence (isolated `hotel-lab-686`, 2026-11-06, settled
 post-load extraction): Main `252` non-allowlisted diffs before
 wiring (the prior sweep's `253` minus the S2 title diff, now
@@ -219,8 +261,13 @@ failures.
 
 - Gate source of truth: `app/e2e/dom-diff.ts` (hook) and
   `app/e2e/dom-diff.spec.ts` (gate spec, Closes #480).
-- Design source of truth: `docs/design/*.dc.html`
-  (`docs/design/README.md`, Closes #462).
+- Design source of truth: `docs/design/*.dc.html` (v2 7-board
+  bundle 07-11, Closes #538; board order in `manifest.json`:
+  Main, Stay, Onboarding, Rooms, Book, Folio, Admin) —
+  `docs/design/README.md` (Closes #462).
+- Admin-board gate disposition: deferred, never allowlisted —
+  no app screen exists yet (open issue #546); recorded in
+  section 2 (Refs #549).
 - Rollout done-conditions: `docs/product/acceptance-criteria.md`
   section 11; rollout traceability:
   `docs/testing/desk-ui-rollout-test-traceability.md`.

@@ -50,9 +50,9 @@ implements no screen and changes no product code.
   without replacement.
 - Open owner calls constrain two guards (recorded on the affected
   child issue with the owner decision, never assumed): the shell
-  tab set on #518 (R1 asserts the decided set only — the five
-  tabbed boards show six tabs with no Onboarding/Rooms tab while
-  the Rooms board highlights its own tab), and the
+  tab set (R1 asserts the decided set only — the seven v2 design
+  header tabs render as seven nav tabs with Onboarding as the
+  tab-less deep route, Refs #539; the Rooms tab landed in #552), and the
   #495–#500 REPORTED flow/copy items, which stay reported
   (child PRs assert visuals only, never decide copy or flow).
 
@@ -70,8 +70,8 @@ implements no screen and changes no product code.
 | NFR-RST-1 catalogue + hotel name | `script/catalogue-coverage-check.sh` (fail-closed scan over `app/src/` plus both catalogue files) with `messages/en.json:568` (`desk.shell.brand`) and `messages/vi.json` parity | Every screen string resolves through the catalogue in both locales; the name shown is the configured value; new-key coverage rides R1 (header) and R8 (printed name) |
 | NFR-RST-2 print parity | Invoice matching folio lines and balance `app/src/views/PrintView.test.ts:272`; one receipt per recorded payment `:306`; folio restyle kept out of print `app/src/views/FolioView.test.ts:565` | Printed output matches the folio exactly and no screen styling leaks into print; the served-print restyle assertion is new (R8) |
 | NFR-RST-3 token source | Single source `app/src/theme/tokens.ts:22` (header `#0F4C47`), `:23` (primary `#0F766E`), `:15` (page `#F4F6F5`), `:17` (ink `#1B2B2A`); pins `app/src/theme/tokens.test.ts:43` (primary fill), `:52` (focus ring), `:69` (scale alignment), `:75` (no residual PrimeVue default) | Token edits land in `tokens.ts` in one place; the seven-surface 44px audit and the no-fork pin are new (R9) |
-| Design-facts gate (schema v1) | Six-screen table `app/e2e/design-facts.ts:104` (Main, Stay, Onboarding, Rooms, Book, Folio with route and view hook); matching app DOM passes `app/e2e/design-facts.spec.ts:159`; mismatches fail with design `file:line` vs app selector `:379`; token colours resolve through computed styles `:485`; live shell conformance (tokens, tab labels, active state per screen) `:511` | The gate already asserts nav order/labels, headings, buttons, inputs, and token colours per the fact schema on matching and live DOM; restyle child PRs keep it green per surface, never weaken it |
-| DOM-diff dynamic data | Owner-approved exemptions `docs/testing/dom-diff-allowlist.md` (section 3 entries, section 5 approval path) | Dates, counts, and names render live data; exemptions stay allowlist-only — a restyle diff on a non-exempt node is a real failure |
+| Design-facts gate (schema v1, v2 boards) | Seven-board manifest covered minus deferred Admin: `SCREEN_TABLE` `app/e2e/design-facts.ts:104` carries the six boards with a running app screen (Main, Stay, Onboarding, Rooms, Book, Folio) with route and view hook; the seventh board Admin has no app screen and is deferred, never asserted (Refs #546, Refs #549). Schema v1 is unchanged (#551 added a v2-envelope provenance note with no record-shape change, so `FACT_SCHEMA_VERSION` stays 1). Matching app DOM passes `app/e2e/design-facts.spec.ts:159`; mismatches fail with design `file:line` vs app selector `:379`; token colours resolve through computed styles `:491`; live shell conformance (tokens, tab labels, active state per screen) `:517` | The gate already asserts nav order/labels, headings, buttons, inputs, and token colours per the fact schema on matching and live DOM; restyle child PRs keep it green per covered surface, never weaken it |
+| DOM-diff dynamic data | Owner-approved exemptions `docs/testing/dom-diff-allowlist.md` (section 3 entries, section 5 approval path; v2 7-board bundle with the Admin board deferred, Refs #549) | Dates, counts, and names render live data; exemptions stay allowlist-only — a restyle diff on a non-exempt node is a real failure; no Admin-board diff is asserted or exempted until #546 lands |
 
 ## 3. New restyle guards R1–R9 (created by the child PRs)
 
@@ -108,7 +108,7 @@ the child issue and PR.
 | AC-RST-5 — Folio two-card grid with balance accent, print unchanged | FR-RST-5 | Parity: `FolioView.test.ts:215,246,501,565` + unchanged `FR-BIL-1/2/3` matrix guards + **R5 new** + **R8 new** (print half) | Baseline green; R5/R8 pending #522 |
 | AC-RST-6 — Rooms map per the design, wording unchanged | FR-RST-6 | Parity: `RoomsView.test.ts:193,228,286,345` + unchanged `FR-RMS-1/2/3` matrix guards + **R6 new** | Baseline green; R6 pending #523 |
 | AC-RST-7 — Onboarding wizard per the design, seeded never launches | FR-RST-7 | Parity: `OnboardingView.test.ts:61,124,198,709` + **R7 new** + **R8 new** (printed-name half) | Baseline green; R7 pending #524, R8 pending #522 |
-| AC-RST-8 — screenshots, facts gate, catalogue, hotel name, owner review | NFR-RST-1, NFR-RST-2, NFR-RST-3 | `catalogue-coverage-check.sh` green + `messages/en.json:568` + `vi.json` parity + facts gate `design-facts.spec.ts:159,379,485,511` green per surface + **R1 new** (header name) + **R8 new** (served print) + **R9 new** (targets + no-fork) + screenshots with per-screen owner review (no automated guard by design) | Catalogue job and facts gate green at baseline; R1/R8/R9 pending the child PRs; screenshots + owner review recorded on each child issue (#518–#524) and PR before merge |
+| AC-RST-8 — screenshots, facts gate, catalogue, hotel name, owner review | NFR-RST-1, NFR-RST-2, NFR-RST-3 | `catalogue-coverage-check.sh` green + `messages/en.json:568` + `vi.json` parity + facts gate `design-facts.spec.ts:159,379,491,517` green per covered surface (Admin deferred, Refs #549) + **R1 new** (header name) + **R8 new** (served print) + **R9 new** (targets + no-fork) + screenshots with per-screen owner review (no automated guard by design) | Catalogue job and facts gate green at baseline; R1/R8/R9 pending the child PRs; screenshots + owner review recorded on each child issue (#518–#524) and PR before merge |
 
 ## 5. Exit criteria for the restyle testing slice
 
