@@ -180,7 +180,7 @@ export const BOOK_SCREEN_ALLOWLIST: DomDiffAllowlist = {
 // `docs/testing/dom-diff-allowlist.md` section 3: the design side
 // carries the static snapshot values (example hotel name, catalogue
 // options) while the app side renders live values (configured
-// hotel, business clock, API-driven room catalogue), so these nodes
+// hotel, API-driven arrival/room/departing catalogues), so these nodes
 // can never coincide. Refs #549: the v2 Stay board reshaped the v1
 // list layout into check-in/checkout panels — DD-10 re-points to the
 // rendered root, DD-13 re-points to the three reshaped panel selects
@@ -194,8 +194,8 @@ export const BOOK_SCREEN_ALLOWLIST: DomDiffAllowlist = {
 // headings or rows (check-in/checkout panels only), so only the
 // catalogue selects above are exempted on the design side. The fresh
 // lab renders empty stay tables, so app-side list rows carry no entry
-// yet (same note as Main DD-03..DD-05): rows are proposed when a run
-// with stay data shows them.
+// yet: the v2 board carries no lists at all, so no app list rows
+// exist to propose (Refs #541).
 export const STAY_SCREEN_ALLOWLIST: DomDiffAllowlist = {
   skipPaths: [
     // DD-10 hotel name: design example content vs configured hotel
@@ -212,7 +212,8 @@ export const STAY_SCREEN_ALLOWLIST: DomDiffAllowlist = {
     // (static prefix, `Tải lại` button) stays pinned by the
     // fact-level decided content.
     '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[0]/div[0]/strong[0]',
-    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/div[0]/div[0]/div[1]/p[0]/strong[0]',
+    // Refs #541: the v2 rebuild drops the lists card, so the
+    // app-side date path retires here with it.
     // DD-12 stay-list example rows: v1 design illustration
     // (`Nguyễn Văn An · Phòng 205`, `Lê Minh · Phòng 201`,
     // `Phạm Hoa · Phòng 203`) vs seed- and action-dependent lists.
@@ -227,15 +228,17 @@ export const STAY_SCREEN_ALLOWLIST: DomDiffAllowlist = {
     // DD-13 catalogue options: the v2 Stay board reshaped the two v1
     // option selects into three panel selects (orchestrator decision
     // on #549: same functional elements, so this re-points rather
-    // than widens) — the check-in guest-name options, the room
-    // prompt plus ready-room options, and the checkout stay options
-    // — vs the API-driven catalogues (boot seed rooms, plus any
-    // later-defined options under the same select subtrees).
+    // than widens)
+    // prompt plus ready-room options, and the checkout stay options.
+    // (Refs #541: the rebuild drops the move card, so the move-room
+    // app path retires here; the three app paths below track the v2
+    // panels: arrival, room, and departing selects).
     '/html[0]/body[0]/div[0]/div[0]/div[0]/div[1]/div[0]/label[0]/select[0]',
     '/html[0]/body[0]/div[0]/div[0]/div[0]/div[1]/div[0]/label[1]/select[0]',
     '/html[0]/body[0]/div[0]/div[0]/div[0]/div[1]/div[1]/label[0]/select[0]',
-    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/div[1]/div[0]/div[1]/div[0]/label[2]/select[0]',
-    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/div[2]/div[0]/div[1]/div[0]/label[1]/select[0]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/div[0]/div[0]/div[0]/div[1]/label[0]/select[0]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/div[0]/div[0]/div[0]/div[1]/label[1]/select[0]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/div[0]/div[1]/div[0]/div[1]/label[0]/select[0]',
   ],
 };
 

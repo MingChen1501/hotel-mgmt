@@ -256,30 +256,24 @@ export const DECIDED_CONTENT: readonly DecidedScreenContent[] = [
     },
   },
   {
+    // Stay v2 board (Refs #541, bundle 07-11): the two-panel
+    // screen pins its two h3 titles, the two static action
+    // labels, and the four panel inputs in DOM order. The
+    // pre-v2 lists, move, and times sections are gone (zero
+    // extras); the review-to-checkout flow state (approval
+    // form, check-out button, confirm dialog) stays out of the
+    // decided set per the flow-state rule above.
     screen: 'Stay',
     headings: [
-      { level: 1, text: 'Nhận phòng, chuyển phòng và trả phòng cho khách' },
-      { level: 2, text: 'Danh sách lưu trú theo ngày làm việc' },
-      { level: 3, text: 'Khách đến hôm nay' },
-      { level: 3, text: 'Đang lưu trú' },
-      { level: 3, text: 'Khách đi hôm nay' },
-      { level: 2, text: 'Nhận phòng cho khách đến' },
-      { level: 2, text: 'Chuyển phòng giữa kỳ lưu trú' },
-      { level: 2, text: 'Ghi nhận đến sớm và đi trễ' },
-      { level: 2, text: 'Trả phòng kèm đối chiếu bảng kê' },
+      { level: 3, text: 'Nhận phòng' },
+      { level: 3, text: 'Trả phòng' },
     ],
-    buttons: ['Tải lại', 'Nhận phòng', 'Chuyển phòng', 'Ghi nhận giờ', 'Đối chiếu bảng kê', 'Trả phòng'],
+    buttons: ['Nhận phòng', 'Xem hoá đơn'],
     inputs: [
-      { kind: 'text', label: 'Mã đặt phòng:', placeholder: null },
-      { kind: 'text', label: 'Giờ đến thực tế (để trống nếu chưa cần):', placeholder: null },
-      { kind: 'select', label: 'Phòng sẵn sàng:', placeholder: 'Hãy chọn một phòng sẵn sàng…' },
-      { kind: 'text', label: 'Mã lưu trú:', placeholder: null },
-      { kind: 'select', label: 'Chuyển đến phòng:', placeholder: null },
-      { kind: 'text', label: 'Mã lưu trú:', placeholder: null },
-      { kind: 'text', label: 'Giờ đến thực tế (để trống nếu chưa cần):', placeholder: null },
-      { kind: 'text', label: 'Giờ đi thực tế (để trống nếu chưa cần):', placeholder: null },
-      { kind: 'text', label: 'Mã lưu trú:', placeholder: null },
-      { kind: 'text', label: 'Giờ đi thực tế (để trống nếu chưa cần):', placeholder: null },
+      { kind: 'select', label: 'Khách đến', placeholder: 'Chọn khách đến...' },
+      { kind: 'select', label: 'Phòng', placeholder: 'Chọn phòng...' },
+      { kind: 'select', label: 'Khách đi', placeholder: 'Chọn khách đi...' },
+      { kind: 'text', label: 'Người duyệt', placeholder: null },
     ],
   },
   {

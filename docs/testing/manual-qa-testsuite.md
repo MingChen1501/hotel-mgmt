@@ -179,8 +179,8 @@ Trước khi chạy case của từng màn hình, xác nhận vỏ chung đạt 
 - **Điều kiện tiên quyết:** DB có 1 đặt phòng đã xác nhận (confirmed) chưa nhận
   phòng; mở `/stay`.
 - **Các bước thực hiện:**
-  1. Chọn đặt phòng tại danh sách arrivals (`desk.stay.arrivals`).
-  2. Đọc ô chọn phòng (`desk.stay.room_label`) khi chưa chọn gì.
+  1. Chọn khách đến tại ô chọn (`desk.stay.arriving_label`).
+  2. Đọc ô chọn phòng (`desk.stay.room_choice`) khi chưa chọn gì.
   3. Thử bấm `desk.stay.checkin_button` khi chưa chọn phòng.
 - **Kết quả mong đợi:** ô chọn phòng hiển thị placeholder tường minh kèm gợi ý
   chọn phòng sẵn sàng (`desk.stay.choose_room`, `desk.stay.room_hint`); bấm
@@ -193,12 +193,12 @@ Trước khi chạy case của từng màn hình, xác nhận vỏ chung đạt 
 - **Điều kiện tiên quyết:** như QA-STAY-1; có ít nhất 1 phòng
   `vacant-inspected` đúng hạng phòng đã đặt.
 - **Các bước thực hiện:**
-  1. Tại `/stay`, chọn đặt phòng, chọn phòng sẵn sàng, bấm
+  1. Tại `/stay`, chọn khách đến, chọn phòng sẵn sàng, bấm
      `desk.stay.checkin_button`.
-  2. Kiểm tra danh sách in-house (`desk.stay.in_house`) và trạng thái phòng.
-- **Kết quả mong đợi:** hiển thị `desk.stay.checked_in` (hoặc
-  `desk.stay.checked_in_named`); đặt phòng thành stay in-house gắn với phòng,
-  phòng chuyển occupied.
+  2. Kiểm tra ô chọn khách đi (`desk.stay.departing_label`) và trạng thái phòng.
+- **Kết quả mong đợi:** hiển thị
+  `desk.stay.checked_in_named`; đặt phòng thành stay in-house gắn với phòng
+  (xuất hiện trong ô chọn khách đi), phòng chuyển occupied.
 - **Truy vết:** AC-DSK-4.
 
 ### QA-STAY-3 — Trả phòng: folio chưa thanh toán thì bị chặn nếu thiếu duyệt chi
@@ -206,15 +206,15 @@ Trước khi chạy case của từng màn hình, xác nhận vỏ chung đạt 
 - **Điều kiện tiên quyết:** 1 stay in-house có folio còn số dư mở (open balance);
   mở `/stay`.
 - **Các bước thực hiện:**
-  1. Chọn stay tại in-house, bấm `desk.stay.review_button`, đọc
+  1. Chọn khách đi tại ô chọn, bấm `desk.stay.review_button`, đọc
      `desk.stay.folio_balance`.
   2. Bấm `desk.stay.checkout_button` khi chưa có phê duyệt.
-  3. Ghi phê duyệt (`desk.stay.approved_by`, `desk.stay.approval_reason`,
-     `desk.stay.need_approver`), xác nhận `desk.stay.approval_recorded`, rồi
-     bấm trả phòng lại.
-- **Kết quả mong đợi:** bước 2 bị từ chối với `desk.stay.refused_open_balance`;
-  sau phê duyệt, trả phòng thành công (`desk.stay.checked_out` hoặc
-  `desk.stay.checked_out_named`), stay đóng, phòng thành vacant-dirty.
+  3. Ghi phê duyệt (`desk.stay.approved_by`, `desk.stay.approver_role`,
+     `desk.stay.need_approver`), xác nhận `desk.stay.approval_recorded_brief`,
+     rồi bấm trả phòng lại.
+- **Kết quả mong đợi:** bước 1 báo `desk.stay.refused_open_balance` và mở
+  khối phê duyệt; sau phê duyệt, trả phòng thành công
+  (`desk.stay.checked_out_named`), stay đóng, phòng thành vacant-dirty.
 - **Truy vết:** AC-DSK-4.
 
 ## 4. Màn hình Folio — bảng kê (`/folio`)

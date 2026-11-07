@@ -328,18 +328,20 @@ function mountStay() {
   });
 }
 
-async function signInStay(wrapper: ReturnType<typeof mountStay>, fetchMock: ReturnType<typeof vi.fn>) {
-  stubStayHappy(fetchMock);
+// The v2 screen loads its panel data on mount for a signed-in
+// session: preset the session, mount, then wait for the arrival
+// select to carry a list-backed option.
+async function signInStay() {
+  const pinia = createPinia();
+  setActivePinia(pinia);
   useSessionStore().signIn('tok-1', 'Ada Owner', 'owner');
-  await wrapper.find('[data-testid="stay-refresh"]').trigger('click');
+  const wrapper = mount(StayView, { global: { plugins: [pinia] } });
   await vi.waitFor(() => {
-    expect(wrapper.find('[data-testid="stay-main"]').exists()).toBe(true);
+    expect(
+      wrapper.findAll('[data-testid="stay-checkin-arrival"] option').length,
+    ).toBeGreaterThan(1);
   });
-  await vi.waitFor(() => {
-    expect(wrapper.find('[data-testid="stay-arrivals-table"] tbody tr td').text()).toContain(
-      'Guest One',
-    );
-  });
+  return wrapper;
 }
 
 // ---- Folio helpers (ledger mirrors FolioView.test.ts) ----
@@ -461,18 +463,28 @@ describe('QA-EDGE-1 unknown booking ref', () => {
   it('refuses the unknown ref with no room assignment call', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
-    const wrapper = mountStay();
-    await signInStay(wrapper, fetchMock);
-
     const happy = stubStayHappy(fetchMock);
     fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/stay/ListArrivalsDepartures') {
+        return Promise.resolve(
+          jsonResponse({
+            businessDate: '2026-10-26',
+            arrivals: [
+              { reservationRef: 'NOPE-0000', guestId: 'g-1', roomId: null },
+            ],
+            inHouse: [],
+            departures: [],
+          }),
+        );
+      }
       if (url === '/v1/reservations/GetReservation') {
         return Promise.resolve(jsonResponse({ code: 'NOT_FOUND', message: 'no such booking' }, 404));
       }
       return happy(url, init);
     });
+    const wrapper = await signInStay();
 
-    await wrapper.find('[data-testid="stay-booking-ref"]').setValue('NOPE-0000');
+    await wrapper.find('[data-testid="stay-checkin-arrival"]').setValue('NOPE-0000');
     await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="stay-checkin-error"]').text()).toContain(
@@ -636,18 +648,18 @@ describe('QA-EDGE-4 empty required fields', () => {
     const urls = fetchMock.mock.calls.map((call) => String(call[0]));
     expect(urls).not.toContain('/v1/reservations/CreateReservation');
   });
-  it('stay: an empty booking ref names the field and reads nothing', async () => {
+  it('stay: an empty arrival select names the field and reads nothing', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
-    const wrapper = mountStay();
-    await signInStay(wrapper, fetchMock);
+    stubStayHappy(fetchMock);
+    const wrapper = await signInStay();
 
     const readsBefore = fetchMock.mock.calls.filter(
       (call) => String(call[0]) === '/v1/reservations/GetReservation',
     ).length;
     await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
     expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain(
-      'Enter the booking reference first.',
+      'Choose an arriving guest first.',
     );
     expect(
       fetchMock.mock.calls.filter((call) => String(call[0]) === '/v1/reservations/GetReservation'),
@@ -781,8 +793,8 @@ describe('QA-EDGE-7 concurrent check-in to the same room', () => {
   it('refuses the taken room with no check-in half-record', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
-    const wrapper = mountStay();
-    await signInStay(wrapper, fetchMock);
+    stubStayHappy(fetchMock);
+    const wrapper = await signInStay();
 
     const happy = stubStayHappy(fetchMock);
     let assigns = 0;
@@ -794,7 +806,7 @@ describe('QA-EDGE-7 concurrent check-in to the same room', () => {
       return happy(url, init);
     });
 
-    await wrapper.find('[data-testid="stay-booking-ref"]').setValue('RSV-1');
+    await wrapper.find('[data-testid="stay-checkin-arrival"]').setValue('RSV-1');
     await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain('Booked: Standard');
@@ -853,19 +865,15 @@ describe('QA-EDGE-8 dirty-room checkout flow', () => {
       }
       return happy(url, init);
     });
-    const wrapper = mountStay();
     useSessionStore().signIn('tok-1', 'Ada Owner', 'owner');
-    await wrapper.find('[data-testid="stay-refresh"]').trigger('click');
+    const wrapper = mountStay();
     await vi.waitFor(() => {
-      expect(wrapper.find('[data-testid="stay-main"]').exists()).toBe(true);
-    });
-    await vi.waitFor(() => {
-      expect(wrapper.find('[data-testid="stay-arrivals-table"] tbody tr td').text()).toContain(
-        'Guest One',
-      );
+      expect(
+        wrapper.find('[data-testid="stay-checkin-arrival"] option[value="RSV-1"]').exists(),
+      ).toBe(true);
     });
 
-    await wrapper.find('[data-testid="stay-booking-ref"]').setValue('RSV-1');
+    await wrapper.find('[data-testid="stay-checkin-arrival"]').setValue('RSV-1');
     await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain('Booked: Standard');
@@ -886,14 +894,14 @@ describe('QA-EDGE-8 dirty-room checkout flow', () => {
   it('closes the stay once, writes no room state, and re-reads the lists', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
-    const wrapper = mountStay();
-    await signInStay(wrapper, fetchMock);
+    stubStayHappy(fetchMock);
+    const wrapper = await signInStay();
 
     const listsBefore = fetchMock.mock.calls.filter(
       (call) => call[0] === '/v1/stay/ListArrivalsDepartures',
     ).length;
 
-    await wrapper.find('[data-testid="stay-checkout-stay-id"]').setValue('s-1');
+    await wrapper.find('[data-testid="stay-checkout-stay"]').setValue('s-1');
     await wrapper.find('[data-testid="stay-review"]').trigger('click');
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="stay-checkout-status"]').text()).toContain(
@@ -968,13 +976,12 @@ describe('QA-EDGE-9 API-error rendering without raw leak', () => {
         jsonResponse({ code: 'INTERNAL', message: 'boom\nstack trace {...}' }, 500),
       );
     });
-    const wrapper = mountStay();
     useSessionStore().signIn('tok-1', 'Ada Owner', 'owner');
-    await wrapper.find('[data-testid="stay-refresh"]').trigger('click');
+    const wrapper = mountStay();
     await vi.waitFor(() => {
-      expect(wrapper.find('[data-testid="stay-lists-error"]').exists()).toBe(true);
+      expect(wrapper.find('[data-testid="stay-checkin-error"]').exists()).toBe(true);
     });
-    const errorText = wrapper.find('[data-testid="stay-lists-error"]').text();
+    const errorText = wrapper.find('[data-testid="stay-checkin-error"]').text();
     expect(errorText).toContain('That did not work');
     expectNoRawLeak(errorText);
   });
@@ -1083,10 +1090,10 @@ describe('QA-EDGE-10 double-submit', () => {
   it('stay: a double-confirmed checkout closes once', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
-    const wrapper = mountStay();
-    await signInStay(wrapper, fetchMock);
+    stubStayHappy(fetchMock);
+    const wrapper = await signInStay();
 
-    await wrapper.find('[data-testid="stay-checkout-stay-id"]').setValue('s-1');
+    await wrapper.find('[data-testid="stay-checkout-stay"]').setValue('s-1');
     await wrapper.find('[data-testid="stay-review"]').trigger('click');
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="stay-checkout-status"]').text()).toContain(
@@ -1162,10 +1169,10 @@ describe('QA-EDGE-11 mid-flow refresh', () => {
   it('stay: a back/forward return keeps the explicit placeholder with check-in blocked', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
-    const wrapper = mountStay();
-    await signInStay(wrapper, fetchMock);
+    stubStayHappy(fetchMock);
+    const wrapper = await signInStay();
 
-    await wrapper.find('[data-testid="stay-booking-ref"]').setValue('RSV-1');
+    await wrapper.find('[data-testid="stay-checkin-arrival"]').setValue('RSV-1');
     await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain('Booked: Standard');
@@ -1177,9 +1184,9 @@ describe('QA-EDGE-11 mid-flow refresh', () => {
     expect(
       (wrapper.find('[data-testid="stay-checkin-room"]').element as HTMLSelectElement).value,
     ).toBe('');
-    expect(wrapper.find('[data-testid="stay-checkin-room"]').text()).toContain('Pick a ready room…');
+    expect(wrapper.find('[data-testid="stay-checkin-room"]').text()).toContain('Choose a room...');
     expect(wrapper.find('[data-testid="stay-checkin-room-hint"]').text()).toContain(
-      'Choose a ready room below.',
+      'Choose a ready room first.',
     );
 
     // And the returned-to check-in is still blocked: one more
