@@ -1,6 +1,6 @@
 # Design-side UI fact extractor (issue #466)
 
-Harness/test code only. Extracts UI facts from the six owner-supplied
+Harness/test code only. Extracts UI facts from the seven owner-supplied
 design boards per the contract in
 [docs/technical/desk-ui-fact-schema.md](../../docs/technical/desk-ui-fact-schema.md)
 (schema version 1, owned by `architect`).
@@ -32,9 +32,9 @@ only — no image or binary artifacts.
 
 - Onboarding's board has no header tab bar, so it extracts an empty
   nav (`order`/`labels` empty, `active` `""`).
-- The Stay guest select holds a real value, so its placeholder is
-  `null`; only a prompt-like first option with no preselected option
-  counts as a select placeholder.
+- A select holding a real value extracts a `null` placeholder; only a
+  prompt-like first option with no preselected option counts as a
+  select placeholder.
 - Headings record the static prefix: parenthesised counts (`(2)`) and
   trailing `·`-separated dynamic context (guest names, room refs) are
   excluded per schema section 5.
