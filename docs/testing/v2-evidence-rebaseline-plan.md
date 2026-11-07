@@ -123,9 +123,9 @@ and the transitional note in `evidence/538/` both say so.
 
 | #550 acceptance criterion | Case | Guard (`file:line` verified on disk) | Pass evidence required in the evidence README |
 |---|---|---|---|
-| New evidence dir holds one side-by-side render per v2 board (7 images, 1200px), each traceable to the committed `docs/design/*.dc.html` bytes | EVID-1..7 (§2) + EVID-9 (§5) | Design source `docs/design/README.md:5` (seven boards, bundle 07-11) + `docs/design/manifest.json:1` (order, 1200px widths); schema `docs/technical/desk-ui-fact-schema.md:59,141` | sha256 table per board; image dimensions recorded |
-| No stale v1 baseline render remains as the reference of record (deleted or marked superseded) | EVID-8 (§3) | Stale dirs on disk (`evidence/515/`, `evidence/518/`–`evidence/524/`, `evidence/538/`); live reference rule in `docs/testing/dom-diff-allowlist.md` (v2 bundle source) | List of added `SUPERSEDED.md` notes and/or deleted paths |
-| The worker cites the green extractor + gate runs the baseline was captured against | EVID-9 (§5) | Extractor `tests/design-facts/extract-design-facts.test.mjs` (25 tests: `:94` shape, `:134` nav, `:345` runtime-leakage, `:361` loud-failure, `:420` determinism, `:430` zero-binary, `:443` provenance, `:454` budgets) via `tests/design-facts/extract-design-facts.mjs:610`; gate specs `app/e2e/design-facts.spec.ts` + `app/e2e/dom-diff.spec.ts`; CI jobs `ci.yml:512` (browser-e2e, fresh records at `:586`) + `ci.yml:624` (dom-diff) | `node --test tests/design-facts/` result; non-live Playwright results; CI run/job ids for both jobs on the capture commit |
+| New evidence dir holds one side-by-side render per v2 board (7 images, 1200px), each traceable to the committed `docs/design/*.dc.html` bytes | EVID-1..7 (section 2) + EVID-9 (section 5) | Design source `docs/design/README.md:5` (seven boards, bundle 07-11) + `docs/design/manifest.json:1` (order, 1200px widths); schema `docs/technical/desk-ui-fact-schema.md:59,141` | sha256 table per board; image dimensions recorded |
+| No stale v1 baseline render remains as the reference of record (deleted or marked superseded) | EVID-8 (section 3) | Stale dirs on disk (`evidence/515/`, `evidence/518/`–`evidence/524/`, `evidence/538/`); live reference rule in `docs/testing/dom-diff-allowlist.md` (v2 bundle source) | List of added `SUPERSEDED.md` notes and/or deleted paths |
+| The worker cites the green extractor + gate runs the baseline was captured against | EVID-9 (section 5) | Extractor `tests/design-facts/extract-design-facts.test.mjs` (25 tests: `:94` shape, `:134` nav, `:345` runtime-leakage, `:361` loud-failure, `:420` determinism, `:430` zero-binary, `:443` provenance, `:454` budgets) via `tests/design-facts/extract-design-facts.mjs:610`; gate specs `app/e2e/design-facts.spec.ts` + `app/e2e/dom-diff.spec.ts`; CI jobs `ci.yml:512` (browser-e2e, fresh records at `:586`) + `ci.yml:624` (dom-diff) | `node --test tests/design-facts/` result; non-live Playwright results; CI run/job ids for both jobs on the capture commit |
 
 ## 5. Evidence README (EVID-9) and exit criteria
 
@@ -139,16 +139,16 @@ The worker ships `docs/testing/evidence/550/README.md` with:
    `npx playwright test e2e/dom-diff.spec.ts`), and the CI
    `browser-e2e` + `dom-diff` run/job ids on the capture commit.
 3. Reference-of-record statement: `evidence/550/` supersedes the
-   §3 dirs for v2-based review; `evidence/538/` remains as the
+   section 3 dirs for v2-based review; `evidence/538/` remains as the
    transitional history of the swap.
 
 Exit criteria for the #550 implementation slice:
 
-1. `evidence/550/` holds exactly 7 PNGs (§2 table), each opening
+1. `evidence/550/` holds exactly 7 PNGs (section 2 table), each opening
    at the specified pairing with the board panel at 1200px.
 2. Every image traces to committed board bytes via the README
    sha256 table (re-hash matches).
-3. Every §3 stale dir carries a `SUPERSEDED.md` note or has its
+3. Every section 3 stale dir carries a `SUPERSEDED.md` note or has its
    stale images deleted; no unmarked v1 baseline remains.
 4. The README cites green extractor + gate runs (local results
    plus both CI job ids); the two zero-screenshot greps
