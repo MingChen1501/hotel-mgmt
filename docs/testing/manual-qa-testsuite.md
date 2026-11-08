@@ -231,11 +231,13 @@ Trước khi chạy case của từng màn hình, xác nhận vỏ chung đạt 
 - **Điều kiện tiên quyết:** 1 stay in-house đã có folio; mở `/folio`.
 - **Các bước thực hiện:**
   1. Nhập stay id (`desk.folio.stay_id`), bấm `desk.folio.open_button`.
-  2. Quan sát bố cục và số dư (`desk.folio.folio_balance`).
+  2. Quan sát bố cục và số dư (`desk.folio.due_label`,
+     `desk.folio.folio_balance`).
 - **Kết quả mong đợi:** đúng một folio của stay với mọi dòng charge/payment và
-  số dư chạy (`desk.folio.folio_heading`, `desk.folio.folio_line`); bố cục 2
-  thẻ charges/payments (`desk.folio.charge_heading`,
-  `desk.folio.payment_heading`).
+  số dư (`desk.folio.folio_heading`, `desk.folio.folio_line`); bố cục 2
+  thẻ charges/payments (`desk.folio.folio_heading`,
+  `desk.folio.payment_heading`) với nhãn đến hạn và con số đến hạn nổi bật;
+  không có tiêu đề màn hình riêng (theo board v2, Refs #545).
 - **Truy vết:** AC-DSK-5.
 
 ### QA-FOLIO-2 — Ghi charge: số dư tăng đúng số tiền
@@ -243,21 +245,22 @@ Trước khi chạy case của từng màn hình, xác nhận vỏ chung đạt 
 - **Điều kiện tiên quyết:** như QA-FOLIO-1; folio đang mở; ghi nhớ số dư.
 - **Các bước thực hiện:**
   1. Chọn loại khoản (`desk.folio.item_kind`: `desk.folio.kind_room` hoặc
-     `desk.folio.kind_extra`), nhập tên khoản (`desk.folio.item_name`) và số
+     `desk.folio.kind_extra`), nhập mô tả (`desk.folio.item_name`) và số
      tiền (`desk.folio.amount_label`), bấm `desk.folio.charge_button`.
 - **Kết quả mong đợi:** hiển thị `desk.folio.charged`; dòng charge mới có đủ
-  khoản, số tiền, thời gian ghi; số dư tăng đúng số tiền dòng mới.
+  khoản và số tiền; số dư tăng đúng số tiền dòng mới.
 - **Truy vết:** AC-DSK-5.
 
 ### QA-FOLIO-3 — Ghi thanh toán: số dư giảm, định dạng tiền đúng locale
 
 - **Điều kiện tiên quyết:** folio còn số dư dương; mở `/folio`.
 - **Các bước thực hiện:**
-  1. Chọn phương thức (`desk.folio.method_label`: cash hoặc card), nhập số
+  1. Chọn phương thức (`desk.folio.method_label`:
+     `desk.folio.method_cash` hoặc `desk.folio.method_card`), nhập số
      tiền, bấm `desk.folio.pay_button`.
   2. Bật locale toggle sang EN rồi về VI, đọc lại các số tiền trên folio.
-- **Kết quả mong đợi:** hiển thị `desk.folio.paid`; payment có đủ phương thức
-  và thời gian, số dư giảm đúng số tiền đã trả; số tiền định dạng đúng theo
+- **Kết quả mong đợi:** hiển thị `desk.folio.paid`; payment có đủ phương thức,
+  số dư giảm đúng số tiền đã trả; số tiền định dạng đúng theo
   từng locale EN/VI.
 - **Truy vết:** AC-DSK-5, AC-DSK-8.
 

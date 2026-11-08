@@ -3030,7 +3030,7 @@
       "params": {}
     },
     {
-      "key": "desk.folio.intro",
+      "key": "desk.folio.due_label",
       "surface": "desk folio",
       "sources": [
         "app/src/views/FolioView.vue"

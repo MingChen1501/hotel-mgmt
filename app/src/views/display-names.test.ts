@@ -391,13 +391,14 @@ describe('display names instead of IDs (issue #370)', () => {
     await wrapper.find('[data-testid="folio-stay-id"]').setValue('s-1');
     await wrapper.find('[data-testid="folio-open"]').trigger('click');
     await vi.waitFor(() => {
-      expect(wrapper.find('[data-testid="folio-table"]').text()).toContain('Room night');
+      expect(wrapper.find('[data-testid="folio-charge-lines"]').text()).toContain('Room night');
     });
 
-    const table = wrapper.find('[data-testid="folio-table"]').text();
-    expect(table).toContain('Room night');
-    expect(table).toContain('cash payment');
-    expect(table).not.toMatch(UUID_PATTERN);
+    const charges = wrapper.find('[data-testid="folio-charge-lines"]').text();
+    expect(charges).toContain('Room night');
+    const payments = wrapper.find('[data-testid="folio-payment-lines"]').text();
+    expect(payments).toContain('Cash payment');
+    expect(`${charges}${payments}`).not.toMatch(UUID_PATTERN);
   });
 
   it('print confirmation labels the room type instead of the raw UUID', async () => {

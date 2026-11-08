@@ -109,10 +109,12 @@ test('charge, pay, and agree with the folio balance', async ({ page, request }) 
   const balance = ((folio.balanceMinor as number) / 100).toFixed(2);
   expect(balance).toBe('625.00');
   await expect(page.getByTestId('folio-status')).toContainText(`balance: ${balance}`);
-  const table = await page.getByTestId('folio-table').textContent();
-  expect(table).toContain('Room charge');
-  expect(table).toContain(extraName);
-  expect(table).toContain('cash payment');
+  await expect(page.getByTestId('folio-balance')).toHaveText(balance);
+  const charges = await page.getByTestId('folio-charge-lines').textContent();
+  expect(charges).toContain('Room charge');
+  expect(charges).toContain(extraName);
+  const payments = await page.getByTestId('folio-payment-lines').textContent();
+  expect(payments).toContain('Cash payment');
 });
 
 test('undefined charge item is refused with the cause named', async ({ page, request }) => {

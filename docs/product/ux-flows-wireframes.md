@@ -219,7 +219,7 @@ printable surfaces.
 | 1 | Desk dashboard | `/` | `DeskView.vue` | business date, arrivals / in-house / departures tables, dirty + uninspected + out-of-order lists, board, backup report |
 | 2 | Book | `/book` | `BookView.vue` | v2 board (Refs #544): numbered h3 cards (guest + find/register, dates/room/discount + quote, quote + confirm), no screen title, no guest-ID, no rate plan (single-plan quote); quote, confirm, reference readback, confirmation + print/copy |
 | 3 | Stay | `/stay` | `StayView.vue` | v2 board (Refs #541): check-in panel (arrival + room selects), check-out panel (departing-guest select + reviewer + folio review), review-to-checkout flow state (approval, check-out, dialog) |
-| 4 | Folio | `/folio` | `FolioView.vue` | charge list + post charge, payments + record payment, balance, errors |
+| 4 | Folio | `/folio` | `FolioView.vue` | v2 board (Refs #545): stay-ID open step (F3 flow state) above the two h3 cards — charges (charge rows + kind/description/amount + post) and payment (due label + due figure + payment rows + method/amount + record); balance sentence, empty/lines readouts, and errors as flow state |
 | 5 | Print | `/print` | `PrintView.vue` | receipt/invoice preview, print action |
 | 6 | Admin | `/admin` | `AdminView.vue` | users + roles, hotel configuration, audit view |
 | 7 | Fallback | unknown paths | `Placeholder.vue` | unknown-route notice with nav back |
@@ -307,15 +307,21 @@ guard stays for the truly-empty case.
 ### S4. Folio (`/folio`)
 
 ```text
-Stay (....)  * Balance: <amount>
-Charges: * desc * amount * time ...
-Post charge: [desc] [amount] {Post}  ! <error>
-Payments: * method * amount * time ...
+Open: [stay ID] {Open}  ! <error>
+Charges card: charge rows (* desc * amount ...)
+Post charge: (kind) [desc] [amount] {Post}  ! <error>
+Payment card: Balance due * <amount>  ! <status>
+payment rows (* method * amount ...)
 Record payment: (cash|card) [amount] {Record}  ! <error>
 ```
 
 Rules: payments record cash/card only (D-10 baseline); corrections
-are adjustment entries with a reason, never in-place edits.
+are adjustment entries with a reason, never in-place edits. The
+stay-ID open step, the kind/method selects, and the balance
+sentence stay as flow state with no board counterpart
+(orchestrator decision on #545: `PostCharge` requires `itemKind`,
+`RecordPayment` requires `method`, and the open step is the only
+in-app path to a folio).
 
 ### S5. Print (`/print`)
 

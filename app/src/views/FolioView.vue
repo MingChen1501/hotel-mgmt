@@ -1,18 +1,25 @@
 <template>
   <main data-testid="folio-view">
-    <!-- Folio screen title (restyle Refs #522,
-      `docs/design/Folio.dc.html:2`: the board carries no h1 of its
-      own, so the app keeps its screen title and intro for context
-      at the shared sibling treatment (h1 `22px`, muted `14px`
-      intro per restyle spec section 3); hooks and copy unchanged). -->
-    <h1 class="folio-title">{{ t('desk.folio.title', {}, 'Folio: charges, payments, and balance') }}</h1>
-    <p class="folio-intro">{{ t('desk.folio.intro', {}, 'Open a stay folio, post charges, record payments, and watch the running balance.') }}</p>
+    <!-- Folio screen (Refs #545, `docs/design/Folio.dc.html:3`): the
+      v2 board carries no screen title or intro — the shell header
+      owns the hotel name plus the seven design tabs with the
+      `Hoá đơn` pill active — so the view opens directly on the
+      folio: the stay-ID open step first (pre-board flow state,
+      orchestrator decision on #545 resolving the F3 REPORTED item
+      #498: the only in-app path to a folio), then the design
+      `1fr 1fr` grid with the charges card left and the payments
+      card right. Hooks and copy otherwise unchanged. -->
     <noscript><p>{{ t('desk.entry.noscript_folio', {}, 'This page needs JavaScript to open a folio.') }}</p></noscript>
 
     <section data-testid="folio-main">
+      <!-- Open step (Refs #545, F3): pre-board flow state with no
+        board counterpart — the board draws one illustrative guest
+        folio, while the app must first resolve which stay to show.
+        Stay-ID entry plus the open action stay exactly as today;
+        hooks and copy unchanged. -->
       <Card data-testid="folio-open-card">
         <template #title>
-          <h2>{{ t('desk.folio.open_heading', {}, 'Open a stay folio') }}</h2>
+          <h3>{{ t('desk.folio.open_heading', {}, 'Open a stay folio') }}</h3>
         </template>
         <template #content>
           <div>
@@ -54,57 +61,57 @@
         </template>
       </Card>
 
-      <!-- Restyle Refs #522 (`docs/design/Folio.dc.html:2`): the
-        design grid carries the two cards directly
-        (`grid-template-columns:1fr 1fr`), so the old left/right
-        column wrappers are gone (same precedent as the Book
-        restyle, Refs #520); hooks and copy unchanged. -->
+      <!-- Design grid (Refs #545, `docs/design/Folio.dc.html:3`):
+        the two board cards directly in the `1fr 1fr` grid, charges
+        left with its lines plus the post-charge form, payments
+        right with the due block, its payment lines, plus the
+        record-payment form. Hooks and copy otherwise unchanged. -->
       <div
         class="folio-layout"
         data-testid="folio-layout"
       >
         <Card data-testid="folio-charges-card">
             <template #title>
-              <h2>{{ t('desk.folio.folio_heading', {}, 'Folio lines and running balance') }}</h2>
+              <h3>{{ t('desk.folio.folio_heading', {}, 'Charges') }}</h3>
             </template>
             <template #content>
-              <DataTable
-                id="folio-table"
-                :value="entryRows"
-                data-testid="folio-table"
+              <!-- Board rows (Refs #545,
+                `docs/design/Folio.dc.html:3`): the board draws plain
+                name-plus-amount lines (`Tiền phòng 2 đêm` /
+                `1.800.000 đ`), no table headers and no time/balance
+                columns, so the lines render as plain rows — one per
+                charge, tax/fee folded into the item text as before.
+                The empty message stays as flow state. -->
+              <div
+                data-testid="folio-charge-lines"
+                class="folio-lines"
               >
-                <Column
-                  field="at"
-                  :header="t('desk.folio.th_time', {}, 'Time')"
-                />
-                <Column
-                  field="item"
-                  :header="t('desk.folio.th_item', {}, 'Item')"
-                />
-                <Column
-                  field="amount"
-                  :header="t('desk.folio.th_amount', {}, 'Amount')"
-                />
-                <Column
-                  field="balance"
-                  :header="t('desk.folio.th_balance', {}, 'Running balance')"
-                />
-                <template #empty>
+                <div
+                  v-for="row in chargeRows"
+                  :key="row.key"
+                  class="folio-line"
+                >
+                  <span>{{ row.item }}</span><strong>{{ row.amount }}</strong>
+                </div>
+                <p
+                  v-if="chargeRows.length === 0 && paymentRows.length === 0"
+                  class="folio-empty"
+                >
                   {{ t('desk.folio.no_lines', {}, 'No charges or payments yet. Posted charges and recorded payments appear here.') }}
-                </template>
-              </DataTable>
+                </p>
+              </div>
               <ReferenceDetails
                 v-if="folioDetails.length > 0"
                 :items="folioDetails"
                 testid-prefix="folio-details"
               />
 
-              <!-- Charge form heading (restyle Refs #522): the
-                design card titles render h3 `margin:0;
-                font-size:16px` (`docs/design/Folio.dc.html:2`);
-                this form heading takes the same treatment, copy
-                and hooks unchanged. -->
-              <h3 class="folio-section-title">{{ t('desk.folio.charge_heading', {}, 'Post a charge') }}</h3>
+              <!-- Charge kind (Refs #545): flow state with no board
+                counterpart — the board draws a single `Mô tả` input,
+                while `PostCharge` requires `itemKind`
+                (`nightly-room-charge` posts a room charge,
+                `charge-item` validates against the hotel list), so
+                the kind select stays inline, copy unchanged. -->
               <div>
                 <label for="folio-charge-kind">
                   <span>{{ t('desk.folio.item_kind', {}, 'Charge kind: ') }}</span>
@@ -122,7 +129,7 @@
                   </select>
                 </label>
                 <label for="folio-charge-name">
-                  {{ t('desk.folio.item_name', {}, 'Item name: ') }}
+                  {{ t('desk.folio.item_name', {}, 'Description') }}
                   <InputText
                     id="folio-charge-name"
                     v-model="chargeName"
@@ -132,7 +139,7 @@
                   />
                 </label>
                 <label for="folio-charge-amount">
-                  {{ t('desk.folio.amount_label', {}, 'Amount: ') }}
+                  {{ t('desk.folio.amount_label', {}, 'Amount') }}
                   <InputText
                     id="folio-charge-amount"
                     v-model="chargeAmount"
@@ -177,16 +184,56 @@
 
           <Card data-testid="folio-payments-card">
             <template #title>
-              <h2>{{ t('desk.folio.payment_heading', {}, 'Record a payment') }}</h2>
+              <h3>{{ t('desk.folio.payment_heading', {}, 'Payment') }}</h3>
             </template>
             <template #content>
+              <!-- Due block (Refs #545,
+                `docs/design/Folio.dc.html:3`): the board heads the
+                payments card with the muted `Còn phải trả` label
+                above the large due figure (`960.000 đ`,
+                `30px/700 #8A4B08`). The figure carries the
+                locale-grouped balance; the sentence status below
+                stays as flow state (same precedent as the Stay
+                folio-status line, Refs #541). -->
+              <div class="folio-due-label">
+                {{ t('desk.folio.due_label', {}, 'Balance due') }}
+              </div>
+              <div
+                role="status"
+                data-testid="folio-balance"
+                class="folio-balance-due"
+              >
+                {{ folioBalance }}
+              </div>
               <p
                 role="status"
                 data-testid="folio-status"
-                class="folio-balance-due"
+                class="folio-status-line"
               >
                 {{ folioStatus }}
               </p>
+              <!-- Board payment rows (Refs #545,
+                `docs/design/Folio.dc.html:3`): one plain
+                method-plus-amount line per payment (`Tiền mặt` /
+                `900.000 đ`), amounts rendered positive as drawn. -->
+              <div
+                data-testid="folio-payment-lines"
+                class="folio-lines"
+              >
+                <div
+                  v-for="row in paymentRows"
+                  :key="row.key"
+                  class="folio-line"
+                >
+                  <span>{{ row.item }}</span><strong>{{ row.amount }}</strong>
+                </div>
+              </div>
+              <!-- Payment method (Refs #545): flow state with no
+                board counterpart — the board draws a single `Số
+                tiền` input, while `RecordPayment` requires `method`
+                (`cash` or `card`), so the method select stays
+                inline. Option labels resolve through the catalogue
+                in both locales. -->
               <div>
                 <label for="folio-payment-method">
                   <span>{{ t('desk.folio.method_label', {}, 'Method: ') }}</span>
@@ -196,15 +243,15 @@
                     data-testid="folio-payment-method"
                   >
                     <option value="cash">
-                      cash
+                      {{ t('desk.folio.method_cash', {}, 'Cash') }}
                     </option>
                     <option value="card">
-                      card
+                      {{ t('desk.folio.method_card', {}, 'Card') }}
                     </option>
                   </select>
                 </label>
                 <label for="folio-payment-amount">
-                  {{ t('desk.folio.amount_label', {}, 'Amount: ') }}
+                  {{ t('desk.folio.amount_label', {}, 'Amount') }}
                   <InputText
                     id="folio-payment-amount"
                     v-model="paymentAmount"
@@ -255,8 +302,6 @@
 import { computed, defineComponent, ref } from 'vue';
 import Button from 'primevue/button';
 import Card from 'primevue/card';
-import Column from 'primevue/column';
-import DataTable from 'primevue/datatable';
 import InputText from 'primevue/inputtext';
 import Message from 'primevue/message';
 import { apiFetch } from '../api/client';
@@ -274,12 +319,20 @@ import ReferenceDetails, { type ReferenceItem } from '../components/ReferenceDet
 // what the guest owes). The legacy page is untouched and stays
 // served in parallel; this view runs under `/app/` (`/app/folio`).
 //
-// The #423 restyle groups the same hooks into the design
-// two-card layout (charges card with the lines table plus the
-// post-charge form on the left, payments card with the balance
-// due plus the post-payment form on the right) with no hook,
-// field, or call-order change; amounts render with the active
-// locale grouping via `formatAmount` (values unchanged).
+// The #545 rebuild adopts the v2 board
+// (`docs/design/Folio.dc.html:3`, epic #537): no screen title or
+// intro, h3 card titles with the board copy (`Charges`,
+// `Payment`), board-literal inputs (`Description`, `Amount`) and
+// actions, plain name-plus-amount rows per card (charges left,
+// payments right) with the due label plus the large due figure,
+// and the running-balance sentence kept as flow state. The
+// stay-ID open step, the charge-kind select, and the payment
+// method select stay as flow state with no board counterpart
+// (orchestrator decision on #545: `PostCharge` requires
+// `itemKind`, `RecordPayment` requires `method`, and the open
+// step is the only in-app path to a folio). Amounts render with
+// the active locale grouping via `formatAmount` (values
+// unchanged).
 //
 // Shared-migration contracts, same as the desk, book, and stay
 // screens:
@@ -316,10 +369,9 @@ interface Folio {
 }
 
 interface EntryRow {
-  at: string;
+  key: string;
   item: string;
   amount: string;
-  balance: string;
 }
 
 function formatAmount(minor: number): string {
@@ -374,12 +426,39 @@ function chargeTotal(line: ChargeLine): number {
 function chargeItemText(line: ChargeLine): string {
   const extras: string[] = [];
   if (line.taxMinor) {
-    extras.push(`tax ${formatAmount(line.taxMinor)}`);
+    extras.push(
+      t(
+        'desk.folio.tax_part',
+        { amount: formatAmount(line.taxMinor) },
+        `tax ${formatAmount(line.taxMinor)}`,
+      ),
+    );
   }
   if (line.feeMinor) {
-    extras.push(`fee ${formatAmount(line.feeMinor)}`);
+    extras.push(
+      t(
+        'desk.folio.fee_part',
+        { amount: formatAmount(line.feeMinor) },
+        `fee ${formatAmount(line.feeMinor)}`,
+      ),
+    );
   }
   return extras.length > 0 ? `${line.itemName} (${extras.join(', ')})` : line.itemName;
+}
+
+function methodLabel(method: string): string {
+  if (method === 'cash') {
+    return t('desk.folio.method_cash', {}, 'Cash');
+  }
+  if (method === 'card') {
+    return t('desk.folio.method_card', {}, 'Card');
+  }
+  return method;
+}
+
+function paymentRowText(line: PaymentLine): string {
+  const method = methodLabel(line.method);
+  return t('desk.folio.payment_row', { method }, `${line.method} payment`);
 }
 
 function rawLineText(line: unknown): string {
@@ -463,7 +542,7 @@ function prefilledStayId(): string {
 export default defineComponent({
   name: 'FolioView',
   // eslint-disable-next-line vue/no-reserved-component-names -- PrimeVue registers Button/Dialog under these canonical names (Refs #338 component mapping).
-  components: { Button, Card, Column, DataTable, InputText, Message, ReferenceDetails },
+  components: { Button, Card, InputText, Message, ReferenceDetails },
   setup() {
     const session = useSessionStore();
     const stayId = ref(prefilledStayId());
@@ -505,40 +584,60 @@ export default defineComponent({
     const paymentError = ref('');
     const paying = ref(false);
 
-    const entryRows = computed<EntryRow[]>(() => {
+    // Board rows (Refs #545): the charges card lists one row per
+    // charge and the payments card one row per payment, each in
+    // posted/paid order with positive locale-grouped amounts as
+    // drawn — no time or running-balance columns. Unrecognised
+    // lines still surface through the catalogue raw-line wording.
+    const chargeRows = computed<EntryRow[]>(() => {
       const current = folio.value;
       if (!current) {
         return [];
       }
-      const entries: { at: string; item: string; delta?: number }[] = [];
+      const rows: { at: string; item: string; amount?: number }[] = [];
       (current.charges ?? []).forEach((line: unknown) => {
         if (isCharge(line)) {
-          entries.push({ at: line.postedAt, item: chargeItemText(line), delta: chargeTotal(line) });
+          rows.push({ at: line.postedAt, item: chargeItemText(line), amount: chargeTotal(line) });
         } else {
-          entries.push({ at: '', item: rawLineText(line) });
+          rows.push({ at: '', item: rawLineText(line) });
         }
       });
+      rows.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
+      return rows.map((row, index) => ({
+        key: `charge-${index}`,
+        item: row.item,
+        amount: row.amount === undefined ? '' : formatAmount(row.amount),
+      }));
+    });
+
+    const paymentRows = computed<EntryRow[]>(() => {
+      const current = folio.value;
+      if (!current) {
+        return [];
+      }
+      const rows: { at: string; item: string; amount?: number }[] = [];
       (current.payments ?? []).forEach((line: unknown) => {
         if (isPayment(line)) {
-          entries.push({ at: line.paidAt, item: `${line.method} payment`, delta: -line.amountMinor });
+          rows.push({ at: line.paidAt, item: paymentRowText(line), amount: line.amountMinor });
         } else {
-          entries.push({ at: '', item: rawLineText(line) });
+          rows.push({ at: '', item: rawLineText(line) });
         }
       });
-      entries.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
-      let running = 0;
-      return entries.map((entry) => {
-        if (entry.delta === undefined) {
-          return { at: '', item: entry.item, amount: '', balance: '' };
-        }
-        running += entry.delta;
-        return {
-          at: entry.at,
-          item: entry.item,
-          amount: formatAmount(entry.delta),
-          balance: formatAmount(running),
-        };
-      });
+      rows.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
+      return rows.map((row, index) => ({
+        key: `payment-${index}`,
+        item: row.item,
+        amount: row.amount === undefined ? '' : formatAmount(row.amount),
+      }));
+    });
+
+    // Due figure (Refs #545, `docs/design/Folio.dc.html:3`): the
+    // board's large amount under the due label; empty until a folio
+    // is open (the sentence status below carries the notice and the
+    // running-balance wording as flow state).
+    const folioBalance = computed<string>(() => {
+      const current = folio.value;
+      return current ? formatAmount(current.balanceMinor) : '';
     });
 
     // The shell owns the one sign-in gate (Refs #338): a
@@ -743,11 +842,13 @@ export default defineComponent({
     return {
       t,
       stayId,
+      folioBalance,
       folioStatus,
       folioDetails,
       openError,
       opening,
-      entryRows,
+      chargeRows,
+      paymentRows,
       chargeKind,
       chargeName,
       chargeAmount,

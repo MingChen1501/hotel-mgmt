@@ -163,13 +163,14 @@ describe('folio view', () => {
     vi.clearAllMocks();
   });
 
-  it('renders the folio form with no per-screen sign-in copy', () => {
+  it('renders the folio form with no screen title and no per-screen sign-in copy', () => {
     const wrapper = mountFolio();
     expect(wrapper.find('[data-testid="folio-view"]').exists()).toBe(true);
-    // Catalogue wiring (Refs #292): the heading resolves through t().
-    expect(wrapper.find('[data-testid="folio-view"] h1').text()).toContain(
-      'Folio: charges, payments, and balance',
-    );
+    // Catalogue wiring (Refs #292): the card titles resolve through t().
+    // The v2 board carries no screen title (Refs #545), so no h1 renders.
+    expect(wrapper.find('[data-testid="folio-view"] h1').exists()).toBe(false);
+    const titles = wrapper.findAll('[data-testid="folio-view"] h3').map((node) => node.text());
+    expect(titles).toEqual(['Open a stay folio', 'Charges', 'Payment']);
     // The shell owns the one sign-in gate (Refs #338, FR-DSP-2):
     // no per-screen sign-in copy renders here anymore.
     expect(wrapper.find('[data-testid="folio-signin"]').exists()).toBe(false);
@@ -185,14 +186,21 @@ describe('folio view', () => {
     await openFolio(wrapper, 's-1');
 
     // The tax/fee lines fold into the item text; the payment
-    // subtracts; the header carries the running balance.
-    const rows = wrapper.findAll('[data-testid="folio-table"] tbody tr');
-    expect(rows).toHaveLength(2);
-    expect(rows[0]?.text()).toContain('Room night (tax 5.00, fee 2.00)');
-    expect(rows[0]?.text()).toContain('107.00');
-    expect(rows[1]?.text()).toContain('cash payment');
-    expect(rows[1]?.text()).toContain('-30.00');
-    expect(rows[1]?.text()).toContain('77.00');
+    // subtracts; the due block carries the running balance.
+    const chargeLines = wrapper.findAll('[data-testid="folio-charge-lines"] .folio-line');
+    expect(chargeLines).toHaveLength(1);
+    expect(chargeLines[0]?.text()).toContain('Room night (tax 5.00, fee 2.00)');
+    expect(chargeLines[0]?.text()).toContain('107.00');
+    const paymentLines = wrapper.findAll('[data-testid="folio-payment-lines"] .folio-line');
+    expect(paymentLines).toHaveLength(1);
+    expect(paymentLines[0]?.text()).toContain('Cash payment');
+    // Board rows render positive amounts as drawn
+    // (`docs/design/Folio.dc.html:3`).
+    expect(paymentLines[0]?.text()).toContain('30.00');
+    expect(paymentLines[0]?.text()).not.toContain('-30.00');
+    // The due figure carries the locale-grouped balance; the
+    // sentence status stays as flow state below it.
+    expect(wrapper.find('[data-testid="folio-balance"]').text()).toContain('77.00');
     expect(wrapper.find('[data-testid="folio-status"]').text()).toContain(
       'Folio balance: 77.00.',
     );
@@ -491,16 +499,16 @@ describe('folio view', () => {
     expect(router.replace).toHaveBeenCalledWith('/');
   });
 
-  // D5 (Refs #423, AC-DSK-5, FR-DSK-5): the Folio screen renders
-  // D8 (Refs #522, AC-RST-5, FR-RST-5; restyle spec section 5.4):
-  // the Folio screen renders its design two-card grid — the
-  // charges card (lines table plus the post-charge form) left,
-  // the payments card (balance due plus the post-payment form)
-  // right in a `1fr 1fr` grid — with the open card full-width
-  // above and no left/right column wrappers. Flow, refusal, and
-  // balance tests below stay untouched (semantics unchanged);
+  // D8 (Refs #545; v2 board adoption, epic #537): the Folio
+  // screen renders its design two-card grid with no screen title
+  // — the charges card (charge lines plus the post-charge form)
+  // left, the payments card (due block plus payment lines plus
+  // the record-payment form) right in a `1fr 1fr` grid — with the
+  // stay-ID open step (F3 flow state, orchestrator decision on
+  // #545) above and no left/right column wrappers. Flow, refusal,
+  // and balance tests below stay untouched (semantics unchanged);
   // only this layout is new.
-  it('renders the design two-card grid with the open card above', async () => {
+  it('renders the design two-card grid with the open step above', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     const wrapper = mountFolio();
@@ -522,13 +530,16 @@ describe('folio view', () => {
     const paymentsCard = wrapper.find('[data-testid="folio-payments-card"]');
     expect(chargesCard.exists()).toBe(true);
     expect(paymentsCard.exists()).toBe(true);
-    // Actions ride their design cards: the lines table plus
-    // post-charge on the charges card; balance due plus
-    // post-payment on the payments card.
-    expect(chargesCard.find('[data-testid="folio-table"]').exists()).toBe(true);
+    // Actions ride their design cards: the charge lines plus
+    // post-charge on the charges card; the due block, payment
+    // lines, plus record-payment on the payments card.
+    expect(chargesCard.find('[data-testid="folio-charge-lines"]').exists()).toBe(true);
     expect(chargesCard.find('[data-testid="folio-charge"]').exists()).toBe(true);
-    expect(paymentsCard.find('[data-testid="folio-status"]').exists()).toBe(true);
+    expect(paymentsCard.find('[data-testid="folio-payment-lines"]').exists()).toBe(true);
     expect(paymentsCard.find('[data-testid="folio-pay"]').exists()).toBe(true);
+    // The due block heads the payments card with the board copy.
+    expect(paymentsCard.find('.folio-due-label').text()).toContain('Balance due');
+    expect(paymentsCard.find('[data-testid="folio-balance"]').text()).toContain('77.00');
     // EN amounts use dot decimals with comma grouping.
     expect(paymentsCard.find('[data-testid="folio-status"]').text()).toContain(
       'Folio balance: 77.00.',
@@ -548,26 +559,31 @@ describe('folio view', () => {
     try {
       setLocale('vi');
       await wrapper.vm.$nextTick();
-      expect(paymentsCard.find('[data-testid="folio-pay"]').text()).toContain('Nhận thanh toán');
-      expect(chargesCard.find('[data-testid="folio-charge"]').text()).toContain('Ghi phí');
+      expect(paymentsCard.find('[data-testid="folio-pay"]').text()).toContain('Ghi thanh toán');
+      expect(chargesCard.find('[data-testid="folio-charge"]').text()).toContain('Ghi khoản phí');
+      expect(paymentsCard.find('.folio-due-label').text()).toContain('Còn phải trả');
+      expect(paymentsCard.find('[data-testid="folio-balance"]').text()).toContain('18.077,00');
       expect(paymentsCard.find('[data-testid="folio-status"]').text()).toContain(
         'Số dư bảng kê: 18.077,00.',
       );
-      expect(chargesCard.find('[data-testid="folio-table"]').text()).toContain('18.000,00');
+      expect(chargesCard.find('[data-testid="folio-charge-lines"]').text()).toContain('18.000,00');
+      expect(paymentsCard.find('[data-testid="folio-payment-lines"]').text()).toContain('Tiền mặt');
     } finally {
       setLocale('en');
     }
   });
 
-  // D8 (Refs #423, NFR-DSK-2): the folio restyle stays out of
-  // print — the view carries no `<style>` block, so the shell
-  // screen stylesheet owns every new rule (the M4 suite pins
+  // D8 (Refs #545, NFR-DSK-2): the folio board adoption stays
+  // out of print — the view carries no `<style>` block, so the
+  // shell screen stylesheet owns every new rule (the M4 suite pins
   // that stylesheet to `@media screen`), and printed values
   // still match the folio exactly (pinned by the PrintView
   // suite, untouched here).
-  it('keeps the folio restyle out of print', () => {
+  it('keeps the folio board adoption out of print', () => {
     expect(folioViewSource).not.toContain('<style');
     expect(appSource).toContain('.folio-layout');
+    expect(appSource).toContain('.folio-lines');
+    expect(appSource).toContain('.folio-due-label');
     expect(appSource).toContain('.folio-balance-due');
   });
 });

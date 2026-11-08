@@ -30,8 +30,8 @@
 //   app DOM, asserting the design-anchored subset that conforms today
 //   (header/page/ink tokens, design-known tab labels, the decided
 //   seven-tab visible set, per-screen active tab) plus the decided
-//   per-screen content from issue #473 (exact heading/input sequences
-//   for Stay and Book; Rooms pins its static heading prefix plus the
+//   per-screen content from issue #473 (exact heading/input
+//   sequences for Stay, Book, and Folio (Refs #545); Rooms pins its static heading prefix plus the
 //   seed room labels and checks the data-driven tail structurally;
 //   required-button-label subsets everywhere so dynamic extras never
 //   break the gate) plus the Main room-map section (Refs #479: Main
