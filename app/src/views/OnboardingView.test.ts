@@ -1,7 +1,8 @@
-// Guards for the Onboarding setup wizard (Refs #425, AC-DSK-7,
-// LLD section 13.4): step 1 matches the owner design (hotel-name
-// input with example placeholder, invoice/receipt helper, 25
-// percent progress, continue action), persists through the
+// Guards for the Onboarding setup wizard (Refs #425, #542, AC-DSK-7,
+// LLD section 13.4): step 1 matches the v2 owner design board
+// (`docs/design/Onboarding.dc.html:3` — bare hotel-name input with
+// the board example placeholder and helper, `Bước 1 / 4 · ...`
+// progress line, single primary action, no title/intro/Back), persists through the
 // existing UpdateHotelConfig surface, and launches on an empty
 // database only — a seeded database redirects to the shell.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -67,20 +68,26 @@ describe('onboarding wizard step 1', () => {
       await vi.waitFor(() => {
         expect(wrapper.find('[data-testid="onboarding-step-1"]').exists()).toBe(true);
       });
-      expect(wrapper.find('h1').text()).toBe('First-time setup');
-      expect(wrapper.find('[data-testid="onboarding-progress"]').text()).toBe('Step 1 of 4');
+      expect(wrapper.find('h1').exists()).toBe(false);
+      expect(wrapper.find('[data-testid="onboarding-progress"]').text()).toBe(
+        'Step 1 / 4 · Hotel information',
+      );
       // The design shows step 1 at 25 percent progress.
       expect(wrapper.findComponent(ProgressBar).props('value')).toBe(25);
       expect(wrapper.find('[data-testid="onboarding-hotel-name"]').attributes('placeholder')).toBe(
-        'Example: Sunrise Riverside Hotel',
+        'Example: Hoa Mai Hotel',
       );
+      expect(wrapper.find('[data-testid="onboarding-hotel-name"]').attributes('aria-label')).toBe(
+        'Hotel name',
+      );
+      expect(wrapper.find('[data-testid="onboarding-step-1"] h3').text()).toBe('Hotel name');
       expect(wrapper.find('[data-testid="onboarding-hotel-name-helper"]').text()).toContain(
         'appears on invoices and receipts',
       );
       expect(wrapper.find('[data-testid="onboarding-continue"]').text()).toBe('Continue');
-      // Back has nowhere to go on the first step, so it stays
-      // disabled rather than leaving the wizard.
-      expect(wrapper.find('[data-testid="onboarding-back"]').attributes('disabled')).toBeDefined();
+      // The drawn step shows a single primary action: no Back on
+      // step 1 (Refs #542, `docs/design/Onboarding.dc.html:3`).
+      expect(wrapper.find('[data-testid="onboarding-back"]').exists()).toBe(false);
       expect(wrapper.html()).not.toContain('message-missing:');
     } finally {
       vi.unstubAllGlobals();
@@ -113,7 +120,9 @@ describe('onboarding wizard step 1', () => {
       await vi.waitFor(() => {
         expect(wrapper.find('[data-testid="onboarding-step-1"]').exists()).toBe(true);
       });
-      expect(wrapper.find('[data-testid="onboarding-progress"]').text()).toBe('Step 1 of 4');
+      expect(wrapper.find('[data-testid="onboarding-progress"]').text()).toBe(
+        'Step 1 / 4 · Hotel information',
+      );
       expect(router.currentRoute.value.path).toBe('/onboarding');
       expect(wrapper.html()).not.toContain('message-missing:');
     } finally {
@@ -225,7 +234,9 @@ describe('onboarding wizard step 1', () => {
         values: { name: 'Sunrise Hotel' },
         updatedBy: 'Ada Owner',
       });
-      expect(wrapper.find('[data-testid="onboarding-progress"]').text()).toBe('Step 2 of 4');
+      expect(wrapper.find('[data-testid="onboarding-progress"]').text()).toBe(
+        'Step 2 / 4 · Hotel details',
+      );
       expect(wrapper.findComponent(ProgressBar).props('value')).toBe(50);
       expect(wrapper.emitted('setup-complete')).toBeUndefined();
       expect(router.currentRoute.value.path).toBe('/onboarding');
@@ -308,10 +319,16 @@ describe('onboarding wizard step 1', () => {
       await vi.waitFor(() => {
         expect(wrapper.find('[data-testid="onboarding-step-1"]').exists()).toBe(true);
       });
-      expect(wrapper.find('h1').text()).toBe('Thiết lập lần đầu');
-      expect(wrapper.find('[data-testid="onboarding-progress"]').text()).toBe('Bước 1 trên 4');
+      expect(wrapper.find('h1').exists()).toBe(false);
+      expect(wrapper.find('[data-testid="onboarding-progress"]').text()).toBe(
+        'Bước 1 / 4 · Thông tin khách sạn',
+      );
+      expect(wrapper.find('[data-testid="onboarding-hotel-name"]').attributes('aria-label')).toBe(
+        'Tên khách sạn',
+      );
+      expect(wrapper.find('[data-testid="onboarding-step-1"] h3').text()).toBe('Tên khách sạn');
       expect(wrapper.find('[data-testid="onboarding-hotel-name-helper"]').text()).toContain(
-        'hóa đơn và biên lai',
+        'hiện trên hoá đơn và biên nhận',
       );
       expect(wrapper.html()).not.toContain('message-missing:');
     } finally {
@@ -395,8 +412,10 @@ describe('onboarding wizard step 2', () => {
     try {
       const { wrapper } = await mountWizard();
       await completeStep1(wrapper);
-      expect(wrapper.find('[data-testid="onboarding-step-2"] h2').text()).toBe('Hotel details');
-      expect(wrapper.find('[data-testid="onboarding-progress"]').text()).toBe('Step 2 of 4');
+      expect(wrapper.find('[data-testid="onboarding-step-2"] h3').text()).toBe('Hotel details');
+      expect(wrapper.find('[data-testid="onboarding-progress"]').text()).toBe(
+        'Step 2 / 4 · Hotel details',
+      );
       expect(wrapper.findComponent(ProgressBar).props('value')).toBe(50);
       expect(wrapper.find('[data-testid="onboarding-step2-note"]').text()).toContain('optional');
       expect(wrapper.find('[data-testid="onboarding-retention-floor-helper"]').text()).toContain('365-day');
@@ -474,7 +493,9 @@ describe('onboarding wizard step 2', () => {
         },
         updatedBy: 'Ada Owner',
       });
-      expect(wrapper.find('[data-testid="onboarding-progress"]').text()).toBe('Step 3 of 4');
+      expect(wrapper.find('[data-testid="onboarding-progress"]').text()).toBe(
+        'Step 3 / 4 · Rooms and room types',
+      );
       expect(wrapper.findComponent(ProgressBar).props('value')).toBe(75);
       expect(wrapper.html()).not.toContain('message-missing:');
     } finally {
@@ -542,8 +563,10 @@ describe('onboarding wizard step 3', () => {
       const { wrapper } = await mountWizard();
       await completeStep1(wrapper);
       await completeStep2(wrapper);
-      expect(wrapper.find('[data-testid="onboarding-step-3"] h2').text()).toBe('Rooms and room types');
-      expect(wrapper.find('[data-testid="onboarding-progress"]').text()).toBe('Step 3 of 4');
+      expect(wrapper.find('[data-testid="onboarding-step-3"] h3').text()).toBe('Rooms and room types');
+      expect(wrapper.find('[data-testid="onboarding-progress"]').text()).toBe(
+        'Step 3 / 4 · Rooms and room types',
+      );
       expect(wrapper.findComponent(ProgressBar).props('value')).toBe(75);
       expect(wrapper.find('[data-testid="onboarding-add-type"]').exists()).toBe(true);
       expect(wrapper.find('[data-testid="onboarding-add-room"]').exists()).toBe(true);
@@ -688,7 +711,9 @@ describe('onboarding wizard step 3', () => {
       // Types persist before rooms so every room links to a type
       // saved in this step.
       expect(typeIndex).toBeLessThan(roomIndex);
-      expect(wrapper.find('[data-testid="onboarding-progress"]').text()).toBe('Step 4 of 4');
+      expect(wrapper.find('[data-testid="onboarding-progress"]').text()).toBe(
+        'Step 4 / 4 · Create the owner account',
+      );
       expect(wrapper.findComponent(ProgressBar).props('value')).toBe(100);
       expect(wrapper.html()).not.toContain('message-missing:');
     } finally {
@@ -715,10 +740,12 @@ describe('onboarding wizard step 4', () => {
       await completeStep1(wrapper);
       await completeStep2(wrapper);
       await completeStep3(wrapper);
-      expect(wrapper.find('[data-testid="onboarding-step-4"] h2').text()).toBe(
+      expect(wrapper.find('[data-testid="onboarding-step-4"] h3').text()).toBe(
         'Create the owner account',
       );
-      expect(wrapper.find('[data-testid="onboarding-progress"]').text()).toBe('Step 4 of 4');
+      expect(wrapper.find('[data-testid="onboarding-progress"]').text()).toBe(
+        'Step 4 / 4 · Create the owner account',
+      );
       expect(wrapper.findComponent(ProgressBar).props('value')).toBe(100);
       expect(wrapper.find('[data-testid="onboarding-role-note"]').text()).toContain('owner');
       expect(wrapper.find('[data-testid="onboarding-continue"]').text()).toBe('Finish');
@@ -872,13 +899,15 @@ describe('onboarding wizard step 4', () => {
     try {
       const { wrapper } = await mountWizard();
       await completeStep1(wrapper);
-      expect(wrapper.find('[data-testid="onboarding-step-2"] h2').text()).toBe('Thông tin khách sạn');
+      expect(wrapper.find('[data-testid="onboarding-step-2"] h3').text()).toBe('Thông tin khách sạn');
       await completeStep2(wrapper);
-      expect(wrapper.find('[data-testid="onboarding-step-3"] h2').text()).toBe('Phòng và hạng phòng');
+      expect(wrapper.find('[data-testid="onboarding-step-3"] h3').text()).toBe('Phòng và hạng phòng');
       await completeStep3(wrapper);
-      expect(wrapper.find('h1').text()).toBe('Thiết lập lần đầu');
-      expect(wrapper.find('[data-testid="onboarding-progress"]').text()).toBe('Bước 4 trên 4');
-      expect(wrapper.find('[data-testid="onboarding-step-4"] h2').text()).toBe(
+      expect(wrapper.find('h1').exists()).toBe(false);
+      expect(wrapper.find('[data-testid="onboarding-progress"]').text()).toBe(
+        'Bước 4 / 4 · Tạo tài khoản chủ khách sạn',
+      );
+      expect(wrapper.find('[data-testid="onboarding-step-4"] h3').text()).toBe(
         'Tạo tài khoản chủ khách sạn',
       );
       expect(wrapper.find('[data-testid="onboarding-role-note"]').text()).toContain('chủ khách sạn');

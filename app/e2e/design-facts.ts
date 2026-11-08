@@ -277,6 +277,24 @@ export const DECIDED_CONTENT: readonly DecidedScreenContent[] = [
     ],
   },
   {
+    // Onboarding v2 board (Refs #542, bundle 07-11): the drawn
+    // step-1 screen pins its h3 title, the single Continue
+    // action label, and the bare hotel-name input (label falls
+    // back to the preceding h3 per the extractor, the app names
+    // it through the same catalogue string via aria-label) with
+    // the board example placeholder. Steps 2–4 are post-continue
+    // flow state with no board counterpart and stay out of the
+    // decided set per the flow-state rule above.
+    screen: 'Onboarding',
+    headings: [
+      { level: 3, text: 'Tên khách sạn' },
+    ],
+    buttons: ['Tiếp tục'],
+    inputs: [
+      { kind: 'text', label: 'Tên khách sạn', placeholder: 'Ví dụ: Khách sạn Hoa Mai' },
+    ],
+  },
+  {
     screen: 'Rooms',
     headings: [],
     headingPrefix: [

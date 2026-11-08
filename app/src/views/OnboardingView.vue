@@ -1,23 +1,22 @@
 <template>
-  <!-- Onboarding wizard column (restyle Refs #524,
-    `docs/design/Onboarding.dc.html:2`): the board column is a
+  <!-- Onboarding wizard column (Refs #542,
+    `docs/design/Onboarding.dc.html:3`): the v2 board carries no
+    screen title or intro, so the view opens directly on the
     centred `560px` flex column (`gap:16px`) carrying the muted
     progress line, the `8px` track with the primary bar, the white
     card (`radius:12px;padding:18px`), and the full-width primary
-    action. The app keeps its h1+intro, shell nav, four steps with
-    back/continue navigation, and flow states (O5 kept extras);
-    wording is unchanged (O3/O4 stay reported). PrimeVue stays as
-    logic carrier only (restyle spec section 2). -->
+    action. The board step 1 shows a bare input under its h3 with
+    no label line, so the input carries the hotel-name catalogue
+    string as its accessible name instead of a visible label; the
+    Back button renders only from step 2 on (the drawn step shows
+    a single button). Steps 2–4 stay as post-continue flow state
+    with per-step validation and back/continue navigation (Stay
+    #541 review-to-checkout precedent); PrimeVue stays as logic
+    carrier only. -->
   <main
     data-testid="onboarding-view"
     class="onboarding-view"
   >
-    <h1 class="onboarding-title">
-      {{ t('desk.onboarding.title', {}, 'First-time setup') }}
-    </h1>
-    <p class="onboarding-intro">
-      {{ t('desk.onboarding.intro', {}, 'Complete the steps below to get the hotel running.') }}
-    </p>
     <noscript><p class="onboarding-intro">{{ t('desk.onboarding.noscript', {}, 'This page needs JavaScript to set up the hotel.') }}</p></noscript>
 
     <Message
@@ -32,7 +31,7 @@
         data-testid="onboarding-progress"
         class="onboarding-progress"
       >
-        {{ t('desk.onboarding.progress', { current: step, total: TOTAL_STEPS }, 'Step 1 of 4') }}
+        {{ t('desk.onboarding.progress', { current: step, total: TOTAL_STEPS, step: stepName }, 'Step 1 / 4') }}
       </p>
       <ProgressBar
         :value="stepProgress"
@@ -50,30 +49,28 @@
           class="onboarding-step-form"
           @submit.prevent="onContinueStep1"
         >
-          <!-- Step-1 card (restyle Refs #524,
-            `docs/design/Onboarding.dc.html:2`: `background:#fff;
+          <!-- Step-1 card (Refs #542,
+            `docs/design/Onboarding.dc.html:3`: `background:#fff;
             border:1px solid #D9E0DE;border-radius:12px;
             padding:18px`, flex column `gap:10px`, card title
             `margin:0;font-size:16px`, input `min-height:44px`,
-            muted `14px` helper). -->
+            muted `14px` helper). The board shows the hotel-name
+            input bare under the h3 with no label line, so the
+            input carries the hotel-name catalogue string as its
+            accessible name instead of a visible label. -->
           <div class="onboarding-card">
-            <h2 class="onboarding-card-title">
-              {{ t('desk.onboarding.step1_heading', {}, 'Name the hotel') }}
-            </h2>
-            <label
-              for="onboarding-hotel-name"
-              class="onboarding-field"
-            >
-              {{ t('desk.onboarding.hotel_name_label', {}, 'Hotel name') }}
-              <InputText
-                id="onboarding-hotel-name"
-                v-model="hotelName"
-                name="hotel-name"
-                autocomplete="organization"
-                :placeholder="t('desk.onboarding.hotel_name_placeholder', {}, 'Example: Sunrise Riverside Hotel')"
-                data-testid="onboarding-hotel-name"
-              />
-            </label>
+            <h3 class="onboarding-card-title">
+              {{ t('desk.onboarding.step1_heading', {}, 'Hotel name') }}
+            </h3>
+            <InputText
+              id="onboarding-hotel-name"
+              v-model="hotelName"
+              name="hotel-name"
+              autocomplete="organization"
+              :aria-label="t('desk.onboarding.hotel_name_label', {}, 'Hotel name')"
+              :placeholder="t('desk.onboarding.hotel_name_placeholder', {}, 'Example: Hoa Mai Hotel')"
+              data-testid="onboarding-hotel-name"
+            />
             <p
               data-testid="onboarding-hotel-name-helper"
               class="onboarding-helper"
@@ -89,19 +86,13 @@
               {{ formError }}
             </Message>
           </div>
-          <!-- Wizard actions (no board counterpart beyond the
-            single primary Continue, O5): the primary advance
-            action renders full-width per the board button; Back
-            keeps its secondary logic-carrier styling (Stay #521
+          <!-- Wizard actions (Refs #542: the drawn step shows
+            the single primary Continue and no Back, so step 1
+            renders the primary advance action full-width per the
+            board button; Back renders from step 2 on with its
+            secondary logic-carrier styling (Stay #521
             dialog-cancel precedent). -->
           <div class="onboarding-actions">
-            <Button
-              type="button"
-              :label="t('desk.onboarding.back', {}, 'Back')"
-              disabled
-              data-testid="onboarding-back"
-              class="onboarding-back"
-            />
             <Button
               type="submit"
               :label="saving ? t('desk.onboarding.saving', {}, 'Saving…') : t('desk.onboarding.continue', {}, 'Continue')"
@@ -133,9 +124,9 @@
           @submit.prevent="onContinueStep2"
         >
           <div class="onboarding-card">
-            <h2 class="onboarding-card-title">
+            <h3 class="onboarding-card-title">
               {{ t('desk.onboarding.step2_heading', {}, 'Hotel details') }}
-            </h2>
+            </h3>
             <p
               data-testid="onboarding-step2-note"
               class="onboarding-helper"
@@ -254,10 +245,11 @@
           @submit.prevent="onContinueStep3"
         >
           <div class="onboarding-card">
-            <h2 class="onboarding-card-title">
+            <h3 class="onboarding-card-title">
               {{ t('desk.onboarding.step3_heading', {}, 'Rooms and room types') }}
-            </h2>
-            <!-- Steps 2–4 carry no board counterpart (O5): the
+            </h3>
+            <!-- Steps 2–4 carry no board counterpart (Refs #542:
+              post-continue flow state, Stay #541 precedent): the
               fieldsets render borderless in the card rhythm with
               quiet group titles, and every row stacks its fields
               with the card gap. -->
@@ -433,9 +425,9 @@
           @submit.prevent="onFinish"
         >
           <div class="onboarding-card">
-            <h2 class="onboarding-card-title">
+            <h3 class="onboarding-card-title">
               {{ t('desk.onboarding.step4_heading', {}, 'Create the owner account') }}
-            </h2>
+            </h3>
             <p
               data-testid="onboarding-role-note"
               class="onboarding-helper"
@@ -600,6 +592,23 @@ export default defineComponent({
     const loadFailed = ref(false);
     const step = ref(1);
     const stepProgress = computed(() => step.value * 25);
+    // Progress section name (Refs #542,
+    // `docs/design/Onboarding.dc.html:3`): the board progress
+    // line names the current phase (`Bước 1 / 4 · Thông tin khách
+    // sạn`). Only step 1 is drawn, so only its section name is a
+    // new key; steps 2–4 reuse their existing card headings.
+    const stepName = computed(() => {
+      if (step.value === 1) {
+        return t('desk.onboarding.progress_step1_name', {}, 'Hotel information');
+      }
+      if (step.value === 2) {
+        return t('desk.onboarding.step2_heading', {}, 'Hotel details');
+      }
+      if (step.value === 3) {
+        return t('desk.onboarding.step3_heading', {}, 'Rooms and room types');
+      }
+      return t('desk.onboarding.step4_heading', {}, 'Create the owner account');
+    });
     // Step 1 (Refs #425, unchanged): the hotel name.
     const hotelName = ref('');
     // Step 2 (FR-DSK-8): the remaining hotel profile. Contact
@@ -1034,6 +1043,7 @@ export default defineComponent({
       TOTAL_STEPS,
       step,
       stepProgress,
+      stepName,
       loading,
       loadFailed,
       hotelName,
