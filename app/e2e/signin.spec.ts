@@ -28,6 +28,12 @@ test.afterEach(() => {
 test('owner sign-in lands on the desk dashboard', async ({ page }) => {
   await signInThroughGate(page);
   await expect(page.getByTestId('desk-dashboard')).toBeVisible();
+  // Refs #564: the signed-in name lives in the account disclosure,
+  // so open it first — asserting a hidden node would not prove the
+  // identity is visible to the staff member.
+  await page.getByTestId('shell-session-trigger').click();
+  await expect(page.getByTestId('shell-session-menu')).toBeVisible();
+  await expect(page.getByTestId('shell-user')).toBeVisible();
   await expect(page.getByTestId('shell-user')).not.toBeEmpty();
   await expect(page.getByTestId('shell-nav-desk')).toHaveClass(/shell-nav-active/);
 });

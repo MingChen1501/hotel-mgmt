@@ -161,13 +161,14 @@ describe('R1 shell/nav render contract (Refs #518)', () => {
     );
   }
 
-  async function mountSignedIn(path: string) {
+  async function mountSignedIn(path: string, attachTo?: HTMLElement) {
     const pinia = createPinia();
     setActivePinia(pinia);
     useSessionStore().signIn('tok-1', 'Ada Owner', 'owner');
     await router.replace(path);
     const wrapper = mount(ShellApp, {
       global: { plugins: [pinia, router] },
+      ...(attachTo ? { attachTo } : {}),
     });
     await router.isReady();
     return wrapper;
@@ -234,8 +235,12 @@ describe('R1 shell/nav render contract (Refs #518)', () => {
 
   it('keeps the session controls in a compact disclosure on the bar', async () => {
     vi.stubGlobal('fetch', configuredFetch());
+    // Mounted into the document so the Escape assertion can read
+    // `document.activeElement` (Refs #564).
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const wrapper = await mountSignedIn('/', host);
     try {
-      const wrapper = await mountSignedIn('/');
       // Refs #564: the identity and Sign out live in a menu instead
       // of inline on the bar (which wrapped the header to 111px).
       const trigger = wrapper.find('[data-testid="shell-session-trigger"]');
@@ -254,11 +259,16 @@ describe('R1 shell/nav render contract (Refs #518)', () => {
       expect(menu.isVisible()).toBe(true);
       expect(menu.find('[data-testid="shell-signout"]').classes()).toContain('p-button');
 
-      // Escape closes the disclosure from inside (keyboard path).
+      // Escape closes the disclosure from inside and hands focus back
+      // to the trigger, so the keyboard path never loses its place
+      // (keyboard reachability, NFR-DSP-2).
       await menu.find('[data-testid="shell-signout"]').trigger('keydown', { key: 'Escape' });
       expect(trigger.attributes('aria-expanded')).toBe('false');
       expect(menu.isVisible()).toBe(false);
+      expect(document.activeElement).toBe(trigger.element);
     } finally {
+      wrapper.unmount();
+      host.remove();
       vi.unstubAllGlobals();
     }
   });
