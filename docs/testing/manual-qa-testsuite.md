@@ -116,16 +116,19 @@ Trước khi chạy case của từng màn hình, xác nhận vỏ chung đạt 
 
 ## 2. Màn hình Book — đặt phòng (`/book`)
 
-### QA-BOOK-1 — Bố cục 2 cột đúng thiết kế
+### QA-BOOK-1 — Bố cục đúng thiết kế v2 (Refs #544)
 
 - **Điều kiện tiên quyết:** DB đã seed; đăng nhập owner; mở `/book`.
 - **Các bước thực hiện:**
   1. Quan sát bố cục màn hình Book.
-- **Kết quả mong đợi:** cột trái gồm thẻ khách (guest card) nằm trên thẻ báo
-  giá (quote card) (`desk.book.guest_heading`, `desk.book.quote_heading`);
-  cột phải là thẻ ngày/phòng/giảm giá (dates/room/discount card)
-  (`desk.book.stay_heading`, `desk.book.arrival`, `desk.book.departure`,
-  `desk.book.room_type`, `desk.book.discount`).
+- **Kết quả mong đợi:** không có tiêu đề màn hình và không có tiêu đề mục —
+  màn hình đi thẳng vào lưới thẻ dưới shell header; hàng trên gồm thẻ khách
+  (`1. Khách`, `desk.book.guest_heading`) trái và thẻ báo giá (`Báo giá`,
+  `desk.book.quote_heading`) phải; thẻ ngày/phòng (`2. Ngày và phòng`,
+  `desk.book.stay_heading`) nằm full-width bên dưới với 4 ô ngày đến/ngày đi/
+  loại phòng/giảm giá (`desk.book.arrival`, `desk.book.departure`,
+  `desk.book.room_type`, `desk.book.discount`); không có ô mã khách và không
+  có ô gói giá.
 - **Truy vết:** AC-DSK-3.
 
 ### QA-BOOK-2 — Tìm khách cũ (gắn cờ returning) và đăng ký khách mới
@@ -133,9 +136,11 @@ Trước khi chạy case của từng màn hình, xác nhận vỏ chung đạt 
 - **Điều kiện tiên quyết:** DB có 1 khách đã có ít nhất 1 kỳ lưu trú hoàn tất;
   mở `/book`.
 - **Các bước thực hiện:**
-  1. Nhập tên khách cũ vào `desk.book.guest_name`, bấm `desk.book.find_button`.
+  1. Nhập tên khách cũ vào `desk.book.guest_name`, bấm `desk.book.find_button`
+     (`Tìm`).
   2. Nhập một tên khách chưa từng tồn tại, bấm `desk.book.find_button`, rồi
-     bấm `desk.book.register_button`.
+     bấm `desk.book.register_button` (`Đăng ký khách mới`) — không còn ô mã
+     khách (Refs #544: tìm/đăng ký theo tên đặt mã nội bộ).
 - **Kết quả mong đợi:**
   1. Khách cũ hiển thị `desk.book.guest_found` kèm số kỳ lưu trú trước đó
      (returning flag).
@@ -149,7 +154,9 @@ Trước khi chạy case của từng màn hình, xác nhận vỏ chung đạt 
   đã chọn khách ở `/book`.
 - **Các bước thực hiện:**
   1. Nhập ngày đến (`desk.book.arrival`), ngày đi (`desk.book.departure`),
-     chọn hạng phòng (`desk.book.room_type`), bấm `desk.book.quote_button`.
+     chọn loại phòng (`desk.book.room_type`), nhập giảm giá nếu có
+     (`desk.book.discount`), bấm `desk.book.quote_button` — không còn ô gói
+     giá (Refs #544: báo giá dùng gói duy nhất áp giá cho hạng phòng).
   2. Kiểm tra thẻ báo giá (`desk.book.quote_night`, `desk.book.quote_total`,
      `desk.book.night_count`), rồi bấm `desk.book.confirm_button`.
   3. Đọc kết quả (`desk.book.reference`, `desk.book.readback`).

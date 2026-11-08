@@ -169,9 +169,13 @@ export const BOOK_SCREEN_ALLOWLIST: DomDiffAllowlist = {
     // a text input with no illustrated options), so this design path
     // has no v2 counterpart and stays wired until a section-5
     // retirement is owner-approved — the stale-entry warning (not a
-    // silent pass) is the tracking signal.
+    // silent pass) is the tracking signal. Refs #544: the v2
+    // rebuild re-points the app side to the stay-card select
+    // subtree observed on hotel-lab-775 (the h1/section-h2/
+    // guest-ID/rate-plan removal reshaped the grid) — same
+    // functional element, orchestrator decision on #544.
     '/html[0]/body[0]/x-dc[0]/div[0]/div[2]/div[1]/div[0]/label[2]/select[0]',
-    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/form[0]/div[0]/div[1]/div[0]/div[0]/div[1]/label[2]/select[0]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/form[0]/div[1]/div[0]/div[1]/div[0]/label[2]/select[0]',
   ],
 };
 

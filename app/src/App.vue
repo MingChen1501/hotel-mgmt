@@ -693,14 +693,17 @@ export default defineComponent({
     font-weight: 600;
   }
 
-  /* Book screen (Refs #520; restyle spec section 5.2, AC-RST-3):
-     pixel-faithful to `docs/design/Book.dc.html:2-:5` — h1 `22px`,
-     section h2 `18px`, the `1.3fr 1fr` top grid (guest card left,
-     quote card right, `gap:16px`) with the stay card full-width
-     below, stay fields in a `repeat(4,1fr)` grid (`gap:12px`),
-     `14px` labels, full-width `44px` controls with
-     `margin-top:6px`, `15px` quote rows with `1px solid #EEF1F0`
-     top dividers, muted `14px` helpers, primary action buttons
+  /* Book screen (Refs #544; v2 board): pixel-faithful to
+     `docs/design/Book.dc.html:3` — no screen title and no section
+     heading (the shell header owns the hotel name plus the seven
+     design tabs); numbered board h3 card titles (`1. Khách`,
+     `Báo giá`, `2. Ngày và phòng`, `margin:0;font-size:16px`); the
+     `1.3fr 1fr` top grid (guest card left, quote card right,
+     `gap:16px`) with the stay card full-width below; stay fields in
+     a `repeat(4,1fr)` grid (`gap:12px`); `14px` labels, full-width
+     `44px` controls with `margin-top:6px`, `15px` quote rows with
+     `1px solid #EEF1F0` top dividers, muted `14px` helpers, primary
+     action buttons
      (`min-height:44px;padding:0 18px;border-radius:8px;border:0;
      background:#0F766E;color:#fff;font-weight:600`). PrimeVue
      stays as logic carrier only: Card/Button/InputText defaults
@@ -710,25 +713,14 @@ export default defineComponent({
      (`colors.primary/muted/cardBorder/rowDivider`); this rule
      duplicates them because CSS cannot import the TS constants.
      Views carry no style blocks (M4), so the presentation lives
-     here. Result/confirmation sections below the form keep their
+     here. Quote flow state (nightly lines, empty/confirming/
+     errors), result/confirmation sections below the form keep their
      current presentation (post-booking states with no design
      counterpart; copy and hooks unchanged). */
-  #shell [data-testid="book-view"] .book-title {
-    font-size: 22px;
-    margin: 0;
-    color: #1B2B2A;
-  }
-
   #shell [data-testid="book-booking"] {
     display: flex;
     flex-direction: column;
     gap: 16px;
-  }
-
-  #shell [data-testid="book-booking"] .book-section-title {
-    font-size: 18px;
-    margin: 0;
-    color: #1B2B2A;
   }
 
   #shell [data-testid="book-booking"] form {
@@ -770,9 +762,9 @@ export default defineComponent({
     padding: 0;
   }
 
-  #shell .book-layout .p-card-title h2,
-  #shell [data-testid="book-stay-card"] .p-card-title h2 {
-    font-size: 18px;
+  #shell .book-layout .p-card-title h3,
+  #shell [data-testid="book-stay-card"] .p-card-title h3 {
+    font-size: 16px;
     margin: 0;
     color: #1B2B2A;
   }
@@ -847,7 +839,7 @@ export default defineComponent({
   }
 
   /* Design action buttons: guest search/register, confirm, and
-     get-price (`docs/design/Book.dc.html:3-:5`). */
+     get-price (`docs/design/Book.dc.html:3`). */
   #shell [data-testid="book-view"] .book-action.p-button {
     min-height: 44px;
     padding: 0 18px;
@@ -856,6 +848,16 @@ export default defineComponent({
     background: #0F766E;
     color: #FFFFFF;
     font-weight: 600;
+  }
+
+  /* Full-width board actions: the design draws the quote and
+     confirm buttons as full-width column children
+     (`docs/design/Book.dc.html:3`); each is the only primary
+     action in its card/section scope, while the guest actions
+     stay auto-width in their flex row above. */
+  #shell [data-testid="book-stay-card"] .book-action.p-button,
+  #shell [data-testid="book-quote-section"] .book-action.p-button {
+    width: 100%;
   }
 
   /* Stay check-in/out screen (Refs #541; v2 board

@@ -31,15 +31,15 @@ async function bookOnce(
   arrival: string,
   departure: string,
   roomTypeId: string,
-  ratePlan: string,
 ): Promise<void> {
+  // Refs #544: the v2 board carries no rate-plan input — the quote
+  // resolves the single pricing plan for the type and window.
   await page.getByTestId('book-guest-name').fill(guestName);
   await page.getByTestId('book-register-guest').click();
   await expect(page.getByTestId('book-guest-status')).toContainText('registered');
   await page.getByTestId('book-arrival-date').fill(arrival);
   await page.getByTestId('book-departure-date').fill(departure);
   await page.getByTestId('book-room-type-id').selectOption(roomTypeId);
-  await page.getByTestId('book-rate-plan').fill(ratePlan);
   await page.getByTestId('book-quote').click();
   await expect(page.getByTestId('book-quote-section')).toBeVisible();
 }
@@ -53,7 +53,7 @@ test('walk-in booking quotes and confirms with a readable reference', async ({
   const ctx = await setupFlowContext(request, token, 'book', window);
   await signInThroughGate(page);
   await page.goto('/app/book');
-  await bookOnce(page, ctx.guestName, window.arrival, window.departure, ctx.roomTypeId, ctx.ratePlan);
+  await bookOnce(page, ctx.guestName, window.arrival, window.departure, ctx.roomTypeId);
   await expect(page.getByTestId('book-quote-total')).toContainText('2400');
   await page.getByTestId('book-confirm').click();
   await expect(page.getByTestId('book-result')).toBeVisible();
@@ -85,11 +85,11 @@ test('second overlapping booking is refused as sold out', async ({ page, request
   await page.goto('/app/book');
   // A single room: the first confirm takes the last sellable
   // unit, so the second overlapping confirm is refused.
-  await bookOnce(page, ctx.guestName, window.arrival, window.departure, ctx.roomTypeId, ctx.ratePlan);
+  await bookOnce(page, ctx.guestName, window.arrival, window.departure, ctx.roomTypeId);
   await page.getByTestId('book-confirm').click();
   await expect(page.getByTestId('book-result')).toBeVisible();
   await page.getByTestId('book-new-booking').click();
-  await bookOnce(page, ctx.guestName, window.arrival, window.departure, ctx.roomTypeId, ctx.ratePlan);
+  await bookOnce(page, ctx.guestName, window.arrival, window.departure, ctx.roomTypeId);
   await page.getByTestId('book-confirm').click();
   await expect(page.getByTestId('book-confirm-error')).toContainText('No rooms of this type are free');
 });
@@ -105,7 +105,6 @@ test('confirm without a guest names the missing guest first', async ({ page, req
   await page.getByTestId('book-arrival-date').fill(window.arrival);
   await page.getByTestId('book-departure-date').fill(window.departure);
   await page.getByTestId('book-room-type-id').selectOption(ctx.roomTypeId);
-  await page.getByTestId('book-rate-plan').fill(ctx.ratePlan);
   await page.getByTestId('book-quote').click();
   await expect(page.getByTestId('book-quote-section')).toBeVisible();
   await page.getByTestId('book-confirm').click();
@@ -119,7 +118,7 @@ test('restriction refusal names the restriction on screen', async ({ page, reque
   const ctx = await setupFlowContext(request, token, 'bookrestr', window);
   await signInThroughGate(page);
   await page.goto('/app/book');
-  await bookOnce(page, ctx.guestName, window.arrival, window.departure, ctx.roomTypeId, ctx.ratePlan);
+  await bookOnce(page, ctx.guestName, window.arrival, window.departure, ctx.roomTypeId);
   // Server-side stay-restriction enforcement (the reservations
   // CheckRestrictionsHook wired to rates in #361): a real
   // closed-to-arrival window covers the booked arrival, so the

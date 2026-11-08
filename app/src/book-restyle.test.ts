@@ -1,18 +1,21 @@
-// R3 Book screen restyle guard (Refs #520; restyle spec section 5.2,
-// AC-RST-3; traceability `docs/testing/desk-restyle-test-traceability.md`
-// section 3 R3).
+// R3 Book screen design guard (Refs #544; v2 board
+// `docs/design/Book.dc.html:3`; traceability
+// `docs/testing/desk-restyle-test-traceability.md` section 3 R3).
 //
 // Pins the owner-design Book screen at the source plus the live
-// render contract: the h1 `22px` title, the section h2 `18px`, the
-// `1.3fr 1fr` top grid (guest card left, quote card right) with the
-// stay card full-width below, stay fields in a `repeat(4,1fr)`
-// grid, `14px` labels, full-width `44px` controls with
-// `margin-top:6px`, `15px` quote rows with dividers, muted `14px`
+// render contract: no screen title and no section heading (the
+// shell header owns the board tabs), the numbered board h3 card
+// titles at `16px`, the `1.3fr 1fr` top grid (guest card left,
+// quote card right) with the stay card full-width below, stay
+// fields in a `repeat(4,1fr)` grid, `14px` labels with full-width
+// `44px` controls, `15px` quote rows with dividers, muted `14px`
 // helpers, and primary action buttons per
-// `docs/design/Book.dc.html:2-:5`, while guest search, walk-in
+// `docs/design/Book.dc.html:3`, while guest search, walk-in
 // registration, get-quote-then-confirm flow, and refusals run
 // exactly as today (parity suite `BookView.test.ts` owns the
-// behaviour half; this file owns the design values only).
+// behaviour half; this file owns the design values only). The v1
+// helpers, guest-ID input, and rate-plan input are gone (zero
+// extras vs the board, orchestrator decision on #544).
 import { describe, expect, it } from 'vitest';
 import { deskTokens } from './theme/tokens';
 import appSource from './App.vue?raw';
@@ -38,9 +41,9 @@ function combinedRuleBody(marker: string): string {
   return appSource.slice(open + 1, close);
 }
 
-describe('R3 Book design values (Refs #520)', () => {
+describe('R3 Book design values (Refs #544)', () => {
   it('pins the Book design tokens to the design board', () => {
-    // `docs/design/Book.dc.html:2` (restyle spec section 3): primary
+    // `docs/design/Book.dc.html:3` (restyle spec section 3): primary
     // action `#0F766E`, muted `#4B5D5B`, card border `#D9E0DE`,
     // row divider `#EEF1F0`.
     expect(deskTokens.colors.primary).toBe('#0F766E');
@@ -59,7 +62,6 @@ describe('R3 Book design values (Refs #520)', () => {
       'data-testid="book-guest-name"',
       'data-testid="book-find-guest"',
       'data-testid="book-register-guest"',
-      'data-testid="book-guest-id"',
       'data-testid="book-guest-status"',
       'data-testid="book-quote-card"',
       'data-testid="book-quote-section"',
@@ -76,7 +78,6 @@ describe('R3 Book design values (Refs #520)', () => {
       'data-testid="book-room-type-id"',
       'data-testid="book-room-type-loading"',
       'data-testid="book-room-type-empty"',
-      'data-testid="book-rate-plan"',
       'data-testid="book-discount-name"',
       'data-testid="book-quote"',
     ]) {
@@ -106,13 +107,18 @@ describe('R3 Book design values (Refs #520)', () => {
     }
   });
 
-  it('renders the h1 title at 22px and the section heading at 18px', () => {
-    const title = ruleBody('#shell [data-testid="book-view"] .book-title');
-    expect(title).toContain('font-size: 22px');
-    expect(title).toContain('margin: 0');
-    const section = ruleBody('#shell [data-testid="book-booking"] .book-section-title');
-    expect(section).toContain('font-size: 18px');
-    expect(section).toContain('margin: 0');
+  it('carries no screen title or section heading (v2 board has neither)', () => {
+    // `docs/design/Book.dc.html:3`: the board heads straight into
+    // the card grid under the shell header — the v1 h1 and the
+    // `New booking` section h2 are gone, so their style rules and
+    // template classes go with them. The booking section keeps its
+    // flex-column surface for the form stack.
+    expect(appSource).not.toContain('.book-title');
+    expect(appSource).not.toContain('.book-section-title');
+    expect(bookViewSource).not.toContain('class="book-title"');
+    expect(bookViewSource).not.toContain('class="book-section-title"');
+    expect(bookViewSource).not.toContain('desk.book.title');
+    expect(bookViewSource).not.toContain('desk.book.form_heading');
     const booking = ruleBody('#shell [data-testid="book-booking"]');
     expect(booking).toContain('display: flex');
     expect(booking).toContain('flex-direction: column');
@@ -140,12 +146,17 @@ describe('R3 Book design values (Refs #520)', () => {
     expect(stayAt).toBeGreaterThan(quoteAt);
     expect(layoutClose).toBeGreaterThan(quoteAt);
     // The old left/right column wrappers are gone: the design grid
-    // carries the columns instead.
+    // carries the columns instead. The v1 guest-ID and rate-plan
+    // inputs are gone too (zero extras vs the board, orchestrator
+    // decision on #544): find/register-by-name sets the internal
+    // guest ID and quotes resolve the single pricing plan.
     expect(bookViewSource).not.toContain('data-testid="book-left"');
     expect(bookViewSource).not.toContain('data-testid="book-right"');
+    expect(bookViewSource).not.toContain('data-testid="book-guest-id"');
+    expect(bookViewSource).not.toContain('data-testid="book-rate-plan"');
   });
 
-  it('renders the design cards with 18px titles', () => {
+  it('renders the design cards with numbered 16px board titles', () => {
     const card = combinedRuleBody('#shell .book-layout .p-card,');
     expect(card).toContain('background: #FFFFFF');
     expect(card).toContain('border: 1px solid #D9E0DE');
@@ -156,12 +167,19 @@ describe('R3 Book design values (Refs #520)', () => {
     expect(body).toContain('display: flex');
     expect(body).toContain('flex-direction: column');
     expect(body).toContain('gap: 10px');
-    const title = combinedRuleBody('#shell .book-layout .p-card-title h2,');
-    expect(title).toContain('font-size: 18px');
+    const title = combinedRuleBody('#shell .book-layout .p-card-title h3,');
+    expect(title).toContain('font-size: 16px');
     expect(title).toContain('margin: 0');
     // The stay card below the grid shares the same design card.
     expect(appSource).toContain('#shell [data-testid="book-stay-card"].p-card');
-    expect(appSource).toContain('#shell [data-testid="book-stay-card"] .p-card-title h2');
+    expect(appSource).toContain('#shell [data-testid="book-stay-card"] .p-card-title h3');
+    // The three card headings carry the numbered board copy in DOM order.
+    const guestTitle = bookViewSource.indexOf('data-testid="book-guest-card"');
+    const quoteTitle = bookViewSource.indexOf('data-testid="book-quote-card"');
+    const stayTitle = bookViewSource.indexOf('data-testid="book-stay-card"');
+    expect(bookViewSource.slice(guestTitle, quoteTitle)).toContain('desk.book.guest_heading');
+    expect(bookViewSource.slice(quoteTitle, stayTitle)).toContain('desk.book.quote_heading');
+    expect(bookViewSource.slice(stayTitle)).toContain('desk.book.stay_heading');
   });
 
   it('renders 14px labels with full-width 44px controls', () => {
@@ -212,9 +230,17 @@ describe('R3 Book design values (Refs #520)', () => {
     expect(buttons).toContain('background: #0F766E');
     expect(buttons).toContain('color: #FFFFFF');
     expect(buttons).toContain('font-weight: 600');
-    // The template wears the design class on all three actions.
+    // The shared action rule carries no width: the guest actions
+    // stay auto-width in their flex row.
+    expect(buttons).not.toContain('width');
+    // The board draws the quote and confirm actions full-width
+    // (`docs/design/Book.dc.html:3`): each is the only primary
+    // action in its card/section scope.
+    const fullWidth = combinedRuleBody(
+      '#shell [data-testid="book-stay-card"] .book-action.p-button,',
+    );
+    expect(fullWidth).toContain('width: 100%');
+    // The template wears the design class on all four actions.
     expect(bookViewSource).toContain('class="book-action"');
-    expect(bookViewSource).toContain('class="book-title"');
-    expect(bookViewSource).toContain('class="book-section-title"');
   });
 });

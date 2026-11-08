@@ -111,7 +111,7 @@ candidate — never a phantom selection.
 ```mermaid
 flowchart TD
     A[Desk: today's arrivals] --> B[Book: find or register guest]
-    B --> C[Book: enter dates, room type, rate plan, discount]
+    B --> C[Book: enter dates, room type, discount]
     C --> D[Book: quote]
     D -- Quote fails --> C
     D -- Quote OK --> E[Book: confirm, receive reference]
@@ -217,7 +217,7 @@ printable surfaces.
 |---|---|---|---|---|
 | 0 | Sign-in gate + shell | all (gate) | `App.vue` | gate form (`shell-gate`), locale switch, top nav, restricted notice |
 | 1 | Desk dashboard | `/` | `DeskView.vue` | business date, arrivals / in-house / departures tables, dirty + uninspected + out-of-order lists, board, backup report |
-| 2 | Book | `/book` | `BookView.vue` | guest find-or-register, dates + room type + rate + discount, quote, confirm, reference readback, confirmation + print/copy |
+| 2 | Book | `/book` | `BookView.vue` | v2 board (Refs #544): numbered h3 cards (guest + find/register, dates/room/discount + quote, quote + confirm), no screen title, no guest-ID, no rate plan (single-plan quote); quote, confirm, reference readback, confirmation + print/copy |
 | 3 | Stay | `/stay` | `StayView.vue` | v2 board (Refs #541): check-in panel (arrival + room selects), check-out panel (departing-guest select + reviewer + folio review), review-to-checkout flow state (approval, check-out, dialog) |
 | 4 | Folio | `/folio` | `FolioView.vue` | charge list + post charge, payments + record payment, balance, errors |
 | 5 | Print | `/print` | `PrintView.vue` | receipt/invoice preview, print action |
@@ -266,21 +266,23 @@ clean/inspect are inline actions per J2 (QA finding 2 fix point).
 ### S2. Book (`/book`)
 
 ```text
-Guest: [name............] {Find} {Register new}
+1. Khách: [name............] {Tìm} {Đăng ký khách mới}
 ! <guest status>
-Arrival [date]  Departure [date]  Room type (....)
-Rate plan (....)  Discount [name........]
-{Get quote}
-Quote: * N nights, * total  ! <quote error>
+2. Ngày và phòng: Ngày đến [date]  Ngày đi [date]  Loại phòng (....)  Giảm giá [....]
+{Get price}
+Báo giá: * Số đêm, * Tổng tiền  ! <quote error>
 {Confirm booking}  ! <confirm error>
 => * Reference: ABC123
 * readback (guest, dates, room type, total)
 {New booking}  Confirmation {Print} {Copy} * copied?
 ```
 
-Rules: guest find-or-register precedes dates; quote precedes
-confirm; the reference readback repeats the booking facts for
-read-back verification.
+Rules (v2 board, Refs #544, zero extras: no screen title, no
+guest-ID input, no rate-plan input): guest find-or-register by
+name sets the internal ID; the quote resolves the single pricing
+plan (multi-plan ambiguity maps to the generic refusal); quote
+precedes confirm; the reference readback repeats the booking
+facts for read-back verification.
 
 ### S3. Stay (`/stay`)
 

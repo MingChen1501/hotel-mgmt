@@ -412,7 +412,9 @@ test.describe('allowlist exempts owner-approved dynamic data (criterion 3)', () 
   // DD-09 design select has no v2 counterpart (the v2 board carries
   // no select) and stays wired, so the v2-shaped option node no
   // longer exempts and the entry surfaces as stale — the section-5
-  // tracking signal, asserted below.
+  // tracking signal, asserted below. Refs #544: the app-side option
+  // path re-points to the v2 stay-card select subtree observed on
+  // hotel-lab-775 (orchestrator decision on #544).
   test('BOOK_SCREEN_ALLOWLIST exempts the approved Book dynamic paths only', () => {
     const bookNode = (path: string, tag: string, text: string): DomNode => ({
       path,
@@ -438,12 +440,12 @@ test.describe('allowlist exempts owner-approved dynamic data (criterion 3)', () 
     const actual: DomNode[] = [
       bookNode('/html[0]/body[0]/div[0]/div[0]/div[0]/nav[0]/span[0]', 'span', 'Lab Parity Hotel'),
       bookNode(
-        '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/form[0]/div[0]/div[1]/div[0]/div[0]/div[1]/label[2]/select[0]/option[1]',
+        '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/form[0]/div[1]/div[0]/div[1]/div[0]/label[2]/select[0]/option[1]',
         'option',
         'Standard Double',
       ),
       bookNode(
-        '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/form[0]/div[0]/div[1]/div[0]/div[0]/div[1]/button[0]',
+        '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/form[0]/div[1]/div[0]/div[1]/div[1]/button[0]',
         'button',
         'Lấy báo giá',
       ),
@@ -457,7 +459,7 @@ test.describe('allowlist exempts owner-approved dynamic data (criterion 3)', () 
       `expected only the non-allowlisted nodes, got:\n${formatDomDiffs(diffs)}`,
     ).toHaveLength(3);
     expect(diffs.map((diff) => diff.path).sort()).toEqual([
-      '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/form[0]/div[0]/div[1]/div[0]/div[0]/div[1]/button[0]',
+      '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/section[0]/form[0]/div[1]/div[0]/div[1]/div[1]/button[0]',
       '/html[0]/body[0]/div[0]/div[0]/div[0]/div[1]/div[0]/label[2]/select[0]/option[1]',
       '/html[0]/body[0]/div[0]/div[0]/div[0]/div[1]/div[1]/h3[0]',
     ]);
