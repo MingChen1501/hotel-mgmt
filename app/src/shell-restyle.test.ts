@@ -50,6 +50,10 @@ describe('R1 shell/nav design values (Refs #518)', () => {
     expect(deskTokens.shell.pillRadiusPx).toBe(8);
     expect(deskTokens.shell.pillPadYPx).toBe(6);
     expect(deskTokens.shell.pillPadXPx).toBe(12);
+    // Locale pill ink (Refs #571): the gate-safe page ink plus the
+    // header light ink the teal scope re-applies.
+    expect(deskTokens.shell.pillInk).toBe('#1B2B2A');
+    expect(deskTokens.shell.pillInkOnTeal).toBe('#FFFFFF');
     // Restyle spec section 3: the boards render a 1200px column.
     expect(deskTokens.spacing.contentMaxPx).toBe(1200);
   });
@@ -94,8 +98,13 @@ describe('R1 shell/nav design values (Refs #518)', () => {
     // buttons keep behaviour, testids, and 44px targets.
     const inner = ruleBody('#shell .shell-locale .p-button');
     expect(inner).toContain('background: transparent');
-    expect(inner).toContain('color: #FFFFFF');
     expect(inner).toContain('min-height: 44px');
+    // Refs #571: the shared block serves the pale gate too, so the
+    // base ink is the gate-safe token; the header scope re-applies
+    // the light ink that reads on the teal bar.
+    expect(inner).toContain(`color: ${deskTokens.shell.pillInk}`);
+    const headerInner = ruleBody('#shell .shell-nav .shell-locale .p-button');
+    expect(headerInner).toContain(`color: ${deskTokens.shell.pillInkOnTeal}`);
   });
 
   it('centres the content column at the design width', () => {

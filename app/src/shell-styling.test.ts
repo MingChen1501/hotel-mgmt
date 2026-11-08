@@ -19,6 +19,7 @@ import ShellApp from './App.vue';
 import router from './router';
 import { resetConnectivityForTests } from './api/client';
 import { useSessionStore } from './stores/session';
+import { deskTokens } from './theme/tokens';
 import appSource from './App.vue?raw';
 import adminSource from './views/AdminView.vue?raw';
 import bookSource from './views/BookView.vue?raw';
@@ -108,7 +109,7 @@ describe('served-print style isolation (M4)', () => {
   });
 });
 
-describe('locale-label contrast (Refs #455)', () => {
+describe('locale-label and locale-pill ink contrast (Refs #455, #571)', () => {
   // Relative luminance per WCAG 2.1, sRGB branch.
   function luminance(hexColor: string): number {
     const hex = hexColor.replace('#', '');
@@ -137,6 +138,18 @@ describe('locale-label contrast (Refs #455)', () => {
     return (match as RegExpExecArray)[1].toUpperCase();
   }
 
+  // Same, but `null` when no such rule exists or the rule declares no
+  // `color`: a state rule that sets none inherits the base rule's ink.
+  function optionalRuleColor(css: string, selector: string): string | null {
+    const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const match = new RegExp(`${escaped}\\s*\\{([^}]*)\\}`).exec(css);
+    if (match === null) {
+      return null;
+    }
+    const declared = /color\s*:\s*(#[0-9A-Fa-f]{6})/.exec(match[1]);
+    return declared === null ? null : declared[1].toUpperCase();
+  }
+
   it('keeps the gate locale label readable on the page background', () => {
     const blocks = styleBlocks(appSource);
     // The base (non-header) rule is what the sign-in gate inherits:
@@ -150,6 +163,53 @@ describe('locale-label contrast (Refs #455)', () => {
     const blocks = styleBlocks(appSource);
     const label = ruleColor(blocks[0], '#shell .shell-nav .shell-locale-label');
     expect(contrastRatio(label, '#0F4C47')).toBeGreaterThanOrEqual(4.5);
+  });
+
+  // Refs #571: the pill buttons share one `.shell-locale` block
+  // between the pale gate and the teal header, so the ink needs the
+  // same split as the label — resting and pressed buttons alike.
+  // Pressed adds emphasis only (weight + underline), so it declares
+  // no ink of its own and both scopes keep their resting ink; that
+  // inheritance is what the two scope tests below assert.
+  it('leaves the pressed locale pill buttons on their scope ink', () => {
+    const blocks = styleBlocks(appSource);
+    expect(blocks[0]).toContain('.shell-locale .p-button[aria-pressed="true"]');
+    expect(
+      optionalRuleColor(blocks[0], '#shell .shell-locale .p-button[aria-pressed="true"]'),
+    ).toBeNull();
+  });
+
+  it('keeps the gate locale pill buttons readable on the page background', () => {
+    const blocks = styleBlocks(appSource);
+    const resting = ruleColor(blocks[0], '#shell .shell-locale .p-button');
+    const pressed = optionalRuleColor(
+      blocks[0],
+      '#shell .shell-locale .p-button[aria-pressed="true"]',
+    ) ?? resting;
+    // The pre-fix source painted the header white here, which is
+    // ~1.1:1 on the gate background: fail on that value explicitly
+    // instead of only through the ratio.
+    expect(resting, 'gate pill ink is the header white (#FFFFFF)').not.toBe('#FFFFFF');
+    expect(pressed, 'pressed gate pill ink is the header white (#FFFFFF)').not.toBe('#FFFFFF');
+    expect(contrastRatio(resting, '#F4F6F5')).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(pressed, '#F4F6F5')).toBeGreaterThanOrEqual(4.5);
+    // No forked literal: the ink resolves through the rendered-colour
+    // catalogue (`app/src/theme/tokens.ts`, R9 rollup).
+    expect(resting).toBe(deskTokens.shell.pillInk.toUpperCase());
+    expect(pressed).toBe(deskTokens.shell.pillInk.toUpperCase());
+  });
+
+  it('keeps the header-scoped locale pill buttons readable on the teal bar', () => {
+    const blocks = styleBlocks(appSource);
+    const resting = ruleColor(blocks[0], '#shell .shell-nav .shell-locale .p-button');
+    const pressed = optionalRuleColor(
+      blocks[0],
+      '#shell .shell-nav .shell-locale .p-button[aria-pressed="true"]',
+    ) ?? resting;
+    expect(contrastRatio(resting, '#0F4C47')).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(pressed, '#0F4C47')).toBeGreaterThanOrEqual(4.5);
+    expect(resting).toBe(deskTokens.shell.pillInkOnTeal.toUpperCase());
+    expect(pressed).toBe(deskTokens.shell.pillInkOnTeal.toUpperCase());
   });
 });
 
