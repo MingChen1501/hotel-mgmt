@@ -791,13 +791,22 @@ export default defineComponent({
     // a slow read never names the previous guest after the typed stay
     // ID changed; the context itself clears on that change
     // (`onStayIdInput`), so re-reads after a post or payment keep the
-    // title steady instead of blanking it.
-    async function loadStayContext(stayId: string): Promise<void> {
+    // title steady instead of blanking it. The read is started but not
+    // joined, so the caller's busy state clears on its own response
+    // (product section 6.9 state clause).
+    function loadStayContext(stayId: string): void {
       const request = ++contextRequest;
-      const resolved = await readStayContext(stayId);
-      if (request === contextRequest) {
-        stayContext.value = resolved;
-      }
+      void readStayContext(stayId)
+        .then((resolved) => {
+          if (request === contextRequest) {
+            stayContext.value = resolved;
+          }
+        })
+        .catch((err: unknown) => {
+          if (isSignedOut(err)) {
+            expireToGate();
+          }
+        });
     }
 
     async function readFolio(id: string): Promise<void> {
@@ -806,7 +815,7 @@ export default defineComponent({
         body: JSON.stringify({ stayId: id, actor: session.displayName ?? '' }),
       });
       renderFolio(next);
-      await loadStayContext(next.stayId || id);
+      loadStayContext(next.stayId || id);
     }
 
     function onStayIdInput(): void {

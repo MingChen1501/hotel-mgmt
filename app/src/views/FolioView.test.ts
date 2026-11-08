@@ -787,4 +787,59 @@ describe('folio open context (Refs #568)', () => {
     await openFolio(wrapper, 's-1');
     expect(wrapper.find('[data-testid="folio-charges-title"]').text()).toBe('Charges');
   });
+
+  // Product section 6.9 state clause (Refs #568): while the best-effort
+  // context reads run, the open, post, and payment confirmations must
+  // already have cleared their own busy state (no spinner, no disabled
+  // button, the rest of the card usable).
+  it('does not hold the open or post busy state on the context read', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountFolio();
+    await signIn(wrapper, fetchMock);
+    const happy = withStayContext(stubHappyPath(fetchMock));
+    let holdStay = false;
+    let release!: (value: Response) => void;
+    let gate: Promise<Response> = Promise.resolve(jsonResponse({}));
+    const holdNextStayRead = (): void => {
+      gate = new Promise<Response>((resolve) => {
+        release = resolve;
+      });
+    };
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (holdStay && url === '/v1/stay/GetStay') {
+        return gate;
+      }
+      return happy(url, init);
+    });
+
+    // Open: the folio renders from the billing read while its context
+    // read is still held, and the open action is already idle.
+    holdNextStayRead();
+    holdStay = true;
+    await openFolio(wrapper, 's-1');
+    expect(wrapper.find('[data-testid="folio-opening"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="folio-open"]').attributes('disabled')).toBeUndefined();
+    release(jsonResponse({ stayId: 's-1', guestId: 'g-1', roomId: 'r-1' }));
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="folio-charges-title"]').text()).toContain('Lê Minh');
+    });
+
+    // Post: the confirmation lands while the context re-read is held,
+    // and the charge action is already idle again.
+    holdNextStayRead();
+    await wrapper.find('[data-testid="folio-charge-name"]').setValue('Minibar');
+    await wrapper.find('[data-testid="folio-charge-amount"]').setValue('5');
+    await wrapper.find('[data-testid="folio-charge"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="folio-charge-status"]').text()).toContain('Posted');
+    });
+    expect(wrapper.find('[data-testid="folio-charging"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="folio-charge"]').attributes('disabled')).toBeUndefined();
+    // The known context stays painted while the re-read is held.
+    expect(wrapper.find('[data-testid="folio-charges-title"]').text()).toContain('Lê Minh');
+
+    release(jsonResponse({ stayId: 's-1', guestId: 'g-1', roomId: 'r-1' }));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  });
 });

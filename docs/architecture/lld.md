@@ -1989,14 +1989,14 @@ touches; edge traces cite the existing lines at this head):
 
 ```text
 app/src/views/FolioView.vue  open path and title composition:
-                             readFolio :803-810, loadStayContext :795-801,
+                             readFolio :812-819, loadStayContext :797-810,
                              readStayContext :599-615, readGuestName :565-574,
                              readRoomNumber :576-591, ROOM_STATES :549,
                              bestEffortText :554-563, stayContext + request
                              token :672-673, chargesHeading :752-768,
                              title hook :81, typed stay-ID input :33,
                              reference disclosure :783-786 (rendered :109),
-                             clear on typed change :812-819, 401 gate :773-778
+                             clear on typed change :821-828, 401 gate :773-778
 messages/en.json             one new key desk.folio.charges_context :467
 messages/vi.json             the same key in VI :467
 ```
@@ -2030,14 +2030,16 @@ Edge trace (every edge cites code):
 - A–B: the typed stay ID is the screen's existing input
   (`FolioView.vue:33`); `onOpen` calls `readFolio`, which issues
   the existing `GetFolioBalance` with `stayId` and `actor`
-  (`FolioView.vue:821-858`, call at `:803-807`).
+  (`FolioView.vue:830-867`, call at `:812-816`).
 - B–C: `renderFolio` sets the `folio` ref, clears the notice, and
   fills the reference list with the raw `Stay ID` / `Folio ID`
   pairs (`FolioView.vue:780-787`) that render behind the existing
   disclosure (`:109`) — the #372 rule.
-- C–D: `readFolio` then awaits `loadStayContext(next.stayId || id)`,
-  which increments the `contextRequest` token before the read
-  (`FolioView.vue:803-810`, `:795-797`; token declared `:672-673`).
+- C–D: `readFolio` then starts `loadStayContext(next.stayId || id)`
+  without joining it, so the open / post / payment confirmation
+  clears its own busy state on its response (product section 6.9);
+  the call increments the `contextRequest` token before the read
+  (`FolioView.vue:812-819`, `:797-799`; token declared `:672-673`).
 - D–E: `readStayContext` issues the existing `GetStay` with the
   folio's `stayId` (`FolioView.vue:599-605`).
 - E–F: the stay record's `guestId` feeds the existing `GetGuest`
@@ -2052,8 +2054,8 @@ Edge trace (every edge cites code):
 - F–H / G–I: the two halves land in one reactive `stayContext`
   object (`FolioView.vue:672`); both start empty, so neither half
   can fall back to an identifier (`:593-598`).
-- H–J / I–J: the awaited result paints only when its request is
-  still the newest (`FolioView.vue:797-800`).
+- H–J / I–J: the resolved result paints only when its request is
+  still the newest (`FolioView.vue:799-803`).
 - J–K: `chargesHeading` composes the heading through the existing
   `desk.folio.folio_heading`, the guest through
   `desk.today.unknown_guest`, the room through
@@ -2062,7 +2064,7 @@ Edge trace (every edge cites code):
   `messages/en.json:354-357`, `:466-467` with VI parity at
   `messages/vi.json:466-467`).
 - J–L: a superseded request never assigns
-  (`FolioView.vue:798-800`), so a slow read for an earlier stay
+  (`FolioView.vue:801-803`), so a slow read for an earlier stay
   cannot name the wrong guest (pinned at
   `app/src/views/FolioView.test.ts:742-766`).
 - K–M: the template binds the computed to the card title hook
@@ -2094,7 +2096,7 @@ Edge trace:
   heading while both halves are empty (`:753-757`; pinned at
   `app/src/views/FolioView.test.ts:769-788`). The refusal itself
   never surfaces a new error state: the folio read owns the notice
-  (`FolioView.vue:803-810`, `:826-858`).
+  (`FolioView.vue:812-819`, `:835-867`).
 - R–S: `bestEffortText` swallows signed-in failures and keeps the
   empty half (`FolioView.vue:554-563`, used at `:612-613`); the
   other half still names through the same computed
@@ -2112,10 +2114,10 @@ Edge trace:
   `app/e2e/folio.spec.ts:121-128`).
 - X–Y: `onStayIdInput` clears the folio, the notice, the reference
   list, and the context, and increments the token so any in-flight
-  read is stale (`FolioView.vue:812-819`; pinned at
+  read is stale (`FolioView.vue:821-828`; pinned at
   `app/src/views/FolioView.test.ts:726-738`). Re-reads after a
   post or payment keep the current context steady instead of
-  blanking it (`:789-801`).
+  blanking it (`:789-810`).
 - Z–AA: `isSignedOut` rethrows the signed-out error from both the
   stay read and the best-effort readers
   (`FolioView.vue:558-559`, `:607-609`); `expireToGate` clears the
@@ -2152,7 +2154,7 @@ the acceptance side lives with `product-owner` (`AC-DSK-14`):
 - Read budget: one `GetStay`, one `GetGuest`, and one to five
   `ListRoomsByState` reads per open (three to seven on top of the
   existing `GetFolioBalance`), repeated per post-charge and
-  record-payment refresh (`FolioView.vue:795-810`), with no read
+  record-payment refresh (`FolioView.vue:797-819`), with no read
   added to any other screen; `NFR-PERF-1` keeps its folio target.
 - Error semantics: all codes and refusal conditions stand
   (`docs/technical/error-handling.md`, LLD sections 1–8; the

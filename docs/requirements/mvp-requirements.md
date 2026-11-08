@@ -2486,7 +2486,7 @@ No new NFR is added. The existing NFRs cover the change:
   adds three to seven client-side reads per folio open — one
   `GetStay`, one `GetGuest`, and one to five
   `ListRoomsByState` lane reads — on top of the existing
-  `GetFolioBalance` (`app/src/views/FolioView.vue:803-810`).
+  `GetFolioBalance` (`app/src/views/FolioView.vue:812-819`).
   The Folio screen's two-second target still applies, and
   the reads are sequential and best effort (the section 6.9
   request-count note records the accepted desk-local cost; a
