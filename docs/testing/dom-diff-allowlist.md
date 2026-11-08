@@ -18,10 +18,9 @@ Design source is the v2 7-board bundle (bundle 07-11, Closes #538):
 Folio, Admin). Each v2 file is a bundler shell; the gate design
 side is the decoded design markup (the extractor decodes the
 embedded template payload, Refs #548, PR #551) — the raw shell
-bytes never enter a diff. The gate covers the six boards with a
-running app screen; the seventh board (Admin) has no app screen
-yet and is deferred, never allowlisted (section 2 records the
-disposition, Refs #546, Refs #549).
+bytes never enter a diff. The gate covers all seven boards with a
+running app screen; the seventh board (Admin) joined when #546
+landed (section 2 records the disposition, Refs #546, Refs #549).
 
 ## 1. Rule
 
@@ -101,26 +100,26 @@ screen allowlist and keeps `EMPTY_ALLOWLIST` for the one
 remaining covered screen without approved entries (Onboarding).
 
 Gate coverage follows the seven-board manifest
-(`docs/design/manifest.json` order, bundle 07-11, Closes #538)
-minus the deferred Admin board: `SCREEN_TABLE`
-(`app/e2e/design-facts.ts:104`) carries the six boards with a
-running app screen (Main, Stay, Onboarding, Rooms, Book, Folio).
-Extraction coverage is seven boards — the extractor already
-emits the seventh record (`Admin.facts.json`, Refs #548, PR
-#551) — while gate assertion coverage is six screens.
+(`docs/design/manifest.json` order, bundle 07-11, Closes #538):
+`SCREEN_TABLE` (`app/e2e/design-facts.ts:104`) carries all seven
+boards with a running app screen (Main, Stay, Onboarding, Rooms,
+Book, Folio, Admin). Extraction coverage is seven boards — the
+extractor already emits the seventh record (`Admin.facts.json`,
+Refs #548, PR #551) — and gate assertion coverage is seven
+screens since #546 landed.
 
-Admin-board disposition (Refs #549): DEFERRED. The Admin board
-(`Admin.dc.html`, `Quản trị`) has no app counterpart: the board
-is new in bundle 07-11 with no predecessor screen, and the
-Admin screen is unbuilt (open issue #546). Neither the
-design-facts gate nor the dom-diff gate asserts the Admin board,
-and the Admin board carries no allowlist entry — entries exempt
-dynamic data on covered screens and require observed gate
-output per section 5, neither of which exists for Admin. When
-#546 lands, the dev fixture update adds the Admin screen to the
-gate tables and proposes entries from observed output through
-section 5; this document records the new entries, it does not
-pre-approve them.
+Admin-board disposition (Refs #549, Refs #546): ADOPTED. The Admin
+board (`Admin.dc.html`, `Quản trị`) gained its app counterpart
+when #546 landed: both gates assert the Admin screen through the
+gate tables (headings, buttons, static create-form inputs, nav,
+tokens), and the live dom-diff extraction reports on
+EMPTY_ALLOWLIST. The Admin board carries no allowlist entry yet —
+its example user rows, config values, and audit times are live
+dynamic data, and entries exempt dynamic data on covered screens
+only with observed gate output per section 5. Proposing Admin
+entries from observed output through section 5 is follow-up work;
+this document records the new entries, it does not pre-approve
+them.
 
 The lab-evidence paragraphs below were recorded against the v1
 boards and stand as the v1 baseline: entry validity against the
@@ -278,9 +277,9 @@ failures.
   bundle 07-11, Closes #538; board order in `manifest.json`:
   Main, Stay, Onboarding, Rooms, Book, Folio, Admin) —
   `docs/design/README.md` (Closes #462).
-- Admin-board gate disposition: deferred, never allowlisted —
-  no app screen exists yet (open issue #546); recorded in
-  section 2 (Refs #549).
+- Admin-board gate disposition: adopted — app screen landed with
+  issue #546; asserted by both gates, no allowlist entry yet
+  (section 2 records the disposition, Refs #546, Refs #549).
 - Rollout done-conditions: `docs/product/acceptance-criteria.md`
   section 11; rollout traceability:
   `docs/testing/desk-ui-rollout-test-traceability.md`.

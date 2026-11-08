@@ -221,7 +221,7 @@ printable surfaces.
 | 3 | Stay | `/stay` | `StayView.vue` | v2 board (Refs #541): check-in panel (arrival + room selects), check-out panel (departing-guest select + reviewer + folio review), review-to-checkout flow state (approval, check-out, dialog) |
 | 4 | Folio | `/folio` | `FolioView.vue` | v2 board (Refs #545): stay-ID open step (F3 flow state) above the two h3 cards — charges (charge rows + kind/description/amount + post) and payment (due label + due figure + payment rows + method/amount + record); balance sentence, empty/lines readouts, and errors as flow state |
 | 5 | Print | `/print` | `PrintView.vue` | receipt/invoice preview, print action |
-| 6 | Admin | `/admin` | `AdminView.vue` | users + roles, hotel configuration, audit view |
+| 6 | Admin | `/admin` | `AdminView.vue` | v2 board (Refs #546): top `1.2fr 1fr` grid (users h3 card with name · role rows + per-row role select + save/unlock, create-account h3 card with the 2x2 input grid + create) above the bottom `1fr 1fr` grid (config h3 card with version + check-in/out + entry rows, audit h3 card with actor-summary rows + refresh); no screen title, no notes, no tables; role gate notice for front-desk |
 | 7 | Fallback | unknown paths | `Placeholder.vue` | unknown-route notice with nav back |
 
 Wireframe key: `[ ]` input, `( )` select, `{ }` action, `*` key data,
@@ -335,15 +335,18 @@ Rules: print CSS preserved; preview matches the printed page.
 ### S6. Admin (`/admin`)
 
 ```text
-Users and roles: * identity * role (role....) {Save} {Unlock}
+Users and roles card: user rows (* name · role ... (role) {Save} / {Unlock})
   ! <users error>
-Create: [name] [identity] [secret] (role) {Create}
-Hotel configuration: * version * key/value list  ! <error>
-Audit: {Refresh} * actor * action * time ...  ! <error>
+Create-account card: [name] [identity] [secret] (role) {Create account}
+Config card: * version * check-in * check-out * key/value rows ...
+Audit card: * actor · action entity * time ... {Refresh}  ! <error>
 ```
 
 Rules: mutations always confirm inline; restricted roles see the
-notice, never the tables.
+notice, never the console. The row role selects and the
+refresh/save/unlock actions stay as flow state with no board
+counterpart (Refs #546: `UpdateUserRole` requires a target role;
+the locked row carries only Unlock, zero extras vs the board).
 
 ### S7. Fallback (unknown paths)
 

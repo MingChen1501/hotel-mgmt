@@ -23,10 +23,9 @@
 //   byte-identical trees twice, and the same comparison formats
 //   byte-identical output twice.
 // - Live extraction test (criterion 1): opens the real local design
-//   file bytes and the running desk UI route for each of the six
-//   covered screens (the seventh v2 board, Admin, is deferred — no
-//   app screen yet, Refs #546, Refs #549), waits for the bundler
-//   shell to finish rendering the board, extracts both full trees,
+//   file bytes and the running desk UI route for each of the seven
+//   covered screens (the seventh v2 board, Admin, joined when #546
+//   landed, Refs #549), waits for the bundler shell to finish rendering the board, extracts both full trees,
 //   and proves the output is text-only and deterministic across
 //   runs. It does NOT assert zero diffs: full structural parity stays an architecture decision
 //   (Refs #495 S1, PrimeVue-first shell vs design-literal markup),
@@ -881,10 +880,11 @@ test.describe('live extraction from design HTML and the running desk UI (criteri
         // structural divergence (PrimeVue shell vs design-literal
         // markup) still reports — so the run reports the remaining
         // diff count for that follow-up instead of gating on it.
-        // The loop covers SCREEN_TABLE (the six screens with a
-        // running app screen); the Admin board never reaches this
-        // switch — it is DEFERRED with no app screen and no
-        // allowlist entry (Refs #546, Refs #549).
+        // The loop covers SCREEN_TABLE (all seven boards with a
+        // running app screen since #546; Admin carries no allowlist
+        // entry yet, so it reports on EMPTY_ALLOWLIST) — the Admin
+        // board reached this switch when #546 landed (Refs #546,
+        // Refs #549).
         const allowlist =
           entry.screen === 'Main'
             ? MAIN_SCREEN_ALLOWLIST

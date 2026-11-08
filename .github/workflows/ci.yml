@@ -69,7 +69,7 @@ jobs:
             services:
               - 'services/**'
             # DOM-vs-design gate (issue #467): the Playwright
-            # assertions compare the six design boards against the
+            # assertions compare the seven design boards against the
             # running app DOM, so a change on either side (boards,
             # fact schema, extractor, or the gate itself — the gate
             # sources under app/** are already covered by app-shell)

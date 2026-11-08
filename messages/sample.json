@@ -596,7 +596,7 @@
       "params": {}
     },
     {
-      "key": "desk.admin.title",
+      "key": "desk.admin.locked_note",
       "surface": "desk admin console",
       "sources": [
         "app/src/views/AdminView.vue"
@@ -615,7 +615,7 @@
       "key": "desk.admin.signin_identity",
       "surface": "desk admin console",
       "sources": [
-        "app/src/views/AdminView.vue"
+        "app/src/App.vue"
       ],
       "params": {}
     },
@@ -623,7 +623,7 @@
       "key": "desk.admin.secret",
       "surface": "desk admin console",
       "sources": [
-        "app/src/views/AdminView.vue"
+        "app/src/App.vue"
       ],
       "params": {}
     },
@@ -652,7 +652,7 @@
       "params": {}
     },
     {
-      "key": "desk.admin.th_name",
+      "key": "desk.admin.role_owner",
       "surface": "desk admin console",
       "sources": [
         "app/src/views/AdminView.vue"
@@ -660,7 +660,7 @@
       "params": {}
     },
     {
-      "key": "desk.admin.th_identity",
+      "key": "desk.admin.role_manager",
       "surface": "desk admin console",
       "sources": [
         "app/src/views/AdminView.vue"
@@ -668,7 +668,7 @@
       "params": {}
     },
     {
-      "key": "desk.admin.th_role",
+      "key": "desk.admin.role_front_desk",
       "surface": "desk admin console",
       "sources": [
         "app/src/views/AdminView.vue"
@@ -676,7 +676,7 @@
       "params": {}
     },
     {
-      "key": "desk.admin.th_locked",
+      "key": "desk.admin.create_identity_label",
       "surface": "desk admin console",
       "sources": [
         "app/src/views/AdminView.vue"
@@ -684,7 +684,7 @@
       "params": {}
     },
     {
-      "key": "desk.admin.th_actions",
+      "key": "desk.admin.create_secret_label",
       "surface": "desk admin console",
       "sources": [
         "app/src/views/AdminView.vue"
@@ -732,7 +732,7 @@
       "params": {}
     },
     {
-      "key": "desk.admin.config_note",
+      "key": "desk.admin.config_version_label",
       "surface": "desk admin console",
       "sources": [
         "app/src/views/AdminView.vue"
@@ -740,14 +740,12 @@
       "params": {}
     },
     {
-      "key": "desk.admin.config_version",
+      "key": "desk.admin.config_checkin_label",
       "surface": "desk admin console",
       "sources": [
         "app/src/views/AdminView.vue"
       ],
-      "params": {
-        "schemaVersion": "integer"
-      }
+      "params": {}
     },
     {
       "key": "desk.admin.audit_heading",
@@ -758,7 +756,7 @@
       "params": {}
     },
     {
-      "key": "desk.admin.audit_note",
+      "key": "desk.admin.config_checkout_label",
       "surface": "desk admin console",
       "sources": [
         "app/src/views/AdminView.vue"
@@ -767,46 +765,6 @@
     },
     {
       "key": "desk.admin.refresh",
-      "surface": "desk admin console",
-      "sources": [
-        "app/src/views/AdminView.vue"
-      ],
-      "params": {}
-    },
-    {
-      "key": "desk.admin.th_time",
-      "surface": "desk admin console",
-      "sources": [
-        "app/src/views/AdminView.vue"
-      ],
-      "params": {}
-    },
-    {
-      "key": "desk.admin.th_actor",
-      "surface": "desk admin console",
-      "sources": [
-        "app/src/views/AdminView.vue"
-      ],
-      "params": {}
-    },
-    {
-      "key": "desk.admin.th_action",
-      "surface": "desk admin console",
-      "sources": [
-        "app/src/views/AdminView.vue"
-      ],
-      "params": {}
-    },
-    {
-      "key": "desk.admin.th_entity",
-      "surface": "desk admin console",
-      "sources": [
-        "app/src/views/AdminView.vue"
-      ],
-      "params": {}
-    },
-    {
-      "key": "desk.admin.th_detail",
       "surface": "desk admin console",
       "sources": [
         "app/src/views/AdminView.vue"
@@ -823,22 +781,6 @@
     },
     {
       "key": "desk.admin.unlock",
-      "surface": "desk admin console",
-      "sources": [
-        "app/src/views/AdminView.vue"
-      ],
-      "params": {}
-    },
-    {
-      "key": "desk.admin.yes",
-      "surface": "desk admin console",
-      "sources": [
-        "app/src/views/AdminView.vue"
-      ],
-      "params": {}
-    },
-    {
-      "key": "desk.admin.no",
       "surface": "desk admin console",
       "sources": [
         "app/src/views/AdminView.vue"
@@ -3090,14 +3032,6 @@
       "surface": "desk print",
       "sources": [
         "app/src/views/PrintView.vue"
-      ],
-      "params": {}
-    },
-    {
-      "key": "desk.admin.intro",
-      "surface": "desk admin console",
-      "sources": [
-        "app/src/views/AdminView.vue"
       ],
       "params": {}
     },

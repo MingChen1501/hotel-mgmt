@@ -22,13 +22,13 @@ import StayView from './views/StayView.vue';
 
 // Per-route document titles (Refs #495 S2): the SPA shell serves one
 // static title from `app/index.html` for every screen while each of
-// the six design boards carries its own `<title>` (Main `Bảng lễ
+// the seven design boards carries its own `<title>` (Main `Bảng lễ
 // tân`, Book `Đặt phòng`, Stay `Nhận phòng`, Folio `Hoá đơn`, Rooms
-// `Sơ đồ phòng`, Onboarding `Thiết lập lần đầu`). The shell applies
-// the route's catalogue title on navigation (see `App.vue`), so the
-// served document title matches the design board per screen. Routes
-// outside the design batch (print, admin, placeholder) carry no
-// title meta and fall back to the default below.
+// `Sơ đồ phòng`, Onboarding `Thiết lập lần đầu`, Admin `Quản trị`).
+// The shell applies the route's catalogue title on navigation (see
+// `App.vue`), so the served document title matches the design board
+// per screen. Routes outside the design batch (print, placeholder)
+// carry no title meta and fall back to the default below.
 export interface DocTitleMeta {
   docTitleKey?: unknown;
   docTitleFallback?: unknown;
@@ -91,6 +91,7 @@ export function createAppRouter(): Router {
         path: '/admin',
         name: 'admin',
         component: AdminView,
+        meta: { docTitleKey: 'desk.shell.doc_title_admin', docTitleFallback: 'Admin board' },
       },
       {
         path: '/:pathMatch(.*)*',

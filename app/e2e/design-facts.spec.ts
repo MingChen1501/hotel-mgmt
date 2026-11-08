@@ -1,6 +1,6 @@
-// Playwright DOM-vs-design assertions and CI gate for the six covered
-// desk screens (Closes #467; the seventh v2 board, Admin, is deferred
-// — no app screen yet, Refs #546, Refs #549).
+// Playwright DOM-vs-design assertions and CI gate for the seven
+// covered desk screens (Closes #467; the seventh v2 board, Admin,
+// joined when #546 landed, Refs #549).
 //
 // Owner direction 2026-11-03: no screenshot snapshots (heavy,
 // brittle). This spec asserts UI facts extracted from the running DOM
@@ -31,7 +31,8 @@
 //   (header/page/ink tokens, design-known tab labels, the decided
 //   seven-tab visible set, per-screen active tab) plus the decided
 //   per-screen content from issue #473 (exact heading/input
-//   sequences for Stay, Book, and Folio (Refs #545); Rooms pins its static heading prefix plus the
+//   sequences for Stay, Book, Folio (Refs #545), and Admin
+//   (Refs #546); Rooms pins its static heading prefix plus the
 //   seed room labels and checks the data-driven tail structurally;
 //   required-button-label subsets everywhere so dynamic extras never
 //   break the gate) plus the Main room-map section (Refs #479: Main
@@ -55,7 +56,7 @@
 // - Lab-state matrix (issue #474): the CI lab runs on a configured
 //   database (the e2e job applies `deploy/config/hotel.json` with a
 //   real hotel name), so `/onboarding` would redirect to `/` and one
-//   lab state cannot render all 6 screens. Five screens run against
+//   lab state cannot render all 7 screens. Six screens run against
 //   the real configured stack; Onboarding renders through a targeted
 //   `page.route` mock of `POST /v1/admin/GetHotelConfig` answering
 //   unconfigured (`{ values: { name: '' } }`) — both redirect readers
@@ -157,7 +158,7 @@ function expectSingleDiff(
   expect(formatted).toContain(`app:      ${app}`);
 }
 
-test.describe('matching app DOM passes for all 6 covered desk screens (criterion 1)', () => {
+test.describe('matching app DOM passes for all 7 covered desk screens (criterion 1)', () => {
   for (const entry of SCREEN_TABLE) {
     test(`${entry.screen}: matching app DOM passes`, async ({ page }) => {
       const guard = installLoopbackGuard(page);
@@ -633,7 +634,7 @@ test.describe('live shell conformance on the running app DOM', () => {
       // The visible tab set matches the decided set (Refs #472):
       // the Main design record's tab order mapped back onto shell
       // route keys. The shell nav is shell-level, identical on
-      // every screen, so the Main record anchors all six covered screens.
+      // every screen, so the Main record anchors all seven covered screens.
       const designToRoute = Object.fromEntries(
         Object.entries(ROUTE_KEY_TO_DESIGN_KEY).map(([routeKey, designKey]) => [designKey, routeKey]),
       );
@@ -657,7 +658,7 @@ test.describe('live shell conformance on the running app DOM', () => {
         record.nav.design,
         `${record.nav.app} .shell-nav-active`,
       );
-      if (record.nav.active !== '' && ['Main', 'Stay', 'Book', 'Rooms', 'Folio'].includes(entry.screen)) {
+      if (record.nav.active !== '' && ['Main', 'Stay', 'Book', 'Rooms', 'Folio', 'Admin'].includes(entry.screen)) {
         check(
           'nav.active',
           record.nav.active,

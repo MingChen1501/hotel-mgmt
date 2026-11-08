@@ -103,12 +103,9 @@ export interface ScreenTableEntry {
 // Manifest screen order (docs/design/manifest.json `order`,
 // `.dc.html` suffix stripped) with the app route and view root hook
 // per screen (hooks match `app/src/views/*` and the schema examples).
-// Six of the seven v2 manifest screens: the Admin board (`Quản trị`)
-// is DEFERRED — it has no app screen yet (open #546), so neither
-// gate asserts it and it carries no allowlist entry (disposition
-// recorded in `docs/testing/dom-diff-allowlist.md` section 2, Refs
-// #549). When #546 lands, Admin joins this table with its
-// `admin-view` hook (the extractor already emits `Admin.facts.json`).
+// All seven v2 manifest screens: the Admin board (`Quản trị`) joined
+// with its `admin-view` hook when #546 landed (the extractor already
+// emitted `Admin.facts.json`, Refs #549), so both gates assert it.
 export const SCREEN_TABLE: readonly ScreenTableEntry[] = [
   { screen: 'Main', route: '/', viewHook: 'desk-view' },
   { screen: 'Stay', route: '/stay', viewHook: 'stay-view' },
@@ -116,6 +113,7 @@ export const SCREEN_TABLE: readonly ScreenTableEntry[] = [
   { screen: 'Rooms', route: '/rooms', viewHook: 'rooms-view' },
   { screen: 'Book', route: '/book', viewHook: 'book-view' },
   { screen: 'Folio', route: '/folio', viewHook: 'folio-view' },
+  { screen: 'Admin', route: '/admin', viewHook: 'admin-view' },
 ];
 
 // Decided per-screen content (issue #473, extend-the-design for
@@ -376,6 +374,45 @@ export const DECIDED_CONTENT: readonly DecidedScreenContent[] = [
       { kind: 'text', label: 'Số tiền', placeholder: null },
       { kind: 'select', label: 'Hình thức:', placeholder: null },
       { kind: 'text', label: 'Số tiền', placeholder: null },
+    ],
+  },
+  {
+    // Admin (Refs #546, v2 board `docs/design/Admin.dc.html:3`):
+    // the screen heads straight into the top `1.2fr 1fr` grid
+    // with no screen title and no section heading — zero extras
+    // vs the board. The users card carries the `Người dùng và vai
+    // trò` h3 with one row per account, the create-account card
+    // the `Tạo tài khoản mới` h3 with the board-literal inputs
+    // and the `Tạo tài khoản` action, the config card the `Cấu
+    // hình khách sạn` h3, and the audit card the `Nhật ký thao
+    // tác` h3 with the `Làm mới` action. User rows, the config
+    // values, and the audit summaries render live data in the
+    // board row shape (dynamic data, out of schema scope); the
+    // locked-row Unlock action stays out of the decided buttons
+    // because it renders only for locked accounts. The row role
+    // selects stay inline as flow state (`UpdateUserRole`
+    // requires a target role — same precedent as the Folio
+    // kind/method selects), so the single lab-user select rides
+    // the decided input sequence in DOM order. The lab runs the
+    // gate with exactly the boot-owner account: `signin.spec.ts`
+    // creates its lock-victim later in file order, and no earlier
+    // spec creates users, so the decided sequence pins exactly
+    // one row select (same cross-spec lab discipline as the Main
+    // seed room labels, Refs #490).
+    screen: 'Admin',
+    headings: [
+      { level: 3, text: 'Người dùng và vai trò' },
+      { level: 3, text: 'Tạo tài khoản mới' },
+      { level: 3, text: 'Cấu hình khách sạn' },
+      { level: 3, text: 'Nhật ký thao tác' },
+    ],
+    buttons: ['Lưu', 'Tạo tài khoản', 'Làm mới'],
+    inputs: [
+      { kind: 'select', label: 'Người dùng và vai trò', placeholder: null },
+      { kind: 'text', label: 'Tên', placeholder: null },
+      { kind: 'text', label: 'Tên đăng nhập', placeholder: null },
+      { kind: 'text', label: 'Mật khẩu ban đầu', placeholder: null },
+      { kind: 'select', label: 'Vai trò', placeholder: null },
     ],
   },
 ];
