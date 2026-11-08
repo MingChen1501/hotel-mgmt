@@ -1167,16 +1167,15 @@ export default defineComponent({
     font-weight: 600;
   }
 
-  /* Rooms map screen (Refs #523; restyle spec section 5.5,
+  /* Rooms map screen (Refs #523, #543; restyle spec section 5.5,
      AC-RST-6): pixel-faithful to `docs/design/Rooms.dc.html:2` —
      the title row is a flex row with `justify-content:space-between`
-     carrying the `26px/700` h1 with the muted `14px` intro left and
-     the business-date readout with the primary reload button
-     right (the app keeps its intro and the weekday-long
-     business-date readout, AC-DSK-12 #513, at the muted `14px`
-     treatment — the board summary line carries counts plus a date
-     with no app counterpart); section h2 elements render
-     `margin:0 0 8px;font-size:18px`; the status-chip row is a
+     carrying the muted `14px` eyebrow (`{title} · {date}`) above
+     the `26px/700` counts headline left and the primary reload
+     button right (the eyebrow date keeps the weekday-long form,
+     AC-DSK-12 #513; intro, standalone date row, and section
+     heading are gone — zero extras vs the v2 board); floor h2
+     elements render `margin:0 0 8px;font-size:18px`; the status-chip row is a
      wrapped flex row (`gap:10px`) of white `999px` pills
      (`8px 14px`, `14px`) with `12px` status dots at radius `3px`
      (app chip wording stays — the R3 REPORTED item #499 stays
@@ -1221,36 +1220,25 @@ export default defineComponent({
   #shell [data-testid="rooms-view"] .rooms-title-block {
     display: flex;
     flex-direction: column;
-    gap: 4px;
     min-width: 0;
   }
 
-  #shell [data-testid="rooms-view"] .rooms-title {
+  #shell [data-testid="rooms-view"] .rooms-eyebrow {
+    font-size: 14px;
+    font-weight: 400;
+    margin: 0;
+    color: #4B5D5B;
+  }
+
+  #shell [data-testid="rooms-view"] .rooms-eyebrow strong {
+    font-weight: inherit;
+  }
+
+  #shell [data-testid="rooms-view"] .rooms-headline {
     font-size: 26px;
     font-weight: 700;
     margin: 0;
     color: #1B2B2A;
-  }
-
-  #shell [data-testid="rooms-view"] .rooms-intro {
-    font-size: 14px;
-    color: #4B5D5B;
-    margin: 0;
-  }
-
-  #shell [data-testid="rooms-view"] .rooms-business-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin: 0;
-    font-size: 14px;
-    color: #4B5D5B;
-    white-space: nowrap;
-  }
-
-  #shell [data-testid="rooms-view"] .rooms-business-row strong {
-    color: #1B2B2A;
-    font-weight: 600;
   }
 
   #shell [data-testid="rooms-view"] .rooms-action.p-button {

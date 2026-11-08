@@ -1,34 +1,36 @@
 <template>
   <main data-testid="rooms-view">
-    <!-- Rooms title row (restyle Refs #523,
-      `docs/design/Rooms.dc.html:2`: the board title row is a flex
-      row with `justify-content:space-between` carrying the h1 plus
-      muted `14px` summary line left and the primary reload button
-      right; the app keeps its intro and the weekday-long
-      business-date readout (AC-DSK-12, #513) at the muted `14px`
-      treatment — hooks and copy unchanged). -->
+    <!-- Rooms title block (Refs #543,
+      `docs/design/Rooms.dc.html:2`: the v2 board carries no screen
+      title or intro — the head row is a flex row with
+      `justify-content:space-between` carrying the muted `14px`
+      eyebrow (`{title} · {date}`) above the `26px/700` counts
+      headline (`{total} · {occupied}`) left and the primary reload
+      button right. The intro, the standalone business-date row
+      (folded into the eyebrow), and the `Rooms by status` section
+      heading are gone (zero extras vs the board). The eyebrow date
+      keeps the locale long-weekday form (AC-DSK-12, #513); the
+      eyebrow stays the page h1 so the gate prefix still opens on
+      the catalogue title. Hooks and copy otherwise unchanged). -->
     <div class="rooms-title-row">
       <div class="rooms-title-block">
-        <h1 class="rooms-title">
-          {{ t('desk.rooms.title', {}, 'Room map') }}
+        <h1 class="rooms-eyebrow">
+          {{ t('desk.rooms.title', {}, 'Room map') }} · <strong data-testid="rooms-business-date">{{ businessDateDisplay }}</strong>
         </h1>
-        <p class="rooms-intro">
-          {{ t('desk.rooms.intro', {}, 'Every room at a glance, grouped by floor. Refresh to update.') }}
+        <p class="rooms-headline">
+          {{ t('desk.rooms.headline', { total: totalRooms, occupied: occupiedCount }, `${totalRooms} rooms, ${occupiedCount} occupied`) }}
         </p>
       </div>
-      <p class="rooms-business-row">
-        <span class="rooms-business-label">{{ t('desk.today.business_date', {}, 'Business date: ') }}</span><strong data-testid="rooms-business-date">{{ businessDateDisplay }}</strong>
-        <Button
-          id="rooms-refresh-button"
-          type="button"
-          class="rooms-action"
-          :label="t('desk.rooms.refresh', {}, 'Refresh')"
-          data-testid="rooms-refresh"
-          :disabled="loading"
-          :loading="loading"
-          @click="onRefresh"
-        />
-      </p>
+      <Button
+        id="rooms-refresh-button"
+        type="button"
+        class="rooms-action"
+        :label="t('desk.rooms.refresh', {}, 'Refresh')"
+        data-testid="rooms-refresh"
+        :disabled="loading"
+        :loading="loading"
+        @click="onRefresh"
+      />
     </div>
     <noscript><p>{{ t('desk.rooms.noscript', {}, 'This page needs JavaScript to load the room map.') }}</p></noscript>
     <Message
@@ -68,19 +70,15 @@
           data-testid="rooms-summary"
           class="rooms-summary"
         >
-          <!-- Summary heading (restyle Refs #523,
-            `docs/design/Rooms.dc.html:2`: section h2 renders
-            `margin:0 0 8px;font-size:18px`; copy unchanged). -->
-          <h2 class="rooms-section-title">
-            {{ t('desk.rooms.summary_heading', {}, 'Rooms by status') }}
-          </h2>
-          <!-- Status-chip row (restyle Refs #523,
+          <!-- Status-chip row (restyle Refs #523, Refs #543,
             `docs/design/Rooms.dc.html:2`: `display:flex;gap:10px`
             with wrap; each chip is a white `999px` pill
             (`8px 14px`, `14px`) with a `12px` status dot at
-            radius `3px`; the app keeps its qualified chip wording
-            (the R3 REPORTED item #499 stays reported) and the live
-            counts — hooks and copy unchanged). -->
+            radius `3px`; the v2 board carries no section heading,
+            so the `Rooms by status` h2 is gone (zero extras). The
+            app keeps its qualified chip wording (the R3 REPORTED
+            item #499 stays reported) and the live counts — hooks
+            and copy unchanged). -->
           <ul class="rooms-chips">
             <li
               v-for="chip in chips"
@@ -450,6 +448,15 @@ export default defineComponent({
 
     const totalRooms = computed(() => rooms.value.length);
 
+    // Counts headline (Refs #543,
+    // `docs/design/Rooms.dc.html:2`): the v2 board heads the map
+    // with the live `{total} · {occupied}` line; the occupied
+    // count reuses the chips derivation so the headline matches
+    // the cards by construction.
+    const occupiedCount = computed(
+      () => chips.value.find((chip) => chip.status === 'occupied')?.count ?? 0,
+    );
+
     // Floors group the same payload (LLD section 13.3 edge B–D).
     // Rooms whose payload carries no floor render under the
     // catalogue unknown-floor section so no room is ever dropped
@@ -751,6 +758,7 @@ export default defineComponent({
       housekeepingError,
       chips,
       totalRooms,
+      occupiedCount,
       floors,
       typeName,
       chipSeverity,

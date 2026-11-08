@@ -659,6 +659,7 @@
     "desk.rooms.empty": "No rooms yet. Rooms appear here once they are set up.",
     "desk.rooms.noscript": "This page needs JavaScript to load the room map.",
     "desk.rooms.summary_heading": "Rooms by status",
+    "desk.rooms.headline": "{total} rooms, {occupied} occupied",
     "desk.rooms.chip_ready": "Ready (inspected)",
     "desk.rooms.chip_occupied": "Occupied",
     "desk.rooms.chip_needs_cleaning": "Dirty",

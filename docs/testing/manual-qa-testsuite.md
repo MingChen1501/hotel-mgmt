@@ -276,8 +276,10 @@ Trước khi chạy case của từng màn hình, xác nhận vỏ chung đạt 
   (occupied, ready/inspected, needs-cleaning, awaiting-inspection,
   out-of-service); mở `/rooms`.
 - **Các bước thực hiện:**
-  1. Đọc khối tổng hợp (`desk.rooms.summary_heading`) rồi đếm thẻ phòng thực
-     tế theo từng tầng (`desk.rooms.floor_title`).
+  1. Đọc khối tiêu đề (`desk.rooms.eyebrow` + `desk.rooms.headline`: tổng số
+     phòng và số phòng có khách) rồi đếm thẻ phòng thực tế theo từng tầng
+     (`desk.rooms.floor_title`); bấm `desk.rooms.refresh` (`Làm mới`) để tải
+     lại.
   2. Đọc nội dung từng thẻ phòng.
 - **Kết quả mong đợi:** số tổng luôn bằng số thẻ phòng đang hiển thị; mỗi thẻ
   có chip trạng thái đúng (`desk.rooms.chip_ready`,

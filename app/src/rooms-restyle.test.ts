@@ -1,19 +1,19 @@
-// R6 Rooms map restyle guard (Refs #523; restyle spec section 5.5,
-// AC-RST-6; traceability `docs/testing/desk-restyle-test-traceability.md`
+// R6 Rooms map restyle guard (Refs #523, #543; restyle spec section
+// 5.5, AC-RST-6; traceability `docs/testing/desk-restyle-test-traceability.md`
 // section 3 R6) plus the R9 rooms-surface half (traceability section
 // 3 R9: each child PR audits its own surface for the 44px touch
 // targets and the no-token-fork pin).
 //
 // Pins the owner-design Rooms screen at the source plus the live
-// render contract: the title row (`26px/700` h1, muted `14px`
-// summary lines, primary reload button), the status-chip row
-// (`999px` pills with `12px` dots at radius `3px` in the status
-// accents), the floor sections (h2 `18px`, `repeat(6,1fr)` grids
-// with `gap:12px`), and the room cards (status tint, `radius:12px`,
-// `padding:14px`, `gap:6px`, `min-height:104px`; `22px` number;
-// `12px/600` badge with `radius:6px padding:4px 8px`; `13px`
-// `#3B4A48` type; `14px` note) per
-// `docs/design/Rooms.dc.html:2`, while live room-state rendering,
+// render contract: the v2 title block (muted `14px` eyebrow,
+// `26px/700` counts headline, primary reload button), the
+// status-chip row (`999px` pills with `12px` dots at radius `3px`
+// in the status accents), the floor sections (h2 `18px`,
+// `repeat(6,1fr)` grids with `gap:12px`), and the room cards
+// (status tint, `radius:12px`, `padding:14px`, `gap:6px`,
+// `min-height:104px`; `22px` number; `12px/600` badge with
+// `radius:6px padding:4px 8px`; `13px` `#3B4A48` type; `14px` note)
+// per `docs/design/Rooms.dc.html:2`, while live room-state rendering,
 // the summary-counts-match-cards invariant, housekeeping buttons,
 // floor grouping, and the shared chip wording run exactly as today
 // (parity suite `RoomsView.test.ts` owns the behaviour half; this
@@ -119,20 +119,22 @@ describe('R6 Rooms design values (Refs #523)', () => {
     }
   });
 
-  it('renders the 26px/700 title row with the muted summary lines and primary reload', () => {
-    const title = ruleBody('#shell [data-testid="rooms-view"] .rooms-title');
-    expect(title).toContain('font-size: 26px');
-    expect(title).toContain('font-weight: 700');
-    expect(title).toContain('margin: 0');
+  it('renders the v2 title block with the muted eyebrow, the 26px/700 counts headline, and primary reload', () => {
+    // Refs #543, `docs/design/Rooms.dc.html:2`: the v2 head row
+    // carries the muted `14px` eyebrow (`{title} · {date}`) above
+    // the `26px/700` counts headline, with the primary reload
+    // button right.
+    const eyebrow = ruleBody('#shell [data-testid="rooms-view"] .rooms-eyebrow');
+    expect(eyebrow).toContain('font-size: 14px');
+    expect(eyebrow).toContain('color: #4B5D5B');
+    expect(eyebrow).toContain('margin: 0');
+    const headline = ruleBody('#shell [data-testid="rooms-view"] .rooms-headline');
+    expect(headline).toContain('font-size: 26px');
+    expect(headline).toContain('font-weight: 700');
+    expect(headline).toContain('margin: 0');
     const row = ruleBody('#shell [data-testid="rooms-view"] .rooms-title-row');
     expect(row).toContain('justify-content: space-between');
     expect(row).toContain('padding: 0 24px');
-    const intro = ruleBody('#shell [data-testid="rooms-view"] .rooms-intro');
-    expect(intro).toContain('font-size: 14px');
-    expect(intro).toContain('color: #4B5D5B');
-    const business = ruleBody('#shell [data-testid="rooms-view"] .rooms-business-row');
-    expect(business).toContain('font-size: 14px');
-    expect(business).toContain('color: #4B5D5B');
     const buttons = combinedRuleBody('#shell [data-testid="rooms-view"] .rooms-action.p-button');
     expect(buttons).toContain('min-height: 44px');
     expect(buttons).toContain('padding: 0 18px');
@@ -143,9 +145,8 @@ describe('R6 Rooms design values (Refs #523)', () => {
     expect(buttons).toContain('font-weight: 600');
     // The template wears the design classes on the PrimeVue buttons.
     expect(roomsViewSource).toContain('class="rooms-title-row"');
-    expect(roomsViewSource).toContain('class="rooms-title"');
-    expect(roomsViewSource).toContain('class="rooms-intro"');
-    expect(roomsViewSource).toContain('class="rooms-business-row"');
+    expect(roomsViewSource).toContain('class="rooms-eyebrow"');
+    expect(roomsViewSource).toContain('class="rooms-headline"');
     expect(roomsViewSource).toContain('class="rooms-action"');
   });
 

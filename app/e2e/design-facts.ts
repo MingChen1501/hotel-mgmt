@@ -295,15 +295,24 @@ export const DECIDED_CONTENT: readonly DecidedScreenContent[] = [
     ],
   },
   {
+    // Rooms v2 board (Refs #543, bundle 07-11): the drawn head
+    // block is the `{title} · {date}` eyebrow (kept as the page
+    // h1, so the prefix still opens on the catalogue title) above
+    // the live `{total} · {occupied}` counts headline — dynamic
+    // data, out of the decided set per schema section 5 — with the
+    // board-literal `Làm mới` action. The v1 intro, standalone
+    // date row, and `Phòng theo trạng thái` section heading are
+    // gone (zero extras). The tail rule below still checks the
+    // data-driven floor sections and room-number cards exactly as
+    // before.
     screen: 'Rooms',
     headings: [],
     headingPrefix: [
       { level: 1, text: 'Sơ đồ phòng' },
-      { level: 2, text: 'Phòng theo trạng thái' },
       { level: 2, text: 'Tầng 1' },
     ],
     requiredRoomLabels: ['101', '102'],
-    buttons: ['Tải lại'],
+    buttons: ['Làm mới'],
     inputs: [],
   },
   {
