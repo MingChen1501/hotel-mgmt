@@ -766,6 +766,12 @@ account disclosure instead of rendering inline on the bar —
 because the `#563` audit recorded a design gap there. The
 rest of this section stands unchanged.
 
+Amendment (Refs #565): the money/date no-change bullet in
+section 8.1 is narrowed — the Book quote and the Folio board
+now render the desk VND money shape and the desk quote dates
+recorded in section 14. The rest of this section stands
+unchanged.
+
 ### 8.1 Explicit no-change statements
 
 - Every MVP requirement in sections 1 and 2 is unchanged by
@@ -779,9 +785,11 @@ rest of this section stands unchanged.
   and `FR-BIL-7` refusals still fire on exactly the same
   conditions — only their on-screen wording becomes
   stand-in-readable plain sentences (see `FR-DSP-3`).
-- Money and dates render exactly as today: hotel locale
-  settings govern (`FR-ADM-1`, `NFR-TZ-1` hold); the
-  contract changes presentation, never values.
+- Money and dates render as the hotel locale settings govern
+  (`FR-ADM-1`, `NFR-TZ-1` hold); the contract changes
+  presentation, never values — except the Book quote and
+  Folio money/date display shape recorded in section 14
+  (Refs #565).
 - No data-dictionary entries: the slice introduces no data
   entities or fields (`data-dictionary.md` unchanged).
 - No business rules: the slice introduces no domain policy
@@ -920,6 +928,12 @@ acceptance criteria live with `product-owner` (issue body plus
 `product-owner` slice); test strategy and guards live with
 `qa-lead`. This section records only the requirements delta.
 
+Amendment (Refs #565): the money/date no-change bullet in
+section 9.1 is narrowed — the Book quote and the Folio board
+now render the desk VND money shape and the desk quote dates
+recorded in section 14. The rest of this section stands
+unchanged.
+
 ### 9.1 Explicit no-change statements
 
 - Every MVP requirement in sections 1 and 2 is unchanged, and
@@ -930,10 +944,12 @@ acceptance criteria live with `product-owner` (issue body plus
   `FR-BIL-7` refusals still fire on exactly the same
   conditions — the items below constrain how the screens and
   prints carrying them lay out, never when they fire.
-- Money, dates, and numbers render exactly as today
-  (`FR-ADM-1`, `NFR-TZ-1` hold); the catalogue stays the
-  source of truth for every user-visible string (`NFR-I18N-1`
-  holds).
+- Money, dates, and numbers render as the hotel locale
+  settings govern (`FR-ADM-1`, `NFR-TZ-1` hold); the catalogue
+  stays the source of truth for every user-visible string
+  (`NFR-I18N-1` holds) — except the Book quote and Folio
+  money/date display shape recorded in section 14
+  (Refs #565).
 - No data-dictionary entries: this section introduces no data
   entities or fields (`data-dictionary.md` unchanged).
 - No business rules: this section introduces no domain policy
@@ -1102,6 +1118,12 @@ the two-new-screen placement note live with `architect`, and guard
 mapping lives with `qa-lead`. This section records only the
 requirements delta the T2 spec gate requires.
 
+Amendment (Refs #565): the money/date no-change bullet in
+section 10.1 is narrowed — the Book quote and the Folio board
+now render the desk VND money shape and the desk quote dates
+recorded in section 14. The rest of this section stands
+unchanged.
+
 ### 10.1 Explicit no-change statements
 
 - Every MVP requirement in sections 1 and 2 is unchanged by this
@@ -1129,10 +1151,12 @@ requirements delta the T2 spec gate requires.
   `FR-DSK-7` is a navigation rule over existing configuration,
   not a hotel-domain policy; check-in and checkout gating in
   `FR-DSK-4` restate `FR-FDK-1` and `FR-BIL-7`.
-- Money, dates, and numbers render exactly as today:
-  hotel locale settings govern (`FR-ADM-1`, `NFR-TZ-1` hold);
-  the catalogue stays the source of truth for every
-  user-visible string (`NFR-I18N-1` holds).
+- Money, dates, and numbers render as the hotel locale
+  settings govern (`FR-ADM-1`, `NFR-TZ-1` hold); the catalogue
+  stays the source of truth for every user-visible string
+  (`NFR-I18N-1` holds) — except the Book quote and Folio
+  money/date display shape recorded in section 14
+  (Refs #565).
 - The section 4 traceability table and its coverage count are
   unchanged: the rollout adds no MVP capability, so the mapped
   capabilities stand. The handoff table below (section 10.4) is
@@ -1770,6 +1794,12 @@ housekeeping and folio state transition, every per-step wizard
 validation naming the missing field with nothing persisted on
 failure, and every print route and document.
 
+Amendment (Refs #565): the money/date no-change bullet in
+section 13.1 is narrowed — the Book quote and the Folio board
+now render the desk VND money shape and the desk quote dates
+recorded in section 14. The rest of this section stands
+unchanged.
+
 ### 13.1 Explicit no-change statements
 
 - Every MVP requirement in sections 1 and 2 is unchanged by
@@ -1800,13 +1830,17 @@ failure, and every print route and document.
   launch gating, and check-in/checkout gating stay navigation
   and restatements of `FR-FDK-1` / `FR-BIL-7`, never new
   policy.
-- Money, dates, and numbers render exactly as today: hotel
-  locale settings govern (`FR-ADM-1`, `NFR-TZ-1` hold); the
+- Money, dates, and numbers render as the hotel locale
+  settings govern (`FR-ADM-1`, `NFR-TZ-1` hold); the
   business-date headers keep the locale long-weekday display
   form derived from canonical ISO (`FR-DSK-11`, `BR-43`
-  hold); amounts keep locale-correct grouping; the catalogue
-  stays the source of truth for every user-visible string
-  (`NFR-I18N-1` holds).
+  hold); the catalogue stays the source of truth for every
+  user-visible string (`NFR-I18N-1` holds). Amendment
+  (Refs #565): the Book quote nightly lines/total and the
+  Folio board money render the design VND shape — locale
+  grouping, no decimals, `đ` suffix — and the nightly quote
+  lines the desk `dd/mm/yyyy` date, as recorded in section 14;
+  values, print output, and catalogue keys are unchanged.
 - The section 4 traceability table and its coverage count are
   unchanged: the restyle adds no MVP capability, so the 40
   mapped capabilities stand. The handoff table below
@@ -2094,6 +2128,255 @@ implementation PR must create it.
   `architect` / `qa-lead` / `spec-reviewer`; no child
   implementation PR (#518–#524) opens until `SPEC-GATE
   PASS` on the re-pushed head.
+
+## 14. Desk money and date display shape (Refs #565)
+
+Requirements delta recording the #563 audit follow-up decision
+(the `G-BK-2` and `G-FO-2` gaps): the Book quote and the Folio
+board render money in the owner boards' VND shape and the
+nightly quote lines in the desk date form, while every stored,
+transmitted, and printed value stays exactly as today. The
+change is display-only: no API, contract, validation,
+stored-value, print, copy, or catalogue-key change. Scope and
+done-conditions live with `product-owner` (issue #565 body and
+its acceptance; the B3 quote-presentation resolution in
+`docs/product/desk-ui-design-rollout.md` is the matching
+`product-owner` slice); the T2 UI contract for these two
+surfaces already exists in
+`docs/product/desk-ui-pixel-faithful-restyle.md` sections
+6.1–6.5 and is referenced, not reworded, here; guard mapping
+lives with `qa-lead`. This section records only the
+requirements delta the T2 spec gate requires: the decision with
+rationale (section 14.1), the FR delta (section 14.3), and the
+traceability inputs (section 14.5).
+
+### 14.1 Decision: display-only VND shape, not display+API
+
+The Book quote and the Folio board change presentation only.
+The canonical money values stay in minor currency units and the
+canonical dates stay ISO `YYYY-MM-DD` everywhere they are
+stored, transmitted, or printed.
+
+Rationale:
+
+- The design gap is presentation-only. The owner boards draw
+  VND as `1.800.000 đ`, `60.000 đ`, `960.000 đ`
+  (`docs/design/Folio.dc.html:3`, `docs/design/Book.dc.html:3`),
+  while the live screens rendered two-decimal figures with no
+  suffix (`12.000,00` on the Folio lines and balance,
+  `Đêm 2026-12-08: 1200.00` / `Tổng cộng: 2400.00` on the Book
+  quote) as captured in the #563 audit evidence.
+- The canonical forms are load-bearing across the stack. Every
+  amount crosses the REST contracts in minor units
+  (`priceMinor`, `amountMinor`, `balanceMinor`; `contracts/http/*.json`
+  and `contracts/openapi.yaml`), the folio running balance and
+  settlement gate key on them (`FR-BIL-1`, `FR-BIL-2`,
+  `FR-BIL-3`, `FR-BIL-7`), day-close totals key on them
+  (`FR-BIL-6`), and print documents must match the folio exactly
+  (`FR-BIL-4`). A display+API change would ripple through
+  services, validation messages, contracts, and consumers for a
+  presentation need.
+- The existing NFRs already point this way: `NFR-I18N-1`
+  requires dates, numbers, and currency to follow the active
+  locale rules, `NFR-TZ-1` requires the displayed date to match
+  the hotel's local calendar day, and `FR-ADM-1` makes the
+  hotel locale settings authoritative. Formatting in the view
+  layer satisfies all three without touching values.
+- VND has no subunit. An amount whose minor units leave a
+  sub-dong remainder rounds to the nearest dong for display
+  only (`1250` minor renders `13 đ`); the stored minor value
+  never changes. The v1 fixtures used toy decimals, so the
+  display and the stored value can differ by less than one dong
+  on those fixtures alone.
+- The EN equivalent is EN grouping with the same `đ` suffix
+  (`1,800,000 đ`, `60,000 đ`). The `đ` is formatter output, not
+  catalogue copy — `Intl` currency style would emit `₫`, not the
+  design's `đ` — the same class as the locale date output in
+  section 12, so no catalogue key lands and `NFR-DSK-1`
+  coverage is untouched.
+- The quote date form is a pure display mapping: the canonical
+  night date stays ISO on the wire, and the nightly line renders
+  the design desk form `dd/mm/yyyy` (`08/12/2026` for
+  2026-12-08) in both desk locales, never a raw ISO string.
+
+Affected surfaces and keys (the catalogue labels are unchanged
+in both locales; only the formatted placeholder values change):
+
+- Book quote nightly line — `desk.book.quote_night`
+  (`messages/en.json:399`, `messages/vi.json` parity), whose
+  `nightDate` and `amount` placeholders now carry the desk date
+  form and the VND shape.
+- Book quote total — `desk.book.quote_total`
+  (`messages/en.json:400`), whose `amount` placeholder now
+  carries the VND shape.
+- Folio board — the charge lines, folded tax/fee parts, payment
+  lines, due figure, and running-balance sentences
+  (`desk.folio.folio_line`, `desk.folio.folio_balance`, and the
+  posting status lines; `messages/en.json:467`–`:468`), whose
+  `amount` and `balance` placeholders now carry the VND shape.
+
+Out of the display change, kept on purpose: the Book booking
+read-back sentence and the currency-less confirmation fallback
+(plain decimal figures), the confirmation price when the server
+supplies a currency code (existing currency-code render), the
+printed documents (`PrintView`, `FR-BIL-4` and `FR-DSP-4`
+hold), Stay check-out amounts, every request/response payload
+and validation message, stored values, the e2e and shell
+scripts, and the dom-diff allowlist patterns. Widening the VND
+shape to those surfaces is a separate decision with its own
+issue; two money shapes on the desk is a known, recorded
+follow-up rather than an accepted end state.
+
+### 14.2 Explicit no-change statements
+
+- Every MVP requirement in sections 1 and 2 is unchanged by
+  this change, and every item in sections 7 through 13 keeps
+  its wording and target except the four money/date no-change
+  bullets amended to point here (sections 8.1, 9.1, 10.1,
+  13.1). The desk loop (book, check-in, charge, pay,
+  check-out, print) behaves exactly as specified; only the two
+  surfaces' money and quote-date presentation changes.
+- Refusal semantics are unchanged: `FR-RTE-4`, `FR-CUS-1`, and
+  `FR-BIL-7` refusals still fire on exactly the same
+  conditions, and the sold-out and restriction quote refusals
+  are untouched.
+- `FR-BIL-1`, `FR-BIL-2`, `FR-BIL-3`, and `FR-BIL-7` hold:
+  the folio still shows every charge and payment with the same
+  amounts and the same running balance; only their display
+  shape changes.
+- `FR-BIL-4`, `FR-DSP-4`, and `NFR-RST-2` hold: print output
+  is byte-for-byte unchanged and still matches the folio lines
+  and balance exactly.
+- `FR-ADM-1`, `NFR-TZ-1`, and `NFR-I18N-1` hold: the hotel
+  locale settings govern grouping, the displayed quote date
+  stays on the hotel's local calendar day derived from the
+  canonical date, and no new catalogue keys land
+  (`NFR-DSK-1` coverage untouched;
+  `script/catalogue-coverage-check.sh` stays green).
+- No data-dictionary entries: the change introduces no data
+  entities or fields (`data-dictionary.md` unchanged) — the
+  minor-unit amounts and ISO dates are already defined.
+- No business rules: the change introduces no domain policy
+  (`business-rules.md` unchanged); `BR-43` already holds the
+  canonical-vs-display boundary.
+- The section 4 traceability table and its coverage count are
+  unchanged: this section adds no MVP capability, so the 40
+  mapped capabilities stand. The handoff table below (section
+  14.5) is separate and does not alter that count.
+
+### 14.3 Presentation-scoped functional requirements
+
+Ids use the `MNY` (money and date display) namespace. They
+constrain presentation only: routes, APIs, refusal conditions,
+values, copy, catalogue keys, and print output stay intact, and
+no new screen or flow is specified here. Design values cite the
+boards per the fact-schema provenance convention (each board
+keeps its screen on one long line 2; the money examples cited
+sit on `:3`).
+
+FR-MNY-1 — Desk money display shape (VND, display-only).
+Staff read every quote and folio amount in the design VND
+shape, and the amount behind it never changes.
+Given an amount held in minor currency units; when the Book
+quote nightly line or total, or the Folio board charge line,
+folded tax/fee part, payment line, due figure, or running
+balance renders it; then the shown amount uses the active
+locale's grouping with no decimals and the `đ` suffix — VI
+`1.800.000 đ`, `60.000 đ`, `960.000 đ` and EN `1,800,000 đ`,
+`60,000 đ` — and never a two-decimal figure
+(`docs/design/Folio.dc.html:3`, `docs/design/Book.dc.html:3`).
+Given an amount whose minor units leave a sub-dong remainder;
+when it renders; then only the display rounds to the nearest
+dong and the stored and transmitted minor value is unchanged.
+Given the same render; when the screen calls any API; then
+every amount still travels in minor units in every request and
+response, and no consumer parses the displayed string
+(`FR-BIL-1`, `FR-BIL-3` hold).
+
+FR-MNY-2 — Desk quote date form (display-only).
+Staff read quote dates as desk dates, never raw ISO strings.
+Given a quote night whose canonical date is `YYYY-MM-DD`; when
+the Book quote renders that nightly line; then the shown date
+is `dd/mm/yyyy` in both desk locales (for 2026-12-08:
+`08/12/2026`) and never the raw ISO string. Given an
+unparseable date ref; when the line renders; then the screen
+falls back to the canonical value it received instead of
+failing or blanking the line. Given the same render; when the
+screen sends the quote or confirm request; then every date
+field stays ISO `YYYY-MM-DD` (`FR-RES-1` holds).
+
+### 14.4 Non-functional requirements delta: no-change statement
+
+No new NFR is added by this change. The existing NFRs cover the
+display shape as stated:
+
+- Locale rules (`NFR-I18N-1` holds): grouping follows the
+  active locale, the VI shape above is primary, and the EN
+  shape is the fallback-locale equivalent; the `đ` suffix is
+  formatter output, so the catalogue key set stays at parity
+  with zero new keys.
+- Timezone rendering (`NFR-TZ-1` holds): the desk date derives
+  from the canonical date on the hotel's local calendar day and
+  never shifts a night across midnight.
+- Catalogue coverage (`NFR-DSK-1` holds): no new strings land,
+  `script/catalogue-coverage-check.sh` stays green, and the
+  configured hotel name rule is untouched.
+- Print isolation (`NFR-RST-2` holds): the shape is a screen
+  formatter only; printed documents keep their current render.
+
+### 14.5 Traceability handoff for `qa-lead`
+
+No new MVP capability is added, so each row traces to the #565
+issue-body acceptance, `AC-DSK-5`, and the #563 audit gaps
+`G-BK-2` / `G-FO-2`. Existing guards are named `file:line`;
+where a guard was created or extended by the #565 change, the
+row says so and the row must stay green from now on.
+
+| Item | Guard (on disk; the #565 change created or extended it) | Handoff note for `qa-lead` |
+|---|---|---|
+| FR-MNY-1 money shape | Formatter pins `app/src/i18n/index.test.ts:177` (VI `1.800.000 đ` / `960.000 đ` / `0 đ`, EN `1,800,000 đ` / `60,000 đ`) and `:187` (sub-dong display rounding `1250` → `13 đ`, `1240` → `12 đ`); view pins `app/src/views/FolioView.test.ts:192` (tax/fee parts and `107 đ`), `:200` (payment `30 đ`, never `-30 đ`), `:204` and `:543` (balance `77 đ` in both locales), `:556` (EN grouping `18,000 đ`), `:567` and `:571` (VI `18.077 đ` / `18.000 đ`); e2e pin `app/e2e/folio.spec.ts:113` (`625 đ` balance over a `62500`-minor API value) | Both locales must render the design shape with no decimals and the `đ` suffix; the API minor-unit value in the e2e assertion is the value-unchanged evidence |
+| FR-MNY-2 quote date form | Formatter pins `app/src/i18n/index.test.ts:195` (`08/12/2026` and `01/11/2026`, unchanged by a locale switch) and `:203` (canonical fallback for empty, timestamp, and rollover input); view pin `app/src/views/BookView.test.ts:395` — `:407`–`:413` assert `01/11/2026` / `02/11/2026`, reject `2026-11-01` and `100.00`, and assert `220 đ`, and `:420`–`:422` assert the VI re-render; e2e pin `app/e2e/book.spec.ts:59` (nightly rows match `dd/mm/yyyy` and contain no `YYYY-MM-DD`), `:61` (`2,400 đ` total) | A raw ISO string or a two-decimal figure on a nightly line is a failure; the canonical-fallback row keeps the line usable instead of blanking it |
+| Values and payloads unchanged | Request/response pins the #565 change keeps green: quote/confirm fixtures and bodies `app/src/views/BookView.test.ts:82` (`QuotePrice`), `:428` (confirm with frozen price basis), folio postings `app/src/views/FolioView.test.ts:224` (room charge with idempotency key and re-read), `:255` (card payment with idempotency key and re-read); contract guards `contracts/http/*.json` (minor-unit integer amounts, `format: date`) | Any red here means the boundary leaked: the change touches display assertions only, never payload, contract, or validation behaviour |
+| Existing edge guards | `app/src/views/desk-edge-guards.test.ts:500` (QA-EDGE-2 negative-amount refusal with the `77 đ` balance line), `:1289` (QA-EDGE-12 mid-flow locale switch, quote value survives) | Both stay green; a locale switch re-renders the shape without a new quote read (`AC-DSK-8` holds) |
+| #563 evidence refresh | `docs/testing/evidence/563/README.md:57` (Book image, `G-BK-2`) and `:58` (Folio image, `G-FO-2`), both refreshed in the same change per the record's same-change rule | The side-by-side images must show the fixed renders; a later desk change that alters these two screens owes the same refresh |
+
+### 14.6 Explicitly not specified here (plus gate dependencies)
+
+- No new screens or flows; the Book quote rows and the Folio
+  amount lines are the complete surface. No backend, API,
+  contract, schema, validation, error-code, copy, or
+  catalogue-key change. No new design tokens or component
+  choices (design lives with `architect`; the surfaces' tokens
+  are already in `app/src/theme/tokens.ts`).
+- No touched flow changes behaviour — formatting is a pure
+  presentation mapping of already-loaded values — so no new
+  per-flow implementation diagram ships here; the existing
+  load, empty, and error states (`FR-DSP-3` holds) cover the
+  failure paths.
+- UI contract: the T2 UI contract for the seven surfaces
+  already exists in
+  `docs/product/desk-ui-pixel-faithful-restyle.md` sections
+  6.1–6.5 (layout shell and navigation scope, component
+  mapping, token scope, plain-words states, print rules) and
+  covers these two surfaces, so no new UI contract section is
+  owed and this section does not reword absent UI expectations
+  (per the UI contract gap rule, the contract exists and is
+  referenced, not missing). The #565 quote-presentation
+  resolution (B3 labels and empty-vs-quoted wording) is the
+  `product-owner` slice on `docs/product/*`; labels stay
+  unchanged here.
+- The specified change is tier T2 (reader-visible UI, values
+  unchanged). This section is its FR/NFR part. The remaining
+  T2 minimum set — acceptance criteria, the UI contract
+  reference above, traceability completion, and the gate
+  verdict — belongs to `product-owner` / `qa-lead` /
+  `spec-reviewer`; the implementation PR opens only on
+  `SPEC-GATE PASS`.
+- The `docs/product/acceptance-criteria.md` slice for this
+  change is separate `product-owner` work; the test strategy
+  and run records are separate `qa-lead` work. This section
+  traces to the issue-body acceptance only through the
+  decision and `FR-MNY-1` / `FR-MNY-2` above.
 
 <!-- ao-role: business-analyst -->
 Role: business-analyst · AO session hotel-mgmt-719
