@@ -61,7 +61,13 @@ describe('R1 shell/nav design values (Refs #518)', () => {
   it('renders the teal header at the design height, padding, and brand size', () => {
     const nav = ruleBody('#shell .shell-nav');
     expect(nav).toContain('background: #0F4C47');
+    // Refs #564: a fixed 60px single row — `height` plus `nowrap`
+    // stop the trailing controls from wrapping to a second row (the
+    // 111px regression this guard pins).
+    expect(nav).toContain('height: 60px');
     expect(nav).toContain('min-height: 60px');
+    expect(nav).toContain('flex-wrap: nowrap');
+    expect(nav).not.toContain('flex-wrap: wrap');
     expect(nav).toContain('padding: 0 24px');
     const brand = ruleBody('#shell .shell-brand');
     expect(brand).toContain('font-size: 18px');
@@ -109,6 +115,13 @@ describe('R1 shell/nav design values (Refs #518)', () => {
 
   it('centres the content column at the design width', () => {
     expect(ruleBody('#shell .shell-column')).toContain('max-width: 1200px');
+  });
+
+  it('keeps every header button at the 44px target', () => {
+    // Refs #564: the session trigger and the menu's Sign out are
+    // PrimeVue buttons under `.shell-nav`, so the header button rule
+    // supplies the NFR-DSK-3 target.
+    expect(ruleBody('#shell .shell-nav .p-button')).toContain('min-height: 44px');
   });
 
   it('keeps focus visible on the header sign-out button', () => {
@@ -202,6 +215,8 @@ describe('R1 shell/nav render contract (Refs #518)', () => {
       const wrapper = await mountSignedIn('/');
       const pill = wrapper.find('[data-testid="locale-switcher"]');
       expect(pill.exists()).toBe(true);
+      // Refs #564: the compact design codes fit the single row.
+      expect(pill.text().replace(/\s/g, '')).toBe('VI|EN');
       await wrapper.find('[data-testid="locale-vi"]').trigger('click');
       expect(wrapper.findAll('[data-testid^="shell-nav-"]').map((item) => item.text())).toEqual(
         VI_NAV,
@@ -212,6 +227,37 @@ describe('R1 shell/nav render contract (Refs #518)', () => {
       expect(wrapper.findAll('[data-testid^="shell-nav-"]').map((item) => item.text())).toEqual(
         EN_NAV,
       );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('keeps the session controls in a compact disclosure on the bar', async () => {
+    vi.stubGlobal('fetch', configuredFetch());
+    try {
+      const wrapper = await mountSignedIn('/');
+      // Refs #564: the identity and Sign out live in a menu instead
+      // of inline on the bar (which wrapped the header to 111px).
+      const trigger = wrapper.find('[data-testid="shell-session-trigger"]');
+      const menu = wrapper.find('[data-testid="shell-session-menu"]');
+      expect(trigger.exists()).toBe(true);
+      // PrimeVue buttons under the bar carry the 44px target
+      // (`#shell .shell-nav .p-button`), so both the trigger and the
+      // menu's Sign out stay keyboard/pointer reachable (NFR-DSK-3).
+      expect(trigger.classes()).toContain('p-button');
+      expect(trigger.attributes('aria-expanded')).toBe('false');
+      expect(menu.isVisible()).toBe(false);
+      expect(menu.find('[data-testid="shell-user"]').text()).toBe('Ada Owner');
+
+      await trigger.trigger('click');
+      expect(trigger.attributes('aria-expanded')).toBe('true');
+      expect(menu.isVisible()).toBe(true);
+      expect(menu.find('[data-testid="shell-signout"]').classes()).toContain('p-button');
+
+      // Escape closes the disclosure from inside (keyboard path).
+      await menu.find('[data-testid="shell-signout"]').trigger('keydown', { key: 'Escape' });
+      expect(trigger.attributes('aria-expanded')).toBe('false');
+      expect(menu.isVisible()).toBe(false);
     } finally {
       vi.unstubAllGlobals();
     }

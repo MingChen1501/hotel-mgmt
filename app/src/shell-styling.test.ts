@@ -257,7 +257,18 @@ describe('keyboard-focus visibility (M5)', () => {
             !(control.element as HTMLButtonElement).disabled,
         );
         expect(controls.length).toBeGreaterThan(0);
-        const hidden = enabled.filter((control) => !control.isVisible());
+        // Refs #564: the session menu is a disclosure that starts
+        // closed, so its controls are legitimately hidden until the
+        // trigger opens it (pinned by `shell-restyle.test.ts`); every
+        // other focusable control must be visible.
+        const sessionMenu = wrapper.find('[data-testid="shell-session-menu"]');
+        const inClosedSessionMenu = (control: (typeof controls)[number]): boolean =>
+          sessionMenu.exists() &&
+          !sessionMenu.isVisible() &&
+          (control.element as HTMLElement).closest('[data-testid="shell-session-menu"]') !== null;
+        const hidden = enabled.filter(
+          (control) => !control.isVisible() && !inClosedSessionMenu(control),
+        );
         expect(
           hidden.map((control) => control.html().slice(0, 120)),
         ).toEqual([]);

@@ -18,6 +18,14 @@ do not drift.
   so no lab secret is in the picture.
 - Audited commit `121ffdd` (master). `side-by-side-Main-vi.png` was
   refreshed at `c02553e` after the `G-MN-4` zero-`asOf` fix.
+  `side-by-side-shell-nav-vi.png` was refreshed for the `G-SH-1` /
+  `G-SH-2` fix (#564) in that PR: the live half now measures the
+  design's 60px single row at 1200px, with the compact `VI | EN` pill and
+  the account menu holding the signed-in name and Sign out. That refresh
+  used the built bundle with the hotel-config read answered locally (the
+  shell half carries no per-screen data), the same technique as the gate
+  image below, and keeps the audit's configured hotel name so the pair
+  stays comparable.
 - `app-signin-gate-vi.png` was refreshed for the `G-SH-3` fix (#571) from the
   built bundle at 1200px in `vi`: the gate frame is signed out and carries no
   backend data, so the boot config call was answered locally instead of
@@ -28,7 +36,7 @@ do not drift.
 
 | Screen | File | Size | Shows |
 |---|---|---|---|
-| Shell/nav | [side-by-side-shell-nav-vi.png](side-by-side-shell-nav-vi.png) | 2420×111 | 60px board header vs the wrapped 111px app header; nav labels and order; `G-SH-1`, `G-SH-2` |
+| Shell/nav | [side-by-side-shell-nav-vi.png](side-by-side-shell-nav-vi.png) | 2420×111 | 60px board header vs the restored 60px single-row app header; nav labels and order; compact `VI \| EN` pill; `G-SH-1`, `G-SH-2` fixed |
 | Sign-in gate | [app-signin-gate-vi.png](app-signin-gate-vi.png) | 1200×1000 | App-only gate state; refreshed for `G-SH-3` (#571) — the locale pill now reads dark ink on the pale gate |
 | Main | [side-by-side-Main-vi.png](side-by-side-Main-vi.png) | 2420×3394 | Desk cards and daily-sheet line; `G-MN-1`…`G-MN-4` |
 | Stay | [side-by-side-Stay-vi.png](side-by-side-Stay-vi.png) | 2420×1016 | Check-in form and in-house lists; `G-ST-1`, `G-ST-2` |

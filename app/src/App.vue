@@ -142,10 +142,10 @@
         >
           {{ t(item.labelKey, {}, item.fallback) }}
         </RouterLink>
-        <span class="shell-user">
-          <span>{{ t('desk.admin.signed_in_as', {}, 'Signed in as ') }}</span><strong data-testid="shell-user">{{ displayName }}</strong>
-        </span>
-        <!-- Locale switcher (Refs #339): EN/VI persisted in
+        <!-- Locale pill (Refs #339, #518, #564): the design's compact
+          `VI | EN` control (every tabbed board line 2) instead of two
+          full-word buttons, so the pill, the seven tabs, and the brand
+          share the single 60px design row at 1200px. EN/VI persist in
           localStorage (locale only, never auth data); default stays
           EN so current behaviour is unchanged until switched. -->
         <div
@@ -156,30 +156,70 @@
         >
           <Button
             type="button"
-            :label="t('desk.shell.locale_en', {}, 'English')"
-            :severity="localeTag === 'en' ? undefined : 'secondary'"
-            size="small"
-            :aria-pressed="localeTag === 'en'"
-            data-testid="locale-en"
-            @click="onLocale('en')"
-          />
-          <Button
-            type="button"
-            :label="t('desk.shell.locale_vi', {}, 'Tiếng Việt')"
+            :label="t('desk.shell.locale_short_vi', {}, 'VI')"
             :severity="localeTag === 'vi' ? undefined : 'secondary'"
             size="small"
             :aria-pressed="localeTag === 'vi'"
             data-testid="locale-vi"
             @click="onLocale('vi')"
           />
+          <span
+            class="shell-locale-sep"
+            aria-hidden="true"
+          >|</span>
+          <Button
+            type="button"
+            :label="t('desk.shell.locale_short_en', {}, 'EN')"
+            :severity="localeTag === 'en' ? undefined : 'secondary'"
+            size="small"
+            :aria-pressed="localeTag === 'en'"
+            data-testid="locale-en"
+            @click="onLocale('en')"
+          />
         </div>
-        <Button
-          type="button"
-          :label="t('desk.admin.signout', {}, 'Sign out')"
-          severity="secondary"
-          data-testid="shell-signout"
-          @click="onSignOut"
-        />
+        <!-- Session menu (Refs #338, #339, #564): the signed-in
+          identity and Sign out are app-only controls, so they live in
+          a compact disclosure rather than inline on the bar — that is
+          what pushed the trailing group onto a second row. A native
+          disclosure (bound `aria-expanded`, Escape closes) keeps
+          sign-out keyboard reachable without a popup library, and the
+          panel stays in the DOM so the shell guards can assert it. -->
+        <div
+          class="shell-session"
+          @keydown.escape="closeSessionMenu"
+        >
+          <Button
+            ref="sessionTrigger"
+            type="button"
+            class="shell-session-trigger"
+            :label="t('desk.shell.session_menu', {}, 'Account')"
+            severity="secondary"
+            size="small"
+            aria-controls="shell-session-menu"
+            :aria-expanded="sessionMenuOpen"
+            data-testid="shell-session-trigger"
+            @click="toggleSessionMenu"
+          />
+          <div
+            v-show="sessionMenuOpen"
+            id="shell-session-menu"
+            class="shell-session-menu"
+            data-testid="shell-session-menu"
+            role="group"
+            :aria-label="t('desk.shell.session_menu', {}, 'Account')"
+          >
+            <p class="shell-session-user">
+              <span>{{ t('desk.admin.signed_in_as', {}, 'Signed in as ') }}</span><strong data-testid="shell-user">{{ displayName }}</strong>
+            </p>
+            <Button
+              type="button"
+              :label="t('desk.admin.signout', {}, 'Sign out')"
+              severity="secondary"
+              data-testid="shell-signout"
+              @click="onSignOut"
+            />
+          </div>
+        </div>
       </nav>
       <div
         data-testid="shell-content"
@@ -248,6 +288,13 @@ export default defineComponent({
     const signingIn = ref(false);
     const signInError = ref('');
     const displayName = computed(() => session.displayName ?? '');
+    // Session menu (Refs #564): the compact header disclosure that
+    // carries the signed-in identity and Sign out off the single
+    // design row. Open state is local UI state, never persisted.
+    const sessionMenuOpen = ref(false);
+    // Minimal structural type: the flat eslint config carries no
+    // browser env, so the shell never names the DOM globals directly.
+    const sessionTrigger = ref<{ $el?: { focus?: () => void } } | null>(null);
     // Configured hotel name for the teal header (Refs #419, #420,
     // FR-DSK-1, AC-DSK-8): read from the hotel configuration
     // surface (`FR-ADM-1`) once signed in, never hardcoded — the
@@ -347,6 +394,7 @@ export default defineComponent({
     }
 
     async function onSignOut(): Promise<void> {
+      sessionMenuOpen.value = false;
       try {
         await apiFetch<unknown>('/v1/admin/SignOut', { method: 'POST', body: '{}' });
       } catch {
@@ -360,6 +408,22 @@ export default defineComponent({
     // session data stay in sessionStorage per the session store.
     function onLocale(tag: string): void {
       setLocale(tag);
+    }
+
+    // Session menu disclosure (Refs #564): toggle from the trigger,
+    // and Escape closes it and returns focus to the trigger so the
+    // keyboard path never loses its place (NFR-DSP-2).
+    function toggleSessionMenu(): void {
+      sessionMenuOpen.value = !sessionMenuOpen.value;
+    }
+
+    function closeSessionMenu(): void {
+      if (!sessionMenuOpen.value) {
+        return;
+      }
+      sessionMenuOpen.value = false;
+      const trigger = sessionTrigger.value?.$el;
+      trigger?.focus?.();
     }
 
     // Per-route document titles (Refs #495 S2): the served document
@@ -392,6 +456,8 @@ export default defineComponent({
 
     watch([() => route.name, localeTag], () => {
       applyDocumentTitle();
+      // A screen or locale change leaves the menu behind (Refs #564).
+      sessionMenuOpen.value = false;
     });
 
     return {
@@ -401,6 +467,10 @@ export default defineComponent({
       route,
       navItems: NAV_ITEMS,
       displayName,
+      sessionMenuOpen,
+      sessionTrigger,
+      toggleSessionMenu,
+      closeSessionMenu,
       hotelName,
       loadHotelName,
       retryMessage,
@@ -443,41 +513,53 @@ export default defineComponent({
     outline-offset: 2px;
   }
 
-  /* Teal header (restyle spec section 4, Refs #518): exact
-     design bar from the header block on line 2 of every board
+  /* Teal header (restyle spec section 4, Refs #518, Refs #564):
+     exact design bar from the header block on line 2 of every board
      (`docs/design/Main.dc.html:2` — `display:flex;align-items:
      center;gap:8px;padding:0 24px;height:60px;background:#0F4C47;
      color:#fff`; all five tabbed boards agree, `Onboarding.dc.html:2`
-     carries the slimmer setup header). Token values live in
+     carries the slimmer setup header). The bar is a fixed 60px
+     single row: `flex-wrap:nowrap` plus `height:60px` stop the
+     trailing controls from spilling onto a second row (Refs #564,
+     the 111px regression). Token values live in
      `src/theme/tokens.ts` (`shell`); this rule duplicates them
      because CSS cannot import the TS constants. */
   #shell .shell-nav {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     align-items: center;
     gap: 8px;
     background: #0F4C47;
     color: #FFFFFF;
     border-bottom: 1px solid #0F4C47;
     padding: 0 24px;
+    height: 60px;
     min-height: 60px;
     box-sizing: border-box;
   }
 
   /* Brand (every tabbed board line 2: `font-size:18px;
-     margin-right:24px`). */
+     margin-right:24px`). The brand is the only shrinkable item on
+     the bar: a configured hotel name longer than the free space
+     truncates instead of wrapping the header (Refs #564). */
   #shell .shell-brand {
     font-weight: 700;
     font-size: 18px;
     margin-right: 24px;
     color: #FFFFFF;
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   /* Nav tabs (every tabbed board line 2: `padding:10px 16px;
      border-radius:8px` on every tab; the base rule carries the
      design box so inactive tabs match the boards, not the old
      underline treatment). min-height:44px keeps the NFR-DSK-3
-     target on every tab. */
+     target on every tab. Tabs never shrink: the design padding and
+     label stay intact and the brand truncates first (Refs #564). */
   #shell .shell-nav-item {
     color: #FFFFFF;
     text-decoration: none;
@@ -487,6 +569,8 @@ export default defineComponent({
     align-items: center;
     min-height: 44px;
     box-sizing: border-box;
+    flex: 0 0 auto;
+    white-space: nowrap;
   }
 
   /* Active tab (Refs #458): the owner design marks the current
@@ -503,16 +587,51 @@ export default defineComponent({
     padding: 10px 16px;
   }
 
-  /* The trailing group (user, locale pill, sign-out) sits right
-     via the pill's design `margin-left:auto` (Refs #518) — a second
-     auto margin here would split the free space and drift the group
-     off the right edge, so this span carries none. */
-  #shell .shell-user {
-    color: #D7E8E6;
+  /* Session menu (Refs #564): the signed-in identity and Sign out
+     are app-only controls, so they collapse into one compact
+     disclosure that sits in the trailing group after the locale
+     pill. The panel is absolutely positioned below the bar, so it
+     never adds a second header row. The trigger and the panel's
+     Sign out keep the 44px target (NFR-DSK-3). */
+  #shell .shell-session {
+    position: relative;
+    flex: 0 0 auto;
   }
 
-  #shell .shell-user strong {
+  #shell .shell-session-trigger {
+    background: transparent;
+    border: 1px solid #9CC9C4;
+    border-radius: 8px;
     color: #FFFFFF;
+    padding: 0 12px;
+    white-space: nowrap;
+  }
+
+  #shell .shell-session-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 200px;
+    padding: 12px;
+    background: #FFFFFF;
+    color: #1B2B2A;
+    border: 1px solid #D9E0DE;
+    border-radius: 8px;
+    box-sizing: border-box;
+    text-align: left;
+  }
+
+  #shell .shell-session-user {
+    margin: 0;
+    color: #4B5D5B;
+  }
+
+  #shell .shell-session-user strong {
+    color: #1B2B2A;
   }
 
   /* Content area: single centred column (restyle spec
@@ -1909,6 +2028,15 @@ export default defineComponent({
     border-radius: 8px;
     padding: 6px 12px;
     box-sizing: border-box;
+    flex: 0 0 auto;
+  }
+
+  /* Design `VI | EN` separator (every tabbed board line 2). It is a
+     decorative glyph, so the span is aria-hidden in the template and
+     inherits the scope ink of the pill container. */
+  #shell .shell-locale-sep {
+    color: inherit;
+    opacity: 0.7;
   }
 
   /* Inside the pill the PrimeVue button defaults are abandoned
@@ -1962,6 +2090,7 @@ export default defineComponent({
      white pill (Refs #458, Refs #518). */
   #shell .shell-nav .shell-nav-item:not(.shell-nav-active):focus-visible,
   #shell .shell-locale .p-button:focus-visible,
+  #shell .shell-nav [data-testid="shell-session-trigger"]:focus-visible,
   #shell .shell-nav [data-testid="shell-signout"]:focus-visible {
     outline-color: #FFFFFF;
   }

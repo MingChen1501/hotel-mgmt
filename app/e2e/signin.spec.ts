@@ -32,6 +32,40 @@ test('owner sign-in lands on the desk dashboard', async ({ page }) => {
   await expect(page.getByTestId('shell-nav-desk')).toHaveClass(/shell-nav-active/);
 });
 
+// Refs #564: the authorised desk header is a single 60px row —
+// brand, the seven tabs, and the compact VI | EN pill — at the
+// design's 1200px width. The Vitest suite pins the stylesheet; this
+// pins the rendered geometry in a real browser, including VI (the
+// widest label set).
+test('header keeps the design 60px single row at 1200px', async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 900 });
+  await signInThroughGate(page);
+  const nav = page.getByTestId('shell-nav');
+  await expect(nav).toBeVisible();
+
+  async function headerMetrics() {
+    return nav.evaluate((el) => {
+      const bar = el.getBoundingClientRect();
+      const spill = [...el.children]
+        .filter((child) => {
+          const box = child.getBoundingClientRect();
+          return box.top < bar.top - 0.5 || box.bottom > bar.bottom + 0.5 || box.right > bar.right + 0.5;
+        })
+        .map((child) => child.getAttribute('data-testid') ?? child.className);
+      return { height: Math.round(bar.height), spill };
+    });
+  }
+
+  expect(await headerMetrics()).toEqual({ height: 60, spill: [] });
+  // A configured hotel name longer than the free space truncates
+  // (the brand is the only shrinkable item); it must never wrap the
+  // bar, and it still renders in the row.
+  await expect(page.getByTestId('shell-brand')).toBeVisible();
+
+  await page.getByTestId('locale-vi').click();
+  expect(await headerMetrics()).toEqual({ height: 60, spill: [] });
+});
+
 test('wrong secret surfaces the plain sentence with no navigation', async ({ page }) => {
   await page.goto('/app/');
   await page.getByTestId('shell-signin-identity').fill(ADMIN_IDENTITY);
