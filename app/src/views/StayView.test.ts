@@ -712,7 +712,7 @@ describe('stay view', () => {
       true,
     );
 
-    await wrapper.find('[data-testid="stay-approval-by"]').setValue('Night Manager');
+    await wrapper.find('[data-testid="stay-approval-by"]').setValue('owner');
     await wrapper.find('[data-testid="stay-approval-role"]').setValue('manager');
     await wrapper.find('[data-testid="stay-approve"]').trigger('click');
     await vi.waitFor(() => {
@@ -726,8 +726,37 @@ describe('stay view', () => {
         (call) => String(call[0]) === '/v1/billing/RecordOpenBalanceApproval',
       )?.[1],
     );
-    expect(approvalBody.approvedBy).toBe('Night Manager');
+    expect(approvalBody.approvedBy).toBe('owner');
+    expect(approvalBody.role).toBe('manager');
     expect(approvalBody.idempotencyKey).toBeTruthy();
+  });
+
+  it('offers the catalogue reviewer roles as select options in both locales', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
+
+    const select = wrapper.find('[data-testid="stay-approval-by"]');
+    expect(select.element.tagName).toBe('SELECT');
+    const optionLabels = (): string[] => select.findAll('option').map((option) => option.text());
+    const optionValues = (): string[] =>
+      select.findAll('option').map((option) => (option.element as HTMLOptionElement).value);
+
+    // The MVP's fixed role catalogue (requirements section 3.2), with
+    // manager first: the board illustrates the manager as reviewer and
+    // the select carries no placeholder option.
+    expect(optionValues()).toEqual(['manager', 'owner', 'front-desk']);
+    expect(optionLabels()).toEqual(['Manager', 'Owner', 'Front desk']);
+    expect((select.element as HTMLSelectElement).value).toBe('manager');
+
+    try {
+      setLocale('vi');
+      await wrapper.vm.$nextTick();
+      await wrapper.vm.$nextTick();
+      expect(optionLabels()).toEqual(['Quản lý', 'Chủ', 'Lễ tân']);
+    } finally {
+      setLocale('en');
+    }
   });
 
   it('surfaces SETTLEMENT_REQUIRED by reopening the approval form', async () => {

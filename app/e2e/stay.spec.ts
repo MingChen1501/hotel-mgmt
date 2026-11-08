@@ -92,7 +92,7 @@ test('check-in, approval, and dialog check-out', async ({ page, request }) => {
   await expect(page.getByTestId('stay-approval-section')).toBeVisible();
 
   // Record the approval, then close through the confirm dialog.
-  await page.getByTestId('stay-approval-by').fill('Night Manager');
+  await page.getByTestId('stay-approval-by').selectOption('manager');
   await page.getByTestId('stay-approval-role').fill('manager');
   await page.getByTestId('stay-approve').click();
   await expect(page.getByTestId('stay-checkout-status')).toContainText('Approval recorded');
