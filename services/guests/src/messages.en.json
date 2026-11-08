@@ -363,6 +363,7 @@
     "desk.today.out_of_service_detail": "{reason} · {date}",
     "desk.today.out_of_service_unknown": "Reason not recorded. Ask the manager.",
     "desk.today.sheet_line": "{arrivals} arriving, {inHouse} in house, {departures} leaving, {openBalances} open balances (as of {asOf}).",
+    "desk.today.sheet_line_no_as_of": "Report figures are not available yet (no report time).",
     "desk.today.session_expired": "Session expired. Sign in again.",
     "desk.today.book_link": "New booking (price quote and confirm)",
     "desk.today.stay_link": "Stay check-in, move, and check-out",

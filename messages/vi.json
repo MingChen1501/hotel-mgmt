@@ -363,6 +363,7 @@
     "desk.today.out_of_service_detail": "{reason} · {date}",
     "desk.today.out_of_service_unknown": "Chưa ghi nhận lý do. Hỏi quản lý.",
     "desk.today.sheet_line": "{arrivals} khách đến, {inHouse} khách đang ở, {departures} khách đi, {openBalances} số dư chưa thanh toán (tính đến {asOf}).",
+    "desk.today.sheet_line_no_as_of": "Chưa có số liệu báo cáo (chưa có mốc thời gian).",
     "desk.today.session_expired": "Phiên đã hết hạn. Hãy đăng nhập lại.",
     "desk.today.book_link": "Đặt phòng mới (báo giá và xác nhận)",
     "desk.today.stay_link": "Nhận phòng, chuyển phòng và trả phòng",

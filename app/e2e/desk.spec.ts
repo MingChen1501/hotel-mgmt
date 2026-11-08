@@ -29,8 +29,14 @@ test('lists and cross-check line render, and no backup section remains', async (
   await expect(page.getByTestId('desk-arrivals-table')).toBeVisible();
   await expect(page.getByTestId('desk-inhouse-table')).toBeVisible();
   await expect(page.getByTestId('desk-departures-table')).toBeVisible();
-  await expect(page.getByTestId('desk-sheet-line')).toContainText(/arriving/);
-  await expect(page.getByTestId('desk-sheet-line')).toContainText(/in house/);
+  // The compose stack carries no reporting rebuild job yet, so
+  // DailySheet answers from an empty read model (Go's zero as-of).
+  // The desk shows the explicit no-report-time state and never the
+  // year-0001 timestamp the #563 audit caught in the Main evidence.
+  await expect(page.getByTestId('desk-sheet-line')).toContainText(
+    /report figures are not available/i,
+  );
+  await expect(page.getByTestId('desk-sheet-line')).not.toContainText('0001-01-01');
   // Refs #489: the removed backup-report section stays absent — the
   // design carries no such card, so a regression reintroducing it
   // fails here instead of drifting silently.
