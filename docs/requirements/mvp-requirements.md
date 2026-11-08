@@ -760,6 +760,12 @@ live with `product-owner` (issue body plus
 with `qa-lead`. This section records only the requirements
 delta the T2 spec gate requires.
 
+Amendment (Refs #564): `FR-DSP-1` is refreshed to the shell
+as built — the signed-in user name and Sign out live in the
+account disclosure instead of rendering inline on the bar —
+because the `#563` audit recorded a design gap there. The
+rest of this section stands unchanged.
+
 ### 8.1 Explicit no-change statements
 
 - Every MVP requirement in sections 1 and 2 is unchanged by
@@ -793,16 +799,21 @@ conditions, print output, and tests stay intact, and no new
 screen or flow is specified here.
 
 FR-DSP-1 — Global shell navigation. Staff always see where
-they are and can reach every screen.
+they are and can reach every screen, including the session
+controls.
 Given staff are signed in on any `/app/` screen; when they
 look at the top shell; then the six destinations Desk,
 Book, Stay, Folio, Print, and Admin appear in that order,
-followed by the signed-in user name and Sign out, and the
-active route is highlighted (bold label plus underline) so
-the stand-in always knows the current screen. Each item
-routes to its existing path (`/app/`, `/app/book`,
-`/app/stay`, `/app/folio`, `/app/print`, `/app/admin`):
-no route is added, removed, or renamed.
+the active route is highlighted (bold label plus underline)
+so the stand-in always knows the current screen, and the
+signed-in user name and Sign out do not render inline on the
+bar: one compact Account trigger at the end of the row opens
+a disclosure carrying the name and Sign out, Escape closes
+it and hands focus back to the trigger, and a screen or
+locale change closes it. Each item routes to its existing
+path (`/app/`, `/app/book`, `/app/stay`, `/app/folio`,
+`/app/print`, `/app/admin`): no route is added, removed, or
+renamed.
 
 FR-DSP-2 — Single shell-owned sign-in gate. A signed-out
 visitor meets exactly one sign-in form.
@@ -875,7 +886,7 @@ missing guard explicitly instead of citing one.
 
 | Pres item | Guard (existing on disk; implementation PR extends) | Handoff note for `qa-lead` |
 |---|---|---|
-| FR-DSP-1 | Six-route shape: `app/src/router.test.ts:16` (migration shell router suite); per-screen render: `app/src/views/DeskView.test.ts:126`, `BookView.test.ts:202`, `StayView.test.ts`, `FolioView.test.ts`, `PrintView.test.ts`, `AdminView.test.ts` | Extend with shell-nav render plus active-highlight assertions on each of the six routes; keep the existing `data-testid` hooks (`*-view`, `offline-banner`) so characterization tests survive |
+| FR-DSP-1 | Six-route shape: `app/src/router.test.ts:16` (migration shell router suite); per-screen render: `app/src/views/DeskView.test.ts:126`, `BookView.test.ts:202`, `StayView.test.ts`, `FolioView.test.ts`, `PrintView.test.ts`, `AdminView.test.ts`; account disclosure `app/src/shell-restyle.test.ts:236` (trigger opens, Escape closes with focus back on the trigger), 44px target `app/src/shell-restyle.test.ts:120` | Extend with shell-nav render plus active-highlight assertions on each of the six routes; keep the existing `data-testid` hooks (`*-view`, `offline-banner`, `shell-session-trigger`, `shell-signout`) so characterization tests survive |
 | FR-DSP-2 | Sign-in round trips: `app/src/views/DeskView.test.ts:134` (signed-out form), `:143` (sign-in shows dashboard), `:288` (failure surfaces without signing in), `:341` (sign-out back to form); session store: `app/src/stores/session.test.ts:8` (sessionStorage-only persistence, reload restore, sign-out clears); 401 path: `app/src/api/client.test.ts:55` (token clears, routes to sign-in) | Collapse per-screen sign-in copies into the one shell gate; move the per-view sign-in tests to the gate without deleting coverage |
 | FR-DSP-3 | Empty-state wording: `app/src/views/DeskView.test.ts:247` (empty catalogue string when every list is empty); failure wording: `DeskView.test.ts:199` (unknown-guest catalogue string on GetGuest failure), `:302` (locked wording), `:320` (session-expired string on 401); offline wording: `app/src/App.test.ts:17` (banner hooks `offline-banner`, `offline-text`, `offline-retry`) | Add per-screen loading/empty/error/refusal wording assertions; refusal-condition tests stay untouched (semantics unchanged, wording only) |
 | FR-DSP-4 | Exact-match backend guards for `FR-BIL-4` (unchanged) plus `app/src/views/PrintView.test.ts` (print screen incl. `print-view`, `print-signin` hooks) | Add a served-print assertion that printed output still matches the folio exactly and no screen style leaks into print; print CSS stays preserved |
