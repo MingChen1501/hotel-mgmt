@@ -342,7 +342,13 @@ describe('display names instead of IDs (issue #370)', () => {
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="book-quote-section"]').exists()).toBe(true);
     });
-    await wrapper.find('[data-testid="book-guest-id"]').setValue(GUEST_UUID);
+    // Refs #544: find-by-name sets the internal guest snapshot —
+    // the v2 board carries no guest-ID input.
+    await wrapper.find('[data-testid="book-guest-name"]').setValue('Guest One');
+    await wrapper.find('[data-testid="book-find-guest"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="book-guest-status"]').text()).toContain('Guest found');
+    });
     await wrapper.find('[data-testid="book-confirm"]').trigger('click');
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="book-result"]').exists()).toBe(true);

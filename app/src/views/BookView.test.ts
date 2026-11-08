@@ -38,8 +38,8 @@ function parseBody(init?: RequestInit): Record<string, unknown> {
   return init?.body !== undefined ? (JSON.parse(init.body as string) as Record<string, unknown>) : {};
 }
 
-// Full happy-path backend: sign-in, guest identify by name and by
-// id, walk-in registration, a two-night quote, reservation create
+// Full happy-path backend: sign-in, guest identify by name,
+// walk-in registration, a two-night quote, reservation create
 // with the frozen price basis, read-back, and confirmation.
 // Returns the handler so a test can wrap it (e.g. to fail only the
 // create) while the rest of the flow stays on the happy path.
@@ -54,11 +54,6 @@ function stubHappyPath(
       );
     }
     if (url === '/v1/guests/IdentifyGuest') {
-      if (typeof body.guestId === 'string') {
-        return Promise.resolve(
-          jsonResponse({ guestId: body.guestId, fullName: 'Guest One' }),
-        );
-      }
       return Promise.resolve(
         jsonResponse({
           guestId: 'g-1',
@@ -207,7 +202,13 @@ async function quote(wrapper: ReturnType<typeof mountBook>) {
 
 async function quoteAndConfirm(wrapper: ReturnType<typeof mountBook>) {
   await quote(wrapper);
-  await wrapper.find('[data-testid="book-guest-id"]').setValue('g-1');
+  // Refs #544: the v2 board carries no guest-ID input —
+  // find-by-name sets the internal snapshot before confirming.
+  await wrapper.find('[data-testid="book-guest-name"]').setValue('Guest One');
+  await wrapper.find('[data-testid="book-find-guest"]').trigger('click');
+  await vi.waitFor(() => {
+    expect(wrapper.find('[data-testid="book-guest-status"]').text()).toContain('Guest found');
+  });
   await wrapper.find('[data-testid="book-confirm"]').trigger('click');
   await vi.waitFor(() => {
     expect(wrapper.find('[data-testid="book-result"]').exists()).toBe(true);
@@ -225,18 +226,29 @@ describe('book view', () => {
   it('renders the booking form with no per-screen sign-in copy', () => {
     const wrapper = mountBook();
     expect(wrapper.find('[data-testid="book-view"]').exists()).toBe(true);
-    // Catalogue wiring (Refs #292): the heading resolves through t().
-    expect(wrapper.find('[data-testid="book-view"] h1').text()).toContain('Book a room');
+    // Catalogue wiring (Refs #292): the numbered board card
+    // headings resolve via t() (Refs #544: no screen title — the
+    // v2 board heads straight into the card grid).
+    expect(wrapper.find('[data-testid="book-view"] h1').exists()).toBe(false);
+    const headings = wrapper.findAll('[data-testid="book-view"] h3');
+    expect(headings.map((heading) => heading.text())).toEqual([
+      '1. Guest',
+      'Quote',
+      '2. Dates & room',
+    ]);
     // The shell owns the one sign-in gate (Refs #338, FR-DSP-2):
     // no per-screen sign-in copy renders here anymore.
     expect(wrapper.find('[data-testid="book-signin"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="book-booking"]').exists()).toBe(true);
   });
 
-  // D3 (Refs #520, AC-RST-3, FR-RST-3; restyle spec section 5.2):
-  // the Book screen renders its design top grid — the guest card
-  // left and the quote card right in a `1.3fr 1fr` grid — with the
-  // stay card full-width below. Flow and refusal tests below stay
+  // D3 (Refs #544, AC-RST-3, FR-RST-3; v2 board
+  // `docs/design/Book.dc.html:3`): the Book screen renders the
+  // board card grid — no screen title, no section heading, the
+  // numbered h3 card titles, the guest card left and the quote
+  // card right in a `1.3fr 1fr` grid, with the stay card
+  // full-width below (arrival, departure, room type, discount plus
+  // the quote action). Flow and refusal tests below stay
   // untouched (semantics unchanged); only this layout is new.
   it('renders the design top grid with the stay card full-width below', async () => {
     const fetchMock = vi.fn();
@@ -282,11 +294,15 @@ describe('book view', () => {
     expect(wrapper.find('[data-testid="book-quote-nights-count"]').text()).toContain('2');
 
     // VI-primary copy (AC-DSK-8): the cards switch locale with no
-    // mixed-locale copy.
+    // mixed-locale copy; the actions carry the board-literal labels
+    // (Refs #544: `Tìm`, `Đăng ký khách mới`, `Lấy báo giá`).
     try {
       setLocale('vi');
       await wrapper.vm.$nextTick();
-      expect(wrapper.find('[data-testid="book-find-guest"]').text()).toContain('Tìm khách');
+      expect(wrapper.find('[data-testid="book-find-guest"]').text()).toContain('Tìm');
+      expect(wrapper.find('[data-testid="book-register-guest"]').text()).toContain(
+        'Đăng ký khách mới',
+      );
       expect(wrapper.find('[data-testid="book-quote"]').text()).toContain('Lấy báo giá');
       expect(wrapper.find('[data-testid="book-quote-nights-count"]').text()).toContain('Số đêm: 2');
     } finally {
@@ -311,7 +327,7 @@ describe('book view', () => {
     expect(wrapper.find('[data-testid="book-quote-section"]').exists()).toBe(true);
   });
 
-  it('finds a returning guest by name and fills the guest id', async () => {
+  it('finds a returning guest by name and remembers the snapshot', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     const wrapper = mountBook();
@@ -323,8 +339,9 @@ describe('book view', () => {
       expect(wrapper.find('[data-testid="book-guest-status"]').text()).toContain('Guest found');
     });
     expect(wrapper.find('[data-testid="book-guest-status"]').text()).toContain('3 past stays');
-    const guestId = wrapper.find('[data-testid="book-guest-id"]');
-    expect((guestId.element as HTMLInputElement).value).toBe('g-1');
+    // Refs #544: the v2 board carries no guest-ID input — the
+    // find-by-name snapshot travels into the confirm instead.
+    expect(wrapper.find('[data-testid="book-guest-id"]').exists()).toBe(false);
   });
 
   it('shows the not-found catalogue string for an unknown guest name', async () => {
@@ -369,8 +386,6 @@ describe('book view', () => {
         'New guest registered',
       );
     });
-    const guestId = wrapper.find('[data-testid="book-guest-id"]');
-    expect((guestId.element as HTMLInputElement).value).toBe('g-2');
     // The walk-in registration carries the sign-in name as actor
     // (asserted inside the UpsertGuest stub above).
     const upsert = fetchMock.mock.calls.find((call) => call[0] === '/v1/guests/UpsertGuest');
@@ -558,9 +573,6 @@ describe('book view', () => {
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="book-guest-status"]').text()).toContain('Guest found');
     });
-    expect((wrapper.find('[data-testid="book-guest-id"]').element as HTMLInputElement).value).toBe(
-      qaGuestId,
-    );
 
     await wrapper.find('[data-testid="book-arrival-date"]').setValue('2026-11-25');
     await wrapper.find('[data-testid="book-departure-date"]').setValue('2026-11-27');
@@ -737,7 +749,13 @@ describe('book view', () => {
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="book-quote-section"]').exists()).toBe(true);
     });
-    await wrapper.find('[data-testid="book-guest-id"]').setValue(qaGuestId);
+    // Refs #544: find-by-name sets the internal guest snapshot —
+    // the v2 board carries no guest-ID input.
+    await wrapper.find('[data-testid="book-guest-name"]').setValue('QA Booker');
+    await wrapper.find('[data-testid="book-find-guest"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="book-guest-status"]').text()).toContain('Guest found');
+    });
     await wrapper.find('[data-testid="book-confirm"]').trigger('click');
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="book-result"]').exists()).toBe(true);
@@ -778,7 +796,11 @@ describe('book view', () => {
     });
 
     await quote(wrapper);
-    await wrapper.find('[data-testid="book-guest-id"]').setValue('g-1');
+    await wrapper.find('[data-testid="book-guest-name"]').setValue('Guest One');
+    await wrapper.find('[data-testid="book-find-guest"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="book-guest-status"]').text()).toContain('Guest found');
+    });
     await wrapper.find('[data-testid="book-confirm"]').trigger('click');
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="book-confirm-error"]').text()).toContain(
@@ -805,7 +827,14 @@ describe('book view', () => {
       );
     });
 
-    await wrapper.find('[data-testid="book-guest-id"]').setValue('g-1');
+    // Resolving the guest by name keeps the quote: changing the
+    // room type afterwards still clears it, taking the confirm
+    // action with it.
+    await wrapper.find('[data-testid="book-guest-name"]').setValue('Guest One');
+    await wrapper.find('[data-testid="book-find-guest"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="book-guest-status"]').text()).toContain('Guest found');
+    });
     await wrapper.find('[data-testid="book-room-type-id"]').setValue('suite');
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="book-quote-section"]').exists()).toBe(false);
@@ -860,7 +889,11 @@ describe('book view', () => {
       return happy(url, init);
     });
     await quote(wrapper);
-    await wrapper.find('[data-testid="book-guest-id"]').setValue('g-1');
+    await wrapper.find('[data-testid="book-guest-name"]').setValue('Guest One');
+    await wrapper.find('[data-testid="book-find-guest"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="book-guest-status"]').text()).toContain('Guest found');
+    });
     await wrapper.find('[data-testid="book-confirm"]').trigger('click');
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="book-confirm-error"]').text()).toContain(
@@ -893,7 +926,11 @@ describe('book view', () => {
       return happy(url, init);
     });
     await quote(wrapper);
-    await wrapper.find('[data-testid="book-guest-id"]').setValue('g-1');
+    await wrapper.find('[data-testid="book-guest-name"]').setValue('Guest One');
+    await wrapper.find('[data-testid="book-find-guest"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="book-guest-status"]').text()).toContain('Guest found');
+    });
     await wrapper.find('[data-testid="book-confirm"]').trigger('click');
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="book-confirm-error"]').text()).toContain('min-stay-2');
@@ -909,20 +946,25 @@ describe('book view', () => {
     const wrapper = mountBook();
     await signIn(wrapper, fetchMock);
     await quote(wrapper);
-    await wrapper.find('[data-testid="book-guest-id"]').setValue('g-1');
+    // Refs #544: find-by-name sets the internal guest snapshot —
+    // the v2 board carries no guest-ID input.
+    await wrapper.find('[data-testid="book-guest-name"]').setValue('Guest One');
+    await wrapper.find('[data-testid="book-find-guest"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="book-guest-status"]').text()).toContain('Guest found');
+    });
 
     let releaseCreate: (value: Response) => void = () => {};
     const gate = new Promise<Response>((resolve) => {
       releaseCreate = resolve;
     });
-    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+    fetchMock.mockImplementation((url: string) => {
       if (url === '/v1/reservations/CreateReservation') {
         return gate;
       }
       if (url === '/v1/rooms/ListRoomTypes') {
         return Promise.resolve(jsonResponse({ roomTypes: [{ id: 'standard', name: 'Standard' }] }));
       }
-      const body = parseBody(init);
       if (url === '/v1/rooms/CheckRoomTypeSellability') {
         return Promise.resolve(
           jsonResponse({
@@ -951,7 +993,7 @@ describe('book view', () => {
         );
       }
       if (url === '/v1/guests/IdentifyGuest') {
-        return Promise.resolve(jsonResponse({ guestId: body.guestId, fullName: 'Guest One' }));
+        return Promise.resolve(jsonResponse({ guestId: 'g-1', fullName: 'Guest One' }));
       }
       if (url === '/v1/guests/AttachReservation') {
         return Promise.resolve(
@@ -983,8 +1025,8 @@ describe('book view', () => {
     // The confirm button disables while the first confirm is in
     // flight; the in-flight guard drops the second press even if it
     // lands, so the store sees exactly one create per quote key.
-    // (The first confirm resolves the guest name before creating,
-    // so the create lands a tick after the clicks.)
+    // (The first confirm awaits the sellability read before
+    // creating, so the create lands a tick after the clicks.)
     await wrapper.find('[data-testid="book-confirm"]').trigger('click');
     await wrapper.find('[data-testid="book-confirm"]').trigger('click');
     await vi.waitFor(() => {
@@ -1063,9 +1105,9 @@ describe('book view', () => {
     expect((wrapper.find('[data-testid="book-guest-name"]').element as HTMLInputElement).value).toBe(
       '',
     );
-    expect((wrapper.find('[data-testid="book-guest-id"]').element as HTMLInputElement).value).toBe(
-      '',
-    );
+    expect(
+      (wrapper.find('[data-testid="book-discount-name"]').element as HTMLInputElement).value,
+    ).toBe('');
     expect(
       (wrapper.find('[data-testid="book-room-type-id"]').element as HTMLInputElement).value,
     ).toBe('');

@@ -1,20 +1,16 @@
 <template>
   <main data-testid="book-view">
-    <!-- Book screen title (restyle Refs #520, `docs/design/Book.dc.html:2`:
-      h1 `margin:0;font-size:22px`; hooks and copy unchanged). -->
-    <h1 class="book-title">
-      {{ t('desk.book.title', {}, 'Book a room') }}
-    </h1>
+    <!-- Book screen title (restyle Refs #544,
+      `docs/design/Book.dc.html:3`: the v2 board carries no screen
+      title — the shell header owns the hotel name plus the seven
+      design tabs with the `Đặt phòng` pill active, so the v1 h1
+      and the `New booking` section h2 are gone (zero extras vs the
+      board). Hooks and copy otherwise unchanged). -->
     <noscript><p>{{ t('desk.entry.noscript_book', {}, 'This page needs JavaScript to quote a price and book.') }}</p></noscript>
 
     <section data-testid="book-booking">
-      <!-- Section heading (restyle Refs #520, `docs/design/Book.dc.html:3`:
-        h2 `margin:0;font-size:18px` above the design grid). -->
-      <h2 class="book-section-title">
-        {{ t('desk.book.form_heading', {}, 'New booking') }}
-      </h2>
       <form @submit.prevent="">
-        <!-- Top grid (restyle Refs #520, `docs/design/Book.dc.html:3-:4`:
+        <!-- Top grid (restyle Refs #544, `docs/design/Book.dc.html:3`:
           `display:grid;grid-template-columns:1.3fr 1fr;gap:16px` —
           guest card left, quote card right; the stay card sits
           full-width below this grid. Hooks, copy, and logic unchanged. -->
@@ -23,18 +19,24 @@
           data-testid="book-layout"
         >
           <Card data-testid="book-guest-card">
+            <!-- Guest card title (restyle Refs #544,
+              `docs/design/Book.dc.html:3`: the v2 board heads the
+              guest card with the numbered h3 `1. Khách`
+              (`margin:0;font-size:16px`); the v1 `Guest` h2 is gone.
+              Hooks and copy otherwise unchanged). -->
             <template #title>
-              <h2>{{ t('desk.book.guest_heading', {}, 'Guest') }}</h2>
+              <h3>{{ t('desk.book.guest_heading', {}, '1. Guest') }}</h3>
             </template>
             <template #content>
-              <p class="book-helper">
-                {{ t('desk.book.guest_note', {}, 'Find a returning guest by name, enter a known guest ID, or register a walk-in guest by name.') }}
-              </p>
-              <p class="book-helper">
-                {{ t('desk.book.actor_note', {}, 'Walk-in registrations are recorded under your sign-in name.') }}
-              </p>
+              <!-- Guest name only (restyle Refs #544,
+                `docs/design/Book.dc.html:3`: the board draws the
+                name input plus the find/register actions — the v1
+                helper notes and the guest-ID input are gone (zero
+                extras). Find/register-by-name sets the internal
+                guest ID; the snapshot path is unchanged. The
+                action-readout line stays as flow state. -->
               <label for="book-guest-name">
-                {{ t('desk.book.guest_name', {}, 'Guest name: ') }}
+                {{ t('desk.book.guest_name', {}, 'Guest name') }}
                 <InputText
                   id="book-guest-name"
                   v-model="guestName"
@@ -48,7 +50,7 @@
                   id="book-find-guest-button"
                   type="button"
                   class="book-action"
-                  :label="t('desk.book.find_button', {}, 'Find guest')"
+                  :label="t('desk.book.find_button', {}, 'Find')"
                   data-testid="book-find-guest"
                   @click="onFindGuest"
                 />
@@ -56,21 +58,11 @@
                   id="book-register-guest-button"
                   type="button"
                   class="book-action"
-                  :label="t('desk.book.register_button', {}, 'Register walk-in guest')"
+                  :label="t('desk.book.register_button', {}, 'Register new guest')"
                   data-testid="book-register-guest"
                   @click="onRegisterGuest"
                 />
               </div>
-              <label for="book-guest-id">
-                {{ t('desk.book.guest_id', {}, 'Guest ID: ') }}
-                <InputText
-                  id="book-guest-id"
-                  v-model="guestId"
-                  name="guest-id"
-                  autocomplete="off"
-                  data-testid="book-guest-id"
-                />
-              </label>
               <p
                 role="status"
                 class="book-helper"
@@ -82,8 +74,14 @@
           </Card>
 
           <Card data-testid="book-quote-card">
+            <!-- Quote card title (restyle Refs #544,
+              `docs/design/Book.dc.html:3`: the v2 board heads the
+              quote card with the h3 `Báo giá`
+              (`margin:0;font-size:16px`); the v1 `Quoted price` h2
+              is gone. The quoted rows plus confirm stay as flow
+              state below. -->
             <template #title>
-              <h2>{{ t('desk.book.quote_heading', {}, 'Quoted price') }}</h2>
+              <h3>{{ t('desk.book.quote_heading', {}, 'Quote') }}</h3>
             </template>
             <template #content>
               <div
@@ -137,18 +135,23 @@
             </template>
           </Card>
         </div>
-        <!-- Stay card full-width below the top grid (restyle Refs #520,
-          `docs/design/Book.dc.html:5`: same design card; stay fields in
-          a `repeat(4,1fr)` grid; full-width rate-plan/discount labels;
-          primary quote button. Hooks, copy, and logic unchanged). -->
+        <!-- Stay card full-width below the top grid (restyle Refs #544,
+          `docs/design/Book.dc.html:3`: same design card headed by the
+          numbered h3 `2. Ngày và phòng` (`margin:0;font-size:16px`);
+          the four stay fields sit in a `repeat(4,1fr)` grid with the
+          primary quote button below — the v1 `Stay` h2 and the
+          rate-plan input are gone (zero extras vs the board). The
+          room-type select stays catalogue-driven (DD-09) with its
+          choose-placeholder and loading/empty notes as edge state;
+          hooks, copy, and logic otherwise unchanged). -->
         <Card data-testid="book-stay-card">
           <template #title>
-            <h2>{{ t('desk.book.stay_heading', {}, 'Stay') }}</h2>
+            <h3>{{ t('desk.book.stay_heading', {}, '2. Dates & room') }}</h3>
           </template>
           <template #content>
             <div class="book-stay-grid">
               <label for="book-arrival-date">
-                {{ t('desk.book.arrival', {}, 'Arrival date: ') }}
+                {{ t('desk.book.arrival', {}, 'Arrival date') }}
                 <input
                   id="book-arrival-date"
                   v-model="arrivalDate"
@@ -159,7 +162,7 @@
                 >
               </label>
               <label for="book-departure-date">
-                {{ t('desk.book.departure', {}, 'Departure date: ') }}
+                {{ t('desk.book.departure', {}, 'Departure date') }}
                 <input
                   id="book-departure-date"
                   v-model="departureDate"
@@ -170,7 +173,7 @@
                 >
               </label>
               <label for="book-room-type-id">
-                {{ t('desk.book.room_type', {}, 'Room type: ') }}
+                {{ t('desk.book.room_type', {}, 'Room type') }}
                 <select
                   id="book-room-type-id"
                   v-model="roomTypeId"
@@ -190,6 +193,17 @@
                   </option>
                 </select>
               </label>
+              <label for="book-discount-name">
+                {{ t('desk.book.discount', {}, 'Discount') }}
+                <InputText
+                  id="book-discount-name"
+                  v-model="discountName"
+                  name="discount-name"
+                  autocomplete="off"
+                  data-testid="book-discount-name"
+                  @update:model-value="onStayInput"
+                />
+              </label>
             </div>
             <p
               v-if="roomTypesLoading"
@@ -205,28 +219,6 @@
             >
               {{ t('desk.book.room_type_empty', {}, 'No room types defined yet. Ask a manager to define one first.') }}
             </p>
-            <label for="book-rate-plan">
-              {{ t('desk.book.rate_plan', {}, 'Rate plan (leave blank when only one prices this type): ') }}
-              <InputText
-                id="book-rate-plan"
-                v-model="ratePlan"
-                name="rate-plan"
-                autocomplete="off"
-                data-testid="book-rate-plan"
-                @update:model-value="onStayInput"
-              />
-            </label>
-            <label for="book-discount-name">
-              {{ t('desk.book.discount', {}, 'Discount (optional): ') }}
-              <InputText
-                id="book-discount-name"
-                v-model="discountName"
-                name="discount-name"
-                autocomplete="off"
-                data-testid="book-discount-name"
-                @update:model-value="onStayInput"
-              />
-            </label>
             <div>
               <Button
                 id="book-quote-button"
@@ -339,19 +331,27 @@ import ReferenceDetails, { type ReferenceItem } from '../components/ReferenceDet
 // Book screen as Vue SFCs (Refs #294, ADR-0003; two-column
 // restyle Refs #421 per the owner design rollout #419).
 //
-// The #520 restyle re-skins this surface to the owner design
-// (`docs/design/Book.dc.html:2-:5`, restyle spec section 5.2,
-// AC-RST-3): h1 `22px`, section h2 `18px`, the `1.3fr 1fr` top
-// grid (guest card left, quote card right) with the stay card
-// full-width below, stay fields in a `repeat(4,1fr)` grid,
-// `14px` labels, full-width `44px` controls with `margin-top:6px`,
-// `15px` quote rows with dividers, muted `14px` helpers, and
-// primary action buttons. PrimeVue components stay as logic
-// carriers only — their default visual styling is overridden in
-// the shell stylesheet (`app/src/App.vue`, Refs #520) wherever it
-// diverges from the design. Behaviour, reads, transitions,
-// catalogue keys, and hooks hold unchanged (the B3 quote-copy
-// REPORTED item stays reported).
+// The #544 rebuild re-skins this surface pixel-faithful to the v2
+// owner board (`docs/design/Book.dc.html:3`): no screen title and
+// no section heading (the shell header owns the hotel name plus the
+// seven design tabs); the three cards carry the numbered board h3s
+// (`1. Khách`, `Báo giá`, `2. Ngày và phòng`, `margin:0;
+// font-size:16px`); the guest card holds the name input plus the
+// find/register actions; the stay card holds arrival, departure,
+// the catalogue-driven room-type select, and discount in a
+// `repeat(4,1fr)` grid with the quote button below; the quote card
+// holds the night count, the nightly lines, the total, and the
+// confirm action. The v1 helpers, guest-ID input, and rate-plan
+// input are gone (zero extras vs the board, orchestrator decision
+// on #544); find/register-by-name sets the internal guest ID and
+// quotes resolve the single pricing plan. The guest-status,
+// loading/empty, quote, result, and confirmation readouts stay as
+// flow state. PrimeVue components stay as logic carriers only —
+// their default visual styling is overridden in the shell
+// stylesheet (`app/src/App.vue`, Refs #544) wherever it diverges
+// from the design. Behaviour, reads, transitions, catalogue keys,
+// and hooks hold unchanged (the B3 quote-copy REPORTED item stays
+// reported).
 // Behavioural port of the inline script in `frontend/book.html`
 // (quote the price before anything is booked, then confirm the
 // reservation). The legacy page is untouched and stays served in
@@ -479,13 +479,14 @@ export default defineComponent({
   setup() {
     const session = useSessionStore();
     const guestName = ref('');
-    const guestId = ref('');
     const guestStatus = ref('');
     // Guest snapshot for the booking confirm: the reservation
     // contract requires the hotel-mandatory guest fields
     // (FR-CUS-1, e.g. fullName) alongside the guestId, so the
     // view remembers the fullName returned by find/register
-    // together with the guestId it belongs to.
+    // together with the guestId it belongs to (Refs #544: the v2
+    // board carries no guest-ID input, so find/register-by-name is
+    // the only path that sets this snapshot).
     const resolvedGuest = ref<{ guestId: string; fullName: string } | null>(null);
     const arrivalDate = ref('');
     const departureDate = ref('');
@@ -498,7 +499,6 @@ export default defineComponent({
     // Exact record IDs stay hidden by default (issue #372 owner
     // amendment) and surface only in these reference details.
     const bookingDetails = ref<ReferenceItem[]>([]);
-    const ratePlan = ref('');
     const discountName = ref('');
     const quote = ref<Quote | null>(null);
     const quoteKey = ref<string | null>(null);
@@ -573,7 +573,7 @@ export default defineComponent({
         guestStatus.value = t(
           'desk.book.guest_notfound',
           {},
-          'No guest with that name. Check the name, enter the guest ID, or register a walk-in guest.',
+          'No guest with that name. Check the name or register a new guest.',
         );
         return;
       }
@@ -582,7 +582,6 @@ export default defineComponent({
           '/v1/guests/IdentifyGuest',
           { method: 'POST', body: JSON.stringify({ fullName: name }) },
         );
-        guestId.value = guest.guestId;
         resolvedGuest.value = { guestId: guest.guestId, fullName: guest.fullName };
         guestStatus.value = t(
           'desk.book.guest_found',
@@ -598,7 +597,7 @@ export default defineComponent({
           guestStatus.value = t(
             'desk.book.guest_notfound',
             {},
-            'No guest with that name. Check the name, enter the guest ID, or register a walk-in guest.',
+            'No guest with that name. Check the name or register a new guest.',
           );
           return;
         }
@@ -612,7 +611,7 @@ export default defineComponent({
         guestStatus.value = t(
           'desk.book.guest_notfound',
           {},
-          'No guest with that name. Check the name, enter the guest ID, or register a walk-in guest.',
+          'No guest with that name. Check the name or register a new guest.',
         );
         return;
       }
@@ -621,7 +620,6 @@ export default defineComponent({
           '/v1/guests/UpsertGuest',
           { method: 'POST', body: JSON.stringify({ fullName: name, actor: session.displayName ?? '' }) },
         );
-        guestId.value = guest.guestId;
         resolvedGuest.value = { guestId: guest.guestId, fullName: guest.fullName };
         guestStatus.value = t(
           'desk.book.guest_new',
@@ -647,10 +645,6 @@ export default defineComponent({
         arrivalDate: arrivalDate.value,
         departureDate: departureDate.value,
       };
-      const plan = ratePlan.value.trim();
-      if (plan !== '') {
-        body.ratePlanName = plan;
-      }
       const discount = discountName.value.trim();
       if (discount !== '') {
         body.discountName = discount;
@@ -730,8 +724,10 @@ export default defineComponent({
         return;
       }
       confirmError.value = '';
-      const resolvedGuestId = guestId.value.trim();
-      if (resolvedGuestId === '') {
+      // The v2 board carries no guest-ID input (Refs #544): the
+      // guest snapshot comes from find/register-by-name only, which
+      // remembers the fullName alongside the guest ID.
+      if (resolvedGuest.value === null) {
         confirmError.value = t(
           'desk.book.guest_need',
           {},
@@ -751,38 +747,10 @@ export default defineComponent({
       confirming.value = true;
       try {
         // The reservation contract requires the hotel-mandatory
-        // guest fields (FR-CUS-1): reuse the fullName remembered
-        // by find/register when it belongs to the entered guest
-        // ID, otherwise resolve it by guest ID first so a pasted
-        // ID still confirms with a complete snapshot.
-        let resolvedFullName = '';
-        if (resolvedGuest.value !== null && resolvedGuest.value.guestId === resolvedGuestId) {
-          resolvedFullName = resolvedGuest.value.fullName;
-        } else {
-          try {
-            const named = await apiFetch<{ fullName: string }>('/v1/guests/IdentifyGuest', {
-              method: 'POST',
-              body: JSON.stringify({ guestId: resolvedGuestId }),
-            });
-            resolvedFullName = named.fullName;
-            resolvedGuest.value = { guestId: resolvedGuestId, fullName: named.fullName };
-          } catch (lookupErr) {
-            if (isSignedOut(lookupErr)) {
-              expireToGate();
-              return;
-            }
-            if (errorCode(lookupErr) === 'NOT_FOUND') {
-              confirmError.value = t(
-                'desk.book.guest_notfound',
-                {},
-                'No guest with that name. Check the name, enter the guest ID, or register a walk-in guest.',
-              );
-              return;
-            }
-            confirmError.value = errorMessage();
-            return;
-          }
-        }
+        // guest fields (FR-CUS-1): the snapshot remembered by
+        // find/register travels with the confirm.
+        const resolvedGuestId = resolvedGuest.value.guestId;
+        const resolvedFullName = resolvedGuest.value.fullName;
         // The reservation contract carries the desk-loop
         // search-step output: the searched sellable count for the
         // quoted type and dates, read fresh here so the confirm
@@ -972,12 +940,10 @@ export default defineComponent({
 
     function onNewBooking(): void {
       guestName.value = '';
-      guestId.value = '';
       resolvedGuest.value = null;
       arrivalDate.value = '';
       departureDate.value = '';
       roomTypeId.value = '';
-      ratePlan.value = '';
       discountName.value = '';
       guestStatus.value = '';
       booking.value = null;
@@ -1010,14 +976,12 @@ export default defineComponent({
     return {
       t,
       guestName,
-      guestId,
       guestStatus,
       arrivalDate,
       departureDate,
       roomTypeId,
       roomTypes,
       roomTypesLoading,
-      ratePlan,
       discountName,
       quote,
       quoteNights,

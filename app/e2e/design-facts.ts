@@ -316,23 +316,34 @@ export const DECIDED_CONTENT: readonly DecidedScreenContent[] = [
     inputs: [],
   },
   {
+    // Book (Refs #544, v2 board `docs/design/Book.dc.html:3`): the
+    // screen heads straight into the numbered h3 cards with no
+    // screen title and no section heading — zero extras vs the
+    // board. The guest card carries the name input plus the
+    // board-literal find/register actions; the stay card carries
+    // arrival, departure, the catalogue-driven room-type select
+    // (placeholder pinned — the static label stays board-literal),
+    // and discount plus the quote action. The quote-card confirm
+    // stays out (post-quote flow state — the gate asserts the
+    // fresh-screen button subset only, covered by `book.spec.ts`
+    // once quoted). The guest-ID and rate-plan inputs are
+    // gone (orchestrator decision on #544), as are the v1 helper
+    // notes. The quote/result/confirmation sections plus the
+    // readout and error lines stay out as flow state (covered by
+    // `book.spec.ts`).
     screen: 'Book',
     headings: [
-      { level: 1, text: 'Đặt phòng' },
-      { level: 2, text: 'Đặt phòng mới' },
-      { level: 2, text: 'Khách' },
-      { level: 2, text: 'Giá đã báo' },
-      { level: 2, text: 'Lưu trú' },
+      { level: 3, text: '1. Khách' },
+      { level: 3, text: 'Báo giá' },
+      { level: 3, text: '2. Ngày và phòng' },
     ],
-    buttons: ['Tìm khách', 'Đăng ký khách vãng lai', 'Lấy báo giá'],
+    buttons: ['Tìm', 'Đăng ký khách mới', 'Lấy báo giá'],
     inputs: [
-      { kind: 'text', label: 'Tên khách:', placeholder: null },
-      { kind: 'text', label: 'Mã khách:', placeholder: null },
-      { kind: 'text', label: 'Ngày đến:', placeholder: null },
-      { kind: 'text', label: 'Ngày đi:', placeholder: null },
-      { kind: 'select', label: 'Hạng phòng:', placeholder: 'Chọn hạng phòng…' },
-      { kind: 'text', label: 'Gói giá (để trống khi chỉ một gói áp giá cho hạng phòng này):', placeholder: null },
-      { kind: 'text', label: 'Giảm giá (không bắt buộc):', placeholder: null },
+      { kind: 'text', label: 'Tên khách', placeholder: null },
+      { kind: 'text', label: 'Ngày đến', placeholder: null },
+      { kind: 'text', label: 'Ngày đi', placeholder: null },
+      { kind: 'select', label: 'Loại phòng', placeholder: 'Chọn loại phòng…' },
+      { kind: 'text', label: 'Giảm giá', placeholder: null },
     ],
   },
 ];

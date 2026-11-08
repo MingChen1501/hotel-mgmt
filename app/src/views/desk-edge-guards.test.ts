@@ -59,12 +59,9 @@ function stubBookHappy(fetchMock: ReturnType<typeof vi.fn>) {
         jsonResponse({ token: 'tok-1', userId: 'u-1', displayName: 'Ada Owner', role: 'owner' }),
       );
     }
+    // Refs #544: the v2 board carries no guest-ID input, so
+    // identification always arrives by name.
     if (url === '/v1/guests/IdentifyGuest') {
-      if (typeof body.guestId === 'string') {
-        return Promise.resolve(
-          jsonResponse({ guestId: body.guestId, fullName: 'Guest One' }),
-        );
-      }
       return Promise.resolve(
         jsonResponse({
           guestId: 'g-1',
@@ -676,7 +673,8 @@ describe('QA-EDGE-4 empty required fields', () => {
     expect(wrapper.find('[data-testid="book-guest-status"]').exists()).toBe(true);
     const urls = fetchMock.mock.calls.map((call) => String(call[0]));
     expect(urls).not.toContain('/v1/guests/UpsertGuest');
-    expect((wrapper.find('[data-testid="book-guest-id"]').element as HTMLInputElement).value).toBe('');
+    // Refs #544: the v2 board carries no guest-ID input at all.
+    expect(wrapper.find('[data-testid="book-guest-id"]').exists()).toBe(false);
   });
 });
 
@@ -690,7 +688,13 @@ describe('QA-EDGE-5 duplicate confirm idempotency', () => {
     const wrapper = mountBook();
     await signInBook(wrapper, fetchMock);
     await quoteBook(wrapper);
-    await wrapper.find('[data-testid="book-guest-id"]').setValue('g-1');
+    // Refs #544: find-by-name sets the internal guest snapshot —
+    // the v2 board carries no guest-ID input.
+    await wrapper.find('[data-testid="book-guest-name"]').setValue('Guest One');
+    await wrapper.find('[data-testid="book-find-guest"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="book-guest-status"]').text()).toContain('Guest found');
+    });
 
     let releaseCreate: (value: Response) => void = () => {};
     const gate = new Promise<Response>((resolve) => {
@@ -764,7 +768,13 @@ describe('QA-EDGE-6 overbooking past sellable units', () => {
     });
 
     await quoteBook(wrapper);
-    await wrapper.find('[data-testid="book-guest-id"]').setValue('g-1');
+    // Refs #544: find-by-name sets the internal guest snapshot —
+    // the v2 board carries no guest-ID input.
+    await wrapper.find('[data-testid="book-guest-name"]').setValue('Guest One');
+    await wrapper.find('[data-testid="book-find-guest"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="book-guest-status"]').text()).toContain('Guest found');
+    });
     await wrapper.find('[data-testid="book-confirm"]').trigger('click');
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="book-result"]').exists()).toBe(true);
@@ -772,7 +782,11 @@ describe('QA-EDGE-6 overbooking past sellable units', () => {
 
     await wrapper.find('[data-testid="book-new-booking"]').trigger('click');
     await quoteBook(wrapper);
-    await wrapper.find('[data-testid="book-guest-id"]').setValue('g-1');
+    await wrapper.find('[data-testid="book-guest-name"]').setValue('Guest One');
+    await wrapper.find('[data-testid="book-find-guest"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="book-guest-status"]').text()).toContain('Guest found');
+    });
     await wrapper.find('[data-testid="book-confirm"]').trigger('click');
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="book-confirm-error"]').text()).toContain(
@@ -1298,11 +1312,23 @@ describe('QA-EDGE-12 mid-flow locale switch', () => {
       // The quote survives with the same priced value.
       expect(wrapper.find('[data-testid="book-quote-section"]').exists()).toBe(true);
       expect(digitsOf(wrapper.find('[data-testid="book-quote-total"]').text())).toBe(totalBefore);
-      // The switched screen reads Vietnamese on its actions.
-      expect(wrapper.find('[data-testid="book-find-guest"]').text()).toContain('Tìm khách');
+      // The switched screen reads Vietnamese on its actions
+      // (Refs #544: board-literal `Tìm`, `Đăng ký khách mới`).
+      expect(wrapper.find('[data-testid="book-find-guest"]').text()).toContain('Tìm');
+      expect(wrapper.find('[data-testid="book-register-guest"]').text()).toContain(
+        'Đăng ký khách mới',
+      );
 
-      // The flow still confirms after the switch.
-      await wrapper.find('[data-testid="book-guest-id"]').setValue('g-1');
+      // The flow still confirms after the switch (Refs #544:
+      // find-by-name sets the internal snapshot; the status line
+      // reads Vietnamese under the switched locale).
+      await wrapper.find('[data-testid="book-guest-name"]').setValue('Guest One');
+      await wrapper.find('[data-testid="book-find-guest"]').trigger('click');
+      await vi.waitFor(() => {
+        expect(wrapper.find('[data-testid="book-guest-status"]').text()).toContain(
+          'Đã tìm thấy khách',
+        );
+      });
       await wrapper.find('[data-testid="book-confirm"]').trigger('click');
       await vi.waitFor(() => {
         expect(wrapper.find('[data-testid="book-result"]').exists()).toBe(true);

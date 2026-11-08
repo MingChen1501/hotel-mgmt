@@ -117,7 +117,11 @@ describe('shell locale switch (EN/VI)', () => {
     try {
       const wrapper = await mountShell('/book');
       await wrapper.find('[data-testid="locale-vi"]').trigger('click');
-      expect(wrapper.text()).toContain('Đặt phòng mới');
+      // Refs #544: the v2 board heads the cards with the numbered
+      // h3s — no screen title, no section heading.
+      expect(wrapper.text()).toContain('1. Khách');
+      expect(wrapper.text()).toContain('Báo giá');
+      expect(wrapper.text()).toContain('2. Ngày và phòng');
       expect(wrapper.text()).toContain('Lấy báo giá');
       expect(wrapper.text()).not.toContain('New booking');
       expect(wrapper.html()).not.toContain('message-missing:');
