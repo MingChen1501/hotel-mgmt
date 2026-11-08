@@ -313,10 +313,13 @@ export const ROOMS_SCREEN_ALLOWLIST: DomDiffAllowlist = {
     // the counts line (`18 phòng, 6 phòng có khách`, no entry —
     // orchestrator decision on #549: date node only, never the
     // parent div; the counts line gets its own entry if needed) vs
-    // the live business-date strong (fresh lab: the ISO clock; the
-    // design counts never coincide with seed-driven rooms).
+    // the live eyebrow date strong (fresh lab: the business clock;
+    // the design counts never coincide with seed-driven rooms).
+    // Refs #543: the v2 head block nests the date strong in the
+    // eyebrow h1 (`main/div/div/h1/strong`), observed on the
+    // hotel-lab-773 live render.
     '/html[0]/body[0]/div[0]/div[0]/div[0]/div[1]/div[0]/div[0]',
-    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/p[1]/strong[0]',
+    '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/div[0]/div[0]/h1[0]/strong[0]',
     // DD-19 summary chips: design illustration (`Sẵn sàng · 8`,
     // `Có khách · 6`, `Cần dọn · 2`, `Chờ kiểm tra · 1`,
     // `Ngừng sử dụng · 1`) vs the seed-driven live chips (fresh

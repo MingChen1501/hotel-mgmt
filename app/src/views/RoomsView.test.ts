@@ -163,10 +163,14 @@ describe('rooms view', () => {
     setLocale('en');
   });
 
-  it('renders the map frame with the refresh action only', () => {
+  it('renders the v2 title block with the refresh action only', () => {
     const wrapper = mountRooms();
     expect(wrapper.find('[data-testid="rooms-view"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="rooms-view"] h1').text()).toBe('Room map');
+    // Refs #543: the v2 head block is the eyebrow (`{title} ·
+    // {date}`) above the live counts headline — no screen title,
+    // intro, or standalone date row.
+    expect(wrapper.find('[data-testid="rooms-view"] h1').text()).toContain('Room map');
+    expect(wrapper.find('[data-testid="rooms-view"] .rooms-headline').text()).toBe('0 rooms, 0 occupied');
     expect(wrapper.find('[data-testid="rooms-refresh"]').exists()).toBe(true);
   });
 
@@ -608,7 +612,10 @@ describe('rooms view', () => {
     await loadMap(wrapper, fetchMock);
     setLocale('vi');
     await wrapper.vm.$nextTick();
-    expect(wrapper.find('[data-testid="rooms-view"] h1').text()).toBe('Sơ đồ phòng');
+    // Refs #543: the v2 title block carries the catalogue eyebrow
+    // plus the live counts headline in the active locale.
+    expect(wrapper.find('[data-testid="rooms-view"] h1').text()).toContain('Sơ đồ phòng');
+    expect(wrapper.find('[data-testid="rooms-view"] .rooms-headline').text()).toBe('10 phòng, 2 phòng có khách');
     expect(wrapper.find('[data-testid="rooms-chip-ready"]').text()).toContain('Sẵn sàng (đã kiểm tra)');
   });
 });

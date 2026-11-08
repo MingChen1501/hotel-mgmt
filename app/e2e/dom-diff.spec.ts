@@ -716,7 +716,7 @@ test.describe('allowlist exempts owner-approved dynamic data (criterion 3)', () 
     const actual: DomNode[] = [
       roomsNode('/html[0]/body[0]/div[0]/div[0]/div[0]/nav[0]/span[0]', 'span', 'Lab Parity Hotel'),
       roomsNode(
-        '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/p[1]/strong[0]',
+        '/html[0]/body[0]/div[0]/div[0]/div[0]/div[0]/main[0]/div[0]/div[0]/h1[0]/strong[0]',
         'strong',
         '2026-11-06',
       ),
