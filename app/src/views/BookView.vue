@@ -317,14 +317,14 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, onMounted, ref, watch } from 'vue';
+import { computed, defineComponent, onMounted, ref, watch } from 'vue';
 import Button from 'primevue/button';
 import Card from 'primevue/card';
 import InputText from 'primevue/inputtext';
 import Message from 'primevue/message';
 import { apiFetch } from '../api/client';
 import type { ApiError } from '../api/client';
-import { catalogueLocale, t } from '../i18n';
+import { catalogueLocale, formatDeskDate, formatVnd, t } from '../i18n';
 import { useSessionStore } from '../stores/session';
 import ReferenceDetails, { type ReferenceItem } from '../components/ReferenceDetails.vue';
 
@@ -405,10 +405,12 @@ interface BookingResult {
   readback: string;
 }
 
-// Amounts arrive in minor currency units; the quote carries no
-// currency code, so it renders as a plain decimal figure. The
-// confirmation (which carries a currency) formats with it — same
-// split as the legacy page.
+// Amounts arrive in minor currency units. The quote carries no
+// currency code, so its rows and total render in the design VND
+// shape through `formatVnd` (`1.200.000 đ`, Refs #565). The booking
+// read-back and the currency-less confirmation fallback keep the
+// plain two-decimal figure, and a confirmation that carries a
+// currency formats with it — same split as the legacy page.
 function plainAmount(minor: number): string {
   return (minor / 100).toFixed(2);
 }
@@ -502,8 +504,33 @@ export default defineComponent({
     const discountName = ref('');
     const quote = ref<Quote | null>(null);
     const quoteKey = ref<string | null>(null);
-    const quoteNights = ref<QuoteNightRow[]>([]);
-    const quoteTotal = ref('');
+    // Quote rows derive from `quote`, so a locale switch re-renders
+    // the desk dates and the VND amounts without a new quote read
+    // (Refs #565, AC-DSK-8).
+    const quoteNights = computed<QuoteNightRow[]>(() =>
+      (quote.value?.nights ?? []).map((night) => ({
+        nightDate: night.nightDate,
+        label: t(
+          'desk.book.quote_night',
+          {
+            nightDate: formatDeskDate(night.nightDate),
+            amount: formatVnd(night.priceMinor),
+          },
+          'Night {nightDate}: {amount}',
+        ),
+      })),
+    );
+    const quoteTotal = computed<string>(() => {
+      const current = quote.value;
+      if (!current) {
+        return '';
+      }
+      return t(
+        'desk.book.quote_total',
+        { amount: formatVnd(current.totalMinor) },
+        'Total: {amount}',
+      );
+    });
     const quoteError = ref('');
     const confirming = ref(false);
     const confirmError = ref('');
@@ -557,8 +584,6 @@ export default defineComponent({
     function clearQuote(): void {
       quote.value = null;
       quoteKey.value = null;
-      quoteNights.value = [];
-      quoteTotal.value = '';
       quoteError.value = '';
       confirmError.value = '';
     }
@@ -659,19 +684,6 @@ export default defineComponent({
         // same booking instead of creating two reservations (the
         // store replays on idempotencyKey).
         quoteKey.value = newIdempotencyKey();
-        quoteNights.value = (priced.nights ?? []).map((night) => ({
-          nightDate: night.nightDate,
-          label: t(
-            'desk.book.quote_night',
-            { nightDate: night.nightDate, amount: plainAmount(night.priceMinor) },
-            'Night {nightDate}: {amount}',
-          ),
-        }));
-        quoteTotal.value = t(
-          'desk.book.quote_total',
-          { amount: plainAmount(priced.totalMinor) },
-          'Total: {amount}',
-        );
       } catch (err) {
         if (isSignedOut(err)) {
           expireToGate();

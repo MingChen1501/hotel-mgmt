@@ -399,12 +399,30 @@ describe('book view', () => {
     await signIn(wrapper, fetchMock);
 
     await quote(wrapper);
-    const nights = wrapper.find('[data-testid="book-quote-nights"]').text();
-    expect(nights).toContain('2026-11-01');
-    expect(nights).toContain('100.00');
-    expect(nights).toContain('2026-11-02');
-    expect(nights).toContain('120.00');
-    expect(wrapper.find('[data-testid="book-quote-total"]').text()).toContain('220.00');
+    const nightsText = (): string =>
+      wrapper.find('[data-testid="book-quote-nights"]').text();
+    // Refs #565 (G-BK-2): nightly lines render the desk `dd/mm/yyyy`
+    // date and the design VND shape, never raw ISO strings or the
+    // old two-decimal figure.
+    expect(nightsText()).toContain('01/11/2026');
+    expect(nightsText()).toContain('100 đ');
+    expect(nightsText()).toContain('02/11/2026');
+    expect(nightsText()).toContain('120 đ');
+    expect(nightsText()).not.toContain('2026-11-01');
+    expect(nightsText()).not.toContain('100.00');
+    expect(wrapper.find('[data-testid="book-quote-total"]').text()).toContain('220 đ');
+
+    // The quote re-renders in VI without a new read (AC-DSK-8): same
+    // desk dates, the VI grouped amount, and the VI total copy.
+    try {
+      setLocale('vi');
+      await wrapper.vm.$nextTick();
+      expect(nightsText()).toContain('01/11/2026');
+      expect(nightsText()).toContain('100 đ');
+      expect(wrapper.find('[data-testid="book-quote-total"]').text()).toContain('Tổng cộng: 220 đ');
+    } finally {
+      setLocale('en');
+    }
   });
 
   it('confirms the booking with the guest snapshot, frozen price basis, searched sellable count, and one idempotency key', async () => {

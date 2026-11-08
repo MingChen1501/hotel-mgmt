@@ -306,7 +306,7 @@ import InputText from 'primevue/inputtext';
 import Message from 'primevue/message';
 import { apiFetch } from '../api/client';
 import type { ApiError } from '../api/client';
-import { catalogueLocale, t } from '../i18n';
+import { formatVnd, t } from '../i18n';
 import { useSessionStore } from '../stores/session';
 import ReferenceDetails, { type ReferenceItem } from '../components/ReferenceDetails.vue';
 
@@ -374,11 +374,11 @@ interface EntryRow {
   amount: string;
 }
 
+// Folio amounts are VND on the desk: the design shape (locale
+// grouping, no decimals, `đ` suffix) comes from the shared
+// `formatVnd` helper (Refs #565, G-FO-2), values unchanged.
 function formatAmount(minor: number): string {
-  return new Intl.NumberFormat(catalogueLocale(), {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(minor / 100);
+  return formatVnd(minor);
 }
 
 function parseMinor(text: string): number | null {
