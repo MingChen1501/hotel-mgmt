@@ -391,11 +391,12 @@ Product-owner rollout spec: `docs/product/desk-ui-design-rollout.md`
 conflicting parts of the #412 journey record (D-12 in
 `docs/project/decision-log.md`); each conflict found during
 implementation is recorded on the affected sub-issue with the
-owner decision. These 12 conditions cover the six screens
+owner decision. These 13 conditions cover the six screens
 (Main #420, Stay #422, Onboarding #425 plus steps 2–4 in #438,
 Rooms #424, Book #421, Folio #423) plus the shared shell,
-the catalogue rule, and the business-date display decision
-(#503, AC-DSK-12). They
+the catalogue rule, the business-date display decision
+(#503, AC-DSK-12), and the quote/folio money and date display
+decision (#565, AC-DSK-13). They
 add no MVP capability: the four restyles change presentation
 only, the Rooms map visualises existing room state
 (`US-RMS-1`), and the wizard operationalises first-run setup
@@ -439,8 +440,9 @@ below check behaviour only.
   when staff work the Folio screen, then posting a charge and
   recording a payment update the running balance exactly as
   today in the new charges/payments two-card layout with
-  locale-correct amount formatting. Traces to: US-BIL-1,
-  US-BIL-2, US-BIL-3; FR-BIL-1, FR-BIL-2, FR-BIL-3.
+  locale-correct amount formatting in the design VND shape
+  (AC-DSK-13). Traces to: US-BIL-1, US-BIL-2, US-BIL-3;
+  FR-BIL-1, FR-BIL-2, FR-BIL-3, FR-MNY-1.
 - AC-DSK-6 — Given rooms across three floors in a mix of the
   five statuses, when staff open the Rooms map, then the
   summary counts always match the rendered room cards, and each
@@ -503,6 +505,21 @@ below check behaviour only.
   Traces to: US-FDK-5; FR-FDK-5 (Refs #503; presentation only,
   no MVP capability added, no FR wording changed).
 
+- AC-DSK-13 — Given a priced quote and an in-house folio, when
+  staff read the Book quote or the Folio board in either locale,
+  then every amount renders the design VND shape (locale
+  grouping, no decimals, the `đ` suffix — `1.200.000 đ` in VI,
+  `1,200,000 đ` in EN) and each nightly quote line renders its
+  date as `dd/mm/yyyy` (`08/12/2026`, never a raw ISO string),
+  while every stored, transmitted, and printed value stays
+  exactly as today (minor-unit amounts, ISO dates, the folio
+  running balance, the settlement gate, and print output
+  unchanged), and the quote keeps the app row labels
+  (`Số đêm:`, `Tổng cộng:`) and the empty-before-quote state.
+  Traces to: US-RES-1, US-BIL-1, US-BIL-2; FR-MNY-1, FR-MNY-2
+  (Refs #565; presentation only, no MVP capability added, no FR
+  wording changed).
+
 Rollout done when: the six sub-issues each close with a merged
 implementation PR (the wizard slice spans #425 step 1 plus the
 #438 steps 2–4 PR), every screen checks against its design file
@@ -510,7 +527,9 @@ card by card, the #412 conflicts (if any) carry owner
 decisions on the affected sub-issues, the shell, catalogue,
 and print-preservation rules above hold on all six screens,
 and the business-date lines render per AC-DSK-12 with ISO kept
-on the wire.
+on the wire, and the quote and folio amounts render the design
+VND shape with the quote nights in the desk date form per
+AC-DSK-13 (values and print unchanged).
 
 ## 12. Desk UI pixel-faithful restyle (Refs #517)
 
@@ -539,7 +558,10 @@ on every child PR: the design-facts gate is green (nav order and
 labels, headings, buttons, inputs, token colours per the fact
 schema), and side-by-side before/after screenshots cover what
 schema v1 excludes (layout geometry, typography, radii, spacing),
-reviewed by the owner per screen.
+reviewed by the owner per screen. The money and quote-date display
+shape is decided separately by AC-DSK-13 (#565, rollout spec
+section 6.8): the restyle conditions below cover layout and tokens
+only, and the quote/folio renders follow that display decision.
 
 - AC-RST-1 — Given staff are signed in on any desk surface, when
   they look at the shell, then the teal header shows the
@@ -645,10 +667,12 @@ served-legacy half of AC-SHL-4 are superseded as marked above;
 AC-SHL-2, AC-SHL-5, AC-SHL-6, AC-SHL-7, and the mirror half of
 AC-SHL-4 stand.
 
-Rollout addendum (Refs #419, plus #438 and #503): 12 desk-UI conditions (AC-DSK-1..12,
+Rollout addendum (Refs #419, plus #438, #503, and #565): 13 desk-UI
+conditions (AC-DSK-1..13,
 section 11) cover the six-screen Claude design rollout plus the
-onboarding steps 2–4 follow-up and the business-date display
-decision. Each traces to its existing
+onboarding steps 2–4 follow-up, the business-date display
+decision, and the quote/folio money and date display decision.
+Each traces to its existing
 MVP story and FR; no condition adds an
 MVP capability, invents a story, or changes FR wording, so the
 43-condition MVP count above stands unchanged and the sections

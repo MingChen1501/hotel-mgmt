@@ -84,7 +84,7 @@ test('charge, pay, and agree with the folio balance', async ({ page, request }) 
   await page.goto('/app/folio');
   await page.getByTestId('folio-stay-id').fill(stayId);
   await page.getByTestId('folio-open').click();
-  await expect(page.getByTestId('folio-status')).toContainText('balance: 0.00');
+  await expect(page.getByTestId('folio-status')).toContainText('balance: 0 đ');
 
   await page.getByTestId('folio-charge-kind').selectOption('nightly-room-charge');
   await page.getByTestId('folio-charge-name').fill('Room charge');
@@ -106,10 +106,12 @@ test('charge, pay, and agree with the folio balance', async ({ page, request }) 
   // Screen-vs-API agreement: every line and the running balance
   // match a direct GetFolioBalance read.
   const folio = await apiOp(request, 'billing', 'GetFolioBalance', { stayId, actor: 'browser-e2e' }, token);
-  const balance = ((folio.balanceMinor as number) / 100).toFixed(2);
-  expect(balance).toBe('625.00');
-  await expect(page.getByTestId('folio-status')).toContainText(`balance: ${balance}`);
-  await expect(page.getByTestId('folio-balance')).toHaveText(balance);
+  // The API carries minor units (625.00 major); the desk renders
+  // the design VND shape with no decimals and the `đ` suffix
+  // (Refs #565, G-FO-2).
+  expect(folio.balanceMinor).toBe(62500);
+  await expect(page.getByTestId('folio-status')).toContainText('balance: 625 đ');
+  await expect(page.getByTestId('folio-balance')).toHaveText('625 đ');
   const charges = await page.getByTestId('folio-charge-lines').textContent();
   expect(charges).toContain('Room charge');
   expect(charges).toContain(extraName);
@@ -162,7 +164,7 @@ test('undefined charge item is refused with the cause named', async ({ page, req
   await page.goto('/app/folio');
   await page.getByTestId('folio-stay-id').fill(stayId);
   await page.getByTestId('folio-open').click();
-  await expect(page.getByTestId('folio-status')).toContainText('balance: 0.00');
+  await expect(page.getByTestId('folio-status')).toContainText('balance: 0 đ');
   await page.getByTestId('folio-charge-kind').selectOption('charge-item');
   await page.getByTestId('folio-charge-name').fill('No Such Item Anywhere');
   await page.getByTestId('folio-charge-amount').fill('10');
@@ -216,7 +218,7 @@ test('bad payment method is refused on screen', async ({ page, request }) => {
   await page.goto('/app/folio');
   await page.getByTestId('folio-stay-id').fill(stayId);
   await page.getByTestId('folio-open').click();
-  await expect(page.getByTestId('folio-status')).toContainText('balance: 0.00');
+  await expect(page.getByTestId('folio-status')).toContainText('balance: 0 đ');
   // The method picker offers only cash/card, so the bad method
   // travels the way a mistyped desk integration would: force the
   // bound value, then pay. Billing answers VALIDATION_FAILED and
@@ -231,5 +233,5 @@ test('bad payment method is refused on screen', async ({ page, request }) => {
   await page.getByTestId('folio-pay').click();
   await expect(page.getByTestId('folio-payment-error')).toContainText('not accepted');
   await expect(page.getByTestId('folio-payment-error')).toContainText('cash or card');
-  await expect(page.getByTestId('folio-status')).toContainText('balance: 0.00');
+  await expect(page.getByTestId('folio-status')).toContainText('balance: 0 đ');
 });

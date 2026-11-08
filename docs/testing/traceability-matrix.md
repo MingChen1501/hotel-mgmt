@@ -127,7 +127,8 @@ presentation requirement (FR-DSK-1..7, NFR-DSK-1..3, owned by
 wizard-scoped FR-DSK-8..10 in section 11 on the #438 stack in
 PR #442) to its
 guard. Full guard detail — parity baselines plus the new guards
-D1–D12 — lives in
+D1–D13 (D13 shipped with the #565 presentation change; D1–D12
+land with the screen PRs) — lives in
 `docs/testing/desk-ui-rollout-test-traceability.md`
 (desk-ui-rollout-test-traceability.md). Like the shell slice
 above, these 11 rows do not alter the 57-row MVP coverage count:
@@ -157,7 +158,43 @@ baselines for AC-DSK-9..11 ride the unchanged `UpdateHotelConfig`,
 seed-path, and `CreateUser` guards; new guards D1–D9 are
 pending the screen PRs (#420–#425) and D10–D12 are pending the
 #438 steps 2–4 screen PR. The MVP Coverage line below
-stands unchanged at 57/57.
+stands unchanged at 57/57. `AC-DSK-13` (Refs #565) is a
+post-rollout presentation addendum mapped in section 5 with its
+`D13` guard; it adds no row here.
+
+## 5. Desk money and quote-date presentation slice (Refs #565)
+
+Presentation-only slice for the `G-BK-2` / `G-FO-2` gaps from the
+#563 desk UI audit: the Book quote and the Folio board render money
+in the design VND shape, and the nightly quote lines render desk
+dates, with every stored and transmitted value unchanged. Each row
+traces the #565 issue-body acceptance and `AC-DSK-13` (owned by
+`product-owner` in
+[acceptance-criteria.md section 11](../product/acceptance-criteria.md);
+scope in `docs/product/desk-ui-design-rollout.md` section 6.8, tier
+T2) and the presentation requirements `FR-MNY-1` / `FR-MNY-2`
+(owned by `business-analyst` in
+[mvp-requirements.md section 14](../requirements/mvp-requirements.md)).
+The guards below exist on disk and were created or extended by the
+#565 change (PR #574), so each row is complete and must stay green
+from now on. Like the slices above, these rows add no MVP
+capability; the 57-row MVP coverage count stands unchanged and no
+MVP row may cite this slice as its guard.
+
+| Item | Required guard type | Guard |
+|---|---|---|
+| AC-DSK-13 — Book quote and Folio money and date display shape, values unchanged (Refs #565; traces to US-RES-1, US-BIL-1, US-BIL-2; `FR-MNY-1`, `FR-MNY-2`; AC-DSK-3 / AC-DSK-5 keep their flow conditions and point here) | Presentation check in both locales: every quote and folio amount renders the active locale's VND grouping with no decimals and the `đ` suffix (`1.200.000 đ` VI, `1,200,000 đ` EN); each nightly quote line renders `dd/mm/yyyy`, never a raw ISO string; stored, transmitted, and printed values stay identical | Covered — money half and date half in the two `FR-MNY` rows below; the label and empty-state half rides `app/src/views/BookView.test.ts:284` (`Get a price first` before a quote) and `:307` (`Số đêm: 2` after it), with the unchanged catalogue keys at `messages/en.json:399`–`:400` and `messages/vi.json:399`–`:400` |
+| FR-MNY-1 — Desk money display shape (VND, display-only) | Formatter pins both locales plus the display-only sub-dong rounding; view pins the Folio charge, fee, payment, due, and balance renders; the browser pin proves the minor-unit API value is unchanged | Covered — `app/src/i18n/index.test.ts:177` (VI `1.800.000 đ` / `960.000 đ` / `0 đ`, EN `1,800,000 đ` / `60,000 đ`) and `:187` (`1250` → `13 đ`, `1240` → `12 đ`; display-only rounding); `app/src/views/FolioView.test.ts:192` (`Room night (tax 5 đ, fee 2 đ)` / `107 đ`), `:200` (`30 đ`, never `-30 đ`), `:204` and `:543` (`77 đ` balance in both locales), `:556` (EN `18,000 đ`), `:567` / `:571` (VI `18.077 đ` / `18.000 đ`); browser pin `app/e2e/folio.spec.ts:113` (`625 đ` balance over the `62500`-minor API value) |
+| FR-MNY-2 — Desk quote date form (display-only) | Formatter pins the desk form in both locales and the canonical fallback; view pins the nightly lines and their locale re-render; the browser pin rejects a raw ISO string end to end | Covered — `app/src/i18n/index.test.ts:195` (`08/12/2026` and `01/11/2026`, unchanged by a locale switch) and `:203` (canonical fallback for empty, timestamp, and rollover input); `app/src/views/BookView.test.ts:395` — `:407`–`:413` assert `01/11/2026` / `02/11/2026` and `100 đ` / `120 đ`, reject `2026-11-01` and `100.00`, and assert the `220 đ` total; `:420`–`:422` assert the VI re-render without a new read; `app/e2e/book.spec.ts:59` (nightly rows match `dd/mm/yyyy`, no `YYYY-MM-DD`) and `:61` (`2,400 đ` total) |
+| Values and payloads unchanged | Request and response pins stay green: quote and confirm bodies, folio posting bodies, and contract schemas keep integer minor units and ISO dates | Covered — quote fixture `app/src/views/BookView.test.ts:82` (`QuotePrice` nights and `totalMinor`) and confirm with the frozen price basis `:428`; folio postings `app/src/views/FolioView.test.ts:224` (room charge with idempotency key and re-read) and `:255` (card payment with idempotency key and re-read); contract guards `contracts/http/QuotePrice.json:16,27,33`–`:36`, `contracts/http/PostCharge.json:13,18,25,32`, `contracts/http/RecordPayment.json:13,17,24,30` (integer minor-unit amounts, dates as `format: date`) |
+| Existing money and amount edge guards | QA-EDGE-2 and QA-EDGE-12 stay green; a locale switch re-renders the shape without a new quote read (`AC-DSK-8` holds) | Covered — `app/src/views/desk-edge-guards.test.ts:500` (QA-EDGE-2 refuses a negative amount and keeps the balance line; `:509` asserts `Folio balance: 77 đ.`) and `:1289` (QA-EDGE-12 mid-flow locale switch keeps the quoted value and still confirms) |
+| #563 evidence refresh (same-change rule) | The Book and Folio side-by-side images show the fixed renders, and the audit record notes the refresh in the same change | Covered — `docs/testing/evidence/563/README.md:57` (Book image, `G-BK-2`) and `:58` (Folio image, `G-FO-2`), both refreshed in the #565 change per the living-record rule at `:61`–`:65` |
+
+Presentation-slice coverage (Refs #565): 6 rows mapped, 6 guards
+filled. Every guard citation above is on disk at the #565 head, and
+the `app-build` suite (29 files / 431 tests) and the `browser-e2e`
+job are green on PR #574 (run `42511193492` at `b18271f`). The MVP
+Coverage line below stands unchanged at 57/57.
 
 Coverage: 43 FRs mapped, 14 NFRs mapped, 57 rows total, 57 guards
 filled (PR #112 slice: FR-RES-1, FR-RMS-1..4, FR-RTE-1/2/4/5, FR-ADM-1/2, FR-CUS-1, NFR-CON-1/2; PR #149 slice: FR-FDK-1, FR-FDK-5, FR-BIL-1/2/3/6, FR-ADM-5, NFR-BKP-1/2, NFR-AUD-1, NFR-TZ-1, plus FR-RES-1 persistence; PR #150 slice: FR-FDK-2, FR-FDK-3, FR-FDK-4, FR-BIL-7, plus the NFR-CON-2 stay-side checkout guard; PR #151 slice: FR-BIL-4, FR-CUS-3; PR #156 slice: FR-RPT-1..3; PR #157 slice: FR-GST-1..3; PR #158 slice: NFR-DEP-1, FR-ADM-4 config level, plus the FR-ADM-1 deployment extension; PR #159 slice: FR-RES-2/3/5/6 plus the NFR-CON-1 modify-path extension; PR #160 slice: ReleaseBlock plus rooms-side move coordination (FR-RMS-3, FR-FDK-3); PR #161 slice: full rates handling (FR-RTE-3 filled, FR-RTE-4/5 extended — remaining TBD cells fill in later slices); count corrected to the live total 48 (later slices filled cells without updating this line); PR #153 slice: NFR-RET-1, NFR-AVL-1; PR #182 slice: FR-RES-4, FR-ADM-3, FR-CUS-2, NFR-PERF-1/2 filled (5 guards — count corrected to the live total 53); FR-GST-4, FR-BIL-5, FR-RPT-4 point at follow-ups #189, #190, #191 and fill with those issues; NFR-I18N-1 filled by the #192 slice (count corrected to the live total 54); #189/#190/#191/#192/#201 slices filled FR-GST-4, FR-BIL-5, FR-RPT-4, NFR-I18N-1 (plus the #201 extension) — count corrected to the live total 57 (Closes #214)).

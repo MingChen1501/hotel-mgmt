@@ -189,20 +189,21 @@ describe('folio view', () => {
     // subtracts; the due block carries the running balance.
     const chargeLines = wrapper.findAll('[data-testid="folio-charge-lines"] .folio-line');
     expect(chargeLines).toHaveLength(1);
-    expect(chargeLines[0]?.text()).toContain('Room night (tax 5.00, fee 2.00)');
-    expect(chargeLines[0]?.text()).toContain('107.00');
+    expect(chargeLines[0]?.text()).toContain('Room night (tax 5 đ, fee 2 đ)');
+    expect(chargeLines[0]?.text()).toContain('107 đ');
     const paymentLines = wrapper.findAll('[data-testid="folio-payment-lines"] .folio-line');
     expect(paymentLines).toHaveLength(1);
     expect(paymentLines[0]?.text()).toContain('Cash payment');
     // Board rows render positive amounts as drawn
-    // (`docs/design/Folio.dc.html:3`).
-    expect(paymentLines[0]?.text()).toContain('30.00');
-    expect(paymentLines[0]?.text()).not.toContain('-30.00');
+    // (`docs/design/Folio.dc.html:3`): VND with no decimals and
+    // the `đ` suffix (Refs #565, G-FO-2).
+    expect(paymentLines[0]?.text()).toContain('30 đ');
+    expect(paymentLines[0]?.text()).not.toContain('-30 đ');
     // The due figure carries the locale-grouped balance; the
     // sentence status stays as flow state below it.
-    expect(wrapper.find('[data-testid="folio-balance"]').text()).toContain('77.00');
+    expect(wrapper.find('[data-testid="folio-balance"]').text()).toContain('77 đ');
     expect(wrapper.find('[data-testid="folio-status"]').text()).toContain(
-      'Folio balance: 77.00.',
+      'Folio balance: 77 đ.',
     );
     // The exact folio and stay IDs hide behind the reference
     // details (issue #372): the default status names no raw UUID.
@@ -228,13 +229,13 @@ describe('folio view', () => {
     await openFolio(wrapper, 's-1');
 
     await wrapper.find('[data-testid="folio-charge-name"]').setValue('Minibar');
-    await wrapper.find('[data-testid="folio-charge-amount"]').setValue('12.50');
+    await wrapper.find('[data-testid="folio-charge-amount"]').setValue('12');
     await wrapper.find('[data-testid="folio-charge"]').trigger('click');
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="folio-charge-status"]').text()).toContain('Posted');
     });
     expect(wrapper.find('[data-testid="folio-charge-status"]').text()).toContain('Minibar');
-    expect(wrapper.find('[data-testid="folio-charge-status"]').text()).toContain('12.50');
+    expect(wrapper.find('[data-testid="folio-charge-status"]').text()).toContain('12 đ');
 
     const chargeCalls = fetchMock.mock.calls.filter((call) => call[0] === '/v1/billing/PostCharge');
     expect(chargeCalls).toHaveLength(1);
@@ -242,12 +243,12 @@ describe('folio view', () => {
     expect(chargeBody.stayId).toBe('s-1');
     expect(chargeBody.itemKind).toBe('nightly-room-charge');
     expect(chargeBody.itemName).toBe('Minibar');
-    expect(chargeBody.amountMinor).toBe(1250);
+    expect(chargeBody.amountMinor).toBe(1200);
     expect(chargeBody.idempotencyKey).toBeTruthy();
 
     // The re-read picks up the posted line in the running balance.
     await vi.waitFor(() => {
-      expect(wrapper.find('[data-testid="folio-status"]').text()).toContain('Folio balance: 89.50.');
+      expect(wrapper.find('[data-testid="folio-status"]').text()).toContain('Folio balance: 89 đ.');
     });
   });
 
@@ -259,13 +260,13 @@ describe('folio view', () => {
     await openFolio(wrapper, 's-1');
 
     await wrapper.find('[data-testid="folio-payment-method"]').setValue('card');
-    await wrapper.find('[data-testid="folio-payment-amount"]').setValue('7.00');
+    await wrapper.find('[data-testid="folio-payment-amount"]').setValue('7');
     await wrapper.find('[data-testid="folio-pay"]').trigger('click');
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="folio-payment-status"]').text()).toContain('Recorded');
     });
     expect(wrapper.find('[data-testid="folio-payment-status"]').text()).toContain('card payment');
-    expect(wrapper.find('[data-testid="folio-payment-status"]').text()).toContain('7.00');
+    expect(wrapper.find('[data-testid="folio-payment-status"]').text()).toContain('7 đ');
 
     const payCalls = fetchMock.mock.calls.filter(
       (call) => call[0] === '/v1/billing/RecordPayment',
@@ -278,7 +279,7 @@ describe('folio view', () => {
     expect(payBody.idempotencyKey).toBeTruthy();
 
     await vi.waitFor(() => {
-      expect(wrapper.find('[data-testid="folio-status"]').text()).toContain('Folio balance: 70.00.');
+      expect(wrapper.find('[data-testid="folio-status"]').text()).toContain('Folio balance: 70 đ.');
     });
   });
 
@@ -539,10 +540,11 @@ describe('folio view', () => {
     expect(paymentsCard.find('[data-testid="folio-pay"]').exists()).toBe(true);
     // The due block heads the payments card with the board copy.
     expect(paymentsCard.find('.folio-due-label').text()).toContain('Balance due');
-    expect(paymentsCard.find('[data-testid="folio-balance"]').text()).toContain('77.00');
-    // EN amounts use dot decimals with comma grouping.
+    expect(paymentsCard.find('[data-testid="folio-balance"]').text()).toContain('77 đ');
+    // EN amounts use EN grouping with no decimals and the `đ`
+    // suffix, the design VND shape (Refs #565, G-FO-2).
     expect(paymentsCard.find('[data-testid="folio-status"]').text()).toContain(
-      'Folio balance: 77.00.',
+      'Folio balance: 77 đ.',
     );
 
     // A design-scale charge proves the grouping (the design shows
@@ -551,7 +553,7 @@ describe('folio view', () => {
     await wrapper.find('[data-testid="folio-charge-amount"]').setValue('18000');
     await wrapper.find('[data-testid="folio-charge"]').trigger('click');
     await vi.waitFor(() => {
-      expect(wrapper.find('[data-testid="folio-charge-status"]').text()).toContain('18,000.00');
+      expect(wrapper.find('[data-testid="folio-charge-status"]').text()).toContain('18,000 đ');
     });
 
     // VI-primary copy (AC-DSK-8): the cards switch locale with no
@@ -562,11 +564,11 @@ describe('folio view', () => {
       expect(paymentsCard.find('[data-testid="folio-pay"]').text()).toContain('Ghi thanh toán');
       expect(chargesCard.find('[data-testid="folio-charge"]').text()).toContain('Ghi khoản phí');
       expect(paymentsCard.find('.folio-due-label').text()).toContain('Còn phải trả');
-      expect(paymentsCard.find('[data-testid="folio-balance"]').text()).toContain('18.077,00');
+      expect(paymentsCard.find('[data-testid="folio-balance"]').text()).toContain('18.077 đ');
       expect(paymentsCard.find('[data-testid="folio-status"]').text()).toContain(
-        'Số dư bảng kê: 18.077,00.',
+        'Số dư bảng kê: 18.077 đ.',
       );
-      expect(chargesCard.find('[data-testid="folio-charge-lines"]').text()).toContain('18.000,00');
+      expect(chargesCard.find('[data-testid="folio-charge-lines"]').text()).toContain('18.000 đ');
       expect(paymentsCard.find('[data-testid="folio-payment-lines"]').text()).toContain('Tiền mặt');
     } finally {
       setLocale('en');

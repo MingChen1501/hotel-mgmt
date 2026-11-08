@@ -9,6 +9,8 @@ import {
   LOCALE_STORAGE_KEY,
   catalogueLocale,
   formatBusinessDate,
+  formatDeskDate,
+  formatVnd,
   hasMessage,
   setLocale,
   t,
@@ -159,5 +161,48 @@ describe('business-date display form (Refs #503, FR-DSK-11)', () => {
     expect(formatBusinessDate('2026-10-28T00:00:00.000Z', 'en')).toBe('2026-10-28T00:00:00.000Z');
     expect(formatBusinessDate('2026-02-30', 'en')).toBe('2026-02-30');
     expect(formatBusinessDate('2026-13-01', 'vi')).toBe('2026-13-01');
+  });
+});
+
+// Desk money and quote-date display (Refs #565, AC-DSK-5, G-BK-2 /
+// G-FO-2): VND renders in the design shape — locale grouping, no
+// decimals, `đ` suffix — and canonical ISO dates render as
+// `dd/mm/yyyy` desk dates, never raw ISO strings.
+describe('desk money and quote-date display (Refs #565)', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    setLocale('en');
+  });
+
+  it('renders VND in the design shape per active locale', () => {
+    setLocale('en');
+    expect(formatVnd(180000000)).toBe('1,800,000 đ');
+    expect(formatVnd(6000000)).toBe('60,000 đ');
+    setLocale('vi');
+    expect(formatVnd(180000000)).toBe('1.800.000 đ');
+    expect(formatVnd(96000000)).toBe('960.000 đ');
+    expect(formatVnd(0)).toBe('0 đ');
+  });
+
+  it('rounds a sub-dong remainder for display only', () => {
+    // VND has no subunit: 1250 minor is half a dong and renders the
+    // nearest dong. The stored minor value is never changed (Refs
+    // #565 review note).
+    expect(formatVnd(1250)).toBe('13 đ');
+    expect(formatVnd(1240)).toBe('12 đ');
+  });
+
+  it('renders the desk dd/mm/yyyy date in both locales', () => {
+    expect(formatDeskDate('2026-12-08')).toBe('08/12/2026');
+    expect(formatDeskDate('2026-11-01')).toBe('01/11/2026');
+    // Locale switching never changes the desk date form.
+    setLocale('vi');
+    expect(formatDeskDate('2026-12-08')).toBe('08/12/2026');
+  });
+
+  it('falls back to the canonical value when the quote date is unparseable', () => {
+    expect(formatDeskDate('')).toBe('');
+    expect(formatDeskDate('2026-12-08T00:00:00.000Z')).toBe('2026-12-08T00:00:00.000Z');
+    expect(formatDeskDate('2026-02-30')).toBe('2026-02-30');
   });
 });

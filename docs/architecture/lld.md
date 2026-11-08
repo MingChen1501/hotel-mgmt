@@ -1747,5 +1747,217 @@ Edge trace (every edge cites code):
   review; copy/flow divergences stay REPORTED on the
   issue for an owner decision.
 
+## 16. Book quote and Folio money/date display-only render mapping (Refs #565)
+
+Build-ready decomposition for the T2 display-only money and date
+change (issue #565, Phase 5 desk UI; #563 audit gaps `G-BK-2` /
+`G-FO-2`). This section supplies the T2 per-flow implementation
+diagram (happy path + failure/rollback path) the spec gate
+requires; SPEC-GATE FAIL on PR #574 routed this gap to
+`architect`, because the "no diagram owed" call in
+`docs/requirements/mvp-requirements.md` [section 14.6](../requirements/mvp-requirements.md)
+belongs to the flow owner, not to `business-analyst`. Scope,
+UI-contract delta, and done-condition live with `product-owner`
+(`docs/product/desk-ui-design-rollout.md` [section 6.8](../product/desk-ui-design-rollout.md),
+`AC-DSK-13` in
+`docs/product/acceptance-criteria.md` [section 11](../product/acceptance-criteria.md));
+FR/NFR wording lives with `business-analyst`
+(`docs/requirements/mvp-requirements.md` [section 14](../requirements/mvp-requirements.md),
+`FR-MNY-1`, `FR-MNY-2`); guard mapping lives with `qa-lead`
+(`docs/testing/traceability-matrix.md` [section 5](../testing/traceability-matrix.md),
+`docs/testing/desk-ui-rollout-test-traceability.md` [sections 3–4](../testing/desk-ui-rollout-test-traceability.md)).
+This section records only the architect-owned flow detail: the
+render mapping, its failure/rollback paths, and the technical
+no-change boundary. No new subsystem, boundary, or contract —
+hence no ADR.
+
+Intended tree deltas (files the downstream `dev` implementation
+PR touches; edge traces below cite the existing lines at this
+head):
+
+```text
+app/src/i18n/index.ts        shared formatters: parseCalendarDate :117,
+                             formatVnd :165, formatDeskDate :179
+app/src/views/BookView.vue   quote rows and total: computed quoteNights :510,
+                             quoteTotal :523 (formatDeskDate :516, formatVnd :517,530)
+app/src/views/FolioView.vue  folio amount seam: formatAmount :380 (-> formatVnd :381)
+```
+
+### 16.1 Money/date render flowchart
+
+Staff price a quote or open a folio; the already-loaded canonical
+minor units and ISO dates render in the design shape, while every
+stored, transmitted, and printed value keeps its canonical form:
+
+```mermaid
+flowchart TD
+    A[Screen holds already-loaded canonical values: integer minor units and ISO YYYY-MM-DD nightDate] --> B{Render site?}
+    B -->|Book quote night| C[formatDeskDate nightDate + formatVnd priceMinor]
+    B -->|Book quote total| D[formatVnd totalMinor]
+    B -->|Folio line, tax, fee, payment, due, balance| E[formatAmount minor delegates to formatVnd]
+    C --> F[Label via unchanged catalogue key desk.book.quote_night]
+    D --> G[Label via unchanged catalogue key desk.book.quote_total]
+    E --> H[Labels via unchanged desk.folio catalogue keys]
+    F --> I{Active locale?}
+    G --> I
+    H --> I
+    I -->|VI| J[Grouping by dot, no decimals, dong suffix: 1.200.000 đ; date 08/12/2026]
+    I -->|EN| K[Grouping by comma, no decimals, dong suffix: 1,200,000 đ; date 08/12/2026]
+    J --> L[Locale switch re-runs the same pure derivation: no new QuotePrice or folio read]
+    K --> L
+```
+
+Edge trace (every edge cites code):
+
+- A–B: the canonical values are already on screen refs — the
+  quote response binds to `quote` (`BookView.vue:505`) and the
+  folio response to `folio` (`FolioView.vue:549`). Minor units
+  are contract-validated integers (`contracts/http/QuotePrice.json:36`
+  `priceMinor`, `:41` `totalMinor`;
+  `contracts/http/PostCharge.json:32` `amountMinor`;
+  `contracts/http/RecordPayment.json:30` `amountMinor`,
+  `:32` `balanceMinor`) and the nightly date is an ISO
+  `format: date` (`contracts/http/QuotePrice.json:35`).
+- B–C: `quoteNights` is a computed row builder that maps each
+  night to `formatDeskDate(night.nightDate)` and
+  `formatVnd(night.priceMinor)`
+  (`BookView.vue:510-521`; formatters at
+  `app/src/i18n/index.ts:165` and `:179`).
+- B–D: `quoteTotal` is a computed that maps `totalMinor`
+  through `formatVnd` (`BookView.vue:523-532`, call at `:530`).
+- B–E: every Folio amount flows through the single
+  `formatAmount` seam, which delegates to `formatVnd`
+  (`FolioView.vue:380-382`): folded tax/fee parts
+  (`:432`, `:441`), charge rows and totals (`:609`, `:751`),
+  payment rows (`:630`, `:813`), the due figure (`:640`), and
+  the running-balance sentence (`:564`).
+- C–F / D–G / E–H: only the placeholder *values* change; the
+  catalogue labels and keys are untouched
+  (`desk.book.quote_night` / `desk.book.quote_total` at
+  `messages/en.json:399-400` with `messages/vi.json` parity;
+  `desk.folio.folio_line` / `desk.folio.folio_balance` at
+  `messages/en.json:467-468` with VI parity), so
+  `script/catalogue-coverage-check.sh` and `NFR-DSK-1` stay
+  green.
+- F–I / G–I / H–I: the active locale is the single reactive
+  source read at format time
+  (`catalogueLocale()` — `app/src/i18n/index.ts:101-103`;
+  `t()` re-renders on switch, `:93-99`).
+- I–J / I–K: `formatVnd` uses
+  `Intl.NumberFormat(catalogueLocale())` with
+  `minimumFractionDigits: 0` / `maximumFractionDigits: 0` and
+  appends the design `đ` suffix
+  (`app/src/i18n/index.ts:165-171`): VI `1.200.000 đ`,
+  EN `1,200,000 đ`. `formatDeskDate` zero-pads `dd/mm/yyyy`
+  in both desk locales (`app/src/i18n/index.ts:179-187`:
+  `08/12/2026` for `2026-12-08`, never a raw ISO string) —
+  normative examples per `FR-MNY-1` / `FR-MNY-2` and
+  `AC-DSK-13`.
+- J–L / K–L: both row lists are `computed` off the `quote` /
+  `folio` refs (`BookView.vue:510-532`,
+  `FolioView.vue:551-566`, `:637-641`), so a mid-flow locale
+  switch re-derives the shape with no new quote or folio read
+  (`AC-DSK-8` holds).
+
+Failure/rollback:
+
+```mermaid
+flowchart TD
+    P[nightDate unparseable: empty, timestamp, or rollover like 2026-02-30] --> Q[formatDeskDate returns the canonical string it received; the line renders instead of blanking]
+    R[Locale outside en and vi or non-integer minor units] --> S[Unreachable on the supported inputs: locale is a two-value union and minor units are contract integers, so NumberFormat cannot throw]
+    T[Sub-dong minor remainder e.g. 1250] --> U[Display rounds to the nearest dong: 13 đ; stored and transmitted minor value unchanged]
+    V[Quote or folio read refuses or drops] --> W[Existing FR-DSP-3 states: plain refusal sentence, offline banner with manual retry, 401 gate; no new failure path]
+    X[Rollback: revert the single downstream dev PR] --> Y[Surfaces return to two-decimal figures and raw ISO quote dates; no contract, schema, catalogue, or harness change]
+```
+
+Edge trace:
+
+- P–Q: `parseCalendarDate` accepts only the canonical
+  `YYYY-MM-DD` shape and rejects rollover dates
+  (`app/src/i18n/index.ts:117-135`); `formatDeskDate` returns
+  the canonical value when the parse is `null`
+  (`app/src/i18n/index.ts:179-187`), so the nightly line stays
+  usable (`FR-MNY-2` fallback clause; pinned at
+  `app/src/i18n/index.test.ts:203`).
+- R–S: `catalogueLocale()` returns only `en` or `vi`
+  (`app/src/i18n/index.ts:101-103`), and the money inputs are
+  contract integers (A–B citations), so `Intl.NumberFormat`
+  cannot receive an unsupported tag or a non-finite amount on
+  this path. A future formatter change that introduced a throw
+  owes the same canonical/plain fallback so the row never
+  blanks.
+- T–U: `formatVnd` divides minor units by 100 and formats with
+  zero fraction digits (`app/src/i18n/index.ts:165-171`), so a
+  sub-dong remainder rounds for display only; the stored and
+  transmitted minor value is untouched (`FR-MNY-1` sub-dong
+  clause; pinned at `app/src/i18n/index.test.ts:187`).
+- V–W: refusals and transport failures keep their existing
+  states — quote refusal sentence (`BookView.vue` `quoteError`
+  path), folio notice/status (`FolioView.vue:551-566`), the
+  shared offline banner and manual retry (LLD section 11.3), and
+  the single 401-to-sign-in path (LLD section 11.2); the render
+  mapping adds no error path (`FR-DSP-3` holds).
+- X–Y: rollback is reverting the single downstream `dev` PR;
+  no contract, schema, validation, catalogue, or harness change
+  exists to unwind, and the surfaces return to their pre-#565
+  render (two-decimal figures, raw ISO quote dates).
+
+### 16.2 Technical no-change note (APIs, contracts, schemas)
+
+Nothing in section 16 changes behaviour below the screen
+surface, and the downstream implementation PR must not change
+any of the following; each item names its guard so drift is
+reviewable. The requirements side of the same statements lives
+with `business-analyst`
+(`docs/requirements/mvp-requirements.md` [section 14.2](../requirements/mvp-requirements.md));
+the acceptance side lives with `product-owner` (`AC-DSK-13`):
+
+- Routes and shell: no route, nav, token, or layout change
+  (LLD sections 11–12 hold, including the shell nav,
+  `FR-DSP-1` destinations, and print isolation).
+- APIs and contracts: every desk call keeps its operation,
+  payload, and envelope (`docs/technical/api-spec.md`,
+  `contracts/http/QuotePrice.json`,
+  `contracts/http/PostCharge.json`,
+  `contracts/http/RecordPayment.json`; amounts stay integer
+  minor units and dates stay ISO `format: date`; the
+  `contracts/openapi.yaml` + `frontend/docs/openapi.yaml`
+  byte-identical mirror is unchanged).
+- Data model and schema: no entity or field is added
+  (`docs/technical/schema.md`,
+  `docs/requirements/data-dictionary.md` unchanged — the
+  minor-unit amounts and ISO dates already exist).
+- Error semantics: all codes and refusal conditions stand
+  (`docs/technical/error-handling.md`, LLD sections 1–8 error
+  mappings; `FR-RTE-4`, `FR-CUS-1`, `FR-BIL-7` fire on exactly
+  the same conditions).
+- Billing display invariants: the folio still shows every
+  charge and payment with the same amounts and the same
+  running balance (`FR-BIL-1`, `FR-BIL-2`, `FR-BIL-3` hold);
+  the settlement gate is untouched.
+- Print: printed documents keep their current render and still
+  match the folio lines and balance exactly (`FR-BIL-4`,
+  `FR-DSP-4`, `NFR-RST-2` hold; print isolation CSS preserved).
+- Catalogue: zero new keys land — the `đ` suffix and the date
+  digits are formatter output, not translatable copy
+  (`NFR-I18N-1`, `NFR-DSK-1` hold;
+  `script/catalogue-coverage-check.sh` stays green).
+- Timezone rendering: the desk date derives from the canonical
+  date on the hotel's local calendar day and never shifts a
+  night across midnight (`NFR-TZ-1` holds).
+- Tests: the guards `qa-lead` mapped stay green
+  (`docs/testing/traceability-matrix.md` [section 5](../testing/traceability-matrix.md),
+  D13 in
+  `docs/testing/desk-ui-rollout-test-traceability.md` [sections 3–4](../testing/desk-ui-rollout-test-traceability.md));
+  the change extends display assertions only, never payload,
+  contract, or validation behaviour.
+
+Out of scope: implementation of the format change (downstream
+`dev` PR); widening the VND shape to the Book confirmation, the
+Stay check-out amounts, or the printed documents (separate
+decision, recorded as a follow-up in
+`docs/requirements/mvp-requirements.md` [section 14.1](../requirements/mvp-requirements.md));
+any API, validation, catalogue-key, or allowlist change.
+
 <!-- ao-role: architect -->
-Role: architect · AO session hotel-mgmt-720
+Role: architect · AO session hotel-mgmt-810

@@ -506,7 +506,7 @@ describe('QA-EDGE-2 negative amounts', () => {
     await openFolio(wrapper, 's-1');
 
     const before = wrapper.find('[data-testid="folio-status"]').text();
-    expect(before).toContain('Folio balance: 77.00.');
+    expect(before).toContain('Folio balance: 77 đ.');
 
     await wrapper.find('[data-testid="folio-charge-name"]').setValue('Minibar');
     await wrapper.find('[data-testid="folio-charge-amount"]').setValue('-1');
@@ -1295,7 +1295,9 @@ describe('QA-EDGE-12 mid-flow locale switch', () => {
     await quoteBook(wrapper);
 
     const totalBefore = digitsOf(wrapper.find('[data-testid="book-quote-total"]').text());
-    expect(totalBefore).toContain('22000');
+    // Refs #565: the total renders the VND design shape, so the
+    // digits are the dong figure (220, not the old `220.00`).
+    expect(totalBefore).toBe('220');
     try {
       setLocale('vi');
       await wrapper.vm.$nextTick();

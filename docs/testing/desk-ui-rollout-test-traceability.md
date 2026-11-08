@@ -7,13 +7,17 @@ Onboarding wizard #425 plus steps 2–4 in #438), owned by
 `qa-lead`. It maps every rollout done-condition (AC-DSK-1..11,
 owned by `product-owner` in
 `docs/product/acceptance-criteria.md` section 11, PR #426 plus
-AC-DSK-9..11 on the #438 stack in PR #441) and every rollout
+AC-DSK-9..11 on the #438 stack in PR #441, plus AC-DSK-13 for the
+#565 money and quote-date display shape) and every rollout
 requirement (FR-DSK-1..7, NFR-DSK-1..3, owned by
 `business-analyst` in `docs/requirements/mvp-requirements.md`
 section 10, PR #427, plus wizard-scoped FR-DSK-8..10 in section
-11 on the #438 stack in PR #442) to its guard: existing parity guards by `file:line`
-(all verified on disk) plus the new rollout guards D1–D12 that the
-per-screen implementation PRs must create. Companion specs: the T2
+11 on the #438 stack in PR #442, and presentation-scoped
+FR-MNY-1 / FR-MNY-2 in section 14 at PR #574) to its guard:
+existing parity guards by `file:line`
+(all verified on disk) plus the new rollout guards D1–D13 (D13
+shipped with the #565 change; D1–D12 are created by the
+per-screen implementation PRs). Companion specs: the T2
 UI contract in `docs/product/desk-ui-design-rollout.md` sections
 3–4 (owned by `product-owner`); per-flow diagrams with happy path
 plus failure/rollback path (owned by `architect`, SPEC-GATE FAIL
@@ -85,11 +89,12 @@ live in `docs/testing/dom-diff-allowlist.md` and
 | AC-DSK-11 Wizard step 4 | Step-4 persistence rides the existing `CreateUser` matrix guards: create `:122` of `services/admin/src/server.test.ts` (assertion `:126`); duplicate identity refused `VALIDATION_FAILED` `:132` (assertion `:136`–`:137`); role validation `:283`–`:335` incl. bad role `:315` (assertion `:322`–`:323`) and self-change guard `:325`–`:333`; last-owner guard `:337`–`:372`; front-desk role change refused `FORBIDDEN` `:374`–`:400` (assertion `:397`–`:398`); lockout path `:82`–`:101`; unlock with sign-in retry `:402`–`:437`; unlock refusals `:440`–`:486`; secret rotation with old-stops/new-signs-in round trip `:536`–`:563` and per-role rotation recorded in the audit log `:614`–`:647`; empty secret refused server-side `services/admin/src/pgstore.ts:209`–`:210` (`VALIDATION_FAILED` naming `secret`); front-desk `CreateUser` refused `FORBIDDEN` code-enforced `services/admin/src/pgstore.ts:204`–`:205` (no on-disk test; nearest sibling guards `:177`–`:185`, `:390`–`:398`) | Admin user surface unchanged; only first-run entry through the wizard is new (D12) |
 | AC-DSK-8 catalogue + hotel name | `script/catalogue-coverage-check.sh` (fail-closed scan over `app/src/` plus both catalogue files) with `messages/en.json` and `messages/vi.json` on disk; configured-name read-back rides the `FR-ADM-1` matrix guards (`apply-hotel-config.sh` verification) | Every screen string resolves through the catalogue in both locales; the hotel name shown is the configured value, never the design example content. New-key coverage rides D1–D7 plus D10–D12; the served-print name assertion is D8 |
 
-## 3. New rollout guards D1–D12 (created by the screen PRs)
+## 3. New rollout guards D1–D13 (D1–D12 created by the screen PRs)
 
-No D-guard exists yet: each row names the screen PR that must
-create it. A rollout matrix row is complete only when its
-D-guard exists and passes. D10–D12 cover onboarding wizard
+No D1–D12 guard exists yet: each of those rows names the screen PR
+that must create it. D13 (Refs #565) already shipped with the
+presentation change. A rollout matrix row is complete only when
+its D-guard exists and passes. D10–D12 cover onboarding wizard
 steps 2–4 (Refs #438) and are created by the single steps 2–4
 screen PR, not by #425.
 
@@ -107,6 +112,7 @@ screen PR, not by #425.
 | D10 | Wizard step-2 assertions (Refs #438; fields and validation per `FR-DSK-8`, PR #442; flow per LLD node J1–J4, PR #443): at 50 percent progress, contact details (address, phone, email) are each optional and stored verbatim when entered; a blank timezone is refused naming the timezone field; a non-integer or negative retention floor is refused naming the retention-floor field while blank keeps the 365-day default; continue persists through `UpdateHotelConfig` with actor and timestamp recorded (`NFR-AUD-1`); back returns to step 1 with entered values kept; a validation failure keeps staff on step 2, names the missing or invalid field in plain words, and persists nothing for the step | AC-DSK-9; FR-DSK-8 | The #438 steps 2–4 screen PR (extends `OnboardingView.test.ts:61,90,104,126,161,190,224`; backend behaviour already guarded by `services/admin/src/server.test.ts:148` persist with values round trip `:155`–`:165`, `:170` blank-name refusal, `:180` front-desk `FORBIDDEN`, `:189`–`:245` stay-times/wording save with read-back, and `services/admin/src/pgstore.test.ts:103` timezone write with actor in audit) |
 | D11 | Wizard step-3 assertions (Refs #438; fields and validation per `FR-DSK-9`, PR #442; flow per LLD node J5–J8, PR #443): at 75 percent progress, a blank room-type name is refused naming the room-type name; a blank room number is refused naming the room number; a repeated number in the batch is refused client-side naming the number (no server guard: `UpsertRoom` updates on duplicate); a room with no link to a type saved in this step is refused naming the type; continue persists types first then rooms through `UpsertRoomType` / `UpsertRoom` with actor and timestamp recorded (`NFR-AUD-1`); saved rooms appear in the inventory, availability, and calendar with the defined capacity and type (`FR-ADM-3` holds); back returns to step 2 with entered values kept; a validation failure keeps staff on step 3, names the missing, duplicate, or unlinked field in plain words, and persists nothing for the step | AC-DSK-10; FR-DSK-9 | The #438 steps 2–4 screen PR (new view assertions; backend behaviour already guarded by `services/rooms/src/server.test.ts:70` type upsert, `:79` room upsert, `:109` second type, `:137`–`:147` unknown-type `NOT_FOUND`, `:149`–`:202` owner defines rooms with inventory plus availability uptake, plus the e2e desk-loop rooms step `script/e2e-desk-loop.sh:266`; duplicate detection is wizard client-side batch validation with no server guard) |
 | D12 | Wizard step-4 assertions (Refs #438; fields and validation per `FR-DSK-10`, PR #442; flow per LLD node J9–J12, PR #443): at 100 percent progress, a blank display name is refused naming the name field, a blank sign-in identity is refused naming the identity field, an already-used identity is refused naming the identity, and an empty secret is refused naming the secret field (`NFR-SEC-2` holds); the role is fixed to owner; finish persists through `CreateUser` with the creator recorded, the owner signs in and reaches exactly the owner-permitted functions, and the wizard completes to the desk and never shows again on the now-seeded database (`FR-DSK-7` holds); back returns to step 3 with entered values kept; a validation failure keeps staff on step 4, names the missing or taken field in plain words, and creates no account | AC-DSK-11; FR-DSK-10 | The #438 steps 2–4 screen PR (new view assertions; backend behaviour already guarded by `services/admin/src/server.test.ts:122` create, `:132` duplicate identity refused, `:283`–`:335` role validation, `:337`–`:372` last-owner guard, `:374`–`:400` front-desk role change refused, `:82`–`:101` lockout path, `:402`–`:437` unlock with sign-in retry, `:440`–`:486` unlock refusals, `:536`–`:563` rotation round trip, `:614`–`:647` rotation audit, and `services/admin/src/pgstore.ts:209`–`:210` empty-secret refusal plus `:204`–`:205` front-desk `CreateUser` refusal, both code-enforced) |
+| D13 | Money and quote-date shape assertions (Refs #565; values per `FR-MNY-1` / `FR-MNY-2`, PR #574): every Book quote and Folio amount renders the active locale's VND grouping with no decimals and the `đ` suffix (VI `1.800.000 đ` / `960.000 đ`, EN `1,800,000 đ` / `60,000 đ`), with sub-dong minor units rounded for display only; every nightly quote line renders `dd/mm/yyyy` (`08/12/2026`) and never a raw ISO string, falling back to the canonical value for an unparseable ref; the flow, payload, and print guards stay untouched | AC-DSK-13; FR-MNY-1, FR-MNY-2 | The #565 presentation PR (PR #574; shipped, guards on disk): `app/src/i18n/index.test.ts:177,187,195,203`; `app/src/views/BookView.test.ts:395,407-413,420-422`; `app/src/views/FolioView.test.ts:192,200,204,543,556,567,571`; `app/e2e/book.spec.ts:59,61`; `app/e2e/folio.spec.ts:113` |
 
 ## 4. Traceability map (AC-DSK to guards)
 
@@ -123,12 +129,14 @@ screen PR, not by #425.
 | AC-DSK-9 — Wizard step 2: remaining hotel profile persisted via the config path | FR-DSK-8 (fields and validation, PR #442; flow LLD node J1–J4, PR #443) | Parity: `UpdateHotelConfig` guards `services/admin/src/server.test.ts:148` (persist; values round trip `:155`–`:165`), `:170` (blank name refused), `:180` (front-desk `FORBIDDEN`), `:189`–`:245` (stay-times/wording save with read-back) + `services/admin/src/pgstore.test.ts:103` (timezone write with actor in audit) + **D10 new** (step-2 view assertions: optional contacts verbatim, blank timezone refused, bad retention floor refused, back keeps values, nothing persisted on failure) | Baseline green; D10 pending the #438 steps 2–4 screen PR |
 | AC-DSK-10 — Wizard step 3: rooms and room types persisted via the seed path | FR-DSK-9 (fields and validation, PR #442; flow LLD node J5–J8, PR #443) | Parity: `UpsertRoomType` / `UpsertRoom` guards `services/rooms/src/server.test.ts:70` (type upsert), `:79` (room upsert), `:109` (second type), `:137`–`:147` (unknown-type `NOT_FOUND`), `:149`–`:202` (owner defines rooms; inventory + availability uptake) + e2e desk-loop rooms step `script/e2e-desk-loop.sh:266` + **D11 new** (step-3 view assertions: blank/unlinked refusals and intra-batch duplicate refusal client-side, each naming the field, inventory/availability/calendar uptake, back keeps values, nothing persisted on failure) | Baseline green; D11 pending the #438 steps 2–4 screen PR |
 | AC-DSK-11 — Wizard step 4: first owner account persisted via the admin user path | FR-DSK-10 (fields and validation, PR #442; flow LLD node J9–J12, PR #443) | Parity: `CreateUser` guards `services/admin/src/server.test.ts:122` (create), `:132` (duplicate identity refused), `:283`–`:335` (role validation incl. bad-role), `:337`–`:372` (last-owner guard), `:374`–`:400` (front-desk role change `FORBIDDEN`), `:82`–`:101` (lockout path), `:402`–`:437` (unlock), `:440`–`:486` (unlock refusals), `:536`–`:563` (rotation round trip), `:614`–`:647` (rotation audit) + `services/admin/src/pgstore.ts:209`–`:210` (empty secret refused, code-enforced) and `:204`–`:205` (front-desk `CreateUser` `FORBIDDEN`, code-enforced) + **D12 new** (step-4 view assertions: blank/taken/empty-secret refusals naming the field, fixed owner role, working owner sign-in, completion to the desk, wizard never shows again, back keeps values, no account created on failure) | Baseline green; D12 pending the #438 steps 2–4 screen PR |
+| AC-DSK-13 — Book quote and Folio money and date display shape, values unchanged (Refs #565; AC-DSK-3 / AC-DSK-5 keep their flow conditions and point here) | FR-MNY-1, FR-MNY-2 (section 14, PR #574) | Parity and new pins: formatter `app/src/i18n/index.test.ts:177,187,195,203`; quote view `app/src/views/BookView.test.ts:395,407-413,420-422` (desk dates, VND shape, VI re-render) with the empty/label half at `:284,307`; folio view `app/src/views/FolioView.test.ts:192,200,204,543,556,567,571`; payload pins `BookView.test.ts:82,428`, `FolioView.test.ts:224,255`, contracts `contracts/http/QuotePrice.json:16,27,33`–`:36`, `contracts/http/PostCharge.json:13,18,25,32`, `contracts/http/RecordPayment.json:13,17,24,30`; edge guards `app/src/views/desk-edge-guards.test.ts:500,509,1289`; browser pins `app/e2e/book.spec.ts:59,61`, `app/e2e/folio.spec.ts:113` (see matrix section 5 and `docs/testing/evidence/563/README.md:57`–`:58`) | Covered — `app-build` (29 files / 431 tests) and `browser-e2e` green on PR #574 (run `42511193492` at `b18271f`); the Book and Folio side-by-side images were refreshed in the same change |
 
 ## 5. Exit criteria for the rollout testing slice
 
 1. Every section 2 parity guard still passes (updated where
    markup changed, none deleted without replacement).
-2. Guards D1–D12 exist and pass (section 3); the `app/` unit
+2. Guards D1–D13 exist and pass (section 3; D13 shipped with
+   #565, D1–D12 land with the screen PRs); the `app/` unit
    suite is green on every screen PR.
 3. `catalogue-coverage-check.sh` is green on every screen PR,
    including the new `desk.rooms.*`, `desk.onboarding.*`,
@@ -138,8 +146,9 @@ screen PR, not by #425.
    `FR-BIL-4` backend exact-match guards): zero
    print-output differences attributable to the rollout.
 5. No matrix MVP row flipped to TBD; the 57/57 MVP count
-   stands; all 11 rollout-slice matrix rows map with their
-   D-guards landed.
+   stands; every rollout-slice row maps with its D-guard
+   landed (11 in `traceability-matrix.md` section 4 plus
+   AC-DSK-13 in section 5).
 6. Each screen checks against its design file card by card
    (issue-body criterion); the check is recorded on the
    per-screen sub-issue (#420–#425) and, for wizard steps

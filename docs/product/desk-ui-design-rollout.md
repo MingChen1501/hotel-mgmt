@@ -144,10 +144,11 @@ appears on every printed document.
 
 ## 5. Acceptance criteria summary
 
-The binding done-conditions are `AC-DSK-1` through `AC-DSK-12`
+The binding done-conditions are `AC-DSK-1` through `AC-DSK-13`
 in `docs/product/acceptance-criteria.md` [section 11](acceptance-criteria.md)
 (`AC-DSK-9`..`AC-DSK-11` cover the steps 2–4 follow-up, Refs
-#438; see section 10).
+#438; see section 10; `AC-DSK-13` covers the quote/folio
+money and date display shape, Refs #565; see section 6.8).
 In short: shared shell/tokens/nav/locale behave identically on
 all six screens; each screen matches its design file closely
 enough for a reviewer to check it card by card; the Stay
@@ -157,7 +158,9 @@ always match the rendered cards; the wizard launches on empty
 database only and the configured hotel name surfaces across
 desk and folio; all copy comes from the VI-primary catalogue;
 and the business-date lines render the weekday-long locale form
-per section 6.7 (`AC-DSK-12`).
+per section 6.7 (`AC-DSK-12`), and the Book quote and Folio
+amounts render the design VND shape with the quote nights in the
+desk date form per section 6.8 (`AC-DSK-13`).
 
 ## 6. Conflict rule with #412
 
@@ -222,12 +225,14 @@ decided headings/buttons/inputs, live shell conformance).
   paths. Full-tree literalism stays rejected.
 - B2 document title — already closed (#495 S2), verified live
   on `/app/book`.
-- B3 quote copy — REPORTED, not changed. The design shows a
-  quoted state (`Số đêm 2`, `Tổng tiền 1.800.000 đ`); the app
-  renders `Số đêm: {count}` / `Tổng cộng: {amount}` only after
-  a quote, and an empty state before. The labels and the
-  empty-vs-quoted presentation are user-visible copy/flow:
-  product call.
+- B3 quote copy — RESOLVED (#565), superseding the earlier
+  REPORTED disposition. The design shows a quoted state
+  (`Số đêm 2`, `Tổng tiền 1.800.000 đ`); the app renders
+  `Số đêm: {count}` / `Tổng cộng: {amount}` only after a quote,
+  and an empty state before. Product decision (section 6.8):
+  the app labels stay, the empty-vs-quoted presentation stays,
+  and the quote money and nightly dates render the design
+  shape. Labels do not change.
 - B4 app extras — KEPT with justification (same precedent as
   the Main deliberately kept extras): the walk-in actor note,
   guest-status line, room-type loading/empty states, and the
@@ -531,6 +536,101 @@ display assertions such as `DeskView.test.ts:240`); S8 token
 drift (separate follow-up); any API, validation, or catalogue
 key change.
 
+### 6.8 Book quote presentation and money/date display shape (Refs #565)
+
+Status: product-owner scope decision for the B3 quote-presentation
+item from the #496 Book parity sweep (section 6.2) and for the
+`G-BK-2` / `G-FO-2` gaps recorded in the #563 desk UI audit. Tier
+T2 (reader-visible UI change on the Book quote and the Folio
+board; no data-model, API, validation, print, or
+refusal-semantics change). The binding done-condition is
+`AC-DSK-13` in
+`docs/product/acceptance-criteria.md` [section 11](acceptance-criteria.md);
+`AC-DSK-3` and `AC-DSK-5` keep their existing flow conditions and
+now point at it. FR/NFR wording is owned by `business-analyst`
+(`docs/requirements/mvp-requirements.md` [section 14](../requirements/mvp-requirements.md):
+`FR-MNY-1`, `FR-MNY-2`), guard mapping by `qa-lead`, and the gate
+verdict by `spec-reviewer`. Recorded as D-16 in
+`docs/project/decision-log.md`.
+
+Decision (four parts):
+
+1. **Quote labels stay the app wording.** The quoted state keeps
+   `Số đêm: {count}` and `Tổng cộng: {amount}`. The board's
+   `Số đêm` / `Tổng tiền` pair (`docs/design/Book.dc.html:3`) is
+   superseded as a label: the app wording is the
+   catalogue-pinned copy used throughout the desk flow, and the
+   #544 Book implementation shipped it as the accepted
+   app-specific row label (recorded in the #563 audit under
+   `G-BK-2`). Same precedent as the #495 S3/S5/S6 vocabulary
+   calls — the app copy wins where the boards diverge from it or
+   from each other.
+2. **Empty-vs-quoted presentation is unchanged.** The quote rows
+   render only after a successful get-quote read, with the
+   pre-quote empty state before it. The board draws a single
+   static quoted state and cannot show the contrast, so the app
+   flow and its empty state stand; no copy, flow, or refusal
+   condition moves.
+3. **Money renders in the design VND shape.** Every quoted and
+   folio amount renders with the active locale's grouping, no
+   decimals, and the `đ` suffix — VI `1.800.000 đ`, `60.000 đ`,
+   `960.000 đ` (`docs/design/Folio.dc.html:3`,
+   `docs/design/Book.dc.html:3`) and EN `1,800,000 đ`,
+   `60,000 đ`. The EN suffix decision is explicit: EN keeps the
+   same `đ` as the design, because the `đ` is formatter output,
+   not catalogue copy (`Intl` currency style would emit `₫`), so
+   no catalogue key lands and `NFR-DSK-1` coverage is untouched.
+   An amount whose minor units leave a sub-dong remainder rounds
+   to the nearest dong for display only; the stored minor value
+   never changes.
+4. **Quote dates render in the desk date form.** A nightly quote
+   line renders its canonical `YYYY-MM-DD` date as `dd/mm/yyyy`
+   in both desk locales (`08/12/2026` for 2026-12-08), never a
+   raw ISO string; an unparseable date ref falls back to the
+   canonical value instead of blanking the line.
+
+Values stay identical: amounts still cross every REST contract
+in minor units (`priceMinor`, `amountMinor`, `balanceMinor`),
+dates stay ISO on the wire, and printed documents keep their
+current render (`FR-BIL-4`, `FR-DSP-4`, and `NFR-RST-2` hold).
+This is a presentation change only.
+
+Affected surfaces and keys (labels unchanged in both locales;
+only the formatted placeholder values change):
+
+- Book quote nightly line — `desk.book.quote_night`
+  (`messages/en.json:399`, `messages/vi.json` parity):
+  `nightDate` renders the desk date form and `amount` the VND
+  shape.
+- Book quote total — `desk.book.quote_total`
+  (`messages/en.json:400`): `amount` renders the VND shape.
+- Folio board — charge lines, folded tax/fee parts, payment
+  lines, the due figure, and the running-balance sentences
+  (`desk.folio.folio_line`, `desk.folio.folio_balance`, and the
+  posting status lines; `messages/en.json:467`–`:468`):
+  `amount` and `balance` render the VND shape.
+
+Out of the display change, kept on purpose (separate follow-ups,
+not an accepted end state): the Book booking read-back sentence
+and the currency-less confirmation fallback (plain decimal
+figures), the confirmation price when the server supplies a
+currency code, the printed documents (`PrintView`), and the Stay
+check-out amounts. Widening the VND shape to those surfaces is a
+separate decision.
+
+UI-contract delta (T2): nil — the rollout-wide contract in
+section 4 and the restyle UI contract in
+`docs/product/desk-ui-pixel-faithful-restyle.md` sections 6.1–6.5
+(layout shell and navigation scope, component mapping, token
+scope, plain-words states, print rules) already cover both
+surfaces; reformatting a placeholder value adds no layout,
+component, token, or state change.
+
+Out: implementation of the format change (downstream `dev`
+issue/PR, which updates the Book and Folio render sites plus
+their guards); the out-of-scope money surfaces above; and any
+API, validation, catalogue-key, or print change.
+
 ## 7. Catalogue and locale rule
 
 - Single source of truth stays `messages/` (`messages/README.md`):
@@ -774,6 +874,16 @@ Section 4 stays the rollout-wide contract; for steps 2–4:
 |---|---|
 | Business-date lines render the weekday-long locale form on Main, Rooms, and Stay with ISO kept on the wire | Section 6.7; AC-DSK-12 |
 | No API, validation, or catalogue key change ships with the format change | Section 6.7 (out-of-render-path list); AC-DSK-12 |
+
+## 13. Acceptance mapping (issue #565)
+
+| Criterion | Evidence in this spec |
+|---|---|
+| Book quote and Folio amounts render like the design (`1.200.000 đ` style) in VI and the EN equivalent (`1,200,000 đ`) | Section 6.8 decision 3; AC-DSK-13; `FR-MNY-1` |
+| Nightly quote lines show desk-format dates (`dd/mm/yyyy`), never raw ISO strings | Section 6.8 decision 4; AC-DSK-13; `FR-MNY-2` |
+| Values stay identical — minor units on the wire, ISO dates, unchanged print output | Section 6.8 (values statement and out-of-scope list); AC-DSK-13 |
+| The B3 quote-presentation item is resolved (labels and empty-vs-quoted wording) | Section 6.2 B3; section 6.8 decisions 1–2 |
+| Existing money/amount guards and the #563 evidence refresh stay green | Section 6.8 (affected surfaces); `docs/requirements/mvp-requirements.md` section 14.5; `docs/testing/evidence/563/README.md` (same-change refresh rule) |
 
 <!-- ao-role: product-owner -->
 Role: product-owner · AO session hotel-mgmt-704

@@ -29,8 +29,9 @@
 // `localStorage` under `hotel-mgmt.desk.locale` (locale only, never
 // auth/session data, which stays in `sessionStorage` per the session
 // store). Number/currency grouping follows the active locale through
-// the existing `Intl.NumberFormat(catalogueLocale())` formatters in
-// the views, so no formatter code changes.
+// the shared display formatters below (`formatVnd`,
+// `formatDeskDate`, `formatBusinessDate`) plus the per-view
+// `Intl.NumberFormat(catalogueLocale())` helpers.
 import { ref } from 'vue';
 import enDocument from '../../../messages/en.json';
 import viDocument from '../../../messages/vi.json';
@@ -109,10 +110,14 @@ export function catalogueLocale(): string {
 // unparseable input or formatter failure falls back to the canonical
 // value (today's rendering) so the screen stays usable. No catalogue
 // keys are involved, so catalogue coverage is untouched.
-export function formatBusinessDate(canonical: string, locale: LocaleTag): string {
+//
+// Shared calendar-date parse: the ISO `YYYY-MM-DD` shape only, built
+// in local time and rejected when any part would roll over (2026-02-30,
+// 2026-13-01), so both desk display forms share one validation path.
+function parseCalendarDate(canonical: string): Date | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(canonical);
   if (!match) {
-    return canonical;
+    return null;
   }
   const year = Number(match[1]);
   const month = Number(match[2]);
@@ -124,6 +129,14 @@ export function formatBusinessDate(canonical: string, locale: LocaleTag): string
     date.getMonth() !== month - 1 ||
     date.getDate() !== day
   ) {
+    return null;
+  }
+  return date;
+}
+
+export function formatBusinessDate(canonical: string, locale: LocaleTag): string {
+  const date = parseCalendarDate(canonical);
+  if (date === null) {
     return canonical;
   }
   try {
@@ -136,6 +149,41 @@ export function formatBusinessDate(canonical: string, locale: LocaleTag): string
   } catch {
     return canonical;
   }
+}
+
+// Desk money display form (Refs #565, AC-DSK-5, G-BK-2/G-FO-2): the
+// owner boards draw VND amounts in the design shape — locale
+// grouping, no decimals, and the `đ` suffix (`1.200.000 đ` in VI,
+// `1,200,000 đ` in EN). Amounts arrive in minor units; this is
+// presentation only, so the stored value never changes. VND has no
+// subunit, so a sub-dong minor remainder rounds to the nearest dong
+// for display (`1250` renders `13 đ`); the stored minor value is
+// untouched. The `đ` suffix is formatter output, not catalogue copy
+// (`Intl` currency style would emit `₫`, not the design's `đ`), the
+// same class as the date output above rather than a translatable
+// string.
+export function formatVnd(minor: number): string {
+  const amount = new Intl.NumberFormat(catalogueLocale(), {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(minor / 100);
+  return `${amount} đ`;
+}
+
+// Desk calendar-date display form (Refs #565, G-BK-2): the
+// canonical ISO `YYYY-MM-DD` ref renders as the design desk date
+// `dd/mm/yyyy` (`08/12/2026` for 2026-12-08) in both desk locales,
+// so quote lines never show a raw ISO string. Unparseable input
+// falls back to the canonical value, same as the business-date
+// form above. The locale-aware long form stays `formatBusinessDate`.
+export function formatDeskDate(canonical: string): string {
+  const date = parseCalendarDate(canonical);
+  if (date === null) {
+    return canonical;
+  }
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  return `${day}/${month}/${date.getFullYear()}`;
 }
 
 export function hasMessage(key: string): boolean {

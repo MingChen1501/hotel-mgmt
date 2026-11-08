@@ -54,7 +54,11 @@ test('walk-in booking quotes and confirms with a readable reference', async ({
   await signInThroughGate(page);
   await page.goto('/app/book');
   await bookOnce(page, ctx.guestName, window.arrival, window.departure, ctx.roomTypeId);
-  await expect(page.getByTestId('book-quote-total')).toContainText('2400');
+  // Refs #565 (G-BK-2): the nightly lines render desk `dd/mm/yyyy`
+  // dates, never raw ISO, and the total renders the design VND shape.
+  await expect(page.getByTestId('book-quote-nights')).toContainText(/\d{2}\/\d{2}\/\d{4}/);
+  await expect(page.getByTestId('book-quote-nights')).not.toContainText(/\d{4}-\d{2}-\d{2}/);
+  await expect(page.getByTestId('book-quote-total')).toContainText('2,400 đ');
   await page.getByTestId('book-confirm').click();
   await expect(page.getByTestId('book-result')).toBeVisible();
   await expect(page.getByTestId('book-booking-reference')).toContainText('Booking reference:');
