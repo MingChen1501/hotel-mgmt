@@ -1963,5 +1963,227 @@ decision, recorded as a follow-up in
 `docs/requirements/mvp-requirements.md` [section 14.1](../requirements/mvp-requirements.md));
 any API, validation, catalogue-key, or allowlist change.
 
+## 17. Folio open-folio guest and room context (Refs #568)
+
+Build-ready flow detail for the T2 reader-visible change (issue
+#568): the Folio charges card names the open folio's guest and
+room like the board (`Khoản phí · Lê Minh · P.201`,
+`docs/design/Folio.dc.html:3`). This section supplies the
+architect-owned per-flow implementation diagram (happy path plus
+failure/rollback path) the spec gate requires; scope, the
+UI-contract delta, and the done-condition live with
+`product-owner` (`docs/product/desk-ui-design-rollout.md`
+[section 6.9](../product/desk-ui-design-rollout.md), `AC-DSK-14`
+in `docs/product/acceptance-criteria.md`
+[section 11](../product/acceptance-criteria.md), D-17); the
+FR/NFR no-change statement and the traceability inputs live with
+`business-analyst`
+(`docs/requirements/mvp-requirements.md` [section 15](../requirements/mvp-requirements.md));
+guard mapping lives with `qa-lead`. The composition adds no
+subsystem, endpoint, contract, schema, or stored value, so no ADR
+is owed; this section records only the read path, its fallbacks,
+and the technical no-change boundary.
+
+Intended tree deltas (files the implementation commit on this PR
+touches; edge traces cite the existing lines at this head):
+
+```text
+app/src/views/FolioView.vue  open path and title composition:
+                             readFolio :803-810, loadStayContext :795-801,
+                             readStayContext :599-615, readGuestName :565-574,
+                             readRoomNumber :576-591, ROOM_STATES :549,
+                             bestEffortText :554-563, stayContext + request
+                             token :672-673, chargesHeading :752-768,
+                             title hook :81, typed stay-ID input :33,
+                             reference disclosure :783-786 (rendered :109),
+                             clear on typed change :812-819, 401 gate :773-778
+messages/en.json             one new key desk.folio.charges_context :467
+messages/vi.json             the same key in VI :467
+```
+
+### 17.1 Open-folio context read flowchart
+
+Staff open a folio; the existing balance read renders the card,
+then the screen resolves the stay's guest and room through three
+existing reads and the computed title composes
+`heading · guest · room`:
+
+```mermaid
+flowchart TD
+    A[Desk types a stay ID and activates Open] --> B[readFolio: GetFolioBalance with stayId plus actor]
+    B --> C[renderFolio: folio ref, status, reference list with raw Stay ID / Folio ID]
+    C --> D[loadStayContext bumps the request token]
+    D --> E[readStayContext: GetStay for that stayId]
+    E --> F[readGuestName: GetGuest for the stay guestId]
+    E --> G[readRoomNumber: ListRoomsByState across the five lanes]
+    F --> H[stayContext guest half]
+    G --> I[stayContext room half]
+    H --> J{Request token still the newest?}
+    I --> J
+    J -->|Yes| K[chargesHeading composes heading · guest · room via desk.folio.charges_context]
+    J -->|No| L[Stale result dropped; the title keeps the newer stay]
+    K --> M[Charges card title hook renders; a locale switch re-composes with no new read]
+```
+
+Edge trace (every edge cites code):
+
+- A–B: the typed stay ID is the screen's existing input
+  (`FolioView.vue:33`); `onOpen` calls `readFolio`, which issues
+  the existing `GetFolioBalance` with `stayId` and `actor`
+  (`FolioView.vue:821-858`, call at `:803-807`).
+- B–C: `renderFolio` sets the `folio` ref, clears the notice, and
+  fills the reference list with the raw `Stay ID` / `Folio ID`
+  pairs (`FolioView.vue:780-787`) that render behind the existing
+  disclosure (`:109`) — the #372 rule.
+- C–D: `readFolio` then awaits `loadStayContext(next.stayId || id)`,
+  which increments the `contextRequest` token before the read
+  (`FolioView.vue:803-810`, `:795-797`; token declared `:672-673`).
+- D–E: `readStayContext` issues the existing `GetStay` with the
+  folio's `stayId` (`FolioView.vue:599-605`).
+- E–F: the stay record's `guestId` feeds the existing `GetGuest`
+  (`FolioView.vue:565-573`, call at `:612`); both fields exist on
+  the contracts (`contracts/http/GetStay.json:20-26`,
+  `contracts/http/GetGuest.json:20-23`).
+- E–G: the stay's current room identifier feeds
+  `ListRoomsByState` over the five housekeeping lanes, stopping at
+  the first lane that lists the room
+  (`FolioView.vue:576-590`, lanes at `:549`, call at `:613`;
+  `contracts/http/ListRoomsByState.json:19-33`).
+- F–H / G–I: the two halves land in one reactive `stayContext`
+  object (`FolioView.vue:672`); both start empty, so neither half
+  can fall back to an identifier (`:593-598`).
+- H–J / I–J: the awaited result paints only when its request is
+  still the newest (`FolioView.vue:797-800`).
+- J–K: `chargesHeading` composes the heading through the existing
+  `desk.folio.folio_heading`, the guest through
+  `desk.today.unknown_guest`, the room through
+  `desk.today.room_short`, and the whole title through the one new
+  key `desk.folio.charges_context` (`FolioView.vue:752-768`;
+  `messages/en.json:354-357`, `:466-467` with VI parity at
+  `messages/vi.json:466-467`).
+- J–L: a superseded request never assigns
+  (`FolioView.vue:798-800`), so a slow read for an earlier stay
+  cannot name the wrong guest (pinned at
+  `app/src/views/FolioView.test.ts:742-766`).
+- K–M: the template binds the computed to the card title hook
+  (`FolioView.vue:81`); the title reads `t()` and the locale, so a
+  mid-flow locale switch re-composes with no new stay, guest, or
+  room read (`:753`, `:758-766`; pinned at
+  `app/src/views/FolioView.test.ts:682-724`).
+
+### 17.2 Failure and rollback flowchart
+
+Every partial failure keeps a plain, catalogue-worded title and
+never a record ID; the only hard stop is the shared 401 gate:
+
+```mermaid
+flowchart TD
+    P[GetStay refuses: NOT_FOUND, VALIDATION_FAILED, or transport] --> Q[Context stays empty; the plain Charges title stands]
+    R[GetGuest or ListRoomsByState refuses, or no identifier] --> S[That half resolves empty through bestEffortText; the other half still names]
+    T[Room not listed in any of the five lanes] --> U[Room half empty: Room number unavailable; the guest half still names]
+    V[Would an identifier reach the title or balance line?] --> W[No: the title uses resolved name and number only; raw IDs stay in the reference disclosure]
+    X[Desk edits the typed stay ID] --> Y[onStayIdInput clears folio, reference list, and context, and bumps the token]
+    Z[401 or UNAUTHENTICATED on any context read] --> AA[isSignedOut rethrows; expireToGate clears the context and signs out]
+    AB[Rollback: revert the screen commit on this PR] --> AC[Charges title returns to desk.folio.folio_heading; the key and reads go unused; no contract, schema, or service change to unwind]
+```
+
+Edge trace:
+
+- P–Q: a refused stay read returns the empty context
+  (`FolioView.vue:606-611`), and the computed returns the plain
+  heading while both halves are empty (`:753-757`; pinned at
+  `app/src/views/FolioView.test.ts:769-788`). The refusal itself
+  never surfaces a new error state: the folio read owns the notice
+  (`FolioView.vue:803-810`, `:826-858`).
+- R–S: `bestEffortText` swallows signed-in failures and keeps the
+  empty half (`FolioView.vue:554-563`, used at `:612-613`); the
+  other half still names through the same computed
+  (`:758-762`).
+- T–U: `readRoomNumber` returns `''` when no lane lists the room
+  (`FolioView.vue:580-590`), which renders the existing
+  `desk.today.room_unknown` wording (`:760-762`;
+  `messages/en.json:354`) while the guest half still names
+  (`:758-759`).
+- V–W: the title and the balance line receive only resolved text
+  (`FolioView.vue:752-768`, `:650-663`, bound at `:216`); raw identifiers exist
+  only in the reference list (`:783-786`, rendered at `:109`), and
+  the guards assert no stay, folio, guest, or room ID in the title
+  or balance line (`app/src/views/FolioView.test.ts:709-713`;
+  `app/e2e/folio.spec.ts:121-128`).
+- X–Y: `onStayIdInput` clears the folio, the notice, the reference
+  list, and the context, and increments the token so any in-flight
+  read is stale (`FolioView.vue:812-819`; pinned at
+  `app/src/views/FolioView.test.ts:726-738`). Re-reads after a
+  post or payment keep the current context steady instead of
+  blanking it (`:789-801`).
+- Z–AA: `isSignedOut` rethrows the signed-out error from both the
+  stay read and the best-effort readers
+  (`FolioView.vue:558-559`, `:607-609`); `expireToGate` clears the
+  context and token before handing over to the one shared gate
+  (`:773-778`, LLD section 11.2).
+- AB–AC: rollback is reverting the screen commit on this PR;
+  `desk.folio.charges_context` becomes unused, the three reads
+  stop being issued by this screen, and the title returns to
+  `desk.folio.folio_heading`. No contract, schema, validation,
+  service, or harness change exists to unwind.
+
+### 17.3 Technical no-change note (APIs, contracts, schemas)
+
+Nothing in section 17 changes behaviour below the screen surface,
+and the implementation commit must not change any of the
+following; each item names its guard so drift is reviewable. The
+requirements side of the same statements lives with
+`business-analyst`
+(`docs/requirements/mvp-requirements.md` [section 15](../requirements/mvp-requirements.md));
+the acceptance side lives with `product-owner` (`AC-DSK-14`):
+
+- APIs and contracts: the three reads already exist with the
+  same operations, payloads, and envelopes — `GetStay`
+  (`contracts/http/GetStay.json:20-26`), `GetGuest`
+  (`contracts/http/GetGuest.json:20-23`), and `ListRoomsByState`
+  (`contracts/http/ListRoomsByState.json:19-33`); no new
+  endpoint, and the `contracts/openapi.yaml` +
+  `frontend/docs/openapi.yaml` byte-identical mirror is unchanged
+  (`script/contract-check.sh` stays green).
+- Data model and schema: no entity or field is added
+  (`docs/technical/schema.md`,
+  `docs/requirements/data-dictionary.md` unchanged — the stay
+  already carries its guest and room links).
+- Read budget: one `GetStay`, one `GetGuest`, and one to five
+  `ListRoomsByState` reads per open (three to seven on top of the
+  existing `GetFolioBalance`), repeated per post-charge and
+  record-payment refresh (`FolioView.vue:795-810`), with no read
+  added to any other screen; `NFR-PERF-1` keeps its folio target.
+- Error semantics: all codes and refusal conditions stand
+  (`docs/technical/error-handling.md`, LLD sections 1–8; the
+  context reads are best effort and add no refusal state —
+  `FR-RTE-4`, `FR-CUS-1`, `FR-BIL-7` fire on exactly the same
+  conditions), and the 401-to-sign-out path is the unchanged
+  section 11.2 flow.
+- Catalogue: one new key (`desk.folio.charges_context`) lands in
+  both locales; the fallback halves are reused, not reworded
+  (`messages/en.json:354-357`, `messages/vi.json:354-357`);
+  `script/catalogue-coverage-check.sh` and `NFR-I18N-1` /
+  `NFR-DSK-1` stay green, and the runtime mirrors stay
+  byte-identical.
+- Audit: reads only — opening a folio and resolving its context
+  writes nothing and emits no event (`NFR-AUD-1` holds).
+- Print: printed documents keep their current render and still
+  match the folio lines and balance exactly (`FR-BIL-4`,
+  `FR-DSP-4`, `NFR-DSK-2` hold; the title change is screen-only
+  and print isolation CSS is preserved).
+- Tests: the parity hook pin
+  (`app/src/folio-restyle.test.ts:71`), the behaviour block
+  (`app/src/views/FolioView.test.ts:644-789`), and the browser
+  Folio assertion (`app/e2e/folio.spec.ts:121-128`) guard this
+  path; `qa-lead` maps them in the traceability docs.
+
+Out of scope: implementation of the context reads (the `dev`
+commit on this PR); a server-side composed folio-context read
+(separate follow-up, only if the request count ever matters);
+adding the same context to any other screen title; any API,
+validation, schema, catalogue-key beyond the one, audit, or
+allowlist change.
+
 <!-- ao-role: architect -->
-Role: architect · AO session hotel-mgmt-810
+Role: architect · AO session hotel-mgmt-824
