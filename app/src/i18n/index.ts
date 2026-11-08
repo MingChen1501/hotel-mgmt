@@ -155,7 +155,13 @@ export function formatBusinessDate(canonical: string, locale: LocaleTag): string
 // owner boards draw VND amounts in the design shape — locale
 // grouping, no decimals, and the `đ` suffix (`1.200.000 đ` in VI,
 // `1,200,000 đ` in EN). Amounts arrive in minor units; this is
-// presentation only, so the stored value never changes.
+// presentation only, so the stored value never changes. VND has no
+// subunit, so a sub-dong minor remainder rounds to the nearest dong
+// for display (`1250` renders `13 đ`); the stored minor value is
+// untouched. The `đ` suffix is formatter output, not catalogue copy
+// (`Intl` currency style would emit `₫`, not the design's `đ`), the
+// same class as the date output above rather than a translatable
+// string.
 export function formatVnd(minor: number): string {
   const amount = new Intl.NumberFormat(catalogueLocale(), {
     minimumFractionDigits: 0,

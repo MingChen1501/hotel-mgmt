@@ -184,6 +184,14 @@ describe('desk money and quote-date display (Refs #565)', () => {
     expect(formatVnd(0)).toBe('0 đ');
   });
 
+  it('rounds a sub-dong remainder for display only', () => {
+    // VND has no subunit: 1250 minor is half a dong and renders the
+    // nearest dong. The stored minor value is never changed (Refs
+    // #565 review note).
+    expect(formatVnd(1250)).toBe('13 đ');
+    expect(formatVnd(1240)).toBe('12 đ');
+  });
+
   it('renders the desk dd/mm/yyyy date in both locales', () => {
     expect(formatDeskDate('2026-12-08')).toBe('08/12/2026');
     expect(formatDeskDate('2026-11-01')).toBe('01/11/2026');

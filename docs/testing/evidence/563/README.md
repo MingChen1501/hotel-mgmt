@@ -33,6 +33,16 @@ do not drift.
   backend data, so the boot config call was answered locally instead of
   standing up a lab (Chromium, viewport 1200×1000, locale pill switched to VI
   before load).
+- `side-by-side-Book-vi.png` and `side-by-side-Folio-vi.png` were refreshed
+  for the `G-BK-2` / `G-FO-2` fix (#565) from an isolated compose lab
+  (`hotel-lab-804`, isolated project and volumes, example data seeded through
+  the public contract, signed in as `owner` with a lab-only boot secret) and
+  the built app bundle at 1200px in `vi` (Chromium, viewport 1200×1016). The
+  live halves now show the design money/date shape: the Book quote reads
+  `Đêm 08/12/2026: 1.200 đ` / `Tổng cộng: 2.400 đ` instead of raw ISO dates
+  and two-decimal figures, and the Folio lines and balance read `12.000 đ` /
+  `6.000 đ`. Values are unchanged; the capture data mirrors the pre-fix image
+  (same guest, dates, and amounts) so only the presentation differs.
 
 ## Images
 
@@ -44,8 +54,8 @@ do not drift.
 | Stay | [side-by-side-Stay-vi.png](side-by-side-Stay-vi.png) | 2420×1016 | Check-in form and in-house lists; `G-ST-1`, `G-ST-2` |
 | Onboarding | [side-by-side-Onboarding-vi.png](side-by-side-Onboarding-vi.png) | 2420×1016 | Setup wizard vs the board's setup panel; `G-OB-1` |
 | Rooms | [side-by-side-Rooms-vi.png](side-by-side-Rooms-vi.png) | 2420×1016 | Room map, chips, and unassigned group; `G-RM-1`, `G-RM-2` |
-| Book | [side-by-side-Book-vi.png](side-by-side-Book-vi.png) | 2420×1016 | Booking form and quote rows; `G-BK-1`…`G-BK-3` |
-| Folio | [side-by-side-Folio-vi.png](side-by-side-Folio-vi.png) | 2420×1016 | Folio lines, amounts, and balance; `G-FO-1`, `G-FO-2` |
+| Book | [side-by-side-Book-vi.png](side-by-side-Book-vi.png) | 2420×1016 | Booking form and quote rows; refreshed for `G-BK-2` (#565) — nightly rows carry `dd/mm/yyyy` dates and VND `đ` amounts; `G-BK-1`, `G-BK-3` |
+| Folio | [side-by-side-Folio-vi.png](side-by-side-Folio-vi.png) | 2420×1016 | Folio lines, amounts, and balance; refreshed for `G-FO-2` (#565) — lines and balance carry the design VND `đ` shape; `G-FO-1` |
 | Admin | [side-by-side-Admin-vi.png](side-by-side-Admin-vi.png) | 2420×1491 | User, config, and audit cards; `G-AD-1`, `G-AD-2` |
 
 ## Living record
@@ -65,5 +75,5 @@ relaxation of the "audit issues carry no product code" rule in a
 [comment on #563](https://github.com/MingChen1501/hotel-mgmt/issues/563#issuecomment-6723063195);
 the audit comment's change log carries the matching dated row.
 
-<!-- ao-role: dev -->
-Role: dev · AO session hotel-mgmt-792
+<!-- ao-role: dev-takeover -->
+Role: dev-takeover · AO session hotel-mgmt-804
