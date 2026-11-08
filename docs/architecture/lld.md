@@ -688,11 +688,11 @@ is a styling input. Money and dates render exactly as today
 
 | Pattern (contract section 3) | PrimeVue component | Applied to (existing SFCs) |
 |---|---|---|
-| Forms (book, charge, pay, admin setup) | `InputText`, `Dropdown`/`Select`, `Calendar`/`DatePicker`, `Password` for secrets, `Button` for submits | Book form hooks `book-guest-name` (`BookView.vue:24-32`) through `book-confirm` (`:88-96`); guest lookup via `book-find-guest` / `book-register-guest` (`:38-45`); per-screen sign-in forms (removed to the shell gate, section 12.4) |
+| Forms (book, charge, pay, admin setup) | `InputText`, `Dropdown`/`Select`, `Calendar`/`DatePicker`, `Password` for secrets, `Button` for submits | Book form hooks `book-guest-name` (`BookView.vue:38-48`) through `book-confirm` (`:104-112`); guest lookup via `book-find-guest` / `book-register-guest` (`:49-64`); per-screen sign-in forms (removed to the shell gate, section 12.4) |
 | Lists (reservations, stays, folios, rooms, guests) | `DataTable` with `Column`, paginator on long lists | Arrivals table `desk-arrivals-table` (`DeskView.vue:57-59` and siblings per screen) |
-| Confirmations and destructive actions (cancel, check-out, day-close) | `Dialog` with explicit confirm/cancel buttons | Existing confirm buttons (e.g. `book-confirm` at `BookView.vue:88-96`) keep their hooks and call order |
+| Confirmations and destructive actions (cancel, check-out, day-close) | `Dialog` with explicit confirm/cancel buttons | Existing confirm buttons (e.g. `book-confirm` at `BookView.vue:104-112`) keep their hooks and call order |
 | Feedback (success, validation, refusal, error) | `Message`/`Toast` for page-level notes, inline field errors under the field | Existing alert hooks (`book-quote-error`, `book-confirm-error`, `desk-dashboard-error`) keep their hooks; sign-in errors render only in the shell gate (`shell-signin-*` in `App.vue:67-109`); wording becomes plain sentences per `FR-DSP-3` |
-| Print (receipt/invoice/confirmation) | existing print CSS preserved; screen shows a print preview card with one Print button | `.print-document` markup (`PrintView.vue:105,219,300`) under `@media print` (`PrintView.vue:1239` within the `:1233-1257` style block, `BookView.vue:1018` within `:1008-1029`) |
+| Print (receipt/invoice/confirmation) | existing print CSS preserved; screen shows a print preview card with one Print button | `.print-document` markup (`PrintView.vue:105,219,300`) under `@media print` (`PrintView.vue:1239` within the `:1233-1257` style block, `BookView.vue:1083` within `:1073-1094`) |
 
 ### 12.3 Shell navigation flowchart
 
@@ -848,23 +848,27 @@ flowchart TD
 
 Edge trace:
 
-- A: form hooks `book-guest-name` (`BookView.vue:24-32`)
-  through `book-discount-name` (`:196-206`); guest lookup via
-  `book-find-guest` / `book-register-guest` (`:38-45`);
+- A: form hooks `book-guest-name` (`BookView.vue:38-48`)
+  through `book-discount-name` (`:202-212`); guest lookup via
+  `book-find-guest` / `book-register-guest` (`:49-64`); the
+  arrival/departure fields type the desk date form — VI
+  `dd/mm/yyyy`, EN `mm/dd/yyyy` — and keep the canonical ISO value
+  in the form state (Refs #566; `BookView.vue:153-181`, formatters
+  at `app/src/i18n/index.ts:197` / `:213`);
   mandatory-field refusals name the field (`FR-CUS-1`,
   wording only per `FR-DSP-3`).
-- B: quote hooks `book-quote` (`:207-213`), breakdown
-  `book-quote-nights` (`:79`), total `book-quote-total`
-  (`:87`); `PricingService.QuotePrice` contract unchanged
+- B: quote hooks `book-quote` (`:228-237`), breakdown
+  `book-quote-nights` (`:94`), total `book-quote-total`
+  (`:102`); `PricingService.QuotePrice` contract unchanged
   (integration [section 1](../technical/integration.md) C1); later rate changes still never alter the
   quoted basis (BR-13).
-- C–D: confirm `book-confirm` (`:88-96`); `ReservationService.
+- C–D: confirm `book-confirm` (`:104-112`); `ReservationService.
   CreateReservation` contract unchanged (integration section 1);
   last-unit race still refuses the loser with `CONFLICT`
   (`NFR-CON-1` — condition unchanged, sentence plain).
-- D–E: result hooks `book-result` (`:228-230`),
-  `book-booking-reference` (`:233`), `book-booking-readback`
-  (`:234`); confirmation record `book-confirmation` (`:255-273`)
+- D–E: result hooks `book-result` (`:250-252`),
+  `book-booking-reference` (`:255`), `book-booking-readback`
+  (`:256`); confirmation record `book-confirmation` (`:277-295`)
   per `FR-GST-4`.
 - D–F: every refusal keeps its code (`CONFLICT`,
   `STATE_ILLEGAL`, `VALIDATION_FAILED`,
@@ -916,8 +920,8 @@ item names its guard so drift is reviewable:
 - Print: receipt, invoice, and confirmation output match folio
   lines and balance exactly (`FR-BIL-4` holds); print
   isolation CSS preserved (`PrintView.vue:1233-1257`,
-  `BookView.vue:973-986` source-pinned by
-  `PrintView.test.ts:724-739` and `BookView.test.ts:1064-1069`);
+  `BookView.vue:1073-1094` source-pinned by
+  `PrintView.test.ts:724-739` and `BookView.test.ts:1234-1245`);
   screen styling must not leak into print.
 - Tests: `data-testid` hooks kept; characterization suites
   extended where markup changed; no test deleted without
@@ -1458,7 +1462,7 @@ D1–D9):
 - Print: receipt, invoice, and confirmation output match
   folio lines and balance exactly (`FR-BIL-4` holds);
   print isolation CSS preserved
-  (`PrintView.vue:1233-1257`, `BookView.vue:973-986`);
+  (`PrintView.vue:1233-1257`, `BookView.vue:1073-1094`);
   screen styling must not leak into print (`NFR-DSK-2`).
 - Tests: `data-testid` hooks kept; the D1–D9 guards (PR
   #428) are created by the screen PRs named there
@@ -1810,7 +1814,7 @@ flowchart TD
 Edge trace (every edge cites code):
 
 - A–B: the canonical values are already on screen refs — the
-  quote response binds to `quote` (`BookView.vue:505`) and the
+  quote response binds to `quote` (`BookView.vue:518`) and the
   folio response to `folio` (`FolioView.vue:549`). Minor units
   are contract-validated integers (`contracts/http/QuotePrice.json:36`
   `priceMinor`, `:41` `totalMinor`;
@@ -1821,10 +1825,10 @@ Edge trace (every edge cites code):
 - B–C: `quoteNights` is a computed row builder that maps each
   night to `formatDeskDate(night.nightDate)` and
   `formatVnd(night.priceMinor)`
-  (`BookView.vue:510-521`; formatters at
+  (`BookView.vue:523-534`; formatters at
   `app/src/i18n/index.ts:165` and `:179`).
 - B–D: `quoteTotal` is a computed that maps `totalMinor`
-  through `formatVnd` (`BookView.vue:523-532`, call at `:530`).
+  through `formatVnd` (`BookView.vue:536-545`, call at `:543`).
 - B–E: every Folio amount flows through the single
   `formatAmount` seam, which delegates to `formatVnd`
   (`FolioView.vue:380-382`): folded tax/fee parts
@@ -1854,7 +1858,7 @@ Edge trace (every edge cites code):
   normative examples per `FR-MNY-1` / `FR-MNY-2` and
   `AC-DSK-13`.
 - J–L / K–L: both row lists are `computed` off the `quote` /
-  `folio` refs (`BookView.vue:510-532`,
+  `folio` refs (`BookView.vue:523-545`,
   `FolioView.vue:551-566`, `:637-641`), so a mid-flow locale
   switch re-derives the shape with no new quote or folio read
   (`AC-DSK-8` holds).

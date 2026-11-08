@@ -150,27 +150,33 @@
           </template>
           <template #content>
             <div class="book-stay-grid">
+              <!-- Date fields (Refs #566, G-BK-1): the native
+                `<input type="date">` control renders in the browser
+                UI locale (Chromium ignores the page `lang`), so a VI
+                desk on an EN browser showed `mm/dd/yyyy`. These are
+                text fields bound to the desk form instead —
+                `dd/mm/yyyy` in VI, `mm/dd/yyyy` in EN — with the
+                canonical ISO value kept in `arrivalDate` /
+                `departureDate` for the payload. -->
               <label for="book-arrival-date">
                 {{ t('desk.book.arrival', {}, 'Arrival date') }}
-                <input
+                <InputText
                   id="book-arrival-date"
-                  v-model="arrivalDate"
+                  v-model="arrivalText"
                   name="arrival-date"
-                  type="date"
+                  autocomplete="off"
                   data-testid="book-arrival-date"
-                  @input="onStayInput"
-                >
+                />
               </label>
               <label for="book-departure-date">
                 {{ t('desk.book.departure', {}, 'Departure date') }}
-                <input
+                <InputText
                   id="book-departure-date"
-                  v-model="departureDate"
+                  v-model="departureText"
                   name="departure-date"
-                  type="date"
+                  autocomplete="off"
                   data-testid="book-departure-date"
-                  @input="onStayInput"
-                >
+                />
               </label>
               <label for="book-room-type-id">
                 {{ t('desk.book.room_type', {}, 'Room type') }}
@@ -324,7 +330,7 @@ import InputText from 'primevue/inputtext';
 import Message from 'primevue/message';
 import { apiFetch } from '../api/client';
 import type { ApiError } from '../api/client';
-import { catalogueLocale, formatDeskDate, formatVnd, t } from '../i18n';
+import { catalogueLocale, formatDateField, formatDeskDate, formatVnd, localeTag, parseDateField, t } from '../i18n';
 import { useSessionStore } from '../stores/session';
 import ReferenceDetails, { type ReferenceItem } from '../components/ReferenceDetails.vue';
 
@@ -492,6 +498,13 @@ export default defineComponent({
     const resolvedGuest = ref<{ guestId: string; fullName: string } | null>(null);
     const arrivalDate = ref('');
     const departureDate = ref('');
+    // Desk date fields (Refs #566): the typed desk form lives in
+    // these text refs while the canonical ISO refs above stay the
+    // payload source; the text watchers parse the typed form back to
+    // ISO, and the locale watcher below re-renders the typed form
+    // after a switch.
+    const arrivalText = ref('');
+    const departureText = ref('');
     const roomTypeId = ref('');
     // Room-type catalogue (issue #372): the picker shows names
     // and submits IDs, so staff never type a raw type UUID.
@@ -591,6 +604,40 @@ export default defineComponent({
     function onStayInput(): void {
       clearQuote();
     }
+
+    // Typed desk date -> canonical ISO (Refs #566). The ISO refs stay
+    // in sync so `QuotePrice` / `CheckRoomTypeSellability` /
+    // `CreateReservation` keep receiving `yyyy-mm-dd`; incomplete or
+    // impossible text parses to an empty value, exactly like the
+    // blank native field it replaced. Only a real value change
+    // clears the quote, so a locale re-render leaves it in place.
+    function syncArrivalDate(value: string): void {
+      const iso = parseDateField(value);
+      if (iso !== arrivalDate.value) {
+        arrivalDate.value = iso;
+        onStayInput();
+      }
+    }
+
+    function syncDepartureDate(value: string): void {
+      const iso = parseDateField(value);
+      if (iso !== departureDate.value) {
+        departureDate.value = iso;
+        onStayInput();
+      }
+    }
+
+    watch(arrivalText, syncArrivalDate);
+    watch(departureText, syncDepartureDate);
+
+    // A locale switch re-renders the typed dates in the newly active
+    // desk form with the same calendar day (AC-DSK-8: entered values
+    // survive the switch), without touching the ISO payload refs or
+    // clearing the quote.
+    watch(localeTag, () => {
+      arrivalText.value = formatDateField(arrivalDate.value);
+      departureText.value = formatDateField(departureDate.value);
+    });
 
     async function onFindGuest(): Promise<void> {
       const name = guestName.value.trim();
@@ -955,6 +1002,8 @@ export default defineComponent({
       resolvedGuest.value = null;
       arrivalDate.value = '';
       departureDate.value = '';
+      arrivalText.value = '';
+      departureText.value = '';
       roomTypeId.value = '';
       discountName.value = '';
       guestStatus.value = '';
@@ -991,6 +1040,8 @@ export default defineComponent({
       guestStatus,
       arrivalDate,
       departureDate,
+      arrivalText,
+      departureText,
       roomTypeId,
       roomTypes,
       roomTypesLoading,

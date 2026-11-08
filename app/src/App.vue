@@ -1951,11 +1951,13 @@ export default defineComponent({
     width: 100%;
   }
 
-  /* Native controls stay native (date inputs and selects keep
-     their YYYY-MM-DD payloads and setValue semantics; see the
-     #338 implementation notes) but wear the tokens. PrimeVue
-     components (which always carry their own classes) are
-     excluded via :not([class]) so the preset theme owns them. */
+  /* Native controls stay native (the selects keep their payloads
+     and setValue semantics; see the #338 implementation notes) but
+     wear the tokens. PrimeVue components (which always carry their
+     own classes) are excluded via :not([class]) so the preset theme
+     owns them. Refs #566: the Book date fields are text InputTexts
+     now (the native date picker rendered in the browser locale), so
+     no `input[type=date]` rule is needed here. */
   #shell input:not([class]),
   #shell select:not([class]) {
     font: inherit;
