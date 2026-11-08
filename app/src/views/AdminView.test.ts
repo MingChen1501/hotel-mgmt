@@ -187,13 +187,16 @@ describe('admin view', () => {
     vi.clearAllMocks();
   });
 
-  it('renders the restricted notice with no per-screen sign-in copy when unsigned', () => {
+  it('renders the restricted notice with no per-screen chrome when unsigned', () => {
     const wrapper = mountAdmin();
     expect(wrapper.find('[data-testid="admin-view"]').exists()).toBe(true);
-    // Catalogue wiring (Refs #292): the heading resolves through t().
-    expect(wrapper.find('[data-testid="admin-view"] h1').text()).toContain(
-      'Admin: staff, hotel setup, and audit',
-    );
+    // Catalogue wiring (Refs #292): the users card heading resolves
+    // through t(), but the unsigned shell shows no console and no
+    // headings at all — the v2 board carries no screen title
+    // (Refs #546).
+    expect(wrapper.find('[data-testid="admin-view"] h1').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="admin-view"] h2').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="admin-view"] h3').exists()).toBe(false);
     // The shell owns the one sign-in gate (Refs #338, FR-DSP-2):
     // no per-screen sign-in copy renders here anymore.
     expect(wrapper.find('[data-testid="admin-signin"]').exists()).toBe(false);
@@ -204,23 +207,46 @@ describe('admin view', () => {
     expect(wrapper.find('[data-testid="admin-restricted-notice"]').exists()).toBe(true);
   });
 
+  it('heads the four board cards with the board h3s', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = await signIn(fetchMock, freshState());
+
+    // v2 board headings (Refs #546, `docs/design/Admin.dc.html:3`):
+    // no screen title, exactly the four card h3s in board order.
+    const headings = wrapper.findAll('[data-testid="admin-view"] h3').map((node) => node.text());
+    expect(headings).toEqual([
+      'Users and roles',
+      'Create a new account',
+      'Hotel configuration',
+      'Activity log',
+    ]);
+  });
+
   it('loads users, config, and audit under the shell session', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     const wrapper = await signIn(fetchMock, freshState());
 
-    // Users table: both stubbed accounts render with catalogue
-    // locked wording (Refs #292) and the Save role / Unlock labels
-    // (Refs #275).
+    // User rows: both stubbed accounts render with catalogue
+    // role labels (Refs #292) and the board locked note on the
+    // locked row (Refs #546); unlocked rows carry Save while the
+    // locked row carries only Unlock.
     const rows = wrapper.findAll('[data-testid="admin-user-row"]');
     expect(rows[0]?.text()).toContain('Ada Owner');
-    expect(rows[0]?.text()).toContain('no');
+    expect(rows[0]?.text()).toContain('Owner');
+    expect(rows[0]?.text()).not.toContain('currently locked');
     expect(rows[1]?.text()).toContain('Cara Clerk');
-    expect(rows[1]?.text()).toContain('yes');
-    expect(rows[0]?.text()).toContain('Save role');
+    expect(rows[1]?.text()).toContain('Front desk');
+    expect(rows[1]?.text()).toContain('currently locked');
+    expect(rows[0]?.text()).toContain('Save');
     expect(rows[1]?.text()).toContain('Unlock');
-    // Unlock appears only for the locked account.
+    // Unlock appears only for the locked account, Save only for
+    // unlocked ones (Refs #546: the board draws a single Unlock
+    // action on the locked row).
     expect(wrapper.find('[data-testid="admin-unlock-cara"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="admin-role-save-cara"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="admin-role-save-owner"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="admin-unlock-owner"]').exists()).toBe(false);
     // Read-only config display over GetHotelConfig.
     expect(wrapper.find('[data-testid="admin-config-version"]').text()).toContain('3');
@@ -277,15 +303,17 @@ describe('admin view', () => {
     const state = freshState();
     const wrapper = await signIn(fetchMock, state);
 
-    await wrapper.find('[data-testid="admin-role-select-cara"]').setValue('manager');
-    await wrapper.find('[data-testid="admin-role-save-cara"]').trigger('click');
+    // The owner row is unlocked, so it carries the Save action
+    // (locked rows carry only Unlock, Refs #546).
+    await wrapper.find('[data-testid="admin-role-select-owner"]').setValue('manager');
+    await wrapper.find('[data-testid="admin-role-save-owner"]').trigger('click');
     await vi.waitFor(() => {
       expect(callsTo(fetchMock, '/v1/admin/UpdateUserRole')).toEqual([
-        { signinIdentity: 'cara', role: 'manager' },
+        { signinIdentity: 'owner', role: 'manager' },
       ]);
     });
     await vi.waitFor(() => {
-      expect((wrapper.find('[data-testid="admin-role-select-cara"]').element as HTMLSelectElement).value).toBe(
+      expect((wrapper.find('[data-testid="admin-role-select-owner"]').element as HTMLSelectElement).value).toBe(
         'manager',
       );
     });
@@ -301,13 +329,15 @@ describe('admin view', () => {
     await vi.waitFor(() => {
       expect(callsTo(fetchMock, '/v1/admin/UnlockIdentity')).toEqual([{ signinIdentity: 'cara' }]);
     });
-    // Refresh shows the unlocked state: no Unlock button, "no" in
-    // the locked column (Refs #275 catalogue wording).
+    // Refresh shows the unlocked state: the Unlock action is gone,
+    // the row carries Save, and the locked note is gone (Refs #546
+    // board wording).
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="admin-unlock-cara"]').exists()).toBe(false);
     });
     const rows = wrapper.findAll('[data-testid="admin-user-row"]');
-    expect(rows[1]?.text()).toContain('no');
+    expect(rows[1]?.text()).not.toContain('currently locked');
+    expect(wrapper.find('[data-testid="admin-role-save-cara"]').exists()).toBe(true);
   });
 
   it('re-queries the audit log on refresh', async () => {
@@ -371,7 +401,7 @@ describe('admin view', () => {
     expect(wrapper.find('[data-testid="admin-console"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="admin-create-form"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="admin-config-list"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="admin-audit-table"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="admin-audit-rows"]').exists()).toBe(true);
   });
 
   it('hides every management section from front-desk callers and issues no admin calls', async () => {
@@ -388,10 +418,10 @@ describe('admin view', () => {
       expect(wrapper.find('[data-testid="admin-restricted-notice"]').exists()).toBe(true);
     });
     expect(wrapper.find('[data-testid="admin-console"]').exists()).toBe(false);
-    expect(wrapper.find('[data-testid="admin-users-table"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="admin-user-rows"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="admin-create-form"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="admin-config-list"]').exists()).toBe(false);
-    expect(wrapper.find('[data-testid="admin-audit-table"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="admin-audit-rows"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="admin-restricted-notice"]').text()).toContain(
       'managed by the owner or manager',
     );
@@ -411,7 +441,7 @@ describe('admin view', () => {
     const state = freshState();
     state.audit = [];
     const wrapper = await signIn(fetchMock, state);
-    expect(wrapper.find('[data-testid="admin-audit-table"]').text()).toContain(
+    expect(wrapper.find('[data-testid="admin-audit-rows"]').text()).toContain(
       'No audit entries yet.',
     );
   });

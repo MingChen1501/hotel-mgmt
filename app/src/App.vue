@@ -1155,6 +1155,221 @@ export default defineComponent({
     font-weight: 600;
   }
 
+  /* Admin console screen (Refs #546; epic #537): pixel-faithful
+     to `docs/design/Admin.dc.html:3` — no screen title or intro
+     (the v2 board carries neither; the shell header owns the
+     board tabs); `admin-console` stacks the top grid above the
+     bottom grid in one column (`gap:20px`); the top grid is
+     exactly `1.2fr 1fr` (users card left, create-account card
+     right) and the bottom grid exactly `1fr 1fr` (config card
+     left, audit card right), both with `gap:16px`; every admin
+     card renders `background:#fff;border:1px solid #D9E0DE;
+     border-radius:12px;padding:18px` as a flex column with
+     `gap:10px`, card titles (h3 elements) at `margin:0;
+     font-size:16px`; the board rows render `15px`
+     label-plus-value lines with `padding:10px 0` and `1px solid
+     #EEF1F0` top dividers in a space-between flex row; the
+     locked note renders in the balance-due accent; the create
+     form grid is exactly `1fr 1fr` with `gap:12px`, labels `14px`
+     with full-width controls (`min-height:44px;margin-top:6px`);
+     row and grid actions take the primary treatment
+     (`min-height:44px;padding:0 18px;border-radius:8px;border:0;
+     background:#0F766E;color:#fff;font-weight:600`) while the
+     unlock and refresh actions take the secondary treatment
+     (`1px solid #0F766E` border, white fill, teal ink).
+     PrimeVue stays as logic carrier only: Card/Button/InputText/
+     Password/Message defaults are overridden here wherever they
+     diverge from the design. Token values live in
+     `src/theme/tokens.ts`
+     (`colors.primary/muted/cardBorder/rowDivider/balanceDue`);
+     this rule duplicates them because CSS cannot import the TS
+     constants. Views carry no style blocks (M4), so the
+     presentation lives here. Behaviour, reads, mutations, and
+     hooks hold exactly as today. */
+  #shell [data-testid="admin-console"] {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  #shell .admin-grid-top {
+    display: grid;
+    grid-template-columns: 1.2fr 1fr;
+    gap: 16px;
+    align-items: start;
+  }
+
+  #shell .admin-grid-bottom {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    align-items: start;
+  }
+
+  #shell [data-testid="admin-users-card"].p-card,
+  #shell [data-testid="admin-create-card"].p-card,
+  #shell [data-testid="admin-config-card"].p-card,
+  #shell [data-testid="admin-audit-card"].p-card {
+    border: 1px solid #D9E0DE;
+    border-radius: 12px;
+    background: #FFFFFF;
+    box-shadow: none;
+    margin: 0;
+  }
+
+  #shell [data-testid="admin-users-card"] .p-card-body,
+  #shell [data-testid="admin-create-card"] .p-card-body,
+  #shell [data-testid="admin-config-card"] .p-card-body,
+  #shell [data-testid="admin-audit-card"] .p-card-body {
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  #shell [data-testid="admin-users-card"] .p-card-caption,
+  #shell [data-testid="admin-users-card"] .p-card-content,
+  #shell [data-testid="admin-create-card"] .p-card-caption,
+  #shell [data-testid="admin-create-card"] .p-card-content,
+  #shell [data-testid="admin-config-card"] .p-card-caption,
+  #shell [data-testid="admin-config-card"] .p-card-content,
+  #shell [data-testid="admin-audit-card"] .p-card-caption,
+  #shell [data-testid="admin-audit-card"] .p-card-content {
+    padding: 0;
+  }
+
+  /* Card titles are h3 elements rendering the design h3
+     `16px` values (`docs/design/Admin.dc.html:3`). */
+  #shell [data-testid="admin-users-card"] .p-card-title h3,
+  #shell [data-testid="admin-create-card"] .p-card-title h3,
+  #shell [data-testid="admin-config-card"] .p-card-title h3,
+  #shell [data-testid="admin-audit-card"] .p-card-title h3 {
+    font-size: 16px;
+    margin: 0;
+    color: #1B2B2A;
+  }
+
+  /* Admin rows render the design `15px` label-plus-value lines
+     (`docs/design/Admin.dc.html:3`): one space-between flex row
+     per line (`display:flex;align-items:center;
+     justify-content:space-between`), `padding:10px 0` with
+     `1px solid #EEF1F0` top dividers. The locked note renders in
+     the balance-due accent; the empty message stays as flow
+     state in the muted `15px` treatment. */
+  #shell [data-testid="admin-view"] .admin-rows {
+    display: flex;
+    flex-direction: column;
+  }
+
+  #shell [data-testid="admin-view"] .admin-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 10px 0;
+    border-top: 1px solid #EEF1F0;
+    font-size: 15px;
+    color: #1B2B2A;
+  }
+
+  #shell [data-testid="admin-view"] .admin-row strong {
+    font-weight: 700;
+  }
+
+  #shell [data-testid="admin-view"] .admin-row select {
+    min-height: 44px;
+    font: inherit;
+  }
+
+  #shell [data-testid="admin-view"] .admin-locked {
+    color: #8A4B08;
+  }
+
+  #shell [data-testid="admin-view"] .admin-empty {
+    padding: 18px 0;
+    margin: 0;
+    color: #4B5D5B;
+    font-size: 15px;
+  }
+
+  /* Create-account form (`docs/design/Admin.dc.html:3`): the
+     `1fr 1fr` label grid with `gap:12px`; labels are `14px`
+     with full-width controls (`min-height:44px;
+     margin-top:6px`); the form stacks the grid above the
+     full-width primary create action. */
+  #shell [data-testid="admin-view"] .admin-create-form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  #shell [data-testid="admin-view"] .admin-form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  #shell [data-testid="admin-view"] label {
+    display: block;
+    font-size: 14px;
+    color: #1B2B2A;
+  }
+
+  #shell [data-testid="admin-view"] label input,
+  #shell [data-testid="admin-view"] label select,
+  #shell [data-testid="admin-view"] label .p-inputtext {
+    display: block;
+    width: 100%;
+    min-height: 44px;
+    margin-top: 6px;
+    box-sizing: border-box;
+    font: inherit;
+  }
+
+  /* The secret field pairs a standalone label with the
+     password control (the control sits outside the label so the
+     Password live-region text stays out of the label the
+     design-facts gate collects, Refs #542); the control takes
+     the same full-width `44px` treatment below its label. */
+  #shell [data-testid="admin-view"] .admin-form-grid .p-password {
+    display: block;
+    width: 100%;
+    margin-top: 6px;
+  }
+
+  #shell [data-testid="admin-view"] .admin-form-grid .p-password input {
+    width: 100%;
+    min-height: 44px;
+    box-sizing: border-box;
+    font: inherit;
+  }
+
+  /* Design action buttons: save role and create account take the
+     primary action treatment (`docs/design/Admin.dc.html:3`:
+     `min-height:44px;padding:0 18px;border-radius:8px;border:0;
+     background:#0F766E;color:#fff;font-weight:600`); unlock and
+     refresh take the secondary treatment (`1px solid #0F766E`
+     border, white fill, teal ink). */
+  #shell [data-testid="admin-view"] .admin-action.p-button {
+    min-height: 44px;
+    padding: 0 18px;
+    border-radius: 8px;
+    border: 0;
+    background: #0F766E;
+    color: #FFFFFF;
+    font-weight: 600;
+  }
+
+  #shell [data-testid="admin-view"] .admin-action-secondary.p-button {
+    min-height: 44px;
+    padding: 0 18px;
+    border-radius: 8px;
+    border: 1px solid #0F766E;
+    background: #FFFFFF;
+    color: #0F766E;
+    font-weight: 600;
+  }
+
   /* Rooms map screen (Refs #523, #543; restyle spec section 5.5,
      AC-RST-6): pixel-faithful to `docs/design/Rooms.dc.html:2` —
      the title row is a flex row with `justify-content:space-between`

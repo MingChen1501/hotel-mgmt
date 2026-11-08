@@ -135,9 +135,9 @@ describe('migration shell router', () => {
   );
 });
 
-// Per-route document titles (Refs #495 S2): the six design screens
-// carry their board title in the route meta so the shell can apply
-// it as the served document title; print, admin, and the
+// Per-route document titles (Refs #495 S2, Refs #546): the seven
+// design screens carry their board title in the route meta so the
+// shell can apply it as the served document title; print and the
 // placeholder stay on the default title.
 describe('per-route document titles', () => {
   const expected: Record<string, { key: string; fallback: string }> = {
@@ -147,12 +147,13 @@ describe('per-route document titles', () => {
     onboarding: { key: 'desk.shell.doc_title_onboarding', fallback: 'First-time setup' },
     rooms: { key: 'desk.shell.doc_title_rooms', fallback: 'Room map' },
     folio: { key: 'desk.shell.doc_title_folio', fallback: 'Folio' },
+    admin: { key: 'desk.shell.doc_title_admin', fallback: 'Admin board' },
   };
 
-  it('carries the design-board title meta on the six design screens', () => {
+  it('carries the design-board title meta on the seven design screens', () => {
     const router = createAppRouter();
     const routes = router.getRoutes();
-    expect(Object.keys(expected)).toHaveLength(6);
+    expect(Object.keys(expected)).toHaveLength(7);
     for (const [name, title] of Object.entries(expected)) {
       const route = routes.find((candidate) => candidate.name === name);
       expect(route, `route ${name} is registered`).toBeDefined();
@@ -161,10 +162,10 @@ describe('per-route document titles', () => {
     }
   });
 
-  it('leaves print, admin, and the placeholder on the default title', () => {
+  it('leaves print and the placeholder on the default title', () => {
     const router = createAppRouter();
     const routes = router.getRoutes();
-    for (const name of ['print', 'admin', 'placeholder']) {
+    for (const name of ['print', 'placeholder']) {
       const route = routes.find((candidate) => candidate.name === name);
       expect(route, `route ${name} is registered`).toBeDefined();
       expect(route?.meta.docTitleKey).toBeUndefined();
@@ -179,7 +180,7 @@ describe('per-route document titles', () => {
     const vi = (await import('../../messages/vi.json')).default as {
       messages: Record<string, string>;
     };
-    // The served vi titles match the six design-board <title> values
+    // The served vi titles match the seven design-board <title> values
     // plus the default (see docs/design/*.dc.html).
     const viTitles: Record<string, string> = {
       desk: 'Bảng lễ tân',
@@ -188,6 +189,7 @@ describe('per-route document titles', () => {
       onboarding: 'Thiết lập lần đầu',
       rooms: 'Sơ đồ phòng',
       folio: 'Hoá đơn',
+      admin: 'Quản trị',
     };
     for (const [name, title] of Object.entries(expected)) {
       expect(en.messages[title.key], `en ${title.key}`).toBe(title.fallback);

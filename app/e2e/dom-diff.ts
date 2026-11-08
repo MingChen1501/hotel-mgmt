@@ -14,9 +14,12 @@
 // (the spec waits for the shell loading marker to detach and the
 // template root to resolve) — the raw shell bytes never enter a
 // diff. Design-side allowlist paths are rooted at that rendered root
-// (see the hook comment below); the Admin board has no app screen
-// yet and stays out of both gates (DEFERRED per
-// `docs/testing/dom-diff-allowlist.md` section 2, Refs #546).
+// (see the hook comment below); the Admin board joined both gates
+// when #546 landed (was DEFERRED per
+// `docs/testing/dom-diff-allowlist.md` section 2, Refs #546) and
+// reports on EMPTY_ALLOWLIST until owner-approved exemptions land —
+// its example user rows, config values, and audit times are live
+// dynamic data with no allowlist entry yet.
 //
 // What each node carries (acceptance criteria 1-2, #515 full
 // computed inventory):

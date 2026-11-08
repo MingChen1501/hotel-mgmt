@@ -44,6 +44,9 @@ describe('shell document titles', () => {
     await router.push('/folio');
     await nextTick();
     expect(document.title).toBe('Folio');
+    await router.push('/admin');
+    await nextTick();
+    expect(document.title).toBe('Admin board');
     await router.push('/onboarding');
     await nextTick();
     expect(document.title).toBe('First-time setup');
@@ -54,9 +57,6 @@ describe('shell document titles', () => {
       global: { plugins: [createPinia(), router] },
     });
     await router.push('/print');
-    await nextTick();
-    expect(document.title).toBe('Hotel Management — Desk');
-    await router.push('/admin');
     await nextTick();
     expect(document.title).toBe('Hotel Management — Desk');
   });
@@ -84,5 +84,10 @@ describe('shell document titles', () => {
     await router.push('/rooms');
     await nextTick();
     expect(document.title).toBe('Sơ đồ phòng');
+    await router.push('/admin');
+    await nextTick();
+    // The seventh board title: the admin route serves the
+    // `Quản trị` board title in the staff locale (Refs #546).
+    expect(document.title).toBe('Quản trị');
   });
 });
