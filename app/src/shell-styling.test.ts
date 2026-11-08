@@ -211,6 +211,32 @@ describe('locale-label and locale-pill ink contrast (Refs #455, #571)', () => {
     expect(resting).toBe(deskTokens.shell.pillInkOnTeal.toUpperCase());
     expect(pressed).toBe(deskTokens.shell.pillInkOnTeal.toUpperCase());
   });
+
+  // Refs #564 (NFR-DSP-2): Sign out moved off the teal bar into the
+  // white account panel. The header white ring would paint at ~1:1
+  // there, so the control keeps the shell default teal ring; assert
+  // that ring against the surface it actually renders on. The
+  // rendered ring colour is also pinned in Chromium by
+  // `app/e2e/signin.spec.ts`; `shell-restyle.test.ts` keeps the
+  // control out of the teal-bar white-ring scope.
+  it('keeps the account-panel Sign out focus ring readable on white', () => {
+    const blocks = styleBlocks(appSource);
+    const panel = /#shell \.shell-session-menu\s*\{([^}]*)\}/.exec(blocks[0]);
+    expect(panel, 'missing account panel rule').not.toBeNull();
+    const panelFill = /background\s*:\s*(#[0-9A-Fa-f]{6})/.exec((panel as RegExpExecArray)[1]);
+    expect(panelFill, 'missing account panel fill').not.toBeNull();
+    const ring = /#shell :focus-visible\s*\{[^}]*outline\s*:\s*2px solid (#[0-9A-Fa-f]{6})/.exec(
+      blocks[0],
+    );
+    expect(ring, 'missing shell default focus ring').not.toBeNull();
+    const ringColor = (ring as RegExpExecArray)[1].toUpperCase();
+    // Fail on the regression value explicitly: white is the invisible
+    // ring on this white surface.
+    expect(ringColor, 'the panel sign-out ring is the header white').not.toBe('#FFFFFF');
+    expect(ringColor).toBe(deskTokens.focus.ringColor.toUpperCase());
+    expect(contrastRatio(ringColor, (panelFill as RegExpExecArray)[1].toUpperCase()))
+      .toBeGreaterThanOrEqual(4.5);
+  });
 });
 
 describe('keyboard-focus visibility (M5)', () => {

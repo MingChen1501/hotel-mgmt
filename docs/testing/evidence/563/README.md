@@ -20,12 +20,14 @@ do not drift.
   refreshed at `c02553e` after the `G-MN-4` zero-`asOf` fix.
   `side-by-side-shell-nav-vi.png` was refreshed for the `G-SH-1` /
   `G-SH-2` fix (#564) in that PR: the live half now measures the
-  design's 60px single row at 1200px, with the compact `VI | EN` pill and
-  the account menu holding the signed-in name and Sign out. That refresh
-  used the built bundle with the hotel-config read answered locally (the
-  shell half carries no per-screen data), the same technique as the gate
-  image below, and keeps the audit's configured hotel name so the pair
-  stays comparable.
+  design's 60px single row at 1200px, with the compact `VI | EN` pill
+  and the closed account disclosure's `Tài khoản` trigger at the end of
+  the row (the panel is an overflow layer, so the capture shows the
+  bar, not the open menu). That refresh used the built bundle with the
+  hotel-config read answered locally (the shell half carries no
+  per-screen data), the same technique as the gate image below, and
+  keeps the audit's configured hotel name so the pair stays
+  comparable.
 - `app-signin-gate-vi.png` was refreshed for the `G-SH-3` fix (#571) from the
   built bundle at 1200px in `vi`: the gate frame is signed out and carries no
   backend data, so the boot config call was answered locally instead of

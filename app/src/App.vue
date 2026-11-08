@@ -2083,15 +2083,22 @@ export default defineComponent({
   }
 
   /* Focus stays visible on the teal bar (NFR-DSP-2): the shell
-     default teal ring would vanish on #0F4C47, so every header
-     interactive element — nav tabs, locale pill buttons, and the
-     header sign-out button — takes the white ring instead, except
-     the inverted active tab, where the teal ring reads on the
-     white pill (Refs #458, Refs #518). */
+     default teal ring would vanish on #0F4C47, so every control
+     that actually renders on the bar — nav tabs, locale pill
+     buttons, and the account trigger — takes the white ring
+     instead, except the inverted active tab, where the teal ring
+     reads on the white pill (Refs #458, Refs #518).
+     Sign out is deliberately NOT in this list (Refs #564): it
+     renders inside the white account panel
+     (`#shell .shell-session-menu`), where the white ring painted
+     at ~1:1 and hid the keyboard indicator. Without this scope it
+     inherits the shell default `#0F766E` ring from
+     `#shell :focus-visible`, which reads on white at ~5.5:1. The
+     rendered ring colour is pinned in Chromium by
+     `app/e2e/signin.spec.ts` (computed style, keyboard path). */
   #shell .shell-nav .shell-nav-item:not(.shell-nav-active):focus-visible,
   #shell .shell-locale .p-button:focus-visible,
-  #shell .shell-nav [data-testid="shell-session-trigger"]:focus-visible,
-  #shell .shell-nav [data-testid="shell-signout"]:focus-visible {
+  #shell .shell-nav [data-testid="shell-session-trigger"]:focus-visible {
     outline-color: #FFFFFF;
   }
 

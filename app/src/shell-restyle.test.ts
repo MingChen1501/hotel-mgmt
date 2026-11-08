@@ -124,14 +124,24 @@ describe('R1 shell/nav design values (Refs #518)', () => {
     expect(ruleBody('#shell .shell-nav .p-button')).toContain('min-height: 44px');
   });
 
-  it('keeps focus visible on the header sign-out button', () => {
-    // NFR-DSP-2 on the teal bar (Refs #518): the shell default
-    // teal ring would vanish on #0F4C47, so the sign-out button
-    // takes the white ring like the other header controls.
-    expect(appSource).toContain('[data-testid="shell-signout"]:focus-visible');
-    const override = /([^{}]*shell-signout[^:{\n]*:focus-visible[^{}]*)\{([^}]*)\}/.exec(appSource);
-    expect(override, 'missing sign-out focus override').not.toBeNull();
-    expect((override as RegExpExecArray)[2]).toContain('outline-color: #FFFFFF');
+  it('leaves the account panel Sign out on the shell default focus ring', () => {
+    // Refs #564 (NFR-DSP-2): Sign out renders inside the white
+    // account panel, not on the teal bar, so the header's white ring
+    // painted at ~1:1 there and hid the keyboard indicator. The
+    // control must stay out of the teal-bar scope list and inherit
+    // the shell default `#0F766E` ring, which reads on the white
+    // panel. This is the fast source-level backstop: the RENDERED
+    // ring is pinned in Chromium by `app/e2e/signin.spec.ts`
+    // ("keeps Sign out's focus ring visible on the white account
+    // panel"), because jsdom cannot resolve the `:focus-visible`
+    // cascade. The contrast of that ring on the panel surface is
+    // asserted in `shell-styling.test.ts`.
+    expect(appSource).not.toContain('[data-testid="shell-signout"]:focus-visible');
+    // The control keeps keyboard focus by inheriting the one default
+    // ring, so that rule has to exist and carry the ring token.
+    expect(ruleBody('#shell :focus-visible')).toContain(
+      `2px solid ${deskTokens.focus.ringColor}`,
+    );
   });
 });
 
