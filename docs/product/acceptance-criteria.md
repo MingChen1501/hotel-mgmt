@@ -391,12 +391,13 @@ Product-owner rollout spec: `docs/product/desk-ui-design-rollout.md`
 conflicting parts of the #412 journey record (D-12 in
 `docs/project/decision-log.md`); each conflict found during
 implementation is recorded on the affected sub-issue with the
-owner decision. These 13 conditions cover the six screens
+owner decision. These 14 conditions cover the six screens
 (Main #420, Stay #422, Onboarding #425 plus steps 2–4 in #438,
 Rooms #424, Book #421, Folio #423) plus the shared shell,
 the catalogue rule, the business-date display decision
-(#503, AC-DSK-12), and the quote/folio money and date display
-decision (#565, AC-DSK-13). They
+(#503, AC-DSK-12), the quote/folio money and date display
+decision (#565, AC-DSK-13), and the open-folio guest and room
+context in the charges-card title (#568, AC-DSK-14). They
 add no MVP capability: the four restyles change presentation
 only, the Rooms map visualises existing room state
 (`US-RMS-1`), and the wizard operationalises first-run setup
@@ -520,6 +521,22 @@ below check behaviour only.
   (Refs #565; presentation only, no MVP capability added, no FR
   wording changed).
 
+- AC-DSK-14 — Given a stay with a folio and a resolvable guest and
+  room, when staff open that folio in either locale, then the
+  charges-card title names the open folio's guest and room like the
+  board (VI `Khoản phí · Lê Minh · P.201`, EN
+  `Charges · Lê Minh · Room 201`) through one new catalogue key,
+  while the raw stay and folio IDs stay behind the existing
+  reference disclosure and no record ID appears in the title or the
+  balance line; when the typed stay ID changes the guest and room
+  context clears immediately and a slow read for the earlier stay
+  never paints, a refused stay read keeps the plain title, and an
+  unresolved half takes the catalogue wording (`Unknown guest`,
+  `Room number unavailable`) — never an ID. Traces to: US-BIL-1,
+  US-GST-1, US-RMS-1; FR-BIL-1, FR-GST-1, FR-RMS-1 (Refs #568;
+  reader-visible title context only, no MVP capability added, no
+  FR wording changed).
+
 Rollout done when: the six sub-issues each close with a merged
 implementation PR (the wizard slice spans #425 step 1 plus the
 #438 steps 2–4 PR), every screen checks against its design file
@@ -527,9 +544,11 @@ card by card, the #412 conflicts (if any) carry owner
 decisions on the affected sub-issues, the shell, catalogue,
 and print-preservation rules above hold on all six screens,
 and the business-date lines render per AC-DSK-12 with ISO kept
-on the wire, and the quote and folio amounts render the design
+on the wire, the quote and folio amounts render the design
 VND shape with the quote nights in the desk date form per
-AC-DSK-13 (values and print unchanged).
+AC-DSK-13 (values and print unchanged), and the Folio charges
+card names the open folio's guest and room with the raw IDs
+still behind the reference disclosure per AC-DSK-14.
 
 ## 12. Desk UI pixel-faithful restyle (Refs #517)
 
@@ -561,7 +580,11 @@ schema v1 excludes (layout geometry, typography, radii, spacing),
 reviewed by the owner per screen. The money and quote-date display
 shape is decided separately by AC-DSK-13 (#565, rollout spec
 section 6.8): the restyle conditions below cover layout and tokens
-only, and the quote/folio renders follow that display decision.
+only, and the quote/folio renders follow that display decision. The
+open folio's guest and room context in the charges-card title is
+likewise decided by AC-DSK-14 (#568, rollout spec section 6.9): the
+Folio restyle covers layout and tokens, and the title composition
+follows that decision.
 
 - AC-RST-1 — Given staff are signed in on any desk surface, when
   they look at the shell, then the teal header shows the
@@ -667,11 +690,12 @@ served-legacy half of AC-SHL-4 are superseded as marked above;
 AC-SHL-2, AC-SHL-5, AC-SHL-6, AC-SHL-7, and the mirror half of
 AC-SHL-4 stand.
 
-Rollout addendum (Refs #419, plus #438, #503, and #565): 13 desk-UI
-conditions (AC-DSK-1..13,
+Rollout addendum (Refs #419, plus #438, #503, #565, and #568): 14
+desk-UI conditions (AC-DSK-1..14,
 section 11) cover the six-screen Claude design rollout plus the
 onboarding steps 2–4 follow-up, the business-date display
-decision, and the quote/folio money and date display decision.
+decision, the quote/folio money and date display decision, and the
+open-folio guest and room context in the charges-card title.
 Each traces to its existing
 MVP story and FR; no condition adds an
 MVP capability, invents a story, or changes FR wording, so the

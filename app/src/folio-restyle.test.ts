@@ -68,6 +68,7 @@ describe('Folio v2 design values (Refs #545)', () => {
       'data-testid="folio-open-error"',
       'data-testid="folio-layout"',
       'data-testid="folio-charges-card"',
+      'data-testid="folio-charges-title"',
       'data-testid="folio-charge-lines"',
       'testid-prefix="folio-details"',
       'data-testid="folio-charge-kind"',

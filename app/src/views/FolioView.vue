@@ -70,9 +70,15 @@
         class="folio-layout"
         data-testid="folio-layout"
       >
+        <!-- Charges card (Refs #568, `docs/design/Folio.dc.html:3`):
+          the board titles it `Khoản phí · Lê Minh · P.201`, so the
+          live title names the open folio's guest and room. The raw
+          stay/folio IDs stay behind the reference disclosure
+          (issue #372), and an unresolved half falls back to the
+          catalogue wording rather than a record ID. -->
         <Card data-testid="folio-charges-card">
             <template #title>
-              <h3>{{ t('desk.folio.folio_heading', {}, 'Charges') }}</h3>
+              <h3 data-testid="folio-charges-title">{{ chargesHeading }}</h3>
             </template>
             <template #content>
               <!-- Board rows (Refs #545,
@@ -368,6 +374,24 @@ interface Folio {
   payments?: unknown[];
 }
 
+// Stay pointer the folio belongs to (Refs #568): the guest and the
+// room the charges card names. Reads only identifiers — the human
+// name and room number come from the guest and room reads below.
+interface StayPointer {
+  guestId?: string;
+  currentRoomId?: string;
+  roomId?: string;
+}
+
+// Open-folio context the charges card title names (Refs #568).
+// Either half may stay empty when its read fails (the other half and
+// the plain title still render); both empty keeps the plain title, so
+// no half ever falls back to a record ID.
+interface StayContext {
+  guestName: string;
+  roomNumber: string;
+}
+
 interface EntryRow {
   key: string;
   item: string;
@@ -518,6 +542,78 @@ function errorMessage(): string {
   );
 }
 
+// Housekeeping states a folio's room can be in, ordered so the
+// common cases resolve in one or two reads (Refs #568): an in-house
+// stay's room is occupied, and a checked-out stay's room is dirty
+// next. The desk board uses the same five lanes.
+const ROOM_STATES = ['occupied', 'vacant-dirty', 'vacant-clean', 'vacant-inspected', 'out-of-order'];
+
+// Best-effort reader (Refs #568, issue #372 rule): a failed read
+// resolves to empty so the charges title keeps its plain wording,
+// while a signed-out response still reaches the one 401 gate.
+async function bestEffortText(read: () => Promise<string>): Promise<string> {
+  try {
+    return await read();
+  } catch (err) {
+    if (isSignedOut(err)) {
+      throw err;
+    }
+    return '';
+  }
+}
+
+async function readGuestName(guestId: string | undefined): Promise<string> {
+  if (!guestId) {
+    return '';
+  }
+  const guest = await apiFetch<{ fullName?: string }>('/v1/guests/GetGuest', {
+    method: 'POST',
+    body: JSON.stringify({ guestId }),
+  });
+  return guest.fullName ?? '';
+}
+
+async function readRoomNumber(roomId: string | undefined): Promise<string> {
+  if (!roomId) {
+    return '';
+  }
+  for (const state of ROOM_STATES) {
+    const listed = await apiFetch<{ rooms?: Array<{ roomId?: string; number?: string }> }>(
+      '/v1/rooms/ListRoomsByState',
+      { method: 'POST', body: JSON.stringify({ state }) },
+    );
+    const match = (listed.rooms ?? []).find((room) => room.roomId === roomId);
+    if (match?.number) {
+      return match.number;
+    }
+  }
+  return '';
+}
+
+// The open folio's guest and room (Refs #568,
+// `docs/design/Folio.dc.html:3`): resolved from the stay the folio
+// belongs to through the existing GetStay / GetGuest reads plus the
+// room-state read the desk already uses (no new endpoint). A stay
+// read failure leaves both halves empty, and a room the states do
+// not list keeps the room half empty — the title never shows a UUID.
+async function readStayContext(stayId: string): Promise<StayContext> {
+  let stay: StayPointer;
+  try {
+    stay = await apiFetch<StayPointer>('/v1/stay/GetStay', {
+      method: 'POST',
+      body: JSON.stringify({ stayId }),
+    });
+  } catch (err) {
+    if (isSignedOut(err)) {
+      throw err;
+    }
+    return { guestName: '', roomNumber: '' };
+  }
+  const guestName = await bestEffortText(() => readGuestName(stay.guestId));
+  const roomNumber = await bestEffortText(() => readRoomNumber(stay.currentRoomId ?? stay.roomId));
+  return { guestName, roomNumber };
+}
+
 function newIdempotencyKey(): string {
   try {
     const randomId = globalThis.crypto?.randomUUID?.();
@@ -568,6 +664,13 @@ export default defineComponent({
     // Exact record IDs stay hidden by default (issue #372 owner
     // amendment) and surface only in these reference details.
     const folioDetails = ref<ReferenceItem[]>([]);
+    // Open-folio context (Refs #568): the guest and room the charges
+    // card names. Empty until the stay read resolves, and cleared as
+    // soon as the typed stay ID changes — a request token drops a
+    // slow read so an older folio's context never paints over a
+    // newer one.
+    const stayContext = ref<StayContext>({ guestName: '', roomNumber: '' });
+    let contextRequest = 0;
     const openError = ref('');
     const opening = ref(false);
 
@@ -640,11 +743,37 @@ export default defineComponent({
       return current ? formatAmount(current.balanceMinor) : '';
     });
 
+    // Charges card title (Refs #568, `docs/design/Folio.dc.html:3`):
+    // the board draws `Khoản phí · Lê Minh · P.201`. The plain title
+    // stands until the context resolves; once either half is known an
+    // unresolved half takes the catalogue wording (`Unknown guest`,
+    // `Room number unavailable`) — never a raw record ID (issue #372
+    // rule).
+    const chargesHeading = computed<string>(() => {
+      const heading = t('desk.folio.folio_heading', {}, 'Charges');
+      const context = stayContext.value;
+      if (!context.guestName && !context.roomNumber) {
+        return heading;
+      }
+      const guest = context.guestName
+        || t('desk.today.unknown_guest', {}, 'Unknown guest');
+      const room = context.roomNumber
+        ? t('desk.today.room_short', { room: context.roomNumber }, `Room ${context.roomNumber}`)
+        : t('desk.today.room_unknown', {}, 'Room number unavailable');
+      return t(
+        'desk.folio.charges_context',
+        { heading, guest, room },
+        `${heading} · ${guest} · ${room}`,
+      );
+    });
+
     // The shell owns the one sign-in gate (Refs #338): a
     // 401/UNAUTHENTICATED expires the shared session and the gate
     // takes over with the session-expired notice.
     function expireToGate(): void {
       folio.value = null;
+      stayContext.value = { guestName: '', roomNumber: '' };
+      contextRequest += 1;
       session.expireSession();
     }
 
@@ -657,18 +786,44 @@ export default defineComponent({
       ];
     }
 
+    // Re-resolve the context for the folio just rendered (Refs #568).
+    // The token makes the newest request the only one that paints, so
+    // a slow read never names the previous guest after the typed stay
+    // ID changed; the context itself clears on that change
+    // (`onStayIdInput`), so re-reads after a post or payment keep the
+    // title steady instead of blanking it. The read is started but not
+    // joined, so the caller's busy state clears on its own response
+    // (product section 6.9 state clause).
+    function loadStayContext(stayId: string): void {
+      const request = ++contextRequest;
+      void readStayContext(stayId)
+        .then((resolved) => {
+          if (request === contextRequest) {
+            stayContext.value = resolved;
+          }
+        })
+        .catch((err: unknown) => {
+          if (isSignedOut(err)) {
+            expireToGate();
+          }
+        });
+    }
+
     async function readFolio(id: string): Promise<void> {
       const next = await apiFetch<Folio>('/v1/billing/GetFolioBalance', {
         method: 'POST',
         body: JSON.stringify({ stayId: id, actor: session.displayName ?? '' }),
       });
       renderFolio(next);
+      loadStayContext(next.stayId || id);
     }
 
     function onStayIdInput(): void {
       folio.value = null;
       folioNotice.value = '';
       folioDetails.value = [];
+      stayContext.value = { guestName: '', roomNumber: '' };
+      contextRequest += 1;
       openError.value = '';
     }
 
@@ -842,6 +997,7 @@ export default defineComponent({
     return {
       t,
       stayId,
+      chargesHeading,
       folioBalance,
       folioStatus,
       folioDetails,

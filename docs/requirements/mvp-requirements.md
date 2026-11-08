@@ -2378,5 +2378,181 @@ row says so and the row must stay green from now on.
   traces to the issue-body acceptance only through the
   decision and `FR-MNY-1` / `FR-MNY-2` above.
 
+## 15. Folio open-folio guest and room context (Refs #568)
+
+Requirements delta recording the #568 fix: the Folio charges
+card titles with the open folio's guest and room (the design
+board reads `Khoản phí · Lê Minh · P.201`,
+`docs/design/Folio.dc.html:3`), composed at the desk from the
+stay the folio belongs to through the existing `GetStay` /
+`GetGuest` reads plus the room-state read the desk already
+uses. The change adds client-side reads only: no new endpoint,
+contract, schema, validation, stored value, print, or
+refusal-semantics change, and one catalogue key. Scope and
+done-conditions live with `product-owner` (`AC-DSK-14`,
+`docs/product/desk-ui-design-rollout.md` section 6.9, and
+D-17); the T2 UI contract for the surface is the section 6.9
+UI-contract delta over the restyle spec, referenced not
+reworded here; guard mapping lives with `qa-lead` and the
+per-flow diagram with the `architect`. This section records
+only the requirements delta the T2 spec gate requires: the
+decision with rationale (section 15.1), the explicit FR
+no-change statement (section 15.2), the NFR delta (section
+15.3), and the traceability inputs (section 15.4).
+
+### 15.1 Decision: no new FR — the existing reads carry the context
+
+The open-folio title composes three values the requirements
+already name, so no new functional requirement lands:
+
+- The folio is `FR-BIL-1`: opening a stay's folio shows its
+  charges, payments, and running balance. The title context
+  hangs off that same open, not a new capability.
+- The guest name is `FR-GST-1`: the guest profile already
+  carries the guest's details, and `GetGuest` is that read.
+- The room number is `FR-RMS-1`: room inventory already shows
+  every room with its live state, and `ListRoomsByState` is
+  that read.
+
+Rationale:
+
+- No new capability is added. The change reuses three
+  already-specified read operations
+  (`app/src/views/FolioView.vue:599-615`) and renders their
+  values in an existing card title; every write, balance,
+  settlement, and print path is untouched.
+- The behaviour is a presentation composition of existing
+  reads, so the binding condition is `AC-DSK-14`
+  (`product-owner`) rather than a new FR id; the FRs above
+  already state those reads' contracts and outcomes.
+- The raw identifiers stay non-visible: the title never shows
+  a stay, folio, guest, or room UUID (the #372 owner
+  amendment), and the `Stay ID` / `Folio ID` entries stay in
+  the existing reference disclosure
+  (`app/src/views/FolioView.vue:783-786`).
+- One new catalogue key `desk.folio.charges_context` ships
+  with the `{heading} · {guest} · {room}` shape in both
+  locales (`messages/en.json:467`, `messages/vi.json:467`),
+  and the existing fallback halves are reused
+  (`messages/en.json:354-357`), so `NFR-I18N-1` and
+  `NFR-DSK-1` coverage hold.
+
+### 15.2 Explicit no-change statements
+
+- Every MVP requirement in sections 1 and 2 is unchanged by
+  this change, and every item in sections 7 through 14 keeps
+  its wording and target. The desk loop (book, check-in,
+  charge, pay, check-out, print) behaves exactly as
+  specified; only the Folio charges-card title changes.
+- `FR-BIL-1` holds: one folio per stay, every charge and
+  payment, the same running balance. The title context is a
+  read-only companion, not a second folio view and not a new
+  balance source.
+- `FR-GST-1` holds: the guest profile keeps its details and
+  stay links; the title reads the stay guest's full name
+  only, and a refused guest read never leaks a guest ID.
+- `FR-RMS-1` holds: every room still appears once with its
+  live state; the title reads the room number from the same
+  inventory lanes and never shows the room ID.
+- Refusal semantics are unchanged: `FR-RTE-4`, `FR-CUS-1`,
+  and `FR-BIL-7` fire on exactly the same conditions, and
+  the new context reads are best effort — a refused stay
+  read keeps the plain title instead of surfacing an error.
+- `FR-BIL-4` and `FR-DSP-4` hold: invoice and receipt print
+  output is unchanged; the title composition never reaches
+  print.
+- One new catalogue key lands
+  (`desk.folio.charges_context`, both locales) and the
+  existing fallback halves (`desk.today.unknown_guest`,
+  `desk.today.room_unknown`) are reused; no other copy
+  changes.
+- No data-dictionary entries: the change introduces no data
+  entity or field (`data-dictionary.md` unchanged); stay,
+  guest, and room identifiers already exist and are only
+  read.
+- No business rules: no domain policy changes
+  (`business-rules.md` unchanged); `BR-43` already holds the
+  canonical-vs-display boundary.
+- The section 4 traceability table and its coverage count
+  are unchanged: this section adds no MVP capability, so the
+  mapped capabilities stand. The handoff table below (section
+  15.4) is separate and does not alter that count.
+
+### 15.3 Non-functional requirements delta: no-change statement
+
+No new NFR is added. The existing NFRs cover the change:
+
+- Desk response (`NFR-PERF-1` holds): resolving the context
+  adds three to seven client-side reads per folio open — one
+  `GetStay`, one `GetGuest`, and one to five
+  `ListRoomsByState` lane reads — on top of the existing
+  `GetFolioBalance` (`app/src/views/FolioView.vue:812-819`).
+  The Folio screen's two-second target still applies, and
+  the reads are sequential and best effort (the section 6.9
+  request-count note records the accepted desk-local cost; a
+  composed server read stays a separate decision).
+- Internationalisation (`NFR-I18N-1` holds): the title and
+  both fallback halves resolve through `t()`, VI is primary
+  (`Khoản phí · Lê Minh · P.201`) and EN the fallback
+  (`Charges · Lê Minh · Room 201`), and the one new key keeps
+  its placeholders in both locales.
+- Catalogue coverage (`NFR-DSK-1` holds): the new key ships
+  in `messages/en.json` and `messages/vi.json` with the
+  runtime mirrors byte-identical, so
+  `script/catalogue-coverage-check.sh` stays green.
+- Print isolation (`NFR-DSK-2` holds): the composition is
+  screen-only; the print views keep their current render.
+- Audit trail (`NFR-AUD-1` holds): the context is a read of
+  existing records; no write, no state change, and no new
+  audit event.
+
+### 15.4 Traceability handoff for `qa-lead`
+
+No new MVP capability is added, so each row traces to the
+#568 issue-body acceptance, `AC-DSK-14`, and rollout spec
+section 6.9. Guards the #568 change created or extended are
+named `file:line`; they must stay green from now on.
+
+| Item | Guard (on disk; the #568 change created or extended it) | Handoff note for `qa-lead` |
+|---|---|---|
+| FR-BIL-1 title context (open folio names guest and room) | `app/src/views/FolioView.test.ts:682` (EN title `Charges · Lê Minh · Room 201`), `:714-723` (VI title `Khoản phí · Lê Minh · P.201`), `:613` (the charges title resolves through `GetStay` / `GetGuest` / `ListRoomsByState` and the new key); view `app/src/views/FolioView.vue:752-768`, `:81` | Both locales must render `heading · guest · room` like the board; the plain title stands until the context resolves |
+| FR-GST-1 guest half | `app/src/views/FolioView.test.ts:698` (`GetGuest` is issued), `:655-658` (the guest read carries the stay's `guestId`); view `app/src/views/FolioView.vue:565-574`, `:612` | The guest name comes from the stay's guest; an unresolved half takes `desk.today.unknown_guest`, never a guest ID |
+| FR-RMS-1 room half | `app/src/views/FolioView.test.ts:698-704` (one `ListRoomsByState` call, the `occupied` lane), `:659-667` (the room row matches `roomId`); view `app/src/views/FolioView.vue:576-591`, `:549`, `:613` | The room number comes from the same inventory lanes the desk board uses; an unresolved half takes `desk.today.room_unknown`, never a room ID |
+| #372 raw-ID rule (no UUID by default) | `app/src/views/FolioView.test.ts:708-712` (the title and the balance line name no stay, folio, guest, or room ID); reference disclosure `app/src/views/FolioView.vue:783-786` | The title and balance line never show a record ID; the `Stay ID` / `Folio ID` entries stay behind the existing disclosure |
+| Clear on stay-ID change plus the stale-read token | `app/src/views/FolioView.test.ts:726-738` (the context clears and the title returns to `Charges` when the typed stay ID changes), `:742-766` (a slow earlier stay read never paints); view `app/src/views/FolioView.vue:795-801`, `:812-819` | A previous folio's context must never paint over a newer stay; re-reads after a post or payment keep the title steady |
+| Best-effort refusal | `app/src/views/FolioView.test.ts:769-788` (a refused stay read keeps the plain `Charges` title); view `app/src/views/FolioView.vue:599-615` | A refused read keeps the plain title and a signed-out response still reaches the one 401 gate; no error or technical code appears in the title |
+| Browser Folio flow | `app/e2e/folio.spec.ts:121-128` (the browser title names the seeded guest and `Room <number>` and contains no raw stay ID) | Authoritative run in the `browser-e2e` CI job against the lab |
+| Catalogue | `messages/en.json:467`, `messages/vi.json:467` (`desk.folio.charges_context`), `messages/en.json:354-357` (fallback halves reused); `script/catalogue-coverage-check.sh` | One new key in both locales with placeholders intact; the runtime mirrors stay byte-identical |
+| #563 evidence refresh | `docs/testing/evidence/563/README.md:69` and `:91` (the Folio image is refreshed for #568 and the title reads `Khoản phí · Lê Minh · P.201`) | The side-by-side image must show the fixed title; a later change that alters this screen owes the same refresh |
+
+### 15.5 Explicitly not specified here (plus gate dependencies)
+
+- No new screens or flows; the charges-card `h3` title is the
+  complete surface. No backend, API, contract, schema,
+  payload, validation, error-code, or print change; the three
+  read operations already exist.
+- No new design tokens or component choices (design lives
+  with `architect`): the title keeps the card-heading token
+  and the existing `Card` title slot.
+- UI contract: the T2 UI-contract delta already exists in
+  `docs/product/desk-ui-design-rollout.md` section 6.9
+  (layout and navigation scope, component mapping, token
+  scope, plain-words states, print rules) and is referenced,
+  not reworded, here, so no UI contract is missing.
+- The touched flow is the folio open, whose write behaviour
+  is unchanged; the per-flow implementation diagram for the
+  new read chain is the `architect` slice, and this section
+  does not restate it.
+- The specified change is tier T2 (reader-visible UI, values
+  and contracts unchanged). This section is its FR/NFR part;
+  the remaining T2 minimum set — acceptance criteria, the UI
+  contract reference above, traceability completion, the
+  per-flow diagram, and the `SPEC-GATE PASS` verdict —
+  belongs to `product-owner` / `architect` / `qa-lead` /
+  `spec-reviewer`.
+- The `docs/product/acceptance-criteria.md` slice for this
+  change is separate `product-owner` work; the test strategy
+  and run records are separate `qa-lead` work.
+
 <!-- ao-role: business-analyst -->
-Role: business-analyst · AO session hotel-mgmt-719
+Role: business-analyst · AO session hotel-mgmt-823

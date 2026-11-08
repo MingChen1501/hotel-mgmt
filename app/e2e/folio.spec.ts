@@ -117,6 +117,15 @@ test('charge, pay, and agree with the folio balance', async ({ page, request }) 
   expect(charges).toContain(extraName);
   const payments = await page.getByTestId('folio-payment-lines').textContent();
   expect(payments).toContain('Cash payment');
+
+  // The charges card names the open folio's guest and room like the
+  // board (`Khoản phí · Lê Minh · P.201`, `docs/design/Folio.dc.html:3`,
+  // Refs #568); the raw stay/folio IDs stay behind the reference
+  // disclosure (issue #372).
+  const title = page.getByTestId('folio-charges-title');
+  await expect(title).toContainText(ctx.guestName);
+  await expect(title).toContainText(`Room ${ctx.roomNumbers[0]}`);
+  await expect(title).not.toContainText(stayId);
 });
 
 test('undefined charge item is refused with the cause named', async ({ page, request }) => {

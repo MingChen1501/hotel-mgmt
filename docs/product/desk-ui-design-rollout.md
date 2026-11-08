@@ -144,11 +144,13 @@ appears on every printed document.
 
 ## 5. Acceptance criteria summary
 
-The binding done-conditions are `AC-DSK-1` through `AC-DSK-13`
+The binding done-conditions are `AC-DSK-1` through `AC-DSK-14`
 in `docs/product/acceptance-criteria.md` [section 11](acceptance-criteria.md)
 (`AC-DSK-9`..`AC-DSK-11` cover the steps 2–4 follow-up, Refs
 #438; see section 10; `AC-DSK-13` covers the quote/folio
-money and date display shape, Refs #565; see section 6.8).
+money and date display shape, Refs #565; see section 6.8;
+`AC-DSK-14` covers the open folio's guest and room in the
+charges-card title, Refs #568; see section 6.9).
 In short: shared shell/tokens/nav/locale behave identically on
 all six screens; each screen matches its design file closely
 enough for a reviewer to check it card by card; the Stay
@@ -160,7 +162,9 @@ desk and folio; all copy comes from the VI-primary catalogue;
 and the business-date lines render the weekday-long locale form
 per section 6.7 (`AC-DSK-12`), and the Book quote and Folio
 amounts render the design VND shape with the quote nights in the
-desk date form per section 6.8 (`AC-DSK-13`).
+desk date form per section 6.8 (`AC-DSK-13`), and the Folio charges
+card names the open folio's guest and room with the raw IDs still
+behind the reference disclosure per section 6.9 (`AC-DSK-14`).
 
 ## 6. Conflict rule with #412
 
@@ -323,7 +327,10 @@ design — live shell conformance).
   explicit stay-ID form (open card, folio table with the empty
   state, post-charge and record-payment forms) because the folio
   is per-stay data the static board cannot pre-select. The entry
-  step is user-visible flow: product call.
+  step is user-visible flow: product call. The #568 fix (section
+  6.9) names the open folio's guest and room in the charges-card
+  title from the stay the folio belongs to; it does not pre-select
+  a stay, so this F3 item stays REPORTED.
 - F4 app extras — KEPT with justification (same precedent as
   the Main deliberately kept extras, Book B4, and Stay T4): the
   h1+intro, the open-folio card with the stay-ID input, the
@@ -631,6 +638,107 @@ issue/PR, which updates the Book and Folio render sites plus
 their guards); the out-of-scope money surfaces above; and any
 API, validation, catalogue-key, or print change.
 
+### 6.9 Folio open-folio guest and room context (Refs #568)
+
+Status: product-owner scope decision for the Folio charges-card
+title. The v2 board (Refs #545) titles the card with the live folio context
+(`Khoản phí · Lê Minh · P.201`, `docs/design/Folio.dc.html:3` — guest
+name plus room), while the live screen keeps a static `Khoản phí` /
+`Charges` title and names the stay only through opaque IDs in the
+closed reference disclosure (`app/src/views/FolioView.vue:784-785`,
+the #372 rule). Tier T2 (reader-visible UI change on the Folio board
+with new client-side reads; no data-model, API-contract, schema,
+validation, print, or refusal-semantics change). The binding
+done-condition is `AC-DSK-14` in
+`docs/product/acceptance-criteria.md` [section 11](acceptance-criteria.md);
+`AC-DSK-5` keeps its existing posting/payment condition. FR/NFR
+wording stays with `business-analyst` (a no-change statement over the
+existing folio, guest, and room-inventory requirements: `FR-BIL-1`,
+`FR-GST-1`, `FR-RMS-1`), guard mapping with `qa-lead`, the per-flow
+implementation diagram with the diagram owner, and the gate verdict
+with `spec-reviewer`. Recorded as D-17 in
+`docs/project/decision-log.md`.
+
+Decision (four parts):
+
+1. **The charges card names the open folio.** With a folio open, the
+   charges-card title composes `heading · guest · room` from the stay
+   the folio belongs to: VI `Khoản phí · Lê Minh · P.201`, EN
+   `Charges · Lê Minh · Room 201`. The heading keeps the existing
+   `desk.folio.folio_heading` copy, the guest is the stay guest's full
+   name, and the room is the stay's current room number in the
+   existing locale short form (`desk.today.room_short` — VI
+   `P.{room}`, EN `Room {room}`). One new catalogue key
+   `desk.folio.charges_context` with the `{heading} · {guest} · {room}`
+   shape ships in both locales; no other copy changes.
+2. **Raw IDs stay behind the reference disclosure.** The title and the
+   balance line never show a stay, folio, guest, or room UUID (the
+   #372 owner amendment); the raw `Stay ID` / `Folio ID` entries stay
+   in the existing reference disclosure.
+3. **The context follows the open folio, never a stale one.** The
+   context clears the moment the typed stay ID changes, and it
+   re-resolves for the folio just rendered (open, post-charge, and
+   record-payment refreshes). A request token drops a slow read so a
+   previous folio's guest and room never paint over a newer stay;
+   re-reads for the same open folio keep the title steady instead of
+   blanking it.
+4. **Best effort, plain words, no guessing.** A refused stay read
+   keeps the plain `Khoản phí` / `Charges` title. When only one half
+   resolves, the other takes the existing catalogue wording
+   (`desk.today.unknown_guest` — `Khách chưa rõ` / `Unknown guest`;
+   `desk.today.room_unknown` — `Không rõ số phòng` /
+   `Room number unavailable`), never an ID. A signed-out response
+   still reaches the one 401 gate; the title never surfaces an error
+   or a technical code.
+
+Request-count note. Resolving the context adds client-side reads to
+the Folio open path: one `GetStay` for the folio's stay, one
+`GetGuest` for that stay's guest, and one to five `ListRoomsByState`
+reads (the five housekeeping lanes in order, stopping at the first
+lane that lists the room) — three to seven reads on top of the one
+`GetFolioBalance` read the screen already performs per open. The same
+context reads repeat on each post-charge and record-payment refresh.
+No new endpoint, no payload or contract change, and no read on any
+other screen. The desk-local cost is accepted for a low-traffic
+per-folio open; a server-side composed read stays a separate
+follow-up decision if the count ever matters.
+
+UI-contract delta (T2):
+
+- Layout and navigation scope: unchanged — the composition is the
+  charges card's existing `h3` title (restyle spec section 5.4 and
+  this spec's Folio card mapping); no new region, control, route, or
+  navigation scope. The title wraps at the card width and never
+  truncates the guest or room to an ID.
+- Component mapping: the existing `Card` title slot only; no new
+  component or pattern, and the reference disclosure keeps its
+  current component and placement.
+- Design tokens: unchanged — the title keeps the card-heading token
+  (restyle spec section 3); no new colour, radius, spacing, or target
+  size.
+- States in plain words: before the context resolves the plain
+  heading shows (no spinner, no blank title, and the rest of the card
+  stays usable); a failed stay, guest, or room read leaves the plain
+  heading or the catalogue fallback half; a typed stay-ID change
+  clears the context immediately; a slow read for an earlier stay
+  never shows. Refusals and errors keep their existing conditions and
+  wording.
+- Print rules: unchanged — receipts and invoices print from their own
+  view (`FR-BIL-4`, `FR-DSP-4`); the screen title composition does
+  not reach print.
+- Catalogue: every new string resolves through `t()`; the one new
+  key ships in both locales with `{param}` placeholders intact and
+  `script/catalogue-coverage-check.sh` green (section 7).
+
+Out: implementation (the downstream `dev` issue/PR on the Folio view
+and its guards, plus the #563 evidence refresh for the Folio
+`side-by-side-Folio-vi.png` pair); FR/NFR wording
+(`business-analyst`); guard mapping and traceability (`qa-lead`); any
+API, contract, schema, backend, validation, print, or
+refusal-semantics change; and the F3 stay-ID open step, which stays
+the REPORTED #498 item — this change names the open folio, it does
+not pre-select a stay.
+
 ## 7. Catalogue and locale rule
 
 - Single source of truth stays `messages/` (`messages/README.md`):
@@ -884,6 +992,14 @@ Section 4 stays the rollout-wide contract; for steps 2–4:
 | Values stay identical — minor units on the wire, ISO dates, unchanged print output | Section 6.8 (values statement and out-of-scope list); AC-DSK-13 |
 | The B3 quote-presentation item is resolved (labels and empty-vs-quoted wording) | Section 6.2 B3; section 6.8 decisions 1–2 |
 | Existing money/amount guards and the #563 evidence refresh stay green | Section 6.8 (affected surfaces); `docs/requirements/mvp-requirements.md` section 14.5; `docs/testing/evidence/563/README.md` (same-change refresh rule) |
+
+## 14. Acceptance mapping (issue #568)
+
+| Criterion | Evidence in this spec |
+|---|---|
+| With a folio open, the charges card names the guest and room like the board (`Khoản phí · Lê Minh · P.201`) | Section 6.9 decision 1; AC-DSK-14; `docs/design/Folio.dc.html:3` |
+| The context clears when the stay ID changes; no raw UUID is exposed by default | Section 6.9 decisions 2–3; AC-DSK-14; the #372 reference-disclosure rule |
+| Folio specs and the #563 evidence refresh stay green | Section 6.9 (out-of-scope list and the Folio pair refresh); `docs/testing/evidence/563/README.md` (same-change refresh rule); guards on the Folio view and browser Folio flow |
 
 <!-- ao-role: product-owner -->
 Role: product-owner · AO session hotel-mgmt-704

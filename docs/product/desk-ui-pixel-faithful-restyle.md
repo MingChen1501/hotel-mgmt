@@ -250,6 +250,11 @@ Each screen: exact design source, layout to reproduce, what stays.
   item, #498), charge posting and payment recording with running
   balance exactly as today, locale-correct amount formatting,
   folio/invoice print output unchanged.
+- Separate decision (not this restyle): the charges-card title
+  names the open folio's guest and room per `AC-DSK-14`
+  (#568, rollout spec section 6.9); the restyle covers that title's
+  layout and tokens only, and the raw IDs stay behind the reference
+  disclosure.
 - Rebuild: screen markup and styling.
 
 ### 5.5 Rooms map (#523) — `docs/design/Rooms.dc.html:2`

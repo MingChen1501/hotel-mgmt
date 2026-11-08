@@ -66,6 +66,16 @@ do not drift.
   deliberate divergence requested by #567 and recorded in the audit record.
   The pair also shows the current shell (the #564 account disclosure), so the
   pre-fix image's older shell is superseded too.
+- `side-by-side-Folio-vi.png` was refreshed for the open-folio context fix
+  (#568) from the built app bundle at 1200px in `vi` (Chromium, viewport
+  1200×1016) and the design board at the same width. The Folio screen opens
+  through a stay-ID read, so the live half's reads were answered locally with
+  the board's example folio (guest `Lê Minh`, room `201`, `Tiền phòng 2 đêm`
+  `1.800.000 đ`, `Nước uống` `60.000 đ`, `Tiền mặt` `900.000 đ`, balance
+  `960.000 đ`) instead of standing up a lab — the same technique as the Stay
+  pair. The live half now titles the charges card `Khoản phí · Lê Minh ·
+  P.201` like the board; before the fix it kept a static `Khoản phí` and
+  named the stay only through opaque IDs in the closed reference disclosure.
 
 ## Images
 
@@ -78,7 +88,7 @@ do not drift.
 | Onboarding | [side-by-side-Onboarding-vi.png](side-by-side-Onboarding-vi.png) | 2420×1016 | Setup wizard vs the board's setup panel; `G-OB-1` |
 | Rooms | [side-by-side-Rooms-vi.png](side-by-side-Rooms-vi.png) | 2420×1016 | Room map, chips, and unassigned group; `G-RM-1`, `G-RM-2` |
 | Book | [side-by-side-Book-vi.png](side-by-side-Book-vi.png) | 2420×1016 | Booking form and quote rows; refreshed for `G-BK-1` (#566) — the arrival/departure fields show the desk `dd/mm/yyyy` form (`08/12/2026` / `10/12/2026`) instead of the browser-locale native picker; quote rows keep the `G-BK-2` `dd/mm/yyyy` dates and VND `đ` amounts; `G-BK-1`, `G-BK-2`, `G-BK-3` |
-| Folio | [side-by-side-Folio-vi.png](side-by-side-Folio-vi.png) | 2420×1016 | Folio lines, amounts, and balance; refreshed for `G-FO-2` (#565) — lines and balance carry the design VND `đ` shape; `G-FO-1` |
+| Folio | [side-by-side-Folio-vi.png](side-by-side-Folio-vi.png) | 2420×1016 | Folio lines, amounts, balance, and the open folio's guest/room in the charges-card title; refreshed for #568 — the title reads `Khoản phí · Lê Minh · P.201` like the board, while lines and balance keep the `G-FO-2` `đ` shape; `G-FO-1` |
 | Admin | [side-by-side-Admin-vi.png](side-by-side-Admin-vi.png) | 2420×1491 | User, config, and audit cards; `G-AD-1`, `G-AD-2` |
 
 ## Living record
