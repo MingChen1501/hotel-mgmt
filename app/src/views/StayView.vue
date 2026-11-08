@@ -134,15 +134,26 @@
               </option>
             </select>
           </label>
+          <!-- Reviewer select (issue #567; #563 audit `G-ST-1`): the
+            board draws `Người duyệt` as a select, so the panel offers
+            the catalogue-defined role list instead of free text and
+            keeps sending the selected role string as `approvedBy`. -->
           <label for="stay-approval-by">
             {{ t('desk.stay.approved_by', {}, 'Reviewer') }}
-            <InputText
+            <select
               id="stay-approval-by"
               v-model="approvalBy"
               name="approval-by"
-              autocomplete="off"
               data-testid="stay-approval-by"
-            />
+            >
+              <option
+                v-for="role in reviewerRoleOptions"
+                :key="role.value"
+                :value="role.value"
+              >
+                {{ role.label }}
+              </option>
+            </select>
           </label>
           <!-- Folio-reconciliation hint (Refs #541,
             `docs/design/Stay.dc.html:3`: `font-size:14px;
@@ -329,12 +340,14 @@ import ReferenceDetails, { type ReferenceItem } from '../components/ReferenceDet
 // Design rebuild (Refs #541, `docs/design/Stay.dc.html:3`): the
 // two-panel v2 board — check-in (arrival select, room select, the
 // amber pick-a-ready-room note, check-in button) beside check-out
-// (departing-guest select, reviewer input, the muted fully-paid
-// gate note, review-folio button) on the `1fr 1fr` grid. The
-// pre-v2 lists, move, and actual-times sections are gone (zero
-// extras vs the board); panel data still reads through the same
-// list endpoints. The review-to-checkout flow state (folio status,
-// approval form, check-out button, confirm dialog) carries no
+// (departing-guest select, reviewer role select, the muted
+// fully-paid gate note, review-folio button) on the `1fr 1fr` grid.
+// The reviewer select (issue #567; #563 audit `G-ST-1`) offers the
+// catalogue-defined roles and keeps sending the selected role string
+// as `approvedBy`. The pre-v2 lists, move, and actual-times sections
+// are gone (zero extras vs the board); panel data still reads through
+// the same list endpoints. The review-to-checkout flow state (folio
+// status, approval form, check-out button, confirm dialog) carries no
 // board counterpart and keeps its current presentation and copy.
 // PrimeVue stays as logic carrier only. No call-order change.
 
@@ -510,7 +523,20 @@ export default defineComponent({
     const checkingOut = ref(false);
     const checkoutDialog = ref(false);
     const showApproval = ref(false);
-    const approvalBy = ref('');
+    // Reviewer select (issue #567; #563 audit `G-ST-1`): the panel
+    // reviewer is a role select over the MVP's fixed role catalogue
+    // (requirements section 3.2), so `approvedBy` always carries one
+    // of the hotel's defined role strings instead of arbitrary text.
+    // Labels resolve through the catalogue in both locales
+    // (`desk.admin.role_*`), never hardcoded. Manager leads the list
+    // because the board illustrates `Quản lý ca` and a select with no
+    // placeholder opens on its first option.
+    const reviewerRoleOptions = computed(() => [
+      { value: 'manager', label: t('desk.admin.role_manager', {}, 'Manager') },
+      { value: 'owner', label: t('desk.admin.role_owner', {}, 'Owner') },
+      { value: 'front-desk', label: t('desk.admin.role_front_desk', {}, 'Front desk') },
+    ]);
+    const approvalBy = ref('manager');
     const approvalRole = ref('');
     const approvalReason = ref('');
     const checkoutCtx = ref<CheckoutContext | null>(null);
@@ -1257,6 +1283,7 @@ export default defineComponent({
       approving,
       checkingOut,
       showApproval,
+      reviewerRoleOptions,
       approvalBy,
       checkoutCtx,
       approvalRole,

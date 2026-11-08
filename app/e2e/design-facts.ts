@@ -256,11 +256,15 @@ export const DECIDED_CONTENT: readonly DecidedScreenContent[] = [
   {
     // Stay v2 board (Refs #541, bundle 07-11): the two-panel
     // screen pins its two h3 titles, the two static action
-    // labels, and the four panel inputs in DOM order. The
+    // labels, and the four panel controls in DOM order. The
     // pre-v2 lists, move, and times sections are gone (zero
     // extras); the review-to-checkout flow state (approval
     // form, check-out button, confirm dialog) stays out of the
-    // decided set per the flow-state rule above.
+    // decided set per the flow-state rule above. Refs #567: the
+    // reviewer control is the role select the #563 audit asked
+    // for (`G-ST-1`), so its decided kind is `select` and its
+    // first catalogue option reads as the label, not a
+    // placeholder.
     screen: 'Stay',
     headings: [
       { level: 3, text: 'Nhận phòng' },
@@ -271,7 +275,7 @@ export const DECIDED_CONTENT: readonly DecidedScreenContent[] = [
       { kind: 'select', label: 'Khách đến', placeholder: 'Chọn khách đến...' },
       { kind: 'select', label: 'Phòng', placeholder: 'Chọn phòng...' },
       { kind: 'select', label: 'Khách đi', placeholder: 'Chọn khách đi...' },
-      { kind: 'text', label: 'Người duyệt', placeholder: null },
+      { kind: 'select', label: 'Người duyệt', placeholder: null },
     ],
   },
   {

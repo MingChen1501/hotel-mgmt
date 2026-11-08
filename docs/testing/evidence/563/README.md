@@ -54,6 +54,15 @@ do not drift.
   and clock icons. The capture data mirrors the pre-#565 image (same guest,
   dates, and amounts) so only the field shape differs; the submitted payload
   stays the canonical ISO date.
+- `side-by-side-Stay-vi.png` was refreshed for the `G-ST-1` fix (#567) from
+  the built app bundle at 1200px in `vi` (Chromium, viewport 1200×1016) and
+  the design board at the same width. The reviewer field is a panel control,
+  so the live half needed no flow state: the Stay panel reads were answered
+  locally with the board's example arrival/departure rows instead of standing
+  up a lab. The live half now shows the reviewer as a role select whose
+  options carry the catalogue labels (`Quản lý` / `Chủ` / `Lễ tân`) instead
+  of a free-text input. The pair also shows the current shell (the #564
+  account disclosure), so the pre-fix image's older shell is superseded too.
 
 ## Images
 
@@ -62,7 +71,7 @@ do not drift.
 | Shell/nav | [side-by-side-shell-nav-vi.png](side-by-side-shell-nav-vi.png) | 2420×111 | 60px board header vs the restored 60px single-row app header; nav labels and order; compact `VI \| EN` pill; `G-SH-1`, `G-SH-2` fixed |
 | Sign-in gate | [app-signin-gate-vi.png](app-signin-gate-vi.png) | 1200×1000 | App-only gate state; refreshed for `G-SH-3` (#571) — the locale pill now reads dark ink on the pale gate |
 | Main | [side-by-side-Main-vi.png](side-by-side-Main-vi.png) | 2420×3394 | Desk cards and daily-sheet line; `G-MN-1`…`G-MN-4` |
-| Stay | [side-by-side-Stay-vi.png](side-by-side-Stay-vi.png) | 2420×1016 | Check-in form and in-house lists; `G-ST-1`, `G-ST-2` |
+| Stay | [side-by-side-Stay-vi.png](side-by-side-Stay-vi.png) | 2420×1016 | Two-panel check-in/check-out; refreshed for `G-ST-1` (#567) — the reviewer field is now a catalogue-labelled role select (`Quản lý` / `Chủ` / `Lễ tân`) instead of free text; `G-ST-1`, `G-ST-2` |
 | Onboarding | [side-by-side-Onboarding-vi.png](side-by-side-Onboarding-vi.png) | 2420×1016 | Setup wizard vs the board's setup panel; `G-OB-1` |
 | Rooms | [side-by-side-Rooms-vi.png](side-by-side-Rooms-vi.png) | 2420×1016 | Room map, chips, and unassigned group; `G-RM-1`, `G-RM-2` |
 | Book | [side-by-side-Book-vi.png](side-by-side-Book-vi.png) | 2420×1016 | Booking form and quote rows; refreshed for `G-BK-1` (#566) — the arrival/departure fields show the desk `dd/mm/yyyy` form (`08/12/2026` / `10/12/2026`) instead of the browser-locale native picker; quote rows keep the `G-BK-2` `dd/mm/yyyy` dates and VND `đ` amounts; `G-BK-1`, `G-BK-2`, `G-BK-3` |
