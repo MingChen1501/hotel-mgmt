@@ -1832,8 +1832,8 @@ Edge trace (every edge cites code):
 - B–E: every Folio amount flows through the single
   `formatAmount` seam, which delegates to `formatVnd`
   (`FolioView.vue:404-406`): folded tax/fee parts
-  (`:456`, `:465`), charge rows and totals (`:712`, `:897`),
-  payment rows (`:733`, `:959`), the due figure (`:741`), and
+  (`:456`, `:465`), charge rows and totals (`:712`, `:906`, `:909`),
+  payment rows (`:733`, `:968`, `:971`), the due figure (`:741`), and
   the running-balance sentence (`:660`).
 - C–F / D–G / E–H: only the placeholder *values* change; the
   catalogue labels and keys are untouched
