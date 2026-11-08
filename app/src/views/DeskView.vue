@@ -534,6 +534,23 @@ function localBusinessDate(): string {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
+// The DailySheet `asOf` is the reporting read model's newest applied
+// event time, so the desk can show how fresh the figures are
+// (`contracts/http/DailySheet.json`, `docs/architecture/services/reporting.md:23`).
+// When the projection has never applied an event the service returns
+// Go's zero time (`0001-01-01T00:00:00Z`), which is a "no report time
+// yet" signal — never a real instant. Printing it verbatim read
+// "… (tính đến 0001-01-01T00:00:00Z)" on the Main screen (issue #563
+// audit), so zero, blank, and unparseable values take the explicit
+// no-report-time wording instead.
+function hasUsableReportTime(value: string | undefined): boolean {
+  if (!value || value.trim() === '') {
+    return false;
+  }
+  const parsed = Date.parse(value);
+  return !Number.isNaN(parsed) && new Date(parsed).getUTCFullYear() >= 1900;
+}
+
 function isSignedOut(err: unknown): boolean {
   return (
     typeof err === 'object' &&
@@ -1157,17 +1174,26 @@ export default defineComponent({
           method: 'POST',
           body: JSON.stringify({ businessDate: businessDate.value }),
         });
-        sheetLine.value = t(
-          'desk.today.sheet_line',
-          {
-            arrivals: (sheet.arrivals ?? []).length,
-            inHouse: (sheet.inHouse ?? []).length,
-            departures: (sheet.departures ?? []).length,
-            openBalances: (sheet.openBalances ?? []).length,
-            asOf: sheet.asOf ?? '',
-          },
-          '{arrivals} arriving, {inHouse} in house, {departures} leaving, {openBalances} open balances (as of {asOf}).',
-        );
+        const sheetCounts = {
+          arrivals: (sheet.arrivals ?? []).length,
+          inHouse: (sheet.inHouse ?? []).length,
+          departures: (sheet.departures ?? []).length,
+          openBalances: (sheet.openBalances ?? []).length,
+        };
+        sheetLine.value = hasUsableReportTime(sheet.asOf)
+          ? t(
+            'desk.today.sheet_line',
+            {
+              ...sheetCounts,
+              asOf: sheet.asOf as string,
+            },
+            '{arrivals} arriving, {inHouse} in house, {departures} leaving, {openBalances} open balances (as of {asOf}).',
+          )
+          : t(
+            'desk.today.sheet_line_no_as_of',
+            {},
+            'Report figures are not available yet (no report time).',
+          );
       } catch (err) {
         // The shared client already expired the session and routed
         // to the gate on 401: mirror the legacy page by leaving

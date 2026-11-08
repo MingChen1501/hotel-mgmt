@@ -328,7 +328,7 @@ test.describe('room-map facts extract from matching grid DOM (Refs #491)', () =>
     expect(diffs[0].field).toBe('roomMap.chips[2].count');
     expect(diffs[0].expected).toBe('1');
     expect(diffs[0].actual).toBe('2');
-    expect(diffs[0].design).toBe('docs/design/Rooms.dc.html:2');
+    expect(diffs[0].design).toBe('docs/design/Rooms.dc.html:3');
     expect(diffs[0].app).toBe('[data-testid="desk-roommap"]-summary li');
   });
 
@@ -343,7 +343,7 @@ test.describe('room-map facts extract from matching grid DOM (Refs #491)', () =>
     const diffs = diffRoomMapFacts('Main', decidedRoomMap(), facts, '[data-testid="desk-roommap"]');
     expect(diffs).toHaveLength(1);
     expect(diffs[0].field).toBe('roomMap.cards[0].note');
-    expect(diffs[0].design).toBe('docs/design/Rooms.dc.html:2');
+    expect(diffs[0].design).toBe('docs/design/Rooms.dc.html:3');
   });
 
   test('a chip with no trailing count fails loudly instead of passing silently', async ({ page }) => {
@@ -374,7 +374,7 @@ test.describe('room-map facts extract from matching grid DOM (Refs #491)', () =>
     expect(diffs).toHaveLength(1);
     expect(diffs[0].field).toBe('roomMap.floors');
     expect(diffs[0].actual).toBe('"(absent)"');
-    expect(diffs[0].design).toBe('docs/design/Rooms.dc.html:2');
+    expect(diffs[0].design).toBe('docs/design/Rooms.dc.html:3');
   });
 });
 

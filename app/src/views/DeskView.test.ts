@@ -42,7 +42,12 @@ interface StayPayload {
 
 // Full happy-path backend: sign-in, the three stay lists with one
 // stay each, guest reads, the three room-state lists, DailySheet.
-function stubHappyPath(fetchMock: ReturnType<typeof vi.fn>): void {
+// `sheetAsOf` overrides the DailySheet report time so a test can
+// exercise the zero/unset report-time branch (issue #563 audit).
+function stubHappyPath(
+  fetchMock: ReturnType<typeof vi.fn>,
+  sheetAsOf = '2026-10-26T08:00:00Z',
+): void {
   fetchMock.mockImplementation((url: string, init?: RequestInit) => {
     const body = init?.body !== undefined ? JSON.parse(init.body as string) : {};
     if (url === '/v1/admin/SignIn') {
@@ -148,7 +153,7 @@ function stubHappyPath(fetchMock: ReturnType<typeof vi.fn>): void {
           inHouse: [{ kind: 'stay', ref: 'stay-b' }],
           departures: [{ kind: 'stay', ref: 'stay-c' }],
           openBalances: [{ kind: 'stay', ref: 'stay-b' }],
-          asOf: '2026-10-26T08:00:00Z',
+          asOf: sheetAsOf,
         }),
       );
     }
@@ -178,17 +183,17 @@ function roomLinkTo(wrapper: ReturnType<typeof mountDesk>, testid: string): unkn
   return link?.props('to');
 }
 
-async function signIn(wrapper: ReturnType<typeof mountDesk>, fetchMock: ReturnType<typeof vi.fn>) {
+async function signIn(wrapper: ReturnType<typeof mountDesk>, fetchMock: ReturnType<typeof vi.fn>, sheetAsOf?: string) {
   // The shell owns the one sign-in gate (Refs #338): views mount
   // with a signed-in session preset, then load like a reload.
-  stubHappyPath(fetchMock);
+  stubHappyPath(fetchMock, sheetAsOf);
   useSessionStore().signIn('tok-1', 'Ada Owner', 'owner');
   await wrapper.find('[data-testid="desk-refresh"]').trigger('click');
   await vi.waitFor(() => {
     expect(wrapper.find('[data-testid="desk-dashboard"]').exists()).toBe(true);
   });
   await vi.waitFor(() => {
-    expect(wrapper.find('[data-testid="desk-sheet-line"]').text()).toContain('open balances');
+    expect(wrapper.find('[data-testid="desk-sheet-line"]').text()).not.toBe('');
   });
 }
 
@@ -499,6 +504,32 @@ describe('desk view', () => {
     expect(sheet).toContain('1 in house');
     expect(sheet).toContain('1 leaving');
     expect(sheet).toContain('1 open balances');
+  });
+
+  it('never prints the reporting zero time when the read model has no as-of', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountDesk();
+    // Go's zero time is what an unbuilt projection returns; the desk
+    // must not render `0001-01-01T00:00:00Z` as a report timestamp
+    // (issue #563 audit, Main evidence).
+    await signIn(wrapper, fetchMock, '0001-01-01T00:00:00Z');
+
+    const sheet = wrapper.find('[data-testid="desk-sheet-line"]').text();
+    expect(sheet).toContain('Report figures are not available yet');
+    expect(sheet).not.toContain('0001-01-01');
+    expect(sheet).not.toContain('arriving');
+  });
+
+  it('treats a missing report as-of as no report time', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountDesk();
+    await signIn(wrapper, fetchMock, '');
+
+    const sheet = wrapper.find('[data-testid="desk-sheet-line"]').text();
+    expect(sheet).toContain('Report figures are not available yet');
+    expect(sheet).not.toContain('as of');
   });
 
   it('renders the five-lane room board with occupants on the occupied lane', async () => {
