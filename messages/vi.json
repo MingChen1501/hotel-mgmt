@@ -464,6 +464,7 @@
     "desk.folio.open_button": "Mở bảng kê",
     "desk.folio.need_stay": "Hãy nhập mã lưu trú trước.",
     "desk.folio.folio_heading": "Khoản phí",
+    "desk.folio.charges_context": "{heading} · {guest} · {room}",
     "desk.folio.folio_line": "Bảng kê {folioId}: số dư {balance}.",
     "desk.folio.folio_balance": "Số dư bảng kê: {balance}.",
     "desk.folio.due_label": "Còn phải trả",

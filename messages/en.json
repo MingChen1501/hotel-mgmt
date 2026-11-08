@@ -464,6 +464,7 @@
     "desk.folio.open_button": "Open folio",
     "desk.folio.need_stay": "Enter a stay ID first.",
     "desk.folio.folio_heading": "Charges",
+    "desk.folio.charges_context": "{heading} · {guest} · {room}",
     "desk.folio.folio_line": "Folio {folioId}: balance {balance}.",
     "desk.folio.folio_balance": "Folio balance: {balance}.",
     "desk.folio.due_label": "Balance due",

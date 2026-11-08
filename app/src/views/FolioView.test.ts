@@ -607,6 +607,16 @@ describe('folio view source', () => {
     expect(folioViewSource).toContain(op);
   });
 
+  // Refs #568: the charges title resolves the stay's guest and room
+  // through the existing reads, and every new string rides the
+  // catalogue (no hardcoded copy).
+  it('resolves the open folio context through the stay, guest, and room reads', () => {
+    for (const op of ['/v1/stay/GetStay', '/v1/guests/GetGuest', '/v1/rooms/ListRoomsByState']) {
+      expect(folioViewSource).toContain(op);
+    }
+    expect(folioViewSource).toContain('desk.folio.charges_context');
+  });
+
   it.each(['need_stay', 'need_charge', 'need_payment', 'refused_bad_method', 'refused_unknown_folio', 'idempotencyKey'])(
     'keeps the folio vocabulary %s',
     (token) => {
@@ -620,5 +630,161 @@ describe('folio view source', () => {
     }
     expect(folioViewSource).not.toContain('DeskMessages');
     expect(folioViewSource).not.toContain('Authorization');
+  });
+});
+
+// Open-folio context (Refs #568, `docs/design/Folio.dc.html:3`): the
+// board titles the charges card `Khoản phí · Lê Minh · P.201`, so the
+// live title names the stay's guest and room. The raw
+// stay/folio/guest/room IDs stay behind the reference disclosure
+// (issue #372). These guards live in their own block at the end so the
+// behaviour pins above keep their line anchors in the traceability
+// docs; the shared happy-path stub stays billing-only, and the stay
+// reads ride this wrapper.
+describe('folio open context (Refs #568)', () => {
+  function withStayContext(
+    inner: (url: string, init?: RequestInit) => Promise<Response>,
+  ): (url: string, init?: RequestInit) => Promise<Response> {
+    return (url: string, init?: RequestInit): Promise<Response> => {
+      const body = parseBody(init);
+      if (url === '/v1/stay/GetStay') {
+        return Promise.resolve(
+          jsonResponse({ stayId: body.stayId, guestId: 'g-1', roomId: 'r-1' }),
+        );
+      }
+      if (url === '/v1/guests/GetGuest') {
+        expect(body.guestId).toBe('g-1');
+        return Promise.resolve(jsonResponse({ guestId: 'g-1', fullName: 'Lê Minh' }));
+      }
+      if (url === '/v1/rooms/ListRoomsByState') {
+        const state = String(body.state);
+        return Promise.resolve(
+          jsonResponse({
+            state,
+            rooms: state === 'occupied' ? [{ roomId: 'r-1', number: '201' }] : [],
+          }),
+        );
+      }
+      return inner(url, init);
+    };
+  }
+
+  async function openWithContext(
+    wrapper: ReturnType<typeof mountFolio>,
+    stayId: string,
+  ): Promise<void> {
+    await openFolio(wrapper, stayId);
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="folio-charges-title"]').text()).not.toBe('Charges');
+    });
+  }
+
+  it('names the guest and room on the charges card like the board', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountFolio();
+    await signIn(wrapper, fetchMock);
+    fetchMock.mockImplementation(withStayContext(stubHappyPath(fetchMock)));
+
+    await openWithContext(wrapper, 's-1');
+    expect(wrapper.find('[data-testid="folio-charges-title"]').text()).toBe(
+      'Charges · Lê Minh · Room 201',
+    );
+
+    // The context comes from the existing stay/guest reads plus the
+    // room-state lane the room sits in; an in-house room resolves
+    // from the occupied read alone.
+    const urls = fetchMock.mock.calls.map((call) => call[0]);
+    expect(urls).toContain('/v1/stay/GetStay');
+    expect(urls).toContain('/v1/guests/GetGuest');
+    const roomCalls = fetchMock.mock.calls.filter(
+      (call) => call[0] === '/v1/rooms/ListRoomsByState',
+    );
+    expect(roomCalls).toHaveLength(1);
+    expect(parseBody(roomCalls[0]?.[1] as RequestInit).state).toBe('occupied');
+
+    // No raw UUID is exposed by default (issue #372): neither the
+    // charges title nor the running-balance line names a record ID.
+    const title = wrapper.find('[data-testid="folio-charges-title"]').text();
+    for (const id of ['s-1', 'f-1', 'g-1', 'r-1']) {
+      expect(title).not.toContain(id);
+      expect(wrapper.find('[data-testid="folio-status"]').text()).not.toContain(id);
+    }
+
+    // VI carries the board wording, room prefix included (AC-DSK-8).
+    try {
+      setLocale('vi');
+      await wrapper.vm.$nextTick();
+      expect(wrapper.find('[data-testid="folio-charges-title"]').text()).toBe(
+        'Khoản phí · Lê Minh · P.201',
+      );
+    } finally {
+      setLocale('en');
+    }
+  });
+
+  it('clears the guest and room context when the stay ID changes', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountFolio();
+    await signIn(wrapper, fetchMock);
+    fetchMock.mockImplementation(withStayContext(stubHappyPath(fetchMock)));
+
+    await openWithContext(wrapper, 's-1');
+    expect(wrapper.find('[data-testid="folio-charges-title"]').text()).toContain('Lê Minh');
+
+    await wrapper.find('[data-testid="folio-stay-id"]').setValue('s-2');
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find('[data-testid="folio-charges-title"]').text()).toBe('Charges');
+    expect(wrapper.find('[data-testid="folio-status"]').text()).toBe('');
+  });
+
+  it('never paints a slow context read over a changed stay ID', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountFolio();
+    await signIn(wrapper, fetchMock);
+    const happy = withStayContext(stubHappyPath(fetchMock));
+    let release!: (value: Response) => void;
+    const gate = new Promise<Response>((resolve) => {
+      release = resolve;
+    });
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/stay/GetStay') {
+        return gate;
+      }
+      return happy(url, init);
+    });
+
+    // The folio renders while its stay read is still in flight; the
+    // desk then types the next stay ID, which must win.
+    await openFolio(wrapper, 's-1');
+    await wrapper.find('[data-testid="folio-stay-id"]').setValue('s-2');
+    release(jsonResponse({ stayId: 's-1', guestId: 'g-1', roomId: 'r-1' }));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find('[data-testid="folio-charges-title"]').text()).toBe('Charges');
+  });
+
+  it('keeps the plain charges title when the stay context reads fail', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountFolio();
+    await signIn(wrapper, fetchMock);
+    // A signed-in session whose stay read refuses (best effort,
+    // Refs #568): the card keeps its plain title instead of
+    // guessing, and still names no record ID.
+    const happy = stubHappyPath(fetchMock);
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/stay/GetStay') {
+        return Promise.resolve(
+          jsonResponse({ code: 'NOT_FOUND', message: 'unknown stay' }, 404),
+        );
+      }
+      return happy(url, init);
+    });
+
+    await openFolio(wrapper, 's-1');
+    expect(wrapper.find('[data-testid="folio-charges-title"]').text()).toBe('Charges');
   });
 });

@@ -1815,7 +1815,7 @@ Edge trace (every edge cites code):
 
 - A–B: the canonical values are already on screen refs — the
   quote response binds to `quote` (`BookView.vue:518`) and the
-  folio response to `folio` (`FolioView.vue:549`). Minor units
+  folio response to `folio` (`FolioView.vue:781`). Minor units
   are contract-validated integers (`contracts/http/QuotePrice.json:36`
   `priceMinor`, `:41` `totalMinor`;
   `contracts/http/PostCharge.json:32` `amountMinor`;
@@ -1831,10 +1831,10 @@ Edge trace (every edge cites code):
   through `formatVnd` (`BookView.vue:536-545`, call at `:543`).
 - B–E: every Folio amount flows through the single
   `formatAmount` seam, which delegates to `formatVnd`
-  (`FolioView.vue:380-382`): folded tax/fee parts
-  (`:432`, `:441`), charge rows and totals (`:609`, `:751`),
-  payment rows (`:630`, `:813`), the due figure (`:640`), and
-  the running-balance sentence (`:564`).
+  (`FolioView.vue:404-406`): folded tax/fee parts
+  (`:456`, `:465`), charge rows and totals (`:712`, `:897`),
+  payment rows (`:733`, `:959`), the due figure (`:741`), and
+  the running-balance sentence (`:660`).
 - C–F / D–G / E–H: only the placeholder *values* change; the
   catalogue labels and keys are untouched
   (`desk.book.quote_night` / `desk.book.quote_total` at
@@ -1859,7 +1859,7 @@ Edge trace (every edge cites code):
   `AC-DSK-13`.
 - J–L / K–L: both row lists are `computed` off the `quote` /
   `folio` refs (`BookView.vue:523-545`,
-  `FolioView.vue:551-566`, `:637-641`), so a mid-flow locale
+  `FolioView.vue:649-663`, `:741-744`), so a mid-flow locale
   switch re-derives the shape with no new quote or folio read
   (`AC-DSK-8` holds).
 
@@ -1897,7 +1897,7 @@ Edge trace:
   clause; pinned at `app/src/i18n/index.test.ts:187`).
 - V–W: refusals and transport failures keep their existing
   states — quote refusal sentence (`BookView.vue` `quoteError`
-  path), folio notice/status (`FolioView.vue:551-566`), the
+  path), folio notice/status (`FolioView.vue:649-663`), the
   shared offline banner and manual retry (LLD section 11.3), and
   the single 401-to-sign-in path (LLD section 11.2); the render
   mapping adds no error path (`FR-DSP-3` holds).
