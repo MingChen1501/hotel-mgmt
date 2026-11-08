@@ -77,10 +77,12 @@ scope statement, not the ADR edit:
   accepted, full-tree literalism rejected") are superseded by owner
   decision B for visuals: closeness to the boards is now the goal,
   with full rebuild authorized. The sweeps' flow/copy REPORTED items
-  (Book B3, Stay T3, Folio F3, Rooms R3, Onboarding O3/O4) stay
+  (Stay T3, Folio F3, Rooms R3, Onboarding O3/O4) stay
   reported, not decided — visual restyle only; any copy or flow
   divergence a worker finds is recorded on the affected child issue
-  for an owner decision, never changed silently.
+  for an owner decision, never changed silently. (Book B3 is the
+  exception: resolved at #565 — see
+  `docs/product/desk-ui-design-rollout.md` section 6.8.)
 
 ## 3. Shared design tokens (extracted from the boards)
 
@@ -216,9 +218,12 @@ Each screen: exact design source, layout to reproduce, what stays.
 - Keep: guest search, walk-in registration, get-quote then
   confirm-booking flow exactly as today; room-type placeholder
   behaviour; folio/pricing logic untouched.
-- Rebuild: screen markup and styling. The B3 quote-copy REPORTED
-  item (#496) stays reported: empty-vs-quoted presentation is
-  unchanged unless the owner decides on #520.
+- Rebuild: screen markup and styling. The B3 quote-copy
+  REPORTED item (#496) is resolved by the #565 decision
+  (`docs/product/desk-ui-design-rollout.md` section 6.8): the
+  app row labels and the empty-vs-quoted presentation stay, and
+  the quote money and nightly dates render the design shape
+  (`AC-DSK-13`).
 
 ### 5.3 Stay check-in/out (#521) — `docs/design/Stay.dc.html:2`–`:7`
 
