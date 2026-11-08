@@ -335,8 +335,8 @@ describe('display names instead of IDs (issue #370)', () => {
         wrapper.find(`[data-testid="book-room-type-id"] option[value="${ROOM_TYPE_UUID}"]`).exists(),
       ).toBe(true);
     });
-    await wrapper.find('[data-testid="book-arrival-date"]').setValue('2026-11-01');
-    await wrapper.find('[data-testid="book-departure-date"]').setValue('2026-11-03');
+    await wrapper.find('[data-testid="book-arrival-date"]').setValue('11/01/2026');
+    await wrapper.find('[data-testid="book-departure-date"]').setValue('11/03/2026');
     await wrapper.find('[data-testid="book-room-type-id"]').setValue(ROOM_TYPE_UUID);
     await wrapper.find('[data-testid="book-quote"]').trigger('click');
     await vi.waitFor(() => {

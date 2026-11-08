@@ -9,6 +9,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { installLoopbackGuard } from './loopback-guard';
 import {
   apiOp,
+  deskDateField,
   ownerToken,
   setupFlowContext,
   signInThroughGate,
@@ -37,8 +38,10 @@ async function bookOnce(
   await page.getByTestId('book-guest-name').fill(guestName);
   await page.getByTestId('book-register-guest').click();
   await expect(page.getByTestId('book-guest-status')).toContainText('registered');
-  await page.getByTestId('book-arrival-date').fill(arrival);
-  await page.getByTestId('book-departure-date').fill(departure);
+  // Refs #566: the date fields type the desk form, not an ISO
+  // string into a native picker.
+  await page.getByTestId('book-arrival-date').fill(deskDateField(arrival));
+  await page.getByTestId('book-departure-date').fill(deskDateField(departure));
   await page.getByTestId('book-room-type-id').selectOption(roomTypeId);
   await page.getByTestId('book-quote').click();
   await expect(page.getByTestId('book-quote-section')).toBeVisible();
@@ -72,8 +75,8 @@ test('unpriced dates refuse the quote in plain words', async ({ page, request })
   const ctx = await setupFlowContext(request, token, 'bookref', window);
   await signInThroughGate(page);
   await page.goto('/app/book');
-  await page.getByTestId('book-arrival-date').fill('2031-01-01');
-  await page.getByTestId('book-departure-date').fill('2031-01-03');
+  await page.getByTestId('book-arrival-date').fill(deskDateField('2031-01-01'));
+  await page.getByTestId('book-departure-date').fill(deskDateField('2031-01-03'));
   await page.getByTestId('book-room-type-id').selectOption(ctx.roomTypeId);
   await page.getByTestId('book-quote').click();
   await expect(page.getByTestId('book-quote-error')).toContainText('No price exists');
@@ -106,8 +109,8 @@ test('confirm without a guest names the missing guest first', async ({ page, req
   await page.goto('/app/book');
   // A priced quote with no guest resolved: the confirm must name
   // the missing mandatory guest (FR-CUS-1) instead of booking.
-  await page.getByTestId('book-arrival-date').fill(window.arrival);
-  await page.getByTestId('book-departure-date').fill(window.departure);
+  await page.getByTestId('book-arrival-date').fill(deskDateField(window.arrival));
+  await page.getByTestId('book-departure-date').fill(deskDateField(window.departure));
   await page.getByTestId('book-room-type-id').selectOption(ctx.roomTypeId);
   await page.getByTestId('book-quote').click();
   await expect(page.getByTestId('book-quote-section')).toBeVisible();

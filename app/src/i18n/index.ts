@@ -186,6 +186,44 @@ export function formatDeskDate(canonical: string): string {
   return `${day}/${month}/${date.getFullYear()}`;
 }
 
+// Desk date-field form (Refs #566, G-BK-1): the Book arrival and
+// departure fields show the date the desk actually types — VI
+// `dd/mm/yyyy`, EN `mm/dd/yyyy` (the #503 EN business-date order) —
+// independent of the browser UI language, which is why the native
+// `<input type="date">` control is gone. The canonical ISO
+// `YYYY-MM-DD` string stays the form's payload value: `parseDateField`
+// turns the typed desk form back into it, and `formatDateField`
+// renders it into the desk form again after a locale switch.
+export function formatDateField(canonical: string): string {
+  const date = parseCalendarDate(canonical);
+  if (date === null) {
+    return '';
+  }
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = String(date.getFullYear()).padStart(4, '0');
+  return catalogueLocale() === 'en' ? `${month}/${day}/${year}` : `${day}/${month}/${year}`;
+}
+
+const DATE_FIELD_PATTERN = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
+
+// Typed desk date -> canonical ISO, empty when the text is not a real
+// calendar day in the active locale's order (a rollover such as
+// `31/02/2026` or `02/31/2026` returns `''`, never a shifted day).
+export function parseDateField(text: string): string {
+  const match = DATE_FIELD_PATTERN.exec(text.trim());
+  if (!match) {
+    return '';
+  }
+  const first = Number(match[1]);
+  const second = Number(match[2]);
+  const year = Number(match[3]);
+  const day = catalogueLocale() === 'en' ? second : first;
+  const month = catalogueLocale() === 'en' ? first : second;
+  const canonical = `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  return parseCalendarDate(canonical) === null ? '' : canonical;
+}
+
 export function hasMessage(key: string): boolean {
   return enCatalogue[key] !== undefined;
 }

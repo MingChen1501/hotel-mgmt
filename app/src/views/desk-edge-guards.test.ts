@@ -189,8 +189,8 @@ async function fillStayBook(wrapper: ReturnType<typeof mountBook>) {
   await vi.waitFor(() => {
     expect(wrapper.find('[data-testid="book-room-type-id"] option[value="standard"]').exists()).toBe(true);
   });
-  await wrapper.find('[data-testid="book-arrival-date"]').setValue('2026-11-01');
-  await wrapper.find('[data-testid="book-departure-date"]').setValue('2026-11-03');
+  await wrapper.find('[data-testid="book-arrival-date"]').setValue('11/01/2026');
+  await wrapper.find('[data-testid="book-departure-date"]').setValue('11/03/2026');
   await wrapper.find('[data-testid="book-room-type-id"]').setValue('standard');
 }
 
@@ -550,8 +550,8 @@ describe('QA-EDGE-3 departure before arrival', () => {
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="book-room-type-id"] option[value="standard"]').exists()).toBe(true);
     });
-    await wrapper.find('[data-testid="book-arrival-date"]').setValue('2026-11-03');
-    await wrapper.find('[data-testid="book-departure-date"]').setValue('2026-11-01');
+    await wrapper.find('[data-testid="book-arrival-date"]').setValue('11/03/2026');
+    await wrapper.find('[data-testid="book-departure-date"]').setValue('11/01/2026');
     await wrapper.find('[data-testid="book-room-type-id"]').setValue('standard');
     await wrapper.find('[data-testid="book-quote"]').trigger('click');
     await vi.waitFor(() => {
@@ -1301,13 +1301,15 @@ describe('QA-EDGE-12 mid-flow locale switch', () => {
     try {
       setLocale('vi');
       await wrapper.vm.$nextTick();
-      // Entered values survive the switch untouched.
+      // Entered values survive the switch untouched (Refs #566: the
+      // typed date re-renders in the newly active desk form, same
+      // calendar day, while the payload stays ISO).
       expect(
         (wrapper.find('[data-testid="book-arrival-date"]').element as HTMLInputElement).value,
-      ).toBe('2026-11-01');
+      ).toBe('01/11/2026');
       expect(
         (wrapper.find('[data-testid="book-departure-date"]').element as HTMLInputElement).value,
-      ).toBe('2026-11-03');
+      ).toBe('03/11/2026');
       expect(
         (wrapper.find('[data-testid="book-room-type-id"]').element as HTMLSelectElement).value,
       ).toBe('standard');

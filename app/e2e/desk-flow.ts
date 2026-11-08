@@ -90,6 +90,16 @@ export function todayLocal(): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+// Desk date-field form (Refs #566): the Book arrival and departure
+// fields type the desk form — `mm/dd/yyyy` in EN (the default
+// locale) and `dd/mm/yyyy` in VI — while the payload stays the
+// canonical ISO date. The spec types the form the desk sees, never
+// an ISO string into a native picker.
+export function deskDateField(iso: string, locale: 'en' | 'vi' = 'en'): string {
+  const [year, month, day] = iso.split('-');
+  return locale === 'en' ? `${month}/${day}/${year}` : `${day}/${month}/${year}`;
+}
+
 export interface FlowContext {
   tag: string;
   guestId: string;

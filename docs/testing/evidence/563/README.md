@@ -43,6 +43,17 @@ do not drift.
   and two-decimal figures, and the Folio lines and balance read `12.000 đ` /
   `6.000 đ`. Values are unchanged; the capture data mirrors the pre-fix image
   (same guest, dates, and amounts) so only the presentation differs.
+- `side-by-side-Book-vi.png` was refreshed for the `G-BK-1` fix (#566) from
+  an isolated compose lab (`hotel-lab-813`, isolated project and volumes, boot
+  seed plus a lab-only rate plan, signed in as `owner` with a lab-only boot
+  secret) and the built app bundle at 1200px in `vi` (Chromium, viewport
+  1200×1016). The arrival/departure fields are now text fields bound to the
+  desk form: the live half shows `08/12/2026` / `10/12/2026` — the design's
+  `dd/mm/yyyy` shape (`docs/design/Book.dc.html:3` draws `29/10/2026` /
+  `31/10/2026`) — instead of the native picker's `12/08/2026` (mm/dd/yyyy)
+  and clock icons. The capture data mirrors the pre-#565 image (same guest,
+  dates, and amounts) so only the field shape differs; the submitted payload
+  stays the canonical ISO date.
 
 ## Images
 
@@ -54,7 +65,7 @@ do not drift.
 | Stay | [side-by-side-Stay-vi.png](side-by-side-Stay-vi.png) | 2420×1016 | Check-in form and in-house lists; `G-ST-1`, `G-ST-2` |
 | Onboarding | [side-by-side-Onboarding-vi.png](side-by-side-Onboarding-vi.png) | 2420×1016 | Setup wizard vs the board's setup panel; `G-OB-1` |
 | Rooms | [side-by-side-Rooms-vi.png](side-by-side-Rooms-vi.png) | 2420×1016 | Room map, chips, and unassigned group; `G-RM-1`, `G-RM-2` |
-| Book | [side-by-side-Book-vi.png](side-by-side-Book-vi.png) | 2420×1016 | Booking form and quote rows; refreshed for `G-BK-2` (#565) — nightly rows carry `dd/mm/yyyy` dates and VND `đ` amounts; `G-BK-1`, `G-BK-3` |
+| Book | [side-by-side-Book-vi.png](side-by-side-Book-vi.png) | 2420×1016 | Booking form and quote rows; refreshed for `G-BK-1` (#566) — the arrival/departure fields show the desk `dd/mm/yyyy` form (`08/12/2026` / `10/12/2026`) instead of the browser-locale native picker; quote rows keep the `G-BK-2` `dd/mm/yyyy` dates and VND `đ` amounts; `G-BK-1`, `G-BK-2`, `G-BK-3` |
 | Folio | [side-by-side-Folio-vi.png](side-by-side-Folio-vi.png) | 2420×1016 | Folio lines, amounts, and balance; refreshed for `G-FO-2` (#565) — lines and balance carry the design VND `đ` shape; `G-FO-1` |
 | Admin | [side-by-side-Admin-vi.png](side-by-side-Admin-vi.png) | 2420×1491 | User, config, and audit cards; `G-AD-1`, `G-AD-2` |
 
@@ -75,5 +86,5 @@ relaxation of the "audit issues carry no product code" rule in a
 [comment on #563](https://github.com/MingChen1501/hotel-mgmt/issues/563#issuecomment-6723063195);
 the audit comment's change log carries the matching dated row.
 
-<!-- ao-role: dev-takeover -->
-Role: dev-takeover · AO session hotel-mgmt-804
+<!-- ao-role: dev -->
+Role: dev · AO session hotel-mgmt-813

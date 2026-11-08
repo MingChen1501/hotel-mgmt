@@ -187,8 +187,8 @@ async function fillStay(wrapper: ReturnType<typeof mountBook>) {
   await vi.waitFor(() => {
     expect(wrapper.find('[data-testid="book-room-type-id"] option[value="standard"]').exists()).toBe(true);
   });
-  await wrapper.find('[data-testid="book-arrival-date"]').setValue('2026-11-01');
-  await wrapper.find('[data-testid="book-departure-date"]').setValue('2026-11-03');
+  await wrapper.find('[data-testid="book-arrival-date"]').setValue('11/01/2026');
+  await wrapper.find('[data-testid="book-departure-date"]').setValue('11/03/2026');
   await wrapper.find('[data-testid="book-room-type-id"]').setValue('standard');
 }
 
@@ -425,6 +425,45 @@ describe('book view', () => {
     }
   });
 
+  it('renders the desk date form in the date fields and keeps ISO payloads (Refs #566)', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountBook();
+    await signIn(wrapper, fetchMock);
+
+    const arrival = wrapper.find('[data-testid="book-arrival-date"]');
+    const departure = wrapper.find('[data-testid="book-departure-date"]');
+    // G-BK-1: the fields are text, never the native date picker the
+    // browser UI locale owns, and the EN desk order is mm/dd/yyyy.
+    expect(arrival.attributes('type')).toBe('text');
+    expect(departure.attributes('type')).toBe('text');
+
+    await quote(wrapper);
+    expect((arrival.element as HTMLInputElement).value).toBe('11/01/2026');
+    expect((departure.element as HTMLInputElement).value).toBe('11/03/2026');
+    // Typed desk dates reach the API as canonical ISO.
+    const priced = fetchMock.mock.calls.find((call) => call[0] === '/v1/rates/QuotePrice');
+    expect(parseBody(priced?.[1] as RequestInit)).toEqual({
+      roomTypeId: 'standard',
+      arrivalDate: '2026-11-01',
+      departureDate: '2026-11-03',
+    });
+
+    // A locale switch re-renders the same calendar days in the VI
+    // desk order without a new read (AC-DSK-8).
+    try {
+      setLocale('vi');
+      await wrapper.vm.$nextTick();
+      expect((arrival.element as HTMLInputElement).value).toBe('01/11/2026');
+      expect((departure.element as HTMLInputElement).value).toBe('03/11/2026');
+      expect(wrapper.find('[data-testid="book-quote-section"]').exists()).toBe(true);
+    } finally {
+      setLocale('en');
+    }
+    await wrapper.vm.$nextTick();
+    expect((arrival.element as HTMLInputElement).value).toBe('11/01/2026');
+  });
+
   it('confirms the booking with the guest snapshot, frozen price basis, searched sellable count, and one idempotency key', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
@@ -592,8 +631,8 @@ describe('book view', () => {
       expect(wrapper.find('[data-testid="book-guest-status"]').text()).toContain('Guest found');
     });
 
-    await wrapper.find('[data-testid="book-arrival-date"]').setValue('2026-11-25');
-    await wrapper.find('[data-testid="book-departure-date"]').setValue('2026-11-27');
+    await wrapper.find('[data-testid="book-arrival-date"]').setValue('11/25/2026');
+    await wrapper.find('[data-testid="book-departure-date"]').setValue('11/27/2026');
     await vi.waitFor(() => {
       expect(
         wrapper.find(`[data-testid="book-room-type-id"] option[value="${qaRoomTypeId}"]`).exists(),
@@ -755,8 +794,8 @@ describe('book view', () => {
     const wrapper = mountBook();
     useSessionStore().signIn('tok-1', 'Ada Owner', 'owner');
 
-    await wrapper.find('[data-testid="book-arrival-date"]').setValue('2026-11-25');
-    await wrapper.find('[data-testid="book-departure-date"]').setValue('2026-11-27');
+    await wrapper.find('[data-testid="book-arrival-date"]').setValue('11/25/2026');
+    await wrapper.find('[data-testid="book-departure-date"]').setValue('11/27/2026');
     await vi.waitFor(() => {
       expect(
         wrapper.find(`[data-testid="book-room-type-id"] option[value="${qaRoomTypeId}"]`).exists(),

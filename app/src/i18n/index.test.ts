@@ -9,9 +9,11 @@ import {
   LOCALE_STORAGE_KEY,
   catalogueLocale,
   formatBusinessDate,
+  formatDateField,
   formatDeskDate,
   formatVnd,
   hasMessage,
+  parseDateField,
   setLocale,
   t,
 } from './index';
@@ -204,5 +206,59 @@ describe('desk money and quote-date display (Refs #565)', () => {
     expect(formatDeskDate('')).toBe('');
     expect(formatDeskDate('2026-12-08T00:00:00.000Z')).toBe('2026-12-08T00:00:00.000Z');
     expect(formatDeskDate('2026-02-30')).toBe('2026-02-30');
+  });
+});
+
+// Desk date-field form (Refs #566, G-BK-1): the Book arrival and
+// departure fields render and accept the desk's typed date —
+// `dd/mm/yyyy` in VI, `mm/dd/yyyy` in EN — and round-trip through
+// the canonical ISO payload value.
+describe('desk date-field form (Refs #566)', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    setLocale('en');
+  });
+
+  it('renders the locale desk form and round-trips to ISO', () => {
+    setLocale('en');
+    expect(formatDateField('2026-11-01')).toBe('11/01/2026');
+    expect(parseDateField('11/01/2026')).toBe('2026-11-01');
+    setLocale('vi');
+    expect(formatDateField('2026-11-01')).toBe('01/11/2026');
+    expect(parseDateField('01/11/2026')).toBe('2026-11-01');
+  });
+
+  it('accepts one-digit day and month in the active locale order', () => {
+    setLocale('vi');
+    expect(parseDateField('1/11/2026')).toBe('2026-11-01');
+    setLocale('en');
+    expect(parseDateField('11/1/2026')).toBe('2026-11-01');
+  });
+
+  it('ignores surrounding whitespace and empty input', () => {
+    setLocale('vi');
+    expect(parseDateField(' 08/12/2026 ')).toBe('2026-12-08');
+    expect(parseDateField('')).toBe('');
+    expect(parseDateField('   ')).toBe('');
+  });
+
+  it('rejects impossible days, rollovers, and non-desk text', () => {
+    setLocale('vi');
+    expect(parseDateField('31/02/2026')).toBe('');
+    expect(parseDateField('00/12/2026')).toBe('');
+    expect(parseDateField('08-12-2026')).toBe('');
+    expect(parseDateField('2026-12-08')).toBe('');
+    expect(parseDateField('not-a-date')).toBe('');
+    setLocale('en');
+    expect(parseDateField('02/31/2026')).toBe('');
+    // EN reads the first group as the month, so a VI-ordered 31st
+    // month is not a date.
+    expect(parseDateField('31/12/2026')).toBe('');
+  });
+
+  it('renders an empty field for a blank or unparseable canonical value', () => {
+    expect(formatDateField('')).toBe('');
+    expect(formatDateField('2026-02-30')).toBe('');
+    expect(formatDateField('2026-12-08T00:00:00.000Z')).toBe('');
   });
 });
