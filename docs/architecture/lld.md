@@ -1784,7 +1784,7 @@ app/src/i18n/index.ts        shared formatters: parseCalendarDate :117,
                              formatVnd :165, formatDeskDate :179
 app/src/views/BookView.vue   quote rows and total: computed quoteNights :510,
                              quoteTotal :523 (formatDeskDate :516, formatVnd :517,530)
-app/src/views/FolioView.vue  folio amount seam: formatAmount :380 (-> formatVnd :381)
+app/src/views/FolioView.vue  folio amount seam: formatAmount :404 (-> formatVnd :405)
 ```
 
 ### 16.1 Money/date render flowchart
