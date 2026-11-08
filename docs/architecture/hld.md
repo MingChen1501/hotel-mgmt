@@ -250,10 +250,13 @@ No new subsystem, no boundary change, no contract change:
   All module boundaries (section 4), named contracts, and data-store
   ownership statements stand unchanged.
 - Styled shell. One top-nav shell (Desk · Book · Stay · Folio ·
-  Print · Admin, then the signed-in user name, then Sign out;
+  Print · Admin, then the compact `VI | EN` locale pill and an
+  account disclosure carrying the signed-in user name and Sign out;
   active-route highlight; single centred content column, max width
   1100px; shell-owned sign-in gate replacing the per-screen
-  sign-in copies) wraps the existing screen SFCs. The admin
+  sign-in copies) wraps the existing screen SFCs. The disclosure
+  keeps the bar a single 60px design row (Refs #564; edge trace in
+  [section 12.3](lld.md)). The admin
   console additionally hides every management section from
   front-desk callers as a cosmetic layer over the server-side
   `FORBIDDEN` refusals (Refs #355); behaviour — who may do what —
