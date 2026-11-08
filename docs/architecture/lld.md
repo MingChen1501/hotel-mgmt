@@ -703,11 +703,14 @@ nav (the nav itself is the only addition; routes are unchanged):
 flowchart TD
     A[Staff loads any /app/* path] --> B[Shell boots: main.ts]
     B --> C[Router resolves existing route]
-    C --> D[Top nav renders six destinations + user + Sign out]
+    C --> D[Top nav renders six destinations + locale pill + account trigger]
     D --> E[Active route highlighted: bold + desk-blue underline]
     E --> F[Content column renders the screen SFC]
     F --> G[Staff selects another destination]
     G --> C
+    D --> H[Account disclosure opens: signed-in name + Sign out]
+    H --> I[Escape, another route, or a locale change closes it]
+    H --> J[Sign out clears the session, and the shell gate returns]
 ```
 
 Edge trace (every edge cites code):
@@ -725,6 +728,18 @@ Edge trace (every edge cites code):
 - D–E: active highlight is bold label + desk-blue underline
   (`#1D4ED8`, section 12.1) driven by the router's current route —
   the stand-in always knows the current screen (`FR-DSP-1`).
+- D–H: the account trigger (`data-testid="shell-session-trigger"`,
+  `src/App.vue:191-202`) reveals the disclosure
+  (`shell-session-menu`, `:203-221`) carrying the signed-in name
+  and Sign out. Since #564 the session controls sit behind this
+  disclosure instead of inline, which is what lets brand, the seven
+  tabs, and the locale pill hold the design's single 60px row.
+- H–I: Escape (`src/App.vue:189` `@keydown.escape` →
+  `closeSessionMenu`, `:420-430`, which also returns focus to the
+  trigger) and a screen or locale change (`:457-461` watcher) close
+  the disclosure.
+- H–J: Sign out (`src/App.vue:214-220`) clears the session store and
+  the shell gate renders again (`FR-DSP-2`).
 - F–G: screen SFCs render inside the centred column (max
   1100px, one plain-words page heading each); existing
   `data-testid` hooks (`*-view`, `offline-banner`) are kept so

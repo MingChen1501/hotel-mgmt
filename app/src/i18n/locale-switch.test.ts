@@ -52,15 +52,19 @@ describe('shell locale switch (EN/VI)', () => {
     return wrapper;
   }
 
-  it('shows both locales in the header switcher with EN active by default', async () => {
+  it('shows the design VI | EN pill in the header with EN active by default', async () => {
     vi.stubGlobal('fetch', quietFetch());
     try {
       const wrapper = await mountShell('/');
       const switcher = wrapper.find('[data-testid="locale-switcher"]');
       expect(switcher.exists()).toBe(true);
       expect(switcher.attributes('role')).toBe('group');
-      expect(wrapper.find('[data-testid="locale-en"]').text()).toBe('English');
-      expect(wrapper.find('[data-testid="locale-vi"]').text()).toBe('Tiếng Việt');
+      // Refs #564: the header carries the design's compact codes, in
+      // design order (`VI | EN`, every tabbed board line 2), while the
+      // sign-in gate keeps the full-word labels (asserted below).
+      expect(wrapper.find('[data-testid="locale-vi"]').text()).toBe('VI');
+      expect(wrapper.find('[data-testid="locale-en"]').text()).toBe('EN');
+      expect(switcher.text().replace(/\s/g, '')).toBe('VI|EN');
       expect(wrapper.find('[data-testid="locale-en"]').attributes('aria-pressed')).toBe('true');
       expect(wrapper.findAll('[data-testid^="shell-nav-"]').map((item) => item.text())).toEqual(
         EN_NAV,
@@ -106,6 +110,10 @@ describe('shell locale switch (EN/VI)', () => {
     });
     await router.isReady();
     expect(wrapper.find('[data-testid="shell-gate"]').exists()).toBe(true);
+    // Refs #564: the gate keeps the full-word labels — only the
+    // single-row header needs the compact design codes.
+    expect(wrapper.find('[data-testid="locale-en"]').text()).toBe('English');
+    expect(wrapper.find('[data-testid="locale-vi"]').text()).toBe('Tiếng Việt');
     await wrapper.find('[data-testid="locale-vi"]').trigger('click');
     expect(wrapper.find('[data-testid="shell-signin-submit"]').text()).toBe('Đăng nhập');
     expect(wrapper.text()).toContain('Đăng nhập để làm việc tại quầy lễ tân.');

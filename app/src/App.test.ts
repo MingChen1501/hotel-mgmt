@@ -616,6 +616,12 @@ describe('shell sign-in gate', () => {
       await vi.waitFor(() => {
         expect(wrapper.find('[data-testid="shell-nav"]').exists()).toBe(true);
       });
+      // Refs #564: the identity and Sign out sit behind the account
+      // disclosure, so the sign-out path starts at the trigger — a
+      // click on the hidden button would pass without proving that a
+      // staff member can reach Sign out at all.
+      await wrapper.find('[data-testid="shell-session-trigger"]').trigger('click');
+      expect(wrapper.find('[data-testid="shell-session-menu"]').isVisible()).toBe(true);
       await wrapper.find('[data-testid="shell-signout"]').trigger('click');
       await vi.waitFor(() => {
         expect(wrapper.find('[data-testid="shell-gate"]').exists()).toBe(true);
@@ -654,6 +660,12 @@ describe('shell sign-in gate', () => {
       await vi.waitFor(() => {
         expect(wrapper.find('[data-testid="shell-nav"]').exists()).toBe(true);
       });
+      // Refs #564: the identity and Sign out sit behind the account
+      // disclosure, so the sign-out path starts at the trigger — a
+      // click on the hidden button would pass without proving that a
+      // staff member can reach Sign out at all.
+      await wrapper.find('[data-testid="shell-session-trigger"]').trigger('click');
+      expect(wrapper.find('[data-testid="shell-session-menu"]').isVisible()).toBe(true);
       await wrapper.find('[data-testid="shell-signout"]').trigger('click');
       await vi.waitFor(() => {
         expect(wrapper.find('[data-testid="shell-gate"]').exists()).toBe(true);

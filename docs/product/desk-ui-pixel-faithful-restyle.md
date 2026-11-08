@@ -140,12 +140,23 @@ Onboarding carries the slimmer setup header instead of nav tabs).
 
 Rebuild (markup + styling to the design values):
 
-- Teal header bar: `height:60px`, `background:#0F4C47`, `color:#fff`,
-  `padding:0 24px`, brand `18px` with `margin-right:24px`.
+- Teal header bar: a fixed `height:60px` single row
+  (`flex-wrap:nowrap`), `background:#0F4C47`, `color:#fff`,
+  `padding:0 24px`, brand `18px` with `margin-right:24px`. The brand,
+  the seven design tabs, the locale pill, and the session control
+  share that one row at 1200px: tabs, pill, and session control never
+  shrink, and the brand is the only shrinkable item (ellipsis), so a
+  long configured hotel name truncates instead of wrapping the bar
+  (Refs #564).
 - Nav tabs: `padding:10px 16px`, `radius:8px`; the active tab is
   inverted (`background:#fff`, `color:#0F4C47`, `font-weight:600`).
 - Locale pill: `margin-left:auto`, `1px solid #9CC9C4`,
-  `radius:8px`, `padding:6px 12px`.
+  `radius:8px`, `padding:6px 12px`; the header pill renders the
+  design's compact `VI | EN` codes in design order
+  (`desk.shell.locale_short_vi` / `desk.shell.locale_short_en`),
+  while the sign-in gate keeps its full-word `English` / `Tiếng Việt`
+  labels where there is room. Both forms resolve through `t()`
+  (Refs #564).
 
 Keep (behaviour, untouched):
 
@@ -156,6 +167,19 @@ Keep (behaviour, untouched):
 - The shared-shell nav set from rollout section 4.1 (Main, Stay,
   Onboarding, Rooms, Book, Folio with the active screen
   highlighted; print and admin reachable as today).
+
+App-only session controls (beyond the design; Refs #338, Refs #339,
+Refs #564):
+
+- The boards are signed-in artboards and draw no session control; the
+  app keeps its accepted signed-in identity and Sign out as one
+  compact account disclosure at the end of the bar. A single trigger
+  button (`desk.shell.session_menu`) opens a panel carrying the
+  signed-in name and Sign out; Escape closes the panel and returns
+  focus to the trigger, and a screen or locale change closes it. The
+  trigger and Sign out keep the 44px target, and the panel is an
+  overflow layer below the bar (`position:absolute`), so it never
+  adds a second header row.
 
 Known board-vs-board conflict (record the owner call on #518, do not
 guess): the five tabbed boards show six tabs (no Onboarding/Rooms

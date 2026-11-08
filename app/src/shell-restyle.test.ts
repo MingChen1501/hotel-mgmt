@@ -61,7 +61,13 @@ describe('R1 shell/nav design values (Refs #518)', () => {
   it('renders the teal header at the design height, padding, and brand size', () => {
     const nav = ruleBody('#shell .shell-nav');
     expect(nav).toContain('background: #0F4C47');
+    // Refs #564: a fixed 60px single row — `height` plus `nowrap`
+    // stop the trailing controls from wrapping to a second row (the
+    // 111px regression this guard pins).
+    expect(nav).toContain('height: 60px');
     expect(nav).toContain('min-height: 60px');
+    expect(nav).toContain('flex-wrap: nowrap');
+    expect(nav).not.toContain('flex-wrap: wrap');
     expect(nav).toContain('padding: 0 24px');
     const brand = ruleBody('#shell .shell-brand');
     expect(brand).toContain('font-size: 18px');
@@ -111,14 +117,31 @@ describe('R1 shell/nav design values (Refs #518)', () => {
     expect(ruleBody('#shell .shell-column')).toContain('max-width: 1200px');
   });
 
-  it('keeps focus visible on the header sign-out button', () => {
-    // NFR-DSP-2 on the teal bar (Refs #518): the shell default
-    // teal ring would vanish on #0F4C47, so the sign-out button
-    // takes the white ring like the other header controls.
-    expect(appSource).toContain('[data-testid="shell-signout"]:focus-visible');
-    const override = /([^{}]*shell-signout[^:{\n]*:focus-visible[^{}]*)\{([^}]*)\}/.exec(appSource);
-    expect(override, 'missing sign-out focus override').not.toBeNull();
-    expect((override as RegExpExecArray)[2]).toContain('outline-color: #FFFFFF');
+  it('keeps every header button at the 44px target', () => {
+    // Refs #564: the session trigger and the menu's Sign out are
+    // PrimeVue buttons under `.shell-nav`, so the header button rule
+    // supplies the NFR-DSK-3 target.
+    expect(ruleBody('#shell .shell-nav .p-button')).toContain('min-height: 44px');
+  });
+
+  it('leaves the account panel Sign out on the shell default focus ring', () => {
+    // Refs #564 (NFR-DSP-2): Sign out renders inside the white
+    // account panel, not on the teal bar, so the header's white ring
+    // painted at ~1:1 there and hid the keyboard indicator. The
+    // control must stay out of the teal-bar scope list and inherit
+    // the shell default `#0F766E` ring, which reads on the white
+    // panel. This is the fast source-level backstop: the RENDERED
+    // ring is pinned in Chromium by `app/e2e/signin.spec.ts`
+    // ("keeps Sign out's focus ring visible on the white account
+    // panel"), because jsdom cannot resolve the `:focus-visible`
+    // cascade. The contrast of that ring on the panel surface is
+    // asserted in `shell-styling.test.ts`.
+    expect(appSource).not.toContain('[data-testid="shell-signout"]:focus-visible');
+    // The control keeps keyboard focus by inheriting the one default
+    // ring, so that rule has to exist and carry the ring token.
+    expect(ruleBody('#shell :focus-visible')).toContain(
+      `2px solid ${deskTokens.focus.ringColor}`,
+    );
   });
 });
 
@@ -148,13 +171,14 @@ describe('R1 shell/nav render contract (Refs #518)', () => {
     );
   }
 
-  async function mountSignedIn(path: string) {
+  async function mountSignedIn(path: string, attachTo?: HTMLElement) {
     const pinia = createPinia();
     setActivePinia(pinia);
     useSessionStore().signIn('tok-1', 'Ada Owner', 'owner');
     await router.replace(path);
     const wrapper = mount(ShellApp, {
       global: { plugins: [pinia, router] },
+      ...(attachTo ? { attachTo } : {}),
     });
     await router.isReady();
     return wrapper;
@@ -202,6 +226,8 @@ describe('R1 shell/nav render contract (Refs #518)', () => {
       const wrapper = await mountSignedIn('/');
       const pill = wrapper.find('[data-testid="locale-switcher"]');
       expect(pill.exists()).toBe(true);
+      // Refs #564: the compact design codes fit the single row.
+      expect(pill.text().replace(/\s/g, '')).toBe('VI|EN');
       await wrapper.find('[data-testid="locale-vi"]').trigger('click');
       expect(wrapper.findAll('[data-testid^="shell-nav-"]').map((item) => item.text())).toEqual(
         VI_NAV,
@@ -213,6 +239,46 @@ describe('R1 shell/nav render contract (Refs #518)', () => {
         EN_NAV,
       );
     } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('keeps the session controls in a compact disclosure on the bar', async () => {
+    vi.stubGlobal('fetch', configuredFetch());
+    // Mounted into the document so the Escape assertion can read
+    // `document.activeElement` (Refs #564).
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const wrapper = await mountSignedIn('/', host);
+    try {
+      // Refs #564: the identity and Sign out live in a menu instead
+      // of inline on the bar (which wrapped the header to 111px).
+      const trigger = wrapper.find('[data-testid="shell-session-trigger"]');
+      const menu = wrapper.find('[data-testid="shell-session-menu"]');
+      expect(trigger.exists()).toBe(true);
+      // PrimeVue buttons under the bar carry the 44px target
+      // (`#shell .shell-nav .p-button`), so both the trigger and the
+      // menu's Sign out stay keyboard/pointer reachable (NFR-DSK-3).
+      expect(trigger.classes()).toContain('p-button');
+      expect(trigger.attributes('aria-expanded')).toBe('false');
+      expect(menu.isVisible()).toBe(false);
+      expect(menu.find('[data-testid="shell-user"]').text()).toBe('Ada Owner');
+
+      await trigger.trigger('click');
+      expect(trigger.attributes('aria-expanded')).toBe('true');
+      expect(menu.isVisible()).toBe(true);
+      expect(menu.find('[data-testid="shell-signout"]').classes()).toContain('p-button');
+
+      // Escape closes the disclosure from inside and hands focus back
+      // to the trigger, so the keyboard path never loses its place
+      // (keyboard reachability, NFR-DSP-2).
+      await menu.find('[data-testid="shell-signout"]').trigger('keydown', { key: 'Escape' });
+      expect(trigger.attributes('aria-expanded')).toBe('false');
+      expect(menu.isVisible()).toBe(false);
+      expect(document.activeElement).toBe(trigger.element);
+    } finally {
+      wrapper.unmount();
+      host.remove();
       vi.unstubAllGlobals();
     }
   });
