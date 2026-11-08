@@ -18,13 +18,18 @@ do not drift.
   so no lab secret is in the picture.
 - Audited commit `121ffdd` (master). `side-by-side-Main-vi.png` was
   refreshed at `c02553e` after the `G-MN-4` zero-`asOf` fix.
+- `app-signin-gate-vi.png` was refreshed for the `G-SH-3` fix (#571) from the
+  built bundle at 1200px in `vi`: the gate frame is signed out and carries no
+  backend data, so the boot config call was answered locally instead of
+  standing up a lab (Chromium, viewport 1200×1000, locale pill switched to VI
+  before load).
 
 ## Images
 
 | Screen | File | Size | Shows |
 |---|---|---|---|
 | Shell/nav | [side-by-side-shell-nav-vi.png](side-by-side-shell-nav-vi.png) | 2420×111 | 60px board header vs the wrapped 111px app header; nav labels and order; `G-SH-1`, `G-SH-2` |
-| Sign-in gate | [app-signin-gate-vi.png](app-signin-gate-vi.png) | 1200×1000 | App-only gate state; the locale pill reads white on the pale gate (`G-SH-3`, follow-up #571) |
+| Sign-in gate | [app-signin-gate-vi.png](app-signin-gate-vi.png) | 1200×1000 | App-only gate state; refreshed for `G-SH-3` (#571) — the locale pill now reads dark ink on the pale gate |
 | Main | [side-by-side-Main-vi.png](side-by-side-Main-vi.png) | 2420×3394 | Desk cards and daily-sheet line; `G-MN-1`…`G-MN-4` |
 | Stay | [side-by-side-Stay-vi.png](side-by-side-Stay-vi.png) | 2420×1016 | Check-in form and in-house lists; `G-ST-1`, `G-ST-2` |
 | Onboarding | [side-by-side-Onboarding-vi.png](side-by-side-Onboarding-vi.png) | 2420×1016 | Setup wizard vs the board's setup panel; `G-OB-1` |
@@ -50,5 +55,5 @@ relaxation of the "audit issues carry no product code" rule in a
 [comment on #563](https://github.com/MingChen1501/hotel-mgmt/issues/563#issuecomment-6723063195);
 the audit comment's change log carries the matching dated row.
 
-<!-- ao-role: dev-takeover -->
-Role: dev-takeover · AO session hotel-mgmt-789
+<!-- ao-role: dev -->
+Role: dev · AO session hotel-mgmt-792

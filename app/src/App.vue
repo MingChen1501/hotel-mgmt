@@ -1918,14 +1918,34 @@ export default defineComponent({
      keep their behaviour, testids, aria-pressed, and 44px targets;
      only the fill, border, and radius are dropped so the pill
      container owns the visuals. The active locale reads semibold,
-     mirroring the design's active-tab emphasis. */
+     mirroring the design's active-tab emphasis.
+
+     The ink is the gate-safe page ink (Refs #571 — the #455 label
+     fix shape): the sign-in gate reuses this block on the pale
+     `#F4F6F5` page, where the header white reads 1.1:1 and is
+     effectively invisible. The value resolves through
+     `src/theme/tokens.ts` (`shell.pillInk`); this rule duplicates
+     it because CSS cannot import the TS constants. The header
+     scope re-applies the light ink below. */
   #shell .shell-locale .p-button {
     min-height: 44px;
     background: transparent;
     border-color: transparent;
     border-radius: 8px;
-    color: #FFFFFF;
+    color: #1B2B2A;
     padding: 6px 8px;
+  }
+
+  /* The same pill buttons inside the teal header keep the light
+     ink: white is readable on `#0F4C47` (9.8:1) but invisible on
+     the page background (1.1:1, Refs #571, Refs #455), so the
+     header scope re-applies it explicitly instead of inheriting
+     the gate-safe ink above — resting and pressed buttons share
+     this ink. The value resolves through `src/theme/tokens.ts`
+     (`shell.pillInkOnTeal`); this rule duplicates it because CSS
+     cannot import the TS constants. */
+  #shell .shell-nav .shell-locale .p-button {
+    color: #FFFFFF;
   }
 
   #shell .shell-locale .p-button[aria-pressed="true"] {

@@ -102,6 +102,15 @@ export const deskTokens = {
     // Added for the R9 seven-surface rollup (Refs #524): every
     // rendered colour resolves through this file, zero forks.
     localeLabelOnTeal: '#D7E8E6',
+    // Locale pill button ink (Refs #571, same shape as the #455
+    // label fix): the `.shell-locale` block is shared by the pale
+    // sign-in gate and the teal header. The gate scope inherits the
+    // page ink (`colors.ink`, identical value, 13.6:1 on `#F4F6F5`)
+    // and the header scope re-applies white (9.8:1 on `#0F4C47`).
+    // Added for the R9 rollup (Refs #524): every rendered colour
+    // resolves through this file, zero forks.
+    pillInk: '#1B2B2A',
+    pillInkOnTeal: '#FFFFFF',
   },
   targets: {
     // Every interactive element meets the 44px minimum touch and
