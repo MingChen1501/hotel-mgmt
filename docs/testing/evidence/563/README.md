@@ -61,8 +61,11 @@ do not drift.
   locally with the board's example arrival/departure rows instead of standing
   up a lab. The live half now shows the reviewer as a role select whose
   options carry the catalogue labels (`Quản lý` / `Chủ` / `Lễ tân`) instead
-  of a free-text input. The pair also shows the current shell (the #564
-  account disclosure), so the pre-fix image's older shell is superseded too.
+  of a free-text input. The board half draws `Người duyệt` as a prefilled
+  text input (`Quản lý ca`, `docs/design/Stay.dc.html:3`), so the select is a
+  deliberate divergence requested by #567 and recorded in the audit record.
+  The pair also shows the current shell (the #564 account disclosure), so the
+  pre-fix image's older shell is superseded too.
 
 ## Images
 

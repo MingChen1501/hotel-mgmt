@@ -135,9 +135,11 @@
             </select>
           </label>
           <!-- Reviewer select (issue #567; #563 audit `G-ST-1`): the
-            board draws `Người duyệt` as a select, so the panel offers
-            the catalogue-defined role list instead of free text and
-            keeps sending the selected role string as `approvedBy`. -->
+            board draws `Người duyệt` as a prefilled text input
+            (`Quản lý ca`, `docs/design/Stay.dc.html:3`); the panel
+            deliberately diverges and offers the catalogue-defined role
+            list instead of free text, still sending the selected role
+            string as `approvedBy`. -->
           <label for="stay-approval-by">
             {{ t('desk.stay.approved_by', {}, 'Reviewer') }}
             <select
@@ -528,9 +530,11 @@ export default defineComponent({
     // (requirements section 3.2), so `approvedBy` always carries one
     // of the hotel's defined role strings instead of arbitrary text.
     // Labels resolve through the catalogue in both locales
-    // (`desk.admin.role_*`), never hardcoded. Manager leads the list
-    // because the board illustrates `Quản lý ca` and a select with no
-    // placeholder opens on its first option.
+    // (`desk.admin.role_*`), never hardcoded. This is a deliberate
+    // divergence from the board's prefilled `Quản lý ca` text input
+    // (`docs/design/Stay.dc.html:3`), recorded in the #563 audit;
+    // manager leads the list so the default matches that illustrated
+    // reviewer and the select carries no placeholder option.
     const reviewerRoleOptions = computed(() => [
       { value: 'manager', label: t('desk.admin.role_manager', {}, 'Manager') },
       { value: 'owner', label: t('desk.admin.role_owner', {}, 'Owner') },
