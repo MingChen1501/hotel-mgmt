@@ -1,23 +1,23 @@
-// R5 Folio invoice restyle guard (Refs #522; restyle spec section 5.4,
-// AC-RST-5; traceability `docs/testing/desk-restyle-test-traceability.md`
-// section 3 R5) plus the R8 served-print half owned by this screen PR
-// (traceability section 3 R8: the folio restyle is the print-screen
-// PR, so the no-leak assertions land here).
+// Folio v2 board guard (Refs #545; v2 board adoption, epic #537;
+// traceability `docs/testing/desk-restyle-test-traceability.md`
+// section 3 R5) plus the R8 served-print half owned by this screen
+// PR (traceability section 3 R8: the folio screen is the
+// print-screen PR, so the no-leak assertions land here).
 //
 // Pins the owner-design Folio screen at the source plus the live
-// render contract: the h1 `22px` title with the muted `14px`
-// intro, the `folio-main` column stacking the open card above the
-// design `1fr 1fr` grid, the three design cards with `16px`
-// titles, the lines table with `15px` rows and `1px solid
-// #EEF1F0` top dividers under quiet `14px` muted headers, `14px`
-// labels with full-width `44px` controls (`margin-top:6px`), the
-// `30px/700 #8A4B08` balance-due figure, and primary action
-// buttons per `docs/design/Folio.dc.html:2`, while the per-stay
-// open form, charge posting, payment recording, the running
-// balance, and the print output run exactly as today (parity
-// suite `FolioView.test.ts` owns the behaviour half, the print
-// suite `PrintView.test.ts` owns the printed values; this file
-// owns the design values plus the print-isolation half).
+// render contract: no screen title or intro, the stay-ID open step
+// (F3 flow state, orchestrator decision on #545) above the design
+// `1fr 1fr` grid, the two design cards with `16px` h3 titles, the
+// plain `15px` name-plus-amount rows with `1px solid #EEF1F0` top
+// dividers, `14px` labels with full-width `44px` controls
+// (`margin-top:6px`), the muted `14px` due label above the
+// `30px/700 #8A4B08` due figure, and primary action buttons per
+// `docs/design/Folio.dc.html:3`, while the per-stay open form,
+// charge posting, payment recording, the running balance, and the
+// print output run exactly as today (parity suite
+// `FolioView.test.ts` owns the behaviour half, the print suite
+// `PrintView.test.ts` owns the printed values; this file owns the
+// design values plus the print-isolation half).
 import { describe, expect, it } from 'vitest';
 import { deskTokens } from './theme/tokens';
 import appSource from './App.vue?raw';
@@ -44,11 +44,11 @@ function combinedRuleBody(marker: string): string {
   return appSource.slice(open + 1, close);
 }
 
-describe('R5 Folio design values (Refs #522)', () => {
+describe('Folio v2 design values (Refs #545)', () => {
   it('pins the Folio design tokens to the design board', () => {
-    // `docs/design/Folio.dc.html:2` (restyle spec section 3): primary
-    // action `#0F766E`, muted `#4B5D5B`, card border `#D9E0DE`,
-    // row divider `#EEF1F0`, balance-due accent `#8A4B08`.
+    // `docs/design/Folio.dc.html:3`: primary action `#0F766E`,
+    // muted `#4B5D5B`, card border `#D9E0DE`, row divider
+    // `#EEF1F0`, balance-due accent `#8A4B08`.
     expect(deskTokens.colors.primary).toBe('#0F766E');
     expect(deskTokens.colors.muted).toBe('#4B5D5B');
     expect(deskTokens.colors.cardBorder).toBe('#D9E0DE');
@@ -68,7 +68,7 @@ describe('R5 Folio design values (Refs #522)', () => {
       'data-testid="folio-open-error"',
       'data-testid="folio-layout"',
       'data-testid="folio-charges-card"',
-      'data-testid="folio-table"',
+      'data-testid="folio-charge-lines"',
       'testid-prefix="folio-details"',
       'data-testid="folio-charge-kind"',
       'data-testid="folio-charge-name"',
@@ -78,7 +78,9 @@ describe('R5 Folio design values (Refs #522)', () => {
       'data-testid="folio-charge-status"',
       'data-testid="folio-charge-error"',
       'data-testid="folio-payments-card"',
+      'data-testid="folio-balance"',
       'data-testid="folio-status"',
+      'data-testid="folio-payment-lines"',
       'data-testid="folio-payment-method"',
       'data-testid="folio-payment-amount"',
       'data-testid="folio-pay"',
@@ -91,7 +93,7 @@ describe('R5 Folio design values (Refs #522)', () => {
     // Logic carriers stay: per-stay open form, charge posting and
     // payment recording with the running balance re-read, the
     // in-flight guards with one idempotencyKey per mutation, and
-    // all refusal paths (Refs #522 keep).
+    // all refusal paths (Refs #545 keep).
     for (const logic of [
       '/v1/billing/GetFolioBalance',
       '/v1/billing/PostCharge',
@@ -101,6 +103,9 @@ describe('R5 Folio design values (Refs #522)', () => {
       'onCharge',
       'onPay',
       'onStayIdInput',
+      'chargeRows',
+      'paymentRows',
+      'folioBalance',
     ]) {
       expect(folioViewSource, `missing logic ${logic}`).toContain(logic);
     }
@@ -111,20 +116,31 @@ describe('R5 Folio design values (Refs #522)', () => {
     expect(folioViewSource).not.toContain('data-testid="folio-right"');
   });
 
-  it('renders the h1 title at 22px with the muted 14px intro', () => {
-    const title = ruleBody('#shell [data-testid="folio-view"] .folio-title');
-    expect(title).toContain('font-size: 22px');
-    expect(title).toContain('margin: 0');
-    const intro = ruleBody('#shell [data-testid="folio-view"] .folio-intro');
-    expect(intro).toContain('font-size: 14px');
-    expect(intro).toContain('color: #4B5D5B');
-    expect(intro).toContain('margin: 0');
-    // The template wears the design classes; hooks and copy stay.
-    expect(folioViewSource).toContain('class="folio-title"');
-    expect(folioViewSource).toContain('class="folio-intro"');
+  it('keeps the retired v1 chrome absent (zero extras vs the board)', () => {
+    // The v2 board carries no screen title, no intro, no charge
+    // form sub-heading, and no lines table — the open step, the
+    // kind/method selects, and the status readouts stay as flow
+    // state (orchestrator decision on #545), everything else goes.
+    for (const hook of [
+      'folio-title',
+      'folio-intro',
+      'folio-section-title',
+      'data-testid="folio-table"',
+      'desk.folio.title',
+      'desk.folio.intro',
+      'desk.folio.charge_heading',
+      'DataTable',
+      'entryRows',
+    ]) {
+      expect(folioViewSource, `retired hook still present: ${hook}`).not.toContain(hook);
+    }
+    // The v2 board carries no screen title: no h1 or h2 renders —
+    // every card title is an h3.
+    expect(folioViewSource).not.toContain('<h1');
+    expect(folioViewSource).not.toContain('<h2');
   });
 
-  it('stacks the open card above the 1fr 1fr design grid', () => {
+  it('stacks the open step above the 1fr 1fr design grid', () => {
     const main = ruleBody('#shell [data-testid="folio-main"]');
     expect(main).toContain('display: flex');
     expect(main).toContain('flex-direction: column');
@@ -134,17 +150,22 @@ describe('R5 Folio design values (Refs #522)', () => {
     expect(layout).toContain('grid-template-columns: 1fr 1fr');
     expect(layout).toContain('gap: 16px');
     expect(layout).toContain('align-items: start');
-    // DOM order carries the design columns: the charges card sits
-    // directly in the grid before the payments card.
+    // DOM order carries the design columns: the open step sits
+    // above the grid, and the charges card sits directly in the
+    // grid before the payments card.
+    const mainAt = folioViewSource.indexOf('data-testid="folio-main"');
+    const openAt = folioViewSource.indexOf('data-testid="folio-open-card"');
     const layoutAt = folioViewSource.indexOf('data-testid="folio-layout"');
     const chargesAt = folioViewSource.indexOf('data-testid="folio-charges-card"');
     const paymentsAt = folioViewSource.indexOf('data-testid="folio-payments-card"');
-    expect(layoutAt).toBeGreaterThanOrEqual(0);
+    expect(mainAt).toBeGreaterThanOrEqual(0);
+    expect(openAt).toBeGreaterThan(mainAt);
+    expect(layoutAt).toBeGreaterThan(openAt);
     expect(chargesAt).toBeGreaterThan(layoutAt);
     expect(paymentsAt).toBeGreaterThan(chargesAt);
   });
 
-  it('renders the design cards with 16px titles', () => {
+  it('renders the design cards with 16px h3 titles', () => {
     const card = combinedRuleBody('#shell [data-testid="folio-open-card"].p-card,');
     expect(card).toContain('background: #FFFFFF');
     expect(card).toContain('border: 1px solid #D9E0DE');
@@ -155,40 +176,33 @@ describe('R5 Folio design values (Refs #522)', () => {
     expect(body).toContain('display: flex');
     expect(body).toContain('flex-direction: column');
     expect(body).toContain('gap: 10px');
-    // Card titles keep their h2 elements (heading hooks stay exact)
-    // and render the design h3 16px values; the charge-form h3
-    // takes the same treatment.
+    // Card titles are h3 elements rendering the design h3
+    // `16px` values.
     const title = combinedRuleBody(
-      '#shell [data-testid="folio-open-card"] .p-card-title h2,',
+      '#shell [data-testid="folio-open-card"] .p-card-title h3,',
     );
     expect(title).toContain('font-size: 16px');
     expect(title).toContain('margin: 0');
-    expect(folioViewSource).toContain('class="folio-section-title"');
   });
 
-  it('renders the lines table at 15px with dividers under quiet headers', () => {
-    const table = ruleBody(
-      '#shell [data-testid="folio-charges-card"] .p-datatable .p-datatable-table',
-    );
-    expect(table).toContain('font-size: 15px');
-    // The header row carries no design counterpart (the board shows
-    // rows only), so it renders quiet muted labels while the
-    // decided header sequences stay exact (design-facts gate).
-    const head = ruleBody('#shell [data-testid="folio-charges-card"] .p-datatable th');
-    expect(head).toContain('font-size: 14px');
-    expect(head).toContain('color: #4B5D5B');
-    expect(head).toContain('border: 0');
-    expect(head).toContain('background: transparent');
-    const cell = ruleBody('#shell [data-testid="folio-charges-card"] .p-datatable td');
-    expect(cell).toContain('font-size: 15px');
-    expect(cell).toContain('padding: 10px 0');
-    expect(cell).toContain('border-top: 1px solid #EEF1F0');
-    expect(cell).toContain('background: transparent');
-    const empty = ruleBody(
-      '#shell [data-testid="folio-charges-card"] .p-datatable .p-datatable-emptymessage td',
-    );
+  it('renders the board rows at 15px with top dividers', () => {
+    const lines = ruleBody('#shell [data-testid="folio-view"] .folio-lines');
+    expect(lines).toContain('display: flex');
+    expect(lines).toContain('flex-direction: column');
+    const row = ruleBody('#shell [data-testid="folio-view"] .folio-line');
+    expect(row).toContain('display: flex');
+    expect(row).toContain('justify-content: space-between');
+    expect(row).toContain('font-size: 15px');
+    expect(row).toContain('padding: 10px 0');
+    expect(row).toContain('border-top: 1px solid #EEF1F0');
+    const empty = ruleBody('#shell [data-testid="folio-view"] .folio-empty');
     expect(empty).toContain('font-size: 15px');
     expect(empty).toContain('color: #4B5D5B');
+    // The template wears the design classes on both cards'
+    // line groups.
+    expect(folioViewSource).toContain('data-testid="folio-charge-lines"');
+    expect(folioViewSource).toContain('data-testid="folio-payment-lines"');
+    expect(folioViewSource).toContain('class="folio-line"');
   });
 
   it('renders 14px labels with full-width 44px controls', () => {
@@ -202,7 +216,10 @@ describe('R5 Folio design values (Refs #522)', () => {
     expect(controls).toContain('box-sizing: border-box');
   });
 
-  it('renders the balance due at 30px 700 in the balance-due accent', () => {
+  it('renders the due label at 14px muted above the 30px 700 due figure', () => {
+    const due = ruleBody('#shell [data-testid="folio-view"] .folio-due-label');
+    expect(due).toContain('font-size: 14px');
+    expect(due).toContain('color: #4B5D5B');
     const balance = ruleBody('#shell .folio-balance-due');
     expect(balance).toContain('font-size: 30px');
     expect(balance).toContain('font-weight: 700');
@@ -210,6 +227,13 @@ describe('R5 Folio design values (Refs #522)', () => {
     // per-surface fork.
     expect(balance).toContain(`color: ${deskTokens.colors.balanceDue}`);
     expect(balance).toContain('color: #8A4B08');
+    const status = ruleBody('#shell [data-testid="folio-view"] .folio-status-line');
+    expect(status).toContain('font-size: 14px');
+    expect(status).toContain('color: #4B5D5B');
+    // The template wears the design classes on the due block.
+    expect(folioViewSource).toContain('class="folio-due-label"');
+    expect(folioViewSource).toContain('data-testid="folio-balance"');
+    expect(folioViewSource).toContain('class="folio-status-line"');
   });
 
   it('renders open, charge, and pay buttons at the design primary values', () => {
@@ -226,14 +250,14 @@ describe('R5 Folio design values (Refs #522)', () => {
   });
 });
 
-describe('R8 Folio restyle print isolation (Refs #522)', () => {
-  it('keeps every folio restyle rule inside the screen stylesheet', () => {
+describe('Folio v2 board print isolation (Refs #545)', () => {
+  it('keeps every folio board rule inside the screen stylesheet', () => {
     // The view carries no style block (M4 suite pins the
     // separation at the SFC source); the shell screen stylesheet
     // owns every folio rule, and that stylesheet renders screen
     // only with no print medium.
     expect(folioViewSource).not.toContain('<style');
-    for (const selector of ['.folio-layout', '.folio-balance-due', '.folio-action']) {
+    for (const selector of ['.folio-layout', '.folio-lines', '.folio-due-label', '.folio-balance-due', '.folio-action']) {
       expect(appSource, `shell owns ${selector}`).toContain(selector);
     }
     const screenAt = appSource.indexOf('@media screen');
@@ -245,13 +269,13 @@ describe('R8 Folio restyle print isolation (Refs #522)', () => {
     expect(appSource.replace(/\/\*[\s\S]*?\*\//g, '')).not.toContain('@media print');
   });
 
-  it('keeps the restyle out of the printed documents', () => {
+  it('keeps the board adoption out of the printed documents', () => {
     // No folio screen selector leaks into the print source, which
     // keeps its own print-only stylesheet (M4 suite); the
     // confirmation still renders the configured hotel name, and
     // the printed invoice/receipt values stay pinned by the
     // untouched PrintView suite (values match the folio exactly).
-    for (const selector of ['folio-layout', 'folio-balance-due', 'folio-action']) {
+    for (const selector of ['folio-layout', 'folio-lines', 'folio-due-label', 'folio-balance-due', 'folio-action']) {
       expect(printSource, `no print leak of ${selector}`).not.toContain(selector);
     }
     expect(printSource).toContain('@media print');
