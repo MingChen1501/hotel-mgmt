@@ -127,7 +127,8 @@ presentation requirement (FR-DSK-1..7, NFR-DSK-1..3, owned by
 wizard-scoped FR-DSK-8..10 in section 11 on the #438 stack in
 PR #442) to its
 guard. Full guard detail — parity baselines plus the new guards
-D1–D13 (D13 shipped with the #565 presentation change; D1–D12
+D1–D14 (D13 shipped with the #565 presentation change and D14
+with the #568 open-folio context change; D1–D12
 land with the screen PRs) — lives in
 `docs/testing/desk-ui-rollout-test-traceability.md`
 (desk-ui-rollout-test-traceability.md). Like the shell slice
@@ -160,7 +161,8 @@ pending the screen PRs (#420–#425) and D10–D12 are pending the
 #438 steps 2–4 screen PR. The MVP Coverage line below
 stands unchanged at 57/57. `AC-DSK-13` (Refs #565) is a
 post-rollout presentation addendum mapped in section 5 with its
-`D13` guard; it adds no row here.
+`D13` guard, and `AC-DSK-14` (Refs #568) is one mapped in
+section 6 with its `D14` guard; neither adds a row here.
 
 ## 5. Desk money and quote-date presentation slice (Refs #565)
 
@@ -196,9 +198,50 @@ the `app-build` suite (29 files / 431 tests) and the `browser-e2e`
 job are green on PR #574 (run `42511193492` at `b18271f`). The MVP
 Coverage line below stands unchanged at 57/57.
 
+## 6. Desk Folio open-context presentation slice (Refs #568)
+
+Presentation-only slice for the `G-FO-1` gap from the #563 desk UI
+audit: the Folio charges card names the open folio's guest and room
+like the board (VI `Khoản phí · Lê Minh · P.201`, EN
+`Charges · Lê Minh · Room 201`), with the raw stay and folio IDs kept
+behind the reference disclosure (#372) and every stored, transmitted,
+and printed value unchanged. Each row traces the #568 issue-body
+acceptance and `AC-DSK-14` (owned by `product-owner` in
+[acceptance-criteria.md section 11](../product/acceptance-criteria.md);
+scope in `docs/product/desk-ui-design-rollout.md` section 6.9, tier
+T2) and the three requirements the title composes — `FR-BIL-1` (folio),
+`FR-GST-1` (guest name), `FR-RMS-1` (room number) — which keep their
+wording (`business-analyst` section 15, Refs #568). The guards below
+exist on disk and were created by the #568 change (PR #577); every
+row is covered on disk except the two unresolved-half wording rows
+named partial below (follow-up issue #578), which must be filled the
+day that guard lands and must stay green from then on. Like the
+slices above, these rows add no MVP capability; the 57-row MVP
+coverage count stands unchanged and no MVP row may cite this slice
+as its guard.
+
+| Item | Required guard type | Guard |
+|---|---|---|
+| AC-DSK-14 — open folio's guest and room in the charges-card title, raw IDs behind the reference disclosure (Refs #568; traces to US-BIL-1, US-GST-1, US-RMS-1; `FR-BIL-1`, `FR-GST-1`, `FR-RMS-1`; AC-DSK-5 keeps its posting and balance conditions and points here) | Presentation check in both locales: the charges title composes `heading · guest · room` from the stay the folio belongs to, the title and balance line name no record ID, the context clears when the typed stay ID changes, a slower earlier read never paints, and a refused stay read keeps the plain title | Covered for every clause except the half-resolved fallback (the two partial rows below) — `D14`: EN title `app/src/views/FolioView.test.ts:682`/`:690`–`:692`, VI title `:714`–`:723`, read composition plus catalogue key `:613`, one room-state lane `:697`–`:704`, no raw ID `:708`–`:712` with the disclosure guard at `:208`–`:213`, clear on stay-ID change `:726`–`:739`, stale-read token `:742`–`:766`, refused read keeps the plain title `:769`–`:788`; browser pin `app/e2e/folio.spec.ts:121`–`:128`; catalogue `messages/en.json:467` / `messages/vi.json:467` |
+| FR-BIL-1 — guest folio stays as specified (open with running balance) | The existing folio guards stay green and the title adds no billing read; the composition rides `GetStay` / `GetGuest` / `ListRoomsByState` only | Covered — unchanged MVP guard (section 1: billing service and e2e folio persistence) plus client pins `app/src/views/FolioView.test.ts:180` (open with balance), `:224` (charge post), `:255` (payment); the source pin `:613` asserts no new billing operation and `:697`–`:699` names only the three context reads |
+| FR-GST-1 — guest profile read stays as specified | The guest half reads through the existing `GetGuest`; an unresolved guest half takes the catalogue wording, never an ID | Partial — `/v1/guests/GetGuest` is pinned at `app/src/views/FolioView.test.ts:699` and the no-raw-ID half at `:708`–`:712`; the unresolved-guest wording has no Folio-title guard yet (follow-up issue #578), the shared helper wording is guarded for the Main board at `app/src/views/display-names.test.ts:257`–`:258` |
+| FR-RMS-1 — room inventory with live status stays as specified | The room half resolves the room number from the existing `ListRoomsByState` read and takes one lane for an in-house room, never a room ID | Partial — `app/src/views/FolioView.test.ts:700`–`:704` pins the single `occupied` lane and `:708`–`:712` the no-ID rule; the unresolved-room wording has no Folio-title guard yet (follow-up issue #578) |
+| Reference disclosure keeps the raw IDs (#372) | Opening the reference disclosure still shows the exact stay and folio IDs; the default screen names none | Covered — `app/src/views/FolioView.test.ts:208` (`folio-details-body` holds `f-1` and `s-1` only after the toggle at `:211`) and the AC-DSK-14 no-raw-ID loop at `:708`–`:712`; browser pin `app/e2e/folio.spec.ts:125`–`:128` |
+| #563 evidence refresh (same-change rule) | The Folio side-by-side image shows the composed title and the audit evidence index records the refresh in the same change | Covered — `docs/testing/evidence/563/README.md:69` (refresh record for the open-folio context fix) and `:91` (Folio row naming the composed `Khoản phí · Lê Minh · P.201` title); the living-record rule sits at `:96`–`:100` |
+| Printed and payload values unchanged | Print output and every folio payload keep their shape: no amount, line, or balance change, no new request field | Covered — existing payload pins `app/src/views/FolioView.test.ts:243`/`:246` (charge stay ID and amount) and `:276`/`:278` (payment stay ID and amount), print parity `app/src/views/FolioView.test.ts:584`; the title is catalogue copy only (`messages/en.json:467` / `messages/vi.json:467`) |
+
+Presentation-slice coverage (Refs #568): 7 rows mapped; 5 covered,
+and 2 partial (the unresolved-half wording rows for `FR-GST-1` and
+`FR-RMS-1`, follow-up issue #578). `AC-DSK-14` is covered for every
+clause except that half-resolved fallback, which those two partial
+rows carry. Every filled guard citation is on disk at the PR #577
+head; the Folio unit guards run in `app-build` (29 files / 443 tests
+green on the implementation head) and the browser assertion runs in
+`browser-e2e`. The MVP Coverage line below stands unchanged at 57/57.
+
 Coverage: 43 FRs mapped, 14 NFRs mapped, 57 rows total, 57 guards
 filled (PR #112 slice: FR-RES-1, FR-RMS-1..4, FR-RTE-1/2/4/5, FR-ADM-1/2, FR-CUS-1, NFR-CON-1/2; PR #149 slice: FR-FDK-1, FR-FDK-5, FR-BIL-1/2/3/6, FR-ADM-5, NFR-BKP-1/2, NFR-AUD-1, NFR-TZ-1, plus FR-RES-1 persistence; PR #150 slice: FR-FDK-2, FR-FDK-3, FR-FDK-4, FR-BIL-7, plus the NFR-CON-2 stay-side checkout guard; PR #151 slice: FR-BIL-4, FR-CUS-3; PR #156 slice: FR-RPT-1..3; PR #157 slice: FR-GST-1..3; PR #158 slice: NFR-DEP-1, FR-ADM-4 config level, plus the FR-ADM-1 deployment extension; PR #159 slice: FR-RES-2/3/5/6 plus the NFR-CON-1 modify-path extension; PR #160 slice: ReleaseBlock plus rooms-side move coordination (FR-RMS-3, FR-FDK-3); PR #161 slice: full rates handling (FR-RTE-3 filled, FR-RTE-4/5 extended — remaining TBD cells fill in later slices); count corrected to the live total 48 (later slices filled cells without updating this line); PR #153 slice: NFR-RET-1, NFR-AVL-1; PR #182 slice: FR-RES-4, FR-ADM-3, FR-CUS-2, NFR-PERF-1/2 filled (5 guards — count corrected to the live total 53); FR-GST-4, FR-BIL-5, FR-RPT-4 point at follow-ups #189, #190, #191 and fill with those issues; NFR-I18N-1 filled by the #192 slice (count corrected to the live total 54); #189/#190/#191/#192/#201 slices filled FR-GST-4, FR-BIL-5, FR-RPT-4, NFR-I18N-1 (plus the #201 extension) — count corrected to the live total 57 (Closes #214)).
 filled (PR #112 slice: FR-RES-1, FR-RMS-1..4, FR-RTE-1/2/4/5, FR-ADM-1/2, FR-CUS-1, NFR-CON-1/2; PR #149 slice: FR-FDK-1, FR-FDK-5, FR-BIL-1/2/3/6, FR-ADM-5, NFR-BKP-1/2, NFR-AUD-1, NFR-TZ-1, plus FR-RES-1 persistence; PR #150 slice: FR-FDK-2, FR-FDK-3, FR-FDK-4, FR-BIL-7, plus the NFR-CON-2 stay-side checkout guard; PR #151 slice: FR-BIL-4, FR-CUS-3; PR #156 slice: FR-RPT-1..3; PR #157 slice: FR-GST-1..3; PR #158 slice: NFR-DEP-1, FR-ADM-4 config level, plus the FR-ADM-1 deployment extension; PR #159 slice: FR-RES-2/3/5/6 plus the NFR-CON-1 modify-path extension; PR #160 slice: ReleaseBlock plus rooms-side move coordination (FR-RMS-3, FR-FDK-3); PR #161 slice: full rates handling (FR-RTE-3 filled, FR-RTE-4/5 extended — remaining TBD cells fill in later slices); count corrected to the live total 48 (later slices filled cells without updating this line); PR #153 slice: NFR-RET-1, NFR-AVL-1; PR #182 slice: FR-RES-4, FR-ADM-3, FR-CUS-2, NFR-PERF-1/2 filled (5 guards — count corrected to the live total 53); FR-GST-4, FR-BIL-5, FR-RPT-4 point at follow-ups #189, #190, #191 and fill with those issues; NFR-I18N-1 filled by the #192 slice (count corrected to the live total 54); #189/#190/#191/#192/#201 slices filled FR-GST-4, FR-BIL-5, FR-RPT-4, NFR-I18N-1 (plus the #201 extension) — count corrected to the live total 57 (Closes #214)).
 
 <!-- ao-role: qa-lead -->
-Role: qa-lead · AO session hotel-mgmt-580
+Role: qa-lead · AO session hotel-mgmt-825
