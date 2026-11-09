@@ -76,6 +76,18 @@ do not drift.
   pair. The live half now titles the charges card `Khoản phí · Lê Minh ·
   P.201` like the board; before the fix it kept a static `Khoản phí` and
   named the stay only through opaque IDs in the closed reference disclosure.
+- `side-by-side-Admin-vi.png` was refreshed for the `G-AD-1` fix (#569) from
+  the built app bundle at 1200px in `vi` (Chromium, viewport 1200×1000) and
+  the design board at the same width. The Admin screen reads account, config,
+  and audit state, so the live half's reads were answered locally with the
+  board's example activity rows (`an.nguyen`, `binh.tran`, `hoa.pham`) instead
+  of standing up a lab — the same technique as the Stay and Folio pairs. The
+  live half now shows catalogue VI summaries and short desk times (`09:12`
+  today, `Hôm qua` yesterday, `dd/mm/yyyy` before that) instead of dotted
+  event names and ISO timestamps; the raw action, entity, and timestamp stay
+  behind the reference disclosure. The pair also shows the current shell (the
+  #564 account disclosure), so the pre-fix image's older shell is superseded
+  too.
 
 ## Images
 
@@ -89,7 +101,7 @@ do not drift.
 | Rooms | [side-by-side-Rooms-vi.png](side-by-side-Rooms-vi.png) | 2420×1016 | Room map, chips, and unassigned group; `G-RM-1`, `G-RM-2` |
 | Book | [side-by-side-Book-vi.png](side-by-side-Book-vi.png) | 2420×1016 | Booking form and quote rows; refreshed for `G-BK-1` (#566) — the arrival/departure fields show the desk `dd/mm/yyyy` form (`08/12/2026` / `10/12/2026`) instead of the browser-locale native picker; quote rows keep the `G-BK-2` `dd/mm/yyyy` dates and VND `đ` amounts; `G-BK-1`, `G-BK-2`, `G-BK-3` |
 | Folio | [side-by-side-Folio-vi.png](side-by-side-Folio-vi.png) | 2420×1016 | Folio lines, amounts, balance, and the open folio's guest/room in the charges-card title; refreshed for #568 — the title reads `Khoản phí · Lê Minh · P.201` like the board, while lines and balance keep the `G-FO-2` `đ` shape; `G-FO-1` |
-| Admin | [side-by-side-Admin-vi.png](side-by-side-Admin-vi.png) | 2420×1491 | User, config, and audit cards; `G-AD-1`, `G-AD-2` |
+| Admin | [side-by-side-Admin-vi.png](side-by-side-Admin-vi.png) | 2420×1491 | User, config, and audit cards; refreshed for `G-AD-1` (#569) — audit rows read catalogue VI summaries and short desk times (`09:12`, `Hôm qua`, `dd/mm/yyyy`) instead of dotted event names and ISO timestamps, with the raw values behind the reference disclosure; `G-AD-1`, `G-AD-2` |
 
 ## Living record
 
@@ -109,4 +121,4 @@ relaxation of the "audit issues carry no product code" rule in a
 the audit comment's change log carries the matching dated row.
 
 <!-- ao-role: dev -->
-Role: dev · AO session hotel-mgmt-813
+Role: dev · AO session hotel-mgmt-834

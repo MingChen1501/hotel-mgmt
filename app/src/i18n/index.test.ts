@@ -8,6 +8,7 @@ import {
   DEFAULT_LOCALE,
   LOCALE_STORAGE_KEY,
   catalogueLocale,
+  formatAuditTime,
   formatBusinessDate,
   formatDateField,
   formatDeskDate,
@@ -260,5 +261,45 @@ describe('desk date-field form (Refs #566)', () => {
     expect(formatDateField('')).toBe('');
     expect(formatDateField('2026-02-30')).toBe('');
     expect(formatDateField('2026-12-08T00:00:00.000Z')).toBe('');
+  });
+});
+
+// Activity-log time form (Refs #569, G-AD-1): the Admin board shows a
+// short desk time for today, a relative word for yesterday, and a
+// short locale date for older entries — never the API's ISO
+// timestamp.
+describe('activity-log time form (Refs #569)', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    setLocale('en');
+  });
+
+  it('renders HH:mm for today in the active locale', () => {
+    const now = new Date(2026, 10, 9, 15, 0);
+    const at = new Date(2026, 10, 9, 9, 12).toISOString();
+    expect(formatAuditTime(at, now)).toBe('09:12');
+    setLocale('vi');
+    expect(formatAuditTime(at, now)).toBe('09:12');
+  });
+
+  it('renders yesterday as a relative word per locale', () => {
+    const now = new Date(2026, 10, 9, 15, 0);
+    const at = new Date(2026, 10, 8, 9, 12).toISOString();
+    expect(formatAuditTime(at, now)).toBe('Yesterday');
+    setLocale('vi');
+    expect(formatAuditTime(at, now)).toBe('Hôm qua');
+  });
+
+  it('renders older entries as a short locale date', () => {
+    const now = new Date(2026, 10, 9, 15, 0);
+    const at = new Date(2026, 10, 1, 9, 12).toISOString();
+    expect(formatAuditTime(at, now)).toBe('11/01/2026');
+    setLocale('vi');
+    expect(formatAuditTime(at, now)).toBe('01/11/2026');
+  });
+
+  it('renders empty rather than leaking a raw unparseable timestamp', () => {
+    expect(formatAuditTime('')).toBe('');
+    expect(formatAuditTime('not-a-time')).toBe('');
   });
 });
