@@ -842,4 +842,108 @@ describe('folio open context (Refs #568)', () => {
     release(jsonResponse({ stayId: 's-1', guestId: 'g-1', roomId: 'r-1' }));
     await new Promise((resolve) => setTimeout(resolve, 20));
   });
+
+  // Half-resolved halves (Refs #578, `AC-DSK-14`): once either half
+  // resolves, an unresolved half takes the catalogue wording —
+  // `Room number unavailable` / `Không rõ số phòng` here — instead of
+  // the record ID it could not name (issue #372 rule). This is the
+  // room half while the guest half resolves.
+  it('names the catalogue room wording when no state lane lists the room', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountFolio();
+    await signIn(wrapper, fetchMock);
+    const happy = withStayContext(stubHappyPath(fetchMock));
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/rooms/ListRoomsByState') {
+        // Every lane comes back empty: the stay points at a room the
+        // housekeeping reads do not list.
+        return Promise.resolve(jsonResponse({ state: String(parseBody(init).state), rooms: [] }));
+      }
+      return happy(url, init);
+    });
+
+    await openWithContext(wrapper, 's-1');
+    expect(wrapper.find('[data-testid="folio-charges-title"]').text()).toBe(
+      'Charges · Lê Minh · Room number unavailable',
+    );
+
+    // All five lanes were read and none matched, so the room half
+    // falls back instead of guessing a number.
+    const states = fetchMock.mock.calls
+      .filter((call) => call[0] === '/v1/rooms/ListRoomsByState')
+      .map((call) => String(parseBody(call[1] as RequestInit).state));
+    expect(states).toEqual([
+      'occupied',
+      'vacant-dirty',
+      'vacant-clean',
+      'vacant-inspected',
+      'out-of-order',
+    ]);
+
+    // No raw UUID reaches the default surface (issue #372): neither
+    // the title nor the running-balance line names a record ID.
+    const title = wrapper.find('[data-testid="folio-charges-title"]').text();
+    for (const id of ['s-1', 'f-1', 'g-1', 'r-1']) {
+      expect(title).not.toContain(id);
+      expect(wrapper.find('[data-testid="folio-status"]').text()).not.toContain(id);
+    }
+
+    try {
+      setLocale('vi');
+      await wrapper.vm.$nextTick();
+      expect(wrapper.find('[data-testid="folio-charges-title"]').text()).toBe(
+        'Khoản phí · Lê Minh · Không rõ số phòng',
+      );
+    } finally {
+      setLocale('en');
+    }
+  });
+
+  // The mirror half (Refs #578): the room resolves from its occupied
+  // lane while the guest read resolves nothing, so the guest half
+  // takes `Unknown guest` / `Khách chưa rõ` — never the guest ID.
+  it('names the catalogue guest wording when the guest read resolves nothing', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountFolio();
+    await signIn(wrapper, fetchMock);
+    const happy = withStayContext(stubHappyPath(fetchMock));
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/guests/GetGuest') {
+        return Promise.resolve(
+          jsonResponse({ code: 'NOT_FOUND', message: 'unknown guest' }, 404),
+        );
+      }
+      return happy(url, init);
+    });
+
+    await openWithContext(wrapper, 's-1');
+    expect(wrapper.find('[data-testid="folio-charges-title"]').text()).toBe(
+      'Charges · Unknown guest · Room 201',
+    );
+
+    // The room half still names the real number from its lane.
+    const urls = fetchMock.mock.calls.map((call) => call[0]);
+    expect(urls).toContain('/v1/guests/GetGuest');
+    expect(urls).toContain('/v1/rooms/ListRoomsByState');
+
+    // No raw UUID reaches the default surface (issue #372): neither
+    // the title nor the running-balance line names a record ID.
+    const title = wrapper.find('[data-testid="folio-charges-title"]').text();
+    for (const id of ['s-1', 'f-1', 'g-1', 'r-1']) {
+      expect(title).not.toContain(id);
+      expect(wrapper.find('[data-testid="folio-status"]').text()).not.toContain(id);
+    }
+
+    try {
+      setLocale('vi');
+      await wrapper.vm.$nextTick();
+      expect(wrapper.find('[data-testid="folio-charges-title"]').text()).toBe(
+        'Khoản phí · Khách chưa rõ · P.201',
+      );
+    } finally {
+      setLocale('en');
+    }
+  });
 });
