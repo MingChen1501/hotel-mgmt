@@ -2300,5 +2300,453 @@ field keeps the open action working. Rolling back the single PR
 restores the text-input-only open step on both screens; no data
 migration is owed because the change adds no stored value.
 
+## 19. Rooms and rates management desk screen (Refs #590)
+
+Build-ready flow detail for the T2 reader-visible change (issue
+#590): one new desk route `/manage` reached from an eighth tab,
+carrying three card groups that drive the existing rooms and rates
+operations. This section supplies the architect-owned per-flow
+implementation diagrams the spec gate requires — one diagram per
+touched flow, happy path plus failure/rollback path — records the G2
+and G6 decisions the gate routed to this role, and states the
+technical no-change boundary. Scope, layout, the T2 UI contract and
+`AC-MANAGE-1..11` live with `product-owner`
+(`docs/product/rooms-rates-management.md`, `docs/design/RoomsRates.dc.md`;
+D-22 and D-23); the FR/NFR delta lives with `business-analyst`
+(`docs/requirements/mvp-requirements.md` [section 20](../requirements/mvp-requirements.md));
+guard mapping lives with `qa-lead`. No subsystem, endpoint, contract,
+schema, stored value, event, design token, or pricing semantic is
+added, so no ADR is owed and the tier stays **T2** (section 19.8).
+
+Intended tree deltas (files the section PRs create or touch; edge
+traces cite this head plus the intended paths):
+
+```text
+app/src/views/ManageView.vue   new screen SFC: sections A/B/C, states, refusal path
+app/src/router.ts              tenth route: /manage, name manage,
+                               docTitleKey desk.shell.doc_title_manage
+                               (route-block shape at :86-95, catch-all stays :96-99)
+app/src/App.vue                NAV_ITEMS eighth tab after rooms (:261-268),
+                               rendered by the shared nav (:125-145)
+messages/en.json               desk.shell.nav_manage, desk.shell.doc_title_manage,
+messages/vi.json               desk.manage.* — added per section PR, both locales
+app/src/router.test.ts         9 -> 10 routes (:19-34), rewritten not deleted
+app/src/shell-restyle.test.ts  8-tab EN/VI label arrays (:25-26) and tab position
+app/src/shell-titles.test.ts   one title case for manage (:31-54)
+app/e2e/design-facts.ts        app-only nav-tab allowance (schema section 8)
+app/e2e/design-facts.spec.ts   expected-order comparison (:626-645) reads the allowance
+app/src/views/ManageView.test.ts (new) per-section cases the qa-lead slice names
+```
+
+### 19.1 Flow A, happy path: one save writes one nightly row per night
+
+The manager prices a room type across an inclusive date range; the
+save is a client-side fan-out of the existing single-night write, not
+a batch operation (`docs/requirements/mvp-requirements.md` FR-MGMT-7).
+
+```mermaid
+flowchart TD
+    A[Manager picks type, types plan name, first night, last night, amount] --> B[Pre-send checks: type, plan, date order, at most 31 nights, whole dong amount 0 to 100 000 000]
+    B -->|fails| B1[Plain field sentence naming the field, nothing sent]
+    B -->|passes| C[Build inclusive night list on the hotel calendar day, amount to minor units]
+    C --> D[Send UpsertRatePrice for the first pending night]
+    D -->|200| E{More nights pending}
+    E -->|yes| D
+    E -->|no| F[Re-read visible grid: one QuotePrice per visible night]
+    F --> G[Success line names the night count and the room type, grid shows stored rows]
+```
+
+Edge trace (every edge cites code):
+
+- A–B: the controls are the section C row of the approved board
+  (`docs/design/RoomsRates.dc.md` section 7.1); the 31-night cap and
+  the whole-đồng bound are product decisions O-3 and the section 6
+  write rules (`docs/product/rooms-rates-management.md`).
+- B–B1: validation happens before any `apiFetch`, so an invalid range
+  sends nothing (`FR-MGMT-7`).
+- C–D: `UpsertRatePrice` carries `ratePlanName`, `roomTypeId`, the ISO
+  `nightDate`, and integer `priceMinor`
+  (`contracts/http/UpsertRatePrice.json`); the room type travels as
+  the uuid from `ListRoomTypes` (`contracts/http/ListRoomTypes.json`),
+  never the name, and money converts whole đồng to minor units on the
+  `formatVnd` scale (`app/src/i18n/index.ts:165-171`).
+- D–E: the write is single-night by contract; the store keys a row by
+  plan, room type, and night and upserts on that key
+  (`services/rates/internal/store/postgres.go:115-145`, `ON CONFLICT`
+  at `:134-135`; in-memory `services/rates/internal/store/store.go:179-195`),
+  so a per-night loop is safe to repeat.
+- E–F: the read-back is the section C grid; it reads one night at a
+  time through `QuotePrice` (`contracts/http/QuotePrice.json`), the G2
+  decision in section 19.8.2.
+- F–G: each `QuotePrice` reply carries the night's `priceMinor` in its
+  `nights` array, which the grid renders in the desk money shape
+  (`app/src/views/BookView.vue:609` is the existing formatter call
+  site).
+
+### 19.2 Flow A, failure and rollback: partial save, resume, plan creation
+
+A save stops at the first failed night. Written nights stay written,
+and the resume action starts at the first unsaved night — never from
+the start (`FR-MGMT-10`).
+
+```mermaid
+flowchart TD
+    A[UpsertRatePrice for night i fails] --> B[Classify the refusal]
+    B -->|404 unknown plan: details carries ratePlanName and no reason| C[Stop the loop]
+    B -->|other refusal or transport failure| D[Stop the loop]
+    C --> E[Plan-missing state: saved of total, first unsaved night, explicit create action]
+    E -->|manager chooses create| F[Send UpsertRatePlan with the name only]
+    F -->|200| G[Retry the nights still pending, starting at the first unsaved night]
+    F -->|fails| H[Plain sentence, nothing retried, form keeps its values]
+    E -->|manager declines| I[No plan created, no further night written]
+    D --> J[Partial state: saved of total, first unsaved night, resume action]
+    J -->|manager resumes| G
+    A -->|click replayed while in flight| K[No-op: save and read controls are disabled]
+    G --> L[Flow A happy path read-back and success line]
+```
+
+Edge trace:
+
+- A–B: the unknown-plan refusal is `NOT_FOUND` with
+  `details.ratePlanName` and no `details.reason`
+  (`services/rates/internal/store/store.go:188-191`; Postgres
+  `services/rates/internal/store/postgres.go:123-126`). The two quote
+  reasons are a different shape (`details.reason`), which is what
+  keeps this classification unambiguous (section 19.8.2).
+- B–E / B–J: already-written nights are in the store, so the screen
+  reports the true saved count instead of claiming the whole range
+  saved. Nights are written in date order, so "first unsaved night"
+  is the failed index and resume is `i` onward.
+- E–F: `UpsertRatePlan` carries the name only — no `description`, no
+  `defaultUnits` (`contracts/http/UpsertRatePlan.json`) — because a
+  name conflict overwrites the stored description
+  (`services/rates/internal/store/postgres.go:92-95`); the screen
+  therefore never sends it as a precaution and never twice for a plan
+  that exists (owner decision O-4).
+- F–G: the retry re-sends only the pending nights; a night that was
+  actually written before the refusal is not resent, and a resent
+  night is idempotent through the upsert key (`:134-135`).
+- A–K: the in-flight state disables save and read, so a replayed click
+  starts no second round (`FR-MGMT-7`).
+- Rollback: none is owed. There is no delete operation for prices
+  (G4), already-written rows stay valid, and the table records the
+  screen's real end state (saved of total) instead of an implied
+  all-or-nothing write. Reverting the prices PR removes the screen;
+  the rows it wrote remain valid because they are ordinary
+  `UpsertRatePrice` rows (`contracts/http/UpsertRatePrice.json`).
+
+### 19.3 Flow B, happy path: move a room to another floor with read-back
+
+The row save and the list reload are the existing `UpsertRoom` and
+`ListRoomsByState` pair; nothing about the room's state moves
+(FR-MGMT-5).
+
+```mermaid
+flowchart TD
+    A[Manager edits a room row: floor text and type select] --> B[Build the payload: number, type name, actor, and floor only when the field is non-blank]
+    B --> C[Send UpsertRoom, keyed by room number]
+    C -->|200| D[Re-read ListRoomTypes and the five ListRoomsByState reads]
+    D --> E[Merge by roomId, resolve type names by id]
+    E --> F[Group by floor label, plus a no-floor group]
+    F --> G[Room renders under its new floor, success line names the number]
+```
+
+Edge trace:
+
+- A–B: the row shape is the approved board's floor-grouped list
+  (`docs/design/RoomsRates.dc.md` section 6.2); a blank floor field
+  omits the member entirely, the same rule the wizard follows
+  (`app/src/views/OnboardingView.vue:928-933`, FR-MGMT-4).
+- B–C: `UpsertRoom` requires `number`, `roomType`, `actor` and takes
+  an optional `floor` (`contracts/http/UpsertRoom.json`); it is keyed
+  by room number, so an existing number is an update
+  (`services/rooms/src/store.ts:237-262`; Postgres
+  `services/rooms/src/pgstore.ts:194-225`).
+- C–D: an update keeps the stored state (`state: existing?.state ??
+  "vacant-inspected"`, `services/rooms/src/store.ts:259`) and keeps
+  the stored floor when the member is absent
+  (`services/rooms/src/store.ts:246`; `COALESCE($3, floor)` at
+  `services/rooms/src/pgstore.ts:213`). A setup write never
+  transitions a room.
+- D–E: five state reads are merged by `roomId`
+  (`contracts/http/ListRoomsByState.json`); type names resolve through
+  the shared `ListRoomTypes` read exactly as the Rooms map does
+  (`app/src/views/RoomsView.vue:341-343`, `:604-613`).
+- E–F: the grouping rule is the Rooms map's existing one — floor
+  labels ordered, rooms without a floor in the no-floor group
+  (`app/src/views/RoomsView.vue:461-495`), so an empty `floor` never
+  drops a room.
+- F–G: `ListRoomsByState` omits `floor` for a room without one
+  (`services/rooms/src/server.ts:112-124`), which is what puts the
+  room in the no-floor group until it is given a floor.
+
+### 19.4 Flow B, failure: one unreadable state, an unknown type, a blank floor
+
+```mermaid
+flowchart TD
+    A[Row save or list load] --> B{Outcome}
+    B -->|UpsertRoom 404 unknown room type| C[Plain sentence: the type could not be found; the list is re-read, no state changes]
+    B -->|one ListRoomsByState read fails| D[That state's group renders unavailable with a plain sentence and a retry]
+    B -->|other reads succeed| E[Their groups render normally, rooms deduplicated by roomId]
+    B -->|floor field blank| F[No floor member sent, stored floor kept, row keeps the current floor]
+    C --> G[No room is dropped and no state is invented]
+    D --> E
+```
+
+Edge trace:
+
+- A–C: an unknown room type is refused before any write
+  (`resolveRoomType` → `NOT_FOUND`, `services/rooms/src/store.ts:203-212`;
+  contract `contracts/http/UpsertRoom.json`).
+- A–D: the five reads are independent, so a failed one degrades only
+  its own group (`FR-MGMT-5`); the merge is by `roomId` and a room
+  appears once.
+- A–F: the no-clear-floor rule (G5, section 19.8.5) is enforced at the
+  payload: an empty string would be stored as an empty label
+  (`services/rooms/src/pgstore.ts:198`, `:213`) and then omitted from
+  inventory rows, so the screen never sends one.
+- Rollback: none — `UpsertRoom` is a single guarded upsert and the
+  read-back is a read; reverting the rooms PR removes the section and
+  leaves every stored floor and state as the operation left it.
+
+### 19.5 Flow C, happy path: create or edit a room type
+
+```mermaid
+flowchart TD
+    A[Section A reads ListRoomTypes] --> B{Create or edit}
+    B -->|create| C[Name, optional guests 1 to 20, optional bed type]
+    B -->|edit| D[Row action pre-fills the card, name read-only]
+    C --> E[Pre-send validation: name required, guest count in range]
+    D --> E
+    E -->|passes| F[Send UpsertRoomType with name, actor, and only the filled fields]
+    F -->|200| G[Card returns to create state, list re-reads, saved row shows the new values]
+    G --> H[Success line names the type; Book screen lists the same ListRoomTypes result]
+```
+
+Edge trace:
+
+- A–B: the list read is `ListRoomTypes`
+  (`contracts/http/ListRoomTypes.json`), the shared read the Book
+  screen already uses, which is why a type created or edited here is
+  quotable there with no further step (`FR-MGMT-2`).
+- B–C: the create card carries name, capacity, bed type (approved
+  board section 5.2; `FR-MGMT-3`).
+- B–D: the name is read-only while editing because the operation is
+  keyed by name (`services/rooms/src/store.ts:217-236`; Postgres
+  `services/rooms/src/pgstore.ts:138-172`) — G1, section 19.8.1.
+- E–F: `UpsertRoomType` requires `name` and `actor` and takes optional
+  `capacity`, `bedType`, `features`
+  (`contracts/http/UpsertRoomType.json`). The screen never sends
+  `features`, so an edit preserves the stored object
+  (`services/rooms/src/pgstore.ts:154-158`; in-memory
+  `services/rooms/src/store.ts:226-229`).
+- F–G: the contract answers the persisted row
+  (`id`, `name`, `capacity`, `bedType`, `features`), so the screen can
+  show the stored values instead of the typed ones.
+
+### 19.6 Flow C, failure: invalid input, an existing name, a failed write
+
+```mermaid
+flowchart TD
+    A[Section A save] --> B{Outcome}
+    B -->|blank name or guests outside 1 to 20| C[Plain field sentence, nothing sent]
+    B -->|name already exists in create mode| D[The operation updates that type: no duplicate row, the re-read shows one row]
+    B -->|service refuses or transport fails| E[Plain sentence, form keeps its values, list unchanged]
+    B -->|200| F[Card resets and the re-read shows the stored row]
+    C --> G[Nothing is written]
+    D --> F
+```
+
+Edge trace:
+
+- A–C: the type name is the operation key, so validation happens
+  before the call; the contract's only capacity limit is a minimum of
+  1 (`contracts/http/UpsertRoomType.json`) and the `1..20` bound is
+  the form's sanity range (`FR-MGMT-3`).
+- A–D: there is no duplicate-name refusal on `UpsertRoomType`; a
+  create whose name already exists is an update
+  (`services/rooms/src/store.ts:222-225`). The screen states nothing
+  it cannot know and the re-read shows one row, not two. This is the
+  G1 constraint seen from the create side, recorded rather than
+  papered over.
+- A–E: any other refusal renders one plain sentence
+  (`FR-MGMT-12`); a `401` follows the shell expiry path instead
+  (section 19.7).
+- Rollback: none — the operation is a single guarded upsert; reverting
+  the room-types PR removes the section and leaves stored types as the
+  operation left them.
+
+### 19.7 Flow D: the refusal path for a non-manager role
+
+The gate is the Admin console's cosmetic pattern: the signed-in role
+decides what renders, and no role check is claimed at the operations
+(G6, section 19.8.6).
+
+```mermaid
+flowchart TD
+    A[Signed-in session: token, display name, role] --> B[Screen computes canManage from the role]
+    B -->|owner or manager| C[Full screen: lists and actions enabled]
+    B -->|front-desk| D[Lists render read-only, notice states only the owner or a manager can change rooms and prices]
+    D --> E[Create and save actions disabled; a triggered write sends nothing]
+    C --> F{Write reply}
+    F -->|200| G[Normal success path]
+    F -->|401 UNAUTHENTICATED| H[Existing shell expiry path: clear session, return to the gate]
+    F -->|other refusal| I[Same plain refusal sentence, no envelope code, field name, or status number]
+```
+
+Edge trace:
+
+- A–B: the role is carried by the shared session store
+  (`app/src/stores/session.ts:50-75`, persisted beside the token); the
+  cosmetic precedent is the Admin console
+  (`app/src/views/AdminView.vue:482`).
+- B–D / B–E: the read-only render and disabled actions are the product
+  spec's refusal path (`docs/product/rooms-rates-management.md`
+  section 8; FR-MGMT-11); the guard asserts zero write calls on that
+  path, which is the Admin console's existing proof
+  (`app/src/views/AdminView.test.ts:487-505`).
+- F–H: `apiFetch` owns the single 401 path — expire the session and
+  return to the gate (`app/src/api/client.ts:96-110`, `:143`).
+- F–I: every other envelope is mapped to catalogue wording at the call
+  site, never rendered (`app/src/api/client.ts:186-192`); because the
+  rooms and rates operations check the token and no role today (G6),
+  this mapping is defensive — it does not claim a server-side refusal
+  that does not exist.
+- Rollback: none — the refusal path is render-state only and adds no
+  stored value or permission.
+
+### 19.8 Decisions routed to this role (G1–G6)
+
+The product spec carries these as gaps for `architect` to confirm or
+convert (`docs/product/rooms-rates-management.md` section 14). Each
+call below is binding for the implementation PRs; changing one needs a
+new owner decision on #590.
+
+**19.8.1 G1 — no rename; confirmed.** `UpsertRoomType` is keyed by
+name with no id field (`contracts/http/UpsertRoomType.json`;
+`services/rooms/src/store.ts:217-236`), so a rename would create a
+second type. The screen locks the name while editing and the create
+side shows the operation's real behaviour (section 19.6). A rename
+operation is a separate product decision, not part of this change.
+
+**19.8.2 G2 — no list reads for plans or prices; deferred as a
+follow-up, keeping the change at T2.** The screen ships with:
+
+- Rate plans as a free-text name created only through the explicit
+  action on the first unknown-plan refusal (O-4). No `ListRatePlans`
+  is added, and none is required before a save.
+- Prices read one night at a time through `QuotePrice` with the plan
+  named explicitly, `arrivalDate` = the night and `departureDate` =
+  the night plus one day (`contracts/http/QuotePrice.json`), one call
+  per visible night and none for nights off the paged window. The
+  existing `noRateReason` classifier (`app/src/views/BookView.vue:498-506`)
+  is the precedent for reading `details.reason`.
+
+Why per night and not one multi-night quote: `QuotePrice` does return
+a `nights` array, so a fully priced range would come back in one call,
+but a single unpriced night fails the whole quote
+(`services/rates/internal/store/store.go:265-274`) and the caller
+cannot then show the other nights — which is exactly the grid's job
+(`FR-MGMT-6`, `FR-MGMT-9`). One night per call keeps every column's
+state independent: stored price, `no_rate_price`, `no_rate_plan`, plan
+missing, or could-not-read. Cost bound: at most seven `QuotePrice`
+calls per visible page, sequentially or in a small bounded batch, no
+polling (`NFR-PERF-1` statement in requirements section 20.4).
+
+`ListRatePrices` and `ListRatePlans` are additive read surfaces. Adding
+either one now is a new operation plus contract, contract fixtures, and
+an ADR/HLD delta — that is T3, so it is **not** part of this change.
+When an owner request opens it, the grid swaps to one aggregate read
+with no product change (the no-price, plan-missing, and per-night
+states stay as specified). Until then, no document on this change may
+promise either operation.
+
+**19.8.3 G3 — rooms are listed by state; confirmed.** Five
+`ListRoomsByState` reads per load, merged by `roomId`, the same shape
+the Rooms map uses (`app/src/views/RoomsView.vue:461-495`). No
+list-all-rooms operation is added.
+
+**19.8.4 G4 — no deletes; confirmed.** No delete operation exists for
+types, rooms, plans, or prices, so the screen offers none. An owner
+request for deletion is a separate product and contract decision.
+
+**19.8.5 G5 — no clear-floor action; confirmed.** An absent `floor`
+member keeps the stored value (`services/rooms/src/pgstore.ts:213`;
+`services/rooms/src/store.ts:246`), while an empty string is stored as
+an empty label and then omitted from inventory rows
+(`services/rooms/src/server.ts:112-124`). v1 therefore only moves a
+room between non-blank floors; clearing a floor would need an explicit
+operation and is out of scope.
+
+**19.8.6 G6 — client-side role gate only; confirmed, server-side
+enforcement deferred.** The refusal is a product-surface rule on
+token-only operations: the role comes from the session store and
+decides rendering, not permissions (`NFR-SEC-1` unchanged; threat
+model unchanged). The screen and its specs must not claim
+server-side role enforcement. When an owner request opens the
+enforcement slice it is T3 (permissions/authorisation): ADR, HLD
+delta, threat-model delta, and per-operation policy on the
+`authed(operation, …)` seam the rates handler already threads
+(`services/rates/internal/handler/handler.go:97-116`).
+
+### 19.9 Technical no-change note
+
+- **Route, nav, and shell.** One route is added (`/manage`, name
+  `manage`) after the rooms route, and one tab
+  (`desk.shell.nav_manage`) after `Rooms` in `NAV_ITEMS`
+  (`app/src/App.vue:261-268`), rendered by the unchanged shared nav
+  (`:125-145`). The catch-all placeholder, the sign-in gate, the
+  session disclosure, the locale pill, and the print routes keep their
+  behaviour; the shell's shrink rule still holds with eight tabs
+  because the brand stays the only shrinkable item. Existing guards
+  are rewritten, never deleted: route count 9 → 10
+  (`app/src/router.test.ts:19-34`), the EN/VI tab arrays
+  (`app/src/shell-restyle.test.ts:25-26`), and one title case
+  (`app/src/shell-titles.test.ts:31-54`).
+- **Design-facts contract delta.** The seven owner `.dc.html` boards
+  draw seven tabs and must not be edited (`docs/design/README.md`
+  rules), so the shared-nav comparison gains a documented app-only tab
+  allowance: `docs/technical/desk-ui-fact-schema.md` section 8, with
+  `manage` as its only entry (`Quản lý` / `Manage`, design source
+  `docs/design/RoomsRates.dc.md`). No fact field is added or retyped,
+  so `schemaVersion` stays 1; the assertion sites that read the
+  expected order are `app/e2e/design-facts.spec.ts:626-645` and the
+  order comparison in `app/e2e/design-facts.ts:964-971`.
+- **Operations and contracts.** Seven existing operations, no new
+  operation, field, error code, state value, event, or schema change:
+  `ListRoomTypes`, `UpsertRoomType`, `UpsertRoom`,
+  `ListRoomsByState` (rooms); `UpsertRatePlan`, `UpsertRatePrice`,
+  `QuotePrice` (rates). `UpsertRatePrice` takes the room-type uuid, not
+  the name, and the rates contracts carry no `actor`; that write is
+  attributed to the service, unchanged by this screen (the
+  audit-attribution gap that requirements section 20.4 records stays a
+  gap).
+- **Schema, ERD, state machine.** Unchanged: no table, column, index,
+  state, or transition is added. The price row key
+  (`rate_plan_id`, `room_type_id`, `night_date`) already exists
+  (`services/rates/internal/store/postgres.go:134-135`).
+- **Tokens and components.** Zero new design tokens;
+  `app/src/theme/tokens.ts` is untouched. Cards, rows, buttons, inputs,
+  selects, chips, and the app-locale date picker reuse the existing
+  patterns under the PrimeVue-as-logic-carrier rule; the `44px` target
+  and the label-above-input pattern hold (product UI contract, section
+  10).
+- **Localisation.** This change adds no catalogue key; each section PR
+  adds only its own keys in both locales and keeps
+  `script/catalogue-coverage-check.sh` green. The one shared phrase,
+  "not open for booking", is reused, not re-worded
+  (`messages/en.json:424-425`, `messages/vi.json:424-425`).
+- **Performance and offline.** Entry reads at most one `ListRoomTypes`
+  plus five `ListRoomsByState`; a price grid page reads at most seven
+  single-night quotes; one save writes at most 31 rows sequentially.
+  Nothing polls and no write is queued: a failed read renders the plain
+  read-error state with a retry, and a failed write stays visible
+  (`NFR-AVL-1`, `NFR-SHL-3`).
+- **Rollback.** Revert the four section PRs (entry and refusal, room
+  types, rooms and floors, nightly prices). No migration is owed: the
+  screen writes through existing operations only, so every type, room,
+  floor, plan, and price row it wrote stays valid after the revert, and
+  no stored value was introduced by the UI.
+
 <!-- ao-role: architect -->
-Role: architect · AO session hotel-mgmt-824
+Role: architect · AO session hotel-mgmt-888
