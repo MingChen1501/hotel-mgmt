@@ -9,16 +9,19 @@ owned by `product-owner` in
 `docs/product/acceptance-criteria.md` section 11, PR #426 plus
 AC-DSK-9..11 on the #438 stack in PR #441, plus AC-DSK-13 for the
 #565 money and quote-date display shape, plus AC-DSK-14 for the
-#568 open-folio guest and room context) and every rollout
+#568 open-folio guest and room context, plus AC-DSK-15 for the
+#581 Book date pickers) and every rollout
 requirement (FR-DSK-1..7, NFR-DSK-1..3, owned by
 `business-analyst` in `docs/requirements/mvp-requirements.md`
 section 10, PR #427, plus wizard-scoped FR-DSK-8..10 in section
-11 on the #438 stack in PR #442, and presentation-scoped
-FR-MNY-1 / FR-MNY-2 in section 14 at PR #574) to its guard:
-existing parity guards by `file:line`
-(all verified on disk) plus the new rollout guards D1–D14 (D13
-shipped with the #565 change and D14 with the #568 change;
-D1–D12 are created by the per-screen implementation PRs). Companion specs: the T2
+11 on the #438 stack in PR #442, presentation-scoped
+FR-MNY-1 / FR-MNY-2 in section 14 at PR #574, and the #581
+Book date-picker FR-BDP-1..3 in section 16 at PR #583) to its
+guard: existing parity guards by `file:line`
+(all verified on disk) plus the new rollout guards D1–D15 (D13
+shipped with the #565 change, D14 with the #568 change, and D15
+ships with the #581 Book date-picker change; D1–D12 are created by the
+per-screen implementation PRs). Companion specs: the T2
 UI contract in `docs/product/desk-ui-design-rollout.md` sections
 3–4 (owned by `product-owner`); per-flow diagrams with happy path
 plus failure/rollback path (owned by `architect`, SPEC-GATE FAIL
@@ -51,6 +54,18 @@ live in `docs/testing/dom-diff-allowlist.md` and
   stand-in-readable sentences (`FR-DSP-3`). A screen-PR diff
   that alters any refusal condition is out of scope and fails
   review.
+- The #581 change is a narrowly-scoped input-mechanism behaviour
+  change on the Book screen only (two date fields become
+  app-localized PrimeVue DatePickers): payload dates stay
+  canonical ISO `yyyy-mm-dd`, a real day change keeps the existing
+  `onStayInput` quote path, a locale switch only re-renders the
+  same calendar day, malformed or incomplete entry never reaches
+  the payload, and one new catalogue placeholder key ships in
+  both locales. Every other date surface (business-date header,
+  quote/Folio desk dates, Stay/Folio fields), print output,
+  refusal condition, and backend or contract shape stays out of
+  scope; its guard is D15 and its map row is AC-DSK-15 in
+  section 4.
 - Catalogue rule holds (`NFR-I18N-1`, extended by `NFR-DSK-1`):
   every new or changed string ships in both `messages/en.json`
   and `messages/vi.json` with placeholders intact, and
@@ -90,13 +105,15 @@ live in `docs/testing/dom-diff-allowlist.md` and
 | AC-DSK-11 Wizard step 4 | Step-4 persistence rides the existing `CreateUser` matrix guards: create `:122` of `services/admin/src/server.test.ts` (assertion `:126`); duplicate identity refused `VALIDATION_FAILED` `:132` (assertion `:136`–`:137`); role validation `:283`–`:335` incl. bad role `:315` (assertion `:322`–`:323`) and self-change guard `:325`–`:333`; last-owner guard `:337`–`:372`; front-desk role change refused `FORBIDDEN` `:374`–`:400` (assertion `:397`–`:398`); lockout path `:82`–`:101`; unlock with sign-in retry `:402`–`:437`; unlock refusals `:440`–`:486`; secret rotation with old-stops/new-signs-in round trip `:536`–`:563` and per-role rotation recorded in the audit log `:614`–`:647`; empty secret refused server-side `services/admin/src/pgstore.ts:209`–`:210` (`VALIDATION_FAILED` naming `secret`); front-desk `CreateUser` refused `FORBIDDEN` code-enforced `services/admin/src/pgstore.ts:204`–`:205` (no on-disk test; nearest sibling guards `:177`–`:185`, `:390`–`:398`) | Admin user surface unchanged; only first-run entry through the wizard is new (D12) |
 | AC-DSK-8 catalogue + hotel name | `script/catalogue-coverage-check.sh` (fail-closed scan over `app/src/` plus both catalogue files) with `messages/en.json` and `messages/vi.json` on disk; configured-name read-back rides the `FR-ADM-1` matrix guards (`apply-hotel-config.sh` verification) | Every screen string resolves through the catalogue in both locales; the hotel name shown is the configured value, never the design example content. New-key coverage rides D1–D7 plus D10–D12; the served-print name assertion is D8 |
 | AC-DSK-14 open-folio context (Refs #568) | The reference-disclosure rule (#372) that keeps raw IDs hidden by default: `app/src/views/FolioView.test.ts:208`–`:213` (default status names no UUID; the stay and folio IDs appear only inside the opened disclosure); the charges-title hook the context composes into: `app/src/folio-restyle.test.ts:71` plus `app/src/views/FolioView.test.ts:180` (open with running balance); browser pin `app/e2e/folio.spec.ts:121`–`:128` | The charges card keeps its `folio-charges-title` hook and the plain `Charges` / `Khoản phí` heading while nothing resolves; the reference disclosure keeps the raw stay and folio IDs and never becomes the default surface. The guest-plus-room title composition and its fallbacks are D14 |
+| AC-DSK-15 app-localized Book date pickers (Refs #581) | Booking flow, date-input path, and ISO payload unchanged: `app/src/views/BookView.test.ts:333` (confirm with the guest snapshot, frozen price basis, searched sellable count, one idempotency key), `:429` (the desk date form in the fields with the canonical ISO `QuotePrice` body, now read off the DatePicker inner input and re-rendered on a locale switch), `:1200` (quote cleared when any stay input changes); browser typed path `app/e2e/book.spec.ts:43`–`:45` (`getByTestId(...).fill(...)` with the desk form) plus the quote/confirm payload pins in the same suite; design-facts gate `app/e2e/design-facts.ts:349`–`:350` | The booking flow, refusals, quote re-render, and ISO payloads run exactly as today; only how the two Book date fields are entered and shown changes (D15). The field form derives from the app locale only — a browser-UI-locale-driven field (`navigator.language` or `<html lang>`) is a failure |
 
-## 3. New rollout guards D1–D14 (D1–D12 created by the screen PRs)
+## 3. New rollout guards D1–D15 (D1–D12 created by the screen PRs)
 
 No D1–D12 guard exists yet: each of those rows names the screen PR
 that must create it. D13 (Refs #565) already shipped with the
-presentation change, and D14 (Refs #568) shipped with the
-open-folio context change. A rollout matrix row is complete only
+presentation change, D14 (Refs #568) shipped with the
+open-folio context change, and D15 (Refs #581) ships with the
+Book date-picker change. A rollout matrix row is complete only
 when its D-guard exists and passes. D10–D12 cover onboarding wizard
 steps 2–4 (Refs #438) and are created by the single steps 2–4
 screen PR, not by #425.
@@ -117,6 +134,7 @@ screen PR, not by #425.
 | D12 | Wizard step-4 assertions (Refs #438; fields and validation per `FR-DSK-10`, PR #442; flow per LLD node J9–J12, PR #443): at 100 percent progress, a blank display name is refused naming the name field, a blank sign-in identity is refused naming the identity field, an already-used identity is refused naming the identity, and an empty secret is refused naming the secret field (`NFR-SEC-2` holds); the role is fixed to owner; finish persists through `CreateUser` with the creator recorded, the owner signs in and reaches exactly the owner-permitted functions, and the wizard completes to the desk and never shows again on the now-seeded database (`FR-DSK-7` holds); back returns to step 3 with entered values kept; a validation failure keeps staff on step 4, names the missing or taken field in plain words, and creates no account | AC-DSK-11; FR-DSK-10 | The #438 steps 2–4 screen PR (new view assertions; backend behaviour already guarded by `services/admin/src/server.test.ts:122` create, `:132` duplicate identity refused, `:283`–`:335` role validation, `:337`–`:372` last-owner guard, `:374`–`:400` front-desk role change refused, `:82`–`:101` lockout path, `:402`–`:437` unlock with sign-in retry, `:440`–`:486` unlock refusals, `:536`–`:563` rotation round trip, `:614`–`:647` rotation audit, and `services/admin/src/pgstore.ts:209`–`:210` empty-secret refusal plus `:204`–`:205` front-desk `CreateUser` refusal, both code-enforced) |
 | D13 | Money and quote-date shape assertions (Refs #565; values per `FR-MNY-1` / `FR-MNY-2`, PR #574): every Book quote and Folio amount renders the active locale's VND grouping with no decimals and the `đ` suffix (VI `1.800.000 đ` / `960.000 đ`, EN `1,800,000 đ` / `60,000 đ`), with sub-dong minor units rounded for display only; every nightly quote line renders `dd/mm/yyyy` (`08/12/2026`) and never a raw ISO string, falling back to the canonical value for an unparseable ref; the flow, payload, and print guards stay untouched | AC-DSK-13; FR-MNY-1, FR-MNY-2 | The #565 presentation PR (PR #574; shipped, guards on disk): `app/src/i18n/index.test.ts:177,187,195,203`; `app/src/views/BookView.test.ts:395,407-413,420-422`; `app/src/views/FolioView.test.ts:192,200,204,543,556,567,571`; `app/e2e/book.spec.ts:59,61`; `app/e2e/folio.spec.ts:113` |
 | D14 | Open-folio context assertions (Refs #568; wording per `AC-DSK-14`, PR #577): with a folio open, the charges title reads `Charges · Lê Minh · Room 201` in EN and `Khoản phí · Lê Minh · P.201` in VI; the context resolves through the existing `GetStay` / `GetGuest` reads plus the room-state lane the room sits in (one `occupied` read for an in-house room) and the source pin keeps all three operations plus the new key; no raw stay, folio, guest, or room ID appears in the title or the running-balance line, and the reference disclosure still holds the IDs (issue #372); a typed stay-ID change clears the title and the balance line immediately; a held stay read for the previous stay never paints over the changed ID; a refused stay read keeps the plain `Charges` title; once either half resolves, an unresolved half takes the catalogue wording (`Unknown guest`, `Room number unavailable`) in both locales and never a record ID. One new catalogue key `desk.folio.charges_context` in both locales; the browser run asserts the title carries the seeded guest and `Room <number>` and no raw stay ID | AC-DSK-14; FR-BIL-1, FR-GST-1, FR-RMS-1 | The #568 presentation PR (PR #577; shipped, guards on disk): `app/src/views/FolioView.test.ts:613` (reads plus key), `:644` (block), `:682`/`:690`–`:692` (EN title), `:697`–`:704` (one `occupied` lane), `:708`–`:712` (no raw ID in title or balance), `:714`–`:723` (VI title), `:726`–`:739` (clear on stay-ID change), `:742`–`:766` (stale-read token), `:769`–`:788` (refused read keeps the plain title), with the disclosure guard at `:208`–`:213`; `app/e2e/folio.spec.ts:121`–`:128`; catalogue `messages/en.json:475`, `messages/vi.json:475`; #563 evidence `docs/testing/evidence/563/README.md:69` and `:103`. Half-resolved halves (Refs #578, `AC-DSK-14`): guest known with the room in none of the five housekeeping lanes asserts `Charges · Lê Minh · Room number unavailable` / `Khoản phí · Lê Minh · Không rõ số phòng` while every lane is read (`app/src/views/FolioView.test.ts:846`–`:901`), and the mirror case (unresolved `GetGuest` read, resolved room) asserts `Charges · Unknown guest · Room 201` / `Khoản phí · Khách chưa rõ · P.201` (`:906`–`:948`); both keep the no-raw-ID rule over the title and the balance line, with the catalogue wording at `messages/en.json:362`–`:363` and `messages/vi.json:362`–`:363` |
+| D15 | App-localized Book date-picker assertions (Refs #581; values per `AC-DSK-15`, PR #583): under the app locale VI with any browser UI language both Book date fields render a PrimeVue `DatePicker` whose inner input stays `text` with the `dd/mm/yyyy` placeholder and whose typed form parses that order to the canonical day, and under EN the same field reads `mm/dd/yyyy`; the opened calendar renders the app-locale month and weekday wording (`Tháng 12 2026` / `T2`…`CN` vs `December 2026` / `S`…`S`) from the pinned `Intl` table, never a second catalogue; a VI/EN switch re-renders both fields' placeholder and value for the same calendar day without a new quote read or a lost day; a day clicked in the calendar overlay publishes the canonical ISO value and the `QuotePrice` body carries it; an impossible or incomplete typed day leaves the canonical ref empty and never reaches a payload; one new visible key `desk.book.date_placeholder` ships in both locales with the eight mirrors byte-identical (`AC-DSK-8` holds). Boundary: no guard asserts the calendar overlay's English screen-reader strings (`Choose date`, `Previous month`, …) in VI — recorded as the #581 follow-up, not a silent pass | AC-DSK-15; FR-BDP-1, FR-BDP-2, FR-BDP-3 | The #581 Book date-picker PR (PR #583; guards on disk in that change): `app/src/i18n/primevueLocale.test.ts:18` (format table `dd/mm/yy` / `mm/dd/yy`), `:25` (generated `Tháng 1` / `January`, `CN` / `S`), `:39` (app-level install plus locale switch); `app/src/views/BookView.test.ts:468` (DatePicker render, `mm/dd/yyyy` → `dd/mm/yyyy` placeholder and value on a switch, impossible day `02/31/2026` leaves `arrivalDate === ''` at `:485`), `:506` (calendar-overlay day click sets ISO `2026-11-15` and the `QuotePrice` body carries `2026-11-15` / `2026-11-05`); bridge `app/src/i18n/index.test.ts:272` (local calendar day round trip) and `:281` (rollover and non-date never emit ISO); browser typed path `app/e2e/book.spec.ts:43`–`:45` with the quote/confirm payload pins in the same suite; gate `app/e2e/design-facts.ts:349`–`:350`; catalogue `messages/en.json:399`, `messages/vi.json:399`; evidence `docs/testing/evidence/563/README.md:60`–`:64` and `:128`–`:131` |
 
 ## 4. Traceability map (AC-DSK to guards)
 
@@ -135,14 +153,15 @@ screen PR, not by #425.
 | AC-DSK-11 — Wizard step 4: first owner account persisted via the admin user path | FR-DSK-10 (fields and validation, PR #442; flow LLD node J9–J12, PR #443) | Parity: `CreateUser` guards `services/admin/src/server.test.ts:122` (create), `:132` (duplicate identity refused), `:283`–`:335` (role validation incl. bad-role), `:337`–`:372` (last-owner guard), `:374`–`:400` (front-desk role change `FORBIDDEN`), `:82`–`:101` (lockout path), `:402`–`:437` (unlock), `:440`–`:486` (unlock refusals), `:536`–`:563` (rotation round trip), `:614`–`:647` (rotation audit) + `services/admin/src/pgstore.ts:209`–`:210` (empty secret refused, code-enforced) and `:204`–`:205` (front-desk `CreateUser` `FORBIDDEN`, code-enforced) + **D12 new** (step-4 view assertions: blank/taken/empty-secret refusals naming the field, fixed owner role, working owner sign-in, completion to the desk, wizard never shows again, back keeps values, no account created on failure) | Baseline green; D12 pending the #438 steps 2–4 screen PR |
 | AC-DSK-13 — Book quote and Folio money and date display shape, values unchanged (Refs #565; AC-DSK-3 / AC-DSK-5 keep their flow conditions and point here) | FR-MNY-1, FR-MNY-2 (section 14, PR #574) | Parity and new pins: formatter `app/src/i18n/index.test.ts:177,187,195,203`; quote view `app/src/views/BookView.test.ts:395,407-413,420-422` (desk dates, VND shape, VI re-render) with the empty/label half at `:284,307`; folio view `app/src/views/FolioView.test.ts:192,200,204,543,556,567,571`; payload pins `BookView.test.ts:82,428`, `FolioView.test.ts:224,255`, contracts `contracts/http/QuotePrice.json:16,27,33`–`:36`, `contracts/http/PostCharge.json:13,18,25,32`, `contracts/http/RecordPayment.json:13,17,24,30`; edge guards `app/src/views/desk-edge-guards.test.ts:500,509,1289`; browser pins `app/e2e/book.spec.ts:59,61`, `app/e2e/folio.spec.ts:113` (see matrix section 5 and `docs/testing/evidence/563/README.md:57`–`:58`) | Covered — `app-build` (29 files / 431 tests) and `browser-e2e` green on PR #574 (run `42511193492` at `b18271f`); the Book and Folio side-by-side images were refreshed in the same change |
 | AC-DSK-14 — open folio's guest and room in the charges-card title, IDs behind the reference disclosure (Refs #568; AC-DSK-5 keeps its posting and balance conditions and points here) | FR-BIL-1, FR-GST-1, FR-RMS-1 (no FR wording change; `business-analyst` section 15, Refs #568) | **D14** (section 3): EN/VI title `app/src/views/FolioView.test.ts:682`/`:690`–`:692` and `:714`–`:723`; read composition plus catalogue key `:613`, `:697`–`:704`; no raw ID by default `:708`–`:712` with the disclosure guard at `:208`–`:213`; clear on stay-ID change `:726`–`:739`; stale-read token `:742`–`:766`; refused read keeps the plain title `:769`–`:788`; browser `app/e2e/folio.spec.ts:121`–`:128`; catalogue `messages/en.json:475`, `messages/vi.json:475`; unchanged MVP guards `FR-BIL-1`, `FR-GST-1`, `FR-RMS-1` (matrix section 1) | Covered for the title, read, ID-hiding, clear, stale-read, and refusal clauses, plus the half-resolved fallback (Refs #578) — guards on disk and green with the app unit suite (29 files / 451 tests in the #578 worktree; `app/src/views/FolioView.test.ts` carries 30 tests) and `browser-e2e` asserts the browser title. Both half-resolved variants take the catalogue wording, never a record ID: guest known with the room in no state lane `app/src/views/FolioView.test.ts:846`–`:901` (`Room number unavailable` / `Không rõ số phòng`), unresolved guest read with a resolved room `:906`–`:948` (`Unknown guest` / `Khách chưa rõ`); the catalogue keys sit at `messages/en.json:362`–`:363` and `messages/vi.json:362`–`:363` |
+| AC-DSK-15 — Book arrival/departure fields are app-localized date pickers that keep the ISO payload and the quote path (Refs #581; AC-DSK-3 keeps its Book flow and refusal conditions and points here) | FR-BDP-1, FR-BDP-2, FR-BDP-3 (section 16, PR #583) | **D15** (section 3): app-locale format table `app/src/i18n/primevueLocale.test.ts:18`, generated calendar wording `:25`, app-level install and switch `:39`; picker render plus locale switch and malformed entry `app/src/views/BookView.test.ts:468` (impossible day `:485`), calendar-overlay click plus ISO quote body `:506`; bridge `app/src/i18n/index.test.ts:272`, `:281`; browser typed path `app/e2e/book.spec.ts:43`–`:45`; gate `app/e2e/design-facts.ts:349`–`:350`; catalogue `messages/en.json:399`, `messages/vi.json:399`; evidence `docs/testing/evidence/563/README.md:60`–`:64`, `:128`–`:131`; the unchanged `FR-RES-1` / `FR-GST-3` matrix guards keep the booking flow | Covered — the guards are on disk and run in `app-build` (the #581 head carries 30 files / 458 tests, including the three `primevueLocale` pins and the two #581 `BookView` guards) and `browser-e2e` runs the typed desk-form path; the overlay-click guard pins AC 3 end to end. Boundary: the overlay's screen-reader strings stay PrimeVue English in VI with no guard (the documented #581 follow-up). |
 
 ## 5. Exit criteria for the rollout testing slice
 
 1. Every section 2 parity guard still passes (updated where
    markup changed, none deleted without replacement).
-2. Guards D1–D14 exist and pass (section 3; D13 shipped with
-   #565 and D14 with #568, D1–D12 land with the screen PRs); the
-   `app/` unit suite is green on every screen PR.
+2. Guards D1–D15 exist and pass (section 3; D13 shipped with
+   #565, D14 with #568, and D15 with #581; D1–D12 land with the
+   screen PRs); the `app/` unit suite is green on every screen PR.
 3. `catalogue-coverage-check.sh` is green on every screen PR,
    including the new `desk.rooms.*`, `desk.onboarding.*`,
    `stay.checkin.*`, and `desk.empty.*` keys in both locales
@@ -153,7 +172,8 @@ screen PR, not by #425.
 5. No matrix MVP row flipped to TBD; the 57/57 MVP count
    stands; every rollout-slice row maps with its D-guard
    landed (11 in `traceability-matrix.md` section 4 plus
-   AC-DSK-13 in section 5 and AC-DSK-14 in section 6).
+   AC-DSK-13 in section 5, AC-DSK-14 in section 6, and
+   AC-DSK-15 in section 7).
 6. Each screen checks against its design file card by card
    (issue-body criterion); the check is recorded on the
    per-screen sub-issue (#420–#425) and, for wizard steps
