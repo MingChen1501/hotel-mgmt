@@ -79,8 +79,9 @@ test('check-in, unpaid refusal, approval, dialog check-out, and room release', a
 
   // An open balance refuses check-out in plain words naming the
   // approval next step.
+  const stayId = await stayIdFromStatus(page);
   await apiOp(request, 'billing', 'PostCharge', {
-    stayId: await stayIdFromStatus(page),
+    stayId,
     itemKind: 'nightly-room-charge',
     itemName: 'Room charge',
     amountMinor: 120000,
@@ -117,6 +118,21 @@ test('check-in, unpaid refusal, approval, dialog check-out, and room release', a
   const released = await apiOp(request, 'rooms', 'ListRoomsByState', { state: 'vacant-dirty' }, token);
   const dirtyNumbers = ((released.rooms ?? []) as Array<{ number: string }>).map((room) => room.number);
   expect(dirtyNumbers).toContain(ctx.roomNumbers[0]);
+  // The desk lists the close re-read (#588, AC-DSK-18): the closed stay
+  // has left the in-house list, the departing list keeps today's
+  // checkout, and the departing select still offers it exactly once.
+  const lists = await apiOp(request, 'stay', 'ListArrivalsDepartures', {
+    businessDate: window.arrival,
+  }, token);
+  const stayIds = (rows: unknown): string[] =>
+    ((rows ?? []) as Array<{ stayId: string }>).map((row) => row.stayId);
+  expect(stayIds(lists.inHouse)).not.toContain(stayId);
+  expect(stayIds(lists.departures)).toContain(stayId);
+  const departingOption = page
+    .getByTestId('stay-checkout-stay')
+    .locator(`option[value="${stayId}"]`);
+  await expect(departingOption).toHaveCount(1);
+  await expect(departingOption).toHaveText(`${ctx.guestName} · ${ctx.roomNumbers[0]}`);
   // The Main board and the Rooms map read that state on their own load:
   // the room sits in the dirty lane, never the occupied one.
   await page.goto('/app/');

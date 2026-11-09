@@ -1168,6 +1168,13 @@ describe('QA-EDGE-10 double-submit', () => {
     const checkoutCalls = () =>
       fetchMock.mock.calls.filter((call) => call[0] === '/v1/stay/CheckOut');
     expect(checkoutCalls()).toHaveLength(1);
+    // #588 (`AC-DSK-18`): a close that has not returned yet releases
+    // nothing — the room release follows a committed close only, so a
+    // close that never comes back can never free a room it did not
+    // vacate.
+    expect(
+      fetchMock.mock.calls.filter((call) => call[0] === '/v1/rooms/ReleaseRoom'),
+    ).toHaveLength(0);
     release(jsonResponse({ stayId: 's-1', invoiceRef: 'INV-1' }));
     await first;
     await vi.waitFor(() => {

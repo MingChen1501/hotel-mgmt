@@ -1021,10 +1021,48 @@ describe('stay view', () => {
     });
   });
 
-  it('reviews a zero-balance folio, checks out, and releases the departed room', async () => {
+  it('reviews a zero-balance folio, checks out, releases the departed room, and refreshes the desk lists', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     const wrapper = await mountSignedIn(fetchMock);
+
+    // #588 (`AC-DSK-18`): the reload after the committed close reads
+    // the desk lists again. The post-close lists move the closed stay
+    // (s-1) out of `inHouse` and into `departures`, so the departing
+    // select must drop the in-house row and keep today's checkout from
+    // the departing list; a panel that reloaded nothing, or painted a
+    // stale in-house row, leads with s-1 or lists it twice.
+    const happy = stubHappyPath(fetchMock);
+    let listReads = 0;
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/stay/ListArrivalsDepartures') {
+        listReads += 1;
+        return Promise.resolve(
+          jsonResponse({
+            businessDate: '2026-10-26',
+            arrivals: [],
+            inHouse: [],
+            departures: [
+              {
+                stayId: 's-2',
+                guestId: 'g-3',
+                roomId: 'room-7',
+                actualArrival: '2026-10-24T14:00:00.000Z',
+                actualDeparture: null,
+              },
+              {
+                stayId: 's-1',
+                guestId: 'g-2',
+                roomId: 'room-9',
+                actualArrival: '2026-10-25T14:00:00.000Z',
+                actualDeparture: '2026-10-26T11:00:00.000Z',
+              },
+            ],
+          }),
+        );
+      }
+      return happy(url, init);
+    });
 
     await wrapper.find('[data-testid="stay-checkout-stay"]').setValue('s-1');
     await wrapper.find('[data-testid="stay-review"]').trigger('click');
@@ -1081,6 +1119,24 @@ describe('stay view', () => {
     expect(closeAt).toBeGreaterThan(0);
     expect(releaseAt).toBeGreaterThan(closeAt);
     expect(reloadAt).toBeGreaterThan(releaseAt);
+    // The reloaded lists are the ones on screen (#588, `AC-DSK-18`):
+    // the closed stay left the in-house list, the departing list keeps
+    // today's checkout, and the panel paints both without a manual
+    // reload. In-house rows come first and the in-house list is empty
+    // after the close, so the closed stay can come only from the
+    // departing list — a stale in-house row would lead the select.
+    expect(listReads).toBe(1);
+    const departingOptions = wrapper
+      .findAll('[data-testid="stay-checkout-stay"] option')
+      .filter((option) => (option.element as HTMLOptionElement).value !== '');
+    expect(departingOptions.map((option) => (option.element as HTMLOptionElement).value)).toEqual([
+      's-2',
+      's-1',
+    ]);
+    expect(departingOptions.map((option) => option.text())).toEqual([
+      'Guest Three · Room number unavailable',
+      'Guest Two · 109',
+    ]);
   });
 
   it('gates check-out behind the approval form for an open balance', async () => {

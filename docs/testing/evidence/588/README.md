@@ -99,6 +99,13 @@ Symptom 2 — check-out succeeds without payment.
   `Phòng … đã chuyển sang trống, cần dọn.`, the board occupied count drops
   to 0 with the room in the dirty lane, and the Rooms chip reads
   `Dirty` / `Phòng bẩn`.
+- Symptom 1, desk lists: the reload the close performs drops the guest
+  from the in-house list while the departing list keeps today's checkout,
+  so the panel no longer shows the guest in house without a manual
+  reload. The browser case reads both lists back after the close
+  (`ListArrivalsDepartures`, `app/e2e/stay.spec.ts:121-135`) and the
+  component guard pins the refreshed departing rows
+  (`app/src/views/StayView.test.ts:1122-1139`).
 - Symptom 2: the stale close now refuses on the desk's own fresh read
   with no `CheckOut` sent; the approval route records and shows
   `approvedBy`, the hotel role, and the recorded time.
