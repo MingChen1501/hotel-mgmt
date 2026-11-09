@@ -3329,12 +3329,12 @@ writes no room state, the room release is a separate Rooms operation
 `app/src` calls `/v1/rooms/ReleaseRoom` — the browser suite records
 exactly that (`app/e2e/stay.spec.ts:99-110`). Separately, the close
 gate was review-time state only: the Check out button carries it
-(`app/src/views/StayView.vue:239-248`, `canCheckOut` `:557-561`) but
-the confirm button inside the dialog is gated on the in-flight flag
-alone (`:264-271`), `onCheckOut` falls back to the review-time
-approval object when the fresh read carries none
-(`:1269-1272`), and the approval that stands in for a payment is
-written with a reviewer value and a free-text role (`:203-217`).
+(`app/src/views/StayView.vue:254-262`, `canCheckOut` `:643-648`) but
+the confirm button inside the dialog was gated on the in-flight flag
+alone (`:264-287`), `onCheckOut` fell back to the review-time
+approval object when the fresh read carried none, and the approval
+that stood in for a payment was written with a reviewer value and a
+free-text role (`:201-252`).
 The change decides six things:
 
 - The close performs the release. After a committed `CheckOut` the
@@ -3342,8 +3342,8 @@ The change decides six things:
   room's number, `toState` `vacant-dirty`, and the signed-in staff
   name as `actor`. The room number comes from the departing row the
   staff picked, resolved through the room-state map the panel
-  already loaded (`roomNumbers`, `app/src/views/StayView.vue:498`,
-  filled in `loadPanelData` `:782-824`); staff never retype it and
+  already loaded (`roomNumbers`, `app/src/views/StayView.vue:568`,
+  filled in `loadPanelData` `:908-950`); staff never retype it and
   the panel never releases a room the stay did not hold.
 - The release runs only for a close this panel committed. A refused
   close, an already-closed stay (`STATE_ILLEGAL`), a failed write,
@@ -3360,7 +3360,7 @@ The change decides six things:
   service confirms it, and the close is never reported failed
   because the release failed.
 - The panel refreshes once, after the release attempt. The existing
-  reload (`loadPanelData`, `:782-824`) runs after it, so the
+  reload (`loadPanelData`, `:908-950`) runs after it, so the
   in-house list drops the guest and the departing list keeps
   today's checkout — expected, because a closed stay moves into the
   departures list. The Main board and Rooms map need no manual
@@ -3572,21 +3572,21 @@ code):
 
 ```mermaid
 flowchart TD
-    A[Stay: departing stay picked] --> B[Review, GetFolioBalance  StayView.vue:1126-1192]
+    A[Stay: departing stay picked] --> B[Review, GetFolioBalance  StayView.vue:1253-1326]
     B -- zero balance --> C[Close clear]
     B -- open balance and a valid recorded approval --> D[Approved exception: identity, role, recorded time shown]
-    B -- open balance, no valid approval --> E[Plain open-balance refusal naming the approval next step; approval form opens  StayView.vue:1175-1184]
-    E --> F[Staff record RecordOpenBalanceApproval  StayView.vue:1194-1249]
+    B -- open balance, no valid approval --> E[Plain open-balance refusal naming the approval next step; approval form opens  StayView.vue:1303-1313]
+    E --> F[Staff record RecordOpenBalanceApproval  StayView.vue:1328-1393]
     F -- identity, fixed-set role, recorded time --> D
     F -- missing identity or time, or role outside the set --> E2[Plain incomplete-approval refusal; stay in house]
-    C --> G[Check out opens the confirm dialog  StayView.vue:239-272]
+    C --> G[Check out opens the confirm dialog  StayView.vue:254-287]
     D --> G
     G -- cancel --> A
     G -- confirm, replayed, or double click --> H[Same gate plus the in-flight guard]
-    H -- already in flight --> Z[No-op; no second CheckOut  StayView.vue:1251-1255]
-    H --> I[Fresh GetFolioBalance  StayView.vue:1264-1269]
+    H -- already in flight --> Z[No-op; no second CheckOut  StayView.vue:1395-1410]
+    H --> I[Fresh GetFolioBalance  StayView.vue:1412-1426]
     I -- non-zero and no valid recorded approval --> J[Plain refusal; no CheckOut; dialog closes; stay in house; approval form opens]
-    I -- zero balance or valid recorded approval --> K[CheckOut with the unchanged body  StayView.vue:1274-1288]
+    I -- zero balance or valid recorded approval --> K[CheckOut with the unchanged body  StayView.vue:1444-1462]
     K -- SETTLEMENT_REQUIRED --> J
     K -- STATE_ILLEGAL --> L[Plain already-closed refusal; no release]
     K -- other failure --> M[Plain error; no release; stay state unchanged]
@@ -3594,7 +3594,7 @@ flowchart TD
     N -- confirmed --> O[Plain room-released line]
     N -- not occupied --> P[Plain room-already-free line; no housekeeping state claimed]
     N -- failure --> Q[Plain release-failed line: checked out, room still occupied, reload and tell the manager]
-    O --> R[Reload the desk data  StayView.vue:782-824]
+    O --> R[Reload the desk data  StayView.vue:908-950]
     P --> R
     Q --> R
     R --> S[In-house list drops the guest; departing list keeps today's checkout]

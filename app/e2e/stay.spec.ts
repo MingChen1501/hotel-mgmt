@@ -3,8 +3,9 @@
 //
 // Arrival-select check-in and departing-select check-out behind
 // the folio gate: the open-balance refusal reads in plain words,
-// an approval is recorded, and check-out closes through the
-// confirm dialog.
+// an approval is recorded, check-out closes through the confirm
+// dialog, and the committed close releases the departed room so the
+// board reads it vacant (Refs #588, `AC-DSK-18`).
 import { expect, test, type Page } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { installLoopbackGuard } from './loopback-guard';
@@ -26,7 +27,7 @@ test.afterEach(() => {
   guard.assertClean();
 });
 
-test('check-in, approval, and dialog check-out', async ({ page, request }) => {
+test('check-in, unpaid refusal, approval, dialog check-out, and room release', async ({ page, request }) => {
   const token = await ownerToken(request);
   const window = stayWindow(0, 2);
   const ctx = await setupFlowContext(request, token, 'stay', window);
@@ -89,24 +90,44 @@ test('check-in, approval, and dialog check-out', async ({ page, request }) => {
   await page.getByTestId('stay-review').click();
   await expect(page.getByTestId('stay-checkout-error')).toContainText('open balance');
   await expect(page.getByTestId('stay-approval-section')).toBeVisible();
+  // Every route to the close is gated (Refs #588, AC-DSK-18): the
+  // unpaid reviewed folio leaves the Check out button disabled, so the
+  // dialog cannot even open before an approval is recorded.
+  await expect(page.getByTestId('stay-checkout')).toBeDisabled();
 
   // Record the approval, then close through the confirm dialog.
   await page.getByTestId('stay-approval-by').selectOption('manager');
-  await page.getByTestId('stay-approval-role').fill('manager');
+  await page.getByTestId('stay-approval-role').selectOption('manager');
   await page.getByTestId('stay-approve').click();
-  await expect(page.getByTestId('stay-checkout-status')).toContainText('Approval recorded');
+  await expect(page.getByTestId('stay-checkout-status')).toContainText('Approved by manager (Manager) at');
   await page.getByTestId('stay-checkout').click();
   await expect(page.getByTestId('stay-checkout-dialog')).toContainText('Check out this stay now?');
   await page.getByTestId('stay-checkout-confirm').click();
   await expect(page.getByTestId('stay-checkout-status')).toContainText(`Checked out for ${ctx.guestName}`);
   // The close carries the invoice ref (FR-FDK-2, FR-BIL-4
   // presentation: the reviewed folio id is the invoice).
-  // Room release stays API-loop-covered: the desk loop calls rooms
-  // ReleaseRoom explicitly and asserts vacant-dirty there, while the
-  // desk screens (legacy page and this view alike) never release —
-  // no screen action can produce it, so the browser suite does not
-  // re-prove it here.
   await expect(page.getByTestId('stay-checkout-status')).toContainText('invoice');
+
+  // Room release (Refs #588, AC-DSK-18, FR-CKO-1/FR-CKO-3): the
+  // committed close releases the room it just vacated, so no surface
+  // keeps showing it occupied without a manual desk reload.
+  await expect(page.getByTestId('stay-room-release')).toContainText(
+    `Room ${ctx.roomNumbers[0]} is now vacant and dirty.`,
+  );
+  const released = await apiOp(request, 'rooms', 'ListRoomsByState', { state: 'vacant-dirty' }, token);
+  const dirtyNumbers = ((released.rooms ?? []) as Array<{ number: string }>).map((room) => room.number);
+  expect(dirtyNumbers).toContain(ctx.roomNumbers[0]);
+  // The Main board and the Rooms map read that state on their own load:
+  // the room sits in the dirty lane, never the occupied one.
+  await page.goto('/app/');
+  await expect(
+    page.getByTestId('desk-board-lane-dirty').getByTestId(`desk-board-cell-${ctx.roomNumbers[0]}`),
+  ).toHaveCount(1);
+  await expect(
+    page.getByTestId('desk-board-lane-occupied').getByTestId(`desk-board-cell-${ctx.roomNumbers[0]}`),
+  ).toHaveCount(0);
+  await page.goto('/app/rooms');
+  await expect(page.getByTestId(`rooms-card-chip-${ctx.roomNumbers[0]}`)).toContainText('Dirty');
 });
 
 // The already-closed refusal (STATE_ILLEGAL naming the closed stay)

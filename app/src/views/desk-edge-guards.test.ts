@@ -308,6 +308,14 @@ function stubStayHappy(fetchMock: ReturnType<typeof vi.fn>) {
     if (url === '/v1/stay/CheckOut') {
       return Promise.resolve(jsonResponse({ stayId: body.stayId, invoiceRef: 'INV-1' }));
     }
+    // #588 (`FR-CKO-1`): the committed close releases the departed
+    // room through the rooms service.
+    if (url === '/v1/rooms/ReleaseRoom') {
+      const roomNumber = String(body.roomNumber);
+      return Promise.resolve(
+        jsonResponse({ roomNumber, oldState: 'occupied', newState: 'vacant-dirty' }),
+      );
+    }
     if (url === '/v1/admin/SignOut') {
       return Promise.resolve(jsonResponse({ ok: true }));
     }
@@ -837,16 +845,19 @@ describe('QA-EDGE-7 concurrent check-in to the same room', () => {
   });
 });
 
-// QA-EDGE-8 (trace AC-DSK-4, AC-DSK-6): check-in candidates come
-// from vacant-inspected rooms only, so a dirty room is never
-// offered. The checkout-to-dirty turn itself happens server-side
-// on CheckOut: the desk writes no room state of its own and
-// re-reads the lists, so the just-freed room re-enters through
-// the dirty pile, never the candidate picker. The rest of the
-// loop (dirty-to-clean, clean-to-inspected) rides the existing
-// RoomsView guards (RoomsView.test.ts advances dirty-to-clean
-// through the clean button, advances clean-to-inspected through
-// the inspect button).
+// QA-EDGE-8 (trace AC-DSK-4, AC-DSK-6, AC-DSK-18): check-in
+// candidates come from vacant-inspected rooms only, so a dirty room
+// is never offered. Correction note (Refs #588): the earlier guard
+// text read the checkout-to-dirty turn as the server side of
+// `CheckOut`. That is wrong — `CheckOut` closes the stay and writes
+// the folio, never room state; the API desk loop calls `ReleaseRoom`
+// explicitly (`script/e2e-desk-loop.sh:422-423`). The desk screen now
+// releases the room it just vacated (`{roomNumber, toState:
+// 'vacant-dirty', actor}`) for a close this panel committed, writes no
+// other room state, and reloads the lists. The rest of the loop
+// (dirty-to-clean, clean-to-inspected) rides the existing RoomsView
+// guards (RoomsView.test.ts advances dirty-to-clean through the clean
+// button, advances clean-to-inspected through the inspect button).
 describe('QA-EDGE-8 dirty-room checkout flow', () => {
   it('never offers the dirty room as a check-in candidate', async () => {
     const fetchMock = vi.fn();
@@ -905,7 +916,7 @@ describe('QA-EDGE-8 dirty-room checkout flow', () => {
     expect(pickerText).not.toContain('109');
   });
 
-  it('closes the stay once, writes no room state, and re-reads the lists', async () => {
+  it('closes once, releases the departed room once, and re-reads the lists', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     stubStayHappy(fetchMock);
@@ -932,17 +943,33 @@ describe('QA-EDGE-8 dirty-room checkout flow', () => {
       expect(wrapper.find('[data-testid="stay-checkout-status"]').text()).toContain('Checked out');
     });
 
-    // Exactly one stay close, and the desk never writes room state
-    // itself: the vacant-dirty turn is the server side of CheckOut.
+    // Exactly one stay close, exactly one release for the room the
+    // stay held (109, from the departing row through the loaded
+    // room-state map), and no other room write (Refs #588).
     const urls = fetchMock.mock.calls.map((call) => String(call[0]));
     expect(urls.filter((url) => url === '/v1/stay/CheckOut')).toHaveLength(1);
+    const releaseCalls = fetchMock.mock.calls.filter(
+      (call) => String(call[0]) === '/v1/rooms/ReleaseRoom',
+    );
+    expect(releaseCalls).toHaveLength(1);
+    expect(parseBody(releaseCalls[0]?.[1])).toEqual({
+      roomNumber: '109',
+      toState: 'vacant-dirty',
+      actor: 'Ada Owner',
+    });
     expect(urls).not.toContain('/v1/rooms/UpdateRoomState');
     expect(urls).not.toContain('/v1/rooms/UpsertRoom');
-    // The post-checkout world is re-read, so the freed room
-    // re-enters through its (dirty) state read, not the picker.
+    expect(wrapper.find('[data-testid="stay-room-release"]').text()).toContain(
+      'Room 109 is now vacant and dirty.',
+    );
+    // The post-checkout world is re-read after the release, so the
+    // freed room re-enters through its (dirty) state read.
     expect(
       fetchMock.mock.calls.filter((call) => call[0] === '/v1/stay/ListArrivalsDepartures'),
     ).toHaveLength(listsBefore + 1);
+    expect(urls.lastIndexOf('/v1/rooms/ReleaseRoom')).toBeLessThan(
+      urls.lastIndexOf('/v1/stay/ListArrivalsDepartures'),
+    );
   });
 });
 
@@ -1145,6 +1172,14 @@ describe('QA-EDGE-10 double-submit', () => {
     await first;
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="stay-checkout-status"]').text()).toContain('Checked out');
+    });
+    expect(checkoutCalls()).toHaveLength(1);
+    // #588: the single committed close releases the room once, and the
+    // replayed click never queues a second release.
+    await vi.waitFor(() => {
+      expect(
+        fetchMock.mock.calls.filter((call) => call[0] === '/v1/rooms/ReleaseRoom'),
+      ).toHaveLength(1);
     });
     expect(checkoutCalls()).toHaveLength(1);
   });

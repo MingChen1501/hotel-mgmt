@@ -217,7 +217,7 @@ Trước khi chạy case của từng màn hình, xác nhận vỏ chung đạt 
      `desk.stay.folio_balance`.
   2. Bấm `desk.stay.checkout_button` khi chưa có phê duyệt.
   3. Ghi phê duyệt (`desk.stay.approved_by`, `desk.stay.approver_role`,
-     `desk.stay.need_approver`), xác nhận `desk.stay.approval_recorded_brief`,
+     `desk.stay.need_approver`), xác nhận `desk.stay.approval_recorded_by`,
      rồi bấm trả phòng lại.
 - **Kết quả mong đợi:** bước 1 báo `desk.stay.refused_open_balance` và mở
   khối phê duyệt; sau phê duyệt, trả phòng thành công
