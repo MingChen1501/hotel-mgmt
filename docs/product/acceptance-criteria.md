@@ -78,7 +78,10 @@ the calendar with correct dates, room type, and state.
   balance) or an authorised approval recorded under FR-BIL-7, when
   staff check the guest out, then the stay is closed, the folio is
   presented as the final invoice, and the room state becomes vacant
-  and dirty. Traces to: US-FDK-2; FR-FDK-2, FR-BIL-7.
+  and dirty. The desk surfaces must reach that room state without a
+  second manual step and must refuse an unapproved open-balance
+  close on every route they offer (`AC-DSK-18`, Refs #588).
+  Traces to: US-FDK-2; FR-FDK-2, FR-BIL-7.
 - AC-FDK-3 — Given an in-house stay and a vacant, clean, inspected
   room, when staff move the guest to the new room, then the stay links
   to the new room, the old room becomes vacant and dirty, and the move
@@ -391,22 +394,28 @@ Product-owner rollout spec: `docs/product/desk-ui-design-rollout.md`
 conflicting parts of the #412 journey record (D-12 in
 `docs/project/decision-log.md`); each conflict found during
 implementation is recorded on the affected sub-issue with the
-owner decision. These 16 conditions cover the six screens
+owner decision. These 18 conditions cover the six screens
 (Main #420, Stay #422, Onboarding #425 plus steps 2–4 in #438,
 Rooms #424, Book #421, Folio #423) plus the shared shell,
 the catalogue rule, the business-date display decision
 (#503, AC-DSK-12), the quote/folio money and date display
 decision (#565, AC-DSK-13), the open-folio guest and room
 context in the charges-card title (#568, AC-DSK-14), the
-app-localized Book date pickers (#581, AC-DSK-15), and the
+app-localized Book date pickers (#581, AC-DSK-15), the
 list-backed stay picker on the Folio and Print open steps
-(#582, AC-DSK-16). They
+(#582, AC-DSK-16), the Stay arrival-pick candidate preload
+(#586, AC-DSK-17), and the Stay check-out room release plus
+unpaid-close gate (#588, AC-DSK-18). They
 add no MVP capability: the four restyles change presentation
 only, the Rooms map visualises existing room state
 (`US-RMS-1`), and the wizard operationalises first-run setup
 of existing hotel configuration (`US-ADM-1`, `US-ADM-3`).
 Refusal semantics are unchanged throughout (`FR-RTE-4`,
-`FR-CUS-1`, `FR-BIL-7` fire on exactly the same conditions).
+`FR-CUS-1`, `FR-BIL-7` fire on exactly the same conditions);
+where a condition instead makes an existing rule reachable from
+the desk screen (`AC-DSK-17` load timing, `AC-DSK-18` release
+and gate routes), it implements `FR-FDK-2`/`FR-BIL-7` at the
+screen and changes no rule.
 FR/NFR wording is owned by `business-analyst` and guard mapping
 by `qa-lead` (see the rollout spec, section 8); the conditions
 below check behaviour only.
@@ -605,6 +614,39 @@ below check behaviour only.
   change only, no MVP capability added, no backend or
   request-field change).
 
+- AC-DSK-18 — Given an in-house stay with a zero folio balance,
+  when staff check the guest out, then the close runs once (a
+  replayed or double click is a no-op), the departed room is
+  released to `vacant-dirty` through `ReleaseRoom` with the room
+  number the stay held (never a retyped or guessed number), the
+  Stay in-house list no longer names the guest while the departing
+  list keeps today's checkout, and the Main board and Rooms map
+  show the room vacant on their own load — no manual reload, no
+  separate release step. Given a close that succeeds and a release
+  call that then fails, then the close stands, the panel says in
+  plain catalogue words that the guest is checked out while the
+  room still reads occupied, and names the next step; the close is
+  never reported as failed and no room is reported released before
+  it is. Given an open-balance folio with no recorded approval,
+  when staff attempt check-out by any route — the Check out
+  button, the confirm dialog, a replayed or double click — then no
+  close commits, the stay remains in house, and the refusal is the
+  plain catalogue sentence naming the approval next step. Given a
+  balance that moved between review and confirm, then the freshly
+  read balance governs: a non-zero balance without a recorded
+  approval refuses and keeps the stay in house. Given an open
+  balance with an approval recorded through
+  `RecordOpenBalanceApproval`, when staff check out, then the
+  close succeeds and the panel shows the recorded approver
+  identity, role, and recorded time in the desk time form; an
+  approval object without an identity or a recorded time, or with
+  a role outside the hotel's three defined roles, is not an
+  approval — it refuses in the plain incomplete-approval sentence
+  with the stay still in house. Traces to: US-FDK-2; FR-FDK-2,
+  FR-BIL-7, BR-17, BR-18 (Refs #588; release-and-gate enforcement
+  in the Stay panel only, no backend, contract, schema,
+  stored-value, print, or charging-policy change).
+
 Rollout done when: the six sub-issues each close with a merged
 implementation PR (the wizard slice spans #425 step 1 plus the
 #438 steps 2–4 PR), every screen checks against its design file
@@ -623,7 +665,9 @@ lead with the business date's in-house stay select while keeping
 manual stay-ID entry and sending the same identifier per
 AC-DSK-16, and the Stay arrival pick loads the booked-type ready
 rooms with the commit still on the Check in button and a valid
-room selection clearing the guard message per AC-DSK-17.
+room selection clearing the guard message per AC-DSK-17, and the
+Stay check-out releases the departed room and gates every UI route
+to the close on the freshly read balance per AC-DSK-18.
 
 ## 12. Desk UI pixel-faithful restyle (Refs #517)
 
@@ -650,7 +694,13 @@ candidate load timing and the room-error lifecycle are superseded
 by `AC-DSK-4`/`AC-DSK-17` and the rollout spec section 6.12 (the
 arrival pick loads the booked-type ready rooms; the commit stays
 on the Check in button); the restyle conditions above are
-otherwise unchanged. FR/NFR
+otherwise unchanged. Second rebaseline note (Refs #588,
+2026-11-09): the Stay check-out now releases the departed room and
+gates every UI route to the close on the freshly read balance,
+superseded by `AC-DSK-18` and the rollout spec section 6.13 (the
+settled-folio checkout gate is no longer "exactly as today" — it
+releases the room and re-checks the balance at confirm); every
+other restyle condition below is unchanged. FR/NFR
 wording is owned by `business-analyst` and guard mapping by
 `qa-lead` (see the restyle spec, section 9); the conditions below
 check behaviour and evidence only. Conformance evidence is twofold
@@ -701,10 +751,11 @@ follows that decision.
   `AC-DSK-17`), the empty room-select placeholder blocks check-in
   until a ready room is chosen, a valid room selection never
   leaves the `Pick a ready room first.` message behind, and move
-  and times flows plus the settled-folio checkout gate behave
-  exactly as today. Traces to: US-FDK-1, US-FDK-2; FR-FDK-1,
-  FR-FDK-2, FR-BIL-7 (Refs #586; behaviour re-baselined to
-  `AC-DSK-17`).
+  and times flows behave exactly as today while the check-out
+  panel releases the departed room and re-checks the balance at
+  confirm per `AC-DSK-18`. Traces to: US-FDK-1, US-FDK-2;
+  FR-FDK-1, FR-FDK-2, FR-BIL-7 (Refs #586; behaviour re-baselined
+  to `AC-DSK-17`; Refs #588, re-baselined to `AC-DSK-18`).
 - AC-RST-5 — Given an in-house stay with charges and payments,
   when staff work the Folio screen, then the two-card grid, the
   balance-due accent size and colour, example lines, labels, and
@@ -798,4 +849,4 @@ unchanged and the sections 1–9 and 11 done-conditions hold as
 written.
 
 <!-- ao-role: product-owner -->
-Role: product-owner · AO session hotel-mgmt-704
+Role: product-owner · AO session hotel-mgmt-871
