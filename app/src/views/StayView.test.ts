@@ -8,9 +8,12 @@
 // from the AssignRoom echo, and CheckInReservation) and the
 // folio-gated check-out
 // (GetFolioBalance review, RecordOpenBalanceApproval, CheckOut
-// with the reviewed folio id plus balance plus approval,
+// with the reviewed folio id plus balance plus the provenanced
+// approval, then ReleaseRoom for the departed room,
 // SETTLEMENT_REQUIRED surfacing) — through the shared Bearer
-// client and the catalogue `t()` wrapper. Expected arrivals
+// client and the catalogue `t()` wrapper (Refs #588: every route
+// to the close re-reads the folio and refuses an unpaid close, and a
+// committed close releases the room it vacated). Expected arrivals
 // (Refs #349) resolve from the reservation calendar because live
 // stay rows never carry booking references; the departing pick
 // resolves from the in-house and departures lists. The pre-v2
@@ -175,9 +178,15 @@ function stubHappyPath(
     }
     if (url === '/v1/billing/RecordOpenBalanceApproval') {
       expect(body.idempotencyKey).toBeTruthy();
+      // #588: a recorded approval carries the approver identity, the
+      // hotel role, and the recorded time the desk shows.
       return Promise.resolve(
         jsonResponse({
-          openBalanceApproval: { approvedBy: body.approvedBy },
+          openBalanceApproval: {
+            approvedBy: body.approvedBy,
+            role: body.role,
+            approvedAt: '2026-11-09T10:15:00.000Z',
+          },
           balanceMinor: 1500,
         }),
       );
@@ -185,6 +194,15 @@ function stubHappyPath(
     if (url === '/v1/stay/CheckOut') {
       expect(body.idempotencyKey).toBeTruthy();
       return Promise.resolve(jsonResponse({ stayId: body.stayId, invoiceRef: 'INV-1' }));
+    }
+    // #588 (`FR-CKO-1`): a committed close releases the departed room.
+    if (url === '/v1/rooms/ReleaseRoom') {
+      expect(body.toState).toBe('vacant-dirty');
+      expect(body.actor).toBe('Ada Owner');
+      const roomNumber = String(body.roomNumber);
+      return Promise.resolve(
+        jsonResponse({ roomNumber, oldState: 'occupied', newState: 'vacant-dirty' }),
+      );
     }
     if (url === '/v1/admin/SignOut') {
       return Promise.resolve(jsonResponse({ ok: true }));
@@ -1003,10 +1021,48 @@ describe('stay view', () => {
     });
   });
 
-  it('reviews a zero-balance folio and checks out without approval', async () => {
+  it('reviews a zero-balance folio, checks out, releases the departed room, and refreshes the desk lists', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     const wrapper = await mountSignedIn(fetchMock);
+
+    // #588 (`AC-DSK-18`): the reload after the committed close reads
+    // the desk lists again. The post-close lists move the closed stay
+    // (s-1) out of `inHouse` and into `departures`, so the departing
+    // select must drop the in-house row and keep today's checkout from
+    // the departing list; a panel that reloaded nothing, or painted a
+    // stale in-house row, leads with s-1 or lists it twice.
+    const happy = stubHappyPath(fetchMock);
+    let listReads = 0;
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/stay/ListArrivalsDepartures') {
+        listReads += 1;
+        return Promise.resolve(
+          jsonResponse({
+            businessDate: '2026-10-26',
+            arrivals: [],
+            inHouse: [],
+            departures: [
+              {
+                stayId: 's-2',
+                guestId: 'g-3',
+                roomId: 'room-7',
+                actualArrival: '2026-10-24T14:00:00.000Z',
+                actualDeparture: null,
+              },
+              {
+                stayId: 's-1',
+                guestId: 'g-2',
+                roomId: 'room-9',
+                actualArrival: '2026-10-25T14:00:00.000Z',
+                actualDeparture: '2026-10-26T11:00:00.000Z',
+              },
+            ],
+          }),
+        );
+      }
+      return happy(url, init);
+    });
 
     await wrapper.find('[data-testid="stay-checkout-stay"]').setValue('s-1');
     await wrapper.find('[data-testid="stay-review"]').trigger('click');
@@ -1038,6 +1094,49 @@ describe('stay view', () => {
     );
     expect(checkoutBody.folioId).toBe('f-1');
     expect(checkoutBody.folioBalanceMinor).toBe(0);
+    // #588 (`AC-DSK-18`, `FR-CKO-1`/`FR-CKO-2`): the committed close
+    // releases the room the stay held (109, resolved through the
+    // loaded room-state map, never typed) to vacant-dirty, exactly
+    // once, and the release line names it.
+    const releaseCalls = fetchMock.mock.calls.filter(
+      (call) => String(call[0]) === '/v1/rooms/ReleaseRoom',
+    );
+    expect(releaseCalls).toHaveLength(1);
+    expect(parseBody(releaseCalls[0]?.[1])).toEqual({
+      roomNumber: '109',
+      toState: 'vacant-dirty',
+      actor: 'Ada Owner',
+    });
+    expect(wrapper.find('[data-testid="stay-room-release"]').text()).toContain(
+      'Room 109 is now vacant and dirty.',
+    );
+    // Order (#588): close, then release, then the panel reload — so the
+    // lists and every surface read the corrected room state.
+    const urls = fetchMock.mock.calls.map((call) => String(call[0]));
+    const closeAt = urls.lastIndexOf('/v1/stay/CheckOut');
+    const releaseAt = urls.indexOf('/v1/rooms/ReleaseRoom');
+    const reloadAt = urls.lastIndexOf('/v1/stay/ListArrivalsDepartures');
+    expect(closeAt).toBeGreaterThan(0);
+    expect(releaseAt).toBeGreaterThan(closeAt);
+    expect(reloadAt).toBeGreaterThan(releaseAt);
+    // The reloaded lists are the ones on screen (#588, `AC-DSK-18`):
+    // the closed stay left the in-house list, the departing list keeps
+    // today's checkout, and the panel paints both without a manual
+    // reload. In-house rows come first and the in-house list is empty
+    // after the close, so the closed stay can come only from the
+    // departing list — a stale in-house row would lead the select.
+    expect(listReads).toBe(1);
+    const departingOptions = wrapper
+      .findAll('[data-testid="stay-checkout-stay"] option')
+      .filter((option) => (option.element as HTMLOptionElement).value !== '');
+    expect(departingOptions.map((option) => (option.element as HTMLOptionElement).value)).toEqual([
+      's-2',
+      's-1',
+    ]);
+    expect(departingOptions.map((option) => option.text())).toEqual([
+      'Guest Three · Room number unavailable',
+      'Guest Two · 109',
+    ]);
   });
 
   it('gates check-out behind the approval form for an open balance', async () => {
@@ -1068,9 +1167,15 @@ describe('stay view', () => {
     await wrapper.find('[data-testid="stay-approval-by"]').setValue('owner');
     await wrapper.find('[data-testid="stay-approval-role"]').setValue('manager');
     await wrapper.find('[data-testid="stay-approve"]').trigger('click');
+    // #588 (`FR-CKO-5`): the recorded approval is shown with its
+    // approver identity, hotel role, and recorded time — an explicit
+    // exception, not a silent bypass.
     await vi.waitFor(() => {
-      expect(wrapper.find('[data-testid="stay-checkout-status"]').text()).toContain('Approval recorded.');
+      expect(wrapper.find('[data-testid="stay-checkout-status"]').text()).toContain(
+        'Approved by owner (Manager) at',
+      );
     });
+    expect(wrapper.find('[data-testid="stay-approval-section"]').exists()).toBe(false);
     expect((wrapper.find('[data-testid="stay-checkout"]').element as HTMLButtonElement).disabled).toBe(
       false,
     );
@@ -1112,11 +1217,276 @@ describe('stay view', () => {
     }
   });
 
-  it('surfaces SETTLEMENT_REQUIRED by reopening the approval form', async () => {
+  it('offers the same fixed role set on the approver-role select', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     const wrapper = await mountSignedIn(fetchMock);
 
+    // #588 (`FR-CKO-5`): a free-form approver role cannot be recorded
+    // from the desk — the approver role is a select over the same
+    // fixed catalogue the reviewer field offers.
+    const happy = stubHappyPath(fetchMock);
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/billing/GetFolioBalance') {
+        return Promise.resolve(
+          jsonResponse({ folioId: 'f-2', stayId: 's-1', balanceMinor: 1500, openBalanceApproval: null }),
+        );
+      }
+      return happy(url, init);
+    });
+    await wrapper.find('[data-testid="stay-checkout-stay"]').setValue('s-1');
+    await wrapper.find('[data-testid="stay-review"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-approval-section"]').exists()).toBe(true);
+    });
+
+    const select = wrapper.find('[data-testid="stay-approval-role"]');
+    expect(select.element.tagName).toBe('SELECT');
+    const optionLabels = (): string[] => select.findAll('option').map((option) => option.text());
+    const optionValues = (): string[] =>
+      select.findAll('option').map((option) => (option.element as HTMLOptionElement).value);
+    expect(optionValues()).toEqual(['manager', 'owner', 'front-desk']);
+    expect(optionLabels()).toEqual(['Manager', 'Owner', 'Front desk']);
+    expect((select.element as HTMLSelectElement).value).toBe('manager');
+
+    try {
+      setLocale('vi');
+      await wrapper.vm.$nextTick();
+      await wrapper.vm.$nextTick();
+      expect(optionLabels()).toEqual(['Quản lý', 'Chủ', 'Lễ tân']);
+    } finally {
+      setLocale('en');
+    }
+  });
+
+  it('closes an open balance only with a provenanced recorded approval', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
+
+    // The approval Billing stored: identity, hotel role, recorded time.
+    const recorded = {
+      approvedBy: 'Night Manager',
+      role: 'manager',
+      approvedAt: '2026-11-09T10:15:00.000Z',
+    };
+    const happy = stubHappyPath(fetchMock);
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/billing/GetFolioBalance') {
+        return Promise.resolve(
+          jsonResponse({ folioId: 'f-2', stayId: 's-1', balanceMinor: 1500, openBalanceApproval: recorded }),
+        );
+      }
+      return happy(url, init);
+    });
+
+    await wrapper.find('[data-testid="stay-checkout-stay"]').setValue('s-1');
+    await wrapper.find('[data-testid="stay-review"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkout-status"]').text()).toContain(
+        'Approved by Night Manager (Manager) at',
+      );
+    });
+    expect(wrapper.find('[data-testid="stay-approval-section"]').exists()).toBe(false);
+    expect((wrapper.find('[data-testid="stay-checkout"]').element as HTMLButtonElement).disabled).toBe(
+      false,
+    );
+
+    await confirmCheckout(wrapper);
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkout-status"]').text()).toContain('Checked out');
+    });
+    // The close carries the recorded approval and then releases the
+    // room (#588): the approved exception is the close's evidence.
+    const checkoutBody = parseBody(
+      fetchMock.mock.calls.find((call) => String(call[0]) === '/v1/stay/CheckOut')?.[1],
+    );
+    expect(checkoutBody.folioBalanceMinor).toBe(1500);
+    expect(checkoutBody.openBalanceApproval).toEqual(recorded);
+    expect(
+      fetchMock.mock.calls.filter((call) => String(call[0]) === '/v1/rooms/ReleaseRoom'),
+    ).toHaveLength(1);
+  });
+
+  it.each([
+    [
+      'no recorded time',
+      { approvedBy: 'Night Manager', role: 'manager' },
+    ],
+    [
+      'no approver identity',
+      { role: 'manager', approvedAt: '2026-11-09T10:15:00.000Z' },
+    ],
+    [
+      'a role outside the fixed set',
+      { approvedBy: 'Night Manager', role: 'night-auditor', approvedAt: '2026-11-09T10:15:00.000Z' },
+    ],
+  ])('refuses an approval with %s as not an approval', async (_label, stored) => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
+
+    const happy = stubHappyPath(fetchMock);
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/billing/GetFolioBalance') {
+        return Promise.resolve(
+          jsonResponse({ folioId: 'f-2', stayId: 's-1', balanceMinor: 1500, openBalanceApproval: stored }),
+        );
+      }
+      return happy(url, init);
+    });
+
+    await wrapper.find('[data-testid="stay-checkout-stay"]').setValue('s-1');
+    await wrapper.find('[data-testid="stay-review"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkout-error"]').text()).toContain(
+        'Record the approval again',
+      );
+    });
+    expect(wrapper.find('[data-testid="stay-approval-section"]').exists()).toBe(true);
+    expect(
+      (wrapper.find('[data-testid="stay-checkout"]').element as HTMLButtonElement).disabled,
+    ).toBe(true);
+    // No route commits and no room is released.
+    expect(
+      fetchMock.mock.calls.filter((call) => String(call[0]) === '/v1/stay/CheckOut'),
+    ).toHaveLength(0);
+    expect(
+      fetchMock.mock.calls.filter((call) => String(call[0]) === '/v1/rooms/ReleaseRoom'),
+    ).toHaveLength(0);
+  });
+
+  it('does not accept a free-form note as an approval', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
+
+    // BR-17 (#588): a free-form note standing in for the record is not
+    // an approval, so the plain open-balance refusal stands and the
+    // approval form opens for a real record.
+    const happy = stubHappyPath(fetchMock);
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/billing/GetFolioBalance') {
+        return Promise.resolve(
+          jsonResponse({
+            folioId: 'f-2',
+            stayId: 's-1',
+            balanceMinor: 1500,
+            openBalanceApproval: 'note: manager said it is fine',
+          }),
+        );
+      }
+      return happy(url, init);
+    });
+
+    await wrapper.find('[data-testid="stay-checkout-stay"]').setValue('s-1');
+    await wrapper.find('[data-testid="stay-review"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkout-error"]').text()).toContain('open balance');
+    });
+    expect(wrapper.find('[data-testid="stay-approval-section"]').exists()).toBe(true);
+    expect(
+      (wrapper.find('[data-testid="stay-checkout"]').element as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(
+      fetchMock.mock.calls.filter((call) => String(call[0]) === '/v1/stay/CheckOut'),
+    ).toHaveLength(0);
+  });
+
+  it('refuses a charge added between review and confirm on the confirm route', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
+
+    // Review reads zero, then a room charge lands before the confirm:
+    // #588 (`FR-CKO-4`) the confirm re-reads and refuses on the fresh
+    // value instead of closing on the reviewed one.
+    let folioCalls = 0;
+    const happy = stubHappyPath(fetchMock);
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/billing/GetFolioBalance') {
+        folioCalls += 1;
+        return Promise.resolve(
+          jsonResponse({
+            folioId: 'f-1',
+            stayId: 's-1',
+            balanceMinor: folioCalls === 1 ? 0 : 120000,
+            openBalanceApproval: null,
+          }),
+        );
+      }
+      return happy(url, init);
+    });
+
+    await wrapper.find('[data-testid="stay-checkout-stay"]').setValue('s-1');
+    await wrapper.find('[data-testid="stay-review"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkout-status"]').text()).toContain(
+        'balance is zero',
+      );
+    });
+    await wrapper.find('[data-testid="stay-checkout"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkout-dialog"]').exists()).toBe(true);
+    });
+    await wrapper.find('[data-testid="stay-checkout-confirm"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkout-error"]').text()).toContain('open balance');
+    });
+    // Nothing commits, nothing is released, the dialog closes, the stay
+    // stays picked in house, and the approval form opens.
+    expect(
+      fetchMock.mock.calls.filter((call) => String(call[0]) === '/v1/stay/CheckOut'),
+    ).toHaveLength(0);
+    expect(
+      fetchMock.mock.calls.filter((call) => String(call[0]) === '/v1/rooms/ReleaseRoom'),
+    ).toHaveLength(0);
+    expect(wrapper.find('[data-testid="stay-checkout-dialog"]').exists()).toBe(false);
+    expect((wrapper.find('[data-testid="stay-checkout-stay"]').element as HTMLSelectElement).value).toBe(
+      's-1',
+    );
+    expect(wrapper.find('[data-testid="stay-approval-section"]').exists()).toBe(true);
+  });
+
+  it('keeps the close unreachable while the reviewed folio is unpaid', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
+
+    const happy = stubHappyPath(fetchMock);
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/billing/GetFolioBalance') {
+        return Promise.resolve(
+          jsonResponse({ folioId: 'f-2', stayId: 's-1', balanceMinor: 1500, openBalanceApproval: null }),
+        );
+      }
+      return happy(url, init);
+    });
+
+    await wrapper.find('[data-testid="stay-checkout-stay"]').setValue('s-1');
+    await wrapper.find('[data-testid="stay-review"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-approval-section"]').exists()).toBe(true);
+    });
+    // #588 (`FR-CKO-4`): the confirm carries the same gate as the
+    // Check out button, so an unpaid reviewed folio cannot be closed
+    // from any route — the button is disabled and nothing commits.
+    expect(
+      (wrapper.find('[data-testid="stay-checkout"]').element as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(
+      fetchMock.mock.calls.filter((call) => String(call[0]) === '/v1/stay/CheckOut'),
+    ).toHaveLength(0);
+  });
+
+  it('refuses a stale review locally on the confirm route with no close', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
+
+    // Review reads zero, a charge lands afterwards, and Stay would
+    // refuse SETTLEMENT_REQUIRED: #588 makes the desk refuse first on
+    // its own fresh read, so no CheckOut is even sent.
     let folioCalls = 0;
     const happy = stubHappyPath(fetchMock);
     fetchMock.mockImplementation((url: string, init?: RequestInit) => {
@@ -1151,6 +1521,124 @@ describe('stay view', () => {
       expect(wrapper.find('[data-testid="stay-checkout-error"]').text()).toContain('open balance');
     });
     expect(wrapper.find('[data-testid="stay-approval-section"]').exists()).toBe(true);
+    expect(
+      fetchMock.mock.calls.filter((call) => String(call[0]) === '/v1/stay/CheckOut'),
+    ).toHaveLength(0);
+    expect(
+      fetchMock.mock.calls.filter((call) => String(call[0]) === '/v1/rooms/ReleaseRoom'),
+    ).toHaveLength(0);
+  });
+
+  it('still maps a server SETTLEMENT_REQUIRED reply to the plain refusal', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
+
+    // Defence in depth: the desk gate passes but Stay refuses the
+    // close, and the desk still shows the plain refusal with the
+    // approval form open (#588 keeps the server branch).
+    const happy = stubHappyPath(fetchMock);
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/stay/CheckOut') {
+        return Promise.resolve(
+          jsonResponse({ code: 'SETTLEMENT_REQUIRED', message: 'settle first' }, 409),
+        );
+      }
+      return happy(url, init);
+    });
+
+    await wrapper.find('[data-testid="stay-checkout-stay"]').setValue('s-1');
+    await wrapper.find('[data-testid="stay-review"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkout-status"]').text()).toContain(
+        'balance is zero',
+      );
+    });
+    await confirmCheckout(wrapper);
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkout-error"]').text()).toContain('open balance');
+    });
+    expect(wrapper.find('[data-testid="stay-approval-section"]').exists()).toBe(true);
+    expect(
+      fetchMock.mock.calls.filter((call) => String(call[0]) === '/v1/rooms/ReleaseRoom'),
+    ).toHaveLength(0);
+  });
+
+  it('keeps the close when the room release fails and names the next step', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
+
+    const happy = stubHappyPath(fetchMock);
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/rooms/ReleaseRoom') {
+        return Promise.resolve(
+          jsonResponse({ code: 'INTERNAL', message: 'rooms down' }, 500),
+        );
+      }
+      return happy(url, init);
+    });
+
+    await wrapper.find('[data-testid="stay-checkout-stay"]').setValue('s-1');
+    await wrapper.find('[data-testid="stay-review"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkout-status"]').text()).toContain(
+        'balance is zero',
+      );
+    });
+    await confirmCheckout(wrapper);
+    // #588 (`FR-CKO-2`): the close stands and is reported closed; the
+    // release failure is its own plain sentence naming the next step.
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-room-release"]').text()).toContain(
+        'still reads occupied',
+      );
+    });
+    expect(wrapper.find('[data-testid="stay-checkout-status"]').text()).toContain(
+      'Checked out for Guest Two',
+    );
+    expect(wrapper.find('[data-testid="stay-room-release"]').text()).toContain('Reload the desk');
+    expect(wrapper.find('[data-testid="stay-checkout-error"]').exists()).toBe(false);
+    // No retry, no second close.
+    expect(
+      fetchMock.mock.calls.filter((call) => String(call[0]) === '/v1/stay/CheckOut'),
+    ).toHaveLength(1);
+    expect(
+      fetchMock.mock.calls.filter((call) => String(call[0]) === '/v1/rooms/ReleaseRoom'),
+    ).toHaveLength(1);
+  });
+
+  it('says the room is already free when the release finds it unoccupied', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
+
+    const happy = stubHappyPath(fetchMock);
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/rooms/ReleaseRoom') {
+        return Promise.resolve(
+          jsonResponse({ code: 'STATE_ILLEGAL', message: 'Room 109 is vacant-dirty, not occupied.' }, 422),
+        );
+      }
+      return happy(url, init);
+    });
+
+    await wrapper.find('[data-testid="stay-checkout-stay"]').setValue('s-1');
+    await wrapper.find('[data-testid="stay-review"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkout-status"]').text()).toContain(
+        'balance is zero',
+      );
+    });
+    await confirmCheckout(wrapper);
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-room-release"]').text()).toContain(
+        'Room 109 is already free.',
+      );
+    });
+    // No housekeeping state is claimed the panel did not set.
+    expect(wrapper.find('[data-testid="stay-room-release"]').text()).not.toContain('dirty');
+    expect(wrapper.find('[data-testid="stay-checkout-status"]').text()).toContain('Checked out');
   });
 
   it('names an already-closed stay on the second close instead of the raw envelope', async () => {
@@ -1204,6 +1692,8 @@ describe('stay view', () => {
     // Billing serves the recorded approval as a JSON string while
     // the contract types it as an object (Refs #338): the view
     // must send the parsed object or the stay gate refuses it.
+    // #588 adds the provenance the approval needs: identity, hotel
+    // role, and the recorded time.
     const happy = stubHappyPath(fetchMock);
     fetchMock.mockImplementation((url: string, init?: RequestInit) => {
       if (url === '/v1/billing/GetFolioBalance') {
@@ -1212,7 +1702,8 @@ describe('stay view', () => {
             folioId: 'f-2',
             stayId: 's-1',
             balanceMinor: 1500,
-            openBalanceApproval: '{"approvedBy":"Night Manager","role":"manager"}',
+            openBalanceApproval:
+              '{"approvedBy":"Night Manager","role":"manager","approvedAt":"2026-11-09T10:15:00.000Z"}',
           }),
         );
       }
@@ -1222,7 +1713,9 @@ describe('stay view', () => {
     await wrapper.find('[data-testid="stay-checkout-stay"]').setValue('s-1');
     await wrapper.find('[data-testid="stay-review"]').trigger('click');
     await vi.waitFor(() => {
-      expect(wrapper.find('[data-testid="stay-checkout-status"]').text()).toContain('Approval recorded.');
+      expect(wrapper.find('[data-testid="stay-checkout-status"]').text()).toContain(
+        'Approved by Night Manager (Manager) at',
+      );
     });
     await confirmCheckout(wrapper);
     await vi.waitFor(() => {
@@ -1234,6 +1727,7 @@ describe('stay view', () => {
     expect(checkoutBody.openBalanceApproval).toEqual({
       approvedBy: 'Night Manager',
       role: 'manager',
+      approvedAt: '2026-11-09T10:15:00.000Z',
     });
   });
 
@@ -1420,18 +1914,26 @@ describe('stay view source', () => {
     '/v1/billing/GetFolioBalance',
     '/v1/billing/RecordOpenBalanceApproval',
     '/v1/stay/CheckOut',
+    '/v1/rooms/ReleaseRoom',
   ];
 
   it.each(requiredOps)('keeps the check-in/out op %s', (op) => {
     expect(stayViewSource).toContain(op);
   });
 
-  it.each(['SETTLEMENT_REQUIRED', 'STATE_ILLEGAL', 'refused_open_balance', 'refused_already_closed', 'idempotencyKey'])(
+  it.each(['SETTLEMENT_REQUIRED', 'STATE_ILLEGAL', 'refused_open_balance', 'refused_already_closed', 'refused_approval_incomplete', 'room_release_failed', 'room_released', 'room_already_free', 'approval_recorded_by', 'idempotencyKey'])(
     'keeps the folio-gate vocabulary %s',
     (token) => {
       expect(stayViewSource).toContain(token);
     },
   );
+
+  // #588: both routes to the close carry the same gate, so a later
+  // change cannot quietly un-gate the dialog confirm.
+  it('gates the Check out button and the dialog confirm together', () => {
+    expect(stayViewSource).toContain(':disabled="!canCheckOut || checkingOut"');
+    expect(stayViewSource).toContain('toState: \'vacant-dirty\'');
+  });
 
   it('uses the session store plus the shared client and catalogue t()', () => {
     for (const token of ['useSessionStore', 'apiFetch', "t('desk.stay."]) {

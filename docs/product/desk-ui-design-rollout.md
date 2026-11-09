@@ -1256,19 +1256,22 @@ verdict by `spec-reviewer`. Recorded as D-21 in
 `docs/project/decision-log.md`.
 
 The owner's QA pass on the check-out panel found two desk-close
-gaps. The panel posts `/v1/stay/CheckOut` and reloads its lists
-(`onCheckOut`, `app/src/views/StayView.vue:1251-1328`), and no
-screen action ever releases the room (`app/e2e/stay.spec.ts:102-108`
-records exactly that), so the rooms service keeps the room
+gaps. The panel posted `/v1/stay/CheckOut` and reloaded its lists
+(`onCheckOut`, `app/src/views/StayView.vue:1395-1558`), and no
+screen action ever released the room (`app/e2e/stay.spec.ts` on
+`master` recorded exactly that; the pre-fix reproduction lives in
+`docs/testing/evidence/588/README.md`, and
+`script/e2e-desk-loop.sh:422-423` shows the API loop releasing
+explicitly), so the rooms service kept the room
 `occupied` after a successful close and the Main board and Rooms
-map keep showing it occupied. Separately, the close gate is
-review-time state only: the Check out button carries the gate
-(`:240-248`, `canCheckOut` `:557-561`) but the confirm button in
-the dialog (`:249-272`) does not, and `onCheckOut` falls back to
-the review-time approval object when the fresh read has none
-(`:1270-1271`), while the approval that stands in for payment is
+map kept showing it occupied. Separately, the close gate was
+review-time state only: the Check out button carried the gate
+(`:254-262`, `canCheckOut` `:643-648`) but the confirm button in
+the dialog (`:264-287`) did not, and `onCheckOut` fell back to
+the review-time approval object when the fresh read had none,
+while the approval that stood in for payment was
 recorded with `approvedBy` from the reviewer select and `role`
-from a free-text field (`:199-236`). The contract already supports
+from a free-text field (`:201-252`). The contract already supports
 the room half: `ReleaseRoom` traces `FR-FDK-2`, defaults
 `toState` to `vacant-dirty`, and needs only a room number and an
 actor.
@@ -1282,7 +1285,7 @@ Decision (five parts):
    `vacant-dirty` per `BR-18` (the contract default, sent
    explicitly). The room number comes from the departing row the
    staff picked, resolved through the panel's already-loaded room
-   state map (`roomNumbers`, `:796-812`): staff never retype or
+   state map (`roomNumbers`, `:568`, filled in `loadPanelData`), so staff never retype or
    guess a room number, and the panel never releases a room the
    stay did not hold. Release runs only after a close this panel
    committed — a refused close, an already-closed `STATE_ILLEGAL`
@@ -1300,7 +1303,7 @@ Decision (five parts):
    confirms it, and the close is never reported failed because
    the release failed.
 3. **The panel refreshes once, after the release attempt.** The
-   existing panel reload (`loadPanelData`, `:782-824`) runs after
+   existing panel reload (`loadPanelData`, `:908-950`) runs after
    the release attempt, so the in-house list drops the guest and
    the departing list keeps today's checkout (expected: a closed
    stay moves into `departures`). The Main board and Rooms map
@@ -1315,7 +1318,7 @@ Decision (five parts):
    anything else refuses, sends no `CheckOut`, closes the dialog,
    keeps the stay in house, and shows the plain refusal naming
    the approval next step with the approval form open. The
-   review-time approval fallback (`:1270-1271`) is removed: a
+   review-time approval fallback is removed: a
    charge added between review and confirm now refuses instead of
    closing on stale state. The in-flight guard keeps a replayed or
    double click a no-op.
@@ -1356,9 +1359,9 @@ UI contract delta (T2, reader-visible):
   or nav entry; only the check-out card's states and one control
   change.
 - Component mapping: the approver-role field
-  (`stay-approval-role`, `:203-213`) becomes a Select over the
+  (`stay-approval-role`, `:210-220`) becomes a Select over the
   same fixed role catalogue the reviewer field already uses
-  (`reviewerRoleOptions`, `:547-551`), with labels resolved
+  (`reviewerRoleOptions`, `:617-621`), with labels resolved
   through the catalogue (`desk.admin.role_*`). The approval block
   and the confirm dialog carry no board counterpart (the board
   draws only the reviewer field in its check-out card,
@@ -1424,11 +1427,12 @@ same change rather than left EN-only, so
 Affected surfaces and request bodies:
 
 - `app/src/views/StayView.vue` check-out card only: the gate note
-  (`:163-168`), the approval block (`:199-236`), the Check out
-  button (`:240-248`), the confirm dialog (`:249-272`), the
-  status/error rows (`:273-292`), `canCheckOut` (`:557-561`),
-  `onReview` (`:1126-1191`), `onApprove` (`:1194-1249`),
-  `onCheckOut` (`:1251-1328`), and `loadPanelData` (`:782-824`).
+  (`:163-168`), the approval block (`:201-252`), the Check out
+  button (`:254-262`), the confirm dialog (`:264-287`), the
+  status/release/error rows (`:289-318`), `canCheckOut`
+  (`:643-648`), `onReview` (`:1253-1326`), `onApprove`
+  (`:1328-1393`), `onCheckOut` (`:1395-1558`), and `loadPanelData`
+  (`:908-950`).
 - Requests: `GetFolioBalance` twice (review, then the fresh read
   at confirm) with the unchanged body; `RecordOpenBalanceApproval`
   with the unchanged body (`approvedBy` from the reviewer select,
@@ -1439,22 +1443,25 @@ Affected surfaces and request bodies:
   endpoint, field, or `toState` value; no backend change.
 - Guards that move (rewritten with a note, never deleted):
   `app/src/views/StayView.test.ts` check-out family — settled
-  close `:1006-1041`, approval gate `:1043-1085`,
-  `SETTLEMENT_REQUIRED` `:1115-1154`, already-closed
-  `:1156-1197`, stringified approval `:1199-1238`, confirm dialog
-  `:1240-1276`, the double-click family
-  `app/src/views/desk-edge-guards.test.ts:1104-1151`, and the
-  QA-EDGE-8 case `app/src/views/desk-edge-guards.test.ts:908-947`
-  whose comment says the vacant-dirty turn "happens server-side on
-  `CheckOut`" — that claim is contradicted by the live desk loop
+  close with the release, the reload, and the refreshed list rows
+  `:1024-1139`, approval gate `:1141-1189`,
+  `SETTLEMENT_REQUIRED` `:1531-1564`, already-closed
+  `:1643-1684`, stringified approval `:1686-1731`, confirm dialog
+  `:1733-1769`, the double-click family
+  `app/src/views/desk-edge-guards.test.ts:1131-1192`, and the
+  QA-EDGE-8 case `app/src/views/desk-edge-guards.test.ts:919-973`
+  whose comment block (`:848-860`) replaces the earlier claim that
+  the vacant-dirty turn "happens server-side on `CheckOut`" — that
+  claim is contradicted by the live desk loop
   (`script/e2e-desk-loop.sh:422` releases explicitly) and by this
-  issue, so the guard becomes "closes once, releases the departed
-  room once, writes no other room state, re-reads the lists" with
-  a note citing #588.
-- `app/e2e/stay.spec.ts` (`:99-110`): the "no screen action can
-  produce it" comment and the API-only release coverage become a
-  browser assertion that the room reads `vacant-dirty` and the
-  board lane shows it vacant after the dialog close.
+  issue — with a #588 note: "closes once, releases the departed
+  room once, writes no other room state, re-reads the lists".
+- `app/e2e/stay.spec.ts` (`:112-146`): the "no screen action can
+  produce it" comment and the API-only release coverage became the
+  browser assertion that the room reads `vacant-dirty`, the board
+  lane shows it vacant after the dialog close, the closed stay has
+  left the in-house list while the departing list keeps today's
+  checkout, and the departing select still offers it exactly once.
 
 Design-facts and the #563 living record:
 
@@ -1833,12 +1840,12 @@ Section 4 stays the rollout-wide contract; for steps 2–4:
 
 | Criterion | Evidence in this spec |
 |---|---|
-| Symptom 1 is reproduced before the fix (room still `occupied`, in-house list still naming the guest, board lane and map still occupied after a successful close) | Section 6.13 context paragraph; `app/e2e/stay.spec.ts:102-108` and `script/e2e-desk-loop.sh:422` record the missing screenshot release; the reproduction record belongs in the implementation PR/issue comment |
+| Symptom 1 is reproduced before the fix (room still `occupied`, in-house list still naming the guest, board lane and map still occupied after a successful close) | Section 6.13 context paragraph; the pre-fix reproduction in `docs/testing/evidence/588/README.md` and `script/e2e-desk-loop.sh:422` record the missing screen release; the reproduction record also sits in the implementation PR body |
 | A successful close releases the room to `vacant-dirty` through `ReleaseRoom`, and the in-house and departing lists plus the Main board and Rooms map show it vacant without a manual reload | Section 6.13 decisions 1–3; AC-DSK-18; `ReleaseRoom` request `{roomNumber, toState: "vacant-dirty", actor}` after a committed close; the existing `loadPanelData` reload; `script/e2e-desk-loop.sh:422` asserts the state the desk must now produce |
-| An open-balance folio with no recorded approval cannot close by any UI route (button, confirm, replayed or double click); the stay remains in house; the refusal is plain catalogue words naming the next step | Section 6.13 decision 4; AC-DSK-18; `canCheckOut` (`app/src/views/StayView.vue:557-561`), the confirm button gate (`:249-272`), `onCheckOut` (`:1251-1328`), `desk.stay.refused_open_balance` |
+| An open-balance folio with no recorded approval cannot close by any UI route (button, confirm, replayed or double click); the stay remains in house; the refusal is plain catalogue words naming the next step | Section 6.13 decision 4; AC-DSK-18; `canCheckOut` (`app/src/views/StayView.vue:643-648`), the confirm button gate (`:264-287`), `onCheckOut` (`:1395-1558`), `desk.stay.refused_open_balance` |
 | An approval recorded through `RecordOpenBalanceApproval` closes the stay and shows the approver identity, role, and time; the path is an explicit exception, not a silent bypass | Section 6.13 decision 5; AC-DSK-18; `desk.stay.approval_recorded_by`; `formatAuditTime` (`app/src/i18n/index.ts:228-253`) |
 | The reproduction record classifies symptom 2 as bypassed / missing / stale, and the fix matches the classification; any obligation outside the desk UI is filed as a follow-up | Section 6.13 classification table and Out list; AC-DSK-18 |
-| Regression tests pin both directions (settled close releases and refreshes; unpaid close blocked; recorded-approval close passes) and the existing gate guards still run | Section 6.13 (guards that move); `app/src/views/StayView.test.ts`, `app/src/views/desk-edge-guards.test.ts:908-947`, `:1104-1151`; `app/e2e/stay.spec.ts` |
+| Regression tests pin both directions (settled close releases and refreshes; unpaid close blocked; recorded-approval close passes) and the existing gate guards still run | Section 6.13 (guards that move); `app/src/views/StayView.test.ts:1024-1139` (release, reload, refreshed lists), `app/src/views/desk-edge-guards.test.ts:919-973`, `:1131-1192`; `app/e2e/stay.spec.ts:112-146` |
 | `script/catalogue-coverage-check.sh` is green and new copy carries EN and VI keys plus the runtime mirrors | Section 6.13 (catalogue keys); section 7; `AC-DSK-8`, `NFR-DSK-1` |
 | The design-facts gate is green, any fact update is justified, and the #563 living record is refreshed only if the panel diverges | Section 6.13 (design-facts and the #563 record); `app/e2e/design-facts.ts:129-135`, `:257-266`; `docs/testing/evidence/563/README.md` |
 | The T2 spec set exists and `spec-reviewer` posts `SPEC-GATE PASS` before implementation starts | This section, section 6.13, `docs/product/acceptance-criteria.md` (`AC-DSK-18`, `AC-FDK-2`, `AC-RST-4`), `docs/product/desk-ui-pixel-faithful-restyle.md` section 5.3, `docs/project/decision-log.md` D-21; `business-analyst` FR/NFR delta and `qa-lead` traceability rows are the sibling handoffs |

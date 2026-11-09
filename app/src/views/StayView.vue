@@ -194,21 +194,35 @@
           />
           <!-- Post-review flow state (Refs #541): the approval
             form, check-out button, and confirm dialog carry no
-            board counterpart and keep their current presentation
-            and copy, exactly like the v1 flow-state blocks. -->
+            board counterpart. Refs #588: the approver role is the
+            same fixed role select as the reviewer field, and the
+            confirm button carries the same gate as the button, so
+            every route to the close re-reads the folio first. -->
           <div
             v-if="showApproval"
             data-testid="stay-approval-section"
           >
+            <!-- Approver-role select (Refs #588, `BR-17`/`FR-CKO-5`;
+              #567 `G-ST-1`): a free-form role cannot be recorded from
+              the desk, so the approver role is the same fixed role
+              select the reviewer field already uses. Labels resolve
+              through `desk.admin.role_*` in both locales. -->
             <label for="stay-approval-role">
               {{ t('desk.stay.approver_role', {}, 'Approver role: ') }}
-              <InputText
+              <select
                 id="stay-approval-role"
                 v-model="approvalRole"
                 name="approval-role"
-                autocomplete="off"
                 data-testid="stay-approval-role"
-              />
+              >
+                <option
+                  v-for="role in reviewerRoleOptions"
+                  :key="role.value"
+                  :value="role.value"
+                >
+                  {{ role.label }}
+                </option>
+              </select>
             </label>
             <label for="stay-approval-reason">
               {{ t('desk.stay.approval_reason', {}, 'Reason (optional): ') }}
@@ -265,7 +279,7 @@
               type="button"
               class="stay-action"
               :label="t('desk.stay.checkout_button', {}, 'Check out')"
-              :disabled="checkingOut"
+              :disabled="!canCheckOut || checkingOut"
               data-testid="stay-checkout-confirm"
               @click="onCheckOut"
             />
@@ -281,6 +295,17 @@
             data-testid="stay-checkout-status"
           >
             {{ checkoutStatus }}
+          </p>
+          <!-- Room-release line (Refs #588, `FR-CKO-2`): the outcome of
+            the `ReleaseRoom` the close performs, always separate from
+            the close line so a failed release never reads as a failed
+            close. -->
+          <p
+            v-if="roomReleaseStatus"
+            role="status"
+            data-testid="stay-room-release"
+          >
+            {{ roomReleaseStatus }}
           </p>
           <Message
             v-if="checkoutError"
@@ -305,7 +330,7 @@ import InputText from 'primevue/inputtext';
 import Message from 'primevue/message';
 import { apiFetch } from '../api/client';
 import type { ApiError } from '../api/client';
-import { t } from '../i18n';
+import { formatAuditTime, t } from '../i18n';
 import { useSessionStore } from '../stores/session';
 import ReferenceDetails, { type ReferenceItem } from '../components/ReferenceDetails.vue';
 
@@ -330,7 +355,10 @@ import ReferenceDetails, { type ReferenceItem } from '../components/ReferenceDet
 //   (reservationRef, stayId); GetFolioBalance ->
 //   RecordOpenBalanceApproval when the balance is open -> CheckOut
 //   carrying the reviewed folio id, balance, and the recorded
-//   approval. The arrival pick comes from the reservation calendar
+//   approval -> ReleaseRoom for the room the stay held (Refs #588:
+//   the desk closes the loop the API desk loop already ran, and the
+//   release follows a committed close only). The arrival pick comes
+//   from the reservation calendar
 //   (QueryCalendar plus a GetReservation read-back per due
 //   reference, Refs #349) because stay rows never carry booking
 //   references in production; the departing pick comes from the
@@ -369,6 +397,10 @@ interface StayListRow {
   timesText: string;
   reservationRef?: string;
   stayId?: string;
+  // The stay's room UUID stays on the row so the check-out close can
+  // resolve the room number through the loaded room-state map instead
+  // of parsing the label (Refs #588, `FR-CKO-1`).
+  roomId?: string;
 }
 
 interface CalendarEntry {
@@ -400,6 +432,20 @@ interface CheckoutContext {
   balanceMinor: number;
   approval: unknown;
 }
+
+// A recorded open-balance approval carries the approver identity, a
+// hotel role, and the recorded time (Refs #588, `BR-17`/`FR-CKO-5`).
+interface RecordedApproval {
+  approvedBy: string;
+  role: string;
+  approvedAt: string;
+}
+
+// The hotel's fixed role set (requirements section 3.2): the reviewer
+// and approver selects both offer exactly these, and a recorded
+// approval only counts when its role is one of them (Refs #588,
+// `FR-CKO-5`: a free-form role is not an approval).
+const HOTEL_ROLES: readonly string[] = ['manager', 'owner', 'front-desk'];
 
 function localBusinessDate(): string {
   const now = new Date();
@@ -468,6 +514,30 @@ function normalizeApproval(value: unknown): Record<string, unknown> | null {
     }
   }
   return typeof value === 'object' ? (value as Record<string, unknown>) : null;
+}
+
+// The only allowed exception to the no-unpaid-close rule is the
+// approval recorded through `RecordOpenBalanceApproval` (Refs #588,
+// `BR-17`, `FR-CKO-5`): it must carry a non-blank approver identity, a
+// role from the hotel's fixed three, and a recorded time the desk can
+// render. Anything else — a free-form note, a partial object, a role
+// outside the set — is not an approval and the close refuses.
+function provenancedApproval(value: unknown): RecordedApproval | null {
+  const record = normalizeApproval(value);
+  if (!record) {
+    return null;
+  }
+  const approvedBy = typeof record.approvedBy === 'string' ? record.approvedBy.trim() : '';
+  const role = typeof record.role === 'string' ? record.role.trim() : '';
+  const approvedAt = typeof record.approvedAt === 'string' ? record.approvedAt.trim() : '';
+  if (!approvedBy || !role || !approvedAt || !HOTEL_ROLES.includes(role)) {
+    return null;
+  }
+  if (formatAuditTime(approvedAt) === '') {
+    // A stored time the desk cannot read is no recorded time.
+    return null;
+  }
+  return { approvedBy, role, approvedAt };
 }
 
 function newIdempotencyKey(): string {  try {
@@ -550,14 +620,31 @@ export default defineComponent({
       { value: 'front-desk', label: t('desk.admin.role_front_desk', {}, 'Front desk') },
     ]);
     const approvalBy = ref('manager');
-    const approvalRole = ref('');
+    // #588: the approver role is a fixed-role select (the same set the
+    // reviewer field offers), defaulting to the manager so a free-form
+    // role cannot be recorded from the desk.
+    const approvalRole = ref('manager');
     const approvalReason = ref('');
     const checkoutCtx = ref<CheckoutContext | null>(null);
+    // Room-release line (Refs #588, `FR-CKO-2`): the truth about the
+    // `ReleaseRoom` the close performs, kept apart from the close line.
+    const roomReleaseStatus = ref('');
 
+    // The catalogue label for a hotel role value, so the recorded
+    // approval line names the role in the desk language (Refs #588).
+    function roleLabelFor(value: string): string {
+      const known = reviewerRoleOptions.value.find((option) => option.value === value);
+      return known ? known.label : value;
+    }
+
+    // #588 (`FR-CKO-4`, `FR-CKO-5`): the button, the dialog confirm,
+    // and `onCheckOut` all gate on a zero balance or a provenanced
+    // recorded approval — never on review-time free-form text.
     const canCheckOut = computed(
       () =>
         checkoutCtx.value !== null &&
-        (checkoutCtx.value.balanceMinor === 0 || checkoutCtx.value.approval !== null),
+        (checkoutCtx.value.balanceMinor === 0 ||
+          provenancedApproval(checkoutCtx.value.approval) !== null),
     );
 
     // Check-in arrival options: expected arrivals carry the
@@ -673,6 +760,44 @@ export default defineComponent({
       return t('desk.today.room_unknown', {}, 'Room number unavailable');
     }
 
+    // The visible approved-exception line (Refs #588, `FR-CKO-5`):
+    // the approver identity, the role, and the recorded time in the
+    // desk time form, so the exception is explicit rather than silent.
+    function approvalRecordedLine(approval: RecordedApproval): string {
+      const role = roleLabelFor(approval.role);
+      const time = formatAuditTime(approval.approvedAt);
+      return t(
+        'desk.stay.approval_recorded_by',
+        { approvedBy: approval.approvedBy, role, time },
+        `Approved by ${approval.approvedBy} (${role}) at ${time}.`,
+      );
+    }
+
+    // The picked departing row for a stay, from the panel data already
+    // on screen (#588: the release never retypes or guesses a room).
+    function departingRowForStay(stayId: string): StayListRow | null {
+      for (const row of [...inHouseRows.value, ...departureRows.value]) {
+        if (row.stayId === stayId) {
+          return row;
+        }
+      }
+      return null;
+    }
+
+    // The room number the stay held, resolved through the loaded
+    // room-state map (`roomNumbers`) — empty when the map cannot name it.
+    function roomNumberForStay(stayId: string): string {
+      const row = departingRowForStay(stayId);
+      if (!row?.roomId) {
+        return '';
+      }
+      return roomNumbers.value[row.roomId] ?? '';
+    }
+
+    function roomLabelForStay(stayId: string): string {
+      return departingRowForStay(stayId)?.roomLabel ?? t('desk.today.room_unknown', {}, 'Room number unavailable');
+    }
+
     async function resolveGuestName(guestId: string | undefined): Promise<string> {
       if (!guestId) {
         return t('desk.today.unknown_guest', {}, 'Unknown guest');
@@ -769,6 +894,7 @@ export default defineComponent({
             timesText: '',
             reservationRef: row.reservationRef,
             stayId: row.stayId,
+            roomId: row.roomId,
           };
         }),
       );
@@ -875,6 +1001,7 @@ export default defineComponent({
       folioStatus.value = '';
       checkoutStatus.value = '';
       checkoutError.value = '';
+      roomReleaseStatus.value = '';
     }
 
     onMounted(() => {
@@ -1128,6 +1255,7 @@ export default defineComponent({
         return;
       }
       checkoutError.value = '';
+      roomReleaseStatus.value = '';
       const stayId = checkoutStayId.value.trim();
       if (!stayId) {
         checkoutStatus.value = t('desk.stay.need_departure', {}, 'Choose a departing guest first.');
@@ -1158,6 +1286,7 @@ export default defineComponent({
           { label: 'Stay ID', value: stayId },
           { label: 'Folio ID', value: folio.folioId },
         ];
+        const approval = provenancedApproval(folio.openBalanceApproval);
         if (folio.balanceMinor === 0) {
           showApproval.value = false;
           checkoutStatus.value = t(
@@ -1165,12 +1294,17 @@ export default defineComponent({
             {},
             'The balance is zero. Check-out is clear.',
           );
-        } else if (folio.openBalanceApproval) {
+        } else if (approval) {
           showApproval.value = false;
-          checkoutStatus.value = t(
-            'desk.stay.approval_recorded_brief',
+          checkoutStatus.value = approvalRecordedLine(approval);
+        } else if (normalizeApproval(folio.openBalanceApproval)) {
+          // #588: an approval object without the identity, the recorded
+          // time, or a hotel role is not an approval (`FR-CKO-5`).
+          showApproval.value = true;
+          checkoutError.value = t(
+            'desk.stay.refused_approval_incomplete',
             {},
-            'Approval recorded.',
+            'The recorded approval has no approver or no recorded time, so check-out is refused and the stay remains in house. Record the approval again.',
           );
         } else {
           showApproval.value = true;
@@ -1230,13 +1364,23 @@ export default defineComponent({
           method: 'POST',
           body: JSON.stringify(approvalBody),
         });
+        const recordedApproval = provenancedApproval(recorded.openBalanceApproval);
         checkoutCtx.value.approval = normalizeApproval(recorded.openBalanceApproval);
         checkoutCtx.value.balanceMinor = recorded.balanceMinor;
-        checkoutStatus.value = t(
-          'desk.stay.approval_recorded_brief',
-          {},
-          'Approval recorded.',
-        );
+        if (recordedApproval) {
+          showApproval.value = false;
+          checkoutStatus.value = approvalRecordedLine(recordedApproval);
+        } else {
+          // The record came back without provenance (`FR-CKO-5`): it is
+          // not an approval, so the form stays open for a new record.
+          showApproval.value = true;
+          checkoutStatus.value = '';
+          checkoutError.value = t(
+            'desk.stay.refused_approval_incomplete',
+            {},
+            'The recorded approval has no approver or no recorded time, so check-out is refused and the stay remains in house. Record the approval again.',
+          );
+        }
       } catch (err) {
         if (isSignedOut(err)) {
           expireToGate();
@@ -1253,10 +1397,17 @@ export default defineComponent({
         return;
       }
       checkoutError.value = '';
+      roomReleaseStatus.value = '';
       if (!checkoutCtx.value) {
         checkoutStatus.value = t('desk.stay.need_departure', {}, 'Choose a departing guest first.');
         return;
       }
+      const stayId = checkoutCtx.value.stayId;
+      // Resolve the room the picked departing row shows before the
+      // close clears the selection (#588, `FR-CKO-1`): staff never
+      // retype a room number and the panel never releases a room the
+      // stay did not hold.
+      const releaseRoomNumber = roomNumberForStay(stayId);
       checkingOut.value = true;
       try {
         const folio = await apiFetch<{
@@ -1265,12 +1416,38 @@ export default defineComponent({
           openBalanceApproval?: unknown;
         }>('/v1/billing/GetFolioBalance', {
           method: 'POST',
-          body: JSON.stringify({ stayId: checkoutCtx.value.stayId, actor: session.displayName ?? '' }),
+          body: JSON.stringify({ stayId, actor: session.displayName ?? '' }),
         });
-        const approval = normalizeApproval(folio.openBalanceApproval) ??
-          checkoutCtx.value.approval ?? null;
+        // #588 (`FR-CKO-4`): the freshly read folio governs every route
+        // to the close; the review-time approval fallback is gone, so a
+        // charge added between review and confirm refuses here.
+        const approval = provenancedApproval(folio.openBalanceApproval);
+        const rawApproval = normalizeApproval(folio.openBalanceApproval);
+        checkoutCtx.value = {
+          stayId,
+          folioId: folio.folioId,
+          balanceMinor: folio.balanceMinor,
+          approval: rawApproval,
+        };
+        if (folio.balanceMinor !== 0 && !approval) {
+          checkoutDialog.value = false;
+          showApproval.value = true;
+          checkoutStatus.value = '';
+          checkoutError.value = rawApproval
+            ? t(
+                'desk.stay.refused_approval_incomplete',
+                {},
+                'The recorded approval has no approver or no recorded time, so check-out is refused and the stay remains in house. Record the approval again.',
+              )
+            : t(
+                'desk.stay.refused_open_balance',
+                {},
+                'The folio still has an open balance, so check-out is refused and the stay remains in house. Record an approval first.',
+              );
+          return;
+        }
         const checkoutBody: Record<string, unknown> = {
-          stayId: checkoutCtx.value.stayId,
+          stayId,
           folioId: folio.folioId,
           folioBalanceMinor: folio.balanceMinor,
           actor: session.displayName ?? '',
@@ -1294,6 +1471,59 @@ export default defineComponent({
         showApproval.value = false;
         checkoutStayId.value = '';
         folioStatus.value = '';
+        // The committed close releases the room it just vacated
+        // (`FR-CKO-1`, `FR-CKO-2`): the close already stands, so a
+        // failed release never reads as a failed close and nothing is
+        // reported released before the rooms service confirms it.
+        if (releaseRoomNumber) {
+          try {
+            await apiFetch<{ roomNumber: string; oldState: string; newState: string }>(
+              '/v1/rooms/ReleaseRoom',
+              {
+                method: 'POST',
+                body: JSON.stringify({
+                  roomNumber: releaseRoomNumber,
+                  toState: 'vacant-dirty',
+                  actor: session.displayName ?? '',
+                }),
+              },
+            );
+            roomReleaseStatus.value = t(
+              'desk.stay.room_released',
+              { roomNumber: releaseRoomNumber },
+              `Room ${releaseRoomNumber} is now vacant and dirty.`,
+            );
+          } catch (err) {
+            if (isSignedOut(err)) {
+              expireToGate();
+              return;
+            }
+            // A room that is no longer occupied already holds the
+            // intended end state: say it is free, claim no
+            // housekeeping state the panel did not set.
+            roomReleaseStatus.value =
+              errorCode(err) === 'STATE_ILLEGAL'
+                ? t(
+                    'desk.stay.room_already_free',
+                    { roomNumber: releaseRoomNumber },
+                    `Room ${releaseRoomNumber} is already free.`,
+                  )
+                : t(
+                    'desk.stay.room_release_failed',
+                    { roomNumber: releaseRoomNumber },
+                    `The guest is checked out, but room ${releaseRoomNumber} still reads occupied. Reload the desk, and tell the manager if it still shows occupied.`,
+                  );
+          }
+        } else {
+          // Without a room number the panel cannot release anything and
+          // must not invent one (`FR-CKO-1`): the close stands and the
+          // next step names the unsolved half.
+          roomReleaseStatus.value = t(
+            'desk.stay.room_release_failed',
+            { roomNumber: roomLabelForStay(closed.stayId) },
+            `The guest is checked out, but room ${roomLabelForStay(closed.stayId)} still reads occupied. Reload the desk, and tell the manager if it still shows occupied.`,
+          );
+        }
         await loadPanelData();
       } catch (err) {
         if (isSignedOut(err)) {
@@ -1358,6 +1588,7 @@ export default defineComponent({
       approvalReason,
       canCheckOut,
       checkoutDialog,
+      roomReleaseStatus,
       onArrivalChange,
       onDepartureChange,
       onCheckIn,

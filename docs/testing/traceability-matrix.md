@@ -127,11 +127,12 @@ presentation requirement (FR-DSK-1..7, NFR-DSK-1..3, owned by
 wizard-scoped FR-DSK-8..10 in section 11 on the #438 stack in
 PR #442) to its
 guard. Full guard detail — parity baselines plus the new guards
-D1–D17 (D13 shipped with the #565 presentation change, D14 with
+D1–D18 (D13 shipped with the #565 presentation change, D14 with
 the #568 open-folio context change, D15 ships with the #581
 Book date-picker change, D16 ships with the #582 list-backed
-stay picker, and D17 ships with the #586 arrival-pick preload
-change; D1–D12 land with the screen PRs) — lives in
+stay picker, D17 ships with the #586 arrival-pick preload
+change, and D18 ships with the #588 check-out release and
+unpaid-close gate change; D1–D12 land with the screen PRs) — lives in
 `docs/testing/desk-ui-rollout-test-traceability.md`
 (desk-ui-rollout-test-traceability.md). Like the shell slice
 above, these 11 rows do not alter the 57-row MVP coverage count:
