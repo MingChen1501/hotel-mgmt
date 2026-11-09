@@ -144,13 +144,15 @@ appears on every printed document.
 
 ## 5. Acceptance criteria summary
 
-The binding done-conditions are `AC-DSK-1` through `AC-DSK-14`
+The binding done-conditions are `AC-DSK-1` through `AC-DSK-15`
 in `docs/product/acceptance-criteria.md` [section 11](acceptance-criteria.md)
 (`AC-DSK-9`..`AC-DSK-11` cover the steps 2–4 follow-up, Refs
 #438; see section 10; `AC-DSK-13` covers the quote/folio
 money and date display shape, Refs #565; see section 6.8;
 `AC-DSK-14` covers the open folio's guest and room in the
-charges-card title, Refs #568; see section 6.9).
+charges-card title, Refs #568; see section 6.9; `AC-DSK-15`
+covers the app-localized Book date pickers, Refs #581; see
+section 6.10).
 In short: shared shell/tokens/nav/locale behave identically on
 all six screens; each screen matches its design file closely
 enough for a reviewer to check it card by card; the Stay
@@ -162,9 +164,11 @@ desk and folio; all copy comes from the VI-primary catalogue;
 and the business-date lines render the weekday-long locale form
 per section 6.7 (`AC-DSK-12`), and the Book quote and Folio
 amounts render the design VND shape with the quote nights in the
-desk date form per section 6.8 (`AC-DSK-13`), and the Folio charges
+desk date form per section 6.8 (`AC-DSK-13`), the Folio charges
 card names the open folio's guest and room with the raw IDs still
-behind the reference disclosure per section 6.9 (`AC-DSK-14`).
+behind the reference disclosure per section 6.9 (`AC-DSK-14`), and
+the Book arrival/departure fields are app-localized pickers that keep
+the ISO payload per section 6.10 (`AC-DSK-15`).
 
 ## 6. Conflict rule with #412
 
@@ -253,6 +257,16 @@ decided headings/buttons/inputs, live shell conformance).
 - B6 select placeholder — no diff: both sides render
   `Chọn hạng phòng…`; the placeholder stays pinned by the
   fact-level decided input.
+- B7 arrival/departure date fields — RESOLVED (#581), superseding
+  the board's plain text inputs on this surface only. The design
+  draws both fields as text inputs; the owner decision
+  (section 6.10) makes them app-localized PrimeVue `DatePicker`
+  controls so the field follows the app locale, not the browser
+  UI language (#566). The board files stay read-only
+  (`docs/design/README.md`), the deliberate divergence is
+  recorded here and in the #563 audit, and the design-facts gate
+  keeps `kind: 'text'` (the picker's inner input) with the
+  locale-shaped placeholder.
 
 ### 6.3 Stay parity-sweep resolutions (Refs #497)
 
@@ -739,6 +753,137 @@ refusal-semantics change; and the F3 stay-ID open step, which stays
 the REPORTED #498 item — this change names the open folio, it does
 not pre-select a stay.
 
+### 6.10 Book arrival/departure date pickers (Refs #581)
+
+Status: product-owner scope decision for the Book date fields
+(`G-BK-1` in the #563 desk UI audit). Owner request of 2026-11-09
+(issue #581): the Book arrival and departure fields use the PrimeVue
+`DatePicker` and follow the **app** locale — VI `dd/mm/yyyy`, EN
+`mm/dd/yyyy` — never the browser UI language, because the native
+`<input type="date">` control rendered in the browser UI language
+(Chromium ignores the page `lang`), which is why it was removed in
+#566. Tier T2 (reader-visible UI change on the Book screen with a
+new input mechanism; payload values, validation, print, and refusal
+semantics unchanged). The binding done-condition is `AC-DSK-15` in
+`docs/product/acceptance-criteria.md` [section 11](acceptance-criteria.md).
+FR/NFR wording is owned by `business-analyst`
+(`docs/requirements/mvp-requirements.md` [section 16](../requirements/mvp-requirements.md):
+`FR-BDP-1`..`FR-BDP-3`), the per-flow implementation diagram by
+`architect` (LLD section 12.5 edge A, refreshed with the code),
+guard mapping by `qa-lead`, and the gate verdict by `spec-reviewer`.
+Recorded as D-18 in `docs/project/decision-log.md`.
+
+Decision (four parts):
+
+1. **Both Book date fields are app-localized pickers.** The field
+   text, the placeholder, the typed/parsed form, and the opened
+   calendar all follow the active app locale through one source:
+   `localeTag` / `catalogueLocale()` feed `primeVueDateFormat` and
+   the generated day/month wording
+   (`app/src/i18n/primevueLocale.ts:51`, `:55`), and
+   `installPrimeVueLocale` mirrors the active tag into the shared
+   PrimeVue config once from `app/src/main.ts:22`. VI reads
+   `dd/mm/yyyy` with `Tháng 12 2026` / `T2`…`CN`; EN reads
+   `mm/dd/yyyy` with `December 2026` / `S`…`S`. Nothing reads
+   `navigator.language` or the `<html lang>` attribute, and a VI/EN
+   switch re-renders the same calendar day in the new form without
+   losing or shifting it.
+2. **The board's text fields are deliberately superseded on this
+   surface only.** `docs/design/Book.dc.html` draws both date fields
+   as plain text inputs; the owner decision of 2026-11-09, not the
+   board, sets the control here. The board files stay owner-supplied
+   and read-only (`docs/design/README.md`), so the divergence is
+   recorded in this section and in the #563 audit record, never by
+   editing the board. The design-facts gate keeps `kind: 'text'`
+   (schema v1 describes the picker's inner input, so no schema
+   change and no `architect` schema route) and pins the locale-shaped
+   placeholder (`app/e2e/design-facts.ts:347-350`).
+3. **The ISO payload and the quote path are unchanged.** The picker
+   models a local calendar `Date`; `arrivalDate` / `departureDate`
+   stay canonical ISO through the single bridge
+   (`app/src/views/BookView.vue:527-545` →
+   `app/src/i18n/index.ts:261`, `:265`), so every quote and booking
+   payload keeps `yyyy-mm-dd`. A real calendar-day change runs the
+   existing `onStayInput` path (`app/src/views/BookView.vue:653`)
+   exactly like a typed change did; a locale switch fires no read,
+   leaves the quote as it was, and keeps the selected day. No
+   endpoint, contract, stored value, validation message, error code,
+   or print output moves.
+4. **Malformed entry never becomes a date; the text form is the
+   rollback.** An impossible, rolled-over, incomplete, or non-date
+   entry (`02/31/2026`, `31/02/2026`, partial text, a raw ISO
+   string) leaves the canonical value empty or at the last valid day
+   and the picker display reverts or clears, so no quote or confirm
+   request carries a malformed or shifted date; a blank field stays
+   empty and the existing submission validation decides the request,
+   so the picker never invents a date. The #566
+   `formatDateField` / `parseDateField` binding remains the
+   documented rollback path and stays test-pinned; it is not
+   deleted.
+
+Affected surfaces and keys:
+
+- Book arrival/departure fields,
+  `app/src/views/BookView.vue:163-192` (`book-arrival-date` /
+  `book-departure-date`, now on the picker's inner input); the field
+  labels reuse `desk.book.arrival` and `desk.book.departure`.
+- One new visible catalogue key `desk.book.date_placeholder`
+  (`messages/en.json:399` = `mm/dd/yyyy`, `messages/vi.json:399` =
+  `dd/mm/yyyy`) plus the eight byte-identical runtime mirrors under
+  `services/*`; `script/catalogue-coverage-check.sh` stays green.
+- Calendar month and weekday wording is `Intl` output for the app
+  locale (`app/src/i18n/primevueLocale.ts:34-45`), not a second
+  catalogue, so no further key lands.
+- The Book pair and the opened-calendar images in
+  `docs/testing/evidence/563/README.md`, refreshed in the same
+  change under the opposite browser UI locale, plus the `G-BK-1`
+  row and dated change-log line in the #563 audit comment.
+
+UI-contract delta (T2):
+
+- Layout and navigation scope: unchanged — the two fields keep their
+  existing grid cells, label position, and two-column Book layout;
+  no new region, control, route, tab, or navigation scope. The
+  picker's input icon sits inside the existing field width.
+- Component mapping: the existing date-field pattern now maps to the
+  PrimeVue `DatePicker` (one per field) inside the existing `label`;
+  no other Book card, field, or grouping changes. The board's plain
+  text inputs are the superseded mapping per decision 2.
+- Design tokens: unchanged — the field keeps the restyle form tokens
+  (`docs/product/desk-ui-pixel-faithful-restyle.md` section 3) and
+  the desk preset styles the stock control; no new colour, radius,
+  spacing, or target size. The 44px target rule holds on the input
+  and on the calendar day cells.
+- States in plain words: blank — the localized placeholder shows and
+  the canonical value stays empty, never an invented date; typed
+  invalid or incomplete — the field keeps the last valid day (or
+  clears) and never commits a malformed value, with no technical
+  code shown; selected — the field shows the locale form of the
+  chosen day and the quote clears and re-renders through the
+  existing `onStayInput` path; locale switch — the same day
+  re-renders in the new form and the quote is untouched; loading and
+  refusal — the existing quote and confirm states stand, and the
+  picker adds no new message. The calendar overlay's screen-reader
+  labels (`Choose date`, `Previous month`, …) stay PrimeVue's
+  English defaults in VI for now: every visible string on the field
+  is catalogue-owned, while mapping those attributes needs catalogue
+  keys of their own — a spec-owned follow-up recorded as the #581
+  boundary, not invented in this change.
+- Print rules: unchanged — print views render from their own
+  components (`FR-BIL-4`, `FR-DSP-4`); the picker never reaches a
+  printed document.
+- Catalogue: the one new key ships in both locales with placeholder
+  parity and all mirrors byte-identical, so the VI-primary rule
+  (section 7) and `AC-DSK-8` hold.
+
+Out: implementation (the downstream `dev` issue/PR on the Book view
+and its guards, plus the #563 evidence refresh); every other date
+surface (business-date display, quote/Folio desk dates, Stay/Folio
+fields); localized calendar accessibility strings (the spec-owned
+follow-up above); FR/NFR wording (`business-analyst`); guard mapping
+and traceability (`qa-lead`); and any API, contract, schema, backend,
+validation, print, or refusal-semantics change.
+
 ## 7. Catalogue and locale rule
 
 - Single source of truth stays `messages/` (`messages/README.md`):
@@ -1000,6 +1145,19 @@ Section 4 stays the rollout-wide contract; for steps 2–4:
 | With a folio open, the charges card names the guest and room like the board (`Khoản phí · Lê Minh · P.201`) | Section 6.9 decision 1; AC-DSK-14; `docs/design/Folio.dc.html:3` |
 | The context clears when the stay ID changes; no raw UUID is exposed by default | Section 6.9 decisions 2–3; AC-DSK-14; the #372 reference-disclosure rule |
 | Folio specs and the #563 evidence refresh stay green | Section 6.9 (out-of-scope list and the Folio pair refresh); `docs/testing/evidence/563/README.md` (same-change refresh rule); guards on the Folio view and browser Folio flow |
+
+## 15. Acceptance mapping (issue #581)
+
+| Criterion | Evidence in this spec |
+|---|---|
+| Both Book date pickers display and parse `dd/mm/yyyy` in VI and `mm/dd/yyyy` in EN, whatever the browser UI language is | Section 6.10 decision 1; AC-DSK-15; `FR-BDP-1`; the VI/EN evidence pair run under the opposite browser locale |
+| A VI/EN switch re-renders both pickers without losing or shifting the selected day | Section 6.10 decision 1; AC-DSK-15; `FR-BDP-1` |
+| A chosen date still submits the canonical ISO `yyyy-mm-dd` in the quote and booking payloads | Section 6.10 decision 3; AC-DSK-15; `FR-BDP-2`; `docs/requirements/mvp-requirements.md` section 16 |
+| Choosing a date re-renders the quote through the existing `onStayInput` path | Section 6.10 decision 3; AC-DSK-15 |
+| An invalid or incomplete entry can never submit a malformed date | Section 6.10 decision 4; AC-DSK-15; `FR-BDP-3` |
+| Every new visible label/placeholder exists in both catalogues with parity | Section 6.10 (affected keys); AC-DSK-8; `script/catalogue-coverage-check.sh` |
+| The design-facts gate is green against the updated decided inputs and the PR carries VI + EN side-by-side screenshots with the refreshed Book image | Section 6.10 decision 2 (and the affected evidence line); `app/e2e/design-facts.ts:347-350`; `docs/testing/evidence/563/README.md` |
+| The existing Book suites stay green | Section 6.10 decision 3 (payload and quote path preserved); `app/src/views/BookView.test.ts`, `app/e2e/book.spec.ts` |
 
 <!-- ao-role: product-owner -->
 Role: product-owner · AO session hotel-mgmt-704
