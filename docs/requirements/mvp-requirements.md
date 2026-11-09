@@ -2554,5 +2554,261 @@ named `file:line`; they must stay green from now on.
   change is separate `product-owner` work; the test strategy
   and run records are separate `qa-lead` work.
 
+## 16. Book app-localized date pickers (Refs #581)
+
+Requirements delta recording the #581 change: the Book arrival
+and departure fields become the PrimeVue `DatePicker`, localized
+from the app locale (VI `dd/mm/yyyy`, EN `mm/dd/yyyy`) and never
+from the browser UI language, while the quote and booking payloads
+keep the canonical ISO `yyyy-mm-dd`. This is a behaviour change,
+not a display-only one — the control, its typed/parsed form, the
+invalid-entry path, and an app-level PrimeVue locale bridge are
+specified here. Scope and done-conditions live with
+`product-owner` (issue #581 body and its acceptance); the T2 UI
+contract for the surface is `product-owner` work and is called out
+as missing in section 16.6; the per-flow implementation diagram is
+the `architect` slice (the implementation PR refreshes LLD section
+12.5 edge A); guard mapping lives with `qa-lead`. This section
+records only the requirements delta the T2 spec gate requires: the
+decision with rationale (section 16.1), the explicit no-change
+statements (section 16.2), the FR delta (section 16.3), the NFR
+delta (section 16.4), and the traceability inputs (section 16.5).
+No `docs/README.md` row flips: `requirements/mvp-requirements.md`
+is already `active`.
+
+### 16.1 Decision: app-localized picker, ISO payload unchanged
+
+The owner decided the control (issue #581, 2026-11-09): the Book
+date fields use the PrimeVue `DatePicker` and follow the app
+locale, because the native `<input type="date">` control rendered
+in the browser UI language (Chromium ignores the page `lang`),
+which is why it was removed in #566. The two text fields come back
+as one picker each, with the app locale authoritative:
+
+- The app locale is the only locale input: `localeTag` /
+  `catalogueLocale()` feed `primeVueDateFormat` and the generated
+  calendar wording (`app/src/i18n/primevueLocale.ts:51`, `:55`),
+  and `installPrimeVueLocale` mirrors the active tag into the shared
+  PrimeVue config once from `app/src/main.ts:22`. Nothing reads
+  `navigator.language` or the `<html lang>` attribute.
+- The field text, the typed/parsed form, and the opened calendar
+  use that one table: VI reads `dd/mm/yyyy` with `Tháng 12 2026` /
+  `T2`…`CN`, EN reads `mm/dd/yyyy` with `December 2026` / `S`…`S`
+  (evidence pair `docs/testing/evidence/563/side-by-side-Book-vi.png`
+  under an `en-US` browser and `side-by-side-Book-en.png` under a
+  `vi-VN` browser).
+- The canonical payload contract holds: the picker models a local
+  calendar `Date`, the writable computeds are the only bridge
+  (`app/src/views/BookView.vue:527-545`), and they convert through
+  `dateFromCanonical` / `canonicalFromDate`
+  (`app/src/i18n/index.ts:261`, `:265`), so `arrivalDate` /
+  `departureDate` stay ISO and every `QuotePrice`,
+  `CheckRoomTypeSellability`, and `CreateReservation` payload keeps
+  `yyyy-mm-dd`.
+- The existing quote path is preserved: a real calendar-day change
+  runs `onStayInput` (`app/src/views/BookView.vue:653`) exactly like
+  the typed change did, and a locale switch only re-renders the
+  same day.
+- The design-facts gate needs no schema change: schema v1's `text`
+  kind describes the picker's inner input, so the decided excerpt
+  keeps `kind: 'text'` and pins the locale-shaped placeholder
+  (`app/e2e/design-facts.ts:347-350`). The issue's conditional
+  "route a schema change through `architect`" is therefore not
+  triggered.
+
+Affected surfaces and keys:
+
+- Book arrival/departure fields, `app/src/views/BookView.vue:153-192`
+  (`book-arrival-date` / `book-departure-date`, now on the picker's
+  inner input).
+- One new visible catalogue key `desk.book.date_placeholder`
+  (`messages/en.json:399` = `mm/dd/yyyy`, `messages/vi.json:399` =
+  `dd/mm/yyyy`) plus the eight byte-identical runtime mirrors under
+  `services/*`; the field labels reuse `desk.book.arrival` and
+  `desk.book.departure`.
+- Calendar month and weekday wording is generated from `Intl` for
+  the app locale, not hand-copied catalogue keys
+  (`app/src/i18n/primevueLocale.ts:34-45`, pinned by
+  `app/src/i18n/primevueLocale.test.ts:25`).
+- The Book pair in `docs/testing/evidence/563/README.md` and the
+  opened-calendar images, refreshed in the same change; the #563
+  audit comment records the same mechanism and the deliberate board
+  divergence (the board draws text fields; the picker adds the
+  calendar affordance).
+
+Out of the change, kept on purpose: every other date surface
+(business-date header, quote/Folio desk dates, Stay/Folio fields),
+the quote's `dd/mm/yyyy` nightly-line form (`FR-MNY-2`), print
+output, stored values, and every API and contract shape.
+
+### 16.2 Explicit no-change statements
+
+- Every MVP requirement in sections 1 and 2 is unchanged by this
+  change, and every item in sections 7 through 15 keeps its wording
+  and target. The desk loop (book, check-in, charge, pay,
+  check-out, print) behaves exactly as specified; only how the two
+  Book date fields are entered and shown changes.
+- `FR-RES-1`, `FR-RES-4`, and the rest of section 1.1 hold: a
+  quote still resolves the requested dates, room type, guest, and
+  price basis, and a walk-in booking still creates the reservation
+  as specified.
+- Refusal semantics are unchanged: `FR-RTE-4`, `FR-CUS-1`, and
+  `FR-BIL-7` still fire on exactly the same conditions, and the
+  sold-out and restriction quote refusals are untouched.
+- `FR-MNY-2` holds: quote nightly lines still render the desk
+  `dd/mm/yyyy` form in both locales, never a raw ISO string.
+- `FR-RST-3` and the Book layout requirements hold: the
+  two-column Book screen, its card structure, hooks, and copy stay
+  as today; only the control inside the two date labels changes.
+- `FR-ADM-1`, `NFR-TZ-1`, and `NFR-I18N-1` hold: the app locale
+  (the hotel locale settings' app-side expression) governs the field
+  form, and every payload date stays the canonical ISO value on the
+  hotel's local calendar day.
+- `NFR-DSK-1` coverage holds: exactly one visible key lands in both
+  catalogues with placeholder parity, and
+  `script/catalogue-coverage-check.sh` stays green.
+- No data-dictionary entries and no business rules: the change
+  introduces no new entity or field and no domain policy
+  (`data-dictionary.md` and `business-rules.md` unchanged);
+  `BR-43` already holds the canonical-vs-display boundary, and the
+  reservation dates remain the fields section 1 of the data
+  dictionary defines.
+- The section 4 traceability table and its coverage count are
+  unchanged: this section adds no MVP capability. The handoff table
+  below (section 16.5) is separate and does not alter that count.
+
+### 16.3 Behaviour-scoped functional requirements
+
+Ids use the `BDP` (Book date picker) namespace, continuing the
+slice-scoped pattern of sections 10 through 15. They constrain the
+two Book date fields only.
+
+FR-BDP-1 — Book date fields follow the app locale, not the browser.
+Staff enter and read the Book arrival and departure dates in the
+form of the app locale, whatever the browser UI language is.
+Given the app locale is VI and the browser UI language is anything
+else; when the Book arrival or departure field renders, or staff
+open its calendar; then the field text, typed/parsed form, and
+placeholder read `dd/mm/yyyy` and the calendar month and weekday
+wording is VI (`Tháng 12 2026`, `T2`…`CN`). Given the app locale is
+EN; then the same surface reads `mm/dd/yyyy` with `December 2026`
+and `S`…`S`. Given a field holds a selected day; when the VI/EN
+toggle changes the app locale; then both fields re-render that same
+calendar day in the new form without losing or shifting it and
+without clearing the quote. Given either render; then the form is
+derived only from the app locale and never from `navigator.language`
+or the `<html lang>` attribute.
+
+FR-BDP-2 — A chosen day submits the canonical ISO date and
+re-renders the quote.
+Staff choose a day either from the calendar overlay or by typing a
+complete desk-form date, and the payload still receives ISO.
+Given staff select a day in the calendar overlay or type a complete
+desk-form date; when the value commits; then `arrivalDate` /
+`departureDate` hold that day as `yyyy-mm-dd`, and the
+`QuotePrice`, `CheckRoomTypeSellability`, and `CreateReservation`
+requests carry that ISO value (for a day shown as `15/11/2026` in
+VI or `11/15/2026` in EN: `2026-11-15`). Given a committed real
+calendar-day change; then the quote clears and re-renders through
+the existing `onStayInput` path exactly as a typed change did.
+Given only a locale switch; then no quote read fires, the quote
+stays as it was, and the entered day survives (AC-DSK-8 holds).
+
+FR-BDP-3 — Malformed or incomplete entry never becomes a payload
+date.
+Given an impossible, rolled-over, incomplete, or non-date textual
+entry (`02/31/2026`, `31/02/2026`, partial text, a raw ISO string);
+when it is committed or the field loses focus; then the canonical
+value stays empty or the last valid day, the picker display reverts
+or clears, and no quote or confirm request carries a malformed date.
+Given a blank field; then the canonical value stays empty and the
+existing submission validation decides the request, so the picker
+never invents a date.
+
+### 16.4 Non-functional requirements delta: no-change statement
+
+No new NFR is added. The existing NFRs cover the change:
+
+- Internationalisation and catalogue coverage (`NFR-I18N-1` and
+  `NFR-DSK-1` hold): the visible field copy is the existing label
+  keys plus one new placeholder key shipped in both catalogues and
+  all eight mirrors; the calendar's month and weekday names are
+  `Intl` output for the active app locale, so they are not a second
+  catalogue and `script/catalogue-coverage-check.sh` stays green.
+- Timezone correctness (`NFR-TZ-1` holds): the model `Date` is
+  built from the canonical day in local time and converted back the
+  same way, so the hotel's calendar day never shifts across a
+  timezone boundary, and impossible days are rejected
+  (`app/src/i18n/index.ts:261-271`).
+- Desk response (`NFR-PERF-1` holds): the picker adds no network
+  read; a quote read fires only on a real calendar-day change.
+- Print isolation (`NFR-DSK-2` and `NFR-RST-2` hold): the control
+  is screen-only; printed documents keep their current render.
+- Accessibility boundary (recorded gap, not a new NFR): the
+  field's visible copy is catalogue-owned, while the calendar
+  overlay's screen-reader strings (`chooseDate`, `prevMonth`,
+  `nextMonth`, `today`, `clear`) stay PrimeVue's English defaults
+  in both app locales; the boundary is recorded at
+  `app/src/i18n/primevueLocale.ts:17-23` and in the evidence
+  README. No guard asserts those strings today; mapping them needs
+  catalogue keys of their own and is the #581 follow-up, outside
+  this change's visible-copy scope.
+
+### 16.5 Traceability handoff for `qa-lead`
+
+Each row traces to the #581 issue-body acceptance and to this
+section's FRs. Guards the #581 change created or extended are named
+`file:line`, must stay green from now on, and need one new row in
+`docs/testing/desk-ui-rollout-test-traceability.md` (`qa-lead`).
+
+| Item | Guard (on disk; the #581 change created or extended it) | Handoff note for `qa-lead` |
+|---|---|---|
+| FR-BDP-1 app-locale form and switch | `app/src/i18n/primevueLocale.test.ts:18` (format table `dd/mm/yy` / `mm/dd/yy`), `:25` (generated `Tháng 1` / `January`, `CN` / `S`), `:39` (app-level install and locale switch); `app/src/views/BookView.test.ts:468` (placeholder `mm/dd/yyyy` → `dd/mm/yyyy` and values `11/01/2026` → `01/11/2026` on a switch); evidence pair run under the opposite browser locale | Both app locales must render the locale form under the opposite browser UI locale (`en-US` for VI, `vi-VN` for EN); a browser-locale-driven field is a failure |
+| FR-BDP-2 ISO payload and quote path | `app/src/views/BookView.test.ts:506` (a calendar-overlay day click sets `arrivalDate === '2026-11-15'` and the `QuotePrice` body carries `2026-11-15` / `2026-11-05`), `:429` (typed desk form and the ISO quote body; a locale switch keeps the quote); bridge `app/src/views/BookView.vue:527-545`, `:653`; helpers `app/src/i18n/index.ts:261`, `:265` | The clicked or typed day must reach the payload as ISO and run `onStayInput`; a locale switch must not clear the quote or fire a read |
+| FR-BDP-3 malformed entry | `app/src/views/BookView.test.ts:485-486` (`02/31/2026` leaves `arrivalDate === ''`); `app/src/i18n/index.test.ts:248` (rollovers, impossible days, and non-date text parse to `''`) | Any malformed or partial entry must leave the canonical ref empty or unchanged; a shifted day is a failure |
+| Design-facts gate | `app/e2e/design-facts.ts:347-350` (decided `text` kind plus the locale-shaped `dd/mm/yyyy` placeholders in the gate locale); `app/e2e/design-facts.spec.ts` green | Schema v1 needs no new kind and no `architect` schema route; the gate must stay green against the updated excerpt |
+| Existing Book suites | `app/src/views/BookView.test.ts:429`; `app/e2e/book.spec.ts:43-44` (typed desk form through the existing `getByTestId` path) and the quote/confirm payload pins in the same suites | Keep both on their current path; changes only with a stated rationale |
+| Catalogue parity | `messages/en.json:399`, `messages/vi.json:399` (`desk.book.date_placeholder`) and the eight `services/*` mirrors; `script/catalogue-coverage-check.sh` | One new key in both locales with placeholder parity; the mirrors stay byte-identical |
+| #563 evidence refresh | `docs/testing/evidence/563/README.md` Book pair plus `book-datepicker-vi.png` / `book-datepicker-en.png`; the #563 audit comment's `G-BK-1` row | The living record must name the DatePicker mechanism and the deliberate board divergence in the same change |
+| Missing guard (calendar a11y strings) | Missing — no guard asserts localized overlay labels (`Choose date`, `Previous month`, …); the boundary is recorded at `app/src/i18n/primevueLocale.ts:17-23` and in the evidence README | The follow-up issue adds the catalogue keys and a guard; this change deliberately leaves them English |
+
+### 16.6 Explicitly not specified here (plus gate dependencies)
+
+- No new screens or flows; the two Book date fields are the
+  complete surface. No backend, API, contract, schema,
+  validation-message, error-code, stored-value, or print change,
+  and no new dependency (PrimeVue `4.5.5` is already used).
+- No new design tokens or component choices beyond the
+  owner-decided DatePicker; the field keeps its existing grid cell
+  and the stock control styling.
+- UI contract gap (per the UI contract gap rule, stated not worded
+  around): this T2 reader-visible change needs a UI contract
+  section — layout and navigation scope, component mapping for the
+  picker, design-token scope, plain-word states (blank,
+  typed-invalid, selected), and print rules. Owner:
+  `product-owner` as part of acceptance criteria, with `architect`
+  input on technical layout. It is not written here; expected home
+  is the Book resolution in
+  `docs/product/desk-ui-design-rollout.md` (section 6.x delta) or
+  the #581 acceptance slice in
+  `docs/product/acceptance-criteria.md`. No UI contract =
+  `SPEC-GATE FAIL`; the implementation PR is held at the gate until
+  the contract exists and `spec-reviewer` posts PASS.
+- Per-flow implementation diagram: the touched flow is the Book
+  quote, and its happy-path plus failure/rollback path diagram is
+  the `architect` slice; the implementation PR refreshes LLD
+  section 12.5 edge A for the DatePicker mechanism and the moved
+  anchors. This section does not restate the diagram.
+- The specified change is tier T2 (reader-visible UI, new input
+  mechanism, payload values unchanged). This section is its FR/NFR
+  part. The remaining T2 minimum set — acceptance criteria, the UI
+  contract above, traceability completion (including the new
+  rollout traceability row), and the `SPEC-GATE PASS` verdict —
+  belongs to `product-owner` / `architect` / `qa-lead` /
+  `spec-reviewer`.
+- The `docs/product/acceptance-criteria.md` slice for this change
+  is separate `product-owner` work; the test strategy and run
+  records are separate `qa-lead` work.
+
 <!-- ao-role: business-analyst -->
-Role: business-analyst · AO session hotel-mgmt-823
+Role: business-analyst · AO session hotel-mgmt-844

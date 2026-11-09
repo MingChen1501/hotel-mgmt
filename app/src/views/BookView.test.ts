@@ -15,6 +15,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { mount } from '@vue/test-utils';
+import { nextTick } from 'vue';
 import BookView from './BookView.vue';
 import bookViewSource from './BookView.vue?raw';
 import { useSessionStore } from '../stores/session';
@@ -462,6 +463,94 @@ describe('book view', () => {
     }
     await wrapper.vm.$nextTick();
     expect((arrival.element as HTMLInputElement).value).toBe('11/01/2026');
+  });
+
+  it('renders app-localized date pickers and keeps malformed input out of the payload (Refs #581)', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountBook();
+    await signIn(wrapper, fetchMock);
+
+    const arrival = wrapper.find('[data-testid="book-arrival-date"]');
+    const departure = wrapper.find('[data-testid="book-departure-date"]');
+    // G-BK-1 (Refs #581): the fields are PrimeVue DatePickers whose
+    // inner input stays a text input, with the app-locale placeholder
+    // and never the browser-owned native `<input type="date">`.
+    expect(arrival.attributes('type')).toBe('text');
+    expect(arrival.attributes('placeholder')).toBe('mm/dd/yyyy');
+    expect(arrival.element.closest('.p-datepicker')).not.toBeNull();
+    expect(departure.element.closest('.p-datepicker')).not.toBeNull();
+
+    // An impossible day never reaches the ISO payload ref.
+    await arrival.setValue('02/31/2026');
+    expect((wrapper.vm as unknown as { arrivalDate: string }).arrivalDate).toBe('');
+
+    // A valid typed EN date parses to the canonical ISO value.
+    await arrival.setValue('11/01/2026');
+    await departure.setValue('11/03/2026');
+    expect((wrapper.vm as unknown as { arrivalDate: string }).arrivalDate).toBe('2026-11-01');
+    expect((wrapper.vm as unknown as { departureDate: string }).departureDate).toBe('2026-11-03');
+
+    // The whole control re-renders in VI: value and placeholder.
+    try {
+      setLocale('vi');
+      await wrapper.vm.$nextTick();
+      expect(arrival.attributes('placeholder')).toBe('dd/mm/yyyy');
+      expect((arrival.element as HTMLInputElement).value).toBe('01/11/2026');
+      expect((departure.element as HTMLInputElement).value).toBe('03/11/2026');
+    } finally {
+      setLocale('en');
+    }
+  });
+
+  it('quotes the canonical ISO date chosen from the calendar overlay (Refs #581, AC 3)', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountBook();
+    await signIn(wrapper, fetchMock);
+
+    // Seed a known month so the day cell never depends on today.
+    await wrapper.find('[data-testid="book-arrival-date"]').setValue('11/01/2026');
+    await wrapper.find('[data-testid="book-departure-date"]').setValue('11/05/2026');
+
+    // The picker's primary interaction: open the calendar from the
+    // input icon and click a day cell in the teleported overlay.
+    const arrivalPicker = wrapper.find('[data-testid="book-arrival-date"]').element.closest('.p-datepicker');
+    const icon = arrivalPicker?.querySelector('.p-datepicker-input-icon-container svg');
+    expect(icon).not.toBeNull();
+    icon?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await nextTick();
+
+    const dayCells = Array.from(
+      document.querySelectorAll<HTMLElement>(
+        '.p-datepicker-day-cell:not([data-p-other-month="true"]) .p-datepicker-day',
+      ),
+    );
+    const fifteenth = dayCells.find((cell) => cell.textContent?.trim() === '15');
+    expect(fifteenth, 'calendar overlay did not render the day cells').toBeDefined();
+    fifteenth?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await nextTick();
+    await nextTick();
+
+    // The click publishes the canonical ISO value, not a display string.
+    expect((wrapper.vm as unknown as { arrivalDate: string }).arrivalDate).toBe('2026-11-15');
+
+    // The quote still submits the canonical value and the ISO payload
+    // contract is unchanged.
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="book-room-type-id"] option[value="standard"]').exists()).toBe(true);
+    });
+    await wrapper.find('[data-testid="book-room-type-id"]').setValue('standard');
+    await wrapper.find('[data-testid="book-quote"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(fetchMock.mock.calls.some((call) => call[0] === '/v1/rates/QuotePrice')).toBe(true);
+    });
+    const priced = fetchMock.mock.calls.find((call) => call[0] === '/v1/rates/QuotePrice');
+    expect(parseBody(priced?.[1] as RequestInit)).toEqual({
+      roomTypeId: 'standard',
+      arrivalDate: '2026-11-15',
+      departureDate: '2026-11-05',
+    });
   });
 
   it('confirms the booking with the guest snapshot, frozen price basis, searched sellable count, and one idempotency key', async () => {

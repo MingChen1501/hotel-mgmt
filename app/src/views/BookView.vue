@@ -150,32 +150,44 @@
           </template>
           <template #content>
             <div class="book-stay-grid">
-              <!-- Date fields (Refs #566, G-BK-1): the native
+              <!-- Date fields (Refs #581, G-BK-1): the native
                 `<input type="date">` control renders in the browser
                 UI locale (Chromium ignores the page `lang`), so a VI
-                desk on an EN browser showed `mm/dd/yyyy`. These are
-                text fields bound to the desk form instead —
-                `dd/mm/yyyy` in VI, `mm/dd/yyyy` in EN — with the
-                canonical ISO value kept in `arrivalDate` /
-                `departureDate` for the payload. -->
+                desk on an EN browser showed `mm/dd/yyyy` (#566). The
+                PrimeVue DatePicker follows the APP locale instead —
+                `dd/mm/yyyy` in VI, `mm/dd/yyyy` in EN — through the
+                `dateFormat`/`locale` bridge in
+                `app/src/i18n/primevueLocale.ts`; typed input parses in
+                the same order and the canonical ISO value stays in
+                `arrivalDate` / `departureDate` for the payload. -->
               <label for="book-arrival-date">
                 {{ t('desk.book.arrival', {}, 'Arrival date') }}
-                <InputText
-                  id="book-arrival-date"
-                  v-model="arrivalText"
+                <DatePicker
+                  v-model="arrivalPicker"
+                  input-id="book-arrival-date"
                   name="arrival-date"
-                  autocomplete="off"
-                  data-testid="book-arrival-date"
+                  :date-format="deskDateFormat"
+                  :placeholder="t('desk.book.date_placeholder', {}, datePlaceholder)"
+                  :manual-input="true"
+                  :show-on-focus="false"
+                  show-icon
+                  icon-display="input"
+                  :pt="arrivalDateAttrs"
                 />
               </label>
               <label for="book-departure-date">
                 {{ t('desk.book.departure', {}, 'Departure date') }}
-                <InputText
-                  id="book-departure-date"
-                  v-model="departureText"
+                <DatePicker
+                  v-model="departurePicker"
+                  input-id="book-departure-date"
                   name="departure-date"
-                  autocomplete="off"
-                  data-testid="book-departure-date"
+                  :date-format="deskDateFormat"
+                  :placeholder="t('desk.book.date_placeholder', {}, datePlaceholder)"
+                  :manual-input="true"
+                  :show-on-focus="false"
+                  show-icon
+                  icon-display="input"
+                  :pt="departureDateAttrs"
                 />
               </label>
               <label for="book-room-type-id">
@@ -326,11 +338,13 @@
 import { computed, defineComponent, onMounted, ref, watch } from 'vue';
 import Button from 'primevue/button';
 import Card from 'primevue/card';
+import DatePicker from 'primevue/datepicker';
 import InputText from 'primevue/inputtext';
 import Message from 'primevue/message';
 import { apiFetch } from '../api/client';
 import type { ApiError } from '../api/client';
-import { catalogueLocale, formatDateField, formatDeskDate, formatVnd, localeTag, parseDateField, t } from '../i18n';
+import { canonicalFromDate, catalogueLocale, dateFromCanonical, formatDeskDate, formatVnd, localeTag, t } from '../i18n';
+import { primeVueDateFormat } from '../i18n/primevueLocale';
 import { useSessionStore } from '../stores/session';
 import ReferenceDetails, { type ReferenceItem } from '../components/ReferenceDetails.vue';
 
@@ -483,7 +497,7 @@ function newIdempotencyKey(): string {
 export default defineComponent({
   name: 'BookView',
   // eslint-disable-next-line vue/no-reserved-component-names -- PrimeVue registers Button/Dialog under these canonical names (Refs #338 component mapping).
-  components: { Button, Card, InputText, Message, ReferenceDetails },
+  components: { Button, Card, DatePicker, InputText, Message, ReferenceDetails },
   setup() {
     const session = useSessionStore();
     const guestName = ref('');
@@ -498,13 +512,48 @@ export default defineComponent({
     const resolvedGuest = ref<{ guestId: string; fullName: string } | null>(null);
     const arrivalDate = ref('');
     const departureDate = ref('');
-    // Desk date fields (Refs #566): the typed desk form lives in
-    // these text refs while the canonical ISO refs above stay the
-    // payload source; the text watchers parse the typed form back to
-    // ISO, and the locale watcher below re-renders the typed form
-    // after a switch.
-    const arrivalText = ref('');
-    const departureText = ref('');
+    // Desk date pickers (Refs #581): the PrimeVue DatePicker models a
+    // local calendar Date while the canonical ISO refs above stay the
+    // payload source. The writable computeds are the only bridge; a
+    // real calendar-day change clears the quote exactly like the old
+    // typed change did, while a locale switch only re-renders the same
+    // day in the newly active form.
+    const deskDateFormat = computed<string>(() => primeVueDateFormat(localeTag.value));
+    // Catalogue fallback mirrors the active desk form, so a missing key
+    // can never print a shape that contradicts the picker (Refs #581).
+    const datePlaceholder = computed<string>(() =>
+      catalogueLocale() === 'en' ? 'mm/dd/yyyy' : 'dd/mm/yyyy',
+    );
+    const arrivalPicker = computed<Date | null>({
+      get: () => dateFromCanonical(arrivalDate.value),
+      set: (value) => {
+        const iso = canonicalFromDate(value);
+        if (iso !== arrivalDate.value) {
+          arrivalDate.value = iso;
+          onStayInput();
+        }
+      },
+    });
+    const departurePicker = computed<Date | null>({
+      get: () => dateFromCanonical(departureDate.value),
+      set: (value) => {
+        const iso = canonicalFromDate(value);
+        if (iso !== departureDate.value) {
+          departureDate.value = iso;
+          onStayInput();
+        }
+      },
+    });
+    // The gate hook rides the picker's inner input (the DatePicker
+    // root is a span), so the existing Playwright `getByTestId` and
+    // Vitest `find('[data-testid=...]')` paths keep reaching the
+    // editable field.
+    const arrivalDateAttrs = {
+      pcInputText: { root: { 'data-testid': 'book-arrival-date' } },
+    };
+    const departureDateAttrs = {
+      pcInputText: { root: { 'data-testid': 'book-departure-date' } },
+    };
     const roomTypeId = ref('');
     // Room-type catalogue (issue #372): the picker shows names
     // and submits IDs, so staff never type a raw type UUID.
@@ -604,40 +653,6 @@ export default defineComponent({
     function onStayInput(): void {
       clearQuote();
     }
-
-    // Typed desk date -> canonical ISO (Refs #566). The ISO refs stay
-    // in sync so `QuotePrice` / `CheckRoomTypeSellability` /
-    // `CreateReservation` keep receiving `yyyy-mm-dd`; incomplete or
-    // impossible text parses to an empty value, exactly like the
-    // blank native field it replaced. Only a real value change
-    // clears the quote, so a locale re-render leaves it in place.
-    function syncArrivalDate(value: string): void {
-      const iso = parseDateField(value);
-      if (iso !== arrivalDate.value) {
-        arrivalDate.value = iso;
-        onStayInput();
-      }
-    }
-
-    function syncDepartureDate(value: string): void {
-      const iso = parseDateField(value);
-      if (iso !== departureDate.value) {
-        departureDate.value = iso;
-        onStayInput();
-      }
-    }
-
-    watch(arrivalText, syncArrivalDate);
-    watch(departureText, syncDepartureDate);
-
-    // A locale switch re-renders the typed dates in the newly active
-    // desk form with the same calendar day (AC-DSK-8: entered values
-    // survive the switch), without touching the ISO payload refs or
-    // clearing the quote.
-    watch(localeTag, () => {
-      arrivalText.value = formatDateField(arrivalDate.value);
-      departureText.value = formatDateField(departureDate.value);
-    });
 
     async function onFindGuest(): Promise<void> {
       const name = guestName.value.trim();
@@ -1002,8 +1017,6 @@ export default defineComponent({
       resolvedGuest.value = null;
       arrivalDate.value = '';
       departureDate.value = '';
-      arrivalText.value = '';
-      departureText.value = '';
       roomTypeId.value = '';
       discountName.value = '';
       guestStatus.value = '';
@@ -1040,8 +1053,12 @@ export default defineComponent({
       guestStatus,
       arrivalDate,
       departureDate,
-      arrivalText,
-      departureText,
+      arrivalPicker,
+      departurePicker,
+      deskDateFormat,
+      datePlaceholder,
+      arrivalDateAttrs,
+      departureDateAttrs,
       roomTypeId,
       roomTypes,
       roomTypesLoading,

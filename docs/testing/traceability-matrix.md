@@ -127,16 +127,18 @@ presentation requirement (FR-DSK-1..7, NFR-DSK-1..3, owned by
 wizard-scoped FR-DSK-8..10 in section 11 on the #438 stack in
 PR #442) to its
 guard. Full guard detail — parity baselines plus the new guards
-D1–D14 (D13 shipped with the #565 presentation change and D14
-with the #568 open-folio context change; D1–D12
-land with the screen PRs) — lives in
+D1–D15 (D13 shipped with the #565 presentation change, D14 with
+the #568 open-folio context change, and D15 ships with the #581
+Book date-picker change; D1–D12 land with the screen PRs) — lives in
 `docs/testing/desk-ui-rollout-test-traceability.md`
 (desk-ui-rollout-test-traceability.md). Like the shell slice
 above, these 11 rows do not alter the 57-row MVP coverage count:
 the rollout adds no MVP capability, and no existing matrix row
 may cite this rollout as its guard. A rollout row is complete
 only when its D-guard exists and passes; until then the row
-names the screen PR that must create it.
+names the screen PR that must create it. `AC-DSK-15` (Refs #581)
+is a post-rollout input-mechanism addendum mapped in section 7
+with its `D15` guard; it adds no row here.
 
 | Rollout item | Required guard type | Guard |
 |---|---|---|
@@ -238,6 +240,49 @@ unresolved, `:906`–`:948` the mirror case). Every filled guard
 citation is on disk; the Folio unit guards run in `app-build` and the
 browser assertion runs in `browser-e2e`. The MVP Coverage line below
 stands unchanged at 57/57.
+
+## 7. Desk Book date-picker slice (Refs #581)
+
+Behaviour slice for the `G-BK-1` gap from the #563 desk UI audit:
+the Book arrival and departure fields become app-localized PrimeVue
+`DatePicker` controls (VI `dd/mm/yyyy`, EN `mm/dd/yyyy`) instead of
+plain text inputs, while the quote and booking payloads keep the
+canonical ISO `yyyy-mm-dd`, the `onStayInput` quote path is
+preserved, malformed entry never becomes a payload date, and every
+stored, transmitted, and printed value stays unchanged. Each row
+traces the #581 issue-body acceptance and `AC-DSK-15` (owned by
+`product-owner` in
+[acceptance-criteria.md section 11](../product/acceptance-criteria.md);
+scope in `docs/product/desk-ui-design-rollout.md` section 6.10, tier
+T2) and the behaviour-scoped requirements `FR-BDP-1`..`FR-BDP-3`
+(owned by `business-analyst` in
+[mvp-requirements.md section 16](../requirements/mvp-requirements.md)).
+The guards below exist on disk in the #581 change (PR #583);
+every row is covered except the recorded accessibility gap, and every
+filled citation must stay green from now on. Like the
+slices above, these rows add no MVP capability; the 57-row MVP
+coverage count stands unchanged and no MVP row may cite this slice
+as its guard. `AC-DSK-3` keeps its Book flow and refusal conditions
+and points here for the date-input mechanism.
+
+| Item | Required guard type | Guard |
+|---|---|---|
+| AC-DSK-15 — Book arrival/departure fields are app-localized date pickers that keep the ISO payload and the quote path (Refs #581; traces to US-RES-1; `FR-BDP-1`, `FR-BDP-2`, `FR-BDP-3`; AC-DSK-3 keeps its Book flow conditions and points here) | Behaviour check in both app locales under the opposite browser UI language: both fields render the PrimeVue DatePicker, the field text and placeholder follow the app locale (`dd/mm/yyyy` VI, `mm/dd/yyyy` EN) never the browser UI language, a VI/EN switch re-renders the same calendar day without clearing the quote, a day chosen from the calendar overlay or typed in full reaches the quote/booking payload as ISO `yyyy-mm-dd`, and malformed or incomplete entry never does | Covered — `D15` (section 3 of `desk-ui-rollout-test-traceability.md`): `app/src/i18n/primevueLocale.test.ts:18` (format table), `:25` (generated calendar wording), `:39` (app-level install plus switch); `app/src/views/BookView.test.ts:468` (render, locale switch, impossible day `:485`), `:506` (calendar-overlay click plus ISO `QuotePrice` body); bridge `app/src/i18n/index.test.ts:272`, `:281`; browser typed path `app/e2e/book.spec.ts:43`–`:45`; gate `app/e2e/design-facts.ts:349`–`:350`; evidence `docs/testing/evidence/563/README.md:60`–`:64`, `:128`–`:131` |
+| FR-BDP-1 — Book date fields follow the app locale, not the browser | Format, placeholder, and generated calendar wording pins per app locale plus one app-level switch pin; the browser evidence pair runs under the opposite browser UI locale | Covered — `app/src/i18n/primevueLocale.test.ts:18` (`dd/mm/yy` / `mm/dd/yy`, `yy` = four-digit year in PrimeVue 4.5.5), `:25` (`Tháng 1` / `January`, `CN` / `S`), `:39` (install on the shared config and follow `setLocale`); `app/src/views/BookView.test.ts:468` asserts the `mm/dd/yyyy` → `dd/mm/yyyy` placeholder and value switch for the same day; VI under `en-US` and EN under `vi-VN` images at `docs/testing/evidence/563/README.md:128`–`:131` |
+| FR-BDP-2 — A chosen day submits the canonical ISO date and re-renders the quote | A calendar-overlay day click publishes ISO and reaches the `QuotePrice` body; a typed desk-form date does the same; a locale switch fires no quote read and keeps the quote | Covered — `app/src/views/BookView.test.ts:506` (opens the overlay from the input icon, clicks day 15, asserts `arrivalDate === '2026-11-15'` and the `QuotePrice` body `2026-11-15` / `2026-11-05`); `:429` (typed EN and VI desk forms plus the ISO quote body and the quote kept across a switch); bridge `app/src/views/BookView.vue:527`–`:545` and `onStayInput` at `:653`; browser typed path `app/e2e/book.spec.ts:43`–`:45` with the same-suite quote/confirm payload pins |
+| FR-BDP-3 — Malformed or incomplete entry never becomes a payload date | Impossible, rolled-over, incomplete, or non-date entry leaves the canonical ref empty or at the last valid day; a blank field invents nothing | Covered — `app/src/views/BookView.test.ts:485`–`:486` (`02/31/2026` leaves `arrivalDate === ''`); `app/src/i18n/index.test.ts:248` (rollovers, impossible days, and non-desk text parse to `''`); `:281` (`dateFromCanonical('2026-02-30')` / `'2026-13-01'` are `null`, NaN emits `''`) |
+| Design-facts gate unchanged in schema | The gate keeps `kind: 'text'` (schema v1 describes the picker's inner input) and pins the locale-shaped placeholder; no `architect` schema route | Covered — `app/e2e/design-facts.ts:349`–`:350` (both Book date inputs `text` with `dd/mm/yyyy` in the gate locale); `app/e2e/design-facts.spec.ts` green (see `docs/product/desk-ui-design-rollout.md` section 6.10 decision 2) |
+| Catalogue parity | One new visible key in both catalogues with placeholder parity and byte-identical runtime mirrors; the coverage check green | Covered — `messages/en.json:399` (`mm/dd/yyyy`), `messages/vi.json:399` (`dd/mm/yyyy`), the eight `services/*` mirrors, and `script/catalogue-coverage-check.sh` (the `NFR-DSK-1` / AC-DSK-8 rule) |
+| #563 evidence refresh (same-change rule) | The Book side-by-side pair plus the opened-calendar images show the app-localized pickers under the opposite browser locale, and the audit record names the DatePicker mechanism and the board divergence in the same change | Covered — `docs/testing/evidence/563/README.md:60`–`:64` (refresh record and capture method), `:128`–`:131` (Book VI/EN pairs plus the two opened calendars, with the deliberate divergence noted at `:142`–`:143`) |
+| Calendar overlay accessibility strings (recorded gap) | No guard asserts localized overlay screen-reader labels (`Choose date`, `Previous month`, `Next month`, `today`, `clear`); they stay PrimeVue's English defaults in VI | Recorded gap, not a silent pass — boundary documented at `app/src/i18n/primevueLocale.ts:17`–`:23` and `docs/testing/evidence/563/README.md:78`–`:81`; mapping them needs catalogue keys of their own and is the spec-owned #581 follow-up, so this row flips to covered only with that follow-up's guard |
+
+Presentation-slice coverage (Refs #581): 8 rows mapped; 7 covered
+and 1 recorded gap (the calendar overlay's English screen-reader
+strings, the documented #581 follow-up). Every filled guard
+citation is on disk; the unit guards run in `app-build` and the
+browser typed desk-form path runs in `browser-e2e`, with the
+app-locale evidence pair in `docs/testing/evidence/563/`. The MVP
+Coverage line below stands unchanged at 57/57.
 
 Coverage: 43 FRs mapped, 14 NFRs mapped, 57 rows total, 57 guards
 filled (PR #112 slice: FR-RES-1, FR-RMS-1..4, FR-RTE-1/2/4/5, FR-ADM-1/2, FR-CUS-1, NFR-CON-1/2; PR #149 slice: FR-FDK-1, FR-FDK-5, FR-BIL-1/2/3/6, FR-ADM-5, NFR-BKP-1/2, NFR-AUD-1, NFR-TZ-1, plus FR-RES-1 persistence; PR #150 slice: FR-FDK-2, FR-FDK-3, FR-FDK-4, FR-BIL-7, plus the NFR-CON-2 stay-side checkout guard; PR #151 slice: FR-BIL-4, FR-CUS-3; PR #156 slice: FR-RPT-1..3; PR #157 slice: FR-GST-1..3; PR #158 slice: NFR-DEP-1, FR-ADM-4 config level, plus the FR-ADM-1 deployment extension; PR #159 slice: FR-RES-2/3/5/6 plus the NFR-CON-1 modify-path extension; PR #160 slice: ReleaseBlock plus rooms-side move coordination (FR-RMS-3, FR-FDK-3); PR #161 slice: full rates handling (FR-RTE-3 filled, FR-RTE-4/5 extended — remaining TBD cells fill in later slices); count corrected to the live total 48 (later slices filled cells without updating this line); PR #153 slice: NFR-RET-1, NFR-AVL-1; PR #182 slice: FR-RES-4, FR-ADM-3, FR-CUS-2, NFR-PERF-1/2 filled (5 guards — count corrected to the live total 53); FR-GST-4, FR-BIL-5, FR-RPT-4 point at follow-ups #189, #190, #191 and fill with those issues; NFR-I18N-1 filled by the #192 slice (count corrected to the live total 54); #189/#190/#191/#192/#201 slices filled FR-GST-4, FR-BIL-5, FR-RPT-4, NFR-I18N-1 (plus the #201 extension) — count corrected to the live total 57 (Closes #214)).

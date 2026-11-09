@@ -38,8 +38,9 @@ async function bookOnce(
   await page.getByTestId('book-guest-name').fill(guestName);
   await page.getByTestId('book-register-guest').click();
   await expect(page.getByTestId('book-guest-status')).toContainText('registered');
-  // Refs #566: the date fields type the desk form, not an ISO
-  // string into a native picker.
+  // Refs #581: the date fields are app-localized DatePickers; the
+  // desk form (not an ISO string or a native browser picker) is what
+  // staff type, and the app locale owns the field order.
   await page.getByTestId('book-arrival-date').fill(deskDateField(arrival));
   await page.getByTestId('book-departure-date').fill(deskDateField(departure));
   await page.getByTestId('book-room-type-id').selectOption(roomTypeId);

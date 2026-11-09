@@ -325,7 +325,11 @@ export const DECIDED_CONTENT: readonly DecidedScreenContent[] = [
     // board-literal find/register actions; the stay card carries
     // arrival, departure, the catalogue-driven room-type select
     // (placeholder pinned — the static label stays board-literal),
-    // and discount plus the quote action. The quote-card confirm
+    // and discount plus the quote action. Refs #581: arrival and
+    // departure are PrimeVue DatePickers whose inner control is still
+    // a `text` input (schema v1 needs no new kind); each contributes
+    // the locale-shaped `dd/mm/yyyy` placeholder pinned in the gate
+    // locale (vi). The quote-card confirm
     // stays out (post-quote flow state — the gate asserts the
     // fresh-screen button subset only, covered by `book.spec.ts`
     // once quoted). The guest-ID and rate-plan inputs are
@@ -342,8 +346,8 @@ export const DECIDED_CONTENT: readonly DecidedScreenContent[] = [
     buttons: ['Tìm', 'Đăng ký khách mới', 'Lấy báo giá'],
     inputs: [
       { kind: 'text', label: 'Tên khách', placeholder: null },
-      { kind: 'text', label: 'Ngày đến', placeholder: null },
-      { kind: 'text', label: 'Ngày đi', placeholder: null },
+      { kind: 'text', label: 'Ngày đến', placeholder: 'dd/mm/yyyy' },
+      { kind: 'text', label: 'Ngày đi', placeholder: 'dd/mm/yyyy' },
       { kind: 'select', label: 'Loại phòng', placeholder: 'Chọn loại phòng…' },
       { kind: 'text', label: 'Giảm giá', placeholder: null },
     ],

@@ -10,6 +10,8 @@ import {
   catalogueLocale,
   formatAuditTime,
   formatBusinessDate,
+  canonicalFromDate,
+  dateFromCanonical,
   formatDateField,
   formatDeskDate,
   formatVnd,
@@ -261,6 +263,26 @@ describe('desk date-field form (Refs #566)', () => {
     expect(formatDateField('')).toBe('');
     expect(formatDateField('2026-02-30')).toBe('');
     expect(formatDateField('2026-12-08T00:00:00.000Z')).toBe('');
+  });
+});
+
+// PrimeVue DatePicker bridge (Refs #581): the picker models a local
+// calendar Date while the payload keeps the canonical ISO string.
+describe('desk date-picker bridge (Refs #581)', () => {
+  it('builds the local calendar day and returns the canonical ISO shape', () => {
+    const date = dateFromCanonical('2026-12-08');
+    expect(date).not.toBeNull();
+    expect(date?.getFullYear()).toBe(2026);
+    expect(date?.getMonth()).toBe(11);
+    expect(date?.getDate()).toBe(8);
+    expect(canonicalFromDate(date)).toBe('2026-12-08');
+  });
+
+  it('never rolls over or emits a malformed canonical value', () => {
+    expect(dateFromCanonical('2026-02-30')).toBeNull();
+    expect(dateFromCanonical('2026-13-01')).toBeNull();
+    expect(canonicalFromDate(null)).toBe('');
+    expect(canonicalFromDate(new Date(Number.NaN))).toBe('');
   });
 });
 

@@ -9,7 +9,10 @@ do not drift.
 
 ## Capture method
 
-- Chromium, `vi` locale, 1200px content width. Each side-by-side pairs the
+- Chromium at 1200px content width; each capture runs in the app locale
+  the image shows, and the browser UI locale is set per bullet below
+  (the #581 Book pair deliberately runs the browser in the opposite UI
+  locale). Each side-by-side pairs the
   design board at 1200px on the left with the live app at 1200px on the
   right across a 20px gutter, so every side-by-side is 2420px wide.
 - The live half comes from an isolated compose lab (isolated project and
@@ -54,6 +57,29 @@ do not drift.
   and clock icons. The capture data mirrors the pre-#565 image (same guest,
   dates, and amounts) so only the field shape differs; the submitted payload
   stays the canonical ISO date.
+- `side-by-side-Book-vi.png` / `side-by-side-Book-en.png` were refreshed
+  for the `G-BK-1` date-picker fix (#581) from the built app bundle at
+  1200px (Chromium, viewport 1200×1016) with the shell and book reads
+  answered locally — the same technique as the Stay/Folio/Admin pairs —
+  and the design board at the same width. The date fields are now
+  PrimeVue DatePickers whose inner input keeps the board's text shape
+  and adds the picker calendar affordance. Both captures deliberately
+  pair the APP locale against the OPPOSITE browser UI locale: the VI
+  pair runs under an `en-US` browser and still reads `dd/mm/yyyy`
+  (`08/12/2026` / `10/12/2026`), the EN pair runs under a `vi-VN`
+  browser and reads `mm/dd/yyyy` (`12/08/2026` / `12/10/2026`) — the
+  browser-locale mismatch that removed the native picker in #566 can
+  no longer reach these fields. `book-datepicker-vi.png` /
+  `book-datepicker-en.png` show the opened calendars in the same
+  locales (`Tháng 12 2026`, T2…CN vs `December 2026`, S…S), so the
+  month/weekday wording also follows the app locale. The submitted
+  payload stays the canonical ISO date; the capture data mirrors the
+  pre-#565 image (same guest, dates, and amounts) so only the control
+  shape differs. Known boundary recorded for the #581 follow-up: the
+  overlay's screen-reader strings (`Choose date`, `Previous month`,
+  `Next month`, …) are still PrimeVue's English defaults, because
+  mapping them needs catalogue keys of their own (a spec-owned slice);
+  every visible string on the field is catalogue-owned.
 - `side-by-side-Stay-vi.png` was refreshed for the `G-ST-1` fix (#567) from
   the built app bundle at 1200px in `vi` (Chromium, viewport 1200×1016) and
   the design board at the same width. The reviewer field is a panel control,
@@ -99,7 +125,10 @@ do not drift.
 | Stay | [side-by-side-Stay-vi.png](side-by-side-Stay-vi.png) | 2420×1016 | Two-panel check-in/check-out; refreshed for `G-ST-1` (#567) — the reviewer field is now a catalogue-labelled role select (`Quản lý` / `Chủ` / `Lễ tân`) instead of free text; `G-ST-1`, `G-ST-2` |
 | Onboarding | [side-by-side-Onboarding-vi.png](side-by-side-Onboarding-vi.png) | 2420×1016 | Setup wizard vs the board's setup panel; `G-OB-1` |
 | Rooms | [side-by-side-Rooms-vi.png](side-by-side-Rooms-vi.png) | 2420×1016 | Room map, chips, and unassigned group; `G-RM-1`, `G-RM-2` |
-| Book | [side-by-side-Book-vi.png](side-by-side-Book-vi.png) | 2420×1016 | Booking form and quote rows; refreshed for `G-BK-1` (#566) — the arrival/departure fields show the desk `dd/mm/yyyy` form (`08/12/2026` / `10/12/2026`) instead of the browser-locale native picker; quote rows keep the `G-BK-2` `dd/mm/yyyy` dates and VND `đ` amounts; `G-BK-1`, `G-BK-2`, `G-BK-3` |
+| Book | [side-by-side-Book-vi.png](side-by-side-Book-vi.png) | 2420×1016 | Booking form and quote rows, VI board vs the live app under an `en-US` browser; refreshed for `G-BK-1` (#581) — the arrival/departure fields are app-localized PrimeVue DatePickers and read the desk `dd/mm/yyyy` form (`08/12/2026` / `10/12/2026`) with the calendar affordance; quote rows keep the `G-BK-2` `dd/mm/yyyy` dates and VND `đ` amounts; `G-BK-1`, `G-BK-2`, `G-BK-3` |
+| Book (EN) | [side-by-side-Book-en.png](side-by-side-Book-en.png) | 2420×1016 | Same pair in the app `EN` locale under a `vi-VN` browser; refreshed for #581 — the pickers read `mm/dd/yyyy` (`12/08/2026` / `12/10/2026`), proving the app locale owns the field format, not the browser |
+| Book picker (VI) | [book-datepicker-vi.png](book-datepicker-vi.png) | 1200×1016 | Opened arrival calendar in the app `VI` locale under an `en-US` browser — `Tháng 12 2026` with `T2`…`CN` weekday heads (#581) |
+| Book picker (EN) | [book-datepicker-en.png](book-datepicker-en.png) | 1200×1016 | Opened arrival calendar in the app `EN` locale under a `vi-VN` browser — `December 2026` with `S`…`S` weekday heads (#581) |
 | Folio | [side-by-side-Folio-vi.png](side-by-side-Folio-vi.png) | 2420×1016 | Folio lines, amounts, balance, and the open folio's guest/room in the charges-card title; refreshed for #568 — the title reads `Khoản phí · Lê Minh · P.201` like the board, while lines and balance keep the `G-FO-2` `đ` shape; `G-FO-1` |
 | Admin | [side-by-side-Admin-vi.png](side-by-side-Admin-vi.png) | 2420×1491 | User, config, and audit cards; refreshed for `G-AD-1` (#569) — audit rows read catalogue VI summaries and short desk times (`09:12`, `Hôm qua`, `dd/mm/yyyy`) instead of dotted event names and ISO timestamps, with the raw values behind the reference disclosure; `G-AD-1`, `G-AD-2` |
 
@@ -110,6 +139,10 @@ do not drift.
   record's change log in the same change.
 - `docs/design/*.dc.html` is owner-supplied and read-only; deliberate
   divergences are recorded in the audit comment with their decision link.
+  #581 is one such divergence: the Book board draws the two date fields as
+  plain text inputs (`docs/design/Book.dc.html:3`), while the app renders
+  the PrimeVue DatePicker in the board's text shape plus the calendar
+  affordance; the gate still records the inner control as a `text` input.
 
 ## Recorded scope exception
 
@@ -120,5 +153,5 @@ relaxation of the "audit issues carry no product code" rule in a
 [comment on #563](https://github.com/MingChen1501/hotel-mgmt/issues/563#issuecomment-6723063195);
 the audit comment's change log carries the matching dated row.
 
-<!-- ao-role: dev -->
-Role: dev · AO session hotel-mgmt-834
+<!-- ao-role: dev-takeover -->
+Role: dev-takeover · AO session hotel-mgmt-843

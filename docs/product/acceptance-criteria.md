@@ -391,13 +391,14 @@ Product-owner rollout spec: `docs/product/desk-ui-design-rollout.md`
 conflicting parts of the #412 journey record (D-12 in
 `docs/project/decision-log.md`); each conflict found during
 implementation is recorded on the affected sub-issue with the
-owner decision. These 14 conditions cover the six screens
+owner decision. These 15 conditions cover the six screens
 (Main #420, Stay #422, Onboarding #425 plus steps 2–4 in #438,
 Rooms #424, Book #421, Folio #423) plus the shared shell,
 the catalogue rule, the business-date display decision
 (#503, AC-DSK-12), the quote/folio money and date display
-decision (#565, AC-DSK-13), and the open-folio guest and room
-context in the charges-card title (#568, AC-DSK-14). They
+decision (#565, AC-DSK-13), the open-folio guest and room
+context in the charges-card title (#568, AC-DSK-14), and the
+app-localized Book date pickers (#581, AC-DSK-15). They
 add no MVP capability: the four restyles change presentation
 only, the Rooms map visualises existing room state
 (`US-RMS-1`), and the wizard operationalises first-run setup
@@ -537,6 +538,24 @@ below check behaviour only.
   reader-visible title context only, no MVP capability added, no
   FR wording changed).
 
+- AC-DSK-15 — Given staff work the Book screen in either app
+  locale under any browser UI language, when they read, pick, or
+  type the arrival and departure dates, then the field text,
+  placeholder, typed/parsed form, and opened calendar follow the
+  app locale (VI `dd/mm/yyyy`, `Tháng 12 2026`, `T2`…`CN`; EN
+  `mm/dd/yyyy`, `December 2026`, `S`…`S`) and never
+  `navigator.language` or the `<html lang>` attribute; a day
+  chosen from the calendar overlay or typed in full still reaches
+  the quote and booking payloads as canonical ISO `yyyy-mm-dd`, a
+  real day change re-renders the quote through the existing
+  `onStayInput` path, a VI/EN switch re-renders the same day
+  without losing or shifting it and without clearing the quote,
+  and an impossible, incomplete, or non-date entry leaves the
+  canonical value empty or at the last valid day — never a
+  malformed or shifted payload date. Traces to: US-RES-1;
+  FR-BDP-1, FR-BDP-2, FR-BDP-3 (Refs #581; new input mechanism,
+  no MVP capability added, no FR wording changed).
+
 Rollout done when: the six sub-issues each close with a merged
 implementation PR (the wizard slice spans #425 step 1 plus the
 #438 steps 2–4 PR), every screen checks against its design file
@@ -548,7 +567,9 @@ on the wire, the quote and folio amounts render the design
 VND shape with the quote nights in the desk date form per
 AC-DSK-13 (values and print unchanged), and the Folio charges
 card names the open folio's guest and room with the raw IDs
-still behind the reference disclosure per AC-DSK-14.
+still behind the reference disclosure per AC-DSK-14, and the
+Book arrival/departure fields are app-localized pickers that keep
+the ISO payload per AC-DSK-15.
 
 ## 12. Desk UI pixel-faithful restyle (Refs #517)
 
@@ -690,12 +711,13 @@ served-legacy half of AC-SHL-4 are superseded as marked above;
 AC-SHL-2, AC-SHL-5, AC-SHL-6, AC-SHL-7, and the mirror half of
 AC-SHL-4 stand.
 
-Rollout addendum (Refs #419, plus #438, #503, #565, and #568): 14
-desk-UI conditions (AC-DSK-1..14,
+Rollout addendum (Refs #419, plus #438, #503, #565, #568, and
+#581): 15 desk-UI conditions (AC-DSK-1..15,
 section 11) cover the six-screen Claude design rollout plus the
 onboarding steps 2–4 follow-up, the business-date display
-decision, the quote/folio money and date display decision, and the
-open-folio guest and room context in the charges-card title.
+decision, the quote/folio money and date display decision, the
+open-folio guest and room context in the charges-card title, and
+the app-localized Book date pickers.
 Each traces to its existing
 MVP story and FR; no condition adds an
 MVP capability, invents a story, or changes FR wording, so the
