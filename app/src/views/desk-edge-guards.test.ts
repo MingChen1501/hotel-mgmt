@@ -1186,8 +1186,11 @@ describe('QA-EDGE-11 mid-flow refresh', () => {
     stubStayHappy(fetchMock);
     const wrapper = await signInStay();
 
+    // #586 moves the candidate load to the arrival pick, so the
+    // pick alone populates the picker; the returned-to screen must
+    // still read the explicit placeholder (choose_room plus
+    // room_hint) with nothing bound.
     await wrapper.find('[data-testid="stay-checkin-arrival"]').setValue('RSV-1');
-    await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain('Booked: Standard');
     });
@@ -1203,7 +1206,7 @@ describe('QA-EDGE-11 mid-flow refresh', () => {
       'Choose a ready room first.',
     );
 
-    // And the returned-to check-in is still blocked: one more
+    // And the returned-to check-in is still blocked: a Check in
     // click names the missing room and starts no stay.
     await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
     await vi.waitFor(() => {

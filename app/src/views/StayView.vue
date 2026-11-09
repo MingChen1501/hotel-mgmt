@@ -297,7 +297,7 @@
 </template>
 
 <script lang="ts">
-import { computed, defineComponent, onMounted, ref } from 'vue';
+import { computed, defineComponent, onMounted, ref, watch } from 'vue';
 import Button from 'primevue/button';
 import Card from 'primevue/card';
 import Dialog from 'primevue/dialog';
@@ -515,6 +515,11 @@ export default defineComponent({
     const checkinStatus = ref('');
     const checkinError = ref('');
     const checkingIn = ref(false);
+    // Arrival-pick load sequencing (#586): every pick increments
+    // the counter and owns that value, so a booked-type read that
+    // returns late for an earlier pick never paints into the
+    // current picker (`AC-DSK-17`).
+    let loadSeq = 0;
 
     const checkoutStayId = ref('');
     const folioStatus = ref('');
@@ -814,10 +819,14 @@ export default defineComponent({
       }
     }
 
-    // A new arrival pick resets the two-step check-in flow: the
-    // booked-type read and the ready-room candidates reload on
-    // the next click, so a stale room can never commit.
-    function onArrivalChange(): void {
+    // A new arrival pick resets the previous booking's state and
+    // loads the booked-type ready-room candidates straight away
+    // (#586, `AC-DSK-17`): the picker is populated without a Check
+    // in click, while the commit stays on the button. The pick
+    // owns a load sequence number so a slow read for an earlier
+    // pick never paints into the later one.
+    async function onArrivalChange(): Promise<void> {
+      const seq = ++loadSeq;
       checkinRef.value = null;
       checkinCandidates.value = [];
       checkinRooms.value = {};
@@ -825,7 +834,24 @@ export default defineComponent({
       checkinStatus.value = '';
       checkinError.value = '';
       checkinDetails.value = [];
+      const refValue = arrivalRef.value;
+      if (!refValue) {
+        return;
+      }
+      await loadCandidates(refValue, seq);
     }
+
+    // A valid room pick clears the room guard immediately (#586):
+    // the multi-candidate load raises `need_room` when the
+    // candidates arrive, so the pick must resolve it without
+    // another Check in click. The placeholder (empty id) and any
+    // value outside the candidate map leave the guard in place at
+    // commit time.
+    watch(checkinRoomId, (value) => {
+      if (value !== '' && checkinRooms.value[value]) {
+        checkinError.value = '';
+      }
+    });
 
     // A new departing pick resets the review context: the
     // previous folio review never authorizes the next stay.
@@ -847,10 +873,13 @@ export default defineComponent({
       }
     });
 
-    // First click loads the booking and the ready rooms of the
-    // booked type into the picker (the quote step of the booking
-    // form); the second click commits the check-in.
-    async function loadCandidates(refValue: string): Promise<boolean> {
+    // The arrival pick loads the booking and the ready rooms of the
+    // booked type into the picker (#586); a Check in click after a
+    // successful load reuses them and commits, and a click after a
+    // failed load retries this read instead of committing a stale
+    // selection. `seq` is the pick's load sequence number: a read
+    // that returns for an earlier pick paints nothing.
+    async function loadCandidates(refValue: string, seq: number = loadSeq): Promise<boolean> {
       checkingIn.value = true;
       try {
         let booking: { roomTypeId: string };
@@ -860,6 +889,9 @@ export default defineComponent({
             body: JSON.stringify({ reservationRef: refValue }),
           });
         } catch (err) {
+          if (seq !== loadSeq) {
+            return false;
+          }
           if (isSignedOut(err)) {
             expireToGate();
             return false;
@@ -875,10 +907,16 @@ export default defineComponent({
           checkinError.value = errorMessage();
           return false;
         }
+        if (seq !== loadSeq) {
+          return false;
+        }
         const rooms = await apiFetch<{ rooms?: RoomRecord[] }>(
           '/v1/rooms/ListRoomsByState',
           { method: 'POST', body: JSON.stringify({ state: 'vacant-inspected' }) },
         );
+        if (seq !== loadSeq) {
+          return false;
+        }
         const candidates = (rooms.rooms ?? []).filter(
           (room) => room.roomTypeId === booking.roomTypeId,
         );
@@ -913,6 +951,9 @@ export default defineComponent({
         checkinStatus.value = bookedTypeStatus(booking.roomTypeId);
         return true;
       } catch (err) {
+        if (seq !== loadSeq) {
+          return false;
+        }
         if (isSignedOut(err)) {
           expireToGate();
           return false;
@@ -920,10 +961,18 @@ export default defineComponent({
         checkinError.value = errorMessage();
         return false;
       } finally {
-        checkingIn.value = false;
+        if (seq === loadSeq) {
+          checkingIn.value = false;
+        }
       }
     }
 
+    // Check in validates the selected room and commits once. The
+    // arrival pick already loaded the booking and its candidates
+    // (#586), so this click normally reuses them; a click after a
+    // failed load retries the load instead of committing a stale
+    // selection, and a click while the read or the commit is in
+    // flight stays a no-op.
     async function onCheckIn(): Promise<void> {
       if (checkingIn.value) {
         return;
