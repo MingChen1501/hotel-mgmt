@@ -232,7 +232,7 @@ close the stay, present the invoice, and release the room as
 vacant-dirty.
 
 - Preconditions: the stay is in house and its folio has been reviewed (diagram 10); settlement or approval follows diagram 11.
-- Postconditions: the stay is closed with the invoice presented and the room vacant and dirty, or check-out was refused until the folio is settled or approved.
+- Postconditions: the stay is closed with the invoice presented and the room vacant and dirty, or check-out was refused until the folio is settled or approved; a close whose room release could not be confirmed stays closed with the room owed a release.
 
 ```mermaid
 sequenceDiagram
@@ -242,13 +242,17 @@ sequenceDiagram
     participant Rooms as Room inventory
     Staff->>Folio: Review folio with running balance before check-out [FR-BIL-1]
     alt Folio has an open balance
-        Staff->>Folio: Settle by recording payment [FR-BIL-3] or record authorised approval [FR-BIL-7; CUS: hotel approval rule per section 3.1]
-        alt Neither payment nor approval recorded
-            Folio-->>Staff: Check-out refused until settled or approved [FR-BIL-7]
+        Staff->>Folio: Settle by recording payment [FR-BIL-3] or record authorised approval [FR-BIL-7; CUS: hotel approval rule per section 3.1; BR-17: who, role, and when recorded]
+        alt Neither payment nor a complete approval record
+            Folio-->>Staff: Check-out refused until settled or approved [FR-BIL-7, BR-17]
         end
     end
+    Staff->>Folio: Re-read the balance at the moment of the close [FR-BIL-7, BR-17; every route to the close]
     Staff->>Stay: Check guest out; present the invoice [FR-FDK-2, FR-BIL-4; FIXED section 3.2 order: check-out closes the stay, states per state-machine]
-    Stay->>Rooms: Room becomes vacant and dirty [FR-FDK-2]
+    Stay->>Rooms: Release the room the stay held as vacant and dirty [FR-FDK-2, BR-18; only for a close that committed]
+    alt Release not confirmed
+        Rooms-->>Staff: Guest checked out, room still reads occupied, next step named [FR-FDK-2, BR-18]
+    end
     opt Late departure recorded [FR-FDK-4]
         Staff->>Stay: Record actual departure time against the stay [FR-FDK-4; CUS: FR-CUS-2 hotel times]
     end

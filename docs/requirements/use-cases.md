@@ -238,22 +238,32 @@ Main flow:
 3. Staff check the guest out and present the folio as the final
    invoice; each receipt matches one recorded payment. [FR-FDK-2,
    FR-BIL-4]
-4. The stay is closed and the room becomes vacant and dirty; a late
-   departure is recorded against the stay where applicable.
-   [FR-FDK-2, FR-FDK-4]
+4. The stay is closed and the room the stay held becomes vacant and
+   dirty, released by the close itself; a late departure is recorded
+   against the stay where applicable. [FR-FDK-2, FR-FDK-4, BR-18]
 
 Extensions/exceptions:
 
 - 2a. The folio has an open balance with neither payment nor
   authorised approval recorded: check-out is refused until the folio
-  is settled or approved. [FR-BIL-7]
+  is settled or approved, on every route to the close. [FR-BIL-7]
+- 2b. An approval record is missing the approver identity or the
+  recorded time, or names a role outside the hotel's fixed three:
+  it does not count as an approval, check-out is refused, and the
+  approval is recorded again. [FR-BIL-7, BR-17]
 - 3a. The hotel's internet connection is down: check-out, payment
   recording, and invoice printing all complete on the on-premise
   installation exactly as when connected. [NFR-AVL-1]
+- 4a. The release of the room cannot be confirmed: the close stands
+  and the room stays owed a release; staff see that the guest is
+  checked out while the room still reads occupied, with the next
+  step named. A room reported not occupied is shown as already free,
+  with no housekeeping state claimed. [FR-FDK-2, BR-18]
 
 Postconditions: the stay is closed with the invoice presented and
-the room vacant and dirty, or check-out was refused and the stay
-remains in house.
+the room released vacant and dirty, or check-out was refused and the
+stay remains in house; a close whose release could not be confirmed
+stays closed with the room owed a release.
 
 ## UC-9 — Post charges and record payments
 
@@ -426,6 +436,8 @@ no use case here. The migration-shell (`FR-SHL-*`) and desk-presentation
 (`FR-DSP-*`, `NFR-DSP-*`) slice ids in `mvp-requirements.md`
 sections 7–9 are presentation/scaffold deltas outside this
 actor-goal count: they are traced in their own slice handoff
-tables, not in the table above.
+tables, not in the table above, and the later slice ids (`FR-DSK-*`,
+`NFR-DSK-*`, `FR-RST-*`, `NFR-RST-*`, `FR-CIP-*`, `FR-CKO-*`)
+follow the same rule.
 
 Counts: 12 use cases; 43/43 FRs mapped.
