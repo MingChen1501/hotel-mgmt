@@ -1,6 +1,6 @@
 # Bộ kiểm thử thủ công cho giao diện desk 6 màn hình (Manual QA Testsuite)
 
-Trạng thái: active. Chủ sở hữu: `qa-lead`. Refs #448, #450 (mục 9: ma trận biên + xác thực).
+Trạng thái: active. Chủ sở hữu: `qa-lead`. Refs #448, #450 (mục 9: ma trận biên + xác thực), #588 (QA-EDGE-8 viết lại + QA-EDGE-13).
 
 Tài liệu này là bộ kiểm thử thủ công (manual QA testsuite) cho 6 màn hình
 desk UI, dùng TRƯỚC buổi kiểm thử trực tiếp trên máy của chủ sở hữu (owner machine).
@@ -459,7 +459,11 @@ Mục này mở rộng bộ kiểm thử với ma trận biên và xác thực c
 hình desk UI, theo yêu cầu của chủ sở hữu: đầu vào sai, trùng lặp/
 idempotency, overbooking, nhận phòng đồng thời, luồng trả phòng khi
 phòng bẩn, hiển thị lỗi API không rò rỉ kỹ thuật, bấm đôi, tải lại/
-back giữa luồng, đổi locale giữa luồng.
+back giữa luồng, đổi locale giữa luồng, và (từ #588) cổng chặn trả
+phòng khi folio còn nợ. QA-EDGE-8 được viết lại theo #588: vòng
+`checkout → vacant-dirty` là việc màn hình Stay tự gọi `ReleaseRoom`,
+không phải hiệu ứng phía máy chủ của `CheckOut` (ghi chú hiệu chỉnh
+ngay trong case).
 
 ### 9.0. Quy ước phân loại mỗi case
 
@@ -614,27 +618,49 @@ lỗi áp dụng chung: mọi lỗi và từ chối phải đọc thành câu r�
 
 ### QA-EDGE-8 — Trả phòng khi phòng bẩn (dirty-room checkout flow)
 
-- **Phân loại:** Scriptable (guard tương lai: checkout → vacant-dirty;
-  phòng dirty không được gán nhận phòng; sau clean+inspect lại gán
-  được; trace AC-DSK-4, AC-DSK-6).
+- **Phân loại:** Scriptable (guard: sau khi trả phòng màn hình Stay tự
+  gọi `ReleaseRoom` → `vacant-dirty` đúng một lần cho phòng khách vừa
+  trả, rồi tải lại dữ liệu desk; phòng dirty không được gán nhận
+  phòng; sau clean+inspect lại gán được; trace AC-DSK-4, AC-DSK-6,
+  AC-DSK-18).
+- **Ghi chú hiệu chỉnh (#588):** bản trước của case này đọc vòng
+  `checkout → vacant-dirty` là việc phía máy chủ của `CheckOut`. Điều
+  đó sai: `CheckOut` của Stay chỉ đóng stay và ghi sổ, không ghi trạng
+  thái phòng; vòng API `script/e2e-desk-loop.sh:422-423` gọi
+  `ReleaseRoom` tường minh và khẳng định `vacant-dirty`. Case và
+  guard tương ứng (`app/src/views/desk-edge-guards.test.ts:840-849`,
+  `:908-947`) được viết lại theo nghĩa vụ release của chính màn hình,
+  giữ nguyên nửa "phòng bẩn không phải ứng viên" (`:851-906`), không
+  xoá assertion nào.
 - **Điều kiện tiên quyết:** 1 stay in-house có folio số dư 0; mở
-  `/stay`.
+  `/stay` và ghi lại số phòng của khách (hiển thị ở danh sách
+  departing); mở sẵn `/rooms` ở tab thứ hai.
 - **Các bước thực hiện:**
   1. Trả phòng (`desk.stay.checkout_button`): kỳ vọng
-     `desk.stay.checked_out`/`desk.stay.checked_out_named`.
-  2. Mở `/rooms`: kiểm tra chip phòng vừa trả là
-     `desk.rooms.chip_needs_cleaning` (ghi chú
-     `desk.rooms.note_needs_cleaning`).
-  3. Mở `/stay` với một đặt phòng cùng hạng: xác nhận phòng bẩn KHÔNG
+     `desk.stay.checked_out`/`desk.stay.checked_out_named`, kèm câu
+     xác nhận phòng đã trả `desk.stay.room_released` (nêu đúng số
+     phòng vừa trả).
+  2. Không tải lại trang: mở lại ô chọn khách trả phòng
+     (`stay-checkout-stay`) — khách vừa trả không còn trong danh sách
+     khách đang lưu trú; mục departing vẫn giữ ngày trả hôm nay (đúng
+     thiết kế).
+  3. Chuyển sang tab `/rooms` đã mở sẵn rồi tải lại tab đó: chip
+     phòng vừa trả là `desk.rooms.chip_needs_cleaning` (ghi chú
+     `desk.rooms.note_needs_cleaning`); bảng Main cũng không còn
+     xếp phòng đó vào làn đang có khách.
+  4. Mở `/stay` với một đặt phòng cùng hạng: xác nhận phòng bẩn KHÔNG
      xuất hiện trong danh sách phòng sẵn sàng (kỳ vọng gợi ý
      `desk.stay.room_hint` hoặc `desk.stay.no_ready_rooms` nếu không
      còn phòng sạch).
-  4. Bấm `desk.today.mark_cleaned` rồi `desk.today.mark_inspected`
+  5. Bấm `desk.today.mark_cleaned` rồi `desk.today.mark_inspected`
      trên phòng đó; thử gán nhận phòng lại.
 - **Kết quả mong đợi:** phòng đi đúng vòng dirty → clean →
-  inspected; khi còn bẩn thì không gán được cho nhận phòng; sau khi
+  inspected; màn hình Stay tự release phòng qua `ReleaseRoom` (đúng
+  một lần, đúng số phòng của stay vừa đóng) và tải lại dữ liệu, nên
+  không surface nào còn hiển thị phòng là occupied mà không cần thao
+  tác tay; khi còn bẩn thì không gán được cho nhận phòng; sau khi
   kiểm tra xong thì gán được bình thường.
-- **Truy vết:** AC-DSK-4, AC-DSK-6.
+- **Truy vết:** AC-DSK-4, AC-DSK-6, AC-DSK-18.
 
 ### QA-EDGE-9 — Lỗi API hiển thị bằng lời rõ ràng, không rò rỉ kỹ thuật
 
@@ -731,6 +757,50 @@ lỗi áp dụng chung: mọi lỗi và từ chối phải đọc thành câu r�
   đạt/định dạng theo locale.
 - **Truy vết:** AC-DSK-1, AC-DSK-8.
 
+### QA-EDGE-13 — Trả phòng khi folio còn nợ (unpaid-close gate)
+
+- **Phân loại:** Hỗn hợp — Scriptable: mọi đường trả phòng trên màn
+  hình (nút Check out, nút Confirm trong hộp thoại, bấm lại/bấm đúp)
+  đều không gửi `CheckOut` khi số dư khác 0 và chưa có phê duyệt hợp
+  lệ; stay vẫn in-house; phê duyệt đã ghi qua
+  `RecordOpenBalanceApproval` thì trả phòng thành công. Human-only:
+  câu từ chối đọc tự nhiên, nêu đúng bước tiếp theo, đúng locale
+  (trace AC-DSK-4, AC-DSK-18).
+- **Điều kiện tiên quyết:** 1 stay in-house có folio số dư khác 0 và
+  CHƯA có phê duyệt nào; mở `/stay`; mở sẵn `/folio` ở tab thứ hai
+  để thêm charge.
+- **Các bước thực hiện:**
+  1. Chọn stay ở danh sách departing, bấm `desk.stay.review_button`:
+     kỳ vọng câu `desk.stay.refused_open_balance` (nêu bước tiếp theo
+     là ghi phê duyệt) và form phê duyệt mở ra; nút Check out bị vô
+     hiệu.
+  2. Ở tab `/folio`, ghi thêm 1 charge cho stay đó (số dư đổi SAU
+     bước review); quay lại `/stay`, bấm lại `desk.stay.review_button`
+     rồi (nếu nút bật) mở hộp thoại và bấm `desk.stay.checkout_confirm`
+     — đọc kết quả.
+  3. Bấm đúp `desk.stay.checkout_confirm` (hoặc bấm lại sau khi hộp
+     thoại đóng): kiểm tra không có lần trả phòng thứ hai nào được
+     ghi, không có phòng nào bị release.
+  4. Ghi phê duyệt qua form: chọn người duyệt ở ô reviewer và chọn
+     role trong danh sách role cố định (`desk.stay.approver_role` là
+     select, không còn ô nhập tự do), bấm `desk.stay.approve_button`;
+     rồi bấm Check out và Confirm.
+  5. Đọc lại dòng trạng thái sau khi trả phòng và mở `/rooms` xem
+     phòng đã về `desk.rooms.chip_needs_cleaning`.
+- **Kết quả mong đợi:** ở bước 1–3, KHÔNG có `CheckOut` nào được gửi,
+  khách vẫn còn trong danh sách khách đang lưu trú, hộp thoại đóng
+  lại, và câu
+  từ chối là câu catalogue thân thiện nêu bước tiếp theo (không mã kỹ
+  thuật, không JSON thô); số dư vừa đổi vẫn bị chặn (không dùng trạng
+  thái đọc lúc review). Ở bước 4, trả phòng thành công và màn hình
+  hiển thị `desk.stay.approval_recorded_by` với đủ người duyệt, role,
+  và thời điểm ghi nhận — ngoại lệ có phê duyệt phải nhìn thấy được,
+  không phải đường vòng âm thầm. Một bản ghi phê duyệt thiếu người
+  duyệt/thời điểm hoặc role ngoài bộ ba cố định phải bị từ chối bằng
+  `desk.stay.refused_approval_incomplete` và stay vẫn in-house
+  (phần này guard tự động phủ; người kiểm thử tay chỉ đọc câu chữ).
+- **Truy vết:** AC-DSK-4, AC-DSK-18.
+
 ## 10. Bảng truy vết AC-DSK tới case
 
 | AC-DSK | Case kiểm tra |
@@ -738,7 +808,7 @@ lỗi áp dụng chung: mọi lỗi và từ chối phải đọc thành câu r�
 | AC-DSK-1 — Vỏ chung đúng thứ tự tab, toggle locale toàn màn hình | Mục 0.4 (mọi màn hình) + mọi bước của QA-E2E-1; QA-EDGE-12 (đổi locale giữa luồng) |
 | AC-DSK-2 — Bảng Main + 2 nút housekeeping, số liệu làm mới | QA-MAIN-1, QA-MAIN-2, QA-MAIN-3; QA-E2E-1 bước 7; QA-EDGE-8 (vòng dirty → clean → inspected) |
 | AC-DSK-3 — Book bố cục 2 cột, luồng giữ nguyên | QA-BOOK-1..4; QA-E2E-1 bước 3; QA-EDGE-3, QA-EDGE-4, QA-EDGE-5, QA-EDGE-6, QA-EDGE-9, QA-EDGE-10, QA-EDGE-11 |
-| AC-DSK-4 — Stay placeholder tường minh + gợi ý, chặn nhận phòng, trả phòng cần folio thanh toán | QA-STAY-1..3; QA-E2E-1 bước 4 và 6; QA-EDGE-1, QA-EDGE-4, QA-EDGE-7, QA-EDGE-8, QA-EDGE-10, QA-EDGE-11 |
+| AC-DSK-4 — Stay placeholder tường minh + gợi ý, chặn nhận phòng, trả phòng cần folio thanh toán | QA-STAY-1..3; QA-E2E-1 bước 4 và 6; QA-EDGE-1, QA-EDGE-4, QA-EDGE-7, QA-EDGE-8, QA-EDGE-10, QA-EDGE-11; cổng chặn mọi đường trả phòng là AC-DSK-18 / QA-EDGE-13 |
 | AC-DSK-5 — Folio bố cục 2 thẻ, số dư giữ nguyên | QA-FOLIO-1..4; QA-E2E-1 bước 5; QA-EDGE-2, QA-EDGE-4, QA-EDGE-10 |
 | AC-DSK-6 — Sơ đồ phòng, số tổng khớp thẻ | QA-ROOMS-1..3; QA-E2E-1 bước 2; QA-EDGE-8 (phòng bẩn không gán được) |
 | AC-DSK-7 — Wizard chỉ chạy lần đầu, bước 1 lưu tên khách sạn | QA-ONB-0, QA-ONB-1; QA-E2E-1 bước 1 và 4; QA-EDGE-11 (tải lại/back giữa wizard) |
@@ -746,6 +816,7 @@ lỗi áp dụng chung: mọi lỗi và từ chối phải đọc thành câu r�
 | AC-DSK-9 — Bước 2: hồ sơ khách sạn còn lại qua đường config | QA-ONB-2; QA-E2E-1 bước 1 |
 | AC-DSK-10 — Bước 3: phòng và hạng phòng qua đường seed | QA-ONB-3; QA-E2E-1 bước 1 |
 | AC-DSK-11 — Bước 4: tài khoản owner đầu tiên qua đường admin user | QA-ONB-4; QA-E2E-1 bước 1 |
+| AC-DSK-18 — Trả phòng giải phóng phòng qua `ReleaseRoom` + tải lại desk, và chặn mọi đường trả phòng khi chưa thanh toán/chưa có phê duyệt hợp lệ | QA-EDGE-8 (release + tải lại + vòng dirty), QA-EDGE-13 (cổng chặn mọi đường + phê duyệt có người duyệt/role/thời điểm); QA-E2E-1 bước 6 |
 
 <!-- ao-role: qa-lead -->
-Role: qa-lead · AO session hotel-mgmt-597
+Role: qa-lead · AO session hotel-mgmt-873
