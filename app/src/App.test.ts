@@ -176,10 +176,10 @@ describe('shell navigation', () => {
   }
 
   // D1 design-header order (Refs #539, #472, FR-DSK-1): Desk,
-  // Rooms, Book, Stay, Folio, Print, Admin. Onboarding has no
-  // design-header tab: /onboarding stays reachable through the
-  // empty-database auto-launch plus its deep route.
-  it('renders the seven design-header destinations in design order plus the user plus sign-out', async () => {
+  // Rooms, Manage (#590), Book, Stay, Folio, Print, Admin.
+  // Onboarding has no design-header tab: /onboarding stays reachable
+  // through the empty-database auto-launch plus its deep route.
+  it('renders the design-header destinations plus the app-only manage tab, the user, and sign-out', async () => {
     vi.stubGlobal('fetch', quietFetch());
     try {
       const pinia = createPinia();
@@ -190,6 +190,7 @@ describe('shell navigation', () => {
       expect(items.map((item) => item.text())).toEqual([
         'Desk',
         'Rooms',
+        'Manage',
         'Book',
         'Stay',
         'Folio',
@@ -199,6 +200,7 @@ describe('shell navigation', () => {
       expect(items.map((item) => item.attributes('href'))).toEqual([
         '/app/',
         '/app/rooms',
+        '/app/manage',
         '/app/book',
         '/app/stay',
         '/app/folio',

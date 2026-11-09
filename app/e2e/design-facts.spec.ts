@@ -87,7 +87,9 @@ import {
   FACT_SCHEMA_VERSION,
   formatFactDiffs,
   ROUTE_KEY_TO_DESIGN_KEY,
+  NAV_TAB_ALLOWANCES,
   SCREEN_TABLE,
+  withNavTabAllowances,
   type AppFactSnapshot,
   type DesignScreenRecord,
   type FactDiff,
@@ -639,8 +641,26 @@ test.describe('live shell conformance on the running app DOM', () => {
         Object.entries(ROUTE_KEY_TO_DESIGN_KEY).map(([routeKey, designKey]) => [designKey, routeKey]),
       );
       const mainRecord = recordFor('Main');
-      const expectedOrder = mainRecord.nav.order.map((designKey) => designToRoute[designKey]);
+      // The app-only `manage` tab (Refs #590, schema section 8) is
+      // inserted at its declared position; every design tab keeps its
+      // relative order and label.
+      const expectedOrder = withNavTabAllowances(
+        mainRecord.nav.order.map((designKey) => designToRoute[designKey]),
+      );
       check('nav.order', expectedOrder, actual.nav.order, mainRecord.nav.design, mainRecord.nav.app);
+      // The allowance entry's label must match too: the live spec runs
+      // the VI desk, so an app-only tab whose label drifts fails here
+      // (Refs #590, schema section 8).
+      for (const allowance of NAV_TAB_ALLOWANCES) {
+        const observed = actual.nav.labels[allowance.routeKey] ?? '(absent)';
+        check(
+          `nav.labels.${allowance.routeKey}`,
+          allowance.labels.vi,
+          observed,
+          allowance.designSource,
+          mainRecord.nav.app,
+        );
+      }
 
       // The active pill sits on the current screen's tab; where the
       // design names an active tab for this screen, the mapped live

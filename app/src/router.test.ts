@@ -9,6 +9,7 @@ import AdminView from './views/AdminView.vue';
 import BookView from './views/BookView.vue';
 import DeskView from './views/DeskView.vue';
 import FolioView from './views/FolioView.vue';
+import ManageView from './views/ManageView.vue';
 import OnboardingView from './views/OnboardingView.vue';
 import PlaceholderView from './views/Placeholder.vue';
 import PrintView from './views/PrintView.vue';
@@ -16,15 +17,18 @@ import RoomsView from './views/RoomsView.vue';
 import StayView from './views/StayView.vue';
 
 describe('migration shell router', () => {
-  it('holds the desk, book, stay, onboarding, rooms, folio, print, and admin routes plus the placeholder catch-all', () => {
+  it('holds the desk, book, stay, onboarding, rooms, manage, folio, print, and admin routes plus the placeholder catch-all', () => {
     const router = createAppRouter();
     const routes = router.getRoutes();
-    expect(routes).toHaveLength(9);
+    // Refs #590: the tenth route is the rooms and rates management
+    // screen; no existing route is removed or renamed.
+    expect(routes).toHaveLength(10);
     expect(routes.map((route) => route.name).sort()).toEqual([
       'admin',
       'book',
       'desk',
       'folio',
+      'manage',
       'onboarding',
       'placeholder',
       'print',
@@ -95,6 +99,16 @@ describe('migration shell router', () => {
     expect(resolved.matched[0]?.components?.default).toBe(PrintView);
   });
 
+  // Refs #590: the management screen sits at /manage and renders
+  // the rooms and rates setup sections.
+  it('renders the rooms and rates management screen for /manage', async () => {
+    const router = createAppRouter();
+    const resolved = router.resolve('/manage');
+    expect(resolved.name).toBe('manage');
+    expect(resolved.matched).toHaveLength(1);
+    expect(resolved.matched[0]?.components?.default).toBe(ManageView);
+  });
+
   it('renders the admin console for /admin', async () => {
     const router = createAppRouter();
     const resolved = router.resolve('/admin');
@@ -148,12 +162,14 @@ describe('per-route document titles', () => {
     rooms: { key: 'desk.shell.doc_title_rooms', fallback: 'Room map' },
     folio: { key: 'desk.shell.doc_title_folio', fallback: 'Folio' },
     admin: { key: 'desk.shell.doc_title_admin', fallback: 'Admin board' },
+    // Refs #590: the management screen carries its own title too.
+    manage: { key: 'desk.shell.doc_title_manage', fallback: 'Rooms and rates' },
   };
 
-  it('carries the design-board title meta on the seven design screens', () => {
+  it('carries the design-board title meta on the design screens plus manage', () => {
     const router = createAppRouter();
     const routes = router.getRoutes();
-    expect(Object.keys(expected)).toHaveLength(7);
+    expect(Object.keys(expected)).toHaveLength(8);
     for (const [name, title] of Object.entries(expected)) {
       const route = routes.find((candidate) => candidate.name === name);
       expect(route, `route ${name} is registered`).toBeDefined();
@@ -190,6 +206,7 @@ describe('per-route document titles', () => {
       rooms: 'Sơ đồ phòng',
       folio: 'Hoá đơn',
       admin: 'Quản trị',
+      manage: 'Phòng và giá',
     };
     for (const [name, title] of Object.entries(expected)) {
       expect(en.messages[title.key], `en ${title.key}`).toBe(title.fallback);

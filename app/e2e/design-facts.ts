@@ -482,6 +482,46 @@ export interface RoomMapFacts {
   floors: string[];
   cards: RoomMapCardFact[];
 }
+// App-only nav tab allowance (Refs #590, schema section 8): the
+// rooms and rates management screen adds one desk tab the seven owner
+// boards do not draw, and the owner boards must not be edited to
+// follow the implementation. The allowance is committed text with
+// exactly one entry today; the comparison inserts it at the declared
+// position instead of loosening the order check, so every other
+// missing, extra, reordered, or relabelled tab still fails.
+export interface NavTabAllowance {
+  routeKey: string;
+  afterRouteKey: string;
+  labels: { vi: string; en: string };
+  designSource: string;
+}
+
+export const NAV_TAB_ALLOWANCES: readonly NavTabAllowance[] = [
+  {
+    routeKey: 'manage',
+    afterRouteKey: 'rooms',
+    labels: { vi: 'Quản lý', en: 'Manage' },
+    designSource: 'docs/design/RoomsRates.dc.md',
+  },
+];
+
+// Insert every allowance at its declared position in the expected
+// shell order. Deterministic: the list is committed text, never
+// configuration or environment state.
+export function withNavTabAllowances(expectedOrder: readonly string[]): string[] {
+  const order = [...expectedOrder];
+  for (const allowance of NAV_TAB_ALLOWANCES) {
+    if (order.includes(allowance.routeKey)) {
+      continue;
+    }
+    const at = order.indexOf(allowance.afterRouteKey);
+    if (at !== -1) {
+      order.splice(at + 1, 0, allowance.routeKey);
+    }
+  }
+  return order;
+}
+
 // Shell route-name tab keys to design tab keys. Refs #539: the
 // visible shell nav is exactly the seven design header tabs, so
 // every key here has a design counterpart. Onboarding is the

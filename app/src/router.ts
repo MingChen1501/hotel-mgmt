@@ -5,8 +5,9 @@
 // `/` renders the desk dashboard SFC. The book screen (Refs #294)
 // follows at `/book`, the stay screen (Refs #295) at `/stay`, the
 // folio screen (Refs #296) at `/folio`, the print screen
-// (Refs #297) at `/print`, and the admin console (Refs #298) at
-// `/admin`. Every other path still falls through to
+// (Refs #297) at `/print`, the admin console (Refs #298) at
+// `/admin`, and the rooms and rates management desk screen (#590) at
+// `/manage`. Every other path still falls through to
 // the placeholder (LLD section 11.1 edge U–V).
 import { createRouter, createWebHistory } from 'vue-router';
 import type { Router } from 'vue-router';
@@ -14,6 +15,7 @@ import AdminView from './views/AdminView.vue';
 import BookView from './views/BookView.vue';
 import DeskView from './views/DeskView.vue';
 import FolioView from './views/FolioView.vue';
+import ManageView from './views/ManageView.vue';
 import OnboardingView from './views/OnboardingView.vue';
 import PlaceholderView from './views/Placeholder.vue';
 import PrintView from './views/PrintView.vue';
@@ -75,6 +77,15 @@ export function createAppRouter(): Router {
         name: 'rooms',
         component: RoomsView,
         meta: { docTitleKey: 'desk.shell.doc_title_rooms', docTitleFallback: 'Room map' },
+      },
+      {
+        // Rooms and rates management desk screen (Refs #590): setup
+        // for room types, room floors, and nightly prices. The tab
+        // sits immediately after `Rooms` (owner decision O-1).
+        path: '/manage',
+        name: 'manage',
+        component: ManageView,
+        meta: { docTitleKey: 'desk.shell.doc_title_manage', docTitleFallback: 'Rooms and rates' },
       },
       {
         path: '/folio',
