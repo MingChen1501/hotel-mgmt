@@ -61,14 +61,13 @@ test('check-in, approval, and dialog check-out', async ({ page, request }) => {
   // Check in by picking the arrival (the human ref from booking;
   // the arrival pick needs a reservationRef the stay lists API
   // does not emit — backend contract gap, out of scope for the
-  // styling pass).
+  // styling pass). #586: the pick alone loads the booking and the
+  // booked-type ready rooms into the picker; picking a room and
+  // clicking Check in once commits the check-in.
   await page.getByTestId('stay-checkin-arrival').selectOption(reservationRef);
-  // First click loads the booking and the ready rooms of the
-  // booked type into the picker; pick one, then click again to
-  // commit the check-in.
-  await page.getByTestId('stay-checkin').click();
   await expect(page.getByTestId('stay-checkin-status')).toContainText(`Booked: ${ctx.roomTypeName}.`);
   await page.getByTestId('stay-checkin-room').selectOption({ label: ctx.roomNumbers[0] });
+  await expect(page.getByTestId('stay-checkin-error')).toHaveCount(0);
   await page.getByTestId('stay-checkin').click();
   await expect(page.getByTestId('stay-checkin-status')).toContainText(`Checked in for booking ${reservationRef} in room ${ctx.roomNumbers[0]}`);
 

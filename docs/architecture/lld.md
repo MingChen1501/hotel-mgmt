@@ -1008,15 +1008,15 @@ Edge trace (every edge cites code):
   (`StayView.vue` candidate load; booked-type status via
   `bookedTypeStatus`).
 - B–D: single-candidate auto-select binds directly and clears
-  the hint (`StayView.vue:1204-1206`, Refs #411 comment at
-  :1200-1203).
+  the hint (`StayView.vue:958-960`, Refs #411 comment at
+  :954-957).
 - B–E–F: zero-or-many opens on the empty option
-  (`StayView.vue:177-178` empty `<option value="">` with the
+  (`StayView.vue:51-53` empty `<option value="">` with the
   `desk.stay.choose_room` key) with `need_room` set
-  (`StayView.vue:1208-1209`); the blocked check re-tests the
-  bound id (`StayView.vue:1223-1226`) and refuses with the
+  (`StayView.vue:963`); the blocked check re-tests the
+  bound id (`StayView.vue:1005-1008`) and refuses with the
   plain-words next step.
-- G–I: `AssignRoom` (`StayView.vue:1234`,
+- G–I: `AssignRoom` (`StayView.vue:1016`,
   `RoomInventoryService.AssignRoom`, LLD section 3 atomic
   guard, `NFR-CON-2`) then `CheckInReservation` in legacy op
   order with one idempotency key per contract op.
@@ -1027,9 +1027,9 @@ Edge trace (every edge cites code):
   (LLD section 2 error mapping); only wording is new
   (`FR-DSP-3`).
 - Checkout gating (unchanged, shown for completeness):
-  `GetFolioBalance` (`StayView.vue:1503,1627`) with
-  `RecordOpenBalanceApproval` (`:1590`); open balance without
-  approval still refuses `SETTLEMENT_REQUIRED` (`:1669`,
+  `GetFolioBalance` (`StayView.vue:1142,1266`) with
+  `RecordOpenBalanceApproval` (`:1229`); open balance without
+  approval still refuses `SETTLEMENT_REQUIRED` (`:1303`,
   `FR-BIL-7` holds).
 
 Failure/rollback:

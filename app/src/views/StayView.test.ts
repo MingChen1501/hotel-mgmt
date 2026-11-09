@@ -1,11 +1,12 @@
 // Characterization guard for the stay screen migration
 // (Refs #295, ADR-0003; v2 board rebuild Refs #541): StayView
 // replicates the `frontend/stay.html` inline-script behaviour —
-// sign-in plus the arrival select (two-click check-in:
-// GetReservation plus ready rooms of the booked type, then
-// AssignRoom with the client-generated stayId as stayLink,
-// CheckIn carrying the roomId from the AssignRoom echo, and
-// CheckInReservation) and the folio-gated check-out
+// sign-in plus the arrival select (arrival-pick check-in, #586:
+// the pick loads GetReservation plus the ready rooms of the booked
+// type, one Check in click then AssignRoom with the
+// client-generated stayId as stayLink, CheckIn carrying the roomId
+// from the AssignRoom echo, and CheckInReservation) and the
+// folio-gated check-out
 // (GetFolioBalance review, RecordOpenBalanceApproval, CheckOut
 // with the reviewed folio id plus balance plus approval,
 // SETTLEMENT_REQUIRED surfacing) — through the shared Bearer
@@ -306,38 +307,64 @@ describe('stay view', () => {
     expect(wrapper.find('[data-testid="stay-checkin-error"]').exists()).toBe(false);
   });
 
-  it('drives the arrival select to a checked-in stay through the echoed room id', async () => {
+  // #586 (AC-DSK-17): the arrival pick loads the booking and the
+  // booked-type ready rooms into the picker on its own; the commit
+  // stays on the Check in button. This rewrites the pre-#586 guard
+  // that loaded on the first click and committed on the second.
+  it('loads the ready rooms on the arrival pick and commits on one click', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     const wrapper = await mountSignedIn(fetchMock);
+    const readyRoomReads = (): number =>
+      fetchMock.mock.calls.filter(
+        (call) =>
+          String(call[0]) === '/v1/rooms/ListRoomsByState' &&
+          parseBody(call[1]).state === 'vacant-inspected',
+      ).length;
+    // The panel data load already reads every housekeeping state
+    // once for the room-number map; the pick adds exactly one
+    // booked-type candidate read and the commit adds none.
+    const panelReads = readyRoomReads();
 
-    // The arrival select replaces the retired booking-ref entry.
+    // The arrival select replaces the retired booking-ref entry,
+    // and the pick alone loads the candidates: no click first.
     await wrapper.find('[data-testid="stay-checkin-arrival"]').setValue('RSV-1');
-
-    // First click loads the booking plus the ready rooms of the
-    // booked type into the picker.
-    await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain('Booked: Standard');
     });
+    expect(readyRoomReads()).toBe(panelReads + 1);
     const options = wrapper.findAll('[data-testid="stay-checkin-room"] option');
     // Refs #411: the picker opens on an explicit empty placeholder
     // so the shown value always matches the bound room id.
     expect(options.map((option) => option.text())).toEqual(['Choose a room...', '101', '102']);
     expect(options[0].element.getAttribute('value')).toBe('');
+    // The amber hint shows until a room is picked.
+    expect(wrapper.find('[data-testid="stay-checkin-room-hint"]').exists()).toBe(true);
 
-    // Second click commits: AssignRoom (roomNumber plus stayLink)
-    // then CheckIn with the roomId from the AssignRoom echo, then
-    // CheckInReservation.
+    // One Check in click commits: AssignRoom (roomNumber plus
+    // stayLink) then CheckIn with the roomId from the AssignRoom
+    // echo, then CheckInReservation, with no extra candidate read
+    // (the only later housekeeping read is the post-commit panel
+    // refresh).
     await wrapper.find('[data-testid="stay-checkin-room"]').setValue('room-1');
+    const readsBeforeCommit = readyRoomReads();
     await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain('Checked in');
     });
+    expect(readyRoomReads()).toBe(readsBeforeCommit + 1);
+    // One preload read plus one commit read-back, never a reload.
+    expect(
+      fetchMock.mock.calls.filter(
+        (call) =>
+          String(call[0]) === '/v1/reservations/GetReservation' &&
+          parseBody(call[1]).reservationRef === 'RSV-1',
+      ),
+    ).toHaveLength(2);
     const urls = fetchMock.mock.calls.map((call) => String(call[0]));
-    expect(urls).toContain('/v1/rooms/AssignRoom');
-    expect(urls).toContain('/v1/stay/CheckIn');
-    expect(urls).toContain('/v1/reservations/CheckInReservation');
+    expect(urls.filter((url) => url === '/v1/rooms/AssignRoom')).toHaveLength(1);
+    expect(urls.filter((url) => url === '/v1/stay/CheckIn')).toHaveLength(1);
+    expect(urls.filter((url) => url === '/v1/reservations/CheckInReservation')).toHaveLength(1);
     const assignBody = parseBody(
       fetchMock.mock.calls.find((call) => String(call[0]) === '/v1/rooms/AssignRoom')?.[1],
     );
@@ -349,6 +376,42 @@ describe('stay view', () => {
     // Room id comes from the AssignRoom echo, never the picker.
     expect(checkinBody.roomId).toBe('echo-101');
     expect(checkinBody.stayId).toBe(assignBody.stayLink);
+  });
+
+  // #586 symptom 2: selecting a valid room resolves the
+  // multi-candidate `need_room` guard immediately — no second
+  // click and no stale red message next to a valid pick.
+  it('clears the room guard when a valid room is picked', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
+
+    await wrapper.find('[data-testid="stay-checkin-arrival"]').setValue('RSV-1');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain('Booked: Standard');
+    });
+    // Several ready rooms keep today's loaded guard message.
+    expect(wrapper.find('[data-testid="stay-checkin-error"]').text()).toContain(
+      'Pick a ready room first.',
+    );
+
+    await wrapper.find('[data-testid="stay-checkin-room"]').setValue('room-2');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkin-error"]').exists()).toBe(false);
+    });
+    expect(wrapper.find('[data-testid="stay-checkin-room-hint"]').exists()).toBe(false);
+    expect(
+      (wrapper.find('[data-testid="stay-checkin-room"]').element as HTMLSelectElement).value,
+    ).toBe('room-2');
+
+    await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain('Checked in');
+    });
+    const assignBody = parseBody(
+      fetchMock.mock.calls.find((call) => String(call[0]) === '/v1/rooms/AssignRoom')?.[1],
+    );
+    expect(assignBody.roomNumber).toBe('102');
   });
 
   it('keeps the need_arrival guard when no arriving guest is picked', async () => {
@@ -366,15 +429,15 @@ describe('stay view', () => {
 
   // Refs #411: with candidates loaded but no room picked, the
   // select shows the empty placeholder (no phantom selection) and
-  // a second Check in click keeps the need_room guard without
-  // calling AssignRoom.
+  // a Check in click keeps the need_room guard without calling
+  // AssignRoom. #586 moves the load to the arrival pick; the guard
+  // and the placeholder rule stay.
   it('keeps the need_room guard when no ready room is picked', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     const wrapper = await mountSignedIn(fetchMock);
 
     await wrapper.find('[data-testid="stay-checkin-arrival"]').setValue('RSV-1');
-    await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain('Booked: Standard');
     });
@@ -392,13 +455,23 @@ describe('stay view', () => {
         'Pick a ready room first.',
       );
     });
+    // Re-picking the placeholder leaves the guard in place at
+    // commit time (a valid id is still required).
+    await wrapper.find('[data-testid="stay-checkin-room"]').setValue('');
+    await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkin-error"]').text()).toContain(
+        'Pick a ready room first.',
+      );
+    });
     const urls = fetchMock.mock.calls.map((call) => String(call[0]));
     expect(urls).not.toContain('/v1/rooms/AssignRoom');
   });
 
   // Refs #411: with exactly one ready room there is nothing to
-  // choose, so the picker binds it directly and a second Check in
-  // click commits without touching the guard.
+  // choose, so the picker binds it directly and one Check in
+  // click commits without touching the guard. #586 loads it on
+  // the arrival pick instead of on the first click.
   it('auto-selects the single ready room candidate', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
@@ -422,7 +495,6 @@ describe('stay view', () => {
     });
 
     await wrapper.find('[data-testid="stay-checkin-arrival"]').setValue('RSV-1');
-    await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain('Booked: Standard');
     });
@@ -438,6 +510,285 @@ describe('stay view', () => {
     });
     const urls = fetchMock.mock.calls.map((call) => String(call[0]));
     expect(urls).toContain('/v1/rooms/AssignRoom');
+  });
+
+  // #586 (AC-DSK-17 / D17, FR-CIP-2, FR-CIP-4): zero ready rooms of
+  // the booked type keep the booked-type status plus the plain
+  // no-ready-rooms error, bind nothing (the explicit placeholder
+  // stays), and a Check in click retries the load instead of
+  // committing.
+  it('shows the plain no-ready-rooms error and retries the load on a click', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
+    const happy = fetchMock.getMockImplementation() as (
+      url: string,
+      init?: RequestInit,
+    ) => Promise<Response>;
+    // Only the reads after the mount are counted: the panel data load
+    // already reads every housekeeping state once for the room-number
+    // map.
+    let candidateReads = 0;
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/rooms/ListRoomsByState' && parseBody(init).state === 'vacant-inspected') {
+        candidateReads += 1;
+        return Promise.resolve(
+          jsonResponse({
+            state: 'vacant-inspected',
+            rooms:
+              candidateReads === 1
+                ? // The pick's read: a deluxe room is ready but the
+                  // booking is standard, so the booked-type filter
+                  // leaves zero candidates.
+                  [{ roomId: 'room-3', number: '201', roomTypeId: 'deluxe', state: 'vacant-inspected' }]
+                : [
+                    { roomId: 'room-1', number: '101', roomTypeId: 'standard', state: 'vacant-inspected' },
+                    { roomId: 'room-2', number: '102', roomTypeId: 'standard', state: 'vacant-inspected' },
+                  ],
+          }),
+        );
+      }
+      return happy(url, init);
+    });
+
+    await wrapper.find('[data-testid="stay-checkin-arrival"]').setValue('RSV-1');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain('Booked: Standard');
+    });
+    expect(wrapper.find('[data-testid="stay-checkin-error"]').text()).toContain(
+      'No ready rooms of the booked type right now.',
+    );
+    // Nothing is bound: the select stays on the explicit placeholder.
+    expect(
+      (wrapper.find('[data-testid="stay-checkin-room"]').element as HTMLSelectElement).value,
+    ).toBe('');
+    expect(wrapper.findAll('[data-testid="stay-checkin-room"] option').map((option) => option.text())).toEqual(
+      ['Choose a room...'],
+    );
+
+    // The click retries the booked-type load instead of committing;
+    // the retry read offers the booked type and keeps the guard.
+    await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.findAll('[data-testid="stay-checkin-room"] option').map((option) => option.text())).toEqual(
+        ['Choose a room...', '101', '102'],
+      );
+    });
+    expect(wrapper.find('[data-testid="stay-checkin-error"]').text()).toContain(
+      'Pick a ready room first.',
+    );
+    expect(candidateReads).toBe(2);
+    const urls = fetchMock.mock.calls.map((call) => String(call[0]));
+    expect(urls).not.toContain('/v1/rooms/AssignRoom');
+  });
+
+  // #586 (AC-DSK-17 / D17, FR-CIP-4): a failed preload leaves the
+  // picker empty; the Check in click retries the read pair instead
+  // of committing, and only the next click after a successful retry
+  // commits once.
+  it('retries the preload on a click after a failed arrival-pick load', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
+    const happy = fetchMock.getMockImplementation() as (
+      url: string,
+      init?: RequestInit,
+    ) => Promise<Response>;
+    let bookingReads = 0;
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/reservations/GetReservation' && parseBody(init).reservationRef === 'RSV-1') {
+        bookingReads += 1;
+        if (bookingReads === 1) {
+          return Promise.resolve(jsonResponse({ code: 'INTERNAL', message: 'boom' }, 500));
+        }
+      }
+      return happy(url, init);
+    });
+
+    await wrapper.find('[data-testid="stay-checkin-arrival"]').setValue('RSV-1');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkin-error"]').text()).toContain(
+        'That did not work',
+      );
+    });
+    expect(wrapper.findAll('[data-testid="stay-checkin-room"] option').map((option) => option.text())).toEqual(
+      ['Choose a room...'],
+    );
+
+    // The click retries the read pair: the picker fills, nothing
+    // commits.
+    await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain('Booked: Standard');
+    });
+    expect(bookingReads).toBe(2);
+    expect(wrapper.findAll('[data-testid="stay-checkin-room"] option').map((option) => option.text())).toEqual(
+      ['Choose a room...', '101', '102'],
+    );
+    expect(fetchMock.mock.calls.map((call) => String(call[0]))).not.toContain(
+      '/v1/rooms/AssignRoom',
+    );
+
+    // Only a later room pick plus one click commits, once.
+    await wrapper.find('[data-testid="stay-checkin-room"]').setValue('room-1');
+    await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain('Checked in');
+    });
+    expect(
+      fetchMock.mock.calls.filter((call) => String(call[0]) === '/v1/rooms/AssignRoom'),
+    ).toHaveLength(1);
+  });
+
+  // #586 (AC-DSK-17): clearing the arrival pick while the preload is
+  // in flight supersedes the load without leaving the panel stuck in
+  // the checking-in state (disabled button plus the progress line
+  // until the next pick).
+  it('releases the in-flight state when the arrival pick is cleared mid-load', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
+    const happy = fetchMock.getMockImplementation() as (
+      url: string,
+      init?: RequestInit,
+    ) => Promise<Response>;
+    const gate: { release?: () => void } = {};
+    const held = new Promise<void>((resolve) => {
+      gate.release = resolve;
+    });
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === '/v1/reservations/GetReservation' && parseBody(init).reservationRef === 'RSV-1') {
+        await held;
+      }
+      return happy(url, init);
+    });
+
+    const arrival = wrapper.find('[data-testid="stay-checkin-arrival"]');
+    await arrival.setValue('RSV-1');
+    await vi.waitFor(() => {
+      expect((wrapper.find('[data-testid="stay-checkin"]').element as HTMLButtonElement).disabled).toBe(
+        true,
+      );
+    });
+    expect(wrapper.find('[data-testid="stay-checking-in"]').exists()).toBe(true);
+
+    // Re-selecting the placeholder supersedes the load before it
+    // resolves: the panel is usable again immediately.
+    await arrival.setValue('');
+    await vi.waitFor(() => {
+      expect((wrapper.find('[data-testid="stay-checkin"]').element as HTMLButtonElement).disabled).toBe(
+        false,
+      );
+    });
+    expect(wrapper.find('[data-testid="stay-checking-in"]').exists()).toBe(false);
+
+    // The late read for the cleared pick paints nothing and never
+    // re-locks the panel.
+    gate.release?.();
+    await vi.waitFor(() => {
+      expect(wrapper.findAll('[data-testid="stay-checkin-room"] option').map((option) => option.text())).toEqual(
+        ['Choose a room...'],
+      );
+    });
+    expect((wrapper.find('[data-testid="stay-checkin"]').element as HTMLButtonElement).disabled).toBe(
+      false,
+    );
+    expect(
+      (wrapper.find('[data-testid="stay-checkin-room"]').element as HTMLSelectElement).value,
+    ).toBe('');
+  });
+
+  // #586 (AC-DSK-17): the latest arrival pick owns the candidate
+  // list — a booked-type read that returns late for an earlier
+  // pick never paints into the current picker, and clearing the
+  // arrival pick empties the picker again.
+  it('keeps the latest arrival pick when an earlier load returns late', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const happy = stubHappyPath(fetchMock);
+    const gate: { release?: () => void } = {};
+    const firstGate = new Promise<void>((resolve) => {
+      gate.release = resolve;
+    });
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      const body = parseBody(init);
+      if (url === '/v1/stay/ListArrivalsDepartures') {
+        return jsonResponse({
+          businessDate: '2026-10-26',
+          arrivals: [
+            { reservationRef: 'RSV-1', guestId: 'g-1', roomId: null, actualArrival: null, actualDeparture: null },
+            { reservationRef: 'RSV-2', guestId: 'g-1', roomId: null, actualArrival: null, actualDeparture: null },
+          ],
+          inHouse: [],
+          departures: [],
+        });
+      }
+      if (url === '/v1/reservations/GetReservation' && body.reservationRef === 'RSV-1') {
+        await firstGate;
+        return jsonResponse({
+          reservationId: 'r-1',
+          reservationRef: 'RSV-1',
+          roomTypeId: 'deluxe',
+          guest: { guestId: 'g-1' },
+        });
+      }
+      if (url === '/v1/reservations/GetReservation' && body.reservationRef === 'RSV-2') {
+        return jsonResponse({
+          reservationId: 'r-2',
+          reservationRef: 'RSV-2',
+          roomTypeId: 'standard',
+          guest: { guestId: 'g-1' },
+        });
+      }
+      if (url === '/v1/rooms/ListRoomsByState' && body.state === 'vacant-inspected') {
+        return jsonResponse({
+          state: 'vacant-inspected',
+          rooms: [
+            { roomId: 'room-1', number: '101', roomTypeId: 'standard', state: 'vacant-inspected' },
+            { roomId: 'room-2', number: '102', roomTypeId: 'standard', state: 'vacant-inspected' },
+            { roomId: 'room-3', number: '201', roomTypeId: 'deluxe', state: 'vacant-inspected' },
+          ],
+        });
+      }
+      return happy(url, init);
+    });
+
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    useSessionStore().signIn('tok-1', 'Ada Owner', 'owner');
+    const wrapper = mount(StayView, { global: { plugins: [pinia] } });
+    await vi.waitFor(() => {
+      expect(
+        wrapper.find('[data-testid="stay-checkin-arrival"] option[value="RSV-2"]').exists(),
+      ).toBe(true);
+    });
+
+    const arrival = wrapper.find('[data-testid="stay-checkin-arrival"]');
+    await arrival.setValue('RSV-1');
+    await arrival.setValue('RSV-2');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain('Booked: Standard');
+    });
+    // The stale deluxe read lands after the current pick: it paints
+    // nothing.
+    gate.release?.();
+    await vi.waitFor(() => {
+      expect(
+        (wrapper.find('[data-testid="stay-checkin-room"]').element as HTMLSelectElement).value,
+      ).toBe('');
+    });
+    expect(wrapper.findAll('[data-testid="stay-checkin-room"] option').map((option) => option.text())).toEqual(
+      ['Choose a room...', '101', '102'],
+    );
+    expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain('Booked: Standard');
+
+    // Clearing the arrival pick empties the picker again.
+    await arrival.setValue('');
+    await vi.waitFor(() => {
+      expect(wrapper.findAll('[data-testid="stay-checkin-room"] option').map((option) => option.text())).toEqual(
+        ['Choose a room...'],
+      );
+    });
   });
 
   // Refs #349: live stay rows never carry booking references, so
@@ -584,8 +935,10 @@ describe('stay view', () => {
       return happy(url, init);
     });
 
+    // #586 moves the load to the arrival pick, so the pick alone
+    // raises the refusal; there is no Check in click here (it
+    // would be a no-op while the pick's load is in flight).
     await wrapper.find('[data-testid="stay-checkin-arrival"]').setValue('RSV-1');
-    await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="stay-checkin-error"]').text()).toContain(
         'Unknown booking reference',
