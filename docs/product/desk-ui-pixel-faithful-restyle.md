@@ -237,8 +237,14 @@ Each screen: exact design source, layout to reproduce, what stays.
   a valid room select clears the `Pick a ready room first.` message,
   and the Check in click commits once; the explicit empty room-select
   placeholder with hint blocking check-in until a ready room is
-  chosen (AC-DSK-4), move/times flows, checkout gated on a settled
-  folio (AC-DSK-4 / FR-BIL-7), all request fields unchanged.
+  chosen (AC-DSK-4), move/times flows, and the check-out card's
+  settled-folio gate plus the room release on close (Refs #588;
+  rollout spec section 6.13, `AC-DSK-18`) — the departed room is
+  released to vacant-dirty after a committed close, the gate holds
+  on every UI route against the freshly read balance, and the
+  approver-role field becomes a catalogue-led role select so a
+  free-form string cannot stand in for the recorded approval; all
+  request fields unchanged.
 - Rebuild: screen markup and styling. The T3 single-vs-two-step
   REPORTED item (#497) is resolved on its load half by #586 — the
   arrival pick populates the room select like the one-form board,
@@ -409,4 +415,4 @@ this spec references them by section, never repeats them:
 | Every child issue and its PR carry before/after screenshot evidence and per-screen owner review | Section 8 / AC-RST-8; owner-review labels on #517–#524 |
 
 <!-- ao-role: product-owner -->
-Role: product-owner · AO session hotel-mgmt-717
+Role: product-owner · AO session hotel-mgmt-871

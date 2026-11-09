@@ -135,7 +135,12 @@ Failure/rollback edges: booking confirmation failure keeps the draft
 (book-confirm-error); check-in failure keeps the arrival listed
 (stay-checkin-error); checkout requires a settled folio plus approval
 (stay-approval-section) — an unsettled folio blocks checkout, never
-auto-waives.
+auto-waives. The check-out edge is now desk-driven end to end
+(Refs #588): the panel releases the departed room through
+`ReleaseRoom` (`vacant-dirty`) after a committed close and gates
+every UI route to that close on the freshly read balance, so `P`
+above is a panel action, not an API-loop-only step (rollout spec
+section 6.13, `AC-DSK-18`).
 
 ### J2. Housekeeping (rooms)
 
@@ -444,4 +449,4 @@ five journey-spec follow-ups to it.
 | Design milestone accepted or alternative assigned | Section 8 (proposal + alternative, owner decision on #412) |
 
 <!-- ao-role: product-owner -->
-Role: product-owner · AO session hotel-mgmt-576
+Role: product-owner · AO session hotel-mgmt-871
