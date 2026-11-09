@@ -144,7 +144,7 @@ appears on every printed document.
 
 ## 5. Acceptance criteria summary
 
-The binding done-conditions are `AC-DSK-1` through `AC-DSK-15`
+The binding done-conditions are `AC-DSK-1` through `AC-DSK-17`
 in `docs/product/acceptance-criteria.md` [section 11](acceptance-criteria.md)
 (`AC-DSK-9`..`AC-DSK-11` cover the steps 2–4 follow-up, Refs
 #438; see section 10; `AC-DSK-13` covers the quote/folio
@@ -152,11 +152,16 @@ money and date display shape, Refs #565; see section 6.8;
 `AC-DSK-14` covers the open folio's guest and room in the
 charges-card title, Refs #568; see section 6.9; `AC-DSK-15`
 covers the app-localized Book date pickers, Refs #581; see
-section 6.10).
+section 6.10; `AC-DSK-16` covers the list-backed stay picker
+on the Folio and Print open steps, Refs #582; see section 6.11;
+`AC-DSK-17` covers the Stay arrival-pick candidate preload and
+room-error lifecycle, Refs #586; see section 6.12).
 In short: shared shell/tokens/nav/locale behave identically on
 all six screens; each screen matches its design file closely
 enough for a reviewer to check it card by card; the Stay
-placeholder blocks check-in until a ready room is chosen;
+placeholder blocks check-in until a ready room is chosen, and
+the arrival pick now preloads the booked-type ready rooms with
+the commit still on the Check in button (`AC-DSK-17`);
 checkout still requires a settled folio; Rooms summary counts
 always match the rendered cards; the wizard launches on empty
 database only and the configured hotel name surfaces across
@@ -285,12 +290,18 @@ decided headings/buttons/inputs, live shell conformance).
   literalism stays rejected.
 - T2 document title — already closed (#495 S2), verified live
   on `/app/stay`.
-- T3 check-in flow — REPORTED, not changed. The design shows a
-  single-step form (reference + arrival + room + one button);
-  the app runs a two-step flow (first click loads the booking
-  and the ready rooms of the booked type, second click commits)
-  with a room hint, status lines, and reference details. The
-  step structure is user-visible flow: product call.
+- T3 check-in flow — RESOLVED on its load half (#586). The
+  design shows a single-step form (reference + arrival + room +
+  one button) with no separate load step; the app used to run a
+  two-step flow (first Check in click loads the booking and the
+  ready rooms of the booked type, second click commits). Per the
+  owner request the arrival pick now loads the booking and the
+  booked-type ready rooms into the picker
+  (`onArrivalChange` → `loadCandidates`), so the room select is
+  populated right after the guest pick like the board; the commit
+  deliberately stays on the Check in button — a room pick never
+  commits. Section 6.12 is the binding delta; `AC-DSK-17` is the
+  done-condition and `AC-RST-4` is reworded to this timing.
 - T4 app extras — KEPT with justification (same precedent as
   the Main deliberately kept extras and Book B4): the h1+intro,
   the lists DataTables with empty states and per-row pick
@@ -993,6 +1004,232 @@ Admin data-entry fields; any API, contract, schema, backend,
 validation, print, or refusal-semantics change; and screens outside
 the desk shell.
 
+### 6.12 Stay arrival-pick candidate preload and room-error lifecycle (Refs #586)
+
+Status: product-owner scope decision for the Stay check-in panel
+(#586; owner manual QA 2026-11-09 on `/app/stay`). Tier T2
+(reader-visible UI flow change in one view; no new endpoint,
+contract, schema, backend, stored value, validation message, or
+catalogue key). The binding done-condition is `AC-DSK-17` in
+`docs/product/acceptance-criteria.md` [section 11](acceptance-criteria.md);
+`AC-DSK-4` keeps the placeholder/guard/auto-select rule and
+`AC-RST-4` is reworded to this load timing. FR/NFR wording is
+owned by `business-analyst` (`docs/requirements/mvp-requirements.md`:
+`FR-DSK-4` stays the placeholder rule; any load-timing delta lands
+as an FR-RST/FR-DSK note), the per-flow implementation diagram is
+refreshed by `architect` in the LLD with the code, guard mapping by
+`qa-lead` (`docs/testing/desk-restyle-test-traceability.md` R4 row,
+`docs/testing/traceability-matrix.md`, and
+`docs/testing/desk-ui-rollout-test-traceability.md`), and the gate
+verdict by `spec-reviewer`. Recorded as D-20 in
+`docs/project/decision-log.md`.
+
+The board draws the check-in card as one form — arrival select,
+room select, one action button — with no separate load step
+(`docs/design/Stay.dc.html`, board 2 of
+`docs/design/manifest.json`; the T3 item in section 6.3). The app
+reached that panel state only after a first Check in click. This
+decision closes the load half of T3; the commit stays on the
+button, per the owner request.
+
+Decision (four parts):
+
+1. **The arrival pick loads the candidates.** When the arrival
+   select changes, the panel resets the previous booking's state
+   (candidate list, room map, bound room id, status, error, and
+   details — the existing `onArrivalChange` reset,
+   `app/src/views/StayView.vue:820-828`) and then runs the existing
+   candidate load: `GetReservation` for the booking's `roomTypeId`,
+   then `ListRoomsByState` with `state: 'vacant-inspected'`, keeping
+   only the rooms whose `roomTypeId` matches the booking
+   (`StayView.vue:853-925`). The same read pair, the same
+   booked-type filter, and the same request bodies as today's
+   first-click load; only the trigger moves from the button to the
+   pick. A read for an earlier pick that returns late never paints
+   into the current picker: the latest arrival selection owns the
+   candidate list.
+2. **The picker states stay exactly as today.** With exactly one
+   ready room of the booked type, the candidate binds
+   automatically, no hint and no error render, and a Check in click
+   commits (`StayView.vue:906-909`). With several, the select opens
+   on the explicit empty placeholder (`Choose a room...`) with the
+   amber `Choose a ready room first.` hint
+   (`data-testid="stay-checkin-room-hint"`, `StayView.vue:63-71`),
+   and the existing `Pick a ready room first.` guard message shows
+   as today's loaded state does (`StayView.vue:909-912`). Zero ready
+   rooms of the booked type keeps the plain `No ready rooms of the
+   booked type right now.` error with the booked-type status line;
+   an unknown reference keeps `Unknown booking reference. Check the
+   reference and try again.`; a signed-out read keeps the existing
+   one-way exit to the sign-in gate; any other failure keeps the
+   plain error message. No catalogue key is added, removed, or
+   reworded, and both locales render the same strings in the same
+   states (`NFR-DSK-1`, `AC-DSK-8`). While the arrival-pick read
+   runs, the panel keeps today's loading behaviour — the
+   `stay-checking-in` line and the disabled Check in button cover
+   the read exactly as the first-click load did (`StayView.vue:82-87`,
+   `:79`) — so repeat clicks during the read stay a no-op.
+3. **A valid room selection clears the room error.** Selecting a
+   room that is in the candidate map clears `checkinError`
+   immediately (a watcher on `checkinRoomId` or an `@change` on the
+   room select, `StayView.vue:46-52`), including the
+   multi-candidate path, so `Pick a ready room first.` never
+   survives a valid selection; the amber hint is bound to the empty
+   room id and therefore disappears with the selection. A valid
+   selection renders no error. Selecting a value that is not in the
+   candidate map (or clearing the picker back to the placeholder)
+   leaves the guard in place at commit time.
+4. **The commit stays on the Check in button, once.** A Check in
+   click after a successful preload reuses the loaded booking (the
+   existing `checkinRef` guard, `StayView.vue:937-939`): no second
+   candidate read, no double load. The click still runs the existing
+   validation first — `need_arrival` with no arrival,
+   `need_room` with no or unknown room, and the preload-time
+   unknown-reference / no-ready-rooms errors — before
+   `AssignRoom` → `CheckIn` → `CheckInReservation` with unchanged
+   request bodies (`StayView.vue:946-1060`). A second click while
+   in flight stays a no-op (`checkingIn` guard,
+   `StayView.vue:928-930`). The `CONFLICT` paths are unchanged:
+   an `AssignRoom` conflict resets the loaded booking to null and
+   names the taken room, so the next click reloads the candidates;
+   a `CheckIn` conflict keeps the already-checked-in message. A
+   failed preload (unknown reference, no ready rooms, read failure)
+   leaves `checkinRef` null, so a Check in click retries the load
+   instead of committing a stale selection.
+
+Affected surfaces and keys:
+
+- `app/src/views/StayView.vue` check-in panel only: the arrival
+  select's change handler (`:30`, `onArrivalChange` at `:820-828`),
+  the room select (`:46-62`), the hint (`:63-71`), the Check in
+  button and status/error lines (`:73-106`), and the existing
+  `loadCandidates` / `onCheckIn` functions (`:853-925`, `:927-1060`).
+- No new catalogue key: every visible string is an existing
+  `desk.stay.*` key — `choose_arrival`, `choose_room`, `room_hint`,
+  `checking_in`, `need_arrival`, `need_room`, `no_ready_rooms`,
+  `refused_unknown_ref`, `refused_taken`, `refused_checked_in`,
+  the booked-type status, and the checked-in status — with both
+  locales intact and `script/catalogue-coverage-check.sh` green.
+- Request bodies unchanged: `GetReservation`, `ListRoomsByState`
+  (`vacant-inspected`), `AssignRoom`, `CheckIn`,
+  `CheckInReservation`. No endpoint, field, or backend change.
+- Guards that move with the change: `app/src/views/StayView.test.ts`
+  (the arrival flow `:309-352` — now arrival pick loads, room pick
+  clears, one button click commits; the `need_room` guard
+  `:371-400`; the single-candidate auto-select `:402-444`),
+  `app/src/views/desk-edge-guards.test.ts` (`:1183-1213`, the
+  placeholder/back-forward gate now asserts the arrival-pick load),
+  and `app/e2e/stay.spec.ts` (`:65-73`, one commit click after the
+  arrival pick). No existing guard is deleted; each is rewritten to
+  the new timing with a note, and the e2e evidence carries the
+  before/after flow.
+- Evidence in the implementation PR: before/after side-by-side
+  screenshots of the populated room dropdown right after the guest
+  pick and of the cleared error after the room pick, refreshed under
+  `docs/testing/evidence/563/README.md` (the restyle evidence rule,
+  `AC-RST-8`; the screenshots are flow state, so the board half stays
+  unchanged).
+- Design-facts surfaces: the decided Stay input stays the same
+  `select` with the `Chọn phòng...` placeholder
+  (`app/e2e/design-facts.ts` Stay entry; schema
+  `docs/technical/desk-ui-fact-schema.md` section 5), because the
+  populated options are the DD-13 catalogue allowance
+  (`docs/testing/dom-diff-allowlist.md` DD-13), so no schema change
+  and no new allowlist entry — the implementation PR re-runs the
+  fact-level gate and notes that the option subtrees stay exempt
+  wholesale, while the source pins in
+  `app/src/stay-restyle.test.ts` (`:55-100` testids and logic
+  carriers) hold unchanged.
+
+UI-contract delta (T2):
+
+- Layout and navigation scope: unchanged — the same two-panel Stay
+  grid, the same check-in card, the same two selects, hint, button,
+  status, error, and reference details; no new region, route, tab,
+  or navigation scope.
+- Component mapping: unchanged patterns — the arrival select keeps
+  its existing options and gains the load trigger (flow state, not a
+  new control); the room select keeps the native select of the
+  booked-type ready rooms; the Check in button keeps the commit
+  action. The board's one-form check-in card (section 6.3 T3) is
+  matched on the load side, and the commit deliberately stays on the
+  button rather than on the room pick, per the owner request.
+- Design tokens: unchanged — the panel keeps the restyle form tokens
+  (`docs/product/desk-ui-pixel-faithful-restyle.md` section 3) and
+  the amber hint colour `#8A4B08`; no new colour, radius, spacing,
+  or target size.
+- States in plain words: no arrival picked — the picker is empty
+  with the prompt and a Check in click names the missing arrival;
+  loading the picked arrival — the existing `Checking the guest
+  in…` line shows and the button stays disabled, so a repeat click
+  is a no-op; one ready room — bound automatically, no hint, no
+  error; several ready rooms — the empty placeholder plus the amber
+  `Choose a ready room first.` hint and the plain
+  `Pick a ready room first.` guard line, both of which disappear the
+  moment a valid room is selected; zero ready rooms — the plain
+  no-ready-rooms error and the booked-type status, with nothing to
+  commit; unknown reference — the plain refusal; signed out — the
+  existing one-way exit; committing — the existing progress line and
+  the one-click `Checked in for booking … in room …` status; in
+  flight — a second click is a no-op; conflict — the existing plain
+  taken / already-checked-in refusals. No technical code is ever
+  shown and no new wording lands.
+- Print rules: unchanged — print views render from their own
+  components (`FR-BIL-4`, `FR-DSP-4`); the check-in panel never
+  reaches a printed document.
+
+Per-flow implementation diagram (T2; the implementation PR refreshes
+the code pointers in the same change):
+
+```mermaid
+flowchart TD
+    A[Stay: arrivals listed] --> B[Staff picks an arrival]
+    B --> C[onArrivalChange: reset previous candidates, room, error]
+    C --> D[GetReservation for booking.roomTypeId]
+    D -- NOT_FOUND --> E[Plain unknown-reference error; picker empty]
+    D -- signed out --> F[Exit to the sign-in gate]
+    D -- other failure --> G[Plain error message; picker empty]
+    D --> H[ListRoomsByState vacant-inspected]
+    H --> I[Keep only the booked type]
+    I -- zero rooms --> J[Plain no-ready-rooms error plus booked-type status; no commit]
+    I -- one room --> K[Bind the room automatically; no hint, no error]
+    I -- several rooms --> L[Empty placeholder + amber hint + need_room line]
+    L --> M[Staff selects a valid room]
+    M --> N[Selection clears the need_room line and the hint]
+    K --> O[Check in click]
+    N --> O
+    O -- no arrival --> P[need_arrival; no call]
+    O -- no or unknown room --> Q[need_room; no call]
+    O --> R{Loaded booking matches the arrival?}
+    R -- no, preload failed --> D
+    R -- yes --> S[AssignRoom with the unchanged body]
+    S -- CONFLICT --> T[Plain taken-room error; preload reset; next click reloads]
+    S --> U[GetReservation readback]
+    U --> V[CheckIn with the unchanged body]
+    V -- CONFLICT --> W[Plain already-checked-in error]
+    V --> X[CheckInReservation]
+    X --> Y[Checked-in status; picker reset; panel reload]
+    O -- second click while in flight --> Z[No-op]
+    D -. late read for an earlier pick .-> S2[Discarded: never paints into the current picker]
+```
+
+Failure/rollback path: a failed preload leaves nothing bound and no
+commit path, so a Check in click retries the load; a conflict resets
+the preload and the next click reloads; the whole change reverts with
+the single PR (view, tests, and the doc/gate pins) because it carries
+no data migration and no service deploy.
+
+Out: implementation (the downstream `dev` issue/PR on the Stay view,
+its guards, the e2e flow, and the design-facts re-run); backend or
+service changes (Reservations, Rooms, Stay) and request-field changes;
+panel markup, token, or step-structure redesign beyond the load move
+— the commit stays on the Check in button; room-pick-commits or
+auto-commit behaviour; move/times/checkout flows; a design-facts
+schema or allowlist change (none is needed); FR/NFR wording
+(`business-analyst`); guard mapping and traceability (`qa-lead`); the
+architect LLD diagram refresh and the #563 evidence refresh, both in
+the same implementation change.
+
 ## 7. Catalogue and locale rule
 
 - Single source of truth stays `messages/` (`messages/README.md`):
@@ -1280,6 +1517,19 @@ Section 4 stays the rollout-wide contract; for steps 2–4:
 | Every new visible label exists in both catalogues with key and placeholder parity | Section 6.11 (affected keys); AC-DSK-8; `script/catalogue-coverage-check.sh` |
 | An empty or failed list read degrades to visible manual entry instead of breaking the screen | Section 6.11 decision 2 (states in plain words); AC-DSK-16; `desk.stay.stay_list_empty` / `desk.stay.stay_list_failed` |
 | `app/e2e/design-facts.spec.ts` is green against the updated decided input kinds, and the PR carries VI + EN side-by-side screenshots with the refreshed Folio image | Section 6.11 (affected surfaces); `app/e2e/design-facts.ts` Folio entry; `docs/testing/evidence/563/README.md` (VI + EN pairs) |
+
+## 17. Acceptance mapping (issue #586)
+
+| Criterion | Evidence in this spec |
+|---|---|
+| Picking an arrival populates the room select with the booked type's ready rooms without clicking Check in; one room auto-selects, several show the empty placeholder and amber hint | Section 6.12 decisions 1–2; AC-DSK-17; `onArrivalChange` → `loadCandidates` (`app/src/views/StayView.vue:820-828`, `:853-925`); board 2 of `docs/design/manifest.json` |
+| After a multi-room pick, selecting a valid room clears the `Pick a ready room first.` error immediately and renders no error | Section 6.12 decision 3; AC-DSK-17; the room-select change/watcher on `checkinRoomId` |
+| A populated picker plus a selected room commits once on the Check in click (`AssignRoom` → `CheckIn` → `CheckInReservation`, existing bodies, no extra reload, second click a no-op) | Section 6.12 decision 4; AC-DSK-17; `checkinRef` reuse and the `checkingIn` guard (`app/src/views/StayView.vue:928-939`) |
+| No arrival, no room, no ready rooms, unknown reference, and signed-out paths keep today's status and error strings in both locales (catalogue unchanged) | Section 6.12 decision 2; AC-DSK-17; `NFR-DSK-1`, `AC-DSK-8`; `script/catalogue-coverage-check.sh` |
+| Unit regression tests cover the three symptoms; the e2e Stay flow and the desk edge guards exercise the arrival-pick load timing; no guard is silently deleted | Section 6.12 (guards that move); AC-DSK-17; `app/src/views/StayView.test.ts`, `app/src/views/desk-edge-guards.test.ts`, `app/e2e/stay.spec.ts` |
+| The design-facts gate reflects the new flow and passes | Section 6.12 (design-facts surfaces); `app/e2e/design-facts.ts` Stay entry; `docs/technical/desk-ui-fact-schema.md` section 5; `docs/testing/dom-diff-allowlist.md` DD-13; `app/src/stay-restyle.test.ts:55-100` |
+| `AC-RST-4`, the rollout T3 note, the pixel-faithful 5.3 Keep entry, and the traceability row describe the new load timing with commit on the button, and `spec-reviewer` posts `SPEC-GATE PASS` before implementation | This section, section 6.3, `docs/product/acceptance-criteria.md` section 12 (`AC-RST-4`), `docs/product/desk-ui-pixel-faithful-restyle.md` section 5.3; `qa-lead` updates `docs/testing/desk-restyle-test-traceability.md` R4 |
+| The PR carries before/after side-by-side screenshots of the populated dropdown after the guest pick and the cleared error after the room pick | Section 6.12 (evidence bullet); `AC-RST-8`; `docs/testing/evidence/563/README.md` |
 
 <!-- ao-role: product-owner -->
 Role: product-owner · AO session hotel-mgmt-704
