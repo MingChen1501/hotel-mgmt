@@ -464,6 +464,44 @@ describe('book view', () => {
     expect((arrival.element as HTMLInputElement).value).toBe('11/01/2026');
   });
 
+  it('renders app-localized date pickers and keeps malformed input out of the payload (Refs #581)', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountBook();
+    await signIn(wrapper, fetchMock);
+
+    const arrival = wrapper.find('[data-testid="book-arrival-date"]');
+    const departure = wrapper.find('[data-testid="book-departure-date"]');
+    // G-BK-1 (Refs #581): the fields are PrimeVue DatePickers whose
+    // inner input stays a text input, with the app-locale placeholder
+    // and never the browser-owned native `<input type="date">`.
+    expect(arrival.attributes('type')).toBe('text');
+    expect(arrival.attributes('placeholder')).toBe('mm/dd/yyyy');
+    expect(arrival.element.closest('.p-datepicker')).not.toBeNull();
+    expect(departure.element.closest('.p-datepicker')).not.toBeNull();
+
+    // An impossible day never reaches the ISO payload ref.
+    await arrival.setValue('02/31/2026');
+    expect((wrapper.vm as unknown as { arrivalDate: string }).arrivalDate).toBe('');
+
+    // A valid typed EN date parses to the canonical ISO value.
+    await arrival.setValue('11/01/2026');
+    await departure.setValue('11/03/2026');
+    expect((wrapper.vm as unknown as { arrivalDate: string }).arrivalDate).toBe('2026-11-01');
+    expect((wrapper.vm as unknown as { departureDate: string }).departureDate).toBe('2026-11-03');
+
+    // The whole control re-renders in VI: value and placeholder.
+    try {
+      setLocale('vi');
+      await wrapper.vm.$nextTick();
+      expect(arrival.attributes('placeholder')).toBe('dd/mm/yyyy');
+      expect((arrival.element as HTMLInputElement).value).toBe('01/11/2026');
+      expect((departure.element as HTMLInputElement).value).toBe('03/11/2026');
+    } finally {
+      setLocale('en');
+    }
+  });
+
   it('confirms the booking with the guest snapshot, frozen price basis, searched sellable count, and one idempotency key', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);

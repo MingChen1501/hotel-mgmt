@@ -248,6 +248,24 @@ export function formatAuditTime(at: string, now: Date = new Date()): string {
   }
 }
 
+// Desk date pickers (Refs #581): PrimeVue DatePicker models a local
+// calendar `Date`, while the quote and booking payloads keep the
+// canonical ISO `YYYY-MM-DD` string. These two helpers are the only
+// bridge between the two; both build the calendar day in local time so
+// the hotel's day never shifts across timezones, and both reject
+// impossible dates instead of rolling them over.
+export function dateFromCanonical(canonical: string): Date | null {
+  return parseCalendarDate(canonical);
+}
+
+export function canonicalFromDate(date: Date | null): string {
+  if (date === null || Number.isNaN(date.getTime())) {
+    return '';
+  }
+  const canonical = `${String(date.getFullYear()).padStart(4, '0')}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  return parseCalendarDate(canonical) === null ? '' : canonical;
+}
+
 const DATE_FIELD_PATTERN = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
 
 // Typed desk date -> canonical ISO, empty when the text is not a real

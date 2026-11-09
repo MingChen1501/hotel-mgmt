@@ -73,8 +73,6 @@ describe('R3 Book design values (Refs #544)', () => {
       'data-testid="book-quote-empty"',
       'data-testid="book-quote-error"',
       'data-testid="book-stay-card"',
-      'data-testid="book-arrival-date"',
-      'data-testid="book-departure-date"',
       'data-testid="book-room-type-id"',
       'data-testid="book-room-type-loading"',
       'data-testid="book-room-type-empty"',
@@ -82,6 +80,12 @@ describe('R3 Book design values (Refs #544)', () => {
       'data-testid="book-quote"',
     ]) {
       expect(bookViewSource, `missing hook ${hook}`).toContain(hook);
+    }
+    // Refs #581: the date-picker hooks ride the DatePicker's inner
+    // input through the pass-through object (the DatePicker root is a
+    // span), so the pair is pinned in that shape instead.
+    for (const hook of ['book-arrival-date', 'book-departure-date']) {
+      expect(bookViewSource, `missing picker hook ${hook}`).toContain(`'data-testid': '${hook}'`);
     }
     // Logic carriers stay: guest search, walk-in registration,
     // get-quote-then-confirm flow with the frozen price basis and

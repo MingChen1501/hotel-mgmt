@@ -396,6 +396,7 @@
     "desk.book.stay_heading": "2. Ngày và phòng",
     "desk.book.arrival": "Ngày đến",
     "desk.book.departure": "Ngày đi",
+    "desk.book.date_placeholder": "dd/mm/yyyy",
     "desk.book.room_type": "Loại phòng",
     "desk.book.room_type_choose": "Chọn loại phòng…",
     "desk.book.room_type_loading": "Đang tải hạng phòng…",

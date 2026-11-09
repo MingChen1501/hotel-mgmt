@@ -396,6 +396,7 @@
     "desk.book.stay_heading": "2. Dates & room",
     "desk.book.arrival": "Arrival date",
     "desk.book.departure": "Departure date",
+    "desk.book.date_placeholder": "mm/dd/yyyy",
     "desk.book.room_type": "Room type",
     "desk.book.room_type_choose": "Choose a room type…",
     "desk.book.room_type_loading": "Loading room types…",
