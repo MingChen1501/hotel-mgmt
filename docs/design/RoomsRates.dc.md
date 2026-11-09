@@ -1,7 +1,11 @@
-# RoomsRates — rooms and rates management desk screen (design draft, Refs #590)
+# RoomsRates — rooms and rates management desk screen (approved design, Refs #590)
 
-Status: **draft for owner approval** (not yet an approved design; no
-implementation may start). Owner: `product-owner` (Refs #590).
+Status: **approved by the owner on #590, 2026-11-09** (decisions O-1 to
+O-4 below; D-23 in `docs/project/decision-log.md`). This board is the
+layout source for the screen and is cited by the binding product spec
+`docs/product/rooms-rates-management.md` (active). Implementation starts
+only after a `spec-reviewer` gate PASS on #590. Owner:
+`product-owner` (Refs #590).
 
 This is the reviewable design source for the new desk screen that lets a
 manager configure room types, place rooms on floors, and set nightly
@@ -520,57 +524,60 @@ Reused keys (no new copy): `desk.rooms.floor_title`,
 `desk.book.room_type_not_operational` (the Book-screen phrase this
 empty state must stay aligned with).
 
-## 13. Owner decisions needed (approval checklist)
+## 13. Owner decisions (recorded 2026-11-09)
 
-Approving this draft means approving these four calls. Each has a
-recommendation; any change is cheap now and expensive after the gate.
+The owner approved this board on #590 on 2026-11-09. Each call below is
+now binding; changing one after the gate needs a new owner decision on
+the issue.
 
-- **O-1 — entry point.** New nav tab `Quản lý` / `Manage` after `Rooms`
-  (recommended, one route, no extra tap), or a `{Quản lý phòng và giá}`
-  entry card on the Rooms map header (no header change, one extra tap).
-- **O-2 — section layout.** Three stacked card groups on one screen in
-  setup order (recommended: matches the Admin board's stacked cards, no
-  hidden state, splits cleanly into three child issues), or an in-page
-  segmented control with three tabs (shorter page, one more state).
-- **O-3 — range cap.** A single save covers at most 31 nights
-  (recommended: a month is the desk's real planning horizon and each
-  night is one write), or a longer cap.
-- **O-4 — rate plan entry.** Free-text plan name, remembered per
-  browser, created through the explicit `{Tạo bảng giá này}` affordance
-  on the first `NOT_FOUND` (recommended: no guessing, no silent plan
-  creation, works with today's operations), or wait for a
-  `ListRatePlans` read before the screen ships.
+- **O-1 — entry point: new nav tab.** `Quản lý` / `Manage` after `Rooms`
+  (one route, no extra tap). The shell keeps its shrink rule: the brand
+  is the only shrinkable item.
+- **O-2 — section layout: three stacked card groups.** One screen in
+  setup order, matching the Admin board's stacked cards, with no hidden
+  state, splitting cleanly into three implementation tasks.
+- **O-3 — range cap: 31 nights.** A single save covers at most 31
+  nights; a month is the desk's real planning horizon and each night is
+  one write.
+- **O-4 — rate plan entry: free text plus explicit creation.** The plan
+  name is remembered per browser and the plan is created only through
+  the explicit `{Tạo bảng giá này}` action on the first `NOT_FOUND` — no
+  guessing, no silent plan creation, and no `ListRatePlans` read
+  required before the screen ships.
 
 ## 14. Acceptance mapping (issue #590)
 
 | Issue criterion | Design evidence |
 |---|---|
 | 1. Wireframes/mocks for the three sections plus the no-price empty state in `docs/design/`, linked from the issue | This file: sections 4–7 (wireframes), 7.4 (empty state); registered in `docs/design/README.md` and `docs/README.md` |
-| 2. Owner records approval on the issue | Section 13 checklist; approval is recorded on #590 before the spec gate starts |
-| 3. Required specs `active` and `spec-reviewer` PASS before implementation | Handoff list in section 15; nothing in this change implements or activates a spec |
+| 2. Owner records approval on the issue | Approved 2026-11-09 (section 13; D-23 in `docs/project/decision-log.md`) |
+| 3. Required specs `active` and `spec-reviewer` PASS before implementation | Landed product slice: `docs/product/rooms-rates-management.md` and `docs/product/acceptance-criteria.md` section 13 (`AC-MANAGE-1..11`), both `active`; the sibling handoffs are listed in section 15 and the verdict is posted on #590 |
 | 4. A price for a type over a date range writes one row per night and the desk can quote it | Section 7.3 (write path, per-night rows, partial-failure resume); the quote itself is the Book screen's existing path |
 | 5. Moving a room to another floor persists and the room map reports it | Section 6.2 (`UpsertRoom`, reload from `ListRoomsByState`) |
 | 6. Creating or editing a type persists and the Book screen lists it | Sections 5.2 (create/edit), 9 (`ListRoomTypes` is the shared read the Book screen also uses) |
 | 7. Non-manager refusal path in product wording | Section 8 |
 | 8. Implementation lands in small PRs with tests | Section 15 split (one section per child issue), each with its own guards |
 
-## 15. Handoffs after owner approval (not started here)
+## 15. Spec gate handoffs
 
-Once the owner approves the design on #590, the spec gate needs:
+The design is approved. The spec gate still needs, before any
+implementation PR opens:
 
-- `product-owner` — product spec carrying the approved screen scope, the
-  UI contract from section 11, and the binding acceptance criteria
-  (`AC-*` ids) for the three sections; this draft is the design source
-  it cites.
+- `product-owner` — **landed**: `docs/product/rooms-rates-management.md`
+  (scope, sections, UI contract from section 11 here, `AC-MANAGE-*` map)
+  plus `docs/product/acceptance-criteria.md` section 13; this board is
+  the design source it cites.
 - `business-analyst` — FR/NFR delta for the new desk surface (write
   operations already exist; the delta is the reader-visible UI and its
   guards) plus traceability inputs.
 - `architect` — architecture delta: the `ManageView` route and nav
-  addition in the LLD, and a decision on G2 (`ListRatePlans` /
-  `ListRatePrices`) and G6 (server-side role enforcement) — both may be
-  recorded as explicit follow-ups instead of changes.
-- `qa-lead` — test plan and traceability for AC 4–7, including the
-  per-night write, the partial-failure resume, and the refusal path.
+  addition in the LLD, the four implementation flow diagrams, and a
+  decision on G2 (`ListRatePlans` / `ListRatePrices`) and G6
+  (server-side role enforcement) — both may be recorded as explicit
+  follow-ups instead of changes.
+- `qa-lead` — test plan and traceability for AC 4–7 of the issue
+  (`AC-MANAGE-6..10`), including the per-night write, the
+  partial-failure resume, the floor move, and the refusal path.
 - `spec-reviewer` — one `SPEC-GATE PASS` verdict on #590 before any
   implementation PR opens.
 - Split for implementation (one small PR each, after PASS): (1) route +

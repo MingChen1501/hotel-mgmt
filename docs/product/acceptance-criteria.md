@@ -801,6 +801,107 @@ print-preservation rules above hold on all seven surfaces, and no
 child PR ships a behaviour, copy, API, or refusal-semantics change
 without an owner decision recorded on its issue.
 
+## 13. Rooms and rates management desk screen (Refs #590)
+
+Product-owner spec:
+`docs/product/rooms-rates-management.md` (active), with the approved
+design board `docs/design/RoomsRates.dc.md` as its layout source. The
+owner approved the design on #590 on 2026-11-09 (O-1 nav tab after
+Rooms, O-2 three stacked card groups, O-3 a 31-night range cap, O-4 the
+rate plan created only through the explicit create action), recorded as
+D-23 in `docs/project/decision-log.md`. The screen adds no pricing
+semantics: it writes the existing per-night price records and the
+existing room and room-type records through today's operations, so
+these conditions add a reader-visible surface, not an MVP capability.
+FR/NFR wording is owned by `business-analyst` and guard mapping by
+`qa-lead`; the conditions below check behaviour and evidence only.
+
+- AC-MANAGE-1 — Given a signed-in user of any hotel role, when they
+  open the desk shell and choose the manage tab, then the tab sits
+  after `Rooms` and opens the screen at `/app/manage` inside the
+  unchanged shared shell, with the tab label, route title, screen
+  title, and intro resolved through the catalogue in the active
+  locale, and every other route, the sign-in gate, and the print
+  surfaces behave as before. Traces to: US-ADM-3, US-ADM-4;
+  FR-ADM-3, FR-ADM-4.
+- AC-MANAGE-2 — Given room types exist, or the database has none,
+  when the manager opens the room-types section, then every type is
+  listed with its name, guests, and bed type under a heading carrying
+  the count, a missing value renders a muted placeholder rather than a
+  guessed one, and an empty database shows the empty sentence with the
+  first action and no invented row. Traces to: US-ADM-3, US-RMS-4;
+  FR-ADM-3, FR-RMS-4.
+- AC-MANAGE-3 — Given the room-type form, when the manager saves a
+  name with optional guests inside `1..20` and an optional bed type,
+  then the type persists through `UpsertRoomType` with the actor and
+  the filled fields only, an existing type keeps its features because
+  features are never sent, the list re-reads and shows the saved
+  values, and the success line names the type; while editing the name
+  is read-only with its helper sentence; an invalid value names the
+  field in plain words and sends nothing. Traces to: US-ADM-3,
+  US-RMS-4; FR-ADM-3, FR-RMS-4.
+- AC-MANAGE-4 — Given at least one room type, when the manager saves a
+  new room number with a type and optional floor, bed type, and
+  guests, then the room persists through `UpsertRoom` keyed by number,
+  appears grouped under its floor (or the no-floor group) after the
+  list re-read, and reaches booking and the room map with the state
+  the service assigned, never a state the screen wrote. Traces to:
+  US-ADM-3, US-RMS-4; FR-ADM-3, FR-RMS-4.
+- AC-MANAGE-5 — Given a room on a floor, when the manager changes its
+  floor in its row and saves, then `UpsertRoom` persists the new floor,
+  the row re-renders under the new floor after `ListRoomsByState`
+  re-reads, the room's state, occupancy, and history are unchanged, and
+  the Rooms map reports the new floor on its next load. Traces to:
+  US-RMS-4; FR-RMS-4.
+- AC-MANAGE-6 — Given a room type, a rate-plan name, and an inclusive
+  range of at most 31 nights with a whole amount, when the manager
+  saves, then one `UpsertRatePrice` row is written per night in date
+  order for that plan, room type, and night date in integer minor
+  units, the grid re-reads the stored rows, and a quote for that room
+  type and date returns the new prices. Traces to: US-RTE-1;
+  FR-RTE-1.
+- AC-MANAGE-7 — Given the named rate plan does not exist yet, when the
+  first write is refused as an unknown plan, then the screen says so
+  and offers the create action, that action posts `UpsertRatePlan`
+  with the name only and retries the pending nights, and no plan is
+  created or overwritten without it. Traces to: US-RTE-1, US-ADM-4;
+  FR-RTE-1, FR-ADM-4.
+- AC-MANAGE-8 — Given a multi-night save that fails at one night, when
+  the failure is reported, then the nights already written stay
+  written, a plain line states saved/total and names the first night
+  that did not save, the resume action starts at that night, no night
+  is written twice or skipped, and the save action stays disabled while
+  a write is in flight. Traces to: US-RTE-1; FR-RTE-1.
+- AC-MANAGE-9 — Given no price row exists for any visible night, when
+  the manager reads the prices section, then the screen states that the
+  room type is not open for booking together with the action that opens
+  it, no price is invented, carried from another night, or shown as
+  zero, a night that could not be read says so, and the pricing form
+  stays usable inside the empty state. Traces to: US-RTE-1; FR-RTE-1
+  (wording aligned with the #589 booking refusal).
+- AC-MANAGE-10 — Given a signed-in front-desk account, when they open
+  the screen, then every list renders read-only with the notice that
+  only the owner or a manager can change the setup, create and save
+  actions are disabled with the plain refusal sentence, and a refusal
+  returned by the server maps to that same sentence instead of a
+  technical code, while an expired session follows the existing
+  expire-to-gate path. Traces to: US-ADM-2; FR-ADM-2 (refusal wording
+  on the product surface; server-side role enforcement is a follow-up).
+- AC-MANAGE-11 — Given an implementation PR for one section of the
+  screen, when it is reviewed, then that section's strings exist in
+  both catalogues with matching placeholders, no design token was
+  added, the operation the PR drives carries tests including its
+  read-back, and the PR carries VI and EN screenshots against the
+  approved board section. Traces to: US-ADM-3, US-ADM-4; FR-ADM-3,
+  FR-ADM-4 (evidence condition; no behaviour change).
+
+Done when: the four split PRs in the spec (entry and refusal path, room
+types, rooms and floors, nightly prices and the empty state) each close
+against `AC-MANAGE-1..11`, a price range writes one row per night and a
+quote follows it, a floor move is reported by the room map, a room type
+created or edited here reaches booking, and the refusal path speaks
+product wording in both locales.
+
 ## Traceability summary
 
 43 done-conditions cover all 9 MVP slices from the roadmap
@@ -847,6 +948,18 @@ FR; no condition adds an MVP capability, invents a story, or
 changes FR wording, so the 43-condition MVP count above stands
 unchanged and the sections 1–9 and 11 done-conditions hold as
 written.
+
+Management addendum (Refs #590): 11 conditions (AC-MANAGE-1..11,
+section 13) cover the new rooms and rates management desk screen —
+its entry, room types, rooms and floors, the nightly price range
+write including plan creation and partial-failure resume, the
+no-price empty state, the non-manager refusal path, and the
+per-PR evidence rule. Each traces to its existing MVP story and
+FR (US-ADM-2, US-ADM-3, US-ADM-4, US-RMS-4, US-RTE-1;
+FR-ADM-2..4, FR-RMS-4, FR-RTE-1); no condition adds an MVP
+capability, invents a story, or changes FR wording, so the
+43-condition MVP count above stands unchanged and the sections
+1–9, 11, and 12 done-conditions hold as written.
 
 <!-- ao-role: product-owner -->
 Role: product-owner · AO session hotel-mgmt-871
