@@ -15,6 +15,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { mount } from '@vue/test-utils';
 import AdminView from './AdminView.vue';
+import { setLocale } from '../i18n';
 import { useSessionStore } from '../stores/session';
 import { resetConnectivityForTests } from '../api/client';
 import router from '../router';
@@ -182,6 +183,8 @@ function callsTo(fetchMock: ReturnType<typeof vi.fn>, url: string): unknown[] {
 describe('admin view', () => {
   beforeEach(() => {
     sessionStorage.clear();
+    localStorage.clear();
+    setLocale('en');
     resetConnectivityForTests();
     vi.unstubAllGlobals();
     vi.clearAllMocks();
@@ -252,10 +255,87 @@ describe('admin view', () => {
     expect(wrapper.find('[data-testid="admin-config-version"]').text()).toContain('3');
     expect(wrapper.find('[data-testid="admin-config-list"]').text()).toContain('timezone');
     expect(wrapper.find('[data-testid="admin-config-list"]').text()).toContain('Asia/Ho_Chi_Minh');
-    // Audit view: newest first, with detail text.
+    // Audit view: newest first, with catalogue wording (Refs #569)
+    // — no raw dotted action or detail text in the default row.
     const auditRows = wrapper.findAll('[data-testid="admin-audit-row"]');
-    expect(auditRows[0]?.text()).toContain('user.created');
-    expect(auditRows[0]?.text()).toContain('role=front-desk');
+    expect(auditRows[0]?.text()).toContain('owner · created user cara');
+    expect(auditRows[0]?.text()).not.toContain('user.created');
+    expect(auditRows[0]?.text()).not.toContain('role=front-desk');
+  });
+
+  it('humanises audit summaries and times, keeping raw values behind the reference disclosure', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const state = freshState();
+    const now = new Date();
+    const todayAt = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 9, 12).toISOString();
+    const yesterdayAt = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate() - 1,
+      8,
+      40,
+    ).toISOString();
+    const olderAt = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate() - 5,
+      7,
+      0,
+    ).toISOString();
+    state.audit = [
+      {
+        at: todayAt,
+        actor: 'owner',
+        action: 'user.created',
+        entity: 'cara',
+        detail: 'Cara Clerk (front-desk)',
+      },
+      { at: yesterdayAt, actor: 'owner', action: 'config.updated', entity: 'roomTypes' },
+      { at: olderAt, actor: 'owner', action: 'profile.updated', entity: 'hotel_profile' },
+      { at: olderAt, actor: 'deployment-apply', action: 'backup.reported', entity: 'backup_runs' },
+    ];
+    const wrapper = await signIn(fetchMock, state);
+
+    // Catalogue EN summaries: account rows name the identity like
+    // the board, technical entities stay out of the default row.
+    const rows = wrapper.findAll('[data-testid="admin-audit-row"]');
+    expect(rows[0]?.text()).toContain('owner · created user cara');
+    expect(rows[1]?.text()).toContain('owner · changed configuration');
+    expect(rows[2]?.text()).toContain('owner · updated the hotel profile');
+    expect(rows[3]?.text()).toContain('deployment-apply · reported a backup run');
+    expect(wrapper.find('[data-testid="admin-audit-rows"]').text()).not.toContain('user.created');
+    expect(wrapper.find('[data-testid="admin-audit-rows"]').text()).not.toContain('config.updated');
+    expect(wrapper.find('[data-testid="admin-audit-rows"]').text()).not.toContain('hotel_profile');
+    expect(wrapper.find('[data-testid="admin-audit-rows"]').text()).not.toContain('backup_runs');
+
+    // Short desk times: HH:mm today, the relative word yesterday,
+    // a short date before that — never an ISO timestamp.
+    const timeCells = rows.map((row) => row.findAll('span')[1]?.text());
+    expect(timeCells[0]).toMatch(/^\d{2}:\d{2}$/);
+    expect(timeCells[1]).toBe('Yesterday');
+    expect(timeCells[2]).toMatch(/^\d{2}\/\d{2}\/\d{4}$/);
+    expect(wrapper.find('[data-testid="admin-audit-rows"]').text()).not.toMatch(
+      /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/,
+    );
+
+    // Raw values stay available to support behind the shared
+    // reference disclosure (Refs #372).
+    expect(wrapper.find('[data-testid="admin-audit-details-body"]').exists()).toBe(false);
+    await wrapper.find('[data-testid="admin-audit-details-toggle"]').trigger('click');
+    const raw = wrapper.find('[data-testid="admin-audit-details-body"]').text();
+    expect(raw).toContain('user.created');
+    expect(raw).toContain('config.updated');
+    expect(raw).toContain('roomTypes');
+    expect(raw).toContain(todayAt);
+
+    // VI renders the same summaries and the board's `Hôm qua`.
+    setLocale('vi');
+    await wrapper.vm.$nextTick();
+    const viRows = wrapper.findAll('[data-testid="admin-audit-row"]');
+    expect(viRows[0]?.text()).toContain('owner · tạo người dùng cara');
+    expect(viRows[1]?.text()).toContain('owner · đổi cấu hình');
+    expect(viRows[1]?.findAll('span')[1]?.text()).toBe('Hôm qua');
   });
 
   it('attaches the Bearer token to every call after sign-in', async () => {

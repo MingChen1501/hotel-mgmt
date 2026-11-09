@@ -914,8 +914,8 @@ item names its guard so drift is reviewable:
   through `app/src/i18n/`) and stays covered by
   `script/catalogue-coverage-check.sh` (`NFR-I18N-1` holds).
 - Admin gating: the admin console hides every management section
-  from front-desk callers (`canManage` in `AdminView.vue:348`,
-  restricted notice at :8-12) as a cosmetic layer over the
+  from front-desk callers (`canManage` in `AdminView.vue:482`,
+  restricted notice at :12-18) as a cosmetic layer over the
   unchanged server-side `FORBIDDEN` refusals (Refs #355).
 - Print: receipt, invoice, and confirmation output match folio
   lines and balance exactly (`FR-BIL-4` holds); print
@@ -1259,7 +1259,7 @@ flowchart TD
 Edge trace (every edge cites code):
 
 - A–B: boot check reuses the existing `GetHotelConfig`
-  read (`AdminView.vue:380` call site; `AdminService.
+  read (`AdminView.vue:586` call site; `AdminService.
   GetHotelConfig` contract unchanged, LLD section 8). No
   new endpoint decides emptiness; the exact
   empty-predicate (unconfigured hotel identity) is set by
@@ -1315,7 +1315,7 @@ Edge trace (every edge cites code):
   operation (LLD section 8 ops table; same
   `'/v1/admin/UpdateHotelConfig'` call shape the wizard
   already uses at `OnboardingView.vue:203` for step 1,
-  mirroring the Admin read at `AdminView.vue:380`). The
+  mirroring the Admin read at `AdminView.vue:586`). The
   implementation PR extends `OnboardingView.vue` with the
   step-2 fields from `FR-DSK-8` (contact details optional
   verbatim, timezone required, retention floor blank-keeps-
@@ -1345,7 +1345,7 @@ Edge trace (every edge cites code):
 - J9–J12: step 4 introduces the first wizard-client call
   to the existing `CreateUser` operation (LLD section 8
   ops table; same `'/v1/admin/CreateUser'` call shape as
-  `AdminView.vue:439`), with the role fixed to owner and
+  `AdminView.vue:645`), with the role fixed to owner and
   the secret required hashed (`NFR-SEC-2`). Provider
   guards stand (`services/admin/src/server.test.ts:122`
   create, `:132` duplicate identity refused); the

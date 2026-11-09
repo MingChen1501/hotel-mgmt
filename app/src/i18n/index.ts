@@ -205,6 +205,49 @@ export function formatDateField(canonical: string): string {
   return catalogueLocale() === 'en' ? `${month}/${day}/${year}` : `${day}/${month}/${year}`;
 }
 
+// Activity-log entry time (Refs #569, G-AD-1): the Admin board
+// shows short desk times — `09:12` for today and `Hôm qua` for the
+// previous day — never the API's ISO timestamp. Older entries take
+// the desk locale's short calendar date. Any unparseable value
+// renders empty so a raw technical timestamp can never reach the
+// default row; support still has the raw value in the reference
+// disclosure. `now` is injectable so the relative branches are
+// deterministic under test.
+function sameCalendarDay(a: Date, b: Date): boolean {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
+export function formatAuditTime(at: string, now: Date = new Date()): string {
+  const date = new Date(at);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+  try {
+    if (sameCalendarDay(date, now)) {
+      return new Intl.DateTimeFormat(catalogueLocale(), {
+        hour: '2-digit',
+        minute: '2-digit',
+        hourCycle: 'h23',
+      }).format(date);
+    }
+    const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+    if (sameCalendarDay(date, yesterday)) {
+      return t('desk.admin.audit_yesterday', {}, 'Yesterday');
+    }
+    return new Intl.DateTimeFormat(catalogueLocale(), {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    }).format(date);
+  } catch {
+    return '';
+  }
+}
+
 const DATE_FIELD_PATTERN = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
 
 // Typed desk date -> canonical ISO, empty when the text is not a real

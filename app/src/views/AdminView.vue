@@ -278,12 +278,15 @@
             >
               {{ auditError }}
             </Message>
-            <!-- Board audit rows (Refs #546,
+            <!-- Board audit rows (Refs #546, #569,
               `docs/design/Admin.dc.html:3`): one `15px`
-              space-between row per entry — the
-              actor-plus-action summary left, the entry time
-              right, newest first — plus the secondary refresh
-              action below. -->
+              space-between row per entry — the catalogue
+              actor-plus-action summary left, the short desk time
+              right (`09:12` today, `Hôm qua` yesterday, a short
+              date before that), newest first — plus the
+              secondary refresh action below. Raw action/entity
+              values and the ISO timestamp stay behind the
+              reference disclosure for support. -->
             <div
               data-testid="admin-audit-rows"
               class="admin-rows"
@@ -294,7 +297,7 @@
                 data-testid="admin-audit-row"
                 class="admin-row"
               >
-                <span>{{ auditSummary(entry) }}</span><span>{{ entry.at }}</span>
+                <span>{{ auditSummary(entry) }}</span><span>{{ auditTime(entry.at) }}</span>
               </div>
               <p
                 v-if="auditEntries.length === 0"
@@ -310,6 +313,16 @@
               :label="t('desk.admin.refresh', {}, 'Refresh')"
               data-testid="admin-audit-refresh"
               @click="onAuditRefresh"
+            />
+            <!-- Raw audit values (Refs #569, #372): the default
+              row never carries dotted event names or ISO
+              timestamps, but support can still open the shared
+              reference disclosure when a technical value is
+              needed. -->
+            <ReferenceDetails
+              v-if="auditEntries.length > 0"
+              :items="auditReferenceItems"
+              testid-prefix="admin-audit-details"
             />
           </template>
         </Card>
@@ -327,7 +340,8 @@ import Message from 'primevue/message';
 import Password from 'primevue/password';
 import { apiFetch } from '../api/client';
 import type { ApiError } from '../api/client';
-import { t } from '../i18n';
+import ReferenceDetails, { type ReferenceItem } from '../components/ReferenceDetails.vue';
+import { formatAuditTime, t } from '../i18n';
 import { useSessionStore } from '../stores/session';
 
 // Admin console as a Vue SFC (Refs #298, ADR-0003).
@@ -447,7 +461,7 @@ function formatConfigValue(value: unknown): string {
 export default defineComponent({
   name: 'AdminView',
   // eslint-disable-next-line vue/no-reserved-component-names -- PrimeVue registers Button/Dialog under these canonical names (Refs #338 component mapping).
-  components: { Button, Card, InputText, Message, Password },
+  components: { Button, Card, InputText, Message, Password, ReferenceDetails },
   setup() {
     const session = useSessionStore();
     const users = ref<AdminUser[]>([]);
@@ -496,14 +510,48 @@ export default defineComponent({
       configEntries.value.filter((entry) => entry.key !== CHECKIN_KEY && entry.key !== CHECKOUT_KEY),
     );
 
-    // Board audit rows (Refs #546): one actor-plus-action summary
-    // per entry — the detail suffix stays when present — with the
-    // entry time in its own column.
-    function auditSummary(entry: AuditEntry): string {
-      const action = `${entry.action} ${entry.entity}`.trim();
-      const detail = entry.detail !== undefined && entry.detail !== '' ? ` ${entry.detail}` : '';
-      return `${entry.actor} · ${action}${detail}`;
+    // Board audit rows (Refs #546, #569): the API's dotted action
+    // enum maps to catalogue copy (EN + VI), and account actions
+    // name the affected identity like the board's `tạo người dùng
+    // hoa.pham`. Config/profile/backup entities are technical keys,
+    // so the summary keeps the board's plain action wording and
+    // leaves the raw entity in the reference disclosure.
+    function auditActionText(entry: AuditEntry): string {
+      switch (entry.action) {
+        case 'user.created':
+          return t('desk.admin.audit_user_created', { identity: entry.entity }, 'created user {identity}');
+        case 'user.updated':
+          return t('desk.admin.audit_user_updated', { identity: entry.entity }, 'updated user {identity}');
+        case 'config.updated':
+          return t('desk.admin.audit_config_updated', {}, 'changed configuration');
+        case 'profile.updated':
+          return t('desk.admin.audit_profile_updated', {}, 'updated the hotel profile');
+        case 'backup.reported':
+          return t('desk.admin.audit_backup_reported', {}, 'reported a backup run');
+        default:
+          return t('desk.admin.audit_other', {}, 'made an account or setup change');
+      }
     }
+
+    function auditSummary(entry: AuditEntry): string {
+      return `${entry.actor} · ${auditActionText(entry)}`;
+    }
+
+    function auditTime(at: string): string {
+      return formatAuditTime(at);
+    }
+
+    // Raw values stay available to support (Refs #569, #372): one
+    // item per entry, carrying the exact API fields the default row
+    // no longer shows.
+    const auditReferenceItems = computed<ReferenceItem[]>(() =>
+      auditEntries.value.map((entry, index) => ({
+        label: t('desk.admin.audit_raw_entry', { n: index + 1 }, 'Audit entry {n}'),
+        value: [entry.at, entry.actor, entry.action, entry.entity, entry.detail ?? '']
+          .filter((part) => part !== '')
+          .join(' · '),
+      })),
+    );
 
     // The shell owns the one sign-in gate (Refs #338): a
     // 401/UNAUTHENTICATED expires the shared session and the gate
@@ -709,6 +757,8 @@ export default defineComponent({
       auditEntries,
       auditError,
       auditSummary,
+      auditTime,
+      auditReferenceItems,
       onCreate,
       onSaveRole,
       onUnlock,
