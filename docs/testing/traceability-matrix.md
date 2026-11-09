@@ -127,10 +127,11 @@ presentation requirement (FR-DSK-1..7, NFR-DSK-1..3, owned by
 wizard-scoped FR-DSK-8..10 in section 11 on the #438 stack in
 PR #442) to its
 guard. Full guard detail — parity baselines plus the new guards
-D1–D16 (D13 shipped with the #565 presentation change, D14 with
+D1–D17 (D13 shipped with the #565 presentation change, D14 with
 the #568 open-folio context change, D15 ships with the #581
-Book date-picker change, and D16 ships with the #582 list-backed
-stay picker; D1–D12 land with the screen PRs) — lives in
+Book date-picker change, D16 ships with the #582 list-backed
+stay picker, and D17 ships with the #586 arrival-pick preload
+change; D1–D12 land with the screen PRs) — lives in
 `docs/testing/desk-ui-rollout-test-traceability.md`
 (desk-ui-rollout-test-traceability.md). Like the shell slice
 above, these 11 rows do not alter the 57-row MVP coverage count:
@@ -139,9 +140,11 @@ may cite this rollout as its guard. A rollout row is complete
 only when its D-guard exists and passes; until then the row
 names the screen PR that must create it. `AC-DSK-15` (Refs #581)
 is a post-rollout input-mechanism addendum mapped in section 7
-with its `D15` guard, and `AC-DSK-16` (Refs #582) is the same
-kind of addendum mapped in section 8 with its `D16` guard; neither
-adds a row here.
+with its `D15` guard, `AC-DSK-16` (Refs #582) is the same kind
+of addendum mapped in section 8 with its `D16` guard, and
+`AC-DSK-17` (Refs #586) is a flow-timing addendum mapped in
+section 9 with its `D17` guard and the `FR-CIP-1`..`FR-CIP-4`
+rows; none adds a row here.
 
 | Rollout item | Required guard type | Guard |
 |---|---|---|
@@ -323,8 +326,52 @@ both browser flows run in `browser-e2e`, with the VI + EN evidence
 pairs in `docs/testing/evidence/563/`. The MVP Coverage line below
 stands unchanged at 57/57.
 
+## 9. Stay arrival-pick preload slice (Refs #586)
+
+Flow-timing slice for the Stay check-in panel: the arrival pick
+loads the booking and the booked-type ready rooms into the room
+select (previously the first Check in click did), and a valid room
+selection clears the `Pick a ready room first.` message. The commit
+stays on the Check in button, `AssignRoom` → `CheckIn` →
+`CheckInReservation` keep their request bodies, and no backend,
+contract, catalogue, or validation change is involved. Each row
+traces the #586 issue-body acceptance and `AC-DSK-17` (owned by
+`product-owner` in
+[acceptance-criteria.md section 11](../product/acceptance-criteria.md);
+scope in `docs/product/desk-ui-design-rollout.md` section 6.12, tier
+T2) and the behaviour-scoped requirements `FR-CIP-1`..`FR-CIP-4`
+(owned by `business-analyst` in
+[mvp-requirements.md section 18](../requirements/mvp-requirements.md)).
+The existing pins named below are on disk today and pin the old
+click-then-load timing; the #586 implementation PR rewrites them to
+the arrival-pick timing with a note (never deleting one) and creates
+the two named missing cases, so a row is complete only when that PR
+lands and passes. Like the slices above, these rows add no MVP
+capability; the 57-row MVP coverage count stands unchanged and no
+MVP row may cite this slice as its guard. `AC-DSK-4` keeps its
+placeholder/guard/auto-select rule and points here for the load
+timing and the room-error lifecycle.
+
+| Item | Required guard type | Guard |
+|---|---|---|
+| AC-DSK-17 — the arrival pick loads the booked-type ready-room candidates, a valid room selection clears the room error, and the commit stays on the Check in button (Refs #586; traces to US-FDK-1, US-FDK-2; `FR-CIP-1`, `FR-CIP-2`, `FR-CIP-3`, `FR-CIP-4`; AC-DSK-4 keeps the placeholder/guard/auto-select rule and points here) | Behaviour check: one arrival pick alone populates the picker with the booked type's ready rooms; one room auto-binds, several keep the placeholder plus amber hint, zero keeps the plain no-ready-rooms error with the booked-type status; a valid select clears the guard and the hint immediately; one Check in click commits once with the unchanged bodies, and a second in-flight click is a no-op | Pending the #586 implementation PR — `D17` (section 3 of `desk-ui-rollout-test-traceability.md`): arrival-flow rewrite `app/src/views/StayView.test.ts:309` (placeholder-first `:326`), `:371` (`need_room`), `:402` (auto-select), `:574` (unknown reference), `:596` (taken room), `:626` (already checked in), `:925` (in-flight double-click); edge guards `app/src/views/desk-edge-guards.test.ts:1183` (placeholder/back-forward), `:460` (unknown reference, QA-EDGE-1), `:851` (dirty room never a candidate, QA-EDGE-8); browser `app/e2e/stay.spec.ts:65`–`:73` (pick, select, one commit click); the unchanged `FR-FDK-1/2` / `FR-BIL-7` MVP guards keep the check-in capability and the checkout gate |
+| FR-CIP-1 — the arrival pick loads the booked-type ready-room candidates (section 18.3) | A pick alone runs the existing read pair (`GetReservation` then `ListRoomsByState('vacant-inspected')`) and the booked-type filter; one room binds, several keep the placeholder, a second pick resets the previous candidates and error first, and a late earlier read never paints | Pending the #586 implementation PR — `app/src/views/StayView.test.ts:309` is rewritten so the arrival pick alone produces the options (the booked-type filter pinned by the same fixture) and one button click commits; browser `app/e2e/stay.spec.ts:65`–`:73` moves to pick, select, one commit click |
+| FR-CIP-2 — picker states and plain-word failures stay as today (section 18.3) | One room auto-binds with no hint and no error; several show the explicit empty placeholder plus the amber `stay-checkin-room-hint`; zero ready rooms show the plain no-ready-rooms error with the booked-type status and bind nothing; unknown reference, signed-out, and other failures keep their existing strings in both locales; the progress line and disabled button cover the read | Partial today — `app/src/views/StayView.test.ts:371` (`need_room`, no `AssignRoom`), `:402` (auto-select), `:574` (unknown reference), `app/src/views/desk-edge-guards.test.ts:1183` (placeholder), `:460` (unknown reference, QA-EDGE-1); the implementation PR rewrites them to the pick timing and creates the missing no-ready-rooms case (booked-type status plus the plain error, nothing bound, a click retries the load) |
+| FR-CIP-3 — a valid room selection clears the guard message (section 18.3) | With several candidates and `Pick a ready room first.` on screen, selecting a room in the candidate map clears the message and the hint immediately (multi-candidate path included); clearing back to the placeholder or holding an outside value leaves the guard at commit | Missing guard named explicitly — no case asserts the message disappearing on a valid select today; the #586 implementation PR creates it (multi-candidate pick, valid select, `stay-checkin-error` gone, `stay-checkin-room-hint` gone, no error rendered), and `:371` keeps the placeholder half |
+| FR-CIP-4 — the commit stays on the Check in button, once, with unchanged bodies (section 18.3) | `AssignRoom` → `CheckIn` → `CheckInReservation` run once with the existing bodies (the `CheckIn` room id from the `AssignRoom` echo), no candidate read repeats after the preload, a second in-flight click is a no-op, and a failed preload retries the load instead of committing a stale selection | Partial today — body pins `app/src/views/StayView.test.ts:309` (`AssignRoom` `roomNumber` plus `stayLink`, `CheckIn` room id from the echo), in-flight double-click `:925`, taken room `:596`, already checked in `:626`, no-call-without-a-room `app/src/views/desk-edge-guards.test.ts:1183`; the implementation PR asserts the single commit after a successful preload with no second candidate read |
+| Design-facts gate | The decided Stay input stays the same `[data-testid="stay-checkin-room"] select` with the `Chọn phòng...` placeholder, and the populated option subtrees stay exempt under DD-13, so no schema or allowlist change | Covered by re-run only — `app/e2e/design-facts.ts` Stay entry, `docs/technical/desk-ui-fact-schema.md` section 5, `docs/testing/dom-diff-allowlist.md` DD-13, and the source pins in `app/src/stay-restyle.test.ts:55`–`:100` hold unchanged; the implementation PR re-runs the fact-level gate and notes the DD-13 exemption |
+| Catalogue parity | Zero new keys: every state above uses an existing `desk.stay.*` string with both locales intact and placeholders unchanged | Covered — `messages/en.json`, `messages/vi.json` and the eight `services/*` mirrors plus `script/catalogue-coverage-check.sh`; the implementation PR must show the coverage job green with no catalogue diff |
+
+Slice coverage (Refs #586): 7 rows mapped; 2 covered without a new
+guard (the design-facts and catalogue boxes need none) and 5
+pending the #586 implementation PR — the existing pins named above
+are rewritten to the arrival-pick timing with a note (never
+deleted), and the two missing cases (no-ready-rooms, and
+error-cleared-on-select) are created there. No existing guard is
+deleted; every filled citation above is on disk at the #591 head.
+The MVP Coverage line below stands unchanged at 57/57.
+
 Coverage: 43 FRs mapped, 14 NFRs mapped, 57 rows total, 57 guards
-filled (PR #112 slice: FR-RES-1, FR-RMS-1..4, FR-RTE-1/2/4/5, FR-ADM-1/2, FR-CUS-1, NFR-CON-1/2; PR #149 slice: FR-FDK-1, FR-FDK-5, FR-BIL-1/2/3/6, FR-ADM-5, NFR-BKP-1/2, NFR-AUD-1, NFR-TZ-1, plus FR-RES-1 persistence; PR #150 slice: FR-FDK-2, FR-FDK-3, FR-FDK-4, FR-BIL-7, plus the NFR-CON-2 stay-side checkout guard; PR #151 slice: FR-BIL-4, FR-CUS-3; PR #156 slice: FR-RPT-1..3; PR #157 slice: FR-GST-1..3; PR #158 slice: NFR-DEP-1, FR-ADM-4 config level, plus the FR-ADM-1 deployment extension; PR #159 slice: FR-RES-2/3/5/6 plus the NFR-CON-1 modify-path extension; PR #160 slice: ReleaseBlock plus rooms-side move coordination (FR-RMS-3, FR-FDK-3); PR #161 slice: full rates handling (FR-RTE-3 filled, FR-RTE-4/5 extended — remaining TBD cells fill in later slices); count corrected to the live total 48 (later slices filled cells without updating this line); PR #153 slice: NFR-RET-1, NFR-AVL-1; PR #182 slice: FR-RES-4, FR-ADM-3, FR-CUS-2, NFR-PERF-1/2 filled (5 guards — count corrected to the live total 53); FR-GST-4, FR-BIL-5, FR-RPT-4 point at follow-ups #189, #190, #191 and fill with those issues; NFR-I18N-1 filled by the #192 slice (count corrected to the live total 54); #189/#190/#191/#192/#201 slices filled FR-GST-4, FR-BIL-5, FR-RPT-4, NFR-I18N-1 (plus the #201 extension) — count corrected to the live total 57 (Closes #214)).
 filled (PR #112 slice: FR-RES-1, FR-RMS-1..4, FR-RTE-1/2/4/5, FR-ADM-1/2, FR-CUS-1, NFR-CON-1/2; PR #149 slice: FR-FDK-1, FR-FDK-5, FR-BIL-1/2/3/6, FR-ADM-5, NFR-BKP-1/2, NFR-AUD-1, NFR-TZ-1, plus FR-RES-1 persistence; PR #150 slice: FR-FDK-2, FR-FDK-3, FR-FDK-4, FR-BIL-7, plus the NFR-CON-2 stay-side checkout guard; PR #151 slice: FR-BIL-4, FR-CUS-3; PR #156 slice: FR-RPT-1..3; PR #157 slice: FR-GST-1..3; PR #158 slice: NFR-DEP-1, FR-ADM-4 config level, plus the FR-ADM-1 deployment extension; PR #159 slice: FR-RES-2/3/5/6 plus the NFR-CON-1 modify-path extension; PR #160 slice: ReleaseBlock plus rooms-side move coordination (FR-RMS-3, FR-FDK-3); PR #161 slice: full rates handling (FR-RTE-3 filled, FR-RTE-4/5 extended — remaining TBD cells fill in later slices); count corrected to the live total 48 (later slices filled cells without updating this line); PR #153 slice: NFR-RET-1, NFR-AVL-1; PR #182 slice: FR-RES-4, FR-ADM-3, FR-CUS-2, NFR-PERF-1/2 filled (5 guards — count corrected to the live total 53); FR-GST-4, FR-BIL-5, FR-RPT-4 point at follow-ups #189, #190, #191 and fill with those issues; NFR-I18N-1 filled by the #192 slice (count corrected to the live total 54); #189/#190/#191/#192/#201 slices filled FR-GST-4, FR-BIL-5, FR-RPT-4, NFR-I18N-1 (plus the #201 extension) — count corrected to the live total 57 (Closes #214)).
 
 <!-- ao-role: qa-lead -->
