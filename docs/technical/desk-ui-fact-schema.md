@@ -22,6 +22,11 @@ wiring ships in this change.
 - App source of truth: the Vue desk SPA under `app/src/` (shell in
   `app/src/App.vue`, screens in `app/src/views/`, tokens in
   `app/src/theme/tokens.ts`).
+- The rooms and rates management screen (Refs #590) has an approved
+  markdown board (`docs/design/RoomsRates.dc.md`) and no `.dc.html`
+  canvas bundle or `manifest.json` entry yet, so it has no record and
+  no screen key in this version. Its one shared-shell tab is covered by
+  the app-only nav tab allowance in section 8.
 - Copy is VI-primary: fact text records Unicode code points exactly as
   written (e.g. `Lễ tân`, `Hoá đơn`); no case folding, no
   transliteration, no whitespace trimming beyond the field rules in
@@ -249,5 +254,45 @@ on every run, machine, and timezone.
   extractor and assertions pin the version they implement and
   refuse to run against a mismatch.
 
+## 8. App-only nav tab allowance (Refs #590)
+
+The seven owner boards anchor the shared nav. Issue #590 adds one desk
+route and one tab the boards do not draw (owner decision O-1, D-23),
+and the owner boards must not be edited to follow the implementation
+(`docs/design/README.md` rules: change the implementation, or ask the
+owner for a design revision). This section records the narrow
+comparison rule that keeps the gate meaningful while that divergence
+exists. It is a rule of this contract even though the gate mechanics
+live with #467 (section 7), because it decides what "conforming nav"
+means.
+
+- The allowance is a static, ordered list defined here, with exactly
+  one entry today: route key `manage`, label `Quản lý` / `Manage`,
+  position immediately after the `rooms` tab, design source
+  `docs/design/RoomsRates.dc.md` (section 4 shell wireframe). No other
+  app-only tab may be added without a line in this section naming its
+  design source.
+- Extraction is unchanged on both sides: the design side still emits
+  `nav.order` / `nav.labels` from the `.dc.html` boards, and the app
+  side still records every rendered tab. The allowance lives in the
+  comparison, in neither extraction.
+- Comparison rule: the design tabs must still appear in the rendered
+  tab list in the same relative order and with exactly matching
+  labels. An allowance entry may appear only at its declared position,
+  between its declared neighbours. Any other missing, extra, reordered,
+  or relabelled tab still fails the gate. `nav.active` keeps its
+  per-screen comparison, and a screen with no design tab keeps the
+  existing tab-less rule.
+- Determinism: the allowance is committed text, not configuration or
+  environment state, so every extractor record stays byte-identical to
+  today's run on the same inputs.
+- Removal rule: when the owner supplies a `.dc.html` canvas bundle (or
+  a `manifest.json` entry) that draws the tab, the board becomes that
+  tab's design source and the entry leaves this allowance in the same
+  change — never both at once.
+- Versioning: this adds, removes, and retypes no field, and every
+  record keeps its shape, so `schemaVersion` stays `1`; only the
+  consumer-side comparison rule changes.
+
 <!-- ao-role: architect -->
-Role: architect · AO session hotel-mgmt-629
+Role: architect · AO session hotel-mgmt-888
