@@ -231,14 +231,19 @@ Each screen: exact design source, layout to reproduce, what stays.
   check-in; move; times; checkout with folio-reconciliation hint
   in muted `14px`); labels `14px`, controls full-width
   `min-height:44px`; business-date line with primary reload button.
-- Keep: the two-step check-in flow (load booking then commit), the
-  explicit empty room-select placeholder with hint blocking
-  check-in until a ready room is chosen (AC-DSK-4), move/times
-  flows, checkout gated on a settled folio (AC-DSK-4 / FR-BIL-7),
-  all request fields unchanged.
+- Keep: the arrival-pick candidate preload with the commit still on
+  the Check in button (Refs #586; rollout spec section 6.12,
+  `AC-DSK-17`) — the arrival pick loads the booked-type ready rooms,
+  a valid room select clears the `Pick a ready room first.` message,
+  and the Check in click commits once; the explicit empty room-select
+  placeholder with hint blocking check-in until a ready room is
+  chosen (AC-DSK-4), move/times flows, checkout gated on a settled
+  folio (AC-DSK-4 / FR-BIL-7), all request fields unchanged.
 - Rebuild: screen markup and styling. The T3 single-vs-two-step
-  REPORTED item (#497) stays reported: step structure is unchanged
-  unless the owner decides on #521.
+  REPORTED item (#497) is resolved on its load half by #586 — the
+  arrival pick populates the room select like the one-form board,
+  while the commit deliberately stays on the button per the owner
+  request; no markup or step-structure rebuild beyond that load move.
 
 ### 5.4 Folio invoice (#522) — `docs/design/Folio.dc.html:2`
 

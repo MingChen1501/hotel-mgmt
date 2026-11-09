@@ -438,8 +438,9 @@ below check behaviour only.
   explicit placeholder and hint, and check-in stays blocked
   until a ready room is chosen; given a ready room chosen,
   check-in completes as today, and checkout still requires a
-  fully-paid folio. Traces to: US-FDK-1, US-FDK-2; FR-FDK-1,
-  FR-FDK-2, FR-BIL-7.
+  fully-paid folio. The candidate load timing (arrival pick) and
+  the room-error lifecycle follow `AC-DSK-17`. Traces to:
+  US-FDK-1, US-FDK-2; FR-FDK-1, FR-FDK-2, FR-BIL-7.
 - AC-DSK-5 — Given an in-house stay with charges and payments,
   when staff work the Folio screen, then posting a charge and
   recording a payment update the running balance exactly as
@@ -578,6 +579,32 @@ below check behaviour only.
   (Refs #582; input mechanism and list reads only, no MVP
   capability added, no FR wording changed).
 
+- AC-DSK-17 — Given arrivals loaded on Stay, when staff pick an
+  arrival, then the room select is populated with the booked
+  type's ready rooms without a Check in click: exactly one ready
+  room binds automatically with no hint and no error, several
+  ready rooms show the explicit empty placeholder plus the amber
+  hint, zero ready rooms of the booked type show the plain
+  no-ready-rooms error with the booked-type status, and an
+  unknown reference shows the plain refusal; a new arrival pick
+  clears the previous booking's candidates, bound room, and
+  error first, and a slow read for an earlier pick never paints
+  into the later one. Given several ready rooms, when staff
+  select a valid room, then the `Pick a ready room first.`
+  message and the amber hint disappear immediately and a valid
+  selection renders no error. Given a populated picker and a
+  selected room, when staff click Check in, then
+  `AssignRoom` → `CheckIn` → `CheckInReservation` run once with
+  the existing request bodies, no extra candidate read happens
+  (the loaded booking is reused), a second click while in flight
+  is a no-op, and the existing `need_arrival` / `need_room` /
+  unknown-reference / no-ready-rooms / `CONFLICT` refusals fire
+  on the same conditions with the same plain strings in both
+  locales (catalogue unchanged). Traces to: US-FDK-1, US-FDK-2;
+  FR-FDK-1, FR-FDK-2 (Refs #586; load-timing and error-lifecycle
+  change only, no MVP capability added, no backend or
+  request-field change).
+
 Rollout done when: the six sub-issues each close with a merged
 implementation PR (the wizard slice spans #425 step 1 plus the
 #438 steps 2–4 PR), every screen checks against its design file
@@ -594,7 +621,9 @@ Book arrival/departure fields are app-localized pickers that keep
 the ISO payload per AC-DSK-15, and the Folio and Print open steps
 lead with the business date's in-house stay select while keeping
 manual stay-ID entry and sending the same identifier per
-AC-DSK-16.
+AC-DSK-16, and the Stay arrival pick loads the booked-type ready
+rooms with the commit still on the Check in button and a valid
+room selection clearing the guard message per AC-DSK-17.
 
 ## 12. Desk UI pixel-faithful restyle (Refs #517)
 
@@ -615,7 +644,13 @@ screens (Main #519, Book #520, Stay #521, Folio #522, Rooms #523,
 Onboarding #524). They add no MVP capability and change no
 behaviour: logic, hooks, stores, API calls, flows, copy,
 catalogue keys, validation, and refusal semantics hold exactly as
-today — only markup and styling move to the design values. FR/NFR
+today — only markup and styling move to the design values.
+Rebaseline note (Refs #586, 2026-11-09): the Stay check-in
+candidate load timing and the room-error lifecycle are superseded
+by `AC-DSK-4`/`AC-DSK-17` and the rollout spec section 6.12 (the
+arrival pick loads the booked-type ready rooms; the commit stays
+on the Check in button); the restyle conditions above are
+otherwise unchanged. FR/NFR
 wording is owned by `business-analyst` and guard mapping by
 `qa-lead` (see the restyle spec, section 9); the conditions below
 check behaviour and evidence only. Conformance evidence is twofold
@@ -660,11 +695,16 @@ follows that decision.
   staff work Stay check-in/out, then the intro, the five stacked
   cards, labels, controls, and the folio-reconciliation hint
   render the design tokens and layout per the restyle spec, while
-  the two-step check-in flow, the empty room-select placeholder
-  blocking check-in until a ready room is chosen, move and times
-  flows, and the settled-folio checkout gate behave exactly as
-  today. Traces to: US-FDK-1, US-FDK-2; FR-FDK-1, FR-FDK-2,
-  FR-BIL-7.
+  the check-in flow keeps its commit on the Check in button with
+  the arrival pick loading the booked-type ready rooms (the load
+  half of the T3 single-vs-two-step item is resolved by #586,
+  `AC-DSK-17`), the empty room-select placeholder blocks check-in
+  until a ready room is chosen, a valid room selection never
+  leaves the `Pick a ready room first.` message behind, and move
+  and times flows plus the settled-folio checkout gate behave
+  exactly as today. Traces to: US-FDK-1, US-FDK-2; FR-FDK-1,
+  FR-FDK-2, FR-BIL-7 (Refs #586; behaviour re-baselined to
+  `AC-DSK-17`).
 - AC-RST-5 — Given an in-house stay with charges and payments,
   when staff work the Folio screen, then the two-card grid, the
   balance-due accent size and colour, example lines, labels, and
