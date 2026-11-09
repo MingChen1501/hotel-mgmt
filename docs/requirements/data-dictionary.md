@@ -201,7 +201,24 @@ EN `Wednesday, 10/28/2026` for 2026-10-28).
 
 Owning FRs: FR-BIL-6, FR-FDK-5, FR-RPT-3, FR-DSK-11.
 
-## 15. Coverage statement
+## 15. Nightly price
+
+The sellable price of one room type for one night under one rate
+plan: the unit a reservation is quoted from and the record the
+management screen writes. Exactly one nightly price exists per rate
+plan, room type, and night date; a range is a run of these records,
+never a single range record, and a night with no record has no price
+(BR-44). The price is money in integer minor units, and changes to a
+nightly price never alter a reservation already quoted from it
+(BR-13).
+
+Key fields: rate plan name; room type; night date (`YYYY-MM-DD`,
+`NFR-TZ-1`); price in integer minor units.
+
+Owning FRs: FR-RTE-1, FR-RTE-5, FR-MGMT-6, FR-MGMT-7, FR-MGMT-8,
+FR-MGMT-9.
+
+## 16. Coverage statement
 
 Every audit terminology concept (T-1 reservation/booking, T-2
 room/room type/bed type, T-3 folio/invoice/receipt, T-4 guest, T-5
@@ -212,6 +229,11 @@ appears above with a definition, key fields, and owning FRs. Bare
 normative wording, per T-5. No entry introduces behaviour beyond the
 owning FRs. The Business date entry (section 14) defines a
 previously undefined term referenced by `FR-BIL-6`; it adds no
-behaviour beyond the owning FRs.
+behaviour beyond the owning FRs. The Nightly price entry (section 15)
+defines the per-night price record the #590 management screen writes,
+tracing `FR-RTE-1` and `BR-44`, and adds no behaviour beyond them.
 
-Counts: 14 dictionary entries covering the 7 entity terminology concepts (T-1..T-7); T-8 is a spelling convention with no entry.
+Counts: 15 dictionary entries covering the 7 entity terminology concepts (T-1..T-7); T-8 is a spelling convention with no entry.
+
+<!-- ao-role: business-analyst -->
+Role: business-analyst · AO session hotel-mgmt-887
