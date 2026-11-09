@@ -1391,7 +1391,8 @@ UI contract delta (T2, reader-visible):
   the Folio and Print surfaces (`FR-BIL-4`, `FR-DSP-4`).
 
 Catalogue keys (EN and VI keys plus the runtime mirrors, per
-section 7; wording is the stand-in):
+section 7; the English lines below are the stand-ins, VI-primary per
+the catalogue rule):
 
 - `desk.stay.room_released` — "Room {roomNumber} is now vacant and
   dirty."
@@ -1405,6 +1406,14 @@ section 7; wording is the stand-in):
 - `desk.stay.refused_approval_incomplete` — "The recorded approval
   has no approver or no recorded time, so check-out is refused and
   the stay remains in house. Record the approval again."
+
+Vietnamese stand-ins for the same five keys (placeholders intact; the
+`dev` change lands the final VI wording under the catalogue process):
+`Phòng {roomNumber} đã chuyển sang trống, cần dọn.` ·
+`Phòng {roomNumber} đang trống.` ·
+`Khách đã trả phòng nhưng phòng {roomNumber} vẫn hiển thị có khách. Hãy tải lại màn hình, và báo quản lý nếu vẫn như vậy.` ·
+`Người duyệt {approvedBy} ({role}) lúc {time}.` ·
+`Bản ghi duyệt thiếu người duyệt hoặc thiếu thời điểm, nên trả phòng bị từ chối và khách vẫn đang lưu trú. Hãy ghi lại phê duyệt.`
 
 The recorded-approval status line becomes
 `desk.stay.approval_recorded_by`; a key the view no longer renders
