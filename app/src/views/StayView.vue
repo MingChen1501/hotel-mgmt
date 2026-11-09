@@ -518,8 +518,12 @@ export default defineComponent({
     // Arrival-pick load sequencing (#586): every pick increments
     // the counter and owns that value, so a booked-type read that
     // returns late for an earlier pick never paints into the
-    // current picker (`AC-DSK-17`).
+    // current picker (`AC-DSK-17`). `pendingLoadSeq` names the
+    // candidate load still in flight, so clearing the pick can
+    // release only that load's in-flight flag and never a commit
+    // the button owns.
     let loadSeq = 0;
+    let pendingLoadSeq: number | null = null;
 
     const checkoutStayId = ref('');
     const folioStatus = ref('');
@@ -836,6 +840,15 @@ export default defineComponent({
       checkinDetails.value = [];
       const refValue = arrivalRef.value;
       if (!refValue) {
+        // #586: clearing the pick supersedes the in-flight load
+        // (its late reads paint nothing), so the panel must not
+        // stay in the checking-in state until the next pick. A
+        // commit in flight keeps its own flag: only a pending
+        // candidate load is released here.
+        if (pendingLoadSeq !== null) {
+          pendingLoadSeq = null;
+          checkingIn.value = false;
+        }
         return;
       }
       await loadCandidates(refValue, seq);
@@ -881,6 +894,7 @@ export default defineComponent({
     // that returns for an earlier pick paints nothing.
     async function loadCandidates(refValue: string, seq: number = loadSeq): Promise<boolean> {
       checkingIn.value = true;
+      pendingLoadSeq = seq;
       try {
         let booking: { roomTypeId: string };
         try {
@@ -962,6 +976,7 @@ export default defineComponent({
         return false;
       } finally {
         if (seq === loadSeq) {
+          pendingLoadSeq = null;
           checkingIn.value = false;
         }
       }
