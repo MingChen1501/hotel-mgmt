@@ -265,7 +265,10 @@ func (s *Store) Quote(roomTypeID, arrival, departure string, planName, discountN
 		key := priceKey(plan.Name, roomTypeID, night.Format(dateLayout))
 		price, ok := s.prices[key]
 		if !ok {
-			return nil, notFound(messages.Text("rates.notfound.priced_night", map[string]string{"nightDate": night.Format(dateLayout)}), map[string]any{"roomTypeId": roomTypeID, "nightDate": night.Format(dateLayout)})
+			// Refs #589: details.reason lets the desk mark the type
+			// not-yet-operational (no rate price for the window)
+			// instead of showing a generic failure.
+			return nil, notFound(messages.Text("rates.notfound.priced_night", map[string]string{"nightDate": night.Format(dateLayout)}), map[string]any{"roomTypeId": roomTypeID, "nightDate": night.Format(dateLayout), "reason": "no_rate_price"})
 		}
 		quoted.Nights = append(quoted.Nights, NightQuote{NightDate: price.NightDate, PriceMinor: price.PriceMinor})
 		quoted.TotalMinor += price.PriceMinor
@@ -392,7 +395,9 @@ func (s *Store) quotePlan(roomTypeID string, planName *string) (*RatePlan, *OpEr
 		return candidates[0], nil
 	}
 	if len(candidates) == 0 {
-		return nil, notFound(messages.Text("rates.notfound.priced_nights", nil), map[string]any{"roomTypeId": roomTypeID})
+		// Refs #589: no plan prices the type at all, so the type is
+		// not yet operational; details.reason carries that cause.
+		return nil, notFound(messages.Text("rates.notfound.priced_nights", nil), map[string]any{"roomTypeId": roomTypeID, "reason": "no_rate_plan"})
 	}
 	return nil, validation("ratePlanName", messages.Text("rates.validation.ambiguous_plan", nil))
 }

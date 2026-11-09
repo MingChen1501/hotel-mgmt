@@ -164,7 +164,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '404':
-          description: 'NOT_FOUND: No priced night for the type and dates (unknown type or plan).'
+          description: 'NOT_FOUND: No rate price for the type and dates; details.reason names no_rate_price (a night has no price row) or no_rate_plan (no plan prices the type), so the type is not yet operational.'
           content:
             application/json:
               schema:

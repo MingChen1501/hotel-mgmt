@@ -80,7 +80,23 @@ test('unpriced dates refuse the quote in plain words', async ({ page, request })
   await page.getByTestId('book-departure-date').fill(deskDateField('2031-01-03'));
   await page.getByTestId('book-room-type-id').selectOption(ctx.roomTypeId);
   await page.getByTestId('book-quote').click();
-  await expect(page.getByTestId('book-quote-error')).toContainText('No price exists');
+  // Refs #589 (owner decision: no booking without rates): the refusal
+  // names the missing rate price and the type is marked not open for
+  // booking with the rates-setup action, on the stay card and in the
+  // picker, and no confirm action exists without a quote.
+  await expect(page.getByTestId('book-quote-error')).toContainText(
+    'No rate price is set for this room type on the selected dates',
+  );
+  await expect(page.getByTestId('book-room-type-not-operational')).toContainText(
+    'not open for booking',
+  );
+  await expect(page.getByTestId('book-room-type-not-operational')).toContainText(
+    'Ask a manager to set up its rates',
+  );
+  await expect(
+    page.getByTestId('book-room-type-id').locator(`option[value="${ctx.roomTypeId}"]`),
+  ).toContainText('not open for booking');
+  await expect(page.getByTestId('book-confirm')).toHaveCount(0);
 });
 
 test('second overlapping booking is refused as sold out', async ({ page, request }) => {

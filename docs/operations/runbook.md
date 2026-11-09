@@ -21,7 +21,7 @@ desk screen and confirm all three:
 3. No failure message is showing.
 
 If the report shows **failure**, or shows nothing recent, do not
-wait: note the message word for word and call support (section 6).
+wait: note the message word for word and call support (section 7).
 A backup without a success report counts as failed.
 
 ## 2. Reading the success/failure report
@@ -34,7 +34,7 @@ The report always shows one of two outcomes in plain words:
 - **Failure, with date, time, and a reason** (for example,
   "Backup failed at 02:14 — storage not reachable"): the copy did
   not happen. Desk work continues normally, but the hotel has no
-  fresh restore point. Call support the same day (section 6) —
+  fresh restore point. Call support the same day (section 7) —
   the backup target is to succeed at least 6 days out of 7
   (`NFR-BKP-1`).
 
@@ -53,7 +53,7 @@ For the single-host default all three live on one box, so this
 means: switch the box on, wait until the desk sign-in screen
 appears, and sign in. For the small-cluster variant, switch the
 hosts on in the order above. If the sign-in screen does not appear
-within a reasonable wait, call support (section 6) — do not
+within a reasonable wait, call support (section 7) — do not
 repeatedly switch boxes on and off.
 
 ## 4. Desk-offline behaviour (internet outage)
@@ -67,7 +67,7 @@ work during an outage is anything outside the property — and the
 MVP has no such functions (no online booking, no OTA, no payment
 provider sync). If a desk action fails while the internet is down,
 treat it as a system fault, not as an internet problem, and call
-support (section 6).
+support (section 7).
 
 ## 5. Restore from backup (RTO 4 hours)
 
@@ -94,7 +94,44 @@ The hotel loses no more than one operating day of data (`NFR-BKP-1`):
 every reservation, stay, folio, and payment recorded at least 24
 hours before the failure is present after the restore.
 
-## 6. When to call support (escalation contacts)
+## 6. Booking refused: the room type has no rate price
+
+When the desk tries to price a stay for a room type that has no rate
+price for the selected dates, the booking is refused. This is
+deliberate: a room type without prices is **not open for booking
+yet**, so the hotel never sells an unpriced stay.
+
+What the desk sees:
+
+- The Book screen says the room type has no rate price for the
+  selected dates, so it is not open for booking yet, and the room
+  type is marked **not open for booking** in the type list and on the
+  stay card.
+- No confirm action appears, so no booking can be created for that
+  room type and those dates.
+
+What to do:
+
+1. Do not promise the room at a guessed price. If the guest insists,
+   take the booking on paper and price it once the rates are set.
+2. Ask the manager to set the room type's rates: one rate plan plus
+   one nightly price for every night sold. The rates setup screen is
+   not part of this release yet (issue #590); until it ships, support
+   applies the prices through the API (below).
+3. If the room type already has prices for those dates and the desk
+   still sees the refusal, treat it as a system fault and call
+   support (section 7).
+
+Interim workaround for support and QA (API, until the rates setup
+screen ships, issue #590): sign in as an owner, then call
+`POST /v1/rates/UpsertRatePlan` once for the property's rate plan and
+`POST /v1/rates/UpsertRatePrice` once per night per room type. The
+payloads are the ones the desk-loop script already uses
+(`script/e2e-desk-loop.sh`, the rates step). Setting prices never
+changes an existing booking: a confirmed booking keeps the price it
+was booked at.
+
+## 7. When to call support (escalation contacts)
 
 Call support the same day when any of these happen:
 
@@ -104,7 +141,7 @@ Call support the same day when any of these happen:
 - A desk action fails during an internet outage.
 - A failed upgrade that the delivery team cannot fix within the
   working day (rollback is in `docs/devops/deployment.md`,
-  section 6).
+  section 7).
 - A sign-in that says an identity is locked after 5 wrong secrets
   (`NFR-SEC-2`): do not keep retrying. The owner or the manager
   unlocks the locked identity, then the locked person signs in

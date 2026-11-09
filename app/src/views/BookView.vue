@@ -207,7 +207,7 @@
                     :key="type.id"
                     :value="type.id"
                   >
-                    {{ type.name }}
+                    {{ optionLabel(type) }}
                   </option>
                 </select>
               </label>
@@ -230,6 +230,18 @@
             >
               {{ t('desk.book.room_type_loading', {}, 'Loading room types…') }}
             </p>
+            <!-- Not-operational marking (Refs #589, owner decision on
+              the issue): a room type with no rate price for the
+              selected dates is not sellable, so the refusal names the
+              missing price and the rates-setup action here, on the
+              stay card, next to the picker that carries the suffix. -->
+            <Message
+              v-if="notOperationalRoomTypeId !== ''"
+              severity="warn"
+              data-testid="book-room-type-not-operational"
+            >
+              {{ notOperationalNotice }}
+            </Message>
             <p
               v-if="!roomTypesLoading && roomTypes.length === 0"
               class="book-helper"
@@ -482,6 +494,18 @@ function restrictionDetail(err: unknown): string {
   return typeof restriction === 'string' ? restriction : '';
 }
 
+// Refs #589: the rates service names why a quote has no price
+// (`no_rate_price` for a missing night, `no_rate_plan` when no plan
+// prices the type). Only those two mark the type not operational —
+// other NOT_FOUND replies keep the plain refusal.
+function noRateReason(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null) {
+    return false;
+  }
+  const details = (err as ApiError).details as { reason?: unknown } | null | undefined;
+  return details?.reason === 'no_rate_price' || details?.reason === 'no_rate_plan';
+}
+
 function newIdempotencyKey(): string {
   try {
     const randomId = globalThis.crypto?.randomUUID?.();
@@ -560,6 +584,12 @@ export default defineComponent({
     const roomTypes = ref<Array<{ id: string; name: string }>>([]);
     const roomTypesLoading = ref(false);
     const roomTypeNames = ref<Record<string, string>>({});
+    // Not-operational marking (Refs #589, owner decision on the
+    // issue): a room type with no rate price for the selected dates
+    // is not sellable. The quote refusal records it here so the
+    // picker and the stay card say so in plain words; any stay-input
+    // change clears the marking with the quote.
+    const notOperationalRoomTypeId = ref('');
     // Exact record IDs stay hidden by default (issue #372 owner
     // amendment) and surface only in these reference details.
     const bookingDetails = ref<ReferenceItem[]>([]);
@@ -617,6 +647,28 @@ export default defineComponent({
       return t('desk.today.room_type_unresolved', {}, 'Room type');
     }
 
+    // The picker marks the type whose quote was refused for a missing
+    // rate price (Refs #589): the option text carries the state so the
+    // desk reads it where it picks the type, not only in the alert.
+    function optionLabel(type: { id: string; name: string }): string {
+      if (type.id !== notOperationalRoomTypeId.value) {
+        return type.name;
+      }
+      return `${type.name} — ${t(
+        'desk.book.room_type_not_operational_short',
+        {},
+        'not open for booking',
+      )}`;
+    }
+
+    const notOperationalNotice = computed<string>(() =>
+      t(
+        'desk.book.room_type_not_operational',
+        { roomType: typeName(notOperationalRoomTypeId.value) },
+        '{roomType} is not open for booking: no rate price is set for these dates. Ask a manager to set up its rates.',
+      ),
+    );
+
     async function loadRoomTypes(): Promise<void> {
       roomTypesLoading.value = true;
       try {
@@ -648,6 +700,7 @@ export default defineComponent({
       quoteKey.value = null;
       quoteError.value = '';
       confirmError.value = '';
+      notOperationalRoomTypeId.value = '';
     }
 
     function onStayInput(): void {
@@ -755,8 +808,15 @@ export default defineComponent({
           quoteError.value = t(
             'desk.book.refused_noprice',
             {},
-            'No price exists for this room type and these dates.',
+            'No rate price is set for this room type on the selected dates, so it is not open for booking yet.',
           );
+          // Refs #589 (owner decision): the type with no rate price
+          // for the selected dates is not yet operational, so the
+          // stay card and the picker mark it instead of leaving the
+          // clerk with a bare refusal.
+          if (noRateReason(err)) {
+            notOperationalRoomTypeId.value = roomTypeId.value.trim();
+          }
           return;
         }
         quoteError.value = errorMessage();
@@ -1062,6 +1122,9 @@ export default defineComponent({
       roomTypeId,
       roomTypes,
       roomTypesLoading,
+      notOperationalRoomTypeId,
+      notOperationalNotice,
+      optionLabel,
       discountName,
       quote,
       quoteNights,
