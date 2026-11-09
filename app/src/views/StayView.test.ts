@@ -935,8 +935,10 @@ describe('stay view', () => {
       return happy(url, init);
     });
 
+    // #586 moves the load to the arrival pick, so the pick alone
+    // raises the refusal; there is no Check in click here (it
+    // would be a no-op while the pick's load is in flight).
     await wrapper.find('[data-testid="stay-checkin-arrival"]').setValue('RSV-1');
-    await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="stay-checkin-error"]').text()).toContain(
         'Unknown booking reference',

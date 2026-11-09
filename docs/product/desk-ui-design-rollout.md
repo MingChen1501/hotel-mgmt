@@ -1038,11 +1038,11 @@ Decision (four parts):
    select changes, the panel resets the previous booking's state
    (candidate list, room map, bound room id, status, error, and
    details — the existing `onArrivalChange` reset,
-   `app/src/views/StayView.vue:820-828`) and then runs the existing
+   `app/src/views/StayView.vue:832-861`) and then runs the existing
    candidate load: `GetReservation` for the booking's `roomTypeId`,
    then `ListRoomsByState` with `state: 'vacant-inspected'`, keeping
    only the rooms whose `roomTypeId` matches the booking
-   (`StayView.vue:853-925`). The same read pair, the same
+   (`StayView.vue:895-983`). The same read pair, the same
    booked-type filter, and the same request bodies as today's
    first-click load; only the trigger moves from the button to the
    pick. A read for an earlier pick that returns late never paints
@@ -1051,12 +1051,12 @@ Decision (four parts):
 2. **The picker states stay exactly as today.** With exactly one
    ready room of the booked type, the candidate binds
    automatically, no hint and no error render, and a Check in click
-   commits (`StayView.vue:906-909`). With several, the select opens
+   commits (`StayView.vue:958-960`). With several, the select opens
    on the explicit empty placeholder (`Choose a room...`) with the
    amber `Choose a ready room first.` hint
    (`data-testid="stay-checkin-room-hint"`, `StayView.vue:63-71`),
    and the existing `Pick a ready room first.` guard message shows
-   as today's loaded state does (`StayView.vue:909-912`). Zero ready
+   as today's loaded state does (`StayView.vue:963`). Zero ready
    rooms of the booked type keeps the plain `No ready rooms of the
    booked type right now.` error with the booked-type status line;
    an unknown reference keeps `Unknown booking reference. Check the
@@ -1081,15 +1081,15 @@ Decision (four parts):
    leaves the guard in place at commit time.
 4. **The commit stays on the Check in button, once.** A Check in
    click after a successful preload reuses the loaded booking (the
-   existing `checkinRef` guard, `StayView.vue:937-939`): no second
+   existing `checkinRef` guard, `StayView.vue:1001-1004`): no second
    candidate read, no double load. The click still runs the existing
    validation first — `need_arrival` with no arrival,
    `need_room` with no or unknown room, and the preload-time
    unknown-reference / no-ready-rooms errors — before
    `AssignRoom` → `CheckIn` → `CheckInReservation` with unchanged
-   request bodies (`StayView.vue:946-1060`). A second click while
+   request bodies (`StayView.vue:1010-1113`). A second click while
    in flight stays a no-op (`checkingIn` guard,
-   `StayView.vue:928-930`). The `CONFLICT` paths are unchanged:
+   `StayView.vue:992-994`). The `CONFLICT` paths are unchanged:
    an `AssignRoom` conflict resets the loaded booking to null and
    names the taken room, so the next click reloads the candidates;
    a `CheckIn` conflict keeps the already-checked-in message. A
@@ -1100,10 +1100,10 @@ Decision (four parts):
 Affected surfaces and keys:
 
 - `app/src/views/StayView.vue` check-in panel only: the arrival
-  select's change handler (`:30`, `onArrivalChange` at `:820-828`),
-  the room select (`:46-62`), the hint (`:63-71`), the Check in
+  select's change handler (`:30`, `onArrivalChange` at `:832-861`),
+  the room select (`:44-55`), the hint (`:63-71`), the Check in
   button and status/error lines (`:73-106`), and the existing
-  `loadCandidates` / `onCheckIn` functions (`:853-925`, `:927-1060`).
+  `loadCandidates` / `onCheckIn` functions (`:895-983`, `:991-1124`).
 - No new catalogue key: every visible string is an existing
   `desk.stay.*` key — `choose_arrival`, `choose_room`, `room_hint`,
   `checking_in`, `need_arrival`, `need_room`, `no_ready_rooms`,
@@ -1114,10 +1114,10 @@ Affected surfaces and keys:
   (`vacant-inspected`), `AssignRoom`, `CheckIn`,
   `CheckInReservation`. No endpoint, field, or backend change.
 - Guards that move with the change: `app/src/views/StayView.test.ts`
-  (the arrival flow `:309-352` — now arrival pick loads, room pick
+  (the arrival flow `:314-379` — now arrival pick loads, room pick
   clears, one button click commits; the `need_room` guard
-  `:371-400`; the single-candidate auto-select `:402-444`),
-  `app/src/views/desk-edge-guards.test.ts` (`:1183-1213`, the
+  `:435-468`; the single-candidate auto-select `:475-513`),
+  `app/src/views/desk-edge-guards.test.ts` (`:1183-1220`, the
   placeholder/back-forward gate now asserts the arrival-pick load),
   and `app/e2e/stay.spec.ts` (`:65-73`, one commit click after the
   arrival pick). No existing guard is deleted; each is rewritten to
@@ -1522,9 +1522,9 @@ Section 4 stays the rollout-wide contract; for steps 2–4:
 
 | Criterion | Evidence in this spec |
 |---|---|
-| Picking an arrival populates the room select with the booked type's ready rooms without clicking Check in; one room auto-selects, several show the empty placeholder and amber hint | Section 6.12 decisions 1–2; AC-DSK-17; `onArrivalChange` → `loadCandidates` (`app/src/views/StayView.vue:820-828`, `:853-925`); board 2 of `docs/design/manifest.json` |
+| Picking an arrival populates the room select with the booked type's ready rooms without clicking Check in; one room auto-selects, several show the empty placeholder and amber hint | Section 6.12 decisions 1–2; AC-DSK-17; `onArrivalChange` → `loadCandidates` (`app/src/views/StayView.vue:832-861`, `:895-983`); board 2 of `docs/design/manifest.json` |
 | After a multi-room pick, selecting a valid room clears the `Pick a ready room first.` error immediately and renders no error | Section 6.12 decision 3; AC-DSK-17; the room-select change/watcher on `checkinRoomId` |
-| A populated picker plus a selected room commits once on the Check in click (`AssignRoom` → `CheckIn` → `CheckInReservation`, existing bodies, no extra reload, second click a no-op) | Section 6.12 decision 4; AC-DSK-17; `checkinRef` reuse and the `checkingIn` guard (`app/src/views/StayView.vue:928-939`) |
+| A populated picker plus a selected room commits once on the Check in click (`AssignRoom` → `CheckIn` → `CheckInReservation`, existing bodies, no extra reload, second click a no-op) | Section 6.12 decision 4; AC-DSK-17; `checkinRef` reuse and the `checkingIn` guard (`app/src/views/StayView.vue:992-1004`) |
 | No arrival, no room, no ready rooms, unknown reference, and signed-out paths keep today's status and error strings in both locales (catalogue unchanged) | Section 6.12 decision 2; AC-DSK-17; `NFR-DSK-1`, `AC-DSK-8`; `script/catalogue-coverage-check.sh` |
 | Unit regression tests cover the three symptoms; the e2e Stay flow and the desk edge guards exercise the arrival-pick load timing; no guard is silently deleted | Section 6.12 (guards that move); AC-DSK-17; `app/src/views/StayView.test.ts`, `app/src/views/desk-edge-guards.test.ts`, `app/e2e/stay.spec.ts` |
 | The design-facts gate reflects the new flow and passes | Section 6.12 (design-facts surfaces); `app/e2e/design-facts.ts` Stay entry; `docs/technical/desk-ui-fact-schema.md` section 5; `docs/testing/dom-diff-allowlist.md` DD-13; `app/src/stay-restyle.test.ts:55-100` |
