@@ -74,7 +74,7 @@ disclosed initial secret is replaced before handover completes and
 the replacement is recorded as a fresh handover. `NFR-SEC-2` sets only the
 behavioural targets (lockout after 5 failures, sign-out after 15
 idle minutes); the owner/manager unlock procedure for a locked
-identity is in `docs/operations/runbook.md`, section 6.
+identity is in `docs/operations/runbook.md`, section 7.
 
 The configuration set is stored as versioned files alongside the
 release bundle, never edited inside container images. After install

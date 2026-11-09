@@ -24,10 +24,11 @@ doing the step, not by watching. Fill the evidence cell per sale.
 | 3. Restart order | Stand-in restarts the single-host box (or the small-cluster hosts in database → modules → proxy order) and signs in | |
 | 4. Desk-offline behaviour | Stand-in confirms desk work continues during an outage and names what does not work (nothing in the MVP leaves the property) | |
 | 5. Restore from backup | Stand-in performs the owner steps with support on the phone: newest verified restore point, equivalent hardware, reinstall + config + load, owner checks (arrivals list, one in-house stay, day-close totals, hotel name/rooms/prices), then resumes desk work | |
-| 6. When to call support | Stand-in names the same-day call triggers and reads back the filled escalation contacts below | |
+| 6. Booking refused: no rate price | Stand-in explains that a room type with no price is not open for booking yet, and that they ask a manager to set its rates | |
+| 7. When to call support | Stand-in names the same-day call triggers and reads back the filled escalation contacts below | |
 
 Escalation contacts (filled per sale before handover; runbook.md
-section 6 placeholders must not survive handover):
+section 7 placeholders must not survive handover):
 
 - Level 1, delivery/support contact: _[name, phone, email]_
 - Level 2, product support: _[name, phone, email, response time]_

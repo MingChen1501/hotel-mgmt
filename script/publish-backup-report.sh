@@ -8,7 +8,7 @@
 # plain words (docs/operations/runbook.md section 2):
 #   success: "Backup succeeded at HH:MM on DD Mon"
 #   failure: "Backup failed at HH:MM on DD Mon — <reason>"
-# plus a pointer to support (runbook section 6) on any failure.
+# plus a pointer to support (runbook section 7) on any failure.
 # A missing staging area or no report at all is published as a
 # failure ("no recent backup report"), because a backup without a
 # success report counts as failed (runbook section 1, NFR-BKP-2).
@@ -50,7 +50,7 @@ MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
           "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
 SUPPORT = ("Note this message word for word and call support the same day "
-           "(runbook section 6).")
+           "(runbook section 7).")
 
 
 def display_time(finished_at):

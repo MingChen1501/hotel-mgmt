@@ -141,7 +141,7 @@ Call support the same day when any of these happen:
 - A desk action fails during an internet outage.
 - A failed upgrade that the delivery team cannot fix within the
   working day (rollback is in `docs/devops/deployment.md`,
-  section 7).
+  section 6).
 - A sign-in that says an identity is locked after 5 wrong secrets
   (`NFR-SEC-2`): do not keep retrying. The owner or the manager
   unlocks the locked identity, then the locked person signs in
