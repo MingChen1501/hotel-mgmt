@@ -24,7 +24,7 @@ Both locales are captured: `*-vi.png` and `*-en.png`.
 
 - Chromium (Playwright 1.64.1) at a 1200px viewport for the live
   half and the same 1200px for the design board, paired across a 20px
-  gutter (1780px wide images: board 1200 + gutter 20 + app 1200, app
+  gutter (2420px wide images: board 1200 + gutter 20 + app 1200, app
   half cropped to the 1200×1000 capture).
 - The left half is the Stay board (`docs/design/Stay.dc.html`, board 2
   in `docs/design/manifest.json`) rendered at 1200px, unchanged from
