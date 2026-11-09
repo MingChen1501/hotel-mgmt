@@ -55,8 +55,8 @@ front-desk staff, manager, or owner account acting within its access
 | ID | Rule | Trace |
 |---|---|---|
 | BR-16 | Check-in requires a vacant, clean, inspected room of the booked type. On check-in the reservation becomes an in-house stay linked to the room, and the room state becomes occupied. | FR-FDK-1; FR-RMS-2; US-FDK-1 |
-| BR-17 | Check-out with a non-zero folio balance is refused unless an authorised approval for the open balance is recorded against the folio. Whether approval is needed and which role may approve follows the hotel's open-balance rule. | FR-BIL-7; FR-FDK-2; requirements section 3.1; US-BIL-7 |
-| BR-18 | On check-out the stay is closed, the folio is presented as the final invoice, and the room state becomes vacant and dirty. | FR-FDK-2; FR-BIL-4; US-FDK-2 |
+| BR-17 | Check-out with a non-zero folio balance is refused unless an authorised approval for the open balance is recorded against the folio. An approval counts only as the record of who approved, the role they hold, and when it was recorded, written through the open-balance approval operation; a free-form note standing in for that record is not an approval, and a record missing the identity or the recorded time, or naming a role outside the hotel's fixed three, does not count. The approval covers the open balance as it stands at check-out, and every route to the close re-reads that balance before committing. Whether approval is needed and which role may approve follows the hotel's open-balance rule. | FR-BIL-7; FR-FDK-2; requirements section 3.1; requirements section 3.2; US-BIL-7; Refs #588 |
+| BR-18 | On check-out the stay is closed, the folio is presented as the final invoice, and the room the stay held becomes vacant and dirty. The close performs the release for that room, resolved from the room the stay held rather than retyped. The release runs only for a close that committed: a refused close, an already-closed stay, or a repeated request releases nothing. If the release cannot be confirmed, the close stands and the room stays owed a release, reported as such — a closed stay is never reopened and a room is never reported vacant before the room record says so. | FR-FDK-2; FR-BIL-4; US-FDK-2; Refs #588 |
 | BR-19 | A guest can be moved to another vacant, clean, inspected room mid-stay. The stay links to the new room, the old room becomes vacant and dirty, and the move with both room numbers and its time is kept in the stay history. | FR-FDK-3; US-FDK-3 |
 | BR-20 | Actual arrival and departure times falling outside the hotel's standard times are recorded against the stay and stay visible on the arrivals and departures lists. The hotel's own check-in and check-out times are the ones shown and enforced. | FR-FDK-4; FR-CUS-2; FR-ADM-4; US-FDK-4 |
 
@@ -116,7 +116,7 @@ section 3.3). Fixed items no hotel may change in the MVP.
 | Standard times | The hotel's check-in and check-out times (`BR-20`) | — |
 | Cancellation | Hotel reason list (`BR-3`); hotel wording (`BR-4`) | Cancel only before check-in |
 | No-show | Whether any charge is kept; which reason list applies (`BR-5`) | Only past arrival date; history kept |
-| Open-balance check-out | Whether approval is needed; which role may approve (`BR-17`) | Lifecycle order confirmed to checked-in to closed |
+| Open-balance check-out | Whether approval is needed; which role may approve (`BR-17`) | Lifecycle order confirmed to checked-in to closed; an approval record carries who, the role, and when |
 | Charge items | The hotel's own items with names and prices (`BR-22`) | Only defined items postable; one folio per stay |
 | Taxes and fees | The hotel's tax and fee rules (`BR-25`) | — |
 | Stay restrictions | Minimum stay and closed-to-arrival days per date range (`BR-10`) | Violating reservations refused with the restriction named |

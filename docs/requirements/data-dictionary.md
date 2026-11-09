@@ -58,7 +58,9 @@ across payers in the MVP.
 
 Key fields: stay link; charge lines (item, amount, posting time, tax
 and fee amounts); payment lines (method, amount, time); running
-balance; authorised open-balance approval where recorded.
+balance; authorised open-balance approval where recorded, carrying
+the approver identity, the role held, the reason where one was
+given, and the recorded time.
 
 Owning FRs: FR-BIL-1, FR-BIL-2, FR-BIL-3, FR-BIL-5, FR-BIL-7.
 
