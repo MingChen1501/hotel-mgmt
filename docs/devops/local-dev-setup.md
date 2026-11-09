@@ -136,7 +136,7 @@ only to inspect or debug the lab stack step by step.
   `locked_until = now() + 15 minutes`). The lock is enforced both
   in-memory and from the `admin.users.locked_until` column, so restarts
   do not clear it. Do not keep retrying a locked identity
-  (`docs/operations/runbook.md`, section 6).
+  (`docs/operations/runbook.md`, section 7).
 - **Unlock path 1 — owner/manager in the system.** Another owner or
   manager signs in and calls `UnlockIdentity` (or clicks Unlock in
   the admin console at `/app/admin`, which lists locked identities with an Unlock button).

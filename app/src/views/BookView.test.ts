@@ -991,6 +991,72 @@ describe('book view', () => {
     expect(wrapper.find('[data-testid="book-confirm"]').exists()).toBe(false);
   });
 
+  // Refs #589 (owner decision: no booking without rates; an unpriced
+  // room type is not yet operational). The refusal names the missing
+  // price, and the rates reason marks the type as not open for booking
+  // in the stay card and in the picker instead of leaving a bare
+  // error. Any stay-input change clears the marking with the quote.
+  it('marks an unpriced room type not operational and names the rates action', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    fetchMock.mockImplementation((url: string) => {
+      if (url === '/v1/admin/SignIn') {
+        return Promise.resolve(
+          jsonResponse({ token: 'tok-1', userId: 'u-1', displayName: 'Ada Owner', role: 'owner' }),
+        );
+      }
+      if (url === '/v1/rooms/ListRoomTypes') {
+        return Promise.resolve(jsonResponse({ roomTypes: [{ id: 'standard', name: 'Standard' }] }));
+      }
+      if (url === '/v1/rates/QuotePrice') {
+        return Promise.resolve(
+          jsonResponse(
+            {
+              code: 'NOT_FOUND',
+              message: 'No rate price is set for the room type on 2026-11-02; set up its rates before selling it.',
+              details: { roomTypeId: 'standard', nightDate: '2026-11-02', reason: 'no_rate_price' },
+            },
+            404,
+          ),
+        );
+      }
+      throw new Error(`unexpected call ${url}`);
+    });
+    const wrapper = mountBook();
+    useSessionStore().signIn('tok-1', 'Ada Owner', 'owner');
+
+    await fillStay(wrapper);
+    await wrapper.find('[data-testid="book-quote"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="book-quote-error"]').text()).toContain(
+        'No rate price is set for this room type on the selected dates',
+      );
+    });
+    // No quote means no confirm: the booking stays blocked.
+    expect(wrapper.find('[data-testid="book-quote-section"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="book-confirm"]').exists()).toBe(false);
+    // The type is marked not operational in plain words, naming the
+    // rates-setup action, and the picker carries the same state.
+    const notice = wrapper.find('[data-testid="book-room-type-not-operational"]');
+    expect(notice.exists()).toBe(true);
+    expect(notice.text()).toContain('Standard');
+    expect(notice.text()).toContain('not open for booking');
+    expect(notice.text()).toContain('Ask a manager to set up its rates');
+    expect(
+      wrapper.find('[data-testid="book-room-type-id"] option[value="standard"]').text(),
+    ).toContain('not open for booking');
+
+    // A different stay window drops the stale marking with the quote.
+    await wrapper.find('[data-testid="book-arrival-date"]').setValue('11/05/2026');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="book-room-type-not-operational"]').exists()).toBe(false);
+    });
+    expect(wrapper.find('[data-testid="book-quote-error"]').exists()).toBe(false);
+    expect(
+      wrapper.find('[data-testid="book-room-type-id"] option[value="standard"]').text(),
+    ).toBe('Standard');
+  });
+
   it('maps an unpriced quote to the refused_noprice catalogue string', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
@@ -1015,10 +1081,13 @@ describe('book view', () => {
     await wrapper.find('[data-testid="book-quote"]').trigger('click');
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="book-quote-error"]').text()).toContain(
-        'No price exists for this room type',
+        'No rate price is set for this room type',
       );
     });
     expect(wrapper.find('[data-testid="book-quote-section"]').exists()).toBe(false);
+    // A NOT_FOUND without a rates reason keeps the plain refusal and
+    // never marks the type (only the pricing causes do).
+    expect(wrapper.find('[data-testid="book-room-type-not-operational"]').exists()).toBe(false);
   });
 
   it('maps a sold-out confirm to the refused_soldout catalogue string', async () => {

@@ -298,7 +298,7 @@ PYEOF
     if health_check "$BASE_URL"; then
       echo "$(msg "script.runbook.restore_live_succeeded" "restore: LIVE restore SUCCEEDED; sign in and run the runbook section 5 checks before resuming desk work.")"
     else
-      echo "$(msg "script.runbook.restore_live_health_failed" "restore: LIVE restore loaded but the health check FAILED — call support (runbook.md section 6).")" >&2
+      echo "$(msg "script.runbook.restore_live_health_failed" "restore: LIVE restore loaded but the health check FAILED — call support (runbook.md section 7).")" >&2
       exit 1
     fi
     ;;

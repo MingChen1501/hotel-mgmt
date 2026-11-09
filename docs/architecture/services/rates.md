@@ -38,11 +38,13 @@ flowchart TD
 Edge trace (every edge cites code):
 
 - A–B: Bearer presence + JSON decode, same contract as reservations (`internal/handler/handler.go:97-116`).
-- C: arrival/departure must be `YYYY-MM-DD` with departure after arrival; ranges over 730 nights are refused (`internal/store/store.go:254`).
-- D: plan resolution falls back through the plan chain; an unknown plan/type combination → `NOT_FOUND` (:241-293, :377-408).
-- E: each night in the range must carry a price for the type or the quote fails (`:268`).
-- F: named discount must exist (:273-276); percent discounts cap at 100 (:224-225).
+- C: arrival/departure must be `YYYY-MM-DD` with departure after arrival; ranges over 730 nights are refused (`internal/store/store.go:255`).
+- D: plan resolution falls back through the plan chain; an unknown named plan → `NOT_FOUND` (:384), and when no plan prices the type the reply carries `details.reason = "no_rate_plan"` (:400).
+- E: each night in the range must carry a price for the type or the quote fails with `details.reason = "no_rate_price"` and the missing `nightDate` (`:271`).
+- F: named discount must exist (:275-278); percent discounts cap at 100 (:224-225).
 - G: summed `totalMinor` returned for the desk to carry as the reservation `priceBasis`.
+
+The two `details.reason` values are the desk's machine-readable basis for the #589 not-operational marking: a room type with no rate price for the selected dates is refused and shown as not open for booking (never silently sold).
 
 ## 4. Failure/rollback flowchart
 
@@ -56,7 +58,7 @@ flowchart TD
     MS -->|yes| S422b[422 STATE_ILLEGAL min-stay]
     MS -->|no| OK[200 pass]
     Q[QuotePrice bad input] --> R400[400 VALIDATION_FAILED, nothing written]
-    U[Unknown plan or type] --> R404[404 NOT_FOUND, nothing written]
+    U[No rate price for the type] --> R404[404 NOT_FOUND, nothing written]
 ```
 
 Edge trace:
@@ -64,7 +66,7 @@ Edge trace:
 - CA: closed-to-arrival overlap → `STATE_ILLEGAL` with the restriction window in details (`internal/store/store.go:318`).
 - MS: minimum-stay violation → `STATE_ILLEGAL` with the required nights (`:320`).
 - Q: bad dates, negative `priceMinor` (:179-181), bad restriction range (:206), bad discount kind/value (:218-225) → `VALIDATION_FAILED` 400.
-- U: unknown plan (:189), unknown room type (:362), missing inventory input (:365) → `NOT_FOUND` 404 / `VALIDATION_FAILED` 400 respectively.
+- U: unknown plan (:384), unknown room type (:365), missing inventory input (:367) → `NOT_FOUND` 404 / `VALIDATION_FAILED` 400 respectively. A quote with no rate price refuses `NOT_FOUND` with `details.reason` = `no_rate_plan` (:400, no plan prices the type) or `no_rate_price` (:271, a night has no price row), so the desk marks the type not operational instead of selling an unpriced stay (Refs #589).
 
 Rollback: none — quotes and checks are pure reads; upserts are single guarded writes.
 
@@ -82,7 +84,7 @@ Envelope `{code, message, details, traceId}` (same shape as reservations) to `do
 |---|---|---|
 | `VALIDATION_FAILED` | 400 | bad dates, ranges, prices, discount kind/value (:50-56, :179-181, :206, :218-225, :254) |
 | `UNAUTHENTICATED` | 401 | missing session token (`internal/handler/handler.go:99-109`) |
-| `NOT_FOUND` | 404 | unknown plan, unpriced night, unknown room type (:189, :268, :362) |
+| `NOT_FOUND` | 404 | unknown plan, unpriced night, unknown room type (:384, :271, :365); quote refusals carry `details.reason` `no_rate_plan` / `no_rate_price` (Refs #589) |
 | `STATE_ILLEGAL` | 422 | closed-to-arrival, min-stay violation (:37, :318, :320) |
 
 ## 7. Operations

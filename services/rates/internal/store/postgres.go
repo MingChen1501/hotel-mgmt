@@ -278,7 +278,10 @@ func (p *Postgres) Quote(roomTypeID, arrival, departure string, planName, discou
 		).Scan(&priceMinor)
 		if qerr != nil {
 			if qerr == sql.ErrNoRows {
-				return nil, notFound(messages.Text("rates.notfound.priced_night", map[string]string{"nightDate": night.Format(dateLayout)}), map[string]any{"roomTypeId": roomTypeID, "nightDate": night.Format(dateLayout)})
+				// Refs #589: details.reason lets the desk mark the type
+				// not-yet-operational (no rate price for the window)
+				// instead of showing a generic failure.
+				return nil, notFound(messages.Text("rates.notfound.priced_night", map[string]string{"nightDate": night.Format(dateLayout)}), map[string]any{"roomTypeId": roomTypeID, "nightDate": night.Format(dateLayout), "reason": "no_rate_price"})
 			}
 			return nil, storeFailure()
 		}
@@ -431,7 +434,9 @@ func (p *Postgres) quotePlan(roomTypeID string, planName *string, plans []*RateP
 		return candidates[0], nil
 	}
 	if len(candidates) == 0 {
-		return nil, notFound(messages.Text("rates.notfound.priced_nights", nil), map[string]any{"roomTypeId": roomTypeID})
+		// Refs #589: no plan prices the type at all, so the type is
+		// not yet operational; details.reason carries that cause.
+		return nil, notFound(messages.Text("rates.notfound.priced_nights", nil), map[string]any{"roomTypeId": roomTypeID, "reason": "no_rate_plan"})
 	}
 	return nil, validation("ratePlanName", messages.Text("rates.validation.ambiguous_plan", nil))
 }

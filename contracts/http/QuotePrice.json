@@ -43,7 +43,7 @@
   },
   "errors": [
     { "code": "UNAUTHENTICATED", "status": 401, "when": "Missing session token." },
-    { "code": "NOT_FOUND", "status": 404, "when": "No priced night for the type and dates (unknown type or plan)." },
+    { "code": "NOT_FOUND", "status": 404, "when": "No rate price for the type and dates; details.reason names no_rate_price (a night has no price row) or no_rate_plan (no plan prices the type), so the type is not yet operational." },
     { "code": "VALIDATION_FAILED", "status": 400, "when": "Missing field, bad date order, or unknown discount." }
   ]
 }

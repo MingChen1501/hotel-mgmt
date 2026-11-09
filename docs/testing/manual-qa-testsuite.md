@@ -172,7 +172,9 @@ Trước khi chạy case của từng màn hình, xác nhận vỏ chung đạt 
   1. Đặt phòng vào ngày hạng phòng đã hết (sold out): kỳ vọng
      `desk.book.refused_soldout`.
   2. Đặt phòng vào ngày hạng phòng chưa có giá: kỳ vọng
-     `desk.book.refused_noprice`.
+     `desk.book.refused_noprice` nêu rõ thiếu giá, hạng phòng được đánh dấu
+     chưa mở bán (`desk.book.room_type_not_operational`) kèm hướng dẫn nhờ
+     quản lý thiết lập giá, và không có nút xác nhận (Refs #589).
   3. Đặt phòng vi phạm quy tắc lưu trú (ví dụ minimum-stay): kỳ vọng
      `desk.book.refused_restriction` nêu tên quy tắc bị vi phạm.
 - **Kết quả mong đợi:** cả 3 trường hợp đều bị từ chối bằng lời rõ ràng nêu
