@@ -127,9 +127,10 @@ presentation requirement (FR-DSK-1..7, NFR-DSK-1..3, owned by
 wizard-scoped FR-DSK-8..10 in section 11 on the #438 stack in
 PR #442) to its
 guard. Full guard detail — parity baselines plus the new guards
-D1–D15 (D13 shipped with the #565 presentation change, D14 with
-the #568 open-folio context change, and D15 ships with the #581
-Book date-picker change; D1–D12 land with the screen PRs) — lives in
+D1–D16 (D13 shipped with the #565 presentation change, D14 with
+the #568 open-folio context change, D15 ships with the #581
+Book date-picker change, and D16 ships with the #582 list-backed
+stay picker; D1–D12 land with the screen PRs) — lives in
 `docs/testing/desk-ui-rollout-test-traceability.md`
 (desk-ui-rollout-test-traceability.md). Like the shell slice
 above, these 11 rows do not alter the 57-row MVP coverage count:
@@ -138,7 +139,9 @@ may cite this rollout as its guard. A rollout row is complete
 only when its D-guard exists and passes; until then the row
 names the screen PR that must create it. `AC-DSK-15` (Refs #581)
 is a post-rollout input-mechanism addendum mapped in section 7
-with its `D15` guard; it adds no row here.
+with its `D15` guard, and `AC-DSK-16` (Refs #582) is the same
+kind of addendum mapped in section 8 with its `D16` guard; neither
+adds a row here.
 
 | Rollout item | Required guard type | Guard |
 |---|---|---|
@@ -283,6 +286,42 @@ citation is on disk; the unit guards run in `app-build` and the
 browser typed desk-form path runs in `browser-e2e`, with the
 app-locale evidence pair in `docs/testing/evidence/563/`. The MVP
 Coverage line below stands unchanged at 57/57.
+
+## 8. Desk list-backed stay-picker slice (Refs #582)
+
+Behaviour slice for the open-folio steps: the Folio and Print
+screens lead with a select of the business date's in-house stays
+from `ListArrivalsDepartures` (room numbers via `ListRoomsByState`),
+while the stay-ID text field stays visible as the manual fallback.
+Each row traces the #582 issue-body acceptance and `AC-DSK-16`
+(owned by `product-owner` in
+[acceptance-criteria.md section 11](../product/acceptance-criteria.md);
+scope in `docs/product/desk-ui-design-rollout.md` section 6.11, tier
+T2) and the behaviour-scoped requirements `FR-LSP-1`..`FR-LSP-3`
+(owned by `business-analyst` in
+[mvp-requirements.md section 17](../requirements/mvp-requirements.md)).
+The guards below exist on disk in the #582 change; every row is
+covered. Like the slices above, these rows add no MVP capability;
+the 57-row MVP coverage count stands unchanged and no MVP row may
+cite this slice as its guard. `AC-DSK-5` keeps its posting and
+balance conditions and points here for the open-step input
+mechanism.
+
+| Item | Required guard type | Guard |
+|---|---|---|
+| AC-DSK-16 — Folio and Print open steps lead with the business date's in-house stay select, keep manual stay-ID entry, and send the same identifier (Refs #582; traces to US-BIL-1, US-FDK-5; `FR-LSP-1`, `FR-LSP-2`, `FR-LSP-3`; AC-DSK-5 keeps its posting and balance conditions and points here) | Behaviour check on both screens: the business date's in-house stays render as select options labelled guest · room, picking one opens the folio with the unchanged `stayId`, the typed field stays visible and equivalent, and an empty or failed list read shows a plain notice without blocking manual entry | Covered — `D16` (section 3 of `desk-ui-rollout-test-traceability.md`): picked ID plus label `app/src/views/FolioView.test.ts:997`, `app/src/views/PrintView.test.ts:844`; empty-list manual fallback `app/src/views/FolioView.test.ts:1018`; failed-read manual fallback `app/src/views/FolioView.test.ts:1037` plus the Print failed-read case; browser select path `app/e2e/folio.spec.ts:88`–`:89`, `app/e2e/print.spec.ts:92`–`:93`; shared helper `app/src/stay-options.ts`; gate `app/e2e/design-facts.ts:383`; evidence `docs/testing/evidence/563/README.md` |
+| FR-LSP-1 — The open-folio step offers the business date's in-house stays as a select | Business date sent, in-house rows listed, guest and room labels resolved, picked ID sent unchanged | Covered — `app/src/stay-options.ts` (reads and label composition); `app/src/views/FolioView.test.ts:997`; `app/src/views/PrintView.test.ts:844`; browser `app/e2e/folio.spec.ts:88`–`:89`, `app/e2e/print.spec.ts:92`–`:93` |
+| FR-LSP-2 — Manual stay-ID entry stays reachable and equivalent | Empty-list and failed-read paths keep the manual field working, show the plain notice, and send the typed ID | Covered — `app/src/views/FolioView.test.ts:1018`, `:1037`; `app/src/views/PrintView.test.ts` (#582 failed-read case); catalogue `desk.stay.stay_list_empty` / `desk.stay.stay_list_failed` |
+| FR-LSP-3 — Only list-backed fields convert; the rest stay manual | Onboarding room creation and the Print booking-reference field stay manual; room numbers that refer to an existing room use ListRoomsByState data | Covered — the in-house option labels read occupied rooms through `ListRoomsByState`; `app/src/views/OnboardingView.vue` keeps `onboarding-room-number-*` as `InputText`; `app/e2e/print.spec.ts` keeps the `print-ref` fill path; the #582 issue comment records the audit result |
+| Design-facts gate | The Folio decided inputs lead with the select and keep the text stay field; the spec stays green | Covered — `app/e2e/design-facts.ts:383`–`:384`; `app/e2e/design-facts.spec.ts` green |
+| Catalogue parity | Four new visible keys in both catalogues with placeholder parity and byte-identical runtime mirrors | Covered — `messages/en.json`, `messages/vi.json` (`desk.stay.pick_stay_label`, `desk.stay.pick_stay_prompt`, `desk.stay.stay_list_empty`, `desk.stay.stay_list_failed`), the eight `services/*` mirrors, and `script/catalogue-coverage-check.sh` |
+| #563 evidence refresh (same-change rule) | The Folio VI + EN side-by-side pairs show the list-backed open step in the same change | Covered — `docs/testing/evidence/563/README.md` (capture record and the Folio VI/EN rows) |
+
+Slice coverage (Refs #582): 7 rows mapped; 7 covered. Every filled
+guard citation is on disk; the unit guards run in `app-build` and
+both browser flows run in `browser-e2e`, with the VI + EN evidence
+pairs in `docs/testing/evidence/563/`. The MVP Coverage line below
+stands unchanged at 57/57.
 
 Coverage: 43 FRs mapped, 14 NFRs mapped, 57 rows total, 57 guards
 filled (PR #112 slice: FR-RES-1, FR-RMS-1..4, FR-RTE-1/2/4/5, FR-ADM-1/2, FR-CUS-1, NFR-CON-1/2; PR #149 slice: FR-FDK-1, FR-FDK-5, FR-BIL-1/2/3/6, FR-ADM-5, NFR-BKP-1/2, NFR-AUD-1, NFR-TZ-1, plus FR-RES-1 persistence; PR #150 slice: FR-FDK-2, FR-FDK-3, FR-FDK-4, FR-BIL-7, plus the NFR-CON-2 stay-side checkout guard; PR #151 slice: FR-BIL-4, FR-CUS-3; PR #156 slice: FR-RPT-1..3; PR #157 slice: FR-GST-1..3; PR #158 slice: NFR-DEP-1, FR-ADM-4 config level, plus the FR-ADM-1 deployment extension; PR #159 slice: FR-RES-2/3/5/6 plus the NFR-CON-1 modify-path extension; PR #160 slice: ReleaseBlock plus rooms-side move coordination (FR-RMS-3, FR-FDK-3); PR #161 slice: full rates handling (FR-RTE-3 filled, FR-RTE-4/5 extended — remaining TBD cells fill in later slices); count corrected to the live total 48 (later slices filled cells without updating this line); PR #153 slice: NFR-RET-1, NFR-AVL-1; PR #182 slice: FR-RES-4, FR-ADM-3, FR-CUS-2, NFR-PERF-1/2 filled (5 guards — count corrected to the live total 53); FR-GST-4, FR-BIL-5, FR-RPT-4 point at follow-ups #189, #190, #191 and fill with those issues; NFR-I18N-1 filled by the #192 slice (count corrected to the live total 54); #189/#190/#191/#192/#201 slices filled FR-GST-4, FR-BIL-5, FR-RPT-4, NFR-I18N-1 (plus the #201 extension) — count corrected to the live total 57 (Closes #214)).

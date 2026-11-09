@@ -391,14 +391,16 @@ Product-owner rollout spec: `docs/product/desk-ui-design-rollout.md`
 conflicting parts of the #412 journey record (D-12 in
 `docs/project/decision-log.md`); each conflict found during
 implementation is recorded on the affected sub-issue with the
-owner decision. These 15 conditions cover the six screens
+owner decision. These 16 conditions cover the six screens
 (Main #420, Stay #422, Onboarding #425 plus steps 2–4 in #438,
 Rooms #424, Book #421, Folio #423) plus the shared shell,
 the catalogue rule, the business-date display decision
 (#503, AC-DSK-12), the quote/folio money and date display
 decision (#565, AC-DSK-13), the open-folio guest and room
-context in the charges-card title (#568, AC-DSK-14), and the
-app-localized Book date pickers (#581, AC-DSK-15). They
+context in the charges-card title (#568, AC-DSK-14), the
+app-localized Book date pickers (#581, AC-DSK-15), and the
+list-backed stay picker on the Folio and Print open steps
+(#582, AC-DSK-16). They
 add no MVP capability: the four restyles change presentation
 only, the Rooms map visualises existing room state
 (`US-RMS-1`), and the wizard operationalises first-run setup
@@ -556,6 +558,26 @@ below check behaviour only.
   FR-BDP-1, FR-BDP-2, FR-BDP-3 (Refs #581; new input mechanism,
   no MVP capability added, no FR wording changed).
 
+- AC-DSK-16 — Given the desk has a business date and an in-house
+  stay, when staff open a folio on the Folio or Print screen, then
+  the open step leads with a select of that business date's
+  in-house stays from `ListArrivalsDepartures`, each option
+  labelled with the guest and the room number resolved through
+  `ListRoomsByState`, and picking one opens that folio without
+  typing an identifier; the stay-ID text field stays visible and
+  working beside the select as the manual fallback for a stay
+  outside the list, a failed or empty list read shows a plain
+  notice and leaves manual entry working, and the identifier sent
+  to `GetFolioBalance`, `PostCharge`, and `RecordPayment` is the
+  same value typed entry sent. Room-number fields that refer to an
+  existing room use `ListRoomsByState`; the Onboarding room
+  creation field keeps manual entry because no room list exists
+  during first-run setup, and the booking-reference field on Print
+  keeps manual entry because no list API exists for references.
+  Traces to: US-BIL-1, US-FDK-5; FR-LSP-1, FR-LSP-2, FR-LSP-3
+  (Refs #582; input mechanism and list reads only, no MVP
+  capability added, no FR wording changed).
+
 Rollout done when: the six sub-issues each close with a merged
 implementation PR (the wizard slice spans #425 step 1 plus the
 #438 steps 2–4 PR), every screen checks against its design file
@@ -569,7 +591,10 @@ AC-DSK-13 (values and print unchanged), and the Folio charges
 card names the open folio's guest and room with the raw IDs
 still behind the reference disclosure per AC-DSK-14, and the
 Book arrival/departure fields are app-localized pickers that keep
-the ISO payload per AC-DSK-15.
+the ISO payload per AC-DSK-15, and the Folio and Print open steps
+lead with the business date's in-house stay select while keeping
+manual stay-ID entry and sending the same identifier per
+AC-DSK-16.
 
 ## 12. Desk UI pixel-faithful restyle (Refs #517)
 

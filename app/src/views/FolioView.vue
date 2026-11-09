@@ -12,26 +12,58 @@
     <noscript><p>{{ t('desk.entry.noscript_folio', {}, 'This page needs JavaScript to open a folio.') }}</p></noscript>
 
     <section data-testid="folio-main">
-      <!-- Open step (Refs #545, F3): pre-board flow state with no
-        board counterpart — the board draws one illustrative guest
-        folio, while the app must first resolve which stay to show.
-        Stay-ID entry plus the open action stay exactly as today;
-        hooks and copy unchanged. -->
+      <!-- Open step (Refs #545, F3; list-backed since #582):
+        pre-board flow state with no board counterpart — the board
+        draws one illustrative guest folio, while the app must first
+        resolve which stay to show. The primary control is now a
+        select of the business date's in-house stays
+        (`ListArrivalsDepartures`, labelled with guest and room); the
+        stay-ID text input stays visible as the manual fallback for a
+        stay outside that list (issue #582 acceptance 3). A failed or
+        empty list read shows a plain notice and leaves manual entry
+        working (acceptance 7). -->
       <Card data-testid="folio-open-card">
         <template #title>
           <h3>{{ t('desk.folio.open_heading', {}, 'Open a stay folio') }}</h3>
         </template>
         <template #content>
           <div>
+            <label for="folio-stay-select">
+              {{ t('desk.stay.pick_stay_label', {}, 'In-house stay:') }}
+              <select
+                id="folio-stay-select"
+                v-model="pickedStayId"
+                data-testid="folio-stay-select"
+                @change="onPickStay"
+              >
+                <option value="">
+                  {{ t('desk.stay.pick_stay_prompt', {}, 'Choose an in-house stay…') }}
+                </option>
+                <option
+                  v-for="option in stayOptions"
+                  :key="option.stayId"
+                  :value="option.stayId"
+                >
+                  {{ option.label }}
+                </option>
+              </select>
+            </label>
+            <p
+              v-if="stayListNotice"
+              role="status"
+              data-testid="folio-stay-list-notice"
+            >
+              {{ stayListNotice }}
+            </p>
             <label for="folio-stay-id">
               {{ t('desk.folio.stay_id', {}, 'Stay ID: ') }}
               <InputText
                 id="folio-stay-id"
-                v-model="stayId"
+                v-model="typedStayId"
                 name="folio-stay-id"
                 autocomplete="off"
                 data-testid="folio-stay-id"
-                @update:model-value="onStayIdInput"
+                @update:model-value="onManualStayInput"
               />
             </label>
             <Button
@@ -305,7 +337,7 @@
 </template>
 
 <script lang="ts">
-import { computed, defineComponent, ref } from 'vue';
+import { computed, defineComponent, onMounted, ref } from 'vue';
 import Button from 'primevue/button';
 import Card from 'primevue/card';
 import InputText from 'primevue/inputtext';
@@ -314,6 +346,7 @@ import { apiFetch } from '../api/client';
 import type { ApiError } from '../api/client';
 import { formatVnd, t } from '../i18n';
 import { useSessionStore } from '../stores/session';
+import { loadInHouseStayOptions, type InHouseStayOption } from '../stay-options';
 import ReferenceDetails, { type ReferenceItem } from '../components/ReferenceDetails.vue';
 
 // Folio screen as Vue SFCs (Refs #296, ADR-0003).
@@ -641,7 +674,32 @@ export default defineComponent({
   components: { Button, Card, InputText, Message, ReferenceDetails },
   setup() {
     const session = useSessionStore();
-    const stayId = ref(prefilledStayId());
+    // Two visible controls resolve one stay (Refs #582): the
+    // list-backed select is the primary path, the typed field the
+    // manual fallback. Picking either clears the other so the open
+    // action always sends exactly one identifier.
+    const pickedStayId = ref('');
+    const typedStayId = ref(prefilledStayId());
+    const stayId = computed<string>(() => pickedStayId.value || typedStayId.value);
+    const stayOptions = ref<InHouseStayOption[]>([]);
+    const stayListState = ref<'idle' | 'loading' | 'loaded' | 'failed'>('idle');
+    const stayListNotice = computed<string>(() => {
+      if (stayListState.value === 'failed') {
+        return t(
+          'desk.stay.stay_list_failed',
+          {},
+          "Could not load today's stays. Enter a stay ID instead.",
+        );
+      }
+      if (stayListState.value === 'loaded' && stayOptions.value.length === 0) {
+        return t(
+          'desk.stay.stay_list_empty',
+          {},
+          'No in-house stays for today. Enter a stay ID instead.',
+        );
+      }
+      return '';
+    });
     const folio = ref<Folio | null>(null);
     // Transient open-form notice (e.g. missing stay id). The
     // balance line below derives from the folio, so switching
@@ -827,6 +885,47 @@ export default defineComponent({
       openError.value = '';
     }
 
+    // Picking a listed stay and typing one are mutually exclusive
+    // (Refs #582): each path clears the other control so the payload
+    // is never ambiguous.
+    function onPickStay(): void {
+      typedStayId.value = '';
+      onStayIdInput();
+    }
+
+    function onManualStayInput(value: string | undefined): void {
+      typedStayId.value = value ?? '';
+      pickedStayId.value = '';
+      onStayIdInput();
+    }
+
+    // The in-house list read is best-effort (Refs #582): a failure or
+    // an empty business date keeps the manual stay-ID field working
+    // and shows the plain notice above it.
+    async function loadStayOptions(): Promise<void> {
+      stayListState.value = 'loading';
+      try {
+        const result = await loadInHouseStayOptions();
+        stayOptions.value = result.options;
+        stayListState.value = result.failed ? 'failed' : 'loaded';
+      } catch (err) {
+        if (isSignedOut(err)) {
+          expireToGate();
+          return;
+        }
+        stayOptions.value = [];
+        stayListState.value = 'failed';
+      }
+    }
+
+    onMounted(() => {
+      // The shell gates this screen on sign-in, so a signed-in visit
+      // loads the list straight away (same pattern as the Stay panel).
+      if (session.isSignedIn) {
+        void loadStayOptions();
+      }
+    });
+
     async function onOpen(): Promise<void> {
       if (opening.value) {
         return;
@@ -997,6 +1096,10 @@ export default defineComponent({
     return {
       t,
       stayId,
+      pickedStayId,
+      typedStayId,
+      stayOptions,
+      stayListNotice,
       chargesHeading,
       folioBalance,
       folioStatus,
@@ -1016,6 +1119,8 @@ export default defineComponent({
       paymentStatus,
       paymentError,
       paying,
+      onPickStay,
+      onManualStayInput,
       onStayIdInput,
       onOpen,
       onCharge,

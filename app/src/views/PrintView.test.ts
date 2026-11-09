@@ -20,6 +20,7 @@ import PrintView from './PrintView.vue';
 import printViewSource from './PrintView.vue?raw';
 import { useSessionStore } from '../stores/session';
 import { resetConnectivityForTests } from '../api/client';
+import { localBusinessDate } from '../stay-options';
 import router from '../router';
 
 vi.mock('../router', () => ({
@@ -791,5 +792,92 @@ describe('print view source', () => {
     expect(printViewSource).not.toContain('innerHTML');
     expect(printViewSource).not.toContain('v-html');
     expect(printViewSource).not.toContain('esc(');
+  });
+});
+
+// List-backed open step (Refs #582): Print offers the same in-house
+// stay select as Folio, keeps the booking-reference field manual (no
+// list API exists), and leaves the stay-ID field working when the
+// list read fails.
+describe('print stay picker (Refs #582)', () => {
+  function mountSignedIn(): ReturnType<typeof mountPrint> {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    useSessionStore().signIn('tok-1', 'Ada Owner', 'owner');
+    return mount(PrintView, { global: { plugins: [pinia] } });
+  }
+
+  function stubPicker(
+    fetchMock: ReturnType<typeof vi.fn>,
+    options: { inHouse?: unknown[]; failList?: boolean } = {},
+  ): { openedWith: () => string } {
+    let openedStay = '';
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      const body = parseBody(init);
+      if (url === '/v1/stay/ListArrivalsDepartures') {
+        if (options.failList) {
+          return Promise.reject(new Error('list read failed'));
+        }
+        expect(body.businessDate).toBe(localBusinessDate());
+        return Promise.resolve(jsonResponse({ arrivals: [], inHouse: options.inHouse ?? [], departures: [] }));
+      }
+      if (url === '/v1/rooms/ListRoomsByState') {
+        return Promise.resolve(jsonResponse({ rooms: [{ roomId: 'r-1', number: '201' }] }));
+      }
+      if (url === '/v1/guests/GetGuest') {
+        return Promise.resolve(jsonResponse({ fullName: 'Lê Minh' }));
+      }
+      if (url === '/v1/stay/GetStay') {
+        return Promise.resolve(jsonResponse({ stayId: body.stayId, guestId: 'g-1', roomId: 'r-1' }));
+      }
+      if (url === '/v1/billing/GetFolioBalance') {
+        openedStay = String(body.stayId);
+        return Promise.resolve(
+          jsonResponse({ folioId: 'f-1', stayId: body.stayId, balanceMinor: 0, charges: [], payments: [] }),
+        );
+      }
+      throw new Error(`unexpected call ${url}`);
+    });
+    return { openedWith: () => openedStay };
+  }
+
+  it('lists in-house stays by guest and room and opens the picked ID', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const picker = stubPicker(fetchMock, {
+      inHouse: [{ stayId: 's-pick', guestId: 'g-1', roomId: 'r-1' }],
+    });
+    const wrapper = mountSignedIn();
+
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="print-stay-select"]').text()).toContain('Lê Minh · Room 201');
+    });
+    await wrapper.find('[data-testid="print-stay-select"]').setValue('s-pick');
+    await wrapper.find('[data-testid="print-open"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="print-folio-status"]').text()).toContain('Folio balance:');
+    });
+    expect(picker.openedWith()).toBe('s-pick');
+  });
+
+  it('keeps the manual stay entry and booking reference when the list read fails', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const picker = stubPicker(fetchMock, { failList: true });
+    const wrapper = mountSignedIn();
+
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="print-stay-list-notice"]').text()).toContain(
+        "Could not load today's stays",
+      );
+    });
+    expect(wrapper.find('[data-testid="print-stay-id"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="print-ref"]').exists()).toBe(true);
+    await wrapper.find('[data-testid="print-stay-id"]').setValue('s-typed');
+    await wrapper.find('[data-testid="print-open"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="print-folio-status"]').text()).toContain('Folio balance:');
+    });
+    expect(picker.openedWith()).toBe('s-typed');
   });
 });

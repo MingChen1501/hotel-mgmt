@@ -884,6 +884,115 @@ follow-up above); FR/NFR wording (`business-analyst`); guard mapping
 and traceability (`qa-lead`); and any API, contract, schema, backend,
 validation, print, or refusal-semantics change.
 
+### 6.11 List-backed stay picker on the Folio and Print open steps (Refs #582)
+
+Status: product-owner scope decision for the desk open-folio steps
+(#582; owner request 2026-11-09: the desk offers a list wherever a
+list API exists and keeps manual entry only as the fallback). Tier
+T2 (reader-visible UI change on the Folio and Print screens with two
+existing list reads; identifiers, payloads, validation, print, and
+refusal semantics unchanged). The binding done-condition is
+`AC-DSK-16` in `docs/product/acceptance-criteria.md`
+[section 11](acceptance-criteria.md). FR/NFR wording is owned by
+`business-analyst` (`docs/requirements/mvp-requirements.md`
+[section 17](../requirements/mvp-requirements.md):
+`FR-LSP-1`..`FR-LSP-3`), the per-flow diagram by `architect`
+(refreshed with the code), guard mapping by `qa-lead`, and the gate
+verdict by `spec-reviewer`. Recorded as D-19 in
+`docs/project/decision-log.md`.
+
+Decision (three parts):
+
+1. **The open step leads with a list-backed select.** Folio
+   (`folio-stay-select`) and Print (`print-stay-select`) offer the
+   business date's in-house stays from the existing
+   `ListArrivalsDepartures` read (`localBusinessDate()`), labelled
+   `guest · room` so staff recognise the stay from the human facts
+   the board already shows. Room numbers resolve through the
+   existing `ListRoomsByState` read (the in-house room state), never
+   a raw room UUID. No new endpoint, contract, schema, backend, or
+   stored value.
+2. **Manual stay-ID entry stays visible as the fallback.** The
+   in-house list covers only the business date's
+   arrivals/in-house/departures, so both screens keep their stay-ID
+   text field beside the select. The two controls are mutually
+   exclusive: picking or typing clears the other, and the open
+   action sends the same identifier the typed path always sent.
+   A failed or empty list read shows a plain catalogue notice
+   (`desk.stay.stay_list_failed` / `desk.stay.stay_list_empty`) and
+   leaves the manual field working, so the screen never breaks.
+3. **Only list-backed fields convert; the rest stay manual.** Room
+   numbers that refer to an existing room use the room selects/reads
+   already in place (the Stay panel; the new in-house option
+   labels). The Onboarding room-creation field keeps manual entry
+   because no room list can exist during first-run setup, and the
+   Print booking-reference field keeps manual entry because no list
+   API exists for booking references. The audit found no other desk
+   ref/ID/code text input with a list API; issue #582 records
+   "none left" for the audited screens.
+
+Affected surfaces and keys:
+
+- Folio open step `app/src/views/FolioView.vue` (`folio-stay-select`,
+  `folio-stay-id`, `folio-stay-list-notice`) and Print open step
+  `app/src/views/PrintView.vue` (`print-stay-select`,
+  `print-stay-id`, `print-stay-list-notice`).
+- Shared read helper `app/src/stay-options.ts`: the business date,
+  the `ListArrivalsDepartures` in-house rows, per-row guest names
+  through `GetGuest`, and room numbers through `ListRoomsByState`.
+- Four new visible catalogue keys: `desk.stay.pick_stay_label`,
+  `desk.stay.pick_stay_prompt`, `desk.stay.stay_list_empty`, and
+  `desk.stay.stay_list_failed` — shipped in
+  `messages/en.json` + `messages/vi.json` plus the eight
+  byte-identical runtime mirrors; the manual field labels reuse
+  `desk.folio.stay_id` and `desk.print.stay_id`; the option label
+  reuses `desk.today.name_detail`, `desk.today.room_short`,
+  `desk.today.not_assigned`, and `desk.today.room_unknown` (no new
+  room/guest key).
+- The Folio VI + EN side-by-side pairs in
+  `docs/testing/evidence/563/README.md`, refreshed in the same
+  change (the open step is flow state, so the board half is
+  unchanged); the design-facts decided inputs for Folio now lead
+  with the select and keep the text field
+  (`app/e2e/design-facts.ts`, Folio entry).
+
+UI-contract delta (T2):
+
+- Layout and navigation scope: unchanged — the open card keeps its
+  position above the two board cards; the picker occupies the
+  existing field width and the manual field stays directly below it.
+  No new route, tab, navigation scope, or screen.
+- Component mapping: the existing flow-state input pattern now maps
+  to a native `select` of in-house stays (the same control the Stay
+  panel uses for its stay picks) plus the existing `InputText` for
+  the manual fallback; no other card, field, or grouping changes.
+- Design tokens: unchanged — the select and text field keep the
+  restyle form tokens
+  (`docs/product/desk-ui-pixel-faithful-restyle.md` section 3); no
+  new colour, radius, spacing, or target size.
+- States in plain words: loading — the select shows its prompt and
+  the existing open action stays available; empty — the select keeps
+  the prompt, the plain `desk.stay.stay_list_empty` notice shows, and
+  manual entry stays; failed — the plain
+  `desk.stay.stay_list_failed` notice shows and manual entry stays,
+  with no technical code; picked or typed — exactly one identifier is
+  held (the other control clears); refusal — the existing
+  `desk.folio.refused_unknown_folio` / `desk.print.refused_unknown_folio`
+  wording stands, unchanged. No new error code or technical wording.
+- Print rules: unchanged — the Print screen's documents still render
+  from their own sections (`FR-BIL-4`, `FR-DSP-4`); the picker never
+  reaches a printed document.
+- Catalogue: every new key ships in both locales with placeholder
+  parity and all mirrors byte-identical, so the VI-primary rule
+  (section 7) and `AC-DSK-8` hold.
+
+Out: implementation (the downstream `dev` issue/PR and the #563
+evidence refresh); the booking-reference field (no list API);
+Onboarding room creation (no room list during first-run setup);
+Admin data-entry fields; any API, contract, schema, backend,
+validation, print, or refusal-semantics change; and screens outside
+the desk shell.
+
 ## 7. Catalogue and locale rule
 
 - Single source of truth stays `messages/` (`messages/README.md`):
@@ -1158,6 +1267,19 @@ Section 4 stays the rollout-wide contract; for steps 2–4:
 | Every new visible label/placeholder exists in both catalogues with parity | Section 6.10 (affected keys); AC-DSK-8; `script/catalogue-coverage-check.sh` |
 | The design-facts gate is green against the updated decided inputs and the PR carries VI + EN side-by-side screenshots with the refreshed Book image | Section 6.10 decision 2 (and the affected evidence line); `app/e2e/design-facts.ts:347-350`; `docs/testing/evidence/563/README.md` |
 | The existing Book suites stay green | Section 6.10 decision 3 (payload and quote path preserved); `app/src/views/BookView.test.ts`, `app/e2e/book.spec.ts` |
+
+## 16. Acceptance mapping (issue #582)
+
+| Criterion | Evidence in this spec |
+|---|---|
+| The Folio open step offers a select of the current business date's in-house stays; choosing one opens that folio without typing an ID | Section 6.11 decision 1; AC-DSK-16; `app/src/stay-options.ts`; `app/src/views/FolioView.vue` (`folio-stay-select`) |
+| The Print open step offers the same select, and the booking-reference field keeps manual entry | Section 6.11 decision 1 and 3; AC-DSK-16; `app/src/views/PrintView.vue` (`print-stay-select`, `print-ref` unchanged) |
+| Manual stay-ID entry stays reachable when a stay is not in the list | Section 6.11 decision 2; AC-DSK-16; both stay-ID fields stay visible beside the select |
+| Any room-number field that refers to an existing room is a select fed by `ListRoomsByState`; Onboarding room creation keeps manual entry | Section 6.11 decision 3; AC-DSK-16; the in-house option labels resolve room numbers through `ListRoomsByState`; issue #582 records the audit result |
+| Selecting an option and submitting sends the same identifier payload as typed entry did | Section 6.11 decision 2; AC-DSK-16; the mutual-exclusion rule holds one identifier for the existing calls |
+| Every new visible label exists in both catalogues with key and placeholder parity | Section 6.11 (affected keys); AC-DSK-8; `script/catalogue-coverage-check.sh` |
+| An empty or failed list read degrades to visible manual entry instead of breaking the screen | Section 6.11 decision 2 (states in plain words); AC-DSK-16; `desk.stay.stay_list_empty` / `desk.stay.stay_list_failed` |
+| `app/e2e/design-facts.spec.ts` is green against the updated decided input kinds, and the PR carries VI + EN side-by-side screenshots with the refreshed Folio image | Section 6.11 (affected surfaces); `app/e2e/design-facts.ts` Folio entry; `docs/testing/evidence/563/README.md` (VI + EN pairs) |
 
 <!-- ao-role: product-owner -->
 Role: product-owner · AO session hotel-mgmt-704
