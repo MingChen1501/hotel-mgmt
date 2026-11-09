@@ -9,7 +9,10 @@ do not drift.
 
 ## Capture method
 
-- Chromium, `vi` locale, 1200px content width. Each side-by-side pairs the
+- Chromium at 1200px content width; each capture runs in the app locale
+  the image shows, and the browser UI locale is set per bullet below
+  (the #581 Book pair deliberately runs the browser in the opposite UI
+  locale). Each side-by-side pairs the
   design board at 1200px on the left with the live app at 1200px on the
   right across a 20px gutter, so every side-by-side is 2420px wide.
 - The live half comes from an isolated compose lab (isolated project and
@@ -72,7 +75,11 @@ do not drift.
   month/weekday wording also follows the app locale. The submitted
   payload stays the canonical ISO date; the capture data mirrors the
   pre-#565 image (same guest, dates, and amounts) so only the control
-  shape differs.
+  shape differs. Known boundary recorded for the #581 follow-up: the
+  overlay's screen-reader strings (`Choose date`, `Previous month`,
+  `Next month`, …) are still PrimeVue's English defaults, because
+  mapping them needs catalogue keys of their own (a spec-owned slice);
+  every visible string on the field is catalogue-owned.
 - `side-by-side-Stay-vi.png` was refreshed for the `G-ST-1` fix (#567) from
   the built app bundle at 1200px in `vi` (Chromium, viewport 1200×1016) and
   the design board at the same width. The reviewer field is a panel control,
@@ -146,5 +153,5 @@ relaxation of the "audit issues carry no product code" rule in a
 [comment on #563](https://github.com/MingChen1501/hotel-mgmt/issues/563#issuecomment-6723063195);
 the audit comment's change log carries the matching dated row.
 
-<!-- ao-role: dev -->
-Role: dev · AO session hotel-mgmt-841
+<!-- ao-role: dev-takeover -->
+Role: dev-takeover · AO session hotel-mgmt-843

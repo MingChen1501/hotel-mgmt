@@ -186,9 +186,13 @@ export function formatDeskDate(canonical: string): string {
   return `${day}/${month}/${date.getFullYear()}`;
 }
 
-// Desk date-field form (Refs #566, G-BK-1): the Book arrival and
-// departure fields show the date the desk actually types — VI
-// `dd/mm/yyyy`, EN `mm/dd/yyyy` (the #503 EN business-date order) —
+// Typed desk date form (Refs #566, G-BK-1) — now the pre-#581 rollback
+// path. #581 moved the Book arrival/departure fields to the PrimeVue
+// DatePicker localized through `app/src/i18n/primevueLocale.ts`, so no
+// `app/src` view renders or parses these two fields through this pair
+// any more: only the rollback the issue describes needs it, and
+// `app/src/i18n/index.test.ts` still pins the form. The desk types —
+// VI `dd/mm/yyyy`, EN `mm/dd/yyyy` (the #503 EN business-date order) —
 // independent of the browser UI language, which is why the native
 // `<input type="date">` control is gone. The canonical ISO
 // `YYYY-MM-DD` string stays the form's payload value: `parseDateField`

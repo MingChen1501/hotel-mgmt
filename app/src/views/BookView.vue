@@ -167,7 +167,7 @@
                   input-id="book-arrival-date"
                   name="arrival-date"
                   :date-format="deskDateFormat"
-                  :placeholder="t('desk.book.date_placeholder', {}, 'dd/mm/yyyy')"
+                  :placeholder="t('desk.book.date_placeholder', {}, datePlaceholder)"
                   :manual-input="true"
                   :show-on-focus="false"
                   show-icon
@@ -182,7 +182,7 @@
                   input-id="book-departure-date"
                   name="departure-date"
                   :date-format="deskDateFormat"
-                  :placeholder="t('desk.book.date_placeholder', {}, 'dd/mm/yyyy')"
+                  :placeholder="t('desk.book.date_placeholder', {}, datePlaceholder)"
                   :manual-input="true"
                   :show-on-focus="false"
                   show-icon
@@ -344,7 +344,7 @@ import Message from 'primevue/message';
 import { apiFetch } from '../api/client';
 import type { ApiError } from '../api/client';
 import { canonicalFromDate, catalogueLocale, dateFromCanonical, formatDeskDate, formatVnd, localeTag, t } from '../i18n';
-import { primeVueDateFormat, syncPrimeVueLocale } from '../i18n/primevueLocale';
+import { primeVueDateFormat } from '../i18n/primevueLocale';
 import { useSessionStore } from '../stores/session';
 import ReferenceDetails, { type ReferenceItem } from '../components/ReferenceDetails.vue';
 
@@ -500,10 +500,6 @@ export default defineComponent({
   components: { Button, Card, DatePicker, InputText, Message, ReferenceDetails },
   setup() {
     const session = useSessionStore();
-    // The prime picker reads its calendar wording from the PrimeVue
-    // config, so mirror the app locale into it while this view is
-    // mounted (Refs #581).
-    syncPrimeVueLocale();
     const guestName = ref('');
     const guestStatus = ref('');
     // Guest snapshot for the booking confirm: the reservation
@@ -523,6 +519,11 @@ export default defineComponent({
     // typed change did, while a locale switch only re-renders the same
     // day in the newly active form.
     const deskDateFormat = computed<string>(() => primeVueDateFormat(localeTag.value));
+    // Catalogue fallback mirrors the active desk form, so a missing key
+    // can never print a shape that contradicts the picker (Refs #581).
+    const datePlaceholder = computed<string>(() =>
+      catalogueLocale() === 'en' ? 'mm/dd/yyyy' : 'dd/mm/yyyy',
+    );
     const arrivalPicker = computed<Date | null>({
       get: () => dateFromCanonical(arrivalDate.value),
       set: (value) => {
@@ -1055,6 +1056,7 @@ export default defineComponent({
       arrivalPicker,
       departurePicker,
       deskDateFormat,
+      datePlaceholder,
       arrivalDateAttrs,
       departureDateAttrs,
       roomTypeId,
