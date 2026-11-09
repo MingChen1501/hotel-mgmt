@@ -16,6 +16,19 @@ FR/NFR delta (PR #526); the ADR-0003 partial-supersession record
 #527). This spec supplies SPEC-GATE FAIL finding 3 on PR #525; it
 implements no screen and changes no product code.
 
+Rebaseline note (Refs #586, 2026-11-09): the Stay check-in candidate
+load timing and the room-error lifecycle are re-baselined by
+`AC-DSK-17` (rollout spec section 6.12; `FR-CIP-1`..`FR-CIP-4` in
+`mvp-requirements.md` section 18). The arrival pick now loads the
+booked-type ready rooms, a valid room selection clears the
+`Pick a ready room first.` message, and the commit still happens on
+the Check in button. `AC-RST-4` / `FR-RST-4` keep their restyle
+conditions (stacked cards, placeholder, auto-select, move/times,
+checkout gate) and point at `AC-DSK-17` for the load timing; R4
+still asserts design values only, and the check-in guard, auto-select,
+and commit cases move to the new timing with the implementation PR
+(rewritten with a note, never deleted).
+
 ## 1. Scope and no-change statements
 
 - Presentation only. The slice rebuilds markup and styling to the
@@ -25,7 +38,10 @@ implements no screen and changes no product code.
   stay exactly as today (the `business-analyst` no-change
   statements in `mvp-requirements.md` section 13 and the
   `architect` change/stay boundary in the ADR-0003 record hold for
-  testing too).
+  testing too). One re-baselined exception (Refs #586): the Stay
+  check-in candidate load timing and the room-error lifecycle follow
+  `AC-DSK-17` / `FR-CIP-1`..`FR-CIP-4`, as the rebaseline note above
+  and section 4 record; nothing else in this slice moves.
 - The `traceability-matrix.md` MVP coverage count stands unchanged:
   AC-RST / FR-RST / NFR-RST rows live in this dedicated restyle
   slice (section 4), never as new matrix rows, and no existing
@@ -54,7 +70,11 @@ implements no screen and changes no product code.
   header tabs render as seven nav tabs with Onboarding as the
   tab-less deep route, Refs #539; the Rooms tab landed in #552), and the
   #495–#500 REPORTED flow/copy items, which stay reported
-  (child PRs assert visuals only, never decide copy or flow).
+  (child PRs assert visuals only, never decide copy or flow). One
+  of those items moved on its load half only: the T3
+  single-vs-two-step check-in item (#497) is resolved by #586 per
+  `AC-DSK-17` — the arrival pick loads the candidates, the commit
+  stays on the button, and no other flow or copy item changes.
 
 ## 2. Parity guards (existing on disk; child PRs extend, never delete)
 
@@ -63,7 +83,7 @@ implements no screen and changes no product code.
 | FR-RST-1 shared shell | Shell nav root `app/src/App.vue:127`, per-route tabs `:139`, active class `:141`; nav set `app/src/App.vue:221` (`NAV_ITEMS`); route shape `app/src/router.ts:47` (desk) through the print/admin/placeholder tail; shell-nav items `app/src/App.test.ts:189`, configured hotel name in the header `:217`, per-destination active highlight `:373` | Shell routing, nav, session, gate, and offline behaviour unchanged; the teal header and tab visuals are new (R1) |
 | FR-RST-2 Main board | Five design cards with housekeeping buttons and the out-of-service note `app/src/views/DeskView.test.ts:286`; weekday-long business-date header `:268` (render `:240`); dirty-to-clean with count refresh `:347`; clean-to-inspected `:407`; sellability through the contract `roomType` field `:327` | Board lanes, transitions, count refresh, and payload fields unchanged; date-row/grid/divider design values are new (R2) |
 | FR-RST-3 Book screen | Two-column design cards with the guest card above the quote card `app/src/views/BookView.test.ts:241`; quote with nightly lines and total `:382`; confirm with guest snapshot, frozen price basis, sellable count, one idempotency key `:397`; sold-out refusal `:851`; restriction refusal `:875` | Guest search, walk-in, get-quote-then-confirm flow, and refusals run exactly as today; grid/label/control design values are new (R3) |
-| FR-RST-4 Stay check-in/out | Three daily lists under the shell session `app/src/views/StayView.test.ts:296`; `need_room` guard with no `AssignRoom` call `:367`; zero-balance checkout without approval `:740`; design cards with the room hint and checkout gate note `:1048` | Two-step flow, placeholder gate, auto-select, move/times flows, and the settled-folio checkout gate unchanged; stacked-card design values are new (R4) |
+| FR-RST-4 Stay check-in/out | Three daily lists under the shell session `app/src/views/StayView.test.ts:277`; arrival-pick candidate load `:309` (placeholder-first options `:326`); `need_room` guard with no `AssignRoom` call `:371`; single-candidate auto-select `:402`; zero-balance checkout without approval `:653`; design cards with the room hint and checkout gate note `:984` | Stacked-card design values are new (R4). The check-in cases move to the arrival-pick load timing with the #586 change and are rewritten with a note, never deleted: the arrival pick alone populates the picker, a valid select clears the guard, and one button click commits (`AC-DSK-17`). Placeholder gate, auto-select, move/times flows, and the settled-folio checkout gate behave as specified |
 | FR-RST-5 Folio screen | Charges/payments two-card layout with locale-correct amounts `app/src/views/FolioView.test.ts:501`; room-charge post with idempotency key and re-read `:215`; card payment with idempotency key and re-read `:246`; restyle kept out of print `:565` | Per-stay open form, charge posting, payment recording, running balance, and print output unchanged; two-card grid and balance-accent design values are new (R5) |
 | FR-RST-6 Rooms map | Summary-counts-match-cards invariant across all five statuses `app/src/views/RoomsView.test.ts:193`; per-card chips, types, and live notes `:228`; dirty-to-clean with count refresh `:286`; clean-to-inspected `:345` | Live state rendering, the invariant, housekeeping buttons, floor grouping, and chip wording unchanged; title/chip/floor/card design values are new (R6) |
 | FR-RST-7 Onboarding wizard | Step 1 per the design on an empty database `app/src/views/OnboardingView.test.ts:61`; seeded-database redirect to the shell `:124`; hotel-name persist and advance to step 2 `:198`; step 4 at 100 percent with the owner role fixed `:709` | Launch gating, four-step flow with progress and back/continue navigation, per-step validation, persistence, and wording unchanged; slim-header/column/progress/card/input design values are new (R7) |
@@ -90,7 +110,7 @@ the child issue and PR.
 | R1 | Seven-surface shell render assertions: the teal header shows the configured hotel name (never the design example content) at the design height, padding, and brand size; nav tabs render the design padding/radius with the active tab inverted; the locale pill renders the design border/radius/padding and the toggle switches the whole screen EN/VI with no mixed-locale copy; the sign-in gate behaves exactly as today; the #518 board-conflict owner decision is recorded on the issue before merge | AC-RST-1, AC-RST-8 (shell half); FR-RST-1, NFR-RST-1 (header-name half) | #518 (shell/nav); the six screen PRs reuse it, never duplicate it |
 | R2 | Main design-value assertions only: business-date row, `3×1` card grids over two rows, row dividers, departures empty state, two housekeeping action buttons per the design values; both buttons still drive the existing transitions with count refresh | AC-RST-2; FR-RST-2 | #519 |
 | R3 | Book design-value assertions only: title, two-column grid, stay field grid, labels, full-width controls, quote rows, helper copy per the design values; search, walk-in, quote, confirm, and refusal tests stay untouched | AC-RST-3; FR-RST-3 | #520 |
-| R4 | Stay design-value assertions only: intro, five stacked cards, labels, full-width controls, folio-reconciliation hint per the design values; two-step flow, placeholder gate, auto-select, move/times, and checkout-gate tests stay untouched | AC-RST-4; FR-RST-4 | #521 |
+| R4 | Stay design-value assertions only: intro, five stacked cards, labels, full-width controls, folio-reconciliation hint per the design values; the check-in guard, auto-select, and commit cases move to the arrival-pick load timing with the #586 change (Refs `AC-DSK-17`; rewritten with a note, never deleted); placeholder gate, move/times, and checkout-gate tests stay untouched | AC-RST-4; FR-RST-4 (`AC-DSK-17` for the load timing) | #521 |
 | R5 | Folio design-value assertions only: two-card grid, balance-due accent size and colour, example lines, labels, full-width controls per the design values; open, posting, balance, and print tests stay untouched | AC-RST-5; FR-RST-5 | #522 |
 | R6 | Rooms design-value assertions only: title row, chip row with dots, floor sections and grids, room cards (number, badge, type, note) per the design values; live-state, invariant, button, grouping, and wording tests stay untouched | AC-RST-6; FR-RST-6 | #523 |
 | R7 | Onboarding design-value assertions only: slim header, centred column, progress line and bar at 25/50/75/100 percent, card, input, helper, continue action per the design values; gating, four-step flow, validation, persistence, and wording tests stay untouched | AC-RST-7; FR-RST-7 | #524 |
@@ -104,7 +124,7 @@ the child issue and PR.
 | AC-RST-1 — shell with teal header, tab inversion, locale pill | FR-RST-1 | Parity: `App.vue:127,139,141,221` + `router.ts:47` + `App.test.ts:189,217,373` + **R1 new** | Baseline green in the `app/` unit suite; R1 pending #518 (decided tab set recorded on the issue) |
 | AC-RST-2 — Main board per the design, behaviour unchanged | FR-RST-2 | Parity: `DeskView.test.ts:240,268,286,327,347,407` + **R2 new** | Baseline green; R2 pending #519 |
 | AC-RST-3 — Book two-column layout, flow unchanged | FR-RST-3 | Parity: `BookView.test.ts:241,382,397,851,875` + **R3 new** | Baseline green; R3 pending #520 |
-| AC-RST-4 — Stay stacked cards, flow and gates unchanged | FR-RST-4 | Parity: `StayView.test.ts:296,367,740,1048` + unchanged `FR-FDK-1/2` / `FR-BIL-7` matrix guards + **R4 new** | Baseline green; R4 pending #521 |
+| AC-RST-4 — Stay stacked cards; check-in flow re-baselined to the arrival-pick load with the commit on the button (Refs #586, `AC-DSK-17`) | FR-RST-4 | Parity: `StayView.test.ts:277,309,371,402,653,984` + unchanged `FR-FDK-1/2` / `FR-BIL-7` matrix guards + **R4 new**; the arrival-flow pin `:309` (placeholder-first `:326`) moves to the pick timing with the #586 implementation PR, and the new no-ready-rooms and error-cleared-on-select cases land there (`AC-DSK-17`, `D17`) | Baseline green; R4 pending #521; the #586 guard rewrite is pending the implementation PR (no guard deleted) |
 | AC-RST-5 — Folio two-card grid with balance accent, print unchanged | FR-RST-5 | Parity: `FolioView.test.ts:215,246,501,565` + unchanged `FR-BIL-1/2/3` matrix guards + **R5 new** + **R8 new** (print half) | Baseline green; R5/R8 pending #522 |
 | AC-RST-6 — Rooms map per the design, wording unchanged | FR-RST-6 | Parity: `RoomsView.test.ts:193,228,286,345` + unchanged `FR-RMS-1/2/3` matrix guards + **R6 new** | Baseline green; R6 pending #523 |
 | AC-RST-7 — Onboarding wizard per the design, seeded never launches | FR-RST-7 | Parity: `OnboardingView.test.ts:61,124,198,709` + **R7 new** + **R8 new** (printed-name half) | Baseline green; R7 pending #524, R8 pending #522 |
@@ -113,7 +133,11 @@ the child issue and PR.
 ## 5. Exit criteria for the restyle testing slice
 
 1. Every section 2 parity guard still passes (updated where
-   markup changed, none deleted without replacement).
+   markup changed, none deleted without replacement). The Stay
+   check-in cases move to the arrival-pick load timing with the
+   #586 change (Refs `AC-DSK-17`): they are rewritten with a note,
+   and the new no-ready-rooms and error-cleared-on-select cases
+   land in the same change.
 2. Guards R1–R9 exist and pass (section 3); the `app/` unit suite
    and the design-facts gate are green on every child PR.
 3. `catalogue-coverage-check.sh` is green on every child PR with
