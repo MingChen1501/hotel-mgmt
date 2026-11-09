@@ -1101,7 +1101,7 @@ Affected surfaces and keys:
 
 - `app/src/views/StayView.vue` check-in panel only: the arrival
   select's change handler (`:30`, `onArrivalChange` at `:832-861`),
-  the room select (`:44-55`), the hint (`:63-71`), the Check in
+  the room select (`:44-62`), the hint (`:63-71`), the Check in
   button and status/error lines (`:73-106`), and the existing
   `loadCandidates` / `onCheckIn` functions (`:895-983`, `:991-1124`).
 - No new catalogue key: every visible string is an existing
