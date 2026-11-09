@@ -150,6 +150,13 @@ Rebuild (markup + styling to the design values):
   shrink, and the brand is the only shrinkable item (ellipsis), so a
   long configured hotel name truncates instead of wrapping the bar
   (Refs #564).
+- Eighth tab (Refs #590): the approved rooms and rates management
+  screen adds one tab after `Rooms` (`desk.shell.nav_manage`,
+  `Quản lý` / `Manage`, owner decision O-1). The eight-tab row keeps
+  this same shrink rule unchanged — the brand stays the only
+  shrinkable item, and the short label is what keeps the row inside
+  the 1200px content width (`docs/product/rooms-rates-management.md`
+  section 3).
 - Nav tabs: `padding:10px 16px`, `radius:8px`; the active tab is
   inverted (`background:#fff`, `color:#0F4C47`, `font-weight:600`).
 - Locale pill: `margin-left:auto`, `1px solid #9CC9C4`,
