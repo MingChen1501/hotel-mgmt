@@ -2,7 +2,10 @@
 
 Status: active (index). Single entry point for every document type in
 this project: each row points at its real path with status `active` or
-`stub (not needed yet)` plus the owning role. Every file under `docs/`
+`stub (not needed yet)` plus the owning role. A third status,
+`draft (owner approval pending)`, marks a document that exists and is
+under owner review but is not yet binding (currently one design board
+draft for #590). Every file under `docs/`
 is in one of the tables — no orphans, no dead links. All content is
 English.
 
@@ -56,6 +59,7 @@ Development table, which use a `../` prefix.
 | Desk UI design rollout | `product/desk-ui-design-rollout.md` | active | `product-owner` | six-screen Claude UI rollout scope, tokens, UI contract, per-screen breakdown (Closes #419) |
 | Desk UI pixel-faithful restyle | `product/desk-ui-pixel-faithful-restyle.md` | active | `product-owner` | shell-plus-six-screen owner-design rebuild scope, tokens, rebuild-vs-keep mappings, UI contract, per-surface breakdown (Closes #517) |
 | FE design reference | `design/README.md` | active | `product-owner` | owner-supplied authoritative FE designs: six `.dc.html` boards plus `manifest.json` that implementation must follow (Closes #462) |
+| Rooms and rates management design | `design/RoomsRates.dc.md` | draft (owner approval pending) | `product-owner` | team-owned board draft for the rooms/rates management desk screen: wireframes for room types, rooms and floors, nightly prices, no-price empty state, refusal path, catalogue keys (Refs #590) |
 | Scope | `product/scope.md` | stub (not needed yet) | `product-owner` | in/out scope statement for the product (`product/mvp-scope.md` is the operative scope statement) |
 
 ## Requirements
