@@ -19,6 +19,7 @@ import appSource from '../App.vue?raw';
 import { useSessionStore } from '../stores/session';
 import { setLocale } from '../i18n';
 import { resetConnectivityForTests } from '../api/client';
+import { localBusinessDate } from '../stay-options';
 import router from '../router';
 
 vi.mock('../router', () => ({
@@ -945,5 +946,110 @@ describe('folio open context (Refs #568)', () => {
     } finally {
       setLocale('en');
     }
+  });
+});
+
+// List-backed open step (Refs #582): the in-house select lists the
+// business date's stays by guest and room, and the manual stay-ID
+// field stays working when the list is empty or the read fails.
+describe('folio stay picker (Refs #582)', () => {
+  function mountSignedIn(): ReturnType<typeof mountFolio> {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    useSessionStore().signIn('tok-1', 'Ada Owner', 'owner');
+    return mount(FolioView, { global: { plugins: [pinia] } });
+  }
+
+  function stubPicker(
+    fetchMock: ReturnType<typeof vi.fn>,
+    options: { inHouse?: unknown[]; failList?: boolean } = {},
+  ): { openedWith: () => string } {
+    let openedStay = '';
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      const body = parseBody(init);
+      if (url === '/v1/stay/ListArrivalsDepartures') {
+        if (options.failList) {
+          return Promise.reject(new Error('list read failed'));
+        }
+        expect(body.businessDate).toBe(localBusinessDate());
+        return Promise.resolve(jsonResponse({ arrivals: [], inHouse: options.inHouse ?? [], departures: [] }));
+      }
+      if (url === '/v1/rooms/ListRoomsByState') {
+        return Promise.resolve(jsonResponse({ rooms: [{ roomId: 'r-1', number: '201' }] }));
+      }
+      if (url === '/v1/guests/GetGuest') {
+        return Promise.resolve(jsonResponse({ fullName: 'Lê Minh' }));
+      }
+      if (url === '/v1/stay/GetStay') {
+        return Promise.resolve(jsonResponse({ stayId: body.stayId, guestId: 'g-1', roomId: 'r-1' }));
+      }
+      if (url === '/v1/billing/GetFolioBalance') {
+        openedStay = String(body.stayId);
+        return Promise.resolve(
+          jsonResponse({ folioId: 'f-1', stayId: body.stayId, balanceMinor: 0, charges: [], payments: [] }),
+        );
+      }
+      throw new Error(`unexpected call ${url}`);
+    });
+    return { openedWith: () => openedStay };
+  }
+
+  it('lists in-house stays by guest and room and opens the picked ID', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const picker = stubPicker(fetchMock, {
+      inHouse: [{ stayId: 's-pick', guestId: 'g-1', roomId: 'r-1' }],
+    });
+    const wrapper = mountSignedIn();
+
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="folio-stay-select"]').text()).toContain('Lê Minh · Room 201');
+    });
+    await wrapper.find('[data-testid="folio-stay-select"]').setValue('s-pick');
+    await wrapper.find('[data-testid="folio-open"]').trigger('click');
+
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="folio-status"]').text()).toContain('Folio balance:');
+    });
+    // The picked option sends the same stayId the typed field sent.
+    expect(picker.openedWith()).toBe('s-pick');
+  });
+
+  it('keeps manual entry working when the business date has no in-house stays', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const picker = stubPicker(fetchMock, { inHouse: [] });
+    const wrapper = mountSignedIn();
+
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="folio-stay-list-notice"]').text()).toContain(
+        'No in-house stays for today',
+      );
+    });
+    await wrapper.find('[data-testid="folio-stay-id"]').setValue('s-typed');
+    await wrapper.find('[data-testid="folio-open"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="folio-status"]').text()).toContain('Folio balance:');
+    });
+    expect(picker.openedWith()).toBe('s-typed');
+  });
+
+  it('degrades to manual entry when the list read fails', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const picker = stubPicker(fetchMock, { failList: true });
+    const wrapper = mountSignedIn();
+
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="folio-stay-list-notice"]').text()).toContain(
+        "Could not load today's stays",
+      );
+    });
+    await wrapper.find('[data-testid="folio-stay-id"]').setValue('s-typed');
+    await wrapper.find('[data-testid="folio-open"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="folio-status"]').text()).toContain('Folio balance:');
+    });
+    expect(picker.openedWith()).toBe('s-typed');
   });
 });

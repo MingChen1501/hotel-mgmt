@@ -2189,5 +2189,116 @@ adding the same context to any other screen title; any API,
 validation, schema, catalogue-key beyond the one, audit, or
 allowlist change.
 
+## 18. Desk list-backed stay picker on the open-folio steps (Refs #582)
+
+Build-ready flow detail for the T2 reader-visible change (issue
+#582): the Folio and Print open steps lead with a select of the
+business date's in-house stays, and the stay-ID text field stays
+visible as the manual fallback. This section supplies the
+architect-owned per-flow implementation diagram (happy path plus
+failure/rollback path) the spec gate requires; scope, the UI
+contract delta, and the done-condition live with `product-owner`
+(`docs/product/desk-ui-design-rollout.md`
+[section 6.11](../product/desk-ui-design-rollout.md), `AC-DSK-16`
+in `docs/product/acceptance-criteria.md`
+[section 11](../product/acceptance-criteria.md), D-19); the FR/NFR
+delta and traceability inputs live with `business-analyst`
+(`docs/requirements/mvp-requirements.md` [section 17](../requirements/mvp-requirements.md));
+guard mapping lives with `qa-lead`. No subsystem, endpoint,
+contract, schema, or stored value is added, so no ADR is owed; this
+section records only the read path, its degradation path, and the
+technical no-change boundary.
+
+Intended tree deltas (files the implementation commit touches;
+edge traces cite this head):
+
+```text
+app/src/stay-options.ts      shared read helper: localBusinessDate :44,
+                             readGuestName :60, readOccupiedRoomNumbers :81,
+                             loadInHouseStayOptions :121
+app/src/views/FolioView.vue  select :31-41, notice :51-58, typed field :59-67,
+                             picked/typed state and notice computed :678-700,
+                             onPickStay :891, onManualStayInput :896,
+                             loadStayOptions :905, onMounted :921-925
+app/src/views/PrintView.vue  select :15-25, notice :35-42, typed field :43-51,
+                             picked/typed state and notice computed :686-705,
+                             onPickStay :1075, onManualStayInput :1080,
+                             loadStayOptions :1088, onMounted :1104-1108
+app/e2e/design-facts.ts      Folio decided inputs lead with the select :383
+messages/en.json             four new desk.stay.* keys and the mirrors
+messages/vi.json             the same keys in VI
+```
+
+### 18.1 Open-step flowchart
+
+Staff enter Folio or Print; the screen reads the business date's
+in-house stays and fills the select, while the typed stay-ID field
+stays available. Picking or typing one identifier feeds the
+existing open call unchanged.
+
+```mermaid
+flowchart TD
+    A[Desk opens Folio or Print signed in] --> B[loadStayOptions on mounted]
+    B --> C[loadInHouseStayOptions: localBusinessDate]
+    C --> D[ListArrivalsDepartures businessDate]
+    D -->|ok| E[ListRoomsByState occupied for room numbers]
+    E --> F[GetGuest per in-house row]
+    F --> G[select options guest · room]
+    D -->|failed| H[stayListNotice: stay_list_failed]
+    E -->|failed| F
+    G --> I{Pick an option or type a stay ID}
+    I -->|pick| J[pickedStayId set; typed field cleared]
+    I -->|type| K[typedStayId set; select cleared]
+    H --> K
+    J --> L[Open: GetFolioBalance / PostCharge / RecordPayment carry the same stayId]
+    K --> L
+    L --> M[Existing folio reads and title context run unchanged]
+```
+
+Edge trace (every edge cites code):
+
+- A–B: the shell gates the screens on sign-in; `onMounted` loads
+  the list only when the session is signed in (`FolioView.vue:921-925`,
+  `PrintView.vue:1104-1108`), the same pattern as the Stay panel.
+- B–C: `loadStayOptions` calls the shared helper
+  (`FolioView.vue:905-911`, `PrintView.vue:1088-1094`,
+  `app/src/stay-options.ts:121`).
+- C–D: the helper sends `localBusinessDate()` to the existing
+  `ListArrivalsDepartures` (`app/src/stay-options.ts:44`, `:121-129`;
+  `contracts/http/ListArrivalsDepartures.json:19-33`).
+- D–E / D–H: a successful list read moves on to room numbers; a
+  failed read returns `{ options: [], failed: true }`
+  (`app/src/stay-options.ts:130-136`), which the view maps to
+  `stayListState = 'failed'` and the plain notice
+  (`FolioView.vue:686-700`, `:712-718`; `PrintView.vue:694-705`).
+- E–F: occupied room numbers resolve through the existing
+  `ListRoomsByState` (`app/src/stay-options.ts:81-103`); a failed
+  room read keeps the stays pickable with the catalogue
+  unavailable-room wording (`:105-111`).
+- F–G: each in-house row's guest name comes from the existing
+  `GetGuest` (`app/src/stay-options.ts:60-77`), and the option
+  label composes `guest · room` through the existing
+  `desk.today.name_detail` (`:133-141`).
+- G–I: the options render in the select
+  (`FolioView.vue:31-41`, `PrintView.vue:15-25`); the typed field
+  stays directly below (`FolioView.vue:59-67`,
+  `PrintView.vue:43-51`).
+- I–J / I–K: the two controls are mutually exclusive
+  (`FolioView.vue:891-903`, `PrintView.vue:1075-1086`), so exactly
+  one identifier is held; the notice never blocks the typed path
+  (`FolioView.vue:51-58`, `PrintView.vue:35-42`).
+- J–L / K–L: the existing open, charge, and payment calls read the
+  same `stayId` the typed path always sent
+  (`FolioView.vue:870-877`, `:929-967`; `PrintView.vue:1016-1058`);
+  no payload, contract, validation, print, or refusal shape moves.
+- L–M: the existing folio reads and title context run unchanged
+  (section 17.1 above).
+
+Failure and rollback: an empty or failed list read is the
+degradation path above — the notice shows and the typed stay-ID
+field keeps the open action working. Rolling back the single PR
+restores the text-input-only open step on both screens; no data
+migration is owed because the change adds no stored value.
+
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-824

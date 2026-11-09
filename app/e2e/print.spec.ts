@@ -87,7 +87,10 @@ test('invoice, receipt, and confirmation match the folio', async ({ page, reques
 
   await signInThroughGate(page);
   await page.goto('/app/print');
-  await page.getByTestId('print-stay-id').fill(stayId);
+  // #582: open through the in-house stay select; the booking-reference
+  // field below keeps manual entry because no list API exists for refs.
+  await expect(page.getByTestId('print-stay-select')).toContainText(ctx.guestName);
+  await page.getByTestId('print-stay-select').selectOption(stayId);
   await page.getByTestId('print-open').click();
   await expect(page.getByTestId('print-folio-status')).toContainText('balance: 600.00');
 

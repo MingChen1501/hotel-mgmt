@@ -353,21 +353,25 @@ export const DECIDED_CONTENT: readonly DecidedScreenContent[] = [
     ],
   },
   {
-    // Folio (Refs #545, v2 board `docs/design/Folio.dc.html:3`):
-    // the screen heads straight into the stay-ID open step (F3
-    // flow state, orchestrator decision on #545 — the only
-    // in-app path to a folio) above the two board cards with no
-    // screen title and no section heading — zero extras vs the
-    // board. The charges card carries the `Khoản phí` h3, the
-    // board-literal description/amount inputs, and the `Ghi khoản
-    // phí` action; the payments card carries the `Thanh toán` h3,
-    // the due block, and the `Ghi thanh toán` action. The
-    // charge-kind and payment-method selects stay inline as flow
-    // state (`PostCharge` requires `itemKind`, `RecordPayment`
-    // requires `method` — same decision), so both ride the
-    // decided input sequence in DOM order. Charge/payment lines,
-    // the balance readouts, and the error lines stay out as flow
-    // state (covered by `folio.spec.ts`).
+    // Folio (Refs #545, v2 board `docs/design/Folio.dc.html:3`);
+    // list-backed open step (Refs #582): the screen heads into the
+    // stay open step (F3 flow state, orchestrator decision on #545 —
+    // the only in-app path to a folio) above the two board cards with
+    // no screen title and no section heading — zero extras vs the
+    // board. Refs #582: the open step's primary control is a select
+    // of the business date's in-house stays (`ListArrivalsDepartures`,
+    // labelled with guest and room), and the stay-ID text input stays
+    // visible as the manual fallback for a stay outside that list, so
+    // both ride the decided input sequence in DOM order. The charges
+    // card carries the `Khoản phí` h3, the board-literal
+    // description/amount inputs, and the `Ghi khoản phí` action; the
+    // payments card carries the `Thanh toán` h3, the due block, and
+    // the `Ghi thanh toán` action. The charge-kind and
+    // payment-method selects stay inline as flow state
+    // (`PostCharge` requires `itemKind`, `RecordPayment` requires
+    // `method` — same decision). Charge/payment lines, the balance
+    // readouts, and the error lines stay out as flow state (covered
+    // by `folio.spec.ts`).
     screen: 'Folio',
     headings: [
       { level: 3, text: 'Mở bảng kê lưu trú' },
@@ -376,6 +380,7 @@ export const DECIDED_CONTENT: readonly DecidedScreenContent[] = [
     ],
     buttons: ['Mở bảng kê', 'Ghi khoản phí', 'Ghi thanh toán'],
     inputs: [
+      { kind: 'select', label: 'Kỳ lưu trú đang ở:', placeholder: 'Chọn kỳ lưu trú đang ở…' },
       { kind: 'text', label: 'Mã lưu trú:', placeholder: null },
       { kind: 'select', label: 'Loại phí:', placeholder: null },
       { kind: 'text', label: 'Mô tả', placeholder: null },

@@ -82,7 +82,11 @@ test('charge, pay, and agree with the folio balance', async ({ page, request }) 
 
   await signInThroughGate(page);
   await page.goto('/app/folio');
-  await page.getByTestId('folio-stay-id').fill(stayId);
+  // #582: the primary open path is the business date's in-house list;
+  // pick the checked-in stay by ID exactly as desk staff would. The
+  // manual stay-ID field stays covered by the other two flows below.
+  await expect(page.getByTestId('folio-stay-select')).toContainText(ctx.guestName);
+  await page.getByTestId('folio-stay-select').selectOption(stayId);
   await page.getByTestId('folio-open').click();
   await expect(page.getByTestId('folio-status')).toContainText('balance: 0 đ');
 

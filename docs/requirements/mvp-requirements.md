@@ -2810,5 +2810,167 @@ section's FRs. Guards the #581 change created or extended are named
   is separate `product-owner` work; the test strategy and run
   records are separate `qa-lead` work.
 
+## 17. Desk list-backed stay picker (Refs #582)
+
+Requirements delta for the #582 change: the Folio and Print
+open-folio steps lead with a select of the business date's in-house
+stays (`ListArrivalsDepartures`, room numbers through
+`ListRoomsByState`), while the stay-ID text field stays visible and
+working as the manual fallback. Identifiers, payloads, validation,
+print output, and refusal semantics are unchanged. This section
+records only the T2 spec-gate requirements delta: the decision
+(section 17.1), the explicit no-change statements (section 17.2),
+the FR delta (section 17.3), the NFR statement (section 17.4), and
+the traceability handoff (section 17.5). No `docs/README.md` row
+flips: `requirements/mvp-requirements.md` is already `active`.
+
+### 17.1 Decision: list first, manual entry as the fallback
+
+The owner request of 2026-11-09 (issue #582) is that desk staff stop
+typing refs, IDs, and codes where a list API already exists. The two
+open-folio steps are the only desk surfaces where such a field has a
+list API:
+
+- Folio and Print both open a folio by stay ID. The business date's
+  in-house stays already come from `ListArrivalsDepartures`
+  (`contracts/http/ListArrivalsDepartures.json`: `businessDate` in,
+  `inHouse` rows with `stayId` / `guestId` / `roomId` out), and
+  `ListRoomsByState` (`contracts/http/ListRoomsByState.json`) turns
+  each room UUID into the human number. No new endpoint, contract,
+  schema, or backend change.
+- The select is the primary control, labelled `guest · room` so
+  staff recognise the stay; the existing stay-ID text field stays
+  visible below it. The two controls are mutually exclusive — picking
+  or typing clears the other — so the open call sends exactly one
+  identifier, the same value typed entry always sent.
+- The list covers only the business date's arrivals/in-house/
+  departures, so manual entry must stay reachable for any other
+  stay. A failed or empty list read shows a plain catalogue notice
+  and leaves manual entry working.
+- The audit found no other desk ref/ID/code text input with a list
+  API. The booking-reference field on Print keeps manual entry
+  (no list API), the Onboarding room-creation field keeps manual
+  entry (no room list exists during first-run setup), and room
+  numbers that refer to an existing room already use the Stay
+  panel's room select. Issue #582 records the audit result.
+
+Affected surfaces and keys:
+
+- `app/src/views/FolioView.vue` (`folio-stay-select`,
+  `folio-stay-id`, `folio-stay-list-notice`) and
+  `app/src/views/PrintView.vue` (`print-stay-select`,
+  `print-stay-id`, `print-stay-list-notice`).
+- Shared helper `app/src/stay-options.ts` (business date, in-house
+  rows, guest names, occupied-room numbers).
+- Four new visible catalogue keys (`desk.stay.pick_stay_label`,
+  `desk.stay.pick_stay_prompt`, `desk.stay.stay_list_empty`,
+  `desk.stay.stay_list_failed`) in both locales and the eight
+  byte-identical runtime mirrors; option text reuses the existing
+  `desk.today.*` keys and the manual labels reuse
+  `desk.folio.stay_id` / `desk.print.stay_id`.
+- The Folio VI + EN evidence pairs in
+  `docs/testing/evidence/563/README.md`, refreshed in the same
+  change; the design-facts Folio decided inputs now lead with the
+  select and keep the text field.
+
+### 17.2 Explicit no-change statements
+
+- Every MVP requirement in sections 1 and 2 keeps its wording and
+  target. The desk loop (book, check-in, charge, pay, check-out,
+  print) behaves exactly as specified; only how the open-folio step
+  offers the stay identifier changes.
+- Refusal semantics are unchanged: `FR-RTE-4`, `FR-CUS-1`, and
+  `FR-BIL-7` fire on exactly the same conditions, and the existing
+  unknown-folio, unknown-item, bad-method, unknown-payment, and
+  unknown-reference wordings stand.
+- Print output is unchanged (`FR-BIL-4`, `FR-DSP-4`); the picker
+  never reaches a printed document.
+- No data-dictionary entries and no business rules: the change
+  introduces no new entity or field and no domain policy. The
+  canonical identifier stays the stay UUID on the wire.
+- The section 4 traceability table and its coverage count are
+  unchanged: this section adds no MVP capability. The handoff table
+  in section 17.5 is separate.
+
+### 17.3 Behaviour-scoped functional requirements
+
+Ids use the `LSP` (list-backed stay picker) namespace, continuing the
+slice-scoped pattern of sections 10 through 16. They constrain the
+Folio and Print open steps only.
+
+FR-LSP-1 — The open-folio step offers the business date's in-house
+stays as a select.
+Given the desk business date and one or more in-house stays; when
+staff open the Folio or Print screen; then the open step shows a
+select whose options are that date's in-house stays from
+`ListArrivalsDepartures`, each labelled with the guest name and the
+human room number resolved through `ListRoomsByState`, and no option
+label shows a raw record UUID. Given staff pick an option; then the
+picked `stayId` is the value the open request sends, unchanged.
+
+FR-LSP-2 — Manual stay-ID entry stays reachable and equivalent.
+Given a stay that is not in the business date's in-house list (or a
+list that is empty or failed to load); when staff type a stay ID;
+then the text field accepts it, a plain catalogue notice explains
+the empty or failed list (`desk.stay.stay_list_empty` /
+`desk.stay.stay_list_failed`), and the open, charge, and payment
+requests carry the same `stayId` value the typed path carried
+before. Picking an option clears the typed value and typing clears
+the picked option, so exactly one identifier is held.
+
+FR-LSP-3 — Only list-backed fields convert; the rest stay manual.
+Given a desk ref/ID/code field; when a list API exists for it; then
+the field offers that list (the two open-folio stay fields in this
+change). Given no list API exists (the Print booking-reference
+field) or no list can exist yet (Onboarding room creation), then the
+field keeps manual entry. Given a room-number field that refers to
+an existing room; then the room is chosen from `ListRoomsByState`
+data, as the Stay panel's room select already does.
+
+### 17.4 Non-functional requirements delta: no-change statement
+
+No new NFR is added. The existing NFRs cover the change:
+
+- Internationalisation and catalogue coverage (`NFR-I18N-1`,
+  `NFR-DSK-1` hold): four new visible keys ship in both catalogues
+  with placeholder parity, all eight mirrors stay byte-identical,
+  and `script/catalogue-coverage-check.sh` stays green.
+- Desk response (`NFR-PERF-1` holds): the change adds two existing
+  list reads plus one `GetGuest` per in-house stay on screen entry;
+  the open action itself adds no read, and a failed list read
+  degrades to manual entry without blocking the screen.
+- Print isolation (`NFR-DSK-2`, `NFR-RST-2` hold): the picker is
+  screen-only; printed documents keep their current render.
+- Accessibility: the select and its options are catalogue-owned
+  visible copy; the native `select` keeps keyboard and screen-reader
+  behaviour without a new component contract.
+
+### 17.5 Traceability handoff for `qa-lead`
+
+Each row traces to the #582 issue-body acceptance and to this
+section's FRs. Guards the #582 change created or extended are named
+`file:line`, must stay green from now on, and need one new row in
+`docs/testing/desk-ui-rollout-test-traceability.md` (`qa-lead`).
+
+| Item | Guard (on disk; the #582 change created or extended it) | Handoff note for `qa-lead` |
+|---|---|---|
+| FR-LSP-1 in-house select | `app/src/views/FolioView.test.ts` (#582 stay-picker cases: business date sent, option labelled by guest and room, picked ID opens the folio); `app/src/views/PrintView.test.ts` (#582 stay-picker case); `app/e2e/folio.spec.ts` and `app/e2e/print.spec.ts` open through the select | Options must render the human guest/room label and send the unchanged `stayId` |
+| FR-LSP-2 manual fallback and degradation | `app/src/views/FolioView.test.ts` / `app/src/views/PrintView.test.ts` (#582 empty-list and failed-read cases keep the manual field working and send the typed ID) | Empty and failed reads must show the plain notice and never block manual entry |
+| FR-LSP-3 audit and scope boundary | `app/src/views/OnboardingView.vue` keeps the manual room-number field; `app/e2e/print.spec.ts` keeps manual `print-ref`; the #582 issue comment records "none left" for the audited desk screens | Do not convert the Onboarding room-creation or Print booking-reference fields; both are deliberate manual entries |
+| Design-facts gate | `app/e2e/design-facts.ts` Folio decided inputs (select then text stay field); `app/e2e/design-facts.spec.ts` green | The gate must stay green against the updated decided input kinds |
+| Existing suites | `app/src/views/FolioView.test.ts`, `app/src/views/PrintView.test.ts`, `app/e2e/folio.spec.ts`, `app/e2e/print.spec.ts` | Keep the existing identifier payloads green; the first browser flows now use the select and later flows keep the typed path |
+| Catalogue parity | `messages/en.json`, `messages/vi.json` (four `desk.stay.*` keys) and the eight `services/*` mirrors; `script/catalogue-coverage-check.sh` | New keys in both locales with placeholder parity; mirrors byte-identical |
+| #563 evidence refresh | `docs/testing/evidence/563/README.md` Folio VI pair plus the new EN pair | Refresh both pairs in the same change; the open step is flow state, so the board half is unchanged |
+
+Per-flow implementation diagram: the touched flow is the desk
+open-folio step (Folio and Print). Happy path: screen entry →
+`ListArrivalsDepartures(businessDate)` → `ListRoomsByState('occupied')`
++ `GetGuest` per row → options `guest · room` → pick → open action
+sends the unchanged `stayId` → existing folio reads. Failure/rollback:
+list read fails or is empty → plain notice → manual stay-ID field
+keeps the open action working; rollback is reverting the single PR,
+which restores the text-input-only open step. The implementation PR
+refreshes the LLD edge for this flow.
+
 <!-- ao-role: business-analyst -->
 Role: business-analyst · AO session hotel-mgmt-844

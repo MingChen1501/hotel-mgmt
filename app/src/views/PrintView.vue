@@ -7,15 +7,47 @@
     <section data-testid="print-main">
       <h2>{{ t('desk.print.open_heading', {}, 'Open a folio for printing') }}</h2>
       <div>
+        <!-- List-backed stay picker (Refs #582): the same in-house
+          select as the Folio screen, with the stay-ID text field kept
+          visible as the manual fallback. The booking-reference field
+          below keeps manual entry — no list API exists for booking
+          references. -->
+        <label for="print-stay-select">
+          {{ t('desk.stay.pick_stay_label', {}, 'In-house stay:') }}
+          <select
+            id="print-stay-select"
+            v-model="pickedStayId"
+            data-testid="print-stay-select"
+            @change="onPickStay"
+          >
+            <option value="">
+              {{ t('desk.stay.pick_stay_prompt', {}, 'Choose an in-house stay…') }}
+            </option>
+            <option
+              v-for="option in stayOptions"
+              :key="option.stayId"
+              :value="option.stayId"
+            >
+              {{ option.label }}
+            </option>
+          </select>
+        </label>
+        <p
+          v-if="stayListNotice"
+          role="status"
+          data-testid="print-stay-list-notice"
+        >
+          {{ stayListNotice }}
+        </p>
         <label for="print-stay-id">
           {{ t('desk.print.stay_id', {}, 'Stay ID: ') }}
           <InputText
             id="print-stay-id"
-            v-model="stayId"
+            v-model="typedStayId"
             name="print-stay-id"
             autocomplete="off"
             data-testid="print-stay-id"
-            @update:model-value="onStayIdInput"
+            @update:model-value="onManualStayInput"
           />
         </label>
         <Button
@@ -342,7 +374,7 @@
 </template>
 
 <script lang="ts">
-import { computed, defineComponent, ref } from 'vue';
+import { computed, defineComponent, onMounted, ref } from 'vue';
 import type { Ref } from 'vue';
 import Button from 'primevue/button';
 import Column from 'primevue/column';
@@ -353,6 +385,7 @@ import { apiFetch } from '../api/client';
 import type { ApiError } from '../api/client';
 import { catalogueLocale, t } from '../i18n';
 import { useSessionStore } from '../stores/session';
+import { loadInHouseStayOptions, type InHouseStayOption } from '../stay-options';
 import ReferenceDetails, { type ReferenceItem } from '../components/ReferenceDetails.vue';
 
 // Print screen as a Vue SFC (Refs #297, ADR-0003).
@@ -650,7 +683,31 @@ export default defineComponent({
   components: { Button, Column, DataTable, InputText, Message, ReferenceDetails },
   setup() {
     const session = useSessionStore();
-    const stayId = ref(prefillParam('stayId'));
+    // Picked vs typed stay (Refs #582): the select and the manual
+    // field are mutually exclusive, so the open call sends exactly
+    // one identifier.
+    const pickedStayId = ref('');
+    const typedStayId = ref(prefillParam('stayId'));
+    const stayId = computed<string>(() => pickedStayId.value || typedStayId.value);
+    const stayOptions = ref<InHouseStayOption[]>([]);
+    const stayListState = ref<'idle' | 'loading' | 'loaded' | 'failed'>('idle');
+    const stayListNotice = computed<string>(() => {
+      if (stayListState.value === 'failed') {
+        return t(
+          'desk.stay.stay_list_failed',
+          {},
+          "Could not load today's stays. Enter a stay ID instead.",
+        );
+      }
+      if (stayListState.value === 'loaded' && stayOptions.value.length === 0) {
+        return t(
+          'desk.stay.stay_list_empty',
+          {},
+          'No in-house stays for today. Enter a stay ID instead.',
+        );
+      }
+      return '';
+    });
     const folio = ref<Folio | null>(null);
     const currentFolioId = ref<string | null>(null);
     const folioStatus = ref('');
@@ -1013,6 +1070,45 @@ export default defineComponent({
       invoiceEntryRows.value = [];
     }
 
+    // Picking vs typing a stay (Refs #582): each path clears the
+    // other control so the open call never carries a stale ID.
+    function onPickStay(): void {
+      typedStayId.value = '';
+      onStayIdInput();
+    }
+
+    function onManualStayInput(value: string | undefined): void {
+      typedStayId.value = value ?? '';
+      pickedStayId.value = '';
+      onStayIdInput();
+    }
+
+    // Best-effort in-house list (Refs #582): an empty or failed read
+    // keeps the manual stay-ID field working and shows the notice.
+    async function loadStayOptions(): Promise<void> {
+      stayListState.value = 'loading';
+      try {
+        const result = await loadInHouseStayOptions();
+        stayOptions.value = result.options;
+        stayListState.value = result.failed ? 'failed' : 'loaded';
+      } catch (err) {
+        if (isSignedOut(err)) {
+          expireToGate();
+          return;
+        }
+        stayOptions.value = [];
+        stayListState.value = 'failed';
+      }
+    }
+
+    onMounted(() => {
+      // The shell gates this screen on sign-in, so a signed-in visit
+      // loads the list straight away (same pattern as the Stay panel).
+      if (session.isSignedIn) {
+        void loadStayOptions();
+      }
+    });
+
     async function onShowInvoice(): Promise<void> {
       if (invoicing.value || currentFolioId.value === null) {
         return;
@@ -1185,6 +1281,10 @@ export default defineComponent({
     return {
       t,
       stayId,
+      pickedStayId,
+      typedStayId,
+      stayOptions,
+      stayListNotice,
       folioStatus,
       folioDetails,
       openError,
@@ -1213,6 +1313,8 @@ export default defineComponent({
       loading,
       confirmationCopyStatus,
       confirmationDoc,
+      onPickStay,
+      onManualStayInput,
       onOpen,
       onStayIdInput,
       onShowInvoice,

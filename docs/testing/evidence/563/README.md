@@ -102,6 +102,17 @@ do not drift.
   pair. The live half now titles the charges card `Khoản phí · Lê Minh ·
   P.201` like the board; before the fix it kept a static `Khoản phí` and
   named the stay only through opaque IDs in the closed reference disclosure.
+- `side-by-side-Folio-vi.png` and `side-by-side-Folio-en.png` were refreshed
+  for the list-backed stay picker (#582) from the built app bundle at 1200px
+  (Chromium, viewport 1200×1016) with the shell and Folio reads answered
+  locally — the same technique as the #568 Folio pair — and the unchanged
+  design board half reused from that pair. The live halves now lead the open
+  step with the `In-house stay` / `Kỳ lưu trú đang ở` select of the business
+  date's in-house stays (`Lê Minh · Room 201` / `Lê Minh · P.201`), and keep
+  the `Stay ID` / `Mã lưu trú` text field directly below as the manual
+  fallback for a stay outside that list. The VI pair runs in the app `vi`
+  locale and the new EN pair in the app `en` locale; the open step is flow
+  state with no board counterpart, so the board half is unchanged.
 - `side-by-side-Admin-vi.png` was refreshed for the `G-AD-1` fix (#569) from
   the built app bundle at 1200px in `vi` (Chromium, viewport 1200×1000) and
   the design board at the same width. The Admin screen reads account, config,
@@ -129,7 +140,8 @@ do not drift.
 | Book (EN) | [side-by-side-Book-en.png](side-by-side-Book-en.png) | 2420×1016 | Same pair in the app `EN` locale under a `vi-VN` browser; refreshed for #581 — the pickers read `mm/dd/yyyy` (`12/08/2026` / `12/10/2026`), proving the app locale owns the field format, not the browser |
 | Book picker (VI) | [book-datepicker-vi.png](book-datepicker-vi.png) | 1200×1016 | Opened arrival calendar in the app `VI` locale under an `en-US` browser — `Tháng 12 2026` with `T2`…`CN` weekday heads (#581) |
 | Book picker (EN) | [book-datepicker-en.png](book-datepicker-en.png) | 1200×1016 | Opened arrival calendar in the app `EN` locale under a `vi-VN` browser — `December 2026` with `S`…`S` weekday heads (#581) |
-| Folio | [side-by-side-Folio-vi.png](side-by-side-Folio-vi.png) | 2420×1016 | Folio lines, amounts, balance, and the open folio's guest/room in the charges-card title; refreshed for #568 — the title reads `Khoản phí · Lê Minh · P.201` like the board, while lines and balance keep the `G-FO-2` `đ` shape; `G-FO-1` |
+| Folio | [side-by-side-Folio-vi.png](side-by-side-Folio-vi.png) | 2420×1016 | Folio lines, amounts, balance, and the open folio's guest/room in the charges-card title; refreshed for #582 — the open step leads with the in-house stay select (`Lê Minh · P.201`) and keeps the stay-ID field as the manual fallback; lines and balance keep the `G-FO-2` `đ` shape; `G-FO-1` |
+| Folio (EN) | [side-by-side-Folio-en.png](side-by-side-Folio-en.png) | 2420×1016 | Same pair in the app `EN` locale under the same local-read technique; refreshed for #582 — the select reads `In-house stay` with `Lê Minh · Room 201`, and the `Stay ID` field stays below as the manual fallback |
 | Admin | [side-by-side-Admin-vi.png](side-by-side-Admin-vi.png) | 2420×1491 | User, config, and audit cards; refreshed for `G-AD-1` (#569) — audit rows read catalogue VI summaries and short desk times (`09:12`, `Hôm qua`, `dd/mm/yyyy`) instead of dotted event names and ISO timestamps, with the raw values behind the reference disclosure; `G-AD-1`, `G-AD-2` |
 
 ## Living record
