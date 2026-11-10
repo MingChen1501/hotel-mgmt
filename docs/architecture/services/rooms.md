@@ -134,5 +134,31 @@ Contract tests: `contract-tests/` holds fixtures per provided/consumed operation
 script/contract-check.sh
 ```
 
+## 8. Planned delta — capacity consumer on the booking path (Refs #631, ADR-0006 proposed)
+
+Not as-built yet: this section records the target the implementation PR
+reads back into sections 3 and 5 in the same change
+(maintain-with-code). Today section 5 says the reply is consumed by "the
+future Reservations restriction seam"; from #631 on it is the booking
+guard's capacity source.
+
+- Reservations calls `POST /v1/rooms/CheckRoomTypeSellability`
+  (`src/server.ts:141`) once per booking attempt with the caller Bearer
+  token forwarded and consumes `totalCount` and `blockedRooms`; the
+  ceiling is `totalCount - len(blockedRooms)` for the effective room type
+  and dates (`src/store.ts:343-356` builds both date-ranged facts).
+- The derived `sellableCount` stays the desk-facing availability figure
+  (`src/store.ts:356`); the booking guard does not consume it, so #636's
+  room-state accounting changes the desk number without moving the
+  guard's ceiling. `blockedRooms` content stays as it is.
+- No new operation, response field, or state: the existing reply is
+  enough, and the rooms module keeps its zero outbound dependencies
+  (section 5), so the booking seam adds no cycle.
+- Rooms becomes a fail-closed dependency of booking: while it is
+  unreachable, Reservations refuses bookings with `UPSTREAM_UNAVAILABLE`
+  (product risk R-10; the runbook restart order covers it).
+
+Design: `docs/architecture/lld.md` sections 3 and 22; ADR-0006.
+
 <!-- ao-role: architect -->
-Role: architect · AO session hotel-mgmt-249
+Role: architect · AO session hotel-mgmt-933

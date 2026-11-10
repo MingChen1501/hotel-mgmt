@@ -84,8 +84,8 @@ Development table, which use a `../` prefix.
 
 | Type | Path | Status | Owner | Purpose |
 |---|---|---|---|---|
-| HLD | `architecture/hld.md` | active | `architect` | high-level design: subsystems and their responsibilities (Closes #11; section 15 Refs #601) |
-| LLD | `architecture/lld.md` | active | `architect` | low-level design: modules, interfaces, data flow (Closes #97; section 21 Refs #601) |
+| HLD | `architecture/hld.md` | active | `architect` | high-level design: subsystems and their responsibilities (Closes #11; sections 15–16 Refs #601, #631) |
+| LLD | `architecture/lld.md` | active | `architect` | low-level design: modules, interfaces, data flow (Closes #97; sections 21–22 Refs #601, #631) |
 | System architecture | `architecture/system-architecture.md` | active | `architect` | overall system structure and deployment view (Closes #11) |
 | ERD | `architecture/erd.md` | active | `architect` | entity-relationship model of the domain data (Closes #11) |
 | Sequence diagrams | `requirements/sequence-diagrams.md` (see Requirements) | stub (not needed yet) | `architect` | behaviour depiction lives with requirements per #43; no separate architecture diagram |
@@ -96,6 +96,7 @@ Development table, which use a `../` prefix.
 | ADR-0003 desk UI framework | `architecture/decisions/adr-0003-desk-ui-vue-vite.md` | active | `architect` | desk UI migrates to Vue 3 + Vite CSR static build served by Nginx (Refs #285; accepted 2026-10-25; desk-surface visuals partially superseded by owner decision B, Refs #517) |
 | ADR-0004 REST versioning, auth, errors | `architecture/decisions/adr-0004-rest-versioning-auth-errors.md` | active | `architect` | versioned REST cross-cutting design: URL+contract versioning, session auth, problem+json error envelope (Closes #414; proposed) |
 | ADR-0005 server-side check-out gate | `architecture/decisions/adr-0005-server-side-checkout-gate.md` | active | `architect` | Stay re-derives the check-out balance and approval provenance from Billing; client claims advisory; fail-closed (Refs #601; proposed) |
+| ADR-0006 server-side availability derivation | `architecture/decisions/adr-0006-server-side-availability-derivation.md` | active | `architect` | the overbooking ceiling comes from the recorded room inventory (Rooms), not the request's `sellableUnits`; advisory field, fail-closed capacity read (Refs #631; proposed) |
 | REST resource surface | `architecture/rest-resource-surface.md` | active | `architect` | per-module REST surface: resource naming, methods, statuses, shape refs, Idempotency-Key rule (Closes #415; proposed) |
 | REST migration rollout | `architecture/rest-migration-rollout.md` | active | `architect` | migration path and rollout plan: strangler phases, gates, rollback, compat matrix, decommission (Closes #416; proposed) |
 | Candidate architectures | `architecture/candidate-architectures.md` | active | `architect` | candidate structures, customisation, strategies, trade-offs, recommendation (Closes #67) |
@@ -107,9 +108,9 @@ Development table, which use a `../` prefix.
 
 | Type | Path | Status | Owner | Purpose |
 |---|---|---|---|---|
-| Reservations design | `architecture/services/reservations.md` | active | `architect` | as-built pattern/layers, verified flowcharts, deps, error mapping, operations (Closes #181) |
+| Reservations design | `architecture/services/reservations.md` | active | `architect` | as-built pattern/layers, verified flowcharts, deps, error mapping, operations (Closes #181; section 8 planned delta Refs #631) |
 | Stay design | `architecture/services/stay.md` | active | `architect` | as-built pattern/layers, verified flowcharts, deps, error mapping, operations (Closes #181; section 8 planned delta Refs #601) |
-| Rooms design | `architecture/services/rooms.md` | active | `architect` | as-built pattern/layers, verified flowcharts, deps, error mapping, operations (Closes #181) |
+| Rooms design | `architecture/services/rooms.md` | active | `architect` | as-built pattern/layers, verified flowcharts, deps, error mapping, operations (Closes #181; section 8 planned delta Refs #631) |
 | Rates design | `architecture/services/rates.md` | active | `architect` | as-built pattern/layers, verified flowcharts, deps, error mapping, operations (Closes #181) |
 | Guests design | `architecture/services/guests.md` | active | `architect` | as-built pattern/layers, verified flowcharts, deps, error mapping, operations (Closes #181) |
 | Billing design | `architecture/services/billing.md` | active | `architect` | as-built pattern/layers, verified flowcharts, deps, error mapping, operations (Closes #181; section 8 planned delta Refs #601) |
