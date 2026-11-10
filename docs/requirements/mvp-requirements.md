@@ -3204,21 +3204,21 @@ No new NFR is added. The existing NFRs cover the change:
 ### 18.5 Traceability handoff for `qa-lead`
 
 Each row traces to the #586 issue-body acceptance and to this
-section's FRs. Guards the change rewrites are named `file:line`
-and must stay green from now on; where no guard exists yet, the
-row names the missing guard explicitly and the implementation
-PR must create it. `qa-lead` owns the matching rows in
+section's FRs. The change shipped in PR #594, so every guard below
+is present on disk as a `file:line` pin and stays green from now
+on; the cases the change created are named with that pin.
+`qa-lead` owns the matching rows in
 `docs/testing/desk-restyle-test-traceability.md` (R4),
 `docs/testing/traceability-matrix.md`, and
 `docs/testing/desk-ui-rollout-test-traceability.md`.
 
-| Item | Guard (on disk today; the #586 change rewrites or creates it) | Handoff note for `qa-lead` |
+| Item | Guard (on disk; the #586 change shipped in PR #594) | Handoff note for `qa-lead` |
 |---|---|---|
-| FR-CIP-1 arrival-pick load | `app/src/views/StayView.test.ts:309-352` (arrival flow; today the first click loads and the second commits — rewritten so the pick alone populates the select and one button click commits, with a note), `app/e2e/stay.spec.ts:65-73` (two-click check-in — rewritten to pick, select, commit) | The assertion must be "the arrival pick alone populates the options"; the booked-type filter stays pinned by the same fixture |
-| FR-CIP-2 picker states and failures | `app/src/views/StayView.test.ts:371-400` (need_room guard, no `AssignRoom`), `:402-444` (single-candidate auto-select), `:574` (unknown reference), `app/src/views/desk-edge-guards.test.ts:1183-1213` (placeholder plus back/forward gate; rewritten to assert the arrival-pick load with a note) | Keep the guard, auto-select, and refusal cases; they move to the pick timing, never disappear. Missing guard: no no-ready-rooms unit case exists — the implementation PR creates it (booked-type status plus the plain error, nothing bound, a click retries the load) |
-| FR-CIP-3 error cleared on selection | Missing guard: no `StayView.test.ts` case asserts the guard message disappearing on a valid room select; the implementation PR creates it (multi-candidate pick, select a room, message and hint gone, no error) | The case must cover the multi-candidate path the owner reported, not only the single-candidate branch |
-| FR-CIP-4 commit once, unchanged bodies | `app/src/views/StayView.test.ts:309-352` (body assertions: `AssignRoom` `roomNumber` plus `stayLink`, `CheckIn` room id from the echo), `:925` (in-flight double-click assigns once), `:596` (taken room), `:626` (already checked in), `app/src/views/desk-edge-guards.test.ts:1183-1213` (no stay calls without a room) | One button click after the preload must assign once with no repeated candidate read; the second-click no-op case stays |
-| Design-facts gate | `app/e2e/design-facts.spec.ts`, `app/e2e/design-facts.ts` Stay entry, `docs/technical/desk-ui-fact-schema.md` (`[data-testid="stay-checkin-room"] select`), `docs/testing/dom-diff-allowlist.md` DD-13, `app/src/stay-restyle.test.ts:55-100` source pins | The decided input stays the same `select`; option subtrees stay exempt under DD-13, so no schema or allowlist change — re-run the fact-level gate and note the reason |
+| FR-CIP-1 arrival-pick load | `app/src/views/StayView.test.ts:332-397` (arrival flow: the pick alone populates the select and one button click commits, with a note), `app/e2e/stay.spec.ts:68-73` (pick, select, commit) | The assertion is "the arrival pick alone populates the options"; the booked-type filter stays pinned by the same fixture |
+| FR-CIP-2 picker states and failures | `app/src/views/StayView.test.ts:453-492` (need_room guard, no `AssignRoom`), `:493-537` (single-candidate auto-select), `:943` (unknown reference), `:538-606` (plain no-ready-rooms error with the booked-type status, nothing bound, a click retries the load), `app/src/views/desk-edge-guards.test.ts:1225-1263` (placeholder plus back/forward gate on the arrival-pick load, with a note) | The guard, auto-select, and refusal cases run on the pick timing and never disappeared; the no-ready-rooms case now exists at `:538` |
+| FR-CIP-3 error cleared on selection | `app/src/views/StayView.test.ts:402-434` (multi-candidate pick, select a room, message and hint gone, no error, then one commit) | The case covers the multi-candidate path the owner reported, not only the single-candidate branch |
+| FR-CIP-4 commit once, unchanged bodies | `app/src/views/StayView.test.ts:332-397` (body assertions: `AssignRoom` `roomNumber` plus `stayLink`, `CheckIn` room id from the echo), `:1772-1798` (in-flight double-click assigns once), `:967` (taken room), `:997` (already checked in), `:607-664` (failed preload retries the load, nothing commits), `app/src/views/desk-edge-guards.test.ts:1225-1263` (no stay calls without a room) | One button click after the preload assigns once with no repeated candidate read; the second-click no-op case stays |
+| Design-facts gate | `app/e2e/design-facts.spec.ts`, `app/e2e/design-facts.ts` Stay entry, `docs/technical/desk-ui-fact-schema.md` (`[data-testid="stay-checkin-room"] select`), `docs/testing/dom-diff-allowlist.md` DD-13, `app/src/stay-restyle.test.ts:55-100` source pins | The decided input stays the same `select`; option subtrees stay exempt under DD-13, so no schema or allowlist change — #594 re-ran the fact-level gate green with that reason |
 | Catalogue parity | `messages/en.json`, `messages/vi.json` and the eight `services/*` mirrors; `script/catalogue-coverage-check.sh` | Zero new keys; every state above uses an existing `desk.stay.*` string in both locales |
 
 Per-flow implementation diagram (T2; `product-owner` section 6.12
