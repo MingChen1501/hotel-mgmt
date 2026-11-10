@@ -47,6 +47,10 @@ describe('shell document titles', () => {
     await router.push('/admin');
     await nextTick();
     expect(document.title).toBe('Admin board');
+    // Refs #590: the management screen serves its own catalogue title.
+    await router.push('/manage');
+    await nextTick();
+    expect(document.title).toBe('Rooms and rates');
     await router.push('/onboarding');
     await nextTick();
     expect(document.title).toBe('First-time setup');

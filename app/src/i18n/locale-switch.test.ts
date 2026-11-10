@@ -13,12 +13,13 @@ import { resetConnectivityForTests } from '../api/client';
 
 // D1 design-header order (Refs #539, #472): Desk, Rooms, Book,
 // Stay, Folio, Print, Admin — the seven tabs of the v2 `.dc.html`
-// headers. Onboarding has no design-header tab (deep route only).
-// VI labels follow the design nav bars verbatim (Refs #458): the
-// folio tab reads Hoá đơn and the print tab reads In, exactly as
-// in the `.dc.html` headers.
-const EN_NAV = ['Desk', 'Rooms', 'Book', 'Stay', 'Folio', 'Print', 'Admin'];
-const VI_NAV = ['Lễ tân', 'Sơ đồ phòng', 'Đặt phòng', 'Lưu trú', 'Hoá đơn', 'In', 'Quản trị'];
+// headers, plus the app-only Manage tab immediately after Rooms
+// (Refs #590, owner decision O-1). Onboarding has no design-header
+// tab (deep route only). VI labels follow the design nav bars
+// verbatim (Refs #458): the folio tab reads Hoá đơn and the print
+// tab reads In, exactly as in the `.dc.html` headers.
+const EN_NAV = ['Desk', 'Rooms', 'Manage', 'Book', 'Stay', 'Folio', 'Print', 'Admin'];
+const VI_NAV = ['Lễ tân', 'Sơ đồ phòng', 'Quản lý', 'Đặt phòng', 'Lưu trú', 'Hoá đơn', 'In', 'Quản trị'];
 
 describe('shell locale switch (EN/VI)', () => {
   beforeEach(async () => {

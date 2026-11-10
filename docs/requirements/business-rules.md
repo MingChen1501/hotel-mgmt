@@ -49,6 +49,7 @@ front-desk staff, manager, or owner account acting within its access
 | BR-13 | Every reservation carries the rate plan and price it was quoted from, with the nightly breakdown. A later rate change does not alter the quoted price unless staff explicitly recalculate it by modifying the reservation. | FR-RTE-5; FR-RES-1; FR-RES-2; US-RTE-5 |
 | BR-14 | New reservations quote the nightly price the manager saved for that room type, season, and day. | FR-RTE-1; US-RTE-1 |
 | BR-15 | A named discount or special price applied by the manager is kept by name on the reservation, and folio charges follow the adjusted price. | FR-RTE-3; US-RTE-3 |
+| BR-44 | A nightly price covers exactly one night. A room type is open for booking on a night only when a price exists for that room type, rate plan, and night; a missing night is never priced by inference from a neighbouring night, a plan or season default, or zero, and the desk states the type as not open for booking for that date until a manager sets the night's price. | FR-RTE-1; FR-RTE-5; FR-RES-1; US-RTE-1; `AC-MANAGE-9`; #589 |
 
 ## 4. Check-in, stay, and check-out
 
@@ -148,14 +149,20 @@ are product-owned with no requirements wording at stake.
 
 Every domain policy stated in `FR-CUS-*`, requirements section 3,
 the PRD journeys and assumptions, and the sequence diagrams appears
-exactly once above (BR-1..BR-42); BR-43 states the
+exactly once above (BR-1..BR-43); BR-43 states the
 canonical-vs-display boundary for the #503 business-date decision
 (tracing `FR-DSK-11`, requirements section 12) without adding
-behaviour beyond the traced FRs/NFRs. Policies with no decided source
-appear as open questions OQ-1..OQ-5. No rule introduces behaviour
-beyond the traced FRs/NFRs/stories. Later capabilities from
-requirements section 6 (waitlist, split folios, integrated payments,
-automated workflow rules, multi-property operation, and the rest)
-carry no rule here.
+behaviour beyond the traced FRs/NFRs, and BR-44 states the per-night
+price granularity and the no-inference rule the #590 management
+screen relies on (tracing `FR-RTE-1`, `FR-RTE-5`, and the #589
+booking refusal) without adding behaviour beyond those sources.
+Policies with no decided source appear as open questions
+OQ-1..OQ-5. No rule introduces behaviour beyond the traced
+FRs/NFRs/stories. Later capabilities from requirements section 6
+(waitlist, split folios, integrated payments, automated workflow
+rules, multi-property operation, and the rest) carry no rule here.
 
-Counts: 43 business rules, 5 open questions.
+Counts: 44 business rules, 5 open questions.
+
+<!-- ao-role: business-analyst -->
+Role: business-analyst · AO session hotel-mgmt-887

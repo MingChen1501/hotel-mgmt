@@ -142,7 +142,9 @@ bed types, and features per room and room type.
 Given a new or edited room or room type; when the manager saves its
 floor, bed type, capacity, and features; then the values appear in
 the room inventory and are available when assigning rooms at
-check-in.
+check-in. Desk surface (Refs #590): section 20 specifies the screen
+that performs this save and its floor move, with the capability
+statement unchanged.
 
 ### 1.4 Rates and availability (`FR-RTE-*`)
 
@@ -150,7 +152,9 @@ FR-RTE-1 — Rate plans per room type. The manager can define sellable
 prices per room type, season, and day.
 Given a room type and a date range; when the manager saves a nightly
 price for that combination; then new reservations for that room type
-and date quote that price.
+and date quote that price. Desk surface (Refs #590): section 20
+specifies the range save that writes one row per night, with the
+capability statement unchanged.
 
 FR-RTE-2 — Availability overview. Staff can see sellable rooms by
 room type and date at a glance.
@@ -303,7 +307,9 @@ front-desk staff operate the desk, the manager additionally controls
 rates, rooms, and reports, and the owner additionally controls users
 and hotel setup. Room and room-type inventory is co-editable:
 `FR-ADM-3` (owner) and `FR-RMS-4` (manager) edit the same inventory
-with no primary.
+with no primary. Desk surface (Refs #590): section 20 specifies the
+product wording a non-manager sees on the management screen; it adds
+no enforcement and no role.
 
 FR-ADM-3 — Room and room-type setup. The owner can define the
 property's rooms, types, and capacity.
@@ -3643,5 +3649,435 @@ change, and no service deploy.
   endpoint, contract, or refusal reason). This section is its
   FR/NFR part; no implementation PR opens until `SPEC-GATE PASS`.
 
+## 20. Rooms and rates management desk screen (Refs #590)
+
+Requirements delta for the #590 change: the desk gains one management
+screen where a manager creates and edits room types, places rooms on
+floors, and sets the nightly price of a room type across a date range,
+with one price row per night. Neither capability is new — `FR-RMS-4`
+already requires the manager to define floors, bed types, and features
+per room and room type, and `FR-RTE-1` already requires a nightly price
+per room type and day to become the price a new reservation quotes —
+but the product has no way to do either one after first-run setup: the
+wizard writes types and rooms once against an empty database, and
+nothing under `app/src` calls the pricing operations at all. The
+decision lives with `product-owner` in
+`docs/product/rooms-rates-management.md` and
+`docs/design/RoomsRates.dc.md` (owner approval 2026-11-09, recorded as
+D-22 and D-23 in `docs/project/decision-log.md`); the binding
+done-conditions are `AC-MANAGE-1..11` in
+`docs/product/acceptance-criteria.md` [section 13](../product/acceptance-criteria.md).
+This section records only the T2 spec-gate requirements delta: the
+decision (20.1), the explicit no-change statements (20.2), the FR
+delta (20.3), the NFR statement (20.4), the traceability handoff
+(20.5), and the gate dependencies (20.6). No `docs/README.md` row
+flips: the three requirements files this change touches are already
+`active`.
+
+### 20.1 Decision: one screen, three sections, existing operations only
+
+Owner QA (2026-11-09) found that room types, floors, and prices are
+API-only in the product. The first-run wizard is the only screen that
+writes the inventory (`app/src/views/OnboardingView.vue:921-930` types,
+`:935-938` rooms) and it runs against an empty database only
+(`:530-533`); nothing under `app/src` calls `UpsertRatePlan` or
+`UpsertRatePrice` today — the only callers are the browser-test seed
+helpers (`app/e2e/desk-flow.ts:134-166`) and curl. A property
+therefore cannot price its rooms through the product, which is the
+same gap behind the booking refusal tracked in #589.
+
+The change decides six things:
+
+- **One screen, three sections in setup order.** The screen is one
+  route (`/manage`, name `manage`, `/app/manage` served by the
+  existing `/app/` history base) reached from one nav tab after
+  `Rooms`. Its sections run in the order a property is set up — room
+  types, then rooms and floors, then prices — so a manager never lands
+  on an empty type list while trying to price a type.
+- **Four existing writes, three existing reads.** The screen posts
+  `UpsertRoomType` and `UpsertRoom` (rooms service) and
+  `UpsertRatePlan` and `UpsertRatePrice` (rates service), and reads
+  `ListRoomTypes`, `ListRoomsByState`, and `QuotePrice`. No new
+  operation, field, error code, schema, or event is added
+  (`contracts/http/UpsertRoomType.json`, `UpsertRoom.json`,
+  `UpsertRatePlan.json`, `UpsertRatePrice.json`, `ListRoomTypes.json`,
+  `ListRoomsByState.json`, `QuotePrice.json`).
+- **A range save is a client-side fan-out, not a batch operation.**
+  One save writes one `UpsertRatePrice` per night in date order, and
+  the range includes both end dates (a first night of the 1st and a
+  last night of the 7th is seven rows). The write is safe to repeat
+  because the store keys a price by plan, room type, and night and
+  upserts on that key (`services/rates/internal/store/postgres.go:115-145`,
+  the `ON CONFLICT` at `:134-135`; in-memory equivalent
+  `services/rates/internal/store/store.go:157-160` and `:179-195`).
+  That key is why a partial save can resume instead of restarting.
+- **A plan is created by an explicit action or not at all.**
+  `UpsertRatePrice` refuses a night whose plan does not exist with
+  `NOT_FOUND` (`services/rates/internal/store/store.go:188-191`), and
+  that refusal is the screen's only signal that the plan is missing.
+  `UpsertRatePlan` overwrites the stored description on a name
+  conflict (`services/rates/internal/store/postgres.go:92-95`), so the
+  screen never sends it as a precaution and never sends it twice for a
+  plan that already exists. The user-visible path is: name the missing
+  plan, offer the create action, post the name only, then retry the
+  nights that were still pending (owner decision O-4).
+- **The operation keys are names, so v1 locks them.** `UpsertRoomType`
+  updates by type name (`services/rooms/src/pgstore.ts:138-172`,
+  in-memory `services/rooms/src/store.ts:217-236`) and `UpsertRoom`
+  updates by room number (`services/rooms/src/pgstore.ts:194-225`,
+  in-memory `services/rooms/src/store.ts:237-262`). Changing a type's
+  name in the form would therefore create a second type, so the name is
+  read-only while editing (G1), and no screen offers a rename.
+  Likewise a room is edited by its existing number. Features are
+  preserved on a type edit because the screen never sends `features`
+  and the store merges the stored object
+  (`services/rooms/src/pgstore.ts:150-160`).
+- **A blank floor means "keep the stored value", never "clear it".**
+  An absent `floor` member leaves the stored floor in place
+  (`COALESCE($3, floor)`, `services/rooms/src/pgstore.ts:213`;
+  in-memory `services/rooms/src/store.ts:246`), while an empty string
+  is stored as an empty floor label and then omitted from inventory
+  rows (`services/rooms/src/server.ts:116-124`). The screen therefore
+  sends no `floor` member when the field is blank — the same rule the
+  wizard already follows (`app/src/views/OnboardingView.vue:928-933`)
+  — and v1 offers moving a room between floors, never un-filing it
+  (G5).
+- **The role check is a product-surface rule, not enforcement.** The
+  screen reads the signed-in role from the session store, exactly as
+  the Admin console's cosmetic gate does
+  (`app/src/views/AdminView.vue:482`, `app/src/stores/session.ts:22`,
+  `:54`, `:63-71`). The rooms and rates operations check the session
+  token and no role today, so this screen states the refusal in
+  product wording and claims no server-side permission (G6;
+  `NFR-SEC-1` unchanged; follow-up slice).
+
+### 20.2 Explicit no-change statements
+
+- The MVP capabilities keep their wording and targets: `FR-RMS-4`,
+  `FR-RTE-1`, `FR-ADM-2`, `FR-ADM-3`, and `FR-ADM-4` gain a pointer
+  to this section and keep their Given/When/Then conditions. What
+  changes is where the desk performs the work, not what the
+  capabilities promise.
+- Operations and contracts are unchanged: no new operation, field,
+  error code, state value, event, or schema. `UpsertRatePrice` and
+  `UpsertRatePlan` carry no `actor` and the screen does not invent
+  one; the actor the rooms operations require is the signed-in staff
+  name the rest of the desk already sends.
+- No new pricing semantics: seasons, child or derived rates,
+  occupancy-based pricing, plan-level defaults, and tax or fee math
+  stay out. The screen writes the existing per-night rows and nothing
+  else (`FR-RTE-1`, sections 1.4 and 14).
+- The booking refusal is unchanged: `FR-RTE-4` and the sold-out,
+  restriction, and no-price refusals keep their conditions and
+  wording, #589's `no_rate_price` / `no_rate_plan` mapping stays the
+  Book screen's source of truth, and this screen consumes the same
+  reason codes instead of introducing a second phrase.
+- The three roles, what each may reach, and the role-set statement
+  (section 3.2, `NFR-SEC-1`, `BR-35`) are unchanged. No server-side
+  enforcement is added or claimed here.
+- Money and dates keep their decided shape (section 14, `BR-43`):
+  integer minor units on the wire, the desk VND display, ISO night
+  dates, and an inclusive range computed on the hotel's calendar day
+  (`NFR-TZ-1`).
+- Print output is unchanged (`FR-BIL-4`, `NFR-DSK-2`): the screen has
+  no print surface and its styling does not reach the print routes.
+- No delete and no rename: no operation exists for either, so the
+  screen offers neither (G1, G3, G4), and an owner request becomes a
+  follow-up rather than an implied capability.
+- The section 4 traceability table and its coverage count are
+  unchanged (40 MVP capabilities mapped, 0 unmapped): this section
+  adds no MVP capability. The handoff table in section 20.5 is
+  separate.
+- Sections 7 through 19 stand with their wording and targets
+  unchanged; the change is additive. The one new business rule
+  (`BR-44`) and the one new data-dictionary entry (Nightly price)
+  record the per-night price granularity this screen relies on and
+  introduce no behaviour beyond `FR-RTE-1` and `FR-RTE-5`.
+
+### 20.3 Behaviour-scoped functional requirements
+
+Ids use the `MGMT` (management screen) namespace, continuing the
+slice-scoped pattern of sections 10 through 19. They constrain the new
+desk screen only, and each maps to an accepted done-condition in
+`AC-MANAGE-1..11`.
+
+FR-MGMT-1 — One management entry inside the shared desk shell.
+The manager reaches the rooms and rates setup from one tab, and the
+rest of the shell is untouched.
+Given a signed-in user of any hotel role; when they open the desk
+shell; then a manage tab labelled `Quản lý` (VI) / `Manage` (EN) sits
+immediately after `Rooms` and opens the screen at `/app/manage`, and
+every other tab, route, the sign-in gate, and the print surfaces
+behave exactly as before. Given the screen opens; when it renders;
+then the tab label, the document title, the screen title, and the
+intro resolve through the catalogue in the active locale, the shell
+keeps its layout (brand the only shrinkable item, one nav row, the
+`1200px` content column), and the design token set gains nothing.
+
+FR-MGMT-2 — Staff can read every room type the property sells.
+Given room types exist; when the manager opens the room-types section;
+then every type appears once with its name, guest capacity, and bed
+type, the heading carries the count, and a missing capacity or bed
+type renders a muted placeholder rather than a guessed value. Given
+the property has no room type; then the section shows the empty
+sentence with the first action and no invented row. Given a type was
+created or edited on this screen; when the Book screen next reads;
+then the same `ListRoomTypes` result lists it, so the type is quotable
+and bookable with no further step.
+
+FR-MGMT-3 — The manager can create a room type and change an existing
+type's capacity and bed type.
+Given the room-type form; when the manager saves a name with an
+optional guest count inside `1..20` (the form's sanity bound, while the
+contract's only limit is a minimum of 1) and an optional bed type; then
+the screen sends one `UpsertRoomType` carrying `name`, `actor`, and
+only the fields that were filled, and the type persists. Given an
+existing type is edited; when the save succeeds; then its features are
+preserved because the screen never sends `features`, the name is
+read-only while editing with the helper that a different name would
+create a second type, and the change updates that type instead of
+adding a second one. Given a save succeeds; then the form returns to
+the create state, the list re-reads, the saved row shows the new
+values, and a success line names the type. Given the name is blank or
+the guest count falls outside `1..20`; then the screen names the field
+and the correction in plain words and sends nothing.
+
+FR-MGMT-4 — The manager can add a room, or update an existing room's
+type and floor, keyed by room number.
+Given at least one room type; when the manager saves a room number
+with a type and an optional floor, bed type, and guest count; then the
+screen sends one `UpsertRoom` keyed by the number with that type's
+name, the filled fields, and `actor`, so an existing number is an
+update rather than a duplicate. Given the room did not exist; then it
+is created in the state the service assigns and the screen writes no
+state of its own. Given the floor field is blank; then the request
+carries no `floor` member at all — never an empty string — so a stored
+floor is not cleared from this screen. Given the save succeeds; then
+the room list re-reads and the room appears under its floor, or under
+the no-floor group when it has none, and a success line names the room
+number. Given the selected type is unknown to the rooms service; then
+the screen says in plain words that the type could not be found and
+writes nothing.
+
+FR-MGMT-5 — The manager can move a room to another floor without
+changing anything else about it.
+Given a room shown in its floor group; when the manager types a
+different floor in that room's row and saves; then the screen sends
+one `UpsertRoom` for that room number with the typed floor and the
+row's chosen type, the list re-reads `ListRoomsByState`, and the room
+renders under its new floor. Given the move succeeds; then the room's
+state, current occupancy, and history are unchanged — a setup write
+never transitions a room — and the Rooms map and the Book screen
+report the new floor on their own next load. Given the read of one
+room state fails; then that state's group renders as unavailable with
+a plain sentence naming what could not be read plus a retry action,
+and no room is dropped silently. Given a room has no stored floor;
+then it sits in the no-floor section, and giving it a floor is a move
+of that room, not a second room.
+
+FR-MGMT-6 — Staff can read the stored nightly price of every night in
+a selected range.
+Given a room type, a rate-plan name, and a first and last night; when
+the manager reads the range; then the screen shows one column per
+night with the weekday, the desk date form, and the stored price in
+the desk money shape, and a range longer than the visible page is
+paged rather than truncated. Given a night has no stored price; then
+its column shows the no-price state and never a price carried from a
+neighbouring night, a default, or zero. Given a night's read fails for
+another reason; then that column says the price could not be read.
+Given the selected plan does not exist; then the section shows the
+plan-missing state of `FR-MGMT-8` instead of prices. Given no visible
+night has a price; then the section renders the empty state of
+`FR-MGMT-9`.
+
+FR-MGMT-7 — One save writes one nightly price row per night of an
+inclusive range.
+Given a room type, a rate-plan name, an inclusive first and last
+night spanning at most 31 nights, and a whole amount in đồng within
+the screen's accepted range (`0` to `100 000 000`, digits only); when
+the manager saves; then the screen sends one `UpsertRatePrice` per
+night in date order, each carrying the plan name, that room type's id,
+the ISO night date, and the amount in integer minor units, and the
+range includes both end dates (the 1st to the 7th writes seven rows).
+Given the range exceeds 31 nights or the last night falls before the
+first; then the screen refuses in plain words before anything is sent.
+Given the amount is missing, not whole, or outside the range; then the
+screen names the field and sends nothing. Given a save is in flight;
+then the save and read actions are disabled and the action states its
+progress, so a repeated click starts no second round. Given the save
+finishes; then the price grid re-reads the saved range and a quote for
+that room type and those dates returns the stored prices. Given the
+save fails at a night; then `FR-MGMT-10` applies.
+
+FR-MGMT-8 — An unknown rate plan is named and created only on an
+explicit action.
+Given the plan name the manager typed does not exist; when the first
+night's write is refused as an unknown plan; then the screen says in
+plain words that no rate plan carries that name and offers the create
+action, and does nothing else. Given the manager chooses that action;
+then the screen sends one `UpsertRatePlan` carrying the plan name only
+and then retries the nights that were still pending. Given a plan
+already exists; then the screen never re-sends `UpsertRatePlan` for it,
+neither as a precaution nor before a save, because that operation
+overwrites the stored description. Given the manager does not choose
+the create action; then no plan is created and no night is written.
+
+FR-MGMT-9 — A room type with no price for the dates is stated as not
+open for booking, with the action that opens it.
+Given no visible night has a stored price; when the manager reads the
+prices section; then the section states that the room type is not open
+for booking and that a price is needed for those dates, using the
+vocabulary the Book screen already uses for the same condition
+(`desk.book.room_type_not_operational`), and the price form stays
+visible and usable inside that state. Given the empty state renders;
+then no price is shown, implied, or shown as zero, and the state names
+the action that opens the type for booking. Given a price is then
+saved for those dates; when the desk quotes the type; then the quote
+returns those prices and the Book screen offers the type for booking.
+
+FR-MGMT-10 — A partial save states what was written and resumes where
+it stopped.
+Given a multi-night save; when a night's write fails; then the screen
+stops, writes no further night, states saved-of-total in plain words,
+names the first night that did not save, and offers a resume action.
+Given the manager resumes; then the writes start at that first unsaved
+night, so no night is written twice for the sake of retrying and no
+night before it is skipped. Given the failure is reported; then the
+nights already written stay written, and the screen never claims a
+night saved that the operation did not confirm.
+
+FR-MGMT-11 — A non-manager role gets the read-only screen and the
+refusal in product wording.
+Given a signed-in front-desk account; when they open the screen; then
+every list renders, a plain notice states that the setup is visible
+here and that only the owner or a manager can change it, and every
+create and save action is disabled with the sentence that only the
+owner or a manager can change rooms and prices and that a manager
+should be asked. Given a front-desk account triggers a write anyway;
+then the screen sends nothing. Given a write is refused by the server;
+then the screen shows the same plain sentence and never an envelope
+code, field name, or status number; an expired session follows the
+existing expire-to-sign-in path. Given any role; then this gate is a
+product-surface rule only — the operations check the session token and
+no role today — so nothing on this screen claims server-side role
+enforcement (`NFR-SEC-1` unchanged; the enforcement slice is the
+recorded follow-up).
+
+FR-MGMT-12 — Every state is worded in plain language in both locales.
+Given any section; when it is loading, empty, unreadable, waiting on
+valid input, refused, partially saved, or successfully saved; then a
+plain sentence names what happened and the next action, no envelope
+code, stack trace, or zero-filled row reaches the screen, and every
+visible string resolves through the catalogue with VI and EN parity
+(`NFR-DSK-1` holds).
+
+### 20.4 Non-functional requirements delta: no-change statement
+
+No new NFR is added. The existing NFRs cover the change:
+
+- Internationalisation and catalogue coverage (`NFR-DSK-1` holds):
+  this screen is a seventh desk surface, held to the same target —
+  every visible string is a VI-primary catalogue key with EN parity,
+  its keys ship in both `messages/en.json` and `messages/vi.json` per
+  section PR with placeholders intact, and
+  `script/catalogue-coverage-check.sh` stays green. The NFR's "six
+  screens" wording names the desk-UI rollout set rather than an
+  exhaustive screen list and is not reworded here; whether
+  `product-owner` enumerates this surface there is their call.
+- Touch and keyboard targets (`NFR-DSK-3` holds): the screen keeps the
+  `44px` minimum target and the label-above-input pattern, so the
+  same target applies to its controls by the same rule.
+- Print isolation (`NFR-DSK-2` holds): the screen has no print
+  output, and nothing on it reaches the existing print routes.
+- Desk response (`NFR-PERF-1` holds): a screen load is at most one
+  `ListRoomTypes` read plus the five `ListRoomsByState` reads the Rooms
+  map already performs, a price grid read is one single-night
+  `QuotePrice` per visible night and none for nights off the page, and
+  one save writes at most 31 rows sequentially. No endpoint is added
+  and nothing polls.
+- Role-based access (`NFR-SEC-1` holds, not narrowed): the refusal on
+  this screen is cosmetic, the operations still check the token only,
+  and the enumerated operations, contracts, and stored values are
+  untouched. Server-side role enforcement stays the recorded gap (G6)
+  and is not claimed by this change.
+- Audit (`NFR-AUD-1` holds): room-type, room, plan, and price writes
+  flow through the services' existing events
+  (`services/rooms/src/pgstore.ts` emits on the room-type and room
+  writes, `services/rates/internal/store/postgres.go:110` and `:144`
+  for plans and prices). The rates contracts carry no `actor`, and the
+  rates store writes `created_by` / `updated_by` as `system`
+  (`services/rates/internal/store/postgres.go:93`, `:133`), so a price
+  or plan write is attributed to the service, not to a named staff
+  member. That is today's behaviour, unchanged by this screen and
+  recorded as a gap rather than papered over; adding an actor to the
+  rate operations is a contract change outside this slice.
+- Concurrency (`NFR-CON-1`, `NFR-CON-2` hold): a price write touches no
+  availability record and a floor move changes no room state, so
+  neither obligation is affected.
+- Availability and offline behaviour (`NFR-AVL-1`, `NFR-SHL-3` hold):
+  a read that fails offline renders the plain read-error state with a
+  retry, and no write is queued or replayed later.
+- Time and locale (`NFR-TZ-1`, `NFR-I18N-1`, `BR-43` hold): night dates
+  travel as ISO and the inclusive range is computed on the hotel's
+  calendar day; the desk money and date forms are the decided display
+  shapes.
+
+### 20.5 Traceability handoff for `qa-lead`
+
+Each row traces to the #590 acceptance criteria and to this section's
+FRs. Guards named `file:line` exist today and must stay green; where
+no guard exists, the row says so and the matching implementation PR
+creates it. `qa-lead` owns the rows in `docs/testing/traceability-matrix.md`
+and the per-section evidence rules. The T2 per-flow implementation
+diagrams — the range price write with partial failure and resume, the
+floor move with read-back, the room-type create/edit, and the refusal
+path — are `architect` work in `docs/architecture/lld.md`; this
+section does not duplicate them, and the gate needs them before any
+implementation PR opens.
+
+| Item | Guard (on disk today; the #590 PRs extend or create it) | Handoff note for `qa-lead` |
+|---|---|---|
+| FR-MGMT-1 entry, tab, title | `app/src/router.test.ts:19-34` (nine routes and their names), `app/src/App.vue:262-268` (`NAV_ITEMS`, seven tabs today), `app/src/shell-restyle.test.ts:25-26` (`EN_NAV` / `VI_NAV` label arrays), `:202-222` (active tab per destination), `:223-241` (whole-shell locale switch), `app/src/shell-titles.test.ts:31-54` (per-screen title) | Rewrite, never delete: the route count becomes ten with `manage`, the nav arrays gain `Quản lý` / `Manage` after `Rooms`, and a title case names `desk.shell.doc_title_manage`. Missing guard: no case asserts the tab position after `Rooms` in both locales on the signed-in shell; the entry PR creates it |
+| FR-MGMT-2 room-type list | `services/rooms/src/server.test.ts:105-131` (`ListRoomTypes` names and the empty list), shared read call sites `app/src/views/BookView.vue:676`, `app/src/views/RoomsView.vue:604`, `app/src/views/DeskView.vue:996`, `app/src/views/PrintView.vue:788` | Missing guard: no management-screen list case covering the count heading, the `—` placeholder, and the empty sentence; the room-types PR creates it and asserts the row the manager just saved after the re-read |
+| FR-MGMT-3 create/edit a room type | `app/src/views/OnboardingView.vue:921-930` (the only type write today), `app/src/views/OnboardingView.test.ts:352-355`, `app/src/onboarding-restyle.test.ts:137-138`, `services/rooms/src/server.test.ts:68-101`, `services/rooms/src/pgstore.ts:138-172` (features merged when absent), `services/rooms/src/store.ts:217-236` | Missing guard: no case proves an edit preserves features or that the name is read-only while editing; the room-types PR creates both, and the invalid-input case must show zero requests |
+| FR-MGMT-4 add or update a room | `services/rooms/src/server.test.ts:68-101` (type + room, default `vacant-inspected`), `:149-203` (owner-defined room reaches inventory and availability), `:241-267` (stored floor in inventory rows), `app/src/views/OnboardingView.vue:928-933` (blank floor omitted from the payload) | Missing guard: no case proves an update by number keeps the room's state and history; the rooms-and-floors PR creates it against `services/rooms/src/store.ts:237-262` |
+| FR-MGMT-5 floor move with read-back | `services/rooms/src/server.test.ts:241-267`, floor grouping `app/src/views/RoomsView.vue:461-495`, `app/src/views/RoomsView.test.ts:495-509` | Missing guard: no case posts `UpsertRoom` with a new floor and re-reads `ListRoomsByState` to find the room under it; the rooms-and-floors PR creates it and asserts state and occupancy unchanged, and that a blank floor field sends no `floor` member (never `''`, which would clear the label per `services/rooms/src/pgstore.ts:198,213`) |
+| FR-MGMT-6 nightly price read | `app/src/views/BookView.vue:498-506` (the `no_rate_price` / `no_rate_plan` mapping), `services/rates/internal/store/store.go:265-274` (the refusal reason) | Missing guard: no case covers the per-night read, the no-price versus could-not-read split, paging, or the never-invented-price rule; the nightly-prices PR creates them |
+| FR-MGMT-7 range write, one row per night | `services/rates/internal/store/postgres_test.go:56-82` (two nights, two `rate_prices` rows), `services/rates/internal/handler/handler.go:140-172` (the route and its validation), `services/rates/internal/store/store.go:179-195` | Missing guard: nothing under `app/src` calls `/v1/rates/UpsertRatePrice` today, so the screen case is new; the PR asserts one call per night in date order, the inclusive count, integer minor units, the two pre-send refusals, and the quote that follows the write |
+| FR-MGMT-8 explicit plan creation | `services/rates/internal/store/postgres.go:92-95` (description overwritten on conflict), `services/rates/internal/handler/handler.go:117-137` | Missing guard: the unknown-plan refusal, the single name-only `UpsertRatePlan`, and the retry of pending nights; the nightly-prices PR creates it and proves no plan is created without the action |
+| FR-MGMT-9 no-price empty state | `messages/en.json:424-425`, `messages/vi.json:424-425`, `app/src/views/BookView.vue:650-666`, `app/src/views/BookView.test.ts:1000-1030` | The management state must reuse `desk.book.room_type_not_operational` (no second phrase); missing guard: no case renders the empty state with its form still usable; the nightly-prices PR creates it |
+| FR-MGMT-10 partial save and resume | Missing guard: no client-side fan-out exists, so no case covers stop-at-first-failure, saved/total, the first unsaved night, or resume-from-there | The nightly-prices PR creates all four cases plus the in-flight repeat-click no-op; the saved nights must be asserted as still written |
+| FR-MGMT-11 refusal path | `app/src/views/AdminView.vue:482` (the cosmetic gate precedent), `app/src/views/AdminView.test.ts:465-486` (manager sees the console), `:487-505` (front-desk read-only and zero calls), `app/src/stores/session.ts:22`, `:54`, `:63-71` | Missing guard: the manage screen's read-only render, its disabled actions, the refusal sentence, and the server-refusal mapping with no envelope code; the entry PR creates them |
+| FR-MGMT-12 states and catalogue | `script/catalogue-coverage-check.sh`, `messages/en.json`, `messages/vi.json`; design-facts gate `app/e2e/design-facts.spec.ts` with `docs/technical/desk-ui-fact-schema.md` | Each section PR adds only its own keys in both locales and keeps both gates green; the design-facts entry for the screen lands with the section that renders it |
+| Browser evidence | `app/e2e/desk-flow.ts:134-166` (type, room, plan, and price seeded through the API as a precondition) | The seed stays as pre-condition, not product evidence; each section PR adds the browser assertion for the section it covers and says which of the seeded writes the screen can now perform instead |
+
+### 20.6 Explicitly not specified here (plus gate dependencies)
+
+- Implementation — the route, the view, the nav entry, the catalogue
+  keys, the guards, the browser flows, and the VI/EN screenshots
+  against the approved board section — is the downstream `dev` work,
+  split one PR per section after `SPEC-GATE PASS`, not this section.
+- The T2 UI-contract section is not written here: it lives with
+  `product-owner` in `docs/product/rooms-rates-management.md` section
+  10 (layout and navigation scope, component mapping, token scope,
+  plain-words states, print rules), so requirements do not reword
+  absent UI expectations.
+- Acceptance criteria are `product-owner` work (`AC-MANAGE-1..11`),
+  the LLD delta, the four per-flow implementation diagrams, and the
+  G2/G6 decisions are `architect` work, and the guard mapping and
+  traceability completion are `qa-lead` work.
+- New reads (`ListRatePlans`, `ListRatePrices`), server-side role
+  enforcement, deletes, room-type or room renames, clearing a floor
+  back to un-filed, seed data and the install path, the booking
+  refusal wording itself (`#589`), and new pricing semantics are out
+  of scope. Adding either new read now would make the change T3 and
+  need an ADR plus HLD delta, so the two gaps are recorded as
+  follow-ups to keep it T2.
+- The specified change is tier T2 (a reader-visible desk surface
+  driving existing operations; no new subsystem, data model,
+  endpoint, contract, or refusal reason). This section is its FR/NFR
+  part; no implementation PR opens until `SPEC-GATE PASS` on the
+  then-current head.
+
 <!-- ao-role: business-analyst -->
-Role: business-analyst · AO session hotel-mgmt-872
+Role: business-analyst · AO session hotel-mgmt-887

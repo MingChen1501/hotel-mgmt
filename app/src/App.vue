@@ -253,14 +253,17 @@ interface NavItem {
 }
 
 // Design-header order (Refs #539, #472, FR-DSK-1, D1): Desk ·
-// Rooms · Book · Stay · Folio · Print · Admin — the seven tabs of
-// the v2 `.dc.html` headers. Onboarding has no design-header tab:
-// /onboarding stays reachable through the empty-database
-// auto-launch plus its deep route (the route stays registered in
-// `router.ts`; this list is the visible set only).
+// Rooms · Manage · Book · Stay · Folio · Print · Admin — the seven
+// v2 `.dc.html` header tabs plus the app-only `manage` tab (#590,
+// owner decision O-1, allowance in
+// `docs/technical/desk-ui-fact-schema.md` section 8). Onboarding has
+// no design-header tab: /onboarding stays reachable through the
+// empty-database auto-launch plus its deep route (the route stays
+// registered in `router.ts`; this list is the visible set only).
 const NAV_ITEMS: NavItem[] = [
   { name: 'desk', to: '/', labelKey: 'desk.shell.nav_desk', fallback: 'Desk' },
   { name: 'rooms', to: '/rooms', labelKey: 'desk.shell.nav_rooms', fallback: 'Rooms' },
+  { name: 'manage', to: '/manage', labelKey: 'desk.shell.nav_manage', fallback: 'Manage' },
   { name: 'book', to: '/book', labelKey: 'desk.shell.nav_book', fallback: 'Book' },
   { name: 'stay', to: '/stay', labelKey: 'desk.shell.nav_stay', fallback: 'Stay' },
   { name: 'folio', to: '/folio', labelKey: 'desk.shell.nav_folio', fallback: 'Folio' },
@@ -2133,6 +2136,301 @@ export default defineComponent({
 
   #shell .shell-form .p-button {
     margin-top: 8px;
+  }
+
+  /* Rooms and rates management screen (Refs #590; the approved board
+     `docs/design/RoomsRates.dc.md` sections 4-7): the screen carries
+     the design h1 `22px/700` plus the muted `14px` intro, then three
+     stacked card groups in setup order with `24px` between them.
+     Section A is the `1.4fr 1fr` list-plus-form pair; section B is
+     the add-room card above the floor-grouped list; section C is the
+     control row, the seven-column nightly grid, and the range-entry
+     form. Cards render `background:#FFFFFF;border:1px solid
+     #D9E0DE;border-radius:12px;padding:18px`; rows are `15px` lines
+     with `1px solid #EEF1F0` dividers; every control keeps the
+     `44px` target and the label-above-input pattern; primary actions
+     take the `#0F766E` fill and secondary actions the teal border on
+     white. Token values live in `src/theme/tokens.ts`
+     (`colors.ink/muted/cardBorder/rowDivider/primary/danger/
+     success`); this rule duplicates them because CSS cannot import
+     the TS constants. Views carry no style blocks (M4), so the
+     presentation lives here. Zero new tokens: no value below is
+     outside the shared palette. */
+  #shell .manage-head {
+    margin-bottom: 8px;
+  }
+
+  #shell .manage-title {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 700;
+    color: #1B2B2A;
+  }
+
+  #shell .manage-intro {
+    margin: 4px 0 0;
+    font-size: 14px;
+    color: #4B5D5B;
+  }
+
+  #shell [data-testid="manage-view"] .manage-section {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin-top: 24px;
+  }
+
+  #shell [data-testid="manage-view"] .manage-grid-types {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+    gap: 16px;
+    align-items: start;
+  }
+
+  #shell [data-testid="manage-view"] .p-card {
+    border: 1px solid #D9E0DE;
+    border-radius: 12px;
+    background: #FFFFFF;
+    box-shadow: none;
+    margin: 0;
+  }
+
+  #shell [data-testid="manage-view"] .p-card-body {
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  #shell [data-testid="manage-view"] .p-card-caption,
+  #shell [data-testid="manage-view"] .p-card-content {
+    padding: 0;
+  }
+
+  #shell [data-testid="manage-view"] .p-card-title h3 {
+    margin: 0;
+    font-size: 16px;
+    color: #1B2B2A;
+  }
+
+  #shell [data-testid="manage-view"] .manage-rows {
+    display: flex;
+    flex-direction: column;
+  }
+
+  #shell [data-testid="manage-view"] .manage-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 0;
+    border-top: 1px solid #EEF1F0;
+    font-size: 15px;
+    color: #1B2B2A;
+  }
+
+  #shell [data-testid="manage-view"] .manage-row-main {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  #shell [data-testid="manage-view"] .manage-row-meta {
+    font-size: 14px;
+    color: #4B5D5B;
+  }
+
+  #shell [data-testid="manage-view"] .manage-room-row {
+    display: grid;
+    grid-template-columns: minmax(120px, 1fr) 120px minmax(160px, 1fr) auto;
+    justify-content: initial;
+  }
+
+  #shell [data-testid="manage-view"] .manage-room-number {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  #shell [data-testid="manage-view"] .manage-form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  #shell [data-testid="manage-view"] .manage-form label,
+  #shell [data-testid="manage-view"] .manage-rate-controls label {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 14px;
+    color: #1B2B2A;
+  }
+
+  #shell [data-testid="manage-view"] .manage-form-wide {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 12px;
+    align-items: end;
+  }
+
+  #shell [data-testid="manage-view"] .manage-form-wide .manage-actions,
+  #shell [data-testid="manage-view"] .manage-form-wide .manage-error,
+  #shell [data-testid="manage-view"] .manage-form-wide .manage-success,
+  #shell [data-testid="manage-view"] .manage-form-wide .manage-hint {
+    grid-column: 1 / -1;
+  }
+
+  #shell [data-testid="manage-view"] .manage-form .p-inputtext,
+  #shell [data-testid="manage-view"] .manage-form select,
+  #shell [data-testid="manage-view"] .manage-rate-controls .p-inputtext,
+  #shell [data-testid="manage-view"] .manage-rate-controls select,
+  #shell [data-testid="manage-view"] .manage-rate-controls .p-datepicker,
+  #shell [data-testid="manage-view"] .manage-rate-controls .p-datepicker-input,
+  #shell [data-testid="manage-view"] .manage-room-row .p-inputtext,
+  #shell [data-testid="manage-view"] .manage-room-row select {
+    width: 100%;
+    min-height: 44px;
+    box-sizing: border-box;
+    font: inherit;
+  }
+
+  #shell [data-testid="manage-view"] .manage-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  #shell [data-testid="manage-view"] .manage-action.p-button {
+    min-height: 44px;
+    padding: 0 18px;
+    border-radius: 8px;
+    border: 0;
+    background: #0F766E;
+    color: #FFFFFF;
+    font-weight: 600;
+  }
+
+  #shell [data-testid="manage-view"] .manage-action-secondary.p-button,
+  #shell [data-testid="manage-view"] .manage-row-action.p-button {
+    min-height: 44px;
+    padding: 0 18px;
+    border-radius: 8px;
+    border: 1px solid #0F766E;
+    background: #FFFFFF;
+    color: #0F766E;
+    font-weight: 600;
+  }
+
+  #shell [data-testid="manage-view"] .manage-hint,
+  #shell [data-testid="manage-view"] .manage-rate-summary {
+    margin: 0;
+    font-size: 14px;
+    color: #4B5D5B;
+  }
+
+  #shell [data-testid="manage-view"] .manage-empty {
+    margin: 0;
+    padding: 10px 0;
+    font-size: 15px;
+    color: #4B5D5B;
+  }
+
+  #shell [data-testid="manage-view"] .manage-error {
+    margin: 0;
+    font-size: 14px;
+    color: #B91C1C;
+  }
+
+  #shell [data-testid="manage-view"] .manage-success {
+    margin: 0;
+    font-size: 14px;
+    color: #15803D;
+  }
+
+  #shell [data-testid="manage-view"] .manage-floor {
+    margin-top: 8px;
+  }
+
+  #shell [data-testid="manage-view"] .manage-floor-title {
+    margin: 0 0 8px;
+    font-size: 16px;
+    color: #1B2B2A;
+  }
+
+  #shell [data-testid="manage-view"] .manage-rate-controls {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+    align-items: end;
+  }
+
+  #shell [data-testid="manage-view"] .manage-rate-read {
+    display: flex;
+    align-items: end;
+  }
+
+  #shell [data-testid="manage-view"] .manage-rate-grid {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  #shell [data-testid="manage-view"] .manage-rate-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 10px 6px;
+    border: 1px solid #D9E0DE;
+    border-radius: 12px;
+    background: #FFFFFF;
+  }
+
+  #shell [data-testid="manage-view"] .manage-rate-weekday,
+  #shell [data-testid="manage-view"] .manage-rate-date {
+    font-size: 13px;
+    color: #4B5D5B;
+  }
+
+  #shell [data-testid="manage-view"] .manage-rate-amount {
+    font-size: 15px;
+    font-weight: 600;
+    color: #1B2B2A;
+  }
+
+  #shell [data-testid="manage-view"] .manage-rate-caption {
+    font-size: 12px;
+    color: #4B5D5B;
+  }
+
+  #shell [data-testid="manage-view"] .manage-rate-empty {
+    max-width: 560px;
+    margin: 8px auto;
+    padding: 24px 16px;
+    text-align: center;
+    background: #F4F6F5;
+    border-radius: 12px;
+  }
+
+  #shell [data-testid="manage-view"] .manage-rate-empty-title {
+    margin: 0 0 6px;
+    font-size: 16px;
+    font-weight: 700;
+    color: #1B2B2A;
+  }
+
+  #shell [data-testid="manage-view"] .manage-rate-empty-body {
+    margin: 0;
+    font-size: 14px;
+    color: #4B5D5B;
+  }
+
+  #shell [data-testid="manage-view"] .manage-plan-missing {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: flex-start;
   }
 }
 </style>

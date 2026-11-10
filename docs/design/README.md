@@ -25,22 +25,24 @@ file here wins unless the owner decides otherwise.
 The board map (positions and titles) in `manifest.json` is the source of
 truth for how the seven boards relate to each other.
 
-## Board drafts under review (team-owned, Refs #590)
+## Team-owned board (approved, Refs #590)
 
 | File | Board | Status |
 |---|---|---|
-| `RoomsRates.dc.md` | Rooms and rates management (Quản lý phòng và giá) | draft for owner approval on #590; not yet a `.dc.html` canvas bundle |
+| `RoomsRates.dc.md` | Rooms and rates management (Quản lý phòng và giá) | approved by the owner on #590, 2026-11-09 (D-23); authoritative for the screen and cited by `docs/product/rooms-rates-management.md`; not yet a `.dc.html` canvas bundle |
 
 Owner direction 2026-11-09 (D-22 in
 `docs/project/decision-log.md`) makes the design source for the
 rooms/rates management screen team-owned: `product-owner` drafts it here
 for owner review, and the owner-approved draft gates the spec gate. A
 draft board is an ASCII/mermaid layout plus its catalogue keys, because
-a decoded `.dc.html` bundle cannot be hand-authored. When the owner
-approves a draft, it joins the bundle above as an owner-supplied
-`.dc.html` + `manifest.json` entry through the normal docs-only flow;
-the draft file then records that supersession instead of being edited to
-match implementation.
+a decoded `.dc.html` bundle cannot be hand-authored. The owner approved
+this board on #590 with the four decisions O-1 to O-4; no
+owner-supplied `.dc.html` and `manifest.json` entry exists for it yet,
+so the markdown board stays the layout source until one arrives through
+the normal docs-only flow. An owner-supplied revision then supersedes
+it, and the draft file records that supersession instead of being edited
+to match implementation.
 
 ## Rendering note
 
