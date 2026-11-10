@@ -8,8 +8,8 @@ provenance, never on what the request asserts. It is the server half of
 the #588 finding recorded as symptom 2(d) "Server trust" in
 [`docs/testing/evidence/588/README.md`](../588/README.md), and it lands
 the target written in
-[ADR-0005](../../architecture/decisions/adr-0005-server-side-checkout-gate.md)
-and [`docs/architecture/lld.md`](../../architecture/lld.md) section 21.
+[ADR-0005](../../../architecture/decisions/adr-0005-server-side-checkout-gate.md)
+and [`docs/architecture/lld.md`](../../../architecture/lld.md) section 21.
 
 ## 1. The before/after pair
 
@@ -130,16 +130,16 @@ Commands and counts:
 - Before/after source: [`docs/testing/evidence/588/README.md`](../588/README.md)
   symptom 2(d) "Server trust".
 - Decision and design:
-  [ADR-0005](../../architecture/decisions/adr-0005-server-side-checkout-gate.md),
-  [`docs/architecture/lld.md`](../../architecture/lld.md) section 21,
-  [`docs/architecture/services/stay.md`](../../architecture/services/stay.md)
-  sections 4-6, [`docs/technical/integration.md`](../../technical/integration.md) C7.
+  [ADR-0005](../../../architecture/decisions/adr-0005-server-side-checkout-gate.md),
+  [`docs/architecture/lld.md`](../../../architecture/lld.md) section 21,
+  [`docs/architecture/services/stay.md`](../../../architecture/services/stay.md)
+  sections 4-6, [`docs/technical/integration.md`](../../../technical/integration.md) C7.
 - Product and requirements delta:
-  [`docs/product/acceptance-criteria.md`](../../product/acceptance-criteria.md)
+  [`docs/product/acceptance-criteria.md`](../../../product/acceptance-criteria.md)
   section 14 (`AC-CKO-1`, `AC-CKO-2`),
-  [`docs/requirements/mvp-requirements.md`](../../requirements/mvp-requirements.md)
+  [`docs/requirements/mvp-requirements.md`](../../../requirements/mvp-requirements.md)
   section 22 (`FR-CKS-1`..`FR-CKS-5`),
-  [`docs/requirements/business-rules.md`](../../requirements/business-rules.md)
+  [`docs/requirements/business-rules.md`](../../../requirements/business-rules.md)
   `BR-46`.
 - Guard traceability and the `test-report.md` row are the `qa-lead`
   re-pin handoff at the merged head.
