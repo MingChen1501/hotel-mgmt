@@ -1899,6 +1899,136 @@ describe('stay view', () => {
       setLocale('en');
     }
   });
+
+  // #596 (Refs #586, AC-DSK-17): the arrival select stays enabled
+  // during the commit, so a pick inside that window starts a
+  // preload of its own. The commit success reset owns the picker:
+  // it bumps the load sequence and drops the pending load, so the
+  // late read for that pick paints nothing into the cleared panel,
+  // never re-locks the Check in button, and commits nothing again.
+  it('drops a preload picked inside the commit window when the reset clears the panel', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const happy = stubHappyPath(fetchMock);
+    const gates: { assign?: () => void; late?: () => void } = {};
+    const commitHeld = new Promise<void>((resolve) => {
+      gates.assign = resolve;
+    });
+    const lateHeld = new Promise<void>((resolve) => {
+      gates.late = resolve;
+    });
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      const body = parseBody(init);
+      if (url === '/v1/stay/ListArrivalsDepartures') {
+        return jsonResponse({
+          businessDate: '2026-10-26',
+          arrivals: [
+            { reservationRef: 'RSV-1', guestId: 'g-1', roomId: null, actualArrival: null, actualDeparture: null },
+            { reservationRef: 'RSV-2', guestId: 'g-1', roomId: null, actualArrival: null, actualDeparture: null },
+          ],
+          inHouse: [],
+          departures: [],
+        });
+      }
+      // The commit-window pick's preload is the late read: it only
+      // resolves once the test releases it, after the commit.
+      if (url === '/v1/reservations/GetReservation' && body.reservationRef === 'RSV-2') {
+        await lateHeld;
+        return jsonResponse({
+          reservationId: 'r-2',
+          reservationRef: 'RSV-2',
+          roomTypeId: 'standard',
+          guest: { guestId: 'g-1' },
+        });
+      }
+      // The commit itself is held open so the pick lands mid-commit.
+      if (url === '/v1/rooms/AssignRoom') {
+        await commitHeld;
+      }
+      return happy(url, init);
+    });
+
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    useSessionStore().signIn('tok-1', 'Ada Owner', 'owner');
+    const wrapper = mount(StayView, { global: { plugins: [pinia] } });
+    await vi.waitFor(() => {
+      expect(
+        wrapper.find('[data-testid="stay-checkin-arrival"] option[value="RSV-2"]').exists(),
+      ).toBe(true);
+    });
+
+    const urls = (): string[] => fetchMock.mock.calls.map((call) => String(call[0]));
+    const arrival = wrapper.find('[data-testid="stay-checkin-arrival"]');
+
+    // The unchanged #594 flow: the pick preloads the booked-type
+    // candidates and the one Check in click starts the commit.
+    await arrival.setValue('RSV-1');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain('Booked: Standard');
+    });
+    await wrapper.find('[data-testid="stay-checkin-room"]').setValue('room-1');
+    await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(urls()).toContain('/v1/rooms/AssignRoom');
+    });
+
+    // A pick inside the commit window: the arrival select is still
+    // enabled, so it starts a candidate preload for that pick.
+    await arrival.setValue('RSV-2');
+    await vi.waitFor(() => {
+      expect(
+        fetchMock.mock.calls.filter(
+          (call) =>
+            String(call[0]) === '/v1/reservations/GetReservation' &&
+            parseBody(call[1]).reservationRef === 'RSV-2',
+        ),
+      ).toHaveLength(1);
+    });
+
+    // The commit succeeds and clears the panel: the arrival pick is
+    // gone, the button is usable again, and nothing stays in flight.
+    gates.assign?.();
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain('Checked in');
+    });
+    await vi.waitFor(() => {
+      expect((wrapper.find('[data-testid="stay-checkin"]').element as HTMLButtonElement).disabled).toBe(
+        false,
+      );
+    });
+    expect((arrival.element as HTMLSelectElement).value).toBe('');
+    expect(wrapper.find('[data-testid="stay-checking-in"]').exists()).toBe(false);
+
+    // The late read resolves after the reset: it paints no
+    // candidate, no status, and no error into the cleared panel and
+    // never re-locks the panel.
+    gates.late?.();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await wrapper.vm.$nextTick();
+    expect(
+      wrapper.findAll('[data-testid="stay-checkin-room"] option').map((option) => option.text()),
+    ).toEqual(['Choose a room...']);
+    expect(
+      (wrapper.find('[data-testid="stay-checkin-room"]').element as HTMLSelectElement).value,
+    ).toBe('');
+    expect((arrival.element as HTMLSelectElement).value).toBe('');
+    expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).not.toContain('Booked');
+    expect(wrapper.find('[data-testid="stay-checkin-error"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="stay-checking-in"]').exists()).toBe(false);
+    expect((wrapper.find('[data-testid="stay-checkin"]').element as HTMLButtonElement).disabled).toBe(
+      false,
+    );
+    // One commit, once: no second AssignRoom / CheckIn /
+    // CheckInReservation ever runs for the dropped pick.
+    for (const op of [
+      '/v1/rooms/AssignRoom',
+      '/v1/stay/CheckIn',
+      '/v1/reservations/CheckInReservation',
+    ]) {
+      expect(urls().filter((url) => url === op)).toHaveLength(1);
+    }
+  });
 });
 
 // Source-level pins: the port keeps every check-in/out op and the
