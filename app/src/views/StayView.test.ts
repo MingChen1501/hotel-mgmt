@@ -2045,6 +2045,140 @@ describe('stay view', () => {
       expect(urls().filter((url) => url === op)).toHaveLength(1);
     }
   });
+
+  // #614 (Refs #586, #596, AC-DSK-17): the mirror half of the
+  // commit-window race. A pick made inside the commit starts a
+  // preload of its own; when that preload settles *before* the
+  // commit does, it must not release the commit's in-flight state.
+  // The Check in button stays disabled, a second click starts no
+  // second commit, and once the commit settles exactly one
+  // AssignRoom / CheckIn / CheckInReservation ran and the panel
+  // shows the commit's own result, not the preload's.
+  it('keeps the commit in flight when a commit-window preload settles first', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const happy = stubHappyPath(fetchMock);
+    const gates: { assign?: () => void } = {};
+    const commitHeld = new Promise<void>((resolve) => {
+      gates.assign = resolve;
+    });
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      const body = parseBody(init);
+      if (url === '/v1/stay/ListArrivalsDepartures') {
+        return jsonResponse({
+          businessDate: '2026-10-26',
+          arrivals: [
+            { reservationRef: 'RSV-1', guestId: 'g-1', roomId: null, actualArrival: null, actualDeparture: null },
+            { reservationRef: 'RSV-2', guestId: 'g-1', roomId: null, actualArrival: null, actualDeparture: null },
+          ],
+          inHouse: [],
+          departures: [],
+        });
+      }
+      // The commit-window pick is the deluxe type with a single
+      // ready room, so its preload settles to a bound room while
+      // the commit is still held: an observable mid-commit paint
+      // whose `finally` is the release this case pins.
+      if (url === '/v1/reservations/GetReservation' && body.reservationRef === 'RSV-2') {
+        return jsonResponse({
+          reservationId: 'r-2',
+          reservationRef: 'RSV-2',
+          roomTypeId: 'deluxe',
+          guest: { guestId: 'g-1' },
+        });
+      }
+      if (url === '/v1/rooms/ListRoomsByState' && body.state === 'vacant-inspected') {
+        return jsonResponse({
+          state: 'vacant-inspected',
+          rooms: [
+            { roomId: 'room-1', number: '101', roomTypeId: 'standard', state: 'vacant-inspected' },
+            { roomId: 'room-2', number: '102', roomTypeId: 'standard', state: 'vacant-inspected' },
+            { roomId: 'room-3', number: '201', roomTypeId: 'deluxe', state: 'vacant-inspected' },
+          ],
+        });
+      }
+      // The commit itself is held open so the pick and its preload
+      // land mid-commit.
+      if (url === '/v1/rooms/AssignRoom') {
+        await commitHeld;
+      }
+      return happy(url, init);
+    });
+
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    useSessionStore().signIn('tok-1', 'Ada Owner', 'owner');
+    const wrapper = mount(StayView, { global: { plugins: [pinia] } });
+    await vi.waitFor(() => {
+      expect(
+        wrapper.find('[data-testid="stay-checkin-arrival"] option[value="RSV-2"]').exists(),
+      ).toBe(true);
+    });
+
+    const urls = (): string[] => fetchMock.mock.calls.map((call) => String(call[0]));
+    const commits = (): number[] => [
+      urls().filter((url) => url === '/v1/rooms/AssignRoom').length,
+      urls().filter((url) => url === '/v1/stay/CheckIn').length,
+      urls().filter((url) => url === '/v1/reservations/CheckInReservation').length,
+    ];
+    const checkinButton = (): HTMLButtonElement =>
+      wrapper.find('[data-testid="stay-checkin"]').element as HTMLButtonElement;
+    const arrival = wrapper.find('[data-testid="stay-checkin-arrival"]');
+
+    // The unchanged #594 flow: pick RSV-1, let the preload fill the
+    // picker, and click Check in once to start the commit.
+    await arrival.setValue('RSV-1');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain('Booked: Standard');
+    });
+    await wrapper.find('[data-testid="stay-checkin-room"]').setValue('room-1');
+    await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(commits()).toEqual([1, 0, 0]);
+    });
+
+    // A pick inside the commit window starts a candidate preload of
+    // its own, and it settles (the deluxe room binds) before the
+    // held commit does.
+    await arrival.setValue('RSV-2');
+    await vi.waitFor(() => {
+      expect(
+        (wrapper.find('[data-testid="stay-checkin-room"]').element as HTMLSelectElement).value,
+      ).toBe('room-3');
+    });
+
+    // The settled preload must not release the commit's in-flight
+    // state: the panel still reads as busy and a click is a no-op,
+    // so no second commit starts.
+    expect(checkinButton().disabled).toBe(true);
+    expect(wrapper.find('[data-testid="stay-checking-in"]').exists()).toBe(true);
+    await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
+    await wrapper.vm.$nextTick();
+    expect(commits()).toEqual([1, 0, 0]);
+
+    // The commit settles: exactly one call of each commit operation,
+    // the button usable again, and the panel shows the commit's own
+    // result (no candidate, status, or error from the preload).
+    gates.assign?.();
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain('Checked in');
+    });
+    await vi.waitFor(() => {
+      expect(checkinButton().disabled).toBe(false);
+    });
+    expect(commits()).toEqual([1, 1, 1]);
+    expect(wrapper.find('[data-testid="stay-checking-in"]').exists()).toBe(false);
+    expect((arrival.element as HTMLSelectElement).value).toBe('');
+    expect(
+      wrapper.findAll('[data-testid="stay-checkin-room"] option').map((option) => option.text()),
+    ).toEqual(['Choose a room...']);
+    expect(
+      (wrapper.find('[data-testid="stay-checkin-room"]').element as HTMLSelectElement).value,
+    ).toBe('');
+    expect(wrapper.find('[data-testid="stay-checkin-error"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain('RSV-1');
+    expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).not.toContain('Deluxe');
+  });
 });
 
 // Source-level pins: the port keeps every check-in/out op and the
