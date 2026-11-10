@@ -1097,18 +1097,21 @@ relative to `app/src/views/`):
 - A pick cleared mid-load releases only the preload's half and
   never a commit the button owns (`StayView.vue:975-987`;
   `StayView.test.ts:665`).
-- Checkout gating (unchanged, shown for completeness):
-  `canCheckOut` gates the button and the dialog confirm together
-  (`StayView.vue:650-655`, `:260`, `:282`); `GetFolioBalance` on
-  review (`:1299-1306`) with `RecordOpenBalanceApproval`
-  (`:1393-1399`); the confirm route re-reads the folio
-  (`:1446-1453`) and refuses an unpaid or unprovenanced balance
-  before `CheckOut` (`:1465-1481`, `:1492-1495`); a server
-  `SETTLEMENT_REQUIRED` still refuses (`:1566-1574`) and the
-  landed close releases the departed room once (`ReleaseRoom`,
-  `:1511-1523`). `FR-BIL-7` holds; the gate pair and the server
-  refusal are pinned by `StayView.test.ts:2213` and
-  `StayView.test.ts:1532`.
+- Checkout gating (Refs #588, re-pinned for #600; shown for
+  completeness): `canCheckOut` gates the button and the dialog
+  confirm together (`StayView.vue:668-673`, `:260`, `:282`);
+  `GetFolioBalance` on review (`:1382-1387`) with
+  `RecordOpenBalanceApproval` (`:1500-1513`); the confirm route
+  re-reads the folio (`:1556-1563`) and refuses an unpaid or
+  unprovenanced balance before `CheckOut` (`:1575-1590`,
+  `:1602-1606`); a server `SETTLEMENT_REQUIRED` still refuses
+  (`:1676-1684`) and the landed close releases the departed room
+  once (`ReleaseRoom`, `:1622-1634`). `FR-BIL-7` holds; the gate
+  pair and the server refusal are pinned by `StayView.test.ts:2213`
+  and `StayView.test.ts:1532`. Amendment (Refs #600): the review now
+  posts the stay's room charge before that gate reads the balance
+  (section 20), so the gate governs a folio that carries the room
+  it paid for; the gate conditions themselves are unchanged.
 
 Failure/rollback:
 
@@ -2836,3 +2839,138 @@ delta, threat-model delta, and per-operation policy on the
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-888
+
+## 20. Desk check-out posts the stay room charge (Refs #600)
+
+Tier T2 (desk-screen behaviour change; no new subsystem, no schema or
+data-model change, no contract semantics change, no new route). This
+section records the architect-owned flow detail the #600 acceptance
+criteria ask for: the chosen posting point and its per-flow diagram.
+Scope, acceptance criteria, the FR/NFR delta, and the guard mapping are
+the sibling handoffs (`product-owner`, `business-analyst`, `qa-lead`);
+this section decides only where the charge posts and how the flow
+fails safe.
+
+**Decision — the desk check-out review posts the charge.** The nightly
+room charge for a stay the desk checked in is posted by the desk
+check-out itself, at its review step, before the folio gate reads the
+balance. Not a nightly job (the repo has no scheduler; adding one is a
+T3 concern), and not the server-side close (the close stays a desk
+orchestration, the same shape as the #588 gate: Billing is told nothing
+the desk did not read). The review is on the only route to the close
+(`checkoutCtx` gates the Check out button and the dialog confirm), so a
+close always presents a folio that carries the room it paid for, and
+the existing `BR-17`/`FR-BIL-7` gate then refuses an unpaid close
+instead of passing a zero balance the desk never charged.
+
+**Posting inputs.** The stay's booking, resolved through
+`ReservationService.QueryCalendar` by the `stayId` the calendar links
+(live stay rows carry no booking reference — the #349 pattern), then
+`ReservationService.GetReservation` for the frozen quoted total
+(`priceBasis.totalMinor`, `FR-RTE-5`). Rates repricing is out of scope:
+the desk posts the quote the stay was booked at. Exactly one
+`nightly-room-charge` line per stay, posted with the idempotency key
+`room-charge:<stayId>`; a folio that already carries a
+`nightly-room-charge` line (posted from the Folio screen or by the API
+desk loop) is never charged twice; a zero quoted total posts nothing.
+A stay whose booking cannot be resolved refuses the review with
+`desk.stay.refused_room_charge` rather than closing uncharged.
+
+### 20.1 Review flowchart (happy path plus failure/rollback)
+
+```mermaid
+flowchart TD
+    A[Staff picks a departing stay and clicks Review folio] --> B[GetFolioBalance]
+    B --> C{Folio already carries a nightly-room-charge?}
+    C -->|yes| G[Review the read balance and approval]
+    C -->|no| D[QueryCalendar by the stay actual arrival day, then GetReservation]
+    D --> E{Booking resolved and quoted total known?}
+    E -->|no| R[Plain refusal: the room charge could not be posted; no close route exists]
+    E -->|yes, total zero| G
+    E -->|yes| F[PostCharge nightly-room-charge, amount = frozen quoted total, idempotencyKey room-charge:stayId]
+    F -->|refused or failed| R
+    F -->|ok| B2[GetFolioBalance again]
+    B2 --> G
+    G --> H{Balance zero?}
+    H -->|yes| I[Check-out clear; the close commits only for this settled folio]
+    H -->|no| J{Provenanced recorded approval?}
+    J -->|yes| K[Approved exception shown; the close commits]
+    J -->|no| L[Open-balance refusal; approval form opens, no close]
+```
+
+Edge trace (every edge cites code; `StayView` paths are relative to
+`app/src/views/`):
+
+- A–B: the review reads the folio before anything else
+  (`onReview`, `StayView.vue:1361`; read helper `:1382-1386`,
+  first read `:1387`).
+- B–C: the read's charge lines decide whether the room charge is
+  already posted (`folioCarriesRoomCharge`, `StayView.vue:860-862`;
+  `contracts/http/GetFolioBalance.json` types the `charges` array).
+- C–G: a folio that already carries a `nightly-room-charge` line is
+  never charged twice — the Folio screen and the API desk loop
+  (`script/e2e-desk-loop.sh:365`) post through the same operation.
+- C–D: the booking is resolved by the stay the calendar links
+  (`resolveStayRoomCharge`, `StayView.vue:834-855`: `QueryCalendar`
+  from the stay's actual arrival day (`:837-844`) to tomorrow
+  (`nextDay`, `:474-480`), matched on `stayId` (`:845`), then
+  `GetReservation` (`:849-852`)). The `stayId` link is emitted by the reservations
+  handler (`services/reservations/internal/handler/handler.go:315`) and
+  declared in `contracts/http/QueryCalendar.json`.
+- D–E: a booking that does not resolve, or a quote that is not a
+  non-negative integer, returns `null` (`StayView.vue:846-854`).
+- E–R: the null path refuses the review with the folio line and
+  reference details left cleared, and no check-out context, so the
+  Check out button never renders (`StayView.vue:1393-1398`; wording
+  `desk.stay.refused_room_charge`, `messages/en.json`).
+- E–G: a zero quoted total posts nothing and the review proceeds on
+  the read folio (`StayView.vue:1399`).
+- E–F: the charge posts as one `nightly-room-charge` line for the
+  frozen quoted total, named for the room the stay held, with the
+  per-stay idempotency key (`StayView.vue:1399-1413`;
+  `contracts/http/PostCharge.json`; Billing derives tax/fee per
+  `BR-25` and moves the balance, `BillingService.postCharge`).
+- F–R: a refused or failed `PostCharge` surfaces as the plain panel
+  error with no check-out context (`onReview` catch,
+  `StayView.vue:1460-1468`), so a charge that did not land never reads
+  as reviewed.
+- F–B2–G: the review re-reads the folio so the balance it shows
+  includes the charge just posted (`StayView.vue:1414`).
+- G–H–I: zero balance clears the review
+  (`desk.stay.balance_zero`, `StayView.vue:1433-1439`); the close
+  re-reads the folio on the confirm route and carries that fresh
+  balance and any approval (`onCheckOut`, `StayView.vue:1538`,
+  fresh read `:1556-1563`), so `AC-DSK-18` still governs.
+- G–J–K–L: the open-balance branches are the #588 gate unchanged
+  (`StayView.vue:1440-1459`; `canCheckOut` `:668-673`; every route to
+  the close re-reads).
+
+Failure/rollback:
+
+```mermaid
+flowchart TD
+    P[Booking unresolved for the stay] --> Q[Review refused in plain words; no PostCharge, no close route]
+    S[PostCharge refused or transport failure] --> T[Plain panel error; no check-out context, staff retries]
+    U[Folio already carries the room charge] --> V[No second post; the review reads the stored lines]
+    W[Rollback: revert this single PR] --> X[The desk stops posting; folio lines already written stay valid, no migration]
+```
+
+Edge trace:
+
+- P–Q: the refusal names the charge as the blocker and clears the
+  review state (`StayView.vue:1393-1398`), and the guard pins it
+  (`app/src/views/StayView.test.ts` — "refuses the review when the
+  stay booking cannot be resolved for its room charge").
+- S–T: writes precede no lock-in — a failed `PostCharge` leaves
+  `checkoutCtx` empty, so no close route exists until a review
+  succeeds (`onReview` catch); the idempotency key makes the retry a
+  replay, not a second line.
+- U–V: the existing-line guard is pinned by
+  `app/src/views/StayView.test.ts` — "leaves a folio that already
+  carries a room charge untouched".
+- W–X: the change writes through the existing `PostCharge` operation
+  only, so reverting it stops new postings without invalidating the
+  lines already stored (rollback note in the issue).
+
+<!-- ao-role: dev -->
+Role: dev · AO session hotel-mgmt-910

@@ -401,10 +401,16 @@ interface StayListRow {
   // resolve the room number through the loaded room-state map instead
   // of parsing the label (Refs #588, `FR-CKO-1`).
   roomId?: string;
+  // The stay's actual arrival bounds the calendar read that resolves
+  // its booking (Refs #600): stay rows carry no booking reference, so
+  // the room charge is posted against the booking the calendar links.
+  actualArrival?: string | null;
 }
 
 interface CalendarEntry {
   reservationRef?: string;
+  // QueryCalendar links each entry to the stay it checked in (#600).
+  stayId?: string;
   roomTypeId?: string;
   arrivalDate?: string;
   departureDate?: string;
@@ -418,6 +424,18 @@ interface ReservationReadback {
   departureDate?: string;
   state?: string;
   guest?: { guestId?: string; fullName?: string };
+  // The frozen quoted total stored at booking (`FR-RTE-5`): the room
+  // charge the desk posts when it closes the check-out (#600).
+  priceBasis?: { totalMinor?: number; discountName?: string | null };
+}
+
+// The folio read the check-out review starts from (#600): the charge
+// lines tell the desk whether the room charge is already posted.
+interface FolioRead {
+  folioId: string;
+  balanceMinor: number;
+  openBalanceApproval?: unknown;
+  charges?: Array<{ itemKind?: string }>;
 }
 
 interface RoomRecord {
@@ -805,6 +823,62 @@ export default defineComponent({
       return departingRowForStay(stayId)?.roomLabel ?? t('desk.today.room_unknown', {}, 'Room number unavailable');
     }
 
+    // The room charge the desk posts when the check-out review opens
+    // (Refs #600): the stay's own booking carries the frozen quoted
+    // total (`priceBasis.totalMinor`, `FR-RTE-5`), and live stay rows
+    // carry no booking reference (Refs #349), so the booking is resolved
+    // through the reservation calendar by the stay it links — the same
+    // read the arrival pick uses. `null` means the booking could not be
+    // resolved, which refuses the check-out instead of closing a folio
+    // that carries no room charge.
+    async function resolveStayRoomCharge(stayId: string): Promise<number | null> {
+      const row = departingRowForStay(stayId);
+      const businessDate = localBusinessDate();
+      const arrivalDay = (row?.actualArrival ?? '').slice(0, 10) || businessDate;
+      const calendar = await apiFetch<{ reservations?: CalendarEntry[] }>(
+        '/v1/reservations/QueryCalendar',
+        {
+          method: 'POST',
+          body: JSON.stringify({ dateFrom: arrivalDay, dateTo: nextDay(businessDate) }),
+        },
+      );
+      const entry = (calendar.reservations ?? []).find((candidate) => candidate.stayId === stayId);
+      if (!entry?.reservationRef) {
+        return null;
+      }
+      const booking = await apiFetch<ReservationReadback>('/v1/reservations/GetReservation', {
+        method: 'POST',
+        body: JSON.stringify({ reservationRef: entry.reservationRef }),
+      });
+      const total = booking.priceBasis?.totalMinor;
+      return typeof total === 'number' && Number.isInteger(total) && total >= 0 ? total : null;
+    }
+
+    // One `nightly-room-charge` line marks the stay's room charge as
+    // posted (Refs #600): a folio that already carries one — posted from
+    // the Folio screen or by the API desk loop — is never charged twice.
+    function folioCarriesRoomCharge(folio: FolioRead): boolean {
+      return (folio.charges ?? []).some((line) => line.itemKind === 'nightly-room-charge');
+    }
+
+    // The posted line names the room the stay held, resolved through the
+    // loaded room-state map; a room the map cannot name still posts, with
+    // the plain item name (`contracts/http/PostCharge.json` requires one).
+    function roomChargeItemName(stayId: string): string {
+      const roomNumber = roomNumberForStay(stayId);
+      return roomNumber ? `Room ${roomNumber}` : 'Room charge';
+    }
+
+    // Refusal used when the stay's room charge cannot be posted, so staff
+    // know the check-out is blocked on the charge and not on the folio.
+    function roomChargeRefusal(): string {
+      return t(
+        'desk.stay.refused_room_charge',
+        {},
+        'The room charge could not be posted for this stay, so check-out is refused and the stay remains in house. Check the booking and try again.',
+      );
+    }
+
     async function resolveGuestName(guestId: string | undefined): Promise<string> {
       if (!guestId) {
         return t('desk.today.unknown_guest', {}, 'Unknown guest');
@@ -902,6 +976,7 @@ export default defineComponent({
             reservationRef: row.reservationRef,
             stayId: row.stayId,
             roomId: row.roomId,
+            actualArrival: row.actualArrival ?? null,
           };
         }),
       );
@@ -1295,15 +1370,50 @@ export default defineComponent({
         return;
       }
       reviewing.value = true;
+      // A review that fails leaves nothing to close: the previous stay's
+      // context, folio line, and details never authorize the next
+      // check-out.
+      checkoutCtx.value = null;
+      showApproval.value = false;
+      checkoutStatus.value = '';
+      checkoutDetails.value = [];
+      folioStatus.value = '';
       try {
-        const folio = await apiFetch<{
-          folioId: string;
-          balanceMinor: number;
-          openBalanceApproval?: unknown;
-        }>('/v1/billing/GetFolioBalance', {
-          method: 'POST',
-          body: JSON.stringify({ stayId, actor: session.displayName ?? '' }),
-        });
+        const readFolio = (): Promise<FolioRead> =>
+          apiFetch<FolioRead>('/v1/billing/GetFolioBalance', {
+            method: 'POST',
+            body: JSON.stringify({ stayId, actor: session.displayName ?? '' }),
+          });
+        let folio = await readFolio();
+        // Refs #600: the desk check-out posts the stay's room charge
+        // before the review shows a balance, so the close is gated on a
+        // folio that carries the room it paid for. A folio that already
+        // carries a nightly room charge is left untouched, and a stay
+        // whose booking cannot be resolved is never closed uncharged.
+        if (!folioCarriesRoomCharge(folio)) {
+          const roomChargeMinor = await resolveStayRoomCharge(stayId);
+          if (roomChargeMinor === null) {
+            checkoutError.value = roomChargeRefusal();
+            return;
+          }
+          if (roomChargeMinor > 0) {
+            await apiFetch<unknown>('/v1/billing/PostCharge', {
+              method: 'POST',
+              body: JSON.stringify({
+                stayId,
+                itemKind: 'nightly-room-charge',
+                itemName: roomChargeItemName(stayId),
+                amountMinor: roomChargeMinor,
+                actor: session.displayName ?? '',
+                // One key per stay: a repeated review returns the line
+                // it already posted instead of charging the room twice
+                // (`NFR-CON-2`, `contracts/http/PostCharge.json`).
+                idempotencyKey: `room-charge:${stayId}`,
+              }),
+            });
+            folio = await readFolio();
+          }
+        }
         checkoutCtx.value = {
           stayId,
           folioId: folio.folioId,

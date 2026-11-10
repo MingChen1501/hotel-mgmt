@@ -471,6 +471,7 @@
     "desk.stay.room_release_failed": "The guest is checked out, but room {roomNumber} still reads occupied. Reload the desk, and tell the manager if it still shows occupied.",
     "desk.stay.refused_open_balance": "The folio still has an open balance, so check-out is refused and the stay remains in house. Record an approval first.",
     "desk.stay.refused_approval_incomplete": "The recorded approval has no approver or no recorded time, so check-out is refused and the stay remains in house. Record the approval again.",
+    "desk.stay.refused_room_charge": "The room charge could not be posted for this stay, so check-out is refused and the stay remains in house. Check the booking and try again.",
     "desk.stay.pick_stay_label": "In-house stay:",
     "desk.stay.pick_stay_prompt": "Choose an in-house stay…",
     "desk.stay.stay_list_empty": "No in-house stays for today. Enter a stay ID instead.",
