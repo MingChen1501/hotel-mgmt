@@ -593,9 +593,14 @@ export default defineComponent({
     // commit window is dropped with the cleared panel.
     // `pendingLoadSeq` names the candidate load still in flight, so
     // clearing the pick can release only that load's in-flight flag
-    // and never a commit the button owns.
+    // and never a commit the button owns. `commitInFlight` records
+    // the commit half separately (#614): a preload started by a pick
+    // taken inside the commit window can settle before the commit
+    // does, and it must not release the busy state the commit still
+    // owns.
     let loadSeq = 0;
     let pendingLoadSeq: number | null = null;
+    let commitInFlight = false;
 
     const checkoutStayId = ref('');
     const folioStatus = ref('');
@@ -975,7 +980,9 @@ export default defineComponent({
         // candidate load is released here.
         if (pendingLoadSeq !== null) {
           pendingLoadSeq = null;
-          checkingIn.value = false;
+          if (!commitInFlight) {
+            checkingIn.value = false;
+          }
         }
         return;
       }
@@ -1106,7 +1113,14 @@ export default defineComponent({
       } finally {
         if (seq === loadSeq) {
           pendingLoadSeq = null;
-          checkingIn.value = false;
+          // #614: a preload for a pick taken inside the commit
+          // window owns the newest sequence and settles before the
+          // commit does, so releasing the read's half must wait for
+          // the commit to settle (the commit's own `finally` then
+          // releases it).
+          if (!commitInFlight) {
+            checkingIn.value = false;
+          }
         }
       }
     }
@@ -1137,6 +1151,7 @@ export default defineComponent({
         return;
       }
       checkingIn.value = true;
+      commitInFlight = true;
       try {
         const stayId = newIdempotencyKey();
         let assigned: { roomId: string; roomNumber: string };
@@ -1257,7 +1272,14 @@ export default defineComponent({
         }
         checkinError.value = errorMessage();
       } finally {
-        checkingIn.value = false;
+        // #614: the commit releases its own half; a candidate load
+        // still in flight (a pick taken inside the commit window
+        // that has not settled yet) keeps the panel busy until its
+        // own `finally` runs.
+        commitInFlight = false;
+        if (pendingLoadSeq === null) {
+          checkingIn.value = false;
+        }
       }
     }
 
