@@ -1355,6 +1355,178 @@ describe('stay view', () => {
     ).toHaveLength(0);
   });
 
+  it('posts nothing for a zero quoted total and still clears the free stay to close', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
+
+    // #600 (`FR-CKP-3`, CKP-5): a stay booked at a zero frozen quote is
+    // free, so the review must not invent a zero-amount room-charge
+    // line. It posts nothing, reviews the empty folio as read, and the
+    // free stay still closes on the zero balance `BR-17` allows.
+    const happy = stubHappyPath(fetchMock);
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/reservations/GetReservation') {
+        return Promise.resolve(
+          jsonResponse({
+            reservationId: 'r-1',
+            reservationRef: 'RSV-1',
+            roomTypeId: 'standard',
+            guest: { guestId: 'g-1' },
+            priceBasis: { totalMinor: 0, discountName: 'Complimentary' },
+          }),
+        );
+      }
+      if (url === '/v1/billing/GetFolioBalance') {
+        return Promise.resolve(
+          jsonResponse({
+            folioId: 'f-1',
+            stayId: parseBody(init).stayId,
+            balanceMinor: 0,
+            openBalanceApproval: null,
+            charges: [],
+            payments: [],
+          }),
+        );
+      }
+      return happy(url, init);
+    });
+
+    await wrapper.find('[data-testid="stay-checkout-stay"]').setValue('s-1');
+    await wrapper.find('[data-testid="stay-review"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkout-status"]').text()).toContain(
+        'balance is zero',
+      );
+    });
+
+    // Nothing is charged and nothing is faked: zero `PostCharge`, no
+    // fabricated line in the reviewed folio.
+    expect(
+      fetchMock.mock.calls.filter((call) => String(call[0]) === '/v1/billing/PostCharge'),
+    ).toHaveLength(0);
+    expect(wrapper.find('[data-testid="stay-folio-status"]').text()).toContain('Folio balance: 0.00.');
+    expect(wrapper.find('[data-testid="stay-checkout-error"]').exists()).toBe(false);
+    expect(
+      (wrapper.find('[data-testid="stay-checkout"]').element as HTMLButtonElement).disabled,
+    ).toBe(false);
+
+    // The free stay still closes, against the folio as read.
+    await confirmCheckout(wrapper);
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkout-status"]').text()).toContain(
+        'Checked out for Guest Two',
+      );
+    });
+    const checkoutBodies = fetchMock.mock.calls
+      .filter((call) => String(call[0]) === '/v1/stay/CheckOut')
+      .map((call) => parseBody(call[1]));
+    expect(checkoutBodies).toHaveLength(1);
+    expect(checkoutBodies[0]).toMatchObject({ folioId: 'f-1', folioBalanceMinor: 0 });
+  });
+
+  it('ends the review in the plain panel error when the room-charge post is refused', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
+
+    // #600 (`FR-CKP-4`, CKP-6): a `PostCharge` the service refuses ends
+    // the review in the plain panel error sentence for that refusal —
+    // no balance, no close route, no raw envelope, and the stay stays
+    // in house because nothing was reviewed.
+    const happy = stubHappyPath(fetchMock);
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/billing/GetFolioBalance') {
+        return Promise.resolve(
+          jsonResponse({
+            folioId: 'f-1',
+            stayId: parseBody(init).stayId,
+            balanceMinor: 0,
+            openBalanceApproval: null,
+            charges: [],
+            payments: [],
+          }),
+        );
+      }
+      if (url === '/v1/billing/PostCharge') {
+        return Promise.resolve(
+          jsonResponse({ code: 'VALIDATION_FAILED', message: 'charge refused' }, 400),
+        );
+      }
+      return happy(url, init);
+    });
+
+    await wrapper.find('[data-testid="stay-checkout-stay"]').setValue('s-1');
+    await wrapper.find('[data-testid="stay-review"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkout-error"]').text()).toContain(
+        'That did not work',
+      );
+    });
+
+    // One attempt, never a retry loop, and never a raw envelope.
+    expect(
+      fetchMock.mock.calls.filter((call) => String(call[0]) === '/v1/billing/PostCharge'),
+    ).toHaveLength(1);
+    expect(wrapper.find('[data-testid="stay-checkout-error"]').text()).not.toContain(
+      'VALIDATION_FAILED',
+    );
+    // Nothing is reviewed: no balance line, no checkout control, no close.
+    expect(wrapper.find('[data-testid="stay-folio-status"]').text()).toBe('');
+    expect(wrapper.find('[data-testid="stay-checkout"]').exists()).toBe(false);
+    expect(
+      fetchMock.mock.calls.filter((call) => String(call[0]) === '/v1/stay/CheckOut'),
+    ).toHaveLength(0);
+  });
+
+  it('ends the review in the plain panel error when the room-charge post fails on transport', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
+
+    // #600 (`FR-CKP-4`, CKP-6): a `PostCharge` that fails on transport
+    // (the desk drops offline mid-review) ends the review the same way
+    // as a refusal — the plain panel error, no balance, no close route.
+    const happy = stubHappyPath(fetchMock);
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/billing/GetFolioBalance') {
+        return Promise.resolve(
+          jsonResponse({
+            folioId: 'f-1',
+            stayId: parseBody(init).stayId,
+            balanceMinor: 0,
+            openBalanceApproval: null,
+            charges: [],
+            payments: [],
+          }),
+        );
+      }
+      if (url === '/v1/billing/PostCharge') {
+        return Promise.reject(new TypeError('Failed to fetch'));
+      }
+      return happy(url, init);
+    });
+
+    await wrapper.find('[data-testid="stay-checkout-stay"]').setValue('s-1');
+    await wrapper.find('[data-testid="stay-review"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkout-error"]').text()).toContain(
+        'That did not work',
+      );
+    });
+
+    expect(
+      fetchMock.mock.calls.filter((call) => String(call[0]) === '/v1/billing/PostCharge'),
+    ).toHaveLength(1);
+    // The offline reason never surfaces raw on the panel (FR-DSP-3).
+    expect(wrapper.find('[data-testid="stay-checkout-error"]').text()).not.toContain('Failed to fetch');
+    expect(wrapper.find('[data-testid="stay-folio-status"]').text()).toBe('');
+    expect(wrapper.find('[data-testid="stay-checkout"]').exists()).toBe(false);
+    expect(
+      fetchMock.mock.calls.filter((call) => String(call[0]) === '/v1/stay/CheckOut'),
+    ).toHaveLength(0);
+  });
+
   it('gates check-out behind the approval form for an open balance', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
