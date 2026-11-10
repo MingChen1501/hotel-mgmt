@@ -4828,21 +4828,22 @@ The decided behaviour, in five parts:
 | A capacity cached in Reservations | rejected | A cached ceiling goes stale between attempts and cannot be fail-closed per booking; it would also let a create pass against inventory that changed. |
 | One date-ranged room-inventory read per attempt | **chosen** | The authority is the module that owns rooms and blocks; one synchronous read inside the booking step; atomicity stays in the store; no schema, table, stored value, or event change. |
 
-**Counted states, and one wording flag for the gate.** The holds the
-guard counts stay the as-built state set: `confirmed` and
-`checked-in` rows (`services/reservations/internal/store/store.go:194-196`;
-Postgres twin `services/reservations/internal/store/postgres.go:175-183`),
-so cancelled, no-show, and closed reservations release their unit and a
-checked-in reservation keeps holding its own. `AC-OVB-1` phrases the
-checked-in row as no longer holding a unit "exactly as today"; as-built
-code does count it, and this rule keeps the as-built set (`BR-47`)
-because the inventory reply carries no date-ranged occupancy fact — room
-state is current-state, blocks are date-ranged — so deducting the
-in-house share from the ceiling would double-subtract it and shrink
-every future date range until release (LLD section 22.2 records the same
-finding). The wording delta is flagged to `product-owner` so the
-acceptance criterion and this rule read the same at the gate; neither
-side intends a behaviour change.
+**Counted states.** The holds the guard counts stay the as-built state
+set: `confirmed` and `checked-in` rows
+(`services/reservations/internal/store/store.go:194-196`; Postgres twin
+`services/reservations/internal/store/postgres.go:175-183`), so
+cancelled, no-show, and closed reservations release their unit and a
+checked-in reservation keeps holding its own exactly as today
+(`BR-47`). `AC-OVB-1` words the checked-in row the same way — "it keeps
+holding its unit exactly as today, because the in-house share of a room
+type must not be subtracted from the recorded capacity twice" — so the
+acceptance criterion and this rule read the same at the gate and no
+wording delta remains. The as-built set stands because the inventory
+reply carries no date-ranged occupancy fact — room state is
+current-state, blocks are date-ranged — so deducting the in-house share
+from the ceiling would double-subtract it and shrink every future date
+range until release (LLD section 22.2 records the same finding). No
+behaviour change is intended on either side.
 
 ### 23.2 Explicit no-change statements
 
@@ -5019,7 +5020,7 @@ sends the field, and no data migration exists in either direction
   no UI contract section applies; `AC-OVB-3`, the desk Book slice
   requirements, and every catalogue string stand as written.
 - Acceptance criteria are `product-owner` work (`AC-OVB-1`..`AC-OVB-3`,
-  including the counted-state wording flagged in section 23.1); the
+  with the counted states aligned to section 23.1); the
   ADR-0006, HLD, and LLD delta is `architect` work; the guard mapping
   and traceability completions above are `qa-lead` work; the rollback
   note is `release-manager` work.
