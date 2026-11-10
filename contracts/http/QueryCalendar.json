@@ -1,7 +1,7 @@
 {
   "operation": "QueryCalendar",
   "contract": "ReservationService",
-  "version": "1.0",
+  "version": "1.1",
   "traces": ["docs/architecture/lld.md section 1", "FR-RES-5"],
   "transport": {
     "method": "POST",
