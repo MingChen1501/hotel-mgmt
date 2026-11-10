@@ -142,5 +142,21 @@ Contract tests: `contract-tests/` holds fixtures per provided/consumed operation
 script/contract-check.sh
 ```
 
+## 8. Planned delta — approval provenance at write (Refs #601, ADR-0005 proposed)
+
+Today `recordOpenBalanceApproval` (section 4 edge W) requires a
+non-blank `approvedBy` and `role` but accepts any role string, and it
+already stamps `approvedAt` server-side
+(`src/main/java/com/hotel/billing/service/BillingService.java:302-313`).
+Target: refuse a `role` outside the fixed three (`owner`, `manager`,
+`front-desk`) with `VALIDATION_FAILED` naming `role`; keep the
+server-side time stamp (a body-supplied time is never used); keep
+recording the session actor as the audit `updated_by`
+(`repo/BillingRepository.java:143-146`). Authorization — which of the
+three may approve, and whether approval is needed — stays the section
+3.1 config fan-out and is out of scope. `GetFolioBalance` keeps its
+shape and becomes the gate read Stay calls at the close (integration
+C7). Design: `docs/architecture/lld.md` section 21.
+
 <!-- ao-role: architect -->
-Role: architect · AO session hotel-mgmt-249
+Role: architect · AO session hotel-mgmt-919

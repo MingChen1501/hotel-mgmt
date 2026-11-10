@@ -136,5 +136,29 @@ Contract tests: `contract-tests/` holds fixtures per provided/consumed operation
 script/contract-check.sh
 ```
 
+## 8. Planned delta — server-side check-out gate (Refs #601, ADR-0005 proposed)
+
+Not as-built yet: this section records the target the implementation PR
+folds into sections 2, 4, 5, and 6 in the same change
+(maintain-with-code). Today the gate (`src/store.ts:148-168`, called at
+`:263`) trusts the request's `folioBalanceMinor` / `openBalanceApproval`,
+and section 5 says "None at runtime".
+
+- New outbound client: one Billing `GetFolioBalance` read at the close,
+  `BILLING_BASE_URL` (default `http://billing:8087`), caller Bearer
+  token forwarded, 5-second timeout, fail closed with
+  `UPSTREAM_UNAVAILABLE` 503 — the Reservations -> Rates pattern
+  (`services/reservations/internal/pricing/client.go`).
+- `checkOut` uses the read's `balanceMinor` and `openBalanceApproval`,
+  binds the request's `folioId` to the folio Billing returns, and keeps
+  the conditional `in-house -> closed` flip and the idempotent replay.
+- The request's `folioBalanceMinor` / `openBalanceApproval` become
+  advisory and ignored; the contract delta is LLD section 21.5.
+- New `UPSTREAM_UNAVAILABLE` 503 in `src/errors.ts` and the message
+  catalogue, plus the incomplete-approval refusal wording.
+
+Design: `docs/architecture/lld.md` section 21; threat-model B5 and
+residual risks R5–R7 in `docs/technical/security-threat-model.md`.
+
 <!-- ao-role: architect -->
-Role: architect · AO session hotel-mgmt-249
+Role: architect · AO session hotel-mgmt-919

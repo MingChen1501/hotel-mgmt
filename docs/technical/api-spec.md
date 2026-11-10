@@ -28,6 +28,11 @@ section 4).
 - Errors follow the shared envelope in
   `docs/technical/error-handling.md`, including conflict semantics
   for overbooking.
+- Provider-derived gate inputs: where a contract gates a money or state
+  decision, the caller's claim about the fact is advisory. The module
+  that owns the fact is re-read at the decision point, and an unreadable
+  provider fails the operation closed with `UPSTREAM_UNAVAILABLE`
+  (`docs/architecture/lld.md` section 21; Refs #601).
 
 ## 2. Contract outline (per HLD module)
 
@@ -73,4 +78,4 @@ bullets are preserved and annotated, not rewritten.
   (LLD D3; integration F3).
 
 <!-- ao-role: architect -->
-Role: architect · AO session hotel-mgmt-29
+Role: architect · AO session hotel-mgmt-919

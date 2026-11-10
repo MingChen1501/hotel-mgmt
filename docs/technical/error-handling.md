@@ -16,7 +16,10 @@ Every failed contract call returns the same shape:
   (session-expiry/lockout refusals, assigned in
   `docs/architecture/lld.md` [section 0](../architecture/lld.md) and
   `docs/technical/integration.md` [section 6](integration.md) C10), `FORBIDDEN`,
-  `CONFLICT`, `STATE_ILLEGAL`, `SETTLEMENT_REQUIRED`).
+  `CONFLICT`, `STATE_ILLEGAL`, `SETTLEMENT_REQUIRED`,
+  `UPSTREAM_UNAVAILABLE` (503 — a provider that must be read to decide
+  the operation could not be read, so the operation fails closed;
+  registered in `docs/architecture/lld.md` section 0, Refs #601)).
 - `message`: a human-readable sentence naming what was refused and
   why, suitable to show staff at the desk.
 - `details`: the named field, restriction, room, or conflicting
@@ -36,8 +39,15 @@ Every failed contract call returns the same shape:
 - A booking or check-in missing a hotel-mandatory guest field
   returns `VALIDATION_FAILED` naming the missing field
   (`FR-CUS-1`).
-- A check-out with an open balance and no recorded approval returns
-  `SETTLEMENT_REQUIRED` (`FR-BIL-7`).
+- A check-out with an open balance and no provenanced approval
+  returns `SETTLEMENT_REQUIRED` (`FR-BIL-7`, `FR-CKO-5`, `BR-17`). An
+  approval that is missing its identity or recorded time, names a role
+  outside the fixed three, or is a free-form note is not an approval
+  and takes the same code.
+- A check-out whose folio cannot be re-read from Billing returns
+  `UPSTREAM_UNAVAILABLE` (503), never `SETTLEMENT_REQUIRED`: the gate
+  fails closed on an unverified balance rather than reporting an
+  unpaid folio it did not read (Refs #601).
 - An out-of-role attempt returns `FORBIDDEN` (`NFR-SEC-1`).
 
 ## 3. Non-goals
@@ -50,4 +60,4 @@ Every failed contract call returns the same shape:
   `NFR-AUD-1`).
 
 <!-- ao-role: architect -->
-Role: architect · AO session hotel-mgmt-29
+Role: architect · AO session hotel-mgmt-919

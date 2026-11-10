@@ -39,8 +39,11 @@ the FRs leave undecided is marked deferred with a reason.
   `traceId`). Session-expiry refusals use code `UNAUTHENTICATED`
   and locked-identity refusals use code `IDENTITY_LOCKED` (both
   assigned here and registered in
-  `contracts/errors/envelope.json`). All other codes are the
-  existing ones.
+  `contracts/errors/envelope.json`). A provider that must be read to
+  decide an operation but cannot be reached fails the operation closed
+  with `UPSTREAM_UNAVAILABLE` (503; registered here, Refs #601 — the
+  Reservations -> Rates check already emits it). All other codes are
+  the existing ones.
 - Time: `timestamptz` everywhere (carries the UTC offset,
   `NFR-TZ-1`); hotel-local rendering is a presentation concern fed
   by the hotel timezone from config.
@@ -139,7 +142,7 @@ Interfaces (provider: `StayService`):
 | `CheckIn` | reservationRef, roomNumber, actualArrivalTime?, idempotencyKey | stayId, roomNumber, state=in-house | `CONFLICT` (room taken), `STATE_ILLEGAL` (room not ready / reservation not due), `VALIDATION_FAILED` (missing check-in field) |
 | `GetStay` | stayId or reservationId | stay record | `NOT_FOUND`, `VALIDATION_FAILED` (neither identifier) |
 | `QueryStays` | state? | stays, each exactly once | `VALIDATION_FAILED` (unknown state) |
-| `CheckOut` | stayId, idempotencyKey | stay closed, invoiceRef | `SETTLEMENT_REQUIRED` (open balance, no approval), `STATE_ILLEGAL` (not in house) |
+| `CheckOut` | stayId, folioId, actor, idempotencyKey; `folioBalanceMinor` / `openBalanceApproval` accepted as advisory and ignored (Refs #601) | stay closed, invoiceRef | `SETTLEMENT_REQUIRED` (open balance, no provenanced approval), `CONFLICT` (presented folio is not the stay's), `UPSTREAM_UNAVAILABLE` (Billing unreadable), `STATE_ILLEGAL` (not in house) |
 | `MoveRoom` | stayId, newRoomNumber | stayId, move history entry | `CONFLICT` / `STATE_ILLEGAL` as in check-in |
 | `RecordActualTimes` | stayId, actualArrival?, actualDeparture? | stayId, kept times | `VALIDATION_FAILED` (implausible values per hotel times) |
 | `ListArrivalsDepartures` | businessDate | arrivals, in-house, departures, each exactly once | — |
@@ -148,18 +151,21 @@ Interfaces (provider: `StayService`):
 Outbound calls (consumer): `ReservationService.GetDueReservation`;
 `RoomInventoryService.FindReadyRoom`, `AssignRoom`, `ReleaseRoom`,
 `RecordActualTimes`(room side release on move/check-out);
-`GuestService.GetGuest`; `BillingService.GetFolioBalance`,
-`RequestCheckoutGate` — all synchronous inside desk steps (BA
-needs sections 2–3).
+`GuestService.GetGuest`; `BillingService.GetFolioBalance` — the last
+one is read by the service itself at the check-out gate from #601 on
+(LLD [section 21](#21-server-side-check-out-gate-and-approval-provenance-refs-601)),
+not only by the desk; `RequestCheckoutGate` stays deferred (F4) — all
+synchronous inside desk steps (BA needs sections 2–3).
 
 Internal data flow (`CheckIn`): validate token + role -> fetch due
 reservation -> fetch guest (mandatory check-in fields) -> find/assign
 room via `AssignRoom` (provider-side atomic guard, `NFR-CON-2`) ->
 insert stay row + link reservation -> mark reservation checked-in via
 own update -> emit `StayEvents.checked-in` via outbox. Check-out
-additionally calls the folio gate first and refuses with
-`SETTLEMENT_REQUIRED` unless settled or an authorised approval is
-recorded (BR-17).
+additionally re-reads the folio through Billing and applies the gate
+first, refusing with `SETTLEMENT_REQUIRED` unless settled or a
+provenanced approval is recorded (BR-17; server-side read from #601,
+LLD [section 21](#21-server-side-check-out-gate-and-approval-provenance-refs-601)).
 
 Outbox events (`StayEvents`): `checked-in`, `moved`, `actual-times-
 recorded`, `checked-out` — stayId, guestLink, room links, times,
@@ -2972,5 +2978,222 @@ Edge trace:
   only, so reverting it stops new postings without invalidating the
   lines already stored (rollback note in the issue).
 
-<!-- ao-role: dev -->
-Role: dev · AO session hotel-mgmt-910
+## 21. Server-side check-out gate and approval provenance (Refs #601)
+
+Tier T3 (architectural: the check-out enforcement boundary moves from
+the desk client into Stay and adds one synchronous module-to-module
+read; no schema or data-model change; the contract change is additive
+only). ADR-0005 (`docs/architecture/decisions/adr-0005-server-side-checkout-gate.md`,
+proposed) records the decision. The finding this closes is the #588
+lab record's symptom 2(d) "Server trust"
+(`docs/testing/evidence/588/README.md`). Product acceptance criteria,
+the FR/NFR delta, and the guard traceability are sibling handoffs
+(`product-owner`, `business-analyst`, `qa-lead`); `BR-17`,
+`FR-CKO-4`, `FR-CKO-5`, and `AC-DSK-18` already state the rule and the
+desk behaviour, so this section records only the architect-owned delta.
+
+### 21.1 Which service enforces what
+
+| Fact | Authority | Enforced where | May the client assert it? |
+|---|---|---|---|
+| Folio balance | Billing (`billing.folios.balance_minor`) | Billing writes; Stay re-reads at the close | No — advisory field, ignored |
+| Approval record (who, role, when) | Billing (`billing.folios.open_balance_approval`) | Billing refuses an out-of-set role and stamps the time at write; Stay re-validates on read | No — advisory field, ignored |
+| Fixed role set | Requirements section 3.2 (`owner`, `manager`, `front-desk`) | Code constant in Billing and Stay; never config | No |
+| Which of the three may approve; whether approval is needed | Hotel open-balance rule, requirements section 3.1 | Not enforced yet (config fan-out slice) | No |
+| The stay's state transition | Stay (`stay.stays.state`) | Stay conditional write | No |
+| Which stay is closing | Client chooses `stayId`; Stay validates it exists | Stay | Yes (`stayId`) |
+| Which folio is presented as invoice | Billing returns the stay's folio; Stay binds the presented `folioId` to it | Stay | Yes (`folioId`), must match |
+| Actual departure | Client | Stay | Yes (`actualDeparture`) |
+| Idempotency key | Client | Stay | Yes (`idempotencyKey`) |
+| Session actor | Admin session token | Body `actor` today; token-bound validation is residual risk R6 | Yes (`actor`), today |
+
+### 21.2 Gate algorithm (target)
+
+1. Validate `stayId` / `folioId` UUIDs and `actor` (unchanged,
+   `services/stay/src/store.ts:261-264`).
+2. Re-read the folio: `POST {BILLING_BASE_URL}/v1/billing/GetFolioBalance`
+   with `{stayId, actor}` and the caller's Bearer token forwarded,
+   5-second timeout. `BILLING_BASE_URL` defaults to
+   `http://billing:8087` (compose service `billing`, `deploy/compose.yaml:113`)
+   and is wired on the `stay` service (`deploy/compose.yaml:77`) the way
+   Reservations wires `RATES_BASE_URL` (`deploy/compose.yaml:46`).
+3. Fail closed on an unread folio: transport error, timeout, 5xx, or an
+   unwired client -> `UPSTREAM_UNAVAILABLE` 503
+   `{upstream: "billing", operation: "GetFolioBalance"}`, stay in house.
+   A 4xx provider envelope is surfaced unchanged (a rejected session
+   stays `UNAUTHENTICATED`).
+4. Bind the folio: the returned `folioId` must equal the request's
+   `folioId`, else `CONFLICT` 409 `{folioId, actualFolioId}`.
+5. Use the returned `balanceMinor`. A zero balance passes.
+6. A non-zero balance needs the returned `openBalanceApproval` to be a
+   provenanced approval: an object with a non-blank string `approvedBy`,
+   a `role` in the fixed three (`owner`, `manager`, `front-desk`), and a
+   non-blank, parseable ISO-8601 `approvedAt`. Anything else — absent,
+   free-form, incomplete, or out-of-set — is refused with
+   `SETTLEMENT_REQUIRED` 409 `{folioId, reason}` where `reason` is
+   `no_approval` or `approval_incomplete`, and the stay remains in
+   house.
+7. Ignore the request's `folioBalanceMinor` and `openBalanceApproval`
+   entirely (no shape validation, no comparison): the server value is
+   the decision.
+8. Keep the existing order — gate before the idempotency replay — so
+   every close route is gated; a replay still returns the stored close
+   after the gate passes. Then the unchanged conditional
+   `in-house -> closed` flip and outbox event.
+
+Billing's write-side delta: `RecordOpenBalanceApproval` keeps the
+non-blank `approvedBy` check, refuses a `role` outside the fixed three
+with `VALIDATION_FAILED` naming `role`, keeps stamping `approvedAt`
+server-side (`service/BillingService.java:302-313`), and keeps recording
+the session actor as the audit `updated_by`
+(`repo/BillingRepository.java:143-146`).
+
+### 21.3 Happy path (settled or provenanced close)
+
+```mermaid
+flowchart TD
+    A[Bearer token present, body parsed] --> B[Validate stayId folioId actor]
+    B --> C[GetFolioBalance stayId with the caller token]
+    C -->|read ok| D{Returned folioId equals presented folioId?}
+    D -->|yes| E{balanceMinor zero?}
+    E -->|yes| H[Gate passes]
+    E -->|no| F{Approval has identity, role in the fixed three, recorded time?}
+    F -->|yes| H
+    H --> I[Conditional in-house to closed flip]
+    I --> J[200 closed with invoiceRef]
+```
+
+Edge trace:
+
+- A–B: Bearer presence at the transport (`services/stay/src/server.ts:110-112`);
+  UUID and actor checks (`services/stay/src/store.ts:261-264` via
+  `requireUuid`/`requireString` at :39-51).
+- B–C: the gate read (target `services/stay/src/billing.ts`, injected
+  into `StayStore`; pattern
+  `services/reservations/internal/pricing/client.go:43-87` — POST,
+  Bearer forward at :57-59, 5 s timeout at :33).
+- C–D: `GetFolioBalance` returns `folioId`, `balanceMinor`,
+  `openBalanceApproval` (`contracts/http/GetFolioBalance.json`;
+  `services/billing/.../BillingService.java:120-124`).
+- D–E: the presented invoice reference must be the folio the balance
+  came from (one folio per stay, BR-21).
+- E–H: a zero balance passes (BR-17).
+- F–H: provenance check on the read object (BR-17; target helper
+  alongside `checkFolioGate`, `services/stay/src/store.ts:148-168`).
+- H–I–J: unchanged conditional flip, outbox event, and response
+  (`services/stay/src/store.ts:272-293`; `src/server.ts:131-135`).
+
+### 21.4 Failure and rollback paths
+
+```mermaid
+flowchart TD
+    A[Gate read GetFolioBalance] -->|unreachable, timeout, 5xx, unwired| U[503 UPSTREAM_UNAVAILABLE, stay in house]
+    A -->|4xx envelope| P[Surface the provider refusal unchanged]
+    A -->|ok| B{Folio matches?}
+    B -->|no| K[409 CONFLICT naming both folios, stay in house]
+    B -->|yes| C{Balance zero?}
+    C -->|no, no approval| S[409 SETTLEMENT_REQUIRED, reason no_approval]
+    C -->|no, incomplete or out-of-set approval| T[409 SETTLEMENT_REQUIRED, reason approval_incomplete]
+    C -->|no, provenanced| G[Gate passes, close commits]
+    S --> X[Stay remains in house; no state flip, no event]
+    T --> X
+    U --> X
+    K --> X
+```
+
+Edge trace:
+
+- A–U: fail closed on an unread folio (D4 of ADR-0005; the
+  Reservations -> Rates precedent returns the same code,
+  `services/reservations/internal/pricing/client.go:88-97`). The stay
+  remains in house because the gate precedes the state read.
+- A–P: a provider refusal keeps its code and details so the desk acts
+  on the same envelope (for example `UNAUTHENTICATED`).
+- B–K: presented folio is not the stay's current folio.
+- C–S/T: `SETTLEMENT_REQUIRED` is the only refusal for an unpaid close,
+  whether the approval is missing or malformed (BR-17, `FR-CKO-5`).
+- X: no state flip, no `stay.checked-out` event, no idempotency record
+  (`services/stay/src/store.ts:272-292` is only reached after the gate).
+
+Rollback: revert the single implementation PR. The desk keeps the #588
+client-side gate, the additive contract fields stay valid for the desk
+build that still sends them, and no data migration exists in either
+direction.
+
+### 21.5 Contract delta
+
+| File | Change | Version effect |
+|---|---|---|
+| `contracts/http/CheckOut.json` | `folioBalanceMinor` required -> optional and advisory ("ignored; the server re-reads the folio"); `openBalanceApproval` advisory ("ignored; provenance is read from Billing"); errors add `CONFLICT` (folio mismatch) and `UPSTREAM_UNAVAILABLE` (Billing unreadable) | minor (1.0 -> 1.1; relaxed requirement plus new error codes, ADR-0004 D1) |
+| `contracts/http/GetFolioBalance.json` | unchanged shape; now also consumed server-side by Stay (C7) | none |
+| `contracts/errors/envelope.json` | add `UPSTREAM_UNAVAILABLE` to the enum and `503` to `statusMapping` (already emitted by Reservations; the omission was drift) | minor |
+| `contracts/openapi.yaml` + `frontend/docs/openapi.yaml` mirror | mirror the `CheckOut` delta byte-identically (`script/openapi-route-check.sh`) | minor |
+
+No schema, table, migration, or event change. The desk build that still
+sends the two advisory fields is unaffected.
+
+### 21.6 Verification plan
+
+Stay service guards (the implementation PR creates them; the existing
+check-out block is `services/stay/src/server.test.ts:126-230` and the
+Postgres parity block at `:425-460`):
+
+- **Forged balance low** — client sends `folioBalanceMinor: 0` while
+  Billing reads `6000` with no approval: 409 `SETTLEMENT_REQUIRED`, stay
+  in house, no `stay.checked-out` event.
+- **Forged balance high** — client sends `6000` while Billing reads `0`:
+  200 closed, proving the client claim is ignored in both directions.
+- **Forged approval** — client sends a well-formed approval object while
+  Billing holds none: 409 `SETTLEMENT_REQUIRED`.
+- **Incomplete approval** — Billing's record has no `approvedBy`, no
+  `role`, or no `approvedAt`: 409 `SETTLEMENT_REQUIRED`
+  (`approval_incomplete`).
+- **Out-of-set role** — Billing's record carries `night-auditor`: 409
+  `SETTLEMENT_REQUIRED`.
+- **Free-form note** — a string or non-object approval: 409
+  `SETTLEMENT_REQUIRED`.
+- **Provenanced approval** — identity + `owner`/`manager`/`front-desk` +
+  recorded time: 200 closed.
+- **Folio mismatch** — Billing returns a different `folioId`: 409
+  `CONFLICT`, stay in house.
+- **Billing unreachable / timeout / unwired client** — 503
+  `UPSTREAM_UNAVAILABLE`, stay in house.
+- **Replay** — the same `idempotencyKey` returns the original close and
+  the gate is evaluated before the replay (documented order).
+
+Billing guards (unit, no Spring context): an out-of-set `role` returns
+400 `VALIDATION_FAILED` naming `role`; `approvedAt` is stamped
+server-side and a body-supplied `approvedAt` is ignored.
+
+Desk guards stay green unchanged: `app/src/views/StayView.test.ts`
+(#588 gate, approval, role select), `app/e2e/stay.spec.ts`, and the
+`CheckOut` step of `script/e2e-desk-loop.sh`, tracing to `AC-DSK-18`,
+`FR-CKO-4`, and `FR-CKO-5`.
+
+Stack gates: `cd services/stay && npm ci && npm run build && npm test &&
+npm run lint`; `cd services/billing && mvn verify`;
+`script/contract-check.sh`; `script/openapi-route-check.sh`;
+`script/markdown-link-check.sh`. The qa-lead traceability row for #601
+is a sibling handoff and must cite the guards above by `file:line` at
+the merged head.
+
+### 21.7 Residual risks
+
+- **R5 — a charge races the close.** The balance is read, then the stay
+  flips; a charge that lands in between is not seen. Billing has no
+  conditional close operation (`RequestCheckoutGate` stays deferred,
+  integration F4) and does not call `GetStayRef` today, so a post-close
+  charge is a separate BR-18 gap. Mitigation: read immediately before
+  the flip; the #600 review-step charge posting narrows the window;
+  single-desk, single-property scale.
+- **R6 — the actor is asserted, not token-bound.** `actor` still travels
+  in the body until HMAC token validation lands
+  (`docs/technical/security-threat-model.md` section 4). Out of scope
+  here; recorded so the gate's audit trail is read for what it is.
+- **R7 — offline-first does not cover the gate.** Billing unreachable
+  means check-out refuses (fail closed). Accepted for a money path; an
+  availability alert, not a cached value, is the mitigation
+  (`NFR-AVL-1` does not extend to an unverified balance).
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-919
