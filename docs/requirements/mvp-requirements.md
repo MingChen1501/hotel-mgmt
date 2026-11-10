@@ -4657,9 +4657,10 @@ to the #588 evidence record — its symptom 2(d) reproduction (a request
 carrying `folioBalanceMinor` `120000` with `role` `night-auditor`
 answered `200`, `docs/testing/evidence/588/README.md`) is the exact
 payload this change must refuse. Guards that exist are cited
-`file:line` at the requirement's head (`0dcb68e`); where no guard
-exists yet, the row names the missing guard and the implementation PR
-creates it, for `qa-lead` to re-pin at the merged head.
+`file:line` against the tree this requirement was written on
+(`0dcb68e`); where no guard exists yet, the row names the missing guard
+and the implementation PR creates it, for `qa-lead` to re-pin at the
+merged head.
 
 | Item | Guard (on disk today; a row marked missing is created by the implementation PR) | Handoff note for `qa-lead` |
 |---|---|---|

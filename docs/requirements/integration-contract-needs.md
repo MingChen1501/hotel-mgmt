@@ -235,8 +235,8 @@ and a bounded timeout, and decides the close on what it returns
 (`FR-CKS-1`; BR-46) — so `RequestCheckoutGate` stays deferred and no
 STAY -> BIL operation is added. The payload stays the stay link, and
 the response members the gate reads are the folio id, the running
-balance, and the recorded open-balance approval. Three error cases are
-added to this pair:
+balance, and the recorded open-balance approval. Two error cases are
+added to this pair, plus the provider-envelope rule the gate keeps:
 
 - The presented folio is not the folio read for the stay:
   `CONFLICT` naming both (FR-CKS-2; BR-21).

@@ -243,7 +243,7 @@ Main flow:
    invoice; each receipt matches one recorded payment. The close is
    decided by the service on the folio it holds — its stored balance
    and the approval recorded against it — not on the balance the
-   panel sends. [FR-FDK-2, FR-BIL-4, FR-CKS-3]
+   panel sends. [FR-FDK-2, FR-BIL-4, FR-CKS-1, FR-CKS-3]
 4. The stay is closed and the room the stay held becomes vacant and
    dirty, released by the close itself; a late departure is recorded
    against the stay where applicable. [FR-FDK-2, FR-FDK-4, BR-18]
