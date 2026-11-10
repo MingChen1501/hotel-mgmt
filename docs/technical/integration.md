@@ -84,13 +84,31 @@ room+state; block refusal naming block.
 
 ### C7. STAY -> BIL (`BillingService`) — SYNC
 
-`GetFolioBalance` (stayLink -> folio lines + balance; FR-BIL-1).
-`RequestCheckoutGate` (stayLink -> settled / approved / refused)
-is NOT IMPLEMENTED (specified but never built — see F4 below):
-the settlement gate is enforced stay-side by `StayService.CheckOut`
-against `GetFolioBalance` plus the recorded approval. Open balance
-without approval -> `SETTLEMENT_REQUIRED`. Approval rule (whether
-needed, which role) is hotel config (section 3.1).
+`GetFolioBalance` (stayLink -> folio id + folio lines + balance +
+recorded approval; FR-BIL-1). From #601 on it is also consumed by
+`StayService.CheckOut` itself as the gate read, not only by the desk:
+Stay re-derives `balanceMinor` and `openBalanceApproval` from this
+response and ignores the request's `folioBalanceMinor` /
+`openBalanceApproval` (advisory only; ADR-0005, LLD
+[section 21](../architecture/lld.md#21-server-side-check-out-gate-and-approval-provenance-refs-601)).
+The call forwards the caller's Bearer token, times out at 5 seconds,
+and fails closed with `UPSTREAM_UNAVAILABLE` (503) when Billing cannot
+be read; the stay remains in house.
+
+`RequestCheckoutGate` (stayLink -> settled / approved / refused) is
+NOT IMPLEMENTED (specified but never built — see F4 below): the
+settlement gate stays stay-side, and #601 only changes where Stay gets
+its inputs. Open balance without a provenanced approval ->
+`SETTLEMENT_REQUIRED`; a presented `folioId` that is not the stay's
+folio -> `CONFLICT`.
+
+Approval provenance (`BR-17`, `FR-CKO-5`): an approval counts only as
+the recorded identity, a role from the fixed three (`owner`,
+`manager`, `front-desk`), and a recorded time. Billing refuses an
+out-of-set role at write and stamps `approvedAt` server-side; Stay
+re-validates all three fields on the read. Whether approval is needed
+and which of the three may approve is the hotel open-balance rule
+(section 3.1) and is not enforced yet (config fan-out slice).
 
 ### C8. BIL -> STAY (`StayService`) — SYNC read
 
@@ -216,7 +234,9 @@ the desk.
 - F4 — Billing `RequestCheckoutGate` (C7): specified but never
   implemented (no code, no contract manifest as of master).
   Settlement is enforced stay-side (`StayService.CheckOut` folio
-  gate + `GetFolioBalance` + recorded approvals). Re-open only
+  gate + `GetFolioBalance` + recorded approvals). #601 keeps it
+  deferred: the gate stays stay-side and now re-reads its inputs from
+  Billing instead of trusting the request (C7). Re-open only
   with a product decision that needs a provider-side gate op.
 
 Coverage: every BA need (sections 1–7, error index section 9) is encoded above
@@ -226,4 +246,4 @@ sections 4–6 and change only through requirements wording, never through
 implementation drift.
 
 <!-- ao-role: architect -->
-Role: architect · AO session hotel-mgmt-137
+Role: architect · AO session hotel-mgmt-919

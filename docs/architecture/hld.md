@@ -411,5 +411,23 @@ independently in reverse merge order (#518–#524); the design
 files themselves are unchanged, and no data migration exists
 in either direction.
 
+## 15. Check-out gate authority (Refs #601)
+
+The desk browser is not a trust boundary for money facts. Billing owns
+a folio's balance and its recorded open-balance approval; Stay owns the
+`in-house -> closed` transition and, from #601 on, re-derives both facts
+from Billing at the close instead of trusting the request's
+`folioBalanceMinor` / `openBalanceApproval`. The change adds one
+synchronous edge (Stay -> Billing `GetFolioBalance`, the caller's
+session token forwarded, fail-closed on an unread folio), no new module,
+no new store, and no data-model change; the contract change is additive
+(advisory fields plus the registered `UPSTREAM_UNAVAILABLE` code). It
+does not move the settlement decision into Billing: `RequestCheckoutGate`
+stays deferred (integration F4). Decision record:
+`docs/architecture/decisions/adr-0005-server-side-checkout-gate.md`
+(proposed); flow detail and the verification plan:
+`docs/architecture/lld.md` section 21; trust-boundary and residual-risk
+deltas: `docs/technical/security-threat-model.md` sections 2 and 8.
+
 <!-- ao-role: architect -->
-Role: architect · AO session hotel-mgmt-720
+Role: architect · AO session hotel-mgmt-919
