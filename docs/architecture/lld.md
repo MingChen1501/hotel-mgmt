@@ -3254,7 +3254,8 @@ architect-owned delta.
    mandatory guest fields, hotel-mandatory guest fields
    (`services/reservations/internal/service/service.go:87-119`).
 2. Resolve the effective room type and dates: the request's value where
-   supplied, otherwise the stored row's (`service.go:204-215`).
+   supplied, otherwise the stored row's
+   (`services/reservations/internal/service/service.go:207-218`).
 3. Consult the Rates stay-restriction check first, unchanged
    (`service.go:114-119` on Create, `:219-224` on Modify), so a
    restricted stay still refuses as `STATE_ILLEGAL` naming the
@@ -3298,16 +3299,20 @@ architect-owned delta.
    evaluated on every attempt, replay included.
 
 **Counted states stay as built.** The guard counts `confirmed` and
-`checked-in` rows (`activeState`, `store.go:194-196`;
-`postgres.go:176-183`, `:482-489`). `AC-OVB-1` phrases the checked-in
-row as no longer holding a unit "exactly as today"; as-built code does
-count it, and it must keep counting while the consumed inventory reply
-has no date-ranged occupancy fact — room state is current-state, blocks
-are date-ranged (`services/rooms/src/store.ts:307-359`). Otherwise an
-in-house guest's room would shrink the ceiling *and* be counted by the
-guard, and a currently occupied room would shrink every future date
-range until release. That wording delta is flagged to `product-owner`;
-the design keeps the as-built state set.
+`checked-in` rows and nothing else (`activeState`, `store.go:194-196`;
+`postgres.go:176-183`, `:482-489`), so a cancelled, no-show, or closed
+reservation releases its unit while an in-house guest keeps holding its
+own. `AC-OVB-1` words that same set — a cancelled, no-show, or closed
+reservation "releases its held unit exactly as today", a checked-in one
+"keeps holding its unit exactly as today, because the in-house share of
+a room type must not be subtracted from the recorded capacity twice"
+(`docs/product/acceptance-criteria.md` section 15; `BR-47`) — so the
+criterion, `FR-OVB-4`, and this design read the same at the gate. The
+state set stands because the consumed inventory reply carries no
+date-ranged occupancy fact — room state is current-state, blocks are
+date-ranged (`services/rooms/src/store.ts:307-359`) — so letting room
+state deduct the in-house share would subtract it twice and shrink every
+future date range until release.
 
 ### 22.3 Happy path (create or modify with a readable ceiling)
 
@@ -3360,7 +3365,7 @@ Edge trace:
 
 - A–U: fail closed on an unread ceiling (ADR-0006 D4; the
   Reservations -> Rates precedent returns the same code,
-  `internal/pricing/client.go:88-97`). Nothing is written because the
+  `internal/pricing/client.go:88-96`). Nothing is written because the
   read precedes the store call.
 - A–P: a provider refusal keeps its code and details, so the desk acts
   on the same envelope (for example `UNAUTHENTICATED`).
@@ -3419,13 +3424,13 @@ suites are `services/reservations/internal/store/store_test.go`,
   409 `CONFLICT`.
 - **Replay** — the same `idempotencyKey` returns the original record and
   consumes no second unit (the read order is documented above).
-- **Cancelled / no-show rows** — a cancelled or no-show row stops
-  counting against the ceiling; a checked-in row keeps counting (the
-  state set above).
+- **Cancelled / no-show / closed rows** — a cancelled, no-show, or
+  closed row stops counting against the ceiling (its unit is sellable
+  again); a checked-in row keeps counting (the counted state set above).
 
 Desk guards stay green unchanged: `app/src/views/BookView.test.ts`
 (the sold-out refusal and the sent `sellableUnits` assertions),
-`app/src/views/book-restyle.test.ts`, `app/e2e/book.spec.ts` if present,
+`app/src/book-restyle.test.ts`, `app/e2e/book.spec.ts` if present,
 and the booking step of `script/e2e-desk-loop.sh`, tracing to
 `AC-OVB-3`.
 
@@ -3474,4 +3479,4 @@ merged head.
   single-desk, single-property scale; the same class as ADR-0005 R5.
 
 <!-- ao-role: architect -->
-Role: architect · AO session hotel-mgmt-933
+Role: architect · AO session hotel-mgmt-941

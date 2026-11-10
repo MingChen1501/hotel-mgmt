@@ -114,12 +114,14 @@ attempts).
   `:482-489`). Each held unit is therefore subtracted exactly once:
   inventory by Rooms, holds by Reservations. In particular the ceiling
   must not be a "still free" number — a rooms-held-by-reservation count
-  would double-subtract the same unit.
+  would double-subtract the same unit. `AC-OVB-1` words the same set —
+  a checked-in row keeps holding its unit, cancelled, no-show, and
+  closed rows release theirs — so criterion and design agree.
 - **Modify reads the effective values.** The ceiling is read for the
   room type and dates the modification will apply — the request's value
   where supplied, otherwise the stored row's — the same effective values
   the restriction hook already uses
-  (`services/reservations/internal/service/service.go:205-224`), and the
+  (`services/reservations/internal/service/service.go:207-218`), and the
   reservation itself stays excluded from the count as today
   (`services/reservations/internal/store/store.go:368`).
 
@@ -132,7 +134,10 @@ nothing, and an absent value no longer refuses the booking. The field is
 still shape-validated when present (an integer `>= 0`, otherwise
 `VALIDATION_FAILED` naming the field) so a malformed body still fails
 loudly, but no decision derives from it. Removing the field from the
-contract is the follow-up #631 names.
+contract is the follow-up #631 names. `AC-OVB-1` words the field the
+same way — optional and advisory, a malformed value still
+`VALIDATION_FAILED` — and `FR-OVB-1` requires an absent value to refuse
+nothing, so the criterion, the requirement, and this record agree.
 
 Two current code paths must go with this change or the advisory field
 would still decide: the store's `input.SellableUnits < 1` validation
@@ -181,7 +186,7 @@ instead of returning the stored record (residual risk R-OVB-4).
 | `contracts/http/CreateReservation.json` | `sellableUnits` required -> optional and advisory ("ignored; the server derives the ceiling from Rooms"); errors add `UPSTREAM_UNAVAILABLE` (503) | minor (1.1 -> 1.2; relaxed requirement plus a new error code, ADR-0004 D1) |
 | `contracts/http/ModifyReservation.json` | same delta for the new type and dates | minor (1.0 -> 1.1) |
 | `contracts/http/CheckRoomTypeSellability.json` | shape unchanged; gains a server-side consumer (integration C2 becomes live) | none |
-| `contracts/errors/envelope.json` | register `UPSTREAM_UNAVAILABLE` in the enum and add `503` to `statusMapping` — Reservations already emits it (`services/reservations/internal/service/service.go:76-83`, `internal/pricing/client.go:88-97`) while the enum omits it, the same drift ADR-0005 D5 records; whichever implementation PR lands first registers it, both need it | minor |
+| `contracts/errors/envelope.json` | register `UPSTREAM_UNAVAILABLE` in the enum and add `503` to `statusMapping` — Reservations already emits it (`services/reservations/internal/service/service.go:76-83`, `internal/pricing/client.go:88-96`) while the enum omits it, the same drift ADR-0005 D5 records; whichever implementation PR lands first registers it, both need it | minor |
 
 No schema, table, migration, or event change: reservation rows, the
 state set, the change history, and the outbox are untouched.
@@ -298,4 +303,4 @@ No new catalogue key, control, or screen.
   date-ranged unit count, and blocks are invisible to it. Rejected.
 
 <!-- ao-role: architect -->
-Role: architect · AO session hotel-mgmt-933
+Role: architect · AO session hotel-mgmt-941

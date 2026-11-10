@@ -161,4 +161,4 @@ residual risks R-OVB-1..R-OVB-6 in
 `docs/technical/security-threat-model.md`.
 
 <!-- ao-role: architect -->
-Role: architect · AO session hotel-mgmt-933
+Role: architect · AO session hotel-mgmt-941

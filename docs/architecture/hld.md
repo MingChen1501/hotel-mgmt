@@ -458,4 +458,4 @@ residual-risk deltas: `docs/technical/security-threat-model.md`
 sections 2 and 8; product conditions `AC-OVB-1`..`AC-OVB-3` and risk R-10.
 
 <!-- ao-role: architect -->
-Role: architect · AO session hotel-mgmt-933
+Role: architect · AO session hotel-mgmt-941

@@ -161,4 +161,4 @@ guard's capacity source.
 Design: `docs/architecture/lld.md` sections 3 and 22; ADR-0006.
 
 <!-- ao-role: architect -->
-Role: architect · AO session hotel-mgmt-933
+Role: architect · AO session hotel-mgmt-941
