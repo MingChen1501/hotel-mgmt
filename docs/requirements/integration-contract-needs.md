@@ -229,6 +229,30 @@ Error cases:
 - No folio for the stay (must not happen — one folio per stay):
   `NOT_FOUND` (FR-BIL-1; BR-21).
 
+Amendment (Refs #601): `GetFolioBalance` is also consumed server-side.
+Stay calls it inside `CheckOut`, with the caller's session forwarded
+and a bounded timeout, and decides the close on what it returns
+(`FR-CKS-1`; BR-46) — so `RequestCheckoutGate` stays deferred and no
+STAY -> BIL operation is added. The payload stays the stay link, and
+the response members the gate reads are the folio id, the running
+balance, and the recorded open-balance approval. Three error cases are
+added to this pair:
+
+- The presented folio is not the folio read for the stay:
+  `CONFLICT` naming both (FR-CKS-2; BR-21).
+- The folio cannot be read — transport failure, timeout, 5xx, or an
+  unwired client: `UPSTREAM_UNAVAILABLE` (503) naming the upstream and
+  the operation, the stay in house (FR-CKS-4; BR-46). The read fails
+  closed; the offline-first cached-config rule does not extend to a
+  money fact.
+- A 4xx provider envelope: surfaced unchanged, so a rejected session
+  still reads `UNAUTHENTICATED` (FR-CKS-4; NFR-SEC-2).
+
+No operation, request member, or stored value is added: the `CheckOut`
+request's `folioBalanceMinor` and `openBalanceApproval` become
+advisory input the server ignores (the `architect` owns that contract
+edit and the error-set addition).
+
 Per-hotel config: whether approval is needed and which role may
 approve (FR-BIL-7; requirements section 3.1).
 
@@ -519,6 +543,8 @@ need.
 | Room not ready for assignment | `STATE_ILLEGAL` | room and its state | FR-FDK-1; BR-16 |
 | Blocked-date reservation / check-in | refusal naming the block | the block | FR-RMS-3; BR-12 |
 | Open balance, no payment or approval | `SETTLEMENT_REQUIRED` | — | FR-BIL-7; BR-17 |
+| Presented folio is not the folio the balance came from | `CONFLICT` | both folio ids | FR-CKS-2; BR-21 |
+| Folio unreadable at the close (upstream down, timeout, 5xx, unwired) | `UPSTREAM_UNAVAILABLE` (503) | the upstream and the operation | FR-CKS-4; BR-46 |
 | Out-of-role attempt | `FORBIDDEN` | — | NFR-SEC-1; BR-35 |
 | Unknown entity (room type, reservation, guest, folio) | `NOT_FOUND` | the reference | guard completeness |
 | Undefined charge item | (architect assigns; suggested `VALIDATION_FAILED`) | the item | FR-BIL-2, FR-CUS-3; BR-22 |
@@ -585,8 +611,10 @@ reads already listed. The #600 check-out room charge (section 3c) adds
 no operation of its own: it consumes `QueryCalendar` with the
 calendar's stay link, `GetReservation` for the frozen quoted total,
 `GetFolioBalance` for the lines it reads, and the existing
-`PostCharge` (section 4), all cited above. No operation, field, or
-error case introduces
+`PostCharge` (section 4), all cited above. The #601 settlement gate
+(section 3a amendment) adds no operation either: it reads the same
+`GetFolioBalance` server-side, with three named error cases and no new
+request member. No operation, field, or error case introduces
 behaviour beyond the mapped FRs. Later capabilities from
 requirements section 6 carry no contract need here.
 

@@ -93,6 +93,12 @@ Amendment (Refs #588): at the desk the close performs the release
 itself for the room the stay held, releases nothing when the close
 did not commit, and reports a release it could not confirm without
 reopening or retrying the close (section 19.3, `BR-18`).
+Amendment (Refs #601): the close is decided on the folio Billing
+holds — the service re-reads that folio and re-validates the
+approval recorded against it, the balance and the approval object a
+request carries are advisory only, and a folio that cannot be read
+refuses the close instead of closing on an unverified balance
+(section 22, `FR-CKS-1`..`FR-CKS-5`).
 
 FR-FDK-3 — Room moves. Staff can move a guest to another room
 mid-stay with the history kept.
@@ -267,6 +273,13 @@ the role held, and the recorded time — a free-form string is not an
 approval — and every route to the close re-reads the balance at
 that moment, refusing on an incomplete or unknown-role record
 (section 19.3, `BR-17`).
+Amendment (Refs #601): the refusal is enforced on the folio's own
+record, not on the one a request supplies. The close passes only
+when the folio Billing holds reads a zero balance or carries a
+provenanced approval — approver identity, a role from the hotel's
+fixed three, and a recorded time — and an approval written with a
+role outside that set is refused at recording time and stamped with
+the service's own clock (section 22, `FR-CKS-3`, `BR-46`).
 
 ### 1.7 Reporting (`FR-RPT-*`)
 
@@ -506,7 +519,7 @@ desk actions succeed with no outside connectivity.
 | Check-in and check-out times | The hotel's standard times (`FR-CUS-2`, `FR-ADM-4`) | Arrivals, departures, and early/late recording use the hotel's times |
 | Cancellation reasons | The hotel's own list of cancellation reasons (`FR-RES-3`) | Cancelling requires picking one of the hotel's reasons |
 | No-show rules | Whether a no-show keeps any charge and which reason list applies (`FR-RES-6`) | Marking no-show follows the hotel's rule and keeps the reason |
-| Open-balance check-out | Whether check-out with an open balance needs an approval, and which role may approve (`FR-BIL-7`) | Unapproved open-balance check-out is refused; approvals are recorded with who approved, the role held, and when |
+| Open-balance check-out | Whether check-out with an open balance needs an approval, and which role may approve (`FR-BIL-7`) | Unapproved open-balance check-out is refused; approvals are recorded with who approved, the role held, and when, and the close is decided on that recorded approval, never on a value a request supplies (`BR-46`) |
 | Charge items | The hotel's own charge items with names and prices (`FR-CUS-3`) | Only defined items can be posted; invoices show the hotel's names |
 | Taxes and fees | The hotel's tax and fee rules (`FR-BIL-5`) | Folio lines derive tax and fee amounts from the hotel's rules |
 | Stay restrictions | Minimum stay and closed-to-arrival days per date range (`FR-RTE-4`) | Violating reservations are refused with the restriction named |
@@ -553,7 +566,7 @@ product scope have no FR and are listed in section 6.
 | Reservation calendar | FR-RES-5 | Guard seeds multi-date, multi-type bookings and checks placement and detail drill-down |
 | No-show handling | FR-RES-6 | Guard marks a past-arrival booking no-show and checks state, released room, and history |
 | Check-in | FR-FDK-1 | Guard checks in against a ready room and checks stay link and occupied state |
-| Check-out | FR-FDK-2, FR-BIL-7 | Guard checks out a settled stay and checks closure, final invoice, and vacant-dirty state with the departed room released once and the desk lists re-read; guard attempts open-balance check-out and checks refusal on every desk route unless an authorised, provenanced approval is recorded, and that an approved close stays closed when the release fails (Refs #588) |
+| Check-out | FR-FDK-2, FR-BIL-7 | Guard checks out a settled stay and checks closure, final invoice, and vacant-dirty state with the departed room released once and the desk lists re-read; guard attempts open-balance check-out and checks refusal on every desk route unless an authorised, provenanced approval is recorded, and that an approved close stays closed when the release fails (Refs #588); guard closes through the service with a forged balance and again with a forged approval and checks that both are refused on the folio Billing holds, that an unreadable folio refuses rather than closes, and that the desk flows keep passing (Refs #601) |
 | Room moves | FR-FDK-3 | Guard moves an in-house guest and checks both room states and kept history |
 | Early check-in and late check-out | FR-FDK-4 | Guard records off-hours arrival/departure and checks kept times and list visibility |
 | Arrivals and departures list | FR-FDK-5 | Guard seeds all three groups and checks exactly-once listing with names and states |
@@ -3641,9 +3654,11 @@ change, and no service deploy.
   completions above are `qa-lead` work; the architect LLD diagram
   refresh and the service design-note edges are `architect` work.
 - A server-side re-derivation of the balance and of the approval
-  provenance is not specified: under the owner's UI-first
-  constraint it stays a defence-in-depth follow-up, filed as its own
-  issue if the lab shows the UI cannot hold the obligation alone.
+  provenance is not specified in this section: under the owner's
+  UI-first constraint it stayed a defence-in-depth follow-up. The lab
+  did show the UI cannot hold the obligation alone, so it was filed
+  as #601 and is specified in section 22 (`FR-CKS-1`..`FR-CKS-5`)
+  without changing the desk behaviour worded above.
 - A charge-posting obligation for the desk flow is not specified in
   this section: if the lab classified symptom 2 as a missing charge,
   it is filed as a follow-up and the charge/payment posting economics
@@ -4417,5 +4432,301 @@ the close whatever the posting does.
   print, or stored-value change). This section is its FR/NFR part; no
   implementation PR opens until `SPEC-GATE PASS`.
 
+## 22. Server-side check-out settlement gate (Refs #601)
+
+Requirements delta for the #601 change: the check-out gate stops
+deciding on what the request asserts and decides on the folio Billing
+holds. The rule itself is not new — `FR-BIL-7` already refuses an
+unpaid close without an authorised approval, `BR-17` already states
+what counts as an approval, and `AC-DSK-18` with `FR-CKO-4` /
+`FR-CKO-5` already pins the desk's every-route gate (section 19) — but
+until now the gate's inputs were the caller's own
+`folioBalanceMinor` and `openBalanceApproval`
+(`services/stay/src/store.ts:148-168`, called at `:263`), and Billing
+accepted any non-blank approver role
+(`services/billing/src/main/java/com/hotel/billing/service/BillingService.java:255-262`).
+A caller that bypasses the desk could therefore send a matching
+balance plus an arbitrary approval and close an unpaid stay.
+
+The #588 lab record classified exactly that as symptom 2(d) "server
+trust, defence in depth" (`docs/testing/evidence/588/README.md`: a
+check-out carrying a balance of `120000` and a `night-auditor` role
+was answered `200`), and section 19.6 recorded it as the one follow-up
+that change left open. The tier-T3 architecture delta — ADR-0005
+(`docs/architecture/decisions/adr-0005-server-side-checkout-gate.md`,
+proposed) and LLD section 21 — is the sibling `architect` handoff this
+section words in requirements terms; `AC-CKO-1` / `AC-CKO-2` are the
+matching `product-owner` conditions.
+
+### 22.1 Decision: the close is decided on the folio Billing holds
+
+The decided behaviour, in five parts:
+
+- **Billing owns the folio facts, Stay owns the close, and the request
+  asserts neither.** Billing is the only authority for a folio's
+  balance and for the open-balance approval recorded against it; Stay
+  is the only authority for the in-house to closed transition. A
+  check-out request may say which stay it closes, which folio it
+  presents, its actual departure time, and its idempotency key; a
+  field that restates a Billing-owned fact is advisory input at most
+  and never decides the close.
+- **The folio is re-read on every route to the close.** Stay reads the
+  stay's folio through `GetFolioBalance` with the caller's session
+  forwarded, and uses the balance that read returns. The request's
+  `folioBalanceMinor` is not shape-validated and not compared with the
+  read: a request asserting zero against a folio that reads non-zero is
+  refused, and one asserting a non-zero balance against a settled folio
+  closes. The desk already behaves this way from the client side
+  (section 19.3); the server now holds the same rule on its own.
+- **The presented folio must be the folio the balance came from.** The
+  `folioId` the desk presents as the final invoice must equal the folio
+  Billing returns for that stay; a different one is refused rather than
+  closed against a balance nobody verified for the presented invoice
+  (one stay, one folio — `BR-21`).
+- **An approval counts from the folio record, never from the request.**
+  A non-zero balance passes only when the folio carries a recorded
+  approval with a non-blank approver identity, a role from the hotel's
+  fixed three (`owner`, `manager`, `front-desk`, requirements section
+  3.2), and a recorded time. An absent, free-form, incomplete, or
+  out-of-set record is refused with `SETTLEMENT_REQUIRED` and the stay
+  remains in house. The recording side validates the same thing at
+  write: an out-of-set role is refused there, and the recorded time is
+  the service's own clock, never a value from the request.
+- **An unreadable folio refuses the close.** A transport failure, a
+  timeout, a 5xx, or an unwired client refuses with
+  `UPSTREAM_UNAVAILABLE` (503) naming the upstream and operation, and
+  the stay remains in house. A money fact is never served from a cached
+  or assumed value; a Billing 4xx envelope is surfaced unchanged so a
+  rejected session still reads `UNAUTHENTICATED`.
+
+| Gate placement | Verdict | Reason |
+|---|---|---|
+| Keep trusting the request (status quo) | rejected | That is the finding: a desk-bypassing caller closes an unpaid stay with an arbitrary approval, and `BR-17` never holds on the server. |
+| Move the gate into Billing as the deferred `RequestCheckoutGate` | rejected | Billing would need the stay state and would decide the transition Stay owns, reviving a deferred operation and adding a Billing to Stay read on the money path (`docs/technical/integration.md` F4). The check-out boundary stays where the state transition is. |
+| Stay re-reads the folio and re-validates the record | **chosen** | The enforcement point is the transition itself, it reuses the existing `GetFolioBalance` and the fail-closed upstream pattern Reservations already uses for Rates, and it needs no new operation, schema, or stored value. |
+| Reconcile after the fact from events | rejected | A reconciliation that runs after the close is not a gate: the stay is already closed and the room already released. |
+
+### 22.2 Explicit no-change statements
+
+- The capabilities keep their wording and targets: `FR-FDK-2` and
+  `FR-BIL-7` gain a second amendment pointer to this section and keep
+  their Given/When/Then conditions; what changes is who decides the
+  close, not what check-out promises.
+- The desk wording is untouched: `FR-CKO-1`..`FR-CKO-5` (section 19.3)
+  and `AC-DSK-18` stand as written, and the same refusal conditions
+  reach the desk through the same plain catalogue sentences. This
+  section adds no desk state, no approver control, and no panel route.
+- No new MVP capability, story, or business scope enters the MVP
+  count: section 4 keeps its 40 mapped capabilities and its coverage
+  line, and only the `Check-out` handoff note gains the server clause.
+  The behaviour is numbered as slice-scoped requirements (`FR-CKS-*`,
+  section 22.3) on the section 10–21 pattern.
+- Charging policy is not re-decided. Section 21 keeps its posting point
+  and its rejected server-side option: this change makes the gate
+  server-decided, it does not move the room charge off the desk
+  review, and it posts nothing.
+- Authorization is not re-decided: which of the three roles may approve
+  an open balance, and whether an approval is needed at all, stays the
+  hotel's open-balance rule (requirements section 3.1). The fixed three
+  roles stay fixed (section 3.2) and still travel as code, never as
+  per-hotel config. This section validates only that a recorded
+  approval is well formed and provenanced.
+- No schema, table, migration, stored value, or event change is
+  specified. `GetFolioBalance` keeps its shape and is now also read
+  server-side; `CheckOut` keeps its fields, with `folioBalanceMinor`
+  and `openBalanceApproval` becoming advisory (`architect` owns the
+  contract edit and the error-set addition).
+- Money, dates, and numbers keep their decided display shape
+  (section 14), and print output is unchanged (`FR-BIL-4`,
+  `NFR-DSK-2`): a refused close writes nothing, so no invoice or
+  receipt changes.
+- The approval's audit content is unchanged (`NFR-AUD-1`, `BR-36`): it
+  keeps who approved, the role held, and when, and the recorded time
+  now comes from the service clock.
+- Sections 7 through 21 stand with their wording and targets unchanged,
+  except the two amendment pointers in section 1, the section 3.1
+  behaviour cell, the section 4 handoff note, and the section 19.6
+  follow-up bullet.
+
+### 22.3 Behaviour-scoped functional requirements
+
+Ids use the `CKS` (check-out settlement) namespace, continuing the
+slice-scoped pattern of sections 10 through 21; `CKO` stays the #588
+desk release-and-gate namespace and `CKP` the #600 posting namespace.
+They constrain the service that performs the close, and each maps to
+an accepted done-condition in `AC-CKO-1` / `AC-CKO-2`.
+
+FR-CKS-1 — The close is decided on the folio Billing holds.
+Given a check-out request for an in-house stay, whatever balance or
+approval object the request carries; when the close is decided; then
+the service re-reads the stay's folio through `GetFolioBalance` with
+the caller's session forwarded, and decides on the balance and the
+approval that read returns; the request's `folioBalanceMinor` and
+`openBalanceApproval` are advisory input that is ignored — not
+shape-validated and not compared with the read — so a request
+asserting a zero balance for a folio that reads a non-zero one is
+refused, and a request asserting a non-zero balance for a folio that
+reads zero closes. The close is never decided on a value the caller
+supplied.
+
+FR-CKS-2 — The folio presented as the invoice is the folio the balance
+came from.
+Given a close whose `folioId` differs from the folio Billing returns
+for that stay; when the close is decided; then it is refused with
+`CONFLICT` naming both folios and the stay remains in house. A stay
+has exactly one folio (`BR-21`), so a mismatched pair is never closed
+against a balance nobody verified for the presented invoice.
+
+FR-CKS-3 — An approval counts from the folio record, never from the
+request.
+Given a read folio with a non-zero balance; when the close is decided;
+then it passes only if the folio's recorded open-balance approval
+carries a non-blank approver identity, a role from the hotel's fixed
+three (`owner`, `manager`, `front-desk`, requirements section 3.2),
+and a present, parseable recorded time; an absent, free-form (a string
+or any non-object), incomplete, or out-of-set record is refused with
+`SETTLEMENT_REQUIRED` — `reason` `no_approval` when none is recorded
+and `approval_incomplete` when one is recorded without all three — and
+the stay remains in house. Given staff record an approval through the
+open-balance approval operation with a role outside the fixed three;
+then the write is refused with `VALIDATION_FAILED` naming `role`, and
+the recorded time is the service's own clock, never a body value.
+Given a provenanced record; then the close proceeds exactly as
+`FR-CKO-4`, `FR-CKO-5`, and `FR-FDK-2` state.
+
+FR-CKS-4 — An unreadable folio refuses the close.
+Given the folio read fails — transport failure, timeout, a 5xx, or no
+Billing client configured; then the close is refused with
+`UPSTREAM_UNAVAILABLE` (503) naming the upstream and the operation,
+the stay remains in house, no state change and no check-out event are
+written, and no room is released. Given a 4xx envelope from Billing;
+then it is surfaced unchanged, so a rejected session still reads
+`UNAUTHENTICATED`. A close never proceeds on a balance nobody
+verified: the on-premise availability promise (`NFR-AVL-1`) does not
+extend to an unverified money fact.
+
+FR-CKS-5 — Every route to the close is gated, and a refusal changes
+nothing.
+Given a replayed `idempotencyKey`, a repeated click, or two paired
+simultaneous closes; then the gate is evaluated before the replay is
+served and before the conditional state flip, so every route to the
+close is gated, a replay returns the original close only once its gate
+passes, and paired simultaneous closes still resolve exactly one
+winner with the loser refused `STATE_ILLEGAL` (`NFR-CON-2`). Given a
+refused close of any kind above; then no stay state changes, no
+check-out event is written, no idempotency record is stored, no room
+is released, and the desk shows its existing plain refusal sentences
+(the #588 strings, unchanged). Given a close that passes; then
+`FR-CKO-1`..`FR-CKO-3` govern the release and its reporting exactly as
+written.
+
+### 22.4 Non-functional requirements delta: no-change statement
+
+No new NFR is added. The existing NFRs cover the change:
+
+- Internationalisation and catalogue coverage (`NFR-I18N-1`,
+  `NFR-DSK-1` hold): no desk copy is added — the refusals reach the
+  panel through the strings section 19.3 already specifies — and the
+  service-side messages stay service catalogue entries, so
+  `script/catalogue-coverage-check.sh` stays green.
+- Desk response (`NFR-PERF-1` holds): a close costs one synchronous
+  upstream read with a bounded timeout inside the action the operator
+  already took; no read is added on screen entry and nothing polls.
+- Concurrency and safety (`NFR-CON-2`, `BR-11` hold): the gate runs
+  before the conditional flip, so a refused close releases nothing and
+  paired simultaneous closes still resolve exactly one winner.
+- Audit (`NFR-AUD-1`, `BR-36` hold): a refused close writes no audit
+  entry, a committed close keeps the acting staff member, and the
+  approval keeps who approved, the role held, and the recorded time.
+- Security (`NFR-SEC-1`, `NFR-SEC-2` hold): the caller's session
+  travels on the upstream read and a rejected session surfaces
+  unchanged; role reach is untouched, so this is not an authorization
+  change.
+- Availability (`NFR-AVL-1` holds, with its scope clarified): the desk
+  keeps working on-premise for every other step, and a close whose
+  folio cannot be read refuses in the desk's existing plain error
+  sentence rather than proceeding on an unverified balance.
+- Time and locale (`NFR-TZ-1`, `NFR-I18N-1`, `BR-43` hold): the
+  recorded time stays a stored timestamp with its UTC offset, and the
+  desk shows the existing display forms.
+
+### 22.5 Traceability handoff for `qa-lead`
+
+Each row traces to `AC-CKO-1` / `AC-CKO-2`, to this section's FRs, and
+to the #588 evidence record — its symptom 2(d) reproduction (a request
+carrying `folioBalanceMinor` `120000` with `role` `night-auditor`
+answered `200`, `docs/testing/evidence/588/README.md`) is the exact
+payload this change must refuse. Guards that exist are cited
+`file:line` at the requirement's head (`0dcb68e`); where no guard
+exists yet, the row names the missing guard and the implementation PR
+creates it, for `qa-lead` to re-pin at the merged head.
+
+| Item | Guard (on disk today; a row marked missing is created by the implementation PR) | Handoff note for `qa-lead` |
+|---|---|---|
+| FR-CKS-1 client balance ignored | `services/stay/src/server.test.ts:128-238` (the check-out block decides on the presented `folioBalanceMinor`: `:147-163` refuses on it and `:164-178` closes on it — the current trust being replaced); Postgres parity `:406-460` (`:430` refusal, `:435-451` closes on the presented approval). Missing guards: forged balance low (request `0`, Billing `6000` → 409 `SETTLEMENT_REQUIRED`, stay in house, no `stay.checked-out` event) and forged balance high (request `6000`, Billing `0` → 200 closed, proving the claim is ignored in both directions) | The pair is one obligation: the client value must be provably ignored up and down, not merely overridden in the unsafe direction |
+| FR-CKS-2 folio mismatch | Missing guard: Billing returns a different `folioId` → 409 `CONFLICT` naming both, stay in house, no event | The presented invoice ref must be proven to be the folio the balance came from, not any folio of the stay |
+| FR-CKS-3 approval provenance | `services/stay/src/server.test.ts:164-178` (the request's own object closes today — the hole); Postgres parity `:435-451`. Missing guards: absent, free-form (string), incomplete (no identity or no recorded time), and out-of-set role (`night-auditor`) each refused 409 `SETTLEMENT_REQUIRED` with `reason` `no_approval` / `approval_incomplete`, stay in house; a provenanced record (`owner`/`manager`/`front-desk` plus a recorded time) closes; Billing write side: an out-of-set `role` refused 400 `VALIDATION_FAILED` naming `role`, and a body-supplied time ignored while the record keeps the service-stamped time (`services/billing/src/main/java/com/hotel/billing/service/BillingService.java:302-313`) | The read-side cases must carry the malformed record on the folio, not in the request; the write-side case must prove the time is stamped, and the existing #588 desk case that records a provenanced approval must stay green |
+| FR-CKS-4 unreadable folio | Missing guard: unreachable, timeout, 5xx, and unwired client each → 503 `UPSTREAM_UNAVAILABLE` naming upstream and operation, stay in house, no event, no release; a 4xx provider envelope surfaced unchanged (`UNAUTHENTICATED` stays `UNAUTHENTICATED`) | A close that cannot read the folio must never be reported as closed, and its refusal must not be mistaken for an open-balance refusal on the desk |
+| FR-CKS-5 every route and replay | `services/stay/src/server.test.ts:179-211` (replay returns the original close, a second key is refused `STATE_ILLEGAL`), `:212-238` (paired simultaneous closes, one winner) — rewritten so the gate precedes the replay. Missing guard: a replay of a key whose folio went open after the first close is refused rather than returned | The replay case must prove the gate runs first; the paired case must prove a loser's refusal still writes no event |
+| Desk flows stay green | `app/src/views/StayView.test.ts` (the #588 every-route gate, recorded-approval, and approver-role-select cases), `app/src/views/desk-edge-guards.test.ts` (one close, one release), `app/e2e/stay.spec.ts`, `script/e2e-desk-loop.sh` (its `CheckOut` step) — unchanged by this change | These trace to `AC-DSK-18`, `FR-CKO-4`, `FR-CKO-5` and must pass without a desk edit: no client assertion, copy, or control changes here |
+| Evidence cross-reference | `docs/testing/evidence/588/README.md` (symptom 2(d), the `night-auditor` payload answered `200`) | The implementation PR re-runs that payload against the new close and records the `409`; the record is the before/after pair for this change |
+
+Per-flow implementation diagram (T3). The architecture-side diagrams
+are LLD sections 21.3 and 21.4; this is the requirements-side view of
+the same flow, citing the code edges the `architect` named:
+
+```mermaid
+flowchart TD
+    A[CheckOut: stayId, folioId, actualDeparture, idempotencyKey  store.ts:261-264] --> B[Validate stayId, folioId, actor]
+    B --> C[Re-read the stay folio: GetFolioBalance with the caller token]
+    C -- unreachable, timeout, 5xx, unwired --> U[503 UPSTREAM_UNAVAILABLE naming upstream and operation; stay in house]
+    C -- 4xx envelope --> P[Surface the provider refusal unchanged]
+    C -- read ok --> D{Returned folioId equals the presented folioId}
+    D -- no --> K[409 CONFLICT naming both folios; stay in house]
+    D -- yes --> E{Read balance zero}
+    E -- yes --> H[Gate passes]
+    E -- no --> F{Recorded approval: identity, role in the fixed three, recorded time}
+    F -- no --> S[409 SETTLEMENT_REQUIRED, reason no_approval or approval_incomplete; stay in house]
+    F -- yes --> H
+    H --> I[Conditional in-house to closed flip, outbox event  store.ts:272-293]
+    I --> J[200 closed with the presented invoiceRef]
+    J --> R[Desk release and reporting unchanged  FR-CKO-1..FR-CKO-3]
+    A -.-> N[Request folioBalanceMinor and openBalanceApproval: advisory, ignored]
+```
+
+Failure/rollback path: every refusal above leaves the stay in house
+with no state flip, no `stay.checked-out` event, no idempotency record,
+and no room released; the desk shows its existing plain refusal
+sentences. The whole change reverts with the single implementation PR:
+the desk keeps the section 19 gate, the advisory request fields stay
+valid for the desk build that still sends them, and no data migration
+exists in either direction (`BR-46`).
+
+### 22.6 Explicitly not specified here (plus gate dependencies)
+
+- Implementation — the Billing client, the gate rewrite, the guard
+  rewrites, the contract edit, and the evidence re-run — is the
+  downstream `dev` PR for #601, not this section.
+- The desk panel is not touched: `AC-DSK-18`, `FR-CKO-1`..`FR-CKO-5`,
+  the UI contract, and the copy all stand from #588, and no
+  reader-visible UI change is specified here, so no new UI contract
+  section applies.
+- Acceptance criteria are `product-owner` work (`AC-CKO-1`,
+  `AC-CKO-2`, the `AC-FDK-2` pointer, and the rollout spec);
+  ADR-0005, LLD section 21, and the contract delta are `architect`
+  work; the guard mapping and traceability completions above are
+  `qa-lead` work; the rollback note is `release-manager` work.
+- Out of scope: charging policy and the sibling charge-posting
+  follow-up (section 21 / #600 stand as written); Billing's
+  approval-write policy beyond provenance validation (an
+  authorisation rule of its own); binding the asserted `actor` to the
+  session token (residual risk R6); and any change to `ReleaseRoom`,
+  the invoice, or the print surfaces.
+- The specified change is tier T3 (the enforcement boundary moves into
+  the service and adds one synchronous module-to-module read; the
+  contract change is additive only). This section is its FR/NFR part;
+  `ADR-0005` must move `proposed` to `accepted` with the owner and no
+  implementation PR opens until `SPEC-GATE PASS` on #601.
+
 <!-- ao-role: business-analyst -->
-Role: business-analyst · AO session hotel-mgmt-912
+Role: business-analyst · AO session hotel-mgmt-921

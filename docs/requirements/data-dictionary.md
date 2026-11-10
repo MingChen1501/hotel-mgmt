@@ -47,6 +47,12 @@ room link; actual arrival and departure times (including recorded
 early arrival and late departure); room-move history with both room
 numbers and times; state (in house, closed).
 
+A stay reaches `closed` only through the settlement gate, and that
+gate is decided on the folio the system holds: the stored balance and
+the approval recorded against it, never a balance or approval a
+request supplies (`BR-46`). A stay whose folio cannot be read stays in
+house.
+
 Owning FRs: FR-FDK-1, FR-FDK-2, FR-FDK-3, FR-FDK-4, FR-FDK-5.
 
 ## 3. Folio
@@ -61,6 +67,15 @@ and fee amounts); payment lines (method, amount, time); running
 balance; authorised open-balance approval where recorded, carrying
 the approver identity, the role held, the reason where one was
 given, and the recorded time.
+
+The folio is the only authority for the two facts the check-out gate
+reads: its running balance and its open-balance approval. Once
+recorded, the approval is part of the folio record — the role must be
+one of the hotel's fixed three and the recorded time is written by
+the service, not supplied by a caller — and a close decides on those
+stored values alone (`BR-46`). A `folioBalanceMinor` or
+`openBalanceApproval` travelling on a check-out request is advisory
+input, not a folio field: it is neither stored nor trusted.
 
 Owning FRs: FR-BIL-1, FR-BIL-2, FR-BIL-3, FR-BIL-5, FR-BIL-7.
 
@@ -241,9 +256,13 @@ defines the per-night price record the #590 management screen writes,
 tracing `FR-RTE-1` and `BR-44`, and adds no behaviour beyond them. The
 Charge entry (section 7) gains the once-per-stay room-charge statement
 the #600 desk check-out relies on (`BR-45`, `FR-CKP-1`..`FR-CKP-5`) and
-adds no entry, field, or behaviour beyond those sources.
+adds no entry, field, or behaviour beyond those sources. The Folio
+entry (section 3) states which of its fields the #601 settlement gate
+decides on, and the Stay entry (section 2) states that the close is
+decided on those stored facts (`BR-46`, `FR-CKS-1`..`FR-CKS-5`); both
+add no entry, field, or behaviour beyond those sources.
 
 Counts: 15 dictionary entries covering the 7 entity terminology concepts (T-1..T-7); T-8 is a spelling convention with no entry.
 
 <!-- ao-role: business-analyst -->
-Role: business-analyst · AO session hotel-mgmt-912
+Role: business-analyst · AO session hotel-mgmt-921

@@ -240,8 +240,10 @@ Main flow:
    payment, or record an authorised approval for the open balance
    where the hotel's rule allows it. [FR-BIL-3, FR-BIL-7]
 3. Staff check the guest out and present the folio as the final
-   invoice; each receipt matches one recorded payment. [FR-FDK-2,
-   FR-BIL-4]
+   invoice; each receipt matches one recorded payment. The close is
+   decided by the service on the folio it holds — its stored balance
+   and the approval recorded against it — not on the balance the
+   panel sends. [FR-FDK-2, FR-BIL-4, FR-CKS-3]
 4. The stay is closed and the room the stay held becomes vacant and
    dirty, released by the close itself; a late departure is recorded
    against the stay where applicable. [FR-FDK-2, FR-FDK-4, BR-18]
@@ -261,9 +263,15 @@ Extensions/exceptions:
   recorded time, or names a role outside the hotel's fixed three:
   it does not count as an approval, check-out is refused, and the
   approval is recorded again. [FR-BIL-7, BR-17]
+- 2c. The folio the close presents is not the folio the service holds
+  for the stay: the close is refused with the conflict named and the
+  stay remains in house. [FR-CKS-2, BR-21]
 - 3a. The hotel's internet connection is down: check-out, payment
   recording, and invoice printing all complete on the on-premise
   installation exactly as when connected. [NFR-AVL-1]
+- 3b. The service cannot read the folio at the close: the close is
+  refused, the stay remains in house, nothing is released, and no
+  folio is presented as the final invoice. [FR-CKS-4, BR-46]
 - 4a. The release of the room cannot be confirmed: the close stands
   and the room stays owed a release; staff see that the guest is
   checked out while the room still reads occupied, with the next
@@ -448,6 +456,6 @@ sections 7–9 are presentation/scaffold deltas outside this
 actor-goal count: they are traced in their own slice handoff
 tables, not in the table above, and the later slice ids (`FR-DSK-*`,
 `NFR-DSK-*`, `FR-RST-*`, `NFR-RST-*`, `FR-CIP-*`, `FR-CKO-*`,
-`FR-CKP-*`) follow the same rule.
+`FR-CKP-*`, `FR-CKS-*`) follow the same rule.
 
 Counts: 12 use cases; 43/43 FRs mapped.
