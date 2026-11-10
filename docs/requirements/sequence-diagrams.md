@@ -233,7 +233,7 @@ close the stay, present the invoice, and release the room as
 vacant-dirty.
 
 - Preconditions: the stay is in house with its single folio open (diagram 10); settlement or approval follows diagram 11.
-- Postconditions: the stay is closed with the invoice presented and the room vacant and dirty, or check-out was refused until the folio is settled or approved; a close whose room release could not be confirmed stays closed with the room owed a release; a folio reviewed for a stay that could not be charged is left as it was, with no close.
+- Postconditions: the stay is closed with the invoice presented and the room vacant and dirty, or check-out was refused until the folio is settled or approved; the refusal is decided on the folio the system holds, so a balance or approval a request carries changes nothing (`FR-CKS-1`, `BR-46`); a close whose room release could not be confirmed stays closed with the room owed a release; a folio reviewed for a stay that could not be charged is left as it was, with no close.
 
 ```mermaid
 sequenceDiagram
@@ -269,6 +269,20 @@ sequenceDiagram
     end
     Staff->>Folio: Re-read the balance at the moment of the close [FR-BIL-7, BR-17; every route to the close]
     Staff->>Stay: Check guest out; present the invoice [FR-FDK-2, FR-BIL-4; FIXED section 3.2 order: check-out closes the stay, states per state-machine]
+    Note over Stay: The close is decided on the folio the service holds; the balance and approval the request carries are advisory [FR-CKS-1, BR-46]
+    Stay->>Folio: GetFolioBalance with the caller session [FR-CKS-1, FR-CKS-3]
+    alt Folio unreadable
+        Stay-->>Staff: Check-out refused, stay in house, nothing released [FR-CKS-4, BR-46; upstream failure, timeout, 5xx, or no client]
+    else Folio read
+        Folio-->>Stay: folio id, stored balance, recorded approval
+        alt Presented folio is not the stay's folio
+            Stay-->>Staff: Check-out refused with the conflict named, stay in house [FR-CKS-2, BR-21]
+        else Open balance and the recorded approval is absent, incomplete, or out of the fixed set
+            Stay-->>Staff: Check-out refused until the folio is settled or a provenanced approval is recorded [FR-CKS-3, FR-BIL-7, BR-17]
+        else Zero balance or a provenanced approval
+            Note over Stay: Close commits, the in-house to closed flip and the checked-out event [FR-CKS-5]
+        end
+    end
     Stay->>Rooms: Release the room the stay held as vacant and dirty [FR-FDK-2, BR-18; only for a close that committed]
     alt Release not confirmed
         Rooms-->>Staff: Guest checked out, room still reads occupied, next step named [FR-FDK-2, BR-18]

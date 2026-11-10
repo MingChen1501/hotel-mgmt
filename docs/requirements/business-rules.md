@@ -56,7 +56,7 @@ front-desk staff, manager, or owner account acting within its access
 | ID | Rule | Trace |
 |---|---|---|
 | BR-16 | Check-in requires a vacant, clean, inspected room of the booked type. On check-in the reservation becomes an in-house stay linked to the room, and the room state becomes occupied. | FR-FDK-1; FR-RMS-2; US-FDK-1 |
-| BR-17 | Check-out with a non-zero folio balance is refused unless an authorised approval for the open balance is recorded against the folio. An approval counts only as the record of who approved, the role they hold, and when it was recorded, written through the open-balance approval operation; a free-form note standing in for that record is not an approval, and a record missing the identity or the recorded time, or naming a role outside the hotel's fixed three, does not count. The approval covers the open balance as it stands at check-out, and every route to the close re-reads that balance before committing. Whether approval is needed and which role may approve follows the hotel's open-balance rule. | FR-BIL-7; FR-FDK-2; requirements section 3.1; requirements section 3.2; US-BIL-7; Refs #588 |
+| BR-17 | Check-out with a non-zero folio balance is refused unless an authorised approval for the open balance is recorded against the folio. An approval counts only as the record of who approved, the role they hold, and when it was recorded, written through the open-balance approval operation; a free-form note standing in for that record is not an approval, and a record missing the identity or the recorded time, or naming a role outside the hotel's fixed three, does not count. The approval covers the open balance as it stands at check-out, and every route to the close re-reads that balance before committing. The balance and the approval the close decides on are the ones stored against the folio, never ones a request carries (`BR-46`). Whether approval is needed and which role may approve follows the hotel's open-balance rule. | FR-BIL-7; FR-FDK-2; requirements section 3.1; requirements section 3.2; US-BIL-7; Refs #588 |
 | BR-18 | On check-out the stay is closed, the folio is presented as the final invoice, and the room the stay held becomes vacant and dirty. The close performs the release for that room, resolved from the room the stay held rather than retyped. The release runs only for a close that committed: a refused close, an already-closed stay, or a repeated request releases nothing. If the release cannot be confirmed, the close stands and the room stays owed a release, reported as such — a closed stay is never reopened and a room is never reported vacant before the room record says so. | FR-FDK-2; FR-BIL-4; US-FDK-2; Refs #588 |
 | BR-19 | A guest can be moved to another vacant, clean, inspected room mid-stay. The stay links to the new room, the old room becomes vacant and dirty, and the move with both room numbers and its time is kept in the stay history. | FR-FDK-3; US-FDK-3 |
 | BR-20 | Actual arrival and departure times falling outside the hotel's standard times are recorded against the stay and stay visible on the arrivals and departures lists. The hotel's own check-in and check-out times are the ones shown and enforced. | FR-FDK-4; FR-CUS-2; FR-ADM-4; US-FDK-4 |
@@ -73,6 +73,7 @@ front-desk staff, manager, or owner account acting within its access
 | BR-26 | Day-close produces the totals of charges and of payments per method for the business date, and the totals agree with the folios posted that day. Which totals must balance and who signs them off is undecided. | FR-BIL-6; OQ-3 (requirements section 5); US-BIL-6 |
 | BR-27 | Which payment methods beyond cash and card (for example bank transfer or hotel credit) payment recording must support on day one is undecided. Until decided, payment recording covers cash and card only. | OQ-1 (requirements section 5); FR-BIL-3 |
 | BR-45 | A stay's room charge is posted once per stay, at the stay's own frozen quoted total, and never derived again from today's prices. The desk check-out posts it at its review step, before any balance is presented, so no folio closes carrying no room charge; a second room charge is never posted for the same stay, a stay quoted at zero is charged nothing, and a room charge that cannot be posted refuses the check-out instead of closing an uncharged folio. Whether the guest settled or the hotel approved the open balance stays the check-out gate's question, not the charge's. | FR-BIL-2; FR-BIL-7; FR-RTE-5; FR-CKP-1..FR-CKP-5; BR-13; BR-17; `AC-DSK-19`; Refs #600 |
+| BR-46 | The check-out gate is decided on the folio the system holds, never on what a request asserts. The balance is the folio's stored balance, re-read when the close is attempted, and an approval counts only as the record stored against that folio — approver identity, a role from the hotel's fixed three, and the recorded time — while a balance or approval object supplied with the request is advisory input that decides nothing. The folio presented as the final invoice must be the folio the balance came from. A folio that cannot be read refuses the close instead of closing on an unverified balance, and every refusal leaves the stay in house with nothing released. Which role may approve, and whether approval is needed, stays the hotel's open-balance rule (`BR-17`). | FR-FDK-2; FR-BIL-7; FR-CKS-1..FR-CKS-5; BR-17; BR-21; requirements section 3.1; requirements section 3.2; `AC-CKO-1`; `AC-CKO-2`; Refs #601 |
 
 ## 6. Rooms and housekeeping
 
@@ -118,7 +119,7 @@ section 3.3). Fixed items no hotel may change in the MVP.
 | Standard times | The hotel's check-in and check-out times (`BR-20`) | — |
 | Cancellation | Hotel reason list (`BR-3`); hotel wording (`BR-4`) | Cancel only before check-in |
 | No-show | Whether any charge is kept; which reason list applies (`BR-5`) | Only past arrival date; history kept |
-| Open-balance check-out | Whether approval is needed; which role may approve (`BR-17`) | Lifecycle order confirmed to checked-in to closed; an approval record carries who, the role, and when |
+| Open-balance check-out | Whether approval is needed; which role may approve (`BR-17`) | Lifecycle order confirmed to checked-in to closed; an approval record carries who, the role, and when; the gate is decided on the folio's stored balance and approval, never on a request's claim (`BR-46`) |
 | Charge items | The hotel's own items with names and prices (`BR-22`) | Only defined items postable; one folio per stay |
 | Taxes and fees | The hotel's tax and fee rules (`BR-25`) | — |
 | Stay restrictions | Minimum stay and closed-to-arrival days per date range (`BR-10`) | Violating reservations refused with the restriction named |
@@ -161,14 +162,18 @@ booking refusal) without adding behaviour beyond those sources, and
 BR-45 states the once-per-stay room-charge obligation and its frozen
 quoted total the #600 desk check-out relies on (tracing `FR-BIL-2`,
 `FR-RTE-5`, `FR-CKP-1`..`FR-CKP-5`, and `AC-DSK-19`) without adding
-behaviour beyond those sources.
+behaviour beyond those sources, and BR-46 states where the check-out
+gate's facts come from — the folio stored balance and the approval
+recorded against it, never a request's claim — tracing `FR-BIL-7`,
+`FR-FDK-2`, `FR-CKS-1`..`FR-CKS-5`, and `AC-CKO-1`/`AC-CKO-2`
+without adding behaviour beyond those sources.
 Policies with no decided source appear as open questions
 OQ-1..OQ-5. No rule introduces behaviour beyond the traced
 FRs/NFRs/stories. Later capabilities from requirements section 6
 (waitlist, split folios, integrated payments, automated workflow
 rules, multi-property operation, and the rest) carry no rule here.
 
-Counts: 45 business rules, 5 open questions.
+Counts: 46 business rules, 5 open questions.
 
 <!-- ao-role: business-analyst -->
-Role: business-analyst · AO session hotel-mgmt-912
+Role: business-analyst · AO session hotel-mgmt-921
