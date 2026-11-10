@@ -3135,8 +3135,8 @@ sends the two advisory fields is unaffected.
 ### 21.6 Verification plan
 
 Stay service guards (the implementation PR creates them; the existing
-check-out block is `services/stay/src/server.test.ts:126-230` and the
-Postgres parity block at `:425-460`):
+check-out block is `services/stay/src/server.test.ts:128-238` and the
+Postgres parity block at `:378-460`):
 
 - **Forged balance low** — client sends `folioBalanceMinor: 0` while
   Billing reads `6000` with no approval: 409 `SETTLEMENT_REQUIRED`, stay
