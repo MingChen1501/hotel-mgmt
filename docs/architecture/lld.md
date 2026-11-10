@@ -1012,8 +1012,10 @@ flowchart TD
     J -->|yes| K[AssignRoom, then CheckIn, then CheckInReservation]
     K --> L{Result?}
     L -->|ok| M[Commit success reset clears the pick and candidates, invalidating any preload started inside the commit window]
-    L -->|CONFLICT / STATE_ILLEGAL| N[One plain sentence naming room and state; staff picks again]
-    N --> K
+    L -->|CONFLICT room taken| N[One plain sentence; the bound booking ref is cleared so the next click reloads]
+    L -->|CONFLICT already checked in / STATE_ILLEGAL| N2[One plain sentence for the refusal; the pick stays bound so a further click retries the commit]
+    N --> R
+    N2 --> I
     M --> O[Commit settles; a preload that settled first never releases the commit's busy state]
 ```
 
@@ -1081,12 +1083,17 @@ relative to `app/src/views/`):
   `StayView.test.ts:1909` and `StayView.test.ts:2057`; this is
   the commit-window mirror race as fixed (#614, PR #616), with no
   part left open.
-- K–L–N: room just taken -> `CONFLICT` naming the room and
-  clearing the bound booking ref so the next click reloads the
-  candidates (`StayView.vue:1177-1185`); booking already checked
-  in -> `CONFLICT` with its own line (`:1223-1230`); room not
-  ready/blocked -> `STATE_ILLEGAL` naming room+state (LLD
-  section 2 error mapping); only wording is new (`FR-DSP-3`).
+- K–L–N–R: room just taken -> `CONFLICT` naming the room and
+  clearing the bound booking ref, so the next click finds the ref
+  stale and reloads the booking and candidates instead of
+  committing (`StayView.vue:1177-1185`, retry at `:1144-1147`);
+  `StayView.test.ts:967`.
+- K–L–N2–I: booking already checked in -> `CONFLICT` with its
+  own line, and room not ready/blocked -> `STATE_ILLEGAL` naming
+  room+state (LLD section 2 error mapping); neither clears the
+  bound ref, so the pick stays and a further click retries the
+  commit (`StayView.vue:1223-1230`); `StayView.test.ts:997`;
+  only wording is new (`FR-DSP-3`).
 - A pick cleared mid-load releases only the preload's half and
   never a commit the button owns (`StayView.vue:975-987`;
   `StayView.test.ts:665`).
@@ -1124,9 +1131,10 @@ Edge trace:
   panel error (`StayView.vue:1103-1112`, `:1268-1273`) and drives
   the section 11.3 banner and safe manual retry, never sign-out.
 - U–V: shared-client 401 path (LLD section 11.2) unchanged; every
-  catch routes `isSignedOut` to the one `expireToGate` call
-  (`StayView.vue:951-954`, `:1045-1048`, `:1107-1110`,
-  `:1173-1176`, `:1219-1222`, `:1240-1243`).
+  catch in this flow routes `isSignedOut` to the one `expireToGate`
+  call (`StayView.vue:951-954`, `:1045-1048`, `:1107-1110`,
+  `:1173-1176`, `:1199-1202`, `:1219-1222`, `:1240-1243`,
+  `:1269-1272`).
 - Rollback: revert the #422 placeholder/hint/guard change, or
   the later #586 preload, #594 one-click commit, and
   #596/#614 reset-invalidation changes; each reverts on its own
