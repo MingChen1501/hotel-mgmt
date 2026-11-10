@@ -588,10 +588,12 @@ export default defineComponent({
     // Arrival-pick load sequencing (#586): every pick increments
     // the counter and owns that value, so a booked-type read that
     // returns late for an earlier pick never paints into the
-    // current picker (`AC-DSK-17`). `pendingLoadSeq` names the
-    // candidate load still in flight, so clearing the pick can
-    // release only that load's in-flight flag and never a commit
-    // the button owns.
+    // current picker (`AC-DSK-17`). The commit success reset
+    // increments it too (Refs #596), so a pick made inside the
+    // commit window is dropped with the cleared panel.
+    // `pendingLoadSeq` names the candidate load still in flight, so
+    // clearing the pick can release only that load's in-flight flag
+    // and never a commit the button owns.
     let loadSeq = 0;
     let pendingLoadSeq: number | null = null;
 
@@ -1233,6 +1235,15 @@ export default defineComponent({
           `Checked in for booking ${refValue} in room ${assigned.roomNumber}.`,
         );
         checkinDetails.value = [{ label: 'Stay ID', value: stayId }];
+        // The commit success reset owns the picker (Refs #596): the
+        // arrival select stays enabled during the commit, so a pick
+        // inside that window starts a load of its own. Bumping the
+        // sequence and dropping the pending load here invalidates
+        // that load, so its late read paints no candidate, status, or
+        // error into the cleared panel, and the next arrival clear
+        // cannot release the commit's in-flight flag on its behalf.
+        ++loadSeq;
+        pendingLoadSeq = null;
         arrivalRef.value = '';
         checkinRoomId.value = '';
         checkinCandidates.value = [];
