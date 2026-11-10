@@ -973,64 +973,142 @@ app/
 
 ### 13.1 Stay explicit empty placeholder blocking check-in (#422)
 
-The room select opens on an explicit empty option with the
-pick-a-ready-room hint; check-in stays blocked until a ready
-room of the booked type is chosen. This resolves the StayView
-check-in room preselection mismatch (#411) by making
-unselected explicit instead of preselecting a possibly wrong
-room. Behaviour and call order are otherwise unchanged
+The shipped Stay check-in flow has three steps. The arrival
+pick preloads the booking and its ready-room candidates
+(#586, `AC-DSK-17`), so the room select is populated before
+any Check in click. The select opens on an explicit empty
+option with the pick-a-ready-room hint, and check-in stays
+blocked until a ready room of the booked type is chosen: this
+resolves the StayView check-in room preselection mismatch
+(#411) by making unselected explicit instead of preselecting a
+possibly wrong room. One Check in click then commits, reusing
+the preloaded candidates (#594); on success the panel reset
+invalidates any preload a pick started inside the commit
+window (#596, PR #613), and the commit keeps its own in-flight
+state when such a preload settles first (#614, fixed by
+PR #616). Behaviour and call order are otherwise unchanged
 (`StayService.CheckIn` provider-side guards stand). The #422
-restyle groups the same hooks into the design cards (lists,
-check-in, move, times, check-out) with no hook, field, or
-call-order change.
+restyle hooks these steps into the design cards; the later
+#541 v2 board renders the same hooks as two panels, check-in
+and check-out, with the lists read still running underneath to
+feed both selects.
 
 ```mermaid
 flowchart TD
-    A[Staff opens Stay check-in for an arrival] --> B[Load ready-room candidates for booked type]
-    B --> C{How many candidates?}
-    C -->|exactly one| D[Bind it directly; placeholder not shown]
-    C -->|zero or many| E[Select opens on empty option with pick-a-ready-room hint]
-    E --> F[Check-in blocked with plain-words next step]
-    D --> G[Staff confirms check-in]
-    F --> H{Staff picks a ready room?}
-    H -->|no| F
-    H -->|yes| G
-    G --> I[AssignRoom then CheckInReservation]
-    I --> J{Result?}
-    J -->|ok| K[Stay in-house; room bound]
-    J -->|CONFLICT / STATE_ILLEGAL| L[One plain sentence naming room and state; staff picks again]
-    L --> B
+    A[Staff picks an arrival in the Stay check-in select] --> B[Preload the booking, then list the ready rooms and keep the booked type]
+    B --> C{Ready rooms of the booked type?}
+    C -->|zero| D[Plain no-ready-rooms line names the booked type; nothing bound]
+    D --> R[Staff picks an arrival again or clicks Check in to retry the load]
+    R --> B
+    C -->|exactly one| E[Bind it directly; hint cleared, placeholder not shown]
+    C -->|many| F[Select opens on the explicit empty option with the pick-a-ready-room hint and the need_room guard]
+    F --> G{Staff picks a ready room?}
+    G -->|no| F
+    G -->|yes| H[Guard clears on the pick, no second click]
+    E --> I[Staff clicks Check in once]
+    H --> I
+    I --> J{Preload still current for this pick?}
+    J -->|no| B
+    J -->|yes| K[AssignRoom, then CheckIn, then CheckInReservation]
+    K --> L{Result?}
+    L -->|ok| M[Commit success reset clears the pick and candidates, invalidating any preload started inside the commit window]
+    L -->|CONFLICT room taken| N[One plain sentence; the bound booking ref is cleared so the next click reloads]
+    L -->|CONFLICT already checked in / STATE_ILLEGAL| N2[One plain sentence for the refusal; the pick stays bound so a further click retries the commit]
+    N --> R
+    N2 --> I
+    M --> O[Commit settles; a preload that settled first never releases the commit's busy state]
 ```
 
-Edge trace (every edge cites code):
+Edge trace (every edge cites code; `StayView` paths are
+relative to `app/src/views/`):
 
-- A–B: arrival pick loads candidates for the booked type
-  (`StayView.vue` candidate load; booked-type status via
-  `bookedTypeStatus`).
-- B–D: single-candidate auto-select binds directly and clears
-  the hint (`StayView.vue:958-960`, Refs #411 comment at
-  :954-957).
-- B–E–F: zero-or-many opens on the empty option
-  (`StayView.vue:51-53` empty `<option value="">` with the
-  `desk.stay.choose_room` key) with `need_room` set
-  (`StayView.vue:963`); the blocked check re-tests the
-  bound id (`StayView.vue:1005-1008`) and refuses with the
-  plain-words next step.
-- G–I: `AssignRoom` (`StayView.vue:1016`,
-  `RoomInventoryService.AssignRoom`, LLD section 3 atomic
-  guard, `NFR-CON-2`) then `CheckInReservation` in legacy op
-  order with one idempotency key per contract op.
-- J–K: happy path emits `StayEvents.checked-in` (LLD
+- A–B: the arrival pick (`@change="onArrivalChange"`,
+  `StayView.vue:30`) starts the preload itself
+  (`onArrivalChange`, `StayView.vue:965-990`) — `GetReservation`
+  for the picked booking (`:1037-1040`), then `ListRoomsByState`
+  for `vacant-inspected` (`:1063-1066`) filtered to the booked
+  type (`:1070-1072`). Booked-type status comes from
+  `bookedTypeStatus` (`:688-701`), and each pick owns a load
+  sequence so an earlier read paints nothing (`:966`, `:1042`,
+  `:1060`, `:1067`, `:1104`). The preload is one click-free read
+  pair, and the late-read case is pinned by
+  `StayView.test.ts:332` and `StayView.test.ts:723`.
+- B–C–D: zero candidates of the booked type sets the booked-type
+  status and the plain no-ready-rooms line
+  (`StayView.vue:1073-1081`) and leaves the explicit empty option
+  bound (`StayView.test.ts:538`).
+- B–C–E: exactly one candidate binds directly and clears the
+  hint (`StayView.vue:1090-1096`); `StayView.test.ts:493`.
+- B–C–F: many candidates open on the empty option
+  (`StayView.vue:51-53` `<option value="">` with the
+  `desk.stay.choose_room` key) with the amber hint (`:66-72`,
+  `desk.stay.room_hint`) and `need_room` set (`:1097-1099`);
+  `StayView.test.ts:332`.
+- F–G–H: the room-pick watch clears the guard as soon as a valid
+  candidate id is bound (`StayView.vue:992-1002`), so no second
+  click is needed (`StayView.test.ts:402`).
+- G–F (no pick): the commit-time guard rejects an empty or
+  unknown id with `need_room` and calls no operation
+  (`StayView.vue:1148-1152`); a click with no arrival pick keeps
+  the `need_arrival` guard (`:1140-1143`). Guards pinned by
+  `StayView.test.ts:453` and `StayView.test.ts:435`.
+- D–R–B: a retry click reloads the booking and candidates
+  instead of committing (`onCheckIn` retries when `checkinRef` no
+  longer matches the pick, `StayView.vue:1144-1147`);
+  `StayView.test.ts:538` and `StayView.test.ts:607`.
+- I–J: the click re-tests that the preload is current for the
+  picked arrival (`StayView.vue:1144-1147`) and is a no-op while
+  a read or commit is in flight (`:1135-1137`).
+- J–K: `AssignRoom` (`StayView.vue:1159-1171`,
+  `RoomInventoryService.AssignRoom`, LLD section 3 atomic guard,
+  `NFR-CON-2`) with `roomNumber`, the `stayLink` key, and one
+  idempotency key, then `CheckIn` with the room id from the
+  AssignRoom echo (`:1214-1217`), then `CheckInReservation` in
+  legacy op order (`:1235-1238`), one idempotency key per
+  contract op (`:1156`, `:1168`); one click commits once
+  (`StayView.test.ts:332`, double-click guard `:1772`).
+- K–L–M: happy path writes the status line and the stay-id
+  reference (`StayView.vue:1247-1252`), then the commit success
+  reset bumps the load sequence, drops the pending load, clears
+  arrival, room, candidates, and booking ref (`:1260-1266`) and
+  reloads the panel (`:1267`); `StayEvents.checked-in` (LLD
   section 2); the folio opens stay-side per BR-21.
-- J–L–B: room just taken -> `CONFLICT` naming the room;
-  room not ready/blocked -> `STATE_ILLEGAL` naming room+state
-  (LLD section 2 error mapping); only wording is new
-  (`FR-DSP-3`).
+- M–O: a pick taken inside the commit window starts a preload
+  the reset invalidates, so its late read paints no candidate,
+  status, or error and never re-locks the panel
+  (`StayView.vue:1253-1266`). `commitInFlight` keeps the commit's
+  busy state when that preload settles first
+  (`StayView.vue:1154`, `StayView.vue:1116-1123`,
+  `StayView.vue:1274-1283`). Both cases are pinned by
+  `StayView.test.ts:1909` and `StayView.test.ts:2057`; this is
+  the commit-window mirror race as fixed (#614, PR #616), with no
+  part left open.
+- K–L–N–R: room just taken -> `CONFLICT` naming the room and
+  clearing the bound booking ref, so the next click finds the ref
+  stale and reloads the booking and candidates instead of
+  committing (`StayView.vue:1177-1185`, retry at `:1144-1147`);
+  `StayView.test.ts:967`.
+- K–L–N2–I: booking already checked in -> `CONFLICT` with its
+  own line, and room not ready/blocked -> `STATE_ILLEGAL` naming
+  room+state (LLD section 2 error mapping); neither clears the
+  bound ref, so the pick stays and a further click retries the
+  commit (`StayView.vue:1223-1230`); `StayView.test.ts:997`;
+  only wording is new (`FR-DSP-3`).
+- A pick cleared mid-load releases only the preload's half and
+  never a commit the button owns (`StayView.vue:975-987`;
+  `StayView.test.ts:665`).
 - Checkout gating (unchanged, shown for completeness):
-  `GetFolioBalance` (`StayView.vue:1142,1266`) with
-  `RecordOpenBalanceApproval` (`:1229`); open balance without
-  approval still refuses `SETTLEMENT_REQUIRED` (`:1303`,
-  `FR-BIL-7` holds).
+  `canCheckOut` gates the button and the dialog confirm together
+  (`StayView.vue:650-655`, `:260`, `:282`); `GetFolioBalance` on
+  review (`:1299-1306`) with `RecordOpenBalanceApproval`
+  (`:1393-1399`); the confirm route re-reads the folio
+  (`:1446-1453`) and refuses an unpaid or unprovenanced balance
+  before `CheckOut` (`:1465-1481`, `:1492-1495`); a server
+  `SETTLEMENT_REQUIRED` still refuses (`:1566-1574`) and the
+  landed close releases the departed room once (`ReleaseRoom`,
+  `:1511-1523`). `FR-BIL-7` holds; the gate pair and the server
+  refusal are pinned by `StayView.test.ts:2213` and
+  `StayView.test.ts:1532`.
 
 Failure/rollback:
 
@@ -1046,13 +1124,21 @@ Edge trace:
 
 - P–R: refusals precede mutation — nothing to compensate;
   the provider-side atomic guard (LLD section 3) means the
-  loser never holds the room.
-- S–T: fetch rejection drives the section 11.3 banner and
-  safe manual retry, never sign-out.
-- U–V: shared-client 401 path (LLD section 11.2) unchanged.
-- Rollback: revert the #422 screen PR; the placeholder,
-  hint, and guard revert with it (no contract or schema
-  change anywhere in this flow).
+  loser never holds the room, and the `CONFLICT` branch clears
+  the bound booking ref so the next click reloads the
+  candidates (`StayView.vue:1177-1185`).
+- S–T: a fetch rejection in either half surfaces as the plain
+  panel error (`StayView.vue:1103-1112`, `:1268-1273`) and drives
+  the section 11.3 banner and safe manual retry, never sign-out.
+- U–V: shared-client 401 path (LLD section 11.2) unchanged; every
+  catch in this flow routes `isSignedOut` to the one `expireToGate`
+  call (`StayView.vue:951-954`, `:1045-1048`, `:1107-1110`,
+  `:1173-1176`, `:1199-1202`, `:1219-1222`, `:1240-1243`,
+  `:1269-1272`).
+- Rollback: revert the #422 placeholder/hint/guard change, or
+  the later #586 preload, #594 one-click commit, and
+  #596/#614 reset-invalidation changes; each reverts on its own
+  with no contract or schema change anywhere in this flow.
 
 ### 13.2 Main board housekeeping buttons with count refresh (#420)
 
