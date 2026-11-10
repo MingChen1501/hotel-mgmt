@@ -146,6 +146,35 @@ class BillingServiceTest {
   }
 
   @Test
+  void recordApprovalRefusesARoleOutsideTheFixedThree() {
+    // #588 symptom 2(a) / #601: `night-auditor` is not an approver role.
+    ApiException err = assertThrows(ApiException.class,
+        () -> service.recordOpenBalanceApproval(STAY.toString(), "manager", "night-auditor", null, null, "front-desk"));
+    assertEquals("VALIDATION_FAILED", err.code());
+    assertEquals("role", err.details().get("field"));
+    verify(repo, never()).recordApproval(any(), anyString(), anyString());
+  }
+
+  @Test
+  void recordApprovalStampsTheRecordedTimeAndTheFixedRole() throws Exception {
+    when(repo.ensureFolio(eq(STAY), eq("front-desk"))).thenReturn(folio(6000));
+    when(repo.findFolioByStay(STAY)).thenReturn(folio(6000));
+    service.recordOpenBalanceApproval(STAY.toString(), "Manager Nam", " front-desk ", "Guest pays next visit",
+        null, "front-desk");
+    org.mockito.ArgumentCaptor<String> stored = org.mockito.ArgumentCaptor.forClass(String.class);
+    verify(repo).recordApproval(eq(FOLIO), stored.capture(), eq("front-desk"));
+    @SuppressWarnings("unchecked")
+    Map<String, Object> record = new com.fasterxml.jackson.databind.ObjectMapper().readValue(stored.getValue(), Map.class);
+    assertEquals("Manager Nam", record.get("approvedBy"));
+    assertEquals("front-desk", record.get("role"));
+    assertEquals("Guest pays next visit", record.get("reason"));
+    // The recorded time is the service's own stamp, never a request
+    // value: Stay re-validates it as the third provenance field.
+    OffsetDateTime stamped = OffsetDateTime.parse((String) record.get("approvedAt"));
+    assertEquals(ZoneOffset.UTC, stamped.getOffset());
+  }
+
+  @Test
   void recordApprovalStoresTheRecord() {
     when(repo.ensureFolio(eq(STAY), eq("front-desk"))).thenReturn(folio(6000));
     Folio approved = new Folio(FOLIO, STAY, 6000,

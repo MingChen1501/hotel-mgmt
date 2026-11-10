@@ -53,9 +53,9 @@ flowchart TD
     P[RecordPayment] --> M[Method cash or card, amount positive?]
     M -->|no| R400[400 VALIDATION_FAILED, nothing written]
     M -->|yes| K[Claim key, insert + balance]
-    Q[RecordOpenBalanceApproval] --> W[approver + role present?]
+    Q[RecordOpenBalanceApproval] --> W[approver present and role in the fixed three?]
     W -->|no| R400b[400 VALIDATION_FAILED, nothing written]
-    W -->|yes| X[Approval recorded on folio]
+    W -->|yes| X[Approval recorded on folio with a server-stamped time]
     Y[GetDayClose unknown date] --> R404[404 NOT_FOUND]
     Z[Unknown folio or payment] --> R404b[404 NOT_FOUND]
 ```
@@ -63,17 +63,17 @@ flowchart TD
 Edge trace:
 
 - M: `method` must be `cash` or `card`, `amountMinor` positive (`service/BillingService.java:170-175`); duplicates collapse on the idempotency claim (`:180-185`).
-- W: `approvedBy` and `role` required; approval recorded as JSON on the folio (`:255-277`).
+- W: `approvedBy` and `role` required and the stripped role must be one of the fixed three `owner` / `manager` / `front-desk` (`service/BillingService.java:263-275`, the set at `:36`); an out-of-set role is `VALIDATION_FAILED` naming `role` and writes nothing. The approval is recorded as JSON on the folio with `approvedAt` stamped server-side (`:286`, `:314-326`), never taken from the request.
 - Y: no day-close run for the date → `NOT_FOUND` (`:206-212`).
 - Z: unknown folio/payment (or payment without folio) → `NOT_FOUND` (`:224-243`).
 - Setup: `UpsertChargeItem` registers a named sellable (`:298-313`); `UpsertTaxFeeRule` registers a percentage rule capped at 0–100 (`:314-325`); both refuse blank names and out-of-range values with `VALIDATION_FAILED`.
-- Settlement: `ApiException.settlementRequired` builds the `SETTLEMENT_REQUIRED` 409 (`web/ApiException.java:41-42`); the stay-side folio gate that consumes approvals lives in Stay `checkFolioGate`.
+- Settlement: `ApiException.settlementRequired` builds the `SETTLEMENT_REQUIRED` 409 (`web/ApiException.java:41-42`); the gate that consumes approvals is Stay's re-read `requireSettledFolio`, which re-validates the three provenance fields on the read (`docs/architecture/services/stay.md` section 4).
 
 Rollback: none — each operation is a single validated write with the idempotency claim preceding mutation; refusals precede any insert.
 
 ## 5. Outbound dependencies
 
-None at runtime. Consumed by the desk loop: `GetFolioBalance` feeds the Stay check-out folio gate; `RunDayClose`/`GetDayClose` feed Reporting revenue via `folio.charge-posted` / `folio.payment-recorded` events; `ProduceInvoice`/`ProduceReceipt` present the folio/payment the stay close references. Money is exact (`BigDecimal` in memory, BIGINT minor units persisted). Hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (LLD [section 0](../lld.md)).
+None at runtime. Consumed by the desk loop and by Stay itself: `GetFolioBalance` is the check-out gate read (`StayService.CheckOut`, integration C7), and `RecordOpenBalanceApproval` is the only write that can produce a provenanced approval; `RunDayClose`/`GetDayClose` feed Reporting revenue via `folio.charge-posted` / `folio.payment-recorded` events; `ProduceInvoice`/`ProduceReceipt` present the folio/payment the stay close references. Money is exact (`BigDecimal` in memory, BIGINT minor units persisted). Hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (LLD [section 0](../lld.md)).
 
 See also: [deployment](../system-architecture.md) (section 1), [C4 containers](../c4-containers.md), and [event flow](../event-flow.md) (this service's outbox emissions).
 
@@ -83,7 +83,7 @@ Envelope `{code, message, details, traceId}` (`web/ApiExceptionHandler.java:12-2
 
 | Code | Status | Raised when |
 |---|---|---|
-| `VALIDATION_FAILED` | 400 | missing/blank field, bad UUID/date, bad item kind or method, negative amount, out-of-range percent (`service/BillingService.java:126-193,255-325`) |
+| `VALIDATION_FAILED` | 400 | missing/blank field, bad UUID/date, bad item kind or method, negative amount, out-of-range percent, approver role outside the fixed three (`service/BillingService.java:126-193,263-325`) |
 | `UNAUTHENTICATED` | 401 | missing session token (`web/BillingController.java:67-72`) |
 | `NOT_FOUND` | 404 | unknown day-close, folio, payment, or charge line (`service/BillingService.java:206-243`) |
 | `SETTLEMENT_REQUIRED` | 409 | settlement refused without approval (`web/ApiException.java:41-42`) |
@@ -142,21 +142,22 @@ Contract tests: `contract-tests/` holds fixtures per provided/consumed operation
 script/contract-check.sh
 ```
 
-## 8. Planned delta — approval provenance at write (Refs #601, ADR-0005 proposed)
+## 8. Landed delta — approval provenance at write (Refs #601, ADR-0005)
 
-Today `recordOpenBalanceApproval` (section 4 edge W) requires a
-non-blank `approvedBy` and `role` but accepts any role string, and it
-already stamps `approvedAt` server-side
-(`src/main/java/com/hotel/billing/service/BillingService.java:302-313`).
-Target: refuse a `role` outside the fixed three (`owner`, `manager`,
-`front-desk`) with `VALIDATION_FAILED` naming `role`; keep the
-server-side time stamp (a body-supplied time is never used); keep
-recording the session actor as the audit `updated_by`
-(`repo/BillingRepository.java:143-146`). Authorization — which of the
-three may approve, and whether approval is needed — stays the section
-3.1 config fan-out and is out of scope. `GetFolioBalance` keeps its
-shape and becomes the gate read Stay calls at the close (integration
-C7). Design: `docs/architecture/lld.md` section 21.
+The planned delta is as-built now and folded into sections 4, 5, and 6:
+`recordOpenBalanceApproval` refuses a `role` outside the fixed three
+(`owner`, `manager`, `front-desk`) with `VALIDATION_FAILED` naming
+`role` (`service/BillingService.java:263-275`), keeps stamping
+`approvedAt` server-side so a request-supplied time is never used
+(`:286`, `:314-326`), and keeps recording the session actor as the
+audit `updated_by` (`repo/BillingRepository.java:143-146`).
+`GetFolioBalance` keeps its shape and is now also the gate read Stay
+calls at the close (integration C7). Authorization — which of the three
+may approve, and whether approval is needed — stays the section 3.1
+config fan-out and is out of scope. Guards:
+`src/test/java/com/hotel/billing/service/BillingServiceTest.java` (S11);
+evidence: `docs/testing/evidence/601/README.md`; design:
+`docs/architecture/lld.md` section 21.
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-919

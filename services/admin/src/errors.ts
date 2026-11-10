@@ -9,8 +9,13 @@ export type ErrorCode =
   | "STATE_ILLEGAL"
   | "SETTLEMENT_REQUIRED"
   | "UNAUTHENTICATED"
-  | "IDENTITY_LOCKED";
+  | "IDENTITY_LOCKED"
+  | "UPSTREAM_UNAVAILABLE";
 
+// Registers every code the shared envelope defines
+// (contracts/errors/envelope.json), including the provider-read refusal
+// UPSTREAM_UNAVAILABLE 503 the gate services emit (#601): one envelope
+// vocabulary, pinned by errors.test.ts against future drift.
 const STATUS_BY_CODE: Record<ErrorCode, number> = {
   VALIDATION_FAILED: 400,
   UNAUTHENTICATED: 401,
@@ -20,6 +25,7 @@ const STATUS_BY_CODE: Record<ErrorCode, number> = {
   CONFLICT: 409,
   STATE_ILLEGAL: 422,
   SETTLEMENT_REQUIRED: 409,
+  UPSTREAM_UNAVAILABLE: 503,
 };
 
 export class HttpError extends Error {

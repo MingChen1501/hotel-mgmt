@@ -80,6 +80,10 @@ services:
     environment:
       PORT: "8084"
       DATABASE_URL: postgresql://hotel:${DB_PASSWORD:-change-me-dev-only}@db:5432/hotel
+      # Direct billing base URL for the server-side check-out settlement
+      # gate (BR-46, FR-CKO-4/5, issue #601); the caller Bearer token
+      # travels on the call and an unreadable folio refuses the close.
+      BILLING_BASE_URL: http://billing:8087
     depends_on:
       db:
         condition: service_healthy
