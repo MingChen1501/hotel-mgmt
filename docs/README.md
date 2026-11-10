@@ -164,7 +164,7 @@ docs and plans, not gated specs.
 | DOM diff dynamic-data allowlist | `testing/dom-diff-allowlist.md` | active | `qa-lead` | owner-approved dynamic-data exemptions for the DOM diff gate: what is exempt, why, and how the gate references it (Closes #482) |
 | Desk restyle test traceability | `testing/desk-restyle-test-traceability.md` | active | `qa-lead` | parity + new-guard traceability for the #517 pixel-faithful restyle: AC-RST-1..8 and FR/NFR-RST to guards, R1–R9 created by the screen PRs (Refs #517) |
 | V2 evidence re-baseline plan | `testing/v2-evidence-rebaseline-plan.md` | active | `qa-lead` | side-by-side re-baseline cases, stale-disposition table, and traceability for the v2 boards (Closes #550) |
-| Rooms and rates management test traceability | `testing/rooms-rates-management-test-traceability.md` | active | `qa-lead` | cases, guard registry `M1`–`M10`, per-section evidence rule `MR-1`, and the `AC-MANAGE-1..11` / `FR-MGMT-1..12` map for the #590 management screen (Refs #590) |
+| Rooms and rates management test traceability | `testing/rooms-rates-management-test-traceability.md` | active | `qa-lead` | cases, guard registry `M1`–`M10` mapped by `file:line` at the merged head, per-section evidence rule `MR-1`, and the `AC-MANAGE-1..11` / `FR-MGMT-1..12` map for the #590 management screen (Refs #590, #609) |
 
 ## DevOps / Operations / Release
 
