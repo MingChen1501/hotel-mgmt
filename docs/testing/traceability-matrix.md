@@ -130,8 +130,8 @@ guard. Full guard detail — parity baselines plus the new guards
 D1–D18 (D13 shipped with the #565 presentation change, D14 with
 the #568 open-folio context change, D15 ships with the #581
 Book date-picker change, D16 ships with the #582 list-backed
-stay picker, D17 ships with the #586 arrival-pick preload
-change, and D18 ships with the #588 check-out release and
+stay picker, D17 shipped with the #586 arrival-pick preload
+change (PR #594), and D18 ships with the #588 check-out release and
 unpaid-close gate change; D1–D12 land with the screen PRs) — lives in
 `docs/testing/desk-ui-rollout-test-traceability.md`
 (desk-ui-rollout-test-traceability.md). Like the shell slice
@@ -345,34 +345,36 @@ scope in `docs/product/desk-ui-design-rollout.md` section 6.12, tier
 T2) and the behaviour-scoped requirements `FR-CIP-1`..`FR-CIP-4`
 (owned by `business-analyst` in
 [mvp-requirements.md section 18](../requirements/mvp-requirements.md)).
-The existing pins named below are on disk today and pin the old
-click-then-load timing; the #586 implementation PR rewrites them to
-the arrival-pick timing with a note (never deleting one) and creates
-the two named missing cases, so a row is complete only when that PR
-lands and passes. Like the slices above, these rows add no MVP
-capability; the 57-row MVP coverage count stands unchanged and no
-MVP row may cite this slice as its guard. `AC-DSK-4` keeps its
-placeholder/guard/auto-select rule and points here for the load
-timing and the room-error lifecycle.
+Every pin named below is on disk and pins the arrival-pick timing in
+the desktop suite (#586 shipped in PR #594): the existing cases were
+rewritten to the pick timing with a note (never deleted), and the
+previously missing no-ready-rooms, error-cleared-on-select,
+failed-preload retry, mid-load clear, and late-read cases were
+created there, so every row below is complete. Like the slices
+above, these rows add no MVP capability; the 57-row MVP coverage
+count stands unchanged and no MVP row may cite this slice as its
+guard. `AC-DSK-4` keeps its placeholder/guard/auto-select rule and
+points here for the load timing and the room-error lifecycle.
 
 | Item | Required guard type | Guard |
 |---|---|---|
-| AC-DSK-17 — the arrival pick loads the booked-type ready-room candidates, a valid room selection clears the room error, and the commit stays on the Check in button (Refs #586; traces to US-FDK-1, US-FDK-2; `FR-CIP-1`, `FR-CIP-2`, `FR-CIP-3`, `FR-CIP-4`; AC-DSK-4 keeps the placeholder/guard/auto-select rule and points here) | Behaviour check: one arrival pick alone populates the picker with the booked type's ready rooms; one room auto-binds, several keep the placeholder plus amber hint, zero keeps the plain no-ready-rooms error with the booked-type status; a valid select clears the guard and the hint immediately; one Check in click commits once with the unchanged bodies, and a second in-flight click is a no-op | Pending the #586 implementation PR — `D17` (section 3 of `desk-ui-rollout-test-traceability.md`): arrival-flow rewrite `app/src/views/StayView.test.ts:309` (placeholder-first `:326`), `:371` (`need_room`), `:402` (auto-select), `:574` (unknown reference), `:596` (taken room), `:626` (already checked in), `:925` (in-flight double-click); edge guards `app/src/views/desk-edge-guards.test.ts:1183` (placeholder/back-forward), `:460` (unknown reference, QA-EDGE-1), `:851` (dirty room never a candidate, QA-EDGE-8); browser `app/e2e/stay.spec.ts:65`–`:73` (pick, select, one commit click); the unchanged `FR-FDK-1/2` / `FR-BIL-7` MVP guards keep the check-in capability and the checkout gate |
-| FR-CIP-1 — the arrival pick loads the booked-type ready-room candidates (section 18.3) | A pick alone runs the existing read pair (`GetReservation` then `ListRoomsByState('vacant-inspected')`) and the booked-type filter; one room binds, several keep the placeholder, a second pick resets the previous candidates and error first, and a late earlier read never paints | Pending the #586 implementation PR — `app/src/views/StayView.test.ts:309` is rewritten so the arrival pick alone produces the options (the booked-type filter pinned by the same fixture) and one button click commits; browser `app/e2e/stay.spec.ts:65`–`:73` moves to pick, select, one commit click |
-| FR-CIP-2 — picker states and plain-word failures stay as today (section 18.3) | One room auto-binds with no hint and no error; several show the explicit empty placeholder plus the amber `stay-checkin-room-hint`; zero ready rooms show the plain no-ready-rooms error with the booked-type status and bind nothing; unknown reference, signed-out, and other failures keep their existing strings in both locales; the progress line and disabled button cover the read | Partial today — `app/src/views/StayView.test.ts:371` (`need_room`, no `AssignRoom`), `:402` (auto-select), `:574` (unknown reference), `app/src/views/desk-edge-guards.test.ts:1183` (placeholder), `:460` (unknown reference, QA-EDGE-1); the implementation PR rewrites them to the pick timing and creates the missing no-ready-rooms case (booked-type status plus the plain error, nothing bound, a click retries the load) |
-| FR-CIP-3 — a valid room selection clears the guard message (section 18.3) | With several candidates and `Pick a ready room first.` on screen, selecting a room in the candidate map clears the message and the hint immediately (multi-candidate path included); clearing back to the placeholder or holding an outside value leaves the guard at commit | Missing guard named explicitly — no case asserts the message disappearing on a valid select today; the #586 implementation PR creates it (multi-candidate pick, valid select, `stay-checkin-error` gone, `stay-checkin-room-hint` gone, no error rendered), and `:371` keeps the placeholder half |
-| FR-CIP-4 — the commit stays on the Check in button, once, with unchanged bodies (section 18.3) | `AssignRoom` → `CheckIn` → `CheckInReservation` run once with the existing bodies (the `CheckIn` room id from the `AssignRoom` echo), no candidate read repeats after the preload, a second in-flight click is a no-op, and a failed preload retries the load instead of committing a stale selection | Partial today — body pins `app/src/views/StayView.test.ts:309` (`AssignRoom` `roomNumber` plus `stayLink`, `CheckIn` room id from the echo), in-flight double-click `:925`, taken room `:596`, already checked in `:626`, no-call-without-a-room `app/src/views/desk-edge-guards.test.ts:1183`; the implementation PR asserts the single commit after a successful preload with no second candidate read |
-| Design-facts gate | The decided Stay input stays the same `[data-testid="stay-checkin-room"] select` with the `Chọn phòng...` placeholder, and the populated option subtrees stay exempt under DD-13, so no schema or allowlist change | Covered by re-run only — `app/e2e/design-facts.ts` Stay entry, `docs/technical/desk-ui-fact-schema.md` section 5, `docs/testing/dom-diff-allowlist.md` DD-13, and the source pins in `app/src/stay-restyle.test.ts:55`–`:100` hold unchanged; the implementation PR re-runs the fact-level gate and notes the DD-13 exemption |
-| Catalogue parity | Zero new keys: every state above uses an existing `desk.stay.*` string with both locales intact and placeholders unchanged | Covered — `messages/en.json`, `messages/vi.json` and the eight `services/*` mirrors plus `script/catalogue-coverage-check.sh`; the implementation PR must show the coverage job green with no catalogue diff |
+| AC-DSK-17 — the arrival pick loads the booked-type ready-room candidates, a valid room selection clears the room error, and the commit stays on the Check in button (Refs #586; traces to US-FDK-1, US-FDK-2; `FR-CIP-1`, `FR-CIP-2`, `FR-CIP-3`, `FR-CIP-4`; AC-DSK-4 keeps the placeholder/guard/auto-select rule and points here) | Behaviour check: one arrival pick alone populates the picker with the booked type's ready rooms; one room auto-binds, several keep the placeholder plus amber hint, zero keeps the plain no-ready-rooms error with the booked-type status; a valid select clears the guard and the hint immediately; one Check in click commits once with the unchanged bodies, and a second in-flight click is a no-op | Covered (PR #594) — `D17` (section 3 of `desk-ui-rollout-test-traceability.md`): arrival flow `app/src/views/StayView.test.ts:332` (placeholder-first `:357`), `:453` (`need_room`), `:493` (auto-select), `:943` (unknown reference), `:967` (taken room), `:997` (already checked in), `:1772` (in-flight double-click), the guard cleared on a valid pick `:402`, the plain no-ready-rooms error `:538`, the failed-preload retry `:607`, the mid-load clear `:665`, the late-read rule `:723`; edge guards `app/src/views/desk-edge-guards.test.ts:1225` (placeholder/back-forward), `:468` (unknown reference, QA-EDGE-1), `:862` (dirty room never a candidate, QA-EDGE-8); browser `app/e2e/stay.spec.ts:68`–`:73` (pick, select, one commit click); the unchanged `FR-FDK-1/2` / `FR-BIL-7` MVP guards keep the check-in capability and the checkout gate |
+| FR-CIP-1 — the arrival pick loads the booked-type ready-room candidates (section 18.3) | A pick alone runs the existing read pair (`GetReservation` then `ListRoomsByState('vacant-inspected')`) and the booked-type filter; one room binds, several keep the placeholder, a second pick resets the previous candidates and error first, and a late earlier read never paints | Covered (PR #594) — `app/src/views/StayView.test.ts:332` pins the arrival pick alone producing the options (the booked-type filter by the same fixture) and one button click committing; the reset and late-read halves at `:723`, the mid-load clear at `:665`; browser `app/e2e/stay.spec.ts:68`–`:73` runs pick, select, one commit click |
+| FR-CIP-2 — picker states and plain-word failures stay as today (section 18.3) | One room auto-binds with no hint and no error; several show the explicit empty placeholder plus the amber `stay-checkin-room-hint`; zero ready rooms show the plain no-ready-rooms error with the booked-type status and bind nothing; unknown reference, signed-out, and other failures keep their existing strings in both locales; the progress line and disabled button cover the read | Covered (PR #594) — `app/src/views/StayView.test.ts:453` (`need_room`, no `AssignRoom`), `:493` (auto-select), `:943` (unknown reference), the plain no-ready-rooms error with a retrying click `:538`, the guard cleared on a valid pick `:402`, the failed-preload retry `:607`, `app/src/views/desk-edge-guards.test.ts:1225` (placeholder), `:468` (unknown reference, QA-EDGE-1) |
+| FR-CIP-3 — a valid room selection clears the guard message (section 18.3) | With several candidates and `Pick a ready room first.` on screen, selecting a room in the candidate map clears the message and the hint immediately (multi-candidate path included); clearing back to the placeholder or holding an outside value leaves the guard at commit | Covered (PR #594) — `app/src/views/StayView.test.ts:402` (multi-candidate pick, valid select, `stay-checkin-error` gone, `stay-checkin-room-hint` gone, no error rendered, then one commit), and `:453` keeps the placeholder half |
+| FR-CIP-4 — the commit stays on the Check in button, once, with unchanged bodies (section 18.3) | `AssignRoom` → `CheckIn` → `CheckInReservation` run once with the existing bodies (the `CheckIn` room id from the `AssignRoom` echo), no candidate read repeats after the preload, a second in-flight click is a no-op, and a failed preload retries the load instead of committing a stale selection | Covered (PR #594) — body pins `app/src/views/StayView.test.ts:332` (`AssignRoom` `roomNumber` plus `stayLink`, `CheckIn` room id from the echo), in-flight double-click `:1772`, taken room `:967`, already checked in `:997`, failed-preload retry `:607`, no-call-without-a-room `app/src/views/desk-edge-guards.test.ts:1225`; `:332`/`:538` pin the single commit after a successful preload with no second candidate read |
+| Design-facts gate | The decided Stay input stays the same `[data-testid="stay-checkin-room"] select` with the `Chọn phòng...` placeholder, and the populated option subtrees stay exempt under DD-13, so no schema or allowlist change | Covered by re-run only — `app/e2e/design-facts.ts` Stay entry, `docs/technical/desk-ui-fact-schema.md` section 5, `docs/testing/dom-diff-allowlist.md` DD-13, and the source pins in `app/src/stay-restyle.test.ts:55`–`:100` hold unchanged; the #586 PR re-ran the fact-level gate and noted the DD-13 exemption |
+| Catalogue parity | Zero new keys: every state above uses an existing `desk.stay.*` string with both locales intact and placeholders unchanged | Covered — `messages/en.json`, `messages/vi.json` and the eight `services/*` mirrors plus `script/catalogue-coverage-check.sh`; the #586 PR showed the coverage job green with no catalogue diff |
 
 Slice coverage (Refs #586): 7 rows mapped; 2 covered without a new
 guard (the design-facts and catalogue boxes need none) and 5
-pending the #586 implementation PR — the existing pins named above
-are rewritten to the arrival-pick timing with a note (never
-deleted), and the two missing cases (no-ready-rooms, and
-error-cleared-on-select) are created there. No existing guard is
-deleted; every filled citation above is on disk at the #591 head.
-The MVP Coverage line below stands unchanged at 57/57.
+covered by the #586 change shipped in PR #594 — the existing pins
+named above were rewritten to the arrival-pick timing with a note
+(never deleted), and the previously missing cases (no-ready-rooms,
+error-cleared-on-select, failed-preload retry, mid-load clear, and
+late read) were created there. No existing guard is deleted; every
+filled citation above resolves on disk at the #594 head. The MVP
+Coverage line below stands unchanged at 57/57.
 
 ## 10. Stay check-out release and unpaid-close gate slice (Refs #588)
 
