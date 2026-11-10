@@ -1706,6 +1706,173 @@ no data migration is owed and lines already written stay valid;
 reverting stops new desk postings and leaves the #588 gate exactly
 as it stands today.
 
+### 6.15 Stay check-out settlement enforcement, server-side (Refs #601)
+
+Status: product-owner scope decision and UI contract delta for the
+server-side check-out settlement gate (#601; the follow-up the
+#588 record filed as symptom 2(d), "server trust", and section 6.13
+named in its Out list). Tier T3 confirmed: the change gives the
+stay service a fail-closed read of Billing on the close path, and
+its decision record is ADR-0005
+(`docs/architecture/decisions/adr-0005-server-side-checkout-gate.md`,
+proposed; the owner accepts it before the implementation PR merges).
+The binding done-conditions are `AC-CKO-1` and `AC-CKO-2` in
+`docs/product/acceptance-criteria.md`
+[section 14](acceptance-criteria.md); `AC-FDK-2` gains the pointer
+beside its `AC-DSK-18` and `AC-DSK-19` ones. FR/NFR wording is
+owned by `business-analyst`, the gate algorithm and the per-flow
+diagrams by `architect` (`docs/architecture/lld.md` section 21),
+guard mapping and traceability by `qa-lead`, release notes and the
+rollback note by `release-manager`, and the gate verdict by
+`spec-reviewer`. Recorded as D-25 in
+`docs/project/decision-log.md`.
+
+The #588 lab record (`docs/testing/evidence/588/README.md`,
+symptom 2(d) "Server trust") found that the desk gate was the only
+gate. The check-out gate read the balance the request carried and
+accepted any approval object that travelled with it
+(`services/stay/src/store.ts:148-168`, called at `:263`), and
+`RecordOpenBalanceApproval` accepted any non-blank approver and role
+(`services/billing/src/main/java/com/hotel/billing/service/BillingService.java:255-262`),
+so the lab recorded an open balance closing through an approval
+whose role was the free-form string `night-auditor`. #588 closed the
+desk half (fresh folio read on every route, fixed role select,
+provenanced approval shown to staff) and left this half open: a
+caller that bypasses the desk could still send a matching balance
+plus an arbitrary approval object. This section closes that half;
+the desk surface is not the change.
+
+Decision (six parts):
+
+1. **Billing owns the folio facts, Stay owns the close.** Billing is
+   the only authority for a folio's balance and for the approval
+   recorded against it; Stay is the only authority for the
+   `in-house -> closed` transition. The desk may say which stay and
+   which folio it is closing, when the guest left, and an
+   idempotency key; it does not assert the balance or the approval.
+2. **The close re-reads the folio on every route.** The close asks
+   Billing for the stay's folio and decides on that balance and that
+   approval, including when the same close request is replayed.
+   The folio the caller presents must be the folio the balance came
+   from; a different folio refuses with `CONFLICT` and the stay
+   remains in house, rather than closing against a folio the balance
+   did not come from.
+3. **The request's values are advisory.** `folioBalanceMinor` and
+   `openBalanceApproval` stay accepted for the deprecation window so
+   the #588 desk build keeps working, but the server ignores them: a
+   request that claims zero for a folio that still owes money
+   refuses, and a request that claims a balance for a settled folio
+   still closes. Which value wins is never the caller's choice.
+4. **An approval counts only when it is provenanced.** The record
+   Billing holds must carry an approver identity, a role from the
+   hotel's fixed three (`owner`, `manager`, `front-desk`), and a
+   recorded time; an absent, free-form, incomplete, or out-of-set
+   record is not an approval, the close refuses with
+   `SETTLEMENT_REQUIRED`, and the stay remains in house. Billing
+   enforces the same three at write (a role outside the set is
+   refused and the recorded time is stamped by the service, never
+   taken from the request body), and Stay re-checks them on the read
+   as defence in depth. Which of the three may approve, and whether
+   an approval is needed at all, stays the hotel open-balance rule
+   and is not decided here.
+5. **An unreadable folio refuses the close.** If Billing cannot be
+   read — transport failure, timeout, a 5xx, or an unwired client —
+   the close is refused with `UPSTREAM_UNAVAILABLE` (503) naming the
+   upstream and the operation, and the stay remains in house. A
+   money fact never rides on cached or assumed state: a close never
+   proceeds on a balance nobody verified. A Billing refusal carrying
+   a 4xx envelope is surfaced unchanged, so a rejected session still
+   refuses as `UNAUTHENTICATED`.
+6. **The desk workflow is unchanged.** The #588 panel already
+   re-reads the folio on every route, offers the fixed role set, and
+   sends the fresh balance plus the recorded approval. No desk code,
+   copy, control, or design fact changes: the same request simply
+   stops being trusted, and a refused close leaves staff where they
+   are today — record the approval, or settle the folio.
+
+UI contract delta (T3, reader-visible refusal states on an
+unchanged surface):
+
+- **Layout and navigation scope.** Unchanged. Same stacked cards,
+  same check-out heading, same departure select, review button,
+  balance and status lines, approval block, check-out button and
+  confirm dialog; no new screen, route, nav entry, card, or
+  control.
+- **Component mapping.** Unchanged. The review and check-out
+  controls keep their disabled-while-in-flight behaviour, so a
+  replayed click stays a no-op; the refusal rows reuse the existing
+  error row of the check-out card.
+- **Design-token scope.** Unchanged — no new colour, radius,
+  spacing, or target size.
+- **States in plain words:**
+  - Settled close: unchanged; the panel says the guest is checked
+    out and releases the departed room.
+  - Open balance the service re-read (the desk read and the service
+    read disagree): the close refuses, the dialog closes, the stay
+    stays in house, and the existing plain open-balance sentence
+    names the approval next step with the approval form open.
+  - Approval the service re-read and rejected: the same plain
+    open-balance refusal, naming the approval next step; no
+    technical code and no raw envelope.
+  - Folio the service cannot read (fail-closed 503): the close
+    refuses, the stay stays in house, and the panel's existing plain
+    "that did not work, try again, tell the manager if it keeps
+    failing" sentence carries the state; nothing is reported
+    checked out and no room is released.
+  - Already closed, or replaced folio: the close refuses in plain
+    words; nothing is released and no invoice is presented as a
+    closed stay.
+- **Catalogue keys.** No new key and no copy change: every state
+  above resolves through a key the panel already renders
+  (`desk.stay.refused_open_balance`, `desk.stay.refused_already_closed`,
+  and the `desk.shell.request_failed` fallback), so the desk keeps
+  its #588 wording and `script/catalogue-coverage-check.sh` stays
+  green with no catalogue edit. A check-out-specific sentence for
+  the unreadable-folio case would be a desk copy change, which is
+  out of scope here and a candidate follow-up.
+- **Print rules.** Unchanged. No print surface or route is touched,
+  and the invoice a settled close presents is the same one.
+
+Desk guards stay green unchanged: the #588 gate, approval, release,
+and charge-posting cases in `app/src/views/StayView.test.ts` and
+`app/src/views/desk-edge-guards.test.ts`, `app/e2e/stay.spec.ts`,
+and the `CheckOut` step of `script/e2e-desk-loop.sh`, tracing to
+`AC-DSK-18`, `AC-DSK-19`, `FR-CKO-4`, and `FR-CKO-5`. The service
+guards this change adds (forged balance both directions, forged,
+incomplete, out-of-set-role, and free-form approvals, folio
+mismatch, Billing unreachable, replay, and Billing's role-set
+refusal with the server-side time stamp) are listed in the LLD
+section 21.6 verification plan; the `qa-lead` traceability rows for
+#601 are a sibling handoff.
+
+Cross-references: the #588 evidence record
+(`docs/testing/evidence/588/README.md`, symptom 2(d)) is the finding
+this change closes; ADR-0005 is the decision record; the
+architect-owned deltas are HLD section 15, LLD section 21 (gate
+algorithm, per-flow happy and failure/rollback diagrams, contract
+delta, verification plan, residual risks), integration C7/F4, and
+the threat-model entries B5 and R5–R7. The tier, the product delta,
+and the evidence record are also cross-referenced from the issue
+#601 acceptance criteria via `AC-CKO-1` and `AC-CKO-2`.
+
+Out: implementation (the downstream `dev` PR on Stay and Billing,
+its service guards, the contract bump, and the compose wiring); any
+desk panel change — the #588 panel, its copy, its guards, and its
+design facts stay as they are, and a check-out-specific
+unreadable-folio sentence is a follow-up, not this change; which
+role may approve an open balance and whether an approval is needed
+at all (the hotel open-balance rule); binding the asserted actor to
+the session token; charging policy and the room-charge posting
+(section 6.14, `AC-DSK-19`); payment capture; rewriting `BR-17` or
+the `FR-CKO-*` wording (`business-analyst`); guard mapping and
+traceability (`qa-lead`); the LLD diagrams and pointers
+(`architect`).
+
+Rollback: revert the single implementation PR. The desk keeps the
+#588 client-side gate, the advisory request fields stay valid for
+the desk build that still sends them, and no schema or data
+migration exists in either direction.
+
 ## 7. Catalogue and locale rule
 
 - Single source of truth stays `messages/` (`messages/README.md`):
@@ -2034,5 +2201,18 @@ Section 4 stays the rollout-wide contract; for steps 2–4:
 | The T2 spec set exists and `spec-reviewer` posts `SPEC-GATE PASS` before implementation starts | This section, section 6.14, `docs/product/acceptance-criteria.md` (`AC-DSK-19`, `AC-FDK-2`), `docs/project/decision-log.md` D-24, LLD section 20; `business-analyst` FR/NFR delta and `qa-lead` traceability rows are the sibling handoffs |
 | Rollback is a single revert with no data migration | Section 6.14 (rollback); the posting reuses the existing `PostCharge` folio lines, so written lines stay valid |
 
+## 20. Acceptance mapping (issue #601)
+
+| Criterion | Evidence in this spec |
+|---|---|
+| The stay service re-reads the folio balance through Billing instead of trusting the balance on the request | Section 6.15 decisions 1 and 3; `AC-CKO-1`; LLD section 21.2 step 2 and step 7; the balance is read from `GetFolioBalance`, and the request's `folioBalanceMinor` is advisory |
+| An approval counts only with the approver identity, a role from the fixed set, and a recorded time; an incomplete or free-form one is refused with `SETTLEMENT_REQUIRED` | Section 6.15 decision 4; `AC-CKO-1`; the LLD section 21.2 step 6 gate and its `approval_incomplete` reason; Billing's write-side role-set refusal in the LLD section 21.6 verification plan |
+| Guards cover the forged-balance and forged-approval callers, and the desk flows stay green (`AC-DSK-18`, `FR-CKO-4`, `FR-CKO-5`) | Section 6.15 (desk guards and service guards paragraphs); LLD section 21.6 verification plan; `AC-DSK-18` and `AC-DSK-19` unchanged with their existing `StayView` and e2e guards |
+| An unreadable folio refuses the close fail-closed instead of closing on an unverified balance | Section 6.15 decision 5 and the fail-closed state row of the UI contract delta; `AC-CKO-2`; LLD section 21.4 failure path and section 21.7 residual risks |
+| The T-tier spec delta and the #588 evidence record are cross-referenced | Section 6.15 status and cross-references paragraphs (tier T3, ADR-0005, `docs/testing/evidence/588/README.md` symptom 2(d)); `docs/product/acceptance-criteria.md` section 14; decision log D-25; the implementation PR body carries the same two references |
+| The desk surface, its copy, and its design facts are unchanged | Section 6.15 decision 6 and the UI contract delta (layout, component mapping, tokens, states, catalogue keys, print all unchanged or existing-key only); `AC-CKO-2` final clause |
+| The T3 spec set exists and `spec-reviewer` posts `SPEC-GATE PASS` before implementation starts, and the owner accepts ADR-0005 | Section 6.15, `docs/product/acceptance-criteria.md` section 14 (`AC-CKO-1`, `AC-CKO-2`, `AC-FDK-2` pointer), ADR-0005 (proposed, owner acceptance pending), LLD section 21, decision log D-25; FR/NFR, guard, and release deltas are the sibling handoffs |
+| Rollback is a single revert with no schema or data migration | Section 6.15 (rollback); the advisory request fields stay valid for the current desk build, so no migration exists in either direction |
+
 <!-- ao-role: product-owner -->
-Role: product-owner · AO session hotel-mgmt-911
+Role: product-owner · AO session hotel-mgmt-920

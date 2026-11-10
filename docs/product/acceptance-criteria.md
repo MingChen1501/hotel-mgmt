@@ -83,7 +83,10 @@ the calendar with correct dates, room type, and state.
   close on every route they offer (`AC-DSK-18`, Refs #588), and
   the folio they close must carry the stay's room charge, posted
   by the desk check-out review before it presents a balance
-  (`AC-DSK-19`, Refs #600).
+  (`AC-DSK-19`, Refs #600), and the service refuses that same
+  close on its own when it is not asked against the folio Billing
+  holds or carries an approval Billing did not record, whatever
+  the request asserts (`AC-CKO-1`, `AC-CKO-2`, Refs #601).
   Traces to: US-FDK-2; FR-FDK-2, FR-BIL-2, FR-BIL-7.
 - AC-FDK-3 — Given an in-house stay and a vacant, clean, inspected
   room, when staff move the guest to the new room, then the stay links
@@ -947,6 +950,82 @@ quote follows it, a floor move is reported by the room map, a room type
 created or edited here reaches booking, and the refusal path speaks
 product wording in both locales.
 
+## 14. Server-side check-out settlement gate (Refs #601)
+
+Product-owner scope decision and acceptance conditions for the
+service half of the check-out gate that the #588 lab record left
+open as symptom 2(d), "server trust"
+(`docs/testing/evidence/588/README.md`). #588 closed the desk half
+under the owner's UI-first constraint: the panel re-reads the folio
+on every route, offers the fixed role set, and shows the recorded
+approval, but the close still decided on values the request carried.
+These conditions cover the other half — the stay service decides the
+close from what Billing holds.
+
+Tier T3: the change gives Stay its first runtime read of Billing and
+a new fail-closed dependency edge on the money path, and its decision
+record is ADR-0005
+(`docs/architecture/decisions/adr-0005-server-side-checkout-gate.md`,
+proposed; the owner accepts it before the implementation PR merges).
+The conditions below are the product half. The desk UI contract
+delta is in `docs/product/desk-ui-design-rollout.md`
+[section 6.15](desk-ui-design-rollout.md), the gate algorithm and the
+per-flow diagrams are in `docs/architecture/lld.md`
+[section 21](../architecture/lld.md), and FR/NFR wording, guards and
+traceability, and release notes stay with `business-analyst`,
+`qa-lead`, and `release-manager`. The `CKO` domain code follows the
+`FR-CKO-*` check-out gate family these conditions trace to.
+
+- AC-CKO-1 — Given an in-house stay, when a caller requests the
+  close — the desk, the API desk loop, or a caller that bypasses the
+  desk entirely — then the decision is made on the folio Billing
+  holds, not on the balance the request carries: the folio is
+  re-read on every route to the close, the folio the caller presents
+  must be the folio the balance came from (a different folio refuses
+  with `CONFLICT` and the stay remains in house), and the request's
+  own balance and approval values are advisory only, so a request
+  claiming a zero balance for a folio that still owes money refuses
+  and a request claiming a balance for a settled folio still closes.
+  Given the folio Billing returns carries a non-zero balance, when
+  the caller requests the close, then it commits only when the
+  approval Billing recorded carries an approver identity, a role
+  from the hotel's fixed three (`owner`, `manager`, `front-desk`),
+  and a recorded time; an approval that is absent, free-form,
+  missing the identity or the time, or naming a role outside that
+  set is not an approval and the close refuses with
+  `SETTLEMENT_REQUIRED`, so an approval object sent with the
+  request (including one naming a role such as `night-auditor`)
+  never stands in for the record. In every refusal the stay remains
+  in house, no room is released, no charge is written, and no
+  invoice is presented as a closed stay. Traces to: US-FDK-2;
+  FR-CKO-4, FR-CKO-5, FR-BIL-7, BR-17 (Refs #601).
+- AC-CKO-2 — Given an in-house stay whose folio cannot be read from
+  Billing — a transport failure, a timeout, a 5xx, or a client that
+  is not wired — when a caller requests the close, then the close is
+  refused fail-closed with `UPSTREAM_UNAVAILABLE` (503) naming the
+  upstream and the operation, the stay remains in house, and no
+  close ever proceeds on a balance nobody verified; a Billing
+  refusal that carries a 4xx envelope is surfaced unchanged, so a
+  rejected session still refuses as `UNAUTHENTICATED`. Given the
+  settled or approved close the desk offers today, when staff take
+  it, then it commits through the same request and shows the same
+  lines, because the desk already re-reads the folio on every route
+  and its request is unchanged: the #588 desk conditions
+  (`AC-DSK-18`, `FR-CKO-4`, `FR-CKO-5`) hold as written, the
+  check-out release and the charge-posting review still run
+  (`AC-DSK-19`), and no desk screen, copy, or design fact changes.
+  Traces to: US-FDK-2; FR-CKO-4, FR-BIL-7, BR-17; ADR-0005
+  (Refs #601).
+
+Done when: a close that asserts a balance or an approval the folio
+does not hold is refused with `SETTLEMENT_REQUIRED` and leaves the
+stay in house, the same close the desk sends still commits a settled
+or provenanced stay, an unreadable folio refuses the close
+fail-closed instead of closing on an unverified balance, and the
+#588 desk guards plus the release and charge-posting guards stay
+green unchanged (`AC-DSK-18`, `AC-DSK-19`, `FR-CKO-4`,
+`FR-CKO-5`).
+
 ## Traceability summary
 
 43 done-conditions cover all 9 MVP slices from the roadmap
@@ -1021,5 +1100,19 @@ above stands unchanged and the sections 1–9, 12, and 13
 done-conditions keep their behaviour (section 2 gains only the
 pointer, section 11 gains the one condition).
 
+Server-side settlement addendum (Refs #601): two further conditions
+(AC-CKO-1, AC-CKO-2, section 14) cover the service half of the #588
+check-out gate — the balance and the recorded approval are
+re-derived from Billing at the close instead of trusted from the
+request, and an unreadable folio refuses the close fail-closed
+rather than closing on an unverified balance (the #588 record's
+symptom 2(d), "server trust"). They trace to the existing story and
+FRs (US-FDK-2; FR-CKO-4, FR-CKO-5, FR-BIL-7, BR-17) and add no
+story, FR, or business rule, so the 43-condition MVP count above
+stands unchanged and the sections 1–13 done-conditions keep their
+behaviour: `AC-FDK-2` gains only the pointer, and the desk
+conditions `AC-DSK-18` and `AC-DSK-19` stand as written with their
+guards unchanged.
+
 <!-- ao-role: product-owner -->
-Role: product-owner · AO session hotel-mgmt-911
+Role: product-owner · AO session hotel-mgmt-920
