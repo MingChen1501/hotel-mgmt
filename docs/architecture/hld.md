@@ -86,10 +86,12 @@ proposed runtime and footprint note per module.
 ## 5. Booking/availability path
 
 A reservation request flows: desk client -> Reservations (validates
-against Rates & Availability via `PricingService`: sellable count,
-stay restrictions, price basis) -> checks room-type sellability
-against Rooms via `RoomInventoryService` (excluding occupied, blocked,
-already-reserved) -> creates the reservation and emits
+against Rates & Availability via `PricingService`: stay restrictions
+and price basis; the sellable count is a desk-facing overview, not the
+guard's ceiling since #631) -> derives the guard's ceiling from
+`RoomInventoryService.CheckRoomTypeSellability` for the type and dates
+(the date-ranged room inventory net of blocks, read server-side and
+fail-closed, section 16) -> creates the reservation and emits
 `ReservationEvents`. Simultaneous bookings for the last sellable unit
 resolve in the Reservations store so exactly one succeeds
 (`NFR-CON-1`); simultaneous check-ins into one room resolve in the
@@ -429,5 +431,31 @@ stays deferred (integration F4). Decision record:
 `docs/architecture/lld.md` section 21; trust-boundary and residual-risk
 deltas: `docs/technical/security-threat-model.md` sections 2 and 8.
 
+## 16. Reservation availability authority (Refs #631)
+
+The desk browser is not a trust boundary for occupancy facts either.
+Rooms owns how many units a room type can host for a date range;
+Reservations owns which of those units a reservation holds; the desk
+only chooses the type, the dates, the guest, and the idempotency key.
+From #631 on, `CreateReservation` and `ModifyReservation` derive the
+overbooking guard's ceiling from `CheckRoomTypeSellability` (the
+date-ranged room inventory net of blocks) instead of from the request's
+`sellableUnits`, which becomes advisory. The guard still counts the
+overlapping `confirmed` / `checked-in` reservation rows itself, in one
+critical section, so each unit is subtracted exactly once and two
+simultaneous last-unit requests still yield one winner and one
+`CONFLICT`. The change adds one synchronous fail-closed edge
+(Reservations -> Rooms, caller token forwarded, `UPSTREAM_UNAVAILABLE`
+503 on an unread ceiling), no new module, no new store, and no
+data-model change; the contract change is additive (an advisory field
+plus one error code). The Rates availability count is not the ceiling: its
+`totalUnits` input is itself a request value and its fallback number is
+not maintained. Decision record:
+`docs/architecture/decisions/adr-0006-server-side-availability-derivation.md`
+(proposed); flow detail and the verification plan:
+`docs/architecture/lld.md` section 22; trust-boundary and
+residual-risk deltas: `docs/technical/security-threat-model.md`
+sections 2 and 8; product conditions `AC-OVB-1`..`AC-OVB-3` and risk R-10.
+
 <!-- ao-role: architect -->
-Role: architect · AO session hotel-mgmt-919
+Role: architect · AO session hotel-mgmt-933
