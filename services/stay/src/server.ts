@@ -129,7 +129,11 @@ async function handleRequest(
       return;
     }
     case "CheckOut": {
-      const { stay, invoiceRef } = await store.checkOut(body);
+      // The gate read forwards the caller's own token to Billing, so a
+      // rejected session stays UNAUTHENTICATED (integration C7).
+      const { stay, invoiceRef } = await store.checkOut(body, {
+        bearerToken: extractBearer(req) ?? "",
+      });
       writeJson(res, 200, { ...stayPayload(stay), invoiceRef });
       return;
     }

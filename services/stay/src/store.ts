@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { type FolioReader, UNWIRED_FOLIOS } from "./billing.js";
 import { HttpError } from "./errors.js";
 import { msg } from "./messages.js";
 
@@ -7,15 +8,19 @@ import { msg } from "./messages.js";
 // the Rooms-schema atomic write (LLD section 3); the stay row is
 // inserted only after the assignment receipt returns (NFR-CON-2).
 // Check-out closes the stay only from the in-house state through a
-// conditional transition guarded by the folio gate (BR-17, FR-BIL-7):
-// the desk passes the reviewed folio balance plus any recorded
-// approval in the request (the same desk-orchestration shape as
-// Reservations.CreateReservation carrying its sellableUnits input),
-// and Stay refuses with SETTLEMENT_REQUIRED unless the folio is
-// settled or approved. Room moves keep the stay in-house with a
-// history row; actual times are kept on the stay row.
-// Reservation, guest, and room links are logical references: modules
-// never read another schema (schema.md).
+// conditional transition guarded by the settlement gate (BR-17,
+// BR-46, FR-CKO-4, FR-CKO-5): Stay re-reads the stay's folio through
+// Billing GetFolioBalance and decides on the returned balance and
+// the returned recorded approval, so the request's
+// `folioBalanceMinor` / `openBalanceApproval` are advisory and
+// ignored (ADR-0005 D2/D5). A non-zero balance without a provenanced
+// approval is refused with SETTLEMENT_REQUIRED, a folio that is not
+// the presented one with CONFLICT, and an unreadable folio with
+// UPSTREAM_UNAVAILABLE; every refusal leaves the stay in house. Room
+// moves keep the stay in-house with a history row; actual times are
+// kept on the stay row. Reservation, guest, and room links are
+// logical references: modules never read another schema
+// (schema.md).
 //
 // Postgres persistence hardens in PostgresStayStore (pgstore.ts),
 // selected when DATABASE_URL is set (issue #149); both implement
@@ -81,11 +86,21 @@ export interface QueryStaysInput {
 export interface CheckOutInput {
   stayId?: unknown;
   folioId?: unknown;
+  // Advisory only: the server re-reads the folio through Billing and
+  // never decides on these (ADR-0005 D5).
   folioBalanceMinor?: unknown;
   openBalanceApproval?: unknown;
   actualDeparture?: unknown;
   idempotencyKey?: unknown;
   actor?: unknown;
+}
+
+// The caller's Bearer token, forwarded on the gate read so Billing
+// refuses a rejected session itself (integration C7). It never travels
+// in the request body: server.ts takes it from the Authorization
+// header.
+export interface CheckOutCaller {
+  bearerToken?: string;
 }
 
 export interface MoveRoomInput {
@@ -130,7 +145,7 @@ export interface StayStoreAPI {
   checkIn(input: CheckInInput): Promise<StayRecord>;
   getStay(input: GetStayInput): Promise<StayRecord>;
   queryStays(input: QueryStaysInput): Promise<StayRecord[]>;
-  checkOut(input: CheckOutInput): Promise<{ stay: StayRecord; invoiceRef: string }>;
+  checkOut(input: CheckOutInput, caller?: CheckOutCaller): Promise<{ stay: StayRecord; invoiceRef: string }>;
   moveRoom(input: MoveRoomInput): Promise<{ stay: StayRecord; move: MoveRecord }>;
   recordActualTimes(input: RecordActualTimesInput): Promise<StayRecord>;
   getStayRef(input: GetStayRefInput): Promise<StayRef>;
@@ -141,30 +156,80 @@ export interface StayStoreAPI {
   }>;
 }
 
-// The folio gate behind CheckOut (BR-17, FR-BIL-7): a settled folio
-// (zero balance) passes; otherwise a recorded open-balance approval
-// must travel with the request. Anything else is refused with
-// SETTLEMENT_REQUIRED and the stay remains in house.
-export function checkFolioGate(folioBalanceMinor: unknown, openBalanceApproval: unknown): void {
-  if (!Number.isInteger(folioBalanceMinor)) {
-    throw new HttpError("VALIDATION_FAILED", msg("stay.validation.folio_balance", {}), {
-      field: "folioBalanceMinor",
-    });
+// The fixed three roles an open-balance approval may name
+// (requirements section 3.2): a code constant in Stay and Billing,
+// never config (ADR-0005 D3).
+export const APPROVER_ROLES = ["owner", "manager", "front-desk"] as const;
+
+export type ApproverRole = (typeof APPROVER_ROLES)[number];
+
+// Why a recorded approval does not count, or null when it does. An
+// approval is the record of who approved, the role they hold, and
+// when (BR-17, BR-46): anything absent, free-form, incomplete, or
+// out-of-set is not an approval.
+export type ApprovalRefusal = "no_approval" | "approval_incomplete";
+
+export function approvalRefusal(openBalanceApproval: unknown): ApprovalRefusal | null {
+  if (openBalanceApproval === undefined || openBalanceApproval === null) {
+    return "no_approval";
   }
-  if (folioBalanceMinor !== 0 && (openBalanceApproval === undefined || openBalanceApproval === null)) {
-    throw new HttpError("SETTLEMENT_REQUIRED", msg("stay.settlement.open_balance", {}), {
-      folioBalanceMinor,
-    });
+  if (typeof openBalanceApproval !== "object" || Array.isArray(openBalanceApproval)) {
+    return "approval_incomplete";
   }
+  const record = openBalanceApproval as Record<string, unknown>;
+  const approvedBy = record["approvedBy"];
+  if (typeof approvedBy !== "string" || approvedBy.trim() === "") {
+    return "approval_incomplete";
+  }
+  const role = record["role"];
+  if (typeof role !== "string" || !APPROVER_ROLES.includes(role as ApproverRole)) {
+    return "approval_incomplete";
+  }
+  const approvedAt = record["approvedAt"];
   if (
-    openBalanceApproval !== undefined &&
-    openBalanceApproval !== null &&
-    (typeof openBalanceApproval !== "object" || Array.isArray(openBalanceApproval))
+    typeof approvedAt !== "string" ||
+    approvedAt.trim() === "" ||
+    Number.isNaN(Date.parse(approvedAt))
   ) {
-    throw new HttpError("VALIDATION_FAILED", msg("stay.validation.approval_object", {}), {
-      field: "openBalanceApproval",
+    return "approval_incomplete";
+  }
+  return null;
+}
+
+// The settlement gate behind CheckOut (BR-17, BR-46, FR-CKO-4,
+// FR-CKO-5; LLD section 21.2): re-read the stay's folio through
+// Billing, bind the presented invoice folio to the folio the balance
+// came from, and pass only a settled balance or a provenanced
+// approval. An unreadable folio refuses fail-closed, so a close never
+// runs on a balance nobody verified.
+export async function requireSettledFolio(
+  folios: FolioReader,
+  stayId: string,
+  presentedFolioId: string,
+  actor: string,
+  bearerToken: string,
+): Promise<void> {
+  const folio = await folios.readFolio(stayId, actor, bearerToken);
+  if (folio.folioId !== presentedFolioId) {
+    throw new HttpError("CONFLICT", msg("stay.conflict.folio_mismatch", {}), {
+      folioId: presentedFolioId,
+      actualFolioId: folio.folioId,
     });
   }
+  if (folio.balanceMinor === 0) {
+    return;
+  }
+  const refusal = approvalRefusal(folio.openBalanceApproval);
+  if (refusal === null) {
+    return;
+  }
+  throw new HttpError(
+    "SETTLEMENT_REQUIRED",
+    refusal === "no_approval"
+      ? msg("stay.settlement.open_balance", {})
+      : msg("stay.settlement.approval_incomplete", {}),
+    { folioId: presentedFolioId, reason: refusal },
+  );
 }
 
 export function requireDate(value: unknown, field: string): string {
@@ -184,6 +249,14 @@ export class StayStore implements StayStoreAPI {
   private readonly moves: MoveRecord[] = [];
   private readonly idempotency = new Map<string, StayRecord>();
   private readonly outbox: { aggregate: string; eventType: string; payload: Record<string, unknown> }[] = [];
+
+  constructor(private readonly folios: FolioReader = UNWIRED_FOLIOS) {}
+
+  // Outbox rows written so far, as a read-only copy: the guard tests
+  // assert a refused close wrote no `stay.checked-out` event.
+  outboxRows(): ReadonlyArray<{ aggregate: string; eventType: string; payload: Record<string, unknown> }> {
+    return this.outbox.map((row) => ({ ...row }));
+  }
 
   async checkIn(input: CheckInInput): Promise<StayRecord> {
     const id = input.stayId === undefined || input.stayId === null || input.stayId === "" ? randomUUID() : requireUuid(input.stayId, "stayId");
@@ -250,18 +323,21 @@ export class StayStore implements StayStoreAPI {
     return [...this.stays.values()];
   }
 
-  // CheckOut closes an in-house stay after the folio gate (FR-FDK-2,
-  // FR-BIL-7, BR-17/18). The transition is conditional on the
-  // in-house state: paired simultaneous check-outs resolve exactly
-  // one winner and the loser is refused with STATE_ILLEGAL, while a
+  // CheckOut closes an in-house stay after the settlement gate
+  // (FR-FDK-2, FR-BIL-7, BR-17/46, FR-CKO-4/5). The gate re-reads the
+  // folio through Billing and runs before the idempotency replay, so
+  // every close route is gated; a replay returns the stored close only
+  // once its gate passes. The transition is conditional on the
+  // in-house state: paired simultaneous check-outs resolve exactly one
+  // winner and the loser is refused with STATE_ILLEGAL, while a
   // replayed idempotencyKey returns the original close (NFR-CON-2).
   // The folio is presented as the final invoice, so the invoice
   // reference is the reviewed folio id (FR-BIL-4 presentation only).
-  async checkOut(input: CheckOutInput): Promise<{ stay: StayRecord; invoiceRef: string }> {
+  async checkOut(input: CheckOutInput, caller: CheckOutCaller = {}): Promise<{ stay: StayRecord; invoiceRef: string }> {
     const id = requireUuid(input.stayId, "stayId");
     const invoiceRef = requireUuid(input.folioId, "folioId");
-    checkFolioGate(input.folioBalanceMinor, input.openBalanceApproval);
     const actor = requireString(input.actor, "actor");
+    await requireSettledFolio(this.folios, id, invoiceRef, actor, caller.bearerToken ?? "");
     const key = typeof input.idempotencyKey === "string" ? input.idempotencyKey.trim() : "";
     if (key !== "") {
       const replay = this.idempotency.get(`CheckOut:${key}`);

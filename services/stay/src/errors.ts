@@ -8,7 +8,8 @@ export type ErrorCode =
   | "CONFLICT"
   | "STATE_ILLEGAL"
   | "SETTLEMENT_REQUIRED"
-  | "UNAUTHENTICATED";
+  | "UNAUTHENTICATED"
+  | "UPSTREAM_UNAVAILABLE";
 
 const STATUS_BY_CODE: Record<ErrorCode, number> = {
   VALIDATION_FAILED: 400,
@@ -18,6 +19,7 @@ const STATUS_BY_CODE: Record<ErrorCode, number> = {
   CONFLICT: 409,
   STATE_ILLEGAL: 422,
   SETTLEMENT_REQUIRED: 409,
+  UPSTREAM_UNAVAILABLE: 503,
 };
 
 export class HttpError extends Error {
@@ -25,10 +27,18 @@ export class HttpError extends Error {
   readonly status: number;
   readonly details: Record<string, unknown>;
 
-  constructor(code: ErrorCode, message: string, details: Record<string, unknown> = {}) {
+  // status carries a surfaced provider status when a module-to-module
+  // read refuses with its own envelope (integration C7); otherwise the
+  // code's registered status applies.
+  constructor(
+    code: ErrorCode,
+    message: string,
+    details: Record<string, unknown> = {},
+    status: number = STATUS_BY_CODE[code],
+  ) {
     super(message);
     this.code = code;
-    this.status = STATUS_BY_CODE[code];
+    this.status = status;
     this.details = details;
   }
 }

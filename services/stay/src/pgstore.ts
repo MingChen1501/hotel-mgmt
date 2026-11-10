@@ -1,15 +1,17 @@
 import type { Pool, PoolClient } from "pg";
 import { randomUUID } from "node:crypto";
+import { type FolioReader, UNWIRED_FOLIOS } from "./billing.js";
 import { HttpError } from "./errors.js";
 import { msg } from "./messages.js";
 import {
   STAY_STATES,
-  checkFolioGate,
   optionalTimestamp,
   requireDate,
   requireString,
+  requireSettledFolio,
   requireUuid,
   type CheckInInput,
+  type CheckOutCaller,
   type CheckOutInput,
   type GetStayInput,
   type GetStayRefInput,
@@ -30,7 +32,7 @@ import {
 // UNIQUE(reservation_id) row is the one-stay-per-reservation rule:
 // a repeat check-in is refused with CONFLICT.
 export class PostgresStayStore implements StayStoreAPI {
-  constructor(private readonly pool: Pool) {}
+  constructor(private readonly pool: Pool, private readonly folios: FolioReader = UNWIRED_FOLIOS) {}
 
   private static toStay(row: {
     id: string;
@@ -156,13 +158,14 @@ export class PostgresStayStore implements StayStoreAPI {
   // transition in one transaction (issue #150): the guarded UPDATE
   // resolves exactly one winner for paired simultaneous check-outs
   // (NFR-CON-2) and a replayed idempotencyKey returns the original
-  // close. The folio gate runs first; a refusal leaves the stay in
-  // house (BR-17).
-  async checkOut(input: CheckOutInput): Promise<{ stay: StayRecord; invoiceRef: string }> {
+  // close. The settlement gate re-reads the folio through Billing and
+  // runs first, so a refusal leaves the stay in house with no event
+  // (BR-17, BR-46).
+  async checkOut(input: CheckOutInput, caller: CheckOutCaller = {}): Promise<{ stay: StayRecord; invoiceRef: string }> {
     const id = requireUuid(input.stayId, "stayId");
     const invoiceRef = requireUuid(input.folioId, "folioId");
-    checkFolioGate(input.folioBalanceMinor, input.openBalanceApproval);
     const actor = requireString(input.actor, "actor");
+    await requireSettledFolio(this.folios, id, invoiceRef, actor, caller.bearerToken ?? "");
     const departure = optionalTimestamp(input.actualDeparture, "actualDeparture");
     const key = typeof input.idempotencyKey === "string" ? input.idempotencyKey.trim() : "";
     const client = await this.pool.connect();

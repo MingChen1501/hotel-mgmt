@@ -3007,16 +3007,17 @@ desk behaviour, so this section records only the architect-owned delta.
 | Idempotency key | Client | Stay | Yes (`idempotencyKey`) |
 | Session actor | Admin session token | Body `actor` today; token-bound validation is residual risk R6 | Yes (`actor`), today |
 
-### 21.2 Gate algorithm (target)
+### 21.2 Gate algorithm (as-built)
 
 1. Validate `stayId` / `folioId` UUIDs and `actor` (unchanged,
-   `services/stay/src/store.ts:261-264`).
+   `services/stay/src/store.ts:337-339`).
 2. Re-read the folio: `POST {BILLING_BASE_URL}/v1/billing/GetFolioBalance`
    with `{stayId, actor}` and the caller's Bearer token forwarded,
-   5-second timeout. `BILLING_BASE_URL` defaults to
-   `http://billing:8087` (compose service `billing`, `deploy/compose.yaml:113`)
-   and is wired on the `stay` service (`deploy/compose.yaml:77`) the way
-   Reservations wires `RATES_BASE_URL` (`deploy/compose.yaml:46`).
+   5-second timeout (`services/stay/src/billing.ts:69-117`).
+   `BILLING_BASE_URL` defaults to `http://billing:8087` (compose service
+   `billing`, `deploy/compose.yaml:117-132`) and is wired on the `stay`
+   service (`deploy/compose.yaml:86`) the way Reservations wires
+   `RATES_BASE_URL` (`deploy/compose.yaml:46`).
 3. Fail closed on an unread folio: transport error, timeout, 5xx, or an
    unwired client -> `UPSTREAM_UNAVAILABLE` 503
    `{upstream: "billing", operation: "GetFolioBalance"}`, stay in house.
@@ -3041,11 +3042,12 @@ desk behaviour, so this section records only the architect-owned delta.
    after the gate passes. Then the unchanged conditional
    `in-house -> closed` flip and outbox event.
 
-Billing's write-side delta: `RecordOpenBalanceApproval` keeps the
-non-blank `approvedBy` check, refuses a `role` outside the fixed three
-with `VALIDATION_FAILED` naming `role`, keeps stamping `approvedAt`
-server-side (`service/BillingService.java:302-313`), and keeps recording
-the session actor as the audit `updated_by`
+Billing's write-side delta (as-built): `RecordOpenBalanceApproval`
+keeps the non-blank `approvedBy` check, refuses a `role` outside the
+fixed three with `VALIDATION_FAILED` naming `role`
+(`service/BillingService.java:263-275`, the set at `:36`), keeps
+stamping `approvedAt` server-side (`:286`, `:314-326`), and keeps
+recording the session actor as the audit `updated_by`
 (`repo/BillingRepository.java:143-146`).
 
 ### 21.3 Happy path (settled or provenanced close)
@@ -3066,10 +3068,11 @@ flowchart TD
 Edge trace:
 
 - A–B: Bearer presence at the transport (`services/stay/src/server.ts:110-112`);
-  UUID and actor checks (`services/stay/src/store.ts:261-264` via
+  UUID and actor checks (`services/stay/src/store.ts:337-339` via
   `requireUuid`/`requireString` at :39-51).
-- B–C: the gate read (target `services/stay/src/billing.ts`, injected
-  into `StayStore`; pattern
+- B–C: the gate read (`services/stay/src/billing.ts:69-117`, injected
+  into `StayStore` at `services/stay/src/store.ts:253` and called at
+  `:340` with the caller's token; pattern
   `services/reservations/internal/pricing/client.go:43-87` — POST,
   Bearer forward at :57-59, 5 s timeout at :33).
 - C–D: `GetFolioBalance` returns `folioId`, `balanceMinor`,
@@ -3078,10 +3081,11 @@ Edge trace:
 - D–E: the presented invoice reference must be the folio the balance
   came from (one folio per stay, BR-21).
 - E–H: a zero balance passes (BR-17).
-- F–H: provenance check on the read object (BR-17; target helper
-  alongside `checkFolioGate`, `services/stay/src/store.ts:148-168`).
+- F–H: provenance check on the read object (BR-17; `approvalRefusal`
+  at `services/stay/src/store.ts:172-197`, used by `requireSettledFolio`
+  at :205-233).
 - H–I–J: unchanged conditional flip, outbox event, and response
-  (`services/stay/src/store.ts:272-293`; `src/server.ts:131-135`).
+  (`services/stay/src/store.ts:357-367`; `src/server.ts:131-138`).
 
 ### 21.4 Failure and rollback paths
 
@@ -3113,7 +3117,7 @@ Edge trace:
 - C–S/T: `SETTLEMENT_REQUIRED` is the only refusal for an unpaid close,
   whether the approval is missing or malformed (BR-17, `FR-CKO-5`).
 - X: no state flip, no `stay.checked-out` event, no idempotency record
-  (`services/stay/src/store.ts:272-292` is only reached after the gate).
+  (`services/stay/src/store.ts:336-368` is only reached after the gate).
 
 Rollback: revert the single implementation PR. The desk keeps the #588
 client-side gate, the additive contract fields stay valid for the desk
@@ -3134,9 +3138,10 @@ sends the two advisory fields is unaffected.
 
 ### 21.6 Verification plan
 
-Stay service guards (the implementation PR creates them; the existing
-check-out block is `services/stay/src/server.test.ts:128-238` and the
-Postgres parity block at `:378-460`):
+Stay service guards (as-built at the #601 implementation branch; the
+check-out block is `services/stay/src/server.test.ts` and the Postgres
+parity block carries `S12`, with the transport guards in
+`services/stay/src/billing.test.ts`):
 
 - **Forged balance low** — client sends `folioBalanceMinor: 0` while
   Billing reads `6000` with no approval: 409 `SETTLEMENT_REQUIRED`, stay

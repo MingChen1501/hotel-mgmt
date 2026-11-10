@@ -84,7 +84,11 @@ Symptom 2 — check-out succeeds without payment.
   follow-up, not changed by this fix.
 - (d) **Server trust.** Stay's gate trusts the client-supplied balance
   and any approval object. Defence-in-depth only; out of scope under the
-  owner's UI-first constraint and filed as a follow-up.
+  owner's UI-first constraint and filed as a follow-up. Closed by #601:
+  the close re-reads the folio through Billing and validates the recorded
+  approval's provenance, and Billing refuses an approver role outside the
+  fixed three — before/after record in
+  [`docs/testing/evidence/601/README.md`](../601/README.md).
 - Classification for this change: **bypassed** (closed by decision 5:
   fixed role select, provenance check, visible approver) plus **stale
   state** (closed by decision 4: fresh read at confirm, review-time

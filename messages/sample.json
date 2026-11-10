@@ -1231,14 +1231,6 @@
       }
     },
     {
-      "key": "stay.validation.folio_balance",
-      "surface": "stay envelope",
-      "sources": [
-        "services/stay/src/store.ts"
-      ],
-      "params": {}
-    },
-    {
       "key": "stay.settlement.open_balance",
       "surface": "stay envelope",
       "sources": [
@@ -1247,7 +1239,7 @@
       "params": {}
     },
     {
-      "key": "stay.validation.approval_object",
+      "key": "stay.settlement.approval_incomplete",
       "surface": "stay envelope",
       "sources": [
         "services/stay/src/store.ts"
@@ -1260,6 +1252,14 @@
       "sources": [
         "services/stay/src/store.ts",
         "services/stay/src/pgstore.ts"
+      ],
+      "params": {}
+    },
+    {
+      "key": "stay.conflict.folio_mismatch",
+      "surface": "stay envelope",
+      "sources": [
+        "services/stay/src/store.ts"
       ],
       "params": {}
     },
@@ -3135,6 +3135,14 @@
       "surface": "reservations envelope",
       "sources": [
         "services/reservations/internal/pricing/client.go"
+      ],
+      "params": {}
+    },
+    {
+      "key": "error.upstream.folio_unavailable",
+      "surface": "stay envelope",
+      "sources": [
+        "services/stay/src/billing.ts"
       ],
       "params": {}
     },

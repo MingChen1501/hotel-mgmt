@@ -30,6 +30,11 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class BillingService {
 
+  // The fixed three roles an open-balance approval may name
+  // (requirements section 3.2, BR-17, BR-46): a code constant here
+  // and in Stay, never config (ADR-0005 D3).
+  private static final List<String> APPROVER_ROLES = List.of("owner", "manager", "front-desk");
+
   private final BillingRepository repo;
 
   public BillingService(BillingRepository repo) {
@@ -244,12 +249,15 @@ public class BillingService {
   }
 
   // Records the authorised open-balance approval against the folio
-  // (BR-17, FR-BIL-7, issue #150): Stay.CheckOut reads the approval
-  // back through GetFolioBalance and closes an approved open balance.
-  // Which role may approve follows the hotel open-balance rule; the
-  // approver identity and role at approval time are kept verbatim on
-  // the record, and role-rule enforcement rides on the config fan-out
-  // slice that distributes the rule. Replay under the same
+  // (BR-17, BR-46, FR-BIL-7, issue #150; provenance at write is
+  // ADR-0005 D3). Stay.CheckOut re-reads the approval through
+  // GetFolioBalance and closes an approved open balance. The recorded
+  // approver identity must be non-blank, the role must be one of the
+  // hotel's fixed three, and the recorded time is stamped here —
+  // never taken from the request — so the record Stay re-validates
+  // carries all three. Which of the three may approve follows the
+  // hotel open-balance rule; role-rule enforcement rides on the config
+  // fan-out slice that distributes the rule. Replay under the same
   // idempotencyKey returns the original record.
   @Transactional
   public ApprovalView recordOpenBalanceApproval(String stayId, String approvedBy, String role, String reason,
@@ -259,6 +267,10 @@ public class BillingService {
     }
     if (role == null || role.isBlank()) {
       throw ApiException.validation("role", Messages.text("error.validation.field_required", Map.of("field", "role")));
+    }
+    String approverRole = role.strip();
+    if (!APPROVER_ROLES.contains(approverRole)) {
+      throw ApiException.validation("role", Messages.text("error.validation.approver_role", Map.of()));
     }
     String who = actorOf(actor);
     Folio folio = repo.ensureFolio(stayUuid(stayId), who);
@@ -271,7 +283,7 @@ public class BillingService {
             approvalObject(approved.openBalanceApproval()));
       }
     }
-    String approval = approvalJson(approvedBy.strip(), role.strip(), reason == null ? "" : reason.strip());
+    String approval = approvalJson(approvedBy.strip(), approverRole, reason == null ? "" : reason.strip());
     repo.recordApproval(folio.id(), approval, who);
     String payload = "{\"folioId\":\"" + folio.id() + "\"}";
     repo.outbox("folio", "approval-recorded", payload, who);

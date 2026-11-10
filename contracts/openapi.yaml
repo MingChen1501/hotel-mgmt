@@ -1027,8 +1027,10 @@ paths:
       tags:
       - Stay
       summary: Check out, closed state with the folio as invoice (desk loop step 13).
-      description: 'StayService: Stays from check-in to check-out (Stay module). Contract version 1.0. Traces: docs/architecture/lld.md
-        section 2, docs/technical/integration.md section 3 C7, FR-FDK-2, FR-BIL-7, NFR-CON-2.'
+      description: 'StayService: Stays from check-in to check-out (Stay module). Contract version 1.1: the
+        balance and approval the request carries are advisory and ignored, because Stay re-reads the folio through Billing
+        (ADR-0005). Traces: docs/architecture/lld.md section 2, docs/architecture/lld.md section 21, docs/technical/integration.md
+        section 3 C7, FR-FDK-2, FR-BIL-7, FR-CKO-4, FR-CKO-5, BR-17, BR-46, NFR-CON-2, ADR-0005.'
       requestBody:
         required: true
         content:
@@ -1038,7 +1040,6 @@ paths:
               required:
               - stayId
               - folioId
-              - folioBalanceMinor
               - actor
               properties:
                 stayId:
@@ -1047,15 +1048,17 @@ paths:
                 folioId:
                   type: string
                   format: uuid
-                  description: Reviewed folio id, presented as the final invoice.
+                  description: Reviewed folio id, presented as the final invoice; it must be the folio Billing returns
+                    for the stay.
                 folioBalanceMinor:
                   type: integer
-                  description: Reviewed folio balance; the gate input for BR-17.
+                  description: 'Deprecated advisory input: ignored. Stay re-reads the folio balance through Billing GetFolioBalance
+                    (ADR-0005 D2/D5).'
                 openBalanceApproval:
                   type: object
                   nullable: true
-                  description: Approval recorded via BillingService RecordOpenBalanceApproval; required unless the balance
-                    is zero.
+                  description: 'Deprecated advisory input: ignored. Stay re-reads the recorded approval from Billing and
+                    requires the approver identity, a role from the fixed three, and a recorded time.'
                 actualDeparture:
                   type: string
                   format: date-time
@@ -1112,7 +1115,16 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '409':
-          description: 'SETTLEMENT_REQUIRED: Open balance with no recorded approval; the stay remains in house.'
+          description: 'SETTLEMENT_REQUIRED (open balance without a provenanced recorded approval; details carry folioId
+            and reason, no_approval or approval_incomplete) or CONFLICT (the presented folioId is not the stay''s folio;
+            details name folioId and actualFolioId). The stay remains in house.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '503':
+          description: 'UPSTREAM_UNAVAILABLE: The folio could not be read from Billing; details name upstream and operation.
+            The stay remains in house.'
           content:
             application/json:
               schema:
@@ -1130,7 +1142,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '400':
-          description: 'VALIDATION_FAILED: Missing or malformed stay, folio, or balance link.'
+          description: 'VALIDATION_FAILED: Missing or malformed stay, folio, or actor.'
           content:
             application/json:
               schema:
