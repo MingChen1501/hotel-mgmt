@@ -2028,6 +2028,22 @@ describe('stay view', () => {
     ]) {
       expect(urls().filter((url) => url === op)).toHaveLength(1);
     }
+
+    // The dropped pick cannot commit either (Refs #596): the panel
+    // is empty again, so another Check in click keeps the plain
+    // need_arrival guard and starts no second commit.
+    await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain(
+      'Choose an arriving guest first.',
+    );
+    for (const op of [
+      '/v1/rooms/AssignRoom',
+      '/v1/stay/CheckIn',
+      '/v1/reservations/CheckInReservation',
+    ]) {
+      expect(urls().filter((url) => url === op)).toHaveLength(1);
+    }
   });
 });
 
