@@ -1,6 +1,6 @@
 # Bộ kiểm thử thủ công cho giao diện desk 6 màn hình (Manual QA Testsuite)
 
-Trạng thái: active. Chủ sở hữu: `qa-lead`. Refs #448, #450 (mục 9: ma trận biên + xác thực), #588 (QA-EDGE-8 viết lại + QA-EDGE-13).
+Trạng thái: active. Chủ sở hữu: `qa-lead`. Refs #448, #450 (mục 9: ma trận biên + xác thực), #588 (QA-EDGE-8 viết lại + QA-EDGE-13), #600 (QA-EDGE-14 ghi tiền phòng khi trả phòng).
 
 Tài liệu này là bộ kiểm thử thủ công (manual QA testsuite) cho 6 màn hình
 desk UI, dùng TRƯỚC buổi kiểm thử trực tiếp trên máy của chủ sở hữu (owner machine).
@@ -803,6 +803,49 @@ lỗi áp dụng chung: mọi lỗi và từ chối phải đọc thành câu r�
   (phần này guard tự động phủ; người kiểm thử tay chỉ đọc câu chữ).
 - **Truy vết:** AC-DSK-4, AC-DSK-18.
 
+### QA-EDGE-14 — Review folio ghi tiền phòng khi trả phòng (room-charge posting, Refs #600)
+
+- **Phân loại:** Hỗn hợp — Scriptable: sau khi bấm
+  `desk.stay.review_button` trên stay có folio mới, folio có đúng
+  một dòng `nightly-room-charge` với số tiền bằng tổng báo giá đã
+  chốt (`priceBasis.totalMinor`); review lần hai không ghi thêm;
+  folio đã có dòng tiền phòng (ghi từ `/folio` hoặc desk loop) thì
+  không ghi thêm; stay có báo giá 0 thì không ghi dòng nào; stay
+  không tìm được booking thì bị từ chối và không có nút Check out.
+  Human-only: câu từ chối `desk.stay.refused_room_charge` đọc tự
+  nhiên, nêu bước tiếp theo (kiểm tra đặt phòng, thử lại), đúng
+  locale, không có mã kỹ thuật và không có JSON thô.
+- **Điều kiện tiên quyết:** DB đã seed; 1 đặt phòng có tổng báo giá
+  khác 0; 1 stay đã nhận phòng qua `/stay` với folio mới (chưa có
+  dòng charge nào); mở `/stay`; mở sẵn `/folio` ở tab thứ hai để
+  đối chiếu. Chuẩn bị thêm nếu seed được: 1 stay có tổng báo giá 0
+  và 1 stay không có liên kết booking trên lịch.
+- **Các bước thực hiện:**
+  1. Ở `/stay`, chọn stay trong danh sách departing, bấm
+     `desk.stay.review_button`; đọc `desk.stay.folio_balance`.
+  2. Ở tab `/folio`, mở folio của stay đó và đọc các dòng charge
+     (mã `nightly-room-charge`).
+  3. Quay lại `/stay`, bấm lại `desk.stay.review_button` lần hai;
+     đọc lại folio ở `/folio`.
+  4. Với stay đã có dòng tiền phòng ghi từ trước (ghi tay ở
+     `/folio`): bấm review và kiểm tra không có dòng thứ hai.
+  5. Với stay có báo giá 0: bấm review, đọc số dư và trạng thái;
+     thử trả phòng khi số dư bằng 0.
+  6. Với stay không tìm được booking trên lịch: bấm review, đọc câu
+     từ chối và kiểm tra không có nút Check out.
+- **Kết quả mong đợi:** bước 1–2: đúng một dòng
+  `nightly-room-charge` cho stay, số tiền bằng tổng báo giá đã chốt,
+  tên dòng nêu số phòng (hoặc tên tiền phòng chung khi không đọc
+  được số phòng), và dòng số dư `desk.stay.folio_balance` hiển thị
+  bao gồm khoản này. Bước 3–4: không có dòng thứ hai nào được ghi,
+  số dư không đổi. Bước 5: không ghi dòng tiền phòng nào, review đọc
+  folio như hiện có và stay giá 0 vẫn trả phòng được trên số dư 0
+  (BR-17). Bước 6: câu `desk.stay.refused_room_charge` nêu việc ghi
+  tiền phòng và bước tiếp theo, không có mã kỹ thuật/JSON thô,
+  không có dòng số dư và không có nút Check out; stay vẫn in-house.
+- **Truy vết:** AC-DSK-19; AC-DSK-4, AC-DSK-18 (cổng chặn sau khi
+  folio đã có tiền phòng).
+
 ## 10. Bảng truy vết AC-DSK tới case
 
 | AC-DSK | Case kiểm tra |
@@ -819,6 +862,7 @@ lỗi áp dụng chung: mọi lỗi và từ chối phải đọc thành câu r�
 | AC-DSK-10 — Bước 3: phòng và hạng phòng qua đường seed | QA-ONB-3; QA-E2E-1 bước 1 |
 | AC-DSK-11 — Bước 4: tài khoản owner đầu tiên qua đường admin user | QA-ONB-4; QA-E2E-1 bước 1 |
 | AC-DSK-18 — Trả phòng giải phóng phòng qua `ReleaseRoom` + tải lại desk, và chặn mọi đường trả phòng khi chưa thanh toán/chưa có phê duyệt hợp lệ | QA-EDGE-8 (release + tải lại + vòng dirty), QA-EDGE-13 (cổng chặn mọi đường + phê duyệt có người duyệt/role/thời điểm); QA-E2E-1 bước 6 |
+| AC-DSK-19 — Review folio ghi tiền phòng một lần đúng tổng báo giá đã chốt trước khi hiện số dư; không ghi lần hai; báo giá 0 không ghi; không ghi được thì từ chối trả phòng | QA-EDGE-14 (ghi tiền phòng, review lại, folio đã có charge, báo giá 0, booking không resolve); QA-E2E-1 bước 6; QA-EDGE-13 (cổng chặn sau khi folio đã có tiền phòng) |
 
 <!-- ao-role: qa-lead -->
-Role: qa-lead · AO session hotel-mgmt-873
+Role: qa-lead · AO session hotel-mgmt-913

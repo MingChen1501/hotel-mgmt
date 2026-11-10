@@ -512,8 +512,74 @@ section 6 of the testing spec. No existing guard was deleted: the route
 set, the nav arrays, and the title case were extended with a note. The
 MVP Coverage line below stands unchanged at 57/57.
 
+## 12. Stay check-out room-charge posting slice (Refs #600)
+
+Behaviour slice for the Stay check-out review: the review posts the
+stay's room charge before it presents a balance, so a stay the desk
+checks in and out ends with a folio that carries the room it paid
+for. One `nightly-room-charge` line per stay at the stay's frozen
+quoted total (`priceBasis.totalMinor`, `FR-RTE-5`), resolved through
+the reservation calendar entry that links the stay; a folio that
+already carries a room-charge line is never charged again, a zero
+quote posts nothing, and an unresolvable booking or a refused or
+failed `PostCharge` refuses the review. The `AC-DSK-18` gate is
+unchanged and becomes meaningful; `PostCharge` keeps its request
+members, and no backend, schema, stored-value, print, scheduler, or
+MVP-capability change is involved. Tier T2 (`product-owner` scope in
+`docs/product/desk-ui-design-rollout.md` section 6.14, D-24 in
+`docs/project/decision-log.md`).
+
+Each row traces the #600 acceptance condition `AC-DSK-19` (owned by
+`product-owner` in
+[acceptance-criteria.md section 11](../product/acceptance-criteria.md)),
+the behaviour-scoped requirements `FR-CKP-1`..`FR-CKP-5` (owned by
+`business-analyst` in
+[mvp-requirements.md section 21](../requirements/mvp-requirements.md)),
+the unchanged MVP rows `FR-BIL-2`, `FR-BIL-7`, `FR-FDK-2`, and
+`FR-RTE-5`, and business rules `BR-17` / `BR-45`
+([business-rules.md](../requirements/business-rules.md)). The cases
+`CKP-1`..`CKP-12`, the guard registry `D19`, and the pin basis live
+in [desk-ui-rollout-test-traceability.md](desk-ui-rollout-test-traceability.md)
+sections 3, 4, and 6. Like the slices above, these rows add no MVP
+capability: the 57-row MVP coverage count stands unchanged and no MVP
+row may cite this slice as its guard.
+
+Every `file:line` below was read at the implementation head `1b43762`
+(PR #618), which is unmerged when this slice is written; `master`
+carries different line numbers. `qa-lead` re-pins at the merged head.
+Two obligations (`FR-CKP-3` zero quote, and the refused/failed-post
+half of `FR-CKP-4`) have no guard at that head and are named as
+missing: the implementation PR must create them before those rows
+can be complete, so this slice is not complete at this spec head.
+
+| Item | Required guard type | Guard |
+|---|---|---|
+| AC-DSK-19 — the check-out review posts the stay's room charge once at its frozen quoted total before a balance, never a second, nothing for a zero quote, and refuses an unpostable charge; the `AC-DSK-18` gate keeps passing only for a settled or approved folio (Refs #600; traces to US-FDK-2, US-BIL-1, US-BIL-2; `FR-FDK-2`, `FR-BIL-1`, `FR-BIL-2`, `FR-BIL-7`, `FR-RTE-5`, `BR-17`, `BR-45`) | Behaviour check: one `nightly-room-charge` line at the booking's `priceBasis.totalMinor` named for the room, re-read before any balance is shown; no second line on a repeated review or on an already-charged folio; nothing for a zero quote; a plain `desk.stay.refused_room_charge` refusal or the plain panel error for an unpostable charge, with no balance and no close route; the gate then refuses an unapproved open balance and passes a settled folio or a provenanced approval | **`D19`** and cases `CKP-1`..`CKP-9`, `CKP-12` in section 6 of `desk-ui-rollout-test-traceability.md`: posting `app/src/views/StayView.test.ts:1207-1290`; no-double-post pair `:1281-1290`, `:1291-1310`; unresolved-booking refusal `:1311-1357`; gate after the post `:1086-1206`, `:1358-1476`, `:1612-1676`, `app/src/views/desk-edge-guards.test.ts:970-1033`; browser `app/e2e/stay.spec.ts:80-103`; catalogue parity and the design-facts re-run are the two gate boxes below. Partial: `CKP-5` and `CKP-6` are missing at the implementation head |
+| FR-CKP-1 — the review posts one `nightly-room-charge` at the stay's frozen quote before it presents a balance (section 21.3) | One `PostCharge` with the room-named `itemName`, `amountMinor` equal to `priceBasis.totalMinor`, the signed-in `actor`, and `idempotencyKey` `room-charge:<stayId>`; the re-read balance includes it; a failed folio read posts nothing | On disk at `1b43762` — `CKP-1`: `app/src/views/StayView.test.ts:1207-1290` and `app/e2e/stay.spec.ts:80-103`; source pin `app/src/stay-restyle.test.ts:105` |
+| FR-CKP-2 — one room charge per stay, never a second (section 21.3) | A repeated review and a pre-charged folio both send zero `PostCharge`; exactly one room-charge line remains | On disk at `1b43762` — `CKP-2`/`CKP-3`: `app/src/views/StayView.test.ts:1281-1290`, `:1291-1310` (default folio carries the charge at `:200-225`) |
+| FR-CKP-3 — a zero quote posts nothing (section 21.3) | A frozen quoted total of zero sends zero `PostCharge`, invents no zero-amount line, and the review reaches the zero-balance clear state on the folio as read | **Missing guard, named explicitly** — `CKP-5`; the stub returns `120000` for every stay (`app/src/views/StayView.test.ts:159-172`). The implementation PR #618 must create it before this row is complete |
+| FR-CKP-4 — a charge that cannot be posted refuses the review (section 21.3) | An unresolvable booking refuses in `desk.stay.refused_room_charge` with zero `PostCharge`, no balance, no close route, zero `CheckOut`; a refused or failed `PostCharge` ends the review in the plain panel error with the stay in house | Partial at `1b43762` — `CKP-4`: `app/src/views/StayView.test.ts:1311-1357`. **Missing guard named explicitly** — `CKP-6` (service-refused or transport-failed `PostCharge`); the implementation PR #618 must create it |
+| FR-CKP-5 — the close that follows is gated on a settled or approved folio (section 21.3) | On the charged folio, an unapproved open balance sends zero `CheckOut` on every route; a settled folio or a provenanced approval closes; a moved balance refuses on the fresh read | On disk at `1b43762` — `CKP-7`/`CKP-8`: `app/src/views/StayView.test.ts:1086-1206`, `:1207-1290`, `:1358-1476`, `:1612-1676`, `app/src/views/desk-edge-guards.test.ts:970-1033`; the unchanged `FR-BIL-7` / `FR-CKO-4` rows keep the capability and the every-route gate |
+| Catalogue parity | The one new key `desk.stay.refused_room_charge` in both locales with placeholders intact plus the eight byte-identical runtime mirrors; the coverage job green | `CKP-10`: `messages/en.json:474`, `messages/vi.json:474`, the eight `services/*` mirrors, `script/catalogue-coverage-check.sh`; lands with #618 |
+| Design-facts gate | The review state is flow state outside the fact schema, so no fact changes and the gate stays green | `CKP-11`: `app/e2e/design-facts.spec.ts`, `app/e2e/design-facts.ts` Stay entry, `docs/technical/desk-ui-fact-schema.md`; re-run only, a fact edit is drift |
+| Browser evidence | The served desk posts its own room charge in the browser flow, one line at the quoted total named for the room, and the open balance then refuses the close | `CKP-9`: `app/e2e/stay.spec.ts:80-103`; the seed must not post a room charge for the asserted flow, or a regression is masked; `browser-e2e` must pass in CI |
+| MVP no-change statement | No new MVP row, story, or FR id; `FR-BIL-2` gains only an amendment pointer, and the #588 `FR-CKO-*` ids are unchanged | The 57-row MVP coverage count stands unchanged; the `FR-BIL-2` / `FR-BIL-7` / `FR-FDK-2` / `FR-RTE-5` rows in sections 1–3 keep their guards |
+
+Slice coverage (Refs #600): 10 rows mapped to `AC-DSK-19` and
+`FR-CKP-1`..`FR-CKP-5`. Six of them name guards that exist at the
+implementation head `1b43762` (`AC-DSK-19` partially, `FR-CKP-1`,
+`FR-CKP-2`, `FR-CKP-5`, the browser evidence, and the design-facts
+re-run), two name gate checks that land with the implementation PR
+(the catalogue parity, and the MVP no-change statement), and two are
+**missing guards** the implementation PR #618 must create (`CKP-5`
+zero quote, `CKP-6` a refused or failed post). The slice is therefore
+**not complete** at this spec head; it completes when the
+implementation PR merges with `CKP-1`..`CKP-12` green and `qa-lead`
+re-pins the rows at the merged head. The MVP Coverage line below
+stands unchanged at 57/57.
+
 Coverage: 43 FRs mapped, 14 NFRs mapped, 57 rows total, 57 guards
-filled (PR #112 slice: FR-RES-1, FR-RMS-1..4, FR-RTE-1/2/4/5, FR-ADM-1/2, FR-CUS-1, NFR-CON-1/2; PR #149 slice: FR-FDK-1, FR-FDK-5, FR-BIL-1/2/3/6, FR-ADM-5, NFR-BKP-1/2, NFR-AUD-1, NFR-TZ-1, plus FR-RES-1 persistence; PR #150 slice: FR-FDK-2, FR-FDK-3, FR-FDK-4, FR-BIL-7, plus the NFR-CON-2 stay-side checkout guard; PR #151 slice: FR-BIL-4, FR-CUS-3; PR #156 slice: FR-RPT-1..3; PR #157 slice: FR-GST-1..3; PR #158 slice: NFR-DEP-1, FR-ADM-4 config level, plus the FR-ADM-1 deployment extension; PR #159 slice: FR-RES-2/3/5/6 plus the NFR-CON-1 modify-path extension; PR #160 slice: ReleaseBlock plus rooms-side move coordination (FR-RMS-3, FR-FDK-3); PR #161 slice: full rates handling (FR-RTE-3 filled, FR-RTE-4/5 extended — remaining TBD cells fill in later slices); count corrected to the live total 48 (later slices filled cells without updating this line); PR #153 slice: NFR-RET-1, NFR-AVL-1; PR #182 slice: FR-RES-4, FR-ADM-3, FR-CUS-2, NFR-PERF-1/2 filled (5 guards — count corrected to the live total 53); FR-GST-4, FR-BIL-5, FR-RPT-4 point at follow-ups #189, #190, #191 and fill with those issues; NFR-I18N-1 filled by the #192 slice (count corrected to the live total 54); #189/#190/#191/#192/#201 slices filled FR-GST-4, FR-BIL-5, FR-RPT-4, NFR-I18N-1 (plus the #201 extension) — count corrected to the live total 57 (Closes #214)). Section 10 (Refs #588) adds 10 slice rows mapped to the #588 acceptance and `FR-CKO-1`..`FR-CKO-5`; the MVP row count stands unchanged at 57/57 because the slice adds no MVP capability. Section 11 (Refs #590) adds 15 slice rows mapped to `AC-MANAGE-1..11` and `FR-MGMT-1..12`; the MVP row count stands unchanged at 57/57 for the same reason.
+filled (PR #112 slice: FR-RES-1, FR-RMS-1..4, FR-RTE-1/2/4/5, FR-ADM-1/2, FR-CUS-1, NFR-CON-1/2; PR #149 slice: FR-FDK-1, FR-FDK-5, FR-BIL-1/2/3/6, FR-ADM-5, NFR-BKP-1/2, NFR-AUD-1, NFR-TZ-1, plus FR-RES-1 persistence; PR #150 slice: FR-FDK-2, FR-FDK-3, FR-FDK-4, FR-BIL-7, plus the NFR-CON-2 stay-side checkout guard; PR #151 slice: FR-BIL-4, FR-CUS-3; PR #156 slice: FR-RPT-1..3; PR #157 slice: FR-GST-1..3; PR #158 slice: NFR-DEP-1, FR-ADM-4 config level, plus the FR-ADM-1 deployment extension; PR #159 slice: FR-RES-2/3/5/6 plus the NFR-CON-1 modify-path extension; PR #160 slice: ReleaseBlock plus rooms-side move coordination (FR-RMS-3, FR-FDK-3); PR #161 slice: full rates handling (FR-RTE-3 filled, FR-RTE-4/5 extended — remaining TBD cells fill in later slices); count corrected to the live total 48 (later slices filled cells without updating this line); PR #153 slice: NFR-RET-1, NFR-AVL-1; PR #182 slice: FR-RES-4, FR-ADM-3, FR-CUS-2, NFR-PERF-1/2 filled (5 guards — count corrected to the live total 53); FR-GST-4, FR-BIL-5, FR-RPT-4 point at follow-ups #189, #190, #191 and fill with those issues; NFR-I18N-1 filled by the #192 slice (count corrected to the live total 54); #189/#190/#191/#192/#201 slices filled FR-GST-4, FR-BIL-5, FR-RPT-4, NFR-I18N-1 (plus the #201 extension) — count corrected to the live total 57 (Closes #214)). Section 10 (Refs #588) adds 10 slice rows mapped to the #588 acceptance and `FR-CKO-1`..`FR-CKO-5`; the MVP row count stands unchanged at 57/57 because the slice adds no MVP capability. Section 11 (Refs #590) adds 15 slice rows mapped to `AC-MANAGE-1..11` and `FR-MGMT-1..12`; the MVP row count stands unchanged at 57/57 for the same reason. Section 12 (Refs #600) adds 10 slice rows mapped to `AC-DSK-19` and `FR-CKP-1`..`FR-CKP-5`; the MVP row count stands unchanged at 57/57 for the same reason.
 
 <!-- ao-role: qa-lead -->
-Role: qa-lead · AO session hotel-mgmt-889
+Role: qa-lead · AO session hotel-mgmt-913
