@@ -1067,18 +1067,24 @@ family these conditions trace to.
   of that type, then the guard decides on the recorded capacity and
   not on the request's `sellableUnits`: a caller that sends a number
   far above N buys no extra booking, a caller that sends a number
-  below N is not refused while recorded units are still free, the Nth
-  overlapping confirmed reservation is the last one accepted, and the
-  next one refuses with `CONFLICT` naming the room type and the dates
-  and writes nothing — so the request's number is advisory and can
-  neither raise nor lower the ceiling. Given a confirmed reservation,
-  when a caller changes its dates or room type to a combination whose
-  recorded capacity is already fully booked, then the change refuses
-  with `CONFLICT`, the reservation keeps its previous dates, type,
-  guest, and price, and no change-history entry is written. Given a
-  reservation that is cancelled, marked no-show, or checked in, when
-  its dates are considered, then it stops counting as a held unit
-  exactly as today, so released capacity becomes sellable again.
+  below N, sends zero, or omits the field altogether is not refused
+  while recorded units are still free, the Nth overlapping reservation
+  that holds a unit is the last one accepted, and the next one refuses
+  with `CONFLICT` naming the room type and the dates and writes
+  nothing — so the field is optional and advisory and can neither
+  raise nor lower the ceiling, while a malformed value is still
+  refused as `VALIDATION_FAILED` naming the field. Given a confirmed
+  reservation, when a caller changes its dates or room type to a
+  combination whose recorded capacity is already fully booked, then
+  the change refuses with `CONFLICT`, the reservation keeps its
+  previous dates, type, guest, and price, and no change-history entry
+  is written. Given a reservation that is cancelled, marked no-show,
+  or closed, when its dates are considered, then it releases its held
+  unit exactly as today, so freed capacity becomes sellable again;
+  given a reservation that is checked in, when its dates are
+  considered, then it keeps holding its unit exactly as today, because
+  the in-house share of a room type must not be subtracted from the
+  recorded capacity twice (BR-47).
   Traces to: US-RES-1, US-RES-2; FR-RES-1, FR-RES-2, FR-RTE-5,
   NFR-CON-1 (Refs #631).
 - AC-OVB-2 — Given the capacity source for a booking's room type and
@@ -1114,7 +1120,10 @@ family these conditions trace to.
   NFR-CON-1 (Refs #631).
 
 Done when: an inflated `sellableUnits` no longer buys extra bookings on
-Create or Modify, an unreadable capacity source refuses the booking
+Create or Modify, a request that omits, zeroes, or understates the
+field is still booked while recorded capacity is free, a checked-in
+reservation still holds its unit while cancelled and no-show rows
+release theirs, an unreadable capacity source refuses the booking
 fail-closed instead of accepting it, two simultaneous last-unit
 requests still yield exactly one winner and one `CONFLICT`, and the
 desk Book panel and its guards stay green unchanged.
@@ -1222,4 +1231,4 @@ unchanged and the sections 1–14 done-conditions keep their behaviour:
 conditions and their refusal copy stand as written.
 
 <!-- ao-role: product-owner -->
-Role: product-owner · AO session hotel-mgmt-931
+Role: product-owner · AO session hotel-mgmt-938

@@ -1916,13 +1916,24 @@ Decision (four parts):
    read — the Rates per-date sellable inventory or the Rooms room
    inventory — is the `architect`'s call, and a sibling issue owns the
    room-state accounting inside that source (#636). The product rule is
-   only that the caller never sets the ceiling.
-2. **`sellableUnits` becomes advisory, not optional.** The field stays
-   in both contracts for the deprecation window so the desk build that
-   sends it keeps working, and it is still validated as today, but the
-   guard ignores it: a large value buys nothing and a small value
-   refuses nothing. Relaxing the contract (removing the field or
-   marking it optional) is a follow-up, not this change.
+   only that the caller never sets the ceiling. The demand side keeps
+   the as-built counted-state set (`confirmed` and `checked-in`,
+   `services/reservations/internal/store/store.go:194-196`): cancelled,
+   no-show, and closed rows release their unit, while a checked-in row
+   keeps holding its own, so the in-house share of a type is never
+   subtracted from the recorded capacity twice (`AC-OVB-1`).
+2. **`sellableUnits` becomes optional and advisory.** The field stays
+   in both request contracts for the deprecation window so the desk
+   build that sends it keeps working, but it is optional and the guard
+   ignores its value: a large value buys nothing, a small, zero, or
+   absent value refuses nothing, and a malformed value is still
+   refused shape-first (`VALIDATION_FAILED` naming the field; an
+   integer `>= 0` when present). The contract change is additive —
+   `CreateReservation` 1.1 -> 1.2 and `ModifyReservation` 1.0 -> 1.1 —
+   and the two code paths that would otherwise let the field still
+   decide go with it: the store's `< 1` validation and the handler's
+   "absent means 0" default. Removing the field from either contract
+   is the deprecation follow-up, not this change.
 3. **An unreadable capacity source refuses the booking.** A transport
    failure, timeout, 5xx, or unwired client refuses `Create` and
    `Modify` fail-closed with `UPSTREAM_UNAVAILABLE` (503) naming the
@@ -1987,7 +1998,8 @@ recomputation) is the sibling audit item this change does not touch;
 as-built booking path is
 `docs/architecture/services/reservations.md` (sections 3–5). Out:
 implementation (the downstream `dev` PR, its guards, and the compose
-wiring); removing or relaxing `sellableUnits` in either contract;
+wiring); removing `sellableUnits` from either contract (the
+deprecation follow-up, not this change);
 the price-basis decision (#632); Rates' own `totalUnits` handling;
 which service owns the capacity read and the seam's shape
 (`architect`); FR/NFR wording and business rules
@@ -2344,7 +2356,8 @@ Section 4 stays the rollout-wide contract; for steps 2–4:
 | Criterion | Evidence in this spec |
 |---|---|
 | A `CreateReservation`/`ModifyReservation` request with an inflated `sellableUnits` no longer bypasses the overbooking guard | Section 6.16 decisions 1 and 2; `AC-OVB-1`; the guard's ceiling becomes the recorded capacity while today's comparison takes it from the request field (`store.go:221` on Create, `:375` on Modify) |
-| A below-capacity `sellableUnits` no longer refuses a bookable stay, and a Modify into a sold-out date or type refuses with `CONFLICT` while keeping the reservation unchanged | Section 6.16 decision 2; `AC-OVB-1` (the below-capacity clause and the Modify clause); the change-history refusal clause |
+| A below-capacity `sellableUnits` no longer refuses a bookable stay — including a zero or absent value — and a Modify into a sold-out date or type refuses with `CONFLICT` while keeping the reservation unchanged | Section 6.16 decision 2 (optional and advisory, shape-validated only); `AC-OVB-1` (the below-capacity, zero, and absent clauses and the Modify clause); the change-history refusal clause |
+| The counted reservation states stay as-built: cancelled, no-show, and closed rows release their unit, a checked-in row keeps holding its own | Section 6.16 decision 1 (the counted-state clause); `AC-OVB-1` final clauses; `BR-47`; the as-built set at `services/reservations/internal/store/store.go:194-196` |
 | When the capacity source cannot be read, the booking is refused fail-closed with `UPSTREAM_UNAVAILABLE` (503), not allowed | Section 6.16 decision 3 and the fail-closed state row of the UI contract delta; `AC-OVB-2`; the unwired-client and 4xx-passthrough clauses |
 | The guard stays atomic: two simultaneous last-unit requests still yield exactly one winner and one `CONFLICT` | Section 6.16 decision 4; `AC-OVB-3`; `NFR-CON-1`; the single-critical-section clause and the replay clause |
 | Tests cover the inflated-input caller and the unreadable-capacity caller | Section 6.16 desk-guards paragraph (existing Book cases stay green) and the service-guard list handed to the architect's LLD verification plan; the `qa-lead` traceability rows for #631 are the sibling handoff |
@@ -2353,4 +2366,4 @@ Section 4 stays the rollout-wide contract; for steps 2–4:
 | Rollback is a single revert with no schema or data migration | Section 6.16 (rollback); `sellableUnits` stays in both contracts for the desk build, so no migration exists in either direction |
 
 <!-- ao-role: product-owner -->
-Role: product-owner · AO session hotel-mgmt-931
+Role: product-owner · AO session hotel-mgmt-938
