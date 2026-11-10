@@ -223,6 +223,13 @@ charges and charge items to the folio.
 Given an in-house stay; when staff post a nightly room charge or a
 hotel-defined charge item; then the folio line shows the item, amount,
 and posting time, and the balance increases by the line amount.
+Amendment (Refs #600): the desk check-out posts the stay's nightly
+room charge itself, at its review step and before any balance is
+presented, at the stay's own frozen quoted total (`FR-RTE-5`), once
+per stay and never a second time, and posts nothing for a stay whose
+quoted total is zero; a room charge that cannot be posted refuses the
+check-out instead of closing an uncharged folio (section 21,
+`FR-CKP-1`..`FR-CKP-5`).
 
 FR-BIL-3 — Payment recording. Staff can record cash and card
 payments against the folio.
@@ -563,7 +570,7 @@ product scope have no FR and are listed in section 6.
 | Repeat-guest recognition | FR-GST-3 | Guard books for a past guest and checks the returning flag and stay count |
 | Booking confirmation record | FR-GST-4 | Guard produces a confirmation and checks hotel, guest, dates, type, and price |
 | Guest folio | FR-BIL-1 | Guard opens a stay folio and checks single folio with running balance |
-| Room and extra charges | FR-BIL-2 | Guard posts room and extra lines and checks lines plus balance movement |
+| Room and extra charges | FR-BIL-2 | Guard posts room and extra lines and checks lines plus balance movement; the desk check-out review posts the stay's one nightly room charge at its frozen quoted total when the folio carries none, posts nothing for an already-charged folio or a zero quote, and refuses the review when the charge cannot be posted (Refs #600) |
 | Payment recording | FR-BIL-3 | Guard records cash and card payments and checks method, time, and balance movement |
 | Invoice and receipt | FR-BIL-4 | Guard prints the invoice and receipts and checks exact match to folio and payments |
 | Configurable taxes and fees | FR-BIL-5 | Guard sets rules, posts a charge, and checks derived amounts and balance |
@@ -3637,10 +3644,13 @@ change, and no service deploy.
   provenance is not specified: under the owner's UI-first
   constraint it stays a defence-in-depth follow-up, filed as its own
   issue if the lab shows the UI cannot hold the obligation alone.
-- A charge-posting obligation for the desk flow is not specified: if
-  the lab classifies symptom 2 as a missing charge, it is filed as a
-  follow-up and the charge/payment posting economics (nightly charge
-  job, rates, payment capture) stay as they are.
+- A charge-posting obligation for the desk flow is not specified in
+  this section: if the lab classified symptom 2 as a missing charge,
+  it is filed as a follow-up and the charge/payment posting economics
+  (nightly charge job, rates, payment capture) stay as they are. The
+  lab did classify it that way (`docs/testing/evidence/588/README.md`,
+  symptom 2c), and the obligation it filed is specified in section 21
+  (Refs #600) without changing anything above.
 - A release action on the Rooms map, a redesign of the Stay panel,
   rewritten open-balance policy wording beyond `BR-17`, and the
   retired legacy static pages are out of scope.
@@ -4089,5 +4099,323 @@ them.
   part; no implementation PR opens until `SPEC-GATE PASS` on the
   then-current head.
 
+## 21. Stay check-out room-charge posting (Refs #600)
+
+Requirements delta for the #600 change: the desk check-out posts the
+stay's room charge at its own review step, before it presents a
+balance, at the stay's frozen quoted total, one line per stay. The
+obligation is not new — `FR-BIL-2` already requires nightly room
+charges to be posted to the folio and `FR-BIL-1` already makes that
+folio the stay's single running account — but nothing in the desk flow
+performed it, so the obligation had no guard on the close: a charge
+reached a folio only from the Folio screen or from the API desk loop
+(`script/e2e-desk-loop.sh:365`), a stay the desk checked in and out
+ended with a folio that never carried the room, that folio read
+`0.00`, and `BR-17` correctly let the zero balance pass. The #588 lab
+record classified this as **missing (charge posting)**, not a gate
+bypass (`docs/testing/evidence/588/README.md` symptom 2c), and section
+19.6 carried it as the one follow-up that change left open.
+
+The decision lives with `product-owner` in
+`docs/product/desk-ui-design-rollout.md` [section 6.14](../product/desk-ui-design-rollout.md)
+(the five-part decision, the one-line-per-stay shape, the T2 UI
+contract delta; tier T2 confirmed), recorded as D-24 in
+`docs/project/decision-log.md`. The chosen posting point and its
+per-flow diagram are named in the LLD
+(`docs/architecture/lld.md` [section 20](../architecture/lld.md),
+`architect`-owned). The binding done-condition is `AC-DSK-19` in
+`docs/product/acceptance-criteria.md` [section 11](../product/acceptance-criteria.md),
+which keeps `AC-FDK-2` and the #588 `AC-DSK-18` as they stand and
+gains the posting pointer. This section records only the T2 spec-gate
+requirements delta: the decision (21.1), the explicit no-change
+statements (21.2), the FR delta (21.3), the NFR statement (21.4), the
+traceability handoff with its per-flow diagram (21.5), and the gate
+dependencies (21.6). No `docs/README.md` row flips: the six
+requirements files this change touches are already `active`.
+
+### 21.1 Decision: the review posts one room charge at the stay's frozen quote
+
+Three posting points were candidates for a stay the desk checks in;
+the decision picks the desk check-out review:
+
+| Posting point | Verdict | Reason |
+|---|---|---|
+| A nightly background job | rejected | The repo runs no scheduler, and adding one is a new subsystem (T3) with its own restart, catch-up, and double-post semantics — a much larger change than the missing obligation. |
+| The server-side close | rejected | The close stays the desk orchestration the #588 gate shaped: the desk decides on what it read, and Billing is told nothing the desk did not read (section 19). A server-side post would move money movement behind a call whose input the desk supplies anyway. |
+| The desk check-out review | **chosen** | The review is the only route to the close, so every close presents a folio that carries the room it paid for, and the #588 gate then refuses an unpaid close on every route (`FR-CKO-4`). One write, one read, inside a step the operator already takes. |
+
+The decided behaviour, in five parts:
+
+- **The review posts before the balance is presented.** On the
+  check-out review the desk reads the folio, posts the stay's room
+  charge when the folio carries none, re-reads the folio, and only
+  then shows a balance and the check-out route. No route to the close
+  exists before that review (`FR-CKO-4` keeps every route gated).
+- **The amount is the stay's own frozen quote.** The charge is the
+  `priceBasis.totalMinor` of the booking the stay was checked in
+  against (`FR-RTE-5`, `BR-13`), resolved through the reservation
+  calendar entry that links the stay and read back as a booking — live
+  stay rows carry no booking reference. Rates repricing, proration for
+  early departure or extension, and any re-derivation from today's
+  prices are out of scope (`BR-20` keeps recording the actual times and
+  decides no money): the desk posts the price the stay was booked at.
+- **One room-charge line per stay, never a second.** The line is one
+  `nightly-room-charge` line for the stay, named for the room the stay
+  held (or the plain room-charge name when the loaded room state
+  cannot name it), posted under one key per stay so a repeated review
+  replays instead of charging twice (`FR-BIL-2` fixes the item,
+  amount, posting time, and balance movement, not a line-per-night
+  split; section 19.4's concurrency statement holds unchanged). A
+  folio that already carries a room-charge line — posted from the
+  Folio screen or by the API desk loop — is left untouched, and a stay
+  whose quoted total is zero posts nothing and reviews the folio as
+  read, so a free stay still closes on the zero balance `BR-17`
+  allows. A per-night breakdown of that one line is a separate
+  folio-presentation decision and is not made here.
+- **A charge that cannot be posted refuses the review.** A stay whose
+  booking cannot be resolved refuses in one plain catalogue sentence
+  naming the room charge and the next step; a room-charge post that is
+  refused or fails ends the review in the plain panel error sentence
+  for that refusal. Either way nothing is posted, no balance and no
+  check-out route are presented, and the stay remains in house — a
+  charge that did not land never reads as a reviewed folio.
+- **The #588 gate is unchanged and becomes meaningful.** After the
+  post, `BR-17` and `FR-BIL-7` govern exactly as written: a settled
+  folio or a recorded, provenanced approval passes; an open balance
+  without one refuses on every UI route; the confirm route still
+  re-reads the balance. The lab case that opened #588 — a fresh folio
+  reading zero and closing — now carries the room charge and refuses
+  until it is settled or approved.
+
+### 21.2 Explicit no-change statements
+
+- The capabilities keep their wording and targets: `FR-BIL-2`
+  gains an amendment pointer to this section (section 1.6) and keeps
+  its Given/When/Then conditions, and `FR-BIL-1`, `FR-BIL-5`,
+  `FR-BIL-7`, `FR-FDK-2`, and `FR-RTE-5` are untouched. What changes
+  is where the desk performs the posting, not what the capability
+  promises.
+- No new MVP capability, story, or business scope enters the MVP
+  count: section 4 keeps its 40 mapped capabilities and its coverage
+  line, and only the `FR-BIL-2` handoff note gains the posting
+  sentence. The #600 behaviour is numbered as slice-scoped
+  requirements (`FR-CKP-*`, section 21.3) on the section 10–20
+  pattern, and the #588 `FR-CKO-*` ids are unchanged.
+- Contracts keep their fields and error cases:
+  `PostCharge` (`stayId`, `itemKind`, `itemName`, `amountMinor`, the
+  optional `idempotencyKey`, `actor`), `GetFolioBalance` (including
+  the charge lines the review reads), and `GetReservation` (including
+  the `priceBasis` total) are used as they are documented. The one
+  contract-shape addition is the optional `stayId` link on a
+  reservation calendar entry so a stay can be resolved to the booking
+  it was checked in against; it is additive and optional, adds no
+  operation, request member, or error code, and is recorded in
+  `integration-contract-needs.md` section 3c. No schema, stored-value,
+  or service-side derivation change is specified.
+- No scheduler, no nightly job, no background catch-up, no payment
+  capture, and no payment-method change (`BR-23`, `BR-27` stand).
+- The check-out gate, the room release, and the refusal wording they
+  use are the #588 slice unchanged (`FR-CKO-1`..`FR-CKO-5`,
+  `AC-DSK-18`): the posting runs before the gate reads the balance and
+  never inside or instead of it.
+- Money, dates, and numbers keep their decided display shape
+  (section 14); the balance line shows the same desk money form it
+  already shows, and the posted line adds no display convention.
+- Print output is unchanged (`FR-BIL-4`, `NFR-DSK-2`): the posting
+  adds no print surface or route, and a printed invoice now shows the
+  room line it was always meant to show, in the existing layout.
+- Refusal semantics are unchanged for every other condition: the
+  unknown-reference, unknown-room, already-closed, and generic error
+  wordings fire on the same conditions with the same plain strings,
+  and `FR-CUS-1`, `FR-RTE-4`, and the check-in refusals are
+  untouched. The one new sentence (`desk.stay.refused_room_charge`)
+  is owned by `product-owner` in rollout section 6.14.
+- No role change: the three roles stay fixed (requirements section
+  3.2), and the posting carries the signed-in staff member as `actor`
+  under the existing audit rule (`NFR-AUD-1`, `BR-36`).
+- Sections 7 through 20 stand with their wording and targets
+  unchanged, except the `FR-BIL-2` amendment pointer in section 1.6,
+  the section 4 handoff note, and the cross-reference note in section
+  19.6.
+
+### 21.3 Behaviour-scoped functional requirements
+
+Ids use the `CKP` (check-out posting) namespace, continuing the
+slice-scoped pattern of sections 10 through 20; `CKO` stays the #588
+check-out release-and-gate namespace. They constrain the Stay
+check-out review only, and each maps to an accepted done-condition in
+`AC-DSK-19`.
+
+FR-CKP-1 — The check-out review posts the stay's room charge before
+it presents a balance.
+Given an in-house stay whose folio carries no room charge; when staff
+open the check-out review; then the desk posts exactly one
+`nightly-room-charge` line for that stay, named for the room the stay
+held or with the plain room-charge name when the loaded room state
+cannot name it, with its amount equal to the stay's frozen quoted
+total (`priceBasis.totalMinor`, `FR-RTE-5` — never a re-derived,
+prorated, or today's-price figure), before any balance is shown; and
+the balance the review then presents includes that line. Given a
+review that cannot read the folio; then no charge is posted and the
+review ends in the plain error state it already uses.
+
+FR-CKP-2 — One room charge per stay, never a second.
+Given a folio that already carries a room-charge line, whether it was
+posted from the Folio screen or by the API desk loop; when staff
+review the check-out; then nothing is posted and the review reads the
+stored lines and balance as they are. Given a review repeated after a
+post that landed; then the repeated review posts nothing and the stay
+carries exactly one room-charge line. The desk never posts a second
+room charge for the same stay by any route.
+
+FR-CKP-3 — A zero quote posts nothing.
+Given a stay whose frozen quoted total is zero; when staff review the
+check-out; then no line is posted and the review proceeds on the folio
+as read, so a free stay still closes on the zero balance `BR-17`
+allows and no zero-amount line is invented.
+
+FR-CKP-4 — A charge that cannot be posted refuses the review.
+Given a stay whose booking cannot be resolved from the calendar it was
+checked in against; when staff review the check-out; then the panel
+refuses in one plain catalogue sentence naming the room charge and the
+next step (check the booking, try again), with no technical code and
+no raw envelope, nothing is posted, and no balance and no check-out
+route are presented. Given a room-charge post the service refuses or
+that fails; then the review ends in the plain panel error sentence for
+that refusal, no balance and no check-out route are presented, and the
+stay remains in house. In both cases the desk sends no `CheckOut`, and
+a charge that did not land never reads as a reviewed folio.
+
+FR-CKP-5 — The close that follows is gated on a settled or approved
+folio.
+Given a folio that now carries the posted room charge with a non-zero
+balance and no valid recorded approval; when staff attempt the close by
+the Check out button, the dialog confirm, or a replayed or double
+click; then no `CheckOut` is sent, the stay remains in house, and the
+plain open-balance refusal names the approval next step. Given a
+settled folio, or an open balance with a recorded, provenanced
+approval; then the close proceeds exactly as `FR-CKO-4` and
+`FR-CKO-5` state. The posting never substitutes for the gate: a
+zero-balance pass still requires the balance to be zero after the
+posting step.
+
+### 21.4 Non-functional requirements delta: no-change statement
+
+No new NFR is added. The existing NFRs cover the change:
+
+- Internationalisation and catalogue coverage (`NFR-I18N-1`,
+  `NFR-DSK-1` hold): the one new string
+  (`desk.stay.refused_room_charge`) is specified by `product-owner` in
+  rollout section 6.14 and ships in `messages/en.json`,
+  `messages/vi.json`, and the runtime mirrors with placeholders
+  intact; every other state reuses an existing catalogue string, and
+  `script/catalogue-coverage-check.sh` stays green.
+- Desk response (`NFR-PERF-1` holds): a review that needs the charge
+  costs one folio read, one calendar read, one booking read, one
+  `PostCharge`, and one more folio read, all inside the action the
+  operator already took; no read is added on screen entry, and
+  nothing polls.
+- Concurrency and safety (`NFR-CON-2`, `BR-11` hold): the posting
+  takes no room assignment and changes no room state; the one-key-per-
+  stay post makes a repeated or replayed review a replay rather than a
+  second charge (`BillingService.postCharge` claims the key before it
+  inserts), and the panel's in-flight guard keeps a double-clicked
+  review a no-op.
+- Audit (`NFR-AUD-1`, `BR-36` hold): the posted line records the
+  acting staff member and its posting time under the existing charge
+  event, and no audit event type is added or dropped.
+- Cash and card only, and the settlement rule, are unchanged
+  (`BR-23`, `BR-27`, `BR-17`).
+- Availability and offline behaviour (`NFR-AVL-1` holds): the review,
+  the post, and the refusal all run on the on-premise installation as
+  when connected; a read that fails renders the plain read-error state
+  and queues nothing.
+- Time and locale (`NFR-TZ-1`, `NFR-I18N-1`, `BR-43` hold): the
+  posting time is a stored timestamp with its UTC offset, the desk
+  shows existing display forms, and the calendar read uses the stay's
+  actual arrival day on the hotel's local calendar.
+
+### 21.5 Traceability handoff for `qa-lead`
+
+Each row traces to `AC-DSK-19` and to this section's FRs. Guards that
+exist are cited `file:line` and must stay green; where no guard exists
+yet the row names the missing guard explicitly and the implementation
+PR must create it. The `StayView` guards below were
+written by the implementation PR for #600 and are cited at its head
+(`ao/hotel-mgmt-910/600-desk-checkout-room-charge`, commit
+`1b43762`); `qa-lead` re-pins them at the merged head and owns the
+matching rows in
+`docs/testing/desk-ui-rollout-test-traceability.md`,
+`docs/testing/traceability-matrix.md`, and the check-out cases in
+`docs/testing/manual-qa-testsuite.md`.
+
+| Item | Guard (on disk at the implementation head; a row marked missing is created by the implementation PR) | Handoff note for `qa-lead` |
+|---|---|---|
+| FR-CKP-1 post at the frozen quote | `app/src/views/StayView.test.ts:1207-1290` (review posts one `nightly-room-charge` line: item named for the room, `amountMinor` `120000` from the booking's `priceBasis.totalMinor`, `idempotencyKey` `room-charge:s-1`, then the balance line including it); `app/e2e/stay.spec.ts:78-103` (the browser flow posts its own charge: one line, amount equal to the quote total, item named for the stay's room) | The assertion must be "one line, at the booking's own quoted total, before a balance is presented". The browser case must not post the charge through the API any more — the desk performs it, and a seed-side post would mask a regression |
+| FR-CKP-2 no second charge | `app/src/views/StayView.test.ts:1207-1290` (the repeated review at `:1281-1290` posts nothing), `:1291-1310` (a folio that already carries a room charge is left untouched, zero `PostCharge` calls) | The two cases are separate obligations: same-review replay, and a charge written before the review. One room-charge line per stay is the observable |
+| FR-CKP-3 zero quote | Missing guard: no case covers a stay whose frozen quoted total is zero (nothing posted, the review proceeds on the folio as read, and the zero-balance close still passes). The implementation PR creates it | The case must prove both halves: zero `PostCharge` calls, and the review reaching the zero-balance clear state on the read folio |
+| FR-CKP-4 unpostable charge refuses | `app/src/views/StayView.test.ts:1311-1357` (an unresolvable booking refuses the review: plain sentence, zero `PostCharge`, empty folio status, no Check out button, zero `CheckOut`); missing guard: no case covers a `PostCharge` the service refuses (for example `VALIDATION_FAILED`) or a transport failure, which must end the review in the plain panel error with no close route | The refusal must name the room charge and the next step in both locales and show no code or envelope; the failure case must assert the stay stays in house and the review leaves no check-out context behind |
+| FR-CKP-5 gate unchanged after the post | `app/src/views/StayView.test.ts:1086-1206` (settled close still clears), `:1207-1290` (the posted charge opens the balance: plain open-balance refusal, approval form, disabled Check out, zero `CheckOut`), `:1358-1476` (approval route), `:1612-1676` (a charge added between review and confirm refuses on the confirm route), `app/src/views/desk-edge-guards.test.ts:970-1033` (the close still happens once and releases the departed room once) | The gate cases must run on a folio that carries the room charge, not on a zero read; the `desk-edge-guards` close case keeps its "exactly one release" assertion and gains the post-free default folio the PR's stub now returns |
+| Catalogue parity | `messages/en.json`, `messages/vi.json`, the eight runtime mirrors; `script/catalogue-coverage-check.sh` | One new key in both locales with placeholders intact; the refusal string is the only new copy |
+| Design-facts gate | `app/e2e/design-facts.spec.ts`, `app/e2e/design-facts.ts` Stay entry, `docs/technical/desk-ui-fact-schema.md` | The review state is flow state outside the fact schema, so no fact changes and the gate stays green with no fact edit; a fact edit means the implementation drifted into the resting render |
+
+Per-flow implementation diagram (T2). The flow source is `product-owner`
+section 6.14 and the `architect` code-edge diagram is LLD section 20;
+this diagram is the requirements-side view, drawn from the same flow
+and citing the review step it constrains:
+
+```mermaid
+flowchart TD
+    A[Stay: departing stay picked, Review folio clicked] --> B[GetFolioBalance]
+    B --> C{Folio already carries a nightly-room-charge line?}
+    C -- yes --> G[Review the read lines, balance, and approval]
+    C -- no --> D[Resolve the stay booking: QueryCalendar then GetReservation]
+    D -- booking not resolvable --> R[Plain room-charge refusal; stay in house; no balance, no close route]
+    D -- quoted total zero --> G
+    D -- quoted total above zero --> F[PostCharge nightly-room-charge at priceBasis.totalMinor, key room-charge:stayId]
+    F -- refused or failed --> E[Plain panel error for that refusal; stay in house; no balance, no close route]
+    F -- posted --> H[GetFolioBalance again; the balance includes the charge]
+    H --> G
+    G -- balance zero --> I[Close clear; the close re-reads the balance, AC-DSK-18]
+    G -- open balance with a provenanced recorded approval --> I
+    G -- open balance without one --> J[Plain open-balance refusal naming the approval next step; approval form opens]
+```
+
+Failure/rollback path: an unresolved booking and a refused or failed
+post both end the review with nothing posted, no balance, and no
+check-out route, so the stay cannot be closed uncharged; a folio that
+already carries the charge is never charged twice; and the whole
+change reverts with the single implementation PR (view, guards,
+browser flow, catalogue keys) because it carries no data migration,
+no contract removal, no schema change, and no service deploy — folio
+lines already written stay valid. `BR-17`/`FR-BIL-7` keep governing
+the close whatever the posting does.
+
+### 21.6 Explicitly not specified here (plus gate dependencies)
+
+- Implementation — the review change, the guard rewrites, the browser
+  flow, the catalogue keys, the evidence, and the LLD edge — is the
+  downstream `dev` PR for #600, not this section.
+- Acceptance criteria are `product-owner` work (`AC-DSK-19` plus the
+  `AC-FDK-2` pointer and rollout section 6.14, which also carries the
+  T2 UI contract so requirements do not reword absent UI
+  expectations); the LLD section 20 posting point and per-flow
+  diagram are `architect` work; the guard mapping and traceability
+  completions above are `qa-lead` work.
+- A nightly scheduler, a server-side close posting or any server-side
+  re-derivation of the charge, rates repricing, proration for early
+  departure or extension, payment capture, a per-night breakdown of
+  the folio's room-charge line, and the retired legacy pages are out
+  of scope; a scheduler or a server-side obligation would make the
+  change T3 and need its own ADR.
+- The decision-log entry D-24, the posting-time choice between the
+  possible trigger moments, and the product wording of the refusal
+  sentence stay with `product-owner`.
+- The specified change is tier T2 (reader-visible desk behaviour
+  inside one view: one write and one refusal state on a step that
+  already exists; no new subsystem, data model, endpoint, gate,
+  print, or stored-value change). This section is its FR/NFR part; no
+  implementation PR opens until `SPEC-GATE PASS`.
+
 <!-- ao-role: business-analyst -->
-Role: business-analyst · AO session hotel-mgmt-887
+Role: business-analyst · AO session hotel-mgmt-912

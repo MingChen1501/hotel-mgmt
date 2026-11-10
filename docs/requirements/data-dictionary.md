@@ -108,6 +108,13 @@ amount; posting time; derived tax and fee amounts.
 
 Owning FRs: FR-BIL-2, FR-BIL-5.
 
+A stay carries at most one nightly room charge line (`BR-45`): the
+desk check-out posts it at the stay's frozen quoted total when the
+folio carries none, one line for the whole stay rather than one line
+per night, and never a second one. That amount is the price basis
+total of the booking the stay was checked in against (section 11), not
+a re-derived figure, and a stay quoted at zero carries no room charge.
+
 ## 8. Room
 
 The physical sellable unit of the hotel: one numbered space a guest
@@ -231,9 +238,12 @@ owning FRs. The Business date entry (section 14) defines a
 previously undefined term referenced by `FR-BIL-6`; it adds no
 behaviour beyond the owning FRs. The Nightly price entry (section 15)
 defines the per-night price record the #590 management screen writes,
-tracing `FR-RTE-1` and `BR-44`, and adds no behaviour beyond them.
+tracing `FR-RTE-1` and `BR-44`, and adds no behaviour beyond them. The
+Charge entry (section 7) gains the once-per-stay room-charge statement
+the #600 desk check-out relies on (`BR-45`, `FR-CKP-1`..`FR-CKP-5`) and
+adds no entry, field, or behaviour beyond those sources.
 
 Counts: 15 dictionary entries covering the 7 entity terminology concepts (T-1..T-7); T-8 is a spelling convention with no entry.
 
 <!-- ao-role: business-analyst -->
-Role: business-analyst · AO session hotel-mgmt-887
+Role: business-analyst · AO session hotel-mgmt-912

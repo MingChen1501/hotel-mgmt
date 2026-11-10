@@ -72,6 +72,7 @@ front-desk staff, manager, or owner account acting within its access
 | BR-25 | Tax and fee amounts on folio lines derive from the hotel's tax and fee rules, and the balance includes them. | FR-BIL-5; US-BIL-5 |
 | BR-26 | Day-close produces the totals of charges and of payments per method for the business date, and the totals agree with the folios posted that day. Which totals must balance and who signs them off is undecided. | FR-BIL-6; OQ-3 (requirements section 5); US-BIL-6 |
 | BR-27 | Which payment methods beyond cash and card (for example bank transfer or hotel credit) payment recording must support on day one is undecided. Until decided, payment recording covers cash and card only. | OQ-1 (requirements section 5); FR-BIL-3 |
+| BR-45 | A stay's room charge is posted once per stay, at the stay's own frozen quoted total, and never derived again from today's prices. The desk check-out posts it at its review step, before any balance is presented, so no folio closes carrying no room charge; a second room charge is never posted for the same stay, a stay quoted at zero is charged nothing, and a room charge that cannot be posted refuses the check-out instead of closing an uncharged folio. Whether the guest settled or the hotel approved the open balance stays the check-out gate's question, not the charge's. | FR-BIL-2; FR-BIL-7; FR-RTE-5; FR-CKP-1..FR-CKP-5; BR-13; BR-17; `AC-DSK-19`; Refs #600 |
 
 ## 6. Rooms and housekeeping
 
@@ -126,6 +127,7 @@ section 3.3). Fixed items no hotel may change in the MVP.
 | Out-of-order blocks | Reason and date range per block (`BR-29`) | Blocked dates take no reservation or check-in |
 | Payment methods | — (none) | Cash and card only (`BR-23`) |
 | Folio structure | — (none) | One folio per stay; no split across payers (`BR-21`) |
+| Room-charge posting | — (none) | One room charge per stay, at the stay's frozen quoted total, posted by the desk check-out review (`BR-45`) |
 | Roles and access | — (none) | Three fixed roles with fixed reach (`BR-35`) |
 | Automation | — (none) | No automatic status changes, reminders, or messages from lifecycle events |
 
@@ -155,14 +157,18 @@ canonical-vs-display boundary for the #503 business-date decision
 behaviour beyond the traced FRs/NFRs, and BR-44 states the per-night
 price granularity and the no-inference rule the #590 management
 screen relies on (tracing `FR-RTE-1`, `FR-RTE-5`, and the #589
-booking refusal) without adding behaviour beyond those sources.
+booking refusal) without adding behaviour beyond those sources, and
+BR-45 states the once-per-stay room-charge obligation and its frozen
+quoted total the #600 desk check-out relies on (tracing `FR-BIL-2`,
+`FR-RTE-5`, `FR-CKP-1`..`FR-CKP-5`, and `AC-DSK-19`) without adding
+behaviour beyond those sources.
 Policies with no decided source appear as open questions
 OQ-1..OQ-5. No rule introduces behaviour beyond the traced
 FRs/NFRs/stories. Later capabilities from requirements section 6
 (waitlist, split folios, integrated payments, automated workflow
 rules, multi-property operation, and the rest) carry no rule here.
 
-Counts: 44 business rules, 5 open questions.
+Counts: 45 business rules, 5 open questions.
 
 <!-- ao-role: business-analyst -->
-Role: business-analyst · AO session hotel-mgmt-887
+Role: business-analyst · AO session hotel-mgmt-912
