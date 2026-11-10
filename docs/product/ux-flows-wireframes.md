@@ -142,6 +142,13 @@ every UI route to that close on the freshly read balance, so `P`
 above is a panel action, not an API-loop-only step (rollout spec
 section 6.13, `AC-DSK-18`).
 
+The room itself is charged by the desk too (Refs #600): before the
+review shows a balance, the Stay check-out posts one room-charge
+line for the stay at the frozen quoted total when the folio carries
+none, so `L` no longer starts from `0` for a stay the desk checked
+in and an unpaid room reaches `M` instead of closing (rollout spec
+section 6.14, `AC-DSK-19`).
+
 ### J2. Housekeeping (rooms)
 
 Covers QA finding 2: the desk UI has no housekeeping clean/inspect
@@ -189,6 +196,10 @@ balance (no partial post); corrections are adjustment entries with a
 reason — the original charge line is never edited in place.
 Cash-only recording baseline per D-10 in
 `docs/project/decision-log.md` (no integrated payment processing).
+On the desk path the room charge itself is posted by the Stay
+check-out review when the folio carries none (Refs #600, rollout
+spec section 6.14), so `B` covers extras, corrections, and a folio an
+operator opens before any desk review.
 
 ### J4. Admin (users, configuration, audit)
 
@@ -449,4 +460,4 @@ five journey-spec follow-ups to it.
 | Design milestone accepted or alternative assigned | Section 8 (proposal + alternative, owner decision on #412) |
 
 <!-- ao-role: product-owner -->
-Role: product-owner · AO session hotel-mgmt-871
+Role: product-owner · AO session hotel-mgmt-911

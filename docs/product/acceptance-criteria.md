@@ -80,8 +80,11 @@ the calendar with correct dates, room type, and state.
   presented as the final invoice, and the room state becomes vacant
   and dirty. The desk surfaces must reach that room state without a
   second manual step and must refuse an unapproved open-balance
-  close on every route they offer (`AC-DSK-18`, Refs #588).
-  Traces to: US-FDK-2; FR-FDK-2, FR-BIL-7.
+  close on every route they offer (`AC-DSK-18`, Refs #588), and
+  the folio they close must carry the stay's room charge, posted
+  by the desk check-out review before it presents a balance
+  (`AC-DSK-19`, Refs #600).
+  Traces to: US-FDK-2; FR-FDK-2, FR-BIL-2, FR-BIL-7.
 - AC-FDK-3 — Given an in-house stay and a vacant, clean, inspected
   room, when staff move the guest to the new room, then the stay links
   to the new room, the old room becomes vacant and dirty, and the move
@@ -394,7 +397,7 @@ Product-owner rollout spec: `docs/product/desk-ui-design-rollout.md`
 conflicting parts of the #412 journey record (D-12 in
 `docs/project/decision-log.md`); each conflict found during
 implementation is recorded on the affected sub-issue with the
-owner decision. These 18 conditions cover the six screens
+owner decision. These 19 conditions cover the six screens
 (Main #420, Stay #422, Onboarding #425 plus steps 2–4 in #438,
 Rooms #424, Book #421, Folio #423) plus the shared shell,
 the catalogue rule, the business-date display decision
@@ -404,8 +407,10 @@ context in the charges-card title (#568, AC-DSK-14), the
 app-localized Book date pickers (#581, AC-DSK-15), the
 list-backed stay picker on the Folio and Print open steps
 (#582, AC-DSK-16), the Stay arrival-pick candidate preload
-(#586, AC-DSK-17), and the Stay check-out room release plus
-unpaid-close gate (#588, AC-DSK-18). They
+(#586, AC-DSK-17), the Stay check-out room release plus
+unpaid-close gate (#588, AC-DSK-18), and the room charge the
+Stay check-out review posts before the gate reads the balance
+(#600, AC-DSK-19). They
 add no MVP capability: the four restyles change presentation
 only, the Rooms map visualises existing room state
 (`US-RMS-1`), and the wizard operationalises first-run setup
@@ -414,8 +419,9 @@ Refusal semantics are unchanged throughout (`FR-RTE-4`,
 `FR-CUS-1`, `FR-BIL-7` fire on exactly the same conditions);
 where a condition instead makes an existing rule reachable from
 the desk screen (`AC-DSK-17` load timing, `AC-DSK-18` release
-and gate routes), it implements `FR-FDK-2`/`FR-BIL-7` at the
-screen and changes no rule.
+and gate routes, `AC-DSK-19` charge posting before the gate),
+it implements `FR-FDK-2`/`FR-BIL-2`/`FR-BIL-7` at the screen and
+changes no rule.
 FR/NFR wording is owned by `business-analyst` and guard mapping
 by `qa-lead` (see the rollout spec, section 8); the conditions
 below check behaviour only.
@@ -647,6 +653,43 @@ below check behaviour only.
   in the Stay panel only, no backend, contract, schema,
   stored-value, print, or charging-policy change).
 
+- AC-DSK-19 — Given an in-house stay whose folio carries no room
+  charge, when staff open the check-out review, then the desk posts
+  the stay's room charge through `PostCharge` before it presents a
+  balance: exactly one line of kind `nightly-room-charge` for the
+  stay, named for the room the stay held (or the plain room-charge
+  name when the loaded room state cannot name it), its amount equal
+  to the stay's frozen quoted total (`priceBasis.totalMinor`,
+  `FR-RTE-5`, never a re-derived or today's-price figure), written
+  under one key per stay so a repeated review replays rather than
+  posts again, and the balance line the review then shows includes
+  that charge.
+  Given a folio that already carries a room-charge line (posted from
+  the Folio screen or by the API desk loop), when staff review, then
+  nothing is posted a second time and the review reads the stored
+  lines and balance as they are. Given a stay whose quoted total is
+  zero, then no line is posted and the review proceeds on the folio
+  as read, so a free stay still closes on the zero balance `BR-17`
+  allows. Given a stay whose booking cannot be resolved from the
+  calendar it was checked in against, when staff review, then the
+  panel refuses in one plain catalogue sentence naming the room
+  charge and the next step (check the booking, try again), with no
+  technical code and no raw envelope, nothing is posted, and no
+  balance or check-out route is presented. Given a room-charge post
+  that is refused or fails, when staff review, then the review ends
+  in the plain panel error sentence for that refusal, no balance or
+  check-out route is presented, and the stay remains in house — a
+  charge that did not land never reads as a reviewed folio. Given a
+  folio that now carries the posted room charge with an open
+  balance, then the `AC-DSK-18` gate governs unchanged: check-out is
+  refused without a recorded approval on every UI route and passes
+  on a settled folio or a provenanced recorded approval. Traces to:
+  US-FDK-2, US-BIL-1, US-BIL-2; FR-FDK-2, FR-BIL-1, FR-BIL-2,
+  FR-BIL-7, FR-RTE-5, BR-17 (Refs #600; charge posting on the desk
+  check-out review only — no nightly scheduler, no rates repricing
+  or proration, no payment capture, no gate, print, or stored-value
+  change).
+
 Rollout done when: the six sub-issues each close with a merged
 implementation PR (the wizard slice spans #425 step 1 plus the
 #438 steps 2–4 PR), every screen checks against its design file
@@ -667,7 +710,9 @@ AC-DSK-16, and the Stay arrival pick loads the booked-type ready
 rooms with the commit still on the Check in button and a valid
 room selection clearing the guard message per AC-DSK-17, and the
 Stay check-out releases the departed room and gates every UI route
-to the close on the freshly read balance per AC-DSK-18.
+to the close on the freshly read balance per AC-DSK-18, and the
+Stay check-out review posts the stay's room charge once, before
+the balance it gates on is read, per AC-DSK-19.
 
 ## 12. Desk UI pixel-faithful restyle (Refs #517)
 
@@ -961,5 +1006,20 @@ capability, invents a story, or changes FR wording, so the
 43-condition MVP count above stands unchanged and the sections
 1–9, 11, and 12 done-conditions hold as written.
 
+Charge-posting addendum (Refs #600): one further condition
+(AC-DSK-19, section 11) covers the room charge the Stay check-out
+review posts before it presents a balance — the posting point the
+#588 record left as a follow-up (symptom 2c, "missing (charge
+posting)"). Section 11 therefore carries 19 conditions
+(AC-DSK-1..19), and `AC-FDK-2` in section 2 gains the `AC-DSK-19`
+pointer beside its `AC-DSK-18` one. It traces to existing stories
+and FRs (US-FDK-2, US-BIL-1, US-BIL-2; FR-FDK-2, FR-BIL-1,
+FR-BIL-2, FR-BIL-7, FR-RTE-5, BR-17); no story, FR, or business
+rule is added or reworded, and the #588 gate conditions
+(`AC-DSK-18`) stand as written, so the 43-condition MVP count
+above stands unchanged and the sections 1–9, 12, and 13
+done-conditions keep their behaviour (section 2 gains only the
+pointer, section 11 gains the one condition).
+
 <!-- ao-role: product-owner -->
-Role: product-owner · AO session hotel-mgmt-871
+Role: product-owner · AO session hotel-mgmt-911
