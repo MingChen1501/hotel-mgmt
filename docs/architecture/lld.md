@@ -90,8 +90,8 @@ Interfaces (provider: `ReservationService`):
 
 | Operation | Request | Response | Errors |
 |---|---|---|---|
-| `CreateReservation` | roomType, arrivalDate, departureDate, guestLink, priceBasis, discountName?, idempotencyKey | reservationRef, state=confirmed, quotedTotal | `CONFLICT` (type+dates), `STATE_ILLEGAL` (restriction), `VALIDATION_FAILED` (missing guest field), `NOT_FOUND` (type/rate) |
-| `ModifyReservation` | reservationRef, newDates?, newRoomType?, newGuest?, idempotencyKey | reservationRef, recalculatedTotal | as above + `STATE_ILLEGAL` (already checked-in) |
+| `CreateReservation` | roomType, arrivalDate, departureDate, guestLink, priceBasis, discountName?, idempotencyKey; `sellableUnits` advisory (ignored since #631) | reservationRef, state=confirmed, quotedTotal | `CONFLICT` (type+dates), `STATE_ILLEGAL` (restriction), `VALIDATION_FAILED` (missing guest field), `NOT_FOUND` (type/rate), `UPSTREAM_UNAVAILABLE` (capacity source unreadable, #631) |
+| `ModifyReservation` | reservationRef, newDates?, newRoomType?, newGuest?, idempotencyKey; `sellableUnits` advisory (ignored since #631) | reservationRef, recalculatedTotal | as above + `STATE_ILLEGAL` (already checked-in) |
 | `CancelReservation` | reservationRef, reason (from hotel list) | state=cancelled | `STATE_ILLEGAL` (already checked-in), `VALIDATION_FAILED` (reason missing) |
 | `MarkNoShow` | reservationRef, reason | state=no-show | `STATE_ILLEGAL` (arrival date not passed / already in house) |
 | `GetReservation` | reservationRef | full reservation incl. price basis, history | `NOT_FOUND` |
@@ -99,25 +99,36 @@ Interfaces (provider: `ReservationService`):
 | `QueryCalendar` | dateFrom, dateTo, roomType? | reservations per date/type with state | — |
 | `GetDueReservation` | reservationRef (STAY -> RES) | reservation with dates, type, guestLink, priceBasis | `NOT_FOUND`, `STATE_ILLEGAL` (not due/arrivable) |
 
-Outbound calls (consumer): `PricingService.CheckSellableCount`,
-`CheckRestrictions`, `QuotePrice`; `RoomInventoryService.
-CheckRoomTypeSellability`; `GuestService.IdentifyGuest`,
+Outbound calls (consumer): `PricingService.CheckRestrictions`,
+`QuotePrice`; `RoomInventoryService.CheckRoomTypeSellability` (the
+overbooking guard's ceiling from #631; the `CheckSellableCount` call
+listed here earlier is the desk-facing availability overview, not the
+ceiling — section 22); `GuestService.IdentifyGuest`,
 `GetBookingContext` — all synchronous inside the booking step
 (BA needs section 1).
 
 Internal data flow (`CreateReservation`): validate token + role ->
 load hotel config values (mandatory guest fields, restrictions) ->
-call Pricing (sellable count, restrictions, quote) and Rooms
-(sellability) and Guests (identify) -> atomically insert the
-reservation row guarded by the overbooking check (one transaction:
-count overlapping confirmed and checked-in reservation rows for the
-type/dates against sellable units — checked-in rows cover the
-in-house share, so the guard never reads another store; insert only
-if capacity remains —
-answers OQ-C3 for `NFR-CON-1`) -> write `ReservationEvents.created`
-to outbox in the same transaction -> return ref. `ModifyReservation`
-re-runs the guard for the new dates/type and reprices from the rate
-plan in force (BR-2, BR-13).
+call Pricing (restrictions, quote) and Guests (identify) -> derive the
+overbooking ceiling from Rooms `CheckRoomTypeSellability` for the type
+and dates (server-side, caller token forwarded, fail-closed; section 22)
+-> atomically insert the reservation row guarded by the overbooking
+check (one transaction: count overlapping confirmed and checked-in
+reservation rows for the type/dates against the derived ceiling —
+checked-in rows cover the in-house share, so the guard never reads
+another store; insert only if capacity remains — answers OQ-C3 for
+`NFR-CON-1`) -> write `ReservationEvents.created` to outbox in the same
+transaction -> return ref. The request's `sellableUnits` is advisory and
+never reaches the guard (ADR-0006). `ModifyReservation` re-runs the
+guard for the new dates/type with a ceiling read for those effective
+values and reprices from the rate plan in force (BR-2, BR-13).
+
+Error mapping: restriction violated -> `STATE_ILLEGAL` naming the
+restriction (`FR-RTE-4`); last-unit race lost -> `CONFLICT` naming
+type+dates (`NFR-CON-1`); capacity source unreadable ->
+`UPSTREAM_UNAVAILABLE` 503 (`Refs #631`); missing mandatory guest field ->
+`VALIDATION_FAILED` naming the field (`FR-CUS-1`); unknown type/plan
+-> `NOT_FOUND`.
 
 Outbox events (`ReservationEvents`): `created`, `modified`,
 `cancelled`, `no-show` — each carrying ref, dates, roomType,
@@ -187,7 +198,7 @@ Interfaces (provider: `RoomInventoryService`):
 
 | Operation | Request | Response | Errors |
 |---|---|---|---|
-| `CheckRoomTypeSellability` | roomType, dateFrom, dateTo | sellable count / boolean | — (`CONFLICT` is raised by the caller on refusal) |
+| `CheckRoomTypeSellability` | roomType, dateFrom, dateTo | `totalCount`, `blockedRooms`, derived `sellableCount` | `NOT_FOUND` (unknown type), `VALIDATION_FAILED` (missing field, reversed range) |
 | `FindReadyRoom` | roomType, date | room candidates (number, floor, bed, capacity, features) | `NOT_FOUND` (no ready room) |
 | `AssignRoom` | roomNumber, stayLink, idempotencyKey | assignment receipt | `CONFLICT` (just taken), `STATE_ILLEGAL` (not ready / blocked) |
 | `ReleaseRoom` | roomNumber, toState, actor | new state | `STATE_ILLEGAL` (illegal transition) |
@@ -213,6 +224,14 @@ Error mapping: illegal transition -> `STATE_ILLEGAL` (BR-28);
 blocked-date use -> refusal naming the block (`FR-RMS-3`); occupied
 block attempt -> `STATE_ILLEGAL` (Seq-13 precondition).
 
+Consumed by the booking path from #631: Reservations reads
+`CheckRoomTypeSellability` per booking attempt and derives the
+overbooking ceiling from `totalCount - len(blockedRooms)` (LLD section
+22; ADR-0006). The derived `sellableCount` stays the desk-facing
+availability figure — the guard does not consume it, so #636's
+room-state accounting can change that number without silently moving the
+guard's ceiling.
+
 ## 4. Rates & Availability (Go)
 
 Responsibilities: rate plans, availability counts, discounts, stay
@@ -232,10 +251,14 @@ Internal data flow (`QuotePrice`): load plan prices for type+dates
 -> apply named discount/special price if given (kept by name, BR-15)
 -> return breakdown; the quoted basis is stored by Reservations, so
 later rate changes never alter it unless explicitly recalculated
-(BR-13). Availability counts exclude occupied, blocked, and
-already-reserved units (BR-9) and are computed from the pricing
-store's cached inventory inputs plus live calls — the authoritative
-guard stays in the Reservations store transaction (section 1).
+(BR-13). Availability counts report the pricing store's cached
+inventory input per date (the plan `defaultUnits`, else the caller's
+`totalUnits`, else `0`) — a desk-facing overview, not the booking
+guard's ceiling: the guard derives its ceiling from the Rooms room
+inventory since #631 (section 22; ADR-0006), because this operation's
+`totalUnits` input is itself a request value and its plan-default
+fallback is not a maintained inventory figure. The authoritative guard
+stays in the Reservations store transaction (section 1).
 
 Outbox events (`RateEvents`): `rate-plan-changed`,
 `restriction-changed`, `discount-changed` — availability-count inputs
@@ -3195,5 +3218,265 @@ the merged head.
   availability alert, not a cached value, is the mitigation
   (`NFR-AVL-1` does not extend to an unverified balance).
 
+## 22. Server-side reservation availability (Refs #631)
+
+Tier T3 (architectural: the overbooking decision's ceiling moves from a
+request field to another module's recorded inventory, adding one
+synchronous module-to-module read with a fail-closed refusal; no schema
+or data-model change; the contract change is additive only). ADR-0006
+(`docs/architecture/decisions/adr-0006-server-side-availability-derivation.md`,
+proposed) records the source choice and the seam. The finding is audit
+item R1: `sellableUnits` is read from the request body
+(`services/reservations/internal/handler/handler.go:129`, `:144`,
+`:217`, `:229`) and is the guard's only ceiling
+(`services/reservations/internal/store/store.go:221`, `:375`), so a
+caller that sends a large number overbooks. Product conditions
+`AC-OVB-1`..`AC-OVB-3` (`docs/product/acceptance-criteria.md` section
+15) and decision D-26 are sibling artefacts, as are the FR/NFR wording
+(`business-analyst`), guard traceability (`qa-lead`), and the release and
+rollback note (`release-manager`); this section records only the
+architect-owned delta.
+
+### 22.1 Which service decides what
+
+| Fact | Authority | Enforced where | May the client assert it? |
+|---|---|---|---|
+| Units of a room type for a date range | Rooms (`rooms.rooms` + `rooms.blocks`) | Rooms answers `CheckRoomTypeSellability`; Reservations reads it | No |
+| Which units a reservation holds | Reservations (`reservations.reservations`) | The store's overlapping-row count (section 22.2 step 6) | No |
+| The booking decision | Reservations | One critical section: count + insert | No |
+| Which room type, dates, guest | Client | Reservations validates shape and existence | Yes |
+| Idempotency key | Client | The store's replay lookup | Yes |
+| Session actor | Admin session token | Body `actor` today; token binding is residual risk R6 | Yes (`actor`), today |
+
+### 22.2 Guard algorithm (target)
+
+1. Validate the request as today — room type, dates, price basis,
+   mandatory guest fields, hotel-mandatory guest fields
+   (`services/reservations/internal/service/service.go:87-119`).
+2. Resolve the effective room type and dates: the request's value where
+   supplied, otherwise the stored row's
+   (`services/reservations/internal/service/service.go:207-218`).
+3. Consult the Rates stay-restriction check first, unchanged
+   (`service.go:114-119` on Create, `:219-224` on Modify), so a
+   restricted stay still refuses as `STATE_ILLEGAL` naming the
+   restriction before capacity is consulted.
+4. Read the ceiling:
+   `POST {ROOMS_BASE_URL}/v1/rooms/CheckRoomTypeSellability` with
+   `{roomType: <effective type id>, dateFrom: <effective arrival>,
+   dateTo: <effective departure>}` and the caller's Bearer token
+   forwarded, five-second timeout. `ROOMS_BASE_URL` defaults to
+   `http://rooms:8085` (compose service `rooms`,
+   `deploy/compose.yaml:89-99`) and is wired at boot beside
+   `RATES_BASE_URL` (`services/reservations/cmd/server/main.go:42-47`;
+   compose env `deploy/compose.yaml:46`).
+5. Fail closed on an unread ceiling: transport error, timeout, 5xx,
+   unparseable body, a reply whose `totalCount` / `blockedRooms` are not
+   as specified, or an unwired client -> `UPSTREAM_UNAVAILABLE` 503 with
+   `{upstream: "rooms", operation: "CheckRoomTypeSellability"}` and
+   nothing written. A Rooms 4xx envelope is surfaced unchanged (a
+   rejected session stays `UNAUTHENTICATED`, an unknown type stays
+   `NOT_FOUND`). No earlier ceiling is reused and the request's number
+   is never a fallback.
+6. Derive and guard: ceiling `= totalCount - len(blockedRooms)`; pass it
+   to the store, which counts overlapping `confirmed` + `checked-in`
+   rows for the type and dates **excluding the reservation itself on
+   Modify** and inserts only when the count is below the ceiling
+   (`services/reservations/internal/store/store.go:205-221` and `:340-375`;
+   the Postgres transaction twins at
+   `services/reservations/internal/store/postgres.go:150-189` and
+   `:415-496`). A ceiling of `0` is a sold-out answer: `CONFLICT` 409
+   naming the type and dates (`store.go:221-225`), never a 5xx.
+7. Ignore the request's `sellableUnits` for the decision. It is
+   shape-validated only when present (integer `>= 0`, otherwise
+   `VALIDATION_FAILED` naming the field) and does not reach the store:
+   the store's `input.SellableUnits < 1` validation (`store.go:202`,
+   `:337`; `postgres.go:146`, `:412`) and the handler's absent-means-zero
+   default (`handler.go:344`) are removed with this change, otherwise an
+   advisory field would still decide (an absent field would refuse as
+   `VALIDATION_FAILED`).
+8. Keep the idempotency replay inside the store (no second unit
+   consumed) and keep the read before the store call, so the ceiling is
+   evaluated on every attempt, replay included.
+
+**Counted states stay as built.** The guard counts `confirmed` and
+`checked-in` rows and nothing else (`activeState`, `store.go:194-196`;
+`postgres.go:176-183`, `:482-489`), so a cancelled, no-show, or closed
+reservation releases its unit while an in-house guest keeps holding its
+own. `AC-OVB-1` words that same set — a cancelled, no-show, or closed
+reservation "releases its held unit exactly as today", a checked-in one
+"keeps holding its unit exactly as today, because the in-house share of
+a room type must not be subtracted from the recorded capacity twice"
+(`docs/product/acceptance-criteria.md` section 15; `BR-47`) — so the
+criterion, `FR-OVB-4`, and this design read the same at the gate. The
+state set stands because the consumed inventory reply carries no
+date-ranged occupancy fact — room state is current-state, blocks are
+date-ranged (`services/rooms/src/store.ts:307-359`) — so letting room
+state deduct the in-house share would subtract it twice and shrink every
+future date range until release.
+
+### 22.3 Happy path (create or modify with a readable ceiling)
+
+```mermaid
+flowchart TD
+    A[Bearer token present, body parsed] --> B[Validate fields, dates, guest, price basis]
+    B --> C[Restriction check passes]
+    C --> D[Read ceiling: Rooms CheckRoomTypeSellability for the effective type and dates]
+    D -->|read ok| E[Ceiling = totalCount - blockedRooms, taken plus block holds]
+    E --> F{Overlapping confirmed and checked-in rows below the ceiling?}
+    F -->|yes| G[Insert confirmed row plus created event in one critical section]
+    F -->|no| H[409 CONFLICT naming type and dates, nothing written]
+    G --> I[200 reservationRef and quotedTotal]
+```
+
+Edge trace:
+
+- A–B: Bearer presence (`services/reservations/internal/handler/handler.go:104-112`);
+  field, date, price, and guest validation
+  (`services/reservations/internal/service/service.go:87-119`).
+- B–C: restriction check (target unchanged, `service.go:114-119`).
+- C–D: the ceiling read (target client in
+  `services/reservations/internal/availability/`, patterned on
+  `services/reservations/internal/pricing/client.go:33,52-59`); request
+  and response shape `contracts/http/CheckRoomTypeSellability.json`.
+- D–E: `totalCount` and `blockedRooms` are the date-ranged facts
+  (`services/rooms/src/store.ts:343-356`); the derived `sellableCount`
+  is not consumed (ADR-0006 D2).
+- E–F–G: the guarded store step (`internal/store/store.go:205-259`;
+  Postgres `internal/store/postgres.go:150-189`).
+- F–H: `booked >= ceiling` -> `CONFLICT` naming type and dates
+  (`store.go:221-225`), no row, no event.
+- G–I: response fields (`internal/handler/handler.go:156-158`).
+
+### 22.4 Failure and rollback paths
+
+```mermaid
+flowchart TD
+    A[Capacity read CheckRoomTypeSellability] -->|unreachable, timeout, 5xx, unparseable, unwired| U[503 UPSTREAM_UNAVAILABLE, nothing written]
+    A -->|4xx envelope| P[Surface the provider refusal unchanged]
+    A -->|ok| B{Ceiling above zero?}
+    B -->|no| S[409 CONFLICT sold out, nothing written]
+    B -->|yes| C{Count below ceiling?}
+    C -->|no| S
+    C -->|yes| G[Insert plus event]
+    D[Request sellableUnits large or absent] -.->|ignored| A
+```
+
+Edge trace:
+
+- A–U: fail closed on an unread ceiling (ADR-0006 D4; the
+  Reservations -> Rates precedent returns the same code,
+  `internal/pricing/client.go:88-96`). Nothing is written because the
+  read precedes the store call.
+- A–P: a provider refusal keeps its code and details, so the desk acts
+  on the same envelope (for example `UNAUTHENTICATED`).
+- A–B–S: a type with no sellable unit for those dates is a legitimate
+  sold-out answer, not an outage — `CONFLICT`, never 503.
+- D–A: the request's number never raises or lowers the ceiling; an
+  inflated value cannot add a unit and a low or absent one cannot
+  refuse a bookable stay.
+- Rollback: revert the single implementation PR. The previous guard
+  behaviour returns with the request's number; the desk still sends the
+  field, and no data migration exists in either direction.
+
+### 22.5 Contract delta
+
+| File | Change | Version effect |
+|---|---|---|
+| `contracts/http/CreateReservation.json` | `sellableUnits` required -> optional and advisory ("ignored; the server derives the ceiling from Rooms"); errors add `UPSTREAM_UNAVAILABLE` (503) | minor (1.1 -> 1.2, ADR-0004 D1) |
+| `contracts/http/ModifyReservation.json` | same delta for the new type and dates | minor (1.0 -> 1.1) |
+| `contracts/http/CheckRoomTypeSellability.json` | shape unchanged; gains a server-side consumer (integration C2 becomes live) | none |
+| `contracts/errors/envelope.json` | add `UPSTREAM_UNAVAILABLE` to the enum and `503` to `statusMapping` (already emitted by Reservations, missing from the enum — the drift ADR-0005 D5 also records) | minor |
+
+No schema, table, migration, or event change; the reservation row, its
+state set, the change history, and the outbox payloads are untouched.
+
+### 22.6 Verification plan
+
+Reservations guards (the implementation PR creates them; the existing
+suites are `services/reservations/internal/store/store_test.go`,
+`internal/store/postgres_test.go`, `internal/service/service_test.go`,
+`internal/handler/handler_test.go`, and
+`internal/pricing/client_test.go`):
+
+- **Inflated input, create** — request `sellableUnits: 999` against a
+  ceiling of 1 held by one confirmed row: 409 `CONFLICT`, nothing
+  written, so the client number buys no unit.
+- **Inflated input, modify** — the same on `ModifyReservation` into
+  sold-out dates or a sold-out type: 409 `CONFLICT`, the reservation
+  keeps its dates, type, guest, and price, and no change-history row is
+  written.
+- **Low input** — request `sellableUnits: 1` with two units free: 200,
+  so a small number refuses nothing.
+- **Absent input** — no `sellableUnits` in the body: 200 (an advisory
+  field never decides), and `sellableUnits: -1` or a non-integer: 400
+  `VALIDATION_FAILED` naming the field.
+- **Zero capacity** — Rooms answers `totalCount` 2 with both rooms
+  blocked: 409 `CONFLICT`, not 503.
+- **Unreadable source** — Rooms unreachable, timing out, answering 5xx,
+  answering a body without integer `totalCount`/`blockedRooms`, and an
+  unwired client: 503 `UPSTREAM_UNAVAILABLE` with
+  `{upstream: "rooms", operation: "CheckRoomTypeSellability"}`, nothing
+  written.
+- **Provider 4xx** — Rooms answers `NOT_FOUND` for an unknown type and
+  `UNAUTHENTICATED` for a rejected session: both surfaced unchanged.
+- **Atomicity** — two simultaneous last-unit creates (and two
+  simultaneous modifies into the last unit): exactly one 200 and one
+  409 `CONFLICT`.
+- **Replay** — the same `idempotencyKey` returns the original record and
+  consumes no second unit (the read order is documented above).
+- **Cancelled / no-show / closed rows** — a cancelled, no-show, or
+  closed row stops counting against the ceiling (its unit is sellable
+  again); a checked-in row keeps counting (the counted state set above).
+
+Desk guards stay green unchanged: `app/src/views/BookView.test.ts`
+(the sold-out refusal and the sent `sellableUnits` assertions),
+`app/src/book-restyle.test.ts`, `app/e2e/book.spec.ts` if present,
+and the booking step of `script/e2e-desk-loop.sh`, tracing to
+`AC-OVB-3`.
+
+Stack gates: `cd services/reservations && go build ./... && go test ./...
+&& go vet ./... && gofmt -l .`; `cd services/rooms && npm ci && npm run
+build && npm test && npm run lint`; `script/contract-check.sh`;
+`script/markdown-link-check.sh`. The qa-lead traceability row for #631 is
+a sibling handoff and must cite the guards above by `file:line` at the
+merged head.
+
+### 22.7 Residual risks
+
+- **R-OVB-1 — a fail-closed dependency in the booking path.** A Rooms
+  outage refuses new bookings and modifications. Accepted by product risk
+  R-10 (`docs/project/risk-register.md`): a booking against a capacity
+  nobody verified is worse than a refused booking, the desk shows its
+  existing plain request-failed sentence, and the runbook's restart
+  order (release-manager handoff) covers the source. An alert or a
+  capacity-specific sentence is a follow-up, never a silent fallback.
+- **R-OVB-2 — range-wide ceiling, not per night.** The ceiling is a
+  scalar for the whole stay and the guard counts overlapping rows, so a
+  stay is judged on the range-wide net-of-blocks count: a block on any
+  night removes that room from the whole range (the same conservatism as
+  today's `sellableCount`, `services/rooms/src/store.ts:343-356`).
+  Per-night precision needs per-date inventory and a per-night guard —
+  a separate change, not this one.
+- **R-OVB-3 — the desk figure and the ceiling can differ.** The desk
+  pre-check consumes `sellableCount` while the guard consumes
+  `totalCount - blockedRooms`. After #636 the displayed number can be
+  lower than the guard's ceiling (room state excluded from the display,
+  not from the ceiling). The guard's number is the ceiling on held
+  units; the desk's is a pointer for staff. #636 must keep
+  `blockedRooms` semantics as its own conditions state.
+- **R-OVB-4 — a replay during an outage.** Because the read precedes the
+  store call, an idempotent replay of an already-committed booking
+  refuses 503 while Rooms is unreachable instead of returning the stored
+  record. Nothing is written and no unit is consumed; the retry after
+  recovery returns the original.
+- **R-OVB-5 — an ignored field still in the contract.** A future consumer
+  could mistake `sellableUnits` for authoritative. Removal is the
+  follow-up #631 names; until then the field's contract description says
+  it is advisory.
+- **R-OVB-6 — a block created after the read.** A block recorded between
+  the capacity read and the insert does not retro-refuse that booking.
+  Bounded by reading immediately before the guarded write and by
+  single-desk, single-property scale; the same class as ADR-0005 R5.
+
 <!-- ao-role: architect -->
-Role: architect · AO session hotel-mgmt-919
+Role: architect · AO session hotel-mgmt-941

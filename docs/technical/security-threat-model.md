@@ -80,6 +80,15 @@ beyond session hygiene.
   caller trusts only the provider's response, never the browser's
   claim about the same fact: a money or state fact is re-read from
   the module that owns it at the decision point (ADR-0005).
+- B6 — The booking step's capacity read (Reservations -> Rooms
+  `CheckRoomTypeSellability`, Refs #631). The overbooking ceiling is an
+  occupancy fact Rooms owns; Reservations reads it per attempt with the
+  caller's token forwarded and fails the booking closed when it cannot,
+  so the desk's `sellableUnits` claim never decides (ADR-0006). The
+  boundary holes this leaves are the fail-closed availability loss
+  (R-OVB-1) and the window between the read and the guarded insert
+  (R-OVB-6), not a trust path: the request's number is not consumed at
+  all.
 
 ## 3. RBAC enforcement points and matrix
 
@@ -226,6 +235,20 @@ recording with 24-month retrievability (`NFR-RET-1`), not display.
   money path — the offline-first cached-config rule does not extend to
   an unverified balance; an availability alert, not a cached value, is
   the mitigation (`NFR-AVL-1`).
+- R-OVB-1 — Fail-closed booking availability (Refs #631): the
+  overbooking ceiling is read live from Rooms, so a Rooms outage refuses
+  new bookings and modifications with `UPSTREAM_UNAVAILABLE`. Accepted
+  for an occupancy fact by product risk R-10
+  (`docs/project/risk-register.md`): a booking against a capacity nobody
+  verified is worse than a refused booking, the desk shows its existing
+  plain request-failed sentence, and the runbook's restart order covers
+  the source. Never mitigated by falling back to the request's
+  `sellableUnits`.
+- R-OVB-6 — Read-then-insert window (Refs #631): a block recorded
+  between the capacity read and the guarded insert does not retro-refuse
+  that booking. Bounded by reading immediately before the store call
+  (the guarded count-and-insert itself stays atomic) and by single-desk,
+  single-property scale; the same class as R5.
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-919

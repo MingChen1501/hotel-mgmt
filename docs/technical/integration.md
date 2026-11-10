@@ -34,15 +34,23 @@ Immediacy reason: refusal-with-cause inside the booking step
 restrictions (FR-RTE-4), discounts (FR-RTE-3), cancellation wording
 shown at booking (FR-CUS-2). Paired-booking guard resolves in the
 Reservations store transaction (LLD [section 1](../architecture/lld.md); `NFR-CON-1`).
+The availability count is a desk-facing overview per date; since #631
+the guard's ceiling comes from the Rooms read in C2 instead (its
+`totalUnits` input is itself a request value), and the booking refuses
+fail-closed with `UPSTREAM_UNAVAILABLE` when that read fails (LLD
+[section 22](../architecture/lld.md); ADR-0006).
 
 ### C2. RES -> ROOM (`RoomInventoryService`) — SYNC
 
 | Operation | Payload | Errors |
 |---|---|---|
-| `CheckRoomTypeSellability` | roomType, dateRange (Room; FR-RTE-2, FR-RMS-3; BR-9) | refusal naming block (FR-RMS-3; BR-12) |
+| `CheckRoomTypeSellability` | roomType, dateRange (Room; FR-RTE-2, FR-RMS-3; BR-9) | `NOT_FOUND` (unknown type), `VALIDATION_FAILED` (missing field, reversed range), refusal naming block (FR-RMS-3; BR-12) |
 
 Same-step refusal branch (Seq-2/3/6); exactly-one-winner guard
-(BR-8).
+(BR-8). Live from #631 as the booking guard's capacity read: the ceiling
+is `totalCount - blockedRooms` for the effective type and dates, read per
+attempt with the caller's token forwarded; an unreadable reply refuses
+the booking `UPSTREAM_UNAVAILABLE` (LLD [section 22](../architecture/lld.md)).
 
 ### C3. RES -> GST (`GuestService`) — SYNC
 
