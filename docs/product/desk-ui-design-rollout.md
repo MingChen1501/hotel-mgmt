@@ -1873,6 +1873,131 @@ Rollback: revert the single implementation PR. The desk keeps the
 the desk build that still sends them, and no schema or data
 migration exists in either direction.
 
+### 6.16 Reservation availability derived server-side (Refs #631)
+
+Status: product-owner scope decision and UI contract delta for audit
+finding R1 on the booking path (#625 class: a client-supplied value
+decides the outcome). Tier T3 confirmed: the overbooking guard's
+capacity stops being a request field and becomes a server-side read of
+the hotel's recorded inventory, which gives the booking path a
+fail-closed capacity dependency and changes its trust boundary. The
+binding done-conditions are `AC-OVB-1`, `AC-OVB-2`, and `AC-OVB-3` in
+`docs/product/acceptance-criteria.md`
+[section 15](acceptance-criteria.md); `AC-RES-1` and `AC-RES-2` gain
+the pointer. The capacity seam's decision record is the `architect`'s
+ADR (proposed; the owner accepts it before the implementation PR
+merges), with the implementation design and the per-flow happy and
+failure/rollback diagrams in the HLD/LLD delta. FR/NFR wording and
+business rules are owned by `business-analyst`, guard mapping and
+traceability by `qa-lead`, the release and rollback note by
+`release-manager`, and the gate verdict by `spec-reviewer`. Recorded
+as D-26 in `docs/project/decision-log.md`.
+
+The finding: `sellableUnits` travelled from the desk's own
+sellability read into the booking request
+(`app/src/views/BookView.vue:893-929`), and the service passed it
+straight to the guard —
+`services/reservations/internal/handler/handler.go:129` and `:144` on
+`CreateReservation`, `:217` and `:229` on `ModifyReservation` — where
+the only comparison was `booked >= input.SellableUnits`
+(`services/reservations/internal/store/store.go:221` on Create, `:375`
+on Modify). Nothing read the capacity the hotel actually holds, so a
+caller that bypassed the desk and sent a large number could overbook
+without ever seeing `CONFLICT`, and a caller that sent a small number
+could be refused while units were free.
+
+Decision (four parts):
+
+1. **The hotel's recorded capacity decides, not the request.** The
+   guard's ceiling for a room type and stay dates is the sellable
+   capacity the hotel records for those dates, read by the
+   reservations service; the count of overlapping active reservations
+   is the demand side and stays where it is. Which service owns that
+   read — the Rates per-date sellable inventory or the Rooms room
+   inventory — is the `architect`'s call, and a sibling issue owns the
+   room-state accounting inside that source (#636). The product rule is
+   only that the caller never sets the ceiling.
+2. **`sellableUnits` becomes advisory, not optional.** The field stays
+   in both contracts for the deprecation window so the desk build that
+   sends it keeps working, and it is still validated as today, but the
+   guard ignores it: a large value buys nothing and a small value
+   refuses nothing. Relaxing the contract (removing the field or
+   marking it optional) is a follow-up, not this change.
+3. **An unreadable capacity source refuses the booking.** A transport
+   failure, timeout, 5xx, or unwired client refuses `Create` and
+   `Modify` fail-closed with `UPSTREAM_UNAVAILABLE` (503) naming the
+   upstream and the operation, and nothing is written; a 4xx envelope
+   from the capacity source is surfaced unchanged, so a rejected
+   session still refuses as `UNAUTHENTICATED`. No booking is ever
+   accepted against a capacity nobody verified, and no earlier read is
+   reused for a later attempt.
+4. **The guard keeps its atomic shape.** The capacity read happens on
+   the attempt and the count-and-insert comparison stays in the single
+   critical section the store holds today, so two simultaneous
+   last-unit requests still yield exactly one winner and one
+   `CONFLICT`, and an idempotent replay consumes no second unit.
+
+UI contract delta (T3, unchanged surface, unchanged copy):
+
+- **Layout and navigation scope.** Unchanged. The Book screen keeps its
+  title, two-column grid, stay fields, quote rows, helper copy,
+  actions, and confirmation surface; no new screen, route, nav entry,
+  card, or control.
+- **Component mapping.** Unchanged. The quote and confirm controls keep
+  their disabled-while-in-flight behaviour, so a repeated click stays a
+  no-op.
+- **Design-token scope.** Unchanged — no new colour, radius, spacing,
+  or target size.
+- **States in plain words:**
+  - Confirmed booking: unchanged; the panel shows the confirmation with
+    the same reference and quote lines.
+  - Sold out (the service refused with `CONFLICT`, including a race the
+    panel's pre-check could not see): the existing plain sold-out
+    sentence, the quote stays and staff can pick other dates.
+  - Capacity source unreadable (fail-closed 503): the booking refuses
+    and the panel's existing plain "that did not work, try again, tell
+    the manager if it keeps failing" sentence carries the state;
+    nothing is reported booked and the quote stays.
+  - Stale pre-check (the panel's sellability read said free, the
+    service refused): the same plain sold-out sentence; no technical
+    code and no raw envelope.
+- **Catalogue keys.** No new key and no copy change: every state above
+  resolves through a key the panel already renders
+  (`desk.book.refused_soldout` and the `desk.shell.request_failed`
+  fallback), so `script/catalogue-coverage-check.sh` stays green with
+  no catalogue edit. A capacity-specific refusal sentence would be a
+  desk copy change, which is out of scope here and a candidate
+  follow-up.
+- **Print rules.** Unchanged. No print surface or route is touched, and
+  the confirmation a successful booking produces is the same document.
+
+Desk guards stay green unchanged: the Book cases in
+`app/src/views/BookView.test.ts` (the sent `sellableUnits` at `:583`,
+`:748`, `:915`, and the sold-out refusal at `:774`) and the booking
+steps of `script/e2e-desk-loop.sh`. The service guards this change adds
+(an inflated `sellableUnits` on Create and on Modify, a below-capacity
+value, the Nth/last-unit boundary, the simultaneous race, the replay,
+the unreadable source, and the unwired client) are listed in the
+architect's LLD verification plan; the `qa-lead` traceability rows for
+#631 are a sibling handoff.
+
+Cross-references: issue #631 is the finding and #632 (price basis
+recomputation) is the sibling audit item this change does not touch;
+#636 owns the room-state accounting inside the capacity source; the
+as-built booking path is
+`docs/architecture/services/reservations.md` (sections 3–5). Out:
+implementation (the downstream `dev` PR, its guards, and the compose
+wiring); removing or relaxing `sellableUnits` in either contract;
+the price-basis decision (#632); Rates' own `totalUnits` handling;
+which service owns the capacity read and the seam's shape
+(`architect`); FR/NFR wording and business rules
+(`business-analyst`); guard mapping and traceability (`qa-lead`).
+
+Rollback: revert the single implementation PR. The desk build keeps
+sending `sellableUnits`, no schema, stored value, or migration is
+introduced, and the previous guard behaviour returns with no data
+repair.
+
 ## 7. Catalogue and locale rule
 
 - Single source of truth stays `messages/` (`messages/README.md`):
@@ -2214,5 +2339,18 @@ Section 4 stays the rollout-wide contract; for steps 2–4:
 | The T3 spec set exists and `spec-reviewer` posts `SPEC-GATE PASS` before implementation starts, and the owner accepts ADR-0005 | Section 6.15, `docs/product/acceptance-criteria.md` section 14 (`AC-CKO-1`, `AC-CKO-2`, `AC-FDK-2` pointer), ADR-0005 (proposed, owner acceptance pending), LLD section 21, decision log D-25; FR/NFR, guard, and release deltas are the sibling handoffs |
 | Rollback is a single revert with no schema or data migration | Section 6.15 (rollback); the advisory request fields stay valid for the current desk build, so no migration exists in either direction |
 
+## 21. Acceptance mapping (issue #631)
+
+| Criterion | Evidence in this spec |
+|---|---|
+| A `CreateReservation`/`ModifyReservation` request with an inflated `sellableUnits` no longer bypasses the overbooking guard | Section 6.16 decisions 1 and 2; `AC-OVB-1`; the guard's ceiling becomes the recorded capacity while today's comparison takes it from the request field (`store.go:221` on Create, `:375` on Modify) |
+| A below-capacity `sellableUnits` no longer refuses a bookable stay, and a Modify into a sold-out date or type refuses with `CONFLICT` while keeping the reservation unchanged | Section 6.16 decision 2; `AC-OVB-1` (the below-capacity clause and the Modify clause); the change-history refusal clause |
+| When the capacity source cannot be read, the booking is refused fail-closed with `UPSTREAM_UNAVAILABLE` (503), not allowed | Section 6.16 decision 3 and the fail-closed state row of the UI contract delta; `AC-OVB-2`; the unwired-client and 4xx-passthrough clauses |
+| The guard stays atomic: two simultaneous last-unit requests still yield exactly one winner and one `CONFLICT` | Section 6.16 decision 4; `AC-OVB-3`; `NFR-CON-1`; the single-critical-section clause and the replay clause |
+| Tests cover the inflated-input caller and the unreadable-capacity caller | Section 6.16 desk-guards paragraph (existing Book cases stay green) and the service-guard list handed to the architect's LLD verification plan; the `qa-lead` traceability rows for #631 are the sibling handoff |
+| The desk Book surface, its copy, and its design facts are unchanged | Section 6.16 UI contract delta (layout, component mapping, tokens, states, catalogue keys, print all unchanged or existing-key only); `AC-OVB-3` final clause |
+| The T3 spec set exists and `spec-reviewer` posts `SPEC-GATE PASS` before implementation starts, and the owner accepts the capacity-seam ADR | This section, section 6.16, `docs/product/acceptance-criteria.md` section 15 (`AC-OVB-1`..`AC-OVB-3`, `AC-RES-1`/`AC-RES-2` pointers), decision log D-26; the architect ADR/HLD/LLD delta and the `business-analyst`, `qa-lead`, and `release-manager` deltas are the sibling handoffs |
+| Rollback is a single revert with no schema or data migration | Section 6.16 (rollback); `sellableUnits` stays in both contracts for the desk build, so no migration exists in either direction |
+
 <!-- ao-role: product-owner -->
-Role: product-owner · AO session hotel-mgmt-920
+Role: product-owner · AO session hotel-mgmt-931

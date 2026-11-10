@@ -34,13 +34,17 @@ or front-desk account acting within its access.
   staff enter stay dates, room type, guest, and price basis and
   confirm, then the reservation exists with a unique reference, the
   requested dates, room type, guest link, and quoted price, and it
-  appears on the reservation calendar. Traces to: US-RES-1; FR-RES-1,
-  FR-RTE-5.
+  appears on the reservation calendar. What "sellable" means is decided
+  by the service from the capacity the hotel records, never by the
+  number the request carries (`AC-OVB-1`, Refs #631). Traces to:
+  US-RES-1; FR-RES-1, FR-RTE-5.
 - AC-RES-2 — Given a reservation that has not been checked in, when
   staff change its dates, room type, or guest and confirm, then the
   reservation reflects the new values, its quoted price is
   recalculated from the rate plan in force, and the change is recorded
-  with who made it and when. Traces to: US-RES-2; FR-RES-2. Open
+  with who made it and when. The same derived availability governs the
+  change, so a move to sold-out dates or a sold-out type refuses
+  (`AC-OVB-1`, Refs #631). Traces to: US-RES-2; FR-RES-2. Open
   question: reason format for changes is undecided (PRD OQ-2).
 - AC-RES-3 — Given a reservation that has not been checked in, when
   staff cancel it and record a cancellation reason, then the
@@ -1026,6 +1030,95 @@ fail-closed instead of closing on an unverified balance, and the
 green unchanged (`AC-DSK-18`, `AC-DSK-19`, `FR-CKO-4`,
 `FR-CKO-5`).
 
+## 15. Server-side reservation availability (Refs #631)
+
+Product-owner scope decision and acceptance conditions for audit
+finding R1 on the booking path (#625 class: a client-supplied value
+decides the outcome). Today `sellableUnits` arrives in the request
+body — `services/reservations/internal/handler/handler.go:129` and
+`:144` on `CreateReservation`, `:217` and `:229` on
+`ModifyReservation` — and the overbooking guard compares the count of
+overlapping active reservations against that caller-supplied number
+(`services/reservations/internal/store/store.go:221` on Create,
+`:375` on Modify). A caller that sends a large number therefore never
+sees `CONFLICT` and can overbook, and nothing on the booking path
+reads the capacity the hotel actually holds for the room type and the
+stay dates.
+
+Tier T3: the availability decision moves from a request field to a
+server-side read of the hotel's recorded capacity, which gives the
+booking path a fail-closed capacity dependency and changes the
+booking workflow's trust boundary. The decision record is the
+`architect`'s ADR for the capacity seam (proposed; the owner accepts
+it before the implementation PR merges), and the implementation
+design plus the per-flow happy and failure/rollback diagrams are the
+`architect`'s HLD/LLD delta. Which service owns the capacity read —
+Rates' per-date sellable inventory or the Rooms room inventory — is
+the `architect`'s decision, and the product conditions below hold
+whichever source is chosen: the caller never sets the capacity. FR/NFR
+wording and business rules are the `business-analyst` handoff, guard
+mapping and traceability are `qa-lead`'s, the release and rollback
+note is `release-manager`'s, and the gate verdict is
+`spec-reviewer`'s. The `OVB` domain code names the overbooking guard
+family these conditions trace to.
+
+- AC-OVB-1 — Given a room type with N sellable units recorded for a
+  stay's dates, when callers create reservations for overlapping dates
+  of that type, then the guard decides on the recorded capacity and
+  not on the request's `sellableUnits`: a caller that sends a number
+  far above N buys no extra booking, a caller that sends a number
+  below N is not refused while recorded units are still free, the Nth
+  overlapping confirmed reservation is the last one accepted, and the
+  next one refuses with `CONFLICT` naming the room type and the dates
+  and writes nothing — so the request's number is advisory and can
+  neither raise nor lower the ceiling. Given a confirmed reservation,
+  when a caller changes its dates or room type to a combination whose
+  recorded capacity is already fully booked, then the change refuses
+  with `CONFLICT`, the reservation keeps its previous dates, type,
+  guest, and price, and no change-history entry is written. Given a
+  reservation that is cancelled, marked no-show, or checked in, when
+  its dates are considered, then it stops counting as a held unit
+  exactly as today, so released capacity becomes sellable again.
+  Traces to: US-RES-1, US-RES-2; FR-RES-1, FR-RES-2, FR-RTE-5,
+  NFR-CON-1 (Refs #631).
+- AC-OVB-2 — Given the capacity source for a booking's room type and
+  dates cannot be read — a transport failure, a timeout, a 5xx, or a
+  client that is not wired — when a caller creates or modifies a
+  reservation, then the booking is refused fail-closed with
+  `UPSTREAM_UNAVAILABLE` (503) naming the upstream and the operation,
+  nothing is written, no capacity is assumed from a previous request,
+  and no booking is ever accepted against an unverified capacity; a
+  capacity-source refusal that carries a 4xx envelope is surfaced
+  unchanged, so a rejected session still refuses as
+  `UNAUTHENTICATED`. Given no capacity source is configured at all,
+  when a caller books, then the booking refuses the same way, so an
+  unwired service can never fall back to the request's number.
+  Traces to: US-RES-1, US-RES-2; FR-RES-1, FR-RES-2, NFR-CON-1
+  (Refs #631).
+- AC-OVB-3 — Given the derived capacity and the counted bookings, when
+  two callers request the last sellable unit at the same time, then
+  exactly one commits and the other refuses with `CONFLICT`, and no
+  interleaving lets both through: the capacity is read on the attempt
+  and the count-and-insert comparison stays in one critical section,
+  so the guard keeps the atomic shape it has today. Given a repeated
+  request carrying the same idempotency key, when it replays, then the
+  original reservation is returned and no second unit is consumed.
+  Given the desk Book screen, when staff quote and confirm, then the
+  panel's flow, its own fresh sellability pre-check, the request it
+  sends (including `sellableUnits`), and every refusal sentence stay
+  as they are — a `CONFLICT` still reads as the sold-out sentence
+  (`desk.book.refused_soldout`) and an unreadable capacity source
+  reads as the plain request-failed sentence
+  (`desk.shell.request_failed`), with no new catalogue key, control,
+  or screen. Traces to: US-RES-1; FR-RES-1, FR-RES-2, FR-RTE-5,
+  NFR-CON-1 (Refs #631).
+
+Done when: an inflated `sellableUnits` no longer buys extra bookings on
+Create or Modify, an unreadable capacity source refuses the booking
+fail-closed instead of accepting it, two simultaneous last-unit
+requests still yield exactly one winner and one `CONFLICT`, and the
+desk Book panel and its guards stay green unchanged.
+
 ## Traceability summary
 
 43 done-conditions cover all 9 MVP slices from the roadmap
@@ -1114,5 +1207,19 @@ behaviour: `AC-FDK-2` gains only the pointer, and the desk
 conditions `AC-DSK-18` and `AC-DSK-19` stand as written with their
 guards unchanged.
 
+Server-derived availability addendum (Refs #631): three further
+conditions (AC-OVB-1..AC-OVB-3, section 15) cover audit finding R1 on
+the booking path — the overbooking guard decides on the capacity the
+hotel records for the room type and dates instead of the
+`sellableUnits` the request carries, an unreadable capacity source
+refuses the booking fail-closed with `UPSTREAM_UNAVAILABLE` rather
+than accepting it, and the guard keeps its single-critical-section
+atomic shape. They trace to the existing stories and FRs (US-RES-1,
+US-RES-2; FR-RES-1, FR-RES-2, FR-RTE-5, NFR-CON-1) and add no story,
+FR, or business rule, so the 43-condition MVP count above stands
+unchanged and the sections 1–14 done-conditions keep their behaviour:
+`AC-RES-1` and `AC-RES-2` gain only the pointer, and the desk Book
+conditions and their refusal copy stand as written.
+
 <!-- ao-role: product-owner -->
-Role: product-owner · AO session hotel-mgmt-920
+Role: product-owner · AO session hotel-mgmt-931
