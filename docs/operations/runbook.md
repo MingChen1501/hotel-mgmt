@@ -94,7 +94,16 @@ The hotel loses no more than one operating day of data (`NFR-BKP-1`):
 every reservation, stay, folio, and payment recorded at least 24
 hours before the failure is present after the restore.
 
-## 6. Booking refused: the room type has no rate price
+## 6. Booking refused at the desk
+
+A booking can be refused for two different reasons, and they need
+different handling. Read which one the desk is showing before doing
+anything: 6.1 is a hotel setup gap, 6.2 is a system fault. A booking
+that is refused is never created, so nothing has to be cancelled — the
+front desk can take the booking on paper and enter it once the cause is
+cleared.
+
+### 6.1 The room type has no rate price
 
 When the desk tries to price a stay for a room type that has no rate
 price for the selected dates, the booking is refused. This is
@@ -131,6 +140,62 @@ payloads are the ones the desk-loop script already uses
 changes an existing booking: a confirmed booking keeps the price it
 was booked at.
 
+### 6.2 Room availability cannot be checked
+
+Every booking and every change of dates or room type re-reads the
+hotel's own room list on the server before it confirms. That is what
+stops a double booking: the number of rooms on the booking screen is
+only a hint, and the server never trusts it. When the room list
+cannot be read, the booking is refused rather than guessed — the
+system will not sell a room whose availability nobody verified.
+
+This is a fault, not a sold-out answer, and it never affects work
+already booked: check-in, check-out, charge posting, payments,
+printing, and every existing reservation keep working normally. Only
+new bookings and date/room-type changes are refused.
+
+What the desk sees:
+
+- The Book screen says the action could not be completed, with no
+  confirmation, so no booking is created.
+- Nothing is lost or half-written: there is no booking to cancel and
+  no figure to correct afterwards.
+- A **sold-out** refusal looks different: it names the room type and
+  the dates it cannot sell. That one is a normal answer and needs no
+  support call — offer the guest another room type or other dates.
+
+What to do:
+
+1. Confirm it is this fault and not a sold-out answer: try a booking
+   on a room type and dates that certainly have free rooms (for
+   example tomorrow night on the room type with most rooms). If that
+   is refused too, it is this fault.
+2. Follow the restart order in section 3 once, then retry one
+   booking. A short fault clears this way.
+3. While it persists, take new bookings and date changes on paper
+   with the guest's name, room type, dates, and rate, and tell the
+   guest the confirmation follows. Enter them in the desk once
+   bookings work again, before the arrivals of those dates.
+4. Do not try to work around it: there is no desk setting that raises
+   availability, and no price or room change you can make clears this
+   — the room list is read fresh on every attempt.
+5. If one restart does not clear it, call support (section 7) with
+   the time of the first refusal and the room type you tried.
+
+Support note (technical): the reservation service reads
+`POST /v1/rooms/CheckRoomTypeSellability` on the rooms service
+(`ROOMS_BASE_URL`, default `http://rooms:8085`) and fails closed with
+`UPSTREAM_UNAVAILABLE` (503) when that read fails. Check the rooms
+module health, its database connection, and network reachability from
+the reservations module on the hotel LAN (`docs/devops/deployment.md`,
+section 5). Never fix a fault like this by letting bookings through
+again: the refusal protects the room count.
+
+*This path arrives with the #631 change (`docs/release/release-notes.md`,
+section 2.1): an installation still on an older bundle cannot refuse a
+booking this way, so on those builds a refused booking is always the
+6.1 no-price case, a sold-out answer, or a system fault.*
+
 ## 7. When to call support (escalation contacts)
 
 Call support the same day when any of these happen:
@@ -139,6 +204,9 @@ Call support the same day when any of these happen:
 - The system does not come back after the restart order in
   section 3.
 - A desk action fails during an internet outage.
+- Bookings and booking changes refused for free room types and dates
+  after one restart in the order of section 3 (section 6.2) — that is
+  the availability check failing, not a sold-out hotel.
 - A failed upgrade that the delivery team cannot fix within the
   working day (rollback is in `docs/devops/deployment.md`,
   section 6).
@@ -167,4 +235,4 @@ the exact words of any failure message, and the date and time of
 the last successful backup.
 
 <!-- ao-role: release-manager -->
-Role: release-manager · AO session hotel-mgmt-79
+Role: release-manager · AO session hotel-mgmt-936
