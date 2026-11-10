@@ -1073,9 +1073,13 @@ family these conditions trace to.
   with `CONFLICT` naming the room type and the dates and writes
   nothing — so the field is optional and advisory and can neither
   raise nor lower the ceiling, while a malformed value is still
-  refused as `VALIDATION_FAILED` naming the field. Given a confirmed
-  reservation, when a caller changes its dates or room type to a
-  combination whose recorded capacity is already fully booked, then
+  refused as `VALIDATION_FAILED` naming the field. Given a room type
+  whose recorded capacity for those dates is zero, when a caller books
+  it, then the refusal is the same sold-out `CONFLICT` naming the type
+  and dates, never a fail-closed `UPSTREAM_UNAVAILABLE`: a sold-out
+  type is not an outage. Given a confirmed reservation, when a caller
+  changes its dates or room type to a combination whose recorded
+  capacity is already fully booked, then
   the change refuses with `CONFLICT`, the reservation keeps its
   previous dates, type, guest, and price, and no change-history entry
   is written. Given a reservation that is cancelled, marked no-show,
