@@ -578,8 +578,74 @@ implementation PR merges with `CKP-1`..`CKP-12` green and `qa-lead`
 re-pins the rows at the merged head. The MVP Coverage line below
 stands unchanged at 57/57.
 
+## 13. Stay server-side check-out settlement gate slice (Refs #601)
+
+Behaviour slice for the check-out money path: the close is decided on
+the folio Billing holds, not on the balance and approval the request
+carries. Stay re-reads the folio through Billing on every route to
+the close, refuses a presented folio that is not the folio the
+balance came from, accepts an approval only when the recorded record
+carries an approver identity, a role from the fixed three, and a
+recorded time, and fails closed when the folio cannot be read.
+`CheckOut` keeps its request members with `folioBalanceMinor` and
+`openBalanceApproval` advisory; the error set gains `CONFLICT` (409)
+and `UPSTREAM_UNAVAILABLE` (503). No schema, stored-value, event,
+desk-panel, catalogue, or MVP-capability change is involved. Tier T3
+(`architect`'s ADR-0005 and LLD
+[section 21](../architecture/lld.md); `product-owner` scope in
+[acceptance-criteria.md section 14](../product/acceptance-criteria.md);
+`business-analyst` requirements in
+[mvp-requirements.md section 22](../requirements/mvp-requirements.md)).
+
+Each row traces `AC-CKO-1` / `AC-CKO-2` (owned by `product-owner`),
+the behaviour-scoped requirements `FR-CKS-1`..`FR-CKS-5` (owned by
+`business-analyst`), the unchanged MVP rows `FR-FDK-2` and
+`FR-BIL-7`, and business rules `BR-17` / `BR-46`
+([business-rules.md](../requirements/business-rules.md)). The owner
+cases `CKS-1`..`CKS-11`, the guard registry `S1`–`S12`, and the
+evidence rule `SR-1` live in
+[checkout-settlement-test-traceability.md](checkout-settlement-test-traceability.md)
+sections 3, 4, 6, and 7. Like the slices above, these rows add no MVP
+capability: the 57-row MVP coverage count stands unchanged and no MVP
+row may cite this slice as its guard.
+
+Every `file:line` in the existing pins was read at the spec head
+`3c79797` (code tree identical to `master` `0dcb68e`). Those pins
+prove today's client-trusting behaviour and the implementation PR
+rewrites them in place, with a `#601` note, never deleting one. All
+`S1`–`S12` guards are **missing at this spec head** and created by
+the implementation PR; a row is complete only when that PR lands,
+passes, and `qa-lead` re-pins it at the merged head. The slice is
+therefore **not complete** at this spec head.
+
+| Item | Required guard type | Guard |
+|---|---|---|
+| `AC-CKO-1` — the close is decided on the folio Billing holds: re-read on every route, presented folio must be the one the balance came from, request balance and approval advisory, non-zero read passes only with a provenanced recorded approval; every refusal leaves the stay in house with no release and no charge (Refs #601; traces to US-FDK-2; `FR-CKO-4`, `FR-CKO-5`, `FR-BIL-7`, `BR-17`, `BR-46`) | L1 acceptance: forged, incomplete, out-of-set, free-form, provenanced, and mismatch callers | **Pending** — `S1`, `S2`, `S3`, `S4`, `S5`, `S6`, `S7`, `S8` in `services/stay/src/server.test.ts`; existing pins to rewrite: `services/stay/src/store.ts:148-166` and `:260-293`, `services/stay/src/pgstore.ts:161-166`, `services/stay/src/server.test.ts:128-238` (`:129-145`, `:147-163`, `:164-178`, `:179-211`, `:212-238`), `:378-459` (`:429-432`, `:433-442`, `:443-451`, `:452-455`) |
+| `AC-CKO-2` — an unreadable folio refuses fail-closed with `UPSTREAM_UNAVAILABLE` (503) rather than closing on an unverified balance, a 4xx envelope is surfaced unchanged, and the settled or approved desk close keeps passing unchanged | L1 acceptance + fail-closed check | **Pending** — `S9` (unreadable, 4xx pass-through) and `S7` (the desk's approved close); the desk half is the desk-stay-green row |
+| `FR-CKS-1` — the close is decided on the folio Billing holds, and the request's `folioBalanceMinor` / `openBalanceApproval` are advisory and ignored (section 22.3) | L1 acceptance, both directions | **Pending** — `S1`, `S2`, `S6`; existing pins `services/stay/src/server.test.ts:147-163`, `:429-432`, `:164-178`, `:433-442` prove today's opposite and are rewritten |
+| `FR-CKS-2` — the folio presented as the invoice is the folio the balance came from (section 22.3) | L1 acceptance | **Pending** — `S8`; no guard on disk; `contracts/http/CheckOut.json` presents the folio as the invoice and gains the `CONFLICT` error row through `architect` |
+| `FR-CKS-3` — an approval counts from the folio record, never from the request: identity, fixed role set, recorded time; incomplete, free-form, or out-of-set refuses `SETTLEMENT_REQUIRED`; the write side refuses an out-of-set role and stamps the time (section 22.3) | L1 acceptance (read side and write side) | **Pending** — `S3`, `S4`, `S5`, `S6`, `S7` (read side, `services/stay/src/server.test.ts`) and `S11` (`services/billing/src/test/java/com/hotel/billing/service/BillingServiceTest.java`); existing pins `BillingService.java:255-272`, `:302-314`, `BillingServiceTest.java:137-163` cover only blank fields |
+| `FR-CKS-4` — an unreadable folio refuses the close fail-closed; a 4xx envelope is surfaced unchanged (section 22.3) | L1 acceptance + fail-closed | **Pending** — `S9`; no guard on disk; `deploy/compose.yaml:46`, `:77`, `:113` is the wiring the case exercises |
+| `FR-CKS-5` — every route to the close is gated (gate before replay and before the conditional flip) and a refusal changes nothing (section 22.3) | L1 + L3 paired concurrency | **Pending** — `S10`; existing pins `services/stay/src/server.test.ts:179-211`, `:212-238`, `:443-455` keep the replay and one-winner assertions and are rewritten to the gate-first order |
+| Desk flows stay green (`AC-DSK-18`, `AC-DSK-19`, `FR-CKO-4`, `FR-CKO-5`) | Behaviour check: the desk's own close still passes and shows the same lines, and every desk pin passes unchanged | **Covered by re-run** — `app/src/views/StayView.test.ts:1650-1746`, `:1747-1783`, `:1608-1649`, `:1940-1974`, `app/src/views/desk-edge-guards.test.ts:970-1033`, `:1182-1251`, `app/e2e/stay.spec.ts:30-157`, `script/e2e-desk-loop.sh:399-424`; a desk edit in the implementation PR fails the row |
+| Contract and LC | Re-run only: `CheckOut` keeps its advisory fields, the envelope registers `CONFLICT` (409) and `UPSTREAM_UNAVAILABLE` (503), the fixtures stay valid, and the Stay -> Billing `GetFolioBalance` seam passes the per-module contract stage | **Pending gate** — `contracts/http/CheckOut.json`, `contracts/errors/envelope.json:9`, `:22`, `services/stay/contract-tests/CheckOut.json`, `CheckOut-open-balance.json`, `CheckOut-approved.json`, `CheckOut-repeat.json`, `script/contract-check.sh`, `script/openapi-route-check.sh`; the contract edit is `architect`'s (ADR-0005 D5) |
+| MVP no-change statement | No new MVP row, story, or FR id; `FR-FDK-2` / `FR-BIL-7` gain only the amendment pointer | **Pending gate** — the 57-row MVP coverage count stands unchanged and no MVP row cites this slice |
+| Evidence cross-reference (`SR-1`) | The #588 symptom 2(d) payload is the named refusal, recorded before/after, and the slice is recorded in the test report | **Pending** — `S5` is the payload as a guard; `docs/testing/evidence/601/README.md` and the `test-report.md` row are created by the implementation PR |
+
+Slice coverage (Refs #601): 11 rows mapped to `AC-CKO-1`,
+`AC-CKO-2`, and `FR-CKS-1`..`FR-CKS-5`. One row is covered by a gate
+re-run today (the desk-stay-green row, whose pins exist and pass and
+must keep passing untouched); ten are **pending** the implementation
+PR — the seven condition rows whose guards are the registry
+`S1`–`S12`, the contract/LC gate, the MVP no-change gate, and
+`SR-1`. The slice is **not complete** at this spec head; it
+completes when the implementation PR merges with `S1`–`S12` green,
+the desk pins unchanged, `SR-1` recorded, and `qa-lead` re-pins the
+rows at the merged head. The MVP Coverage line below stands
+unchanged at 57/57.
+
 Coverage: 43 FRs mapped, 14 NFRs mapped, 57 rows total, 57 guards
-filled (PR #112 slice: FR-RES-1, FR-RMS-1..4, FR-RTE-1/2/4/5, FR-ADM-1/2, FR-CUS-1, NFR-CON-1/2; PR #149 slice: FR-FDK-1, FR-FDK-5, FR-BIL-1/2/3/6, FR-ADM-5, NFR-BKP-1/2, NFR-AUD-1, NFR-TZ-1, plus FR-RES-1 persistence; PR #150 slice: FR-FDK-2, FR-FDK-3, FR-FDK-4, FR-BIL-7, plus the NFR-CON-2 stay-side checkout guard; PR #151 slice: FR-BIL-4, FR-CUS-3; PR #156 slice: FR-RPT-1..3; PR #157 slice: FR-GST-1..3; PR #158 slice: NFR-DEP-1, FR-ADM-4 config level, plus the FR-ADM-1 deployment extension; PR #159 slice: FR-RES-2/3/5/6 plus the NFR-CON-1 modify-path extension; PR #160 slice: ReleaseBlock plus rooms-side move coordination (FR-RMS-3, FR-FDK-3); PR #161 slice: full rates handling (FR-RTE-3 filled, FR-RTE-4/5 extended — remaining TBD cells fill in later slices); count corrected to the live total 48 (later slices filled cells without updating this line); PR #153 slice: NFR-RET-1, NFR-AVL-1; PR #182 slice: FR-RES-4, FR-ADM-3, FR-CUS-2, NFR-PERF-1/2 filled (5 guards — count corrected to the live total 53); FR-GST-4, FR-BIL-5, FR-RPT-4 point at follow-ups #189, #190, #191 and fill with those issues; NFR-I18N-1 filled by the #192 slice (count corrected to the live total 54); #189/#190/#191/#192/#201 slices filled FR-GST-4, FR-BIL-5, FR-RPT-4, NFR-I18N-1 (plus the #201 extension) — count corrected to the live total 57 (Closes #214)). Section 10 (Refs #588) adds 10 slice rows mapped to the #588 acceptance and `FR-CKO-1`..`FR-CKO-5`; the MVP row count stands unchanged at 57/57 because the slice adds no MVP capability. Section 11 (Refs #590) adds 15 slice rows mapped to `AC-MANAGE-1..11` and `FR-MGMT-1..12`; the MVP row count stands unchanged at 57/57 for the same reason. Section 12 (Refs #600) adds 10 slice rows mapped to `AC-DSK-19` and `FR-CKP-1`..`FR-CKP-5`; the MVP row count stands unchanged at 57/57 for the same reason.
+filled (PR #112 slice: FR-RES-1, FR-RMS-1..4, FR-RTE-1/2/4/5, FR-ADM-1/2, FR-CUS-1, NFR-CON-1/2; PR #149 slice: FR-FDK-1, FR-FDK-5, FR-BIL-1/2/3/6, FR-ADM-5, NFR-BKP-1/2, NFR-AUD-1, NFR-TZ-1, plus FR-RES-1 persistence; PR #150 slice: FR-FDK-2, FR-FDK-3, FR-FDK-4, FR-BIL-7, plus the NFR-CON-2 stay-side checkout guard; PR #151 slice: FR-BIL-4, FR-CUS-3; PR #156 slice: FR-RPT-1..3; PR #157 slice: FR-GST-1..3; PR #158 slice: NFR-DEP-1, FR-ADM-4 config level, plus the FR-ADM-1 deployment extension; PR #159 slice: FR-RES-2/3/5/6 plus the NFR-CON-1 modify-path extension; PR #160 slice: ReleaseBlock plus rooms-side move coordination (FR-RMS-3, FR-FDK-3); PR #161 slice: full rates handling (FR-RTE-3 filled, FR-RTE-4/5 extended — remaining TBD cells fill in later slices); count corrected to the live total 48 (later slices filled cells without updating this line); PR #153 slice: NFR-RET-1, NFR-AVL-1; PR #182 slice: FR-RES-4, FR-ADM-3, FR-CUS-2, NFR-PERF-1/2 filled (5 guards — count corrected to the live total 53); FR-GST-4, FR-BIL-5, FR-RPT-4 point at follow-ups #189, #190, #191 and fill with those issues; NFR-I18N-1 filled by the #192 slice (count corrected to the live total 54); #189/#190/#191/#192/#201 slices filled FR-GST-4, FR-BIL-5, FR-RPT-4, NFR-I18N-1 (plus the #201 extension) — count corrected to the live total 57 (Closes #214)). Section 10 (Refs #588) adds 10 slice rows mapped to the #588 acceptance and `FR-CKO-1`..`FR-CKO-5`; the MVP row count stands unchanged at 57/57 because the slice adds no MVP capability. Section 11 (Refs #590) adds 15 slice rows mapped to `AC-MANAGE-1..11` and `FR-MGMT-1..12`; the MVP row count stands unchanged at 57/57 for the same reason. Section 12 (Refs #600) adds 10 slice rows mapped to `AC-DSK-19` and `FR-CKP-1`..`FR-CKP-5`; the MVP row count stands unchanged at 57/57 for the same reason. Section 13 (Refs #601) adds 11 slice rows mapped to `AC-CKO-1`, `AC-CKO-2`, and `FR-CKS-1`..`FR-CKS-5`; the MVP row count stands unchanged at 57/57 for the same reason.
 
 <!-- ao-role: qa-lead -->
-Role: qa-lead · AO session hotel-mgmt-913
+Role: qa-lead · AO session hotel-mgmt-922
