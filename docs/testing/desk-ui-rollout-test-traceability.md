@@ -13,7 +13,8 @@ AC-DSK-9..11 on the #438 stack in PR #441, plus AC-DSK-13 for the
 #581 Book date pickers, plus AC-DSK-16 for the
 #582 list-backed stay picker, plus AC-DSK-17 for the #586 Stay
 arrival-pick candidate preload, plus AC-DSK-18 for the #588 Stay
-check-out room release and unpaid-close gate) and every rollout
+check-out room release and unpaid-close gate, plus AC-DSK-19 for
+the #600 Stay check-out room-charge posting) and every rollout
 requirement (FR-DSK-1..7, NFR-DSK-1..3, owned by
 `business-analyst` in `docs/requirements/mvp-requirements.md`
 section 10, PR #427, plus wizard-scoped FR-DSK-8..10 in section
@@ -21,15 +22,18 @@ section 10, PR #427, plus wizard-scoped FR-DSK-8..10 in section
 FR-MNY-1 / FR-MNY-2 in section 14 at PR #574, the #581
 Book date-picker FR-BDP-1..3 in section 16 at PR #583, the
 #582 list-backed stay-picker FR-LSP-1..3 in section 17, the
-#586 check-in preload FR-CIP-1..4 in section 18, and the #588
-check-out release and gate FR-CKO-1..5 in section 19) to its
+#586 check-in preload FR-CIP-1..4 in section 18, the #588
+check-out release and gate FR-CKO-1..5 in section 19, and the
+#600 check-out room-charge posting FR-CKP-1..5 in section 21) to its
 guard: existing parity guards by `file:line`
-(all verified on disk) plus the new rollout guards D1–D18 (D13
+(all verified on disk) plus the new rollout guards D1–D19 (D13
 shipped with the #565 change, D14 with the #568 change, D15
 ships with the #581 Book date-picker change, D16 ships with
 the #582 list-backed stay picker, D17 shipped with the #586
 arrival-pick preload change (PR #594), and D18 ships with the #588
-check-out release and gate change; D1–D12 are created by the
+check-out release and gate change, and D19 ships with the #600
+check-out room-charge posting change (carried by the
+implementation PR #618); D1–D12 are created by the
 per-screen implementation PRs). Companion specs: the T2
 UI contract in `docs/product/desk-ui-design-rollout.md` sections
 3–4 (owned by `product-owner`); per-flow diagrams with happy path
@@ -129,6 +133,25 @@ live in `docs/testing/dom-diff-allowlist.md` and
   (`script/e2e-desk-loop.sh:422-423`); the rewrite keeps the
   candidate half and replaces the check-out half with the release
   obligation, with a note.
+- The #600 change is a narrowly-scoped behaviour change on the Stay
+  check-out review only: the review posts the stay's room charge
+  (one `nightly-room-charge` line per stay) at the stay's frozen
+  quoted total (`priceBasis.totalMinor`, `FR-RTE-5`), resolved
+  through the reservation calendar entry that links the stay, before
+  the panel presents a balance; a folio that already carries a
+  room-charge line is never charged again, a zero quoted total posts
+  nothing, and an unresolvable booking or a refused or failed
+  `PostCharge` refuses the review with no balance and no close route.
+  `PostCharge` keeps its request members (the optional
+  `idempotencyKey` included), and no backend, contract-semantics,
+  schema, stored-value, print, or scheduler change is involved. The
+  #588 gate (`AC-DSK-18`) is unchanged and becomes meaningful once
+  the folio carries the room. Its guard is D19, its map rows are
+  AC-DSK-19 and `FR-CKP-1`..`FR-CKP-5` (section 4), its matrix rows
+  live in section 12 of `traceability-matrix.md`, and its test plan
+  is section 6 below. One new catalogue key
+  (`desk.stay.refused_room_charge`) ships in both locales with the
+  eight runtime mirrors.
 - Catalogue rule holds (`NFR-I18N-1`, extended by `NFR-DSK-1`):
   every new or changed string ships in both `messages/en.json`
   and `messages/vi.json` with placeholders intact, and
@@ -170,7 +193,7 @@ live in `docs/testing/dom-diff-allowlist.md` and
 | AC-DSK-14 open-folio context (Refs #568) | The reference-disclosure rule (#372) that keeps raw IDs hidden by default: `app/src/views/FolioView.test.ts:208`–`:213` (default status names no UUID; the stay and folio IDs appear only inside the opened disclosure); the charges-title hook the context composes into: `app/src/folio-restyle.test.ts:71` plus `app/src/views/FolioView.test.ts:180` (open with running balance); browser pin `app/e2e/folio.spec.ts:121`–`:128` | The charges card keeps its `folio-charges-title` hook and the plain `Charges` / `Khoản phí` heading while nothing resolves; the reference disclosure keeps the raw stay and folio IDs and never becomes the default surface. The guest-plus-room title composition and its fallbacks are D14 |
 | AC-DSK-15 app-localized Book date pickers (Refs #581) | Booking flow, date-input path, and ISO payload unchanged: `app/src/views/BookView.test.ts:333` (confirm with the guest snapshot, frozen price basis, searched sellable count, one idempotency key), `:429` (the desk date form in the fields with the canonical ISO `QuotePrice` body, now read off the DatePicker inner input and re-rendered on a locale switch), `:1200` (quote cleared when any stay input changes); browser typed path `app/e2e/book.spec.ts:43`–`:45` (`getByTestId(...).fill(...)` with the desk form) plus the quote/confirm payload pins in the same suite; design-facts gate `app/e2e/design-facts.ts:349`–`:350` | The booking flow, refusals, quote re-render, and ISO payloads run exactly as today; only how the two Book date fields are entered and shown changes (D15). The field form derives from the app locale only — a browser-UI-locale-driven field (`navigator.language` or `<html lang>`) is a failure |
 
-## 3. New rollout guards D1–D18 (D1–D12 created by the screen PRs)
+## 3. New rollout guards D1–D19 (D1–D12 created by the screen PRs)
 
 No D1–D12 guard exists yet: each of those rows names the screen PR
 that must create it. D13 (Refs #565) already shipped with the
@@ -179,7 +202,9 @@ open-folio context change, D15 (Refs #581) ships with the
 Book date-picker change, D16 (Refs #582) ships with the
 list-backed stay-picker change, D17 (Refs #586) shipped with
 the Stay arrival-pick preload change (PR #594), and D18 (Refs #588) ships
-with the Stay check-out release and gate change. A rollout matrix
+with the Stay check-out release and gate change, and D19 (Refs #600)
+ships with the Stay check-out room-charge posting change (carried by
+the implementation PR #618). A rollout matrix
 row is complete only
 when its D-guard exists and passes. D10–D12 cover onboarding wizard
 steps 2–4 (Refs #438) and are created by the single steps 2–4
@@ -205,10 +230,11 @@ screen PR, not by #425.
 | D16 | List-backed stay-picker assertions (Refs #582; values per `AC-DSK-16`): on Folio and Print, the business date's in-house stays render as select options labelled `guest · room` from `ListArrivalsDepartures` plus `ListRoomsByState` (never a raw UUID), the business date sent is `localBusinessDate()`, picking an option clears the typed field and opens with the unchanged `stayId`, and the typed path stays equivalent; an empty in-house list or a failed list read shows the plain `desk.stay.stay_list_empty` / `desk.stay.stay_list_failed` notice and leaves manual entry working; the Onboarding room-number field and the Print booking-reference field stay manual; four new visible keys ship in both locales with the eight mirrors byte-identical (`AC-DSK-8` holds); the design-facts Folio decided inputs lead with the select and keep the text field | AC-DSK-16; FR-LSP-1, FR-LSP-2, FR-LSP-3 | The #582 list-backed stay-picker PR: select render plus picked ID `app/src/views/FolioView.test.ts:997` and `app/src/views/PrintView.test.ts:844`; empty-list manual fallback `app/src/views/FolioView.test.ts:1018`; failed-read manual fallback `app/src/views/FolioView.test.ts:1037` and `app/src/views/PrintView.test.ts` (#582 failed-read case); browser select path `app/e2e/folio.spec.ts:88`–`:89` and `app/e2e/print.spec.ts:92`–`:93`; shared helper `app/src/stay-options.ts`; gate `app/e2e/design-facts.ts:383`; catalogue `messages/en.json`, `messages/vi.json` (four `desk.stay.*` keys) plus the eight mirrors; evidence `docs/testing/evidence/563/README.md` (Folio VI + EN pairs) |
 | D17 | Stay arrival-pick preload assertions (Refs #586; values per `AC-DSK-17`, behaviour per `FR-CIP-1`..`FR-CIP-4`; shipped in PR #594): picking an arrival alone populates the room select with the booked type's ready rooms through `GetReservation` + `ListRoomsByState('vacant-inspected')` and the booked-type filter, with no Check in click; exactly one ready room binds automatically with no hint and no error, several open on the explicit empty placeholder plus the amber `stay-checkin-room-hint`; a second arrival pick resets the previous candidates, bound room, and error first, and a late read for an earlier pick never paints; a pick made while a Check in commit is in flight is dropped by the commit success reset — that reset invalidates the pick's preload (Refs #596), so the panel returns to the empty placeholder with no candidate, status, or error from the late read, the Check in button is usable again, and no second commit runs; a preload for a pick taken inside that commit window cannot release the commit's in-flight state when it settles before the commit does (Refs #614), so the Check in button stays disabled with no second commit until the commit itself settles; selecting a valid room clears the `Pick a ready room first.` message and the hint immediately (the multi-candidate path included), while the placeholder or an outside value leaves the guard at commit; zero ready rooms of the booked type show the plain no-ready-rooms error with the booked-type status and bind nothing; a Check in click after a successful preload commits once (`AssignRoom` → `CheckIn` → `CheckInReservation` with the unchanged bodies, no repeated candidate read), a second click in flight is a no-op, and a failed preload retries the load instead of committing; the unknown-reference, `need_arrival`, `need_room`, and `CONFLICT` strings are unchanged in both locales (`AC-DSK-8` holds) | AC-DSK-17; FR-CIP-1, FR-CIP-2, FR-CIP-3, FR-CIP-4 | The #586 Stay arrival-pick preload PR (PR #594; shipped, guards on disk): the arrival-pick flow `app/src/views/StayView.test.ts:332` (one button click commits; placeholder-first `:357`) and the rewritten edge gate `app/src/views/desk-edge-guards.test.ts:1225` (placeholder/back-forward) pin the pick timing with a note; the guard cleared on a valid room pick `:402`, the plain no-ready-rooms error with a retrying click `:538`, the retry after a failed preload `:607`, the mid-load arrival clear `:665`, and the late read for an earlier pick `:723`; extended `:453` (`need_room`), `:493` (auto-select), `:943` (unknown ref), `:967` (taken room), `:997` (already checked in), `:1772` (in-flight double-click), `:1909` (commit-window pick dropped by the reset, Refs #596), `:2057` (commit-window preload settling first, Refs #614); browser `app/e2e/stay.spec.ts:68`–`:73` (pick, select, one commit click); design-facts re-run with the unchanged `select` and the DD-13 option-subtree exemption; evidence in `docs/testing/evidence/563/README.md` plus the #586 pair in `docs/testing/evidence/586/` |
 | D18 | Stay check-out release and unpaid-close gate assertions (Refs #588; values per `AC-DSK-18`, behaviour per `FR-CKO-1`..`FR-CKO-5`, PR pending): a settled close sends exactly one `CheckOut` and exactly one `ReleaseRoom` for the room the stay held with `{roomNumber, toState: 'vacant-dirty', actor}` resolved from the departing row (never a retyped number) and then reloads the desk once, so the in-house list drops the guest while the departing list keeps today's checkout; a refused close, an already-closed stay, a replayed or double click, and a close that never returned send no release and write no room state; a failed release still reports the close as closed with the plain `desk.stay.room_release_failed` sentence and no retry, and a not-occupied reply (`ReleaseRoom` `STATE_ILLEGAL`) reads `desk.stay.room_already_free` while claiming no housekeeping state; an open-balance folio with no valid recorded approval refuses on the Check out button, on the dialog confirm, and on a replayed or double click with zero `CheckOut` calls, the dialog closed, the stay in house, and the plain `desk.stay.refused_open_balance` sentence with the approval form open; a balance that moved after review refuses on the freshly read value; a recorded `RecordOpenBalanceApproval` object (non-blank `approvedBy`, a role from the fixed three, a recorded `approvedAt`) closes and shows `desk.stay.approval_recorded_by` with the identity, role, and recorded time, while an object missing the identity or the time or carrying an out-of-set role reads `desk.stay.refused_approval_incomplete` with the stay in house; the approver-role control is a select over the same fixed role catalogue the reviewer field uses, so a free-form role cannot be recorded; every state uses catalogue strings in both locales (`AC-DSK-8` holds) | AC-DSK-18; FR-CKO-1, FR-CKO-2, FR-CKO-3, FR-CKO-4, FR-CKO-5 | The #588 Stay check-out release and gate PR: rewrite `app/src/views/desk-edge-guards.test.ts:840-849` (stale "server-side on CheckOut" comment) and `:908-947` (closes once, sends exactly one `ReleaseRoom` for the departed room, writes no other room state, re-reads the lists) with a #588 note; extend `app/src/views/StayView.test.ts:1006-1041` (release body plus reload order); rewrite `:1115-1155` (`SETTLEMENT_REQUIRED` case becomes a local refusal with zero `CheckOut` calls) and `:1199-1238` (stringified approval must carry `approvedAt`); extend `:1043-1086` (open-balance gate, recorded-approval close) and `:1087-1113` (approver-role select); create the missing cases (confirmed/not-occupied/failed release outcomes, the dialog-confirm gate, the refused-close in-house state with the approval form open, and the provenance-incomplete approval); browser `app/e2e/stay.spec.ts:99-110` (the "no screen action can produce it" comment at `:104-109` becomes a board assertion: room `vacant-dirty`, lane no longer occupied, no manual reload); `script/e2e-desk-loop.sh:422-423` pins the API-side end state; catalogue `messages/en.json` / `messages/vi.json` (five new `desk.stay.*` keys plus the retired `desk.stay.approval_recorded_brief` removed) with the eight mirrors; design-facts re-run with no fact edit |
+| D19 | Stay check-out room-charge posting assertions (Refs #600; values per `AC-DSK-19`, behaviour per `FR-CKP-1`..`FR-CKP-5`, carried by the implementation PR #618): the review reads the folio, and only when it carries no `nightly-room-charge` line resolves the stay's booking through `QueryCalendar` (the entry that links the stay) then `GetReservation`, posts exactly one `nightly-room-charge` line at the booking's frozen `priceBasis.totalMinor` (integer minor units) named for the room the stay held (or the plain room-charge name when the loaded room state cannot name it), with `idempotencyKey` `room-charge:<stayId>` and the signed-in staff member as `actor`, and re-reads the folio so the balance line includes the charge before any balance is shown; a folio that already carries a room-charge line — posted from the Folio screen or by the API desk loop — posts nothing and reviews the stored lines as read; a repeated review posts nothing, so one room-charge line per stay is the observable; a zero quoted total posts nothing and the review proceeds on the folio as read, so a free stay still closes on the zero balance `BR-17` allows; a stay whose booking cannot be resolved from the calendar it was checked in against refuses in `desk.stay.refused_room_charge` (plain sentence, next step, no code or envelope) with zero `PostCharge`, no balance line, no Check out route, and zero `CheckOut`; a `PostCharge` the service refuses or that fails ends the review in the plain panel error for that refusal, with no balance, no close route, the stay in house, and zero `CheckOut`; after the post the `AC-DSK-18` gate governs unchanged — a settled folio or a provenanced recorded approval passes, an open balance without one refuses on every route; the one new catalogue key ships in both locales plus the eight mirrors; no design fact changes | AC-DSK-19; FR-CKP-1, FR-CKP-2, FR-CKP-3, FR-CKP-4, FR-CKP-5 | The #600 Stay check-out charge-posting PR (implementation PR #618): carries `app/src/views/StayView.test.ts:1207-1290` (posting at the frozen quote plus the repeated-review no-post half), `:1291-1310` (an already-charged folio is left untouched), and `:1311-1357` (the unresolvable-booking refusal); the gate half rides `:1086-1206`, `:1358-1476`, `:1612-1676`, and `app/src/views/desk-edge-guards.test.ts:970-1033`; rewrites `app/e2e/stay.spec.ts:80-103` so the browser flow proves the desk posts its own charge instead of a seeded API `PostCharge`; creates the two missing cases (a zero quoted total, and a refused or failed `PostCharge`) — see section 6; catalogue `messages/en.json:474` / `messages/vi.json:474` plus the eight mirrors; source pin `app/src/stay-restyle.test.ts:105`; design-facts re-run with no fact edit |
 
 ## 4. Traceability map (AC-DSK to guards)
 
-| AC-DSK / FR-CIP item (traces per the `product-owner` section 11 and `business-analyst` section 18 `Traces to` lines) | FR/NFR-DSK | Guard (section 2 parity + section 3 new guards) | Status and pass evidence |
+| AC-DSK / FR-CIP / FR-CKO / FR-CKP item (traces per the `product-owner` section 11 and `business-analyst` sections 18, 19, and 21 `Traces to` lines) | FR/NFR-DSK | Guard (section 2 parity + section 3 new guards) | Status and pass evidence |
 |---|---|---|---|
 | AC-DSK-1 — shared shell in canvas-manifest order with locale toggle | FR-DSK-1 | Parity: `router.test.ts:17,32,40,48,56,64,72,91` + `App.test.ts:147,186,201,216` suite + `session.test.ts:21,33,43` + `client.test.ts:55,68,83,117,137,154` + **D1 new** | Baseline green in the `app/` unit suite; D1 pending the shell screen PR (recorded on #420) |
 | AC-DSK-2 — Main board with housekeeping buttons and refreshed counts | FR-DSK-2 | Parity: `DeskView.test.ts:182,202,224,298,352` + `DeskView.vue:109,121,133,147` + unchanged `FR-RMS-2` / `NFR-AUD-1` matrix guards + **D2 new** | Baseline green; D2 pending #420 |
@@ -236,6 +262,12 @@ screen PR, not by #425.
 | FR-CKO-3 — the desk stops showing the room occupied after a close (section 19.3) | Behaviour check: after a committed close and a confirmed release the in-house list drops the guest, the departing list keeps today's checkout, and the Main board / Rooms map read the room vacant on their own load; an unconfirmed release keeps the "still reads occupied" line | Partial today: the post-close list re-read rides `app/src/views/StayView.test.ts:1006-1041` and the panel load `:278-308`; the room-state half has no guard (`app/e2e/stay.spec.ts:104-109` records that no screen action releases); the implementation PR extends the unit case and rewrites the browser case to assert `vacant-dirty` and the board lane without a manual reload |
 | FR-CKO-4 — every route to the close is gated on the freshly read folio (section 19.3) | Behaviour check: the dialog confirm carries the same gate as the Check out button; `onCheckOut` decides on its own `GetFolioBalance` read; a non-zero balance without a valid recorded approval sends no `CheckOut`, closes the dialog, keeps the stay in house, and shows `desk.stay.refused_open_balance` with the approval form open; a moved balance refuses on the fresh value; a second attempt in flight is a no-op | Partial today: `app/src/views/StayView.test.ts:1043-1086`, `:1115-1155` (rewritten to a local refusal with zero `CheckOut` calls), `:1240-1277`, `app/src/views/desk-edge-guards.test.ts:1104-1151`, gate source `app/src/views/StayView.vue:557-561`; missing guards the implementation PR creates: the dialog-confirm gate itself and the refused-close in-house state |
 | FR-CKO-5 — the only exception is a recorded, provenanced approval, and it stays visible (section 19.3) | Behaviour check: an approval counts only with a non-blank identity, a role from the fixed three, and a recorded time; the approved close succeeds and shows `desk.stay.approval_recorded_by` with identity, role, and recorded time in the desk time form; an incomplete or out-of-set approval reads `desk.stay.refused_approval_incomplete` with the stay in house; the approver-role control is a select over the fixed role set | Partial today: `app/src/views/StayView.test.ts:1043-1086` (approval recorded then close passes), `:1199-1238` (stringified approval must now also carry `approvedAt`), `:1087-1113` (reviewer role select extended to the approver select), stub `:176-183`; missing guard the implementation PR creates: the incomplete/out-of-set approval refusal |
+| AC-DSK-19 — the check-out review posts the stay's room charge once at its frozen quoted total before a balance is shown, never a second, nothing for a zero quote, and refuses an unpostable charge (Refs #600; AC-DSK-18 keeps the gate condition and points here) | FR-CKP-1, FR-CKP-2, FR-CKP-3, FR-CKP-4, FR-CKP-5 (section 21) | **D19** (section 3) and the section 6 test plan: posting `app/src/views/StayView.test.ts:1207-1290`; the no-double-post pair `:1281-1290`, `:1291-1310`; the unresolved-booking refusal `:1311-1357`; the gate after the post `:1086-1206`, `:1358-1476`, `:1612-1676`, `app/src/views/desk-edge-guards.test.ts:970-1033`; browser `app/e2e/stay.spec.ts:80-103`; source pin `app/src/stay-restyle.test.ts:105`; catalogue key parity; the unchanged `FR-FDK-2` / `FR-BIL-7` matrix rows keep the capability and the server-side gate | Pins are on disk at the implementation head `1b43762` (PR #618, unmerged when this row was written) and every cited `file:line` was read there; the row is complete only when #618 merges with the two missing cases named in the `FR-CKP-3` and `FR-CKP-4` rows below and `app-build` plus `browser-e2e` pass. `qa-lead` re-pins at the merged head, as with `AC-DSK-18` |
+| FR-CKP-1 — the review posts one `nightly-room-charge` at the stay's frozen quote before it presents a balance (section 21.3) | Behaviour check: one `PostCharge` carrying `stayId`, `itemKind` `nightly-room-charge`, the room-named `itemName`, `amountMinor` equal to the booking's `priceBasis.totalMinor`, the signed-in staff member as `actor`, and `idempotencyKey` `room-charge:<stayId>`; the re-read balance includes the line; a folio read that fails posts nothing and shows the existing plain read error | Guards on disk at the implementation head `1b43762` — `app/src/views/StayView.test.ts:1207-1290` (the exact body, the frozen-quote amount, and the balance line including it) and `app/e2e/stay.spec.ts:80-103` (browser: one line, amount equal to the quoted total, named for the room, and no API-seeded post any more); source pin `app/src/stay-restyle.test.ts:105` | On disk at `1b43762`; re-pin at merge |
+| FR-CKP-2 — one room charge per stay, never a second (section 21.3) | Behaviour check: a repeated review after a landed post sends zero `PostCharge`; a folio that already carries a `nightly-room-charge` line sends zero `PostCharge` and reviews the stored lines and balance as read; exactly one room-charge line remains for the stay | Guards on disk at `1b43762` — `app/src/views/StayView.test.ts:1207-1290` (the repeated review at `:1281-1290` posts nothing) and `:1291-1310` (an already-charged folio is left untouched, zero `PostCharge`); the happy stub's default folio now carries the charge (`:200-225`), so the settled-close path runs on a charged folio rather than a zero read | On disk at `1b43762`; re-pin at merge |
+| FR-CKP-3 — a zero quote posts nothing (section 21.3) | Behaviour check: with a frozen quoted total of zero, zero `PostCharge` calls, no zero-amount line invented, and the review reaches the zero-balance clear state on the folio as read, so the free stay still closes on the balance `BR-17` allows | **Missing guard, named explicitly** — no case covers a zero quoted total today: the happy stub returns `priceBasis.totalMinor` `120000` for every stay (`app/src/views/StayView.test.ts:159-172`) and the settled-close case at `:1086-1206` runs on a pre-charged folio, not a zero quote. The implementation PR #618 must create the case — both halves (zero `PostCharge`, zero-balance clear) — before this row can be complete | **Open** — missing guard, not complete at this head |
+| FR-CKP-4 — a charge that cannot be posted refuses the review (section 21.3) | Behaviour check: an unresolvable booking refuses in `desk.stay.refused_room_charge` with zero `PostCharge`, an empty folio status, no Check out control, and zero `CheckOut`; a `PostCharge` the service refuses or that fails ends the review in the plain panel error with no balance, no close route, the stay in house, and zero `CheckOut` | Partial at the implementation head `1b43762` — `app/src/views/StayView.test.ts:1311-1357` covers the unresolvable-booking refusal (plain sentence, zero `PostCharge`, no close route); **missing guard named explicitly**: no case covers a service-refused (`VALIDATION_FAILED`) or transport-failed `PostCharge`, so the implementation PR #618 must create it, asserting no balance, no Check out, the stay in house, and zero `CheckOut`, before this row is complete | **Partial** — the refusal half exists; the post-failure half is open |
+| FR-CKP-5 — the close that follows is gated on a settled or approved folio (section 21.3) | Behaviour check: on a folio that now carries the posted charge, a non-zero balance with no valid recorded approval sends zero `CheckOut` on the Check out button, the dialog confirm, and a replayed or double click; a settled folio or a provenanced recorded approval closes exactly as `FR-CKO-4` / `FR-CKO-5` state; a balance that moved after review refuses on the fresh read; the posting never substitutes for the gate | Guards on disk at `1b43762` — `app/src/views/StayView.test.ts:1086-1206` (settled close on a charged folio), `:1207-1290` (the posted charge opens the balance: plain open-balance refusal, approval form, disabled Check out, zero `CheckOut`), `:1358-1476` (the approval route), `:1612-1676` (a charge added between review and confirm refuses on the confirm route), and `app/src/views/desk-edge-guards.test.ts:970-1033` (one close, one release, lists re-read); the unchanged `FR-BIL-7` matrix row and the `FR-CKO-4` row keep the server-side and every-route gate | On disk at `1b43762`; re-pin at merge |
 
 ## 5. Exit criteria for the rollout testing slice
 
@@ -244,9 +276,10 @@ screen PR, not by #425.
    check-in cases moved to the arrival-pick load timing with the
    #586 change shipped in PR #594 (Refs `AC-DSK-17`, D17) and
    were rewritten with a note, never deleted.
-2. Guards D1–D18 exist and pass (section 3; D13 shipped with
+2. Guards D1–D19 exist and pass (section 3; D13 shipped with
    #565, D14 with #568, D15 with #581, D16 with #582, D17 with
-   #586 (PR #594), and D18 with #588; D1–D12 land with the screen
+   #586 (PR #594), D18 with #588, and D19 with #600 (carried by
+   the implementation PR #618); D1–D12 land with the screen
    PRs); the
    `app/` unit suite is green on every screen PR.
 3. `catalogue-coverage-check.sh` is green on every screen PR,
@@ -262,7 +295,8 @@ screen PR, not by #425.
    AC-DSK-13 in section 5, AC-DSK-14 in section 6,
    AC-DSK-15 in section 7, AC-DSK-16 in section 8,
    AC-DSK-17 / `FR-CIP-1`..`FR-CIP-4` in section 9, and
-   AC-DSK-18 / `FR-CKO-1`..`FR-CKO-5` in section 10).
+   AC-DSK-18 / `FR-CKO-1`..`FR-CKO-5` in section 10, plus
+   AC-DSK-19 / `FR-CKP-1`..`FR-CKP-5` in section 12).
 6. Each screen checks against its design file card by card
    (issue-body criterion); the check is recorded on the
    per-screen sub-issue (#420–#425) and, for wizard steps
@@ -273,5 +307,67 @@ screen PR, not by #425.
    run-log file is promised here — the QA execution slice
    creates it, not this spec).
 
+## 6. Stay check-out room-charge posting test plan (Refs #600)
+
+Scope: tier T2, the Stay check-out review only. The review gains
+one write (the stay's room charge), one refusal state (an
+unpostable charge), and one extra folio read before it presents a
+balance; the `AC-DSK-18` gate, the room release, print output, the
+contracts, the schema, and every other flow stay as they are. The
+levels are the ones `test-strategy.md` already defines: L1 FR
+acceptance under `app-build` (the automated regression guards) and
+`browser-e2e` (the screen-proof browser checks), plus the same L1
+conditions re-run by hand in the owner pass
+(`manual-qa-testsuite.md`). No NFR is added, so the L2 level does
+not change. The T2 per-flow diagram (happy path plus the
+unresolved-booking, refused-post, and zero-quote failure paths)
+lives in `docs/requirements/mvp-requirements.md` section 21.5, with
+the architect's code-edge diagram in `docs/architecture/lld.md`
+section 20 (carried by the implementation PR).
+
+**Pin basis.** Every `file:line` in this section and in the
+`AC-DSK-19` / `FR-CKP-*` rows of section 4 was read at the
+implementation head `1b43762` (PR #618), which is not merged when
+this plan is written; `master` today carries different line
+numbers. `qa-lead` re-pins the rows at the merged head, and a row
+counts as complete only when the implementation PR merges with the
+cited guards green. Two obligations have no guard at that head and
+are named as missing (CKP-5, CKP-6): the implementation PR must
+create them before this slice can close.
+
+| Case | Obligation | Guard at the implementation head | Status |
+|---|---|---|---|
+| CKP-1 frozen-quote posting | One `PostCharge` on a fresh folio: `stayId`, `itemKind` `nightly-room-charge`, the room-named `itemName`, `amountMinor` equal to the booking's `priceBasis.totalMinor`, the signed-in staff member as `actor`, and `idempotencyKey` `room-charge:<stayId>`; the re-read balance includes the line, and no balance is shown before it | `app/src/views/StayView.test.ts:1207-1290`; browser `app/e2e/stay.spec.ts:80-103` | On disk at `1b43762`; re-pin at merge |
+| CKP-2 repeated review | A second review after a landed post sends zero `PostCharge`; the stay keeps exactly one room-charge line | `app/src/views/StayView.test.ts:1281-1290` | On disk at `1b43762` |
+| CKP-3 pre-charged folio | A folio that already carries a `nightly-room-charge` line (Folio screen or API desk loop) sends zero `PostCharge` and reviews the stored lines and balance as read | `app/src/views/StayView.test.ts:1291-1310` (the happy stub's default folio carries the charge at `:200-225`) | On disk at `1b43762` |
+| CKP-4 unresolvable booking | The review refuses in `desk.stay.refused_room_charge` with zero `PostCharge`, an empty folio status, no Check out control, and zero `CheckOut` | `app/src/views/StayView.test.ts:1311-1357` | On disk at `1b43762` |
+| CKP-5 zero quote | A frozen quoted total of zero posts nothing, invents no zero-amount line, and the review reaches the zero-balance clear state on the folio as read (the free stay still closes) | **Missing** — no case covers it; the stub returns `priceBasis.totalMinor` `120000` for every stay (`app/src/views/StayView.test.ts:159-172`) | Open — the implementation PR #618 must create it |
+| CKP-6 refused or failed post | A `PostCharge` the service refuses (`VALIDATION_FAILED`) or that fails on transport ends the review in the plain panel error for that refusal: no balance, no close route, the stay in house, zero `CheckOut` | **Missing** — no case covers a refused or failed post | Open — the implementation PR #618 must create it |
+| CKP-7 gate on the charged folio | An open balance with no valid recorded approval sends zero `CheckOut` and shows the plain refusal with the approval form; a settled folio or a provenanced record approval closes; a balance that moved after review refuses on the fresh read | `app/src/views/StayView.test.ts:1086-1206`, `:1207-1290`, `:1358-1476`, `:1612-1676` | On disk at `1b43762` |
+| CKP-8 one close, one release | The charged folio closes once and releases the departed room exactly once, then re-reads the desk lists | `app/src/views/desk-edge-guards.test.ts:970-1033` | On disk at `1b43762` |
+| CKP-9 browser end-to-end | The served desk posts its own room charge in the browser flow (no API-seeded `PostCharge`), one line at the booking's quoted total named for the stay's room, and the open balance then refuses the close | `app/e2e/stay.spec.ts:80-103` (inside the full check-in/approval/close flow) | On disk at `1b43762`; `browser-e2e` must pass in CI |
+| CKP-10 catalogue parity | The one new key `desk.stay.refused_room_charge` exists in both locales with placeholders intact and the eight runtime mirrors byte-identical; the coverage job stays green | `messages/en.json:474`, `messages/vi.json:474`; `script/catalogue-coverage-check.sh` | Lands with #618 |
+| CKP-11 design-facts gate | The review state is flow state outside the fact schema, so no fact changes and the gate stays green with no fact edit | `app/e2e/design-facts.spec.ts`, `app/e2e/design-facts.ts` Stay entry, `docs/technical/desk-ui-fact-schema.md` | Gate re-run only; a fact edit means drift |
+| CKP-12 manual owner pass | The owner can verify the posting, the no-double-post, the zero-quote, and the refusal paths from the served desk in both locales | `docs/testing/manual-qa-testsuite.md` QA-EDGE-14 (plus the QA-STAY-3 review step) | Spec written here; the owner pass runs downstream |
+
+**Test data.** The unit and browser runs use a seeded booking with a
+non-zero frozen quote (the unit stub's `120000`), a stay the desk
+checked in, and a fresh folio with no lines; the pre-charged case
+reuses the seeded desk loop's charge; the refusal case removes the
+calendar link for the stay. The zero-quote case needs a booking
+whose `priceBasis.totalMinor` is `0`; the browser seed must not post
+a room charge for the flow it asserts, or a regression in the desk
+posting is masked.
+
+**Exit criteria for this slice.** CKP-1..CKP-12 all pass; CKP-5 and
+CKP-6 exist as cases created by the implementation PR; `app-build`
+and `browser-e2e` are green on the implementation PR;
+`script/catalogue-coverage-check.sh`, `script/markdown-link-check.sh`,
+and the design-facts gate are green with no fact edit; no `AC-DSK-18`
+gate guard is deleted or weakened (a rewritten pin keeps a #600
+note); and the #588 evidence record
+(`docs/testing/evidence/588/README.md`, symptom 2c) is cited by the
+implementation PR.
+
 <!-- ao-role: qa-lead -->
-Role: qa-lead · AO session hotel-mgmt-873
+Role: qa-lead · AO session hotel-mgmt-913
