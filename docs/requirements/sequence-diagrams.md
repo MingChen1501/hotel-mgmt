@@ -227,24 +227,44 @@ sequenceDiagram
 
 ## 9. Check-out
 
-Review the folio, settle it or record an approved open balance, then
+Review the folio — posting the stay's room charge when the folio
+carries none — settle it or record an approved open balance, then
 close the stay, present the invoice, and release the room as
 vacant-dirty.
 
-- Preconditions: the stay is in house and its folio has been reviewed (diagram 10); settlement or approval follows diagram 11.
-- Postconditions: the stay is closed with the invoice presented and the room vacant and dirty, or check-out was refused until the folio is settled or approved; a close whose room release could not be confirmed stays closed with the room owed a release.
+- Preconditions: the stay is in house with its single folio open (diagram 10); settlement or approval follows diagram 11.
+- Postconditions: the stay is closed with the invoice presented and the room vacant and dirty, or check-out was refused until the folio is settled or approved; a close whose room release could not be confirmed stays closed with the room owed a release; a folio reviewed for a stay that could not be charged is left as it was, with no close.
 
 ```mermaid
 sequenceDiagram
     participant Staff as Front-desk staff
     participant Folio as Folio
+    participant Res as Reservation record
     participant Stay as Stay record
     participant Rooms as Room inventory
     Staff->>Folio: Review folio with running balance before check-out [FR-BIL-1]
+    opt Folio carries no room charge [FR-CKP-1]
+        Staff->>Res: Resolve the booking the stay was checked in against [FR-CKP-1]
+        alt Booking not resolvable
+            Folio-->>Staff: Review refused in plain words naming the room charge and the next step; nothing posted, no close [FR-CKP-4]
+        else Booking resolved
+            Res-->>Staff: The stay's frozen quoted total [FR-RTE-5]
+            alt Quoted total zero
+                Note over Folio: Nothing is posted; the review reads the folio as it stands [FR-CKP-3]
+            else Quoted total above zero
+                Staff->>Folio: Post one nightly room charge at that frozen quoted total [FR-BIL-2, FR-RTE-5, BR-45; one line per stay, never a second]
+                alt Post refused or failed
+                    Folio-->>Staff: Review ends in the plain panel error; stay in house, no close route [FR-CKP-4]
+                else Posted
+                    Folio-->>Staff: Balance re-read and shown with the room charge included [FR-CKP-1]
+                end
+            end
+        end
+    end
     alt Folio has an open balance
         Staff->>Folio: Settle by recording payment [FR-BIL-3] or record authorised approval [FR-BIL-7; CUS: hotel approval rule per section 3.1; BR-17: who, role, and when recorded]
         alt Neither payment nor a complete approval record
-            Folio-->>Staff: Check-out refused until settled or approved [FR-BIL-7, BR-17]
+            Folio-->>Staff: Check-out refused until settled or approved [FR-BIL-7, BR-17, FR-CKP-5]
         end
     end
     Staff->>Folio: Re-read the balance at the moment of the close [FR-BIL-7, BR-17; every route to the close]

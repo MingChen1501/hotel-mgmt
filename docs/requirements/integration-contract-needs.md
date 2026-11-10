@@ -200,10 +200,11 @@ Error cases: missing hotel-mandatory check-in field:
 Per-hotel config: which guest details are mandatory at check-in
 (FR-CUS-1).
 
-## 3. Check-out and folio path (STAY -> BIL, BIL -> STAY)
+## 3. Check-out and folio path (STAY -> BIL, BIL -> STAY, STAY -> RES)
 
-Folio review, settlement gate, invoice presentation (Seq-9, Seq-11,
-UC-8; BR-17, BR-18, BR-21..BR-25).
+Folio review, the stay's room charge, settlement gate, invoice
+presentation (Seq-9, Seq-11, UC-8; BR-17, BR-18, BR-21..BR-25,
+BR-45).
 
 ### 3a. STAY -> BIL (`BillingService`)
 
@@ -248,6 +249,46 @@ Error cases: stay not in house or already closed: `STATE_ILLEGAL`
 (BR-1; BR-18).
 
 Per-hotel config: none beyond the stay record itself.
+
+### 3c. STAY -> RES (`ReservationService`) for the room charge
+
+Resolving the stay's frozen quoted total so the check-out review can
+post the room charge (Seq-9; UC-8 step 1; `FR-CKP-1`; BR-45). The
+operations are the reads the desk already performs; no new operation
+is needed.
+
+Operations needed:
+
+- `QueryCalendar` — the reservation calendar entries for a date range,
+  each carrying the stay it links where one is checked in, so a stay
+  can be resolved to the booking it was checked in against. Payload:
+  date range (Reservation: FR-RES-5; the stay link is required by
+  `FR-CKP-1` because live stay rows carry no booking reference).
+- `GetReservation` — the booking readback carrying the price basis and
+  its frozen quoted total. Payload: reservation reference (Reservation,
+  Price basis: FR-RES-1, FR-RTE-5; `FR-CKP-1`).
+
+Sync recommendation: synchronous, inside the review step and before
+the balance is presented. Reason: the review decides from that total
+whether to post at all, and a stale or asynchronous answer would let a
+close present a folio that carries no room charge (Seq-9;
+`FR-CKP-1`; NFR-PERF-1).
+
+Error cases: no booking links the stay, or the linked booking cannot
+be read — the desk refuses the review in plain words naming the room
+charge and the next step, posts nothing, and offers no close; the
+existing `NOT_FOUND` on the booking read is the only envelope involved
+(`FR-CKP-4`; no new code is defined).
+
+Contract shape note: the only contract-shape addition this slice needs
+is the optional `stayId` link on a calendar entry — an additive,
+optional response member, with no request change, no new operation,
+and no new error code. `PostCharge` (section 4) keeps its fields; the
+desk passes its existing optional `idempotencyKey` with one key per
+stay so a repeated review replays rather than charging twice
+(`FR-CKP-2`).
+
+Per-hotel config: none.
 
 ## 4. Charge, payment, and day-close operations (BIL owns; STAY consumes)
 
@@ -451,7 +492,7 @@ its UTC offset, every date renders on the hotel-local day).
 |---|---|---|
 | RES -> RATE; RES -> ROOM | Sync | Immediate refuse-with-reason inside the booking step (Seq-2/3/6); NFR-PERF-1 3 s; NFR-CON-1 exactly-one-winner |
 | RES -> GST | Sync | Preferences/notes shown before confirm (FR-GST-2); returning flag at booking time (FR-GST-3) |
-| STAY -> RES; STAY -> GST | Sync | Check-in acts on the reservation and guest record in one step (Seq-7; FR-CUS-1 refusal) |
+| STAY -> RES; STAY -> GST | Sync | Check-in acts on the reservation and guest record in one step (Seq-7; FR-CUS-1 refusal); the check-out review resolves the stay's booking for its frozen quoted total in the same step (section 3c; FR-CKP-1) |
 | STAY -> ROOM (`AssignRoom`) | Sync, atomic at provider | NFR-CON-2 exactly-one-winner inside check-in; no eventual consistency |
 | STAY -> BIL (gate) | Sync | Check-out refused until settled or approved (FR-BIL-7) |
 | BIL -> STAY (stay ref) | Sync read | Folio lines and receipts match their stay exactly (FR-BIL-4) |
@@ -481,6 +522,7 @@ need.
 | Out-of-role attempt | `FORBIDDEN` | — | NFR-SEC-1; BR-35 |
 | Unknown entity (room type, reservation, guest, folio) | `NOT_FOUND` | the reference | guard completeness |
 | Undefined charge item | (architect assigns; suggested `VALIDATION_FAILED`) | the item | FR-BIL-2, FR-CUS-3; BR-22 |
+| Stay's room charge cannot be posted (booking not resolvable, or post refused/failed) | no new code; the desk refuses the review in plain words and the existing refusal or `NOT_FOUND` governs | the room charge and the next step | FR-CKP-4; BR-45 |
 | Locked identity sign-in | `IDENTITY_LOCKED` | the locked identity (distinct from `UNAUTHENTICATED`) | NFR-SEC-2; BR-42 |
 | Expired or signed-out session | `UNAUTHENTICATED` | — | NFR-SEC-2; BR-42 |
 
@@ -539,7 +581,12 @@ NFR-AVL-1, NFR-DEP-1, NFR-BKP-1, NFR-BKP-2, NFR-RET-1, NFR-TZ-1)
 that cross a module boundary are traced above; in-module behaviour
 (room setup co-editing FR-ADM-3/FR-RMS-4, confirmation production
 FR-GST-4, folio presentation FR-BIL-4) needs no contract beyond the
-reads already listed. No operation, field, or error case introduces
+reads already listed. The #600 check-out room charge (section 3c) adds
+no operation of its own: it consumes `QueryCalendar` with the
+calendar's stay link, `GetReservation` for the frozen quoted total,
+`GetFolioBalance` for the lines it reads, and the existing
+`PostCharge` (section 4), all cited above. No operation, field, or
+error case introduces
 behaviour beyond the mapped FRs. Later capabilities from
 requirements section 6 carry no contract need here.
 

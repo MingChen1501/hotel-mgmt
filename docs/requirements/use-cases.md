@@ -231,7 +231,11 @@ Preconditions: the stay is in house; its folio has been reviewed.
 
 Main flow:
 
-1. Staff review the folio with its running balance. [FR-BIL-1]
+1. Staff review the folio with its running balance; the review posts
+   the stay's one nightly room charge at the stay's frozen quoted
+   total when the folio carries none, so no folio is closed without
+   the room it paid for. [FR-BIL-1, FR-BIL-2, FR-RTE-5, FR-CKP-1,
+   FR-CKP-2]
 2. Staff settle the folio by recording the final cash or card
    payment, or record an authorised approval for the open balance
    where the hotel's rule allows it. [FR-BIL-3, FR-BIL-7]
@@ -244,6 +248,12 @@ Main flow:
 
 Extensions/exceptions:
 
+- 1a. The stay's booking cannot be resolved, or the room-charge post
+  is refused or fails: the review ends in plain words naming the room
+  charge and the next step, nothing is posted, and no check-out is
+  offered, so the stay remains in house. [FR-CKP-4, BR-45]
+- 1b. The stay's frozen quoted total is zero: nothing is posted and
+  the review proceeds on the folio as read. [FR-CKP-3, BR-45]
 - 2a. The folio has an open balance with neither payment nor
   authorised approval recorded: check-out is refused until the folio
   is settled or approved, on every route to the close. [FR-BIL-7]
@@ -437,7 +447,7 @@ no use case here. The migration-shell (`FR-SHL-*`) and desk-presentation
 sections 7–9 are presentation/scaffold deltas outside this
 actor-goal count: they are traced in their own slice handoff
 tables, not in the table above, and the later slice ids (`FR-DSK-*`,
-`NFR-DSK-*`, `FR-RST-*`, `NFR-RST-*`, `FR-CIP-*`, `FR-CKO-*`)
-follow the same rule.
+`NFR-DSK-*`, `FR-RST-*`, `NFR-RST-*`, `FR-CIP-*`, `FR-CKO-*`,
+`FR-CKP-*`) follow the same rule.
 
 Counts: 12 use cases; 43/43 FRs mapped.
