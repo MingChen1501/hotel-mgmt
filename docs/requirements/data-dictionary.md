@@ -31,8 +31,16 @@ guest link; quoted price with nightly breakdown and rate plan used
 no-show); cancellation or no-show reason where applicable; change
 history with actor and timestamp.
 
+The unit a reservation holds is decided against the capacity the hotel
+records for the room type and those dates, never against a number the
+request carries: `sellableUnits` on a create or modify request is
+advisory input, not a reservation field, and a reservation is refused
+with `CONFLICT` naming the room type and dates once the recorded
+capacity is reached (`BR-47`). A booking whose capacity source cannot
+be read is refused fail-closed and no reservation is stored (`BR-48`).
+
 Owning FRs: FR-RES-1, FR-RES-2, FR-RES-3, FR-RES-4, FR-RES-5,
-FR-RES-6, FR-RTE-5, FR-CUS-1, FR-CUS-2.
+FR-RES-6, FR-RTE-5, FR-CUS-1, FR-CUS-2, FR-OVB-1, FR-OVB-2.
 
 ## 2. Stay
 
@@ -154,8 +162,15 @@ Key fields: name; capacity; bed type and features; nightly prices per
 season and day (rate plan); stay restrictions (minimum stay,
 closed-to-arrival days) per date range.
 
+Availability for a room type and a date range is a derived fact from
+the room inventory: the rooms of the type less the rooms blocked for
+those dates (`BR-9`). That derived capacity is the overbooking
+guard's ceiling, read on every booking attempt and never taken from a
+request (`BR-47`, `BR-48`); a type with no such unit for the dates is
+sold out, which is a conflict and not an outage.
+
 Owning FRs: FR-RTE-1, FR-RTE-2, FR-RTE-4, FR-RES-1, FR-ADM-3,
-FR-ADM-4.
+FR-ADM-4, FR-OVB-1, FR-OVB-3.
 
 ## 10. Guest
 
@@ -260,9 +275,14 @@ adds no entry, field, or behaviour beyond those sources. The Folio
 entry (section 3) states which of its fields the #601 settlement gate
 decides on, and the Stay entry (section 2) states that the close is
 decided on those stored facts (`BR-46`, `FR-CKS-1`..`FR-CKS-5`); both
-add no entry, field, or behaviour beyond those sources.
+add no entry, field, or behaviour beyond those sources. The
+Reservation entry (section 1) and the Room type entry (section 9)
+state where a booking's capacity ceiling comes from — the recorded
+room inventory, never the request's `sellableUnits` (`BR-47`,
+`BR-48`, `FR-OVB-1`, `FR-OVB-3`) — and add no entry, field, or
+behaviour beyond those sources.
 
 Counts: 15 dictionary entries covering the 7 entity terminology concepts (T-1..T-7); T-8 is a spelling convention with no entry.
 
 <!-- ao-role: business-analyst -->
-Role: business-analyst · AO session hotel-mgmt-921
+Role: business-analyst · AO session hotel-mgmt-934

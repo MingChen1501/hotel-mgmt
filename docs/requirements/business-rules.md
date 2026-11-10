@@ -36,11 +36,14 @@ front-desk staff, manager, or owner account acting within its access
 
 | ID | Rule | Trace |
 |---|---|---|
-| BR-8 | Two staff booking the last sellable room for overlapping dates cannot both succeed: exactly one booking succeeds and the other is refused with the conflict named. The sellable unit is the room; beds are attributes of rooms and room types, never separately sellable. | NFR-CON-1; US-RES-1; audit C-5 |
+| BR-8 | Two staff booking the last sellable room for overlapping dates cannot both succeed: exactly one booking succeeds and the other is refused with the conflict named. The sellable unit is the room; beds are attributes of rooms and room types, never separately sellable. The ceiling the rule is decided on is the capacity the hotel records for the room type and dates, never a number a request carries (`BR-47`). | NFR-CON-1; US-RES-1; audit C-5 |
 | BR-9 | Sellable availability for a room type and date excludes occupied rooms, out-of-order blocked rooms, and already-reserved rooms. | FR-RTE-2; FR-RMS-3; US-RTE-2 |
 | BR-10 | A reservation that violates a minimum-stay or closed-to-arrival restriction on its dates is refused with the violated restriction named. | FR-RTE-4; US-RTE-4 |
 | BR-11 | Two staff checking different guests into the same ready room at the same time cannot both succeed: exactly one check-in takes the room and the other is refused with the room conflict named. | NFR-CON-2; FR-FDK-1 |
 | BR-12 | A room under an out-of-order or maintenance block for a date range takes no new reservation and no check-in on a blocked date. | FR-RMS-3; US-RMS-3 |
+| BR-47 | The overbooking ceiling is the capacity the hotel records for the room type and the stay dates: a reservation is accepted only while the overlapping reservations that hold a unit number below the rooms the inventory records as sellable for those dates — the rooms of the type less the rooms blocked for those dates. The request's `sellableUnits` never raises or lowers that ceiling: a large value buys no extra booking and a low or absent value refuses nothing. When the recorded capacity is reached, the booking is refused with `CONFLICT` naming the room type and dates and nothing is written; a modification into sold-out dates or a sold-out type is refused the same way with the reservation unchanged. Cancelled, no-show, and closed reservations release their hold; a checked-in reservation keeps holding its unit as today. | FR-RES-1; FR-RES-2; FR-RTE-2; FR-OVB-1; FR-OVB-2; NFR-CON-1; BR-8; BR-9; `AC-OVB-1`; Refs #631 |
+| BR-48 | The capacity the booking guard decides on is read from the room inventory on every attempt and is never taken from, cached for, or inferred from the request. An unreadable capacity source — transport failure, timeout, 5xx, unparseable reply, or an unwired client — refuses the booking fail-closed with `UPSTREAM_UNAVAILABLE` (503) naming the upstream and the operation, and nothing is written; no earlier read is reused for a later attempt. A provider 4xx envelope is surfaced unchanged. A recorded capacity of zero is a sold-out `CONFLICT`, never a 5xx: a sold-out type is not an outage. | FR-OVB-1..FR-OVB-3; NFR-CON-1; NFR-AVL-1; BR-46; `AC-OVB-2`; Refs #631 |
+| BR-49 | The overbooking guard stays atomic: the capacity is read on the attempt and the count-and-insert comparison stays in one critical section, so two simultaneous last-unit requests yield exactly one winner and one `CONFLICT`, and an idempotent replay returns the original reservation without consuming a second unit. | FR-OVB-4; NFR-CON-1; BR-8; `AC-OVB-3`; Refs #631 |
 
 ## 3. Price basis and rates
 
@@ -123,6 +126,7 @@ section 3.3). Fixed items no hotel may change in the MVP.
 | Charge items | The hotel's own items with names and prices (`BR-22`) | Only defined items postable; one folio per stay |
 | Taxes and fees | The hotel's tax and fee rules (`BR-25`) | — |
 | Stay restrictions | Minimum stay and closed-to-arrival days per date range (`BR-10`) | Violating reservations refused with the restriction named |
+| Reservation availability | — (none) | The ceiling is the capacity the hotel records for the room type and dates, never the request's `sellableUnits`; a large or absent value changes nothing, and an unreadable capacity source refuses the booking (`BR-47`, `BR-48`) |
 | Discounts | Named discounts the manager may apply (`BR-15`) | Applied discounts kept by name |
 | Rate plans | Sellable prices per room type, season, day (`BR-14`) | Quoted price basis unchanged unless recalculated (`BR-13`) |
 | Out-of-order blocks | Reason and date range per block (`BR-29`) | Blocked dates take no reservation or check-in |
@@ -166,14 +170,17 @@ behaviour beyond those sources, and BR-46 states where the check-out
 gate's facts come from — the folio stored balance and the approval
 recorded against it, never a request's claim — tracing `FR-BIL-7`,
 `FR-FDK-2`, `FR-CKS-1`..`FR-CKS-5`, and `AC-CKO-1`/`AC-CKO-2`
-without adding behaviour beyond those sources.
+without adding behaviour beyond those sources, and BR-47..BR-49 state
+the overbooking ceiling's source, its fail-closed refusal, and its
+atomic shape (tracing `FR-OVB-1`..`FR-OVB-4`, `NFR-CON-1`, and
+`AC-OVB-1`..`AC-OVB-3`) without adding behaviour beyond those sources.
 Policies with no decided source appear as open questions
 OQ-1..OQ-5. No rule introduces behaviour beyond the traced
 FRs/NFRs/stories. Later capabilities from requirements section 6
 (waitlist, split folios, integrated payments, automated workflow
 rules, multi-property operation, and the rest) carry no rule here.
 
-Counts: 46 business rules, 5 open questions.
+Counts: 49 business rules, 5 open questions.
 
 <!-- ao-role: business-analyst -->
-Role: business-analyst · AO session hotel-mgmt-921
+Role: business-analyst · AO session hotel-mgmt-934

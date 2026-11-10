@@ -36,7 +36,11 @@ Given a room type has sellable availability for the requested dates;
 when staff enter the dates, room type, guest, and price basis and
 confirm; then the reservation exists with a unique reference, the
 requested dates, room type, guest link, and quoted price, and it
-appears on the reservation calendar.
+appears on the reservation calendar. Amendment (Refs #631): the
+availability the guard decides on is the capacity the hotel records
+for the room type and dates, never a number the request carries; the
+capability statement and the conditions above are unchanged
+(section 23; `BR-47`, `BR-48`).
 
 FR-RES-2 — Modify reservation. Staff can change the dates, room type,
 or guest of an existing reservation before check-in.
@@ -44,7 +48,10 @@ Given a reservation that has not been checked in; when staff change
 its dates, room type, or guest and confirm; then the reservation
 reflects the new values, its quoted price is recalculated from the
 rate plan in force, and the change is recorded with who made it and
-when.
+when. Amendment (Refs #631): a modification is guarded against the
+same recorded capacity as a creation, and a refused modification
+leaves the reservation and its change history untouched (section 23;
+`FR-OVB-2`).
 
 FR-RES-3 — Cancel reservation with reason. Staff can cancel a
 reservation before check-in and must record a reason.
@@ -167,7 +174,12 @@ room type and date at a glance.
 Given rooms, reservations, and out-of-order blocks exist; when staff
 open the availability view for a date range; then each room type and
 date shows the count of rooms still sellable, excluding occupied,
-blocked, and already-reserved rooms.
+blocked, and already-reserved rooms. Amendment (Refs #631): the
+booking guard's ceiling comes from the same recorded room inventory
+this view counts — the rooms of the type less the rooms blocked for
+the dates — so the count staff see and the capacity the guard enforces
+cannot disagree about which rooms are blocked or held (section 23;
+`BR-47`).
 
 FR-RTE-3 — Manual discounts and special rates. The manager can apply
 a named discount or special price to a reservation.
@@ -422,7 +434,10 @@ Given one remaining sellable unit for the requested dates; when two
 staff submit bookings for overlapping dates at the same time; then
 exactly one booking succeeds and the other is refused with the
 conflict named. Target: 0 double-bookings across repeated paired
-simultaneous attempts in acceptance testing.
+simultaneous attempts in acceptance testing. Amendment (Refs #631):
+the last sellable unit is the capacity the hotel records for those
+dates; a request's `sellableUnits` can neither raise nor lower it, and
+the target is unchanged (section 23; `FR-OVB-4`, `BR-49`).
 
 NFR-CON-2 — No double room assignment at check-in. Two staff
 checking different guests into the same ready room at the same time
@@ -560,8 +575,8 @@ product scope have no FR and are listed in section 6.
 
 | Product-scope capability | FR id(s) | Test-spec handoff note for `qa-lead` |
 |---|---|---|
-| Create direct reservation | FR-RES-1, FR-RTE-5 | Guard books each room type across a season boundary and checks quoted price and reference |
-| Modify and cancel reservation | FR-RES-2, FR-RES-3 | Guard changes dates/type/guest, checks repricing, then cancels and checks the reason and released availability |
+| Create direct reservation | FR-RES-1, FR-RTE-5 | Guard books each room type across a season boundary and checks quoted price and reference; guard books with an inflated, a low, and an absent `sellableUnits` against the hotel's recorded capacity and checks none of them moves the ceiling, and checks an unreadable capacity source refuses rather than overbooks (Refs #631) |
+| Modify and cancel reservation | FR-RES-2, FR-RES-3 | Guard changes dates/type/guest, checks repricing, then cancels and checks the reason and released availability; guard modifies into sold-out dates and into a sold-out type with an inflated `sellableUnits` and checks the conflict with the reservation unchanged (Refs #631) |
 | Walk-in booking | FR-RES-4 | Guard creates a same-day booking and checks arrival-state readiness and arrivals-list entry |
 | Reservation calendar | FR-RES-5 | Guard seeds multi-date, multi-type bookings and checks placement and detail drill-down |
 | No-show handling | FR-RES-6 | Guard marks a past-arrival booking no-show and checks state, released room, and history |
@@ -602,6 +617,12 @@ product scope have no FR and are listed in section 6.
 | Custom charge items | FR-CUS-3 | Guard defines an item and checks posting availability and invoice naming |
 
 Coverage: 40 MVP capabilities mapped, 0 unmapped.
+
+The #631 booking-availability delta adds no capability and no row: the
+overbooking guard's ceiling now comes from the hotel's recorded room
+inventory rather than the request, so only the `Create direct
+reservation` and `Modify and cancel reservation` handoff notes gain the
+inflated-input and unreadable-capacity cases (section 23).
 
 ## 5. Open questions (decided by `product-owner`, impact worded by `business-analyst`)
 
@@ -4729,5 +4750,291 @@ exists in either direction (`BR-46`).
   `ADR-0005` must move `proposed` to `accepted` with the owner and no
   implementation PR opens until `SPEC-GATE PASS` on #601.
 
+## 23. Server-side reservation availability (Refs #631)
+
+Requirements delta for the #631 change: the overbooking guard stops
+deciding on the number a caller sends and decides on the capacity the
+hotel records for the room type and the stay dates. The booking
+promise itself is not new — `FR-RES-1` already requires sellable
+availability, `NFR-CON-1` already requires exactly one winner on the
+last unit, and `BR-8` already states the no-double-booking policy —
+but until now the guard's only ceiling was `sellableUnits` from the
+request body (`services/reservations/internal/handler/handler.go:129`,
+`:144` on `CreateReservation`, `:217`, `:229` on `ModifyReservation`),
+compared against the count of overlapping rows
+(`services/reservations/internal/store/store.go:221` on Create, `:375`
+on Modify). A caller that sends a large number therefore never sees
+`CONFLICT` and can overbook, and nothing on the booking path read the
+capacity the hotel actually holds.
+
+Tier T3: the availability decision moves from a request field to a
+server-side read of the hotel's recorded room inventory, which gives
+the booking path a fail-closed capacity dependency and moves the
+booking workflow's trust boundary. The tier-T3 architecture delta —
+ADR-0006 (`docs/architecture/decisions/adr-0006-server-side-availability-derivation.md`,
+proposed) and LLD section 22 — is the sibling `architect` handoff this
+section words in requirements terms; `AC-OVB-1`..`AC-OVB-3`
+(`docs/product/acceptance-criteria.md` section 15) are the matching
+`product-owner` conditions, and `BR-47`..`BR-49` are the matching
+business rules.
+
+### 23.1 Decision: the guard's ceiling is the hotel's recorded inventory
+
+The decided behaviour, in five parts:
+
+- **Rooms owns the units, Reservations owns the holds, the desk
+  asserts neither.** How many units a room type can host for a date
+  range is the Rooms inventory's fact: the rooms of the type less the
+  rooms blocked for those dates. Which of those units a reservation
+  holds is Reservations' fact. A field restating either one, arriving
+  with a request, is advisory input at most and never decides the
+  booking.
+- **The ceiling is read on every attempt and is the date-ranged
+  inventory.** One `CheckRoomTypeSellability` read per create or
+  modify covers the effective room type and stay dates, excluding
+  rooms blocked out of order for those dates
+  (`services/rooms/src/store.ts:343-356`; route
+  `services/rooms/src/server.ts:141`). The reply's derived
+  "still free" count is deliberately not the ceiling: the guard
+  already counts the holds itself, so a number that also subtracts
+  them would count the same hold twice (`BR-47`; the technical
+  reasoning is ADR-0006 D2).
+- **`sellableUnits` is advisory.** It stays in both request contracts
+  during the deprecation window and is shape-validated when present,
+  but the decision ignores it: a value far above the recorded capacity
+  buys no extra booking, and a low or absent value refuses nothing
+  (`BR-47`). Relaxing the field out of the contracts is a follow-up,
+  not this change.
+- **An unreadable capacity source refuses the booking.** A transport
+  failure, a timeout, a 5xx, an unparseable reply, or a client that is
+  not wired refuses the create or modify fail-closed with
+  `UPSTREAM_UNAVAILABLE` (503) naming the upstream and the operation,
+  and nothing is written. A 4xx envelope from the capacity source is
+  surfaced unchanged, a capacity of zero is a sold-out `CONFLICT` and
+  never a 5xx, no earlier read is reused for a later attempt, and the
+  request's number is never a fallback (`BR-48`).
+- **The guard keeps its atomic shape.** The capacity is read before
+  the store call and reaches the store as a derived input, never as
+  the request's number; the count-and-insert comparison stays in the
+  store's one critical section, so two simultaneous last-unit requests
+  still yield exactly one winner and one `CONFLICT`, and an idempotent
+  replay consumes no second unit (`BR-49`).
+
+| Guard ceiling | Verdict | Reason |
+|---|---|---|
+| Keep the request's `sellableUnits` (status quo) | rejected | That is the finding: a caller controls the outcome, and `BR-8` never holds against a caller that sends a large number. |
+| The Rates per-date sellable count | rejected | Its own unit total is itself a request value and its plan-default fallback is not maintained, so no desk surface writes it and a real installation would answer zero — refusing every booking (ADR-0006; LLD section 22.5). |
+| The Rooms "still free" count | rejected | The guard already counts the holds; a still-free number would double-subtract them and shrink every future date range. |
+| A capacity cached in Reservations | rejected | A cached ceiling goes stale between attempts and cannot be fail-closed per booking; it would also let a create pass against inventory that changed. |
+| One date-ranged room-inventory read per attempt | **chosen** | The authority is the module that owns rooms and blocks; one synchronous read inside the booking step; atomicity stays in the store; no schema, table, stored value, or event change. |
+
+**Counted states.** The holds the guard counts stay the as-built state
+set: `confirmed` and `checked-in` rows
+(`services/reservations/internal/store/store.go:194-196`; Postgres twin
+`services/reservations/internal/store/postgres.go:175-183`), so
+cancelled, no-show, and closed reservations release their unit and a
+checked-in reservation keeps holding its own exactly as today
+(`BR-47`). `AC-OVB-1` words the checked-in row the same way — "it keeps
+holding its unit exactly as today, because the in-house share of a room
+type must not be subtracted from the recorded capacity twice" — so the
+acceptance criterion and this rule read the same at the gate and no
+wording delta remains. The as-built set stands because the inventory
+reply carries no date-ranged occupancy fact — room state is
+current-state, blocks are date-ranged — so deducting the in-house share
+from the ceiling would double-subtract it and shrink every future date
+range until release (LLD section 22.2 records the same finding). No
+behaviour change is intended on either side.
+
+### 23.2 Explicit no-change statements
+
+- `FR-RES-1`, `FR-RES-2`, `FR-RTE-2`, and `NFR-CON-1` keep their
+  wording and targets and gain a pointer to this section. What changes
+  is which number the guard decides on, not what booking promises.
+- No new MVP capability, story, or business scope enters the MVP
+  count: section 4 keeps its 40 mapped capabilities and its coverage
+  line, and only the `Create` and `Modify` handoff notes gain the
+  derived-ceiling clause. The behaviour is numbered as slice-scoped
+  requirements (`FR-OVB-*`, section 23.3) on the section 10–22 pattern.
+- The desk is untouched, and no UI contract section applies:
+  `AC-OVB-3` pins the Book panel's flow, its own fresh sellability
+  pre-check, the request it sends (including `sellableUnits`), and
+  every refusal sentence — a `CONFLICT` still reads as
+  `desk.book.refused_soldout` and an unreadable capacity source as
+  `desk.shell.request_failed`. No new catalogue key, control, or
+  screen.
+- Price basis is not re-decided: what a reservation is quoted from and
+  when it is recalculated stays `FR-RTE-5`, `BR-13`, and the separate
+  #632 audit item. Rates' own unit total and its plan-default fallback
+  are not changed here.
+- The contract change is additive only: `sellableUnits` stays in both
+  request contracts during the deprecation window, becoming advisory
+  (optional, shape-validated when present), and the error set gains
+  `UPSTREAM_UNAVAILABLE`; the `architect` owns those edits. No schema,
+  table, migration, stored value, or event change is specified.
+- Money, dates, and numbers keep their decided display shape
+  (section 14): dates stay ISO on the wire and no display form changes.
+- Sections 7 through 22 stand with their wording and targets
+  unchanged, except the four amendment pointers in section 1, the two
+  section 4 handoff notes, and the coverage sentence below.
+
+### 23.3 Behaviour-scoped functional requirements
+
+Ids use the `OVB` (overbooking guard) namespace, continuing the
+slice-scoped pattern of sections 10 through 22; `RES` stays the MVP
+reservation namespace and `RTE` the availability-view namespace. They
+constrain the service that decides and records a reservation, and each
+maps to an accepted done-condition in `AC-OVB-1`..`AC-OVB-3`.
+
+FR-OVB-1 — The overbooking ceiling is the capacity the hotel records
+for the room type and dates.
+Given a room type whose recorded inventory holds N sellable units for
+a stay's dates, whatever `sellableUnits` a create request carries —
+far above N, far below N, or absent; when the reservation is created;
+then the guard compares the overlapping reservations that hold a unit
+against N, so an inflated number buys no extra booking, a small or
+absent number refuses nothing, the Nth overlapping confirmed
+reservation is the last one accepted, and the next is refused with
+`CONFLICT` naming the room type and the dates and writes nothing. The
+request's number can neither raise nor lower the ceiling.
+
+FR-OVB-2 — A modification is decided on the same ceiling and refuses
+without changing the reservation.
+Given a confirmed reservation; when staff change its dates or room
+type to a combination whose recorded capacity is already fully
+booked; then the change is refused with `CONFLICT` naming the room
+type and dates, the reservation keeps its previous dates, room type,
+guest, and price basis, no change-history entry is written, and the
+request's `sellableUnits` changes nothing about the decision. Given a
+combination whose recorded capacity still has a free unit, whatever
+number the request carries; then the change proceeds as `FR-RES-2`
+states, with the same atomic guard the creation path uses.
+
+FR-OVB-3 — An unreadable capacity source refuses the booking
+fail-closed.
+Given the capacity source cannot be read for the booking's room type
+and dates — a transport failure, a timeout, a 5xx, an unparseable
+reply, or a client that is not wired; when a create or a modify is
+attempted; then it is refused with `UPSTREAM_UNAVAILABLE` (503)
+naming the upstream and the operation, and nothing is written: no
+reservation row, no change-history entry, no event, and no idempotency
+record. No earlier read is reused for a later attempt, and the
+request's number is never used as a fallback. Given a capacity source
+that answers with a 4xx envelope; then that envelope is surfaced
+unchanged, so a rejected session still reads `UNAUTHENTICATED`.
+Given the read succeeds and records no sellable unit for those dates;
+then the refusal is `CONFLICT` naming the room type and dates, never a
+503: a sold-out type is not an outage. The on-premise promise
+(`NFR-AVL-1`) does not extend to an unverified capacity.
+
+FR-OVB-4 — The guard stays atomic and a replay consumes no second
+unit.
+Given the derived capacity and the counted holds; when two callers
+request the last sellable unit at the same time; then exactly one
+commits and the other is refused with `CONFLICT` naming the room type
+and dates, and no interleaving lets both through: the capacity is read
+on the attempt, the request's number never enters the comparison, and
+the count-and-insert comparison stays in the store's one critical
+section. Given a repeated request carrying the same idempotency key;
+when it replays; then the original reservation is returned and no
+second unit is consumed.
+
+### 23.4 Non-functional requirements delta: no-change statement
+
+No new NFR is added. The existing NFRs cover the change:
+
+- Concurrency and safety (`NFR-CON-1` holds; `FR-OVB-4` states how):
+  one critical section, one winner, one `CONFLICT`, and the paired
+  guards already on disk keep passing with a derived input.
+- Desk response (`NFR-PERF-1` holds): a create or modify costs one
+  synchronous inventory read with a bounded timeout inside the action
+  the operator already took; no read is added on screen entry and
+  nothing polls.
+- Availability (`NFR-AVL-1` holds, with its scope clarified): the
+  installation stays on-premise and the inventory read is
+  installation-local; an unreadable inventory refuses the booking in
+  the desk's existing `desk.shell.request_failed` sentence rather than
+  accepting an unverified booking.
+- Security (`NFR-SEC-1`, `NFR-SEC-2` hold): the caller's session
+  travels on the inventory read and a rejected session surfaces
+  unchanged; role reach is untouched, so this is not an authorization
+  change.
+- Audit (`NFR-AUD-1`, `BR-36` hold): a refused booking writes no
+  reservation, no change entry, and no event; a committed booking
+  keeps its actor and timestamp exactly as today.
+- Time and locale (`NFR-TZ-1`, `NFR-I18N-1`, `BR-43` hold): stay
+  dates stay ISO on the wire and no display form changes.
+
+### 23.5 Traceability handoff for `qa-lead`
+
+Each row traces to `AC-OVB-1`..`AC-OVB-3`, to this section's FRs, and
+to `BR-47`..`BR-49`. Guards that exist are cited `file:line` against
+the tree this requirement was written on (`efd11a5`, docs-only ahead of
+`8745afa` on the requirements paths); where no guard exists yet, the
+row names the missing guard and the implementation PR creates it, for
+`qa-lead` to re-pin at the merged head.
+
+| Item | Guard (on disk today; a row marked missing is created by the implementation PR) | Handoff note for `qa-lead` |
+|---|---|---|
+| FR-OVB-1 inflated create | `services/reservations/internal/store/store_test.go:31-70` (paired create, one winner, `CONFLICT` naming type+dates) and `services/reservations/internal/handler/handler_test.go:59-76` (desk loop: first booking accepted, second overlapping one refused 409 `CONFLICT`) — both feed the ceiling from the request today. Missing guards: `sellableUnits: 999` against a recorded capacity of 1 already held by one confirmed row → 409 `CONFLICT`, nothing written; `sellableUnits` absent on a bookable stay → accepted; `sellableUnits: 1` with a recorded capacity of 3 and two holds → accepted | The obligation is one pair: the value must be provably ignored up (cannot buy) and down (cannot refuse), not merely overridden in the unsafe direction |
+| FR-OVB-2 inflated modify | `services/reservations/internal/store/store_test.go:173-235` (paired modify, exactly one winner) — ceiling from the request today. Missing guards: modify into sold-out dates and into a sold-out type with `sellableUnits: 999` → 409 `CONFLICT`, reservation unchanged, no change-history entry | The unchanged-reservation assertion is the part the refusal must carry, not just the code |
+| FR-OVB-3 unreadable capacity | `services/reservations/internal/pricing/client.go:88-97` (the fail-closed `UPSTREAM_UNAVAILABLE` precedent on the restriction read). Missing guards: inventory source unreachable, timeout, 5xx, and unwired client each → 503 `UPSTREAM_UNAVAILABLE` naming upstream `rooms` and operation `CheckRoomTypeSellability`, nothing written; a 4xx provider envelope surfaced unchanged; a recorded capacity of 0 → 409 `CONFLICT`, not 503 | A sold-out type is not an outage, and an outage is never reported as sold out |
+| FR-OVB-4 atomic guard and replay | `services/reservations/internal/store/store_test.go:31-70`, `:173-235`; Postgres twin `services/reservations/internal/store/postgres_test.go:106-135`; replay `services/reservations/internal/store/store_test.go:86-105` (`TestIdempotentReplayReturnsOriginal`). Missing guard: a replay still consumes no second unit when the ceiling is derived | The replay case must prove the read happens on the attempt but the second unit is never taken |
+| Desk flows stay green | `app/src/views/BookView.test.ts:556` (confirm sends the searched `sellableUnits`), `:770` (second overlapping booking sends the searched count), `:919` (nothing sellable refuses without calling `CreateReservation`), `:1093` (sold-out refusal copy), `:1158` (double-click yields one create), `script/e2e-desk-loop.sh` (its booking step) — unchanged by this change | These trace to `AC-OVB-3` and must pass without a desk edit: no client assertion, catalogue key, control, or copy changes here |
+| Evidence cross-reference | `docs/testing/evidence/588/README.md` is the prior trust-boundary record this change's evidence can follow | The implementation PR records the before/after payload pair for the inflated `sellableUnits` booking |
+
+Per-flow implementation diagram (T3). The architecture-side diagrams
+are LLD sections 22.3 and 22.4; this is the requirements-side view of
+the same flow, citing the code edges the `architect` named:
+
+```mermaid
+flowchart TD
+    A[CreateReservation or ModifyReservation: request carries sellableUnits  handler.go:129-149, 217-236] --> B[Validate fields, dates, guest, price basis]
+    B --> C[Restriction check passes  service.go:114-119, 219-224]
+    C --> D[Read capacity: Rooms CheckRoomTypeSellability for the effective type and dates]
+    D -- unreachable, timeout, 5xx, unparseable, unwired --> U[503 UPSTREAM_UNAVAILABLE naming rooms and CheckRoomTypeSellability; nothing written]
+    D -- 4xx envelope --> P[Surface the provider refusal unchanged]
+    D -- read ok --> E[Ceiling = rooms of the type less rooms blocked for the dates  rooms store.ts:343-356]
+    E --> F{Overlapping confirmed and checked-in rows below the ceiling?}
+    F -- no, ceiling zero or reached --> S[409 CONFLICT naming room type and dates; nothing written]
+    F -- yes --> G[Insert confirmed row plus event, or record the change, in one critical section]
+    G --> H[200 reservationRef and quotedTotal, or the changed reservation]
+    A -.-> N[Request sellableUnits: advisory, ignored]
+```
+
+Failure/rollback path: every refusal above writes no reservation row,
+no change-history entry, no event, and no idempotency record, so a
+refused booking leaves the calendar and the reservation exactly as
+they were. The desk shows its existing refusal sentences — the
+sold-out string for `CONFLICT`, the plain request-failed string for
+the 503. The whole change reverts with the single implementation PR:
+the previous guard returns with the request's number, the desk still
+sends the field, and no data migration exists in either direction
+(`BR-47`..`BR-49`).
+
+### 23.6 Explicitly not specified here (plus gate dependencies)
+
+- Implementation — the Rooms client, the handler and service wiring,
+  the store input change, the contract edits, and the guard writes —
+  is the downstream `dev` PR for #631, not this section.
+- The desk panel is not touched and no reader-visible UI changes, so
+  no UI contract section applies; `AC-OVB-3`, the desk Book slice
+  requirements, and every catalogue string stand as written.
+- Acceptance criteria are `product-owner` work (`AC-OVB-1`..`AC-OVB-3`,
+  with the counted states aligned to section 23.1); the
+  ADR-0006, HLD, and LLD delta is `architect` work; the guard mapping
+  and traceability completions above are `qa-lead` work; the rollback
+  note is `release-manager` work.
+- Out of scope: relaxing or removing `sellableUnits` from the two
+  request contracts (a follow-up); the price-basis decision (#632);
+  Rates' own unit-total handling and its plan-default fallback;
+  binding the asserted `actor` to the session token (residual risk);
+  and any change to the availability view's displayed counts.
+- The specified change is tier T3 (the booking trust boundary moves to
+  another module's recorded inventory and adds one synchronous
+  read with a fail-closed refusal; the contract change is additive
+  only). This section is its FR/NFR part; `ADR-0006` must move
+  `proposed` to `accepted` with the owner and no implementation PR
+  opens until `SPEC-GATE PASS` on #631.
+
 <!-- ao-role: business-analyst -->
-Role: business-analyst · AO session hotel-mgmt-921
+Role: business-analyst · AO session hotel-mgmt-934

@@ -35,8 +35,9 @@ Main flow:
    saved preferences and notes are shown before confirmation.
    [FR-GST-1, FR-GST-2, FR-GST-3]
 3. Staff enter dates, room type, guest, and price basis and confirm.
-   Mandatory guest fields set by the hotel are enforced.
-   [FR-RES-1, FR-RTE-5, FR-CUS-1]
+   Mandatory guest fields set by the hotel are enforced; the booking
+   is guarded against the capacity the hotel records for that room
+   type and those dates. [FR-RES-1, FR-RTE-5, FR-CUS-1, FR-OVB-1]
 4. The reservation is recorded with a unique reference, the quoted
    price from the rate plan in force, and the hotel's cancellation
    wording; it appears on the reservation calendar. [FR-RES-1,
@@ -52,9 +53,13 @@ Extensions/exceptions:
 - 3b. The dates violate a minimum-stay or closed-to-arrival
   restriction: the booking is refused with the restriction named.
   [FR-RTE-4]
-- 3c. No sellable unit is left, or a simultaneous booking wins the
-  last room first: the booking is refused with the room type and
-  dates named as conflict. [NFR-CON-1]
+- 3c. No recorded sellable unit is left, or a simultaneous booking
+  wins the last room first: the booking is refused with the room type
+  and dates named as conflict, whatever number the request carried
+  for sellable units. [NFR-CON-1, FR-OVB-1]
+- 3d. The capacity the hotel records cannot be read: the booking is
+  refused fail-closed, nothing is created, and the desk shows its
+  plain request-failed sentence. [FR-OVB-3, BR-48]
 - 4a. The manager applies a named discount or special price instead:
   the reservation shows the adjusted price with the discount name
   kept. [FR-RTE-3]
@@ -74,7 +79,9 @@ Main flow:
 
 1. Staff open the reservation before check-in. [FR-RES-2]
 2. Staff change the dates, room type, or guest and confirm; mandatory
-   guest fields set by the hotel are enforced. [FR-RES-2, FR-CUS-1]
+   guest fields set by the hotel are enforced, and the change is
+   guarded against the capacity the hotel records for the new values.
+   [FR-RES-2, FR-CUS-1, FR-OVB-2]
 3. The quoted price is recalculated from the rate plan in force, and
    the change is recorded with who made it and when. [FR-RES-2,
    FR-RTE-5, NFR-AUD-1]
@@ -86,9 +93,13 @@ Extensions/exceptions:
 - 2a. The new dates violate a stay restriction: the modification is
   refused with the restriction named; the reservation is unchanged.
   [FR-RTE-4]
-- 2b. No sellable unit is left for the new values: the modification
-  is refused with the conflict named; the reservation is unchanged.
-  [NFR-CON-1]
+- 2b. No recorded sellable unit is left for the new values, whatever
+  number the request carried for sellable units: the modification is
+  refused with the conflict named; the reservation is unchanged.
+  [NFR-CON-1, FR-OVB-2]
+- 2c. The capacity the hotel records cannot be read: the modification
+  is refused fail-closed and the reservation is unchanged.
+  [FR-OVB-3, BR-48]
 
 Postconditions: the reservation shows the new values with the
 recalculated price and change record, or it stays unchanged.
@@ -456,6 +467,6 @@ sections 7–9 are presentation/scaffold deltas outside this
 actor-goal count: they are traced in their own slice handoff
 tables, not in the table above, and the later slice ids (`FR-DSK-*`,
 `NFR-DSK-*`, `FR-RST-*`, `NFR-RST-*`, `FR-CIP-*`, `FR-CKO-*`,
-`FR-CKP-*`, `FR-CKS-*`) follow the same rule.
+`FR-CKP-*`, `FR-CKS-*`, `FR-OVB-*`) follow the same rule.
 
 Counts: 12 use cases; 43/43 FRs mapped.
