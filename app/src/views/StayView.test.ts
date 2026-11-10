@@ -126,11 +126,34 @@ function stubHappyPath(
       return Promise.resolve(jsonResponse({ roomTypes: [{ id: 'standard', name: 'Standard' }] }));
     }
     // Reservation calendar (Refs #349): the expected-arrivals
-    // source for the arrival select. Empty by default; tests with
-    // live arrival rows override this handler.
+    // source for the arrival select, and (#600) the stay-link read
+    // that resolves a departing stay's booking for its room charge.
+    // Tests with live arrival rows override this handler; the
+    // default keeps the two happy-path stays resolvable.
     if (url === '/v1/reservations/QueryCalendar') {
       return Promise.resolve(
-        jsonResponse({ dateFrom: body.dateFrom ?? null, dateTo: body.dateTo ?? null, reservations: [] }),
+        jsonResponse({
+          dateFrom: body.dateFrom ?? null,
+          dateTo: body.dateTo ?? null,
+          reservations: [
+            {
+              reservationRef: 'RSV-1',
+              stayId: 's-1',
+              roomTypeId: 'standard',
+              arrivalDate: '2026-10-25',
+              departureDate: '2026-10-27',
+              state: 'checked-in',
+            },
+            {
+              reservationRef: 'RSV-2',
+              stayId: 's-2',
+              roomTypeId: 'standard',
+              arrivalDate: '2026-10-24',
+              departureDate: '2026-10-26',
+              state: 'checked-in',
+            },
+          ],
+        }),
       );
     }
     if (url === '/v1/reservations/GetReservation') {
@@ -140,6 +163,9 @@ function stubHappyPath(
           reservationRef: 'RSV-1',
           roomTypeId: 'standard',
           guest: { guestId: 'g-1' },
+          // The frozen quoted total the desk posts as the room
+          // charge on the check-out review (#600).
+          priceBasis: { totalMinor: 120000, discountName: null },
         }),
       );
     }
@@ -172,8 +198,44 @@ function stubHappyPath(
       return Promise.resolve(jsonResponse({ reservationRef: 'RSV-1', stayId: body.stayId }));
     }
     if (url === '/v1/billing/GetFolioBalance') {
+      // Default happy folio (#600): the stay's room charge is already
+      // posted and settled, so the review posts nothing and the
+      // settled close path stays a settled close.
       return Promise.resolve(
-        jsonResponse({ folioId: 'f-1', stayId: body.stayId, balanceMinor: 0, openBalanceApproval: null }),
+        jsonResponse({
+          folioId: 'f-1',
+          stayId: body.stayId,
+          balanceMinor: 0,
+          openBalanceApproval: null,
+          charges: [
+            {
+              itemKind: 'nightly-room-charge',
+              itemName: 'Room 109',
+              amountMinor: 120000,
+              taxMinor: 0,
+              feeMinor: 0,
+              postedAt: '2026-10-26T08:00:00.000Z',
+            },
+          ],
+          payments: [
+            { method: 'cash', amountMinor: 120000, paidAt: '2026-10-26T09:00:00.000Z' },
+          ],
+        }),
+      );
+    }
+    if (url === '/v1/billing/PostCharge') {
+      return Promise.resolve(
+        jsonResponse({
+          lineId: 'line-1',
+          folioId: 'f-1',
+          stayId: body.stayId,
+          itemKind: body.itemKind,
+          itemName: body.itemName,
+          amountMinor: body.amountMinor,
+          taxMinor: 0,
+          feeMinor: 0,
+          postedAt: '2026-10-26T08:00:00.000Z',
+        }),
       );
     }
     if (url === '/v1/billing/RecordOpenBalanceApproval') {
@@ -1139,6 +1201,160 @@ describe('stay view', () => {
     ]);
   });
 
+  // #600: the desk check-out posts the stay's room charge before the
+  // review shows a balance, so a stay checked in and out through the
+  // desk ends with a folio that carries the room it paid for.
+  it('posts the stay room charge on the check-out review and gates the close on it', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
+
+    // A desk-checked-in stay with a fresh folio: the review posts the
+    // stay's frozen quoted total as one nightly room charge and then
+    // shows the balance that charge creates.
+    const charges: Array<Record<string, unknown>> = [];
+    const happy = stubHappyPath(fetchMock);
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/billing/PostCharge') {
+        const body = parseBody(init);
+        const posted = {
+          itemKind: body.itemKind,
+          itemName: body.itemName,
+          amountMinor: body.amountMinor,
+          postedAt: '2026-10-26T08:00:00.000Z',
+        };
+        charges.push(posted);
+        return Promise.resolve(
+          jsonResponse({ lineId: 'line-600', folioId: 'f-1', stayId: body.stayId, ...posted }),
+        );
+      }
+      if (url === '/v1/billing/GetFolioBalance') {
+        return Promise.resolve(
+          jsonResponse({
+            folioId: 'f-1',
+            stayId: parseBody(init).stayId,
+            balanceMinor: charges.reduce((sum, line) => sum + Number(line.amountMinor), 0),
+            openBalanceApproval: null,
+            charges,
+            payments: [],
+          }),
+        );
+      }
+      return happy(url, init);
+    });
+
+    await wrapper.find('[data-testid="stay-checkout-stay"]').setValue('s-1');
+    await wrapper.find('[data-testid="stay-review"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-folio-status"]').text()).toContain(
+        'Folio balance: 1200.00.',
+      );
+    });
+
+    const chargeBodies = fetchMock.mock.calls
+      .filter((call) => String(call[0]) === '/v1/billing/PostCharge')
+      .map((call) => parseBody(call[1]));
+    expect(chargeBodies).toHaveLength(1);
+    expect(chargeBodies[0]).toMatchObject({
+      stayId: 's-1',
+      itemKind: 'nightly-room-charge',
+      itemName: 'Room 109',
+      amountMinor: 120000,
+      actor: 'Ada Owner',
+      idempotencyKey: 'room-charge:s-1',
+    });
+    // The posted charge opens the balance, so the close stays gated on
+    // a payment or a recorded approval (`AC-DSK-18` holds for a folio
+    // that now carries the room charge).
+    expect(wrapper.find('[data-testid="stay-checkout-error"]').text()).toContain('open balance');
+    expect(wrapper.find('[data-testid="stay-approval-section"]').exists()).toBe(true);
+    expect(
+      (wrapper.find('[data-testid="stay-checkout"]').element as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(
+      fetchMock.mock.calls.filter((call) => String(call[0]) === '/v1/stay/CheckOut'),
+    ).toHaveLength(0);
+
+    // A repeated review re-reads the folio and posts nothing: the line
+    // is already there, so the stay is never charged twice.
+    await wrapper.find('[data-testid="stay-review"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-folio-status"]').text()).toContain(
+        'Folio balance: 1200.00.',
+      );
+    });
+    expect(
+      fetchMock.mock.calls.filter((call) => String(call[0]) === '/v1/billing/PostCharge'),
+    ).toHaveLength(1);
+  });
+
+  it('leaves a folio that already carries a room charge untouched', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
+
+    // The lab path (and the Folio screen) can post the room charge
+    // before the review: the desk sees the existing nightly line, posts
+    // nothing, and still reviews the settled folio.
+    await wrapper.find('[data-testid="stay-checkout-stay"]').setValue('s-1');
+    await wrapper.find('[data-testid="stay-review"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkout-status"]').text()).toContain(
+        'balance is zero',
+      );
+    });
+    expect(
+      fetchMock.mock.calls.filter((call) => String(call[0]) === '/v1/billing/PostCharge'),
+    ).toHaveLength(0);
+  });
+
+  it('refuses the review when the stay booking cannot be resolved for its room charge', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
+
+    // No booking links the stay, so no room charge can be posted: the
+    // desk refuses the review instead of closing an uncharged folio.
+    const happy = stubHappyPath(fetchMock);
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/billing/GetFolioBalance') {
+        return Promise.resolve(
+          jsonResponse({
+            folioId: 'f-1',
+            stayId: parseBody(init).stayId,
+            balanceMinor: 0,
+            openBalanceApproval: null,
+            charges: [],
+            payments: [],
+          }),
+        );
+      }
+      if (url === '/v1/reservations/QueryCalendar') {
+        return Promise.resolve(
+          jsonResponse({ dateFrom: null, dateTo: null, reservations: [] }),
+        );
+      }
+      return happy(url, init);
+    });
+
+    await wrapper.find('[data-testid="stay-checkout-stay"]').setValue('s-1');
+    await wrapper.find('[data-testid="stay-review"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkout-error"]').text()).toContain(
+        'room charge could not be posted',
+      );
+    });
+    expect(
+      fetchMock.mock.calls.filter((call) => String(call[0]) === '/v1/billing/PostCharge'),
+    ).toHaveLength(0);
+    // Nothing is reviewed, so no route to the close exists.
+    expect(wrapper.find('[data-testid="stay-folio-status"]').text()).toBe('');
+    expect(wrapper.find('[data-testid="stay-checkout"]').exists()).toBe(false);
+    expect(
+      fetchMock.mock.calls.filter((call) => String(call[0]) === '/v1/stay/CheckOut'),
+    ).toHaveLength(0);
+  });
+
   it('gates check-out behind the approval form for an open balance', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
@@ -1398,20 +1614,28 @@ describe('stay view', () => {
     vi.stubGlobal('fetch', fetchMock);
     const wrapper = await mountSignedIn(fetchMock);
 
-    // Review reads zero, then a room charge lands before the confirm:
-    // #588 (`FR-CKO-4`) the confirm re-reads and refuses on the fresh
-    // value instead of closing on the reviewed one.
-    let folioCalls = 0;
+    // Review reads a settled, charged folio, then a room charge lands
+    // before the confirm: #588 (`FR-CKO-4`) the confirm re-reads and
+    // refuses on the fresh value instead of closing on the reviewed one.
+    let balanceMinor = 0;
     const happy = stubHappyPath(fetchMock);
     fetchMock.mockImplementation((url: string, init?: RequestInit) => {
       if (url === '/v1/billing/GetFolioBalance') {
-        folioCalls += 1;
         return Promise.resolve(
           jsonResponse({
             folioId: 'f-1',
-            stayId: 's-1',
-            balanceMinor: folioCalls === 1 ? 0 : 120000,
+            stayId: parseBody(init).stayId,
+            balanceMinor,
             openBalanceApproval: null,
+            charges: [
+              {
+                itemKind: 'nightly-room-charge',
+                itemName: 'Room 109',
+                amountMinor: 120000,
+                postedAt: '2026-10-26T08:00:00.000Z',
+              },
+            ],
+            payments: [],
           }),
         );
       }
@@ -1425,6 +1649,8 @@ describe('stay view', () => {
         'balance is zero',
       );
     });
+    // The charge lands after the review and before the dialog confirm.
+    balanceMinor = 120000;
     await wrapper.find('[data-testid="stay-checkout"]').trigger('click');
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="stay-checkout-dialog"]').exists()).toBe(true);
@@ -1484,21 +1710,29 @@ describe('stay view', () => {
     vi.stubGlobal('fetch', fetchMock);
     const wrapper = await mountSignedIn(fetchMock);
 
-    // Review reads zero, a charge lands afterwards, and Stay would
-    // refuse SETTLEMENT_REQUIRED: #588 makes the desk refuse first on
-    // its own fresh read, so no CheckOut is even sent.
-    let folioCalls = 0;
+    // Review reads a settled, charged folio, a charge lands afterwards,
+    // and Stay would refuse SETTLEMENT_REQUIRED: #588 makes the desk
+    // refuse first on its own fresh read, so no CheckOut is even sent.
+    let balanceMinor = 0;
     const happy = stubHappyPath(fetchMock);
     fetchMock.mockImplementation((url: string, init?: RequestInit) => {
       if (url === '/v1/billing/GetFolioBalance') {
-        folioCalls += 1;
-        if (folioCalls === 1) {
-          return Promise.resolve(
-            jsonResponse({ folioId: 'f-1', stayId: 's-1', balanceMinor: 0, openBalanceApproval: null }),
-          );
-        }
         return Promise.resolve(
-          jsonResponse({ folioId: 'f-1', stayId: 's-1', balanceMinor: 900, openBalanceApproval: null }),
+          jsonResponse({
+            folioId: 'f-1',
+            stayId: parseBody(init).stayId,
+            balanceMinor,
+            openBalanceApproval: null,
+            charges: [
+              {
+                itemKind: 'nightly-room-charge',
+                itemName: 'Room 109',
+                amountMinor: 120000,
+                postedAt: '2026-10-26T08:00:00.000Z',
+              },
+            ],
+            payments: [],
+          }),
         );
       }
       if (url === '/v1/stay/CheckOut') {
@@ -1516,6 +1750,8 @@ describe('stay view', () => {
         'balance is zero',
       );
     });
+    // The charge lands after the review and before the confirm.
+    balanceMinor = 900;
     await confirmCheckout(wrapper);
     await vi.waitFor(() => {
       expect(wrapper.find('[data-testid="stay-checkout-error"]').text()).toContain('open balance');
@@ -2192,6 +2428,7 @@ describe('stay view source', () => {
     '/v1/stay/CheckIn',
     '/v1/reservations/CheckInReservation',
     '/v1/billing/GetFolioBalance',
+    '/v1/billing/PostCharge',
     '/v1/billing/RecordOpenBalanceApproval',
     '/v1/stay/CheckOut',
     '/v1/rooms/ReleaseRoom',
@@ -2201,7 +2438,7 @@ describe('stay view source', () => {
     expect(stayViewSource).toContain(op);
   });
 
-  it.each(['SETTLEMENT_REQUIRED', 'STATE_ILLEGAL', 'refused_open_balance', 'refused_already_closed', 'refused_approval_incomplete', 'room_release_failed', 'room_released', 'room_already_free', 'approval_recorded_by', 'idempotencyKey'])(
+  it.each(['SETTLEMENT_REQUIRED', 'STATE_ILLEGAL', 'refused_open_balance', 'refused_already_closed', 'refused_approval_incomplete', 'refused_room_charge', 'room_release_failed', 'room_released', 'room_already_free', 'approval_recorded_by', 'idempotencyKey'])(
     'keeps the folio-gate vocabulary %s',
     (token) => {
       expect(stayViewSource).toContain(token);

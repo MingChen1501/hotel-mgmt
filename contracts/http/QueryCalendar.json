@@ -33,7 +33,8 @@
             "roomTypeId": { "type": "string", "format": "uuid" },
             "arrivalDate": { "type": "string", "format": "date" },
             "departureDate": { "type": "string", "format": "date" },
-            "state": { "type": "string" }
+            "state": { "type": "string" },
+            "stayId": { "type": ["string", "null"], "format": "uuid" }
           }
         }
       }

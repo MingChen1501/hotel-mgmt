@@ -266,8 +266,23 @@ function stubStayHappy(fetchMock: ReturnType<typeof vi.fn>) {
       return Promise.resolve(jsonResponse({ roomTypes: [{ id: 'standard', name: 'Standard' }] }));
     }
     if (url === '/v1/reservations/QueryCalendar') {
+      // The calendar links each stay to its booking (#600): the
+      // check-out review resolves the stay's frozen quote through it.
       return Promise.resolve(
-        jsonResponse({ dateFrom: body.dateFrom ?? null, dateTo: body.dateTo ?? null, reservations: [] }),
+        jsonResponse({
+          dateFrom: body.dateFrom ?? null,
+          dateTo: body.dateTo ?? null,
+          reservations: [
+            {
+              reservationRef: 'RSV-1',
+              stayId: 's-1',
+              roomTypeId: 'standard',
+              arrivalDate: '2026-10-25',
+              departureDate: '2026-10-27',
+              state: 'checked-in',
+            },
+          ],
+        }),
       );
     }
     if (url === '/v1/reservations/GetReservation') {
@@ -277,6 +292,7 @@ function stubStayHappy(fetchMock: ReturnType<typeof vi.fn>) {
           reservationRef: 'RSV-1',
           roomTypeId: 'standard',
           guest: { guestId: 'g-1' },
+          priceBasis: { totalMinor: 120000, discountName: null },
         }),
       );
     }
@@ -301,8 +317,43 @@ function stubStayHappy(fetchMock: ReturnType<typeof vi.fn>) {
       return Promise.resolve(jsonResponse({ reservationRef: 'RSV-1', stayId: body.stayId }));
     }
     if (url === '/v1/billing/GetFolioBalance') {
+      // Default happy folio (#600): the room charge is already posted
+      // and settled, so the review posts nothing.
       return Promise.resolve(
-        jsonResponse({ folioId: 'f-1', stayId: body.stayId, balanceMinor: 0, openBalanceApproval: null }),
+        jsonResponse({
+          folioId: 'f-1',
+          stayId: body.stayId,
+          balanceMinor: 0,
+          openBalanceApproval: null,
+          charges: [
+            {
+              itemKind: 'nightly-room-charge',
+              itemName: 'Room 109',
+              amountMinor: 120000,
+              taxMinor: 0,
+              feeMinor: 0,
+              postedAt: '2026-10-26T08:00:00.000Z',
+            },
+          ],
+          payments: [
+            { method: 'cash', amountMinor: 120000, paidAt: '2026-10-26T09:00:00.000Z' },
+          ],
+        }),
+      );
+    }
+    if (url === '/v1/billing/PostCharge') {
+      return Promise.resolve(
+        jsonResponse({
+          lineId: 'line-1',
+          folioId: 'f-1',
+          stayId: body.stayId,
+          itemKind: body.itemKind,
+          itemName: body.itemName,
+          amountMinor: body.amountMinor,
+          taxMinor: 0,
+          feeMinor: 0,
+          postedAt: '2026-10-26T08:00:00.000Z',
+        }),
       );
     }
     if (url === '/v1/stay/CheckOut') {

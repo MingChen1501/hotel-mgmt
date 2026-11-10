@@ -77,20 +77,30 @@ test('check-in, unpaid refusal, approval, dialog check-out, and room release', a
     label: `${ctx.guestName} · ${ctx.roomNumbers[0]}`,
   });
 
-  // An open balance refuses check-out in plain words naming the
-  // approval next step.
+  // The desk check-out posts the stay's room charge on its own (Refs
+  // #600): the review resolves the stay's booking, reads its frozen
+  // quoted total, and posts one nightly room charge, so the folio the
+  // close presents carries the room it paid for. The open balance then
+  // refuses check-out in plain words naming the approval next step.
   const stayId = await stayIdFromStatus(page);
-  await apiOp(request, 'billing', 'PostCharge', {
-    stayId,
-    itemKind: 'nightly-room-charge',
-    itemName: 'Room charge',
-    amountMinor: 120000,
-    idempotencyKey: randomUUID(),
-    actor: 'browser-e2e',
-  }, token);
   await page.getByTestId('stay-review').click();
+  await expect(page.getByTestId('stay-folio-status')).toContainText('Folio balance:');
   await expect(page.getByTestId('stay-checkout-error')).toContainText('open balance');
   await expect(page.getByTestId('stay-approval-section')).toBeVisible();
+  // The posted line is the booking's own quoted total, one charge for
+  // the stay — never an amount the desk typed.
+  const reviewedFolio = await apiOp(request, 'billing', 'GetFolioBalance', {
+    stayId,
+    actor: 'browser-e2e',
+  }, token);
+  const roomChargeLines = ((reviewedFolio.charges ?? []) as Array<{
+    itemKind: string;
+    itemName: string;
+    amountMinor: number;
+  }>).filter((line) => line.itemKind === 'nightly-room-charge');
+  expect(roomChargeLines).toHaveLength(1);
+  expect(roomChargeLines[0]?.amountMinor).toBe(Number(quote.totalMinor));
+  expect(roomChargeLines[0]?.itemName).toBe(`Room ${ctx.roomNumbers[0]}`);
   // Every route to the close is gated (Refs #588, AC-DSK-18): the
   // unpaid reviewed folio leaves the Check out button disabled, so the
   // dialog cannot even open before an approval is recorded.

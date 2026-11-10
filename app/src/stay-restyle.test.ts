@@ -102,6 +102,7 @@ describe('Stay v2 design values (Refs #541)', () => {
       '/v1/rooms/ListRoomTypes',
       '/v1/guests/GetGuest',
       '/v1/billing/GetFolioBalance',
+      '/v1/billing/PostCharge',
       '/v1/billing/RecordOpenBalanceApproval',
       'onArrivalChange',
       'onDepartureChange',
