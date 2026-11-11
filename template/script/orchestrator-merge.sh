@@ -51,6 +51,20 @@
 #     to a terminal status (`merged` / `enqueued` / `failed`) — a
 #     `pending` result is never reported as landed. The async API never
 #     deletes branches, so branch cleanup stays a separate, guarded step.
+#     A member whose branch chain is SHORTER than its recorded position
+#     is the post-stack-merge retarget shape: GitHub rewrites the
+#     remaining members onto the new default-branch head and leaves the
+#     native stack metadata unchanged, so the chain no longer contains
+#     the merged prefix. That shape is accepted only when the stack
+#     resource (`GET /repos/{owner}/{repo}/stacks/<n>`) proves every
+#     position below the chain's first member is a merged member
+#     (`closed` + `merged_at`) of that same stack; the stale metadata is
+#     reported, never repaired. Every other break (a longer chain, a
+#     chain member outside the reported stack, an OPEN member below the
+#     requested position that the merged chain does not contain, an
+#     unreadable stack or PR resource, a loop) still refuses. Treating
+#     such a member as unstacked is not an alternative: GitHub's
+#     synchronous endpoint refuses stack members outright.
 # --dry-run prints the exact merge request it would issue without
 # merging (and never submits a request).
 set -euo pipefail
@@ -272,6 +286,30 @@ read_stack() {
   printf '%s' "${out}" | jq -c 'if (.stack | type) == "object" then .stack else empty end'
 }
 
+# Print the native stack resource (`GET /repos/{owner}/{repo}/stacks/<n>`)
+# as compact JSON. The resource is the authoritative membership behind the
+# per-PR `.stack` objects and, unlike them, carries each member's state and
+# `merged_at` — which is what proves a merged prefix. Returns non-zero when
+# the resource cannot be read or parsed: the caller refuses (fail closed).
+read_stack_resource() {
+  local number="$1" out
+  if ! out="$(gh api -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: ${API_VERSION}" "repos/${REPO}/stacks/${number}" 2>&1)"; then
+    return 1
+  fi
+  if ! printf '%s' "${out}" | jq -e 'type == "object" and (.pull_requests | type) == "array"' >/dev/null 2>&1; then
+    return 1
+  fi
+  printf '%s' "${out}" | jq -c '.'
+}
+
+# Print one stack-resource member (compact JSON) by 1-based position, in
+# the resource's own order: `pull_requests[position - 1]`. Prints `null`
+# when the position is not listed.
+stack_resource_member() {
+  local resource="$1" position="$2"
+  printf '%s' "${resource}" | jq -c --argjson i "$((position - 1))" '.pull_requests[$i] // null' 2>/dev/null || true
+}
+
 stack_member_number() {
   printf '%s' "$1" | jq -r '.number // empty' 2>/dev/null || true
 }
@@ -448,7 +486,52 @@ if [[ -n "${stack_json}" ]]; then
     expected_position="${next_position}"
   done
   if [[ "${expected_position}" -ne 1 ]]; then
-    refuse "stack #${stack_number} reports position ${stack_position} but the branch chain reaches ${DEFAULT_BRANCH} at position ${expected_position} — non-linear stack; refusing, not repairing"
+    # The branch chain is shorter than the recorded position. After a
+    # stack member merges, GitHub retargets the surviving members onto the
+    # new default-branch head but leaves the native stack metadata (and
+    # its frozen positions) untouched, so the merged prefix no longer
+    # appears in the walk: a legitimate member can reach the default
+    # branch at a position above 1. Accept that shape only when the stack
+    # resource proves every position below the chain's first member is a
+    # merged member (`closed` + `merged_at`) of this same stack, and when
+    # every chain member really sits at its recorded position there. Any
+    # other short chain stays a refusal — the metadata is reported, never
+    # repaired.
+    chain_first_position="${expected_position}"
+    if ! stack_resource="$(read_stack_resource "${stack_number}")"; then
+      refuse "cannot read stack #${stack_number} to verify the position chain of PR #${pr} (fail closed)"
+    fi
+    resource_number="$(printf '%s' "${stack_resource}" | jq -r '.number // empty')"
+    if [[ "${resource_number}" != "${stack_number}" ]]; then
+      refuse "stack resource #${resource_number:-unknown} does not match the stack #${stack_number} reported by PR #${pr} — refusing, not repairing"
+    fi
+    resource_size="$(printf '%s' "${stack_resource}" | jq -r '.pull_requests | length')"
+    if [[ "${resource_size}" -lt "${stack_position}" ]]; then
+      refuse "stack #${stack_number} lists ${resource_size} member(s) but PR #${pr} reports position ${stack_position} — refusing, not repairing"
+    fi
+    chain_index=0
+    for member in "${stack_prs[@]}"; do
+      chain_position=$((chain_first_position + chain_index))
+      resource_member="$(stack_resource_member "${stack_resource}" "${chain_position}")"
+      resource_member_number="$(stack_member_number "${resource_member}")"
+      if [[ "${resource_member_number}" != "${member}" ]]; then
+        refuse "stack #${stack_number} position ${chain_position} is PR #${resource_member_number:-unknown}, not chain member PR #${member} — non-linear stack; refusing, not repairing"
+      fi
+      chain_index=$((chain_index + 1))
+    done
+    for ((lower_position = 1; lower_position < chain_first_position; lower_position++)); do
+      lower_member="$(stack_resource_member "${stack_resource}" "${lower_position}")"
+      lower_number="$(stack_member_number "${lower_member}")"
+      lower_state="$(printf '%s' "${lower_member}" | jq -r '.state // empty' 2>/dev/null || true)"
+      lower_merged_at="$(printf '%s' "${lower_member}" | jq -r '.merged_at // empty' 2>/dev/null || true)"
+      if [[ -z "${lower_number}" ]]; then
+        refuse "stack #${stack_number} lists no member at position ${lower_position}, below the branch chain that starts at position ${chain_first_position} for PR #${pr} — refusing, not repairing"
+      fi
+      if [[ "${lower_state}" != "closed" || -z "${lower_merged_at}" ]]; then
+        refuse "stack #${stack_number} position ${lower_position} (PR #${lower_number}) is not proven merged (state ${lower_state:-unknown}, merged_at ${lower_merged_at:-none}) but is absent from the branch chain of PR #${pr}, which starts at position ${chain_first_position} — refusing, not repairing"
+      fi
+      echo "--- stack #${stack_number}: position ${lower_position} (PR #${lower_number}) is merged; accepting the short branch chain that starts at position ${chain_first_position} for PR #${pr} (stale stack metadata reported, not repaired) ---"
+    done
   fi
 
   # Per-member gate sweep: one async request merges every member at or

@@ -155,6 +155,19 @@ elif [[ "$1" == "api" ]]; then
     esac
     prev="$a"
   done
+  if [[ "${method}" == "GET" && "${path}" =~ /stacks/([0-9]+)$ ]]; then
+    stack_num="${BASH_REMATCH[1]}"
+    if [[ -n "${TEST_STACK_RESOURCE_UNREADABLE:-}" ]]; then
+      echo "stub gh: cannot read stack #${stack_num}" >&2
+      exit 1
+    fi
+    if [[ -n "${TEST_STACK_RESOURCE:-}" && -f "${TEST_STACK_RESOURCE}" ]]; then
+      cat "${TEST_STACK_RESOURCE}"
+      exit 0
+    fi
+    echo "stub gh: no stack resource fixture for #${stack_num}" >&2
+    exit 1
+  fi
   if [[ "${method}" == "GET" && "${path}" =~ /pulls/([0-9]+)$ ]]; then
     num="${BASH_REMATCH[1]}"
     if [[ -n "${TEST_STACK_UNREADABLE:-}" && ",${TEST_STACK_UNREADABLE}," == *",${num},"* ]]; then
@@ -459,15 +472,44 @@ reset_stack_fixtures() {
   rm -rf "${work}/prs"
   mkdir -p "${work}/prs"
   unset TEST_STACK_MEMBERS TEST_STACK_NONMEMBERS TEST_STACK_UNREADABLE TEST_OPEN_PRS TEST_OPEN_PRS_AFTER \
-    TEST_ALL_PRS TEST_ASYNC_PUT_RESPONSE TEST_POLL_STATUSES TEST_MERGED_FLAG TEST_DELETE_FAIL
+    TEST_ALL_PRS TEST_ASYNC_PUT_RESPONSE TEST_POLL_STATUSES TEST_MERGED_FLAG TEST_DELETE_FAIL \
+    TEST_STACK_RESOURCE TEST_STACK_RESOURCE_UNREADABLE
   export MERGE_ASYNC_POLL_ATTEMPTS=10
   export TEST_PR_DIR="${work}/prs"
   export TEST_GH_LOG="${work}/gh.log"
   export TEST_POLL_COUNTER="${work}/poll.count"
   export TEST_MERGED_FLAG="${work}/merged.flag"
   : >"${TEST_GH_LOG}"
-  rm -f "${TEST_POLL_COUNTER}" "${TEST_MERGED_FLAG}"
+  rm -f "${TEST_POLL_COUNTER}" "${TEST_MERGED_FLAG}" "${work}/stack-resource.json"
   unset TEST_PR_JSON TEST_CHECKS_JSON
+}
+
+# write_stack_resource <json>: `GET /repos/{repo}/stacks/<n>` fixture.
+# The native stack resource lists members in position order and carries
+# each member's state and merged_at (the PR `.stack` objects do not).
+write_stack_resource() {
+  printf '%s' "$1" >"${work}/stack-resource.json"
+  export TEST_STACK_RESOURCE="${work}/stack-resource.json"
+}
+
+# stack_resource_json <number> <size> <member-spec...>: build a stack
+# resource payload. Each member spec is "<number>:<state>[:<merged_at>]".
+stack_resource_json() {
+  local number="$1" size="$2" members='[]'
+  shift 2
+  local spec member_number member_state member_merged
+  for spec in "$@"; do
+    member_number="${spec%%:*}"
+    member_state="${spec#*:}"
+    member_state="${member_state%%:*}"
+    member_merged=""
+    case "${spec}" in
+      *:*:*) member_merged="${spec#*:*:}" ;;
+    esac
+    members="$(printf '%s' "${members}" | jq -c --arg n "${member_number}" --arg s "${member_state}" --arg m "${member_merged}" \
+      '. + [{number: ($n | tonumber), state: $s, merged_at: (if $m == "" then null else $m end)}]')"
+  done
+  printf '{"number":%s,"open":true,"size":%s,"pull_requests":%s}\n' "${number}" "${size}" "${members}"
 }
 
 # write_pr <number> <base> <labels-json> <comments-json> <reviews-json> [<head>]
@@ -717,6 +759,122 @@ expect_ok "same-stack merged lower member no longer blocks the next merge"
 expect_contains "merged lower member is reported as skipped" "skipping already-merged lower member PR #674"
 expect_absent "merged lower member is not re-gated" "gating member PR #674"
 expect_contains "next stack member still issues the async request" "pulls/675/merge-async"
+
+# -----------------------------------------------------------------------
+# Post-stack-merge retarget (issue #686)
+# -----------------------------------------------------------------------
+# After a lower stack member merges, GitHub retargets the surviving members
+# onto the new default-branch head but leaves the native stack metadata
+# (frozen positions) untouched. The branch chain is then SHORTER than
+# `.stack.position`. The wrapper accepts that shape only when the stack
+# resource proves every missing lower position is a merged member of the
+# same stack; every other short chain, and every longer chain, still
+# refuses.
+
+# (AC 1) The live #675 shape: base master, chain master -> #675 only,
+# `.stack` position 2 of 4, position 1 (#674) merged. The dry-run prints
+# the async request pinned to the observed head and never the refusal.
+reset_stack_fixtures
+export TEST_STACK_MEMBERS="674 675 676 677"
+write_pr 675 "${TEST_DEFAULT_BRANCH}" "${MEDIUM_LABELS}" "${APPROVE_SHORT}" "${NO_REVIEWS}"
+write_checks 675 "${GREEN_CHECKS}"
+build_open_prs 675
+write_stack_resource "$(stack_resource_json 678 4 674:closed:2026-11-11T18:03:20Z 675:open 676:open 677:open)"
+invoke 675 --dry-run
+expect_ok "stale stack metadata: retargeted position-2 member dry-run exits clean"
+expect_contains "stale stack metadata: async request is still issued" "PUT /repos/${TEST_REPO}/pulls/675/merge-async"
+expect_contains "stale stack metadata: request pins the observed head" "sha=${TEST_HEAD}"
+expect_contains "stale stack metadata: request keeps squash" "merge_method=squash"
+expect_absent "stale stack metadata: never prints the non-linear refusal" "non-linear stack; refusing, not repairing"
+expect_absent "stale stack metadata: never prints the synchronous command" "gh pr merge"
+expect_contains "stale stack metadata: names the merged lower position" "position 1 (PR #674) is merged"
+expect_contains "stale stack metadata: reports the chain start" "accepting the short branch chain that starts at position 2 for PR #675"
+if grep -q 'stacks/678' "${TEST_GH_LOG}"; then
+  echo "ok: stale stack metadata: membership came from the stack resource"; pass=$((pass + 1))
+else
+  echo "FAIL: the stack resource was never read:"; cat "${TEST_GH_LOG}"; fail=$((fail + 1))
+fi
+
+# (AC 6) The #676 shape: chain master -> #675 -> #676, position 3 of 4,
+# positions 1 (#674) merged. The open lower chain member is still gated
+# individually; only the proven-merged prefix is skipped.
+reset_stack_fixtures
+export TEST_STACK_MEMBERS="674 675 676 677"
+write_pr 675 "${TEST_DEFAULT_BRANCH}" "${MEDIUM_LABELS}" "${APPROVE_SHORT}" "${NO_REVIEWS}"
+write_checks 675 "${GREEN_CHECKS}"
+write_pr 676 branch-675 "${MEDIUM_LABELS}" "${APPROVE_SHORT}" "${NO_REVIEWS}"
+write_checks 676 "${GREEN_CHECKS}"
+build_open_prs 675 676
+write_stack_resource "$(stack_resource_json 678 4 674:closed:2026-11-11T18:03:20Z 675:open 676:open 677:open)"
+invoke 676 --dry-run
+expect_ok "retargeted position-3 member dry-run exits clean"
+expect_contains "retargeted position-3 member still gates its open lower member" "gating member PR #675"
+expect_contains "retargeted position-3 member issues the async request for itself" "pulls/676/merge-async"
+expect_contains "retargeted position-3 member names every member the request lands" "#675 #676"
+expect_absent "retargeted position-3 member never re-gates the merged prefix" "gating member PR #674"
+
+# (AC 2) An OPEN member at a lower position that the branch chain does not
+# contain refuses: the async request would land it without gating it.
+reset_stack_fixtures
+export TEST_STACK_MEMBERS="674 675 676 677"
+write_pr 675 "${TEST_DEFAULT_BRANCH}" "${MEDIUM_LABELS}" "${APPROVE_SHORT}" "${NO_REVIEWS}"
+write_checks 675 "${GREEN_CHECKS}"
+build_open_prs 675
+write_stack_resource "$(stack_resource_json 678 4 674:open 675:open 676:open 677:open)"
+invoke 675 --dry-run
+expect_refusal "open lower member absent from the short chain refuses"
+expect_contains "open-but-absent refusal names the offending member" "position 1 (PR #674) is not proven merged"
+expect_absent "open-but-absent refusal submits no async request" "merge-async"
+
+# (AC 2) A closed-but-unmerged lower member is not "proven merged" either.
+reset_stack_fixtures
+export TEST_STACK_MEMBERS="674 675"
+write_pr 675 "${TEST_DEFAULT_BRANCH}" "${MEDIUM_LABELS}" "${APPROVE_SHORT}" "${NO_REVIEWS}"
+write_checks 675 "${GREEN_CHECKS}"
+build_open_prs 675
+write_stack_resource "$(stack_resource_json 678 2 674:closed 675:open)"
+invoke 675 --dry-run
+expect_refusal "closed-but-unmerged lower member refuses"
+expect_contains "closed-but-unmerged refusal reports merged_at none" "merged_at none"
+
+# (AC 2) A chain member that does not sit at its reported position in the
+# stack resource refuses (a branch-linked PR outside the stack).
+reset_stack_fixtures
+export TEST_STACK_MEMBERS="674 675 676 677"
+write_pr 675 "${TEST_DEFAULT_BRANCH}" "${MEDIUM_LABELS}" "${APPROVE_SHORT}" "${NO_REVIEWS}"
+write_checks 675 "${GREEN_CHECKS}"
+write_pr 676 branch-675 "${MEDIUM_LABELS}" "${APPROVE_SHORT}" "${NO_REVIEWS}"
+write_checks 676 "${GREEN_CHECKS}"
+build_open_prs 675 676
+write_stack_resource "$(stack_resource_json 678 4 674:closed:2026-11-11T18:03:20Z 680:open 676:open 677:open)"
+invoke 676 --dry-run
+expect_refusal "chain member replaced in the stack resource refuses"
+expect_contains "outside-the-stack refusal names the position and member" "position 2 is PR #680, not chain member PR #675"
+expect_absent "outside-the-stack refusal submits no async request" "merge-async"
+
+# (AC 2) An unreadable stack resource refuses (fail closed).
+reset_stack_fixtures
+export TEST_STACK_MEMBERS="674 675"
+export TEST_STACK_RESOURCE_UNREADABLE=1
+write_pr 675 "${TEST_DEFAULT_BRANCH}" "${MEDIUM_LABELS}" "${APPROVE_SHORT}" "${NO_REVIEWS}"
+write_checks 675 "${GREEN_CHECKS}"
+build_open_prs 675
+invoke 675 --dry-run
+expect_refusal "unreadable stack resource refuses the short chain (fail closed)"
+expect_contains "unreadable-stack refusal names the stack" "cannot read stack #678"
+expect_absent "unreadable-stack refusal submits no async request" "merge-async"
+
+# (AC 2) A chain LONGER than the recorded position still refuses.
+reset_stack_fixtures
+export TEST_STACK_MEMBERS="674"
+write_pr 674 branch-681 "${MEDIUM_LABELS}" "${APPROVE_SHORT}" "${NO_REVIEWS}"
+write_checks 674 "${GREEN_CHECKS}"
+build_open_prs 674
+invoke 674 --dry-run
+expect_refusal "chain longer than the recorded position refuses"
+expect_contains "longer-chain refusal explains the shape" "the branch chain is longer"
+expect_absent "longer-chain refusal submits no async request" "merge-async"
+
 
 # (c) Unstacked PR: exactly today's synchronous command, no async call.
 reset_stack_fixtures
