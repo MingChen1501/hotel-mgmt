@@ -74,7 +74,7 @@ installed): labels, cue import, AO project registration with the full
 | `script/compose-lab-guard.sh` | same | Compose lab guard: refuses shared-project teardown, blesses isolated labs |
 | `script/markdown-link-check.sh` | same | Markdown link gate: fails on broken relative links and bare section glyphs |
 | `script/ao-spawn-worker.sh` | same | Only sanctioned spawn path |
-| `script/orchestrator-merge.sh` | same | Only sanctioned merge path |
+| `script/orchestrator-merge.sh` | same | Only sanctioned merge path (synchronous, or async for a native stack member) |
 | `script/orchestrator-review.sh` | same | Sanctioned review-trigger path (legacy while native review is disabled) |
 | `cues/*.md` | — (via `script/install-cues.sh`) | Source files for the project-scoped cues |
 | `script/install-cues.sh` | — (runs from this checkout) | Cue installer: `--project <id> [--dry-run]`, idempotent, never duplicates |

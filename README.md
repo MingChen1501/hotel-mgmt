@@ -134,7 +134,8 @@ coordinated around GitHub issues:
   quoting the exact PR head. Merging needs that APPROVE plus green
   CI plus a low- or medium-risk label; higher-risk changes need
   explicit owner approval first. Merges go only through
-  `script/orchestrator-merge.sh` (squash merge); nobody pushes
+  `script/orchestrator-merge.sh` (squash merge; a native stack member
+  goes through one atomic async request); nobody pushes
   directly to the default branch.
 - **Verify before opening the PR.** Each module builds and tests
   from its own directory (see Modules above); a PR never opens
