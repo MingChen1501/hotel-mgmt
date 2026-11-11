@@ -226,9 +226,19 @@ func TestPostgresCheckOutReservationParity(t *testing.T) {
 		t.Fatalf("replayed completion refused: %v", oerr)
 	}
 
-	var changes, events int
-	if err := db.QueryRow(`SELECT count(*) FROM reservations.reservation_changes WHERE changed_field = 'state'`).Scan(&changes); err != nil || changes != 2 {
-		t.Fatalf("state changes = %d, %v; want 2 (created + completed)", changes, err)
+	var changes, completions, events int
+	if err := db.QueryRow(`SELECT count(*) FROM reservations.reservation_changes WHERE changed_field = 'state'`).Scan(&changes); err != nil || changes != 3 {
+		t.Fatalf("state changes = %d, %v; want 3 (created + checked-in + completed)", changes, err)
+	}
+	// DR1's change row: the completion records exactly one state
+	// change from checked-in to closed, with the actor, whether it ran
+	// in memory or over Postgres.
+	if err := db.QueryRow(
+		`SELECT count(*) FROM reservations.reservation_changes
+		  WHERE changed_field = 'state' AND old_value = '"checked-in"'
+		    AND new_value = '"closed"' AND created_by = 'front-desk'`,
+	).Scan(&completions); err != nil || completions != 1 {
+		t.Fatalf("completion change rows = %d, %v; want 1 (checked-in -> closed by front-desk)", completions, err)
 	}
 	if err := db.QueryRow(`SELECT count(*) FROM reservations.outbox`).Scan(&events); err != nil || events != 2 {
 		t.Fatalf("outbox = %d, %v; want 2 (created + checked-in only)", events, err)
