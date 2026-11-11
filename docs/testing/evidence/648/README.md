@@ -61,27 +61,27 @@ the live read path. The live read path is proven separately below.
 
 The tab is app-only, so the header row has to carry nine tabs plus the
 brand, the locale pill, and the session control inside the desk
-design's width. Measured on the built shell (`measurements.json`):
+design's width. Measured on the built shell (`measurements.json`, both
+the app font and a wide fallback font so host font-metric differences
+are covered):
 
-| Viewport | Content column | Nav row | Gap | Brand (VI / EN) | Overflow |
-|---|---|---|---|---|---|
-| 1280 (kiosk) | 1200 | 1264 | 8px | 36px / 120px | none (`scrollWidth == clientWidth`) |
-| 1200 (design band) | 1184 | 1184 | 4px | 0px / 120px | none (`scrollWidth == clientWidth`) |
+| Viewport | Gap | Brand (VI / EN, app font) | Brand (VI / EN, wide fallback) | Overflow |
+|---|---|---|---|---|
+| 1200 | 4px | 72px / 120px | 37px / 137px | none (`scrollWidth == clientWidth`) |
+| 1279 | 4px | 120px / 120px | 116px / 137px | none |
+| 1280 | 8px (design) | 36px / 120px | 1px / 137px | none |
+| 1366 | 8px (design) | 120px / 120px | 87px / 137px | none |
 
-At the 1200px band the VI row no longer fits with the design's 8px
-gap: the brand is already fully shrunk (the design's only shrinkable
-item) and the session control still spilled ~20px past the bar
-(`signin.spec.ts` "header keeps the design 60px single row at
-1200px"). The change therefore tightens **only the inter-item gap**,
-from 8px to 4px, below a 1240px viewport (`app/src/App.vue`); every
-tab, the locale pill, and the session control keep their size, the
-brand stays the only shrinkable item, and the 1280px kiosk keeps the
-design gap. The product spec reserves the alternative — a shorter VI
-tab label — to the owner, so this rule is recorded for the
-`owner-review` decision; the label itself is unchanged
-(`Sổ đặt phòng` / `Bookings`). At the 1200px band the brand is fully
-truncated in VI, which is the same shrink rule the boards already use
-for a long hotel name.
+At the 1200px band the VI row does not fit at the design's 8px gap: the
+brand is already fully shrunk (the design's only shrinkable item) and
+the session control spilled past the bar, which the `signin.spec.ts`
+header pin catches. The owner's decision on #648 is to tighten the
+spacing rather than change the label, so below a 1280px viewport the
+nav gap goes 8px → 4px and each tab keeps 12px side padding instead of
+16px (`app/src/App.vue`). Every tab, the locale pill, and the session
+control keep their size, the brand stays the only shrinkable item, and
+1280px and wider keep the design gap and padding exactly. The label is
+unchanged (`Sổ đặt phòng` / `Bookings`).
 
 ## Live read-path evidence (`BM-E1`)
 

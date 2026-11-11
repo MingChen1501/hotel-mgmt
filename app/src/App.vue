@@ -2711,21 +2711,29 @@ export default defineComponent({
   }
 }
 
-/* Narrow header row (Refs #648, R-12). The ninth tab is app-only, and
+/* Narrow header row (Refs #648, R-12). The ninth tab is app-only, so
    below the design width the nine localized tabs plus the locale pill
    and the session control no longer fit beside a visible brand: with
    the brand already shrunk to zero, the VI row overflowed a 1200px
-   viewport by ~20px (`signin.spec.ts` spill). The design keeps every
+   viewport (the `signin.spec.ts` header pin). The design keeps every
    tab, the pill, and the session control at their size and leaves the
-   brand as the only shrinkable item, so this rule only tightens the
-   inter-item gap in that narrow band (8px -> 4px, the design value
-   stays at every wider width including the 1280px kiosk). The product
-   spec reserves the alternative (a shorter tab label) to the owner;
-   this is the shell-rule side of that decision, recorded for the
-   owner-review. */
-@media screen and (max-width: 1240px) {
+   brand as the only shrinkable item, so this rule tightens the tab
+   row's own spacing below the 1280px desk kiosk width: the inter-item
+   gap goes 8px -> 4px (owner decision for #648) and each tab's side
+   padding 16px -> 12px, which leaves the brand room to stay visible and
+   gives the row enough slack for the font-metric differences between
+   hosts. Every control keeps its size, and 1280px and wider keep the
+   design values. The product spec reserves the alternative (a shorter tab
+   label) to the owner; the owner chose this spelling, recorded in
+   `docs/testing/evidence/648/README.md`. */
+@media screen and (max-width: 1279px) {
   #shell .shell-nav {
     gap: 4px;
+  }
+
+  #shell .shell-nav-item,
+  #shell .shell-nav-item.shell-nav-active {
+    padding: 10px 12px;
   }
 }
 </style>
