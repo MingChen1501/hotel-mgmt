@@ -181,20 +181,20 @@ land in.
 - New outbound client: one Reservations `CheckOutReservation` call after
   the conditional `in-house -> closed` flip commits and before the
   reply — `RESERVATIONS_BASE_URL` (default `http://reservations:8081`),
-  caller Bearer token forwarded, 2-second timeout. The transport must
-  thread the bearer into the store the way the Reservations handler
-  threads it (`services/reservations/internal/handler/handler.go:207`,
-  `:235`); today `src/server.ts:110-112` only checks presence.
-- The response gains `bookingCompletion`:
+  caller Bearer token forwarded, 2-second timeout. `src/server.ts`
+  threads the caller bearer into `checkOut` the way the Reservations
+  handler threads it (`services/reservations/internal/handler/handler.go:207`,
+  `:235`).
+- The response carries `bookingCompletion`:
   `{state: "completed" | "not-recorded", reservationRef?, reason?}`.
   Any non-recording outcome (transport, timeout, 5xx, unwired, provider
   4xx) leaves the close `200`/`closed` and reports the split; it is
   never turned into a refused close (FR-DEP-5).
 - An idempotent replay re-attempts the idempotent completion so a retry
   after a split repairs the booking; the booking still transitions once.
-- Sections 3 and 4 gain the completion step in the CheckOut flowcharts;
-  section 5's "None at runtime" becomes the Billing and Reservations
-  clients; section 6 gains no new code.
+- Sections 3 and 4 carry the completion step in the CheckOut flowcharts;
+  section 5 names the Billing and Reservations clients; section 6 has no
+  new code.
 
 Design: `docs/architecture/lld.md` section 22; product UI contract
 `docs/product/desk-ui-design-rollout.md` section 6.16 (the plain split
