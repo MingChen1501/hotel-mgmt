@@ -2220,6 +2220,114 @@ screen and its guards return as they were, and rooms stranded by a
 move in the reverted build are cleared through the existing desk
 release.
 
+### 6.18 Book price-changed refusal and re-quote (Refs #632)
+
+Status: product-owner scope decision and UI contract delta for the desk
+half of #632 (server-side reservation price basis; binding
+done-conditions `AC-PRC-1`..`AC-PRC-5` in
+`docs/product/acceptance-criteria.md` [section 17](acceptance-criteria.md),
+desk condition `AC-DSK-20` in
+[section 11](acceptance-criteria.md)). The reservation service now
+derives the frozen total from the Rates `QuotePrice` read it takes
+during the create request instead of trusting the body, refuses a
+request whose total disagrees with `PRICE_CHANGED`, and refuses
+fail-closed with `UPSTREAM_UNAVAILABLE` when Pricing cannot be read.
+The Book screen already quotes before it books — it reads `QuotePrice`
+for the type, dates, and typed discount
+(`app/src/views/BookView.vue:793`) and sends that total back as
+`priceBasis` (`:930-937`) — so the matching path needs no desk change.
+What the desk must not do is leave the clerk holding a total the
+service will never accept.
+
+Decision (three parts):
+
+1. **A price-changed refusal is recovered, not swallowed.** On
+   `PRICE_CHANGED` the Book screen re-runs its existing `QuotePrice`
+   read for the room type, dates, and discount it already holds, shows
+   the new total, and requires a second `Confirm` before booking
+   (`AC-DSK-20`). The desk never books at a total the clerk has not
+   seen, and never reports the earlier total as booked. The second
+   confirm reuses one idempotency key per quote (as built), so a double
+   click still books once. A failed re-read books nothing and says so
+   in plain words, reusing the existing no-price wording when the type
+   lost its price for those dates (`desk.book.refused_noprice`,
+   `messages/en.json:425`).
+2. **The refusal speaks catalogue words and switches on the code.**
+   One new key, `desk.book.refused_price_changed`, ships in both
+   locales with its `{total}` placeholder intact; the branch is on the
+   `PRICE_CHANGED` envelope code, never on the wording. The refusal
+   envelope also carries `requestedTotalMinor` and `quotedTotalMinor`
+   (owned by `architect` in the contract); the desk shows the quoted
+   total from the fresh read, so the sentence and the number on screen
+   can never disagree.
+3. **Everything else on the Book screen stands.** The quote and totals
+   display (`AC-DSK-13`), the app-localized date pickers
+   (`AC-DSK-15`), the sold-out (`desk.book.refused_soldout`) and
+   booking-rule refusals, the confirmation read-back and print surface
+   (#323), and the design facts are unchanged. No new card, field,
+   button, route, nav entry, or token.
+
+An unreadable Pricing refusal (`UPSTREAM_UNAVAILABLE`) is deliberately
+not treated as a price change: the screen keeps the quote it displayed
+and the plain panel error sentence, so the clerk can retry the same
+booking without waiting for a re-quote that would fail the same way.
+
+UI contract delta (T2):
+
+- **Layout and navigation scope.** Unchanged. No new card, screen,
+  route, dialog, nav entry, or print surface; the Book screen keeps its
+  current section order and both existing panels.
+- **Component mapping.** The existing quote block, the existing
+  `Confirm` button, and the existing inline error paragraph above it.
+  The price-changed state adds no control: the paragraph gains the new
+  sentence and `Confirm` acts on the refreshed quote, the same way it
+  already acts on a quote refreshed after a date or discount edit.
+- **Design-token scope.** Unchanged — the sentence uses the existing
+  error text token and no new colour, spacing, radius, or target size.
+- **States in plain words:**
+  - Price changed: one sentence names the new total and asks for a
+    second confirmation; the earlier quote key is spent, a fresh one
+    belongs to the new quote, and a double click books once.
+  - Re-quote failed: one plain sentence says the price could not be
+    re-read and nothing was booked, or the existing no-price sentence
+    when the type is no longer priced for those dates; `Confirm`
+    sends nothing until a quote exists again.
+  - Unreadable Pricing: the existing panel error sentence, the
+    displayed quote kept, nothing booked, retry allowed unchanged.
+  - Confirmed: unchanged (#323 read-back and confirmation).
+- **Print rules.** Unchanged. No print surface, route, or field is
+  touched.
+
+Catalogue:
+
+| Key | English | Vietnamese (primary) |
+|---|---|---|
+| `desk.book.refused_price_changed` | `The rate changed while you were booking. The new total is {total}. Confirm again to book at this price.` | `Giá đã thay đổi trong lúc đặt phòng. Tổng mới là {total}. Vui lòng xác nhận lại để đặt với giá này.` |
+
+Cross-references: the price basis and the frozen-total rules are
+`FR-RTE-5` and `BR-13` (`docs/requirements/mvp-requirements.md`,
+`docs/requirements/business-rules.md`), the operation is
+`contracts/http/QuotePrice.json`, the create call is
+`contracts/http/CreateReservation.json` (owned by `architect`), and
+`desk.stay.refused_room_charge` and the #600 posting stay as they are
+(`AC-DSK-19`).
+
+Out: the server-side recompute itself (service and contract work,
+owned by `dev` from the approved specs); the availability decision;
+any change to the stored `priceBasis` shape; a per-night breakdown or
+rate-plan recording on the reservation; and a manual price override on
+the desk — no such control exists and none is added, so the only way
+to book below the rate in force stays the configured discount.
+
+Rollback: revert the single implementation PR. The desk's
+`PRICE_CHANGED` branch is inert whenever the service never raises that
+code, so reverting the desk and the service together (or the desk
+alone) restores today's behaviour with no schema migration, no stored
+value rewritten, and no booking left in a half state — a refused
+attempt stored nothing. Bookings frozen at a client-supplied total
+before this change keep their frozen totals; re-deriving them is not
+part of this change.
+
 ## 7. Catalogue and locale rule
 
 - Single source of truth stays `messages/` (`messages/README.md`):
@@ -2239,7 +2347,9 @@ release.
   states where the design needs one with no key yet,
   `desk.stay.move_*` plus `desk.stay.moving`,
   `desk.stay.moved_named`, and the two aborted-commit lines
-  (#647, section 6.17, with both locales listed there).
+  (#647, section 6.17, with both locales listed there), plus
+  `desk.book.refused_price_changed` (#632, section 6.18, both
+  locales listed there).
 - The hotel name is configuration (persisted through the
   existing hotel-configuration surface, `FR-ADM-1`), shown in
   the shell header and on printed documents; the design's hotel
@@ -2589,5 +2699,16 @@ Section 4 stays the rollout-wide contract; for steps 2–4:
 | The T2 spec set exists and `spec-reviewer` posts `SPEC-GATE PASS` before implementation starts | This section, section 6.17, `docs/product/acceptance-criteria.md` section 16 (`AC-REA-1..5`, the `AC-FDK-1`/`AC-FDK-3` pointers), `docs/project/decision-log.md` D-27; `business-analyst` FR/NFR delta, `architect` per-flow diagram, and `qa-lead` traceability are the sibling handoffs |
 | Rollback is a single revert with no migration and no new operation | Section 6.17 (rollback); the desk calls only operations that already exist, so the reverted build is the two-panel Stay screen it is today |
 
+## 23. Acceptance mapping (issue #632)
+
+| Criterion | Evidence in this spec |
+|---|---|
+| A booking whose request total disagrees with the server quote is refused, naming the disagreement, and no booking is stored at an unverified total | Section 6.18 decision 1 and the price-changed state; `AC-PRC-2`, `AC-DSK-20`; the server recompute rule is `docs/product/acceptance-criteria.md` section 17 |
+| The desk recovers the refusal without booking a total the clerk has not seen | Section 6.18 decision 1 and the states in plain words; `AC-DSK-20`; the second-confirm rule and the one-key-per-quote replay |
+| The refusal wording stays in the catalogue, both locales | Section 6.18 catalogue table (key, English, Vietnamese primary) and section 7; `script/catalogue-coverage-check.sh` green on the implementation PR |
+| An unreadable Pricing refusal is not treated as a price change | Section 6.18 (the paragraph after decision 3) and the unreadable-Pricing state; `AC-PRC-3` and `AC-DSK-20` |
+| The matching path is unchanged on screen | Section 6.18 decision 3; `AC-DSK-13`, `AC-DSK-15`; the quote, refusals, confirmation, and print surface stand as written |
+| Rollback is a single revert with no migration | Section 6.18 (rollback); a refused attempt stored nothing and the desk's `PRICE_CHANGED` branch is inert when the service never raises it |
+
 <!-- ao-role: product-owner -->
-Role: product-owner · AO session hotel-mgmt-964
+Role: product-owner · AO session hotel-mgmt-989
