@@ -247,6 +247,13 @@ Main flow:
 4. The stay is closed and the room the stay held becomes vacant and
    dirty, released by the close itself; a late departure is recorded
    against the stay where applicable. [FR-FDK-2, FR-FDK-4, BR-18]
+5. The booking behind the stay is completed by that same close: the
+   reservation reaches its terminal closed state, stops counting as
+   an active booking for availability, and stays in the guest's
+   history. The departed room type can be sold again and the room
+   turns over the same day once housekeeping marks it ready. An early
+   departure ends the stay the same way without rewriting the
+   booking's dates. [FR-FDK-2, FR-DEP-1, FR-DEP-2, FR-DEP-4, BR-1]
 
 Extensions/exceptions:
 
@@ -277,11 +284,18 @@ Extensions/exceptions:
   checked out while the room still reads occupied, with the next
   step named. A room reported not occupied is shown as already free,
   with no housekeeping state claimed. [FR-FDK-2, BR-18]
+- 4b. The close commits but the booking's completion cannot be
+  recorded: the guest is checked out, the desk says so in plain words
+  without claiming the booking is completed, the booking still reads
+  active, and the next step is named, so the split is visible instead
+  of silent. [FR-DEP-5, BR-1]
 
-Postconditions: the stay is closed with the invoice presented and
-the room released vacant and dirty, or check-out was refused and the
-stay remains in house; a close whose release could not be confirmed
-stays closed with the room owed a release.
+Postconditions: the stay is closed with the invoice presented, the
+booking behind it completed, and the room released vacant and dirty,
+or check-out was refused and the stay remains in house with the
+booking still active; a close whose release or booking completion
+could not be confirmed stays closed and reports what it could not
+confirm.
 
 ## UC-9 — Post charges and record payments
 
@@ -456,6 +470,6 @@ sections 7–9 are presentation/scaffold deltas outside this
 actor-goal count: they are traced in their own slice handoff
 tables, not in the table above, and the later slice ids (`FR-DSK-*`,
 `NFR-DSK-*`, `FR-RST-*`, `NFR-RST-*`, `FR-CIP-*`, `FR-CKO-*`,
-`FR-CKP-*`, `FR-CKS-*`) follow the same rule.
+`FR-CKP-*`, `FR-CKS-*`, `FR-DEP-*`) follow the same rule.
 
 Counts: 12 use cases; 43/43 FRs mapped.

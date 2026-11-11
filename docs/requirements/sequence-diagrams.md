@@ -229,11 +229,20 @@ sequenceDiagram
 
 Review the folio — posting the stay's room charge when the folio
 carries none — settle it or record an approved open balance, then
-close the stay, present the invoice, and release the room as
-vacant-dirty.
+close the stay, complete the booking behind it, present the invoice,
+and release the room as vacant-dirty.
 
 - Preconditions: the stay is in house with its single folio open (diagram 10); settlement or approval follows diagram 11.
-- Postconditions: the stay is closed with the invoice presented and the room vacant and dirty, or check-out was refused until the folio is settled or approved; the refusal is decided on the folio the system holds, so a balance or approval a request carries changes nothing (`FR-CKS-1`, `BR-46`); a close whose room release could not be confirmed stays closed with the room owed a release; a folio reviewed for a stay that could not be charged is left as it was, with no close.
+- Postconditions: the stay is closed with the invoice presented, the
+  booking behind it completed, and the room vacant and dirty, or
+  check-out was refused until the folio is settled or approved; the
+  refusal is decided on the folio the system holds, so a balance or
+  approval a request carries changes nothing (`FR-CKS-1`, `BR-46`);
+  a close whose room release could not be confirmed stays closed with
+  the room owed a release; a close whose booking completion could not
+  be recorded stays closed with the booking still active and the split
+  reported (`FR-DEP-5`); a folio reviewed for a stay that could not be
+  charged is left as it was, with no close.
 
 ```mermaid
 sequenceDiagram
@@ -281,6 +290,10 @@ sequenceDiagram
             Stay-->>Staff: Check-out refused until the folio is settled or a provenanced approval is recorded [FR-CKS-3, FR-BIL-7, BR-17]
         else Zero balance or a provenanced approval
             Note over Stay: Close commits, the in-house to closed flip and the checked-out event [FR-CKS-5]
+            Stay->>Res: Complete the booking behind the stay; terminal closed, never reopened [FR-FDK-2, FR-DEP-1; BR-1]
+            alt Booking completion cannot be recorded
+                Stay-->>Staff: Guest checked out, booking still active, next step named [FR-DEP-5]
+            end
         end
     end
     Stay->>Rooms: Release the room the stay held as vacant and dirty [FR-FDK-2, BR-18; only for a close that committed]
