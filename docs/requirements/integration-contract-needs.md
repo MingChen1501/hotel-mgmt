@@ -60,7 +60,12 @@ Operations needed:
 - `QuotePrice` — nightly breakdown and rate plan in force for the
   room type and dates, with an optional named discount or special
   price. Payload: room type, date range, discount name where
-  applicable (Price basis: FR-RTE-5, FR-RTE-1, FR-RTE-3).
+  applicable (Price basis: FR-RTE-5, FR-RTE-1, FR-RTE-3). Also read
+  server-side by Reservations on create and on modify, with the
+  caller's session forwarded, to derive the price basis a booking
+  freezes: the returned total and applied discount name are stored, and
+  the request's own total is only compared with them (FR-PRC-1,
+  FR-PRC-4, BR-47).
 
 Sync recommendation: synchronous request/response. Reason: the desk
 flow refuses immediately with the cause named (Seq-2 restriction and
@@ -76,6 +81,16 @@ Error cases:
   first: `CONFLICT` naming the room type and dates (NFR-CON-1;
   BR-8).
 - Unknown room type or rate plan: `NOT_FOUND`.
+- The request's price basis disagrees with the quote: `PRICE_CHANGED`
+  (409) naming the requested total, the quoted total, the room type,
+  and the dates, with nothing stored (FR-PRC-2; BR-47).
+- The quote cannot be read (unreachable, timeout, 5xx, non-envelope,
+  unwired): `UPSTREAM_UNAVAILABLE` (503) naming upstream `rates` and
+  operation `QuotePrice`, with nothing stored (FR-PRC-3; BR-47); a
+  definitive Pricing refusal — `NOT_FOUND` with `details.reason`
+  `no_rate_price` or `no_rate_plan`, `VALIDATION_FAILED` for an unknown
+  discount or an ambiguous plan set — is surfaced unchanged
+  (FR-PRC-3).
 
 Per-hotel config travelling with these calls: stay restrictions per
 date range (FR-RTE-4); named discounts (FR-RTE-3); hotel
@@ -514,7 +529,7 @@ its UTC offset, every date renders on the hotel-local day).
 
 | Directed pair(s) | Recommendation | Reason (requirements-side) |
 |---|---|---|
-| RES -> RATE; RES -> ROOM | Sync | Immediate refuse-with-reason inside the booking step (Seq-2/3/6); NFR-PERF-1 3 s; NFR-CON-1 exactly-one-winner |
+| RES -> RATE; RES -> ROOM | Sync | Immediate refuse-with-reason inside the booking step (Seq-2/3/6); NFR-PERF-1 3 s; NFR-CON-1 exactly-one-winner; the booking freezes the `QuotePrice` total or is refused with the disagreement or the unreadable upstream named (FR-PRC-1..FR-PRC-3, BR-47) |
 | RES -> GST | Sync | Preferences/notes shown before confirm (FR-GST-2); returning flag at booking time (FR-GST-3) |
 | STAY -> RES; STAY -> GST | Sync | Check-in acts on the reservation and guest record in one step (Seq-7; FR-CUS-1 refusal); the check-out review resolves the stay's booking for its frozen quoted total in the same step (section 3c; FR-CKP-1) |
 | STAY -> ROOM (`AssignRoom`) | Sync, atomic at provider | NFR-CON-2 exactly-one-winner inside check-in; no eventual consistency |
@@ -538,6 +553,8 @@ need.
 |---|---|---|---|
 | Missing hotel-mandatory guest field | `VALIDATION_FAILED` | the missing field | FR-CUS-1; BR-33 |
 | Stay-restriction violation | `STATE_ILLEGAL` | the violated restriction | FR-RTE-4; BR-10 |
+| Booking or change whose request total disagrees with the quote | `PRICE_CHANGED` (409) | the requested total, the quoted total, the room type, and the dates | FR-PRC-2, FR-PRC-4; BR-47 |
+| Pricing unreadable at booking (upstream down, timeout, 5xx, unwired) | `UPSTREAM_UNAVAILABLE` (503) | the upstream and the operation | FR-PRC-3; BR-47 |
 | No sellable unit / simultaneous booking won | `CONFLICT` | room type and dates | NFR-CON-1; BR-8 |
 | Simultaneous check-in won the room | `CONFLICT` | the room | NFR-CON-2; BR-11 |
 | Room not ready for assignment | `STATE_ILLEGAL` | room and its state | FR-FDK-1; BR-16 |
@@ -614,7 +631,11 @@ calendar's stay link, `GetReservation` for the frozen quoted total,
 `PostCharge` (section 4), all cited above. The #601 settlement gate
 (section 3a amendment) adds no operation either: it reads the same
 `GetFolioBalance` server-side, with three named error cases and no new
-request member. No operation, field, or error case introduces
+request member. The #632 price authority (section 1a amendment) adds no
+operation either: it reads the existing `QuotePrice` server-side on
+create and modify, with two named error cases and no new request
+member (the existing `priceBasis` becomes advisory, which is a contract
+delta `architect` owns). No operation, field, or error case introduces
 behaviour beyond the mapped FRs. Later capabilities from
 requirements section 6 carry no contract need here.
 

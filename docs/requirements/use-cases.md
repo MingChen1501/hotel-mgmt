@@ -35,12 +35,14 @@ Main flow:
    saved preferences and notes are shown before confirmation.
    [FR-GST-1, FR-GST-2, FR-GST-3]
 3. Staff enter dates, room type, guest, and price basis and confirm.
-   Mandatory guest fields set by the hotel are enforced.
-   [FR-RES-1, FR-RTE-5, FR-CUS-1]
-4. The reservation is recorded with a unique reference, the quoted
-   price from the rate plan in force, and the hotel's cancellation
-   wording; it appears on the reservation calendar. [FR-RES-1,
-   FR-RES-5, FR-CUS-2]
+   Mandatory guest fields set by the hotel are enforced. The service
+   reads the Pricing quote for the effective type, dates, and discount
+   during that same confirmation. [FR-RES-1, FR-RTE-5, FR-PRC-1,
+   FR-CUS-1]
+4. The reservation is recorded with a unique reference, the Pricing
+   quote as its frozen total with the applied discount name, and the
+   hotel's cancellation wording; it appears on the reservation
+   calendar. [FR-RES-1, FR-RES-5, FR-PRC-1, FR-CUS-2]
 5. Staff produce the booking confirmation record to share with the
    guest. [FR-GST-4]
 
@@ -55,13 +57,21 @@ Extensions/exceptions:
 - 3c. No sellable unit is left, or a simultaneous booking wins the
   last room first: the booking is refused with the room type and
   dates named as conflict. [NFR-CON-1]
+- 3d. The total the request asserts disagrees with the Pricing quote:
+  the booking is refused with the requested and quoted totals named
+  (`PRICE_CHANGED`) and nothing is created. [FR-PRC-2, BR-47]
+- 3e. The Pricing quote cannot be read: the booking is refused with
+  the upstream and operation named (`UPSTREAM_UNAVAILABLE`) and
+  nothing is created; a definitive Pricing refusal — no price for a
+  night, no plan pricing the type, an unknown discount — is surfaced
+  unchanged. [FR-PRC-3]
 - 4a. The manager applies a named discount or special price instead:
   the reservation shows the adjusted price with the discount name
   kept. [FR-RTE-3]
 
 Postconditions: the reservation exists in the confirmed state on the
-calendar with its price basis, or it was refused and nothing was
-created.
+calendar with its price basis frozen at the Pricing quote, or it was
+refused and nothing was created.
 
 ## UC-2 — Modify a reservation
 
@@ -75,9 +85,11 @@ Main flow:
 1. Staff open the reservation before check-in. [FR-RES-2]
 2. Staff change the dates, room type, or guest and confirm; mandatory
    guest fields set by the hotel are enforced. [FR-RES-2, FR-CUS-1]
-3. The quoted price is recalculated from the rate plan in force, and
-   the change is recorded with who made it and when. [FR-RES-2,
-   FR-RTE-5, NFR-AUD-1]
+3. The quoted price becomes the Pricing quote for the effective
+   post-change type, dates, and discount, and the change is recorded
+   with who made it and when; when the recomputed total differs from
+   the stored one, the price-basis change is recorded too. [FR-RES-2,
+   FR-RTE-5, FR-PRC-4, NFR-AUD-1]
 4. The reservation shows the new values on the calendar. [FR-RES-2,
    FR-RES-5]
 
@@ -89,9 +101,16 @@ Extensions/exceptions:
 - 2b. No sellable unit is left for the new values: the modification
   is refused with the conflict named; the reservation is unchanged.
   [NFR-CON-1]
+- 2c. The total the request asserts disagrees with the new quote: the
+  modification is refused with both totals named (`PRICE_CHANGED`)
+  and the reservation keeps its stored values. [FR-PRC-4, BR-47]
+- 2d. The new quote cannot be read: the modification is refused with
+  the upstream and operation named (`UPSTREAM_UNAVAILABLE`) and the
+  reservation keeps its stored values; a definitive Pricing refusal
+  is surfaced unchanged. [FR-PRC-4]
 
 Postconditions: the reservation shows the new values with the
-recalculated price and change record, or it stays unchanged.
+recalculated quote and change record, or it stays unchanged.
 
 ## UC-3 — Cancel a reservation
 
@@ -511,6 +530,7 @@ sections 7–9 are presentation/scaffold deltas outside this
 actor-goal count: they are traced in their own slice handoff
 tables, not in the table above, and the later slice ids (`FR-DSK-*`,
 `NFR-DSK-*`, `FR-RST-*`, `NFR-RST-*`, `FR-CIP-*`, `FR-CKO-*`,
-`FR-CKP-*`, `FR-CKS-*`, `FR-DEP-*`, `FR-REA-*`) follow the same rule.
+`FR-CKP-*`, `FR-CKS-*`, `FR-DEP-*`, `FR-REA-*`, `FR-PRC-*`) follow the
+same rule.
 
 Counts: 12 use cases; 43/43 FRs mapped.

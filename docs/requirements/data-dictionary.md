@@ -43,6 +43,12 @@ dates are not rewritten by an early departure: the state records that
 the stay ended while the dates keep recording what was booked
 (`FR-DEP-1`..`FR-DEP-3`, `BR-1`).
 
+The quoted total a reservation carries is the Pricing quote taken when
+the booking or change committed, never a value the request supplied,
+and a later rate change does not alter it (`FR-PRC-1`, `FR-PRC-4`,
+`BR-13`, `BR-47`). A booking whose request total disagreed with that
+quote was never stored (`FR-PRC-2`).
+
 ## 2. Stay
 
 An in-house record created at check-in from a confirmed reservation,
@@ -201,6 +207,16 @@ time with the nightly breakdown. The price basis is recorded on the
 reservation so a later rate change does not alter the quoted price
 unless staff explicitly recalculate it by modifying the reservation.
 
+The quoted total and the applied discount name are the ones Pricing
+quotes for the reservation's effective room type, dates, and named
+discount at the moment the booking or change was committed, not a
+total the caller supplies (`FR-PRC-1`, `FR-PRC-4`, `BR-47`). A
+request's `priceBasis.totalMinor` is advisory input: it is compared
+with that quote and never stored, and a total that disagrees is
+refused with `PRICE_CHANGED` while nothing is written (`FR-PRC-2`); a
+quote that cannot be read refuses the booking rather than freezing an
+unverified total (`FR-PRC-3`).
+
 Key fields: rate plan reference; nightly breakdown; quoted total;
 applied named discount or special price where applicable.
 
@@ -295,9 +311,14 @@ release obligation the #647 reassignment relies on — the room is the
 desk's assignment, a used room is released to housekeeping, and a room
 whose assignment never became a stay returns to ready (`FR-REA-1`..
 `FR-REA-4`, `BR-19`) — and add no entry, field, or behaviour beyond
-those sources.
+those sources. The Price basis entry (section 11) and the Reservation
+entry (section 1) state the price-authority obligation the #632
+recompute relies on — the frozen total and applied discount name are
+the Pricing quote, a request total is advisory, and a reprice is
+recorded — and add no entry, field, or behaviour beyond those sources
+(`FR-PRC-1`..`FR-PRC-5`, `BR-47`).
 
 Counts: 15 dictionary entries covering the 7 entity terminology concepts (T-1..T-7); T-8 is a spelling convention with no entry.
 
 <!-- ao-role: business-analyst -->
-Role: business-analyst · AO session hotel-mgmt-945
+Role: business-analyst · AO session hotel-mgmt-991
