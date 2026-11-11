@@ -1873,6 +1873,133 @@ Rollback: revert the single implementation PR. The desk keeps the
 the desk build that still sends them, and no schema or data
 migration exists in either direction.
 
+### 6.16 Departure release and same-day reuse after check-out (Refs #646)
+
+Status: product-owner scope decision and UI contract delta for the
+owner-reported defect from manual QA on 2026-11-10 (#646): after a
+guest checks out, the booking still reads booked/checked-in, keeps
+counting as an active booking for availability, and the departed room
+is therefore not reusable the same day. Tier T2 (proposed; `architect`
+confirms and re-tiers if the chosen shape adds a lifecycle state the
+accepted state machine does not already carry — the terminal `closed`
+booking state is already normative in `BR-1` and the state machine,
+so the decided path adds no state). The binding done-conditions are
+`AC-DEP-1`..`AC-DEP-5` in `docs/product/acceptance-criteria.md`
+[section 15](acceptance-criteria.md); `AC-FDK-2` gains the pointer
+beside its `AC-DSK-18`, `AC-DSK-19`, and `AC-CKO-1`/`AC-CKO-2` ones;
+`AC-DSK-18` and `AC-DSK-19` stand as written. FR/NFR wording
+(including the active-reservation set and the `FR-FDK-2` amendment)
+is owned by `business-analyst`, the lifecycle shape, the
+reservation/stay state diagram, and the per-flow diagrams by
+`architect` (`docs/architecture/state-machine.md`, LLD), guard
+mapping and traceability by `qa-lead`, and the gate verdict by
+`spec-reviewer`. Recorded as D-26 in `docs/project/decision-log.md`.
+
+The as-built trace that confirms the report — and the layer that
+holds the stale state — is in `docs/product/acceptance-criteria.md`
+[section 15](acceptance-criteria.md) ("As-built validation"): only
+`confirmed` and `checked-in` count as active
+(`services/reservations/internal/store/store.go:194-196`), nothing
+closes a booking on check-out
+(`services/reservations/internal/handler/handler.go:121-285`;
+`services/stay/src/store.ts:260-292`), and the room and housekeeping
+half already works (`services/rooms/src/store.ts:407-436`,
+`app/src/views/RoomsView.vue:162-183`, `:695-741`). The desk is
+therefore not the layer to repair; it is the surface where the
+missing truth is visible.
+
+Decision (five parts):
+
+1. **A check-out completes the booking.** The terminal effect of the
+   close is the `closed` (completed) booking state the lifecycle
+   already names, not a second desk action and not a new state: after
+   the close the booking no longer counts as active for availability,
+   the calendar, or the overbooking guard, and its past stay stays in
+   history (`AC-DEP-1`, `AC-DEP-2`).
+2. **Early departure releases the remaining nights.** A booking whose
+   recorded departure is later than the actual check-out stops
+   blocking availability from the moment it is completed, so a
+   booking B that already exists for today is not blocked by A and
+   needs no edit (`AC-DEP-2`). The stayed nights remain history; the
+   booking is not rewritten to shorter dates.
+3. **Completion is terminal.** A completed booking never returns to
+   an active state and cannot be checked in, modified, cancelled, or
+   marked no-show afterwards; a returning guest is a new booking
+   (`AC-DEP-4`). No reopen control, route, or operation is in scope.
+4. **Same-day turnover uses the desk path that already exists.**
+   After the close the room reads `vacant-dirty` (`AC-DSK-18`), the
+   Rooms surface advances it to clean and then inspected, and the Stay
+   assignment list offers it, so B checks in the same day with no
+   manual state edit behind the UI and no new control (`AC-DEP-3`).
+   The inspected-only assignment rule (`BR-16`, `BR-28`) is unchanged.
+5. **Every refusal completes and releases nothing.** A refused close
+   — open balance without a provenanced approval, unreadable folio,
+   already-closed stay — leaves the stay in house and the booking
+   active, exactly as the #588/#600/#601 gates already behave; a
+   committed close keeps the release and the room-charge review
+   working, and a completion that cannot be recorded is reported in
+   plain words rather than presented as done (`AC-DEP-5`).
+
+UI contract delta (T2):
+
+- **Layout and navigation scope.** Unchanged. No new screen, route,
+  nav entry, card, dialog, or control: the Stay panel keeps its
+  check-out review and confirm flow, the Rooms surface keeps its
+  Mark cleaned / Mark inspected buttons, and the Stay assignment list
+  keeps its ready-room select.
+- **Component mapping.** Unchanged. The existing room-state map and
+  housekeeping buttons provide the turnover step; no component is
+  added, moved, or restyled.
+- **Design-token scope.** Unchanged — no new colour, radius, spacing,
+  or target size.
+- **States in plain words:**
+  - Completed close: the panel says the guest is checked out, the
+    departed room reads dirty, and the booking reads completed on the
+    next booking read; the guest's history keeps the stay.
+  - Turnover: the room reads dirty, then clean, then ready
+    (inspected) as housekeeping marks it; only the ready state is
+    offered for assignment.
+  - Same-day arrival: B's booking is accepted and B checks in against
+    the ready room with the existing check-in flow.
+  - Any refused close: the existing plain refusal sentence, the stay
+    stays in house, the booking stays active, and nothing is released
+    or completed.
+  - Committed close whose booking completion cannot be recorded: a
+    plain sentence reports the check-out outcome and does not claim
+    the booking is completed; no technical code and no raw envelope.
+- **Catalogue keys.** No new key on the decided path: the desk
+  already speaks the checked-out, release-failed, and room-state
+  vocabulary it needs (`desk.stay.checked_out*`,
+  `desk.stay.room_release_failed`, `desk.rooms.*`), and no surface
+  renders a booking-state label today, so a completed booking needs
+  no new copy. If the implementation chooses to name the completed
+  state on screen, the key is a small addition through the normal
+  catalogue process (`script/catalogue-coverage-check.sh` green in
+  both locales) — a copy addition, not a layout change.
+- **Print rules.** Unchanged. No print surface or route is touched;
+  the invoice a settled close presents is the same one.
+
+Cross-references: the lifecycle states are
+`docs/architecture/state-machine.md` (architect; the
+`checked_in -> closed` transition already exists), the rules are
+`BR-1`, `BR-8`, `BR-9`, `BR-16`, `BR-17`, `BR-18`, `BR-28`, and
+`BR-46` (`business-analyst`), the event and per-flow diagrams are the
+LLD's, and the reproduction record belongs in the implementation PR
+body or an issue comment.
+
+Out: implementation; any new desk screen, control, or route; a reopen
+or "undo check-out" path; reporting/analytics changes on top of the
+completed state; backend contract additions the reproduction does not
+require (a follow-up if the architect's shape needs one); and a data
+backfill for bookings already stranded in a live install — the
+decided path adds no migration, and the operational note for existing
+stale rows is a `release-manager` handoff.
+
+Rollback: revert the single implementation PR. No schema migration and
+no data backfill exist on the decided path; if the chosen shape adds
+one, `architect` re-tiers to T3, the migration is forward-only, and
+the rollback note moves into the implementation PR.
+
 ## 7. Catalogue and locale rule
 
 - Single source of truth stays `messages/` (`messages/README.md`):
@@ -2213,6 +2340,18 @@ Section 4 stays the rollout-wide contract; for steps 2–4:
 | The desk surface, its copy, and its design facts are unchanged | Section 6.15 decision 6 and the UI contract delta (layout, component mapping, tokens, states, catalogue keys, print all unchanged or existing-key only); `AC-CKO-2` final clause |
 | The T3 spec set exists and `spec-reviewer` posts `SPEC-GATE PASS` before implementation starts, and the owner accepts ADR-0005 | Section 6.15, `docs/product/acceptance-criteria.md` section 14 (`AC-CKO-1`, `AC-CKO-2`, `AC-FDK-2` pointer), ADR-0005 (proposed, owner acceptance pending), LLD section 21, decision log D-25; FR/NFR, guard, and release deltas are the sibling handoffs |
 | Rollback is a single revert with no schema or data migration | Section 6.15 (rollback); the advisory request fields stay valid for the current desk build, so no migration exists in either direction |
+
+## 21. Acceptance mapping (issue #646)
+
+| Criterion | Evidence in this spec |
+|---|---|
+| The departed booking is recorded completed and stops counting as an active booking, and the past stay stays in history | Section 6.16 decisions 1 and 3; `AC-DEP-1`, `AC-DEP-4`; the as-built trace in `docs/product/acceptance-criteria.md` section 15 (`activeState`, `services/reservations/internal/store/store.go:194-196`; no booking close in `services/reservations/internal/handler/handler.go:121-285`) |
+| Guest B's same-room-type booking with arrival today is accepted after A's normal or early departure, including when B was booked before A's early check-out | Section 6.16 decision 2; `AC-DEP-2`; the booking guard reads the active set (`services/reservations/internal/store/store.go:214-226`), so a completed booking contributes nothing |
+| Room 101 turns over and B checks in the same day after housekeeping marks it ready, with no manual state edit | Section 6.16 decision 4; `AC-DEP-3`; `ReleaseRoom` to `vacant-dirty` (`services/rooms/src/store.ts:407-436`), the Rooms surface buttons (`app/src/views/RoomsView.vue:162-183`, `:695-741`), and the ready-room assignment list (`app/src/views/StayView.vue:1139-1140`) |
+| Every refused close leaves the stay in house and the booking active, and the #588 release, #600 charge, and #601 settlement gates still run | Section 6.16 decision 5; `AC-DEP-5`; `AC-DSK-18`, `AC-DSK-19`, `AC-CKO-1`, `AC-CKO-2` stand as written with their existing guards |
+| The reproduction record names the layer that holds the stale state | Section 6.16 context paragraph and `docs/product/acceptance-criteria.md` section 15 ("As-built validation"); the implementation lab record belongs in the implementation PR body or an issue comment |
+| The T2 spec set exists and `spec-reviewer` posts `SPEC-GATE PASS` before implementation starts | This section, section 6.16, `docs/product/acceptance-criteria.md` section 15 (`AC-DEP-1..5`, `AC-FDK-2` pointer), `docs/project/decision-log.md` D-26; `business-analyst` FR/NFR delta, `architect` lifecycle shape and diagrams, and `qa-lead` traceability are the sibling handoffs |
+| Rollback is a single revert with no schema or data migration on the decided path | Section 6.16 (rollback); a shape that adds a state or a migration re-tiers to T3 and carries its rollback note in the implementation PR |
 
 <!-- ao-role: product-owner -->
 Role: product-owner · AO session hotel-mgmt-920

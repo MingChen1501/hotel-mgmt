@@ -54,10 +54,10 @@ Development table, which use a `../` prefix.
 | Roadmap | `product/roadmap.md` | active | `product-owner` | sequenced direction across milestones (Closes #30) |
 | Personas | `product/personas.md` | active | `product-owner` | user archetypes the product serves (Closes #30) |
 | User stories | `product/user-stories.md` | active | `product-owner` | stories expressing user needs per slice (Closes #30) |
-| Acceptance criteria | `product/acceptance-criteria.md` | active | `product-owner` | done-conditions per slice (Closes #59) |
+| Acceptance criteria | `product/acceptance-criteria.md` | active | `product-owner` | done-conditions per slice (Closes #59; section 15 Refs #646) |
 | Phase glossary | `product/phase-glossary.md` | active | `product-owner` | project phase definitions with entry/exit evidence (Closes #226) |
 | UX flows and wireframes | `product/ux-flows-wireframes.md` | active | `product-owner` | full-system journey flow maps, screen inventory, wireframes, wording rules, prototype record (Closes #412) |
-| Desk UI design rollout | `product/desk-ui-design-rollout.md` | active | `product-owner` | six-screen Claude UI rollout scope, tokens, UI contract, per-screen breakdown (Closes #419) |
+| Desk UI design rollout | `product/desk-ui-design-rollout.md` | active | `product-owner` | six-screen Claude UI rollout scope, tokens, UI contract, per-screen breakdown (Closes #419; section 6.16 Refs #646) |
 | Desk UI pixel-faithful restyle | `product/desk-ui-pixel-faithful-restyle.md` | active | `product-owner` | shell-plus-six-screen owner-design rebuild scope, tokens, rebuild-vs-keep mappings, UI contract, per-surface breakdown (Closes #517) |
 | FE design reference | `design/README.md` | active | `product-owner` | owner-supplied authoritative FE designs: six `.dc.html` boards plus `manifest.json` that implementation must follow (Closes #462) |
 | Rooms and rates management design | `design/RoomsRates.dc.md` | active | `product-owner` | owner-approved board for the rooms/rates management desk screen: wireframes for room types, rooms and floors, nightly prices, no-price empty state, refusal path, catalogue keys (Refs #590; approved 2026-11-09, D-23) |
