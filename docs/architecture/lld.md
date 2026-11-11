@@ -4116,9 +4116,14 @@ does:
    Modify). A missing or negative total is still `VALIDATION_FAILED`
    naming `priceBasis`, so `PRICE_CHANGED` is only ever about an
    asserted total that disagreed.
-2. **Effective inputs** (Modify only) — unchanged: the post-change
-   type, dates, and discount, an omitted field keeping the stored value
-   (`internal/service/service.go:207-222`, reading the row at `:203`).
+2. **Effective inputs** (Modify only) — the post-change type and dates,
+   an omitted field keeping the stored value, come from the existing
+   computation (`internal/service/service.go:207-222`, reading the row
+   at `:203`); the discount is the request's
+   `priceBasis.discountName`, where omitted or null means no discount
+   (the price basis is a full assertion of the new quote, and the desk
+   already sends `discountName ?? null`,
+   `app/src/views/BookView.vue:926-937`).
 3. **`CheckRestrictions`** — unchanged, with the effective values
    (`:114-119`, `:219-224`). It keeps its place because a restriction
    refusal means re-quoting cannot help, and it keeps its
@@ -4323,7 +4328,7 @@ of the same change returns the stored booking instead of re-quoting
 | File | Change | Version effect |
 |---|---|---|
 | `contracts/http/CreateReservation.json` | `priceBasis` stays required for the deprecation window but becomes advisory ("compared with the Rates quote, never stored"); `priceBasis.discountName` likewise advisory; errors add `PRICE_CHANGED` (409, details `roomTypeId`, `arrivalDate`, `departureDate`, `requestedTotalMinor`, `quotedTotalMinor`) and `UPSTREAM_UNAVAILABLE` (503, `rates`/`QuotePrice`) | minor (1.1 -> 1.2; relaxed meaning plus new error codes, ADR-0004 D1) |
-| `contracts/http/ModifyReservation.json` | same delta on `priceBasis` and its `discountName`; same two error codes | minor (1.0 -> 1.1) |
+| `contracts/http/ModifyReservation.json` | same delta on `priceBasis` and its `discountName`, with the note that an omitted or null `discountName` means the new quote carries no discount (the price basis asserts the whole new quote); same two error codes | minor (1.0 -> 1.1) |
 | `contracts/http/QuotePrice.json` | unchanged shape; now also consumed server-side by Reservations (C1) instead of only by the desk | none |
 | `contracts/errors/envelope.json` | add `PRICE_CHANGED` to the code enum and `409` to `statusMapping`; add `UPSTREAM_UNAVAILABLE` and `503` (emitted by Reservations today, promised by ADR-0005 section 21.5, still absent at this head: no occurrence under `contracts/`) | minor |
 | `contracts/openapi.yaml` + `frontend/docs/openapi.yaml` mirror | mirror the two operation deltas byte-identically (`script/openapi-route-check.sh`) | minor |

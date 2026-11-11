@@ -87,9 +87,13 @@ during the request that writes the booking:
 
 - request `{roomTypeId, arrivalDate, departureDate, discountName?}` —
   the effective values: on Create the validated body; on Modify the
-  post-change type, dates, and discount, where an omitted field keeps
-  the stored value (already computed for the restriction check,
-  `internal/service/service.go:207-222`). `ratePlanName` is not sent,
+  post-change type and dates, where an omitted field keeps the stored
+  value (already computed for the restriction check,
+  `internal/service/service.go:207-222`), and the discount carried by
+  the request's `priceBasis`, where an omitted or null `discountName`
+  means no discount — the price basis is a full assertion of the new
+  quote, and the desk's own send already uses `discountName ?? null`
+  (`app/src/views/BookView.vue:926-937`). `ratePlanName` is not sent,
   exactly as the desk's own quote does not send it
   (`app/src/views/BookView.vue:784-793`): `QuotePrice` resolves the plan
   when exactly one prices the type.
