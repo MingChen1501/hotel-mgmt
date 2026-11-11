@@ -367,6 +367,14 @@ the keys its section needs, in both catalogues, with placeholders
 matching. The table holds 41 keys: 39 `desk.bookings.*` and the two
 `desk.shell.*` keys.
 
+The catalogue layer substitutes `{param}` into one flat pattern and has
+no plural forms, so every `{count}` sentence is worded to read correctly
+for one and for many. `desk.bookings.row_partial` therefore counts *of*
+the listed bookings instead of putting the numeral in front of a
+countable noun: one failed row reads "Could not read the guest name or
+total for 1 of the listed bookings.", and several read the same sentence
+with the higher count (G1 on PR #689).
+
 | Key | English | Vietnamese (primary) |
 |---|---|---|
 | `desk.shell.nav_bookings` | Bookings | Sổ đặt phòng |
@@ -382,7 +390,7 @@ matching. The table holds 41 keys: 39 `desk.bookings.*` and the two
 | `desk.bookings.empty` | No booking stays between {from} and {to}. | Không có đặt phòng nào trong khoảng {from} – {to}. |
 | `desk.bookings.read_failed` | Could not read the booking register. | Không đọc được sổ đặt phòng. |
 | `desk.bookings.retry` | Try again | Thử lại |
-| `desk.bookings.row_partial` | {count} bookings could not be completed: their guest name or total is unreadable. | {count} đặt phòng chưa đọc được tên khách hoặc tổng tiền. |
+| `desk.bookings.row_partial` | Could not read the guest name or total for {count} of the listed bookings. | Không đọc được tên khách hoặc tổng tiền của {count} đặt phòng trong danh sách. |
 | `desk.bookings.column_partial` | The {column} column could not be read. | Không đọc được cột {column}. |
 | `desk.bookings.capped` | Showing the first {count} bookings. Narrow the dates to see the rest. | Đang hiện {count} đặt phòng đầu tiên. Thu hẹp khoảng ngày để xem phần còn lại. |
 | `desk.bookings.cell_unreadable` | could not read | không đọc được |
