@@ -120,6 +120,30 @@ unchanged (`Sổ đặt phòng` / `Bookings`).
   keys of product spec section 9 exist in both catalogues with matching
   placeholders, and the eight runtime mirrors are byte-identical.
 
+## Review follow-ups (PR #689)
+
+The read-only review of the first implementation head raised four
+code-level findings; each is fixed with its own guard, and the
+spec-doc half of the shell decision is a separate change.
+
+- **Empty sentence (S1).** The sentence now names the *applied* range —
+  stored when the read starts — not the pickers' live values, so editing
+  a picker or a refused inverted apply cannot reword a list nobody
+  re-read. `BM9` pins the exact sentence and both negative cases.
+- **Read bound (S2).** The in-house pair is two calls, so one apply is at
+  most 54 reads. `BM7` now asserts the apply's total read count, and the
+  qa-lead row states 54.
+- **Inactive row ink (S3).** A cancelled or no-show row mutes its guest
+  name too, not only the inherited text; pinned at the source in
+  `app/src/bookings-restyle.test.ts` because jsdom cannot resolve the
+  stylesheet.
+- **Detail total (G2) and missing type id (G4).** A read-back without a
+  total reads the unreadable wording instead of `0 đ`, and a successful
+  type read that lacks a row's id names the room-type column instead of
+  showing an unexplained unreadable cell.
+- **Touch targets (G5).** `app/src/bookings-restyle.test.ts` pins the two
+  filter actions and the row action at the 44px target.
+
 ## Owner review
 
 The screen carries `owner-review`. It has no board of its own, so the
