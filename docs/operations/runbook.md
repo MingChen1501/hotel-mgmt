@@ -322,11 +322,12 @@ When this can happen:
 ### 9.2 What to do at the desk
 
 1. Do not move a guest into that room, and do not look for a button
-   that clears it: an occupied card carries no **Mark cleaned**, **Mark
-   inspected**, or **Out of order** action, and the system refuses a
-   block on an occupied room. Do not edit room state by hand either —
-   doing so loses the record of what happened. None of those steps gives
-   back a room that was set aside for a guest who never arrived.
+   that clears it: an occupied card carries no housekeeping button at all
+   (**Mark cleaned** appears only on a dirty room, **Mark inspected**
+   only on a cleaned one), and the desk has no action that frees an
+   occupied room. Do not edit room state by hand either — doing so loses
+   the record of what happened. None of those steps gives back a room
+   that was set aside for a guest who never arrived.
 2. Confirm nobody is in the room: check the main board's in-house list
    and, if there is any doubt, look at the room. If a guest *is* in it,
    the room is correct, nothing is wrong, and nothing needs clearing.
@@ -384,10 +385,11 @@ stay names renders **Unknown guest** (`messages/en.json:365`,
    room carries `roomId`, `number`, and `state`; the list does not
    expose the room's `stayLink`.
 2. `POST /v1/stay/ListArrivalsDepartures` with
-   `{businessDate: <today>}`. The `inHouse` rows carry `roomId`. A room
-   from step 1 that no `inHouse` row names is the stranded room. If an
-   in-house row names it, a guest is in it: stop, and never free a room
-   a live stay names.
+   `{businessDate: <today>}`. The `inHouse` rows carry the room as
+   `roomId` (`app/src/views/StayView.vue:980-996` reads it that way). A
+   room from step 1 that no `inHouse` row names is the stranded room. If
+   an in-house row names it, a guest is in it: stop, and never free a
+   room a live stay names.
 3. Ask the desk whether the guest ever entered the room; that answer
    decides the release target (see 9.2): `vacant-inspected` for a room
    nobody used, `vacant-dirty` for a room a guest slept in and then
