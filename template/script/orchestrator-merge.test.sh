@@ -754,6 +754,9 @@ build_open_prs 675
 jq -n --arg base "${TEST_DEFAULT_BRANCH}" \
   '[{number:674,state:"MERGED",headRefName:"branch-674",baseRefName:$base}]' >"${work}/all.json"
 export TEST_ALL_PRS="${work}/all.json"
+# The skipped member must be proven merged by the stack resource, not just
+# by the open-PR list (AC 4).
+write_stack_resource "$(stack_resource_json 678 2 674:closed:2026-11-11T18:03:20Z 675:open)"
 invoke 675 --dry-run
 expect_ok "same-stack merged lower member no longer blocks the next merge"
 expect_contains "merged lower member is reported as skipped" "skipping already-merged lower member PR #674"
@@ -812,6 +815,78 @@ expect_contains "retargeted position-3 member still gates its open lower member"
 expect_contains "retargeted position-3 member issues the async request for itself" "pulls/676/merge-async"
 expect_contains "retargeted position-3 member names every member the request lands" "#675 #676"
 expect_absent "retargeted position-3 member never re-gates the merged prefix" "gating member PR #674"
+
+# (AC 6, review finding 1) The #677 shape right after #675 and #676 merge:
+# #677 sits at position 4 with base branch-676, #676 is already MERGED (its
+# branch is therefore absent from the open-PR walk), and the resource proves
+# positions 1-3 merged. The accepted chain is one link deep and starts at
+# #677's own position, so the walk's skipped ancestor must not shift the
+# position mapping: `first position + index` would put #677 at position 3
+# and refuse it. This is the case the issue calls out as "#677 afterwards".
+reset_stack_fixtures
+export TEST_STACK_MEMBERS="674 675 676 677"
+write_pr 677 branch-676 "${MEDIUM_LABELS}" "${APPROVE_SHORT}" "${NO_REVIEWS}"
+write_checks 677 "${GREEN_CHECKS}"
+build_open_prs 677
+jq -n --arg base "${TEST_DEFAULT_BRANCH}" \
+  '[{number:676,state:"MERGED",headRefName:"branch-676",baseRefName:$base}]' >"${work}/all.json"
+export TEST_ALL_PRS="${work}/all.json"
+write_stack_resource "$(stack_resource_json 678 4 \
+  674:closed:2026-11-11T18:03:20Z 675:closed:2026-11-11T18:03:20Z \
+  676:closed:2026-11-11T18:03:20Z 677:open)"
+invoke 677 --dry-run
+expect_ok "skipped merged ancestor: short chain is accepted"
+expect_contains "skipped merged ancestor: the merged gap is reported as skipped" "skipping already-merged lower member PR #676"
+expect_contains "skipped merged ancestor: names the merged position it skipped" "position 3 (PR #676) is merged"
+expect_contains "skipped merged ancestor: maps the member to its recorded position" "accepting the short branch chain that starts at position 4 for PR #677"
+expect_absent "skipped merged ancestor: never shifts the member onto a neighbour" "not chain member PR #677"
+expect_absent "skipped merged ancestor: never re-gates the merged gap" "gating member PR #676"
+expect_contains "skipped merged ancestor: issues the async request for itself" "pulls/677/merge-async"
+expect_absent "skipped merged ancestor: never prints the synchronous command" "gh pr merge"
+
+# (AC 4) The position mapping is per member, not contiguous: #677's base is
+# the merged #676 (position 3), whose own base is the open #675 (position 2),
+# so the walk skips position 3 and still gates position 2. The skipped
+# position sits ABOVE the chain's lowest member, and only the stack resource
+# proves it merged; the async request still lands both open members.
+reset_stack_fixtures
+export TEST_STACK_MEMBERS="674 675 676 677"
+write_pr 675 "${TEST_DEFAULT_BRANCH}" "${MEDIUM_LABELS}" "${APPROVE_SHORT}" "${NO_REVIEWS}"
+write_checks 675 "${GREEN_CHECKS}"
+write_pr 677 branch-676 "${MEDIUM_LABELS}" "${APPROVE_SHORT}" "${NO_REVIEWS}"
+write_checks 677 "${GREEN_CHECKS}"
+build_open_prs 675 677
+jq -n \
+  '[{number:676,state:"MERGED",headRefName:"branch-676",baseRefName:"branch-675"}]' >"${work}/all.json"
+export TEST_ALL_PRS="${work}/all.json"
+write_stack_resource "$(stack_resource_json 678 4 \
+  674:closed:2026-11-11T18:03:20Z 675:open \
+  676:closed:2026-11-11T18:03:20Z 677:open)"
+invoke 677 --dry-run
+expect_ok "non-contiguous chain: accepted when every non-chain position is proven merged"
+expect_contains "non-contiguous chain: proves the merged position above the chain start" "position 3 (PR #676) is merged"
+expect_contains "non-contiguous chain: still gates the open member the chain contains" "gating member PR #675"
+expect_contains "non-contiguous chain: issues the async request for the requested member" "pulls/677/merge-async"
+expect_contains "non-contiguous chain: names every member the request lands" "#675 #677"
+
+# (AC 2, AC 4) The same skipped-ancestor shape refuses when the skipped
+# position is not proven merged in the stack resource: the walk saw a merged
+# PR, but the stack resource still reports it open, so it cannot be shown to
+# be a merged member of this stack.
+reset_stack_fixtures
+export TEST_STACK_MEMBERS="674 675 676 677"
+write_pr 677 branch-676 "${MEDIUM_LABELS}" "${APPROVE_SHORT}" "${NO_REVIEWS}"
+write_checks 677 "${GREEN_CHECKS}"
+build_open_prs 677
+jq -n --arg base "${TEST_DEFAULT_BRANCH}" \
+  '[{number:676,state:"MERGED",headRefName:"branch-676",baseRefName:$base}]' >"${work}/all.json"
+export TEST_ALL_PRS="${work}/all.json"
+write_stack_resource "$(stack_resource_json 678 4 \
+  674:closed:2026-11-11T18:03:20Z 675:open 676:open 677:open)"
+invoke 677 --dry-run
+expect_refusal "skipped ancestor unproven in the stack resource refuses"
+expect_contains "skipped-ancestor refusal names the offending position" "position 2 (PR #675) is not proven merged"
+expect_absent "skipped-ancestor refusal submits no async request" "merge-async"
 
 # (AC 2) An OPEN member at a lower position that the branch chain does not
 # contain refuses: the async request would land it without gating it.

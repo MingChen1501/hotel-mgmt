@@ -79,8 +79,11 @@ doc group.
   gates individually, polling the returned uuid to a terminal status;
   a member whose branch chain is shorter than its recorded position —
   the post-stack-merge retarget — is accepted only when the stack
-  resource proves the missing lower positions merged, and the stale
-  metadata is reported, never repaired),
+  resource proves every position at or below the requested one that
+  the chain does not occupy is a merged member of that same stack
+  (members are mapped by the position the walk reached them at, not by
+  a contiguous run), and the stale metadata is reported, never
+  repaired),
   `script/orchestrator-review.sh` (review trigger). The scripts work
   because they invoke the CLI as a child process, which permission
   evaluation does not see; a direct `ao spawn` /

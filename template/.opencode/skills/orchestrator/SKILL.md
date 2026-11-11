@@ -210,11 +210,14 @@ restate the list here — link it. Summary for orchestration use only.
   unchanged, so a member's branch chain can be shorter than its
   recorded position: that shape is accepted only when the stack
   resource (`GET /repos/{owner}/{repo}/stacks/<n>`) proves every
-  missing lower position is a merged member of the same stack — the
-  stale metadata is reported, never repaired, and every other break
-  (a longer chain, a chain member outside the stack, an open lower
-  member the chain does not contain, an unreadable resource, a loop)
-  still refuses. Treating such a member as unstacked is not an option:
+  position at or below the requested one that the branch chain does not
+  occupy is a merged member of the same stack. Each chain member is
+  mapped to the position the walk reached it at, never to a contiguous
+  run, so a skipped merged ancestor cannot shift a later member onto its
+  neighbour. The stale metadata is reported, never repaired, and every
+  other break (a longer chain, a chain member outside the stack, an open
+  lower member the chain does not contain, an unreadable resource, a
+  loop) still refuses. Treating such a member as unstacked is not an option:
   GitHub refuses the synchronous endpoint for stack members. It then
   issues one `PUT /repos/{owner}/{repo}/pulls/<n>/merge-async` request
   pinned to the observed head SHA (`merge_method=squash`) and polls
