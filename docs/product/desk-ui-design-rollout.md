@@ -2336,10 +2336,13 @@ UI contract delta (T2):
   sentence naming the range; a list read failure is one plain sentence
   with a retry; a partial row keeps its calendar fields and says its
   guest or total could not be read, counted in one notice; a failed
-  room-type, in-house, or occupied-room read says so in the same
-  notice; a detail read failure names the booking with a retry and
-  keeps the list as it was. The view has no refusal state: it writes
-  nothing.
+  room-type, in-house, or occupied-room read leaves those cells
+  unreadable and puts a column-truthful sentence naming the failed
+  column in the same notice (`desk.bookings.column_partial`,
+  `{column}`); neither partial class carries a retry — re-applying the
+  range reads again, as the LLD's failure table states; a detail read
+  failure names the booking with a retry and keeps the list as it was.
+  The view has no refusal state: it writes nothing.
 - **Catalogue keys.** Every new key lands in `messages/vi.json` and
   `messages/en.json` in the implementation PRs with `{param}`
   placeholders intact and `script/catalogue-coverage-check.sh` green.
@@ -2347,16 +2350,18 @@ UI contract delta (T2):
   (`Sổ đặt phòng` / `Bookings`) and `desk.shell.doc_title_bookings`
   (`Sổ đặt phòng` / `Bookings`); the full `desk.bookings.*` table —
   column headings, filter labels, hints, the five state chips plus the
-  unknown fallback, the empty, capped, partial, and detail sentences,
-  and the row's accessible label — is in
+  unknown fallback, the empty, capped, partial-row, partial-column, and
+  detail sentences (41 keys: 39 `desk.bookings.*` plus the two shell
+  keys), and the row's accessible label — is in
   `docs/product/booking-management-view.md` section 9, and the detail
   reuses `desk.book.reference`, `desk.book.night_count`, and
   `desk.book.quote_total`.
 - **Design facts.** The screen has no board, so the gate's job is the
-  shell tab plus every board screen unchanged: the implementation PR
-  that adds the tab also records the second app-only allowance entry in
-  `docs/technical/desk-ui-fact-schema.md` section 8 and
-  `app/e2e/design-facts.ts` (`NAV_TAB_ALLOWANCES`: route key
+  shell tab plus every board screen unchanged. The second app-only
+  allowance entry is already recorded in
+  `docs/technical/desk-ui-fact-schema.md` section 8 at the spec stage
+  (`architect`, #676); the implementation PR adds only its consumer
+  entry in `app/e2e/design-facts.ts` (`NAV_TAB_ALLOWANCES`: route key
   `bookings`, after `book`, `Sổ đặt phòng` / `Bookings`, design source
   `docs/design/Main.dc.html` for the tab pattern and this spec for the
   screen body), and pins the screen's static content in its own unit

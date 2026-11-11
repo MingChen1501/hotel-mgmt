@@ -75,8 +75,8 @@ In:
   the guest is in house, arrival, departure, nights, quoted total, and
   state; the row is ordered and capped as section 5 states.
 - A row detail card read back fresh from `GetReservation` (section 6).
-- The plain-words loading, empty, read-error, partial-row, and
-  detail-error states (section 7).
+- The plain-words loading, empty, read-error, partial-row,
+  partial-column, and detail-error states (section 7).
 - Catalogue-backed EN+VI copy for every new label and message (section
   9), and the design-facts assertion for the new app-only tab (section
   8).
@@ -259,12 +259,21 @@ Out:
 | Empty | No booking stays in the range: one muted sentence names the range in the desk date form (`desk.bookings.empty`, `{from}`, `{to}`) and no row is invented. |
 | Read error (list) | One plain sentence names what could not be read with a retry action (`desk.bookings.read_failed`, `desk.bookings.retry`); no stack trace, no code, no zero-filled rows, and the rest of the desk stays usable. |
 | Partial row | A row whose `GetReservation` read failed keeps its calendar fields, shows `desk.bookings.cell_unreadable` in the guest-name and total cells, and is counted in one notice above the list (`desk.bookings.row_partial`, `{count}`). |
-| Partial column | A failed `ListRoomTypes`, `ListArrivalsDepartures`, or occupied-room read leaves the affected cells reading `desk.bookings.cell_unreadable` and states it in the same notice; every other cell still renders. |
+| Partial column | A failed `ListRoomTypes`, `ListArrivalsDepartures`, or occupied-room read leaves the affected cells reading `desk.bookings.cell_unreadable` and puts one plain sentence naming that column in the notice above the list (`desk.bookings.column_partial`, `{column}` — the heading of the failed read's column: `desk.bookings.col_room_type` or `desk.bookings.col_room`); every other cell still renders. |
 | Detail error | One sentence names the booking that could not be read with a retry action (`desk.bookings.detail_failed`, `{ref}`); the list stays as it was and the previous detail is not kept as if it were current. |
 | Refusal | Not applicable: the view performs no write, so it refuses nothing. |
 
-Every state above is in the VI-primary catalogue in both locales; no
-state is implied and left unworded.
+Retry follows the failure class, as the LLD's failure table fixes it. The
+list read and the detail read each carry one retry action
+(`desk.bookings.retry`). The per-row and shared-map classes carry none:
+their rows stay, the notice above the list counts the incomplete rows
+(`desk.bookings.row_partial`) and names the failed column
+(`desk.bookings.column_partial`), and re-applying the range is the
+retry.
+
+Every state above — both partial classes included — maps to a
+VI-primary catalogue key in both locales; no state is implied and left
+unworded.
 
 ## 8. UI contract (T2 reader-visible change)
 
@@ -309,7 +318,8 @@ state is implied and left unworded.
 - **Design-facts gate.** The new tab is app-only, so the gate needs a
   second allowance entry in
   `docs/technical/desk-ui-fact-schema.md` section 8 (owned by
-  `architect`) plus its entry in `app/e2e/design-facts.ts`
+  `architect`, recorded at the spec stage) plus its consumer entry in
+  `app/e2e/design-facts.ts`
   (`NAV_TAB_ALLOWANCES`): route key `bookings`, after `book`, labels
   `Sổ đặt phòng` / `Bookings`, declared design source
   `docs/design/Main.dc.html` (the shell tab pattern this screen reuses)
@@ -322,7 +332,8 @@ state is implied and left unworded.
 
 Proposed keys, not added, by this spec; each implementation PR adds only
 the keys its section needs, in both catalogues, with placeholders
-matching.
+matching. The table holds 41 keys: 39 `desk.bookings.*` and the two
+`desk.shell.*` keys.
 
 | Key | English | Vietnamese (primary) |
 |---|---|---|
@@ -340,6 +351,7 @@ matching.
 | `desk.bookings.read_failed` | Could not read the booking register. | Không đọc được sổ đặt phòng. |
 | `desk.bookings.retry` | Try again | Thử lại |
 | `desk.bookings.row_partial` | {count} bookings could not be completed: their guest name or total is unreadable. | {count} đặt phòng chưa đọc được tên khách hoặc tổng tiền. |
+| `desk.bookings.column_partial` | The {column} column could not be read. | Không đọc được cột {column}. |
 | `desk.bookings.capped` | Showing the first {count} bookings. Narrow the dates to see the rest. | Đang hiện {count} đặt phòng đầu tiên. Thu hẹp khoảng ngày để xem phần còn lại. |
 | `desk.bookings.cell_unreadable` | could not read | không đọc được |
 | `desk.bookings.col_guest` | Guest | Khách |
@@ -386,7 +398,7 @@ id-to-detail link for reviewers.
 | `AC-BMV-3` | The date filter re-reads the list for the inclusive night range, refuses an inverted range in plain words, and clears the selection | Section 4 | AC 2 (filter half) |
 | `AC-BMV-4` | An empty range shows one plain sentence naming the range and invents no row | Section 7 | AC 2 (empty half) |
 | `AC-BMV-5` | A selected row opens the fresh `GetReservation` read-back: dates, price basis, state, assigned room, guest, room type | Section 6 | AC 3 |
-| `AC-BMV-6` | A failed list, row, column, or detail read is one plain sentence with a retry; unreadable cells say so; no booking is silently dropped; the rest of the desk stays usable | Section 7 | AC 4 |
+| `AC-BMV-6` | A failed list or detail read is one plain sentence with a retry; a failed row or shared-map read keeps the row and states the unreadable cell, with one notice counting incomplete rows and naming the failed column, no retry of its own; no booking is silently dropped; the rest of the desk stays usable | Section 7 | AC 4 |
 | `AC-BMV-7` | Read-only surface over existing operations with no database access; EN+VI parity and a green catalogue check; the design-facts gate records the new tab; the owner reviewed the screen | Sections 2, 8, 9 | AC 5, AC 6 |
 
 ## 11. Acceptance mapping (issue #648)
@@ -473,8 +485,9 @@ owner may re-split):
   with the read-back that proves the rendered values (a created booking
   appears in the list with its guest, type, dates, and total; the
   detail re-reads the same booking).
-- The slice's states (loading, empty, read error, partial row, detail
-  error) are shown or asserted in tests, in catalogue wording.
+- The slice's states (loading, empty, read error, partial row, partial
+  column, detail error) are shown or asserted in tests, in catalogue
+  wording.
 - Catalogue parity: EN and VI keys for the slice, placeholders
   matching, `script/catalogue-coverage-check.sh` green.
 - No new design token; the design-facts gate green with the new

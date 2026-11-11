@@ -1406,12 +1406,18 @@ or an issue comment):
   selecting another row replaces the detail while applying a new range
   clears it. Traces to: US-RES-5; FR-RES-5, FR-RTE-5 (Refs #648).
 - AC-BMV-6 — Given a list, per-row, room-type, in-house, occupied-room,
-  or detail read fails, when the screen renders, then the failure is
-  one plain catalogue sentence naming what could not be read with a
-  retry, the affected cells state that they could not be read instead
-  of showing a guessed guest name, amount, room, or type, one notice
-  counts the rows that could not be completed, no booking is silently
-  dropped, and the rest of the desk remains usable. Traces to:
+  or detail read fails, when the screen renders, then the failure
+  follows its class: a failed list read or detail read is one plain
+  catalogue sentence naming what could not be read with a retry
+  action; a failed per-row, room-type, in-house, or occupied-room read
+  keeps every row it can, shows that the affected cells could not be
+  read instead of a guessed guest name, amount, room, or type, and
+  states the degradation in one notice above the list — the rows that
+  could not be completed are counted, and each failed column is named
+  in one plain sentence — with no retry action of its own, because
+  re-applying the range reads again; no booking is silently dropped,
+  no stack trace or code is shown, and the rest of the desk remains
+  usable. Traces to:
   US-RES-5; FR-RES-5, FR-DSP-3 (Refs #648).
 - AC-BMV-7 — Given the screen ships, when it is verified, then it
   offers no write action and calls only the existing operations
