@@ -1,0 +1,46 @@
+{
+  "vi": {
+    "viewportWidth": 1280,
+    "contentColumnWidth": 1200,
+    "tabCount": 9,
+    "tabLabels": [
+      "Lễ tân",
+      "Sơ đồ phòng",
+      "Quản lý",
+      "Đặt phòng",
+      "Sổ đặt phòng",
+      "Lưu trú",
+      "Hoá đơn",
+      "In",
+      "Quản trị"
+    ],
+    "tabRowWidth": 934,
+    "tabsWrapped": false,
+    "navClientWidth": 1264,
+    "navScrollWidth": 1264,
+    "headerClientWidth": 1114,
+    "headerScrollWidth": 1114
+  },
+  "en": {
+    "viewportWidth": 1280,
+    "contentColumnWidth": 1200,
+    "tabCount": 9,
+    "tabLabels": [
+      "Desk",
+      "Rooms",
+      "Manage",
+      "Book",
+      "Bookings",
+      "Stay",
+      "Folio",
+      "Print",
+      "Admin"
+    ],
+    "tabRowWidth": 767,
+    "tabsWrapped": false,
+    "navClientWidth": 1264,
+    "navScrollWidth": 1264,
+    "headerClientWidth": 1114,
+    "headerScrollWidth": 1114
+  }
+}
