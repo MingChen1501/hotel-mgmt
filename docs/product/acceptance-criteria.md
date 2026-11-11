@@ -75,8 +75,8 @@ the calendar with correct dates, room type, and state.
   against that room, then the reservation becomes an in-house stay
   linked to the room, and the room state becomes occupied. The desk
   commit assigns only the room the guest is actually in and takes back
-  the room it assigned when that commit does not land (`AC-REA-1`,
-  Refs #647). Traces to: US-FDK-1; FR-FDK-1.
+  the room it assigned when that commit does not land and no stay was
+  recorded (`AC-REA-1`, Refs #647). Traces to: US-FDK-1; FR-FDK-1.
 - AC-FDK-2 — Given an in-house stay with a settled folio (zero
   balance) or an authorised approval recorded under FR-BIL-7, when
   staff check the guest out, then the stay is closed, the folio is
@@ -1231,16 +1231,20 @@ issue comment, per the issue's scope):
   check-in commits, then that commit assigns only the chosen room and
   never assigns the room the preload bound; and given the commit has
   assigned a room and a later step of that same commit does not land
-  (the booking read, the stay write, or the reservation check-in),
+  while no stay was recorded (the booking read or the stay write),
   when the refusal returns, then the panel releases the room it
   assigned in that same commit back to the ready (`vacant-inspected`)
   state it held before the attempt, reports the refusal in plain
   catalogue words, and leaves no room occupied with no stay behind it.
-  A definitive refusal only: an unreadable outcome (transport failure,
-  timeout, server error) releases nothing and is reported as an
-  outcome to re-read, so a guest who did arrive is never left in a
-  room the system has just handed back. Traces to: US-FDK-1;
-  FR-FDK-1; BR-16, BR-28, NFR-CON-2 (Refs #647).
+  A room a live stay names is never freed: when the stay write landed
+  and only the reservation check-in did not, the panel releases
+  nothing, reports that split in plain words, and leaves the room
+  occupied with the stay in house. A definitive refusal only: an
+  unreadable outcome (transport failure, timeout, server error)
+  releases nothing and is reported as an outcome to re-read, so a
+  guest who did arrive is never left in a room the system has just
+  handed back. Traces to: US-FDK-1; FR-FDK-1; BR-16, BR-28, NFR-CON-2
+  (Refs #647).
 - AC-REA-2 — Given a committed check-in in room 101, when staff
   reassign the guest to room 102 through the Stay screen, then the
   stay names 102, room 102 reads occupied, room 101 reads vacant and
@@ -1285,7 +1289,8 @@ issue comment, per the issue's scope):
 
 Pointer: `AC-FDK-1` gains the `AC-REA-1` pointer (the desk assigns only
 the room the commit uses and releases a room it assigned when the
-commit does not land), and `AC-FDK-3` gains the `AC-REA-2`/`AC-REA-4`
+commit does not land and no stay was recorded, never a room a live stay
+names), and `AC-FDK-3` gains the `AC-REA-2`/`AC-REA-4`
 pointer (the desk path that performs a move); both conditions stand as
 written otherwise.
 
@@ -1404,8 +1409,9 @@ domain code for this family.
 Reassignment addendum (Refs #647): five further conditions
 (AC-REA-1..5, section 16) cover the arrival-time half of a room move —
 the desk commit assigns only the room the guest is in and releases a
-room it assigned when the commit does not land (switch after a
-preload), the Stay screen's reassignment affordance releases the
+room it assigned when the commit does not land and no stay was
+recorded (switch after a preload), the Stay screen's reassignment
+affordance releases the
 vacated room to housekeeping and keeps the move (from room, to room,
 time) visible to staff (switch after a commit, and mid-stay), and
 every refused or aborted attempt leaves no room occupied with no stay
@@ -1420,4 +1426,4 @@ behaviour: `AC-FDK-1` and `AC-FDK-3` gain only the pointer. `REA` is
 the domain code for this family.
 
 <!-- ao-role: product-owner -->
-Role: product-owner · AO session hotel-mgmt-959
+Role: product-owner · AO session hotel-mgmt-964
