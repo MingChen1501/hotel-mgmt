@@ -81,8 +81,12 @@ doc group.
   orchestrator session; the marker lives only in the orchestrator
   worktree, never committed): `script/ao-spawn-worker.sh` (spawn),
   `script/orchestrator-merge.sh` (merge — the only merge path: it
-  squash-merges via `gh pr merge --squash --delete-branch` as a child
-  process while direct `gh pr merge` stays denied),
+  squash-merges an unstacked PR via `gh pr merge --squash
+  --delete-branch` as a child process while direct `gh pr merge` stays
+  denied, and merges a native stack member through one atomic
+  asynchronous merge request — `PUT /pulls/<n>/merge-async` — only
+  after every open member at or below its position passes the same
+  gates individually, polling the returned uuid to a terminal status),
   `script/orchestrator-review.sh` (review trigger). The scripts work
   because they invoke the CLI as a child process, which permission
   evaluation does not see; a direct `ao spawn` /
