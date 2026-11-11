@@ -1,0 +1,10 @@
+{
+  "operation": "CheckOutReservation",
+  "case": "repeat",
+  "description": "A replayed close returns the already closed booking without a second change.",
+  "request": {
+    "stayId": "<stay-id>",
+    "actor": "front-desk"
+  },
+  "expect": { "status": 200, "state": "closed" }
+}

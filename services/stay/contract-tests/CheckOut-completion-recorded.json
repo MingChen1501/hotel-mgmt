@@ -1,0 +1,12 @@
+{
+  "operation": "CheckOut",
+  "case": "booking-completion-recorded",
+  "description": "A committed close completes the booking behind the stay and reports it.",
+  "request": {
+    "stayId": "<stay-id>",
+    "folioId": "<folio-id>",
+    "folioBalanceMinor": 0,
+    "actor": "front-desk"
+  },
+  "expect": { "status": 200, "state": "closed", "bookingCompletion": { "state": "completed" } }
+}

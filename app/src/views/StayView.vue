@@ -307,6 +307,16 @@
           >
             {{ roomReleaseStatus }}
           </p>
+          <!-- #646 (`FR-DEP-5`): a committed close whose booking
+            completion could not be recorded says so plainly; the
+            desk never claims a completion the booking read contradicts. -->
+          <p
+            v-if="bookingCompletionStatus"
+            role="status"
+            data-testid="stay-booking-completion"
+          >
+            {{ bookingCompletionStatus }}
+          </p>
           <Message
             v-if="checkoutError"
             severity="error"
@@ -623,6 +633,10 @@ export default defineComponent({
     const checkoutStayId = ref('');
     const folioStatus = ref('');
     const checkoutStatus = ref('');
+    // #646 (`FR-DEP-5`): a committed close whose booking completion
+    // could not be recorded keeps its own line so the desk reports the
+    // split in plain words instead of claiming the booking is done.
+    const bookingCompletionStatus = ref('');
     const checkoutError = ref('');
     const reviewing = ref(false);
     const approving = ref(false);
@@ -1086,6 +1100,7 @@ export default defineComponent({
       checkoutStatus.value = '';
       checkoutError.value = '';
       roomReleaseStatus.value = '';
+      bookingCompletionStatus.value = '';
     }
 
     onMounted(() => {
@@ -1541,6 +1556,7 @@ export default defineComponent({
       }
       checkoutError.value = '';
       roomReleaseStatus.value = '';
+      bookingCompletionStatus.value = '';
       if (!checkoutCtx.value) {
         checkoutStatus.value = t('desk.stay.need_departure', {}, 'Choose a departing guest first.');
         return;
@@ -1599,11 +1615,26 @@ export default defineComponent({
         if (approval) {
           checkoutBody.openBalanceApproval = approval;
         }
-        const closed = await apiFetch<{ stayId: string; invoiceRef: string }>(
+        const closed = await apiFetch<{
+          stayId: string;
+          invoiceRef: string;
+          bookingCompletion?: { state?: string; reason?: string };
+        }>(
           '/v1/stay/CheckOut',
           { method: 'POST', body: JSON.stringify(checkoutBody) },
         );
         checkoutStatus.value = checkedOutStatus(closed.stayId, folio.balanceMinor);
+        // #646 (`FR-DEP-5`): the close stands even when the booking
+        // completion could not be recorded. The desk says so in plain
+        // words and never renders the envelope code.
+        bookingCompletionStatus.value =
+          closed.bookingCompletion?.state === 'not-recorded'
+            ? t(
+                'desk.stay.booking_not_recorded',
+                {},
+                'The guest is checked out, but the booking behind this stay still reads in house. Tell the manager so it can be recorded.',
+              )
+            : '';
         checkoutDetails.value = [
           { label: 'Stay ID', value: closed.stayId },
           { label: 'Invoice ref', value: closed.invoiceRef },
@@ -1732,6 +1763,7 @@ export default defineComponent({
       canCheckOut,
       checkoutDialog,
       roomReleaseStatus,
+      bookingCompletionStatus,
       onArrivalChange,
       onDepartureChange,
       onCheckIn,

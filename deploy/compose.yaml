@@ -80,6 +80,9 @@ services:
     environment:
       PORT: "8084"
       DATABASE_URL: postgresql://hotel:${DB_PASSWORD:-change-me-dev-only}@db:5432/hotel
+      # Booking completion behind a committed check-out (FR-DEP-1,
+      # #646); the caller Bearer token travels on the call.
+      RESERVATIONS_BASE_URL: http://reservations:8081
     depends_on:
       db:
         condition: service_healthy

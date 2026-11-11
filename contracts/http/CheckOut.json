@@ -1,8 +1,8 @@
 {
   "operation": "CheckOut",
   "contract": "StayService",
-  "version": "1.0",
-  "traces": ["docs/architecture/lld.md section 2", "docs/technical/integration.md section 3 C7", "FR-FDK-2", "FR-BIL-7", "NFR-CON-2"],
+  "version": "1.1",
+  "traces": ["docs/architecture/lld.md section 2", "docs/architecture/lld.md section 22", "docs/technical/integration.md section 3 C7", "FR-FDK-2", "FR-BIL-7", "FR-DEP-1", "FR-DEP-5", "NFR-CON-2"],
   "transport": {
     "method": "POST",
     "path": "/v1/stay/CheckOut",
@@ -23,7 +23,7 @@
   },
   "response": {
     "type": "object",
-    "required": ["stayId", "reservationId", "guestId", "roomId", "state", "invoiceRef"],
+    "required": ["stayId", "reservationId", "guestId", "roomId", "state", "invoiceRef", "bookingCompletion"],
     "properties": {
       "stayId": { "type": "string", "format": "uuid" },
       "reservationId": { "type": "string", "format": "uuid" },
@@ -32,7 +32,17 @@
       "state": { "type": "string", "const": "closed" },
       "actualArrival": { "type": ["string", "null"] },
       "actualDeparture": { "type": ["string", "null"] },
-      "invoiceRef": { "type": "string", "format": "uuid", "description": "The presented folio id." }
+      "invoiceRef": { "type": "string", "format": "uuid", "description": "The presented folio id." },
+      "bookingCompletion": {
+        "type": "object",
+        "description": "Whether the close recorded the completion of the booking behind the stay (FR-DEP-1, FR-DEP-5). The field is additive in 1.1: a client that ignores it keeps working.",
+        "required": ["state"],
+        "properties": {
+          "state": { "type": "string", "enum": ["completed", "not-recorded"] },
+          "reservationRef": { "type": "string", "description": "The completed booking; present when state is completed." },
+          "reason": { "type": "string", "description": "The observed envelope code for support; the desk never renders it." }
+        }
+      }
     }
   },
   "errors": [

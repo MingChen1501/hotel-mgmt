@@ -458,3 +458,229 @@ describe("stay postgres store", { skip: DATABASE_URL === undefined || DATABASE_U
     }
   });
 });
+
+// The check-out completion (#646, FR-DEP-1/FR-DEP-5) is driven by a
+// client the store takes at boot. These stubs pin the call shape, the
+// split outcomes, and the replay repair without a live Reservations.
+function completedStub(reservationRef = "RSV-COMPLETED") {
+  const calls: { stayId: string; actor: string; bearerToken: string }[] = [];
+  return {
+    calls,
+    client: {
+      async complete(input: { stayId: string; actor: string; bearerToken: string }) {
+        calls.push(input);
+        return { state: "completed" as const, reservationRef };
+      },
+    },
+  };
+}
+
+describe("check-out completion", () => {
+  it("completes the booking with the caller token forwarded (DR7)", async () => {
+    const stub = completedStub();
+    const store = new StayStore(stub.client);
+    await withStayServer(async (port) => {
+      const { stayId } = await checkInStay(port);
+      const checked = await request(port, "POST", "/v1/stay/CheckOut", {
+        stayId,
+        folioId: FOLIO_ID,
+        folioBalanceMinor: 0,
+        actor: "front-desk",
+      });
+      assert.equal(checked.status, 200);
+      const body = checked.body as {
+        state: string;
+        bookingCompletion: { state: string; reservationRef?: string };
+      };
+      assert.equal(body.state, "closed");
+      assert.deepEqual(body.bookingCompletion, { state: "completed", reservationRef: "RSV-COMPLETED" });
+      assert.deepEqual(stub.calls, [{ stayId, actor: "front-desk", bearerToken: TOKEN }]);
+      const outbox = (store as unknown as { outbox: { eventType: string }[] }).outbox;
+      assert.equal(outbox.filter((entry) => entry.eventType === "checked-out").length, 1);
+    }, store);
+  });
+
+  it("reports a split instead of failing the committed close (DR8)", async () => {
+    const modes: { name: string; complete: () => Promise<never> | Promise<{ state: "not-recorded"; reason: string }>; reason: string }[] = [
+      {
+        name: "transport error",
+        complete: async () => {
+          throw new Error("connection refused");
+        },
+        reason: "UPSTREAM_UNAVAILABLE",
+      },
+      {
+        name: "provider NOT_FOUND",
+        complete: async () => ({ state: "not-recorded" as const, reason: "NOT_FOUND" }),
+        reason: "NOT_FOUND",
+      },
+      {
+        name: "provider STATE_ILLEGAL",
+        complete: async () => ({ state: "not-recorded" as const, reason: "STATE_ILLEGAL" }),
+        reason: "STATE_ILLEGAL",
+      },
+    ];
+    for (const mode of modes) {
+      const store = new StayStore({ complete: mode.complete });
+      await withStayServer(async (port) => {
+        const { stayId } = await checkInStay(port);
+        const checked = await request(port, "POST", "/v1/stay/CheckOut", {
+          stayId,
+          folioId: FOLIO_ID,
+          folioBalanceMinor: 0,
+          actor: "front-desk",
+        });
+        assert.equal(checked.status, 200, mode.name);
+        const body = checked.body as {
+          state: string;
+          bookingCompletion: { state: string; reason?: string };
+        };
+        assert.equal(body.state, "closed", mode.name);
+        assert.equal(body.bookingCompletion.state, "not-recorded", mode.name);
+        assert.equal(body.bookingCompletion.reason, mode.reason, mode.name);
+        const outbox = (store as unknown as { outbox: { eventType: string }[] }).outbox;
+        assert.equal(outbox.filter((entry) => entry.eventType === "checked-out").length, 1, mode.name);
+      }, store);
+    }
+  });
+
+  it("reports an unwired completion client without inventing a refusal", async () => {
+    await withStayServer(async (port) => {
+      const { stayId } = await checkInStay(port);
+      const checked = await request(port, "POST", "/v1/stay/CheckOut", {
+        stayId,
+        folioId: FOLIO_ID,
+        folioBalanceMinor: 0,
+        actor: "front-desk",
+      });
+      assert.equal(checked.status, 200);
+      const body = checked.body as { bookingCompletion: { state: string; reason?: string } };
+      assert.deepEqual(body.bookingCompletion, { state: "not-recorded", reason: "UPSTREAM_UNAVAILABLE" });
+    });
+  });
+
+  it("re-attempts the completion on a replayed close (DR9)", async () => {
+    let attempts = 0;
+    const calls: string[] = [];
+    const store = new StayStore({
+      async complete(input) {
+        attempts += 1;
+        calls.push(input.stayId);
+        if (attempts === 1) {
+          return { state: "not-recorded" as const, reason: "UPSTREAM_UNAVAILABLE" };
+        }
+        return { state: "completed" as const, reservationRef: "RSV-REPLAYED" };
+      },
+    });
+    await withStayServer(async (port) => {
+      const { stayId } = await checkInStay(port);
+      const first = await request(port, "POST", "/v1/stay/CheckOut", {
+        stayId,
+        folioId: FOLIO_ID,
+        folioBalanceMinor: 0,
+        idempotencyKey: "checkout-split",
+        actor: "front-desk",
+      });
+      assert.equal((first.body as { bookingCompletion: { state: string } }).bookingCompletion.state, "not-recorded");
+      const replay = await request(port, "POST", "/v1/stay/CheckOut", {
+        stayId,
+        folioId: FOLIO_ID,
+        folioBalanceMinor: 0,
+        idempotencyKey: "checkout-split",
+        actor: "front-desk",
+      });
+      assert.equal(replay.status, 200);
+      assert.deepEqual((replay.body as { bookingCompletion: unknown }).bookingCompletion, {
+        state: "completed",
+        reservationRef: "RSV-REPLAYED",
+      });
+      assert.equal(calls.length, 2);
+      assert.deepEqual(calls, [stayId, stayId]);
+    }, store);
+  });
+
+  it("sends no completion call for a refused close", async () => {
+    const stub = completedStub();
+    const store = new StayStore(stub.client);
+    await withStayServer(async (port) => {
+      const { stayId } = await checkInStay(port);
+      const refused = await request(port, "POST", "/v1/stay/CheckOut", {
+        stayId,
+        folioId: FOLIO_ID,
+        folioBalanceMinor: 6000,
+        actor: "front-desk",
+      });
+      assert.equal(refused.status, 409);
+      assert.equal(stub.calls.length, 0);
+    }, store);
+  });
+});
+
+describe("stay postgres completion", { skip: DATABASE_URL === undefined || DATABASE_URL === "" }, () => {
+  it("calls the completion after the committed close and reports a split (DR11)", async () => {
+    const pool = new Pool({ connectionString: DATABASE_URL });
+    try {
+      await pool.query("DELETE FROM stay.outbox");
+      await pool.query("DELETE FROM stay.stay_moves");
+      await pool.query("DELETE FROM stay.idempotency_keys");
+      await pool.query("DELETE FROM stay.stays");
+      const calls: { stayId: string; actor: string; bearerToken: string }[] = [];
+      const store = new PostgresStayStore(pool, {
+        async complete(input) {
+          calls.push(input);
+          return { state: "completed" as const, reservationRef: "RSV-PG" };
+        },
+      });
+      const stay = await store.checkIn({
+        reservationId: RESERVATION_ID,
+        guestId: GUEST_ID,
+        roomId: ROOM_ID,
+        actor: "front-desk",
+      });
+      const closed = await store.checkOut(
+        {
+          stayId: stay.id,
+          folioId: FOLIO_ID,
+          folioBalanceMinor: 0,
+          idempotencyKey: "pg-completion-1",
+          actor: "front-desk",
+        },
+        TOKEN,
+      );
+      assert.equal(closed.stay.state, "closed");
+      assert.deepEqual(closed.bookingCompletion, { state: "completed", reservationRef: "RSV-PG" });
+      assert.deepEqual(calls, [{ stayId: stay.id, actor: "front-desk", bearerToken: TOKEN }]);
+      const events = await pool.query(`SELECT count(*)::int AS count FROM stay.outbox WHERE event_type = 'checked-out'`);
+      assert.equal(events.rows[0]?.count, 1);
+
+      const splitPool = new Pool({ connectionString: DATABASE_URL });
+      try {
+        await splitPool.query("DELETE FROM stay.outbox");
+        await splitPool.query("DELETE FROM stay.stay_moves");
+        await splitPool.query("DELETE FROM stay.idempotency_keys");
+        await splitPool.query("DELETE FROM stay.stays");
+        const splitStore = new PostgresStayStore(splitPool, {
+          async complete() {
+            throw new Error("reservations unreachable");
+          },
+        });
+        const splitStay = await splitStore.checkIn({
+          reservationId: RESERVATION_ID,
+          guestId: GUEST_ID,
+          roomId: ROOM_ID,
+          actor: "front-desk",
+        });
+        const split = await splitStore.checkOut(
+          { stayId: splitStay.id, folioId: FOLIO_ID, folioBalanceMinor: 0, actor: "front-desk" },
+          TOKEN,
+        );
+        assert.equal(split.stay.state, "closed");
+        assert.deepEqual(split.bookingCompletion, { state: "not-recorded", reason: "UPSTREAM_UNAVAILABLE" });
+      } finally {
+        await splitPool.end();
+      }
+    } finally {
+      await pool.end();
+    }
+  });
+});

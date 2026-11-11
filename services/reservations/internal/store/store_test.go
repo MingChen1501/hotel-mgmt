@@ -358,3 +358,216 @@ func TestMarkNoShowRefusals(t *testing.T) {
 		t.Fatalf("mark no-show in-house = %v, want STATE_ILLEGAL", oerr)
 	}
 }
+
+// checkedInForStay books one reservation and links it to a stay,
+// returning the record the completion guards run against.
+func checkedInForStay(t *testing.T, st *Store, roomTypeID, stayID string) *Reservation {
+	t.Helper()
+	created, oerr := st.Create(loopInput(roomTypeID), "")
+	if oerr != nil {
+		t.Fatalf("booking refused: %v", oerr)
+	}
+	checked, oerr := st.CheckIn(created.Ref, stayID, "front-desk")
+	if oerr != nil {
+		t.Fatalf("check-in refused: %v", oerr)
+	}
+	return checked
+}
+
+// TestCheckOutReservationCompletesBooking is the DR1 guard: the close
+// completion flips the linked checked-in booking to the terminal
+// closed state, keeps its link, dates, type, and price basis, and
+// records one state change with the actor and time. No reservation
+// event is written (LLD D5).
+func TestCheckOutReservationCompletesBooking(t *testing.T) {
+	st := New()
+	record := checkedInForStay(t, st, "deluxe-type", "stay-1")
+	eventsBefore := len(st.events)
+
+	completed, oerr := st.CheckOutReservation("stay-1", "front-desk")
+	if oerr != nil {
+		t.Fatalf("completion refused: %v", oerr)
+	}
+	if completed.State != "closed" {
+		t.Fatalf("completed state = %s, want closed", completed.State)
+	}
+	if completed.StayID != "stay-1" || completed.ArrivalDate != record.ArrivalDate ||
+		completed.DepartureDate != record.DepartureDate || completed.RoomTypeID != record.RoomTypeID ||
+		completed.TotalMinor != record.TotalMinor {
+		t.Fatalf("completion rewrote the booking: %+v", completed)
+	}
+	got, oerr := st.Get(completed.Ref)
+	if oerr != nil || got.State != "closed" {
+		t.Fatalf("read-back = %+v, %v; want closed", got, oerr)
+	}
+	if len(st.events) != eventsBefore {
+		t.Fatalf("completion wrote %d event(s), want none", len(st.events)-eventsBefore)
+	}
+	var stateChanges int
+	var actor string
+	for _, change := range st.Changes() {
+		if change.Ref == record.Ref && change.Field == "state" && change.NewValue == "closed" {
+			stateChanges++
+			actor = change.Actor
+		}
+	}
+	if stateChanges != 1 || actor != "front-desk" {
+		t.Fatalf("state changes = %d (actor %q), want one front-desk completion", stateChanges, actor)
+	}
+}
+
+// TestCheckOutReservationIsIdempotent is the DR2 guard: a second
+// completion for the same stay returns the closed booking without a
+// second change row or a second event.
+func TestCheckOutReservationIsIdempotent(t *testing.T) {
+	st := New()
+	record := checkedInForStay(t, st, "deluxe-type", "stay-1")
+	if _, oerr := st.CheckOutReservation("stay-1", "front-desk"); oerr != nil {
+		t.Fatalf("first completion refused: %v", oerr)
+	}
+	eventsAfterFirst := len(st.events)
+	changesAfterFirst := len(st.Changes())
+
+	again, oerr := st.CheckOutReservation("stay-1", "front-desk")
+	if oerr != nil || again.State != "closed" {
+		t.Fatalf("replay = %+v, %v; want closed", again, oerr)
+	}
+	if len(st.events) != eventsAfterFirst || len(st.Changes()) != changesAfterFirst {
+		t.Fatalf("replay wrote another change or event")
+	}
+	if again.Ref != record.Ref {
+		t.Fatalf("replay ref = %s, want %s", again.Ref, record.Ref)
+	}
+}
+
+// TestCheckOutReservationRefusals is the DR3 guard: a booking in
+// another state is refused STATE_ILLEGAL naming the state and writes
+// nothing, and an unknown stay link is NOT_FOUND naming the stay.
+func TestCheckOutReservationRefusals(t *testing.T) {
+	st := New()
+	created, oerr := st.Create(loopInput("deluxe-type"), "")
+	if oerr != nil {
+		t.Fatalf("booking refused: %v", oerr)
+	}
+	created.StayID = "stay-pending"
+	changesBefore := len(st.Changes())
+	if _, refusal := st.CheckOutReservation("stay-pending", "front-desk"); refusal == nil || refusal.Code != "STATE_ILLEGAL" {
+		t.Fatalf("confirmed completion = %v, want STATE_ILLEGAL", refusal)
+	} else if refusal.Details["state"] != "confirmed" || refusal.Details["reservationRef"] != created.Ref {
+		t.Fatalf("STATE_ILLEGAL details = %v, want state and ref named", refusal.Details)
+	}
+	if len(st.Changes()) != changesBefore || created.State != "confirmed" {
+		t.Fatal("refused completion changed the booking")
+	}
+	if _, oerr := st.CheckOutReservation("stay-unknown", "front-desk"); oerr == nil || oerr.Code != "NOT_FOUND" {
+		t.Fatalf("unknown stay = %v, want NOT_FOUND", oerr)
+	}
+}
+
+// TestCompletedBookingReleasesAvailability is the DR4 guard: a closed
+// booking overlapping a same-type, same-date booking consumes no
+// sellable unit, so the same-day booking is accepted by the create
+// and modify guards.
+func TestCompletedBookingReleasesAvailability(t *testing.T) {
+	st := New()
+	first := checkedInForStay(t, st, "deluxe-type", "stay-a")
+	if _, oerr := st.CheckOutReservation("stay-a", "front-desk"); oerr != nil {
+		t.Fatalf("completion refused: %v", oerr)
+	}
+	sameDay := loopInput("deluxe-type")
+	if _, oerr := st.Create(sameDay, ""); oerr != nil {
+		t.Fatalf("same-day booking refused after the close: %v", oerr)
+	}
+	// The modify guard counts the same active set: a booking moved
+	// onto the departed dates is accepted too.
+	other := loopInput("suite-type")
+	other.SellableUnits = 2
+	moved, oerr := st.Create(other, "")
+	if oerr != nil {
+		t.Fatalf("second booking refused: %v", oerr)
+	}
+	if _, oerr := st.Modify(ModifyInput{
+		Ref: moved.Ref, RoomTypeID: "deluxe-type",
+		ArrivalDate: first.ArrivalDate, DepartureDate: first.DepartureDate,
+		SellableUnits: 2, TotalMinor: 24000, Actor: "front-desk",
+	}, ""); oerr != nil {
+		t.Fatalf("modify onto departed dates refused: %v", oerr)
+	}
+}
+
+// TestCheckedInBookingStillConsumesAvailability is the DR5 negative
+// control: the same request is refused while the booking is still
+// checked in, so the release comes from the state and not a wider
+// availability rule.
+func TestCheckedInBookingStillConsumesAvailability(t *testing.T) {
+	st := New()
+	checkedInForStay(t, st, "deluxe-type", "stay-a")
+	if _, oerr := st.Create(loopInput("deluxe-type"), ""); oerr == nil || oerr.Code != "CONFLICT" {
+		t.Fatalf("same-day booking beside an in-house guest = %v, want CONFLICT", oerr)
+	}
+}
+
+// TestEarlyDepartureReleasesBookedNights is the DR6 guard: a booking
+// whose recorded departure is later than the close stops blocking a
+// same-day arrival already on file, with no date rewrite on either
+// booking.
+func TestEarlyDepartureReleasesBookedNights(t *testing.T) {
+	st := New()
+	early := loopInput("deluxe-type")
+	early.ArrivalDate = "2026-11-01"
+	early.DepartureDate = "2026-11-05"
+	first, oerr := st.Create(early, "")
+	if oerr != nil {
+		t.Fatalf("booking refused: %v", oerr)
+	}
+	if _, oerr := st.CheckIn(first.Ref, "stay-a", "front-desk"); oerr != nil {
+		t.Fatalf("check-in refused: %v", oerr)
+	}
+	next := loopInput("deluxe-type")
+	next.ArrivalDate = "2026-11-03"
+	next.DepartureDate = "2026-11-06"
+	if _, oerr := st.Create(next, ""); oerr == nil || oerr.Code != "CONFLICT" {
+		t.Fatalf("same-type booking beside the in-house guest = %v, want CONFLICT", oerr)
+	}
+	completed, oerr := st.CheckOutReservation("stay-a", "front-desk")
+	if oerr != nil {
+		t.Fatalf("completion refused: %v", oerr)
+	}
+	if completed.ArrivalDate != "2026-11-01" || completed.DepartureDate != "2026-11-05" {
+		t.Fatalf("completion rewrote the dates: %+v", completed)
+	}
+	if _, oerr := st.Create(next, ""); oerr != nil {
+		t.Fatalf("early departure still blocks the same-day arrival: %v", oerr)
+	}
+}
+
+// TestCompletedBookingReadsTerminal is the DR10 guard: the calendar
+// row keeps the closed booking in history, and check-in, modify,
+// cancel, and no-show on it are refused with the module's state
+// refusal and change nothing.
+func TestCompletedBookingReadsTerminal(t *testing.T) {
+	st := New()
+	record := checkedInForStay(t, st, "deluxe-type", "stay-a")
+	if _, oerr := st.CheckOutReservation("stay-a", "front-desk"); oerr != nil {
+		t.Fatalf("completion refused: %v", oerr)
+	}
+	entries := st.Query(record.ArrivalDate, record.DepartureDate, "deluxe-type")
+	if len(entries) != 1 || entries[0].State != "closed" {
+		t.Fatalf("calendar entries = %+v, want the closed booking in history", entries)
+	}
+	if _, oerr := st.CheckIn(record.Ref, "stay-b", "front-desk"); oerr == nil || oerr.Code != "STATE_ILLEGAL" {
+		t.Fatalf("check-in completed = %v, want STATE_ILLEGAL", oerr)
+	}
+	if _, oerr := st.Modify(ModifyInput{Ref: record.Ref, ArrivalDate: "2026-11-02", DepartureDate: "2026-11-04", SellableUnits: 2, TotalMinor: 24000, Actor: "front-desk"}, ""); oerr == nil || oerr.Code != "STATE_ILLEGAL" {
+		t.Fatalf("modify completed = %v, want STATE_ILLEGAL", oerr)
+	}
+	if _, oerr := st.Cancel(record.Ref, "guest-request", "front-desk", ""); oerr == nil || oerr.Code != "STATE_ILLEGAL" {
+		t.Fatalf("cancel completed = %v, want STATE_ILLEGAL", oerr)
+	}
+	if _, oerr := st.MarkNoShow(record.Ref, "no-arrival", "night-audit"); oerr == nil || oerr.Code != "STATE_ILLEGAL" {
+		t.Fatalf("no-show completed = %v, want STATE_ILLEGAL", oerr)
+	}
+	if record.State != "closed" {
+		t.Fatalf("booking state = %s after refused attempts, want closed", record.State)
+	}
+}

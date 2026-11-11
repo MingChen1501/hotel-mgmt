@@ -191,3 +191,64 @@ func TestPostgresLifecycleModifyCancelNoShow(t *testing.T) {
 		}
 	}
 }
+
+// TestPostgresCheckOutReservationParity is the DR11 guard for the
+// completion: the conditional write records one state change with the
+// actor and writes no event, a replay completes nothing new, and the
+// availability pair (a closed booking releases the unit, a checked-in
+// booking still consumes it) behaves the same over Postgres.
+func TestPostgresCheckOutReservationParity(t *testing.T) {
+	db := pgTestDB(t)
+	pgWipe(t, db)
+	pg := NewPostgres(db)
+
+	created, oerr := pg.Create(pgLoopInput(), "")
+	if oerr != nil {
+		t.Fatalf("create refused: %v", oerr)
+	}
+	stayID := "44444444-4444-4444-8444-444444444444"
+	checked, oerr := pg.CheckIn(created.Ref, stayID, "front-desk")
+	if oerr != nil {
+		t.Fatalf("check-in refused: %v", oerr)
+	}
+	if _, oerr := pg.Create(pgLoopInput(), ""); oerr == nil || oerr.Code != "CONFLICT" {
+		t.Fatalf("same-type booking beside the in-house guest = %v, want CONFLICT", oerr)
+	}
+
+	completed, oerr := pg.CheckOutReservation(stayID, "front-desk")
+	if oerr != nil {
+		t.Fatalf("completion refused: %v", oerr)
+	}
+	if completed.State != "closed" || completed.StayID != stayID || completed.ArrivalDate != checked.ArrivalDate {
+		t.Fatalf("unexpected completed record: %+v", completed)
+	}
+	if _, oerr := pg.CheckOutReservation(stayID, "front-desk"); oerr != nil {
+		t.Fatalf("replayed completion refused: %v", oerr)
+	}
+
+	var changes, events int
+	if err := db.QueryRow(`SELECT count(*) FROM reservations.reservation_changes WHERE changed_field = 'state'`).Scan(&changes); err != nil || changes != 2 {
+		t.Fatalf("state changes = %d, %v; want 2 (created + completed)", changes, err)
+	}
+	if err := db.QueryRow(`SELECT count(*) FROM reservations.outbox`).Scan(&events); err != nil || events != 2 {
+		t.Fatalf("outbox = %d, %v; want 2 (created + checked-in only)", events, err)
+	}
+
+	if _, oerr := pg.Create(pgLoopInput(), ""); oerr != nil {
+		t.Fatalf("same-day booking refused after the close: %v", oerr)
+	}
+
+	entries := pg.Query("2026-11-01", "2026-11-03", "11111111-1111-4111-8111-111111111111")
+	var closedRows int
+	for _, entry := range entries {
+		if entry.State == "closed" && entry.Ref == created.Ref {
+			closedRows++
+		}
+	}
+	if closedRows != 1 {
+		t.Fatalf("calendar entries = %+v, want the closed booking kept in history", entries)
+	}
+	if _, oerr := pg.CheckOutReservation("55555555-5555-4555-8555-555555555555", "front-desk"); oerr == nil || oerr.Code != "NOT_FOUND" {
+		t.Fatalf("unknown stay completion = %v, want NOT_FOUND", oerr)
+	}
+}

@@ -19,9 +19,10 @@ Node.js/TypeScript flat `src/` files over raw `node:http` (no web framework), wi
 | Validation + step order | `src/store.ts` (`StayStore`, `StayStoreAPI`) | per-operation input checks, folio gate, idempotent in-house/closed transitions, outbox events |
 | Row storage | `src/store.ts` (in-memory `Map`s), `src/pgstore.ts` (`PostgresStayStore implements StayStoreAPI`) | identical semantics; Postgres selected at boot when `DATABASE_URL` is set |
 | Errors | `src/errors.ts` | `HttpError` code→status map, `errorEnvelope` |
-| Boot | `src/index.ts` | store selection by `DATABASE_URL`, `listen(PORT)` |
+| Booking completion | `src/reservationsClient.ts` | `createReservationsClient` posts the committed close to Reservations `CheckOutReservation` with the caller Bearer token and a 2-second cap; fail-soft, returns `bookingCompletion` |
+| Boot | `src/index.ts` | store selection by `DATABASE_URL`, `RESERVATIONS_BASE_URL` client wiring, `listen(PORT)` |
 
-The operation table (`src/server.ts:116-171`): `CheckIn` (:116), `GetStay` (:121), `QueryStays` (:126), `CheckOut` (:131), `MoveRoom` (:136), `RecordActualTimes` (:144), `GetStayRef` (:149), `ListArrivalsDepartures` (:154); unknown operations return `NOT_FOUND` (:164-171).
+The operation table (`src/server.ts:117-167`): `CheckIn` (:117), `GetStay` (:122), `QueryStays` (:127), `CheckOut` (:132), `MoveRoom` (:139), `RecordActualTimes` (:147), `GetStayRef` (:152), `ListArrivalsDepartures` (:157); unknown operations return `NOT_FOUND` (:167). `CheckOut` forwards the caller Bearer token to the completion client (LLD section 22).
 
 ## 3. Happy-path flowchart
 
@@ -51,9 +52,12 @@ CheckOut (`POST /v1/stay/CheckOut`) — the folio-gated close:
 ```mermaid
 flowchart TD
     G[Folio gate] --> H[Idempotency replay?]
-    H -->|key seen| R200[200 original close]
+    H -->|key seen| RREPLAY[200 original close + completion re-attempted]
     H -->|new| I[Stay exists and in-house?]
     I -->|yes| J[Close + checked-out event]
+    J --> K[Complete the booking through Reservations]
+    K -->|recorded| R200[200 closed + bookingCompletion completed]
+    K -->|not recorded| RSPLIT[200 closed + bookingCompletion not-recorded]
     G -->|unsettled, no approval| R409[409 SETTLEMENT_REQUIRED, stays in-house]
     I -->|no| RERR[404 NOT_FOUND or 422 STATE_ILLEGAL]
 ```
@@ -63,12 +67,13 @@ Edge trace:
 - G: non-integer balance → `VALIDATION_FAILED`; non-zero balance without a recorded `openBalanceApproval` object → `SETTLEMENT_REQUIRED`, stay remains in house (`src/store.ts:148-168`); gate runs before any state read (`src/store.ts:260-264`).
 - H: replayed `idempotencyKey` returns the original close (`src/store.ts:266-271`); paired simultaneous check-outs resolve exactly one winner, the loser is refused below.
 - I: unknown stay → `NOT_FOUND` (:273-274); already `closed` → `STATE_ILLEGAL` (:276-281).
-- J: state flips to `closed`, `actualDeparture` stamped, `stay.checked-out` outbox event queued, key recorded (:282-292).
+- J: state flips to `closed`, `actualDeparture` stamped, `stay.checked-out` outbox event queued, key recorded (`src/store.ts`; Postgres one transaction `src/pgstore.ts`).
+- K: after the commit (and on a replay) `completeBooking` posts `{stayId, actor}` to Reservations with the caller token and maps every non-recording outcome to `bookingCompletion: {state: "not-recorded", reason}`; the close stays `200 closed` and the split is reported (`src/store.ts`, `src/reservationsClient.ts`; `FR-DEP-5`).
 - MoveRoom follows the same shape: in-house conditional write with idempotent key replay (`src/store.ts:300-344`); room assignment/release around it is the desk's Rooms `AssignRoom`/`ReleaseRoom` calls, not a stay-side rollback.
 
 ## 5. Outbound dependencies
 
-None at runtime. The folio-gate inputs (`folioBalanceMinor`, `openBalanceApproval`) arrive inside the `CheckOut` request — the desk fetches them from Billing `GetFolioBalance` first. The stay links back to Reservations via `CheckInReservation` (called by the desk with the new stay id). Emits `stay.checked-in` / `stay.checked-out` outbox events (`src/store.ts:215-219,284-288`; Postgres `src/pgstore.ts:97,201,286,349`, helper :460-468) consumed by Reporting and Guests `linkStay`. Hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (LLD [section 0](../lld.md)).
+The folio-gate inputs (`folioBalanceMinor`, `openBalanceApproval`) arrive inside the `CheckOut` request — the desk fetches them from Billing `GetFolioBalance` first. After the close commits, Stay calls Reservations `CheckOutReservation` (`{stayId, actor}`, caller Bearer forwarded, 2-second cap, `RESERVATIONS_BASE_URL` default `http://reservations:8081`; `src/reservationsClient.ts`); the stay links back to Reservations via `CheckInReservation` (called by the desk with the new stay id). Emits `stay.checked-in` / `stay.checked-out` outbox events (`src/store.ts:215-219,284-288`; Postgres `src/pgstore.ts:97,201,286,349`, helper :460-468) consumed by Reporting and Guests `linkStay`. Hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (LLD [section 0](../lld.md)).
 
 See also: [deployment](../system-architecture.md) (section 1), [C4 containers](../c4-containers.md), and [event flow](../event-flow.md) (this service's outbox emissions).
 
@@ -160,15 +165,18 @@ and section 5 says "None at runtime".
 Design: `docs/architecture/lld.md` section 21; threat-model B5 and
 residual risks R5–R7 in `docs/technical/security-threat-model.md`.
 
-## 9. Planned delta — departure completes the booking (Refs #646)
+## 9. Departure completes the booking (Refs #646)
 
-Not as-built yet: `checkOut` closes only the stay row and queues
-`stay.checked-out` (`src/store.ts:282-290`; Postgres
-`src/pgstore.ts:161-206`), so the booking behind the stay keeps reading
-`checked-in`. This section records the target the implementation PR
-folds into sections 2, 4, 5, and 6 in the same change
-(maintain-with-code). It layers on the #601 delta above: the completion
-runs after the flip, whichever order the two clients land in.
+As-built: `checkOut` closes the stay row, queues `stay.checked-out`
+(`src/store.ts`; Postgres `src/pgstore.ts`), and then completes the
+booking behind the stay through Reservations
+`CheckOutReservation`, so the departed booking leaves the active
+availability set (`FR-DEP-1`, `FR-DEP-2`). Sections 2, 4, 5, and 6
+carry this step; the lifecycle and per-flow diagrams are LLD
+[section 22](../lld.md) and `docs/architecture/state-machine.md`
+[section 1.1](../state-machine.md). It layers on the #601 delta above:
+the completion runs after the flip, whichever order the two clients
+land in.
 
 - New outbound client: one Reservations `CheckOutReservation` call after
   the conditional `in-house -> closed` flip commits and before the

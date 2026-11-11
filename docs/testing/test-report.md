@@ -304,3 +304,14 @@ consolidation of record for their own slices):
 
 <!-- ao-role: dev -->
 Role: dev · AO session hotel-mgmt-282
+
+### 1.15 Departure release and same-day reuse (#646 → implementation PR; merge pending)
+
+| Cell | Guard (test location + case) | Pass evidence |
+|---|---|---|
+| `AC-DEP-1` / `FR-DEP-1` completion | `services/reservations` `TestCheckOutReservationCompletesBooking`, `TestCheckOutReservationIsIdempotent`, `TestPostgresCheckOutReservationParity`; handler `TestDeskCheckOutReservationCompletesBooking`; Stay `completes the booking with the caller token forwarded (DR7)`, `re-attempts the completion on a replayed close (DR9)` | Implementation PR local: `go test ./...` reservations green; `npm test` stay 24/24 (Postgres parity cases skip without `TEST_PG_URL`); isolated lab (evidence `docs/testing/evidence/646/README.md`) read back the booking `closed` with `bookingCompletion.state = completed` |
+| `AC-DEP-2` / `FR-DEP-2` availability release | `services/reservations` `TestCompletedBookingReleasesAvailability`, `TestCheckedInBookingStillConsumesAvailability` (negative control), `TestEarlyDepartureReleasesBookedNights`; handler `TestEarlyDepartureUnblocksSameDayBooking`; `TestPostgresCheckOutReservationParity` | Local suites green; lab: pre-fix B booking `409 CONFLICT`, fixed B booking `200` and check-in `200` |
+| `AC-DEP-3` / `FR-DEP-4` same-day turnover | `app/src/views/desk-edge-guards.test.ts` "same-day departure reuse chain" (release -> clean -> inspected -> offered -> assigned -> checked in), `services/rooms/src/server.test.ts` per-step halves unchanged, `app/src/views/RoomsView.test.ts` button pair unchanged | Local: `vitest` desk-edge-guards 24/24; lab: room released `vacant-dirty`, marked clean and inspected, assigned to B, B checked in the same day |
+| `AC-DEP-4` / `FR-DEP-3` terminal reads | `services/reservations` `TestCompletedBookingReadsTerminal`; handler refusals for check-in/modify/cancel/no-show on a completed booking | Local suites green; no reopen operation in the handler surface |
+| `AC-DEP-5` / `FR-DEP-5` refusals and split | Stay `reports a split instead of failing the committed close (DR8)`, `reports an unwired completion client without inventing a refusal`, `sends no completion call for a refused close`; desk `reports a booking completion that could not be recorded without claiming it` (`DR13`) | Local: stay 24/24, StayView 71/71; the refused-close paths keep the #588/#600/#601 assertions unchanged |
+| Contract and no-change gates | `contracts/http/CheckOutReservation.json` (new), `contracts/http/CheckOut.json` 1.0 -> 1.1, `script/contract-check.sh`, `script/openapi-route-check.sh`, `script/catalogue-coverage-check.sh`, `script/markdown-link-check.sh` | Local: all four scripts PASS; no event-schema, schema, or migration change |
