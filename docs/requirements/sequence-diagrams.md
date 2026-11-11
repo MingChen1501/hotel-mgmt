@@ -8,7 +8,7 @@ names the `FR-CUS-*` control from requirements section 3.1 that governs
 it. Fixed lifecycle order (section 3.2) is never configurable. States cited
 below are those of `docs/architecture/state-machine.md`; entity
 relationships are those of `docs/architecture/erd.md`. Where the
-behaviour docs disagree, section 15 lists the conflict and this document
+behaviour docs disagree, section 16 lists the conflict and this document
 follows the FR.
 
 Terminology follows `docs/requirements/domain-consistency-audit.md`
@@ -458,7 +458,52 @@ Owner or manager changes to any section 3.1 item apply at once with no code
 changes, and each change records who made it and when (`NFR-AUD-1`,
 requirements section 3.3).
 
-## 15. Consistency statement and conflicts
+## 15. Booking register read
+
+Read the bookings staying in an inclusive night range, complete each
+row from the record, and open one row's read-back detail. Nothing is
+created, changed, cancelled, checked in, or checked out.
+
+- Preconditions: staff are signed in; the register opens on the business date through the next six nights.
+- Postconditions: the range's bookings are listed in arrival-then-reference order with guest, reference, room type, assigned room when in house, dates, nights, total, and state, with the plain empty or failure sentence where they apply, and the selected booking's read-back detail is shown — or the read was refused and nothing was written.
+
+```mermaid
+sequenceDiagram
+    participant Staff as Front-desk staff
+    participant Reg as Booking register
+    participant Res as Reservation records
+    participant Rooms as Room and stay reads
+    Staff->>Reg: Open the register (default range: business date through six nights) [FR-BMV-1, FR-BMV-3]
+    Reg->>Reg: Validate the range; an inverted or missing range names the field and sends nothing [FR-BMV-3]
+    Reg->>Res: QueryCalendar(dateFrom = first night, dateTo = last night + 1) [FR-RES-5, FR-BMV-3; overlap arrival < dateTo and departure > dateFrom]
+    alt List read fails
+        Res-->>Staff: One plain read-failed sentence with retry; no row invented [FR-BMV-6]
+    else Entries returned
+        Reg->>Res: GetReservation per listed booking for guest, price basis, and state [FR-BMV-2, FR-RTE-5; price frozen at booking, BR-13]
+        Reg->>Rooms: ListRoomTypes, ListArrivalsDepartures, ListRoomsByState for the type name and the in-house room [FR-BMV-2; state per BR-1]
+        alt A per-row or map read fails
+            Reg-->>Staff: That row keeps its calendar fields and says which cells are unreadable; one notice counts them [FR-BMV-6]
+        else Every row complete
+            Reg-->>Staff: Rows ordered by arrival then reference, capped at 50 with the narrow-the-dates sentence [FR-BMV-2]
+        end
+        alt No booking stays in the range
+            Reg-->>Staff: One plain sentence naming the range; no row invented [FR-BMV-4]
+        end
+    end
+    Staff->>Reg: Select a row [FR-BMV-5]
+    Reg->>Res: GetReservation fresh read-back [FR-BMV-5]
+    alt Detail read fails
+        Res-->>Staff: One plain sentence naming the reference with retry; the list stands [FR-BMV-6]
+    else Read-back returned
+        Res-->>Staff: Reference, guest, type, assigned room, dates, nights, total, discount, state — no action offered [FR-BMV-5]
+    end
+```
+
+No status change is written anywhere in this flow: the register offers
+no create, modify, cancel, no-show, check-in, check-out, or room action
+(`FR-BMV-1`, `FR-BMV-7`).
+
+## 16. Consistency statement and conflicts
 
 Each step above was checked against `docs/architecture/state-machine.md`
 (booking: confirmed to checked-in to closed, with cancelled and

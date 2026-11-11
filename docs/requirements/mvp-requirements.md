@@ -67,6 +67,15 @@ staff open the calendar; then every reservation appears on its
 correct dates with its room type and state, and selecting one shows
 its reference, guest, and price.
 
+Amendment (Refs #648): the desk surface that carries the
+list-and-detail half of this condition — a read-only booking register
+at `/app/bookings` listing the bookings staying in an inclusive night
+range with guest, reference, room type, assigned room, dates, nights,
+quoted total, and state, with a fresh `GetReservation` row detail — is
+worded in section 25 (`FR-BMV-1`..`FR-BMV-7`). The
+date-by-room-type grid half stays unimplemented and is recorded as a
+gap there; this condition is otherwise unchanged.
+
 FR-RES-6 — No-show handling. Staff can mark an unarrived reservation
 as no-show and release the held room.
 Given a reservation whose arrival date has passed without check-in;
@@ -588,7 +597,7 @@ product scope have no FR and are listed in section 6.
 | Create direct reservation | FR-RES-1, FR-RTE-5 | Guard books each room type across a season boundary and checks quoted price and reference |
 | Modify and cancel reservation | FR-RES-2, FR-RES-3 | Guard changes dates/type/guest, checks repricing, then cancels and checks the reason and released availability |
 | Walk-in booking | FR-RES-4 | Guard creates a same-day booking and checks arrival-state readiness and arrivals-list entry |
-| Reservation calendar | FR-RES-5 | Guard seeds multi-date, multi-type bookings and checks placement and detail drill-down |
+| Reservation calendar | FR-RES-5 | Guard seeds multi-date, multi-type bookings and checks placement and detail drill-down; guard reads the booking register across an inclusive night range and checks each row's guest, reference, type, assigned room, dates, nights, total, and state, the plain empty range, the fresh read-back detail, and the failure states with no invented value (Refs #648) |
 | No-show handling | FR-RES-6 | Guard marks a past-arrival booking no-show and checks state, released room, and history |
 | Check-in | FR-FDK-1 | Guard checks in against a ready room and checks stay link and occupied state; guard refuses a commit after the assignment and checks that the room it assigned is released back to ready with the refusal named, and that a refusal after the stay committed keeps the room occupied with the stay in house (Refs #647) |
 | Check-out | FR-FDK-2, FR-BIL-7 | Guard checks out a settled stay and checks closure, final invoice, and vacant-dirty state with the departed room released once and the desk lists re-read; guard attempts open-balance check-out and checks refusal on every desk route unless an authorised, provenanced approval is recorded, and that an approved close stays closed when the release fails (Refs #588); guard closes through the service with a forged balance and again with a forged approval and checks that both are refused on the folio Billing holds, that an unreadable folio refuses rather than closes, and that the desk flows keep passing (Refs #601); guard completes the booking behind the stay on the same close and checks that the departed booking reads closed, holds nothing for availability, and leaves the departed room reusable the same day (Refs #646) |
@@ -5588,5 +5597,429 @@ backfill exists in either direction.
   state, subsystem, or schema). This section is its FR/NFR part; no
   implementation PR opens until `SPEC-GATE PASS` on #647.
 
+## 25. Booking management desk view (Refs #648)
+
+Requirements delta for the #648 change: owner manual QA (2026-11-10)
+found that the desk has no booking-management view — staff cannot list
+the bookings for a range of nights with the guest, the room type, the
+dates, and the price, and a booking is not browsable again after its
+confirmation. No capability is new: `US-RES-5`, `FR-RES-5`, and
+`AC-RES-5` already promise that staff see reservations across dates and
+room types on one screen and that selecting one shows its reference,
+guest, and price; the requirement was never given a surface. The
+requirements were also silent on the two things that surface needs
+stated — how the screen's inclusive night range maps onto the calendar
+read the service serves, and what the screen shows when one of its
+reads fails — so this section words them.
+
+The scope decision, the binding done-conditions, the T2 UI contract,
+and the EN+VI copy are `product-owner` work:
+`docs/product/booking-management-view.md`
+[screen spec](../product/booking-management-view.md) (active),
+`docs/product/acceptance-criteria.md`
+[section 17](../product/acceptance-criteria.md) (`AC-BMV-1`..`AC-BMV-7`),
+`docs/product/desk-ui-design-rollout.md`
+[section 6.18](../product/desk-ui-design-rollout.md) (the desk delta and
+the catalogue keys), and D-28 in
+`docs/project/decision-log.md`
+[the decision log](../project/decision-log.md). This section words the
+requirements half: the decision (25.1), the explicit no-change
+statements (25.2), the FR delta (25.3), the NFR statement (25.4), the
+traceability handoff with its per-flow diagram (25.5), and the gate
+dependencies (25.6). No `docs/README.md` row flips: every requirements
+file this change touches is already `active`.
+
+### 25.1 Decision: one read-only register over the operations that exist
+
+As-built validation at this spec head, read-only — the lab
+reproduction of the read path belongs in the implementation PR body or
+an issue comment, per the issue's scope:
+
+- **No screen lists bookings.** `app/src/router.ts:45-118` registers
+  the desk, book, stay, onboarding, rooms, manage, folio, print, and
+  admin routes and no others; the booking screen creates a booking and
+  renders its confirmation, and nothing under `app/src/` lists
+  reservations for a range.
+- **The range read already exists.** `QueryCalendar` returns the
+  bookings overlapping a window with their reference, room type,
+  arrival, departure, state, and stay link
+  (`contracts/http/QueryCalendar.json`), and the overlap rule is
+  `arrival < dateTo` and `departure > dateFrom`
+  (`services/reservations/internal/store/store.go:191-193`,
+  `services/reservations/internal/store/postgres.go:311-321`).
+- **The record read already carries the guest and the frozen price.**
+  `GetReservation` returns the guest snapshot and
+  `priceBasis.totalMinor` / `priceBasis.discountName` beside the dates
+  and the state
+  (`services/reservations/internal/handler/handler.go:161-180`).
+- **The assigned room needs two existing reads.** A booking carries no
+  room number: the room a guest holds is the in-house stay's room link
+  (`services/stay/src/server.ts:157-165`, `ListArrivalsDepartures`),
+  resolved to a number through the occupied room list
+  (`services/rooms/src/server.ts:112-126`, `ListRoomsByState`), which is
+  how the desk already maps rooms on other screens.
+- **Neither list read guarantees an order.** The in-memory calendar
+  read iterates a map and the Postgres read carries no `ORDER BY`
+  (`services/reservations/internal/store/postgres.go:311-321`), so the
+  screen must sort the rows itself.
+- **The entry and copy patterns exist.** The design-header order and
+  its labels are pinned by `app/src/App.test.ts:182-209` and
+  `app/src/shell-restyle.test.ts:26-27`, the per-route document titles
+  by `app/src/router.test.ts:155-179`, and the app-only-tab allowance
+  pattern by `app/e2e/design-facts.ts:509-516` (the `manage` entry).
+
+The decided behaviour, in five parts:
+
+1. **One read-only screen, one tab, existing operations only.** The
+   desk gains one tab immediately after `Book` and one screen at
+   `/app/bookings`, inside the unchanged shared shell. The screen reads
+   with the signed-in session through the operations that already
+   exist — `QueryCalendar`, `GetReservation`, `ListRoomTypes`,
+   `ListArrivalsDepartures`, and `ListRoomsByState` — and offers no
+   write action of any kind: no create, modify, cancel, no-show,
+   check-in, check-out, or room action, and no link into an edit flow
+   (`FR-BMV-1`, `FR-BMV-7`). Because it writes nothing, it adds no role
+   gate of its own: every signed-in hotel role sees the same view, and
+   the role reach of the operations behind it is unchanged.
+2. **The range is inclusive of nights in product words.** Staff choose
+   a first night and a last night; a booking is in range when it stays
+   at least one night between them. `QueryCalendar` compares
+   `arrival < dateTo` and `departure > dateFrom`, so the screen sends
+   `dateFrom` = first night and `dateTo` = last night plus one day: a
+   booking staying the last night is listed and one departing on the
+   first night is not (`FR-BMV-3`). On entry the range is the business
+   date through the next six nights, the desk's working week, anchored
+   on the same local business date the desk board derives
+   (`app/src/views/DeskView.vue:531-535`).
+3. **One row per booking staying in the range, complete or honestly
+   partial.** `QueryCalendar` supplies reference, room type, dates,
+   state, and the stay link; the guest name and quoted total are
+   completed per row from `GetReservation`, the type name from
+   `ListRoomTypes`, and the assigned room — only when the guest is in
+   house — from `ListArrivalsDepartures` and `ListRoomsByState`. Rows
+   are ordered by arrival date then reference on the screen, and one
+   list read renders at most 50 bookings with a plain sentence stating
+   the count and asking staff to narrow the dates. Every state is
+   listed, because a cancelled or completed booking in the range is
+   history the desk must still read. A row whose per-row read failed
+   keeps the fields it has and says which cells it could not read; no
+   booking in the range is invented or silently dropped (`FR-BMV-2`).
+4. **The detail is a fresh read-back, not a re-derivation.** Selecting
+   a row reads that booking again through `GetReservation` and shows
+   what the operation returned — dates, price basis including the
+   recorded discount name, state, assigned room, guest, and room type.
+   The detail does not recalculate the total, reprice the stay, or
+   re-derive a state from the dates: the quoted price is frozen at
+   booking (`FR-RTE-5`) and the state is the lifecycle record's
+   (`BR-1`). It carries no action; another selection replaces it and a
+   new range clears it (`FR-BMV-5`).
+5. **Failures are plain sentences, never guessed values.** A failed
+   list, per-row, room-type, in-house, occupied-room, or detail read is
+   one plain catalogue sentence naming what could not be read with a
+   retry, and the affected cells state that they could not be read
+   instead of showing a guessed guest name, amount, room, or type. No
+   failure surfaces a stack trace or an envelope code, and the rest of
+   the desk stays usable (`FR-BMV-6`).
+
+| Option | Verdict | Reason |
+|---|---|---|
+| Status quo: staff read bookings one reference at a time | rejected | That is the reported defect, and `FR-RES-5` / `AC-RES-5` already promise the overview; the data is already served by existing operations. |
+| Put modify, cancel, or no-show actions on the register | rejected | Those are separate flows with their own requirements and refusals (`FR-RES-2`, `FR-RES-3`, `FR-RES-6`, `BR-2`, `BR-3`, `BR-5`); widening a read surface would drag their repricing, reason, and release rules into a view that promises none of them. |
+| A new list operation returning guest and total in one read | rejected | No requirement needs it: the calendar read plus the record read answer the question. The per-row fan-out is bounded by the 50-row cap, and a composed read is an `architect` follow-up if the desk measures it as slow (G2). |
+| Filter the register to active bookings only | rejected | `FR-RES-5` shows the booking's state, and hiding cancelled or completed bookings would misstate what the range holds; the state chip and muted ink make an inactive row readable without dropping it. |
+| Paging, a state or room-type filter, or column sorting | rejected | The issue asks for a date-range list; the contract carries no paging, and the 50-row cap with the narrow-the-dates sentence answers v1. Each addition is a follow-up, not an implied capability (G3). |
+| Derive the total, the state, or the room from the dates | rejected | The quoted price is frozen at booking (`FR-RTE-5`) and the state is the lifecycle record's (`BR-1`); a derived value would show a number the record does not hold. A `closed` booking shows no assigned room because no read exposes it (G4). |
+| Read the reservation store or the database directly from the desk | rejected | The desk reads through the published operations like every other screen (`NFR-SEC-1`); a client that reads storage cannot be guarded, versioned, or deployed as an app-only change. |
+| One read-only register over the operations that exist, with an inclusive night range and a fresh read-back detail | **chosen** | It answers the owner's question with the data already served, adds no endpoint, state, or write, keeps every lifecycle flow where it is, and leaves the grid, the filters, paging, and a composed list read as recorded follow-ups. |
+
+### 25.2 Explicit no-change statements
+
+- The MVP capability keeps its wording and target: `FR-RES-5` gains an
+  amendment pointer to this section and keeps its Given/When/Then
+  condition. What changes is that the list-and-detail surface the
+  condition promises now has stated behaviour, not what the condition
+  promises.
+- No new MVP capability, story, or business rule enters the MVP count:
+  section 4 keeps its 40 mapped capabilities and its coverage line, and
+  only the `Reservation calendar` handoff note gains a clause. The
+  behaviour is numbered as slice-scoped requirements (`FR-BMV-*`,
+  section 25.3) on the section 10–24 pattern.
+- `business-rules.md` stands as written and is not edited. `BR-1`
+  already decides the reservation state set and the lifecycle order, and
+  `BR-13`/`BR-15` already decide that the quoted price and the recorded
+  discount are the booking's own; this section reads those facts and
+  adds no policy. There is no new who-may-view rule because the view
+  writes nothing: `NFR-SEC-1` already fixes the role reach of the
+  operations it calls.
+- No lifecycle state is added, and no state is re-derived: the
+  reservation state set, its transitions, and the stay's in-house state
+  are unchanged (`docs/architecture/state-machine.md`), and the screen
+  prints the record's state.
+- No new field, operation, contract, or schema is specified, and no
+  contract changes: the register composes `QueryCalendar`,
+  `GetReservation`, `ListRoomTypes`, `ListArrivalsDepartures`, and
+  `ListRoomsByState` exactly as they are served today. A composed list
+  read, paging, and a state or room-type filter are follow-ups (G2, G3).
+- No write path exists or is implied: modification and repricing stay
+  with `FR-RES-2`, cancellation with `FR-RES-3`, no-show with
+  `FR-RES-6`, check-in and room moves with `FR-FDK-1`/`FR-FDK-3`, and
+  check-out with `FR-FDK-2`. The register offers none of them (G5).
+- The board, the Book, Stay, Folio, Rooms, Manage, and Print screens are
+  unchanged: this change adds one route and one tab and edits no
+  existing screen.
+- Money and dates keep their decided display shape (sections 12 and 14,
+  `BR-43`): integer minor units on the wire, the desk VND money form for
+  the quoted total, ISO dates on the wire, and the desk date form for
+  row and detail dates (`NFR-TZ-1` holds).
+- Print output is unchanged (`FR-BIL-4`, `NFR-DSK-2`): the screen has no
+  print surface and its styling does not reach the print routes.
+- Catalogue and locales: every new label and message is a VI-primary
+  catalogue key with EN parity and matching placeholders
+  (`NFR-I18N-1`, `NFR-DSK-1`), added by the implementation PRs, one
+  section per PR; `script/catalogue-coverage-check.sh` stays green. This
+  section adds no key.
+- Data model: no entity and no field. The register is a view of the
+  reservation record, its stay link, and the room list; the glossary
+  sentence it needs is recorded in `data-dictionary.md` section 1 and
+  introduces no behaviour.
+- Sections 7 through 24 stand with their wording and targets unchanged,
+  except the one amendment pointer in section 1, the one handoff-note
+  clause in section 4, and the amendments in the use cases, sequence
+  diagrams, and data dictionary that carry the same obligation.
+
+### 25.3 Behaviour-scoped functional requirements
+
+Ids use the `BMV` (booking management view) namespace, continuing the
+slice-scoped pattern of sections 10 through 24; `RES` stays the
+lifecycle namespace. They constrain the read-only register only, and
+each maps to an accepted done-condition in `AC-BMV-1`..`AC-BMV-7`.
+
+FR-BMV-1 — One read-only booking register in the shared desk shell.
+Given a signed-in user of any hotel role; when they open the desk
+shell; then a bookings tab labelled `Sổ đặt phòng` (VI) / `Bookings`
+(EN) sits immediately after `Book` and opens the screen at
+`/app/bookings`; the tab label, the route document title, the screen
+title, and the intro resolve through the catalogue in the active
+locale; every other tab, route, the sign-in gate, and the print
+surfaces behave exactly as before; the shell layout and the design
+token set gain nothing; and the screen offers no write action of any
+kind — no create, modify, cancel, no-show, check-in, check-out, or room
+action, and no link into an edit flow. Traces to: `AC-BMV-1`,
+`AC-BMV-7`; US-RES-5; `FR-RES-5`, `FR-DSP-1`; `NFR-I18N-1`.
+
+FR-BMV-2 — The register lists every booking staying in the range
+once, with the facts the desk reads.
+Given bookings exist; when the register renders on its default range
+(the business date through the next six nights) or after another range
+is applied; then every booking staying at least one night in that range
+appears exactly once, ordered by arrival date ascending and then by
+booking reference ascending, each row carrying the guest name, the
+booking reference, the room type, the assigned room when the guest is
+in house and a plain placeholder otherwise, the arrival and departure
+dates, the night count, the quoted total in the desk money form, and
+the state. Every state is listed; there is no state filter. Given the
+range holds more than 50 bookings; then the earliest 50 in that order
+render and one plain sentence states the count and asks staff to narrow
+the dates, and no further page exists. Given the guest is in house;
+then the assigned room is the stay's room resolved through the occupied
+room list, and a confirmed booking — which holds a room type, not a
+room — and a closed booking read the plain placeholder rather than a
+guessed room. Given a per-row read failed; then that row still renders
+the calendar fields it has and states which cells it could not read, and
+it is counted in one notice above the list. A booking in the range is
+never invented and never silently dropped. Traces to: `AC-BMV-2`;
+US-RES-5; `FR-RES-5`, `FR-RTE-5`, `FR-GST-1`; `BR-1`, `BR-19`.
+
+FR-BMV-3 — The night-range filter is inclusive and maps to the
+calendar window.
+Given the first-night and last-night fields; when staff choose a range
+and apply it; then only bookings staying at least one night in that
+inclusive range are listed — the screen sends `dateFrom` as the first
+night and `dateTo` as the last night plus one day, so a booking staying
+the last night is listed and one departing on the first night is not —
+and the list re-reads once on the explicit action, with both fields and
+the action disabled while the read runs and a repeated click a no-op.
+Given a list read completes; then any selected row and its detail
+clear, because a detail for a booking the new range no longer lists
+would contradict the list. Given the last night is before the first
+night, or a field is missing; then the screen names the field in plain
+words and sends nothing — no request is issued for an invalid range.
+The range may span any number of nights; the row cap bounds the reads,
+not the range. Traces to: `AC-BMV-3`; US-RES-5; `FR-RES-5`,
+`NFR-TZ-1`.
+
+FR-BMV-4 — An empty range is one plain sentence naming the range.
+Given the chosen range holds no booking; when the list renders; then
+one plain catalogue sentence names the range in the desk date form, no
+row is invented, and the filter stays usable. Traces to: `AC-BMV-4`;
+US-RES-5; `FR-RES-5`, `FR-DSP-3`.
+
+FR-BMV-5 — A selected row opens the booking's read-back detail.
+Given a listed booking; when staff select its row; then the detail
+reads that booking back with `GetReservation` and shows its reference,
+guest, room type, assigned room when the guest is in house and a plain
+placeholder otherwise, arrival, departure, nights, the quoted total, the
+recorded discount name when the price basis carries one, and its state
+— the values the operation returned, never a recalculated total, a
+repriced stay, or a state re-derived from the dates. The detail carries
+no action and links into no edit flow. Given another row is selected;
+then it replaces the detail. Given a new range is applied; then the
+detail clears, and the card is absent until a selection, so the screen
+never fakes an empty booking. Traces to: `AC-BMV-5`; US-RES-5;
+`FR-RES-5`, `FR-RTE-5`; `BR-1`.
+
+FR-BMV-6 — Every failed read is a plain sentence and no value is
+guessed.
+Given a list, per-row, room-type, in-house-stay, occupied-room, or
+detail read fails; when the screen renders; then the failure is one
+plain catalogue sentence naming what could not be read with a retry
+action, the affected cells state that they could not be read instead of
+showing a guessed guest name, amount, room, or type, one notice counts
+the rows that could not be completed, no booking is silently dropped, no
+stack trace or envelope code is surfaced, and the rest of the desk
+remains usable. Given the detail read fails; then one sentence names the
+booking that could not be read with a retry, the list stays as it was,
+and the previous detail is not kept as if it were current. Traces to:
+`AC-BMV-6`; US-RES-5; `FR-RES-5`, `FR-DSP-3`.
+
+FR-BMV-7 — The register is read-only over the operations that exist,
+and its copy and design facts are checked.
+Given the screen ships; when it is verified; then it calls only
+`QueryCalendar`, `GetReservation`, `ListRoomTypes`,
+`ListArrivalsDepartures`, and `ListRoomsByState` with the signed-in
+session — with no direct database, reservation-store, or
+service-internal access, and no new operation — and offers no write
+action. Every new visible string exists in both catalogues with
+matching placeholders, and `script/catalogue-coverage-check.sh` is
+green. The design-facts gate records the new app-only tab through a
+declared allowance entry while every board screen stays green. The
+owner has reviewed the built screen against the v2 design boards
+before merge (`AC-BMV-7`, the issue's `owner-review`). Traces to:
+`AC-BMV-7`; US-RES-5; `FR-RES-5`, `FR-DSP-3`, `NFR-I18N-1`,
+`NFR-SEC-1`.
+
+### 25.4 Non-functional requirements delta: no-change statement
+
+No new NFR is added. The existing NFRs cover the change:
+
+- Internationalisation and catalogue coverage (`NFR-I18N-1`,
+  `NFR-DSK-1` hold): every new label, column header, state chip, and
+  message is a VI-primary key with EN parity and matching placeholders,
+  and `script/catalogue-coverage-check.sh` stays green. No failure
+  sentence renders an envelope code.
+- Desk response (`NFR-PERF-1` holds): opening the screen is one
+  calendar read plus one room-type read, then one record read per listed
+  booking, bounded by the 50-row cap; nothing polls and no read repeats
+  on a keystroke. The screen's two-second target applies to the same
+  named views as before, and the accepted desk-local cost of a composed
+  read is the fan-out note in the screen spec (G2).
+- Concurrency and safety (`NFR-CON-1`, `NFR-CON-2` hold and are not
+  touched): the register writes nothing, so it cannot race a booking, a
+  check-in, or a close; a row and its detail are always the record the
+  read returned.
+- Time and locale (`NFR-TZ-1`, `BR-43` hold): the default range is
+  anchored on the desk's local business date, dates stay ISO on the
+  wire, and rows and the detail render the desk date form.
+- Security and roles (`NFR-SEC-1`, `NFR-SEC-2` hold): the screen reads
+  with the signed-in session like every other desk screen, adds no
+  route reach, account, or permission, and exposes nothing a
+  reference read does not already return.
+- Audit (`NFR-AUD-1`): no change is made, so nothing new is recorded;
+  the reservation, stay, and room histories are untouched.
+- Retention and availability (`NFR-RET-1`, `NFR-AVL-1` hold): nothing
+  is retained, purged, or fetched from outside the installation
+  differently; the calls are between modules of the same installation.
+- Touch targets and focus (`NFR-DSP-3`, `NFR-DSP-2` hold): the row
+  action and every control keep the 44px target, and each row carries
+  one keyboard stop.
+- Print isolation (`NFR-DSK-2` holds): the screen has no print output
+  and its styling does not reach the print routes.
+
+### 25.5 Traceability handoff for `qa-lead`
+
+Each row traces to the #648 acceptance conditions and to this
+section's FRs. Guards that exist are cited `file:line` against the tree
+this requirement was written on; where no guard exists yet, the row
+names the missing guard explicitly and the implementation PR creates
+it, for `qa-lead` to re-pin at the merged head. The `FR-RES-5` MVP
+guard listed as "stay green" must pass untouched.
+
+| Item | Guard (on disk today; a row marked missing is created by the implementation PR) | Handoff note for `qa-lead` |
+|---|---|---|
+| FR-BMV-1 tab, route, titles, and no write action | `app/src/App.test.ts:182-209` (design-header destinations, labels, and hrefs), `app/src/shell-restyle.test.ts:26-27` (EN and VI nav labels), `app/src/router.test.ts:155-179` (per-route document titles), `app/e2e/design-facts.ts:509-516` (`NAV_TAB_ALLOWANCES`) | Missing guard: a ninth tab immediately after `Book` in route order, the `/app/bookings` route name and title meta, and the screen render with its intro; assert the screen carries no write control (no create, modify, cancel, no-show, check-in, check-out, or room action) and no link into an edit flow |
+| FR-BMV-2 rows, order, cap, and assigned room | `app/src/views/ManageView.test.ts:261` (the app-only-screen precedent: static content pinned in the screen's own suite), `services/reservations/internal/store/store.go:191-193` (overlap rule), `services/reservations/internal/store/postgres.go:311-321` (range read) | Missing guards: a seeded list asserts one row per booking staying in the range with guest, reference, type, assigned room when in house, dates, nights, total, and state; arrival-then-reference order; the 50-row cap with the narrow-the-dates sentence; `—` for a confirmed and a closed row; all five states listed; the empty range |
+| FR-BMV-3 inclusive range and validation | `app/src/views/DeskView.vue:531-535` (local business date the default range anchors on) | Missing guards: the inclusive-night mapping asserts `dateFrom` = first night and `dateTo` = last night plus one day, that a booking staying the last night is listed and one departing on the first night is not, one read per apply with the fields disabled, the no-op second click, the selection clear, and the inverted or missing range sending nothing with the field named |
+| FR-BMV-4 empty range sentence | `app/src/views/DeskView.test.ts:617` (the plain-words empty-state wording precedent) | Missing guard: an empty range renders one sentence naming the range in the desk date form, no row, and a usable filter |
+| FR-BMV-5 fresh read-back detail | `services/reservations/internal/handler/handler.go:161-180` (the read-back shape), `services/reservations/internal/handler/handler_test.go:171` (`TestDeskLifecycleModifyCancelNoShowCalendar`; the record read already answers dates, guest, price, and state on every entry) | Missing guards: selecting a row issues a fresh `GetReservation` and renders its values; the recorded discount name shows when the basis carries one; a second selection replaces and a new range clears; the detail offers no action |
+| FR-BMV-6 failure states and unreadable cells | `app/src/views/DeskView.test.ts:582-606` (a failed guest read renders the catalogue wording instead of a raw value), `:265` (the unknown-guest fallback in a departures row) | Missing guards: the list read failure, a per-row read failure, a failed type or in-house or occupied-room read, and a detail failure each render their plain catalogue sentence with a retry; unreadable cells say so; the notice counts the partial rows; no row is dropped and no value is invented |
+| FR-BMV-7 read-only, catalogue parity, design facts, owner review | `script/catalogue-coverage-check.sh`, `app/e2e/design-facts.spec.ts:651-660` (allowance label and design-source comparison), `messages/en.json:713-715` and `messages/vi.json:713-715` (the `manage` tab and title keys as the pattern), `contracts/http/QueryCalendar.json`, `contracts/http/GetReservation.json` | Missing guards: the screen's call set is exactly the five read operations with no store or database access, every new key exists in both catalogues with matching placeholders, the allowance entry names the tab position and design source, and the owner's screen review is recorded on the issue (the `owner-review` label) |
+| `FR-RES-5` MVP row stays green | `docs/testing/traceability-matrix.md` (FR-RES-5 row), `services/reservations/internal/handler/handler_test.go:171`, the `QueryCalendar.json` fixture | These pin the calendar read this screen consumes; the read semantics do not change here, so they must pass without a service edit |
+| #646/#647 desk guards stay green | `app/src/views/StayView.test.ts` (departure release and reassignment suites), `script/e2e-desk-loop.sh` | The register only reads the stay and room lists these flows write; no desk copy, control, or flow they pin changes here |
+
+Per-flow implementation diagram (T2). This is the requirements-side
+view, citing the code edges this section was written against; the
+route/nav LLD delta, the design-facts allowance schema entry, and any
+architecture diagram are the `architect` handoff.
+
+Booking register read (happy path and failure/rollback path):
+
+```mermaid
+flowchart TD
+    A[Staff open /app/bookings; the default range is the business date through six nights  DeskView.vue:531-535; FR-BMV-1, FR-BMV-3] --> B[Validate the range; an inverted or missing range names the field and sends nothing  FR-BMV-3]
+    B -- invalid --> Z1[One plain field sentence; no request issued  FR-BMV-3]
+    B -- valid --> C[QueryCalendar dateFrom = first night, dateTo = last night + 1  store.go:191-193; postgres.go:311-321; FR-BMV-3]
+    C -- list read fails --> Z2[One plain read-failed sentence with retry; no row invented; the rest of the desk usable  FR-BMV-6]
+    C -- entries returned --> D[Sort by arrival then reference; cap at 50 with the narrow-the-dates sentence  FR-BMV-2]
+    D --> E[Complete each row: GetReservation for guest and priceBasis  handler.go:161-180; ListRoomTypes for the type name; ListArrivalsDepartures  stay/server.ts:157-165 and ListRoomsByState  rooms/server.ts:112-126 for the in-house room  FR-BMV-2]
+    E -- a per-row or map read fails --> Z3[That row keeps its calendar fields and says which cells are unreadable; one notice counts the partial rows; no row dropped  FR-BMV-6]
+    E -- every row complete --> F[Render rows; an empty range shows one sentence naming the range  FR-BMV-4]
+    F --> G[Staff select a row]
+    G --> H[GetReservation fresh read-back rendered as the detail card  FR-BMV-5]
+    H -- detail read fails --> Z4[One sentence naming the reference with retry; the list stands; the previous detail is not kept as current  FR-BMV-6]
+    H -- read-back returned --> I[Read-only detail: no create, modify, cancel, no-show, check-in, check-out, or room action  FR-BMV-1, FR-BMV-5]
+```
+
+Failure/rollback path: every failed read is named in plain catalogue
+words and leaves the rest of the desk usable; an unreadable cell is
+stated rather than filled with a guessed value, and a booking is never
+dropped from the list. There is no write in this flow, so there is
+nothing to compensate: rolling the change back is the single
+implementation PR — the tab, the route, and the read calls go away,
+the eight-tab shell returns, and no schema, contract, or data changes
+in either direction. A reverted build leaves every other desk screen
+as it was.
+
+### 25.6 Explicitly not specified here (plus gate dependencies)
+
+- Implementation — the component split, the per-row read sequencing
+  and its retry wiring, the error-state rendering, and the lab
+  reproduction record — is the downstream `dev` PR for #648, not this
+  section.
+- The technical shape is the `architect` handoff: the LLD delta for the
+  `bookings` route, the view, and the ninth nav tab; the design-facts
+  allowance schema entry in `docs/technical/desk-ui-fact-schema.md`
+  (section 8); a decision on G2 (keep the per-row fan-out, or add a
+  composed list read as a follow-up); and any architecture diagram the
+  shape needs. A shape that adds an operation, a state, or a schema
+  migration re-tiers the change and moves its rollback note into the
+  implementation PR.
+- Acceptance criteria are `product-owner` work (`AC-BMV-1`..`AC-BMV-7`,
+  the `AC-RES-5` pointer), the UI contract and catalogue-key table are
+  `product-owner` work (rollout section 6.18 and the screen spec), the
+  guard mapping above is `qa-lead` work, and the release note plus its
+  rollback pointer are `release-manager` work.
+- Out of scope: editing, modifying, or cancelling a booking and marking
+  a no-show (`FR-RES-2`, `FR-RES-3`, `FR-RES-6`); check-in, check-out,
+  room assignment, and room moves (the Stay screen owns them); the
+  date-by-room-type grid half of `FR-RES-5` (G1); a state or room-type
+  filter, column sorting, paging, and export (G3); the room a departed
+  guest held (G4); a new backend operation or any contract change
+  (G2); print output; and changes to the board, Book, Stay, Folio,
+  Rooms, Manage, or Print screens.
+- The specified change is tier T2 (a reader-visible desk screen over
+  existing operations, with no write, no new state, and no schema).
+  This section is its FR/NFR part; no implementation PR opens until
+  `SPEC-GATE PASS` on #648.
+
 <!-- ao-role: business-analyst -->
-Role: business-analyst · AO session hotel-mgmt-966
+Role: business-analyst · AO session hotel-mgmt-980
