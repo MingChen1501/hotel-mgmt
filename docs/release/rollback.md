@@ -88,7 +88,78 @@ unrecorded outcome is not finished.
 
 ## 5. Per-change notes
 
-### 5.1 Desk room reassignment and vacated-room release (Refs #647)
+### 5.1 Server-side reservation price basis (Refs #632)
+
+**Decision.** Roll back if the change stores a booking at any total other
+than the one Pricing returned — a forged low or high total accepted, a
+disagreement stored, rounded, or repaired in place instead of refused, a
+priced stay frozen at zero, or a booking accepted while Pricing could not
+be read; if a Modify changes the stored total without one `priceBasis`
+change row naming the actor and the time; if the desk cannot recover from
+the price-changed refusal (the plain sentence shows no new total, a
+second confirm books nothing, or a booking is saved at a total the clerk
+never saw); or if the change refuses booking attempts the previous bundle
+accepted in terms other than the two documented refusals
+(`PRICE_CHANGED` for an asserted total that disagrees, and the
+fail-closed `UPSTREAM_UNAVAILABLE` for an unreadable Pricing service).
+The change is `risk-high` (issue #632 labels `security`, `risk-high`): the
+owner approves it, so the owner also decides its rollback, and merges the
+change and the revert personally.
+
+**Mechanics.** Revert the single implementation PR and redeploy the
+bundle per `../devops/deployment.md` section 4. No schema migration and
+no data backfill exist on this path, in either direction: the stored
+`priceBasis` keeps its shape, and no table, column, migration, event,
+lifecycle state, or operation is added
+(`../architecture/lld.md` section 24.7). The revert keeps the database
+as it is and no restore is needed; a data restore is the bundle-failure
+path in `../devops/deployment.md` section 6, not this one. The revert
+ships a reservations module that stops calling
+`POST {RATES_BASE_URL}/v1/rates/QuotePrice` on Create and Modify, stops
+raising `PRICE_CHANGED` (409), and stops refusing the second
+`UPSTREAM_UNAVAILABLE` case — the one that names `QuotePrice` — while the
+`CheckRestrictions` read keeps its existing fail-closed branch and its
+own 503. `priceBasis` returns to being read from the request body after
+the presence and `>= 0` check. The two error codes stay registered in
+the error envelope and the contract version bump stays applied: a
+registered code nothing emits is harmless, `priceBasis` was relaxed
+rather than removed, and an older desk build therefore keeps working
+against the reverted service. No configuration value arrives with the
+change — `RATES_BASE_URL` and its `http://rates:8082` default already
+exist in the bundle (`deploy/compose.yaml:46`) and are still read for the
+restriction check — so the hotel's per-hotel configuration set is
+re-applied unchanged and no address has to be removed. Bookings frozen
+at a quote before the revert keep their totals; nothing is re-derived,
+backfilled, or rewritten in either direction. What comes back is the
+original finding: after the revert a caller that bypasses the desk can
+freeze any total again, and the #600 check-out room charge posts that
+total, so the interim exposure is exactly the audit finding R2 and the
+rework carries this same note.
+
+**Verification.** After the revert, on the restored bundle: book a stay
+from the desk and confirm the stored total, the on-screen confirmation,
+and the printed document agree; confirm the no-rate-price refusal still
+reads as `../operations/runbook.md` section 6 describes and the
+sold-out and booking-rule refusals are unchanged; confirm a booking whose
+request total disagrees with the rates is accepted again at that total —
+the expected regression that identifies the revert — exercised only on a
+lab installation, never against a hotel with a real guest; confirm the
+#588 release, the #600 room charge, the #601 settlement gate, the #646
+departure completion, and the #647 reassignment behave as before; run the
+health check and the end-to-end reservation check from
+`../devops/deployment.md` sections 3 and 4; run the Reservations, Rates,
+and desk suites the release entry names.
+
+**Record.** Add the rollback outcome here (date, commit range, symptom,
+revert reference, verification, and every booking total that looked
+wrong while the change was deployed) and file the defect issue. Because
+this note assumes no migration and no stored-shape change, a rework that
+adds a per-night breakdown, a rate-plan or quote-snapshot column, a
+stored quote reference, or a migration re-tiers the change: the migration
+is forward-only, and the rollback note moves into that implementation PR
+(`../architecture/lld.md` section 24.9).
+
+### 5.2 Desk room reassignment and vacated-room release (Refs #647)
 
 **Decision.** Roll back if the change makes a check-in refuse where it
 used to work, if a room a guest is standing in reads vacant, if a room
@@ -146,7 +217,7 @@ re-tiers the change to T3: `../architecture/lld.md` section 23.9 records
 that trigger, the migration is forward-only, and the rollback note moves
 into that implementation PR.
 
-### 5.2 Departure release and same-day reuse after check-out (Refs #646)
+### 5.3 Departure release and same-day reuse after check-out (Refs #646)
 
 **Decision.** Roll back if the change makes a check-out refuse where it
 used to close, if a completed booking cannot be read or is offered for a
@@ -203,3 +274,6 @@ Role: release-manager · AO session hotel-mgmt-948
 
 <!-- ao-role: release-manager -->
 Role: release-manager · AO session hotel-mgmt-963
+
+<!-- ao-role: release-manager -->
+Role: release-manager · AO session hotel-mgmt-993

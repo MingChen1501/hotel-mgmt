@@ -103,6 +103,32 @@ that address value changes, in the bundle's configuration file, never
 inside an image. Section 5 carries the matching pre-flight check and
 section 3 the health check.
 
+**The booking path now reads Rates (Refs #632).** `RATES_BASE_URL` is
+unchanged — same address, same `http://rates:8082` default, same
+configuration file (`deploy/compose.yaml:46`) — but the reservations
+module makes a second read of the rates module on it: every booking
+create and every booking modify now calls
+`POST {RATES_BASE_URL}/v1/rates/QuotePrice` for the effective room type,
+dates, and discount, forwards the caller's session token, caps the call
+at five seconds, and freezes the total the quote returns. This read is
+fail-closed, like the restriction read that already runs on the same
+address and not like the fail-soft stay-to-reservations completion: a
+rates module that cannot be read refuses the booking
+(`UPSTREAM_UNAVAILABLE`, 503) rather than freezing an unverified price,
+so an unreachable rates module stops the desk booking and modifying for
+as long as it lasts (`../architecture/lld.md`, section 24; the
+desk-facing procedure is `../operations/runbook.md`, section 10).
+Reading bookings, cancellations, check-in, and check-out do not call
+rates on this path and keep working. No hotel input and no new
+configuration value arrive with it; only the reachability requirement
+the pre-flight and health check already apply to this address becomes
+load-bearing for the booking action, which is why both checks now name
+it (section 3 step 5 and section 5). No new container, no restart-order
+change, and no monitoring exporter ships with this bundle: until the
+first exporter lands, the alert obligation recorded for R8 in
+`../release/release-notes.md` section 2.3 is carried by the desk
+escalation in `../operations/runbook.md` section 7.
+
 ## 3. Install procedure (both variants)
 
 1. Confirm the pre-flight checks in section 5 pass and a blank
@@ -121,10 +147,14 @@ section 3 the health check.
    `docs/operations/runbook.md`).
 5. Run the bundle's health check: proxy reachable from a desk
    client on the hotel LAN, each module answering through the
-   proxy, each module connected to its own store, and the stay
+   proxy, each module connected to its own store, the stay
    module reaching the reservations module on the hotel LAN (a
    close still commits when that call fails, but the booking is
-   then left active — `../operations/runbook.md`, section 8.2).
+   then left active — `../operations/runbook.md`, section 8.2),
+   and the reservations module reaching the rates module on the
+   hotel LAN (a booking or a booking change is refused when that
+   read fails, so the desk cannot book at an unverified price —
+   `../operations/runbook.md`, section 10.2).
 6. Sign in as the owner account, verify the hotel profile, rooms,
    rate plans, and charge items from step 3, and record one test
    reservation end to end (book, check in, post a charge, check
@@ -150,7 +180,12 @@ every inter-host endpoint over the hotel LAN before step 6.
    come from the new bundle, not from the hotel's configuration set
    (section 2, "Bundle-level service addresses") — one such address,
    `RESERVATIONS_BASE_URL` for the stay module (Refs #646), is
-   already set in it and needs no hotel input.
+   already set in it and needs no hotel input. The reservations
+   module's `RATES_BASE_URL` is unchanged by this bundle (Refs #632)
+   but now also carries the booking quote read, so confirm the rates
+   module answers on it (section 3 step 5) before the desk resumes:
+   an unreachable rates module refuses every booking create and
+   modify (`../operations/runbook.md`, section 10.2).
 5. Start the database host first, then the module containers, then
    the reverse proxy.
 6. Run the health check from section 3 step 5, sign in, and repeat
@@ -167,6 +202,20 @@ data — there is no migration and no backfill. Before resuming desk
 work, clear every such room per `../operations/runbook.md` section 9.3
 and record the cleared rooms, their times, and the actor in the upgrade
 record; the same section 9 procedure is the support step afterwards.
+
+**Booking totals frozen by an older bundle (upgrade only, Refs #632).**
+An installation upgraded from a bundle that predates the server-side
+price basis inherits bookings frozen at whatever total the caller sent;
+nothing at this head compared that total with a rate. This bundle
+verifies new bookings and booking changes — it does not rewrite stored
+ones: there is no migration, no backfill, and no automatic re-derivation
+of an existing booking's total. Do not correct them in bulk and do not
+edit a booking at the desk. A booking that staff change is repriced
+against the rates in one change that records the actor and the time
+(`../operations/runbook.md`, section 10.3), and a total that has to be
+corrected without changing the booking goes to support. Record the
+booking references found, their stored totals, and the times in the
+upgrade record.
 
 For the small-cluster variant, stop and start hosts in the same
 relative order and verify inter-host endpoints after step 5.
@@ -190,6 +239,14 @@ Run before every install and every upgrade; stop on any failure:
   behind the stay is then left active and has to be completed by hand
   (`../operations/runbook.md`, section 8.2), so an unreachable
   reservations module leaves a booking to repair after every close.
+- The reservations module reaches the rates module over the hotel LAN
+  and answers its quote read within the five-second cap: a booking
+  create or booking modify is refused fail-closed with
+  `UPSTREAM_UNAVAILABLE` when that read fails, so an unreachable rates
+  module leaves the desk unable to book or change bookings while
+  reading, cancelling, checking in, and checking out keep working
+  (`../operations/runbook.md`, section 10.2; `../architecture/lld.md`,
+  section 24.2).
 - The per-hotel configuration set validates against the release
   bundle's configuration schema with no missing required values.
 - First secrets are provisioned and handed over per the handover
@@ -224,3 +281,6 @@ Role: release-manager · AO session hotel-mgmt-948
 
 <!-- ao-role: release-manager -->
 Role: release-manager · AO session hotel-mgmt-963
+
+<!-- ao-role: release-manager -->
+Role: release-manager · AO session hotel-mgmt-993
