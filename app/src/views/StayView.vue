@@ -3,10 +3,12 @@
     <!-- Stay screen (Refs #541, `docs/design/Stay.dc.html:3`): the v2
       board carries no screen title or intro, so the view opens
       directly on the two-panel grid — check-in left, check-out
-      right — with no lists, move, or times sections (zero extras
-      vs the board). The lists read still runs underneath to feed
-      both selects; the review-to-checkout flow state below the
-      check-out panel stays as today (post-review states with no
+      right — with no lists or times sections (zero extras vs the
+      board). Refs #647 adds exactly one decided card below the two
+      panels, the `Move room` affordance the owner-reported
+      stale-hold defect needs. The lists read still runs underneath
+      to feed the selects; the review-to-checkout flow state below
+      the check-out panel stays as today (post-review states with no
       design counterpart). -->
     <noscript><p>{{ t('desk.entry.noscript_stay', {}, 'This page needs JavaScript to run the stay lifecycle.') }}</p></noscript>
 
@@ -327,6 +329,112 @@
           </Message>
         </template>
       </Card>
+
+      <!-- Move card (Refs #647, `AC-REA-2`/`AC-REA-4`, rollout 6.17):
+        one additive card spanning both columns for the arrival-time
+        swap after a committed check-in and the mid-stay move — one
+        path, no second mechanic. It reuses the reads the panel
+        already loads (the in-house list and the ready-pool
+        `vacant-inspected` read) and only the existing
+        `AssignRoom` -> `MoveRoom` -> `ReleaseRoom` calls: the target
+        is assigned first, the stay moves second, and the vacated
+        room is released last so no room is freed while a live stay
+        still names it. -->
+      <Card
+        data-testid="stay-move-card"
+        class="stay-move-card"
+      >
+        <template #title>
+          <h3 class="stay-card-title">
+            {{ t('desk.stay.move_heading', {}, 'Move room') }}
+          </h3>
+        </template>
+        <template #content>
+          <label for="stay-move-guest">
+            {{ t('desk.stay.move_guest_label', {}, 'Guest in house') }}
+            <select
+              id="stay-move-guest"
+              v-model="moveStayId"
+              data-testid="stay-move-guest"
+            >
+              <option value="">
+                {{ t('desk.stay.move_choose_guest', {}, 'Choose a guest in house...') }}
+              </option>
+              <option
+                v-for="row in moveGuestOptions"
+                :key="row.key"
+                :value="row.stayId"
+              >
+                {{ row.guestName }} · {{ row.roomLabel }}
+              </option>
+            </select>
+          </label>
+          <label for="stay-move-room">
+            {{ t('desk.stay.move_room_label', {}, 'New room') }}
+            <select
+              id="stay-move-room"
+              v-model="moveRoomId"
+              data-testid="stay-move-room"
+            >
+              <option value="">
+                {{ t('desk.stay.move_choose_room', {}, 'Choose a ready room...') }}
+              </option>
+              <option
+                v-for="room in readyRooms"
+                :key="room.roomId"
+                :value="room.roomId"
+              >
+                {{ room.number }}
+              </option>
+            </select>
+          </label>
+          <p
+            v-if="moveStayId === '' || moveRoomId === ''"
+            class="stay-hint"
+            data-testid="stay-move-hint"
+          >
+            {{ t('desk.stay.move_hint', {}, 'Pick a guest in house and a ready room first.') }}
+          </p>
+          <Button
+            id="stay-move-button"
+            type="button"
+            class="stay-action"
+            :label="t('desk.stay.move_button', {}, 'Move guest')"
+            data-testid="stay-move"
+            :disabled="moving"
+            @click="onMove"
+          />
+          <p
+            v-if="moving"
+            data-testid="stay-moving"
+          >
+            {{ t('desk.stay.moving', {}, 'Moving the guest…') }}
+          </p>
+          <p
+            role="status"
+            data-testid="stay-move-status"
+          >
+            {{ moveStatus }}
+          </p>
+          <!-- Release line, kept apart from the move receipt so a failed
+            release never reads as a failed move (the #588 precedent). -->
+          <p
+            v-if="moveReleaseStatus"
+            role="status"
+            data-testid="stay-move-release"
+          >
+            {{ moveReleaseStatus }}
+          </p>
+          <Message
+            v-if="moveError"
+            severity="error"
+            role="alert"
+            data-testid="stay-move-error"
+          >
+            {{ moveError }}
+          </Message>
+        </template>
+      </Card>
     </div>
   </main>
 </template>
@@ -384,12 +492,15 @@ import ReferenceDetails, { type ReferenceItem } from '../components/ReferenceDet
 // fully-paid gate note, review-folio button) on the `1fr 1fr` grid.
 // The reviewer select (issue #567; #563 audit `G-ST-1`) offers the
 // catalogue-defined roles and keeps sending the selected role string
-// as `approvedBy`. The pre-v2 lists, move, and actual-times sections
-// are gone (zero extras vs the board); panel data still reads through
-// the same list endpoints. The review-to-checkout flow state (folio
-// status, approval form, check-out button, confirm dialog) carries no
-// board counterpart and keeps its current presentation and copy.
-// PrimeVue stays as logic carrier only. No call-order change.
+// as `approvedBy`. The pre-v2 lists and actual-times sections are
+// gone (zero extras vs the board); panel data still reads through
+// the same list endpoints. Refs #647 adds one decided card — the
+// `Move room` path that assigns the target, moves the stay, and
+// releases the vacated room in that order — plus the arrival
+// compensation inside the check-in commit. The review-to-checkout
+// flow state (folio status, approval form, check-out button, confirm
+// dialog) carries no board counterpart and keeps its current
+// presentation and copy. PrimeVue stays as logic carrier only. No call-order change.
 
 interface StayRow {
   stayId?: string;
@@ -517,6 +628,34 @@ function errorMessage(): string {
     {},
     'That did not work. Try again; if it keeps failing, tell the manager.',
   );
+}
+
+// Refs #647 (LLD 23.2): a definitive refusal is the operation's own
+// `4xx` envelope answer carrying one of the four contracted refusal
+// codes. Every target operation validates and guards before it
+// mutates, so a definitive answer proves the call wrote nothing and
+// the desk may and must take back what it wrote earlier in the same
+// action. Every other failure — offline, `5xx`, a non-envelope reply,
+// a transport-level `408`/`429`, or any other `4xx` code — is an
+// unreadable outcome: the write may have landed, so the desk releases
+// nothing and asks staff to re-read. `401` is never a business
+// outcome; the shared client routes it to the sign-in gate first.
+const DEFINITIVE_REFUSALS: Record<string, number> = {
+  VALIDATION_FAILED: 400,
+  NOT_FOUND: 404,
+  CONFLICT: 409,
+  STATE_ILLEGAL: 422,
+};
+
+function isDefinitiveFailure(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null) {
+    return false;
+  }
+  const { status, code } = err as ApiError;
+  if (typeof status !== 'number' || typeof code !== 'string') {
+    return false;
+  }
+  return DEFINITIVE_REFUSALS[code] === status;
 }
 
 // Billing serves the recorded approval as a JSON string while the
@@ -669,6 +808,20 @@ export default defineComponent({
     // `ReleaseRoom` the close performs, kept apart from the close line.
     const roomReleaseStatus = ref('');
 
+    // Move card (Refs #647, rollout 6.17): the guest in house and the
+    // ready-room pick reuse the panel's own reads — no new read is
+    // added, and the guest's current room is never offered because an
+    // `occupied` room is not in the ready pool. `moveStatus` carries
+    // the move receipt (both rooms and the time) and the compensation
+    // outcome; `moveReleaseStatus` keeps a release failure apart from
+    // the committed move.
+    const moveStayId = ref('');
+    const moveRoomId = ref('');
+    const moveStatus = ref('');
+    const moveReleaseStatus = ref('');
+    const moveError = ref('');
+    const moving = ref(false);
+
     // The catalogue label for a hotel role value, so the recorded
     // approval line names the role in the desk language (Refs #588).
     function roleLabelFor(value: string): string {
@@ -697,6 +850,12 @@ export default defineComponent({
     // today's departures; only rows with a stay id are pickable.
     const checkoutOptions = computed(() =>
       [...inHouseRows.value, ...departureRows.value].filter((row) => row.stayId),
+    );
+
+    // Move-card guest options (Refs #647): only guests in house can
+    // move; today's departures are leaving, not moving.
+    const moveGuestOptions = computed(() =>
+      inHouseRows.value.filter((row) => row.stayId),
     );
 
     // The shell owns the one sign-in gate (Refs #338): a
@@ -1215,6 +1374,59 @@ export default defineComponent({
       }
     }
 
+    // Refs #647 (LLD 23.2/23.3): one release helper for both flows.
+    // `released` and `already-free` are the intended end states — a
+    // `STATE_ILLEGAL` answer means the room is not occupied, the #588
+    // precedent — while any other failure is named by the caller.
+    async function releaseRoomTo(
+      roomNumber: string,
+      toState: 'vacant-inspected' | 'vacant-dirty',
+    ): Promise<'released' | 'already-free' | 'failed'> {
+      try {
+        await apiFetch<{ roomNumber: string; oldState: string; newState: string }>(
+          '/v1/rooms/ReleaseRoom',
+          {
+            method: 'POST',
+            body: JSON.stringify({
+              roomNumber,
+              toState,
+              actor: session.displayName ?? '',
+            }),
+          },
+        );
+        return 'released';
+      } catch (err) {
+        if (isSignedOut(err)) {
+          throw err;
+        }
+        // A room that is no longer occupied already holds the intended
+        // end state; a definitive or unreadable failure is named by
+        // the caller, which never claims a free room it did not see
+        // freed.
+        return errorCode(err) === 'STATE_ILLEGAL' ? 'already-free' : 'failed';
+      }
+    }
+
+    // Refs #647 (`FR-REA-1`, `AC-REA-1`): a check-in commit that
+    // assigned a room but recorded no stay takes that room back to the
+    // ready state it held. A failed compensation is named, never
+    // hidden; the plain refusal stays in the error line.
+    async function compensateCheckinRoom(roomNumber: string): Promise<void> {
+      const outcome = await releaseRoomTo(roomNumber, 'vacant-inspected');
+      checkinStatus.value =
+        outcome === 'failed'
+          ? t(
+              'desk.stay.checkin_release_failed',
+              { roomNumber },
+              `The check-in was refused, but room ${roomNumber} still reads occupied. Reload the desk, and tell the manager if it still shows occupied.`,
+            )
+          : t(
+              'desk.stay.checkin_compensated',
+              { roomNumber },
+              `The check-in was refused and room ${roomNumber} is free again.`,
+            );
+    }
+
     // Check in validates the selected room and commits once. The
     // arrival pick already loaded the booking and its candidates
     // (#586), so this click normally reuses them; a click after a
@@ -1264,16 +1476,27 @@ export default defineComponent({
             expireToGate();
             return;
           }
-          if (errorCode(err) === 'CONFLICT') {
-            checkinRef.value = null;
-            checkinError.value = t(
-              'desk.stay.refused_taken',
-              {},
-              'That room was just taken. Pick another ready room.',
-            );
+          if (isDefinitiveFailure(err)) {
+            if (errorCode(err) === 'CONFLICT') {
+              checkinRef.value = null;
+              checkinError.value = t(
+                'desk.stay.refused_taken',
+                {},
+                'That room was just taken. Pick another ready room.',
+              );
+              return;
+            }
+            checkinError.value = errorMessage();
             return;
           }
-          checkinError.value = errorMessage();
+          // Refs #647 (`FR-REA-1`): an unreadable assignment may have
+          // landed, so nothing is released; the room is named for a
+          // re-read instead.
+          checkinError.value = t(
+            'desk.stay.checkin_outcome_unknown',
+            { roomNumber: checkinRooms.value[selectedRoomId] },
+            `The check-in result could not be read. Reload the desk and check room ${checkinRooms.value[selectedRoomId]} before acting again.`,
+          );
           return;
         }
         let readback: { reservationId: string; guest?: { guestId?: string } };
@@ -1290,7 +1513,25 @@ export default defineComponent({
             expireToGate();
             return;
           }
-          checkinError.value = errorMessage();
+          if (isDefinitiveFailure(err)) {
+            checkinError.value =
+              errorCode(err) === 'NOT_FOUND'
+                ? t(
+                    'desk.stay.refused_unknown_ref',
+                    {},
+                    'Unknown booking reference. Check the reference and try again.',
+                  )
+                : errorMessage();
+            // Refs #647 (`AC-REA-1`): no stay was recorded, so the
+            // room this commit assigned goes back to ready.
+            await compensateCheckinRoom(assigned.roomNumber);
+            return;
+          }
+          checkinError.value = t(
+            'desk.stay.checkin_outcome_unknown',
+            { roomNumber: assigned.roomNumber },
+            `The check-in result could not be read. Reload the desk and check room ${assigned.roomNumber} before acting again.`,
+          );
           return;
         }
         const checkinBody: Record<string, unknown> = {
@@ -1310,15 +1551,25 @@ export default defineComponent({
             expireToGate();
             return;
           }
-          if (errorCode(err) === 'CONFLICT') {
-            checkinError.value = t(
-              'desk.stay.refused_checked_in',
-              {},
-              'That booking is already checked in.',
-            );
+          if (isDefinitiveFailure(err)) {
+            checkinError.value =
+              errorCode(err) === 'CONFLICT'
+                ? t(
+                    'desk.stay.refused_checked_in',
+                    {},
+                    'That booking is already checked in.',
+                  )
+                : errorMessage();
+            // Refs #647 (`FR-REA-1`): the stay write refused, so no
+            // stay names the room and the assignment is taken back.
+            await compensateCheckinRoom(assigned.roomNumber);
             return;
           }
-          checkinError.value = errorMessage();
+          checkinError.value = t(
+            'desk.stay.checkin_outcome_unknown',
+            { roomNumber: assigned.roomNumber },
+            `The check-in result could not be read. Reload the desk and check room ${assigned.roomNumber} before acting again.`,
+          );
           return;
         }
         try {
@@ -1331,7 +1582,14 @@ export default defineComponent({
             expireToGate();
             return;
           }
-          checkinError.value = errorMessage();
+          // Refs #647 (`FR-REA-1`): the stay landed, so the room a
+          // live stay names is never freed. Report the split in plain
+          // words and leave the room occupied.
+          checkinError.value = t(
+            'desk.stay.checkin_link_not_recorded',
+            { roomNumber: assigned.roomNumber },
+            `The guest is in room ${assigned.roomNumber}, but the booking link is not recorded. Reload the desk, and tell the manager if the booking still shows no check-in.`,
+          );
           return;
         }
         checkinStatus.value = t(
@@ -1370,6 +1628,189 @@ export default defineComponent({
         if (pendingLoadSeq === null) {
           checkingIn.value = false;
         }
+      }
+    }
+
+    // Move a guest in house to a ready room (Refs #647, `FR-REA-2`/
+    // `FR-REA-4`). One path serves the arrival-time swap and the
+    // mid-stay move: assign the target first (a taken or blocked
+    // target refuses before anything moves), move the stay second (the
+    // guest is recorded in the new room before the old one stops
+    // naming them), release the vacated room last (it only becomes
+    // free once the stay no longer holds it). Every definitive refusal
+    // after the target assignment runs exactly one compensating
+    // release back to ready; an unreadable outcome releases nothing.
+    async function onMove(): Promise<void> {
+      if (moving.value) {
+        return;
+      }
+      moveError.value = '';
+      moveStatus.value = '';
+      moveReleaseStatus.value = '';
+      const stayId = moveStayId.value;
+      const guestRow = inHouseRows.value.find((row) => row.stayId === stayId) ?? null;
+      if (!stayId || !guestRow) {
+        moveError.value = t(
+          'desk.stay.move_need_guest',
+          {},
+          'Choose a guest in house first.',
+        );
+        return;
+      }
+      const target = readyRooms.value.find((room) => room.roomId === moveRoomId.value) ?? null;
+      if (!target) {
+        moveError.value = t('desk.stay.need_room', {}, 'Pick a ready room first.');
+        return;
+      }
+      const targetNumber = target.number;
+      moving.value = true;
+      try {
+        let assigned: { roomId: string; roomNumber: string };
+        try {
+          assigned = await apiFetch<{ roomId: string; roomNumber: string }>(
+            '/v1/rooms/AssignRoom',
+            {
+              method: 'POST',
+              body: JSON.stringify({
+                roomNumber: targetNumber,
+                businessDate: localBusinessDate(),
+                stayLink: stayId,
+                actor: session.displayName ?? '',
+                idempotencyKey: newIdempotencyKey(),
+              }),
+            },
+          );
+        } catch (err) {
+          if (isSignedOut(err)) {
+            expireToGate();
+            return;
+          }
+          if (isDefinitiveFailure(err)) {
+            // Nothing was assigned, so nothing is compensated; reload
+            // the ready pool so a just-taken room leaves the picker.
+            moveError.value =
+              errorCode(err) === 'CONFLICT'
+                ? t(
+                    'desk.stay.move_refused_taken',
+                    {},
+                    'That room was just taken. Pick another ready room.',
+                  )
+                : errorMessage();
+            await loadPanelData();
+            return;
+          }
+          moveError.value = t(
+            'desk.stay.move_outcome_unknown',
+            { fromRoom: roomLabel(guestRow.roomId), toRoom: targetNumber },
+            `The move result could not be read. Reload the desk and check rooms ${roomLabel(guestRow.roomId)} and ${targetNumber} before acting again.`,
+          );
+          return;
+        }
+        let moved: { move: { fromRoomId: string; toRoomId: string; movedAt: string } };
+        try {
+          moved = await apiFetch<{
+            move: { fromRoomId: string; toRoomId: string; movedAt: string };
+          }>('/v1/stay/MoveRoom', {
+            method: 'POST',
+            body: JSON.stringify({
+              stayId,
+              toRoomId: assigned.roomId,
+              actor: session.displayName ?? '',
+              idempotencyKey: newIdempotencyKey(),
+            }),
+          });
+        } catch (err) {
+          if (isSignedOut(err)) {
+            expireToGate();
+            return;
+          }
+          if (isDefinitiveFailure(err)) {
+            // The stay did not move, so the target this action
+            // assigned goes back to the ready state it held.
+            moveError.value =
+              errorCode(err) === 'STATE_ILLEGAL'
+                ? t(
+                    'desk.stay.move_refused_stay',
+                    {},
+                    'That guest is no longer in house, so the move is refused.',
+                  )
+                : errorMessage();
+            const outcome = await releaseRoomTo(targetNumber, 'vacant-inspected');
+            moveStatus.value =
+              outcome === 'failed'
+                ? t(
+                    'desk.stay.move_target_stuck',
+                    { toRoom: targetNumber },
+                    `The move was refused, but room ${targetNumber} still reads occupied. Reload the desk, and tell the manager if it still shows occupied.`,
+                  )
+                : t(
+                    'desk.stay.move_compensated',
+                    { toRoom: targetNumber },
+                    `The move was refused and room ${targetNumber} is free again.`,
+                  );
+            return;
+          }
+          moveError.value = t(
+            'desk.stay.move_outcome_unknown',
+            { fromRoom: roomLabel(guestRow.roomId), toRoom: targetNumber },
+            `The move result could not be read. Reload the desk and check rooms ${roomLabel(guestRow.roomId)} and ${targetNumber} before acting again.`,
+          );
+          return;
+        }
+        // The release follows the echo, never the panel's remembered
+        // row (LLD 23.1): a second desk moving the same guest cannot
+        // make this action free a room another stay still names.
+        const fromRoomId = moved.move.fromRoomId;
+        const newRoomId = moved.move.toRoomId;
+        const fromRoomNumber = roomNumbers.value[fromRoomId] ?? '';
+        const newRoomNumber = roomNumbers.value[newRoomId] ?? assigned.roomNumber;
+        moveStatus.value = t(
+          'desk.stay.moved_named',
+          {
+            guest: guestRow.guestName,
+            fromRoom: fromRoomNumber || roomLabel(fromRoomId),
+            toRoom: newRoomNumber,
+            time: formatAuditTime(moved.move.movedAt),
+          },
+          `Moved ${guestRow.guestName} from room ${fromRoomNumber} to room ${newRoomNumber} at ${formatAuditTime(moved.move.movedAt)}.`,
+        );
+        if (!fromRoomNumber) {
+          // Without the number the panel cannot release the vacated
+          // room and must not invent one: name the unsolved half.
+          moveReleaseStatus.value = t(
+            'desk.stay.move_release_failed',
+            { fromRoom: roomLabel(fromRoomId), toRoom: newRoomNumber },
+            `The guest is now in room ${newRoomNumber}, but room ${roomLabel(fromRoomId)} still reads occupied. Reload the desk, and tell the manager if it still shows occupied.`,
+          );
+        } else {
+          const outcome = await releaseRoomTo(fromRoomNumber, 'vacant-dirty');
+          if (outcome === 'already-free') {
+            moveReleaseStatus.value = t(
+              'desk.stay.room_already_free',
+              { roomNumber: fromRoomNumber },
+              `Room ${fromRoomNumber} is already free.`,
+            );
+          } else if (outcome === 'failed') {
+            moveReleaseStatus.value = t(
+              'desk.stay.move_release_failed',
+              { fromRoom: fromRoomNumber, toRoom: newRoomNumber },
+              `The guest is now in room ${newRoomNumber}, but room ${fromRoomNumber} still reads occupied. Reload the desk, and tell the manager if it still shows occupied.`,
+            );
+          }
+        }
+        // The receipt stays until the next pick; the reload makes the
+        // board, the Rooms map, and the ready pool agree.
+        moveStayId.value = '';
+        moveRoomId.value = '';
+        await loadPanelData();
+      } catch (err) {
+        if (isSignedOut(err)) {
+          expireToGate();
+          return;
+        }
+        moveError.value = errorMessage();
+      } finally {
+        moving.value = false;
       }
     }
 
@@ -1764,9 +2205,17 @@ export default defineComponent({
       checkoutDialog,
       roomReleaseStatus,
       bookingCompletionStatus,
+      moveGuestOptions,
+      moveStayId,
+      moveRoomId,
+      moveStatus,
+      moveReleaseStatus,
+      moveError,
+      moving,
       onArrivalChange,
       onDepartureChange,
       onCheckIn,
+      onMove,
       onReview,
       onApprove,
       onCheckOut,

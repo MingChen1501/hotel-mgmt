@@ -269,13 +269,23 @@ export const DECIDED_CONTENT: readonly DecidedScreenContent[] = [
     headings: [
       { level: 3, text: 'Nhận phòng' },
       { level: 3, text: 'Trả phòng' },
+      // Refs #647 (rollout 6.17, LLD R16): the owner-reported
+      // stale-hold defect decides exactly one additive card beyond
+      // `docs/design/Stay.dc.html` — the `Move room` card. It is
+      // recorded here as a decided addition, never by removing the
+      // Stay screen from the comparison.
+      { level: 3, text: 'Chuyển phòng' },
     ],
-    buttons: ['Nhận phòng', 'Xem hoá đơn'],
+    buttons: ['Nhận phòng', 'Xem hoá đơn', 'Chuyển khách'],
     inputs: [
       { kind: 'select', label: 'Khách đến', placeholder: 'Chọn khách đến...' },
       { kind: 'select', label: 'Phòng', placeholder: 'Chọn phòng...' },
       { kind: 'select', label: 'Khách đi', placeholder: 'Chọn khách đi...' },
       { kind: 'select', label: 'Người duyệt', placeholder: null },
+      // Refs #647: the move card's two picks reuse the panel's own
+      // reads (the in-house list and the ready pool).
+      { kind: 'select', label: 'Khách đang lưu trú', placeholder: 'Chọn khách đang lưu trú...' },
+      { kind: 'select', label: 'Phòng mới', placeholder: 'Chọn phòng sẵn sàng...' },
     ],
   },
   {

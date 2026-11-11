@@ -1016,7 +1016,8 @@ export default defineComponent({
   }
 
   #shell [data-testid="stay-checkin-card"].p-card,
-  #shell [data-testid="stay-checkout-card"].p-card {
+  #shell [data-testid="stay-checkout-card"].p-card,
+  #shell [data-testid="stay-move-card"].p-card {
     border: 1px solid #D9E0DE;
     border-radius: 12px;
     background: #FFFFFF;
@@ -1024,8 +1025,18 @@ export default defineComponent({
     margin: 0;
   }
 
+  /* Move card (Refs #647, rollout 6.17): the one additive card sits
+     as a third row of the same grid, spanning both columns below the
+     check-in and check-out cards. It reuses the same card, title,
+     spacing, and 44px target tokens; no new colour, radius, spacing,
+     or target size. */
+  #shell [data-testid="stay-move-card"] {
+    grid-column: 1 / -1;
+  }
+
   #shell [data-testid="stay-checkin-card"] .p-card-body,
-  #shell [data-testid="stay-checkout-card"] .p-card-body {
+  #shell [data-testid="stay-checkout-card"] .p-card-body,
+  #shell [data-testid="stay-move-card"] .p-card-body {
     padding: 18px;
     display: flex;
     flex-direction: column;
@@ -1035,7 +1046,9 @@ export default defineComponent({
   #shell [data-testid="stay-checkin-card"] .p-card-caption,
   #shell [data-testid="stay-checkin-card"] .p-card-content,
   #shell [data-testid="stay-checkout-card"] .p-card-caption,
-  #shell [data-testid="stay-checkout-card"] .p-card-content {
+  #shell [data-testid="stay-checkout-card"] .p-card-content,
+  #shell [data-testid="stay-move-card"] .p-card-caption,
+  #shell [data-testid="stay-move-card"] .p-card-content {
     padding: 0;
   }
 
@@ -1043,14 +1056,16 @@ export default defineComponent({
      buttons stretch as its direct flex items, exactly like the
      design panels (`docs/design/Stay.dc.html:3`). */
   #shell [data-testid="stay-checkin-card"] .p-card-content,
-  #shell [data-testid="stay-checkout-card"] .p-card-content {
+  #shell [data-testid="stay-checkout-card"] .p-card-content,
+  #shell [data-testid="stay-move-card"] .p-card-content {
     display: flex;
     flex-direction: column;
     gap: 10px;
   }
 
   #shell [data-testid="stay-checkin-card"] .p-card-title h3,
-  #shell [data-testid="stay-checkout-card"] .p-card-title h3 {
+  #shell [data-testid="stay-checkout-card"] .p-card-title h3,
+  #shell [data-testid="stay-move-card"] .p-card-title h3 {
     font-size: 16px;
     margin: 0;
     color: #1B2B2A;
@@ -1094,10 +1109,11 @@ export default defineComponent({
     margin: 0;
   }
 
-  /* Design action buttons: check-in, folio review, approval, and
-     check-out plus the dialog confirm
-     (`docs/design/Stay.dc.html:3`). The dialog cancel keeps its
-     secondary logic-carrier styling. */
+  /* Design action buttons: check-in, folio review, approval,
+     check-out, the dialog confirm, and the #647 move action
+     (`docs/design/Stay.dc.html:3`; the move card is the decided
+     additive card). The dialog cancel keeps its secondary
+     logic-carrier styling. */
   #shell [data-testid="stay-view"] .stay-action.p-button {
     min-height: 44px;
     padding: 0 18px;
