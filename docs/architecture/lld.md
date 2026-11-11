@@ -3990,7 +3990,7 @@ Stack and repo gates: `cd app && npm ci && npm run build && npm run lint
 `services/rooms/src/server.test.ts:328-381`, `:455-500` and
 `services/stay/src/server.test.ts:240-292` must pass untouched.
 
-### 23.9 Residual risks, open points, and re-tier trigger
+### 23.9 Residual risks, gate points closed at the stack base, and re-tier trigger
 
 - **R12 — the compensation lives in the browser.** A desk closed
   between the target assignment and the release leaves the target
@@ -4005,29 +4005,24 @@ Stack and repo gates: `cd app && npm ci && npm run build && npm run lint
   keeps `confirmed`. That split is reported, not hidden; the technical
   repair is the same idempotent `CheckInReservation` call, and the #646
   split is the precedent for accepting it as visible.
-- **R14 — disposition of the `AC-REA-1` parenthetical.** `AC-REA-1`
-  lists "the booking read, the stay write, or the reservation check-in"
-  among the steps whose failure releases the assigned room, while its
-  own invariant, `FR-REA-1`, and this section release only when no stay
-  exists — a reservation-link failure after the stay write keeps the
-  room occupied, because the desk must never free a room a live stay
-  names. The architect reading is the invariant: the parenthetical is
-  over-broad, `FR-REA-1` governs, and the implementation follows
-  `FR-REA-1` (23.3 table, step 7 row). The reword itself is
-  `product-owner` copy: drop "or the reservation check-in" from the
-  release list and let the existing split clause cover the post-stay
-  failure. Recorded here so the gate sees the discrepancy and its
-  resolution rather than a silent divergence.
-- **R15 — two copy points the UI contract table does not key yet.** The
-  decided states require (a) an arrival-compensation success sentence
-  ("the check-in was refused and the room is free again") and (b) a
-  post-stay reservation-link sentence ("the guest is in the room; the
-  booking link is not recorded"), and the section 6.17 key table carries
-  neither (`desk.stay.move_compensated` is move-specific, and
-  `desk.stay.booking_not_recorded` is the check-out sentence). Both are
-  `product-owner` copy additions; the implementation must not invent
-  wording. The move path needs no new key for "the old room is already
-  free": `desk.stay.room_already_free` already exists
+- **R14 — closed at the stack base: the `AC-REA-1` release list is
+  scoped.** The criterion already words the condition as a later step of
+  the same commit not landing "while no stay was recorded (the booking
+  read or the stay write)", and states the post-stay split explicitly:
+  a reservation-link failure after the stay write releases nothing and
+  keeps the room occupied
+  (`docs/product/acceptance-criteria.md:1229-1247`). This delta adds no
+  wording of its own; LLD 23.2, 23.3 (step 7 row), 23.6, and
+  `FR-REA-1` follow that text unchanged, so no residual discrepancy
+  remains for the implementation to resolve.
+- **R15 — closed at the stack base: both copy points are keyed.** The
+  UI contract table keys the arrival-compensation sentence
+  (`desk.stay.checkin_compensated`) and the post-stay reservation-link
+  sentence (`desk.stay.checkin_link_not_recorded`) in both locales with
+  matching placeholders (`docs/product/desk-ui-design-rollout.md:2171-2172`).
+  No copy work is outstanding for the implementation, which must still
+  not invent wording. The move path needs no new key for "the old room
+  is already free": `desk.stay.room_already_free` already exists
   (`messages/en.json:472`, `messages/vi.json:472`).
 - **R16 — the owner board gains one card.** The additive `Move room`
   card is a decided UI fact beyond `docs/design/Stay.dc.html`; the
