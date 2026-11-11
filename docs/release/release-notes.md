@@ -151,7 +151,7 @@ schema, or migration (`../architecture/lld.md` section 23.7). The
 `FR-REA-1`..`FR-REA-5` (`../requirements/mvp-requirements.md` section
 24) against done-conditions `AC-REA-1`..`AC-REA-5`
 (`../product/acceptance-criteria.md` section 16), with the desk delta and
-its 18-key EN+VI copy in `../product/desk-ui-design-rollout.md` section
+its 20-key EN+VI copy in `../product/desk-ui-design-rollout.md` section
 6.17, decision D-27 in `../project/decision-log.md`, and risk R-11 in
 `../project/risk-register.md`. Risk label: `risk-medium`, tier T2. Issue
 #647 is closed by the implementation PR; this entry documents the change
@@ -217,7 +217,7 @@ pins, the browser desk scenarios green (`RR11`) with the Stay design
 facts carrying the decided card (`RR12`), `script/contract-check.sh` and
 `script/openapi-route-check.sh` green as a re-run with no contract delta,
 the live desk loop (`e2e-single-host`) green over the assign / move /
-release chain, `script/catalogue-coverage-check.sh` green over the 18
+release chain, `script/catalogue-coverage-check.sh` green over the 20
 keys in both locales (`RR13`), and `script/markdown-link-check.sh` green.
 Before handover, the lab reproduces the owner scenario, records which path
 leaves the stale hold (switch after the preload, switch after a commit, or
@@ -227,14 +227,15 @@ records the before/after pair in `../testing/evidence/647/README.md`
 — a desk closed between setting a room aside and finishing the action
 still leaves one room to clear (`../architecture/lld.md` section 23.9,
 R12, cleared with `../operations/runbook.md` section 9); no automatic
-repair for rooms stranded before this bundle; no dedicated move-history
-list, because no read operation exposes the stay's move rows (a
-follow-up issue if the owner wants one); and the `AC-REA-1` parenthetical
-reword plus the two sentences LLD R15 records as unkeyed are
-`product-owner` copy, not implementation work.
+repair for rooms stranded before this bundle; and no dedicated move-history
+list, because no read operation exposes the stay's move rows (a follow-up
+issue if the owner wants one).
 
 <!-- ao-role: release-manager -->
 Role: release-manager · AO session hotel-mgmt-948
 
 <!-- ao-role: release-manager -->
 Role: release-manager · AO session hotel-mgmt-963
+
+<!-- ao-role: release-manager -->
+Role: release-manager · AO session hotel-mgmt-969
