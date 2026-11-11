@@ -26,6 +26,8 @@ import { createPinia, setActivePinia } from 'pinia';
 import { mount } from '@vue/test-utils';
 import StayView from './StayView.vue';
 import stayViewSource from './StayView.vue?raw';
+import enCatalogueDocument from '../../../messages/en.json';
+import viCatalogueDocument from '../../../messages/vi.json';
 import { useSessionStore } from '../stores/session';
 import { setLocale } from '../i18n';
 import { resetConnectivityForTests } from '../api/client';
@@ -258,12 +260,36 @@ function stubHappyPath(
       return Promise.resolve(jsonResponse({ stayId: body.stayId, invoiceRef: 'INV-1' }));
     }
     // #588 (`FR-CKO-1`): a committed close releases the departed room.
+    // Refs #647: the same operation also carries the arrival
+    // compensation (`vacant-inspected`) and the vacated-room release
+    // (`vacant-dirty`), so the stub echoes the requested target.
     if (url === '/v1/rooms/ReleaseRoom') {
-      expect(body.toState).toBe('vacant-dirty');
+      expect(['vacant-inspected', 'vacant-dirty']).toContain(String(body.toState));
       expect(body.actor).toBe('Ada Owner');
       const roomNumber = String(body.roomNumber);
       return Promise.resolve(
-        jsonResponse({ roomNumber, oldState: 'occupied', newState: 'vacant-dirty' }),
+        jsonResponse({ roomNumber, oldState: 'occupied', newState: body.toState }),
+      );
+    }
+    // Refs #647 (`FR-REA-2`/`FR-REA-4`): the move keeps the stay in
+    // house and returns the echo the desk releases from.
+    if (url === '/v1/stay/MoveRoom') {
+      expect(body.stayId).toBeTruthy();
+      expect(body.toRoomId).toBeTruthy();
+      expect(body.idempotencyKey).toBeTruthy();
+      return Promise.resolve(
+        jsonResponse({
+          stayId: body.stayId,
+          reservationId: 'r-1',
+          guestId: 'g-2',
+          roomId: body.toRoomId,
+          state: 'in-house',
+          move: {
+            fromRoomId: 'room-9',
+            toRoomId: body.toRoomId,
+            movedAt: '2026-11-11T09:30:00.000Z',
+          },
+        }),
       );
     }
     if (url === '/v1/admin/SignOut') {
@@ -341,18 +367,19 @@ describe('stay view', () => {
     expect(wrapper.find('[data-testid="stay-panels"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="stay-checkin-card"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="stay-checkout-card"]').exists()).toBe(true);
-    // Zero extras vs the board: the lists, move, and times
-    // sections are gone.
+    // Zero extras vs the board, plus the one decided additive card
+    // (Refs #647): the lists and times sections stay gone, the move
+    // card now exists by owner decision.
     for (const hook of [
       'stay-main',
       'stay-lists-card',
       'stay-business-date',
-      'stay-move-card',
       'stay-times-card',
       'stay-booking-ref',
     ]) {
       expect(wrapper.find(`[data-testid="${hook}"]`).exists()).toBe(false);
     }
+    expect(wrapper.find('[data-testid="stay-move-card"]').exists()).toBe(true);
   });
 
   it('loads the panel data with bearer auth under the shell session', async () => {
@@ -2662,6 +2689,510 @@ describe('stay view', () => {
   });
 });
 
+// Arrival room reassignment and stale-hold release (Refs #647,
+// `RR1`-`RR9`; LLD 23.2-23.4). Every case asserts the exact call
+// list and order, not only the rendered sentence: the defect this
+// slice fixes is an ordering defect.
+describe('arrival reassignment and stale-hold release (Refs #647)', () => {
+  const callsTo = (
+    fetchMock: ReturnType<typeof vi.fn>,
+    url: string,
+  ): Array<{ url: string; body: Record<string, unknown> }> =>
+    fetchMock.mock.calls
+      .filter((call) => String(call[0]) === url)
+      .map((call) => ({ url, body: parseBody(call[1]) }));
+
+  const urlsOf = (fetchMock: ReturnType<typeof vi.fn>): string[] =>
+    fetchMock.mock.calls.map((call) => String(call[0]));
+
+  async function pickArrivalAndRoom(
+    wrapper: Awaited<ReturnType<typeof mountSignedIn>>,
+    roomId: string,
+  ): Promise<void> {
+    await wrapper.find('[data-testid="stay-checkin-arrival"]').setValue('RSV-1');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain('Booked: Standard');
+    });
+    await wrapper.find('[data-testid="stay-checkin-room"]').setValue(roomId);
+  }
+
+  it('RR1 assigns only the room picked after the preload', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
+
+    await pickArrivalAndRoom(wrapper, 'room-2');
+    // The preload assigned nothing, so changing the room after it is
+    // the room the commit assigns.
+    expect(callsTo(fetchMock, '/v1/rooms/AssignRoom')).toHaveLength(0);
+    await wrapper.find('[data-testid="stay-checkin-room"]').setValue('room-1');
+    await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain('Checked in');
+    });
+    const assigned = callsTo(fetchMock, '/v1/rooms/AssignRoom');
+    expect(assigned).toHaveLength(1);
+    expect(assigned[0].body.roomNumber).toBe('101');
+    expect(assigned[0].body.stayLink).toBeTruthy();
+    expect(
+      fetchMock.mock.calls
+        .map((call) => parseBody(call[1]).roomNumber)
+        .filter((number) => number === '102'),
+    ).toHaveLength(0);
+    expect(callsTo(fetchMock, '/v1/rooms/ReleaseRoom')).toHaveLength(0);
+  });
+
+  it('RR2 takes back the assigned room when the booking read refuses definitively', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
+    const happy = fetchMock.getMockImplementation() as (
+      url: string,
+      init?: RequestInit,
+    ) => Promise<Response>;
+    let bookingReads = 0;
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/reservations/GetReservation') {
+        bookingReads += 1;
+        // First read is the preload; the second is the commit's
+        // read-back, which refuses definitively.
+        if (bookingReads === 2) {
+          return Promise.resolve(jsonResponse({ code: 'NOT_FOUND', message: 'gone' }, 404));
+        }
+      }
+      return happy(url, init);
+    });
+
+    await pickArrivalAndRoom(wrapper, 'room-1');
+    await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain(
+        'room 101 is free again',
+      );
+    });
+    expect(wrapper.find('[data-testid="stay-checkin-error"]').text()).toContain(
+      'Unknown booking reference',
+    );
+    const releases = callsTo(fetchMock, '/v1/rooms/ReleaseRoom');
+    expect(releases).toHaveLength(1);
+    expect(releases[0].body.roomNumber).toBe('101');
+    expect(releases[0].body.toState).toBe('vacant-inspected');
+    expect(callsTo(fetchMock, '/v1/stay/CheckIn')).toHaveLength(0);
+    expect(callsTo(fetchMock, '/v1/reservations/CheckInReservation')).toHaveLength(0);
+  });
+
+  it('RR3 takes back the assigned room when the stay write refuses definitively', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
+    const happy = fetchMock.getMockImplementation() as (
+      url: string,
+      init?: RequestInit,
+    ) => Promise<Response>;
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/stay/CheckIn') {
+        return Promise.resolve(jsonResponse({ code: 'CONFLICT', message: 'already in' }, 409));
+      }
+      return happy(url, init);
+    });
+
+    await pickArrivalAndRoom(wrapper, 'room-1');
+    await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain(
+        'room 101 is free again',
+      );
+    });
+    expect(wrapper.find('[data-testid="stay-checkin-error"]').text()).toContain(
+      'already checked in',
+    );
+    const releases = callsTo(fetchMock, '/v1/rooms/ReleaseRoom');
+    expect(releases).toHaveLength(1);
+    expect(releases[0].body).toMatchObject({ roomNumber: '101', toState: 'vacant-inspected' });
+    expect(callsTo(fetchMock, '/v1/reservations/CheckInReservation')).toHaveLength(0);
+  });
+
+  it('RR4 releases nothing when only the reservation link fails after the stay landed', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
+    const happy = fetchMock.getMockImplementation() as (
+      url: string,
+      init?: RequestInit,
+    ) => Promise<Response>;
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/reservations/CheckInReservation') {
+        return Promise.resolve(jsonResponse({ code: 'STATE_ILLEGAL', message: 'closed' }, 422));
+      }
+      return happy(url, init);
+    });
+
+    await pickArrivalAndRoom(wrapper, 'room-1');
+    await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkin-error"]').text()).toContain(
+        'booking link is not recorded',
+      );
+    });
+    // The stay names the room, so a room a live stay names is never
+    // freed (LLD R14 / `FR-REA-1`).
+    expect(callsTo(fetchMock, '/v1/rooms/ReleaseRoom')).toHaveLength(0);
+    expect(callsTo(fetchMock, '/v1/stay/CheckIn')).toHaveLength(1);
+  });
+
+  it('RR5 releases nothing on an unreadable booking read or assignment', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
+    const happy = fetchMock.getMockImplementation() as (
+      url: string,
+      init?: RequestInit,
+    ) => Promise<Response>;
+    let bookingReads = 0;
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/reservations/GetReservation') {
+        bookingReads += 1;
+        if (bookingReads === 2) {
+          return Promise.resolve(jsonResponse({ code: 'INTERNAL', message: 'boom' }, 500));
+        }
+      }
+      return happy(url, init);
+    });
+
+    await pickArrivalAndRoom(wrapper, 'room-1');
+    await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkin-error"]').text()).toContain(
+        'check-in result could not be read',
+      );
+    });
+    expect(wrapper.find('[data-testid="stay-checkin-error"]').text()).toContain('room 101');
+    expect(callsTo(fetchMock, '/v1/rooms/ReleaseRoom')).toHaveLength(0);
+
+    // Same rule for an unreadable assignment: nothing is released.
+    const second = vi.fn();
+    vi.stubGlobal('fetch', second);
+    const secondWrapper = await mountSignedIn(second);
+    const secondHappy = second.getMockImplementation() as (
+      url: string,
+      init?: RequestInit,
+    ) => Promise<Response>;
+    second.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/rooms/AssignRoom') {
+        return Promise.reject(new TypeError('offline'));
+      }
+      return secondHappy(url, init);
+    });
+    await pickArrivalAndRoom(secondWrapper, 'room-1');
+    await secondWrapper.find('[data-testid="stay-checkin"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(secondWrapper.find('[data-testid="stay-checkin-error"]').text()).toContain(
+        'check-in result could not be read',
+      );
+    });
+    expect(callsTo(second, '/v1/rooms/ReleaseRoom')).toHaveLength(0);
+  });
+
+  it('RR6 names a compensation that fails and never claims a freed room', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
+    const happy = fetchMock.getMockImplementation() as (
+      url: string,
+      init?: RequestInit,
+    ) => Promise<Response>;
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/stay/CheckIn') {
+        return Promise.resolve(jsonResponse({ code: 'CONFLICT', message: 'already in' }, 409));
+      }
+      if (url === '/v1/rooms/ReleaseRoom') {
+        return Promise.resolve(jsonResponse({ code: 'INTERNAL', message: 'rooms down' }, 500));
+      }
+      return happy(url, init);
+    });
+
+    await pickArrivalAndRoom(wrapper, 'room-1');
+    await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain(
+        'room 101 still reads occupied',
+      );
+    });
+    expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).not.toContain('free again');
+    expect(urlsOf(fetchMock)).not.toContain('/v1/rooms/UpdateRoomState');
+  });
+
+  it('RR6 reads an already-free compensation as free, not as a manual state edit', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
+    const happy = fetchMock.getMockImplementation() as (
+      url: string,
+      init?: RequestInit,
+    ) => Promise<Response>;
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/stay/CheckIn') {
+        return Promise.resolve(jsonResponse({ code: 'CONFLICT', message: 'already in' }, 409));
+      }
+      if (url === '/v1/rooms/ReleaseRoom') {
+        return Promise.resolve(jsonResponse({ code: 'STATE_ILLEGAL', message: 'free' }, 422));
+      }
+      return happy(url, init);
+    });
+
+    await pickArrivalAndRoom(wrapper, 'room-1');
+    await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain(
+        'room 101 is free again',
+      );
+    });
+    expect(urlsOf(fetchMock)).not.toContain('/v1/rooms/UpdateRoomState');
+  });
+
+  it('RR7 reassigns after a committed check-in in assign, move, release order', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
+
+    await wrapper.find('[data-testid="stay-move-guest"]').setValue('s-1');
+    await wrapper.find('[data-testid="stay-move-room"]').setValue('room-1');
+    await wrapper.find('[data-testid="stay-move"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-move-status"]').text()).toContain('Moved Guest Two');
+    });
+
+    const urls = urlsOf(fetchMock);
+    const assignAt = urls.indexOf('/v1/rooms/AssignRoom');
+    const moveAt = urls.indexOf('/v1/stay/MoveRoom');
+    const releaseAt = urls.indexOf('/v1/rooms/ReleaseRoom');
+    expect(assignAt).toBeGreaterThanOrEqual(0);
+    expect(moveAt).toBeGreaterThan(assignAt);
+    expect(releaseAt).toBeGreaterThan(moveAt);
+
+    const assigned = callsTo(fetchMock, '/v1/rooms/AssignRoom');
+    expect(assigned).toHaveLength(1);
+    expect(assigned[0].body).toMatchObject({ roomNumber: '101', stayLink: 's-1' });
+    const moved = callsTo(fetchMock, '/v1/stay/MoveRoom');
+    expect(moved).toHaveLength(1);
+    expect(moved[0].body).toMatchObject({ stayId: 's-1', toRoomId: 'echo-101' });
+    const releases = callsTo(fetchMock, '/v1/rooms/ReleaseRoom');
+    expect(releases).toHaveLength(1);
+    // The release follows the echo (`fromRoomId` room-9 = 109), not
+    // the picker, and it goes to housekeeping.
+    expect(releases[0].body).toMatchObject({ roomNumber: '109', toState: 'vacant-dirty' });
+    const status = wrapper.find('[data-testid="stay-move-status"]').text();
+    expect(status).toContain('Moved Guest Two from room 109 to room 101 at');
+    expect(wrapper.find('[data-testid="stay-move-error"]').exists()).toBe(false);
+  });
+
+  it('RR8 releases the echo from-room even when the panel row is stale', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
+    const happy = fetchMock.getMockImplementation() as (
+      url: string,
+      init?: RequestInit,
+    ) => Promise<Response>;
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/stay/MoveRoom') {
+        const body = parseBody(init);
+        // Another desk moved the stay first: the echo's from-room is
+        // room-2 (102), not the remembered room-9 (109).
+        return Promise.resolve(
+          jsonResponse({
+            stayId: body.stayId,
+            reservationId: 'r-1',
+            guestId: 'g-2',
+            roomId: body.toRoomId,
+            state: 'in-house',
+            move: {
+              fromRoomId: 'room-2',
+              toRoomId: body.toRoomId,
+              movedAt: '2026-11-11T09:30:00.000Z',
+            },
+          }),
+        );
+      }
+      return happy(url, init);
+    });
+
+    await wrapper.find('[data-testid="stay-move-guest"]').setValue('s-1');
+    await wrapper.find('[data-testid="stay-move-room"]').setValue('room-1');
+    await wrapper.find('[data-testid="stay-move"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-move-status"]').text()).toContain('Moved Guest Two');
+    });
+    const releases = callsTo(fetchMock, '/v1/rooms/ReleaseRoom');
+    expect(releases).toHaveLength(1);
+    expect(releases[0].body).toMatchObject({ roomNumber: '102', toState: 'vacant-dirty' });
+    expect(wrapper.find('[data-testid="stay-move-status"]').text()).toContain('from room 102');
+  });
+
+  it('RR9 refuses a lead refusal without moving or releasing', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
+    const happy = fetchMock.getMockImplementation() as (
+      url: string,
+      init?: RequestInit,
+    ) => Promise<Response>;
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/rooms/AssignRoom') {
+        return Promise.resolve(jsonResponse({ code: 'CONFLICT', message: 'taken' }, 409));
+      }
+      return happy(url, init);
+    });
+
+    await wrapper.find('[data-testid="stay-move-guest"]').setValue('s-1');
+    await wrapper.find('[data-testid="stay-move-room"]').setValue('room-1');
+    await wrapper.find('[data-testid="stay-move"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-move-error"]').text()).toContain('just taken');
+    });
+    expect(callsTo(fetchMock, '/v1/stay/MoveRoom')).toHaveLength(0);
+    expect(callsTo(fetchMock, '/v1/rooms/ReleaseRoom')).toHaveLength(0);
+    expect(wrapper.find('[data-testid="stay-move-status"]').text()).toBe('');
+    // The ready pool reloads so the taken room leaves the picker.
+    expect(
+      fetchMock.mock.calls.filter(
+        (call) =>
+          String(call[0]) === '/v1/rooms/ListRoomsByState' &&
+          parseBody(call[1]).state === 'vacant-inspected',
+      ).length,
+    ).toBeGreaterThanOrEqual(2);
+  });
+
+  it('RR9 compensates the target once when the stay-side move refuses', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
+    const happy = fetchMock.getMockImplementation() as (
+      url: string,
+      init?: RequestInit,
+    ) => Promise<Response>;
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/stay/MoveRoom') {
+        return Promise.resolve(jsonResponse({ code: 'STATE_ILLEGAL', message: 'not in house' }, 422));
+      }
+      return happy(url, init);
+    });
+
+    await wrapper.find('[data-testid="stay-move-guest"]').setValue('s-1');
+    await wrapper.find('[data-testid="stay-move-room"]').setValue('room-1');
+    await wrapper.find('[data-testid="stay-move"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-move-status"]').text()).toContain(
+        'room 101 is free again',
+      );
+    });
+    expect(wrapper.find('[data-testid="stay-move-error"]').text()).toContain('no longer in house');
+    const releases = callsTo(fetchMock, '/v1/rooms/ReleaseRoom');
+    expect(releases).toHaveLength(1);
+    expect(releases[0].body).toMatchObject({ roomNumber: '101', toState: 'vacant-inspected' });
+    expect(callsTo(fetchMock, '/v1/rooms/AssignRoom')).toHaveLength(1);
+  });
+
+  it('RR9 names a release that fails after the move and rolls nothing back', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
+    const happy = fetchMock.getMockImplementation() as (
+      url: string,
+      init?: RequestInit,
+    ) => Promise<Response>;
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/rooms/ReleaseRoom') {
+        return Promise.resolve(jsonResponse({ code: 'INTERNAL', message: 'rooms down' }, 500));
+      }
+      return happy(url, init);
+    });
+
+    await wrapper.find('[data-testid="stay-move-guest"]').setValue('s-1');
+    await wrapper.find('[data-testid="stay-move-room"]').setValue('room-1');
+    await wrapper.find('[data-testid="stay-move"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-move-release"]').text()).toContain(
+        'room 109 still reads occupied',
+      );
+    });
+    expect(wrapper.find('[data-testid="stay-move-status"]').text()).toContain('Moved Guest Two');
+    expect(callsTo(fetchMock, '/v1/rooms/AssignRoom')).toHaveLength(1);
+    expect(callsTo(fetchMock, '/v1/stay/MoveRoom')).toHaveLength(1);
+  });
+
+  it('RR9 moves once, then an unreadable outcome releases nothing', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
+    const happy = fetchMock.getMockImplementation() as (
+      url: string,
+      init?: RequestInit,
+    ) => Promise<Response>;
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/stay/MoveRoom') {
+        return Promise.resolve(jsonResponse({ code: 'INTERNAL', message: 'boom' }, 500));
+      }
+      return happy(url, init);
+    });
+
+    await wrapper.find('[data-testid="stay-move-guest"]').setValue('s-1');
+    await wrapper.find('[data-testid="stay-move-room"]').setValue('room-1');
+    await wrapper.find('[data-testid="stay-move"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-move-error"]').text()).toContain(
+        'move result could not be read',
+      );
+    });
+    const error = wrapper.find('[data-testid="stay-move-error"]').text();
+    expect(error).toContain('109');
+    expect(error).toContain('101');
+    expect(callsTo(fetchMock, '/v1/rooms/ReleaseRoom')).toHaveLength(0);
+    expect(callsTo(fetchMock, '/v1/rooms/AssignRoom')).toHaveLength(1);
+  });
+
+  it('RR9 makes a double-clicked move assign once', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
+
+    await wrapper.find('[data-testid="stay-move-guest"]').setValue('s-1');
+    await wrapper.find('[data-testid="stay-move-room"]').setValue('room-1');
+    await Promise.all([
+      wrapper.find('[data-testid="stay-move"]').trigger('click'),
+      wrapper.find('[data-testid="stay-move"]').trigger('click'),
+    ]);
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-move-status"]').text()).toContain('Moved Guest Two');
+    });
+    expect(callsTo(fetchMock, '/v1/rooms/AssignRoom')).toHaveLength(1);
+    expect(callsTo(fetchMock, '/v1/stay/MoveRoom')).toHaveLength(1);
+  });
+
+  it('RR9 refuses a missing guest or ready room without writing', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
+
+    await wrapper.find('[data-testid="stay-move-room"]').setValue('room-1');
+    await wrapper.find('[data-testid="stay-move"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-move-error"]').text()).toContain(
+        'Choose a guest in house first',
+      );
+    });
+    await wrapper.find('[data-testid="stay-move-guest"]').setValue('s-1');
+    await wrapper.find('[data-testid="stay-move-room"]').setValue('');
+    await wrapper.find('[data-testid="stay-move"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-move-error"]').text()).toContain(
+        'Pick a ready room first',
+      );
+    });
+    expect(callsTo(fetchMock, '/v1/rooms/AssignRoom')).toHaveLength(0);
+  });
+});
+
 // Source-level pins: the port keeps every check-in/out op and the
 // folio gate vocabulary, and every paragraph stays in English.
 describe('stay view source', () => {
@@ -2671,6 +3202,7 @@ describe('stay view source', () => {
     '/v1/guests/GetGuest',
     '/v1/rooms/AssignRoom',
     '/v1/stay/CheckIn',
+    '/v1/stay/MoveRoom',
     '/v1/reservations/CheckInReservation',
     '/v1/billing/GetFolioBalance',
     '/v1/billing/PostCharge',
@@ -2703,5 +3235,47 @@ describe('stay view source', () => {
     }
     expect(stayViewSource).not.toContain('DeskMessages');
     expect(stayViewSource).not.toContain('Authorization');
+  });
+});
+
+// Refs #647 (`RR13`, rollout 6.17): the move/compensation copy is the
+// one copy addition, and both locales must carry the decided keys with
+// their placeholders intact. A drifted or invented string fails here,
+// not only on an absent key.
+describe('reassignment catalogue copy (Refs #647)', () => {
+  const en = (enCatalogueDocument as unknown as { messages: Record<string, string> }).messages;
+  const vi = (viCatalogueDocument as unknown as { messages: Record<string, string> }).messages;
+  const params = (pattern: string): string[] =>
+    [...pattern.matchAll(/\{([A-Za-z0-9_]+)\}/g)].map((match) => match[1]).sort();
+
+  const expectedCopy: Array<[string, string, string]> = [
+    ['desk.stay.move_heading', 'Move room', 'Chuyển phòng'],
+    ['desk.stay.move_guest_label', 'Guest in house', 'Khách đang lưu trú'],
+    ['desk.stay.move_choose_guest', 'Choose a guest in house...', 'Chọn khách đang lưu trú...'],
+    ['desk.stay.move_room_label', 'New room', 'Phòng mới'],
+    ['desk.stay.move_choose_room', 'Choose a ready room...', 'Chọn phòng sẵn sàng...'],
+    ['desk.stay.move_hint', 'Pick a guest in house and a ready room first.', 'Chọn khách đang lưu trú và phòng sẵn sàng trước.'],
+    ['desk.stay.move_button', 'Move guest', 'Chuyển khách'],
+    ['desk.stay.moving', 'Moving the guest…', 'Đang chuyển khách…'],
+    ['desk.stay.move_need_guest', 'Choose a guest in house first.', 'Chọn khách đang lưu trú trước.'],
+    ['desk.stay.moved_named', 'Moved {guest} from room {fromRoom} to room {toRoom} at {time}.', 'Đã chuyển {guest} từ phòng {fromRoom} sang phòng {toRoom} lúc {time}.'],
+    ['desk.stay.move_refused_taken', 'That room was just taken. Pick another ready room.', 'Phòng đó vừa có người nhận. Chọn phòng sẵn sàng khác.'],
+    ['desk.stay.move_refused_stay', 'That guest is no longer in house, so the move is refused.', 'Khách này không còn lưu trú nên không chuyển phòng được.'],
+    ['desk.stay.move_compensated', 'The move was refused and room {toRoom} is free again.', 'Không chuyển được phòng và phòng {toRoom} đã trống trở lại.'],
+    ['desk.stay.move_release_failed', 'The guest is now in room {toRoom}, but room {fromRoom} still reads occupied. Reload the desk, and tell the manager if it still shows occupied.', 'Khách đã ở phòng {toRoom}, nhưng phòng {fromRoom} vẫn hiện đang có khách. Tải lại bàn lễ tân và báo quản lý nếu phòng vẫn hiện đang có khách.'],
+    ['desk.stay.move_target_stuck', 'The move was refused, but room {toRoom} still reads occupied. Reload the desk, and tell the manager if it still shows occupied.', 'Không chuyển được phòng, nhưng phòng {toRoom} vẫn hiện đang có khách. Tải lại bàn lễ tân và báo quản lý nếu phòng vẫn hiện đang có khách.'],
+    ['desk.stay.move_outcome_unknown', 'The move result could not be read. Reload the desk and check rooms {fromRoom} and {toRoom} before acting again.', 'Không đọc được kết quả chuyển phòng. Tải lại bàn lễ tân và kiểm tra phòng {fromRoom} và {toRoom} trước khi làm tiếp.'],
+    ['desk.stay.checkin_release_failed', 'The check-in was refused, but room {roomNumber} still reads occupied. Reload the desk, and tell the manager if it still shows occupied.', 'Không nhận phòng được, nhưng phòng {roomNumber} vẫn hiện đang có khách. Tải lại bàn lễ tân và báo quản lý nếu phòng vẫn hiện đang có khách.'],
+    ['desk.stay.checkin_outcome_unknown', 'The check-in result could not be read. Reload the desk and check room {roomNumber} before acting again.', 'Không đọc được kết quả nhận phòng. Tải lại bàn lễ tân và kiểm tra phòng {roomNumber} trước khi làm tiếp.'],
+    ['desk.stay.checkin_compensated', 'The check-in was refused and room {roomNumber} is free again.', 'Không nhận phòng được và phòng {roomNumber} đã trống trở lại.'],
+    ['desk.stay.checkin_link_not_recorded', 'The guest is in room {roomNumber}, but the booking link is not recorded. Reload the desk, and tell the manager if the booking still shows no check-in.', 'Khách đã ở phòng {roomNumber} nhưng chưa ghi nhận liên kết đặt phòng. Tải lại bàn lễ tân và báo quản lý nếu đặt phòng vẫn chưa hiển thị việc nhận phòng.'],
+  ];
+
+  it('carries the 20 decided keys in both locales with matching placeholders', () => {
+    for (const [key, enCopy, viCopy] of expectedCopy) {
+      expect(en[key], `en ${key}`).toBe(enCopy);
+      expect(vi[key], `vi ${key}`).toBe(viCopy);
+      expect(params(en[key]), `en params ${key}`).toEqual(params(vi[key]));
+    }
   });
 });

@@ -6,7 +6,7 @@
 // an approval is recorded, check-out closes through the confirm
 // dialog, and the committed close releases the departed room so the
 // board reads it vacant (Refs #588, `AC-DSK-18`).
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page, type APIRequestContext } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { installLoopbackGuard } from './loopback-guard';
 import {
@@ -15,6 +15,7 @@ import {
   setupFlowContext,
   signInThroughGate,
   stayWindow,
+  type FlowContext,
 } from './desk-flow';
 
 let guard!: ReturnType<typeof installLoopbackGuard>;
@@ -26,6 +27,39 @@ test.beforeEach(async ({ page }) => {
 test.afterEach(() => {
   guard.assertClean();
 });
+
+// One API-side booking for tonight (mirrors
+// `script/e2e-desk-loop.sh`): the UI drives everything from check-in
+// on. Shared by the #647 switch scenarios.
+async function bookArrival(
+  request: APIRequestContext,
+  token: string,
+  ctx: FlowContext,
+  idDocument: string,
+): Promise<string> {
+  const quote = await apiOp(request, 'rates', 'QuotePrice', {
+    roomTypeId: ctx.roomTypeId,
+    arrivalDate: ctx.window.arrival,
+    departureDate: ctx.window.departure,
+    ratePlanName: ctx.ratePlan,
+  }, token);
+  const sellable = await apiOp(request, 'rooms', 'CheckRoomTypeSellability', {
+    roomType: ctx.roomTypeId,
+    dateFrom: ctx.window.arrival,
+    dateTo: ctx.window.departure,
+  }, token);
+  const booking = await apiOp(request, 'reservations', 'CreateReservation', {
+    roomTypeId: ctx.roomTypeId,
+    arrivalDate: ctx.window.arrival,
+    departureDate: ctx.window.departure,
+    guest: { guestId: ctx.guestId, fullName: ctx.guestName, idDocument },
+    sellableUnits: sellable.sellableCount,
+    priceBasis: { totalMinor: quote.totalMinor },
+    idempotencyKey: randomUUID(),
+    actor: 'browser-e2e',
+  }, token);
+  return booking.reservationRef as string;
+}
 
 test('check-in, unpaid refusal, approval, dialog check-out, and room release', async ({ page, request }) => {
   const token = await ownerToken(request);
@@ -154,6 +188,109 @@ test('check-in, unpaid refusal, approval, dialog check-out, and room release', a
   ).toHaveCount(0);
   await page.goto('/app/rooms');
   await expect(page.getByTestId(`rooms-card-chip-${ctx.roomNumbers[0]}`)).toContainText('Dirty');
+});
+
+// Refs #647 (`RR11`, `AC-REA-1`): switching the room after the
+// arrival preload assigns only the room the guest is in. Room 101 is
+// preloaded as a candidate, 102 is picked, and only 102 reads
+// occupied — 101 stays ready because the preload assigns nothing.
+test('switch after the arrival preload assigns only the room the guest is in', async ({ page, request }) => {
+  const token = await ownerToken(request);
+  const window = stayWindow(0, 2);
+  const ctx = await setupFlowContext(request, token, 'rea-pre', window);
+  const reservationRef = await bookArrival(request, token, ctx, 'UI-REA-PRE');
+  const [first, second] = ctx.roomNumbers;
+
+  await signInThroughGate(page);
+  await page.goto('/app/stay');
+  await page.getByTestId('stay-checkin-arrival').selectOption(reservationRef);
+  await expect(page.getByTestId('stay-checkin-status')).toContainText(`Booked: ${ctx.roomTypeName}.`);
+  // Preload the first candidate, then switch to the second before the
+  // commit — the switch-after-preload case.
+  await page.getByTestId('stay-checkin-room').selectOption({ label: first });
+  await page.getByTestId('stay-checkin-room').selectOption({ label: second });
+  await page.getByTestId('stay-checkin').click();
+  await expect(page.getByTestId('stay-checkin-status')).toContainText(
+    `Checked in for booking ${reservationRef} in room ${second}`,
+  );
+
+  const occupied = await apiOp(request, 'rooms', 'ListRoomsByState', { state: 'occupied' }, token);
+  const occupiedNumbers = ((occupied.rooms ?? []) as Array<{ number: string }>).map((room) => room.number);
+  expect(occupiedNumbers).toContain(second);
+  expect(occupiedNumbers).not.toContain(first);
+  const ready = await apiOp(request, 'rooms', 'ListRoomsByState', { state: 'vacant-inspected' }, token);
+  const readyNumbers = ((ready.rooms ?? []) as Array<{ number: string }>).map((room) => room.number);
+  expect(readyNumbers).toContain(first);
+
+  // The board and the Rooms map show only the room the guest is in.
+  await page.goto('/app/');
+  await expect(
+    page.getByTestId('desk-board-lane-occupied').getByTestId(`desk-board-cell-${second}`),
+  ).toHaveCount(1);
+  await expect(
+    page.getByTestId('desk-board-lane-occupied').getByTestId(`desk-board-cell-${first}`),
+  ).toHaveCount(0);
+  await page.goto('/app/rooms');
+  await expect(page.getByTestId(`rooms-card-chip-${second}`)).toContainText('Occupied');
+  await expect(page.getByTestId(`rooms-card-chip-${first}`)).toContainText('Ready');
+});
+
+// Refs #647 (`RR11`, `AC-REA-2`/`AC-REA-4`): the move card reassigns a
+// committed check-in — assign the target, move the stay, release the
+// vacated room to housekeeping — through the same single path a
+// mid-stay move uses.
+test('switch after a committed check-in releases the vacated room', async ({ page, request }) => {
+  const token = await ownerToken(request);
+  const window = stayWindow(0, 2);
+  const ctx = await setupFlowContext(request, token, 'rea-commit', window);
+  const reservationRef = await bookArrival(request, token, ctx, 'UI-REA-COMMIT');
+  const [first, second] = ctx.roomNumbers;
+
+  await signInThroughGate(page);
+  await page.goto('/app/stay');
+  await page.getByTestId('stay-checkin-arrival').selectOption(reservationRef);
+  await expect(page.getByTestId('stay-checkin-status')).toContainText(`Booked: ${ctx.roomTypeName}.`);
+  await page.getByTestId('stay-checkin-room').selectOption({ label: first });
+  await page.getByTestId('stay-checkin').click();
+  await expect(page.getByTestId('stay-checkin-status')).toContainText(
+    `Checked in for booking ${reservationRef} in room ${first}`,
+  );
+  const stayId = await stayIdFromStatus(page);
+
+  // Move the guest to the second ready room through the additive card.
+  await page.getByTestId('stay-move-guest').selectOption({
+    label: `${ctx.guestName} · ${first}`,
+  });
+  await page.getByTestId('stay-move-room').selectOption({ label: second });
+  await page.getByTestId('stay-move').click();
+  await expect(page.getByTestId('stay-move-status')).toContainText(
+    `Moved ${ctx.guestName} from room ${first} to room ${second}`,
+  );
+
+  // The service read-backs: the stay names the new room and stays in
+  // house; 102 is occupied and 101 is vacant and dirty.
+  const stay = await apiOp(request, 'stay', 'GetStay', { stayId }, token);
+  expect(stay.state).toBe('in-house');
+  expect(stay.roomId).toBe(ctx.roomIds[1]);
+  const occupied = await apiOp(request, 'rooms', 'ListRoomsByState', { state: 'occupied' }, token);
+  const occupiedNumbers = ((occupied.rooms ?? []) as Array<{ number: string }>).map((room) => room.number);
+  expect(occupiedNumbers).toContain(second);
+  expect(occupiedNumbers).not.toContain(first);
+  const dirty = await apiOp(request, 'rooms', 'ListRoomsByState', { state: 'vacant-dirty' }, token);
+  const dirtyNumbers = ((dirty.rooms ?? []) as Array<{ number: string }>).map((room) => room.number);
+  expect(dirtyNumbers).toContain(first);
+
+  // The board and the Rooms map agree on their own load.
+  await page.goto('/app/');
+  await expect(
+    page.getByTestId('desk-board-lane-occupied').getByTestId(`desk-board-cell-${second}`),
+  ).toHaveCount(1);
+  await expect(
+    page.getByTestId('desk-board-lane-occupied').getByTestId(`desk-board-cell-${first}`),
+  ).toHaveCount(0);
+  await page.goto('/app/rooms');
+  await expect(page.getByTestId(`rooms-card-chip-${second}`)).toContainText('Occupied');
+  await expect(page.getByTestId(`rooms-card-chip-${first}`)).toContainText('Dirty');
 });
 
 // The already-closed refusal (STATE_ILLEGAL naming the closed stay)
