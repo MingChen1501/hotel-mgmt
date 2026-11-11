@@ -160,5 +160,37 @@ and section 5 says "None at runtime".
 Design: `docs/architecture/lld.md` section 21; threat-model B5 and
 residual risks R5–R7 in `docs/technical/security-threat-model.md`.
 
+## 9. Planned delta — departure completes the booking (Refs #646)
+
+Not as-built yet: `checkOut` closes only the stay row and queues
+`stay.checked-out` (`src/store.ts:282-290`; Postgres
+`src/pgstore.ts:161-206`), so the booking behind the stay keeps reading
+`checked-in`. This section records the target the implementation PR
+folds into sections 2, 4, 5, and 6 in the same change
+(maintain-with-code). It layers on the #601 delta above: the completion
+runs after the flip, whichever order the two clients land in.
+
+- New outbound client: one Reservations `CheckOutReservation` call after
+  the conditional `in-house -> closed` flip commits and before the
+  reply — `RESERVATIONS_BASE_URL` (default `http://reservations:8081`),
+  caller Bearer token forwarded, 2-second timeout. The transport must
+  thread the bearer into the store the way the Reservations handler
+  threads it (`services/reservations/internal/handler/handler.go:207`,
+  `:235`); today `src/server.ts:110-112` only checks presence.
+- The response gains `bookingCompletion`:
+  `{state: "completed" | "not-recorded", reservationRef?, reason?}`.
+  Any non-recording outcome (transport, timeout, 5xx, unwired, provider
+  4xx) leaves the close `200`/`closed` and reports the split; it is
+  never turned into a refused close (FR-DEP-5).
+- An idempotent replay re-attempts the idempotent completion so a retry
+  after a split repairs the booking; the booking still transitions once.
+- Sections 3 and 4 gain the completion step in the CheckOut flowcharts;
+  section 5's "None at runtime" becomes the Billing and Reservations
+  clients; section 6 gains no new code.
+
+Design: `docs/architecture/lld.md` section 22; product UI contract
+`docs/product/desk-ui-design-rollout.md` section 6.16 (the plain split
+sentence, no technical code).
+
 <!-- ao-role: architect -->
-Role: architect · AO session hotel-mgmt-919
+Role: architect · AO session hotel-mgmt-946

@@ -99,6 +99,14 @@ approval recorded against it, the balance and the approval object a
 request carries are advisory only, and a folio that cannot be read
 refuses the close instead of closing on an unverified balance
 (section 22, `FR-CKS-1`..`FR-CKS-5`).
+Amendment (Refs #646): the close also completes the booking behind
+the stay — the reservation reaches its terminal closed (completed)
+state, stops counting as an active booking for availability, the
+calendar, and the booking guard, and its past stay stays in history
+— so the departed room type is sellable and the departed room is
+reusable the same day. The close performs that completion itself, as
+part of the one check-out the desk already confirms, and a refused
+close completes nothing (section 23, `FR-DEP-1`..`FR-DEP-5`).
 
 FR-FDK-3 — Room moves. Staff can move a guest to another room
 mid-stay with the history kept.
@@ -168,6 +176,11 @@ Given rooms, reservations, and out-of-order blocks exist; when staff
 open the availability view for a date range; then each room type and
 date shows the count of rooms still sellable, excluding occupied,
 blocked, and already-reserved rooms.
+Amendment (Refs #646): "already-reserved" means a reservation in the
+active set only — `confirmed` or `checked-in`; a closed (completed),
+cancelled, or no-show reservation holds nothing for the dates it
+covers, so a departed booking never reduces the sellable count
+(section 23, `FR-DEP-2`).
 
 FR-RTE-3 — Manual discounts and special rates. The manager can apply
 a named discount or special price to a reservation.
@@ -529,8 +542,9 @@ desk actions succeed with no outside connectivity.
 ### 3.2 Fixed in the MVP (not configurable per hotel)
 
 - The lifecycle order itself: reservation precedes check-in, check-in
-  precedes an in-house stay, and check-out closes the stay; no hotel
-  can skip, reorder, or rename these states.
+  precedes an in-house stay, and check-out closes the stay and
+  completes the reservation behind it (`FR-DEP-1`, Refs #646); no
+  hotel can skip, reorder, or rename these states.
 - One folio per stay and one property per installation: folios cannot
   be split across payers and data cannot be shared across properties
   in the MVP.
@@ -566,7 +580,7 @@ product scope have no FR and are listed in section 6.
 | Reservation calendar | FR-RES-5 | Guard seeds multi-date, multi-type bookings and checks placement and detail drill-down |
 | No-show handling | FR-RES-6 | Guard marks a past-arrival booking no-show and checks state, released room, and history |
 | Check-in | FR-FDK-1 | Guard checks in against a ready room and checks stay link and occupied state |
-| Check-out | FR-FDK-2, FR-BIL-7 | Guard checks out a settled stay and checks closure, final invoice, and vacant-dirty state with the departed room released once and the desk lists re-read; guard attempts open-balance check-out and checks refusal on every desk route unless an authorised, provenanced approval is recorded, and that an approved close stays closed when the release fails (Refs #588); guard closes through the service with a forged balance and again with a forged approval and checks that both are refused on the folio Billing holds, that an unreadable folio refuses rather than closes, and that the desk flows keep passing (Refs #601) |
+| Check-out | FR-FDK-2, FR-BIL-7 | Guard checks out a settled stay and checks closure, final invoice, and vacant-dirty state with the departed room released once and the desk lists re-read; guard attempts open-balance check-out and checks refusal on every desk route unless an authorised, provenanced approval is recorded, and that an approved close stays closed when the release fails (Refs #588); guard closes through the service with a forged balance and again with a forged approval and checks that both are refused on the folio Billing holds, that an unreadable folio refuses rather than closes, and that the desk flows keep passing (Refs #601); guard completes the booking behind the stay on the same close and checks that the departed booking reads closed, holds nothing for availability, and leaves the departed room reusable the same day (Refs #646) |
 | Room moves | FR-FDK-3 | Guard moves an in-house guest and checks both room states and kept history |
 | Early check-in and late check-out | FR-FDK-4 | Guard records off-hours arrival/departure and checks kept times and list visibility |
 | Arrivals and departures list | FR-FDK-5 | Guard seeds all three groups and checks exactly-once listing with names and states |
@@ -575,7 +589,7 @@ product scope have no FR and are listed in section 6.
 | Out-of-order and maintenance blocks | FR-RMS-3 | Guard blocks a range and checks display plus refused booking and check-in on blocked dates |
 | Room setup and attributes | FR-RMS-4 | Guard defines floor/bed/features and checks inventory and assignment visibility |
 | Rate plans per room type | FR-RTE-1 | Guard sets seasonal/day prices and checks new quotes follow them |
-| Availability overview | FR-RTE-2 | Guard seeds occupancy, blocks, and bookings and checks per-type per-date counts |
+| Availability overview | FR-RTE-2 | Guard seeds occupancy, blocks, and bookings and checks per-type per-date counts; a completed (closed), cancelled, or no-show booking subtracts nothing from the count while a confirmed or checked-in one does (Refs #646) |
 | Manual discounts and special rates | FR-RTE-3 | Guard applies a named discount and checks kept name and folio effect |
 | Stay restrictions | FR-RTE-4 | Guard sets each restriction type and checks refusal names the restriction |
 | Guest profiles with stay history | FR-GST-1 | Guard links past and upcoming stays and checks profile completeness |
@@ -4729,5 +4743,371 @@ exists in either direction (`BR-46`).
   `ADR-0005` must move `proposed` to `accepted` with the owner and no
   implementation PR opens until `SPEC-GATE PASS` on #601.
 
+## 23. Departure release and same-day reuse after check-out (Refs #646)
+
+Requirements delta for the #646 change: a check-out completes the
+booking behind the stay, so the departed booking stops counting as an
+active booking and the departed room type is sellable and the departed
+room reusable the same day. No capability is new — `FR-FDK-2` already
+closes the stay and releases the room, `FR-RTE-2` already counts what
+is still sellable, and `BR-1` already names `closed` as the
+reservation's terminal state — but the requirements never said which
+requirement performs the booking's completion, and never pinned which
+bookings hold availability. Both gaps are wording and enforcement, not
+policy: the owner-reported symptom (manual QA 2026-11-10) is a
+lifecycle obligation that exists and was never carried out.
+
+The scope decision, the as-built trace that isolates the layer holding
+the stale state, and the binding done-conditions are `product-owner`
+work: `docs/product/acceptance-criteria.md`
+[section 15](../product/acceptance-criteria.md) (`AC-DEP-1`..`AC-DEP-5`,
+the `AC-FDK-2` pointer, and the `DEP` domain code),
+`docs/product/desk-ui-design-rollout.md`
+[section 6.16](../product/desk-ui-design-rollout.md) (the desk delta and
+the T2 UI contract), and D-26 in `docs/project/decision-log.md`. This
+section words the requirements half: the decision (23.1), the explicit
+no-change statements (23.2), the FR delta (23.3), the NFR statement
+(23.4), the traceability handoff with its per-flow diagram (23.5), and
+the gate dependencies (23.6). No `docs/README.md` row flips: every
+requirements file this change touches is already `active`.
+
+### 23.1 Decision: the close completes the booking, and only active bookings hold availability
+
+As-built validation at this spec head, read-only — the isolated-lab
+reproduction belongs in the implementation PR body:
+
+- **Reservations has no terminal effect today.** The repository
+  surface stops at create, get, query, check-in, modify, cancel, and
+  no-show (`services/reservations/internal/store/store.go:109-117`),
+  the operation endpoints are those same seven
+  (`services/reservations/internal/handler/handler.go:121-285`), and
+  only `confirmed` and `checked-in` count as active
+  (`store.go:194-196`). Nothing closes a booking when a stay closes.
+- **Stay closes only its own record.** `checkOut` flips the stay to
+  `closed` and emits a `checked-out` event
+  (`services/stay/src/store.ts:260-293`); it writes nothing on the
+  reservation, so the booking keeps reading `checked-in`.
+- **The booking guard therefore still sees the departed booking.**
+  Create counts overlapping active rows (`store.go:214-227`) and
+  Modify counts the same set (`:365-380`), so a departed booking whose
+  recorded departure is today or later still consumes a sellable unit
+  — the "no availability" refusal the owner hit.
+- **Reads still name the departed booking as active.** The calendar
+  query returns every overlapping row with its stored state
+  (`store.go:274-291`), which is `checked-in` for a departed stay.
+- **The room half is not stale.** `ReleaseRoom` moves the room
+  `occupied -> vacant-dirty` (`services/rooms/src/store.ts:407-436`),
+  the Rooms surface offers `Mark cleaned` and `Mark inspected`
+  (`app/src/views/RoomsView.vue:168`, `:182`, `:737`, `:741`), and the
+  Stay assignment list loads `vacant-inspected` rooms
+  (`app/src/views/StayView.vue:1139-1140`). The same-day turnover path
+  exists and is reachable; it is blocked only because the booking
+  still reads active.
+
+The decided behaviour, in five parts:
+
+1. **The close completes the booking.** A check-out that commits puts
+   the reservation behind that stay into the terminal `closed`
+   (completed) state — the state `BR-1` and the accepted booking state
+   machine already name — as part of the one close the desk already
+   confirms. The desk sends no second action, and no new user-facing
+   operation is added for this step. The booking is resolved through
+   the stay link the reservation already carries (one stay link per
+   reservation, `services/reservations/migrations/000002_schema.up.sql:33`),
+   never guessed from the guest name or the dates; the stay link is
+   kept, so history still points from the completed booking to the
+   closed stay.
+2. **Only active bookings hold availability.** The active set for
+   availability, the booking guard, and the calendar's "already
+   reserved" reading is `confirmed` and `checked-in`; a `closed`
+   booking contributes nothing to the sellable count and blocks no
+   new booking. Because the set is state-based and not date-based, an
+   early departure releases the remaining nights from the moment the
+   close commits, without rewriting the booking's dates: the dates
+   keep recording what was booked, the state records that the stay
+   ended.
+3. **Completion is terminal and reads as completed.** A completed
+   booking never returns to an active state: it cannot be checked in,
+   modified, cancelled, or marked no-show, no reopen route or control
+   exists, and a guest who returns the same day is a new booking. On
+   every read — booking read-back, calendar, guest history — the stay
+   appears as a completed booking, not as an active or checked-in one.
+4. **The same-day turnover path is the desk path that already
+   exists.** After the close the room reads `vacant-dirty`, the
+   housekeeping buttons advance it to clean and then inspected, and
+   the assignment list offers it; the room is assigned and the next
+   guest checked in the same day with no manual state edit behind the
+   UI and no new control. The inspected-only assignment rule (`BR-16`,
+   `BR-28`) is unchanged, so same-day reuse never skips housekeeping.
+5. **Every refused close completes and releases nothing.** A refused
+   close — open balance without a provenanced approval (`BR-17`), a
+   room charge that cannot be posted (`BR-45`), a settlement or
+   unreadable-folio refusal (`BR-46`), an already-closed stay, or a
+   replayed click — leaves the stay in house and the booking in its
+   active state, with no room released and no completion recorded. A
+   close that commits but whose completion cannot be recorded is
+   reported in plain words without claiming the booking is completed,
+   so the divergence is visible and named instead of silent.
+
+| Option | Verdict | Reason |
+|---|---|---|
+| Status quo: the booking keeps `checked-in` after the stay closes | rejected | That is the defect: the departed booking holds a sellable unit, the calendar names it as active, and the desk cannot sell the same room type the same day. |
+| A new `checked-out` reservation state beside `closed` | rejected | `BR-1` and the accepted booking state machine already name `closed` as the terminal state reached on check-out (`checked_in -> closed`). A second terminal state adds a lifecycle state and a migration for no product difference, and re-tiers the change. |
+| The desk sends a second "complete the booking" action after the close | rejected | Two desk actions can split — the close commits and the second action is skipped or fails — which is exactly the divergence risk this change is meant to remove; the close is the trigger. |
+| Rewrite the departed booking's departure date to the actual check-out | rejected | Dates are the booking's recorded commitment and its price basis (`FR-RTE-5`, `BR-13`); rewriting them edits history and still leaves the availability set stale for the untouched nights. |
+| The close records the terminal state itself, on the one action the desk confirms | **chosen** | One trigger, one outcome, no new state, no schema migration and no backfill; the dates keep recording what was booked while the state removes the booking from the active set the moment the guest actually leaves. |
+
+### 23.2 Explicit no-change statements
+
+- The two MVP capabilities keep their wording and targets:
+  `FR-FDK-2` and `FR-RTE-2` gain an amendment pointer to this section
+  and keep their Given/When/Then conditions; what changes is that the
+  booking half of the close is now stated as part of check-out, not
+  what check-out or availability promise.
+- No new MVP capability, story, or business rule enters the MVP
+  count: section 4 keeps its 40 mapped capabilities and its coverage
+  line, and only the `Check-out` and `Availability overview` handoff
+  notes gain a clause. The behaviour is numbered as slice-scoped
+  requirements (`FR-DEP-*`, section 23.3) on the section 10–22
+  pattern.
+- `business-rules.md` stands as written and is not edited: `BR-1`
+  already makes `closed` the terminal reservation state reached on
+  check-out, `BR-18` already requires the room release only for a
+  close that committed, `BR-16` and `BR-28` already require a vacant,
+  clean, inspected room for assignment, and `BR-17`, `BR-45`, and
+  `BR-46` already decide every refusal. This change supplies the
+  missing requirement wording and enforcement, not a new policy.
+- The #588 release, the #600 room charge, and the #601 settlement gate
+  are untouched: `FR-CKO-1`..`FR-CKO-5`, `FR-CKP-1`..`FR-CKP-5`,
+  `FR-CKS-1`..`FR-CKS-5`, and `AC-DSK-18` / `AC-DSK-19` /
+  `AC-CKO-1` / `AC-CKO-2` stand exactly as written, and every refusal
+  they specify keeps refusing on the same conditions with the same
+  plain words.
+- The check-in side is unchanged: `FR-FDK-1` and `BR-16` / `BR-28`
+  still require a ready room of the booked type, so same-day reuse
+  never bypasses housekeeping and no dirty room is offered.
+- No new field is specified on any operation, and no schema, table,
+  migration, stored value, or event contract change is specified here.
+  How the close records the completion — the operation that carries
+  it, its error behaviour, and whether the service call or the event
+  path carries it — is the `architect` lifecycle shape (LLD and the
+  state diagram); the reproduction decides it.
+- Money, dates, and numbers keep their decided display shape
+  (section 14), and print output is unchanged (`FR-BIL-4`,
+  `NFR-DSK-2`): the invoice a settled close presents is the same one.
+- Catalogue and locales are unchanged on the decided path
+  (`NFR-I18N-1`, `NFR-DSK-1`): no surface renders a booking-state
+  label today, so a completed booking needs no new copy; a copy
+  addition later follows the normal catalogue process.
+- Sections 7 through 22 stand with their wording and targets
+  unchanged, except the two amendment pointers in section 1, the
+  section 3.2 lifecycle bullet, and the two section 4 handoff notes.
+- No data backfill and no data repair is specified: the requirements
+  describe behaviour from this change onward. Bookings already
+  stranded in a live installation by the old behaviour are a
+  `release-manager` operational note, not a silent data correction.
+
+### 23.3 Behaviour-scoped functional requirements
+
+Ids use the `DEP` (departure release) namespace, continuing the
+slice-scoped pattern of sections 10 through 22; `CKO` stays the #588
+desk release-and-gate namespace, `CKP` the #600 posting namespace, and
+`CKS` the #601 settlement namespace. They constrain the check-out
+slice — the close, the booking it completes, and the availability that
+follows — and each maps to an accepted done-condition in
+`AC-DEP-1`..`AC-DEP-5`.
+
+FR-DEP-1 — The check-out completes the booking behind the stay.
+Given an in-house stay linked to a reservation; when staff check the
+guest out and the close commits; then that reservation reaches the
+`closed` (completed) state as part of the same close, keeps its link
+to the closed stay and its recorded dates, records who completed it
+and when (`NFR-AUD-1`), and the completion is decided on the stay's
+own link — never on a guest-name or date match. The desk sends no
+second action and no separate user-facing operation is added for the
+completion. Given a replayed or double-confirmed close; then the
+booking is completed once and the replay returns the original close
+without a second state change. Given a refused close of any kind;
+then no booking state changes. Traces to: `AC-DEP-1`; US-FDK-2,
+US-GST-1; `FR-FDK-2`; `BR-1`, `BR-18`.
+
+FR-DEP-2 — Only an active booking holds availability.
+Given reservations in any state and a request for a room type and
+date range; when availability is computed, a new booking is guarded,
+a booking is modified, or the calendar is read; then only `confirmed`
+and `checked-in` bookings count as active: a `closed`, `cancelled`, or
+no-show booking contributes nothing to the sellable count
+(`FR-RTE-2`), triggers no "no availability" refusal, and blocks no
+overlap. Given guest A departed today from a booking whose recorded
+departure is today or later, and guest B books the same room type with
+arrival today; then B's booking is accepted and no no-availability
+refusal is caused by A's booking. Given B's same-day booking already
+exists when A's early departure is recorded; then A's completion
+unblocks B from that moment, with no edit to B's booking, no change to
+any booking's dates, and no manual availability correction. Traces to:
+`AC-DEP-2`; US-RES-1, US-RES-5, US-FDK-2; `FR-RES-1`, `FR-RTE-2`,
+`FR-FDK-2`; `BR-1`, `BR-8`, `BR-9`.
+
+FR-DEP-3 — A completed booking reads completed, and completion is
+terminal.
+Given a booking completed by a check-out; when staff read it through
+the booking read-back, the reservation calendar, or the guest's
+history; then it reads `closed` (completed) with its dates, room type,
+and link to the closed stay kept, never `checked-in`, and the past
+stay stays visible in the guest's history (`FR-GST-1`). Given staff
+attempt to check in, modify, cancel, or mark no-show a completed
+booking; then the attempt is refused with the module's existing state
+refusal in plain words, the booking stays completed, and no new
+refusal reason or code is specified by this change. Given a guest
+returns the same day; then the return is a new booking. No reopen
+route, operation, or control is added, and a completed booking never
+returns to an active state. Traces to: `AC-DEP-4`; US-FDK-2;
+`FR-FDK-2`, `FR-RES-5`, `FR-GST-1`; `BR-1`, `BR-18`.
+
+FR-DEP-4 — The departed room is reusable the same day through the desk
+path.
+Given a room released by a committed close and reading
+`vacant-dirty`; when housekeeping marks it clean and then inspected on
+the desk's rooms surface (`FR-RMS-2`); then the room is offered in the
+check-in ready-room list and the next guest can be assigned and
+checked into it the same day (`FR-FDK-1`), with no manual state edit
+behind the UI and no new control. Given the room is still dirty or
+only clean; then it is not offered, so same-day reuse never skips
+housekeeping (`BR-16`, `BR-28`). The release the close performs
+(`FR-CKO-1`) and its reporting (`FR-CKO-2`, `FR-CKO-3`) are unchanged.
+Traces to: `AC-DEP-3`; US-RMS-2, US-FDK-1; `FR-RMS-1`, `FR-RMS-2`,
+`FR-FDK-1`; `BR-16`, `BR-18`, `BR-28`.
+
+FR-DEP-5 — Every refused close completes and releases nothing, and a
+split is never silent.
+Given an in-house stay with an open balance and no provenanced
+recorded approval, a room charge that cannot be posted, a presented
+folio that is not the stay's folio, an unreadable folio, an
+already-closed stay, or a replayed click; when staff attempt the
+close; then it is refused exactly as sections 19, 21, and 22 specify,
+the stay remains in house, the booking stays active, no room is
+released, and no completion is recorded. Given a close that commits
+and whose booking completion cannot be recorded; then the desk reports
+the check-out in plain words and does not claim the booking is
+completed, the booking read still shows it active, and the next step
+is named, so the split is visible rather than silent — the same
+honesty `BR-18` already requires for a room release that cannot be
+confirmed. Traces to: `AC-DEP-5`; US-FDK-2; `FR-FDK-2`, `FR-BIL-7`;
+`BR-17`, `BR-18`, `BR-45`, `BR-46`.
+
+### 23.4 Non-functional requirements delta: no-change statement
+
+No new NFR is added. The existing NFRs cover the change:
+
+- Catalogue coverage and localisation (`NFR-I18N-1`, `NFR-DSK-1`
+  hold): no new desk copy is required on the decided path — no surface
+  renders a booking-state label today, and the completion-failure
+  sentence is a copy addition through the normal catalogue process if
+  the implementation needs one, in both locales with placeholders
+  intact; `script/catalogue-coverage-check.sh` stays green.
+- Desk response (`NFR-PERF-1` holds): the close costs one extra
+  write (the booking's completion) inside the action the operator
+  already took, well within the 3-second check-out bound; no read is
+  added on screen entry and nothing polls.
+- Concurrency and safety (`NFR-CON-1`, `NFR-CON-2`, `BR-11` hold):
+  availability still counts active bookings before it accepts a new
+  one, so completing a departed booking cannot create a
+  double-booking; a paired simultaneous close still resolves exactly
+  one winner, and only the winner completes the booking.
+- Audit (`NFR-AUD-1` holds): the completion records who did it and
+  when, and the trail is not editable through normal use.
+- Retention (`NFR-RET-1` holds): a completed booking stays
+  retrievable for the configured floor; this change makes the history
+  read correct rather than removing anything.
+- Availability on-premise (`NFR-AVL-1` holds): the completion runs
+  inside the on-premise close between modules of the same
+  installation; no outside connectivity is introduced or required.
+- Time and locale (`NFR-TZ-1`, `BR-43` hold): the recorded dates are
+  unchanged and any recorded completion time carries its UTC offset.
+- Security and roles (`NFR-SEC-1` holds): no new function becomes
+  reachable — the completion is performed by the close, not by a new
+  user-facing operation with its own reach.
+
+### 23.5 Traceability handoff for `qa-lead`
+
+Each row traces to the #646 acceptance conditions and to this
+section's FRs. Guards that exist are cited `file:line` against the
+tree this requirement was written on; where no guard exists yet, the
+row names the missing guard explicitly and the implementation PR
+creates it, for `qa-lead` to re-pin at the merged head. The #588,
+#600, and #601 guards listed as "stay green" must pass untouched.
+
+| Item | Guard (on disk today; a row marked missing is created by the implementation PR) | Handoff note for `qa-lead` |
+|---|---|---|
+| FR-DEP-1 booking completed on the close | `services/stay/src/server.test.ts:128-238` (the check-out block: closes a settled stay, refuses an open balance, replays, paired closes), Postgres parity `:406-460`; `services/reservations/internal/store/store_test.go:31-70` (the state-filter pattern the guard needs) | Missing guard: a committed close completes the linked booking (state `closed`, stay link and dates kept, actor and time recorded), a replayed close completes once, and a refused close leaves the booking `checked-in`. The assertion must be "the booking of the stay that closed", not "some booking" |
+| FR-DEP-2 active set and early departure | `services/reservations/internal/handler/handler_test.go:59-92` (desk loop books then is refused as overbooking), `services/reservations/internal/store/store_test.go:31-85` (paired booking winner, non-overlapping bookings), Postgres parity `postgres_test.go:106-138` | Missing guards: a `closed` booking overlapping a new same-type booking does not consume the unit; an early departure (recorded departure later than the close) unblocks a same-day booking that already exists; a `checked-in` booking still consumes it. The negative case (checked-in still blocks) is what proves the fix is the state, not a wider availability rule |
+| FR-DEP-3 completed read and terminal | `services/reservations/internal/handler/handler_test.go:171-257` (lifecycle modify/cancel/no-show and calendar rows), `services/reservations/internal/store/store_test.go:151-172` (modify refused once checked in), `:265-303` (cancel refusals) | Missing guards: the booking read-back returns `closed`; the calendar row shows the completed state; check-in, modify, cancel, and no-show on a completed booking are each refused; no reopen operation exists in the surface |
+| FR-DEP-4 same-day turnover reachable | `services/rooms/src/server.test.ts:271-301` (dirty to inspected, dirty-straight-to-inspected refused), `app/src/views/RoomsView.test.ts:290-348` (dirty to clean), `:349-405` (clean to inspected), `app/src/views/desk-edge-guards.test.ts:899-1025` (QA-EDGE-8: the dirty room is never offered and a close releases once), `app/src/views/StayView.test.ts:394-463` (ready-room preload and commit) | Missing guard: one same-day case chaining departed-dirty to clean, inspected, offered, assigned, and checked in, so the path is pinned end to end and not only per step |
+| FR-DEP-5 refusals complete nothing | `app/src/views/StayView.test.ts:1086-1203` (review, check out, release, refresh), `:1530-1579` (open-balance gate), `app/src/views/desk-edge-guards.test.ts:899-1025` (one close, one release), `script/e2e-desk-loop.sh:419-424` (the loop's close and release expectations) | Missing guards: each refusal (open balance, unpriced room charge, folio mismatch, unreadable folio, already closed, replay) asserts the booking stays active and no room is released; a completion that cannot be recorded is reported without claiming completion |
+| #588/#600/#601 desk behaviour stays green | `app/src/views/StayView.test.ts` (every-route gate, recorded approval, room charge review), `app/e2e/stay.spec.ts`, `script/e2e-desk-loop.sh` | These trace to `AC-DSK-18`, `AC-DSK-19`, `AC-CKO-1`, and `AC-CKO-2`; no desk copy, control, or flow is changed here, so they must pass without a desk edit |
+| Catalogue and design facts | `messages/en.json`, `messages/vi.json`, `script/catalogue-coverage-check.sh`, `app/e2e/design-facts.spec.ts` | No new resting-render fact and no new key on the decided path; a key added for the completion-failure sentence ships in both locales and keeps the design-facts gate green |
+
+Per-flow implementation diagram (T2). The architecture-side state
+diagram and service design note are the `architect` handoff
+(`docs/architecture/state-machine.md` already carries
+`checked_in -> closed`); this is the requirements-side view of the same
+flow, citing the code edges this section was written against:
+
+```mermaid
+flowchart TD
+    A[Staff confirm the close in the desk panel  StayView.vue:1624-1631] --> B[Stay gate: folio re-read and approval re-validated  store.ts:260-276]
+    B -- open balance, settlement, folio mismatch, unreadable folio, already closed, replay --> Z[Plain refusal; no state change, no completion, no release; stay in house and booking active  FR-DEP-5, FR-CKS-4]
+    B -- gate passes --> C[In-house to closed flip and checked-out event  store.ts:277-292]
+    C --> D[Complete the linked booking: terminal closed, actor and time recorded  FR-DEP-1]
+    D -- recorded --> E[Booking leaves the active set  store.go:194-196]
+    D -- cannot be recorded --> X[Plain report: checked out, booking still active, next step named; split visible  FR-DEP-5]
+    E --> F[Availability, booking guard, and calendar count it as nothing  store.go:214-227, 274-291; FR-DEP-2]
+    E --> G[Early departure releases the remaining nights with no date rewrite  FR-DEP-2]
+    F --> H[Desk releases the departed room vacant-dirty  StayView.vue:1624-1631, store.ts:407-436]
+    H --> I[Housekeeping marks clean then inspected  RoomsView.vue:737, :741]
+    I --> J[Assignment list offers the ready room  StayView.vue:1139-1140]
+    J --> K[Next guest checks in the same day  FR-FDK-1, BR-16, BR-28]
+```
+
+Failure/rollback path: every refusal on the gate leaves the stay in
+house with no state flip, no completion, and no release; a committed
+close keeps its closed state even when the booking completion cannot
+be recorded, and the desk names the outcome instead of claiming a
+completion that did not happen. The whole change reverts with the
+single implementation PR: the state set is unchanged (`closed` already
+exists in `BR-1` and the state machine), the desk keeps working against
+a close that completes nothing extra, and no schema migration or data
+backfill exists in either direction.
+
+### 23.6 Explicitly not specified here (plus gate dependencies)
+
+- Implementation — the completion operation or event path, the
+  service call from the close, the guard rewrites, the desk
+  error-state for a completion that cannot be recorded, and the lab
+  reproduction record — is the downstream `dev` PR for #646, not this
+  section.
+- The lifecycle shape is the `architect` handoff: the state diagram
+  edge, the LLD flow, whether the completion travels on a synchronous
+  operation or the existing event path, and any additive contract
+  text that shape needs. A shape that adds a state or a schema
+  migration re-tiers the change to T3, and its rollback note moves
+  into the implementation PR.
+- Acceptance criteria are `product-owner` work (`AC-DEP-1`..`AC-DEP-5`,
+  the `AC-FDK-2` pointer, and the section 6.16 UI contract), the guard
+  mapping and traceability completions above are `qa-lead` work, and
+  the operational note for bookings already stranded in a live
+  installation is `release-manager` work.
+- Out of scope: a reopen or "undo check-out" path; any new desk
+  screen, control, or route; a re-derivation of the departed
+  booking's price or dates; reporting/analytics changes on top of the
+  completed state; an automatic data repair for existing stale rows;
+  and backend contract additions the reproduction does not require (a
+  follow-up instead).
+- The specified change is tier T2 (an existing lifecycle obligation
+  enforced across the check-out slice, reader-visible through the
+  calendar and the same-day turnover, with no new state, subsystem, or
+  schema). This section is its FR/NFR part; no implementation PR opens
+  until `SPEC-GATE PASS` on #646.
+
 <!-- ao-role: business-analyst -->
-Role: business-analyst · AO session hotel-mgmt-921
+Role: business-analyst · AO session hotel-mgmt-945

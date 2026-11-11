@@ -14,10 +14,11 @@ stateDiagram-v2
     confirmed --> checked_in : check in, ready room (FR-FDK-1)
     confirmed --> cancelled : cancel with reason (FR-RES-3)
     confirmed --> no_show : arrival date passed (FR-RES-6)
-    checked_in --> closed : check out, folio settled or approved (FR-FDK-2, FR-BIL-7)
+    checked_in --> closed : check-out commits, booking completed (FR-FDK-2, FR-DEP-1, BR-1)
     state checked_in as "checked-in (in-house)"
     state no_show as "no-show"
     note right of checked_in : room moves keep this state, history kept (FR-FDK-3)
+    note right of closed : terminal; contributes nothing to availability (FR-DEP-2)
 ```
 
 - `confirmed`: reservation recorded with dates, room type, guest,
@@ -25,8 +26,10 @@ stateDiagram-v2
 - `checked-in`: arrival registered against a ready room; the stay is
   in house (`FR-FDK-1`). Room moves keep this state with history
   (`FR-FDK-3`).
-- `closed`: stay checked out with settled folio or recorded approval
-  (`FR-FDK-2`, `FR-BIL-7`); the room becomes vacant and dirty.
+- `closed`: stay checked out with settled folio or a provenanced
+  recorded approval (`FR-FDK-2`, `FR-BIL-7`); the booking is terminal
+  and leaves the active set, and the room becomes vacant and dirty
+  (`FR-DEP-1`, `FR-DEP-3`).
 - `cancelled`: before check-in only, with a reason from the hotel's
   list; held availability released (`FR-RES-3`).
 - `no-show`: arrival date passed without check-in; held room released
@@ -36,6 +39,59 @@ Allowed transitions: confirmed -> checked-in, confirmed ->
 cancelled, confirmed -> no-show, checked-in -> closed. No other
 transitions exist in the MVP; states are never skipped, reordered, or
 renamed per hotel.
+
+### 1.1 The close drives both lifecycles (Refs #646)
+
+The stay's close and the booking's completion are one operator action,
+not two independent transitions: the stay state (`in-house -> closed`)
+and the reservation state (`checked-in -> closed`) are written by two
+owning modules, triggered by the same desk confirmation. The shape adds
+no state — both target states already exist — and the booking keeps its
+recorded dates, room type, price basis, and stay link.
+
+```mermaid
+stateDiagram-v2
+    state Stay {
+        [*] --> in_house : check in, ready room (FR-FDK-1)
+        in_house --> stay_closed : CheckOut gate passes (FR-FDK-2)
+    }
+    state Reservation {
+        [*] --> confirmed : book (FR-RES-1)
+        confirmed --> checked_in : check-in links the stay (FR-FDK-1)
+        checked_in --> res_closed : CheckOutReservation, same close (FR-DEP-1)
+        res_closed --> [*]
+    }
+    state in_house as "in-house"
+    state stay_closed as "closed"
+    state res_closed as "closed (completed)"
+    note right of stay_closed : room released vacant-dirty, housekeeping makes it reusable (FR-RMS-2)
+    note right of res_closed : terminal, not in the active set (FR-DEP-2, FR-DEP-3)
+```
+
+- **Trigger.** After Stay's conditional `in-house -> closed` flip commits
+  (`services/stay/src/store.ts:282-290`; Postgres
+  `services/stay/src/pgstore.ts:161-206`), Stay calls
+  `ReservationService.CheckOutReservation` with the closed `stayId` and
+  the caller's actor; Reservations resolves the reservation by the stay
+  link the row already carries (`stay_id` UUID UNIQUE,
+  `services/reservations/migrations/000002_schema.up.sql:33`) and flips
+  `checked-in -> closed` under a conditional write. Flow detail:
+  `docs/architecture/lld.md` section 22.
+- **Attempts are idempotent.** A second completion call for the same stay
+  returns the already-`closed` booking without a second change, so a
+  replayed or double-confirmed close completes once (FR-DEP-1).
+- **Refusals change nothing.** A check-out the folio gate refuses never
+  reaches the flip, so the booking stays `checked-in`; a close that
+  commits but whose completion cannot be recorded keeps the stay
+  `closed` and reports the split instead of inventing a completion
+  (`FR-DEP-5`). The readiness release and re-offer path is the room
+  machine in section 2, unchanged.
+- **Active set.** Only `confirmed` and `checked-in` hold a sellable unit
+  or block a new booking; `closed`, `cancelled`, and `no-show`
+  contribute nothing (`FR-DEP-2`, `services/reservations/internal/store/store.go:194-196`,
+  `:214-227`, `:367-380`). The calendar read still returns every state so
+  history keeps the past stay (`:274-291`); the desk's arrival pick
+  filters `confirmed` itself (`app/src/views/StayView.vue:928-941`).
 
 ## 2. Room states
 
@@ -68,4 +124,4 @@ stateDiagram-v2
   old room to vacant and dirty (`FR-FDK-2`, `FR-FDK-3`).
 
 <!-- ao-role: architect -->
-Role: architect · AO session hotel-mgmt-29
+Role: architect · AO session hotel-mgmt-946

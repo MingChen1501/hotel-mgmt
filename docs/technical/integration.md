@@ -63,6 +63,17 @@ flag at booking time (FR-GST-3). Mandatory-field set
 priceBasis (FR-RES-1, FR-RTE-5, FR-FDK-5). Errors: `NOT_FOUND` /
 `STATE_ILLEGAL` (not due, already checked-in/cancelled; BR-1).
 
+`CheckOutReservation` (from #646 on): stayId -> the booking resolved by
+the stay link it carries, flipped `checked-in -> closed` (FR-DEP-1;
+LLD [section 22](../architecture/lld.md#22-departure-completes-the-booking-and-releases-availability-refs-646)).
+Stay calls it synchronously after its own close commits, forwards the
+caller's Bearer token, and times out at 2 seconds. Errors: `NOT_FOUND`
+(no booking carries the stay link), `STATE_ILLEGAL` (the booking behind
+the stay is not checked in), `VALIDATION_FAILED`. A completion the call
+cannot record is reported by the close (`bookingCompletion`), never
+turned into a failed close: the stay close is not rolled back by a
+downstream refusal.
+
 ### C5. STAY -> ROOM (`RoomInventoryService`) — SYNC, atomic at provider
 
 `FindReadyRoom` (roomType -> vacant-inspected candidates with
@@ -246,4 +257,4 @@ sections 4–6 and change only through requirements wording, never through
 implementation drift.
 
 <!-- ao-role: architect -->
-Role: architect · AO session hotel-mgmt-919
+Role: architect · AO session hotel-mgmt-946
