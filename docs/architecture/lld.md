@@ -3754,7 +3754,7 @@ outcome classification that chooses it.
 |---|---|---|---|
 | Step 4, `CONFLICT` / `STATE_ILLEGAL` / `VALIDATION_FAILED` | Nothing assigned, nothing written | No release (as built today) | Plain refusal naming the room; picker reloads |
 | Step 5 or 6, definitive | Room occupied by this commit, no stay row | One `ReleaseRoom {roomNumber: <chosen>, toState: "vacant-inspected", actor}` in the same commit; a `STATE_ILLEGAL` answer means the room is already free again | Plain refusal plus "the room is free again"; if the release itself fails or is unreadable, name the room that still reads occupied |
-| Step 7 after step 6 committed | Room occupied, and a live stay names it | Release nothing — the stay is the truth | Say the guest is in the room and the reservation link is not recorded; name the room; next step is the manager (see 23.9 for the copy gap) |
+| Step 7 after step 6 committed | Room occupied, and a live stay names it | Release nothing — the stay is the truth | Say the guest is in the room and the reservation link is not recorded; name the room; next step is the manager (`desk.stay.checkin_link_not_recorded`) |
 | Any step, unreadable (offline, `5xx`, non-envelope) | Unknown — possibly assigned and possibly checked in | Release nothing | Name the room and ask staff to reload and check before acting again |
 | Any step, `401` | Unknown | Release nothing | The shared client routes to sign-in; the gate owns the rest |
 
