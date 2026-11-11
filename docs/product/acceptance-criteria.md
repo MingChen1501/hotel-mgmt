@@ -58,7 +58,10 @@ acting within its access.
   types, when staff open the calendar, then every reservation appears
   on its correct dates with its room type and state, and selecting one
   shows its reference, guest, and price. Traces to: US-RES-5;
-  FR-RES-5.
+  FR-RES-5. Pointer: the desk list-and-detail surface that satisfies
+  this condition in list form is `AC-BMV-2`/`AC-BMV-5` (Refs #648);
+  the date-by-room-type grid half stays open and is recorded as a gap
+  in `docs/product/booking-management-view.md`.
 - AC-RES-6 — Given a reservation whose arrival date has passed without
   check-in, when staff mark it as no-show, then the reservation state
   becomes no-show, the held room is released for sale, and the no-show
@@ -1301,6 +1304,140 @@ and shown to staff, and no refused or aborted attempt leaves a room
 occupied with no stay behind it — with the existing check-in,
 check-out, settlement, and departure guards green.
 
+## 17. Booking management desk view (Refs #648)
+
+Product-owner scope decision and acceptance conditions for the
+owner-reported gap from manual QA on 2026-11-10: the desk has no
+booking-management view, so staff cannot answer "who booked which
+room, for which dates, at what price" without reading records one
+reference at a time. The requirement already exists — `US-RES-5`,
+`FR-RES-5`, and `AC-RES-5` say staff see reservations across dates
+and room types on one screen with the reference, guest, and price on
+selection — and only the surface is missing. These conditions cover
+that surface in its list-and-detail form; the date-by-room-type grid
+half of `FR-RES-5` stays unimplemented and is recorded as a gap, not
+claimed here.
+
+Tier T2: a reader-visible screen over existing contracts only
+(`QueryCalendar`, `GetReservation`, `ListRoomTypes`,
+`ListArrivalsDepartures`, `ListRoomsByState`) — no new endpoint, no
+contract or schema change, no lifecycle state, and no write. The
+conditions below are the product half. FR/NFR wording is owned by
+`business-analyst`, the route/nav LLD delta and the per-flow
+implementation diagram by `architect`, guard mapping and traceability
+by `qa-lead`, and the gate verdict by `spec-reviewer`. The desk-visible
+delta and the EN+VI copy are in
+`docs/product/desk-ui-design-rollout.md`
+[section 6.18](desk-ui-design-rollout.md); the full screen spec is
+`docs/product/booking-management-view.md` (active); the scope decision
+is recorded as D-28 in `docs/project/decision-log.md`.
+
+As-built validation (read-only trace at this spec head — the
+implementation lab reproduction belongs in the implementation PR body
+or an issue comment):
+
+- **No screen lists bookings.** `app/src/router.ts` registers the desk,
+  book, stay, onboarding, rooms, manage, folio, print, and admin routes
+  and nothing else; `BookView` creates a booking and renders the
+  confirmation, and no view calls `QueryCalendar` to list bookings for
+  staff browsing.
+- **The data is all there.** `QueryCalendar` returns the overlapping
+  bookings with reference, room type, dates, state, and stay link
+  (`contracts/http/QueryCalendar.json`), and the overlap rule is
+  `arrival < dateTo` and `departure > dateFrom`
+  (`services/reservations/internal/store/store.go:191-193`,
+  `services/reservations/internal/store/postgres.go:311-321`).
+  `GetReservation` returns the guest snapshot and the frozen price
+  basis (`priceBasis.totalMinor`, `priceBasis.discountName`) beside the
+  state and stay link
+  (`services/reservations/internal/handler/handler.go:167-180`).
+- **The assigned room needs two reads.** A booking carries no room
+  number; the room a guest holds is the in-house stay's `roomId`
+  (`services/stay/src/server.ts:42-60`) resolved to a number through
+  the occupied room list
+  (`services/rooms/src/server.ts:114-126`), which is how the desk
+  already maps rooms on other screens.
+- **Neither list read guarantees an order.** The in-memory calendar
+  read iterates a map and the Postgres read carries no `ORDER BY`, so
+  the screen must sort the rows itself.
+
+- AC-BMV-1 — Given a signed-in user of any hotel role, when they open
+  the desk shell and choose the bookings tab, then the tab sits
+  immediately after `Book` and opens the screen at `/app/bookings`
+  inside the unchanged shared shell, with the tab label, route title,
+  screen title, and intro resolved through the catalogue in the active
+  locale, the nine-tab row inside the `1200px` content width with the
+  brand as the only shrinkable item, and every other route, the
+  sign-in gate, and the print surfaces behaving as before. Traces to:
+  US-RES-5; FR-RES-5, FR-DSP-1, NFR-I18N-1 (Refs #648).
+- AC-BMV-2 — Given bookings exist, when staff open the screen on its
+  default range (the business date through the next six nights) or
+  apply another range, then every booking staying at least one night
+  in the range is listed once, ordered by arrival then reference, each
+  row carrying the guest name, booking reference, room type, the
+  assigned room when the guest is in house and a plain placeholder
+  otherwise, the arrival and departure dates, the night count, the
+  quoted total in the desk money form, and the state chip; no booking
+  in the range is invented or silently dropped, and a range holding
+  more than 50 bookings renders the earliest 50 with one plain sentence
+  stating the count and asking staff to narrow the dates. Traces to:
+  US-RES-5; FR-RES-5, FR-RTE-5 (Refs #648).
+- AC-BMV-3 — Given the first-night and last-night fields, when staff
+  choose an inclusive night range and apply it, then only bookings
+  staying at least one night in that range are listed (`dateFrom` is
+  the first night and `dateTo` is the last night plus one day, so a
+  booking staying the last night is included and one departing on the
+  first night is not), the list re-reads once with the apply action
+  and fields disabled while it runs, the selection and detail clear,
+  and a last night before the first night or a missing field names the
+  field in plain words and sends nothing. Traces to: US-RES-5;
+  FR-RES-5 (Refs #648).
+- AC-BMV-4 — Given the chosen range holds no booking, when the list
+  renders, then one plain catalogue sentence names the range in the
+  desk date form, no row is invented, and the filter stays usable.
+  Traces to: US-RES-5; FR-RES-5, FR-DSP-3 (Refs #648).
+- AC-BMV-5 — Given a listed booking, when staff select its row, then
+  the detail reads the booking back with `GetReservation` and shows
+  its reference, guest, room type, assigned room when the guest is in
+  house and a plain placeholder otherwise, arrival, departure, nights,
+  quoted total, the recorded discount when the price basis carries
+  one, and its state — read back rather than re-derived, with no
+  write, edit, cancel, no-show, check-in, or check-out action — and
+  selecting another row replaces the detail while applying a new range
+  clears it. Traces to: US-RES-5; FR-RES-5, FR-RTE-5 (Refs #648).
+- AC-BMV-6 — Given a list, per-row, room-type, in-house, occupied-room,
+  or detail read fails, when the screen renders, then the failure is
+  one plain catalogue sentence naming what could not be read with a
+  retry, the affected cells state that they could not be read instead
+  of showing a guessed guest name, amount, room, or type, one notice
+  counts the rows that could not be completed, no booking is silently
+  dropped, and the rest of the desk remains usable. Traces to:
+  US-RES-5; FR-RES-5, FR-DSP-3 (Refs #648).
+- AC-BMV-7 — Given the screen ships, when it is verified, then it
+  offers no write action and calls only the existing operations
+  (`QueryCalendar`, `GetReservation`, `ListRoomTypes`,
+  `ListArrivalsDepartures`, `ListRoomsByState`) with no direct
+  database or service-store access; every new string exists in both
+  catalogues with matching placeholders and
+  `script/catalogue-coverage-check.sh` is green; the design-facts gate
+  records the new app-only tab through a declared allowance entry and
+  pins the screen's static content in its own tests, with every board
+  screen still green; and the owner has reviewed the built screen
+  against the v2 design boards. Traces to: US-RES-5; FR-RES-5,
+  FR-DSP-3, NFR-I18N-1 (evidence condition; no behaviour change).
+
+Pointer: `AC-RES-5` gains the `AC-BMV-2`/`AC-BMV-5` pointer (the desk
+list-and-detail surface that shows each booking on its dates with type,
+state, guest, reference, and price); the condition stands as written
+otherwise, and its grid-placement half stays open as the spec records.
+
+Done when: staff open the bookings tab, read one row per booking for
+the chosen range with guest, reference, room type, assigned room,
+dates, nights, quoted total, and state, open any row for the fresh
+`GetReservation` read-back, see the plain empty and failure sentences
+instead of invented values, and the owner accepts the screen against
+the design boards — with the desk's existing guards green.
+
 ## Traceability summary
 
 43 done-conditions cover all 9 MVP slices from the roadmap
@@ -1425,5 +1562,22 @@ stands unchanged, and the sections 1–15 done-conditions keep their
 behaviour: `AC-FDK-1` and `AC-FDK-3` gain only the pointer. `REA` is
 the domain code for this family.
 
+Booking-register addendum (Refs #648): seven further conditions
+(AC-BMV-1..7, section 17) cover the missing booking-management desk
+view — its tab and route, the date-range list with guest, reference,
+room type, assigned room, dates, nights, quoted total, and state, the
+inclusive-night filter and its plain empty state, the fresh
+`GetReservation` row detail, the plain failure states with no invented
+values, and the read-only evidence rule (no write, existing operations
+only, catalogue parity, design-facts allowance, owner review of the
+screen). They trace to the existing story and FRs (US-RES-5;
+FR-RES-5, FR-RTE-5, FR-DSP-1, FR-DSP-3, NFR-I18N-1) — this is the
+surface `AC-RES-5` already promised, not a new MVP capability, and no
+story, FR, or business rule is added or reworded. `AC-RES-5` gains
+only the `AC-BMV-2`/`AC-BMV-5` pointer, its grid-placement half stays
+open, and the 43-condition MVP count above stands unchanged, so the
+sections 1–16 done-conditions keep their behaviour. `BMV` is the
+domain code for this family.
+
 <!-- ao-role: product-owner -->
-Role: product-owner · AO session hotel-mgmt-964
+Role: product-owner · AO session hotel-mgmt-979

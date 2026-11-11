@@ -157,6 +157,16 @@ Rebuild (markup + styling to the design values):
   shrinkable item, and the short label is what keeps the row inside
   the 1200px content width (`docs/product/rooms-rates-management.md`
   section 3).
+- Ninth tab (Refs #648): the booking management desk view adds one tab
+  after `Book` (`desk.shell.nav_bookings`, `Sổ đặt phòng` /
+  `Bookings`). The same rule holds for the nine-tab row — tabs, pill,
+  and session control never shrink, the brand stays the only
+  shrinkable item, and the short noun label is what keeps the row
+  inside the `1200px` content width
+  (`docs/product/booking-management-view.md` section 3). The first
+  implementation PR carries the 1200px evidence in both locales, and
+  an overflow is an owner decision between a shorter label and a shell
+  rule change, never a silent truncation or wrap.
 - Nav tabs: `padding:10px 16px`, `radius:8px`; the active tab is
   inverted (`background:#fff`, `color:#0F4C47`, `font-weight:600`).
 - Locale pill: `margin-left:auto`, `1px solid #9CC9C4`,
@@ -422,4 +432,4 @@ this spec references them by section, never repeats them:
 | Every child issue and its PR carry before/after screenshot evidence and per-screen owner review | Section 8 / AC-RST-8; owner-review labels on #517–#524 |
 
 <!-- ao-role: product-owner -->
-Role: product-owner · AO session hotel-mgmt-871
+Role: product-owner · AO session hotel-mgmt-979
