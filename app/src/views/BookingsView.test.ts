@@ -437,6 +437,20 @@ describe('booking register (Refs #648)', () => {
     expect(wrapper.find('[data-testid="bookings-empty"]').exists()).toBe(true);
   });
 
+  it('refuses a missing night in plain words and sends nothing', async () => {
+    const backend = seedBackend({ calendar: [] });
+    installFetch(backend);
+    const wrapper = mountView();
+    await waitForLoad(wrapper);
+    const before = callsTo(backend, QUERY_CALENDAR).length;
+    await wrapper.find('[data-testid="bookings-range-from"]').setValue('');
+    await wrapper.find('[data-testid="bookings-filter-form"]').trigger('submit');
+    expect(wrapper.find('[data-testid="bookings-range-error"]').text()).toBe(
+      'The last night must not be before the first night.',
+    );
+    expect(callsTo(backend, QUERY_CALENDAR)).toHaveLength(before);
+  });
+
   // BM4 - one read per apply, disabled in flight, repeat apply a no-op.
   it('disables the filter in flight and issues one read per apply', async () => {
     const backend = seedBackend({ calendar: [] });
