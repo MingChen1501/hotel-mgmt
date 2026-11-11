@@ -2000,6 +2000,226 @@ no data backfill exist on the decided path; if the chosen shape adds
 one, `architect` re-tiers to T3, the migration is forward-only, and
 the rollback note moves into the implementation PR.
 
+### 6.17 Arrival room reassignment and stale-hold release (Refs #647)
+
+Status: product-owner scope decision and UI contract delta for the
+owner-reported defect from manual QA on 2026-11-10 (#647): a guest
+expected in room 101 is checked into 102 instead and room 101 keeps
+reading occupied with a stale stay link, with no desk action to
+correct it. Tier T2 (proposed; `architect` confirms — the move
+semantics are already normative in `AC-FDK-3`, `FR-FDK-3`, `BR-19`,
+and the contract `MoveRoom` operation, so the decided path adds no
+state, no operation, and no schema). The binding done-conditions are
+`AC-REA-1`..`AC-REA-5` in `docs/product/acceptance-criteria.md`
+[section 16](acceptance-criteria.md); `AC-FDK-1` and `AC-FDK-3` gain
+the pointers and stand as written otherwise, while `AC-DSK-17` and
+`AC-DSK-18` are untouched. FR/NFR wording is owned by `business-analyst`,
+the per-flow implementation diagram (happy path plus failure/rollback
+path) by `architect`, guard mapping and traceability by `qa-lead`, and
+the gate verdict by `spec-reviewer`. Recorded as D-27 in
+`docs/project/decision-log.md`.
+
+The as-built trace that confirms the report — the commit that assigns
+a room and never takes it back, and the panel that has no move
+control — is in `docs/product/acceptance-criteria.md`
+[section 16](acceptance-criteria.md) ("As-built validation"):
+`assignRoom` flips the room to `occupied` and only an explicit
+`ReleaseRoom` clears it (`services/rooms/src/store.ts:365-405`,
+`:407-436`), the check-in commit assigns first and returns from every
+later refusal without releasing
+(`app/src/views/StayView.vue:1249-1336`), and nothing under `app/src`
+calls `MoveRoom` (`app/src/stay-restyle.test.ts:136-142`) even though
+the stay operation and its history already work
+(`services/stay/src/store.ts:327-373`). The desk is therefore the layer
+to repair, and the operation the desk needs already exists.
+
+Decision (five parts):
+
+1. **A check-in commits only the room the guest is in.** The arrival
+   preload never assigns (as built), so switching rooms after a preload
+   assigns nothing until the commit, and the commit assigns the chosen
+   room only. A room the commit assigned is released back to the ready
+   state it held when a later step of that same commit does not land and
+   no stay was recorded (the booking read or the stay write), so an
+   aborted check-in leaves no room occupied with no stay behind it
+   (`AC-REA-1`). A room a live stay names is never freed: a failed
+   reservation check-in after the stay write keeps the room occupied and
+   is reported to staff as a split. The #586/#596/#614 preload and
+   commit-window guards stay in place; this change adds the release
+   ordering they left out.
+2. **One reassignment affordance, one path.** The Stay screen gains a
+   `Move room` card that performs the move the desk already had no
+   control for: the arrival-time swap (switch after a committed
+   check-in) and the mid-stay move are the same path, so the desk does
+   not learn two mechanics for one correction (`AC-REA-2`,
+   `AC-REA-4`). It uses only the existing operations (`AssignRoom`,
+   `MoveRoom`, `ReleaseRoom`) and the reads the panel already loads.
+3. **Order: assign the target, move the stay, release the vacated
+   room.** Assignment first so a taken or blocked target refuses before
+   anything moves; the stay write second so the guest is recorded in
+   the new room before the old room stops naming them; the release
+   last so the vacated room only becomes free once the stay no longer
+   holds it. A refusal after the target assignment releases that target
+   back to ready; an unreadable outcome releases nothing and is
+   reported as an outcome to re-read (`AC-REA-3`).
+4. **Release targets follow what actually happened.** A room a
+   committed stay left goes to housekeeping (`vacant-dirty`, the same
+   release the check-out already performs), while a room assigned by a
+   commit that never landed goes back to ready (`vacant-inspected`,
+   the state it held before the attempt) because nobody used it. A
+   room is never sent to housekeeping for a guest who was never in it,
+   and a used room is never left reading ready.
+5. **The move is recorded and visible.** The stay history keeps the
+   move with both rooms and its time (`moves`/`stay_moves`), and the
+   panel names both room numbers and the time in plain words when the
+   move commits. A dedicated move-history read surface is out of scope:
+   no operation exposes the stay's move rows today (the admin audit log
+   covers account, config, and backup actions only,
+   `contracts/http/QueryAuditLog.json`), so the durable record plus the
+   desk receipt is the decided visibility, and a history list is a
+   follow-up issue if the owner wants one.
+
+UI contract delta (T2):
+
+- **Layout and navigation scope.** One additive card, nothing else. The
+  Stay screen keeps its two-panel `1fr 1fr` grid exactly as built
+  (`AC-RST-4`), and the `Move room` card sits as a third row of the
+  same grid, spanning both columns below the check-in and check-out
+  cards. No new screen, route, nav entry, dialog, or print surface; the
+  two existing panels are not restyled, reordered, or re-labelled.
+- **Component mapping.** The card follows the check-in panel's existing
+  pattern: a `Card` with the 16px `h3` title (the catalogue
+  `Move room`), a `Select` of guests in house (fed by the
+  `ListArrivalsDepartures` in-house list the check-out panel already
+  loads, labelled `guest · room` per the D-19 precedent), a `Select` of
+  ready rooms (fed by the same `vacant-inspected` read the panel
+  already runs), a `Button` (`Move guest`), and the plain status and
+  error paragraphs. PrimeVue stays the logic carrier only, the same as
+  the other two cards. The move itself is driven by the existing
+  `AssignRoom` -> `MoveRoom` -> `ReleaseRoom` calls; no new read or
+  write operation is introduced.
+- **Ready-room scope on a move.** The picker offers every
+  `vacant-inspected` room, without the booked-type filter the check-in
+  panel applies: `FR-FDK-3` and `BR-19` name any vacant, clean,
+  inspected room, and the reported case (a guest expected in 101
+  actually in 102) and routine upgrades are cross-type by nature. The
+  booked-type rule stays a check-in rule (`BR-16`) and is not widened.
+- **Design-token scope.** Unchanged — the card reuses the existing card,
+  title, spacing, and 44px target tokens. No new colour, radius,
+  spacing, or target size.
+- **States in plain words:**
+  - Empty: both selects show their placeholders and the hint sentence
+    asks for a guest and a ready room; the button commits nothing until
+    both are picked.
+  - Working: the panel says the guest is being moved and a second click
+    is a no-op.
+  - Moved: the panel names the guest, room 101, room 102, and the time;
+    the old room reads vacant and dirty and the new one occupied on the
+    next board and Rooms-map load; the receipt stays until the next
+    pick.
+  - Refused before the target was assigned (room just taken, room not
+    ready or blocked, guest no longer in house, missing pick): one
+    plain sentence, nothing changed, both rooms keep the state they
+    had, and the ready-room list reloads so a taken room leaves the
+    picker.
+  - Refused after the target was assigned (the stay-side move is
+    refused): the panel says the move was refused and that the target
+    room is free again, because the compensating release ran.
+  - Compensating release failed: the panel says the move was refused
+    and names the room that still reads occupied, with the reload and
+    tell-the-manager next step; it never claims the move happened.
+  - Unreadable outcome (transport failure, timeout, server error, on
+    either the move or the check-in commit): the panel names both rooms
+    and asks staff to reload and check them before acting again; it
+    guesses neither way.
+  - Check-in commit refused after the assignment: the check-in panel
+    says the check-in was refused and that the room is free again
+    (`desk.stay.checkin_compensated`); if the compensating release
+    failed it names the room that still reads occupied
+    (`desk.stay.checkin_release_failed`).
+  - Check-in landed, booking link did not: the panel says the guest is
+    in the room and that the booking link is not recorded
+    (`desk.stay.checkin_link_not_recorded`), keeps the room occupied
+    and the stay in house, and asks staff to reload and tell the
+    manager; it releases nothing, because the stay names that room.
+- **Catalogue keys.** This is the one place this change adds copy; the
+  desk is VI-primary, so every key below lands in `messages/vi.json`
+  and `messages/en.json` in the implementation PR with `{param}`
+  placeholders intact and `script/catalogue-coverage-check.sh` green.
+  The room guard reuses the existing `desk.stay.need_room`:
+
+  | Key | English | Vietnamese (primary) |
+  |---|---|---|
+  | `desk.stay.move_heading` | Move room | Chuyển phòng |
+  | `desk.stay.move_guest_label` | Guest in house | Khách đang lưu trú |
+  | `desk.stay.move_choose_guest` | Choose a guest in house... | Chọn khách đang lưu trú... |
+  | `desk.stay.move_room_label` | New room | Phòng mới |
+  | `desk.stay.move_choose_room` | Choose a ready room... | Chọn phòng sẵn sàng... |
+  | `desk.stay.move_hint` | Pick a guest in house and a ready room first. | Chọn khách đang lưu trú và phòng sẵn sàng trước. |
+  | `desk.stay.move_button` | Move guest | Chuyển khách |
+  | `desk.stay.moving` | Moving the guest… | Đang chuyển khách… |
+  | `desk.stay.move_need_guest` | Choose a guest in house first. | Chọn khách đang lưu trú trước. |
+  | `desk.stay.moved_named` | Moved {guest} from room {fromRoom} to room {toRoom} at {time}. | Đã chuyển {guest} từ phòng {fromRoom} sang phòng {toRoom} lúc {time}. |
+  | `desk.stay.move_refused_taken` | That room was just taken. Pick another ready room. | Phòng đó vừa có người nhận. Chọn phòng sẵn sàng khác. |
+  | `desk.stay.move_refused_stay` | That guest is no longer in house, so the move is refused. | Khách này không còn lưu trú nên không chuyển phòng được. |
+  | `desk.stay.move_compensated` | The move was refused and room {toRoom} is free again. | Không chuyển được phòng và phòng {toRoom} đã trống trở lại. |
+  | `desk.stay.move_release_failed` | The guest is now in room {toRoom}, but room {fromRoom} still reads occupied. Reload the desk, and tell the manager if it still shows occupied. | Khách đã ở phòng {toRoom}, nhưng phòng {fromRoom} vẫn hiện đang có khách. Tải lại bàn lễ tân và báo quản lý nếu phòng vẫn hiện đang có khách. |
+  | `desk.stay.move_target_stuck` | The move was refused, but room {toRoom} still reads occupied. Reload the desk, and tell the manager if it still shows occupied. | Không chuyển được phòng, nhưng phòng {toRoom} vẫn hiện đang có khách. Tải lại bàn lễ tân và báo quản lý nếu phòng vẫn hiện đang có khách. |
+  | `desk.stay.move_outcome_unknown` | The move result could not be read. Reload the desk and check rooms {fromRoom} and {toRoom} before acting again. | Không đọc được kết quả chuyển phòng. Tải lại bàn lễ tân và kiểm tra phòng {fromRoom} và {toRoom} trước khi làm tiếp. |
+  | `desk.stay.checkin_release_failed` | The check-in was refused, but room {roomNumber} still reads occupied. Reload the desk, and tell the manager if it still shows occupied. | Không nhận phòng được, nhưng phòng {roomNumber} vẫn hiện đang có khách. Tải lại bàn lễ tân và báo quản lý nếu phòng vẫn hiện đang có khách. |
+  | `desk.stay.checkin_outcome_unknown` | The check-in result could not be read. Reload the desk and check room {roomNumber} before acting again. | Không đọc được kết quả nhận phòng. Tải lại bàn lễ tân và kiểm tra phòng {roomNumber} trước khi làm tiếp. |
+  | `desk.stay.checkin_compensated` | The check-in was refused and room {roomNumber} is free again. | Không nhận phòng được và phòng {roomNumber} đã trống trở lại. |
+  | `desk.stay.checkin_link_not_recorded` | The guest is in room {roomNumber}, but the booking link is not recorded. Reload the desk, and tell the manager if the booking still shows no check-in. | Khách đã ở phòng {roomNumber} nhưng chưa ghi nhận liên kết đặt phòng. Tải lại bàn lễ tân và báo quản lý nếu đặt phòng vẫn chưa hiển thị việc nhận phòng. |
+
+  Two of these keys close the copy points the check-in half leaves
+  implicit: `desk.stay.checkin_compensated` is the arrival-compensation
+  success sentence, and `desk.stay.checkin_link_not_recorded` is the
+  post-stay reservation-link sentence, which reports the split without
+  claiming a release (`AC-REA-1`). The move path adds no key for a
+  vacated room that already reads free: it reuses the existing
+  `desk.stay.room_already_free` (`messages/en.json:472`,
+  `messages/vi.json:472`), the same sentence the check-out path uses.
+
+- **Design facts.** One decided UI fact changes: the owner board
+  (`docs/design/Stay.dc.html`) carries the two panels and no move
+  affordance, and this owner-reported defect authorizes exactly one
+  additive card beyond it (owner decision on #647; `docs/design/README.md`
+  keeps the board authoritative otherwise). The implementation records
+  that addition as a decided fact in the design-facts gate and the
+  dom-diff exemption record rather than removing the Stay screen from
+  the comparison, and re-pins the retired-section list in
+  `app/src/stay-restyle.test.ts:136-142` — the `stay-move-card` and
+  `MoveRoom` pins — since those two hooks now exist by decision; every
+  other retired hook in that list stays.
+- **Print rules.** Unchanged. No print surface or route is touched.
+
+Cross-references: the move rule is `BR-19` and `BR-16`/`BR-28` for the
+ready-room requirement (`docs/requirements/business-rules.md`), the FRs
+are `FR-FDK-1`/`FR-FDK-3`
+(`docs/requirements/mvp-requirements.md`), the operations are
+`contracts/http/AssignRoom.json`, `contracts/http/MoveRoom.json`, and
+`contracts/http/ReleaseRoom.json` (owned by `architect`), and the
+per-flow diagram plus the as-built service note are the LLD's and
+`docs/architecture/services/stay.md`'s. The isolated-lab reproduction
+record belongs in the implementation PR body or an issue comment.
+
+Out: implementation; the check-in panel's preload/commit mechanics
+beyond the release ordering in `AC-REA-1`; changing booking dates,
+price, room type, or guest data (booking modification is a separate
+flow); a drag-and-drop, swap-with-another-guest, or multi-room move; a
+move-history list view (no read operation exposes it); any new backend
+operation or contract change; and a data backfill for rooms already
+stranded in a live install — the decided path adds no migration, and
+the operational clearance for existing stale rooms is a
+`release-manager` handoff.
+
+Rollback: revert the single implementation PR. No schema migration and
+no new operation exist on the decided path — the desk simply stops
+calling operations that already exist — so the old two-panel Stay
+screen and its guards return as they were, and rooms stranded by a
+move in the reverted build are cleared through the existing desk
+release.
+
 ## 7. Catalogue and locale rule
 
 - Single source of truth stays `messages/` (`messages/README.md`):
@@ -2016,7 +2236,10 @@ the rollback note moves into the implementation PR.
   `desk.onboarding.*` (wizard steps, placeholders, helper
   text), `stay.checkin.room_placeholder` and hint (already
   named in the #412 record), `desk.empty.*` per-list empty
-  states where the design needs one with no key yet.
+  states where the design needs one with no key yet,
+  `desk.stay.move_*` plus `desk.stay.moving`,
+  `desk.stay.moved_named`, and the two aborted-commit lines
+  (#647, section 6.17, with both locales listed there).
 - The hotel name is configuration (persisted through the
   existing hotel-configuration surface, `FR-ADM-1`), shown in
   the shell header and on printed documents; the design's hotel
@@ -2353,5 +2576,18 @@ Section 4 stays the rollout-wide contract; for steps 2–4:
 | The T2 spec set exists and `spec-reviewer` posts `SPEC-GATE PASS` before implementation starts | This section, section 6.16, `docs/product/acceptance-criteria.md` section 15 (`AC-DEP-1..5`, `AC-FDK-2` pointer), `docs/project/decision-log.md` D-26; `business-analyst` FR/NFR delta, `architect` lifecycle shape and diagrams, and `qa-lead` traceability are the sibling handoffs |
 | Rollback is a single revert with no schema or data migration on the decided path | Section 6.16 (rollback); a shape that adds a state or a migration re-tiers to T3 and carries its rollback note in the implementation PR |
 
+## 22. Acceptance mapping (issue #647)
+
+| Criterion | Evidence in this spec |
+|---|---|
+| A guest expected in 101 but checked into 102 leaves 101 not occupied once the check-in commits, and the board and Rooms map show only 102 occupied | Section 6.17 decisions 1 and 3; `AC-REA-1`; the as-built commit window (`app/src/views/StayView.vue:1249-1336`) and the assignment/release pair (`services/rooms/src/store.ts:365-405`, `:407-436`) |
+| A committed check-in in 101 reassigned to 102 releases 101, occupies 102, and records the move (from room, to room, time) visibly | Section 6.17 decisions 2, 3, and 5; `AC-REA-2`; `MoveRoom` keeps both rooms and `movedAt` (`services/stay/src/store.ts:327-373`, `contracts/http/MoveRoom.json`); the panel receipt states are in the UI contract delta |
+| A reassignment that fails after the target was assigned leaves neither room occupied by the aborted attempt, and the refusal is plain catalogue words | Section 6.17 decision 3 and the refusal/compensation states; `AC-REA-3`; the compensating `ReleaseRoom` to `vacant-inspected` and the stuck-target line |
+| A completed mid-stay move releases the old room and the stay names the new room | Section 6.17 decisions 2 and 4; `AC-REA-4`; `BR-19` and `FR-FDK-3` already state the semantics, so no rule is reworded |
+| Regression tests cover switch-after-preload, switch-after-commit, and mid-stay ordering, and the existing check-in guards still run | Section 6.17 decision 1 and the design-facts paragraph; `AC-REA-5`; `AC-DSK-17`, `AC-DSK-18`, `AC-DSK-19`, `AC-CKO-1`/`AC-CKO-2`, and `AC-DEP-1`..`AC-DEP-5` stand as written |
+| New copy exists in both locales | Section 6.17 catalogue table (key, English, Vietnamese primary) and section 7; `script/catalogue-coverage-check.sh` green on the implementation PR |
+| The T2 spec set exists and `spec-reviewer` posts `SPEC-GATE PASS` before implementation starts | This section, section 6.17, `docs/product/acceptance-criteria.md` section 16 (`AC-REA-1..5`, the `AC-FDK-1`/`AC-FDK-3` pointers), `docs/project/decision-log.md` D-27; `business-analyst` FR/NFR delta, `architect` per-flow diagram, and `qa-lead` traceability are the sibling handoffs |
+| Rollback is a single revert with no migration and no new operation | Section 6.17 (rollback); the desk calls only operations that already exist, so the reverted build is the two-panel Stay screen it is today |
+
 <!-- ao-role: product-owner -->
-Role: product-owner · AO session hotel-mgmt-920
+Role: product-owner · AO session hotel-mgmt-964
