@@ -254,24 +254,35 @@ on every run, machine, and timezone.
   extractor and assertions pin the version they implement and
   refuse to run against a mismatch.
 
-## 8. App-only nav tab allowance (Refs #590)
+## 8. App-only nav tab allowance (Refs #590, #648)
 
-The seven owner boards anchor the shared nav. Issue #590 adds one desk
-route and one tab the boards do not draw (owner decision O-1, D-23),
-and the owner boards must not be edited to follow the implementation
+The seven owner boards anchor the shared nav. Two desk routes and tabs
+the boards do not draw exist today: the rooms and rates screen (#590,
+owner decision O-1, D-23) and the read-only booking register (#648), and
+the owner boards must not be edited to follow either implementation
 (`docs/design/README.md` rules: change the implementation, or ask the
 owner for a design revision). This section records the narrow
-comparison rule that keeps the gate meaningful while that divergence
-exists. It is a rule of this contract even though the gate mechanics
+comparison rule that keeps the gate meaningful while those divergences
+exist. It is a rule of this contract even though the gate mechanics
 live with #467 (section 7), because it decides what "conforming nav"
 means.
 
-- The allowance is a static, ordered list defined here, with exactly
-  one entry today: route key `manage`, label `Quản lý` / `Manage`,
-  position immediately after the `rooms` tab, design source
-  `docs/design/RoomsRates.dc.md` (section 4 shell wireframe). No other
-  app-only tab may be added without a line in this section naming its
-  design source.
+- The allowance is a static, ordered list defined here, with two entries
+  today:
+  - route key `manage`, label `Quản lý` / `Manage`, position immediately
+    after the `rooms` tab, design source `docs/design/RoomsRates.dc.md`
+    (section 4 shell wireframe), Refs #590;
+  - route key `bookings`, label `Sổ đặt phòng` / `Bookings`, position
+    immediately after the `book` tab, design source
+    `docs/design/Main.dc.html` (the shell tab pattern the screen reuses;
+    the screen body is specified by
+    `docs/product/booking-management-view.md`), Refs #648.
+  No other app-only tab may be added without a line in this section
+  naming its design source.
+- With both entries inserted, the compared order is the seven design
+  tabs in their own relative order with `manage` after `rooms` and
+  `bookings` after `book`: desk, rooms, manage, book, bookings, stay,
+  folio, print, admin.
 - Extraction is unchanged on both sides: the design side still emits
   `nav.order` / `nav.labels` from the `.dc.html` boards, and the app
   side still records every rendered tab. The allowance lives in the
@@ -283,6 +294,17 @@ means.
   or relabelled tab still fails the gate. `nav.active` keeps its
   per-screen comparison, and a screen with no design tab keeps the
   existing tab-less rule.
+- Consumer entry and sequencing: the app-side list in
+  `app/e2e/design-facts.ts` (`NAV_TAB_ALLOWANCES`) is committed text
+  too, and a declared entry is implemented there in the implementation
+  PR that first renders the tab. The gate diffs against the running
+  DOM, so an allowance for a tab the app does not yet render fails
+  `nav.order` and `nav.labels.<key>`; declaring it early would turn the
+  gate red rather than retire it. The `manage` entry is the precedent
+  (schema here in PR #607, consumer entry with the screen in PR #609).
+  While an entry is declared here and not yet rendered, the gate keeps
+  asserting the seven boards and the entries already rendered, and
+  nothing else changes.
 - Determinism: the allowance is committed text, not configuration or
   environment state, so every extractor record stays byte-identical to
   today's run on the same inputs.
@@ -295,4 +317,4 @@ means.
   consumer-side comparison rule changes.
 
 <!-- ao-role: architect -->
-Role: architect · AO session hotel-mgmt-888
+Role: architect · AO session hotel-mgmt-981
