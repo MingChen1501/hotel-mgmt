@@ -37,6 +37,27 @@ function ruleBody(selector: string): string {
   return (match as RegExpExecArray)[1];
 }
 
+// Refs #648 (R-12): the narrow header band. Reading from the
+// `@media screen and (max-width: 1279px)` opener scopes the reader to
+// that slice, so a tightening override can never be read as the design
+// value (the base rules sit above the band) and a missing band fails
+// closed instead of silently matching the wide-width rule.
+function narrowBandSource(): string {
+  const start = appSource.indexOf('@media screen and (max-width: 1279px)');
+  expect(start, 'missing the narrow header band media query').toBeGreaterThan(-1);
+  return appSource.slice(start);
+}
+
+// First rule body for a selector list inside the narrow band.
+function narrowRuleBody(selectors: string[]): string {
+  const escaped = selectors
+    .map((selector) => selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join(',\\s*');
+  const match = new RegExp(`${escaped}\\s*\\{([^}]*)\\}`).exec(narrowBandSource());
+  expect(match, `missing narrow-band style rule for ${selectors.join(', ')}`).not.toBeNull();
+  return (match as RegExpExecArray)[1];
+}
+
 describe('R1 shell/nav design values (Refs #518)', () => {
   it('pins the shared shell tokens to the design boards', () => {
     // Every tabbed board line 2 (`docs/design/Main.dc.html:2`,
@@ -92,6 +113,23 @@ describe('R1 shell/nav design values (Refs #518)', () => {
     expect(active).toContain('font-weight: 600');
     expect(active).toContain('border-radius: 8px');
     expect(active).toContain('padding: 10px 16px');
+  });
+
+  it('tightens the nav spacing only below the 1280px design width', () => {
+    // Refs #648 (R-12): the ninth tab is app-only, so the nine
+    // localized tabs plus the locale pill and the session control no
+    // longer fit the 1200px design band at the design spacing. The
+    // owner's decision on #648 is to tighten the row's own spacing
+    // rather than shorten the label, so below a 1280px viewport the
+    // inter-item gap goes 8px -> 4px and each tab — active or not —
+    // keeps 12px side padding instead of 16px. The design values stay
+    // exactly as the boards draw them at 1280px and wider, which the
+    // base assertions above pin.
+    expect(ruleBody('#shell .shell-nav')).toContain('gap: 8px');
+    expect(narrowRuleBody(['#shell .shell-nav'])).toContain('gap: 4px');
+    expect(
+      narrowRuleBody(['#shell .shell-nav-item', '#shell .shell-nav-item.shell-nav-active']),
+    ).toContain('padding: 10px 12px');
   });
 
   it('renders the locale pill at the design border, radius, and padding', () => {
