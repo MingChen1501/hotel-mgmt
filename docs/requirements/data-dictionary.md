@@ -34,6 +34,15 @@ history with actor and timestamp.
 Owning FRs: FR-RES-1, FR-RES-2, FR-RES-3, FR-RES-4, FR-RES-5,
 FR-RES-6, FR-RTE-5, FR-CUS-1, FR-CUS-2.
 
+A reservation is **active** — and therefore holds sellable
+availability — only in `confirmed` and `checked-in`; a `closed`,
+`cancelled`, or no-show reservation holds nothing for the dates it
+covers. On check-out the stay's close completes the reservation to the
+terminal `closed` state, which is never reopened, and the recorded
+dates are not rewritten by an early departure: the state records that
+the stay ended while the dates keep recording what was booked
+(`FR-DEP-1`..`FR-DEP-3`, `BR-1`).
+
 ## 2. Stay
 
 An in-house record created at check-in from a confirmed reservation,
@@ -51,7 +60,9 @@ A stay reaches `closed` only through the settlement gate, and that
 gate is decided on the folio the system holds: the stored balance and
 the approval recorded against it, never a balance or approval a
 request supplies (`BR-46`). A stay whose folio cannot be read stays in
-house.
+house. A committed close completes the booking behind the stay
+(`FR-DEP-1`), so the completed booking keeps its link to this closed
+stay.
 
 Owning FRs: FR-FDK-1, FR-FDK-2, FR-FDK-3, FR-FDK-4, FR-FDK-5.
 
@@ -260,9 +271,13 @@ adds no entry, field, or behaviour beyond those sources. The Folio
 entry (section 3) states which of its fields the #601 settlement gate
 decides on, and the Stay entry (section 2) states that the close is
 decided on those stored facts (`BR-46`, `FR-CKS-1`..`FR-CKS-5`); both
+add no entry, field, or behaviour beyond those sources. The
+Reservation entry (section 1) and the Stay entry (section 2) state the
+active set the #646 departure release relies on — a completed booking
+holds nothing and never reopens (`FR-DEP-1`..`FR-DEP-3`, `BR-1`) — and
 add no entry, field, or behaviour beyond those sources.
 
 Counts: 15 dictionary entries covering the 7 entity terminology concepts (T-1..T-7); T-8 is a spelling convention with no entry.
 
 <!-- ao-role: business-analyst -->
-Role: business-analyst · AO session hotel-mgmt-921
+Role: business-analyst · AO session hotel-mgmt-945
