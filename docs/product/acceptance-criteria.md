@@ -781,8 +781,14 @@ follows that decision.
   size, the nav tabs render the design padding, radius, and
   active-tab inversion with the shared-shell tab set, and the
   locale pill renders the design border, radius, and padding
-  with the whole screen switching between EN and VI. Traces to:
-  US-FDK-5; FR-FDK-5 (no MVP story change; shell visuals only).
+  with the whole screen switching between EN and VI. The nav-spacing
+  clause is re-baselined by the #648 owner decision (D-29): the design
+  `8px` gap and `10px 16px` tab padding hold from a `1280px` viewport
+  and wider, and below `1280px` the decided narrow values (`4px` gap,
+  `10px 12px` padding) hold with the label, height, `44px` target,
+  radius, and inversion unchanged. Traces to:
+  US-FDK-5; FR-FDK-5 (no MVP story change; shell visuals only; Refs
+  #648).
 - AC-RST-2 — Given today has arrivals, in-house stays, rooms
   needing cleaning, and an out-of-service room, when staff open
   the Main board, then the business-date row, the two card-grid
@@ -1367,7 +1373,10 @@ or an issue comment):
   inside the unchanged shared shell, with the tab label, route title,
   screen title, and intro resolved through the catalogue in the active
   locale, the nine-tab row inside the `1200px` content width with the
-  brand as the only shrinkable item, and every other route, the
+  brand as the only shrinkable item, at the design nav spacing from a
+  `1280px` viewport and wider and the decided narrow spacing below it
+  (`4px` inter-tab gap, `10px 12px` tab padding, labels and `44px`
+  targets unchanged; D-29), and every other route, the
   sign-in gate, and the print surfaces behaving as before. Traces to:
   US-RES-5; FR-RES-5, FR-DSP-1, NFR-I18N-1 (Refs #648).
 - AC-BMV-2 — Given bookings exist, when staff open the screen on its
@@ -1586,4 +1595,4 @@ sections 1–16 done-conditions keep their behaviour. `BMV` is the
 domain code for this family.
 
 <!-- ao-role: product-owner -->
-Role: product-owner · AO session hotel-mgmt-979
+Role: product-owner · AO session hotel-mgmt-1011

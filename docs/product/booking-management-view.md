@@ -109,14 +109,44 @@ Out:
   booking creation (`Book`) with booking browsing, and leaves the
   operational chain `Stay` -> `Folio` uninterrupted. The tab is
   app-only: the owner-supplied v2 boards do not draw it (section 8).
-- **Nine tabs and width.** The shell's shrink rule is unchanged: the
-  brand stays the only shrinkable item, and every tab, the locale pill,
-  and the session control keep their size. The new label is the short
-  noun form so the nine-tab row stays inside the `1200px` content
-  width; the first implementation PR carries the 1200px evidence in
-  both locales. If the measured row overflows, the owner decides
-  between a shorter label and a shell rule change — the tab never
-  silently truncates or wraps.
+- **Nine tabs and width.** The nine-tab row keeps the brand-only
+  shrink rule: the brand stays the only shrinkable item, the locale
+  pill and the session control keep their size, and no tab ever
+  shrinks, truncates, or wraps its label — every tab keeps its label,
+  height, `44px` target, `8px` radius, and ink (the narrow-band spacing
+  below adjusts padding and gap only). The new label is the short noun
+  form (`Sổ đặt phòng` / `Bookings`) so the row fits the `1200px`
+  content width.
+- **Narrow-width nav spacing (owner decision, #648).** From a `1280px`
+  viewport and wider the nav renders the design values exactly — `8px`
+  inter-tab gap and `10px 16px` tab padding. Below a `1280px` viewport
+  (`@media screen and (max-width: 1279px)` in `app/src/App.vue`) the
+  shell tightens that spacing instead of shortening the label: the
+  inter-tab gap goes `8px` -> `4px` and each tab's side padding
+  `10px 16px` -> `10px 12px`, which returns `8px` of width per tab to
+  the row. Everything else is unchanged in that band: the tab label,
+  the `10px` vertical padding, the `44px` minimum height, the `8px`
+  radius, the active-tab inversion, the locale pill, the session
+  control, and the brand-only shrink rule. This is the only shell value
+  that departs from the boards, it is deliberate, it is limited to the
+  sub-`1280px` band (which includes the `1200px` desk-kiosk viewport
+  the owner measured), and the boards stay read-only: the divergence is
+  recorded here and in
+  [the restyle spec](desk-ui-pixel-faithful-restyle.md) (section 4,
+  "Narrow-width nav overrides"), with the decision recorded as D-29 in
+  `docs/project/decision-log.md`. The alternative — a shorter tab label
+  — stays reserved to the owner and was declined for this change.
+- **Width evidence.** The first implementation PR carries the
+  nine-tab-row evidence in both locales: the `1200px` band (the design
+  column) and the narrow band either side of the breakpoint
+  (`1279px` and `1280px`), so a reader can see that the row fits, that
+  nothing truncates or wraps, and that the design values return at and
+  above `1280px`. The shell guard `app/src/shell-restyle.test.ts` pins
+  both the base design rules and the narrow block, so a future
+  breakpoint or value change fails the guard instead of the render.
+- **Overflow rule.** If a measured row still overflows, the owner
+  decides between a shorter label and a further shell rule change — the
+  tab never silently truncates or wraps.
 - **Shell.** The shared shell (teal header, tabs, locale pill, session
   control, sign-in gate, content column) is unchanged, and this screen
   adds no print route.
@@ -282,7 +312,9 @@ unworded.
   column, sign-in gate). This change adds exactly one tab and one
   route; every other destination, the sign-in gate, and the print
   surfaces keep their current behaviour. The nine-tab row keeps the
-  brand-only shrink rule (section 3).
+  brand-only shrink rule (section 3), and it carries the decided
+  narrow-width spacing below a `1280px` viewport (section 3), which is
+  the only shell value this change touches.
 - **Design source and boards.** The owner-supplied v2 boards are
   authoritative for the desk (`docs/design/README.md`) and none of them
   draws this screen. The screen therefore composes the board
@@ -461,7 +493,9 @@ Handoffs (owners, not this role):
   assertions that move with the ninth tab
   (`app/src/App.test.ts:182-207`, `app/src/shell-restyle.test.ts:26-27`,
   `app/src/router.test.ts:155-175`, `app/e2e/manage.spec.ts:73`, and the
-  design-facts allowance).
+  design-facts allowance) — including the narrow-width nav block, whose
+  `gap` and tab `padding` need a rule-body assertion of their own
+  because the existing guard reads only the first matching rule body.
 - `release-manager` — a release note entry and the rollback pointer
   for the new screen (no migration; a single revert).
 - `spec-reviewer` — one verdict on the then-current head before any
@@ -493,9 +527,10 @@ owner may re-split):
 - No new design token; the design-facts gate green with the new
   allowance entry and every board screen unchanged.
 - The 1200px shell evidence in both locales for the nine-tab row on
-  slice 1, and side-by-side VI and EN screenshots of the slice against
-  the boards the screen borrows from.
+  slice 1, plus the narrow band either side of the breakpoint
+  (`1279px` and `1280px`, section 3), and side-by-side VI and EN
+  screenshots of the slice against the boards the screen borrows from.
 
 
 <!-- ao-role: product-owner -->
-Role: product-owner · AO session hotel-mgmt-979
+Role: product-owner · AO session hotel-mgmt-1011
