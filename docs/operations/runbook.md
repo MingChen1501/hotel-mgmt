@@ -155,6 +155,11 @@ Call support the same day when any of these happen:
   from being sold (section 8.2).
 - A check-out where the panel reported the guest checked out but also
   said the booking could not be marked completed (section 8.2).
+- A room that reads **Occupied** with **Unknown guest** and no guest in
+  it — the room-side stuck case an interrupted check-in or room move
+  leaves behind (section 9).
+- A panel sentence that names a room still reading occupied after a
+  refused check-in or a room move (section 9).
 
 Escalation contacts (placeholders — fill in per sale before
 handover):
@@ -176,8 +181,8 @@ the last successful backup.
 After a guest leaves, the room is turned over through housekeeping and
 can be sold again the same day. Section 8.1 is that normal path.
 Section 8.2 is the case where a booking from before the upgrade still
-reads as checked in and needs support — it is the only stuck case an
-upgrade leaves behind.
+reads as checked in and needs support. Section 9 is the room-side
+counterpart of 8.2: a room that reads occupied while nobody is in it.
 
 ### 8.1 Selling a room again the same day
 
@@ -243,8 +248,10 @@ What to do:
    normal check-out performs; the paper booking is then entered
    normally.
 4. Keep a list of the affected bookings until they are repaired. They
-   are the only rows an upgrade leaves behind: no automatic repair
-   ships with this release.
+   are the only booking rows an upgrade leaves behind: no automatic
+   repair ships with this release. Rooms an older bundle stranded are
+   the room-side rows of the same upgrade, and section 9 is their
+   procedure.
 
 Delivery team note (at an upgrade): before handing the desk back,
 read the reservation calendar for the upgrade date and the next
@@ -280,5 +287,136 @@ these rows without a support call is the D6 reconciliation follow-up
 (`docs/architecture/lld.md`, section 22.7), not a silent data
 correction.
 
+## 9. A room that still reads occupied with nobody in it
+
+A room reads **Occupied**, no guest is in it, and the main board's
+in-house list names no guest for it. The desk cannot give the room to the next
+guest, and the Rooms screen and the main board's room map keep showing
+it as taken. This is the room-side counterpart of section 8.2: a
+check-in or a room move set the room aside for a guest, the last step
+never finished, and nothing ever gave the room back.
+
+### 9.1 What you see
+
+- The **Occupied** chip with **Unknown guest** under it and no checkout
+  date, on the Rooms screen and on the main board's room map.
+- No guest in that room on the main board's in-house list (the guests
+  in house today).
+- The room is never offered in the check-in panel's room list, so an
+  arriving guest cannot be checked into it.
+- At the moment it happened the panel may have said so in plain words,
+  for example "The check-in was refused, but room 101 still reads
+  occupied. Reload the desk, and tell the manager if it still shows
+  occupied.", or after a room move "The guest is now in room 102, but
+  room 101 still reads occupied. ...".
+
+When this can happen:
+
+- A check-in or room move that was refused or interrupted **before this
+  release**, after the desk had already set the guest's room aside.
+  Nothing repaired those rooms, so they keep reading occupied.
+- A check-in or room move from this release onward whose last step could
+  not be finished — the desk was closed, the connection dropped, or the
+  panel named the room that still reads occupied.
+
+### 9.2 What to do at the desk
+
+1. Do not move a guest into that room, and do not look for a button
+   that clears it: an occupied card carries no **Mark cleaned**, **Mark
+   inspected**, or **Out of order** action, and the system refuses a
+   block on an occupied room. Do not edit room state by hand either —
+   doing so loses the record of what happened. None of those steps gives
+   back a room that was set aside for a guest who never arrived.
+2. Confirm nobody is in the room: check the main board's in-house list
+   and, if there is any doubt, look at the room. If a guest *is* in it,
+   the room is correct, nothing is wrong, and nothing needs clearing.
+3. If nobody is in it, write down the room number, the time of the
+   refused or interrupted action, and the exact words the panel showed,
+   then call support the same day (section 7).
+4. Until support clears the room, treat it as unavailable: give the
+   arriving guest another ready room of the same type. If that would
+   lose the booking, take it on paper with the guest's name, room type,
+   dates, and rate, and tell the guest the confirmation follows (the
+   same rule as section 8.2 step 2).
+
+Support frees the room in the state that matches what actually
+happened:
+
+- **Nobody ever entered it** (a check-in that did not land): back to
+  **Ready (inspected)**, the state it held before it was set aside, so
+  the room is still sellable today.
+- **A guest stayed in it and was then moved out of it**: to the
+  housekeeping state **Dirty**, then **Mark cleaned** and **Mark
+  inspected** on the Rooms screen (section 8.1 steps 2-3).
+- Never the other way round: sending an unused room to housekeeping
+  loses a ready room and misstates the history, and leaving a used room
+  reading ready would offer it to the next guest.
+
+### 9.3 Delivery team note (at an upgrade)
+
+Before handing the desk back, clear the rooms an older bundle stranded:
+
+1. On the Rooms screen, list every room reading **Occupied** with
+   **Unknown guest**, and compare it with the main board's in-house
+   list.
+2. For each one, confirm with the front desk that nobody is in the room,
+   then clear it with the support step below in the state 9.2 names
+   (ready if nobody ever used it, dirty if a guest slept there and was
+   moved out).
+3. Record the room number, the time, and the actor in the upgrade
+   record, then tell the front desk which rooms were cleared.
+
+No automatic repair ships with this release: this pass clears the rooms
+already in the database, and the released desk stops creating new ones
+except in the desk-closed or unreadable case 9.4's last paragraph names.
+The booking-side counterpart of this note is section 8.2's delivery
+team note.
+
+### 9.4 Support note (technical)
+
+The desk's own comparison is the one at
+`app/src/views/RoomsView.vue:384-393` and
+`app/src/views/DeskView.vue:904-914`: an occupied room that no in-house
+stay names renders **Unknown guest** (`messages/en.json:365`,
+`messages/vi.json:365`).
+
+1. `POST /v1/rooms/ListRoomsByState` with `{state: "occupied"}`. Each
+   room carries `roomId`, `number`, and `state`; the list does not
+   expose the room's `stayLink`.
+2. `POST /v1/stay/ListArrivalsDepartures` with
+   `{businessDate: <today>}`. The `inHouse` rows carry `roomId`. A room
+   from step 1 that no `inHouse` row names is the stranded room. If an
+   in-house row names it, a guest is in it: stop, and never free a room
+   a live stay names.
+3. Ask the desk whether the guest ever entered the room; that answer
+   decides the release target (see 9.2): `vacant-inspected` for a room
+   nobody used, `vacant-dirty` for a room a guest slept in and then
+   left.
+4. `POST /v1/rooms/ReleaseRoom` with
+   `{roomNumber, toState: "<target>", actor: "<owner account>"}`. `200`
+   returns `oldState` and `newState`; `STATE_ILLEGAL` means the room no
+   longer reads occupied (already cleared, nothing written); `NOT_FOUND`
+   means no room carries that number.
+5. Re-read `ListRoomsByState` for the target state and confirm the room
+   is there and no longer in `occupied`. Record the room number, the
+   previous state, the target state, the actor, and the time in the
+   ticket.
+
+Why this call and not another: `ReleaseRoom` is the only operation that
+takes a room from `occupied` to `vacant-inspected`, and it accepts the
+explicit `toState` (`services/rooms/src/store.ts:407-436`; the allowed
+transitions let `UpdateRoomState` move `occupied` only to
+`vacant-dirty`, `:32-40`). The release writes the state-history row and
+the state-changed event the audit trail needs. Never edit the database
+by hand, and never free a room a live stay names.
+
+The one case the released desk can still leave behind is LLD section
+23.9's R12 — the desk closed or the reply unreadable between setting a
+room aside and finishing the action. The steps above clear it, which is
+why no data backfill or migration is needed.
+
 <!-- ao-role: release-manager -->
 Role: release-manager · AO session hotel-mgmt-948
+
+<!-- ao-role: release-manager -->
+Role: release-manager · AO session hotel-mgmt-963
