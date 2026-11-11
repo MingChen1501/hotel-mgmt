@@ -45,7 +45,7 @@ retry.
 |---|---|
 | `bookings-register-vi-en.png` | The register with three bookings and the read-back detail card open. Left VI, right EN, same fixture data; the selected row carries the 3px primary-accent left rule and the ink weight, and the state chips are the neutral chip surface (`In house` / `Đang lưu trú`, `Booked` / `Đã đặt`, `Cancelled` / `Đã huỷ`). |
 | `bookings-empty-vi-en.png` | The empty range: one muted sentence naming both nights in `dd/mm/yyyy`, no invented row, filter still usable. Left VI, right EN. |
-| `measurements.json` | The rendered shell measurement both locales: 1280px viewport, `1200px` content column, nine tabs, no wrap, no horizontal overflow of the tab row (`scrollWidth == clientWidth`). |
+| `measurements.json` | The rendered shell measurement in both locales at the desk kiosk width (1280px viewport, `1200px` content column) and in the design's 1200px band: nine tabs, no wrap, and no horizontal overflow of the tab row (`scrollWidth == clientWidth`). |
 
 Capture method: this branch's `app/dist` (built with `npm run build`,
 not hand-edited) served by `vite preview`, rendered in Chromium
@@ -56,6 +56,32 @@ label bar. The five register reads are answered with fixture data for
 the capture (guest names, references, and totals are illustrative), so
 these images evidence the **rendered screen and its stylesheet**, not
 the live read path. The live read path is proven separately below.
+
+## Nine tabs and the header width (R-12)
+
+The tab is app-only, so the header row has to carry nine tabs plus the
+brand, the locale pill, and the session control inside the desk
+design's width. Measured on the built shell (`measurements.json`):
+
+| Viewport | Content column | Nav row | Gap | Brand (VI / EN) | Overflow |
+|---|---|---|---|---|---|
+| 1280 (kiosk) | 1200 | 1264 | 8px | 36px / 120px | none (`scrollWidth == clientWidth`) |
+| 1200 (design band) | 1184 | 1184 | 4px | 0px / 120px | none (`scrollWidth == clientWidth`) |
+
+At the 1200px band the VI row no longer fits with the design's 8px
+gap: the brand is already fully shrunk (the design's only shrinkable
+item) and the session control still spilled ~20px past the bar
+(`signin.spec.ts` "header keeps the design 60px single row at
+1200px"). The change therefore tightens **only the inter-item gap**,
+from 8px to 4px, below a 1240px viewport (`app/src/App.vue`); every
+tab, the locale pill, and the session control keep their size, the
+brand stays the only shrinkable item, and the 1280px kiosk keeps the
+design gap. The product spec reserves the alternative — a shorter VI
+tab label — to the owner, so this rule is recorded for the
+`owner-review` decision; the label itself is unchanged
+(`Sổ đặt phòng` / `Bookings`). At the 1200px band the brand is fully
+truncated in VI, which is the same shrink rule the boards already use
+for a long hotel name.
 
 ## Live read-path evidence (`BM-E1`)
 

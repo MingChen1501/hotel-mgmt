@@ -42,6 +42,13 @@ function addDays(iso: string, days: number): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
+// Rows render the desk date form (`formatDeskDate`: dd/mm/yyyy in both
+// desk locales), while the filter pickers take the app-locale typed form.
+function rowDate(iso: string): string {
+  const [year, month, day] = iso.split('-');
+  return `${day}/${month}/${year}`;
+}
+
 // The desk money form (`formatVnd`): locale grouping, no decimals, `đ`.
 function money(minor: number): string {
   return `${new Intl.NumberFormat('en', {
@@ -110,8 +117,8 @@ test('bookings tab: a created booking is found again and its row opens the read-
   await expect(row.getByTestId('bookings-row-room-type')).toHaveText(ctx.roomTypeName);
   // A confirmed booking holds a type, not a room.
   await expect(row.getByTestId('bookings-row-room')).toHaveText('—');
-  await expect(row.getByTestId('bookings-row-arrival')).toHaveText(deskDateField(window.arrival));
-  await expect(row.getByTestId('bookings-row-departure')).toHaveText(deskDateField(window.departure));
+  await expect(row.getByTestId('bookings-row-arrival')).toHaveText(rowDate(window.arrival));
+  await expect(row.getByTestId('bookings-row-departure')).toHaveText(rowDate(window.departure));
   await expect(row.getByTestId('bookings-row-nights')).toHaveText('2');
   await expect(row.getByTestId('bookings-row-total')).toHaveText(money(Number(quote.totalMinor)));
   await expect(row.getByTestId('bookings-row-state')).toHaveText('Booked');
@@ -126,8 +133,8 @@ test('bookings tab: a created booking is found again and its row opens the read-
   await expect(page.getByTestId('bookings-detail-guest')).toHaveText(ctx.guestName);
   await expect(page.getByTestId('bookings-detail-room-type')).toHaveText(ctx.roomTypeName);
   await expect(page.getByTestId('bookings-detail-room')).toHaveText('—');
-  await expect(page.getByTestId('bookings-detail-arrival')).toHaveText(deskDateField(window.arrival));
-  await expect(page.getByTestId('bookings-detail-departure')).toHaveText(deskDateField(window.departure));
+  await expect(page.getByTestId('bookings-detail-arrival')).toHaveText(rowDate(window.arrival));
+  await expect(page.getByTestId('bookings-detail-departure')).toHaveText(rowDate(window.departure));
   await expect(page.getByTestId('bookings-detail-nights')).toHaveText('Nights: 2');
   await expect(page.getByTestId('bookings-detail-total')).toHaveText(
     `Total: ${money(Number(quote.totalMinor))}`,
@@ -140,7 +147,7 @@ test('bookings tab: a created booking is found again and its row opens the read-
   const farFrom = addDays(todayLocal(), 400);
   await applyRange(page, farFrom, addDays(farFrom, 6));
   await expect(page.getByTestId('bookings-empty')).toContainText('No booking stays between');
-  await expect(page.getByTestId('bookings-empty')).toContainText(deskDateField(farFrom));
+  await expect(page.getByTestId('bookings-empty')).toContainText(rowDate(farFrom));
   await expect(page.getByTestId('bookings-row')).toHaveCount(0);
 
   // A failed list read renders plain catalogue words with a usable

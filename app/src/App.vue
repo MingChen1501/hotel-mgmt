@@ -2710,4 +2710,22 @@ export default defineComponent({
     gap: 12px;
   }
 }
+
+/* Narrow header row (Refs #648, R-12). The ninth tab is app-only, and
+   below the design width the nine localized tabs plus the locale pill
+   and the session control no longer fit beside a visible brand: with
+   the brand already shrunk to zero, the VI row overflowed a 1200px
+   viewport by ~20px (`signin.spec.ts` spill). The design keeps every
+   tab, the pill, and the session control at their size and leaves the
+   brand as the only shrinkable item, so this rule only tightens the
+   inter-item gap in that narrow band (8px -> 4px, the design value
+   stays at every wider width including the 1280px kiosk). The product
+   spec reserves the alternative (a shorter tab label) to the owner;
+   this is the shell-rule side of that decision, recorded for the
+   owner-review. */
+@media screen and (max-width: 1240px) {
+  #shell .shell-nav {
+    gap: 4px;
+  }
+}
 </style>
