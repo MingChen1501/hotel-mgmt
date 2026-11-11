@@ -497,3 +497,72 @@ while new closes stop completing until the revert is itself reverted.
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-946
+
+## 17. Desk room reassignment authority (Refs #647)
+
+A guest expected in room 101 who checks into 102 leaves room 101
+reading occupied with a stale stay link, and the desk has no action to
+correct it. The layer that holds the fix is the desk, not the services:
+Rooms already owns assignment and release (`assignRoom` flips a ready
+room to `occupied` and records the stay link; only an explicit
+`releaseRoom` takes it back, `services/rooms/src/store.ts:361-405`,
+`:407-436`), Stay already owns the move and its history (`moveRoom`
+keeps the stay in house with `fromRoomId`, `toRoomId`, `movedAt`,
+`services/stay/src/store.ts:332-376`), and the contract already says the
+desk owns the assignment and release around a move
+(`contracts/http/MoveRoom.json`). What was missing is an owner for the
+sequence: the check-in commit assigns first and returns from every later
+refusal without releasing the room it assigned
+(`app/src/views/StayView.vue:1249-1336`), and nothing under `app/src`
+called `MoveRoom`.
+
+The desk therefore owns the ordering and the compensation, and no module
+learns to compensate for another:
+
+- **Order.** Arrival commit: assign the chosen room, read the booking,
+  write the stay, link the reservation; a definitive refusal at the
+  booking read or the stay write releases the room it assigned back to
+  `vacant-inspected` in the same commit. Reassignment and mid-stay move:
+  assign the target, move the stay, release the vacated room to
+  `vacant-dirty` — in that order, so a taken target refuses before the
+  stay moves and the old room frees only after the stay no longer names
+  it.
+- **Read the move before releasing.** The release targets the
+  `move.fromRoomId` the `MoveRoom` reply carries, not the room the panel
+  remembered, so two desks moving the same guest each release exactly
+  the room their own move vacated.
+- **Only definitive refusals compensate.** A `4xx` envelope answer
+  proves the call wrote nothing, so the earlier write is taken back; an
+  unreadable outcome (transport failure, `5xx`, non-envelope) releases
+  nothing and is reported as an outcome to re-read, because a room the
+  guest may be standing in must never be freed on a guess.
+
+Which service owns which fact:
+
+| Fact | Owner | Written where | May a caller assert it? |
+|---|---|---|---|
+| Which room a check-in names | Desk chooses, Rooms decides | `AssignRoom` conditional write, stay id as `stayLink` | No |
+| A room's occupancy | Rooms | `assignRoom` / `releaseRoom` | No |
+| The stay's current room and move history | Stay | `moveRoom` conditional in-house write + `stay_moves` row | Only `stayId` |
+| The from-room of a move | Stay | `move {fromRoomId, toRoomId, movedAt}` in the reply | Yes — it is the release input |
+| The sequence and the compensation | Desk | the click handler's ordered calls | Not applicable |
+
+No module, store, lifecycle state, operation, schema, or event is added,
+and no service-side rollback exists: the compensation is the desk's own
+`ReleaseRoom`, not a distributed transaction or a saga. The residual risk
+that follows is that a browser closed mid-action can leave a room
+occupied with no stay behind it; the desk names the room and the
+existing release clears it, which is where this change sits.
+
+Tier T2 (confirmed). Flow detail, the per-flow diagrams, the contract
+no-change statement, and the verification plan: `docs/architecture/lld.md`
+[section 23](lld.md); the room-side lifecycle statement:
+`docs/architecture/state-machine.md` [section 2.1](state-machine.md).
+
+Rollback: revert the single implementation PR. The desk stops calling
+operations that already exist, the two-panel Stay screen and its guards
+return as they were, and no migration or data backfill exists in either
+direction.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-961
