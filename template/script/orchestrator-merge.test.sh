@@ -15,10 +15,18 @@
 # `fail-closed` proof cited in an APPROVE headline) — are ignored.
 # CHANGES_REQUESTED on the head wins (fail closed).
 #
+# Stack coverage (issue #684): a native stack member (the PR's REST
+# resource carries a `stack` object) must be merged through one atomic
+# asynchronous merge request, and every open member at or below the
+# requested position must pass the same gates individually before that
+# request is submitted (fail closed on any failing or unreadable
+# member). Unstacked PRs keep the synchronous `gh pr merge` path.
+#
 # Runs the wrapper with stubbed `gh`/`ao` on PATH plus a temporary marker
-# directory, so no network, live session, or real PR is needed. Every case
-# uses --dry-run: a mergeable run prints "would run", a blocked run exits
-# non-zero with "refusing to merge".
+# directory, so no network, live session, or real PR is needed. Dry-run
+# cases submit nothing; async cases answer the stubbed PUT/GET calls so
+# the polling, 409-reuse, and branch-cleanup paths are exercised without
+# a real merge.
 #
 # Usage: bash script/orchestrator-merge.test.sh [--script <path>]
 #   --script defaults to the live wrapper next to this test; point it at
@@ -48,7 +56,13 @@ touch "${work}/.ao-orchestrator"
 # `ao` stub so this test covers live and template twins unchanged.
 TEST_PROJECT="$(grep '^PROJECT=' "${SCRIPT_UNDER_TEST}" | cut -d'"' -f2)"
 export TEST_PROJECT
+TEST_REPO="$(grep '^REPO=' "${SCRIPT_UNDER_TEST}" | cut -d'"' -f2)"
+export TEST_REPO
+TEST_DEFAULT_BRANCH="$(grep '^DEFAULT_BRANCH=' "${SCRIPT_UNDER_TEST}" | cut -d'"' -f2)"
+export TEST_DEFAULT_BRANCH
 export AO_SESSION_ID="test-session"
+# Poll without waiting; async cases set their own attempt budget.
+export MERGE_ASYNC_POLL_INTERVAL=0
 
 # Fixed head SHA for every PR fixture (40 lowercase hex). Verdict
 # comments and reviews quote it in short (abcdef1) or full form; the
@@ -64,14 +78,137 @@ printf '{"data":[{"id":"%s","projectId":"%s","role":"orchestrator","isTerminated
 EOF
 cat >"${work}/bin/gh" <<'EOF'
 #!/usr/bin/env bash
+# Stub gh: every call is logged so a case can prove what was (not) sent.
+if [[ -n "${TEST_GH_LOG:-}" ]]; then printf '%s\n' "$*" >>"${TEST_GH_LOG}"; fi
+
+# Honour an explicit -q / --jq query the way the real CLI would.
+QUERY=""; prev=""
+for a in "$@"; do
+  case "${prev}" in
+    -q|--jq) QUERY="$a" ;;
+  esac
+  prev="$a"
+done
+
+emit() {
+  if [[ -n "${QUERY}" ]]; then jq -r "${QUERY}" <<<"$1"; else printf '%s\n' "$1"; fi
+}
+
+pr_fixture() {
+  if [[ -n "${TEST_PR_DIR:-}" && -f "${TEST_PR_DIR}/$1.json" ]]; then
+    printf '%s' "${TEST_PR_DIR}/$1.json"
+  elif [[ -n "${TEST_PR_JSON:-}" ]]; then
+    printf '%s' "${TEST_PR_JSON}"
+  fi
+}
+
 if [[ "$1" == "pr" && "$2" == "view" ]]; then
-  cat "${TEST_PR_JSON}"
+  fixture="$(pr_fixture "$3")"
+  [[ -n "${fixture}" ]] || { echo "stub gh: no PR fixture for #$3" >&2; exit 1; }
+  # After the async request, read-backs report the merged state.
+  if [[ -n "${TEST_MERGED_FLAG:-}" && -f "${TEST_MERGED_FLAG}" ]]; then
+    payload="$(jq '.state = "MERGED"' "${fixture}")"
+  else
+    payload="$(cat "${fixture}")"
+  fi
+  emit "${payload}"
 elif [[ "$1" == "pr" && "$2" == "checks" ]]; then
-  cat "${TEST_CHECKS_JSON}"
+  fixture=""
+  if [[ -n "${TEST_PR_DIR:-}" && -f "${TEST_PR_DIR}/checks-$3.json" ]]; then
+    fixture="${TEST_PR_DIR}/checks-$3.json"
+  elif [[ -n "${TEST_CHECKS_JSON:-}" ]]; then
+    fixture="${TEST_CHECKS_JSON}"
+  fi
+  [[ -n "${fixture}" ]] || { echo "stub gh: no checks fixture for #$3" >&2; exit 1; }
+  emit "$(cat "${fixture}")"
 elif [[ "$1" == "pr" && "$2" == "list" ]]; then
-  printf ''
+  list_state="open"; list_head=""; prev=""
+  for a in "$@"; do
+    case "${prev}" in
+      --state) list_state="$a" ;;
+      --head) list_head="$a" ;;
+    esac
+    prev="$a"
+  done
+  if [[ "${list_state}" == "all" || -n "${list_head}" ]]; then
+    payload='[]'
+    if [[ -n "${TEST_ALL_PRS:-}" ]]; then payload="$(cat "${TEST_ALL_PRS}")"; fi
+    if [[ -n "${list_head}" ]]; then
+      payload="$(printf '%s' "${payload}" | jq -c --arg h "${list_head}" '[.[] | select(.headRefName == $h)]')"
+    fi
+    emit "${payload}"
+  elif [[ -n "${TEST_MERGED_FLAG:-}" && -f "${TEST_MERGED_FLAG}" && -n "${TEST_OPEN_PRS_AFTER:-}" ]]; then
+    emit "$(cat "${TEST_OPEN_PRS_AFTER}")"
+  elif [[ -n "${TEST_OPEN_PRS:-}" ]]; then
+    emit "$(cat "${TEST_OPEN_PRS}")"
+  else
+    emit '[]'
+  fi
+elif [[ "$1" == "api" ]]; then
+  method="GET"; prev=""; path=""
+  for a in "$@"; do
+    case "${prev}" in
+      --method|-X) method="$a" ;;
+    esac
+    case "$a" in
+      repos/*) path="$a" ;;
+    esac
+    prev="$a"
+  done
+  if [[ "${method}" == "GET" && "${path}" =~ /pulls/([0-9]+)$ ]]; then
+    num="${BASH_REMATCH[1]}"
+    if [[ -n "${TEST_STACK_UNREADABLE:-}" && ",${TEST_STACK_UNREADABLE}," == *",${num},"* ]]; then
+      echo "stub gh: cannot read PR #${num}" >&2
+      exit 1
+    fi
+    if [[ -n "${TEST_STACK_NONMEMBERS:-}" && ",${TEST_STACK_NONMEMBERS}," == *",${num},"* ]]; then
+      printf '{"number":%s}\n' "${num}"
+      exit 0
+    fi
+    if [[ -n "${TEST_STACK_MEMBERS:-}" ]]; then
+      position=0; index=0
+      for member in ${TEST_STACK_MEMBERS}; do
+        index=$((index + 1))
+        [[ "${member}" == "${num}" ]] && position="${index}"
+      done
+      if [[ "${position}" -gt 0 ]]; then
+        printf '{"number":%s,"stack":{"number":%s,"position":%s,"size":%s}}\n' \
+          "${num}" "${TEST_STACK_NUMBER:-678}" "${position}" "${index}"
+        exit 0
+      fi
+    fi
+    printf '{"number":%s}\n' "${num}"
+    exit 0
+  fi
+  if [[ "${method}" == "PUT" && "${path}" == */merge-async ]]; then
+    [[ -n "${TEST_MERGED_FLAG:-}" ]] && : >"${TEST_MERGED_FLAG}"
+    printf '%s\n' "${TEST_ASYNC_PUT_RESPONSE:-HTTP/2.0 202 Accepted
+content-type: application/json
+
+{\"status\":\"pending\",\"uuid\":\"test-uuid\"}}"
+    exit 0
+  fi
+  if [[ "${method}" == "GET" && "${path}" == */merge-async/* ]]; then
+    counter="${TEST_POLL_COUNTER:-${TMPDIR:-/tmp}/orchestrator-merge-poll.count}"
+    count="$(cat "${counter}" 2>/dev/null || printf '0')"
+    read -r -a statuses <<<"${TEST_POLL_STATUSES:-merged}"
+    index="${count}"
+    if [[ "${index}" -ge "${#statuses[@]}" ]]; then index=$(( ${#statuses[@]} - 1 )); fi
+    printf '%s' "$((count + 1))" >"${counter}"
+    printf '{"status":"%s"}\n' "${statuses[${index}]}"
+    exit 0
+  fi
+  if [[ "${method}" == "DELETE" ]]; then
+    if [[ "${TEST_DELETE_FAIL:-0}" == "1" ]]; then
+      echo "stub gh: cannot delete ref" >&2
+      exit 1
+    fi
+    exit 0
+  fi
+  echo "stub gh: unexpected api call: $*" >&2
+  exit 1
 else
-  echo "stub gh: unexpected call (merge must not run under --dry-run): $*" >&2
+  echo "stub gh: unexpected call: $*" >&2
   exit 1
 fi
 EOF
@@ -309,6 +446,388 @@ run_case "comment-approve-plus-formal-approve" \
   "${APPROVE_SHORT}" "${FORMAL_APPROVE_COMMENTED}" \
   "${GREEN_CHECKS}" \
   merge
+
+# -----------------------------------------------------------------------
+# Stacked-PR coverage (issue #684)
+# -----------------------------------------------------------------------
+# Fixtures use native stack #678: PR 674 at position 1 (base: the default
+# branch), 675 at position 2, 676 at position 3. Every member carries its
+# own gates, so the sweep is only as strong as the per-member fixtures
+# below.
+
+reset_stack_fixtures() {
+  rm -rf "${work}/prs"
+  mkdir -p "${work}/prs"
+  unset TEST_STACK_MEMBERS TEST_STACK_NONMEMBERS TEST_STACK_UNREADABLE TEST_OPEN_PRS TEST_OPEN_PRS_AFTER \
+    TEST_ALL_PRS TEST_ASYNC_PUT_RESPONSE TEST_POLL_STATUSES TEST_MERGED_FLAG TEST_DELETE_FAIL
+  export MERGE_ASYNC_POLL_ATTEMPTS=10
+  export TEST_PR_DIR="${work}/prs"
+  export TEST_GH_LOG="${work}/gh.log"
+  export TEST_POLL_COUNTER="${work}/poll.count"
+  export TEST_MERGED_FLAG="${work}/merged.flag"
+  : >"${TEST_GH_LOG}"
+  rm -f "${TEST_POLL_COUNTER}" "${TEST_MERGED_FLAG}"
+  unset TEST_PR_JSON TEST_CHECKS_JSON
+}
+
+# write_pr <number> <base> <labels-json> <comments-json> <reviews-json> [<head>]
+write_pr() {
+  local number="$1" base="$2" labels="$3" comments="$4" reviews="$5" head="${6:-${TEST_HEAD}}"
+  jq -n --argjson labels "${labels}" --argjson comments "${comments}" --argjson reviews "${reviews}" \
+    --arg head "${head}" --arg number "${number}" --arg base "${base}" \
+    '{number:($number | tonumber), state:"OPEN", url:("https://example.invalid/" + $number),
+      title:("Test PR " + $number), labels:$labels, headRefName:("branch-" + $number),
+      headRefOid:$head, baseRefName:$base, comments:$comments, reviews:$reviews}' \
+    >"${work}/prs/${number}.json"
+}
+
+# write_checks <number> <checks-json>
+write_checks() {
+  printf '%s' "$2" >"${work}/prs/checks-$1.json"
+}
+
+# build_open_prs <number...>: `gh pr list` fixture from the PR fixtures.
+build_open_prs() {
+  local list='[]' number
+  for number in "$@"; do
+    list="$(printf '%s' "${list}" | jq --slurpfile pr "${work}/prs/${number}.json" \
+      '. + [($pr[0] | {number: .number, headRefName: .headRefName, baseRefName: .baseRefName})]')"
+  done
+  printf '%s' "${list}" >"${work}/open.json"
+  export TEST_OPEN_PRS="${work}/open.json"
+}
+
+OUT=""
+STATUS=0
+invoke() {
+  STATUS=0
+  OUT="$(cd "${work}" && bash "${SCRIPT_UNDER_TEST}" "$@" 2>&1)" || STATUS=$?
+}
+
+expect_ok() {
+  local name="$1"
+  if [[ "${STATUS}" -eq 0 ]]; then
+    echo "ok: ${name}"; pass=$((pass + 1))
+  else
+    echo "FAIL: ${name} should succeed (status=${STATUS}):"; printf '%s\n' "${OUT}"; fail=$((fail + 1))
+  fi
+}
+
+expect_refusal() {
+  local name="$1"
+  if [[ "${STATUS}" -ne 0 && "${OUT}" == *"refusing to merge"* ]]; then
+    echo "ok: ${name} refuses"; pass=$((pass + 1))
+  else
+    echo "FAIL: ${name} should refuse (status=${STATUS}):"; printf '%s\n' "${OUT}"; fail=$((fail + 1))
+  fi
+}
+
+expect_contains() {
+  local name="$1" needle="$2"
+  if [[ "${OUT}" == *"${needle}"* ]]; then
+    echo "ok: ${name}"; pass=$((pass + 1))
+  else
+    echo "FAIL: ${name} — output lacks '${needle}':"; printf '%s\n' "${OUT}"; fail=$((fail + 1))
+  fi
+}
+
+expect_absent() {
+  local name="$1" needle="$2"
+  if [[ "${OUT}" != *"${needle}"* ]]; then
+    echo "ok: ${name}"; pass=$((pass + 1))
+  else
+    echo "FAIL: ${name} — output unexpectedly contains '${needle}':"; printf '%s\n' "${OUT}"; fail=$((fail + 1))
+  fi
+}
+
+MEDIUM_LABELS='[{"name":"chore"},{"name":"risk-medium"}]'
+HIGH_LABELS='[{"name":"chore"},{"name":"risk-high"}]'
+DUPLICATE_LABELS='[{"name":"risk-medium"},{"name":"risk-low"}]'
+BAD_CHECKS='[{"bucket":"pass","name":"ci","state":"SUCCESS"},{"bucket":"fail","name":"go-build","state":"FAILED"}]'
+
+# (a) Stack member -> async dry-run, pinned to the observed head.
+reset_stack_fixtures
+export TEST_STACK_MEMBERS="674"
+write_pr 674 "${TEST_DEFAULT_BRANCH}" "${MEDIUM_LABELS}" "${APPROVE_SHORT}" "${NO_REVIEWS}"
+write_checks 674 "${GREEN_CHECKS}"
+build_open_prs 674
+invoke 674 --dry-run
+expect_ok "stack position 1 dry-run exits clean"
+expect_contains "stack position 1 dry-run issues the async merge request" "PUT /repos/${TEST_REPO}/pulls/674/merge-async"
+expect_contains "stack position 1 dry-run pins the observed head" "sha=${TEST_HEAD}"
+expect_contains "stack position 1 dry-run keeps squash" "merge_method=squash"
+expect_absent "stack position 1 dry-run never prints the synchronous command" "gh pr merge"
+
+# (a) A position-2 member sweeps its lower member, then issues the async
+# request for itself; the lower member's gates are independently read.
+reset_stack_fixtures
+export TEST_STACK_MEMBERS="674 675"
+write_pr 674 "${TEST_DEFAULT_BRANCH}" "${MEDIUM_LABELS}" "${APPROVE_SHORT}" "${NO_REVIEWS}"
+write_checks 674 "${GREEN_CHECKS}"
+write_pr 675 branch-674 "${MEDIUM_LABELS}" "${APPROVE_SHORT}" "${NO_REVIEWS}"
+write_checks 675 "${GREEN_CHECKS}"
+build_open_prs 674 675
+invoke 675 --dry-run
+expect_ok "stack position 2 dry-run exits clean"
+expect_contains "stack position 2 gates the lower member" "gating member PR #674"
+expect_contains "stack position 2 issues the async request for itself" "pulls/675/merge-async"
+expect_contains "stack position 2 names every member the request lands" "#674 #675"
+expect_absent "stack position 2 never prints the synchronous command" "gh pr merge"
+if [[ -z "$(cat "${TEST_GH_LOG}")" ]] || ! grep -q 'pr merge' "${TEST_GH_LOG}"; then
+  echo "ok: stack dry-run submitted no merge call"; pass=$((pass + 1))
+else
+  echo "FAIL: stack dry-run issued a merge call:"; cat "${TEST_GH_LOG}"; fail=$((fail + 1))
+fi
+
+# (b) A lower open member failing a gate aborts the call and names it.
+reset_stack_fixtures
+export TEST_STACK_MEMBERS="674 675"
+write_pr 674 "${TEST_DEFAULT_BRANCH}" "${MEDIUM_LABELS}" "${NO_COMMENTS}" "${NO_REVIEWS}"
+write_checks 674 "${GREEN_CHECKS}"
+write_pr 675 branch-674 "${MEDIUM_LABELS}" "${APPROVE_SHORT}" "${NO_REVIEWS}"
+write_checks 675 "${GREEN_CHECKS}"
+build_open_prs 674 675
+invoke 675 --dry-run
+expect_refusal "lower member without an APPROVE on its head aborts the stack merge"
+expect_contains "lower-member refusal names the offending member" "PR #674"
+expect_absent "lower-member refusal submits no async request" "merge-async"
+
+# (b) A lower member's failing check aborts the call.
+reset_stack_fixtures
+export TEST_STACK_MEMBERS="674 675"
+write_pr 674 "${TEST_DEFAULT_BRANCH}" "${MEDIUM_LABELS}" "${APPROVE_SHORT}" "${NO_REVIEWS}"
+write_checks 674 "${BAD_CHECKS}"
+write_pr 675 branch-674 "${MEDIUM_LABELS}" "${APPROVE_SHORT}" "${NO_REVIEWS}"
+write_checks 675 "${GREEN_CHECKS}"
+build_open_prs 674 675
+invoke 675 --dry-run
+expect_refusal "lower member with a failing check aborts the stack merge"
+expect_contains "failing-check refusal names the offending member" "PR #674 has non-successful checks"
+
+# (b) A lower member carrying risk-high aborts the call (no override).
+reset_stack_fixtures
+export TEST_STACK_MEMBERS="674 675"
+write_pr 674 "${TEST_DEFAULT_BRANCH}" "${HIGH_LABELS}" "${APPROVE_SHORT}" "${NO_REVIEWS}"
+write_checks 674 "${GREEN_CHECKS}"
+write_pr 675 branch-674 "${MEDIUM_LABELS}" "${APPROVE_SHORT}" "${NO_REVIEWS}"
+write_checks 675 "${GREEN_CHECKS}"
+build_open_prs 674 675
+invoke 675 --dry-run
+expect_refusal "lower member labelled risk-high aborts the stack merge"
+expect_contains "risk-high refusal names the offending member" "PR #674 is labelled risk-high"
+expect_contains "risk-high refusal keeps the owner-only message" "explicit owner approval required"
+
+# (b) A lower member with duplicate risk labels aborts the call.
+reset_stack_fixtures
+export TEST_STACK_MEMBERS="674 675"
+write_pr 674 "${TEST_DEFAULT_BRANCH}" "${DUPLICATE_LABELS}" "${APPROVE_SHORT}" "${NO_REVIEWS}"
+write_checks 674 "${GREEN_CHECKS}"
+write_pr 675 branch-674 "${MEDIUM_LABELS}" "${APPROVE_SHORT}" "${NO_REVIEWS}"
+write_checks 675 "${GREEN_CHECKS}"
+build_open_prs 674 675
+invoke 675 --dry-run
+expect_refusal "lower member with duplicate risk labels aborts the stack merge"
+expect_contains "duplicate-label refusal names the offending member" "PR #674 must carry exactly one risk label"
+
+# (4) Fail closed: an unreadable lower member aborts before any request.
+reset_stack_fixtures
+export TEST_STACK_MEMBERS="674 675"
+export TEST_STACK_UNREADABLE="674"
+write_pr 674 "${TEST_DEFAULT_BRANCH}" "${MEDIUM_LABELS}" "${APPROVE_SHORT}" "${NO_REVIEWS}"
+write_checks 674 "${GREEN_CHECKS}"
+write_pr 675 branch-674 "${MEDIUM_LABELS}" "${APPROVE_SHORT}" "${NO_REVIEWS}"
+write_checks 675 "${GREEN_CHECKS}"
+build_open_prs 674 675
+invoke 675 --dry-run
+expect_refusal "unreadable lower member aborts the stack merge (fail closed)"
+expect_contains "fail-closed refusal names the unreadable member" "cannot read the stack membership of PR #674"
+
+# (4) Fail closed: an unreadable requested PR membership aborts too.
+reset_stack_fixtures
+export TEST_STACK_UNREADABLE="674"
+write_pr 674 "${TEST_DEFAULT_BRANCH}" "${MEDIUM_LABELS}" "${APPROVE_SHORT}" "${NO_REVIEWS}"
+write_checks 674 "${GREEN_CHECKS}"
+build_open_prs 674
+invoke 674 --dry-run
+expect_refusal "unreadable stack membership of the requested PR aborts (fail closed)"
+expect_contains "membership refusal names the requested PR" "cannot read the stack membership of PR #674"
+
+# Non-linear: a branch-linked PR that is not in the native stack refuses.
+reset_stack_fixtures
+export TEST_STACK_MEMBERS="674 675"
+export TEST_STACK_NONMEMBERS="674"
+write_pr 674 "${TEST_DEFAULT_BRANCH}" "${MEDIUM_LABELS}" "${APPROVE_SHORT}" "${NO_REVIEWS}"
+write_checks 674 "${GREEN_CHECKS}"
+write_pr 675 branch-674 "${MEDIUM_LABELS}" "${APPROVE_SHORT}" "${NO_REVIEWS}"
+write_checks 675 "${GREEN_CHECKS}"
+build_open_prs 674 675
+invoke 675 --dry-run
+expect_refusal "branch-linked PR outside the native stack refuses"
+expect_contains "non-linear refusal names the member" "is linked by branch but is not a native stack member"
+
+# Non-linear: a missing lower link refuses rather than repairing.
+reset_stack_fixtures
+export TEST_STACK_MEMBERS="674 675"
+write_pr 675 branch-674 "${MEDIUM_LABELS}" "${APPROVE_SHORT}" "${NO_REVIEWS}"
+write_checks 675 "${GREEN_CHECKS}"
+build_open_prs 675
+invoke 675 --dry-run
+expect_refusal "broken stack chain refuses"
+expect_contains "broken-chain refusal explains the missing link" "no open PR (or merged stack member) has head branch 'branch-674' as its base"
+
+# A lower member already MERGED by an earlier stack merge is skipped (it
+# is not open, so the request cannot land it again) and is not re-gated.
+reset_stack_fixtures
+export TEST_STACK_MEMBERS="674 675"
+write_pr 675 branch-674 "${MEDIUM_LABELS}" "${APPROVE_SHORT}" "${NO_REVIEWS}"
+write_checks 675 "${GREEN_CHECKS}"
+build_open_prs 675
+jq -n --arg base "${TEST_DEFAULT_BRANCH}" \
+  '[{number:674,state:"MERGED",headRefName:"branch-674",baseRefName:$base}]' >"${work}/all.json"
+export TEST_ALL_PRS="${work}/all.json"
+invoke 675 --dry-run
+expect_ok "same-stack merged lower member no longer blocks the next merge"
+expect_contains "merged lower member is reported as skipped" "skipping already-merged lower member PR #674"
+expect_absent "merged lower member is not re-gated" "gating member PR #674"
+expect_contains "next stack member still issues the async request" "pulls/675/merge-async"
+
+# (c) Unstacked PR: exactly today's synchronous command, no async call.
+reset_stack_fixtures
+write_pr 999 "${TEST_DEFAULT_BRANCH}" "${MEDIUM_LABELS}" "${APPROVE_SHORT}" "${NO_REVIEWS}"
+write_checks 999 "${GREEN_CHECKS}"
+build_open_prs 999
+invoke 999 --dry-run
+expect_ok "unstacked dry-run exits clean"
+expect_contains "unstacked dry-run keeps the synchronous squash command" "would run: gh pr merge 999 --squash --delete-branch"
+expect_absent "unstacked dry-run never issues an async request" "merge-async"
+
+# (c) Unstacked PR whose head is another open PR's base: keep the branch.
+reset_stack_fixtures
+write_pr 999 "${TEST_DEFAULT_BRANCH}" "${MEDIUM_LABELS}" "${APPROVE_SHORT}" "${NO_REVIEWS}"
+write_checks 999 "${GREEN_CHECKS}"
+build_open_prs 999
+jq -n --arg base "${TEST_DEFAULT_BRANCH}" \
+  '[{number:999,headRefName:"branch-999",baseRefName:$base},{number:998,headRefName:"branch-998",baseRefName:"branch-999"}]' \
+  >"${work}/open.json"
+export TEST_OPEN_PRS="${work}/open.json"
+invoke 999 --dry-run
+expect_contains "unstacked dry-run drops --delete-branch when another PR targets the head" "would run: gh pr merge 999 --squash (not merged)"
+
+# (5) Async result: a 409 reuses the returned uuid (no second request)
+# and only a terminal `merged` is reported as landed.
+reset_stack_fixtures
+export TEST_STACK_MEMBERS="674"
+write_pr 674 "${TEST_DEFAULT_BRANCH}" "${MEDIUM_LABELS}" "${APPROVE_SHORT}" "${NO_REVIEWS}"
+write_checks 674 "${GREEN_CHECKS}"
+build_open_prs 674
+export TEST_ASYNC_PUT_RESPONSE='HTTP/2.0 409 Conflict
+content-type: application/json
+
+{"message":"A merge request already exists","status":"pending","uuid":"existing-uuid"}'
+export TEST_POLL_STATUSES="pending merged"
+invoke 674
+expect_ok "async 409 result resolves to merged"
+expect_contains "async 409 reuses the returned uuid" "reusing uuid existing-uuid"
+expect_contains "async terminal merged is reported as merged" "Merged stack #678"
+if [[ "$(grep -c 'api --method PUT' "${TEST_GH_LOG}")" -eq 1 ]]; then
+  echo "ok: async 409 issued exactly one merge request"; pass=$((pass + 1))
+else
+  echo "FAIL: async 409 issued an unexpected number of merge requests:"; cat "${TEST_GH_LOG}"; fail=$((fail + 1))
+fi
+
+# (5) Pending is never reported as landed; polling exhaustion fails.
+reset_stack_fixtures
+export TEST_STACK_MEMBERS="674"
+write_pr 674 "${TEST_DEFAULT_BRANCH}" "${MEDIUM_LABELS}" "${APPROVE_SHORT}" "${NO_REVIEWS}"
+write_checks 674 "${GREEN_CHECKS}"
+build_open_prs 674
+export MERGE_ASYNC_POLL_ATTEMPTS=2
+export TEST_POLL_STATUSES="pending"
+invoke 674
+if [[ "${STATUS}" -ne 0 ]]; then
+  echo "ok: still-pending async result exits non-zero"; pass=$((pass + 1))
+else
+  echo "FAIL: still-pending async result should exit non-zero:"; printf '%s\n' "${OUT}"; fail=$((fail + 1))
+fi
+expect_contains "still-pending result is reported as pending" "still pending after polling"
+expect_absent "still-pending result is never reported as merged" "Merged stack"
+
+# (5) A failed async result is reported as failed, not merged.
+reset_stack_fixtures
+export TEST_STACK_MEMBERS="674"
+write_pr 674 "${TEST_DEFAULT_BRANCH}" "${MEDIUM_LABELS}" "${APPROVE_SHORT}" "${NO_REVIEWS}"
+write_checks 674 "${GREEN_CHECKS}"
+build_open_prs 674
+export MERGE_ASYNC_POLL_ATTEMPTS=2
+export TEST_POLL_STATUSES="failed"
+invoke 674
+if [[ "${STATUS}" -ne 0 ]]; then
+  echo "ok: failed async result exits non-zero"; pass=$((pass + 1))
+else
+  echo "FAIL: failed async result should exit non-zero:"; printf '%s\n' "${OUT}"; fail=$((fail + 1))
+fi
+expect_contains "failed async result is reported as failed" "failed"
+expect_absent "failed async result is never reported as merged" "Merged stack"
+
+# (7) After a terminal merged result: delete the head branch only when no
+# open PR still targets it (a fresh read-back), and a failed deletion is
+# a warning, not a failure.
+reset_stack_fixtures
+export TEST_STACK_MEMBERS="674"
+write_pr 674 "${TEST_DEFAULT_BRANCH}" "${MEDIUM_LABELS}" "${APPROVE_SHORT}" "${NO_REVIEWS}"
+write_checks 674 "${GREEN_CHECKS}"
+build_open_prs 674
+export TEST_POLL_STATUSES="merged"
+invoke 674
+expect_ok "merged async result exits clean"
+expect_contains "merged async result deletes the freed head branch" "Deleted branch branch-674"
+if grep -q 'git/refs/heads/branch-674' "${TEST_GH_LOG}"; then
+  echo "ok: branch deletion went through the guarded ref API"; pass=$((pass + 1))
+else
+  echo "FAIL: no branch deletion call was recorded:"; cat "${TEST_GH_LOG}"; fail=$((fail + 1))
+fi
+
+reset_stack_fixtures
+export TEST_STACK_MEMBERS="674"
+write_pr 674 "${TEST_DEFAULT_BRANCH}" "${MEDIUM_LABELS}" "${APPROVE_SHORT}" "${NO_REVIEWS}"
+write_checks 674 "${GREEN_CHECKS}"
+build_open_prs 674
+jq -n --arg base "${TEST_DEFAULT_BRANCH}" \
+  '[{number:674,headRefName:"branch-674",baseRefName:$base},{number:675,headRefName:"branch-675",baseRefName:"branch-674"}]' \
+  >"${work}/open-after.json"
+export TEST_OPEN_PRS_AFTER="${work}/open-after.json"
+export TEST_POLL_STATUSES="merged"
+invoke 674
+expect_ok "merged async result with a dependent PR exits clean"
+expect_contains "dependent PR keeps the merged head branch" "another open PR still targets it as a base"
+if grep -q 'git/refs/heads/branch-674' "${TEST_GH_LOG}"; then
+  echo "FAIL: branch deletion ran while an open PR still targeted it"; fail=$((fail + 1))
+else
+  echo "ok: guarded branch deletion skipped the still-targeted branch"; pass=$((pass + 1))
+fi
+
+reset_stack_fixtures
+export TEST_STACK_MEMBERS="674"
+write_pr 674 "${TEST_DEFAULT_BRANCH}" "${MEDIUM_LABELS}" "${APPROVE_SHORT}" "${NO_REVIEWS}"
+write_checks 674 "${GREEN_CHECKS}"
+build_open_prs 674
+export TEST_POLL_STATUSES="merged"
+export TEST_DELETE_FAIL=1
+invoke 674
+expect_ok "failed branch cleanup does not fail a successful merge"
+expect_contains "failed branch cleanup is reported as a warning" "branch cleanup failed"
+
+# (6) risk-high on the requested stack member still refuses with the
+# owner-only message and submits nothing.
+reset_stack_fixtures
+export TEST_STACK_MEMBERS="674"
+write_pr 674 "${TEST_DEFAULT_BRANCH}" "${HIGH_LABELS}" "${APPROVE_SHORT}" "${NO_REVIEWS}"
+write_checks 674 "${GREEN_CHECKS}"
+build_open_prs 674
+invoke 674 --dry-run
+expect_refusal "stack member labelled risk-high refuses"
+expect_contains "stack risk-high refusal keeps the owner-only message" "explicit owner approval required"
+expect_absent "stack risk-high refusal submits no async request" "merge-async"
 
 echo "test result: ${pass} passed, ${fail} failed"
 [[ "${fail}" -eq 0 ]]
