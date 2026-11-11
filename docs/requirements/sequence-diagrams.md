@@ -180,10 +180,11 @@ sequenceDiagram
 ## 7. Check-in
 
 Register arrival against a ready room; the atomic assignment check
-guards against a simultaneous check-in taking the same room.
+guards against a simultaneous check-in taking the same room, and the
+commit takes back the room it assigned when that commit does not land.
 
 - Preconditions: the reservation is due for arrival and a vacant, clean, inspected room of the booked type exists.
-- Postconditions: the stay is in house linked to the room and the room is occupied, or check-in was refused with the cause named and nothing was created.
+- Postconditions: the stay is in house linked to the room the guest is in and the room is occupied, or check-in was refused with the cause named and the room the commit assigned released back to ready, so no room is left occupied with no stay behind it.
 
 ```mermaid
 sequenceDiagram
@@ -192,12 +193,21 @@ sequenceDiagram
     participant Rooms as Room inventory
     Staff->>Stay: Open arrivals list for today [FR-FDK-5; CUS: FR-CUS-2 hotel times]
     Staff->>Rooms: Pick a vacant, clean, inspected room of the booked type [FR-FDK-1, FR-RMS-2; CUS: FR-RMS-4 room attributes used at assignment]
-    Rooms->>Rooms: Atomic assignment check on the room [NFR-CON-2]
+    Note over Rooms: The pick reads candidates and assigns nothing, so a room changed after the pick is the room the commit assigns [FR-REA-1]
+    Rooms->>Rooms: Atomic assignment check on the chosen room [NFR-CON-2, FR-REA-1]
     alt Room just taken by a simultaneous check-in
         Rooms-->>Staff: Check-in refused, room conflict named [NFR-CON-2]
     else Room free
         Staff->>Stay: Check guest in against the room [FR-FDK-1; CUS: FR-CUS-1 check-in fields enforced; FIXED section 3.2 order, states per state-machine: confirmed to checked-in]
         Stay->>Rooms: Room state becomes occupied [FR-FDK-1]
+        alt A later step of the commit does not land and no stay was recorded
+            Stay-->>Staff: Check-in refused in plain words [FR-REA-1]
+            Stay->>Rooms: Release the room this commit assigned back to vacant-inspected [FR-REA-1; only for a definitive refusal]
+        else An outcome cannot be read
+            Stay-->>Staff: Outcome to re-read; nothing released, the room named [FR-REA-1]
+        else Stay recorded, reservation check-in refused
+            Stay-->>Staff: Guest is in house in the room; split reported, room not released [FR-REA-1]
+        end
     end
     opt Early arrival recorded [FR-FDK-4]
         Staff->>Stay: Record actual arrival time against the stay [FR-FDK-4; CUS: FR-CUS-2 hotel times]
@@ -209,21 +219,36 @@ Every status change records who made it and when (`NFR-AUD-1`).
 ## 8. Room move mid-stay
 
 Move an in-house guest to another ready room; the stay remains in
-house with history.
+house with history, and the desk path that does it is the same one
+that corrects a check-in made into the wrong room.
 
 - Preconditions: the stay is in house and a vacant, clean, inspected room exists.
-- Postconditions: the stay links to the new room, the old room is vacant and dirty, and the move with both room numbers and its time is kept in the stay history.
+- Postconditions: the stay links to the new room, the old room is vacant and dirty, and the move with both room numbers and its time is kept in the stay history — or the attempt was refused and left no room occupied by it.
 
 ```mermaid
 sequenceDiagram
     participant Staff as Front-desk staff
     participant Stay as Stay record
     participant Rooms as Room inventory
-    Staff->>Rooms: Pick a vacant, clean, inspected room [FR-FDK-3]
-    Staff->>Stay: Move guest; stay stays in house with history [FR-FDK-3; FIXED section 3.2: stay remains in house, no state change]
-    Stay->>Rooms: Old room becomes vacant and dirty [FR-FDK-3]
-    Stay-->>Staff: Move with both room numbers and time kept in stay history [FR-FDK-3; NFR-AUD-1]
+    Staff->>Rooms: Pick a vacant, clean, inspected room [FR-FDK-3, FR-REA-2]
+    Staff->>Rooms: Assign the target room first [FR-REA-2; BR-19]
+    alt Target room just taken, not ready, or blocked
+        Rooms-->>Staff: One plain refusal; nothing moved; picker reloads [FR-REA-3]
+    else Target room assigned for this move
+        Staff->>Stay: Move guest; stay stays in house with history [FR-FDK-3; FIXED section 3.2: stay remains in house, no state change]
+        alt Stay-side move refused
+            Stay-->>Staff: Move refused in plain words [FR-REA-3]
+            Stay->>Rooms: Release the target back to vacant-inspected it held [FR-REA-3; the compensating release]
+        else Moved
+            Stay->>Rooms: Release the vacated room as vacant and dirty [FR-FDK-3, FR-REA-2, BR-19]
+            Stay-->>Staff: Move with both room numbers and time kept and shown [FR-FDK-3, FR-REA-5; NFR-AUD-1]
+        end
+    end
 ```
+
+Every status change records who made it and when (`NFR-AUD-1`); a
+refusal or unreadable outcome never frees a room the stay still names
+(`FR-REA-3`).
 
 ## 9. Check-out
 

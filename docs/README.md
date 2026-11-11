@@ -68,16 +68,16 @@ Development table, which use a `../` prefix.
 
 | Type | Path | Status | Owner | Purpose |
 |---|---|---|---|---|
-| MVP requirements | `requirements/mvp-requirements.md` | active | `business-analyst` | numbered FRs, measurable NFRs, per-hotel workflow customisation, traceability (Closes #10; section 8 Refs #338; section 23 Refs #646) |
+| MVP requirements | `requirements/mvp-requirements.md` | active | `business-analyst` | numbered FRs, measurable NFRs, per-hotel workflow customisation, traceability (Closes #10; section 8 Refs #338; section 23 Refs #646; section 24 Refs #647) |
 | Domain consistency audit | `requirements/domain-consistency-audit.md` | active | `business-analyst` | cross-doc audit: scope↔PRD↔stories↔FRs/NFRs, gaps, contradictions, deduped questions, terminology (Closes #41) |
-| Behaviour sequence diagrams | `requirements/sequence-diagrams.md` | active | `business-analyst` | time-ordered booking, check-in/out, folio and housekeeping flows with FR and FR-CUS mapping (Closes #43; Seq-9 Refs #646) |
+| Behaviour sequence diagrams | `requirements/sequence-diagrams.md` | active | `business-analyst` | time-ordered booking, check-in/out, folio and housekeeping flows with FR and FR-CUS mapping (Closes #43; Seq-9 Refs #646; Seq-8 Refs #647) |
 | Functional requirements | `requirements/functional-requirements.md` | stub (not needed yet) | `business-analyst` | numbered functional requirements with one guard each |
 | Non-functional requirements | `requirements/non-functional-requirements.md` | stub (not needed yet) | `business-analyst` | measurable NFRs (performance, reliability, usability) |
 | SRD | `requirements/srd.md` | stub (not needed yet) | `business-analyst` | stakeholder requirements definition |
 | SRS | `requirements/srs.md` | stub (not needed yet) | `business-analyst` | software requirements specification |
 | Business rules | `requirements/business-rules.md` | active | `business-analyst` | domain policies constraining behaviour (Closes #58) |
-| Use cases | `requirements/use-cases.md` | active | `business-analyst` | actor-goal flows through the system (Closes #58; UC-8 Refs #646) |
-| Data dictionary | `requirements/data-dictionary.md` | active | `business-analyst` | shared definitions of data entities and fields (Closes #58; sections 1-2 Refs #646) |
+| Use cases | `requirements/use-cases.md` | active | `business-analyst` | actor-goal flows through the system (Closes #58; UC-8 Refs #646; UC-6/UC-7 Refs #647) |
+| Data dictionary | `requirements/data-dictionary.md` | active | `business-analyst` | shared definitions of data entities and fields (Closes #58; sections 1-2 Refs #646; sections 2/8 Refs #647) |
 | Integration contract needs | `requirements/integration-contract-needs.md` | active | `business-analyst` | requirements-side input to module contracts: operations, payloads, sync/async, errors, config (Closes #96) |
 
 ## Architecture

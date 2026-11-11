@@ -82,6 +82,11 @@ Given a reservation due for arrival and a vacant, clean, inspected
 room of the booked type; when staff check the guest in against that
 room; then the reservation becomes an in-house stay linked to the
 room, and the room state becomes occupied.
+Amendment (Refs #647): the desk commit assigns only the room the
+guest is actually in and takes back the room it assigned when that
+same commit does not land while no stay was recorded, returning it to
+the ready state it held, so a failed check-in leaves no room occupied
+with no stay behind it (section 24, `FR-REA-1`).
 
 FR-FDK-2 — Check-out. Staff can close the stay, present the folio,
 and release the room.
@@ -114,6 +119,12 @@ Given an in-house stay and a vacant, clean, inspected room; when
 staff move the guest to the new room; then the stay links to the new
 room, the old room becomes vacant and dirty, and the move with both
 room numbers and its time is kept in the stay history.
+Amendment (Refs #647): the Stay screen carries the reassignment
+affordance that performs the move — the arrival-time swap after a
+committed check-in and the mid-stay move are the same path — and that
+path assigns the target room, moves the stay, then releases the
+vacated room, with a refused or aborted attempt leaving no room
+occupied by it (section 24, `FR-REA-2`..`FR-REA-4`).
 
 FR-FDK-4 — Early check-in and late check-out. Staff can record early
 arrivals and late departures against the stay.
@@ -579,9 +590,9 @@ product scope have no FR and are listed in section 6.
 | Walk-in booking | FR-RES-4 | Guard creates a same-day booking and checks arrival-state readiness and arrivals-list entry |
 | Reservation calendar | FR-RES-5 | Guard seeds multi-date, multi-type bookings and checks placement and detail drill-down |
 | No-show handling | FR-RES-6 | Guard marks a past-arrival booking no-show and checks state, released room, and history |
-| Check-in | FR-FDK-1 | Guard checks in against a ready room and checks stay link and occupied state |
+| Check-in | FR-FDK-1 | Guard checks in against a ready room and checks stay link and occupied state; guard refuses a commit after the assignment and checks that the room it assigned is released back to ready with the refusal named, and that a refusal after the stay committed keeps the room occupied with the stay in house (Refs #647) |
 | Check-out | FR-FDK-2, FR-BIL-7 | Guard checks out a settled stay and checks closure, final invoice, and vacant-dirty state with the departed room released once and the desk lists re-read; guard attempts open-balance check-out and checks refusal on every desk route unless an authorised, provenanced approval is recorded, and that an approved close stays closed when the release fails (Refs #588); guard closes through the service with a forged balance and again with a forged approval and checks that both are refused on the folio Billing holds, that an unreadable folio refuses rather than closes, and that the desk flows keep passing (Refs #601); guard completes the booking behind the stay on the same close and checks that the departed booking reads closed, holds nothing for availability, and leaves the departed room reusable the same day (Refs #646) |
-| Room moves | FR-FDK-3 | Guard moves an in-house guest and checks both room states and kept history |
+| Room moves | FR-FDK-3 | Guard moves an in-house guest and checks both room states and kept history; guard reassigns a guest checked into the wrong room through the desk path and checks that the vacated room is released vacant-dirty, the target room occupied, and the move with both rooms and its time visible, with a refused attempt leaving no room occupied by it (Refs #647) |
 | Early check-in and late check-out | FR-FDK-4 | Guard records off-hours arrival/departure and checks kept times and list visibility |
 | Arrivals and departures list | FR-FDK-5 | Guard seeds all three groups and checks exactly-once listing with names and states |
 | Room inventory with live status | FR-RMS-1 | Guard sets every state and checks each room appears once with the right state |
@@ -5109,5 +5120,476 @@ backfill exists in either direction.
   schema). This section is its FR/NFR part; no implementation PR opens
   until `SPEC-GATE PASS` on #646.
 
+## 24. Arrival room reassignment and stale-hold release (Refs #647)
+
+Requirements delta for the #647 change: a guest expected in room 101
+is checked into 102, and room 101 keeps reading occupied with a stale
+stay link; the desk has no reassignment action to correct it and no
+requirement says what happens to a room the check-in commit assigned
+when a later step of that same commit does not land. No capability is
+new — `FR-FDK-1` already checks a guest in against a ready room and
+`FR-FDK-3` already moves an in-house guest with the history kept —
+but the requirements never said which room a check-in commit may
+assign, never said that a room the commit assigned is taken back when
+the commit does not land, and never required the desk to carry the
+move path `FR-FDK-3` promises. Those are wording and enforcement gaps,
+not policy ones.
+
+The scope decision, the binding done-conditions, and the T2 UI
+contract are `product-owner` work: `docs/product/acceptance-criteria.md`
+[section 16](../product/acceptance-criteria.md) (`AC-REA-1`..`AC-REA-5`,
+the `AC-FDK-1` / `AC-FDK-3` pointers, and the `REA` domain code),
+`docs/product/desk-ui-design-rollout.md`
+[section 6.17](../product/desk-ui-design-rollout.md) (the scope
+decision, the UI contract delta, and the 18 catalogue keys), and D-27
+in `docs/project/decision-log.md`. This section words the requirements
+half: the decision (24.1), the explicit no-change statements (24.2),
+the FR delta (24.3), the NFR statement (24.4), the traceability
+handoff with its per-flow diagrams (24.5), and the gate dependencies
+with the one open point (24.6). No `docs/README.md` row flips: every
+requirements file this change touches is already `active`.
+
+### 24.1 Decision: one desk path reassigns the room and releases the vacated one
+
+As-built validation at this spec head, read-only — the
+isolated-compose lab reproduction belongs in the implementation PR
+body or an issue comment, per the issue's scope:
+
+- **A booking carries no room number.** `CreateReservation` takes room
+  type, dates, and price only (`contracts/http/CreateReservation.json`),
+  so "the room the guest is in" is always the desk's assignment and
+  never a booking fact.
+- **Assignment is a plain room-state write.** `assignRoom` flips
+  `vacant-inspected -> occupied` under one synchronous section and
+  records the `stayLink` (`services/rooms/src/store.ts:361-405`), and
+  nothing but an explicit `ReleaseRoom` moves that room out of
+  `occupied` (`:407-431`). The room state machine reaches
+  `vacant-inspected` only from `vacant-clean`, and `occupied` reaches
+  only `vacant-dirty` (`:32-40`), so a stale hold cannot be walked back
+  to ready through the housekeeping path — which is why the desk's
+  only cure today is a manual state edit or a direct API call.
+- **The release target already exists.** `ReleaseRoom` accepts an
+  optional `toState` (`vacant-dirty` by default, `vacant-inspected`
+  allowed, `occupied` refused) and refuses a room that is not occupied
+  (`services/rooms/src/store.ts:407-431`;
+  `contracts/http/ReleaseRoom.json`). A compensating release back to
+  the ready state a failed attempt found is therefore expressible with
+  the operation that exists; no contract addition is needed.
+- **The check-in commit assigns first and never takes it back.** The
+  commit assigns the chosen room (`app/src/views/StayView.vue:1249-1261`),
+  then reads the booking (`:1281-1295`), then writes the in-house stay
+  (`:1304-1323`), then confirms the reservation check-in
+  (`:1325-1336`). Every refusal path in that window returns without
+  releasing the room it just assigned, so a check-in that fails after
+  the assignment leaves the room `occupied` with a `stayLink` no stay
+  row answers — the reported stale hold.
+- **The preload never assigns.** The arrival pick only reads the
+  booking and the booked type's ready rooms
+  (`app/src/views/StayView.vue:1117-1222`); the assignment happens in
+  the commit. Switching rooms after a preload is therefore already
+  honoured, and the defect is the commit that does not land plus the
+  missing post-commit path; the lab reproduction records which path
+  actually leaves the stale hold.
+- **The panel has no move control, and the operation already works.**
+  The v2 Stay panel is the two-card check-in/check-out board, and
+  nothing under `app/src` calls `/v1/stay/MoveRoom` — a pin the restyle
+  suite holds on purpose (`app/src/stay-restyle.test.ts:136-142`).
+  `moveRoom` keeps the stay in house, refuses a same-room move and a
+  closed stay, and keeps `fromRoomId`, `toRoomId`, and `movedAt` in the
+  stay history (`services/stay/src/store.ts:332-376`), and the contract
+  states that the assignment and release around it are the desk's own
+  `AssignRoom` / `ReleaseRoom` calls (`contracts/http/MoveRoom.json`).
+- **The preload and commit guards are intact and stay.** The
+  #586/#596/#614 candidate-preload and commit-window guards are in
+  place (`app/src/views/StayView.vue:1070-1223`, `:1337-1371`,
+  `app/src/views/StayView.test.ts:2390-2666`); none of them handles
+  the desk changing the room after a commit, which is the new half
+  here.
+
+The decided behaviour, in five parts:
+
+1. **A check-in commit assigns only the room the guest is in.** The
+   preload assigns nothing, and the commit assigns the room staff
+   chose — never the room a preload bound — and records the stay link
+   it is about to create. When a later step of that same commit does
+   not land and no stay was recorded, the desk takes back the
+   assignment in the same commit and returns the room to the ready
+   (`vacant-inspected`) state it held before the attempt, so an
+   aborted check-in leaves no room occupied with no stay behind it
+   (`FR-REA-1`). A definitive refusal only: an unreadable outcome
+   (transport failure, timeout, server error) releases nothing and is
+   reported as an outcome to re-read, so a guest who did arrive is
+   never left in a room the system has just handed back.
+2. **One reassignment path serves the arrival-time swap and the
+   mid-stay move.** The Stay screen carries the affordance
+   `FR-FDK-3` already promises, and the two cases run the same
+   mechanics: assign the target room, move the stay, release the
+   vacated room — with the operations that exist
+   (`AssignRoom`, `MoveRoom`, `ReleaseRoom`), no new operation, and no
+   second mechanic for the desk to learn (`FR-REA-2`, `FR-REA-4`).
+3. **Order: assign, move, release.** Assignment first, so a target
+   that was just taken, is not ready, or is blocked refuses before
+   anything moves; the stay write second, so the guest is recorded in
+   the new room before the old room stops naming them; the release
+   last, so the vacated room only becomes free once the stay no longer
+   holds it. A release that ran first would leave the stay naming a
+   free room — sellable to the next guest while someone is in it.
+4. **The release target follows what actually happened.** A room a
+   committed stay left goes to `vacant-dirty`, the same housekeeping
+   state the check-out release produces (`FR-FDK-2`, `BR-18`). A room
+   assigned by a commit that never became a stay goes back to
+   `vacant-inspected`, the state it held, because nobody used it: a
+   room is never sent to housekeeping for a guest who was never in it,
+   and a used room is never left reading ready (`FR-REA-1`,
+   `FR-REA-3`).
+5. **The move is recorded and visible.** The stay history keeps the
+   move with the from-room, the to-room, its time, and the actor, and
+   the panel names both room numbers and the time in plain words when
+   the move commits (`FR-REA-5`, `NFR-AUD-1`). No separate
+   move-history read surface is specified: no operation exposes a
+   stay's move rows today, so the durable record plus the desk receipt
+   is the decided visibility, and a history list is a follow-up issue
+   if the owner wants one.
+
+| Option | Verdict | Reason |
+|---|---|---|
+| Status quo: the desk has no reassignment control and a failed commit keeps its assignment | rejected | That is the defect: a room the guest never occupied keeps reading occupied with a stale stay link, and the only cure is a manual state edit or a direct API call. |
+| The desk calls `MoveRoom` alone and leaves the old room to a later manual release | rejected | The contract already says the desk owns the assignment and release around the move; the old room stays `occupied` with a stale stay link until someone remembers, which is the reported symptom. |
+| Release the vacated room before the stay write | rejected | A refusal on the stay write would leave the guest recorded in a room the system has already freed, so the room is sellable while it is in use — a worse defect than the stale hold. |
+| Send a room assigned by a failed commit to `vacant-dirty` | rejected | Nobody used that room; housekeeping work for an unused room loses a ready room and misstates what happened. The ready state it held before the attempt is the honest target. |
+| Return a failed-commit assignment to ready by editing the room state directly | rejected | The room state machine allows `occupied -> vacant-dirty` only (`services/rooms/src/store.ts:32-40`), so this is the manual state edit that is itself the workaround; `ReleaseRoom`'s existing `toState` reaches `vacant-inspected` and keeps the state history. |
+| A new backend operation or contract field for the swap | rejected | The three operations and the release target already exist; nothing in the as-built trace lacks what the desk needs. If the lab reproduction proves otherwise, the finding is recorded and a follow-up is filed instead of widening this change. |
+| The desk path over existing operations, ordered assign -> move -> release, with a compensating release for a failed commit | **chosen** | One path for both the arrival-time swap and the mid-stay move, the guest is recorded in the new room before the old one frees, a failed attempt leaves no room occupied by it, and no lifecycle state, operation, or schema is added. |
+
+### 24.2 Explicit no-change statements
+
+- The two MVP capabilities keep their wording and targets:
+  `FR-FDK-1` and `FR-FDK-3` gain an amendment pointer to this section
+  and keep their Given/When/Then conditions. What changes is that the
+  check-in commit's own room handling and the desk's move path are now
+  stated as part of those capabilities, not what check-in or a move
+  promise.
+- No new MVP capability, story, or business rule enters the MVP
+  count: section 4 keeps its 40 mapped capabilities and its coverage
+  line, and only the `Check-in` and `Room moves` handoff notes gain a
+  clause. The behaviour is numbered as slice-scoped requirements
+  (`FR-REA-*`, section 24.3) on the section 10–23 pattern.
+- `business-rules.md` stands as written and is not edited: `BR-16`
+  and `BR-28` already decide which rooms may be assigned and that a
+  room is only offered when it is vacant, clean, and inspected,
+  `BR-19` already decides the move and the history it keeps, and
+  `BR-18` already decides the check-out release. This change supplies
+  the missing requirement wording and the commit ordering those rules
+  imply, not a new policy. The compensating release of an attempt that
+  never became a stay is worded as a requirement obligation
+  (`FR-REA-1`, `FR-REA-3`) rather than as a room policy, because it is
+  bookkeeping of an attempt that did not happen, not a rule about when
+  a room may be sold.
+- No lifecycle state is added: the room state set, its transitions,
+  and the stay's `in-house` state are unchanged
+  (`docs/architecture/state-machine.md`), and both release targets
+  (`vacant-inspected`, `vacant-dirty`) already exist. A move never
+  changes the stay's state (`BR-19`): the stay stays in house with its
+  folio link.
+- No new field, operation, or schema is specified: `ReleaseRoom`
+  already carries `toState` (`contracts/http/ReleaseRoom.json`),
+  `MoveRoom` already keeps the move (`contracts/http/MoveRoom.json`),
+  and no table, migration, stored value, or event contract changes on
+  the decided path. How the desk sequences the calls and compensates
+  a failure is the `architect`/implementation shape.
+- The booking is untouched: dates, price basis, room type, and guest
+  are not modified by a reassignment (booking modification is
+  `FR-RES-2`, a separate flow). The booking carries no room number
+  before or after this change.
+- The check-out side is unchanged: the #588 release, the #600 room
+  charge, the #601 settlement gate, and the #646 departure release
+  (`FR-CKO-*`, `FR-CKP-*`, `FR-CKS-*`, `FR-DEP-*`) keep their wording
+  and their behaviour. A move releases the vacated room the same way a
+  check-out does, and nothing else about a close changes.
+- The #586/#596/#614 preload and commit-window guards stand
+  (`AC-DSK-17`): this change adds the release ordering inside the
+  commit window they already guard, and their guards keep running.
+- The two-panel Stay board stands: one additive `Move room` card,
+  nothing restyled, reordered, or re-labelled (section 24.3's FRs
+  constrain behaviour; the layout, component, token, state, and copy
+  statements are `docs/product/desk-ui-design-rollout.md` section
+  6.17, and the ready-room scope of a move is any vacant, clean,
+  inspected room because `BR-19` names no room type — the booked-type
+  rule stays a check-in rule under `BR-16` and is not widened).
+- Money, dates, and numbers keep their decided display shape
+  (sections 12 and 14), and print output is unchanged (`FR-BIL-4`,
+  `NFR-DSK-2`): no print surface or route is touched.
+- Catalogue and locales: the move card and its refusal sentences are
+  the one copy addition, they exist in both locales with placeholders
+  intact (`NFR-I18N-1`, `NFR-DSK-1`), and `script/catalogue-coverage-check.sh`
+  stays green. Refusal sentences are catalogue values, never a raw
+  envelope code.
+- No data repair is specified: requirements describe behaviour from
+  this change onward. Rooms already stranded in a live installation
+  are a `release-manager` operational note, not a silent data
+  correction.
+- Sections 7 through 23 stand with their wording and targets
+  unchanged, except the two amendment pointers in section 1, the two
+  section 4 handoff notes, and the amendments in the use cases,
+  sequence diagrams, and data dictionary that carry the same
+  obligation.
+
+### 24.3 Behaviour-scoped functional requirements
+
+Ids use the `REA` (reassignment) namespace, continuing the
+slice-scoped pattern of sections 10 through 23; `FDK` stays the
+lifecycle namespace for check-in and room moves. They constrain the
+desk's room handling around a check-in commit and around a
+reassignment, and each maps to an accepted done-condition in
+`AC-REA-1`..`AC-REA-5`.
+
+FR-REA-1 — A check-in commit assigns only the room the guest is in
+and takes back the room it assigned when that commit does not land.
+Given an arrival pick has preloaded the booked type's ready rooms and
+staff then choose a different ready room; when the check-in commits;
+then that commit assigns the chosen room only, never the room the
+preload bound, and the room it assigns is the one the stay names.
+Given the commit has assigned a room and a later step of that same
+commit does not land while no stay was recorded — the booking read or
+the stay write — and the failure is definitive; when the refusal
+returns; then the desk releases the room it assigned in that same
+commit back to the ready (`vacant-inspected`) state it held before the
+attempt, reports the refusal in plain catalogue words, and leaves no
+room occupied with no stay behind it. Given the stay write did land
+and only the reservation check-in does not; then the room is not
+released, because the guest is in house in that room and the stay
+names it: the desk reports that outcome in plain words, leaves the
+room occupied and the stay in house, and names the next step, so the
+split is visible instead of silent (`BR-18`'s honesty, applied to the
+stay's link). Given an unreadable outcome at any step (transport
+failure, timeout, server error); then nothing is released, because the
+outcome is unknown, and the desk names the room and asks staff to
+reload and check it before acting again. A replayed or double-clicked
+commit assigns once and releases at most the one assignment it made.
+Traces to: `AC-REA-1`; US-FDK-1; `FR-FDK-1`; `BR-16`, `BR-28`,
+`NFR-CON-2`.
+
+FR-REA-2 — The desk reassigns a checked-in guest and releases the
+vacated room in the same commit window.
+Given a committed check-in in room 101; when staff reassign the guest
+to room 102 through the Stay screen; then the target room is assigned
+first, the stay then names room 102 and keeps its in-house state and
+its folio link, room 102 reads occupied, and room 101 is released to
+`vacant-dirty` last, in the same commit window, so the desk board and
+the Rooms map show only room 102 occupied; and the move — from room
+101 to room 102 with its time and the actor — is kept in the stay
+history and shown to staff in plain words. The ordering is the
+requirement, not an implementation detail: a target that was just
+taken, is not ready, or is blocked refuses before the stay moves, and
+the vacated room becomes free only after the stay no longer holds it,
+so the desk never shows a freed room while a stay still names it.
+Given the release of the vacated room fails after the move committed;
+then the stay keeps room 102, the desk says the guest is in room 102
+and names room 101 as still reading occupied, and it does not claim a
+clean release. Traces to: `AC-REA-2`; US-FDK-1, US-FDK-3;
+`FR-FDK-1`, `FR-FDK-3`; `BR-19`, `BR-28`.
+
+FR-REA-3 — A refused or aborted reassignment leaves no room occupied
+by the attempt.
+Given a reassignment attempt; when it is refused before the target
+room was assigned — the room was just taken, is not ready, or is
+blocked, the guest is no longer in house, or a required pick is
+missing; then nothing changes: both rooms keep the state they had, and
+the refusal is one plain catalogue sentence that names the cause,
+never an envelope code. Given it is refused after the target room was
+assigned — the stay-side move refuses; then the desk releases that
+target back to the `vacant-inspected` state it held before the
+attempt, says the move was refused and that the target is free again,
+and leaves no room occupied by the aborted attempt. Given that
+compensating release itself fails; then the desk names the room that
+still reads occupied, gives the reload-and-tell-the-manager next step,
+and never claims the move happened. Given the outcome cannot be read
+on either call; then nothing is released and the desk names both rooms
+and asks staff to reload and check them before acting again. A
+replayed or double-clicked move commits once and performs one
+compensating release at most. Traces to: `AC-REA-3`; US-FDK-3;
+`FR-FDK-3`; `BR-19`, `BR-28`, `NFR-CON-2`.
+
+FR-REA-4 — A mid-stay move runs the same single path as the
+arrival-time reassignment.
+Given an in-house stay from an earlier day; when staff move the guest
+to another vacant, clean, inspected room; then the old room becomes
+`vacant-dirty`, the stay names the new room, and the move with both
+room numbers and its time is kept in the stay history — through the
+same single desk path, in the same order, with the same refusal and
+compensating-release behaviour as the arrival-time reassignment, and
+with the stay's in-house state and folio link unchanged. The desk
+does not learn two mechanics for one correction, and no separate
+mid-stay screen, route, or control exists beside that path. Traces
+to: `AC-REA-4`; US-FDK-3; `FR-FDK-3`; `BR-19`.
+
+FR-REA-5 — The reassignment is recorded, visible, and guarded on
+every path.
+Given a committed reassignment or mid-stay move; then the stay
+history keeps the from-room, the to-room, the time, and the actor
+(`NFR-AUD-1`), and the desk names both room numbers and the time in
+plain words when the move commits, rather than leaving the correction
+silent. Given the reassignment ships; then switch-after-preload,
+switch-after-commit, the mid-stay move, and the partial-failure
+ordering each carry a unit guard plus the e2e/lab guard the issue
+asks for; the #586/#596/#614 preload and commit guards, the check-in
+refusal guards, the #588 release, the #600 room charge, the #601
+settlement enforcement, and the #646 departure release stay green;
+every new string exists in both locales with placeholders intact and
+the catalogue coverage check is green; and the one decided UI fact
+this change adds — the move card the owner board does not carry — is
+recorded as a decided addition in the design-facts comparison instead
+of removing the screen from that comparison. Traces to: `AC-REA-5`;
+`NFR-AUD-1`, `NFR-CON-2`, `NFR-I18N-1`, `NFR-DSK-1`; Refs #647.
+
+### 24.4 Non-functional requirements delta: no-change statement
+
+No new NFR is added. The existing NFRs cover the change:
+
+- Catalogue coverage and localisation (`NFR-I18N-1`, `NFR-DSK-1`
+  hold): the move card, its placeholders, and its refusal sentences
+  are the one copy addition, they land in both locales with
+  placeholders intact, and `script/catalogue-coverage-check.sh` stays
+  green. No refusal renders an envelope code.
+- Desk response (`NFR-PERF-1` holds): a reassignment is three
+  existing writes inside the one action the operator took, and a
+  check-in commit's compensating release is one extra write inside the
+  3-second check-in bound; no read is added on screen entry and
+  nothing polls.
+- Concurrency and safety (`NFR-CON-1`, `NFR-CON-2`, `BR-11` hold): the
+  target assignment keeps the atomic conditional write, so a room just
+  taken refuses before the stay moves and a paired simultaneous move
+  keeps exactly one winner; releasing only after the stay write means
+  a freed room is never sellable while the stay still names it.
+- Audit (`NFR-AUD-1` holds): the move records who did it and when, and
+  each room state change records its actor; the trail is not editable
+  through normal use. A dedicated on-screen history list stays Later,
+  as `NFR-AUD-1` already says.
+- Retention (`NFR-RET-1` holds): the move stays retrievable with the
+  stay it belongs to and history is added, never removed.
+- Availability on-premise (`NFR-AVL-1` holds): the assignment, move,
+  and release are calls between modules of the same installation; no
+  outside connectivity is introduced or required.
+- Time and locale (`NFR-TZ-1`, `BR-43` hold): the move time is stored
+  with its UTC offset and shown on the hotel's local date and time.
+- Security and roles (`NFR-SEC-1` holds): no new function becomes
+  reachable — the move card is a desk function under the same role
+  reach as check-in and the mid-stay move (`FR-ADM-2`, `BR-19`); it
+  adds no route, account, or permission.
+
+### 24.5 Traceability handoff for `qa-lead`
+
+Each row traces to the #647 acceptance conditions and to this
+section's FRs. Guards that exist are cited `file:line` against the
+tree this requirement was written on; where no guard exists yet, the
+row names the missing guard explicitly and the implementation PR
+creates it, for `qa-lead` to re-pin at the merged head. The check-in,
+check-out, settlement, and departure guards listed as "stay green"
+must pass untouched.
+
+| Item | Guard (on disk today; a row marked missing is created by the implementation PR) | Handoff note for `qa-lead` |
+|---|---|---|
+| FR-REA-1 commit assigns the chosen room and takes back a failed commit's assignment | `app/src/views/StayView.test.ts:394-463` (ready-room load and one-click commit), `:555-599` (single candidate auto-select), `:1029-1058` (taken room refusal), `:1059-1085` (already-checked-in refusal), `:2253-2279` (double-clicked check-in assigns once), `services/rooms/src/server.test.ts:328-381` (paired simultaneous assignments, idempotent replay) | Missing guard: a commit refused after the assignment asserts one `ReleaseRoom` with `toState: "vacant-inspected"` and the plain refusal sentence, and the room not left `occupied`; the same for a definitive stay-write refusal; and a refused reservation check-in after a committed stay asserts the room stays `occupied` with the stay in house; and an unreadable step asserts no release call. The switch-after-preload half is already pinned by the room pick; assert it explicitly so the preload cannot start assigning |
+| FR-REA-2 reassignment releases the vacated room | `services/rooms/src/server.test.ts:455-500` (the room move end to end on the rooms side: assign 102, release 101 `occupied -> vacant-dirty`, walk it back to inspected), `services/stay/src/server.test.ts:240-258` (move keeps both rooms and the time in history), `script/e2e-desk-loop.sh:338-349` (assign, move, release on the desk loop) | Missing guard: the desk path for a switch after a committed check-in — 102 occupied, 101 vacant-dirty, the board and Rooms map showing only 102, and the move receipt naming both rooms; assert the call order (assign, move, release) rather than only the end states |
+| FR-REA-3 no room occupied by an aborted attempt | `services/rooms/src/server.test.ts:328-354` (one winner on paired assignment), `:355-381` (idempotent assignment), `services/stay/src/server.test.ts:259-292` (move refused for unknown, closed, and same-room stays), `services/rooms/src/store.ts:407-431` (release refuses a non-occupied room) | Missing guards: refusal after the target assignment runs the compensating release to `vacant-inspected`; a compensating release that fails names the room and claims no move; refusal before the assignment changes nothing; a replayed move performs one compensation at most; the refusal sentences are catalogue values in both locales |
+| FR-REA-4 mid-stay move on the same path | `services/stay/src/server.test.ts:241-258`, `:259-292`, Postgres parity `:406-460`; `app/src/views/StayView.test.ts` (no move card today — the source pin at `app/src/stay-restyle.test.ts:120-151` records its absence) | Missing guard: an earlier-day in-house stay moved through the desk path keeps its in-house state and folio link, releases the old room, and uses the same mechanics as the arrival-time swap |
+| FR-REA-5 recorded, visible, and guarded | `messages/en.json`, `messages/vi.json`, `script/catalogue-coverage-check.sh`, `app/e2e/design-facts.spec.ts` (the Stay screen's design facts), `app/src/stay-restyle.test.ts:120-151` (the retired-hook pin that must be re-pinned for the move card and `MoveRoom`), `app/src/views/desk-edge-guards.test.ts:899-1025` (QA-EDGE-8), `:1449-` (the same-day reuse chain), `app/e2e/stay.spec.ts:30` | Missing guard: the move receipt and the recorded move (from, to, time, actor); the design-facts record for the one additive card; the e2e/lab guard the issue asks for; the retired-hook pin re-pinned to the new decided card rather than deleted |
+| #586/#596/#614 and #588/#600/#601/#646 stay green | `app/src/views/StayView.test.ts:2390-2537`, `:2538-2666` (commit-window preload), `:1086-1206` (check-out release), `:1281-1362` (room charge), `script/e2e-desk-loop.sh` | These trace to `AC-DSK-17`, `AC-DSK-18`, `AC-DSK-19`, `AC-CKO-1`, `AC-CKO-2`, and `AC-DEP-1`..`AC-DEP-5`; no desk copy, control, or flow they pin changes here, so they must pass without a desk edit |
+
+Per-flow implementation diagrams (T2). These are the requirements-side
+views, citing the code edges this section was written against; the
+service-side shapes and the architecture diagrams are the `architect`
+handoff.
+
+Arrival check-in commit (happy path and failure/rollback path):
+
+```mermaid
+flowchart TD
+    A[Arrival pick preloads the booking and the booked type's ready rooms; assigns nothing  StayView.vue:1117-1222; FR-REA-1] --> B[Staff pick the room and click Check in  StayView.vue:1224-1247]
+    B --> C[Assign the chosen room under the atomic conditional write  StayView.vue:1249-1261; store.ts:361-405]
+    C -- room just taken --> Z1[Plain refusal, no room assigned, picker reloads  FR-REA-1]
+    C -- assigned --> D[Read the booking  StayView.vue:1281-1295]
+    D -- definitive refusal --> R1[Release the assigned room back to vacant-inspected  store.ts:407-431; FR-REA-1]
+    D -- unreadable --> R2[No release; name the room and ask to reload  FR-REA-1]
+    D --> E[Write the in-house stay naming the room  StayView.vue:1304-1323]
+    E -- definitive refusal --> R1
+    E -- unreadable --> R2
+    E --> F[Confirm the reservation check-in  StayView.vue:1325-1336]
+    F -- refusal after the stay committed --> X[Stay in house in the room; report the split, release nothing  FR-REA-1]
+    F -- confirmed --> G[Stay in house in the chosen room; the room reads occupied  FR-REA-1]
+    R1 --> H[The panel says the check-in was refused and the room is free again  FR-REA-1]
+    R1 -- compensating release fails --> R2
+```
+
+Reassignment and mid-stay move (happy path and failure/rollback path):
+
+```mermaid
+flowchart TD
+    A[Staff pick a guest in house and a ready room, then Move guest  rollout 6.17; FR-REA-2, FR-REA-4] --> B[Assign the target room  room store.ts:361-405]
+    B -- just taken, not ready, or blocked --> Z1[One plain refusal; nothing moved; picker reloads  FR-REA-3]
+    B -- assigned --> C[Move the stay: fromRoomId, toRoomId, movedAt  stay store.ts:332-376]
+    C -- refused: not in house or same room  stay store.ts:350-357 --> Z2[Release the target back to vacant-inspected  room store.ts:407-431; FR-REA-3]
+    Z2 -- release fails or is unreadable --> Z3[Name the room that still reads occupied; never claim the move  FR-REA-3]
+    C -- moved --> D[Release the vacated room to vacant-dirty  room store.ts:407-431; FR-REA-2]
+    D -- release fails after the move --> Z4[Stay names the new room; the old room is named as still occupied  FR-REA-2]
+    D -- released --> E[The board and the Rooms map show only the new room occupied  FR-REA-2]
+    E --> F[Desk names both rooms and the time; the move rows keep actor and time  FR-REA-5]
+    C -- unreadable outcome --> Z5[Nothing released; name both rooms and ask to reload before acting  FR-REA-3]
+```
+
+Failure/rollback path: every refusal before the target assignment
+changes nothing; a refusal after it runs exactly one compensating
+release back to the ready state the room held, and a compensating
+release that fails is named rather than hidden; an unreadable outcome
+releases nothing and is reported as an outcome to re-read; a release
+that fails after the move committed leaves the stay in the new room
+and names the old room as still occupied. Rolling the change back is
+the single implementation PR: the desk stops calling operations that
+already exist, the two-panel Stay screen and its guards return as they
+were, and rooms stranded by a move in the reverted build are cleared
+through the existing desk release. No schema migration and no data
+backfill exists in either direction.
+
+### 24.6 Explicitly not specified here (plus gate dependencies)
+
+- Implementation — the desk call sequence, the compensating-release
+  wiring, the error-state rendering, the exact refusal wording already
+  catalogued in rollout section 6.17, and the lab reproduction record —
+  is the downstream `dev` PR for #647, not this section.
+- The technical shape is the `architect` handoff: the LLD sequence for
+  assign -> move -> release and its compensation, the service-side
+  error mapping, the per-flow diagrams in `docs/architecture/`, and
+  any additive contract text the shape needs. A shape that adds a
+  state, an operation, or a schema migration re-tiers the change and
+  moves its rollback note into the implementation PR.
+- Acceptance criteria are `product-owner` work (`AC-REA-1`..`AC-REA-5`
+  and the `AC-FDK-1` / `AC-FDK-3` pointers), the UI contract and copy
+  table are `product-owner` work (rollout section 6.17), the guard
+  mapping above is `qa-lead` work, and the operational clearance for
+  rooms already stranded in a live installation is `release-manager`
+  work.
+- **Point for `spec-reviewer`.** `AC-REA-1` lists "the booking read,
+  the stay write, or the reservation check-in" among the steps whose
+  failure releases the assigned room. Worded here, the release applies
+  to the steps that leave no stay behind, and a reservation check-in
+  that fails after the stay write keeps the room occupied because a
+  live stay names it — otherwise the desk would free a room the guest
+  is standing in. That is the same invariant the condition states ("no
+  room occupied with no stay behind it"); if the product-owner intends
+  the literal reading (release even when the stay landed), the
+  condition needs rewording and this section follows it.
+- Out of scope: changing booking dates, price, room type, or guest
+  data; a drag-and-drop, swap-with-another-guest, or multi-room move;
+  a dedicated move-history list view (no read operation exposes the
+  move rows — a follow-up if the owner wants one); redesigning the
+  Stay panel beyond the one additive move card; a data repair for
+  rooms already stranded in a live install; and any new backend
+  operation or contract field the reproduction does not require (a
+  follow-up instead).
+- The specified change is tier T2 (a reader-visible desk action over
+  room and stay state, delivered with existing operations, with no new
+  state, subsystem, or schema). This section is its FR/NFR part; no
+  implementation PR opens until `SPEC-GATE PASS` on #647.
+
 <!-- ao-role: business-analyst -->
-Role: business-analyst · AO session hotel-mgmt-945
+Role: business-analyst · AO session hotel-mgmt-960
