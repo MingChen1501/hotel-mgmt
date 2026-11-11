@@ -125,3 +125,53 @@ stateDiagram-v2
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-946
+
+### 2.1 The two release targets (Refs #647)
+
+No state and no transition is added by the desk reassignment change; it
+makes one existing operation path normative. `ReleaseRoom` accepts an
+explicit `toState` (`vacant-dirty` by default, `vacant-inspected`
+allowed, `occupied` refused, `services/rooms/src/store.ts:407-436`), and
+that parameter is the only way an `occupied` room can reach
+`vacant-inspected` — `UpdateRoomState` cannot make that step
+(`ALLOWED_TRANSITIONS`, `:33-40`).
+
+Which target belongs to which flow is decided, not incidental:
+
+- `occupied -> vacant-dirty` — the room a stay really held: a check-out
+  or a room move. Housekeeping then walks dirty -> clean -> inspected
+  before the room is offered again (`FR-RMS-2`).
+- `occupied -> vacant-inspected` — the room an aborted desk action
+  assigned and nobody used: the check-in commit (or a reassignment)
+  takes back the assignment and returns the room to the ready state it
+  held before the attempt (`FR-REA-1`, `FR-REA-3`). A room is never sent
+  to housekeeping for a guest who was never in it, and a used room is
+  never left reading ready.
+
+```mermaid
+stateDiagram-v2
+    state "vacant-inspected" as ready
+    state "occupied" as occ
+    state "vacant-dirty" as dirty
+    ready --> occ : AssignRoom, atomic and inspected only (FR-RMS-2, NFR-CON-2)
+    occ --> dirty : check-out or move, the room a stay left (FR-FDK-2, FR-FDK-3)
+    occ --> ready : compensating release of an assignment that never became a stay (FR-REA-1, FR-REA-3)
+    dirty --> ready : housekeeping clean then inspect (FR-RMS-2)
+```
+
+- Both transitions are ordinary `ReleaseRoom` calls with an explicit
+  `toState`; each records `room_status_history` and emits
+  `room.state-changed`, so the pair an aborted action produces (occupied,
+  then ready again) is visible in the room's own history
+  (`services/rooms/src/store.ts:398-402`, `:428-432`; Postgres parity
+  `services/rooms/src/pgstore.ts:499-544`).
+- The move itself changes no stay state: the stay stays in house with
+  its folio link and keeps the move row (`FR-FDK-3`, `BR-19`).
+- Sequence reference: the room states above are unchanged for
+  check-out; the ordering that produces them is
+  `docs/architecture/lld.md` [section 23](lld.md), and the desk copy for
+  the refusal cases is `docs/product/desk-ui-design-rollout.md` section
+  6.17.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-961
