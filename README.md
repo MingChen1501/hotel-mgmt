@@ -135,8 +135,10 @@ coordinated around GitHub issues:
   CI plus a low- or medium-risk label; higher-risk changes need
   explicit owner approval first. Merges go only through
   `script/orchestrator-merge.sh` (squash merge; a native stack member
-  goes through one atomic async request); nobody pushes
-  directly to the default branch.
+  goes through one atomic async request, and a member retargeted by an
+  earlier stack merge is accepted only when the stack resource proves
+  every lower position the rewritten chain no longer occupies is
+  merged); nobody pushes directly to the default branch.
 - **Verify before opening the PR.** Each module builds and tests
   from its own directory (see Modules above); a PR never opens
   while red.
