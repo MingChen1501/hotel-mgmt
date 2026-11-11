@@ -2645,8 +2645,14 @@ export default defineComponent({
   }
 
   /* A cancelled or no-show row reads as inactive at a glance: its value
-     text takes the muted ink (spec section 5). */
+     text takes the muted ink (spec section 5). The guest name is a
+     button with its own active-link ink, so the inactive scope has to
+     re-ink it explicitly or the one cell staff read first stays teal. */
   #shell [data-testid="bookings-view"] .bookings-row-inactive {
+    color: #4B5D5B;
+  }
+
+  #shell [data-testid="bookings-view"] .bookings-row-inactive .bookings-row-open {
     color: #4B5D5B;
   }
 
