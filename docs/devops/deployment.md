@@ -82,6 +82,27 @@ or upgrade, the delivery team opens the desk and confirms the
 hotel's own name, times, charge items, and one rate plan are in
 effect before handing over.
 
+**Bundle-level service addresses.** The module-to-module addresses
+are part of the bundle, not of the hotel's configuration set, because
+they describe the installation's own topology and never differ per
+hotel. The reservations module reads `RATES_BASE_URL`
+(`deploy/compose.yaml:46`). Target state for this bundle (Refs #646):
+the stay module reads `RESERVATIONS_BASE_URL` (default
+`http://reservations:8081`) and calls the reservations module once
+after a check-out commits, so the booking behind the stay is completed
+with the same close (`../architecture/lld.md`, section 22). Both calls
+forward the caller's session token and carry a short timeout. The
+completion is fail-soft, unlike the booking guard: a close that already
+committed is never turned into a desk refusal, so an unreachable
+reservations module blocks no check-out — it leaves the booking active
+and reported as such, and the procedure for that row is
+`../operations/runbook.md`, section 8.2. The single-host default and
+the small-cluster variant both address the modules by service name, so
+the default holds unless a module moves to another host — then only
+that address value changes, in the bundle's configuration file, never
+inside an image. Section 5 carries the matching pre-flight check and
+section 3 the health check.
+
 ## 3. Install procedure (both variants)
 
 1. Confirm the pre-flight checks in section 5 pass and a blank
@@ -100,7 +121,10 @@ effect before handing over.
    `docs/operations/runbook.md`).
 5. Run the bundle's health check: proxy reachable from a desk
    client on the hotel LAN, each module answering through the
-   proxy, each module connected to its own store.
+   proxy, each module connected to its own store, and the stay
+   module reaching the reservations module on the hotel LAN (a
+   close still commits when that call fails, but the booking is
+   then left active — `../operations/runbook.md`, section 8.2).
 6. Sign in as the owner account, verify the hotel profile, rooms,
    rate plans, and charge items from step 3, and record one test
    reservation end to end (book, check in, post a charge, check
@@ -122,7 +146,11 @@ every inter-host endpoint over the hotel LAN before step 6.
    (reverse of the start order).
 4. Replace the release bundle with the new version. Re-apply the
    hotel's existing configuration set unchanged; carry forward no
-   state from inside old containers.
+   state from inside old containers. Bundle-level module addresses
+   come from the new bundle, not from the hotel's configuration set
+   (section 2, "Bundle-level service addresses") — one such address,
+   `RESERVATIONS_BASE_URL` for the stay module (Refs #646), is
+   already set in it and needs no hotel input.
 5. Start the database host first, then the module containers, then
    the reverse proxy.
 6. Run the health check from section 3 step 5, sign in, and repeat
@@ -147,6 +175,11 @@ Run before every install and every upgrade; stop on any failure:
   with margin.
 - Every host reaches every other host and the backup target over
   the hotel LAN; desk clients reach the proxy address.
+- The stay module reaches the reservations module over the hotel LAN:
+  a check-out still commits when that call fails, but the booking
+  behind the stay is then left active and has to be completed by hand
+  (`../operations/runbook.md`, section 8.2), so an unreachable
+  reservations module leaves a booking to repair after every close.
 - The per-hotel configuration set validates against the release
   bundle's configuration schema with no missing required values.
 - First secrets are provisioned and handed over per the handover
@@ -172,9 +205,9 @@ fixed within the working day, roll back:
 4. Re-run the health check and the end-to-end reservation check;
    confirm with the hotel manager before resuming desk work.
 5. Record the failed version, the failure symptom, and the
-   rollback outcome in `docs/release/rollback.md` (still a stub —
-   the entry is written when the first release ships) and file an
-   issue for the failure.
+   rollback outcome in `../release/rollback.md` (active: the per-change
+   note lives there, and section 4 records the outcome of this
+   restore-and-redeploy procedure) and file an issue for the failure.
 
 <!-- ao-role: release-manager -->
-Role: release-manager · AO session hotel-mgmt-126
+Role: release-manager · AO session hotel-mgmt-948
