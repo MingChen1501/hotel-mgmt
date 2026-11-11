@@ -96,6 +96,7 @@ Interfaces (provider: `ReservationService`):
 | `MarkNoShow` | reservationRef, reason | state=no-show | `STATE_ILLEGAL` (arrival date not passed / already in house) |
 | `GetReservation` | reservationRef | full reservation incl. price basis, history | `NOT_FOUND` |
 | `CheckInReservation` | reservationRef, stayId, actor | reservation state=checked-in with the stay link | `NOT_FOUND`, `STATE_ILLEGAL` (not confirmed) |
+| `CheckOutReservation` | stayId, actor (STAY -> RES; resolved by the stay link) | reservationId, reservationRef, state=closed, stayId | `NOT_FOUND` (no booking carries the stay link), `STATE_ILLEGAL` (the booking behind the stay is not checked in) |
 | `QueryCalendar` | dateFrom, dateTo, roomType? | reservations per date/type with state | — |
 | `GetDueReservation` | reservationRef (STAY -> RES) | reservation with dates, type, guestLink, priceBasis | `NOT_FOUND`, `STATE_ILLEGAL` (not due/arrivable) |
 
@@ -118,6 +119,20 @@ answers OQ-C3 for `NFR-CON-1`) -> write `ReservationEvents.created`
 to outbox in the same transaction -> return ref. `ModifyReservation`
 re-runs the guard for the new dates/type and reprices from the rate
 plan in force (BR-2, BR-13).
+
+`CheckOutReservation` (Refs #646, flow detail in
+[section 22](#22-departure-completes-the-booking-and-releases-availability-refs-646)):
+resolve the booking by `stay_id = stayId` (the unique stay link set at
+check-in, `migrations/000002_schema.up.sql:33`) -> an already-`closed`
+booking returns unchanged (`closed` is its own idempotency guard, so a
+replayed close completes once) -> a `checked-in` booking flips to
+`closed` in one transaction with its `reservation_changes` row
+(`state`, `checked-in` -> `closed`, actor, timestamp, `NFR-AUD-1`) and
+`updated_by`/`updated_at` on the row -> any other state is
+`STATE_ILLEGAL` naming it, and an unmatched `stay_id` is `NOT_FOUND`.
+No outbox row is written by this change (22.5); the dates are kept, so
+an early departure releases the remaining nights by state, not by
+rewriting the booking.
 
 Outbox events (`ReservationEvents`): `created`, `modified`,
 `cancelled`, `no-show` — each carrying ref, dates, roomType,
@@ -142,13 +157,15 @@ Interfaces (provider: `StayService`):
 | `CheckIn` | reservationRef, roomNumber, actualArrivalTime?, idempotencyKey | stayId, roomNumber, state=in-house | `CONFLICT` (room taken), `STATE_ILLEGAL` (room not ready / reservation not due), `VALIDATION_FAILED` (missing check-in field) |
 | `GetStay` | stayId or reservationId | stay record | `NOT_FOUND`, `VALIDATION_FAILED` (neither identifier) |
 | `QueryStays` | state? | stays, each exactly once | `VALIDATION_FAILED` (unknown state) |
-| `CheckOut` | stayId, folioId, actor, idempotencyKey; `folioBalanceMinor` / `openBalanceApproval` accepted as advisory and ignored (Refs #601) | stay closed, invoiceRef | `SETTLEMENT_REQUIRED` (open balance, no provenanced approval), `CONFLICT` (presented folio is not the stay's), `UPSTREAM_UNAVAILABLE` (Billing unreadable), `STATE_ILLEGAL` (not in house) |
+| `CheckOut` | stayId, folioId, actor, idempotencyKey; `folioBalanceMinor` / `openBalanceApproval` accepted as advisory and ignored (Refs #601) | stay closed, invoiceRef, `bookingCompletion` (completed / not-recorded, Refs #646) | `SETTLEMENT_REQUIRED` (open balance, no provenanced approval), `CONFLICT` (presented folio is not the stay's), `UPSTREAM_UNAVAILABLE` (Billing unreadable), `STATE_ILLEGAL` (not in house) |
 | `MoveRoom` | stayId, newRoomNumber | stayId, move history entry | `CONFLICT` / `STATE_ILLEGAL` as in check-in |
 | `RecordActualTimes` | stayId, actualArrival?, actualDeparture? | stayId, kept times | `VALIDATION_FAILED` (implausible values per hotel times) |
 | `ListArrivalsDepartures` | businessDate | arrivals, in-house, departures, each exactly once | — |
 | `GetStayRef` | stayId (BIL -> STAY) | stay link: guest, room, in-house state | `NOT_FOUND`, `STATE_ILLEGAL` (closed) |
 
 Outbound calls (consumer): `ReservationService.GetDueReservation`;
+`ReservationService.CheckOutReservation` (from #646 on, after the close
+commits — LLD [section 22](#22-departure-completes-the-booking-and-releases-availability-refs-646));
 `RoomInventoryService.FindReadyRoom`, `AssignRoom`, `ReleaseRoom`,
 `RecordActualTimes`(room side release on move/check-out);
 `GuestService.GetGuest`; `BillingService.GetFolioBalance` — the last
@@ -165,7 +182,11 @@ own update -> emit `StayEvents.checked-in` via outbox. Check-out
 additionally re-reads the folio through Billing and applies the gate
 first, refusing with `SETTLEMENT_REQUIRED` unless settled or a
 provenanced approval is recorded (BR-17; server-side read from #601,
-LLD [section 21](#21-server-side-check-out-gate-and-approval-provenance-refs-601)).
+LLD [section 21](#21-server-side-check-out-gate-and-approval-provenance-refs-601)),
+then flips `in-house -> closed` and, before answering, completes the
+booking through `CheckOutReservation` (section 22). A completion that
+cannot be recorded does not undo or refuse the committed close: it is
+reported in `bookingCompletion` instead (FR-DEP-5).
 
 Outbox events (`StayEvents`): `checked-in`, `moved`, `actual-times-
 recorded`, `checked-out` — stayId, guestLink, room links, times,
@@ -175,7 +196,10 @@ Error mapping: room just taken -> `CONFLICT` naming the room
 (`NFR-CON-2`); room not vacant/clean/inspected -> `STATE_ILLEGAL`
 naming room+state (BR-16, BR-28); blocked date -> refusal naming the
 block (`FR-RMS-3`); open balance without approval ->
-`SETTLEMENT_REQUIRED` (`FR-BIL-7`).
+`SETTLEMENT_REQUIRED` (`FR-BIL-7`). A booking completion that cannot be
+recorded is not a close refusal: the close stays `200` with
+`state: closed` and names the outcome in `bookingCompletion`
+(section 22.2, FR-DEP-5).
 
 ## 3. Rooms (Node.js/TypeScript)
 
@@ -463,6 +487,20 @@ Per-module directory (shape per stack, same obligations):
   the folio gate against Billing `GetFolioBalance` plus the
   recorded `RecordOpenBalanceApproval` approval. Re-open only
   with a product decision that needs a provider-side gate op.
+- D5 — `ReservationEvents.completed`: not emitted by the #646
+  departure completion (section 22). Reason: no consumer needs the
+  booking's completion today — availability is read synchronously from
+  the reservations store, and Reporting's current projections take
+  occupancy from `stay.*` events (`docs/architecture/event-flow.md`
+  section 1) — so no outbox row and no event-schema change is added.
+  Re-open with the reporting slice that projects completed bookings;
+  it adds the event shape and its projection together.
+- D6 — Reconciliation of bookings stranded before #646: the completion
+  only runs on a close from this change onward, and no backfill is
+  specified (requirements section 23.2). A tool that completes
+  `checked-in` bookings whose stay is already `closed` is an operations
+  follow-up owned by `release-manager` with the implementation team, not
+  a silent data correction.
 
 Coverage: 8/8 modules with responsibilities, signatures, data flow,
 outbox events, and error mapping; every BA contract need (sections 1–7, section 9
@@ -3195,5 +3233,329 @@ the merged head.
   availability alert, not a cached value, is the mitigation
   (`NFR-AVL-1` does not extend to an unverified balance).
 
+## 22. Departure completes the booking and releases availability (Refs #646)
+
+Tier **T2 confirmed** (behaviour change inside existing module
+boundaries: one additive provider operation and one additive response
+field; no new subsystem, no lifecycle state, no data-model change, no
+schema, no migration, no desk flow change). The owner-reported defect
+(manual QA 2026-11-10) is the missing terminal effect of check-out on
+the booking: the room half already works (`ReleaseRoom` ->
+`vacant-dirty`, housekeeping -> inspected, assignment offers inspected
+only), and the availability guards already ignore everything except
+`confirmed` / `checked-in`; nothing ever wrote the terminal `closed`
+state. This section records the architect-owned delta: the lifecycle
+shape, the state diagram (maintained in
+`docs/architecture/state-machine.md` section 1.1), the per-flow
+implementation diagrams (22.3, 22.4), the additive contract delta
+(22.5), and the verification plan (22.6). Acceptance criteria, FR/NFR
+wording, guard mapping, and the operational note for already-stranded
+rows are sibling handoffs.
+
+Explicit no-change statements for this change:
+
+- **Room lifecycle.** `docs/architecture/state-machine.md` section 2
+  stands: the close releases `occupied -> vacant-dirty`, housekeeping
+  walks dirty -> clean -> inspected, and only inspected vacant rooms are
+  assignable (`FR-RMS-2`, `BR-16`, `BR-28`). No room state, transition,
+  or control is added.
+- **Availability guards.** No guard rewrite: the create and modify
+  guards already count only `confirmed` / `checked-in`
+  (`services/reservations/internal/store/store.go:194-196`, `:214-227`,
+  `:367-380`; Postgres `services/reservations/internal/store/postgres.go:177`,
+  `:483`), so a `closed` booking already contributes nothing once it
+  exists.
+- **Calendar and read-back.** `QueryCalendar` keeps returning every
+  overlapping row with its stored state
+  (`services/reservations/internal/store/store.go:274-291`; Postgres
+  `services/reservations/internal/store/postgres.go:312-318`), so the
+  completed booking stays visible in history; the desk's arrival pick
+  filters `confirmed` itself (`app/src/views/StayView.vue:928-941`).
+  `GetReservation` returns the stored state unchanged.
+- **The desk flow.** One confirmation, no second user-facing action and
+  no new control. The only desk delta is rendering the split sentence
+  when `bookingCompletion.state` is `not-recorded` (product UI contract
+  `docs/product/desk-ui-design-rollout.md` section 6.16; a catalogue key
+  addition in both locales if the implementation names it).
+
+### 22.1 Which service owns what
+
+| Fact | Owner | Written where | May a caller assert it? |
+|---|---|---|---|
+| The stay's close | Stay | Conditional `in-house -> closed` flip (`services/stay/src/store.ts:282-290`; Postgres `services/stay/src/pgstore.ts:161-206`) | No — `stayId` selects; the server decides |
+| The booking's state | Reservations | Conditional `checked-in -> closed` flip (`services/reservations/internal/store/store.go:297-320` is the check-in shape; `services/reservations/internal/store/postgres.go:344-389`) | No — no request field carries a booking state |
+| Which booking belongs to the stay | Reservations | `stay_id` UUID UNIQUE set at check-in (`services/reservations/migrations/000002_schema.up.sql:33`); resolution is by this link, never by guest name or dates | Only `stayId` |
+| The active set for availability | Reservations | The existing guard filters (`activeState`, `services/reservations/internal/store/store.go:194-196`) | No |
+| Actor and time of the completion | Admin session actor, forwarded by Stay | `updated_by` / `updated_at` plus a `reservation_changes` row | Yes (`actor`), same residual as #601 R6 |
+| Whether the close committed | Stay | The conditional flip's outcome | No |
+
+### 22.2 Algorithm (target)
+
+**Stay `CheckOut`** (keeps the as-built order and adds one step at the
+end):
+
+1. Validate `stayId` / `folioId` / `actor` and run the folio gate the
+   #601 slice installs (as-built shape:
+   `services/stay/src/store.ts:148-168`, called at `:263`).
+2. Idempotency replay: a seen key returns the stored close.
+3. Conditional `in-house -> closed` flip, `actualDeparture` stamp, and
+   the `stay.checked-out` outbox row in one transaction
+   (`services/stay/src/store.ts:282-290`;
+   `services/stay/src/pgstore.ts:161-206`, outbox write at `:201`).
+4. After the flip commits and before replying, call
+   `POST {RESERVATIONS_BASE_URL}/v1/reservations/CheckOutReservation`
+   with `{stayId, actor}` and the caller's Bearer token forwarded,
+   2-second timeout. `RESERVATIONS_BASE_URL` defaults to
+   `http://reservations:8081` and is wired on the `stay` service
+   (`deploy/compose.yaml:77-87`, the way Reservations wires
+   `RATES_BASE_URL` at `:37-50`); the client follows the Reservations ->
+   Rates pattern (`services/reservations/internal/pricing/client.go:43-97`).
+   The bearer is threaded from the transport into the store the way the
+   Reservations handler threads it
+   (`services/reservations/internal/handler/handler.go:207`, `:235`);
+   today the Stay transport only checks presence
+   (`services/stay/src/server.ts:110-112`).
+5. `200` -> `bookingCompletion: {state: "completed", reservationRef}`.
+6. Any outcome that does not record the completion — transport error,
+   timeout, 5xx, unwired client, or a provider `4xx` — becomes
+   `bookingCompletion: {state: "not-recorded", reason: <observed code>}`.
+   The reply stays `200` with `state: closed`: the close committed, and
+   the split is reported, never hidden (`FR-DEP-5`).
+7. Replay (step 2 hit): return the stored close and re-attempt the
+   completion, which is idempotent, so a retry after a split repairs the
+   booking instead of stranding it; the booking still transitions once.
+
+**Reservations `CheckOutReservation`** (new provider operation):
+
+1. Require a session token, a non-blank `stayId`, and a non-blank
+   `actor` (`VALIDATION_FAILED` naming the field otherwise).
+2. Resolve the booking by `stay_id = stayId` — the unique stay link, so
+   the booking of the stay that closed is the one completed, never a
+   guest-name or date match.
+3. `checked-in` -> one conditional write
+   (`UPDATE ... SET state = 'closed', updated_by = $actor,
+   updated_at = now() WHERE stay_id = $1 AND state = 'checked-in'`) plus
+   its `reservation_changes` row (`state`, `checked-in` -> `closed`,
+   actor, timestamp) in the same transaction; respond `200` with
+   `state: "closed"`. No outbox row (22.5, D5). The dates, room type,
+   price basis, and stay link are kept.
+4. Already `closed` -> `200` with the same body, no second change and no
+   second history row (`closed` is its own exactly-once guard, so a
+   replayed close completes once; `FR-DEP-1`).
+5. Any other state -> `STATE_ILLEGAL` naming the state, nothing written.
+6. No row with that `stay_id` -> `NOT_FOUND` `{stayId}`.
+7. No `idempotencyKey` field: the state transition is the guard, the
+   `MarkNoShow` precedent (`services/reservations/internal/handler/handler.go:266-284`).
+
+Shapes considered and rejected:
+
+| Shape | Verdict | Reason |
+|---|---|---|
+| Complete from the `stay.checked-out` outbox event (async consumer) | rejected | Availability would stay blocked until the dispatcher ran, so the desk's very next action could still be refused; the close could not report a completion it never attempted; and no consumer owns reservations writes today (`Reservations` owns its store). |
+| The desk sends a second completion call after the close | rejected (FR-DEP-1) | The second call can be skipped or fail after the close stands, with nothing in the close knowing — the split becomes routine instead of exceptional; the close itself must be the trigger. |
+| Complete the booking before the stay flip | rejected | A completion that commits and is then followed by a refused close (folio gate, wrong state) would leave the booking `closed` while the guest is still in house — the opposite divergence, on a money path that is already gated before the flip. |
+| Store the completion outcome on the stay row | rejected | A new column and migration (T3) for no product gain: the completion is idempotent, so a replay re-derives the truth, and the close response carries it to the desk. |
+| The close writes the booking row directly | impossible | Modules never read or write another module's store (HLD section 4); the write must travel the `ReservationService` contract. |
+
+### 22.3 Happy path
+
+```mermaid
+flowchart TD
+    A[Staff confirm the close in the desk panel  StayView.vue:1538, :1603] --> B[Stay validates stay, folio, actor]
+    B --> C{Folio gate passes?}
+    C -->|no| Z[Existing refusal: stay in house, booking checked-in, no release  FR-DEP-5]
+    C -->|yes| D[Conditional in-house to closed flip and checked-out event  store.ts:282-290]
+    D --> E[POST CheckOutReservation stayId, actor, caller token, 2 s]
+    E -->|200 closed| F[bookingCompletion completed plus reservationRef]
+    F --> G[200 closed; desk says checked out]
+    G --> H[Desk releases the room vacant-dirty  StayView.vue:1624-1634]
+    H --> I[Housekeeping clean then inspected; assignment offers the room]
+    I --> J[Next guest books and checks in the same day]
+    G --> K[Availability guard counts the closed booking as nothing  store.go:214-227]
+```
+
+Edge trace:
+
+- A–B: the desk confirm calls `CheckOut` with the freshly re-read folio
+  and a client idempotency key (`app/src/views/StayView.vue:1538`,
+  `:1603`).
+- B–C: gate before any state read (as-built `services/stay/src/store.ts:148-168`,
+  call site `:263`; the #601 slice replaces the request claim with the
+  Billing read, LLD section 21).
+- C–Z: a gate refusal never reaches the flip, so the booking keeps
+  `checked-in` (`FR-DEP-5`).
+- D: conditional flip + `actualDeparture` + outbox row
+  (`services/stay/src/store.ts:282-290`;
+  `services/stay/src/pgstore.ts:161-206`).
+- D–E: target client call after commit, caller token forwarded
+  (`services/reservations/internal/pricing/client.go:43-97` is the
+  pattern; wiring target `deploy/compose.yaml:77-87`).
+- E–F: target `CheckOutReservation` handler beside
+  `CheckInReservation` (`services/reservations/internal/handler/handler.go:184-205`)
+  and the store transition beside `CheckIn`
+  (`services/reservations/internal/store/store.go:297-320`;
+  Postgres `services/reservations/internal/store/postgres.go:344-389`);
+  response shape in 22.5.
+- F–G: the close reply carries `bookingCompletion` (22.5).
+- G–H: the desk releases the departed room once the close stands
+  (`app/src/views/StayView.vue:1624-1634`; Rooms
+  `services/rooms/src/store.ts:407-436`).
+- H–I: housekeeping advances dirty -> clean -> inspected
+  (`app/src/views/RoomsView.vue:168`, `:182`); the assignment list loads
+  `vacant-inspected` (`app/src/views/StayView.vue:1139-1140`).
+- I–J: check-in refuses a non-ready room (`FR-RMS-2`, `BR-16`, `BR-28`).
+- G–K: the guard sees only `confirmed` / `checked-in`
+  (`services/reservations/internal/store/store.go:214-227`), so the
+  completed booking consumes nothing; the calendar still returns it with
+  state `closed` for history (`:274-291`).
+
+### 22.4 Failure and rollback paths
+
+```mermaid
+flowchart TD
+    A[Stay close committed: closed, departed, checked-out event written] --> B{CheckOutReservation call}
+    B -->|200 closed| C[completed: desk claims the completed booking]
+    B -->|already closed| D[Same 200, no second change]
+    B -->|transport, timeout, 5xx, unwired| E[not-recorded, reason UPSTREAM_UNAVAILABLE]
+    B -->|404 no link| F[not-recorded, reason NOT_FOUND]
+    B -->|422 wrong booking state| G[not-recorded, reason STATE_ILLEGAL]
+    C --> H[Booking leaves the active set]
+    D --> H
+    E --> I[Plain split sentence; booking still reads checked-in; no claim]
+    F --> I
+    G --> I
+    I --> J[Replay of the close re-attempts the idempotent completion; manager/operations follow-up repairs the row]
+```
+
+Edge trace:
+
+- A: the flip already committed; nothing below can undo it
+  (`services/stay/src/store.ts:282-290`).
+- B–C / B–D: `200 closed` and the idempotent already-closed return
+  (22.2 steps 3–4).
+- B–E: fail-soft, not fail-closed — the close is a money-and-stay fact
+  that already committed; an unread Reservations must not turn a
+  committed close into a client-visible failure. Reason code reused from
+  the #601 precedent (`services/reservations/internal/pricing/client.go:88-97`).
+- B–F / B–G: provider refusals reported as the split reason; the booking
+  is not touched.
+- E–I: the desk renders plain words and claims no completion (product UI
+  contract section 6.16, `FR-DEP-5`).
+- I–J: the technical repair is a replay of the same close — the
+  idempotent completion runs again and records the row — or the
+  operations follow-up (D6). The desk-generated key differs on a fresh
+  click, so staff-facing recovery is the operational note, not a new
+  control.
+
+Rollback: revert the single implementation PR. The `closed` state and
+the `stay_id` link already exist (`migrations/000002_schema.up.sql:29-33`),
+so no migration exists in either direction and no data backfill runs.
+Bookings already completed keep reading completed (a valid state the
+desk already renders as history); new closes stop completing and return
+to the pre-change behaviour until the revert is itself reverted.
+
+### 22.5 Contract delta
+
+| File | Change | Version effect |
+|---|---|---|
+| `contracts/http/CheckOutReservation.json` | new file: operation `CheckOutReservation`, contract `ReservationService`; request `{stayId, actor}`; response `{reservationId, reservationRef, state: "closed", stayId}`; errors `UNAUTHENTICATED`, `NOT_FOUND`, `STATE_ILLEGAL`, `VALIDATION_FAILED` | new operation -> `1.0` (ADR-0004 D1: new operations are additive/minor) |
+| `contracts/http/CheckOut.json` | response gains the required `bookingCompletion` object: `state` (`completed` / `not-recorded`), optional `reservationRef`, optional `reason` (the observed envelope code, for support; the desk never renders it); `traces` gains `FR-DEP-1` and `FR-DEP-5`; request unchanged, no new error code | minor, `1.0` -> `1.1` (additive field) |
+| `contracts/events/reservation-events.json` | unchanged — no event in this change (D5) | none |
+| `contracts/errors/envelope.json` | unchanged — the completion reuses `NOT_FOUND`, `STATE_ILLEGAL`, `VALIDATION_FAILED`, `UNAUTHENTICATED`, and `UPSTREAM_UNAVAILABLE` for an unread provider | none |
+| `contracts/openapi.yaml` + `frontend/docs/openapi.yaml` | mirror the `CheckOut` response delta; add `CheckOutReservation` only if the curated desk-loop subset carries it (`script/openapi-route-check.sh`) | minor |
+| `services/reservations/contract-tests/` + `services/stay/contract-tests/` | provider fixture for the new operation and consumer fixtures for the completion outcomes | new fixtures |
+| schema and migrations | none: `state` CHECK already includes `closed` (`services/reservations/migrations/000002_schema.up.sql:29-31`), `stay_id` is UUID UNIQUE (`:33`), and the change-history table exists (`:38-45`) | none |
+| `docs/architecture/rest-resource-surface.md` | the row for `CheckOutReservation` and the coverage count (61 -> 62 `contracts/http/*.json` files) land in the implementation PR, because that document maps files on disk | docs, with the code |
+
+No new error code, no new state, no new field on any other operation,
+and no event-schema change. The `bookingCompletion` field is required in
+the response so the contract states the close's full truth; a desk build
+that ignores it keeps working (it reads `stayId` / `invoiceRef`).
+
+### 22.6 Verification plan
+
+Reservations guards (the implementation PR creates them; existing
+patterns: `services/reservations/internal/store/store_test.go:31-85`,
+`internal/handler/handler_test.go:171-257`, Postgres parity
+`postgres_test.go:106-138`):
+
+- **Completed on the close** — seed a `checked-in` booking with a
+  `stay_id`, call `CheckOutReservation`: `closed`, stay link and dates
+  kept, `reservation_changes` row naming `state` with the actor and time;
+  the booking read-back returns `closed`.
+- **Completed once** — a second call returns `200 closed` with no second
+  change row; the idempotent replay of the whole close also completes
+  once.
+- **Wrong state** — the `stay_id` of a booking not in `checked-in`
+  (`confirmed` or `cancelled`) returns `STATE_ILLEGAL` and writes
+  nothing; an unknown `stayId` returns `NOT_FOUND`.
+- **Availability after completion** — a `closed` booking overlapping a
+  new same-type booking does not consume the unit and a same-day booking
+  is accepted; the negative case (a `checked-in` booking still consumes
+  it) proves the fix is the state and not a wider rule.
+- **Early departure** — a booking whose recorded departure is later than
+  the close releases the remaining nights with no date rewrite.
+- **Terminal reads and refusals** — the calendar row shows `closed`
+  while remaining in history; check-in, modify, cancel, and no-show on a
+  completed booking are refused by the existing state checks; no reopen
+  operation exists.
+
+Stay guards (existing check-out block
+`services/stay/src/server.test.ts:128-238`, Postgres parity `:406-460`):
+
+- **Completion is called** — a committed close sends `stayId` and the
+  actor to `CheckOutReservation` with the caller token forwarded (stub
+  client), and the reply carries `bookingCompletion.state =
+  completed`.
+- **Split is reported** — each failure mode (transport, timeout, 5xx,
+  unwired, `NOT_FOUND`, `STATE_ILLEGAL`) still returns `200`, `state:
+  closed`, `bookingCompletion.state = not-recorded`, with the stay
+  closed and the `checked-out` event written exactly once, and no
+  refusal code invented.
+- **Replay repairs** — a replayed key returns the stored close and
+  re-attempts the idempotent completion; the booking transitions once.
+- **Refusals untouched** — the folio gate, the #588 release, and the
+  #600 room charge keep their refusal paths: no flip, no completion
+  call, no release.
+
+Desk guards (the implementation PR extends them): the arrival pick never
+offers a completed booking (`app/src/views/StayView.test.ts:394-463`
+is the ready-room precedent); the split sentence renders plain words and
+never the envelope code; the one same-day chain (departed `vacant-dirty`
+-> clean -> inspected -> offered -> assigned -> checked in) is pinned
+end to end.
+
+Stack gates: `cd services/reservations && go build ./... && go vet ./...
+&& go test ./... && test -z "$(gofmt -l .)"`; `cd services/stay && npm ci
+&& npm run build && npm run lint && npm test`;
+`script/contract-check.sh` (new contract + fixtures);
+`script/openapi-route-check.sh`; `script/markdown-link-check.sh`. The
+`qa-lead` traceability rows for #646 are a sibling handoff and must cite
+these guards by `file:line` at the merged head.
+
+### 22.7 Residual risks and re-tier trigger
+
+- **R8 — the close can commit and the completion fail.** Accepted by
+  `FR-DEP-5`/`AC-DEP-5` as a visible split: the reply names it, the desk
+  never claims the completion, the replay re-attempts it, and D6 is the
+  reconciliation follow-up. Path cost: the call runs synchronously
+  before the reply and adds its 2-second cap only when Reservations is
+  unreachable; on the normal local-network path it is milliseconds, and
+  the #601 gate's own bound (LLD section 21.2) is unchanged.
+- **R9 — already-stranded bookings are not repaired.** Bookings whose
+  stay closed before this change keep `checked-in` until the D6
+  operations follow-up; there is no backfill (requirements section 23.2).
+- **R10 — no `reservation.completed` event.** No consumer needs it
+  today (D5); the reporting slice that projects completed bookings adds
+  the event and projection together.
+- **R11 — the actor is forwarded, not token-bound.** Same residual as
+  #601 R6 (`docs/technical/security-threat-model.md` section 8), so the
+  completion's audit trail is read for what it is until token-bound
+  actors land.
+- **Re-tier trigger.** A shape that adds a lifecycle state, a stored
+  completion-outcome column, or a migration is T3: it would need an ADR,
+  the owner's `proposed -> accepted` flip, and its rollback note in the
+  implementation PR. The decided shape needs none of these.
+
 <!-- ao-role: architect -->
-Role: architect · AO session hotel-mgmt-919
+Role: architect · AO session hotel-mgmt-946

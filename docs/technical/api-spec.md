@@ -38,7 +38,7 @@ section 4).
 
 | Contract | Representative operations / events (to be detailed later) |
 |---|---|
-| `ReservationService` | Create, modify, cancel, mark no-show; calendar query; check-in reservation link. Emits `ReservationEvents`. |
+| `ReservationService` | Create, modify, cancel, mark no-show; calendar query; check-in reservation link; check-out completion (Refs #646). Emits `ReservationEvents`. |
 | `StayService` | Check in, check out, move room, record early/late times; stay reads, arrivals/departures queries. Emits `StayEvents`. |
 | `RoomInventoryService` | Room/room-type setup, status updates, out-of-order blocks, availability query. Emits `RoomStateEvents`. |
 | `PricingService` | Rate-plan setup, price quote, discount application, restriction check. Emits `RateEvents`. |
@@ -78,4 +78,4 @@ bullets are preserved and annotated, not rewritten.
   (LLD D3; integration F3).
 
 <!-- ao-role: architect -->
-Role: architect · AO session hotel-mgmt-919
+Role: architect · AO session hotel-mgmt-946
