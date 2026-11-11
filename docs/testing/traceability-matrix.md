@@ -644,8 +644,82 @@ the desk pins unchanged, `SR-1` recorded, and `qa-lead` re-pins the
 rows at the merged head. The MVP Coverage line below stands
 unchanged at 57/57.
 
+## 14. Stay departure release and same-day reuse slice (Refs #646)
+
+Behaviour slice for the end of the stay: the check-out that commits
+completes the booking behind the stay, so the departed booking leaves
+the active availability set, the booking reads completed in history
+instead of `checked-in`, and the departed room type is sellable and
+the departed room reusable the same day through the desk's existing
+housekeeping path. The terminal `closed` booking state already exists
+(`BR-1`, the accepted state machine, and the reservations `state`
+CHECK); the change supplies the missing write and the missing
+requirement wording. No lifecycle state, schema, migration, desk flow,
+event, catalogue, or MVP-capability change is involved. Tier T2
+(`architect`'s LLD [section 22](../architecture/lld.md) and
+`state-machine.md` [section 1.1](../architecture/state-machine.md);
+`product-owner` scope in
+[acceptance-criteria.md section 15](../product/acceptance-criteria.md);
+`business-analyst` requirements in
+[mvp-requirements.md section 23](../requirements/mvp-requirements.md)).
+
+Each row traces `AC-DEP-1`..`AC-DEP-5` (owned by `product-owner`),
+the behaviour-scoped requirements `FR-DEP-1`..`FR-DEP-5` (owned by
+`business-analyst`), the unchanged MVP rows `FR-FDK-2` and `FR-RTE-2`,
+and business rules `BR-1` / `BR-16` / `BR-18` / `BR-28`
+([business-rules.md](../requirements/business-rules.md)). The owner
+cases `DEP-1`..`DEP-9`, the guard registry `DR1`–`DR13`, and the
+evidence rule `DR-E1` live in
+[departure-release-test-traceability.md](departure-release-test-traceability.md)
+sections 3, 4, 6, and 7. Like the slices above, these rows add no MVP
+capability: the 57-row MVP coverage count stands unchanged and no MVP
+row may cite this slice as its guard.
+
+Every `file:line` in the existing pins was read at the spec head
+`8263ab3` (code tree identical to `master` `8745afa`). Those pins
+prove today's behaviour — the booking keeps reading `checked-in` after
+a close while the room turnover path already exists — and the
+implementation PR extends them in place, with a `#646` note, never
+deleting one. All `DR1`–`DR13` guards are **missing at this spec
+head** and created by the implementation PR; a row is complete only
+when that PR lands, passes, and `qa-lead` re-pins it at the merged
+head. The slice is therefore **not complete** at this spec head.
+
+| Item | Required guard type | Guard |
+|---|---|---|
+| `AC-DEP-1` — a committed check-out records the booking as completed (terminal `closed`), never `checked-in`, keeps the past stay visible in history, and the room-charge review that precedes the close still resolves the booking (Refs #646; traces to US-FDK-2, US-GST-1; `FR-FDK-2`, `FR-GST-1`, `BR-1`, `BR-18`) | L1 acceptance: the completion on the close, its read-back, and its idempotence | **Pending** — `DR1`, `DR2`, `DR7` in `departure-release-test-traceability.md` section 3; today's opposite is pinned at `services/reservations/internal/store/store.go:109-117` and `services/stay/src/store.ts:260-292` |
+| `AC-DEP-2` — after A departs, B books the same room type for arrival today and is accepted (a normal or an early departure), and no no-availability refusal is caused by A's booking (traces to US-RES-1, US-RES-5, US-FDK-2; `FR-RES-5`, `FR-RTE-2`, `FR-FDK-2`, `BR-1`, `BR-8`, `BR-9`) | L1 acceptance: availability after completion, plus the negative control and the early-departure pair | **Pending** — `DR4`, `DR5`, `DR6`; today's guard filters are `services/reservations/internal/store/store.go:214-227`, `:364-380`, `services/reservations/internal/store/postgres.go:177`, `:483` |
+| `AC-DEP-3` — after housekeeping marks the departed room clean then inspected, it is offered and B is checked into it the same day, with no manual state edit and the inspected-only rule intact (traces to US-RMS-2, US-FDK-1; `FR-RMS-2`, `FR-FDK-1`, `BR-16`, `BR-28`) | Behaviour check: one same-day turnover chain through the desk, plus the per-step service pins | **Pending** — `DR12`; the per-step halves exist today at `services/rooms/src/server.test.ts:271-301`, `app/src/views/RoomsView.test.ts:290-348`, `:349-405`, `app/src/views/StayView.test.ts:394-463`, `app/src/views/desk-edge-guards.test.ts:912-1032` |
+| `AC-DEP-4` — a completed booking reads completed and never returns to active: check-in, modify, cancel, and no-show are refused, no reopen exists, and a same-day return is a new booking (traces to US-FDK-2; `FR-FDK-2`, `BR-1`, `BR-18`) | L1 acceptance: terminal reads and the four refusals, plus the surface check | **Pending** — `DR10`, `DR2`; the existing state-refusal pins `services/reservations/internal/store/store_test.go:151-172`, `:265-303` keep their assertions |
+| `AC-DEP-5` — every refused close leaves the stay in house and the booking active with no release and no completion; a committed close whose completion cannot be recorded is reported in plain words instead of claiming a truth the booking read contradicts (traces to US-FDK-2; `FR-FDK-2`, `FR-BIL-7`, `BR-17`, `BR-18`, `BR-46`) | L1 acceptance (refusal set) + split reporting + desk wording | **Pending** — `DR8`, `DR9`, `DR13`; the #588/#600/#601 refusal pins listed in the slice document section 2 stay green |
+| `FR-DEP-1` — the check-out completes the booking behind the stay, resolved by the stay link, with the actor and time recorded, completed once on a replay, and nothing changed by a refused close (section 23.3) | L1 acceptance (Reservations and Stay, memory and Postgres) | **Pending** — `DR1`, `DR2`, `DR3`, `DR7`, `DR9`, `DR11`; no guard on disk |
+| `FR-DEP-2` — only `confirmed` and `checked-in` bookings hold availability, so a completed booking blocks nothing and an early departure releases the remaining nights without a date rewrite (section 23.3) | L1 acceptance + negative control | **Pending** — `DR4`, `DR5`, `DR6`, `DR11`; the guards that already carry the active set are cited in the slice document section 2 |
+| `FR-DEP-3` — a completed booking reads completed through read-back, calendar, and history, and completion is terminal with no reopen route (section 23.3) | L1 acceptance + surface check | **Pending** — `DR10`, `DR2`; `FR-RES-5` / `FR-GST-1` keep their MVP guards |
+| `FR-DEP-4` — the departed room is reusable the same day through the desk path, and a dirty or clean-only room is never offered (section 23.3) | Behaviour chain (desk) + service pins | **Pending** — `DR12`; `FR-RMS-2` keeps its service guard and `app/src/views/RoomsView.test.ts:290-405` keeps the button pair |
+| `FR-DEP-5` — every refused close completes and releases nothing, and a split is reported rather than silent (section 23.3) | L1 acceptance (refusals) + split reporting + desk wording | **Pending** — `DR8`, `DR9`, `DR13`; the #588 release, #600 posting, and #601 gate pins stay green |
+| Lifecycle `D5` — no `reservation.completed` event in this change (LLD [section 22.5](../architecture/lld.md)) | L1 acceptance: the completion writes no outbox row and the event contract keeps its shape | **Pending** — the assertion inside `DR1` (`DR7` counts exactly one `checked-out` event on the Stay side); `contracts/events/reservation-events.json` unchanged |
+| Lifecycle `D6` — bookings already stranded by the old behaviour are not repaired (LLD [section 22.4](../architecture/lld.md)) | No code guard by design: an operational note plus a follow-up | **Deferred (not a code guard)** — the `release-manager` note lands at merge and the reconciliation is a named follow-up; the repair path itself is a replay of the close (`DR9`) |
+| #588 / #600 / #601 desk behaviour stays green (`AC-DSK-18`, `AC-DSK-19`, `AC-CKO-1`, `AC-CKO-2`) | Behaviour check: the close still releases once, the review still posts the room charge once, and every refusal keeps its plain words; no desk flow change | **Covered by re-run** — `app/src/views/StayView.test.ts:1086-1203`, `:1207-1290`, `:1291-1310`, `:1530-1579`, `:1650-1746`, `:1747-1783`, `:1940-1974`, `app/src/views/desk-edge-guards.test.ts:912-1032`, `app/e2e/stay.spec.ts:30-157`, `script/e2e-desk-loop.sh:418-424`; a desk flow edit in the implementation PR fails the row |
+| Contract and LC | Re-run only: the new `CheckOutReservation` provider contract with its fixture, the additive `bookingCompletion` on `CheckOut`, the existing Stay fixtures still replay unchanged, and the Stay -> Reservations seam passes the per-module contract stage | **Pending gate** — `contracts/http/CheckOutReservation.json` (new), `contracts/http/CheckOut.json` (1.0 -> 1.1), `contracts/openapi.yaml`, `services/reservations/contract-tests/`, `services/stay/contract-tests/`, `script/contract-check.sh`, `script/openapi-route-check.sh`; the contract edit is `architect`'s (LLD 22.5) |
+| MVP no-change statement | No new MVP row, story, or FR id; `FR-FDK-2` and `FR-RTE-2` gain only the amendment pointer | **Pending gate** — the 57-row MVP coverage count stands unchanged and no MVP row cites this slice as its guard |
+| Evidence cross-reference (`DR-E1`) | The owner symptom is recorded before and after against a lab stack, and the slice is recorded in the test report | **Pending** — `docs/testing/evidence/646/README.md` and the `test-report.md` row are created by the implementation PR |
+
+Slice coverage (Refs #646): 16 rows mapped to `AC-DEP-1`..`AC-DEP-5`,
+`FR-DEP-1`..`FR-DEP-5`, the lifecycle `D5`/`D6` notes, and the gate
+boxes. One row is covered by a gate re-run today (the desk-stay-green
+row, whose pins exist and pass and must keep passing untouched), one
+is deferred by design (lifecycle `D6`, an operational note rather than
+a code guard), and fourteen are **pending** the implementation PR —
+the ten condition rows whose guards are the registry `DR1`–`DR13`,
+the contract/LC gate, the MVP no-change gate, the lifecycle `D5` event
+assertion, and `DR-E1`. The slice is **not complete** at this spec
+head; it completes when the implementation PR merges with `DR1`–`DR13`
+green, the desk pins unchanged, `DR-E1` recorded, and `qa-lead`
+re-pins the rows at the merged head. The MVP Coverage line below
+stands unchanged at 57/57.
+
 Coverage: 43 FRs mapped, 14 NFRs mapped, 57 rows total, 57 guards
-filled (PR #112 slice: FR-RES-1, FR-RMS-1..4, FR-RTE-1/2/4/5, FR-ADM-1/2, FR-CUS-1, NFR-CON-1/2; PR #149 slice: FR-FDK-1, FR-FDK-5, FR-BIL-1/2/3/6, FR-ADM-5, NFR-BKP-1/2, NFR-AUD-1, NFR-TZ-1, plus FR-RES-1 persistence; PR #150 slice: FR-FDK-2, FR-FDK-3, FR-FDK-4, FR-BIL-7, plus the NFR-CON-2 stay-side checkout guard; PR #151 slice: FR-BIL-4, FR-CUS-3; PR #156 slice: FR-RPT-1..3; PR #157 slice: FR-GST-1..3; PR #158 slice: NFR-DEP-1, FR-ADM-4 config level, plus the FR-ADM-1 deployment extension; PR #159 slice: FR-RES-2/3/5/6 plus the NFR-CON-1 modify-path extension; PR #160 slice: ReleaseBlock plus rooms-side move coordination (FR-RMS-3, FR-FDK-3); PR #161 slice: full rates handling (FR-RTE-3 filled, FR-RTE-4/5 extended — remaining TBD cells fill in later slices); count corrected to the live total 48 (later slices filled cells without updating this line); PR #153 slice: NFR-RET-1, NFR-AVL-1; PR #182 slice: FR-RES-4, FR-ADM-3, FR-CUS-2, NFR-PERF-1/2 filled (5 guards — count corrected to the live total 53); FR-GST-4, FR-BIL-5, FR-RPT-4 point at follow-ups #189, #190, #191 and fill with those issues; NFR-I18N-1 filled by the #192 slice (count corrected to the live total 54); #189/#190/#191/#192/#201 slices filled FR-GST-4, FR-BIL-5, FR-RPT-4, NFR-I18N-1 (plus the #201 extension) — count corrected to the live total 57 (Closes #214)). Section 10 (Refs #588) adds 10 slice rows mapped to the #588 acceptance and `FR-CKO-1`..`FR-CKO-5`; the MVP row count stands unchanged at 57/57 because the slice adds no MVP capability. Section 11 (Refs #590) adds 15 slice rows mapped to `AC-MANAGE-1..11` and `FR-MGMT-1..12`; the MVP row count stands unchanged at 57/57 for the same reason. Section 12 (Refs #600) adds 10 slice rows mapped to `AC-DSK-19` and `FR-CKP-1`..`FR-CKP-5`; the MVP row count stands unchanged at 57/57 for the same reason. Section 13 (Refs #601) adds 11 slice rows mapped to `AC-CKO-1`, `AC-CKO-2`, and `FR-CKS-1`..`FR-CKS-5`; the MVP row count stands unchanged at 57/57 for the same reason.
+filled (PR #112 slice: FR-RES-1, FR-RMS-1..4, FR-RTE-1/2/4/5, FR-ADM-1/2, FR-CUS-1, NFR-CON-1/2; PR #149 slice: FR-FDK-1, FR-FDK-5, FR-BIL-1/2/3/6, FR-ADM-5, NFR-BKP-1/2, NFR-AUD-1, NFR-TZ-1, plus FR-RES-1 persistence; PR #150 slice: FR-FDK-2, FR-FDK-3, FR-FDK-4, FR-BIL-7, plus the NFR-CON-2 stay-side checkout guard; PR #151 slice: FR-BIL-4, FR-CUS-3; PR #156 slice: FR-RPT-1..3; PR #157 slice: FR-GST-1..3; PR #158 slice: NFR-DEP-1, FR-ADM-4 config level, plus the FR-ADM-1 deployment extension; PR #159 slice: FR-RES-2/3/5/6 plus the NFR-CON-1 modify-path extension; PR #160 slice: ReleaseBlock plus rooms-side move coordination (FR-RMS-3, FR-FDK-3); PR #161 slice: full rates handling (FR-RTE-3 filled, FR-RTE-4/5 extended — remaining TBD cells fill in later slices); count corrected to the live total 48 (later slices filled cells without updating this line); PR #153 slice: NFR-RET-1, NFR-AVL-1; PR #182 slice: FR-RES-4, FR-ADM-3, FR-CUS-2, NFR-PERF-1/2 filled (5 guards — count corrected to the live total 53); FR-GST-4, FR-BIL-5, FR-RPT-4 point at follow-ups #189, #190, #191 and fill with those issues; NFR-I18N-1 filled by the #192 slice (count corrected to the live total 54); #189/#190/#191/#192/#201 slices filled FR-GST-4, FR-BIL-5, FR-RPT-4, NFR-I18N-1 (plus the #201 extension) — count corrected to the live total 57 (Closes #214)). Section 10 (Refs #588) adds 10 slice rows mapped to the #588 acceptance and `FR-CKO-1`..`FR-CKO-5`; the MVP row count stands unchanged at 57/57 because the slice adds no MVP capability. Section 11 (Refs #590) adds 15 slice rows mapped to `AC-MANAGE-1..11` and `FR-MGMT-1..12`; the MVP row count stands unchanged at 57/57 for the same reason. Section 12 (Refs #600) adds 10 slice rows mapped to `AC-DSK-19` and `FR-CKP-1`..`FR-CKP-5`; the MVP row count stands unchanged at 57/57 for the same reason. Section 13 (Refs #601) adds 11 slice rows mapped to `AC-CKO-1`, `AC-CKO-2`, and `FR-CKS-1`..`FR-CKS-5`; the MVP row count stands unchanged at 57/57 for the same reason. Section 14 (Refs #646) adds 16 slice rows mapped to `AC-DEP-1`..`AC-DEP-5`, `FR-DEP-1`..`FR-DEP-5`, and the lifecycle `D5`/`D6` notes; the MVP row count stands unchanged at 57/57 for the same reason.
 
 <!-- ao-role: qa-lead -->
 Role: qa-lead · AO session hotel-mgmt-922
