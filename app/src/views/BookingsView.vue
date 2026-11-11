@@ -241,7 +241,7 @@
         </div>
 
         <p
-          v-if="!loading && rows.length === 0 && !listError"
+          v-if="!loading && rows.length === 0 && !listError && appliedFrom !== ''"
           class="bookings-empty"
           data-testid="bookings-empty"
         >
@@ -327,7 +327,7 @@
             </div>
             <div class="bookings-detail-line">
               <dd data-testid="bookings-detail-total">
-                {{ t('desk.book.quote_total', { amount: formatVnd(detail.totalMinor) }, 'Total: {amount}') }}
+                {{ t('desk.book.quote_total', { amount: detailTotalCell(detail) }, 'Total: {amount}') }}
               </dd>
             </div>
             <div
@@ -419,7 +419,8 @@ interface BookingDetail {
   state: string;
   stayId: string | null;
   guestName: string;
-  totalMinor: number;
+  /** Null when the read-back carries no total, so the card never prints `0 đ`. */
+  totalMinor: number | null;
   discountName: string | null;
 }
 
@@ -479,6 +480,12 @@ export default defineComponent({
 
     const firstNight = ref('');
     const lastNight = ref('');
+    // The range the visible list was actually read for (spec section 7):
+    // the empty sentence names what was read, never what the pickers
+    // hold now, so editing a picker or refusing an inverted range cannot
+    // reword a list nobody re-read.
+    const appliedFrom = ref('');
+    const appliedTo = ref('');
     const rows = ref<BookingRow[]>([]);
     const loading = ref(false);
     const listError = ref('');
@@ -531,7 +538,7 @@ export default defineComponent({
     const emptySentence = computed<string>(() =>
       t(
         'desk.bookings.empty',
-        { from: formatDeskDate(firstNight.value), to: formatDeskDate(lastNight.value) },
+        { from: formatDeskDate(appliedFrom.value), to: formatDeskDate(appliedTo.value) },
         'No booking stays between {from} and {to}.',
       ),
     );
@@ -654,6 +661,10 @@ export default defineComponent({
       return assignedRoom(row.state, row.stayId);
     }
 
+    function detailTotalCell(record: BookingDetail): string {
+      return record.totalMinor === null ? cellUnreadable.value : formatVnd(record.totalMinor);
+    }
+
     function detailRoomCell(record: BookingDetail): string {
       return assignedRoom(record.state, record.stayId);
     }
@@ -681,6 +692,10 @@ export default defineComponent({
         return;
       }
       clearSelection();
+      // The sentence renders the range this read answers, never the
+      // pickers' live values (spec section 7).
+      appliedFrom.value = firstNight.value;
+      appliedTo.value = lastNight.value;
       loading.value = true;
       listError.value = '';
       rows.value = [];
@@ -701,6 +716,10 @@ export default defineComponent({
           },
         );
         const entries = [...(calendar.reservations ?? [])]
+          // Defensive only: `contracts/http/QueryCalendar.json` makes
+          // every one of these fields required, so a well-formed answer
+          // never loses an entry here (spec section 5 "never dropped
+          // silently" covers a *failed* row, not a malformed one).
           .filter(
             (entry) =>
               typeof entry.reservationRef === 'string'
@@ -736,6 +755,7 @@ export default defineComponent({
         }
         rows.value = built;
         incompleteCount.value = incomplete;
+        markMissingRoomTypes(built);
       } catch (err) {
         if (isSignedOut(err) || !session.isSignedIn) {
           expireToGate();
@@ -792,6 +812,20 @@ export default defineComponent({
         }
         roomColumnFailed.value = true;
         failedColumns.value = [...failedColumns.value, COL_ROOM];
+      }
+    }
+
+    // A successful type read that lacks a row's id is that column's
+    // failure too (spec section 7): the cell already reads
+    // `cell_unreadable`, and without the notice the screen would show an
+    // unreadable cell with nothing saying which column failed. A failed
+    // read already put its notice first, so never a second one.
+    function markMissingRoomTypes(list: BookingRow[]): void {
+      if (roomTypeFailed.value) {
+        return;
+      }
+      if (list.some((row) => roomTypeNames.value[row.roomTypeId] === undefined)) {
+        failedColumns.value = [...failedColumns.value, COL_ROOM_TYPE];
       }
     }
 
@@ -872,9 +906,11 @@ export default defineComponent({
           state: record.state ?? '',
           stayId: record.stayId ?? null,
           guestName: name === '' ? unknownGuest() : name,
+          // No total in the read-back is not a `0 đ` booking: the card
+          // uses the same unreadable wording as the row cell (G2).
           totalMinor: typeof record.priceBasis?.totalMinor === 'number'
             ? record.priceBasis.totalMinor
-            : 0,
+            : null,
           discountName: record.priceBasis?.discountName ?? null,
         };
       } catch (err) {
@@ -924,6 +960,7 @@ export default defineComponent({
       loading,
       listError,
       rangeError,
+      appliedFrom,
       notices,
       selectedRef,
       detail,
@@ -940,6 +977,7 @@ export default defineComponent({
       roomTypeCell,
       roomCell,
       detailRoomCell,
+      detailTotalCell,
       nightsBetween,
       formatDeskDate,
       formatVnd,

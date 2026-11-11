@@ -113,6 +113,7 @@ interface FakeBackend {
   failRooms: boolean;
   failRowRecords: Set<string>;
   failDetailRecords: Set<string>;
+  omitDetailTotal: Set<string>;
   calendarGate: Gate | null;
   reservationCounts: Record<string, number>;
 }
@@ -155,6 +156,7 @@ function seedBackend(overrides: Partial<FakeBackend> = {}): FakeBackend {
     failRooms: false,
     failRowRecords: new Set<string>(),
     failDetailRecords: new Set<string>(),
+    omitDetailTotal: new Set<string>(),
     calendarGate: null,
     reservationCounts: {},
     ...overrides,
@@ -258,6 +260,15 @@ function installFetch(backend: FakeBackend) {
     if (entry === undefined || record === undefined) {
       return Promise.resolve(jsonResponse({ code: 'NOT_FOUND' }, 404));
     }
+    const priceBasis: Record<string, unknown> = {
+      totalMinor: record.totalMinor,
+      discountName: record.discountName ?? null,
+    };
+    // A detail read-back that carries no total at all (G2): the row read
+    // still carries it, so only the fresh read is affected.
+    if (backend.omitDetailTotal.has(ref) && count > 0) {
+      delete priceBasis['totalMinor'];
+    }
     return Promise.resolve(
       jsonResponse({
         reservationRef: ref,
@@ -267,10 +278,7 @@ function installFetch(backend: FakeBackend) {
         state: entry.state,
         stayId: entry.stayId ?? null,
         guest: { fullName: record.guestFullName },
-        priceBasis: {
-          totalMinor: record.totalMinor,
-          discountName: record.discountName ?? null,
-        },
+        priceBasis,
       }),
     );
   });
@@ -629,6 +637,11 @@ describe('booking register (Refs #648)', () => {
     const read = readRefs(backend);
     expect(read).toHaveLength(50);
     expect(read).not.toContain('REF-0051');
+    // ...and the whole apply is bounded too (G2 of the spec / S2 of the
+    // #689 review): one calendar, one room-type list, the two calls of
+    // the in-house pair, and one read per capped row. The qa-lead row
+    // states 54, so the total is what the case pins.
+    expect(backend.calls).toHaveLength(1 + 1 + 2 + 50);
   });
 
   // BM8 - every state is listed with catalogue wording.
@@ -666,20 +679,34 @@ describe('booking register (Refs #648)', () => {
     expect(wrapper.findAll('.bookings-row-inactive')).toHaveLength(2);
   });
 
-  // BM9 - the empty range.
-  it('renders one plain sentence naming the range and keeps the filter usable', async () => {
+  // BM9 - the empty range names the range the list was read for.
+  it('renders one plain sentence naming the range it read and keeps the filter usable', async () => {
     const backend = seedBackend({ calendar: [] });
     installFetch(backend);
     const wrapper = mountView();
     await waitForLoad(wrapper);
     expect(rows(wrapper)).toHaveLength(0);
-    const empty = wrapper.find('[data-testid="bookings-empty"]').text();
-    expect(empty).toMatch(
+    const empty = () => wrapper.find('[data-testid="bookings-empty"]').text();
+    expect(empty()).toMatch(
       new RegExp(`No booking stays between \\d{2}/\\d{2}/\\d{4} and \\d{2}/\\d{2}/\\d{4}\\.`),
     );
     const before = callsTo(backend, QUERY_CALENDAR).length;
     await applyRange(wrapper, '12/01/2026', '12/02/2026');
     await waitForLoad(wrapper);
+    expect(callsTo(backend, QUERY_CALENDAR)).toHaveLength(before + 1);
+    // The sentence names the range the visible list answers.
+    expect(empty()).toBe('No booking stays between 01/12/2026 and 02/12/2026.');
+    // Editing a picker without applying rewords nothing: there is no read
+    // behind the new dates, so there is no new range to claim (S1).
+    await wrapper.find('[data-testid="bookings-range-from"]').setValue('12/20/2026');
+    expect(empty()).toBe('No booking stays between 01/12/2026 and 02/12/2026.');
+    // A refused inverted apply sends nothing and leaves the sentence on
+    // the range the list was actually read for.
+    await applyRange(wrapper, '12/31/2026', '12/01/2026');
+    expect(wrapper.find('[data-testid="bookings-range-error"]').text()).toBe(
+      'The last night must not be before the first night.',
+    );
+    expect(empty()).toBe('No booking stays between 01/12/2026 and 02/12/2026.');
     expect(callsTo(backend, QUERY_CALENDAR)).toHaveLength(before + 1);
   });
 
@@ -762,6 +789,24 @@ describe('booking register (Refs #648)', () => {
     expect(cellText(wrapper, 'bookings-row-arrival', 0)).toBe(deskDate(day(0)));
   });
 
+  // BM11/G4 - a successful type read that lacks the row's id.
+  it('names the room-type column when the read succeeds without a row type', async () => {
+    // The read works and knows Deluxe only: the Suite row's id is absent,
+    // so that cell is unreadable and the column has to say so (spec
+    // section 7) instead of showing an unexplained `could not read`.
+    const backend = seedBackend({ types: [{ id: DELUXE_TYPE, name: 'Deluxe' }] });
+    installFetch(backend);
+    const wrapper = mountView();
+    await waitForLoad(wrapper);
+    expect(cellText(wrapper, 'bookings-row-room-type', 0)).toBe('could not read');
+    expect(cellText(wrapper, 'bookings-row-room-type', 1)).toBe('Deluxe');
+    expect(wrapper.find('[data-testid="bookings-column-partial"]').text()).toBe(
+      'The Room type column could not be read.',
+    );
+    // The row read itself worked, so this is not the row-count sentence.
+    expect(wrapper.find('[data-testid="bookings-row-partial"]').exists()).toBe(false);
+  });
+
   it.each([
     ['stay list', { failStay: true }],
     ['occupied rooms', { failRooms: true }],
@@ -842,6 +887,23 @@ describe('booking register (Refs #648)', () => {
       expect(wrapper.find('[data-testid="bookings-detail-record"]').exists()).toBe(true);
     });
     expect(wrapper.find('[data-testid="bookings-detail-guest"]').text()).toBe('Linh Tran');
+  });
+
+  // BM12/G2 - a read-back without a total is not a 0 đ booking.
+  it('reads an absent detail total as unreadable instead of 0 đ', async () => {
+    const backend = seedBackend({ omitDetailTotal: new Set(['REF-1001']) });
+    installFetch(backend);
+    const wrapper = mountView();
+    await waitForLoad(wrapper);
+    // The row read carried the total; only the fresh read lacks it.
+    expect(cellText(wrapper, 'bookings-row-total', 0)).toBe('36,000 đ');
+    await wrapper.findAll('[data-testid="bookings-row-open"]')[0]?.trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="bookings-detail-record"]').exists()).toBe(true);
+    });
+    expect(wrapper.find('[data-testid="bookings-detail-total"]').text()).toBe(
+      'Total: could not read',
+    );
   });
 
   // BM15 - catalogue parity for the register's own keys.
