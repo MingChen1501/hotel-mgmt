@@ -136,3 +136,38 @@ script/contract-check.sh
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-249
+
+## 8. Desk-driven assignment and release ordering (Refs #647)
+
+No rooms-side change. The reassignment change uses `AssignRoom` and
+`ReleaseRoom` in the shapes this module already serves, and this section
+records what the desk relies on so the module is not read as
+self-compensating:
+
+- `assignRoom` keeps the atomic conditional write: `occupied` only from
+  `vacant-inspected` with no covering block, one synchronous section, an
+  idempotent receipt, a history row, and a `state-changed` event
+  (`src/store.ts:361-405`; Postgres `src/pgstore.ts` same semantics).
+- `releaseRoom` accepts an explicit `toState` and refuses a room that is
+  not occupied (`src/store.ts:407-436`; Postgres `src/pgstore.ts:499-544`).
+  The desk uses two targets by decision: `vacant-dirty` for a room a
+  committed stay left (check-out, move) and `vacant-inspected` for a
+  room an aborted desk action assigned and nobody used
+  (`docs/architecture/state-machine.md` section 2.1; `FR-REA-1`,
+  `FR-REA-3`).
+- Section 4's "the desk drives multi-step moves rather than the module
+  compensating" is now the normative split: the desk owns the sequence
+  assign, move, release and the compensating release of a target it
+  assigned (LLD [section 23](../lld.md), ownership table 23.1). This
+  module never orchestrates another service and adds no saga, queue, or
+  cross-module rollback.
+- An `AssignRoom` made for an arrival carries the stay id the desk
+  generated for the commit as `stayLink`; if that commit never becomes a
+  stay, the compensating release is the only cure and the room history
+  keeps the pair (`src/store.ts:398-402`, `:428-432`).
+
+Design: `docs/architecture/lld.md` section 23; product UI contract
+`docs/product/desk-ui-design-rollout.md` section 6.17.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-961
