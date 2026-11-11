@@ -439,14 +439,17 @@ PAYMENTS_JSON="$(python3 -c 'import json,sys; print(json.dumps(json.load(sys.std
 # of being hardcoded.
 HOTEL_NAME="$("${COMPOSE[@]}" exec -T db psql -U hotel -d hotel -tAc "SELECT name FROM admin.hotel_profile LIMIT 1;")"
 RESERVATION_STATE="$("${COMPOSE[@]}" exec -T db psql -U hotel -d hotel -tAc "SELECT state FROM reservations.reservations WHERE reference = '$TODAY_REF';")"
+# The booking completed by the close leaves the active arrival set, so
+# the expectation is the live active list, not the booked reference.
+ACTIVE_ARRIVALS="$("${COMPOSE[@]}" exec -T db psql -U hotel -d hotel -tAc "SELECT coalesce(string_agg(reference, ',' ORDER BY reference), '') FROM reservations.reservations WHERE arrival_date = '$TODAY' AND state IN ('confirmed','checked-in');")"
 ROOM_STATE="$("${COMPOSE[@]}" exec -T db psql -U hotel -d hotel -tAc "SELECT state FROM rooms.rooms WHERE number = 'E2E-101';")"
 RATE_PRICES_JSON="$("${COMPOSE[@]}" exec -T db psql -U hotel -d hotel -tAc "SELECT coalesce(json_object_agg(night_date::text, price_minor ORDER BY night_date)::text, '{}') FROM rates.rate_prices WHERE rate_plan_id = (SELECT id FROM rates.rate_plans WHERE name = 'E2E-RACK');")"
-python3 - "$EXPECT_FILE" "$TODAY" "$TODAY_REF" "$STAY_ID" "$FOLIO_ID" "$FOLIO_BALANCE" "$CHARGES_TOTAL" "$PAYMENTS_JSON" "$HOTEL_NAME" "$RESERVATION_STATE" "$ROOM_STATE" "$RATE_PRICES_JSON" <<'PYEOF'
+python3 - "$EXPECT_FILE" "$TODAY" "$TODAY_REF" "$STAY_ID" "$FOLIO_ID" "$FOLIO_BALANCE" "$CHARGES_TOTAL" "$PAYMENTS_JSON" "$HOTEL_NAME" "$RESERVATION_STATE" "$ACTIVE_ARRIVALS" "$ROOM_STATE" "$RATE_PRICES_JSON" <<'PYEOF'
 import json, sys
-_, path, today, ref, stay, folio, balance, charges, payments, hotel, res_state, room_state, prices = sys.argv
+_, path, today, ref, stay, folio, balance, charges, payments, hotel, res_state, arrivals, room_state, prices = sys.argv
 record = {
     "arrivalsDate": today,
-    "arrivalRefs": [ref],
+    "arrivalRefs": [entry for entry in arrivals.split(",") if entry],
     "reservationRef": ref,
     "reservationState": res_state,
     "stayId": stay,
