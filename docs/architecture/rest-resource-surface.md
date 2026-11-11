@@ -25,7 +25,7 @@ Inputs this record builds on:
   plus versioned contracts, unchanged session auth, RFC 9457 problem+json
   error envelope. This surface follows all three decisions without
   restating them, except where an endpoint needs a direct hook.
-- As built today: 61 operations in `contracts/http/*.json` plus LLD-only
+- As built today: 62 operations in `contracts/http/*.json` plus LLD-only
   operations with no contract file yet (section 9 names each one).
 
 ## 0. Surface-wide rules
@@ -90,6 +90,7 @@ Noun: `/v2/reservations`, addressed by `{ref}` (the human
 | `MarkNoShow` | `POST /v2/reservations/{ref}/no-show` | 200, state=no-show | `contracts/http/MarkNoShow.json` | `STATE_ILLEGAL`, `VALIDATION_FAILED`, `NOT_FOUND` | `Idempotency-Key` required. |
 | `GetReservation` | `GET /v2/reservations/{ref}` | 200, full reservation | `contracts/http/GetReservation.json` | `NOT_FOUND`, `VALIDATION_FAILED` | Read slice: GETs first per #368. |
 | `CheckInReservation` | `POST /v2/reservations/{ref}/check-in-link` | 200, state=checked-in with stay link | `contracts/http/CheckInReservation.json` | `NOT_FOUND`, `STATE_ILLEGAL`, `VALIDATION_FAILED` | `Idempotency-Key` required. Stay-side link step; the stay itself is section 2. |
+| `CheckOutReservation` | `POST /v2/reservations/{stayId}/check-out-completion` | 200, state=closed | `contracts/http/CheckOutReservation.json` | `NOT_FOUND`, `STATE_ILLEGAL`, `VALIDATION_FAILED` | Provider-to-provider completion called by Stay after a committed close (#646, `FR-DEP-1`); resolved by the stay link, idempotent on an already closed booking. |
 | `QueryCalendar` | `GET /v2/reservations?dateFrom=&dateTo=[&roomType=]` | 200, reservations per date/type with state | `contracts/http/QueryCalendar.json` | `VALIDATION_FAILED` | Query fields become query params. |
 | `GetDueReservation` (LLD-only, STAY → RES) | — (no public endpoint; served by `GET /v2/reservations/{ref}`) | — | — | — | Explicit non-endpoint: the stay provider reads the same item and applies the due/arrivable check itself. No separate contract file exists; none is added here. |
 
@@ -212,14 +213,14 @@ changes nothing structural.
 
 ## 9. Coverage checklist
 
-All 61 `contracts/http/*.json` files mapped above (8 reservations +
-8 stay + 11 rooms + 7 rates + 6 guests + 9 billing + 4 reporting +
-10 admin = 63 rows counting the two cross-module placements of
+All 62 `contracts/http/*.json` files mapped above (9 reservations +
+8 stay + 10 rooms + 7 rates + 6 guests + 9 billing + 4 reporting +
+10 admin = 64 rows counting the two cross-module placements of
 `ProduceConfirmation`; every file appears at least once):
 
 - Reservations: `CreateReservation`, `ModifyReservation`,
   `CancelReservation`, `MarkNoShow`, `GetReservation`,
-  `CheckInReservation`, `QueryCalendar` → section 1.
+  `CheckInReservation`, `CheckOutReservation`, `QueryCalendar` → section 1.
 - Stay: `CheckIn`, `GetStay`, `QueryStays`, `CheckOut`, `MoveRoom`,
   `RecordActualTimes`, `ListArrivalsDepartures`, `GetStayRef` →
   section 2.

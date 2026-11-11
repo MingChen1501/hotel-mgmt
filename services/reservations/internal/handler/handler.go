@@ -204,6 +204,28 @@ func NewMux(svc *service.Service, st store.Repository) *http.ServeMux {
 		})
 	}))
 
+	mux.HandleFunc("POST /v1/reservations/CheckOutReservation", authed(func(w http.ResponseWriter, body map[string]any, _ string) {
+		stayID, ok := strField(body, "stayId")
+		if !ok {
+			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: messages.Text("error.validation.field_required", map[string]string{"field": "stayId"}), Details: map[string]any{"field": "stayId"}})
+			return
+		}
+		actor, ok := strField(body, "actor")
+		if !ok {
+			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: messages.Text("error.validation.field_required", map[string]string{"field": "actor"}), Details: map[string]any{"field": "actor"}})
+			return
+		}
+		record, oerr := st.CheckOutReservation(stayID, actor)
+		if oerr != nil {
+			writeOpError(w, oerr)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"reservationId": record.ID, "reservationRef": record.Ref,
+			"state": record.State, "stayId": record.StayID,
+		})
+	}))
+
 	mux.HandleFunc("POST /v1/reservations/ModifyReservation", authed(func(w http.ResponseWriter, body map[string]any, bearer string) {
 		ref, ok := strField(body, "reservationRef")
 		if !ok {

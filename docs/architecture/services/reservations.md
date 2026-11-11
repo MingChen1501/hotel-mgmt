@@ -21,7 +21,7 @@ Go `handler / service / store`, wired in `services/reservations/cmd/server/main.
 | Health | `internal/health/` | `GET /healthz` with the module identity |
 | Boot | `cmd/server/main.go` | selects Postgres storage when `DATABASE_URL` is set, mounts health + booking routes |
 
-The routing table (`internal/handler/handler.go`): `CreateReservation` (:121), `GetReservation` (:161), `CheckInReservation` (:184), `ModifyReservation` (:207), `CancelReservation` (:246), `MarkNoShow` (:266), `QueryCalendar` (:285). Read-only `GetReservation`/`QueryCalendar` call the store directly; the four lifecycle writes go through `service.Service` first.
+The routing table (`internal/handler/handler.go`): `CreateReservation` (:121), `GetReservation` (:161), `CheckInReservation` (:184), `CheckOutReservation` (:207), `ModifyReservation` (:229), `CancelReservation` (:268), `MarkNoShow` (:288), `QueryCalendar` (:307). Read-only `GetReservation`/`QueryCalendar` call the store directly; the four booking lifecycle writes go through `service.Service` first, and `CheckOutReservation` — the provider-to-provider completion called by Stay after a committed close (#646, `FR-DEP-1`) — writes through the store's conditional `checked-in -> closed` transition, resolved by the unique stay link.
 
 ## 3. Happy-path flowchart
 
@@ -62,7 +62,7 @@ Edge trace:
 - V: any service/handler validation rejects before the store is touched (`internal/service/service.go:87-119`; handler required-field checks, e.g. `internal/handler/handler.go:162-164`).
 - O: `booked >= SellableUnits` → `CONFLICT` "No sellable unit left" (`internal/store/store.go:221`).
 - K: create/modify/cancel replays return the stored record (`internal/store/store.go:208,343,426`; Create/Modify/Cancel thread the key through `internal/service/service.go:120-130,225-236,258`).
-- S: `CheckIn` requires `confirmed` (:297-311); Modify/Cancel/MarkNoShow on a non-`confirmed` record go through `stateRefusal` → `STATE_ILLEGAL` 422 (`internal/store/store.go:322-329`).
+- S: `CheckIn` requires `confirmed`; Modify/Cancel/MarkNoShow on a non-`confirmed` record go through `stateRefusal` → `STATE_ILLEGAL` 422 (`internal/store/store.go`). `CheckOutReservation` requires `checked-in`, returns the already `closed` booking idempotently, and writes one `state` change row with the actor and time (no event, LLD D5).
 - N: unknown ref → `NOT_FOUND` 404 (`internal/store/store.go:263-268`).
 
 Rollback: there is none to run — every write is a single mutex-guarded step (`internal/store/store.go:205`); a refusal happens before any mutation, so no compensation path exists in code.

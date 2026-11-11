@@ -1201,11 +1201,84 @@ describe('stay view', () => {
     ]);
   });
 
+  // #646 (`FR-DEP-5`, `DR13`): a committed close whose booking
+  // completion could not be recorded reports the split in plain words
+  // and never claims the booking is completed.
+  it('reports a booking completion that could not be recorded without claiming it', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
+    const happy = stubHappyPath(fetchMock);
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/stay/CheckOut') {
+        return Promise.resolve(
+          jsonResponse({
+            stayId: parseBody(init).stayId,
+            invoiceRef: 'INV-1',
+            bookingCompletion: { state: 'not-recorded', reason: 'UPSTREAM_UNAVAILABLE' },
+          }),
+        );
+      }
+      return happy(url, init);
+    });
+
+    await wrapper.find('[data-testid="stay-checkout-stay"]').setValue('s-1');
+    await wrapper.find('[data-testid="stay-review"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkout-status"]').text()).toContain(
+        'balance is zero',
+      );
+    });
+    await confirmCheckout(wrapper);
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-booking-completion"]').exists()).toBe(true);
+    });
+    const split = wrapper.find('[data-testid="stay-booking-completion"]').text();
+    expect(split).toContain('still reads in house');
+    expect(split).not.toContain('UPSTREAM_UNAVAILABLE');
+    expect(wrapper.find('[data-testid="stay-checkout-status"]').text()).toContain(
+      'Checked out for Guest Two',
+    );
+  });
+
+  it('claims no split when the booking completion is recorded', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = await mountSignedIn(fetchMock);
+    const happy = stubHappyPath(fetchMock);
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/stay/CheckOut') {
+        return Promise.resolve(
+          jsonResponse({
+            stayId: parseBody(init).stayId,
+            invoiceRef: 'INV-1',
+            bookingCompletion: { state: 'completed', reservationRef: 'RSV-1' },
+          }),
+        );
+      }
+      return happy(url, init);
+    });
+
+    await wrapper.find('[data-testid="stay-checkout-stay"]').setValue('s-1');
+    await wrapper.find('[data-testid="stay-review"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkout-status"]').text()).toContain(
+        'balance is zero',
+      );
+    });
+    await confirmCheckout(wrapper);
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="stay-checkout-status"]').text()).toContain(
+        'Checked out for Guest Two',
+      );
+    });
+    expect(wrapper.find('[data-testid="stay-booking-completion"]').exists()).toBe(false);
+  });
+
   // #600: the desk check-out posts the stay's room charge before the
   // review shows a balance, so a stay checked in and out through the
   // desk ends with a folio that carries the room it paid for.
-  it('posts the stay room charge on the check-out review and gates the close on it', async () => {
-    const fetchMock = vi.fn();
+  it('posts the stay room charge on the check-out review and gates the close on it', async () => {    const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     const wrapper = await mountSignedIn(fetchMock);
 
