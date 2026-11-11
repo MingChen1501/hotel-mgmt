@@ -131,6 +131,11 @@ payloads are the ones the desk-loop script already uses
 changes an existing booking: a confirmed booking keeps the price it
 was booked at.
 
+A refusal that says the price could not be read is a different case:
+the rate is set and the pricing part of the system did not answer. That
+is section 10.2, and the desk keeps the quote it showed while it
+retries.
+
 ## 7. When to call support (escalation contacts)
 
 Call support the same day when any of these happen:
@@ -150,6 +155,11 @@ Call support the same day when any of these happen:
   time of the last successful sign-in.
 - Anything that looks like wrong money figures (folio, invoice,
   or day-close totals that do not match).
+- A booking or booking change refused because the price could not be
+  read, after one retry also refused (section 10.2) — the pricing part
+  of the system is not answering and the desk cannot book until it does.
+- A booking whose saved total does not match the hotel's rates,
+  including one saved before this release (section 10.3).
 - A guest who checked out still shows as checked in in the booking
   history or the calendar, or their booking still stops the room type
   from being sold (section 8.2).
@@ -417,8 +427,135 @@ The one case the released desk can still leave behind is LLD section
 room aside and finishing the action. The steps above clear it, which is
 why no data backfill or migration is needed.
 
+## 10. Booking refused: the price could not be confirmed
+
+This release checks the price of a stay against the hotel's own rates at
+the moment the booking is saved, and freezes the price it finds. The
+normal case changes nothing on the desk: the Book screen already quotes
+the stay before the clerk confirms, so the saved total is the total the
+clerk saw. Two refusals are new, and both of them save nothing — no
+booking, no room held, no guest charged.
+
+### 10.1 "The rate changed while you were booking"
+
+**What you see.** The clerk confirms a booking and the screen says, in
+those plain words, that the rate changed while you were booking, shows
+the new total, and asks for a second confirmation. Nothing was booked
+yet, and no room is held.
+
+**What to do:**
+
+1. Read the new total to the guest. It is the price in force for those
+   dates, taken from the hotel's rates.
+2. Press the confirm button once more. Only that second confirmation
+   books, and it books at the total the screen shows. Pressing twice by
+   accident still books once.
+3. If the guest does not accept the new total, do nothing further:
+   nothing is booked, nothing is held, and the guest owes nothing.
+4. If the second confirmation shows the same sentence with another new
+   total, or the total keeps moving while the guest waits, stop and
+   call support (section 7). Do not book at an older total.
+5. If the screen instead says the price could not be re-read and
+   nothing was booked — or shows the no-rate-price sentence from
+   section 6 — the desk could not fetch the price after the change.
+   Book nothing further, follow section 10.2 steps 3 to 5 for the guest,
+   and call support (section 7).
+
+The total on the booking, on the printed confirmation, and in the
+booking history is always the total the screen confirmed: the desk never
+books a price it has not shown.
+
+### 10.2 The booking is refused: the price could not be read
+
+**What you see.** The booking is refused with the panel's plain error
+sentence, the screen keeps the quote it was showing, and nothing was
+booked and no room is held. A booking change can be refused the same
+way.
+
+**What to do:**
+
+1. Wait a minute and confirm again. Sending the same booking again is
+   safe: a repeat never books twice, and it costs nothing to retry.
+2. If it keeps refusing, the pricing part of the system (the rates
+   module) is not answering. Do not price the stay from memory, from an
+   old printout, or from a total written on paper: a booking saved at a
+   guessed price is exactly what this release prevents.
+3. If the guest insists on booking now, take the booking on paper and
+   price it once the system answers — the same rule as section 6, step
+   1 — and tell the guest the confirmation follows.
+4. Call support (section 7). While this lasts the desk can look up
+   bookings, cancel, check guests in, and check guests out; it cannot
+   book or change bookings. Do not restart boxes over and over: the
+   restart order in section 3 applies, and support decides whether a
+   restart is the right step.
+5. Write down the exact sentence from the screen, the room type, the
+   dates, and the time, for the support call.
+
+### 10.3 A booking saved before this release looks the wrong price
+
+Bookings saved **before** this release were not checked against the
+rates. They keep the total they were saved with, and this release does
+not rewrite them: there is no automatic correction, no bulk correction,
+and no repair pass at the upgrade.
+
+**What to do:**
+
+1. If a booking's total looks wrong, tell the manager and call support
+   (section 7). Do not edit the booking at the desk and never change a
+   figure in the database.
+2. When staff next change that booking — dates, room type, guest, or
+   discount — the change re-prices it against the rates and the booking
+   history records the new total with who made the change and when.
+3. Record the booking reference, the total found, and the time in the
+   upgrade record, so the correction is traceable.
+
+### 10.4 Support note (technical)
+
+The two refusals are the error envelope's `PRICE_CHANGED` (`409`,
+`details` with `roomTypeId`, `arrivalDate`, `departureDate`,
+`requestedTotalMinor`, `quotedTotalMinor`) and `UPSTREAM_UNAVAILABLE`
+(`503`, `details.upstream: "rates"`, `details.operation: "QuotePrice"`).
+Both are raised before the store step, so nothing is written — no
+reservation row, no availability consumed, no change-history row, no
+idempotency record — and the same `idempotencyKey` may be reused for the
+re-quoted attempt.
+
+`PRICE_CHANGED` is the normal race, not a fault: a rate or discount was
+edited between the desk's quote and the confirm. The fix is the desk
+re-quote, which re-reads the price for the same room type, dates, and
+discount; the clerk confirms the new total. Diagnose it by comparing the
+rate rows for that type and those nights with the totals the refusal
+returned: a quote that disagrees with a live re-quote of the same inputs
+is a fault, and a quote that keeps moving points at an edit loop or a
+second desk session.
+
+`UPSTREAM_UNAVAILABLE` on the booking path means the reservations module
+could not read the rates module: transport failure, the five-second
+timeout, a 5xx, a reply that is not an error envelope, or an unwired
+client. Check the rates module's health through the proxy and the
+pre-flight reachability from
+`docs/devops/deployment.md` section 5; the booking action refuses on
+purpose rather than freezing an unverified price, and reading,
+cancelling, checking in, and checking out do not use this read. A
+definitive rates answer instead keeps its own terms and is not this
+case: `NOT_FOUND` with `reason: "no_rate_price"` or
+`reason: "no_rate_plan"` is the section 6 refusal (rates not set), and
+`VALIDATION_FAILED` naming `discountName` or `ratePlanName` is an
+unknown discount or an ambiguous plan set that the desk resolves, not an
+outage.
+
+No retry worker, no cached total, and no backfill exist by design: a
+total is either read from rates in the booking request or the booking is
+refused. Growth in the `UPSTREAM_UNAVAILABLE` rate is the availability
+signal R8 records (`docs/release/release-notes.md` section 2.3); until a
+monitoring exporter lands it is read from these desk reports, so log
+every occurrence in the support ticket with its time.
+
 <!-- ao-role: release-manager -->
 Role: release-manager · AO session hotel-mgmt-948
 
 <!-- ao-role: release-manager -->
 Role: release-manager · AO session hotel-mgmt-963
+
+<!-- ao-role: release-manager -->
+Role: release-manager · AO session hotel-mgmt-993

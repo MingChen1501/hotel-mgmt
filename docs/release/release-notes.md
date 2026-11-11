@@ -100,7 +100,7 @@ upgraded from an older bundle inherits the stranded bookings described
 in `../operations/runbook.md` section 8.2 — they are handled there,
 never by editing a booking at the desk.
 
-**Rollback pointer.** `rollback.md` [section 5.2](rollback.md): revert
+**Rollback pointer.** `rollback.md` [section 5.3](rollback.md): revert
 the single implementation PR. The revert restores the previous
 behaviour — a close stops completing the booking — and has no data
 effect: the `closed` state and the `stay_id` link already exist, so no
@@ -193,7 +193,7 @@ the desk back, per `../operations/runbook.md` sections 9.3 and 9.4
 (`../devops/deployment.md` section 4 carries the step), and no automatic
 repair or backfill ships with this release.
 
-**Rollback pointer.** `rollback.md` [section 5.1](rollback.md): revert the
+**Rollback pointer.** `rollback.md` [section 5.2](rollback.md): revert the
 single implementation PR. The revert restores the two-panel Stay screen
 and the previous behaviour — check-ins stop compensating and the desk
 stops calling `MoveRoom` — and has no data effect: the three operations,
@@ -231,6 +231,115 @@ repair for rooms stranded before this bundle; and no dedicated move-history
 list, because no read operation exposes the stay's move rows (a follow-up
 issue if the owner wants one).
 
+### 2.3 Server-side reservation price basis (Refs #632)
+
+**Change and trace.** A reservation no longer freezes the price the
+request asserts. On both `CreateReservation` and `ModifyReservation` the
+reservations module now reads `POST {RATES_BASE_URL}/v1/rates/QuotePrice`
+for the effective room type, arrival date, departure date, and named
+discount, with the clerk's session token forwarded and the existing
+five-second timeout, and freezes the quote's `totalMinor` and the
+`discountName` the quote applied; a request that asserts a different
+total — lower, higher, or zero for a priced stay — is refused
+`PRICE_CHANGED` (409) naming both totals, and a Pricing service that
+cannot be read refuses the booking `UPSTREAM_UNAVAILABLE` (503) instead
+of freezing an unverified price, so nothing is written in either refusal
+(`../architecture/lld.md` section 24.2–24.6; as-built defect trace
+`../architecture/services/reservations.md` section 9). The stored
+`priceBasis` keeps its shape, and the #600 check-out room charge keeps
+posting the frozen total — now a verified one. Done-conditions
+`AC-PRC-1`..`AC-PRC-5` (`../product/acceptance-criteria.md` section 17)
+with the desk recovery `AC-DSK-20`; requirements `FR-PRC-1`..`FR-PRC-5`
+(`../requirements/mvp-requirements.md` section 25); decision ADR-0006
+(`../architecture/decisions/adr-0006-server-side-reservation-price-authority.md`,
+proposed — the owner accepts it before the implementation PR merges) and
+D-28 in `../project/decision-log.md`; risk R-12 in
+`../project/risk-register.md`. Risk label: `risk-high`, tier T3. No
+schema, table, column, migration, backfill, event, lifecycle state, or
+stored-shape change (`../architecture/lld.md` section 24.7).
+
+**What staff see.** On the normal path nothing changes: the Book screen
+already quotes the stay before the clerk confirms, so the total the
+booking freezes is the total the clerk saw, and the confirmation, the
+booking history, the calendar, and the printed document keep showing it.
+Two plain refusals are new. When the rates changed between the quote on
+screen and `Confirm`, the screen says the rate changed while you were
+booking, shows the new total, and asks for a second confirmation — only
+that second `Confirm` books, and a double click still books once, so the
+desk never books a total the clerk has not seen; if the guest declines,
+nothing is booked and no room is held, and a re-read that fails says so
+and books nothing. When the pricing part of the system cannot be
+reached, the booking is refused with the existing plain error sentence
+while the screen keeps the quote it showed, and a retry sends the same
+booking. The no-rate-price
+refusal, the sold-out refusal, the booking-rule refusals, check-in,
+check-out, the #600 room charge, the #601 settlement gate, the #646
+departure completion, and the #647 room reassignment behave exactly as
+before. Bookings already stored keep the total they were stored with,
+including totals stored before this bundle: nothing is re-derived,
+backfilled, or rewritten, and a reprice happens only when staff change
+that booking. The desk-facing steps are `../operations/runbook.md`
+section 10.
+
+**Install/upgrade delta.** Nothing beyond the standard upgrade procedure
+(`../devops/deployment.md` sections 4–5): no new bundle-level service
+address, no per-hotel configuration value, no restart-order change, no
+schema migration, no data backfill, and no desk rebuild beyond the
+bundle's own (an older desk build keeps working: `priceBasis` is relaxed,
+not removed, and the new codes only ever appear on a refusal). What does
+change is the dependency: the booking path needs the rates module on
+every create and modify. The reservations module's existing
+`RATES_BASE_URL` (`deploy/compose.yaml:46`, default
+`http://rates:8082`) must be reachable from it, and while rates is
+unreachable the desk can neither book nor modify — reading bookings,
+cancellations, check-in, and check-out keep working. The pre-flight
+(`../devops/deployment.md` section 5) and the health check (section 3
+step 5) now confirm that reachability, and the pre-flight runs before
+every install and upgrade. An installation upgraded from an older bundle
+inherits bookings frozen at a caller-supplied total; they are handled per
+`../operations/runbook.md` section 10.3, never by editing a booking at
+the desk and never by a bulk correction.
+
+**Rollback pointer.** `rollback.md` [section 5.1](rollback.md): revert
+the single implementation PR and redeploy the bundle. No data effect: no
+schema, column, migration, or stored shape changes in either direction,
+bookings already frozen at a quote keep their totals, and no
+configuration value has to be removed because `RATES_BASE_URL` already
+existed. The desk's price-changed branch is inert when the service never
+raises the code, so the former desk-supplied price returns with no data
+migration and no desk rebuild. The revert restores the original finding:
+a caller that bypasses the desk can freeze any total again, and the #600
+room charge posts it.
+
+**Evidence state and follow-ups.** The change is T3 and `risk-high`: it
+needs owner acceptance of ADR-0006 (`proposed -> accepted`) plus the
+`spec-reviewer` `SPEC-GATE PASS` on #632 before the implementation PR
+merges, and the owner merges it personally. The guard registry
+`PA1`–`PA14`, cases `PA-1`..`PA-8`, and the evidence rule `PA-E1` are the
+`qa-lead` handoff (`../testing/price-authority-test-traceability.md`);
+every one of those guards is created by the implementation PR, which also
+rewires the two service pins that today assert the caller-supplied total
+(`services/reservations/internal/service/service_test.go:34-47`,
+`:121-135`) rather than deleting them. Verification at merge: the
+Reservations stack builds, vets, formats, and tests green; the Rates
+stack green as a re-run with no delta; `script/contract-check.sh` green
+over the two new envelope codes and the two version bumps
+(`CreateReservation` `1.1 -> 1.2`, `ModifyReservation` `1.0 -> 1.1`);
+`script/openapi-route-check.sh` green over the mirrored operations;
+`script/catalogue-coverage-check.sh` green over the new refusal sentence
+in both locales; `script/markdown-link-check.sh` green; the desk suite
+and the browser desk loop green with the #588/#600/#601/#646/#647 pins
+unchanged; and the lab records the forged-low and unreadable-Pricing
+before/after pair in `../testing/evidence/632/README.md` (`PA-E1`) with
+the slice row in `../testing/test-report.md`. Deliberately open: no
+backfill or re-derivation for bookings frozen before this bundle
+(`../architecture/lld.md` section 24.9); a rates outage now refuses
+bookings until it clears, mitigated by an availability alert rather than
+a cached total (R8 — the alert is an obligation for
+`../operations/monitoring-alerting.md` when the first exporter lands,
+and until then the desk reports it per `../operations/runbook.md`
+section 7); and the availability decision stays with its own issue.
+
 <!-- ao-role: release-manager -->
 Role: release-manager · AO session hotel-mgmt-948
 
@@ -239,3 +348,6 @@ Role: release-manager · AO session hotel-mgmt-963
 
 <!-- ao-role: release-manager -->
 Role: release-manager · AO session hotel-mgmt-969
+
+<!-- ao-role: release-manager -->
+Role: release-manager · AO session hotel-mgmt-993
