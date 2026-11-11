@@ -173,7 +173,8 @@ restate the list here — link it. Summary for orchestration use only.
   head, so a re-pushed head needs a fresh verdict.
 - Merge gate: a reviewer verdict of **APPROVE** + green CI +
   risk-low/risk-medium => the orchestrator merges autonomously with
-  `script/orchestrator-merge.sh <n>` (squash merge, delete branch) and
+  `script/orchestrator-merge.sh <n>` (squash merge; a native stack
+  member goes through one atomic async request) and
   reports. `risk-high`, `risk-very-high`, or a missing label =>
   explicit owner approval required before merging.
 - Review happens **after the PR is up**, never before.
@@ -209,7 +210,10 @@ restate the list here — link it. Summary for orchestration use only.
   uuid to a terminal status: only `merged` means landed, `enqueued`
   means queued (not merged), and `pending` is never reported as
   merged. A `409` means a request already exists, so the wrapper reuses
-  its uuid instead of submitting a second one. The async API never
+  its uuid instead of submitting a second one. A PUT response with no
+  readable HTTP status is not fatal: with a uuid the wrapper polls
+  that request, and without one it refuses as unverifiable (fail
+  closed). The async API never
   deletes branches: the wrapper deletes the head branch afterwards
   only when no open PR still targets it, and a failed deletion is a
   warning, never a failed merge. `--dry-run` prints the exact request
