@@ -127,5 +127,42 @@ Contract tests: `contract-tests/` holds fixtures per provided/consumed operation
 script/contract-check.sh
 ```
 
+## 8. Planned delta — departure completion (Refs #646)
+
+Not as-built yet: the operation surface stops at the seven routes in
+section 2 (`internal/handler/handler.go:121-300`), the repository
+interface stops at create/get/query/check-in/modify/cancel/no-show
+(`internal/store/store.go:109-117`), and nothing writes the terminal
+`closed` state, which is why a departed booking keeps counting as
+active. This section records the target the implementation PR folds
+into sections 2, 3, 4, 5, and 6 in the same change (maintain-with-code).
+
+- New provider operation `CheckOutReservation` (`POST
+  /v1/reservations/CheckOutReservation`), called by Stay after its close
+  commits: request `{stayId, actor}`, response `{reservationId,
+  reservationRef, state: "closed", stayId}`; resolved by the `stay_id`
+  link set at check-in (`migrations/000002_schema.up.sql:33`), never by
+  guest name or dates. A `checked-in` booking flips to `closed` under a
+  conditional write, with the `reservation_changes` row and
+  `updated_by`/`updated_at` (NFR-AUD-1); an already-`closed` booking
+  returns unchanged (the state is its own exactly-once guard); any other
+  state is `STATE_ILLEGAL`, an unmatched link `NOT_FOUND`.
+- The purpose line's state machine gains the terminal step
+  `checked-in -> closed` on check-out, matching
+  `docs/architecture/state-machine.md` section 1.1; it stays
+  unreachable from every other route (no reopen, no check-out from
+  `confirmed`).
+- No guard rewrite: the create/modify guard already counts only
+  `confirmed` / `checked-in`, so a completed booking releases its unit
+  and its remaining nights on an early departure. No outbox event is
+  added by this change (LLD D5).
+- The section 2 routing table gains the operation row and section 6 gains
+  no new code (the operation reuses `NOT_FOUND`, `STATE_ILLEGAL`, and
+  `VALIDATION_FAILED`); those are the maintain-with-code edits.
+
+Design: `docs/architecture/lld.md` section 22; state diagram
+`docs/architecture/state-machine.md` section 1.1; contract delta LLD
+section 22.5.
+
 <!-- ao-role: architect -->
-Role: architect · AO session hotel-mgmt-249
+Role: architect · AO session hotel-mgmt-946
