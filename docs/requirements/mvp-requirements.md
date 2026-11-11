@@ -37,6 +37,12 @@ when staff enter the dates, room type, guest, and price basis and
 confirm; then the reservation exists with a unique reference, the
 requested dates, room type, guest link, and quoted price, and it
 appears on the reservation calendar.
+Amendment (Refs #632): the quoted price the reservation freezes is the
+total Pricing returns for the effective room type, dates, and discount
+when the booking commits; the price basis a request carries is
+advisory, a total that disagrees with that quote is refused rather than
+stored, and a quote that cannot be read refuses the booking (section
+25, `FR-PRC-1`..`FR-PRC-3`).
 
 FR-RES-2 — Modify reservation. Staff can change the dates, room type,
 or guest of an existing reservation before check-in.
@@ -45,6 +51,11 @@ its dates, room type, or guest and confirm; then the reservation
 reflects the new values, its quoted price is recalculated from the
 rate plan in force, and the change is recorded with who made it and
 when.
+Amendment (Refs #632): the recalculated price is the Pricing quote for
+the effective post-change type, dates, and discount; a request total
+that disagrees, or a quote that cannot be read, refuses the change and
+leaves the reservation as stored, and a price-basis change is recorded
+with the actor and the time (section 25, `FR-PRC-4`).
 
 FR-RES-3 — Cancel reservation with reason. Staff can cancel a
 reservation before check-in and must record a reason.
@@ -212,6 +223,10 @@ Given an applicable rate plan at booking time; when the reservation
 is created; then it records the rate plan used and the nightly
 breakdown, so a later rate change does not alter the quoted price
 unless staff explicitly recalculate it under `FR-RES-2`.
+Amendment (Refs #632): the price the reservation freezes is read from
+Pricing (`QuotePrice`) at the moment the booking or the change
+commits, not asserted by the caller, and a later rate change still does
+not alter it (section 25, `FR-PRC-1`, `FR-PRC-4`).
 
 ### 1.5 Guests and CRM (`FR-GST-*`)
 
@@ -547,7 +562,7 @@ desk actions succeed with no outside connectivity.
 | Charge items | The hotel's own charge items with names and prices (`FR-CUS-3`) | Only defined items can be posted; invoices show the hotel's names |
 | Taxes and fees | The hotel's tax and fee rules (`FR-BIL-5`) | Folio lines derive tax and fee amounts from the hotel's rules |
 | Stay restrictions | Minimum stay and closed-to-arrival days per date range (`FR-RTE-4`) | Violating reservations are refused with the restriction named |
-| Discounts and special rates | Named discounts the manager may apply (`FR-RTE-3`) | Applied discounts are kept by name on the reservation and folio |
+| Discounts and special rates | Named discounts the manager may apply (`FR-RTE-3`) | Applied discounts are kept by name on the reservation and folio, with the quote applying the discount before the total is frozen (`BR-47`) |
 | Cancellation wording | The hotel's cancellation wording shown to guests (`FR-CUS-2`) | Confirmations carry the hotel's wording |
 
 ### 3.2 Fixed in the MVP (not configurable per hotel)
@@ -585,8 +600,8 @@ product scope have no FR and are listed in section 6.
 
 | Product-scope capability | FR id(s) | Test-spec handoff note for `qa-lead` |
 |---|---|---|
-| Create direct reservation | FR-RES-1, FR-RTE-5 | Guard books each room type across a season boundary and checks quoted price and reference |
-| Modify and cancel reservation | FR-RES-2, FR-RES-3 | Guard changes dates/type/guest, checks repricing, then cancels and checks the reason and released availability |
+| Create direct reservation | FR-RES-1, FR-RTE-5 | Guard books each room type across a season boundary and checks quoted price and reference; guard books once with a total that agrees with the Pricing quote and once with a total that disagrees, and checks that the stored total is the quote, that the disagreeing attempt is refused `PRICE_CHANGED` with nothing stored, and that an unreadable Pricing refuses the booking (Refs #632) |
+| Modify and cancel reservation | FR-RES-2, FR-RES-3 | Guard changes dates/type/guest, checks repricing, then cancels and checks the reason and released availability; guard checks the reprice is the Pricing quote with a price-basis change row carrying the actor, a disagreement refused with the reservation unchanged, and an unreadable Pricing refused (Refs #632) |
 | Walk-in booking | FR-RES-4 | Guard creates a same-day booking and checks arrival-state readiness and arrivals-list entry |
 | Reservation calendar | FR-RES-5 | Guard seeds multi-date, multi-type bookings and checks placement and detail drill-down |
 | No-show handling | FR-RES-6 | Guard marks a past-arrival booking no-show and checks state, released room, and history |
@@ -5588,5 +5603,452 @@ backfill exists in either direction.
   state, subsystem, or schema). This section is its FR/NFR part; no
   implementation PR opens until `SPEC-GATE PASS` on #647.
 
+## 25. Server-side reservation price basis (Refs #632)
+
+Requirements delta for the #632 change: the price a reservation freezes
+is whatever the caller sent. `CreateReservation` reads
+`priceBasis.totalMinor` from the request and only checks that it is
+present and non-negative
+(`services/reservations/internal/service/service.go:101-103`), the
+handler reads the same value from the body for Modify
+(`services/reservations/internal/handler/handler.go:130`, `:240-253`),
+the store persists it verbatim
+(`services/reservations/internal/store/store.go:236`) and re-freezes it
+on a change (`:437-441`), and no `QuotePrice` call exists on the
+booking path — the wired rates client runs only `CheckRestrictions`
+(`services/reservations/internal/pricing/client.go:43-87`). A caller
+that never touches the desk can therefore freeze any total, and the
+#600 check-out review posts the room charge from that frozen total
+(`FR-BIL-2`, `BR-45`), so the number a caller invents becomes the money
+the guest is charged.
+
+The substance is not new: `FR-RTE-5` already makes the price basis
+"the rate plan and price it was quoted from", `BR-13` already fixes a
+quoted price against later rate changes, and `FR-RES-1` / `FR-RES-2`
+already require the quoted price at creation and its recalculation at a
+change. What was missing is who computes that number and what happens
+when a request asserts a different one — the requirements never said
+the quote is the Pricing quote, and never refused a disagreeing total.
+Those are wording and enforcement gaps, not new policy.
+
+The scope decision, the binding done-conditions, and the UI contract
+delta are `product-owner` work: `docs/product/acceptance-criteria.md`
+[section 17](../product/acceptance-criteria.md) (`AC-PRC-1`..`AC-PRC-5`
+and the `AC-RES-1` / `AC-RES-2` / `AC-DSK-19` pointers),
+`docs/product/desk-ui-design-rollout.md`
+[section 6.18](../product/desk-ui-design-rollout.md) (the
+price-changed recovery on the Book screen, `AC-DSK-20`), and D-28 in
+`docs/project/decision-log.md`. The architecture half is ADR-0006
+(`docs/architecture/decisions/adr-0006-server-side-reservation-price-authority.md`,
+proposed — the owner accepts it before the implementation PR merges),
+HLD section 18, and LLD section 24. This section words the requirements
+half: the decision (25.1), the explicit no-change statements (25.2),
+the FR delta (25.3), the NFR statement (25.4), the traceability handoff
+with its per-flow diagrams (25.5), and the gate dependencies (25.6).
+No `docs/README.md` row flips: every requirements file this change
+touches is already `active`.
+
+### 25.1 Decision: the frozen total is the quote Pricing returns, never the request's total
+
+As-built validation at this spec head, read-only:
+
+- **The frozen total is whatever the caller sent.** The only checks on
+  it are presence and `>= 0` (`service.go:101-103` on Create,
+  `:181-183` on Modify), the validated value is handed straight to the
+  store (`:127`, `:233`), persisted (`store.go:236`) and re-frozen on a
+  change (`:437-441`) with a `priceBasis` change row. Nothing compares
+  it with a rate.
+- **Nothing on the booking path quotes.** The wired rates client has
+  one operation, `CheckRestrictions`
+  (`internal/pricing/client.go:43-87`), and boot wires only that hook
+  (`cmd/server/main.go:42-47`), so the price is never read from the
+  service that owns prices.
+- **The desk already quotes the way the server would.** The Book
+  screen reads `QuotePrice` with the room type, arrival date,
+  departure date, and the typed discount (`app/src/views/BookView.vue:784-793`)
+  and sends that total back as `priceBasis` (`:926-937`), a pairing its
+  own guard pins (`app/src/views/BookView.test.ts:546-584`), so a
+  server-side recompute over the same inputs reproduces the number the
+  clerk saw on the normal path.
+- **The recompute needs no stored rate plan.** `QuotePrice` resolves
+  the plan when exactly one prices the type, refuses
+  `details.reason: no_rate_plan` when none does
+  (`services/rates/internal/store/store.go:397-401`), refuses
+  `details.reason: no_rate_price` for a night with no price row
+  (`:266-273`), refuses an unknown discount with `VALIDATION_FAILED`
+  naming `discountName` (`:276-280`), and refuses an ambiguous plan set
+  with `VALIDATION_FAILED` naming `ratePlanName` (`:402`) — the same
+  call the desk already makes.
+- **Downstream money reads the frozen total.** The #600 check-out
+  review posts one nightly room charge at `priceBasis.totalMinor`
+  (`FR-BIL-2`, `BR-45`), so this is the number the folio and the
+  printed documents carry: verifying it is what makes the rest of the
+  money path trustworthy.
+
+The decided behaviour, in five parts:
+
+1. **Pricing is the only source of the frozen total.** On Create and
+   on Modify the frozen total and the stored discount name are the
+   ones `QuotePrice` returns for the effective room type, dates, and
+   named discount, read during that same request with the caller's
+   session forwarded. The request's `priceBasis.totalMinor` never sets
+   a stored value; it is compared and nothing more (`FR-PRC-1`,
+   `FR-PRC-4`).
+2. **A disagreement refuses; it is never repaired in place.** A
+   request that asserts a different total — lower, higher, or zero for
+   a priced stay — is refused with `PRICE_CHANGED` (409) naming both
+   totals plus the room type and dates, and nothing is written.
+   Silently storing the server total was rejected: it would charge a
+   guest a price nobody showed them, and `BR-13` keeps a quoted price
+   fixed until staff explicitly recalculate it under `FR-RES-2`, so a
+   refusal makes the reprice visible instead of doing it behind the
+   desk's back (`FR-PRC-2`).
+3. **Unreadable Pricing fails closed; a definitive answer is
+   surfaced.** A transport failure, a timeout, a 5xx, a reply that is
+   not an error envelope, or an unwired client refuses the booking with
+   `UPSTREAM_UNAVAILABLE` (503) naming upstream `rates` and operation
+   `QuotePrice` — the treatment the check-out gate gives an unreadable
+   folio (`FR-CKS-4`). A definitive Rates refusal is surfaced unchanged,
+   so a type that is not open for booking still refuses in the terms
+   the desk's quote step already reports (`FR-PRC-3`).
+4. **Modify reprices identically and keeps the trail.** The change path
+   recomputes from the effective (post-change) type, dates, and
+   discount, refuses a disagreement and an unreadable Pricing the same
+   way, and records a price-basis change with the actor and time when
+   the recomputed total differs from the stored one, as `BR-2` and
+   `NFR-AUD-1` already require (`FR-PRC-4`).
+5. **A booking that already exists is returned, not re-quoted.** A
+   repeated `idempotencyKey` for a stored booking returns it at the
+   total it was stored with — never a second quote and never a
+   `PRICE_CHANGED` refusal for a booking that exists — and the quote
+   sits outside the guarded store step so the exactly-once guards keep
+   their bounds (`FR-PRC-5`).
+
+| Option | Verdict | Reason |
+|---|---|---|
+| Keep trusting the request total (status quo) | rejected | That is the finding: a desk-bypassing caller freezes any total and the #600 room charge posts it. |
+| Replace the request total with the server quote silently | rejected | It would charge the guest a price nobody showed them and hide the `BR-13` reprice; the desk would show one number and the booking carry another. |
+| Re-derive the price at check-out instead of at booking | rejected | The basis would still be asserted at booking, so the confirmation, the calendar, and availability would carry an unverified number until departure, and a correction then re-writes money the guest already saw. |
+| Quote inside the guarded store step | rejected | The guarded step is one held critical section (`internal/store/store.go:206`); a 5-second-bounded network call inside it stalls every booking during a Rates outage. |
+| Compare with the quote and refuse `PRICE_CHANGED`, on Create and Modify, failing closed when Pricing cannot be read | **chosen** | The number is the one the clerk's own quote returned, a disagreement is visible instead of silent, an unverified total is never stored, and no schema, stored field, or operation is added. |
+
+### 25.2 Explicit no-change statements
+
+- The capabilities keep their wording and targets: `FR-RES-1`,
+  `FR-RES-2`, and `FR-RTE-5` gain an amendment pointer to this section
+  and keep their Given/When/Then conditions; what changes is who
+  computes the quoted price and that a disagreeing assertion is
+  refused, not what booking, modification, or the price basis promise.
+- The request keeps carrying a price basis: its shape validation is
+  unchanged, so an absent or negative total still refuses with
+  `VALIDATION_FAILED` naming `priceBasis`; only its meaning changes, to
+  advisory input compared with the quote (`FR-PRC-1`, `FR-PRC-2`).
+  `architect` owns the contract text that records the advisory
+  meaning and the removal window.
+- No new MVP capability or story enters the MVP count: section 4 keeps
+  its 40 mapped capabilities and its coverage line, and only the
+  `Create direct reservation` and `Modify and cancel reservation`
+  handoff notes gain a clause. The behaviour is numbered as
+  slice-scoped requirements (`FR-PRC-*`, section 25.3) on the section
+  10–24 pattern.
+- `business-rules.md` gains exactly one rule, `BR-47`, because the
+  owner of the quoted total is a genuine domain policy `BR-13` does
+  not state. `BR-2` (modification recalculates and records the change)
+  and `BR-13` (a later rate change does not alter a quoted price) stand
+  as written; `BR-45` (the room charge posts the frozen total) stands
+  and now reads a verified number.
+- No stored-shape change: the `priceBasis` a reservation stores keeps
+  its fields — the total and the applied discount name
+  (`store.go:46-61`) — with the quote's values. No table, column,
+  migration, backfill, or event change is specified. `FR-RTE-5` also
+  names the rate plan and the nightly breakdown; those stored fields
+  are **not** widened here (the issue puts a stored-shape change Out),
+  and the gap stays named rather than promised: the recompute uses the
+  room type, dates, and discount the booking already has (`architect`
+  owns the contract delta and records the same limit in LLD section
+  24.7).
+- Availability is not re-decided (a separate issue): no sellable-count
+  or overbooking behaviour changes. The quote never decides a booking
+  or a change on its own — the existing restriction check and guarded
+  write still decide those, in their existing order (`FR-PRC-5`).
+- Charging policy is not re-decided: the #600 room charge keeps posting
+  the stay's frozen quoted total at the same review step, once per stay
+  (`BR-45`); it now posts a total the server verified.
+- The desk keeps its layout: the one reader-visible addition is the
+  price-changed recovery on the Book screen (`AC-DSK-20`), and its
+  layout, states, and copy are `product-owner` work in rollout section
+  6.18. No manual price-override control is added for staff.
+- Money, dates, and numbers keep their decided display shape (sections
+  12 and 14), and print output is unchanged (`FR-BIL-4`,
+  `NFR-DSK-2`): a refused booking writes nothing, so no confirmation,
+  invoice, or receipt changes.
+- Bookings already frozen at a caller-supplied total are not rewritten
+  by this change: they keep that total, and the Modify path reprices
+  the next time staff change the booking. No data repair or backfill is
+  specified; an operational note for installs with such bookings is
+  `release-manager` work.
+- Authorization is not re-decided: the caller's session travels on the
+  readable call and a rejected session surfaces unchanged
+  (`NFR-SEC-2`), and no route, function, or role reach changes
+  (`NFR-SEC-1`, `BR-35`).
+- Cancellation, no-show, check-in, stay, folio, and settlement paths
+  are untouched: `FR-RES-3`, `FR-RES-4`, `FR-RES-6`, `FR-FDK-*`,
+  `FR-BIL-*`, and `FR-CKS-*` keep their wording and behaviour.
+- Catalogue and locales: the service gains one message entry for the
+  price-changed refusal (the desk's copy is rollout section 6.18's),
+  both locales carry the same placeholders, and
+  `script/catalogue-coverage-check.sh` stays green. A refusal is never
+  a raw envelope code (`NFR-I18N-1`).
+- Sections 7 through 24 stand with their wording and targets unchanged,
+  except the three amendment pointers in section 1, the two section 4
+  handoff notes, the section 3.1 behaviour cell, and the amendments in
+  the business rules, data dictionary, integration contract needs,
+  sequence diagrams, and use cases that carry the same obligation.
+
+### 25.3 Behaviour-scoped functional requirements
+
+Ids use the `PRC` (price authority) namespace, continuing the
+slice-scoped pattern of sections 10 through 24 and matching the
+`PRC` domain code the product spec records. They constrain the service
+that writes a reservation, and each maps to an accepted done-condition
+in `AC-PRC-1`..`AC-PRC-5`.
+
+FR-PRC-1 — The total a new reservation freezes is the Pricing quote,
+not the request's total.
+Given a create request with a valid room type, dates, guest, and price
+basis; when the reservation is created; then the service reads
+`QuotePrice` for the effective room type, arrival date, departure
+date, and named discount with the caller's session forwarded, stores
+the returned total and applied discount name as the price basis,
+reports that total as the quoted total, and no request value ever sets
+a stored total: a request whose total equals the quote books at that
+total exactly as today, including a legitimate zero the quote returns
+for a complimentary discount, and the stored value is what the
+reservation read, the calendar, and the check-out room charge read.
+Given the request carries a price basis that is missing or negative;
+then the booking is refused with `VALIDATION_FAILED` naming
+`priceBasis`, as today. Traces to: `AC-PRC-1`; US-RES-1;
+`FR-RES-1`, `FR-RTE-5`; `BR-13`, `BR-47`.
+
+FR-PRC-2 — A request total that disagrees with the quote is refused
+and nothing is booked.
+Given a booking attempt whose `priceBasis.totalMinor` differs from the
+quote for the same room type, dates, and discount — lower, higher, or
+zero for a priced stay; when the caller confirms; then the attempt is
+refused with `PRICE_CHANGED` (409) naming `requestedTotalMinor`,
+`quotedTotalMinor`, the room type, and the dates, and nothing is
+written: no reservation row, no availability consumed, no change
+history entry, no idempotency record, and no event. A disagreeing
+total is never stored, rounded, repaired in place, or satisfied by
+substituting the server total; the refusal is only ever about a total
+that was asserted and disagreed, because an absent total still fails
+shape validation as `VALIDATION_FAILED`. Traces to: `AC-PRC-2`;
+US-RES-1; `FR-RES-1`, `FR-RTE-5`; `BR-13`, `BR-47`.
+
+FR-PRC-3 — An unreadable Pricing refuses the booking; a definitive
+refusal is surfaced unchanged.
+Given the quote cannot be read — a transport failure, a timeout, a
+5xx, a reply that is not an error envelope, or no Pricing client
+configured; then the booking is refused with `UPSTREAM_UNAVAILABLE`
+(503) naming upstream `rates` and operation `QuotePrice`, and nothing
+is stored, booked, or released: no stay is ever frozen at an
+unverified, invented, or assumed-zero total. Given Pricing answers
+definitively that it cannot price the stay; then that refusal is
+surfaced unchanged — `NOT_FOUND` with `details.reason`
+`no_rate_price` (a night has no price row) or `no_rate_plan` (no plan
+prices the type), `VALIDATION_FAILED` naming `discountName` for an
+unknown discount, and `VALIDATION_FAILED` naming `ratePlanName` for an
+ambiguous plan set — the same terms the desk's quote step already
+reports, with nothing stored. Traces to: `AC-PRC-3`; US-RES-1;
+`FR-RTE-1`, `FR-RTE-5`; `BR-13`, `BR-47`, `NFR-AVL-1`.
+
+FR-PRC-4 — Modify reprices from the quote on the same terms and
+records the change.
+Given a reservation that has not been checked in; when staff change
+its dates, room type, guest, or the discount carried by the price
+basis; then the new frozen total and discount name are the
+`QuotePrice` values for the effective (post-change) type, dates, and
+discount, where an omitted field keeps the stored value and an omitted
+or null discount name means the new quote carries none; the request's
+total is compared and never stored. Given that total disagrees; then
+the change is refused with `PRICE_CHANGED` naming both totals and
+nothing changes. Given the quote cannot be read; then the change is
+refused with `UPSTREAM_UNAVAILABLE`, and given Pricing answers
+definitively; then that refusal is surfaced unchanged — in every
+refusal the reservation keeps its stored dates, type, guest, total,
+and discount. Given the recomputed total differs from the stored one;
+then the change history records the price-basis change with the actor
+and the time it was recorded (`BR-2`, `NFR-AUD-1`). A reservation that
+already left the confirmed state still refuses as today. Traces to:
+`AC-PRC-4`; US-RES-2; `FR-RES-2`, `FR-RTE-5`; `BR-2`, `BR-13`,
+`BR-47`, `NFR-AUD-1`.
+
+FR-PRC-5 — A stored booking is returned rather than re-quoted, and
+every refusal writes nothing.
+Given a repeated request carrying the `idempotencyKey` of a booking
+already stored; then that booking is returned at the total it was
+stored with, never a second quote and never a reprice refusal for a
+booking that exists, while the store's own replay check remains the
+exactly-once guard so a concurrent double submit still books once.
+Given the quote runs outside the guarded store step; then the existing
+concurrency and ordering guards keep their bounds: the restriction
+check still runs before it and keeps its `STATE_ILLEGAL` terms, and
+paired simultaneous bookings for the last unit still resolve exactly
+one winner with the loser refused `CONFLICT`. Given a create or a
+change is refused for any reason above; then no row, no consumed
+availability, no change-history entry, no idempotency record, and no
+event is written. Traces to: `AC-PRC-1`, `AC-PRC-5`; US-RES-1,
+US-RES-2; `FR-RES-1`, `FR-RES-2`; `NFR-CON-1`, `NFR-CON-2`.
+
+### 25.4 Non-functional requirements delta: no-change statement
+
+No new NFR is added. The existing NFRs cover the change, with two
+scope clarifications stated here:
+
+- Desk response (`NFR-PERF-1` holds): booking is not one of that
+  requirement's named actions, and the change adds one bounded
+  synchronous read inside the request the operator already made (the
+  existing 5-second client timeout); no read is added on screen entry
+  and nothing polls. The fail-closed path can therefore take up to
+  that timeout before refusing, and the desk shows the refusal in the
+  existing plain sentence; the named 3-second actions (check-in,
+  check-out, charge posting, payment recording) are untouched.
+- Availability on-premise (`NFR-AVL-1` holds, scope clarified): every
+  module in this path is on the same installation, so no outside
+  connectivity is introduced or required, and every other named desk
+  action completes as written. A Rates module that cannot be read
+  refuses the booking rather than freezing an unverified price: the
+  offline-first rule does not extend to a money fact.
+- Concurrency and safety (`NFR-CON-1`, `NFR-CON-2`, `BR-8`, `BR-11`
+  hold): the quote sits outside the guarded store step, the replay
+  pre-read only decides whether Pricing is asked, and the store's own
+  exactly-once check stays, so paired attempts keep exactly one
+  winner.
+- Audit (`NFR-AUD-1`, `BR-2` hold): a refused attempt writes no audit
+  entry, a committed creation or change keeps the acting staff member
+  and the time, and a reprice writes the price-basis change row with
+  both the actor and the recorded time.
+- Internationalisation and catalogue coverage (`NFR-I18N-1`,
+  `NFR-DSK-1` hold): the refusal reaches the desk through the
+  catalogue in both locales with placeholders intact, no refusal
+  renders an envelope code, and the coverage check stays green.
+- Security and roles (`NFR-SEC-1`, `NFR-SEC-2` hold): the caller's
+  session travels on the readable call, a rejected session surfaces
+  unchanged, and no route, function, or role reach is added.
+- Retention and time (`NFR-RET-1`, `NFR-TZ-1`, `BR-43` hold): no stored
+  field, stored shape, or timestamp rule changes; a reservation keeps
+  its price basis and its change history retrievable.
+
+### 25.5 Traceability handoff for `qa-lead`
+
+Each row traces to `AC-PRC-1`..`AC-PRC-5` and to this section's FRs.
+Guards that exist are cited `file:line` against the tree this
+requirement was written on; where no guard exists yet, the row names
+the missing guard explicitly and the implementation PR creates it, for
+`qa-lead` to re-pin at the merged head. The rows marked "stay green"
+must pass untouched.
+
+| Item | Guard (on disk today; a row marked missing is created by the implementation PR) | Handoff note for `qa-lead` |
+|---|---|---|
+| FR-PRC-1 the quote sets the frozen total on create | `services/reservations/internal/service/service_test.go:34-47` (create books the supplied `24000` — the current trust being replaced), `services/reservations/internal/handler/handler_test.go:53` (create body carries `priceBasis`), `app/src/views/BookView.vue:784-793` with `:926-937` and `app/src/views/BookView.test.ts:546-584` (the desk quotes and sends that total back) | Missing guards: a matching request stores the quote's `totalMinor` and `discountName` and reports the same number; the quote's values win when the request carries a discount name the quote applies; a legitimate zero (complimentary discount) is stored at zero; the stored total is what `GetReservation` and the #600 room charge read |
+| FR-PRC-2 a disagreeing total is refused, nothing booked | `services/reservations/internal/service/service_test.go:137-149` (the missing-total branch is the only price guard today: `VALIDATION_FAILED` naming `priceBasis`) | Missing guards: forged low (request `0`, quote `6000`) → 409 `PRICE_CHANGED` with `requestedTotalMinor: 0`, `quotedTotalMinor: 6000`, type, and dates, no row, no availability consumed, no event, no change row, no idempotency record; forged high (request above the quote) → the same 409; an absent total still → 400 `VALIDATION_FAILED` (the 409 is only for an asserted disagreement) |
+| FR-PRC-3 unreadable Pricing fails closed; definitive surfaced | `services/reservations/internal/pricing/client.go:43-87` (the refusal-unchanged / fail-closed shape the new `QuotePrice` call must copy), `services/reservations/internal/pricing/client_test.go:61-72` (unreachable Rates → 503 for `CheckRestrictions`), `services/reservations/internal/service/service_test.go:80-90` (nil hook → 503, nothing stored), `services/reservations/internal/handler/handler_restrictions_test.go:65-82` (end-to-end 503 when Rates is down) | Missing guards for the quote itself: transport failure, timeout, 5xx, non-envelope reply, and unwired client each → 503 `UPSTREAM_UNAVAILABLE` naming `rates`/`QuotePrice`, nothing stored; `NOT_FOUND` with `reason: no_rate_price`, `NOT_FOUND` with `reason: no_rate_plan`, `VALIDATION_FAILED` for an unknown `discountName`, and `VALIDATION_FAILED` naming `ratePlanName` for an ambiguous plan set each pass through unchanged and store nothing |
+| FR-PRC-4 Modify reprices and records the change | `services/reservations/internal/store/store_test.go:108-148` (the `FR-RES-2` guard: a `priceBasis` change row with actor and timestamp), `services/reservations/internal/service/service_test.go:121-135` (modify stores the supplied `26000` — the hole), `:166-185` (modify with an unwired hook → 503 and the stored dates kept), `services/reservations/internal/handler/handler_test.go:160` (modify body carries `priceBasis`) | Missing guards: a date/type change stores the new quote total and the quote's discount name and writes one `priceBasis` change row with the actor; a forged total on the same change → 409 with the stored row untouched; an unreadable Pricing → 503 with the stored row untouched; each definitive refusal surfaced unchanged with the row untouched; an omitted discount name means no discount on the new quote |
+| FR-PRC-5 replay returns the stored booking and refusals write nothing | `services/reservations/internal/store/store_test.go:87-103` (idempotent replay returns the original reference), `:32-71` (paired booking exactly one winner), `services/reservations/internal/service/service_test.go:92-107` (last unit → `CONFLICT`), `:62-78` (restriction refusal stores nothing) | Missing guard: a replay of a stored `idempotencyKey` returns the booking at its stored total and the quote hook is never called again; a refused create writes no row, no availability, no change row, no event; the restriction refusal keeps its place and `STATE_ILLEGAL` terms |
+| Desk and downstream pins stay green | `app/src/views/BookView.test.ts:546-584` (quote then send the quoted total), the #600 room-charge guards, and the `AC-RES-1`, `AC-RES-2`, `AC-DSK-13`, `AC-DSK-19`, `AC-CKO-1`/`AC-CKO-2` pins | These must pass without a desk edit on the service half; the price-changed recovery is `AC-DSK-20` and ships with the desk half |
+
+Per-flow implementation diagrams (T3). These are the requirements-side
+views; the service-side shapes and the authoritative architecture
+diagrams are LLD sections 24.3–24.6.
+
+Create (happy path and refusal/failure path):
+
+```mermaid
+flowchart TD
+    A[CreateReservation: roomTypeId, dates, guest, priceBasis  handler.go:130] --> B[Validate fields, dates, price shape  service.go:101]
+    B -- priceBasis absent or negative --> V[400 VALIDATION_FAILED naming priceBasis  service.go:101-103; FR-PRC-1]
+    B --> C[CheckRestrictions with the effective values  service.go:108-114]
+    C -- restriction refusal --> S[STATE_ILLEGAL, restriction named  FR-RTE-4]
+    C -- unreadable rates --> U0[503 UPSTREAM_UNAVAILABLE naming rates/CheckRestrictions]
+    C -- passes --> D{Stored booking for the idempotencyKey}
+    D -- yes --> R[Return the stored booking at its stored total, no quote  FR-PRC-5]
+    D -- no --> E[Read QuotePrice for type, dates, discount with the caller token  FR-PRC-1]
+    E -- transport, timeout, 5xx, non-envelope, unwired --> U[503 UPSTREAM_UNAVAILABLE details rates/QuotePrice; store nothing  FR-PRC-3]
+    E -- NOT_FOUND no_rate_price/no_rate_plan, VALIDATION_FAILED --> P[Surface the Rates refusal unchanged; store nothing  FR-PRC-3]
+    E -- quote ok --> F{requestedTotalMinor equals the quoted total}
+    F -- no --> K[409 PRICE_CHANGED with both totals, type, dates; store nothing  FR-PRC-2]
+    F -- yes --> G[Guarded store write: totalMinor and discountName from the quote  store.go:236; FR-PRC-1]
+    G -- overbooking guard loses --> W[409 CONFLICT, room type and dates  NFR-CON-1]
+    G -- stored --> H[200 confirmed with the quoted total  FR-PRC-1]
+```
+
+Modify (happy path and refusal/failure path):
+
+```mermaid
+flowchart TD
+    A[ModifyReservation: ref, changed dates/type/guest, priceBasis  handler.go:240] --> B[Validate and resolve the effective type, dates, discount  service.go:181-222]
+    B -- priceBasis absent or negative --> V[400 VALIDATION_FAILED naming priceBasis  FR-PRC-4]
+    B --> C[CheckRestrictions with the effective values  service.go:207-222]
+    C -- refusal --> S[STATE_ILLEGAL, restriction named; nothing changes]
+    C -- unreadable rates --> U0[503, reservation unchanged]
+    C -- passes --> D[Read QuotePrice for the effective type, dates, discount  FR-PRC-4]
+    D -- unreadable --> U[503 UPSTREAM_UNAVAILABLE rates/QuotePrice; stored row untouched  FR-PRC-4]
+    D -- definitive --> P[Surface the Rates refusal unchanged; stored row untouched  FR-PRC-4]
+    D -- quote ok --> F{requestedTotalMinor equals the quote}
+    F -- no --> K[409 PRICE_CHANGED; stored dates, type, guest, total, discount kept  FR-PRC-4]
+    F -- yes --> G[Guarded modify: new values plus the quote total and discount  store.go:437-441]
+    G --> H{recomputed total differs from the stored total}
+    H -- yes --> I[One priceBasis change row with actor and time  NFR-AUD-1; FR-PRC-4]
+    H -- no --> J[The change history keeps the other changed fields]
+    I --> X[200 modified with the recalculated total  FR-PRC-4]
+    J --> X
+```
+
+Failure/rollback path: every refusal above writes nothing — no
+reservation row, no consumed availability, no change-history entry, no
+idempotency record, and no event — so a refused create or change
+leaves the calendar, the availability counts, and the #600 room charge
+exactly as they were; a refused change keeps the reservation's stored
+dates, type, guest, total, and discount. The whole change reverts with
+the single implementation PR: Reservations stops calling `QuotePrice`
+and freezes the desk-supplied total again, the desk's `PRICE_CHANGED`
+recovery is inert when the service never raises it, and no data
+migration exists in either direction: no stored shape changes, so
+nothing needs converting.
+
+### 25.6 Explicitly not specified here (plus gate dependencies)
+
+- Implementation — the `QuotePrice` client operation, the replay
+  pre-read, the comparison and fail-closed branch, the contract edits,
+  the service message entry, and the guard suite listed above — is the
+  downstream `dev` PR for #632, not this section.
+- The technical shape is the `architect` handoff: ADR-0006 (status
+  `proposed`; only the owner flips it to `accepted`), HLD section 18,
+  LLD section 24 with the contract delta, the error registration
+  (`PRICE_CHANGED` 409, `UPSTREAM_UNAVAILABLE` 503), and the per-flow
+  diagrams. A shape that removes, renames, or retypes a field, or that
+  changes the stored `priceBasis` shape, re-tiers the change and moves
+  its rollback note into the implementation PR.
+- Acceptance criteria, the tier record, and the UI contract and copy
+  table are `product-owner` work (acceptance-criteria section 17,
+  rollout section 6.18, D-28, R-12); the guard mapping above is
+  `qa-lead` work (re-pin at the merged head); the release note,
+  rollback note, and the operational note for installs holding
+  bookings frozen at caller-supplied totals are `release-manager`
+  work.
+- Out of scope: the availability decision (a separate issue); a change
+  to the stored `priceBasis` shape, including the rate-plan reference
+  and nightly breakdown `FR-RTE-5` names; the desk-side composition in
+  #618; a manual price override for staff; re-deriving, backfilling, or
+  repairing bookings already stored at a caller-supplied total; a
+  second Pricing call on the read or calendar paths; and any change to
+  the #588/#600/#601/#646/#647 check-out, charge, settlement,
+  departure, or reassignment behaviour.
+- The specified change is tier T3 (a new synchronous cross-module read
+  on the money path, with Pricing becoming the authority for a stored
+  money fact; the contract change is additive only). This section is
+  its FR/NFR part; no implementation PR opens until `SPEC-GATE PASS`
+  on #632 and the owner's ADR-0006 acceptance.
+
 <!-- ao-role: business-analyst -->
-Role: business-analyst · AO session hotel-mgmt-966
+Role: business-analyst · AO session hotel-mgmt-991

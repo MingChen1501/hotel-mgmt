@@ -50,6 +50,7 @@ front-desk staff, manager, or owner account acting within its access
 | BR-14 | New reservations quote the nightly price the manager saved for that room type, season, and day. | FR-RTE-1; US-RTE-1 |
 | BR-15 | A named discount or special price applied by the manager is kept by name on the reservation, and folio charges follow the adjusted price. | FR-RTE-3; US-RTE-3 |
 | BR-44 | A nightly price covers exactly one night. A room type is open for booking on a night only when a price exists for that room type, rate plan, and night; a missing night is never priced by inference from a neighbouring night, a plan or season default, or zero, and the desk states the type as not open for booking for that date until a manager sets the night's price. | FR-RTE-1; FR-RTE-5; FR-RES-1; US-RTE-1; `AC-MANAGE-9`; #589 |
+| BR-47 | The total and applied discount name a reservation freezes are the ones Pricing quotes for its effective room type, dates, and named discount when the booking is created or changed — never a total the caller supplies. A request's price basis is advisory input: a total that disagrees with that quote is refused and nothing is stored or repaired in place, and a quote that cannot be read refuses the booking rather than freezing an unverified total. A later rate change still does not alter a frozen total except by an explicit recalculation under `BR-2`/`BR-13`. | FR-RES-1; FR-RES-2; FR-RTE-5; FR-PRC-1..FR-PRC-5; `AC-PRC-1`..`AC-PRC-5`; #632 |
 
 ## 4. Check-in, stay, and check-out
 
@@ -124,7 +125,7 @@ section 3.3). Fixed items no hotel may change in the MVP.
 | Taxes and fees | The hotel's tax and fee rules (`BR-25`) | — |
 | Stay restrictions | Minimum stay and closed-to-arrival days per date range (`BR-10`) | Violating reservations refused with the restriction named |
 | Discounts | Named discounts the manager may apply (`BR-15`) | Applied discounts kept by name |
-| Rate plans | Sellable prices per room type, season, day (`BR-14`) | Quoted price basis unchanged unless recalculated (`BR-13`) |
+| Rate plans | Sellable prices per room type, season, day (`BR-14`) | Quoted price basis unchanged unless recalculated (`BR-13`); the frozen total is the quote Pricing returns for the type, dates, and discount (`BR-47`) |
 | Out-of-order blocks | Reason and date range per block (`BR-29`) | Blocked dates take no reservation or check-in |
 | Payment methods | — (none) | Cash and card only (`BR-23`) |
 | Folio structure | — (none) | One folio per stay; no split across payers (`BR-21`) |
@@ -166,14 +167,19 @@ behaviour beyond those sources, and BR-46 states where the check-out
 gate's facts come from — the folio stored balance and the approval
 recorded against it, never a request's claim — tracing `FR-BIL-7`,
 `FR-FDK-2`, `FR-CKS-1`..`FR-CKS-5`, and `AC-CKO-1`/`AC-CKO-2`
-without adding behaviour beyond those sources.
+without adding behaviour beyond those sources, and BR-47 states where
+the frozen price basis comes from — the Pricing quote for the
+effective room type, dates, and discount, never the request's total —
+tracing `FR-RES-1`, `FR-RES-2`, `FR-RTE-5`, `FR-PRC-1`..`FR-PRC-5`,
+and `AC-PRC-1`..`AC-PRC-5` without adding behaviour beyond those
+sources.
 Policies with no decided source appear as open questions
 OQ-1..OQ-5. No rule introduces behaviour beyond the traced
 FRs/NFRs/stories. Later capabilities from requirements section 6
 (waitlist, split folios, integrated payments, automated workflow
 rules, multi-property operation, and the rest) carry no rule here.
 
-Counts: 46 business rules, 5 open questions.
+Counts: 47 business rules, 5 open questions.
 
 <!-- ao-role: business-analyst -->
-Role: business-analyst · AO session hotel-mgmt-921
+Role: business-analyst · AO session hotel-mgmt-991
