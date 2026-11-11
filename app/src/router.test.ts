@@ -6,6 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import { createAppRouter } from './router';
 import AdminView from './views/AdminView.vue';
+import BookingsView from './views/BookingsView.vue';
 import BookView from './views/BookView.vue';
 import DeskView from './views/DeskView.vue';
 import FolioView from './views/FolioView.vue';
@@ -17,15 +18,17 @@ import RoomsView from './views/RoomsView.vue';
 import StayView from './views/StayView.vue';
 
 describe('migration shell router', () => {
-  it('holds the desk, book, stay, onboarding, rooms, manage, folio, print, and admin routes plus the placeholder catch-all', () => {
+  it('holds the desk, book, bookings, stay, onboarding, rooms, manage, folio, print, and admin routes plus the placeholder catch-all', () => {
     const router = createAppRouter();
     const routes = router.getRoutes();
     // Refs #590: the tenth route is the rooms and rates management
-    // screen; no existing route is removed or renamed.
-    expect(routes).toHaveLength(10);
+    // screen; Refs #648: the eleventh is the read-only booking
+    // register. No existing route is removed or renamed.
+    expect(routes).toHaveLength(11);
     expect(routes.map((route) => route.name).sort()).toEqual([
       'admin',
       'book',
+      'bookings',
       'desk',
       'folio',
       'manage',
@@ -51,6 +54,16 @@ describe('migration shell router', () => {
     expect(resolved.name).toBe('book');
     expect(resolved.matched).toHaveLength(1);
     expect(resolved.matched[0]?.components?.default).toBe(BookView);
+  });
+
+  // Refs #648: the read-only booking register sits at /bookings and
+  // renders the list-and-detail screen over the existing reads.
+  it('renders the booking register for /bookings', async () => {
+    const router = createAppRouter();
+    const resolved = router.resolve('/bookings');
+    expect(resolved.name).toBe('bookings');
+    expect(resolved.matched).toHaveLength(1);
+    expect(resolved.matched[0]?.components?.default).toBe(BookingsView);
   });
 
   it('renders the stay screen for /stay', async () => {
@@ -164,12 +177,14 @@ describe('per-route document titles', () => {
     admin: { key: 'desk.shell.doc_title_admin', fallback: 'Admin board' },
     // Refs #590: the management screen carries its own title too.
     manage: { key: 'desk.shell.doc_title_manage', fallback: 'Rooms and rates' },
+    // Refs #648: the read-only booking register carries its own title.
+    bookings: { key: 'desk.shell.doc_title_bookings', fallback: 'Bookings' },
   };
 
-  it('carries the design-board title meta on the design screens plus manage', () => {
+  it('carries the design-board title meta on the design screens plus manage and bookings', () => {
     const router = createAppRouter();
     const routes = router.getRoutes();
-    expect(Object.keys(expected)).toHaveLength(8);
+    expect(Object.keys(expected)).toHaveLength(9);
     for (const [name, title] of Object.entries(expected)) {
       const route = routes.find((candidate) => candidate.name === name);
       expect(route, `route ${name} is registered`).toBeDefined();
@@ -207,6 +222,8 @@ describe('per-route document titles', () => {
       folio: 'Hoá đơn',
       admin: 'Quản trị',
       manage: 'Phòng và giá',
+      // Refs #648: the app-only booking register's own title.
+      bookings: 'Sổ đặt phòng',
     };
     for (const [name, title] of Object.entries(expected)) {
       expect(en.messages[title.key], `en ${title.key}`).toBe(title.fallback);

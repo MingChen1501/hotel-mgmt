@@ -23,10 +23,11 @@ import { deskTokens } from './theme/tokens';
 import appSource from './App.vue?raw';
 
 // Refs #590: the app-only `manage` tab sits immediately after
-// `Rooms` (owner decision O-1); the seven design tabs keep their
-// order around it.
-const EN_NAV = ['Desk', 'Rooms', 'Manage', 'Book', 'Stay', 'Folio', 'Print', 'Admin'];
-const VI_NAV = ['Lễ tân', 'Sơ đồ phòng', 'Quản lý', 'Đặt phòng', 'Lưu trú', 'Hoá đơn', 'In', 'Quản trị'];
+// `Rooms` (owner decision O-1); Refs #648: the app-only `bookings`
+// tab sits immediately after `Book`. The seven design tabs keep
+// their order around them.
+const EN_NAV = ['Desk', 'Rooms', 'Manage', 'Book', 'Bookings', 'Stay', 'Folio', 'Print', 'Admin'];
+const VI_NAV = ['Lễ tân', 'Sơ đồ phòng', 'Quản lý', 'Đặt phòng', 'Sổ đặt phòng', 'Lưu trú', 'Hoá đơn', 'In', 'Quản trị'];
 
 // First rule body for a selector inside the shell stylesheet.
 function ruleBody(selector: string): string {
