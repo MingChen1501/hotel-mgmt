@@ -111,6 +111,7 @@ PR extends these in place, with a `#646` note, and never deletes one.
 | `services/stay/src/pgstore.ts:161-217` (`PostgresStayStore.checkOut`) | The same order inside one transaction: gate, replay claim, conditional flip, one outbox row, commit | Same insertion point after commit; `DR11` keeps the two stores in parity |
 | `services/stay/src/server.ts:110-112` | The transport only checks the bearer is present; it is not threaded to the store | The caller token is threaded the way `services/reservations/internal/handler/handler.go:207`, `:235` threads it; `DR7` asserts the forwarded token |
 | `services/stay/src/server.test.ts:128-238` (HTTP check-out block) | Settled close, open-balance refusal, approved close, replay, paired simultaneous closes | Extended: the completion call and the split outcomes; new cases `DR7`–`DR9` |
+| `services/stay/src/reservationsClient.ts` (new) | The completion client: non-200 envelope code becomes the observed reason, an unreadable body or 5xx without a code becomes `UPSTREAM_UNAVAILABLE`, an aborted call or the bounded wait becomes `UPSTREAM_UNAVAILABLE`, a `200` without `reservationRef` becomes `UPSTREAM_UNAVAILABLE` | The client half of `DR8` lands in `services/stay/src/reservationsClient.test.ts` |
 | `services/stay/src/server.test.ts:378-459` (Postgres block, check-out at `:406-459`) | The Postgres close: open-balance refusal, close with an approval, replay, second close `STATE_ILLEGAL` | Extended for the completion call and the split; `DR11` |
 | `services/rooms/src/store.ts:35-39`, `:407-436` (`releaseRoom`) | `occupied -> vacant-dirty` on release; the transition map admits dirty -> clean -> inspected | Unchanged; `DR12` chains the desk path over it |
 | `services/rooms/src/server.test.ts:271-301` | Dirty straight to inspected is refused `STATE_ILLEGAL`; dirty -> clean -> inspected succeeds | Unchanged; the per-step half of `DR12` |
@@ -136,7 +137,9 @@ the implementation PR: `DR1`–`DR6` and `DR10`–`DR11` in
 `internal/handler/handler_test.go`, Postgres parity
 `internal/store/postgres_test.go`), `DR7`–`DR9` and `DR11` in
 `services/stay/src/server.test.ts` (memory store) plus its Postgres
-parity block, and `DR12`–`DR13` in `app/src/views/StayView.test.ts`
+parity block, with the client mapping of `DR8` in
+`services/stay/src/reservationsClient.test.ts`, and `DR12`–`DR13` in
+`app/src/views/StayView.test.ts`
 with `app/src/views/desk-edge-guards.test.ts`. A guard is not
 complete on a status code alone: `DR3` and `DR8` also assert the
 booking's state is unchanged, that no `reservation_changes` row was
@@ -152,7 +155,7 @@ room state changed.
 | `DR5` | Negative control: a `checked-in` booking overlapping the same request still consumes the unit and is refused `409 CONFLICT` with no availability. This is the pair that proves the fix is the booking's state and not a wider availability rule | same file as `DR4` |
 | `DR6` | Early departure: booking A records departure tomorrow, booking B for the same type arrives today, and A's close completes — B's booking is no longer refused from that moment; A's dates and B's booking are unchanged and no date is rewritten | same file as `DR4` |
 | `DR7` | Completion is called: a committed close posts `{stayId, actor}` to `CheckOutReservation` with the caller's bearer forwarded on a stubbed client, the reply carries `bookingCompletion.state = "completed"` and a `reservationRef`, and the `checked-out` event is written exactly once | `services/stay/src/server.test.ts` (memory store) |
-| `DR8` | Split is reported: for each failure mode (transport error, timeout, 5xx, unwired client, provider `NOT_FOUND`, provider `STATE_ILLEGAL`) the close still answers `200` with `state: "closed"` and `bookingCompletion.state = "not-recorded"` plus the observed reason, the stay is closed, exactly one `checked-out` event exists, and no desk refusal code is invented. A gate refusal (open balance, settlement, folio mismatch, already closed) sends no completion call at all | same file as `DR7` |
+| `DR8` | Split is reported: for each failure mode (transport error, timeout, 5xx, unwired client, provider `NOT_FOUND`, provider `STATE_ILLEGAL`) the close still answers `200` with `state: "closed"` and `bookingCompletion.state = "not-recorded"` plus the observed reason, the stay is closed, exactly one `checked-out` event exists, and no desk refusal code is invented. A gate refusal (open balance, settlement, folio mismatch, already closed) sends no completion call at all | `services/stay/src/server.test.ts` (store half, same file as `DR7`) and `services/stay/src/reservationsClient.test.ts` (client mapping: envelope code, unreadable 5xx, abort, bounded wait, `200` without `reservationRef`) |
 | `DR9` | Stay replay repairs: a replayed `idempotencyKey` returns the stored close and re-attempts the idempotent completion, so a booking that was split is completed on the replay and transitions once; a replay after a successful completion writes nothing new | same file as `DR7` |
 | `DR10` | Terminal reads and refusals: the calendar row for the completed booking carries `closed` and stays inside the queried window (history keeps the past stay); `GetReservation` returns `closed`; check-in, modify, cancel, and no-show on a completed booking are each refused with the module's existing state refusal and write nothing; the handler surface exposes no reopen operation | `services/reservations/internal/handler/handler_test.go` and `internal/store/store_test.go` |
 | `DR11` | Postgres parity: the completion's conditional write plus the availability pair (`DR4`/`DR5`) run over `Postgres` with the same assertions and the same change row; the Stay close's completion call and split outcomes run over `PostgresStayStore` through the transaction path | `services/reservations/internal/store/postgres_test.go` and the Postgres block of `services/stay/src/server.test.ts` |
@@ -195,7 +198,7 @@ when the guard passes.
 | Level | What runs | Command (authoritative: LLD [section 22.6](../architecture/lld.md)) |
 |---|---|---|
 | L1 service, Reservations | `DR1`–`DR6`, `DR10`, and the Postgres parity half of `DR11` | `cd services/reservations && go build ./... && go vet ./... && go test ./... && test -z "$(gofmt -l .)"` |
-| L1 service, Stay | `DR7`–`DR9` and the Postgres half of `DR11`, plus the existing check-out block | `cd services/stay && npm ci && npm run build && npm run lint && npm test` |
+| L1 service, Stay | `DR7`–`DR9` and the Postgres half of `DR11`, plus the existing check-out block; the `DR8` client mapping runs in `src/reservationsClient.test.ts` under the same command | `cd services/stay && npm ci && npm run build && npm run lint && npm test` |
 | LC contract | The new provider fixture and the additive `CheckOut` field | `script/contract-check.sh`, `script/openapi-route-check.sh` |
 | Desk regression (unit) | `DR12`, `DR13`, and the #588/#600/#601 pins unchanged | `cd app && npm ci && npm run build && npm test` (CI `app-build`) |
 | Desk regression (browser) | `app/e2e/stay.spec.ts` on the served SPA | CI `browser-e2e` |
