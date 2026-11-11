@@ -158,7 +158,7 @@ Interfaces (provider: `StayService`):
 | `GetStay` | stayId or reservationId | stay record | `NOT_FOUND`, `VALIDATION_FAILED` (neither identifier) |
 | `QueryStays` | state? | stays, each exactly once | `VALIDATION_FAILED` (unknown state) |
 | `CheckOut` | stayId, folioId, actor, idempotencyKey; `folioBalanceMinor` / `openBalanceApproval` accepted as advisory and ignored (Refs #601) | stay closed, invoiceRef, `bookingCompletion` (completed / not-recorded, Refs #646) | `SETTLEMENT_REQUIRED` (open balance, no provenanced approval), `CONFLICT` (presented folio is not the stay's), `UPSTREAM_UNAVAILABLE` (Billing unreadable), `STATE_ILLEGAL` (not in house) |
-| `MoveRoom` | stayId, newRoomNumber | stayId, move history entry | `CONFLICT` / `STATE_ILLEGAL` as in check-in |
+| `MoveRoom` | stayId, toRoomId, actor, idempotencyKey (Refs #647: the request shape the contract carries) | stayId, roomId, state=in-house, move (fromRoomId, toRoomId, movedAt) | `STATE_ILLEGAL` (not in house), `NOT_FOUND` (unknown stay), `VALIDATION_FAILED` (the guest is already in that room), `CONFLICT` (target room just taken — raised by `AssignRoom` before the move) |
 | `RecordActualTimes` | stayId, actualArrival?, actualDeparture? | stayId, kept times | `VALIDATION_FAILED` (implausible values per hotel times) |
 | `ListArrivalsDepartures` | businessDate | arrivals, in-house, departures, each exactly once | — |
 | `GetStayRef` | stayId (BIL -> STAY) | stay link: guest, room, in-house state | `NOT_FOUND`, `STATE_ILLEGAL` (closed) |
@@ -166,9 +166,12 @@ Interfaces (provider: `StayService`):
 Outbound calls (consumer): `ReservationService.GetDueReservation`;
 `ReservationService.CheckOutReservation` (from #646 on, after the close
 commits — LLD [section 22](#22-departure-completes-the-booking-and-releases-availability-refs-646));
-`RoomInventoryService.FindReadyRoom`, `AssignRoom`, `ReleaseRoom`,
-`RecordActualTimes`(room side release on move/check-out);
-`GuestService.GetGuest`; `BillingService.GetFolioBalance` — the last
+`RoomInventoryService.FindReadyRoom`; the desk, not this service, calls
+`RoomInventoryService.AssignRoom` and `ReleaseRoom` around check-in,
+check-out, and room moves (Refs #647, as built
+`app/src/views/StayView.vue:1249-1261`, `:1652-1690`; ownership table in
+[section 23.1](#231-which-layer-owns-what)); `GuestService.GetGuest`;
+`BillingService.GetFolioBalance` — the last
 one is read by the service itself at the check-out gate from #601 on
 (LLD [section 21](#21-server-side-check-out-gate-and-approval-provenance-refs-601)),
 not only by the desk; `RequestCheckoutGate` stays deferred (F4) — all
@@ -3559,3 +3562,478 @@ these guards by `file:line` at the merged head.
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-946
+
+## 23. Desk room reassignment and vacated-room release (Refs #647)
+
+Tier **T2 confirmed** (a reader-visible desk action over room and stay
+state, delivered with operations that already exist). The owner-reported
+defect (manual QA 2026-11-10) is that a guest expected in room 101 who
+checks into 102 leaves room 101 reading occupied with a stale stay link,
+and the desk has no action to correct it. Read-only trace: the rooms
+half already works (`assignRoom` flips a ready room to `occupied` and
+records the stay link; only an explicit `releaseRoom` takes it back,
+`services/rooms/src/store.ts:361-405`, `:407-436`), the stay half
+already works (`moveRoom` keeps the stay in house with `fromRoomId`,
+`toRoomId`, `movedAt`, `services/stay/src/store.ts:332-376`), and the
+contract already states that the desk owns the assignment and release
+around a move (`contracts/http/MoveRoom.json`). What is missing is the
+desk's ordering: the check-in commit assigns first and returns from
+every later refusal without releasing the room it assigned
+(`app/src/views/StayView.vue:1249-1336`), and nothing under `app/src`
+calls `MoveRoom` (`app/src/stay-restyle.test.ts:120-151` records that
+absence on purpose). This change therefore adds no capability, no
+operation, no state, and no schema: it names the layer that owns the
+sequence and the compensation, and it draws the two flows.
+
+This section records the architect-owned delta: which layer owns which
+fact (23.1), the rule that decides when a failed action is compensated
+(23.2), the two target algorithms (23.3, 23.4), the per-flow
+implementation diagrams with their edge traces (23.5, 23.6), the
+contract no-change statement (23.7), the verification plan (23.8), and
+the residual risks with the re-tier trigger (23.9). Acceptance criteria
+are `AC-REA-1`..`AC-REA-5` in `docs/product/acceptance-criteria.md`
+[section 16](../product/acceptance-criteria.md); FR/NFR wording is
+`docs/requirements/mvp-requirements.md` [section 24](../requirements/mvp-requirements.md);
+the UI contract and the EN+VI copy are
+`docs/product/desk-ui-design-rollout.md` [section 6.17](../product/desk-ui-design-rollout.md);
+guard mapping is the `qa-lead` handoff; the verdict is the
+`spec-reviewer` gate.
+
+Explicit no-change statements for this change:
+
+- **Operation surface.** No new operation, path, field, or parameter:
+  `AssignRoom` (`roomNumber`, `businessDate`, `stayLink`, `actor`,
+  `idempotencyKey`), `MoveRoom` (`stayId`, `toRoomId`, `actor`,
+  `idempotencyKey`), and `ReleaseRoom` (`roomNumber`, `toState`,
+  `actor`) are used exactly as contracted. No version bump, no new error
+  code (`contracts/http/AssignRoom.json`, `MoveRoom.json`,
+  `ReleaseRoom.json`, `contracts/errors/envelope.json`).
+- **Lifecycle.** No room or stay state is added. Both release targets
+  already exist (`vacant-inspected`, `vacant-dirty`), and the move never
+  changes the stay's state: it stays in house with its folio link
+  (`FR-FDK-3`, `BR-19`). The lifecycle statement for the two release
+  targets is maintained in `docs/architecture/state-machine.md`
+  [section 2.1](state-machine.md).
+- **Schema, events, migrations.** None. `rooms.room_status_history`
+  and `stay_moves` already record what this change produces, and the
+  existing `room.state-changed` / `stay.moved` outbox events already
+  carry the facts, so no consumer contract changes.
+- **Services.** Stay and Rooms keep their code. `assignRoom` keeps the
+  atomic conditional write and the idempotent receipt
+  (`services/rooms/src/store.ts:361-405`), `releaseRoom` keeps its
+  occupied-only guard and its explicit `toState`
+  (`:407-436`; Postgres parity `services/rooms/src/pgstore.ts:499-544`),
+  and `moveRoom` keeps the in-house conditional write, the same-room
+  refusal, and the idempotent replay (`services/stay/src/store.ts:332-376`).
+- **Booking.** Untouched: no room number, date, price basis, room type,
+  or guest field is read or written by a reassignment, and the booking
+  keeps its state through the move (booking modification is a separate
+  flow).
+- **The desk's other flows.** The #586/#596/#614 preload and
+  commit-window guards stand and keep running
+  (`app/src/views/StayView.vue:1054-1090`, `:1121-1222`, `:1244`,
+  `:1369`); #588/#600/#601/#646 check-out behaviour is untouched
+  (`:1553-1700`).
+- **No service-side rollback and no saga.** The modules never
+  compensate for each other
+  (`docs/architecture/services/rooms.md` [section 4](services/rooms.md)),
+  and this change keeps that: the compensation is the desk's own
+  `ReleaseRoom`, there is no distributed transaction, no queue, no retry
+  worker, and no state machine spanning two services. Section 23.1
+  names the desk as the owner of the sequence, which is the whole
+  architectural decision here.
+- **No new integration edge.** The desk already calls Stay and Rooms
+  directly (`docs/architecture/c4-containers.md`), so no container or
+  dependency edge is added.
+
+### 23.1 Which layer owns what
+
+| Fact | Owner | Written where | May a caller assert it? |
+|---|---|---|---|
+| Which room a check-in names | Desk chooses, Rooms decides | `assignRoom` conditional write, stay id passed as `stayLink` (`services/rooms/src/store.ts:361-405`; `app/src/views/StayView.vue:1246-1261`) | No — the desk names a room; the service decides whether it may be taken |
+| A room's occupancy | Rooms | `assignRoom` / `releaseRoom` (`:361-405`, `:407-436`; Postgres `:499-544`) | No — state is derived by the service, never written by a caller |
+| The stay's current room | Stay | `moveRoom` conditional in-house write + `stay_moves` row (`services/stay/src/store.ts:332-376`) | Only `stayId`; the target is a room id |
+| The from-room of a move | Stay | `move.fromRoomId` in the `MoveRoom` reply (`contracts/http/MoveRoom.json`) | Read it from the echo — never from the panel's remembered row (see below) |
+| The sequence and the compensation | Desk | the click handler's ordered calls; no service orchestrates another | Not applicable — this is the layer this delta names |
+| Whether a failed action is compensated | Desk | definitive-refusal rule over `apiFetch`'s `status` / `code` (23.2; `app/src/api/client.ts:143-197`) | Not applicable |
+| Actor and time of each write | Each owning service | state history / change rows / outbox payloads (`NFR-AUD-1`) | Yes (`actor`), same residual as #601 R6 |
+
+As-built drift corrected in this delta: section 2's `MoveRoom` request
+row named `newRoomNumber`, which no contract carries, and its consumer
+sentence listed `AssignRoom` / `ReleaseRoom` among Stay's outbound
+calls. As built the desk makes those calls and Stay makes neither (the
+service stores room ids as logical references); the two rows now say
+so.
+
+Two load-bearing consequences of that ownership:
+
+1. **The release follows the echo, not the panel's row.** A move
+   releases the room named by `move.fromRoomId` in the `MoveRoom`
+   reply, not the room the in-house row showed when the guest was
+   picked. If two desks move the same guest at once, each releases
+   exactly the room its own move vacated (the second move's from-room
+   is the first move's target), so no action frees a room a live stay
+   still names and no action strands the room it actually vacated.
+2. **An arrival assignment names a stay that does not exist yet.** The
+   desk generates the stay id at the start of the commit and passes it
+   as `stayLink` (`app/src/views/StayView.vue:1246-1253`); `CheckIn`
+   later stores the same id. A room assigned by a commit that never
+   becomes a stay therefore holds a link no stay row answers, which is
+   exactly the reported stale hold — and the only correct end state for
+   it is the compensating release back to ready, which the room history
+   keeps (`services/rooms/src/store.ts:398-402`, `:428-432`).
+
+### 23.2 Definitive refusals and unreadable outcomes
+
+One rule decides compensation on both flows, so the two flows cannot
+drift apart:
+
+- **A definitive refusal** is a `4xx` envelope answer to the call
+  itself: `VALIDATION_FAILED` (400), `NOT_FOUND` (404), `CONFLICT`
+  (409), or `STATE_ILLEGAL` (422). Every target operation validates and
+  guards before it mutates, so a definitive answer proves this call
+  wrote nothing, and the desk may and must take back what it wrote
+  earlier in the same action.
+- **An unreadable outcome** is every other failure: a transport failure
+  or offline state (`apiFetch` throws `code: "OFFLINE"` with no status,
+  `app/src/api/client.ts:160-168`), a `5xx` (`UPSTREAM_UNAVAILABLE`
+  included), a non-envelope reply, or a `401` (which routes to the
+  sign-in gate and is never read as a business outcome,
+  `app/src/api/client.ts:108-140`, `:168-172`). The write may have
+  landed, so the desk releases nothing and names the rooms to re-read.
+- **A refusal speaks only for its own call.** A `NOT_FOUND` from the
+  booking read after a successful assignment is definitive for the
+  read; it says nothing about the assignment, which is why the
+  compensation is chosen by the step that failed, not by the last error
+  code the panel saw.
+- **One compensation per action.** Each action generates its write keys
+  once at the start (`newIdempotencyKey`, `app/src/views/StayView.vue:571`)
+  and the in-flight flag makes a second click a no-op
+  (`commitInFlight`, `:624-631`, `:1244`, `:1369`), so the
+  compensating release is attempted at most once. The shared client's
+  manual retry replays the same request body, so a replayed
+  `AssignRoom` / `MoveRoom` key returns the stored receipt instead of a
+  second write (`services/rooms/src/store.ts:365-369`,
+  `services/stay/src/store.ts:337-345`); a release replayed after it
+  already ran answers `STATE_ILLEGAL` (not occupied), which the desk
+  reads as the room already being free, the #588 precedent
+  (`app/src/views/StayView.vue:1674-1685`).
+- **The two release targets are not interchangeable.** A room a
+  committed stay left goes to `vacant-dirty` (housekeeping, the same
+  release a check-out performs). A room this action assigned and nobody
+  used goes back to `vacant-inspected`. Sending an unused room to
+  housekeeping loses a ready room and misstates what happened; leaving a
+  used room reading ready would offer it to the next guest.
+
+### 23.3 Arrival check-in commit (target algorithm)
+
+As built, steps 1-8; the delta is the compensation in step 9 and the
+outcome classification that chooses it.
+
+1. The arrival pick preloads the booking and the booked type's ready
+   rooms and assigns nothing (`app/src/views/StayView.vue:1121-1222`),
+   so a room changed after the preload is the room the commit assigns.
+2. `Check in` guards: a commit or read in flight is a no-op
+   (`:1224-1247`, `commitInFlight` at `:624-631`).
+3. The stay id and the per-write keys are generated once (`:1246`).
+4. `AssignRoom {roomNumber: <chosen>, businessDate, stayLink: <stayId>,
+   actor, idempotencyKey}` (`:1249-1261`).
+5. `GetReservation {reservationRef}` (`:1281-1295`) — `reservationId`,
+   `guestId`.
+6. `CheckIn {stayId, reservationId, guestId, roomId: <assigned room>,
+   actor}` (`:1304-1323`). `CheckIn` is idempotent by `stayId`
+   (`services/stay/src/store.ts:223-225`) and refuses an
+   already-checked-in reservation before writing (`:217-221`).
+7. `CheckInReservation {reservationRef, stayId, actor}` (`:1325-1336`).
+8. The success reset clears the picker and reloads the panel
+   (`:1337-1368`).
+9. **New:** the outcome table below decides the compensation and the
+   sentence shown.
+
+| Failure at | Room / stay state | Desk action | Wording |
+|---|---|---|---|
+| Step 4, `CONFLICT` / `STATE_ILLEGAL` / `VALIDATION_FAILED` | Nothing assigned, nothing written | No release (as built today) | Plain refusal naming the room; picker reloads |
+| Step 5 or 6, definitive | Room occupied by this commit, no stay row | One `ReleaseRoom {roomNumber: <chosen>, toState: "vacant-inspected", actor}` in the same commit; a `STATE_ILLEGAL` answer means the room is already free again | Plain refusal plus "the room is free again"; if the release itself fails or is unreadable, name the room that still reads occupied |
+| Step 7 after step 6 committed | Room occupied, and a live stay names it | Release nothing — the stay is the truth | Say the guest is in the room and the reservation link is not recorded; name the room; next step is the manager (see 23.9 for the copy gap) |
+| Any step, unreadable (offline, `5xx`, non-envelope) | Unknown — possibly assigned and possibly checked in | Release nothing | Name the room and ask staff to reload and check before acting again |
+| Any step, `401` | Unknown | Release nothing | The shared client routes to sign-in; the gate owns the rest |
+
+Why the split matters: a definitive `CheckIn` refusal proves no stay was
+written, so the assignment must be taken back; an unreadable `CheckIn`
+proves nothing, so releasing could free a room the guest is standing in.
+A `CheckInReservation` refusal after the stay landed is the case
+`FR-REA-1` words as "stay recorded, reservation check-in refused": the
+room stays occupied because the stay names it.
+
+### 23.4 Reassignment and mid-stay move (target algorithm)
+
+One path serves the switch after a committed check-in and the mid-stay
+move; there is no second mechanic and no separate screen.
+
+1. The card's inputs are the reads the panel already runs: in-house rows
+   carry `roomId` (`app/src/views/StayView.vue:981-1002`) and the ready
+   pool is the `vacant-inspected` list loaded with the panel
+   (`:1004-1042`, `readyRooms` at `:597`). No new read is added.
+2. `Move guest` guards: in flight is a no-op, a guest and a room must be
+   picked. The guest's own room is not offered, because an
+   `occupied` room is never in the ready pool.
+3. Keys are generated once (`:571`).
+4. `AssignRoom {roomNumber: <target>, businessDate, stayLink: <stayId>,
+   actor, idempotencyKey}` — the target is occupied under this stay
+   before the stay moves. Assignment first is what makes a target that
+   was just taken, is not ready, or is blocked refuse before anything
+   moves (`NFR-CON-2`).
+5. `MoveRoom {stayId, toRoomId: <assigned room id>, actor,
+   idempotencyKey}` (`services/stay/src/store.ts:332-376`); the reply
+   carries `move {fromRoomId, toRoomId, movedAt}`. The stay stays in
+   house with its folio link and keeps the row in `stay_moves`.
+6. `ReleaseRoom {roomNumber: <number of move.fromRoomId>,
+   toState: "vacant-dirty", actor}` — last, so the room only becomes
+   free once the stay no longer names it.
+7. The receipt names the guest, both rooms, and `move.movedAt` in the
+   hotel's local time; the panel then reloads so the board and the Rooms
+   map agree.
+
+| Failure at | Room / stay state | Desk action | Wording |
+|---|---|---|---|
+| Step 4, definitive | Target not assigned, stay unchanged | Nothing to release; reload the ready pool | One plain refusal naming the cause |
+| Step 5, definitive (`STATE_ILLEGAL` not in house, `VALIDATION_FAILED` same room, `NOT_FOUND`) | Target occupied by this action, stay unchanged | One `ReleaseRoom {target, "vacant-inspected"}`; a `STATE_ILLEGAL` answer means the target is already free | Refusal plus "the target is free again"; if the compensation fails, name the target that still reads occupied |
+| Step 5, unreadable | The move may have landed | Release nothing | Name both rooms and ask staff to reload before acting again |
+| Step 6, `STATE_ILLEGAL` (old room no longer occupied) | Stay in the new room; the old room is already free | Claim no release; say the old room is free | Reuse the #588 already-free sentence |
+| Step 6, unreadable or another refusal | Stay in the new room; the old room may still read occupied | Do not roll the move back (a rollback would need a second stay write and a second assignment — a saga this change rejects); name the old room | Say the guest is in the new room and the old room still reads occupied |
+| Any step, `401` | Unknown | Release nothing | The shared client routes to sign-in |
+
+Why the ordering is architectural, not cosmetic: releasing first would
+leave the stay naming a free room — sellable to the next guest while
+someone is in it — and moving before assigning would let a taken target
+refuse after the stay already moved. The chosen order makes every
+refusal happen before the guest's record changes, and every remaining
+failure visible instead of silent.
+
+### 23.5 Per-flow diagram — arrival check-in commit
+
+```mermaid
+flowchart TD
+    A[Arrival pick preloads booking and ready rooms; assigns nothing  StayView.vue:1121-1222] --> B[Staff pick the room and click Check in  StayView.vue:1224-1247]
+    B --> C[Generate stay id and keys once  StayView.vue:1246]
+    C --> D[AssignRoom chosen room, stayLink is the stay id  StayView.vue:1249-1261; store.ts:361-405]
+    D -->|definitive refusal| Z1[Nothing assigned; plain refusal; picker reloads  StayView.vue:1262-1280]
+    D -->|assigned| E[GetReservation  StayView.vue:1281-1295]
+    E -->|definitive refusal| R1[ReleaseRoom to vacant-inspected  store.ts:407-436; FR-REA-1]
+    E -->|unreadable| R2[No release; name the room; reload before acting  FR-REA-1]
+    E --> F[CheckIn with the assigned room id  StayView.vue:1304-1323; store.ts:210-229]
+    F -->|definitive refusal| R1
+    F -->|unreadable| R2
+    F --> G[CheckInReservation  StayView.vue:1325-1336]
+    G -->|refusal after the stay committed| X[Stay in house in the room; say the link is not recorded; release nothing  FR-REA-1]
+    G -->|recorded| H[Stay in house; the room reads occupied; panel reloads  StayView.vue:1337-1368]
+    R1 --> H1[Room free again, named in plain words  FR-REA-1]
+    R1 -->|release fails or is unreadable| R2
+```
+
+Edge trace:
+
+- A–B: the preload reads the booking and the booked type's ready rooms
+  and assigns nothing (`app/src/views/StayView.vue:1121-1222`); the click
+  guard is the in-flight no-op (`:1224-1247`, `commitInFlight` at
+  `:624-631`).
+- C: one stay id and one key per write (`:1246`, `newIdempotencyKey` at
+  `:571`).
+- D: `AssignRoom` with `stayLink: stayId` (`:1249-1261`;
+  `services/rooms/src/store.ts:361-405`). A `CONFLICT` here means no
+  room was taken (`:1272-1278`).
+- D–E / E–F: the booking read and the stay write as built (`:1281-1295`,
+  `:1304-1323`); `CheckIn` is idempotent by `stayId` and refuses a
+  double check-in before writing (`services/stay/src/store.ts:217-225`).
+- F–G: the reservation link (`:1325-1336`); this is the step that can
+  fail after the stay landed.
+- R1: the compensating release with the explicit target
+  (`services/rooms/src/store.ts:407-436`), which records the pair in
+  `room_status_history` and emits `room.state-changed`.
+- R1–R2: a compensation that is itself refused or unreadable is named,
+  never hidden; the desk never claims a free room it did not see freed.
+
+### 23.6 Per-flow diagram — reassignment and mid-stay move
+
+```mermaid
+flowchart TD
+    A[Staff pick a guest in house and a ready room; Move guest  rollout 6.17] --> B[Generate keys once  StayView.vue:571]
+    B --> C[AssignRoom target, stayLink is the stay id  store.ts:361-405]
+    C -->|just taken, not ready, blocked| Z1[One plain refusal; nothing moved; ready list reloads  FR-REA-3]
+    C -->|assigned| D[MoveRoom target room id  stay store.ts:332-376]
+    D -->|definitive refusal| Z2[ReleaseRoom target to vacant-inspected  store.ts:407-436; FR-REA-3]
+    Z2 -->|release fails or is unreadable| Z3[Name the target that still reads occupied; claim no move  FR-REA-3]
+    D -->|unreadable| Z5[Nothing released; name both rooms; reload before acting  FR-REA-3]
+    D -->|moved| E[ReleaseRoom echo move.fromRoomId to vacant-dirty  store.ts:407-436; FR-REA-2]
+    E -->|old room already free| Z6[Say the old room is free; the stay keeps the new room  FR-REA-2]
+    E -->|release fails or is unreadable| Z4[Stay names the new room; name the old room as still occupied  FR-REA-2]
+    E -->|released| F[Board and Rooms map show only the new room occupied  FR-REA-2]
+    F --> G[Receipt names both rooms and the move time; stay_moves keeps from, to, time  FR-REA-5]
+```
+
+Edge trace:
+
+- A–C: the guest and room picks come from the panel's existing reads
+  (`app/src/views/StayView.vue:981-1042`); the target is occupied under
+  this stay before the move (`services/rooms/src/store.ts:361-405`), so a
+  taken target refuses first (`NFR-CON-2`).
+- C–Z1: a `CONFLICT` / `STATE_ILLEGAL` answer proves no write, so
+  nothing is compensated.
+- D: `MoveRoom` keeps the stay in house, refuses a closed stay and a
+  same-room move, and records `fromRoomId`, `toRoomId`, `movedAt`
+  (`services/stay/src/store.ts:332-376`).
+- D–Z2: a definitive lead refusal means the stay did not move, so the
+  target is released back to the state it held.
+- D–E: the release target is the echo's `move.fromRoomId`, not the
+  panel's remembered room (23.1 consequence 1), and it is the last call
+  so the guest is recorded in the new room before the old one frees.
+- E–Z6: `STATE_ILLEGAL` from the release means the old room is not
+  occupied — the intended end state already holds, so the desk says it
+  is free and claims no housekeeping state it did not set (the #588
+  precedent, `app/src/views/StayView.vue:1674-1685`).
+- E–Z4: a release that fails or cannot be read leaves the move standing
+  and names the old room; there is no rollback path, by decision.
+- F–G: the receipt and the durable row come from the same echo
+  (`contracts/http/MoveRoom.json`).
+
+Failure/rollback summary: every refusal before the target assignment
+changes nothing; a refusal after it runs exactly one compensating
+release back to ready; an unreadable outcome releases nothing and is
+reported as an outcome to re-read; a release that fails after the move
+committed leaves the stay in the new room and names the old room.
+Rolling the change back is the single implementation PR: the desk stops
+calling operations that already exist, the two-panel Stay screen and its
+guards return as they were, and any room left stranded by a move in the
+reverted build is cleared through the existing desk release. No schema
+migration and no data backfill exists in either direction.
+
+### 23.7 Contract delta
+
+None. The change uses the three operations in the shapes the contract
+already carries:
+
+| File | Change | Version effect |
+|---|---|---|
+| `contracts/http/AssignRoom.json` | unchanged — `roomNumber`, `businessDate`, `stayLink`, `actor`, `idempotencyKey` as contracted; the desk passes the stay id (arrival) or the in-house stay id (move) as `stayLink` | none |
+| `contracts/http/MoveRoom.json` | unchanged — `stayId`, `toRoomId`, `actor`, `idempotencyKey`; the reply's `move {fromRoomId, toRoomId, movedAt}` is the release input | none |
+| `contracts/http/ReleaseRoom.json` | unchanged — `toState` already accepts `vacant-inspected` and defaults to `vacant-dirty`; no new field, no new error code | none |
+| `contracts/errors/envelope.json` | unchanged — no new code; the desk's definitive/unreadable split reads the existing codes and statuses, not new ones | none |
+| `contracts/events/*.json` | unchanged — `room.state-changed` and `stay.moved` already carry room, state, actor, and time | none |
+| `contracts/openapi.yaml` + `frontend/docs/openapi.yaml` | unchanged — no operation is added, removed, or reshaped | none |
+| schema and migrations | none — `rooms.room_status_history` and `stay_moves` already store what this change emits | none |
+
+If the implementation PR finds the contract lacking anything the desk
+needs (for example a client-visible move read), that finding is recorded
+and a follow-up is filed instead of widening this change (issue scope,
+"Out").
+
+### 23.8 Verification plan
+
+The implementation PR creates the desk guards and re-pins the ones this
+change retires; the service tests are unchanged and must stay green.
+
+Desk guards (`app/src/views/StayView.test.ts`; existing patterns:
+`:394-463` ready-room load and one-click commit, `:2253-2279`
+double-clicked check-in, `:2390-2666` the #586/#596/#614 commit-window
+guards):
+
+- **Switch after preload** — the preload calls no `AssignRoom`; a room
+  changed after the preload is the room the commit assigns, and exactly
+  one `AssignRoom` leaves the panel.
+- **Switch after commit (arrival compensation)** — a definitive refusal
+  at the booking read, and again at the stay write, issues exactly one
+  `ReleaseRoom` with `toState: "vacant-inspected"` and shows the plain
+  refusal plus the freed-room sentence; an unreadable failure issues no
+  `ReleaseRoom`; a failed compensating release names the room and claims
+  no free room; a reservation-link refusal after the stay committed
+  issues no release.
+- **Reassignment after a committed check-in** — the card assigns the
+  target, moves the stay, releases the echo's from-room to
+  `vacant-dirty`, in that order, and shows the receipt with both numbers
+  and the time.
+- **Mid-stay move** — the same path on an earlier-day in-house stay
+  keeps the stay's state and folio link, and the release follows the
+  echo even when the panel's row is stale.
+- **Partial-failure ordering** — a lead refusal changes nothing; a
+  stay-side refusal compensates the target once; a release that fails
+  after the move names the old room and rolls nothing back; a replayed
+  action performs one compensation at most.
+- **Retired-pin re-pin** — `app/src/stay-restyle.test.ts:120-151` keeps
+  every retired v1 hook absent except the two this change decides
+  (`data-testid="stay-move-card"`, `stay-move-room` / the `MoveRoom`
+  call), which are re-pinned as decided additions.
+
+Browser/lab guards (existing placement: `app/e2e/stay.spec.ts`,
+`app/e2e/design-facts.spec.ts`, the design-facts extractor job and
+Playwright step in `.github/workflows/ci.yml`, and
+`script/e2e-desk-loop.sh:338-349` for the assign/move/release chain):
+
+- **Arrival commit and compensation** — one switch-after-preload
+  scenario and one switch-after-commit scenario in the browser suite,
+  asserting the desk board and the Rooms map show only the room the
+  guest is in.
+- **Isolated-lab reproduction record** — which path leaves the stale
+  hold (switch after a preload, switch after a committed check-in, or a
+  mid-stay move) recorded in the implementation PR body or an issue
+  comment, per the issue's scope.
+- **Catalogue coverage** — `script/catalogue-coverage-check.sh` green
+  with every new move/check-in string in `messages/en.json` and
+  `messages/vi.json`, placeholders intact.
+- **Design facts** — the one additive card recorded as a decided fact in
+  the design-facts comparison rather than silencing the Stay screen
+  (`app/e2e/design-facts.spec.ts`).
+
+Stack and repo gates: `cd app && npm ci && npm run build && npm run lint
+&& npm test`; the Playwright E2E job (`npm run test:e2e` in `app`);
+`script/contract-check.sh`; `script/openapi-route-check.sh`;
+`script/markdown-link-check.sh`. Service suites stay unchanged:
+`services/rooms/src/server.test.ts:328-381`, `:455-500` and
+`services/stay/src/server.test.ts:240-292` must pass untouched.
+
+### 23.9 Residual risks, gate points closed at the stack base, and re-tier trigger
+
+- **R12 — the compensation lives in the browser.** A desk closed
+  between the target assignment and the release leaves the target
+  occupied with a stay link that no stay answers (arrival) or a stale
+  link (move). Accepted for this change: there is no server-side saga,
+  queue, or retry worker, and building one is a different change. The
+  next panel load shows the room `occupied`, and the operator clears it
+  with the existing desk release; naming the room in the refusal is what
+  makes it findable rather than silent.
+- **R13 — a reservation link can fail after the stay landed.** The stay
+  and the room agree (guest in house, room occupied) but the booking
+  keeps `confirmed`. That split is reported, not hidden; the technical
+  repair is the same idempotent `CheckInReservation` call, and the #646
+  split is the precedent for accepting it as visible.
+- **R14 — closed at the stack base: the `AC-REA-1` release list is
+  scoped.** The criterion already words the condition as a later step of
+  the same commit not landing "while no stay was recorded (the booking
+  read or the stay write)", and states the post-stay split explicitly:
+  a reservation-link failure after the stay write releases nothing and
+  keeps the room occupied
+  (`docs/product/acceptance-criteria.md:1229-1247`). This delta adds no
+  wording of its own; LLD 23.2, 23.3 (step 7 row), 23.6, and
+  `FR-REA-1` follow that text unchanged, so no residual discrepancy
+  remains for the implementation to resolve.
+- **R15 — closed at the stack base: both copy points are keyed.** The
+  UI contract table keys the arrival-compensation sentence
+  (`desk.stay.checkin_compensated`) and the post-stay reservation-link
+  sentence (`desk.stay.checkin_link_not_recorded`) in both locales with
+  matching placeholders (`docs/product/desk-ui-design-rollout.md:2171-2172`).
+  No copy work is outstanding for the implementation, which must still
+  not invent wording. The move path needs no new key for "the old room
+  is already free": `desk.stay.room_already_free` already exists
+  (`messages/en.json:472`, `messages/vi.json:472`).
+- **R16 — the owner board gains one card.** The additive `Move room`
+  card is a decided UI fact beyond `docs/design/Stay.dc.html`; the
+  design-facts and dom-diff records must carry it as a decision, not as
+  an exemption that hides the screen.
+- **Re-tier trigger.** A shape that needs a new operation or field, a
+  lifecycle state, a stored compensation record, a server-side saga or
+  retry worker, or a migration is T3: it needs an ADR, the owner's
+  `proposed -> accepted` flip, and its rollback note in the
+  implementation PR. The decided shape needs none of these, which is why
+  the tier stays T2 and the risk stays `risk-medium`.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-961

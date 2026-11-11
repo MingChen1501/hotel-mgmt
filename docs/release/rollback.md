@@ -63,6 +63,14 @@ Run the checks that prove the symptom is gone and nothing else moved:
 - The #588, #600, and #601 desk paths where the change touched the
   check-out slice: release once, room-charge review, and the settlement
   gate refusals.
+- The reassignment paths where the change touched the Stay screen: a
+  check-in whose arrival preloaded one ready room and lands the guest in
+  another (only the chosen room takes the guest), a move after a
+  committed check-in (the old room vacant and dirty, the new room
+  occupied, both rooms and the time on the receipt), and a definitive
+  refusal after a room was set aside (the room free again). A room the
+  reverted build strands is cleared with `../operations/runbook.md`
+  section 9.4 before the desk resumes.
 - The health check and the end-to-end reservation check from
   `../devops/deployment.md` sections 3 and 4.
 - The stack gates named by the release entry for the change (unit,
@@ -80,7 +88,65 @@ unrecorded outcome is not finished.
 
 ## 5. Per-change notes
 
-### 5.1 Departure release and same-day reuse after check-out (Refs #646)
+### 5.1 Desk room reassignment and vacated-room release (Refs #647)
+
+**Decision.** Roll back if the change makes a check-in refuse where it
+used to work, if a room a guest is standing in reads vacant, if a room
+the desk set aside and nobody used still reads occupied after a refused
+action, if a move leaves the stay naming a room that reads free or frees
+a room a live stay names, if the `Move room` card performs anything other
+than the documented calls in the documented order, or if the desk offers
+the move for a guest who is not in house. The change is `risk-medium`
+(issue #647 labels `fix`, `risk-medium`); it rolls back on the normal
+merge gate, without owner approval.
+
+**Mechanics.** Revert the single implementation PR and redeploy the
+bundle per `../devops/deployment.md` section 4. No schema migration and
+no data backfill exist on this path, in either direction:
+`rooms.room_status_history` and `stay_moves` already exist,
+`ReleaseRoom` already accepts its `toState`, and no operation, field,
+lifecycle state, event, or error code is added
+(`../architecture/lld.md` section 23.7). The revert keeps the database as
+it is and no restore is needed; a data restore is the bundle-failure path
+in `../devops/deployment.md` section 6, not this one. The revert ships a
+desk that stops calling `MoveRoom`, stops the arrival-time compensating
+release, and stops rendering the `Move room` card; the three operations,
+the stay move record, and the room state machine are unchanged in both
+directions, and no configuration value arrives with the change, so the
+hotel's per-hotel configuration set is re-applied unchanged. Rooms the
+reverted build strands (a refused check-in after it assigned a room, an
+interrupted move) come back as the reported defect: the desk cannot
+clear them, and support clears them with
+`../operations/runbook.md` section 9.4 until the rework lands. Rooms
+already stranded before the revert keep reading occupied and are cleared
+from the same section 9 steps; the change carries no stored repair and no
+automatic clearance.
+
+**Verification.** After the revert, on the restored bundle: check a guest
+into a room whose arrival preloaded a different ready room and confirm
+only the chosen room takes the guest; check a guest in, move them from
+101 to 102 through the service path the desk loop exercises, and confirm
+101 reads vacant and dirty, 102 occupied, and both rooms with the time in
+the stay history; confirm a refused check-in after the room was set aside
+leaves the room occupied again — the expected regression that identifies
+the revert — and clear it with `../operations/runbook.md` section 9.4
+before the desk resumes; confirm the #588 release, the #600 room charge,
+the #601 settlement gate, and the #646 departure completion behave as
+before; run the health check and the end-to-end reservation check from
+`../devops/deployment.md` sections 3 and 4; run the Rooms, Stay, and desk
+suites the release entry names.
+
+**Record.** Add the rollback outcome here (date, commit range, symptom,
+revert reference, verification, and every room cleared through
+`../operations/runbook.md` section 9.4) and file the defect issue.
+Because this note assumes no migration and no server-side compensation, a
+rework that adds a lifecycle state, a stored compensation record, a
+server-side saga or retry worker, an operation or field, or a migration
+re-tiers the change to T3: `../architecture/lld.md` section 23.9 records
+that trigger, the migration is forward-only, and the rollback note moves
+into that implementation PR.
+
+### 5.2 Departure release and same-day reuse after check-out (Refs #646)
 
 **Decision.** Roll back if the change makes a check-out refuse where it
 used to close, if a completed booking cannot be read or is offered for a
@@ -134,3 +200,6 @@ implementation PR (`../requirements/mvp-requirements.md` section 23.6,
 
 <!-- ao-role: release-manager -->
 Role: release-manager · AO session hotel-mgmt-948
+
+<!-- ao-role: release-manager -->
+Role: release-manager · AO session hotel-mgmt-963

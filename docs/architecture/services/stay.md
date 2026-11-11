@@ -202,3 +202,36 @@ sentence, no technical code).
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-946
+
+## 10. Desk-driven reassignment and release ordering (Refs #647)
+
+No service-side change. `MoveRoom` is unchanged, and this section records
+who calls it and what the caller owes it, so the flow is not read as a
+stay-side transaction:
+
+- As built, one in-house conditional write keeps the stay in house,
+  refuses a same-room move and a closed stay, records the move
+  (`fromRoomId`, `toRoomId`, `movedAt`) in `stay_moves`, emits
+  `stay.moved`, and replays an idempotency key
+  (`src/store.ts:332-376`).
+- The desk owns the sequence around it: `AssignRoom` the target, then
+  `MoveRoom`, then `ReleaseRoom` the vacated room (LLD
+  [section 23](../lld.md); ownership table 23.1). Stay never calls Rooms
+  and never compensates for it: the release is the desk's own call, and
+  a failed release never rolls the move back.
+- The from-room the desk releases is the `move.fromRoomId` in this
+  operation's reply, not the room the panel remembered, so a stale desk
+  row cannot free a room the stay no longer holds.
+- On the arrival side, `CheckIn` is idempotent by `stayId` and refuses an
+  already-checked-in reservation before writing (`src/store.ts:210-229`);
+  a definitive refusal at the booking read or the stay write is what lets
+  the desk take back the room it assigned (`FR-REA-1`).
+- A reservation-link refusal after the stay landed leaves the stay in
+  house in that room; the split is reported, not repaired by releasing
+  the room (`FR-REA-1`).
+
+Design: `docs/architecture/lld.md` section 23; product UI contract
+`docs/product/desk-ui-design-rollout.md` section 6.17.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-961

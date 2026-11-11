@@ -158,6 +158,16 @@ every inter-host endpoint over the hotel LAN before step 6.
 7. Keep the pre-upgrade backup until the hotel has operated at
    least one full business day on the new version.
 
+**Rooms stranded by an older bundle (upgrade only, Refs #647).** An
+installation upgraded from a bundle that predates the desk room
+reassignment change inherits rooms that read occupied with no stay
+behind them: a check-in refused after the desk had already set the
+room aside was never handed back. This bundle repairs the desk, not the
+data — there is no migration and no backfill. Before resuming desk
+work, clear every such room per `../operations/runbook.md` section 9.3
+and record the cleared rooms, their times, and the actor in the upgrade
+record; the same section 9 procedure is the support step afterwards.
+
 For the small-cluster variant, stop and start hosts in the same
 relative order and verify inter-host endpoints after step 5.
 
@@ -211,3 +221,6 @@ fixed within the working day, roll back:
 
 <!-- ao-role: release-manager -->
 Role: release-manager · AO session hotel-mgmt-948
+
+<!-- ao-role: release-manager -->
+Role: release-manager · AO session hotel-mgmt-963

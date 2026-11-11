@@ -105,7 +105,7 @@ stay-ref are collection views and sub-resources.
 | `GetStay` | `GET /v2/stays/{stayId}` | 200, stay record | `contracts/http/GetStay.json` | `NOT_FOUND`, `VALIDATION_FAILED` | The reservationId lookup variant becomes `GET /v2/stays?reservationId=` (200, single-item list). |
 | `QueryStays` | `GET /v2/stays?[state=]` | 200, stays each exactly once | `contracts/http/QueryStays.json` | `VALIDATION_FAILED` (unknown state) | |
 | `CheckOut` | `POST /v2/stays/{stayId}/check-out` | 200, stay closed + invoiceRef | `contracts/http/CheckOut.json` | `SETTLEMENT_REQUIRED`, `STATE_ILLEGAL`, `NOT_FOUND`, `VALIDATION_FAILED` | `Idempotency-Key` required. Folio gate unchanged (stay-side). |
-| `MoveRoom` | `POST /v2/stays/{stayId}/moves` | 201 + move history entry | `contracts/http/MoveRoom.json` | `CONFLICT`, `STATE_ILLEGAL`, `NOT_FOUND`, `VALIDATION_FAILED` | `Idempotency-Key` required. Delta vs LLD noted: the LLD table lists no `idempotencyKey` field for `MoveRoom`; the contract file carries one, and this surface follows the contract (key required like every stay write). |
+| `MoveRoom` | `POST /v2/stays/{stayId}/moves` | 201 + move history entry | `contracts/http/MoveRoom.json` | `CONFLICT`, `STATE_ILLEGAL`, `NOT_FOUND`, `VALIDATION_FAILED` | `Idempotency-Key` required. The former delta vs the LLD table (no `idempotencyKey` there) is closed: the LLD request row carries the contract's field set (Refs #647). |
 | `RecordActualTimes` | `POST /v2/stays/{stayId}/actual-times` | 200, kept times | `contracts/http/RecordActualTimes.json` | `NOT_FOUND`, `VALIDATION_FAILED` | `Idempotency-Key` required (stay write). |
 | `ListArrivalsDepartures` | `GET /v2/stays/arrivals-departures?businessDate=` | 200, arrivals + in-house + departures each exactly once | `contracts/http/ListArrivalsDepartures.json` | `VALIDATION_FAILED` | Fixed view resource under the collection. |
 | `GetStayRef` (BIL → STAY) | `GET /v2/stays/{stayId}/ref` | 200, stay link (guest, room, in-house state) | `contracts/http/GetStayRef.json` | `NOT_FOUND`, `STATE_ILLEGAL` (closed) | Provider-to-provider read exposed as a link sub-resource so billing uses the same path as any reader. |
@@ -278,8 +278,9 @@ here):
    `AssignRoom` in 3) plus the missing-key (`400`) and key-reuse
    (`422` on payload mismatch, replay on match) semantics.
 2. `MoveRoom` key requirement follows the contract file (which carries
-   `idempotencyKey`) over the LLD table (which omits it) — section 2
-   notes the delta.
+   `idempotencyKey`); the LLD request row was corrected to the same field
+   set in the #647 delta, so no LLD-versus-contract delta remains
+   (section 2).
 3. Upsert transport rule (`PUT` on the contract's identifying field;
    query-keyed items for composite keys; POST-upsert only for
    `UpsertGuest`, reason recorded) is new: no prior record states it.
