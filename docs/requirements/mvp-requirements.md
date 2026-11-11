@@ -5141,12 +5141,12 @@ contract are `product-owner` work: `docs/product/acceptance-criteria.md`
 the `AC-FDK-1` / `AC-FDK-3` pointers, and the `REA` domain code),
 `docs/product/desk-ui-design-rollout.md`
 [section 6.17](../product/desk-ui-design-rollout.md) (the scope
-decision, the UI contract delta, and the 18 catalogue keys), and D-27
+decision, the UI contract delta, and the 20 catalogue keys), and D-27
 in `docs/project/decision-log.md`. This section words the requirements
 half: the decision (24.1), the explicit no-change statements (24.2),
 the FR delta (24.3), the NFR statement (24.4), the traceability
 handoff with its per-flow diagrams (24.5), and the gate dependencies
-with the one open point (24.6). No `docs/README.md` row flips: every
+(24.6). No `docs/README.md` row flips: every
 requirements file this change touches is already `active`.
 
 ### 24.1 Decision: one desk path reassigns the room and releases the vacated one
@@ -5568,16 +5568,13 @@ backfill exists in either direction.
   mapping above is `qa-lead` work, and the operational clearance for
   rooms already stranded in a live installation is `release-manager`
   work.
-- **Point for `spec-reviewer`.** `AC-REA-1` lists "the booking read,
-  the stay write, or the reservation check-in" among the steps whose
-  failure releases the assigned room. Worded here, the release applies
-  to the steps that leave no stay behind, and a reservation check-in
-  that fails after the stay write keeps the room occupied because a
-  live stay names it — otherwise the desk would free a room the guest
-  is standing in. That is the same invariant the condition states ("no
-  room occupied with no stay behind it"); if the product-owner intends
-  the literal reading (release even when the stay landed), the
-  condition needs rewording and this section follows it.
+- **Resolved cross-reference.** `AC-REA-1` releases the assigned room
+  when the check-in leaves no stay behind ("the booking read or the
+  stay write", `docs/product/acceptance-criteria.md:1234-1240`), and a
+  check-in that lands the stay keeps the room occupied because the live
+  stay names it; the post-stay reservation-link split is stated in the
+  same condition. This section's release wording follows that
+  condition — no open point remains between the two.
 - Out of scope: changing booking dates, price, room type, or guest
   data; a drag-and-drop, swap-with-another-guest, or multi-room move;
   a dedicated move-history list view (no read operation exposes the
@@ -5592,4 +5589,4 @@ backfill exists in either direction.
   implementation PR opens until `SPEC-GATE PASS` on #647.
 
 <!-- ao-role: business-analyst -->
-Role: business-analyst · AO session hotel-mgmt-960
+Role: business-analyst · AO session hotel-mgmt-966

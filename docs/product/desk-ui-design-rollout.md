@@ -2039,10 +2039,14 @@ Decision (five parts):
    preload never assigns (as built), so switching rooms after a preload
    assigns nothing until the commit, and the commit assigns the chosen
    room only. A room the commit assigned is released back to the ready
-   state it held when a later step of that same commit does not land,
-   so an aborted check-in leaves no room occupied with no stay behind
-   it (`AC-REA-1`). The #586/#596/#614 preload and commit-window guards
-   stay in place; this change adds the release ordering they left out.
+   state it held when a later step of that same commit does not land and
+   no stay was recorded (the booking read or the stay write), so an
+   aborted check-in leaves no room occupied with no stay behind it
+   (`AC-REA-1`). A room a live stay names is never freed: a failed
+   reservation check-in after the stay write keeps the room occupied and
+   is reported to staff as a split. The #586/#596/#614 preload and
+   commit-window guards stay in place; this change adds the release
+   ordering they left out.
 2. **One reassignment affordance, one path.** The Stay screen gains a
    `Move room` card that performs the move the desk already had no
    control for: the arrival-time swap (switch after a committed
@@ -2129,9 +2133,15 @@ UI contract delta (T2):
     and asks staff to reload and check them before acting again; it
     guesses neither way.
   - Check-in commit refused after the assignment: the check-in panel
-    says the check-in was refused and that the room is free again; if
-    the compensating release failed it names the room that still reads
-    occupied.
+    says the check-in was refused and that the room is free again
+    (`desk.stay.checkin_compensated`); if the compensating release
+    failed it names the room that still reads occupied
+    (`desk.stay.checkin_release_failed`).
+  - Check-in landed, booking link did not: the panel says the guest is
+    in the room and that the booking link is not recorded
+    (`desk.stay.checkin_link_not_recorded`), keeps the room occupied
+    and the stay in house, and asks staff to reload and tell the
+    manager; it releases nothing, because the stay names that room.
 - **Catalogue keys.** This is the one place this change adds copy; the
   desk is VI-primary, so every key below lands in `messages/vi.json`
   and `messages/en.json` in the implementation PR with `{param}`
@@ -2158,6 +2168,17 @@ UI contract delta (T2):
   | `desk.stay.move_outcome_unknown` | The move result could not be read. Reload the desk and check rooms {fromRoom} and {toRoom} before acting again. | Không đọc được kết quả chuyển phòng. Tải lại bàn lễ tân và kiểm tra phòng {fromRoom} và {toRoom} trước khi làm tiếp. |
   | `desk.stay.checkin_release_failed` | The check-in was refused, but room {roomNumber} still reads occupied. Reload the desk, and tell the manager if it still shows occupied. | Không nhận phòng được, nhưng phòng {roomNumber} vẫn hiện đang có khách. Tải lại bàn lễ tân và báo quản lý nếu phòng vẫn hiện đang có khách. |
   | `desk.stay.checkin_outcome_unknown` | The check-in result could not be read. Reload the desk and check room {roomNumber} before acting again. | Không đọc được kết quả nhận phòng. Tải lại bàn lễ tân và kiểm tra phòng {roomNumber} trước khi làm tiếp. |
+  | `desk.stay.checkin_compensated` | The check-in was refused and room {roomNumber} is free again. | Không nhận phòng được và phòng {roomNumber} đã trống trở lại. |
+  | `desk.stay.checkin_link_not_recorded` | The guest is in room {roomNumber}, but the booking link is not recorded. Reload the desk, and tell the manager if the booking still shows no check-in. | Khách đã ở phòng {roomNumber} nhưng chưa ghi nhận liên kết đặt phòng. Tải lại bàn lễ tân và báo quản lý nếu đặt phòng vẫn chưa hiển thị việc nhận phòng. |
+
+  Two of these keys close the copy points the check-in half leaves
+  implicit: `desk.stay.checkin_compensated` is the arrival-compensation
+  success sentence, and `desk.stay.checkin_link_not_recorded` is the
+  post-stay reservation-link sentence, which reports the split without
+  claiming a release (`AC-REA-1`). The move path adds no key for a
+  vacated room that already reads free: it reuses the existing
+  `desk.stay.room_already_free` (`messages/en.json:472`,
+  `messages/vi.json:472`), the same sentence the check-out path uses.
 
 - **Design facts.** One decided UI fact changes: the owner board
   (`docs/design/Stay.dc.html`) carries the two panels and no move
@@ -2569,4 +2590,4 @@ Section 4 stays the rollout-wide contract; for steps 2–4:
 | Rollback is a single revert with no migration and no new operation | Section 6.17 (rollback); the desk calls only operations that already exist, so the reverted build is the two-panel Stay screen it is today |
 
 <!-- ao-role: product-owner -->
-Role: product-owner · AO session hotel-mgmt-959
+Role: product-owner · AO session hotel-mgmt-964

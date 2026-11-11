@@ -30,7 +30,7 @@ residual risks R12–R16); the two release targets in
 `docs/architecture/state-machine.md` [section 2.1](../architecture/state-machine.md);
 the desk delta and T2 UI contract in
 `docs/product/desk-ui-design-rollout.md` [section 6.17](../product/desk-ui-design-rollout.md)
-with its 18-key EN+VI copy table; D-27 in
+with its 20-key EN+VI copy table; D-27 in
 `docs/project/decision-log.md`; R-11 in `docs/project/risk-register.md`;
 and the sibling tests this slice must not disturb:
 `checkout-settlement-test-traceability.md` (#601, registry `S1`–`S12`),
@@ -72,30 +72,32 @@ changes no guard, adds no catalogue key, and moves no MVP row.
   **re-pinned**, not deleted (LLD 23.8, R16): the card and the
   `MoveRoom` call become decided additions while every other retired
   v1 hook stays absent.
-- Copy: the 18 keys of rollout section 6.17 are the implementation
-  PR's to add in both locales with placeholders intact. The two
-  sentences LLD R15 records as unkeyed — the arrival-compensation
-  success sentence and the post-stay reservation-link sentence — are a
-  `product-owner` copy addition: the implementation must not invent
-  wording, and `RR13` fails an invented string rather than accepting
-  one.
+- Copy: the 20 keys of rollout section 6.17 are the implementation
+  PR's to add in both locales with placeholders intact. Both sentences
+  the arrival half leaves implicit are keyed at the stack base — the
+  arrival-compensation sentence (`desk.stay.checkin_compensated`) and
+  the post-stay reservation-link sentence
+  (`desk.stay.checkin_link_not_recorded`, LLD 23.9 R15) — so no copy
+  work is outstanding: the implementation must not invent wording, and
+  `RR13` fails an invented string rather than accepting one.
 - Design facts: the one additive `Move room` card is recorded as a
   **decided addition** in the design-facts comparison (LLD R16), never
   by removing the Stay screen from that comparison.
-- Disposition recorded for the gate (LLD 23.9 R14): `AC-REA-1`'s
-  parenthetical lists "the reservation check-in" among the steps whose
-  failure releases the assigned room, while the same condition's
-  invariant, `FR-REA-1`, and LLD 23.3 release only when no stay exists.
-  **`FR-REA-1` governs here**: `RR4` asserts that a reservation-link
-  failure after the stay committed releases nothing and reports the
-  split, and the `AC-REA-1` reword (drop "or the reservation check-in"
-  from the release list) is a named `product-owner` follow-up. The row
-  is mapped that way in section 4 rather than left ambiguous.
+- Disposition recorded for the gate (LLD 23.9 R14, closed at the stack
+  base): `AC-REA-1` already scopes its release list to a later step
+  "that does not land while no stay was recorded (the booking read or
+  the stay write)" and states the post-stay split explicitly, so no
+  reword is outstanding. **`FR-REA-1` governs the reservation-link
+  case**: `RR4` asserts that a reservation-link failure after the stay
+  committed releases nothing and reports the split, and that guard is
+  the only outstanding obligation on the row — there is no
+  `product-owner` follow-up left. The row is mapped that way in
+  section 4 rather than left ambiguous.
 
 ## 2. Pins on disk at this spec head
 
 Every `file:line` below was read on this spec branch head (the stack's
-architecture commit `c15e570`; the code tree is identical to `master`
+architecture commit `979f644`; the code tree is identical to `master`
 at `61bb8dd`, since the three sibling spec PRs touch only `docs/`).
 They prove today's behaviour: the assignment never comes back, and the
 desk has no move path. The implementation PR extends these in place,
@@ -159,7 +161,7 @@ wrong.
 | `RR10` | **Retired-pin re-pin**: `app/src/stay-restyle.test.ts` keeps every retired v1 hook absent except `data-testid="stay-move-card"`, `stay-move-room`, and the `/v1/stay/MoveRoom` call, which are asserted present as decided additions | `app/src/stay-restyle.test.ts` |
 | `RR11` | **Browser switch scenarios**: one switch-after-preload scenario and one switch-after-commit scenario assert on the served SPA that the desk board and the Rooms map show only the room the guest is in, and that the vacated room reads vacant | `app/e2e/stay.spec.ts` |
 | `RR12` | **Design fact**: the additive `Move room` card is recorded in the design-facts comparison as a decided addition for the Stay screen; the screen is still compared and no exemption silences it | `app/e2e/design-facts.spec.ts` |
-| `RR13` | **Catalogue**: every key of rollout section 6.17's table exists in `messages/en.json` and `messages/vi.json` with its placeholders intact and its EN/VI pair matching the table; no invented string stands in for the two unkeyed sentences of LLD R15 (the case fails on an invented key, not on an absent one); `script/catalogue-coverage-check.sh` is green | `messages/en.json`, `messages/vi.json`, `script/catalogue-coverage-check.sh` |
+| `RR13` | **Catalogue**: all 20 keys of rollout section 6.17's table exist in `messages/en.json` and `messages/vi.json` with their placeholders intact and their EN/VI pairs matching the table, including the two keyed sentences `desk.stay.checkin_compensated` and `desk.stay.checkin_link_not_recorded` (LLD 23.9 R15); no invented string stands in for a table key (the case fails on an invented key, not on an absent one); `script/catalogue-coverage-check.sh` is green | `messages/en.json`, `messages/vi.json`, `script/catalogue-coverage-check.sh` |
 | `RR-E1` | **Evidence rule**: the implementation PR records the isolated-compose lab reproduction of the owner symptom — **which path leaves the stale hold** (switch after a preload, switch after a commit, or a mid-stay move) — in the PR body or an issue comment as the issue's scope requires, records the before/after pair in `docs/testing/evidence/647/README.md`, and records the slice in `docs/testing/test-report.md` (section 3 exit criterion 6 of `test-strategy.md`). This row stays pending until both records exist | evidence record + `test-report.md` |
 
 ## 4. Traceability map
@@ -183,7 +185,7 @@ when the guard passes.
 | `FR-REA-3` — a refused or aborted reassignment leaves no room occupied by the attempt, and the compensating release targets `vacant-inspected` | L1 acceptance + compensation target | **Pending** — `RR6`, `RR9`; `services/rooms/src/server.test.ts:328-354`, `:355-381` keep the one-winner and replay halves |
 | `FR-REA-4` — a mid-stay move runs the same single path with the same ordering and refusals, and the stay keeps its in-house state and folio link | L1 acceptance on the same card | **Pending** — `RR8`; no second mechanic may appear (`RR10` asserts no second card hook) |
 | `FR-REA-5` — the reassignment is recorded, visible, and guarded: the move keeps from-room, to-room, time, and actor; the desk names both numbers and the time; the four cases carry unit plus e2e/lab guards; every new string is in both locales; the decided card is a recorded design fact | L1 + audit + browser + catalogue + design-facts | **Pending** — `RR7`/`RR8` (receipt), `RR10` (re-pin), `RR11`, `RR12`, `RR13`; the durable record is pinned today at `services/stay/src/server.test.ts:241-258` and `services/rooms/src/store.ts:398-402`, `:428-432` and must stay green |
-| `AC-REA-1` / `FR-REA-1` disposition (LLD R14) | The gate sees the reading, the guard that proves it, and the follow-up owner | **Pending** — `RR4` is the guard; the `AC-REA-1` reword (drop "or the reservation check-in" from the release list) and the two unkeyed sentences of LLD R15 are `product-owner` follow-ups named in this document, not implementation work |
+| `AC-REA-1` / `FR-REA-1` disposition (LLD R14, closed at the stack base) | The gate sees the reading and the guard that proves it; the criterion already scopes its release list and both copy points are keyed (LLD R15), so no reword or copy follow-up remains | **Pending** — `RR4` (`app/src/views/StayView.test.ts`, created by the implementation PR) is the guard and the only outstanding obligation on the row |
 | Desk flows stay green (`AC-DSK-17`, `AC-DSK-18`, `AC-DSK-19`, `AC-CKO-1`, `AC-CKO-2`, `AC-DEP-1`..`AC-DEP-5`) | Behaviour check: the preload and commit window, the check-out release, the room charge, the settlement refusals, and the departure completion keep their words and calls; no desk flow they pin changes | **Covered by re-run at this spec head** — `app/src/views/StayView.test.ts:2390-2537`, `:2538-2666`, `:1086-1206`, `:1281-1362`, `:1530-1579`, `:1650-1783`, `:1940-1974`, `app/src/views/desk-edge-guards.test.ts:899-1033`, `:1449-1700`, `app/e2e/stay.spec.ts:30-177`, `script/e2e-desk-loop.sh:342-348`. These must pass unchanged after the implementation PR; a flow edit fails the row |
 | Contract and LC | Re-run only: the three operations keep their shapes, no error code is added, and the existing fixtures replay unchanged | **Pending gate** — `contracts/http/AssignRoom.json`, `MoveRoom.json`, `ReleaseRoom.json`, `contracts/errors/envelope.json`, `services/rooms/contract-tests/`, `services/stay/contract-tests/`, `script/contract-check.sh`, `script/openapi-route-check.sh`; a contract delta here is a re-tier finding (LLD 23.7, 23.9) |
 | MVP no-change statement | No new MVP row, story, or FR id; `FR-FDK-1` and `FR-FDK-3` gain only the amendment pointer | **Pending gate** — the 57-row MVP coverage count stands unchanged in `traceability-matrix.md` and no MVP row cites this slice as its guard |
