@@ -150,7 +150,7 @@ docs and plans, not gated specs.
 | Type | Path | Status | Owner | Purpose |
 |---|---|---|---|---|
 | Test strategy | `testing/test-strategy.md` | active | `qa-lead` | testing approach, levels, and entry/exit criteria (Closes #62) |
-| Traceability matrix | `testing/traceability-matrix.md` | active | `qa-lead` | FR/NFR-to-guard map (every item keeps at least one guard) (Closes #62; section 11 Refs #590, section 12 Refs #600, section 13 Refs #601, section 14 Refs #646, section 15 Refs #647) |
+| Traceability matrix | `testing/traceability-matrix.md` | active | `qa-lead` | FR/NFR-to-guard map (every item keeps at least one guard) (Closes #62; section 11 Refs #590, section 12 Refs #600, section 13 Refs #601, section 14 Refs #646, section 15 Refs #647, section 16 Refs #632) |
 | Test report | `testing/test-report.md` | active | `qa-lead` | consolidated full-MVP results with pass evidence per cell (Closes #214) |
 | Phase 6 QA plan | `testing/phase-6-qa-plan.md` | active | `qa-lead` | scoped independent-QA pass plan: entry, activities, bug flow, exit (Closes #264) |
 | A1 desk-loop run log | `testing/phase-6-qa-a1-run-log.md` | active | `qa-lead` | scripted live-stack desk-loop record: per-step observed-vs-expected, screen surfaces, admin reads, evidence, defects (Closes #267) |
@@ -170,6 +170,7 @@ docs and plans, not gated specs.
 | Check-out settlement test traceability | `testing/checkout-settlement-test-traceability.md` | active | `qa-lead` | cases `CKS-1..CKS-11`, guard registry `S1`–`S12`, evidence rule `SR-1`, and the `AC-CKO-1/2` / `FR-CKS-1..5` map for the server-side check-out settlement gate, with the #588 desk pins that must stay green (Refs #601) |
 | Departure release test traceability | `testing/departure-release-test-traceability.md` | active | `qa-lead` | cases `DEP-1..DEP-9`, guard registry `DR1`–`DR13`, evidence rule `DR-E1`, and the `AC-DEP-1..5` / `FR-DEP-1..5` map for the departure release and same-day reuse after check-out, with the #588/#600/#601 pins that must stay green and the lifecycle `D5`/`D6` rows (Refs #646) |
 | Arrival reassignment test traceability | `testing/arrival-reassign-test-traceability.md` | active | `qa-lead` | cases `REA-1..REA-9`, guard registry `RR1`–`RR13`, evidence rule `RR-E1`, and the `AC-REA-1..5` / `FR-REA-1..5` map for the arrival room reassignment and vacated-room release, with the definitive-versus-unreadable ordering, the `AC-REA-1` / `FR-REA-1` disposition, and the #586/#588/#596/#600/#601/#614/#646 pins that must stay green (Refs #647) |
+| Price authority test traceability | `testing/price-authority-test-traceability.md` | active | `qa-lead` | cases `PA-1..PA-8`, guard registry `PA1`–`PA14`, evidence rule `PA-E1`, and the `AC-PRC-1..5` / `AC-DSK-20` / `FR-PRC-1..5` map for the server-side reservation price basis, with the forged low/high, matching, legitimate-zero, unreadable, and definitive cases, the two rewired service pins, and the #588/#600/#601/#646/#647 pins that must stay green, plus the `PRICE_CHANGED` 409 / `UPSTREAM_UNAVAILABLE` 503 contract delta (Refs #632) |
 
 ## DevOps / Operations / Release
 

@@ -791,8 +791,91 @@ spec head; it completes when the implementation PR merges with
 `qa-lead` re-pins the rows at the merged head. The MVP Coverage line
 below stands unchanged at 57/57.
 
+## 16. Server-side reservation price basis slice (Refs #632)
+
+Behaviour slice for the booking money path: the total a reservation
+freezes and the discount name it stores become the values a Rates
+`QuotePrice` read returns for the effective room type, dates, and
+discount during the same request, instead of whatever the caller sent.
+A request whose total disagrees is refused `PRICE_CHANGED` (409) with
+both totals and stores nothing, an unreadable Pricing refuses
+`UPSTREAM_UNAVAILABLE` (503) rather than freezing an unverified number,
+a definitive Rates refusal is surfaced unchanged, and Modify reprices
+on the same terms and records the price-basis change with the actor and
+time. No schema, column, migration, backfill, event, or stored-shape
+change; the contract delta is additive. Tier T3 (ADR-0006, `proposed` —
+the owner accepts it before the implementation PR merges; HLD
+[section 18](../architecture/hld.md) and LLD
+[section 24](../architecture/lld.md); `product-owner` scope in
+[acceptance-criteria.md section 17](../product/acceptance-criteria.md)
+and [desk-ui-design-rollout.md section 6.18](../product/desk-ui-design-rollout.md);
+`business-analyst` requirements in
+[mvp-requirements.md section 25](../requirements/mvp-requirements.md)).
+
+Each row traces `AC-PRC-1`..`AC-PRC-5` and the desk condition
+`AC-DSK-20` (owned by `product-owner`), the behaviour-scoped
+requirements `FR-PRC-1`..`FR-PRC-5` (owned by `business-analyst`), the
+unchanged MVP rows `FR-RES-1`, `FR-RES-2`, and `FR-RTE-5`, and business
+rules `BR-2`, `BR-13`, and `BR-47`
+([business-rules.md](../requirements/business-rules.md)). The owner
+cases `PA-1`..`PA-8`, the guard registry `PA1`–`PA14`, and the evidence
+rule `PA-E1` live in
+[price-authority-test-traceability.md](price-authority-test-traceability.md)
+sections 3, 4, 6, and 7. Like the slices above, these rows add no MVP
+capability: the 57-row MVP coverage count stands unchanged and no MVP
+row may cite this slice as its guard.
+
+Every `file:line` in the existing pins was read at this spec head (the
+stack's requirements commit `15c1320`; service tree identical to
+`master` `8cb42ca`, because the sibling spec PRs touch `docs/` only).
+Those pins prove today's behaviour — the frozen total is only checked
+for presence and `>= 0`
+(`services/reservations/internal/service/service.go:101-103`,
+`:181-183`), stored verbatim
+(`services/reservations/internal/store/store.go:236-237`), re-frozen on
+Modify (`:437-441`), and nothing on the booking path quotes (the wired
+client runs `CheckRestrictions` only,
+`services/reservations/internal/pricing/client.go:43-87`) — and the
+implementation PR rewires the two pins that assert the supplied total
+and extends every other one in place, never deleting an assertion. All
+`PA1`–`PA14` guards are **missing at this spec head** and created by
+the implementation PR; a row is complete only when that PR lands,
+passes, and `qa-lead` re-pins it at the merged head. The slice is
+therefore **not complete** at this spec head.
+
+| Item | Required guard type | Guard |
+|---|---|---|
+| `AC-PRC-1` — the frozen total and stored discount name are the `QuotePrice` values for the effective room type, dates, and discount read in the same request; the request's total never sets a stored value; a repeated `idempotencyKey` is returned at its stored total, never re-quoted (traces to US-RES-1; `FR-RES-1`, `FR-RTE-5`, `BR-13`, `BR-47`) | L1 acceptance + downstream read | **Pending** — `PA3`, `PA4`, `PA6` in `services/reservations/internal/service/service_test.go`; today's opposite is pinned at `services/reservations/internal/service/service.go:101-103`, `:127` and `internal/store/store.go:236-237`, with the rewired pins at `internal/service/service_test.go:34-47`, `internal/handler/handler_test.go:59-91` |
+| `AC-PRC-2` — a disagreeing total (lower, higher, or zero for a priced stay) is refused `PRICE_CHANGED` (409) naming both totals, the type, and the dates; no reservation, availability, change entry, idempotency record, or event is written; a legitimate zero is booked only when the quote says zero (traces to US-RES-1; `FR-RES-1`, `FR-RTE-5`, `BR-13`, `BR-47`) | L1 acceptance: the three disagreement shapes + the no-write set | **Pending** — `PA1`, `PA2`, `PA4`; the absent/negative 400 that must stay a different refusal is `PA5` |
+| `AC-PRC-3` — an unreadable Pricing (transport, timeout, 5xx, unparseable envelope, unwired client) refuses `UPSTREAM_UNAVAILABLE` (503) naming `rates`/`QuotePrice` with nothing stored, and each definitive Rates refusal (`NOT_FOUND` `no_rate_price`/`no_rate_plan`, `VALIDATION_FAILED` for an unknown discount, `VALIDATION_FAILED` naming `ratePlanName`) is surfaced unchanged (traces to US-RES-1; `FR-RTE-1`, `FR-RTE-5`, `BR-13`, `BR-47`, `NFR-AVL-1`) | L1 acceptance: five unreadable shapes + four definitive shapes | **Pending** — `PA7`, `PA8`; the shape to copy is pinned at `internal/pricing/client.go:43-87`, `internal/pricing/client_test.go:61-84`, `internal/handler/handler_restrictions_test.go:65-99` and stays green |
+| `AC-PRC-4` — Modify recomputes from the effective post-change type, dates, and discount, refuses a disagreement and an unreadable Pricing, surfaces a definitive refusal unchanged, keeps the stored row in every refusal, and records the price-basis change with actor and time (traces to US-RES-2; `FR-RES-2`, `FR-RTE-5`, `BR-2`, `BR-13`, `BR-47`, `NFR-AUD-1`) | L1 acceptance + audit row | **Pending** — `PA10`, `PA11`, `PA12`; the change-row half exists at `internal/store/store.go:437-441` / `internal/store/store_test.go:108-148` and stays green |
+| `AC-PRC-5` — the guards cover the forged-low, forged-high, matching (including a legitimate zero), unreadable, and definitive callers plus the Modify reprice with its history row and actor; the #600 room charge still posts the frozen total and the `AC-RES-1`, `AC-RES-2`, `AC-DSK-13`, `AC-DSK-19`, `AC-CKO-1`/`AC-CKO-2` guards keep passing (traces to `NFR-AUD-1`) | L1 + audit + downstream + re-run | **Pending** — `PA1`–`PA12`, with the green half on the downstream-green row and the desk half in `PA13` |
+| `FR-PRC-1` — the total a new reservation freezes is the Pricing quote, read for the effective type, dates, and discount with the caller's session forwarded; the stored discount name is the quote's applied name; the request value is compared and nothing more; an absent or negative basis still refuses `VALIDATION_FAILED` (section 25.3) | L1 acceptance | **Pending** — `PA3`, `PA4`, `PA5`; today's trust is pinned at `internal/service/service_test.go:34-47`, the desk pairing at `app/src/views/BookView.test.ts:556-602` |
+| `FR-PRC-2` — a request total that disagrees is refused with `PRICE_CHANGED` naming both totals, type, and dates, and nothing is written (section 25.3) | L1 acceptance: the disagreement set + the no-write set | **Pending** — `PA1`, `PA2`; no guard on disk |
+| `FR-PRC-3` — an unreadable Pricing refuses `UPSTREAM_UNAVAILABLE` (503) naming `rates`/`QuotePrice`, a definitive refusal is surfaced unchanged, and no stay is ever frozen at an unverified, invented, or assumed-zero total (section 25.3) | L1 acceptance: the two families kept apart | **Pending** — `PA7`, `PA8`; the fail-closed shape is `internal/pricing/client.go:43-87` |
+| `FR-PRC-4` — Modify reprices on the same terms, records the price-basis change with actor and time, keeps the stored row in every refusal, keeps an omitted field's stored value, and treats an omitted/null discount name as no discount on the new quote (section 25.3) | L1 acceptance + audit row | **Pending** — `PA10`, `PA11`, `PA12`; `internal/store/store_test.go:108-148` stays green |
+| `FR-PRC-5` — a stored booking is returned rather than re-quoted, the quote sits outside the guarded store step so the concurrency guards keep their bounds, the restriction check keeps its place and `STATE_ILLEGAL` terms, and every refusal writes nothing (section 25.3) | L1 acceptance + L3 pair | **Pending** — `PA6`, `PA9`; the pair `internal/store/store_test.go:32-71` and the replay `:87-103` stay green |
+| `AC-DSK-20` (desk half) — on `PRICE_CHANGED` the Book screen re-reads the quote, shows the new total in one plain sentence, and books only on a second `Confirm`; a failed re-read books nothing and says so, reusing the no-price wording; an unreadable Pricing keeps the displayed quote and the plain panel error; a matching total changes nothing (Refs #632; traces to US-RES-1; `FR-RES-1`, `FR-RTE-5`, `BR-13`) | L1 desk acceptance + catalogue | **Pending** — `PA13`, `PA14` (the new key); the flow it builds on is pinned at `app/src/views/BookView.test.ts:506-554`, `:556-602`, `:1060-1157`, `:1158-1267` |
+| Downstream and desk stays green (`AC-RES-1`, `AC-RES-2`, `AC-DSK-13`, `AC-DSK-19`, `AC-CKO-1`/`AC-CKO-2`, and the #600 room charge) | Behaviour check: the booking read, the modify read, the quote display, the check-out room charge, and the settlement gate keep their words and calls, and the charge posts the frozen total | **Covered by re-run** — `app/src/views/BookView.test.ts:396`, `:506-554`, `:556-602`, `:1060-1157`, `:1158-1267`, `app/src/views/StayView.test.ts:1308`, `:1391`, `:1458`, `:1528`, `:1582`, `:1750`, `:1949`, `:2040`, `app/src/views/desk-edge-guards.test.ts`, `app/e2e/stay.spec.ts`, `app/e2e/design-facts.spec.ts`; these must pass unchanged after the implementation PR — a behaviour edit in one of them fails the row |
+| Contract and LC | A real delta: both codes in the envelope with their status mapping, advisory `priceBasis` wording with the version bumps, the byte-identical OpenAPI mirror, and the two new fixtures | **Pending gate** — `contracts/errors/envelope.json`, `contracts/http/CreateReservation.json`, `ModifyReservation.json`, `contracts/openapi.yaml`, `frontend/docs/openapi.yaml`, `services/reservations/contract-tests/`, `script/contract-check.sh`, `script/openapi-route-check.sh`; `PA14` is the guard, and an unregistered code or a drifted mirror is a re-tier finding (LLD 24.7) |
+| MVP no-change statement | No new MVP row, story, or FR id; `FR-RES-1`, `FR-RES-2`, and `FR-RTE-5` gain only the amendment pointer | **Pending gate** — the 57-row MVP coverage count stands unchanged and no MVP row cites this slice as its guard |
+| Evidence cross-reference (`PA-E1`) | The forged-low and unreadable-Pricing reproductions are recorded from a lab, the before/after pair is recorded, and the slice is in the test report | **Pending** — `docs/testing/evidence/632/README.md` and the `test-report.md` row are created by the implementation PR; the reproduction is also recorded in that PR's body or an issue comment |
+
+Slice coverage (Refs #632): 15 rows mapped to `AC-PRC-1`..`AC-PRC-5`,
+`AC-DSK-20`, `FR-PRC-1`..`FR-PRC-5`, and the gate boxes. One row is
+covered by re-run today (the downstream-and-desk-green row, whose pins
+exist and pass and must keep passing untouched); fourteen are
+**pending** the implementation PR — the eleven
+condition/requirement rows whose guards are the registry
+`PA1`–`PA14`, the contract/LC gate, the MVP no-change gate, and
+`PA-E1`. The slice is **not complete** at this spec head; it completes
+when the implementation PR merges with `PA1`–`PA14` green, the
+section 2 pins unchanged, `PA-E1` recorded, and `qa-lead` re-pins the
+rows at the merged head. The MVP Coverage line below stands unchanged
+at 57/57.
+
 Coverage: 43 FRs mapped, 14 NFRs mapped, 57 rows total, 57 guards
-filled (PR #112 slice: FR-RES-1, FR-RMS-1..4, FR-RTE-1/2/4/5, FR-ADM-1/2, FR-CUS-1, NFR-CON-1/2; PR #149 slice: FR-FDK-1, FR-FDK-5, FR-BIL-1/2/3/6, FR-ADM-5, NFR-BKP-1/2, NFR-AUD-1, NFR-TZ-1, plus FR-RES-1 persistence; PR #150 slice: FR-FDK-2, FR-FDK-3, FR-FDK-4, FR-BIL-7, plus the NFR-CON-2 stay-side checkout guard; PR #151 slice: FR-BIL-4, FR-CUS-3; PR #156 slice: FR-RPT-1..3; PR #157 slice: FR-GST-1..3; PR #158 slice: NFR-DEP-1, FR-ADM-4 config level, plus the FR-ADM-1 deployment extension; PR #159 slice: FR-RES-2/3/5/6 plus the NFR-CON-1 modify-path extension; PR #160 slice: ReleaseBlock plus rooms-side move coordination (FR-RMS-3, FR-FDK-3); PR #161 slice: full rates handling (FR-RTE-3 filled, FR-RTE-4/5 extended — remaining TBD cells fill in later slices); count corrected to the live total 48 (later slices filled cells without updating this line); PR #153 slice: NFR-RET-1, NFR-AVL-1; PR #182 slice: FR-RES-4, FR-ADM-3, FR-CUS-2, NFR-PERF-1/2 filled (5 guards — count corrected to the live total 53); FR-GST-4, FR-BIL-5, FR-RPT-4 point at follow-ups #189, #190, #191 and fill with those issues; NFR-I18N-1 filled by the #192 slice (count corrected to the live total 54); #189/#190/#191/#192/#201 slices filled FR-GST-4, FR-BIL-5, FR-RPT-4, NFR-I18N-1 (plus the #201 extension) — count corrected to the live total 57 (Closes #214)). Section 10 (Refs #588) adds 10 slice rows mapped to the #588 acceptance and `FR-CKO-1`..`FR-CKO-5`; the MVP row count stands unchanged at 57/57 because the slice adds no MVP capability. Section 11 (Refs #590) adds 15 slice rows mapped to `AC-MANAGE-1..11` and `FR-MGMT-1..12`; the MVP row count stands unchanged at 57/57 for the same reason. Section 12 (Refs #600) adds 10 slice rows mapped to `AC-DSK-19` and `FR-CKP-1`..`FR-CKP-5`; the MVP row count stands unchanged at 57/57 for the same reason. Section 13 (Refs #601) adds 11 slice rows mapped to `AC-CKO-1`, `AC-CKO-2`, and `FR-CKS-1`..`FR-CKS-5`; the MVP row count stands unchanged at 57/57 for the same reason. Section 14 (Refs #646) adds 16 slice rows mapped to `AC-DEP-1`..`AC-DEP-5`, `FR-DEP-1`..`FR-DEP-5`, and the lifecycle `D5`/`D6` notes; the MVP row count stands unchanged at 57/57 for the same reason. Section 15 (Refs #647) adds 15 slice rows mapped to `AC-REA-1`..`AC-REA-5`, `FR-REA-1`..`FR-REA-5`, the `AC-REA-1` / `FR-REA-1` disposition (LLD 23.9 R14), and the gate boxes; the MVP row count stands unchanged at 57/57 for the same reason.
+filled (PR #112 slice: FR-RES-1, FR-RMS-1..4, FR-RTE-1/2/4/5, FR-ADM-1/2, FR-CUS-1, NFR-CON-1/2; PR #149 slice: FR-FDK-1, FR-FDK-5, FR-BIL-1/2/3/6, FR-ADM-5, NFR-BKP-1/2, NFR-AUD-1, NFR-TZ-1, plus FR-RES-1 persistence; PR #150 slice: FR-FDK-2, FR-FDK-3, FR-FDK-4, FR-BIL-7, plus the NFR-CON-2 stay-side checkout guard; PR #151 slice: FR-BIL-4, FR-CUS-3; PR #156 slice: FR-RPT-1..3; PR #157 slice: FR-GST-1..3; PR #158 slice: NFR-DEP-1, FR-ADM-4 config level, plus the FR-ADM-1 deployment extension; PR #159 slice: FR-RES-2/3/5/6 plus the NFR-CON-1 modify-path extension; PR #160 slice: ReleaseBlock plus rooms-side move coordination (FR-RMS-3, FR-FDK-3); PR #161 slice: full rates handling (FR-RTE-3 filled, FR-RTE-4/5 extended — remaining TBD cells fill in later slices); count corrected to the live total 48 (later slices filled cells without updating this line); PR #153 slice: NFR-RET-1, NFR-AVL-1; PR #182 slice: FR-RES-4, FR-ADM-3, FR-CUS-2, NFR-PERF-1/2 filled (5 guards — count corrected to the live total 53); FR-GST-4, FR-BIL-5, FR-RPT-4 point at follow-ups #189, #190, #191 and fill with those issues; NFR-I18N-1 filled by the #192 slice (count corrected to the live total 54); #189/#190/#191/#192/#201 slices filled FR-GST-4, FR-BIL-5, FR-RPT-4, NFR-I18N-1 (plus the #201 extension) — count corrected to the live total 57 (Closes #214)). Section 10 (Refs #588) adds 10 slice rows mapped to the #588 acceptance and `FR-CKO-1`..`FR-CKO-5`; the MVP row count stands unchanged at 57/57 because the slice adds no MVP capability. Section 11 (Refs #590) adds 15 slice rows mapped to `AC-MANAGE-1..11` and `FR-MGMT-1..12`; the MVP row count stands unchanged at 57/57 for the same reason. Section 12 (Refs #600) adds 10 slice rows mapped to `AC-DSK-19` and `FR-CKP-1`..`FR-CKP-5`; the MVP row count stands unchanged at 57/57 for the same reason. Section 13 (Refs #601) adds 11 slice rows mapped to `AC-CKO-1`, `AC-CKO-2`, and `FR-CKS-1`..`FR-CKS-5`; the MVP row count stands unchanged at 57/57 for the same reason. Section 14 (Refs #646) adds 16 slice rows mapped to `AC-DEP-1`..`AC-DEP-5`, `FR-DEP-1`..`FR-DEP-5`, and the lifecycle `D5`/`D6` notes; the MVP row count stands unchanged at 57/57 for the same reason. Section 15 (Refs #647) adds 15 slice rows mapped to `AC-REA-1`..`AC-REA-5`, `FR-REA-1`..`FR-REA-5`, the `AC-REA-1` / `FR-REA-1` disposition (LLD 23.9 R14), and the gate boxes; the MVP row count stands unchanged at 57/57 for the same reason. Section 16 (Refs #632) adds 15 slice rows mapped to `AC-PRC-1`..`AC-PRC-5`, the desk condition `AC-DSK-20`, `FR-PRC-1`..`FR-PRC-5`, and the gate boxes; the MVP row count stands unchanged at 57/57 for the same reason.
 
 <!-- ao-role: qa-lead -->
 Role: qa-lead · AO session hotel-mgmt-922
