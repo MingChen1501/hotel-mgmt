@@ -100,7 +100,7 @@ upgraded from an older bundle inherits the stranded bookings described
 in `../operations/runbook.md` section 8.2 — they are handled there,
 never by editing a booking at the desk.
 
-**Rollback pointer.** `rollback.md` [section 5.1](rollback.md): revert
+**Rollback pointer.** `rollback.md` [section 5.2](rollback.md): revert
 the single implementation PR. The revert restores the previous
 behaviour — a close stops completing the booking — and has no data
 effect: the `closed` state and the `stay_id` link already exist, so no
@@ -131,5 +131,111 @@ bookings stranded before this bundle (the D6 reconciliation follow-up,
 `../operations/runbook.md` section 8.2), no `reservation.completed`
 event (D5), and no reporting projection on the completed state.
 
+### 2.2 Desk room reassignment and vacated-room release (Refs #647)
+
+**Change and trace.** A check-in now commits only the room the guest is
+actually given, and a room the commit set aside for a guest who never
+landed is handed back in the same commit window; the Stay screen gains
+one `Move room` card that moves an in-house guest to another ready room
+and releases the vacated one, so the arrival-time swap (a guest expected
+in 101 who arrived in 102) and a mid-stay move are one path
+(`AC-REA-2`, `AC-REA-4`). It uses only the operations that already exist
+— `AssignRoom`, `MoveRoom`, and `ReleaseRoom`
+(`contracts/http/AssignRoom.json`, `MoveRoom.json`, `ReleaseRoom.json`)
+— in one documented order: assign the target, move the stay, release the
+vacated room, with the target released back to the ready state when a
+later step refuses. No new operation, field, lifecycle state, event,
+schema, or migration (`../architecture/lld.md` section 23.7). The
+`MoveRoom` call the desk now makes is the operation `FR-FDK-3` and
+`BR-19` already promised; the arrival-time half is
+`FR-REA-1`..`FR-REA-5` (`../requirements/mvp-requirements.md` section
+24) against done-conditions `AC-REA-1`..`AC-REA-5`
+(`../product/acceptance-criteria.md` section 16), with the desk delta and
+its 20-key EN+VI copy in `../product/desk-ui-design-rollout.md` section
+6.17, decision D-27 in `../project/decision-log.md`, and risk R-11 in
+`../project/risk-register.md`. Risk label: `risk-medium`, tier T2. Issue
+#647 is closed by the implementation PR; this entry documents the change
+the spec set describes.
+
+**What staff see.** Only the room the guest is in reads occupied after a
+check-in: if the desk switched rooms after the panel had loaded the
+booked type's ready rooms, the room the panel showed is never taken, and
+a check-in that refuses after the room was set aside now says the
+check-in was refused and the room is free again — or names the room that
+still reads occupied when handing it back itself failed. The Stay screen
+gains one `Move room` card below the two existing cards (same styling,
+same tokens, no new screen, dialog, or print surface): pick a guest in
+house and a ready room, press `Move guest`, and the receipt names the
+guest, the old room number, the new room number, and the time in the
+hotel's local time. The old room reads vacant and dirty on the next main
+board and Rooms-screen load and the new room reads occupied; the stay
+stays in house with its folio link, and the move keeps both room numbers
+and its time in the stay history. Refusals stay in plain words and never
+show an envelope code: a room just taken, a guest no longer in house, a
+refused move whose target is free again, an unreadable reply that names
+both rooms and asks staff to reload, and a move whose last release failed
+("the guest is now in room 102, but room 101 still reads occupied").
+Check-in, check-out, the room charge review (#600), the settlement gate
+(#601), the departure completion (#646), and room housekeeping behave as
+before. A room stranded **before** this release keeps reading **Occupied**
+with **Unknown guest** until the delivery team clears it once at the
+upgrade (`../operations/runbook.md` section 9).
+
+**Install/upgrade delta.** Nothing beyond the standard upgrade procedure
+(`../devops/deployment.md` sections 4–5): no new bundle-level service
+address, no per-hotel configuration value, no restart-order change, no
+schema migration, and no data backfill. The desk is served from the same
+bundle, so the card and the compensating release arrive with it; an older
+desk build keeps working because no contract changed, but it keeps the
+defect. An installation upgraded from an older bundle inherits the rooms
+that build stranded: the delivery team clears them once, before handing
+the desk back, per `../operations/runbook.md` sections 9.3 and 9.4
+(`../devops/deployment.md` section 4 carries the step), and no automatic
+repair or backfill ships with this release.
+
+**Rollback pointer.** `rollback.md` [section 5.1](rollback.md): revert the
+single implementation PR. The revert restores the two-panel Stay screen
+and the previous behaviour — check-ins stop compensating and the desk
+stops calling `MoveRoom` — and has no data effect: the three operations,
+the `stay_moves` and room state-history rows already exist, so no
+migration runs in either direction and no restore is needed. Rooms the
+reverted build strands, and rooms stranded before it, are cleared with
+`../operations/runbook.md` section 9.4. The #588 release, the #600 room
+charge, the #601 settlement gate, and the #646 departure completion are
+untouched in both directions.
+
+**Evidence state and follow-ups.** The change is T2 and needs the
+`spec-reviewer` `SPEC-GATE PASS` on #647 before the implementation PR
+opens; the guard registry `RR1`–`RR13` and the evidence rule `RR-E1`
+(`../testing/arrival-reassign-test-traceability.md`) are the `qa-lead`
+handoff, and every one of those guards is a named obligation the
+implementation PR creates, re-pinning the #586/#596/#614 commit-window
+pins, the #588 release pin, and the retired-hook pin rather than deleting
+them. Verification at merge: the Rooms and Stay stacks build, lint, and
+test green, the desk suite green with `RR1`–`RR10` plus the existing
+pins, the browser desk scenarios green (`RR11`) with the Stay design
+facts carrying the decided card (`RR12`), `script/contract-check.sh` and
+`script/openapi-route-check.sh` green as a re-run with no contract delta,
+the live desk loop (`e2e-single-host`) green over the assign / move /
+release chain, `script/catalogue-coverage-check.sh` green over the 20
+keys in both locales (`RR13`), and `script/markdown-link-check.sh` green.
+Before handover, the lab reproduces the owner scenario, records which path
+leaves the stale hold (switch after the preload, switch after a commit, or
+a mid-stay move) in the implementation PR body or on the issue, and
+records the before/after pair in `../testing/evidence/647/README.md`
+(`RR-E1`). Deliberately open: no server-side compensation or retry worker
+— a desk closed between setting a room aside and finishing the action
+still leaves one room to clear (`../architecture/lld.md` section 23.9,
+R12, cleared with `../operations/runbook.md` section 9); no automatic
+repair for rooms stranded before this bundle; and no dedicated move-history
+list, because no read operation exposes the stay's move rows (a follow-up
+issue if the owner wants one).
+
 <!-- ao-role: release-manager -->
 Role: release-manager · AO session hotel-mgmt-948
+
+<!-- ao-role: release-manager -->
+Role: release-manager · AO session hotel-mgmt-963
+
+<!-- ao-role: release-manager -->
+Role: release-manager · AO session hotel-mgmt-969
