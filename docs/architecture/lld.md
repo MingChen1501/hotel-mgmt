@@ -4065,8 +4065,8 @@ the cap that bounds it (24.2), the failure classes and what an empty
 cell means (24.3), the target algorithm (24.4), the two per-flow
 implementation diagrams with their edge traces (24.5, 24.6), the
 contract no-change statement plus the G2 decision (24.7), the
-verification plan (24.8), and the residual risks, the copy gap routed to
-the owner, and the re-tier trigger (24.9). Acceptance criteria are
+verification plan (24.8), and the residual risks, the closed copy gap,
+and the re-tier trigger (24.9). Acceptance criteria are
 `AC-BMV-1..7` in `docs/product/acceptance-criteria.md`
 [section 17](../product/acceptance-criteria.md); FR/NFR wording is
 `docs/requirements/mvp-requirements.md` [section 25](../requirements/mvp-requirements.md);
@@ -4202,8 +4202,8 @@ Four failure classes, each owned by the read that failed:
 | Class | Trigger | Rendering | Does the list survive? |
 |---|---|---|---|
 | List read failure | `QueryCalendar` fails: transport or offline (`code: "OFFLINE"`, `app/src/api/client.ts:159-168`), `5xx`, or a non-envelope reply | One plain sentence naming what could not be read plus one retry action (`desk.bookings.read_failed`, `desk.bookings.retry`); no row is invented, no zero-filled row is shown | No rows, but the shell and the rest of the desk stay usable |
-| Shared-map failure | `ListRoomTypes`, `ListArrivalsDepartures`, or the occupied-room read fails | The affected column reads `cell_unreadable` and one notice above the list states the count; every other cell still renders | Yes |
-| Row read failure | `GetReservation` for one listed booking fails | The row keeps its calendar fields (reference, type id resolved from the map, dates, nights, state); the guest-name and total cells read `cell_unreadable`; the row is counted in the partial notice; the booking is never dropped | Yes |
+| Shared-map failure | `ListRoomTypes`, `ListArrivalsDepartures`, or the occupied-room read fails | The affected column reads `cell_unreadable` and one notice above the list names that column (`desk.bookings.column_partial`, `{column}`, filled from the failed read's own heading `desk.bookings.col_room_type` / `desk.bookings.col_room`); every other cell still renders | Yes |
+| Row read failure | `GetReservation` for one listed booking fails | The row keeps its calendar fields (reference, type id resolved from the map, dates, nights, state); the guest-name and total cells read `cell_unreadable`; the row is counted in the partial notice (`desk.bookings.row_partial`, `{count}`); the booking is never dropped | Yes |
 | Detail read failure | `GetReservation` on selection fails | One sentence naming the booking (`detail_failed`, `{ref}`) plus one retry action; the list stays exactly as it was and the previous detail is not kept as if it were current | Yes |
 
 A `401` is not one of these classes: the shared client signs the session
@@ -4308,10 +4308,10 @@ flowchart TD
     B -->|no: offline, 5xx, non-envelope| Z1[Plain read-error sentence with retry; no rows invented  desk.bookings.read_failed; api/client.ts:159-196]
     B -->|yes| C[Sort, cap, then read the maps and the rows]
     C --> D{Shared map readable?}
-    D -->|no| E1[Affected column reads cell_unreadable; one notice states it  product spec section 7]
+    D -->|no| E1[Affected column reads cell_unreadable; one notice names that column  desk.bookings.column_partial; product spec section 7]
     D -->|yes| E2[Column resolves from the map]
     C --> F{Row read readable?}
-    F -->|no| G1[Row keeps calendar fields; guest and total read cell_unreadable; counted in the notice  product spec section 7]
+    F -->|no| G1[Row keeps calendar fields; guest and total read cell_unreadable; counted in the notice  desk.bookings.row_partial; product spec section 7]
     F -->|yes| G2[Row completes full]
     E1 --> H[List renders; no booking dropped]
     E2 --> H
@@ -4443,7 +4443,7 @@ Stack and repo gates: `cd app && npm ci && npm run build && npm run lint
 `script/markdown-link-check.sh`; `script/harness-conventions-check.sh`;
 `git diff --check`.
 
-### 24.9 Residual risks, copy gap, and re-tier trigger
+### 24.9 Residual risks, closed copy gap, and re-tier trigger
 
 - **R15 — the assigned room is a point-in-time reading.** The in-house
   pair is read once per apply, so a move made on another desk after the
@@ -4458,17 +4458,22 @@ Stack and repo gates: `cd app && npm ci && npm run build && npm run lint
 - **R17 — the fan-out is bounded, not removed.** ≤50 row reads per apply
   is accepted for v1 with the cap as the bound (24.7). The G2 trigger is
   measured latency; a single-read list operation would be T3.
-- **R18 — the partial-column sentence is a copy gap the owner must
-  close.** The catalogue table in `docs/product/booking-management-view.md`
-  section 9 has `desk.bookings.row_partial` naming the guest name and the
-  total only, while section 7 asks a failed `ListRoomTypes` /
-  in-house / occupied read to be stated "in the same notice". Using the
-  row sentence there would misreport what failed. The implementation must
-  not do that: the affected cells still read `cell_unreadable`, and the
-  notice needs a column-truthful sentence. That sentence is
-  `product-owner` copy, not an implementation choice, and it must land
-  before the slice that renders a shared-map failure. This delta records
-  the requirement; it does not word the copy.
+- **R18 — closed: the partial-column notice is worded, and the row
+  sentence keeps its scope.** The earlier gap was that the catalogue
+  named only `desk.bookings.row_partial` (guest name and total) while
+  24.3 asks a failed `ListRoomTypes` / in-house / occupied read to be
+  stated in the same notice; using the row sentence there would
+  misreport what failed. The copy now landed in
+  `docs/product/booking-management-view.md` section 9 as
+  `desk.bookings.column_partial` ("The {column} column could not be
+  read."), with `{column}` filled from the failed read's own column
+  heading (`desk.bookings.col_room_type`, `desk.bookings.col_room`), so
+  the two classes stay distinct. The implementation therefore cites
+  both keys and never merges them: the row class is one
+  `row_partial` count, each failed column is its own `column_partial`
+  sentence. The screen's full copy set is 41 new keys: 39
+  `desk.bookings.*` plus `desk.shell.nav_bookings` and
+  `desk.shell.doc_title_bookings`.
 - **R19 — the ninth tab at `1200px`.** The shell keeps the brand-only
   shrink rule and the tab, locale pill, and session control keep their
   size. If the measured nine-tab row overflows, the owner decides
