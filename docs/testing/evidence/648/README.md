@@ -75,10 +75,12 @@ are covered):
 At the 1200px band the VI row does not fit at the design's 8px gap: the
 brand is already fully shrunk (the design's only shrinkable item) and
 the session control spilled past the bar, which the `signin.spec.ts`
-header pin catches. The owner's decision on #648 is to tighten the
-spacing rather than change the label, so below a 1280px viewport the
-nav gap goes 8px → 4px and each tab keeps 12px side padding instead of
-16px (`app/src/App.vue`). Every tab, the locale pill, and the session
+header pin catches. The owner's decision — the
+[screen/gap note on #648](https://github.com/MingChen1501/hotel-mgmt/issues/648#issuecomment-6809532757)
+— is to tighten the spacing rather than change the label, so below a
+1280px viewport the nav gap goes 8px → 4px and each tab keeps 12px side
+padding instead of 16px (`app/src/App.vue`, pinned by
+`app/src/shell-restyle.test.ts`). Every tab, the locale pill, and the session
 control keep their size, the brand stays the only shrinkable item, and
 1280px and wider keep the design gap and padding exactly. The label is
 unchanged (`Sổ đặt phòng` / `Bookings`).
@@ -124,4 +126,7 @@ The screen carries `owner-review`. It has no board of its own, so the
 review is against the boards it borrows from: the shared shell and tab
 pattern (`docs/design/Main.dc.html`), the card-and-row list treatment,
 the neutral state-chip shape, and the Book screen's app-locale date
-pickers. The owner's acceptance is recorded on #648.
+pickers. The owner note on #648
+([screen/gap decision](https://github.com/MingChen1501/hotel-mgmt/issues/648#issuecomment-6809532757))
+records the header-overflow decision above and its acceptance of that
+point; the full screen acceptance rides on the implementation PR review.
