@@ -96,6 +96,11 @@ resolve in the Reservations store so exactly one succeeds
 Stay store (`NFR-CON-2`). Overbooking refusal names the conflict
 (error semantics: `docs/technical/error-handling.md`).
 
+From #632 on, the price basis in that flow is not the caller's: the
+frozen total and discount name are re-derived from a `QuotePrice` read
+taken during the create or modify request, and a request asserting a
+different total is refused rather than booked (section 18).
+
 Only active bookings (`confirmed`, `checked-in`) hold a unit: a booking
 completed by a check-out (`closed`, section 16) contributes nothing to
 the count and blocks no overlap the moment the close commits, so a
@@ -566,3 +571,67 @@ direction.
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-961
+
+## 18. Reservation price authority (Refs #632)
+
+The desk browser is not a trust boundary for the booking price either.
+Pricing owns what a stay costs; Reservations owns the price basis a
+booking freezes and, from #632 on, re-derives that basis from
+`PricingService.QuotePrice` at the moment of the write instead of
+trusting the request's `priceBasis.totalMinor`. The finding is audit
+R2 of the #625 class: the request total was only checked for presence
+and `>= 0` before it was frozen, nothing on the booking path quoted a
+price, and the #600 check-out review posts the room charge from that
+frozen total — so a caller bypassing the desk chose the money a guest
+is charged.
+
+Which service owns which fact:
+
+| Fact | Owner | Written where | May a caller assert it? |
+|---|---|---|---|
+| What a stay costs for a type, date range, and discount | Rates (`PricingService.QuotePrice`) | Rates price/plan/discount store; read at the booking write | No — re-read server-side |
+| The frozen price basis of a booking | Reservations | `reservations.reservations.price_basis` | No — the request total is compared, never stored |
+| The quoted total a refusal reports | Reservations (from the quote) | cancellation-free refusal envelope | Not applicable |
+| Which room type, dates, and discount are booked | Desk chooses; Reservations validates them | the reservation row | Yes (inputs only) |
+| The actor and time of a reprice on Modify | Admin session actor, as elsewhere | `reservation_changes` row, `updated_by`/`updated_at` | Yes (`actor`), same residual as the #601 caveat |
+
+One synchronous edge is added, not one module: Reservations calls
+`POST {RATES_BASE_URL}/v1/rates/QuotePrice` with the effective room
+type, dates, and discount and the caller's session token forwarded
+(5-second timeout), on both `CreateReservation` and
+`ModifyReservation`, from the client that already performs the
+restriction check. The read stands outside the guarded store write, so
+no booking mutex is held across a network call. A request whose total
+disagrees with the quote is refused with `PRICE_CHANGED` (409) naming
+both totals and stores nothing; an unreadable Pricing service refuses
+fail-closed with `UPSTREAM_UNAVAILABLE` (503); a definitive Rates
+refusal (`NOT_FOUND` `no_rate_price`/`no_rate_plan`, `VALIDATION_FAILED`
+for an unknown discount or an ambiguous plan set) is surfaced unchanged.
+An already-stored booking is returned at its stored total on a replayed
+idempotency key, never re-quoted. Stored `priceBasis` keeps its shape:
+no schema, table, migration, or event changes, and the contract change
+is additive (advisory request fields plus the registered
+`PRICE_CHANGED` code).
+
+Tier T3 (confirmed here; `architect` owns the T3 call and the product
+spec proposed it): this is Reservations' first synchronous read of
+Rates' pricing side and it makes Pricing the authority for a stored
+money fact, the shape ADR-0005 records for the check-out gate. The ADR
+stays `proposed`: the owner accepts the decision record
+(`proposed -> accepted`) before the implementation PR merges. Decision
+record:
+`docs/architecture/decisions/adr-0006-server-side-reservation-price-authority.md`
+(proposed); flow detail, the per-flow implementation diagrams, the
+contract delta, and the verification plan: `docs/architecture/lld.md`
+[section 24](lld.md); trust-boundary and residual-risk deltas:
+`docs/technical/security-threat-model.md` sections 2, 3, and 8; the
+desk half (`AC-DSK-20`) stays with `product-owner`.
+
+Rollback: revert the single implementation PR. The desk's
+`PRICE_CHANGED` recovery is inert when the service never raises the
+code, so the former desk-supplied price returns with no migration in
+either direction; bookings already frozen at a caller-supplied total
+keep it and are repriced only when staff next modify them.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-990

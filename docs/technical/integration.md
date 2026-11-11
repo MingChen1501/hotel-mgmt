@@ -35,6 +35,25 @@ restrictions (FR-RTE-4), discounts (FR-RTE-3), cancellation wording
 shown at booking (FR-CUS-2). Paired-booking guard resolves in the
 Reservations store transaction (LLD [section 1](../architecture/lld.md); `NFR-CON-1`).
 
+From #632 on, `QuotePrice` is consumed by `Reservations` itself and not
+only by the desk: `CreateReservation` and `ModifyReservation` re-derive
+the frozen price basis from a `QuotePrice` read taken during the same
+request, with the effective room type, dates, and discount and the
+caller's Bearer token forwarded (5-second timeout, `RATES_BASE_URL`).
+The request's `priceBasis` is advisory: it is compared with the quote
+and never stored. A request total that disagrees is refused with
+`PRICE_CHANGED` (409) carrying `requestedTotalMinor` and
+`quotedTotalMinor` plus the type and dates, and stores nothing; an
+unreadable Pricing service refuses `UPSTREAM_UNAVAILABLE` (503) naming
+`rates`/`QuotePrice`; a definitive Rates refusal (`NOT_FOUND` with
+`reason` `no_rate_price` or `no_rate_plan`, `VALIDATION_FAILED` for an
+unknown discount or an ambiguous plan set) is surfaced unchanged. A
+replayed `idempotencyKey` returns the stored booking at its stored
+total without a second quote. Advisory-field discipline and the
+fail-closed rule are C7's (ADR-0005) applied to the booking write;
+decision record ADR-0006, flow detail LLD
+[section 24](../architecture/lld.md#24-server-side-reservation-price-authority-refs-632).
+
 ### C2. RES -> ROOM (`RoomInventoryService`) — SYNC
 
 | Operation | Payload | Errors |

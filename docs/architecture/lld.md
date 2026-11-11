@@ -90,8 +90,8 @@ Interfaces (provider: `ReservationService`):
 
 | Operation | Request | Response | Errors |
 |---|---|---|---|
-| `CreateReservation` | roomType, arrivalDate, departureDate, guestLink, priceBasis, discountName?, idempotencyKey | reservationRef, state=confirmed, quotedTotal | `CONFLICT` (type+dates), `STATE_ILLEGAL` (restriction), `VALIDATION_FAILED` (missing guest field), `NOT_FOUND` (type/rate) |
-| `ModifyReservation` | reservationRef, newDates?, newRoomType?, newGuest?, idempotencyKey | reservationRef, recalculatedTotal | as above + `STATE_ILLEGAL` (already checked-in) |
+| `CreateReservation` | roomType, arrivalDate, departureDate, guestLink, priceBasis (advisory), discountName?, idempotencyKey | reservationRef, state=confirmed, quotedTotal | `CONFLICT` (type+dates), `STATE_ILLEGAL` (restriction), `VALIDATION_FAILED` (missing guest field), `NOT_FOUND` (type/rate), `PRICE_CHANGED` (request total disagrees with the quote), `UPSTREAM_UNAVAILABLE` (Pricing unreadable; Refs #632) |
+| `ModifyReservation` | reservationRef, newDates?, newRoomType?, newGuest?, priceBasis (advisory), idempotencyKey | reservationRef, recalculatedTotal | as above + `STATE_ILLEGAL` (already checked-in) |
 | `CancelReservation` | reservationRef, reason (from hotel list) | state=cancelled | `STATE_ILLEGAL` (already checked-in), `VALIDATION_FAILED` (reason missing) |
 | `MarkNoShow` | reservationRef, reason | state=no-show | `STATE_ILLEGAL` (arrival date not passed / already in house) |
 | `GetReservation` | reservationRef | full reservation incl. price basis, history | `NOT_FOUND` |
@@ -4037,3 +4037,385 @@ Stack and repo gates: `cd app && npm ci && npm run build && npm run lint
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-961
+
+## 24. Server-side reservation price authority (Refs #632)
+
+Tier **T3 confirmed** (architectural: Reservations gains its first
+synchronous read of Rates' pricing side and Pricing becomes the
+authority for a money fact the booking stores; no schema, data-model,
+lifecycle, or operation-shape change, and the contract change is
+additive plus one new envelope code). ADR-0006
+(`docs/architecture/decisions/adr-0006-server-side-reservation-price-authority.md`,
+proposed — the owner flips it to `accepted` before the implementation
+PR merges) records the decision. The finding is audit R2 of the #625
+class (`#632`): `priceBasis.totalMinor` reached the booking from the
+request body, was only checked for presence and `>= 0`, and the #600
+room charge posts that frozen total. Product scope and done-conditions
+are `docs/product/acceptance-criteria.md` section 17
+(`AC-PRC-1`..`AC-PRC-5`) with D-28 in
+`docs/project/decision-log.md`; the desk half is `AC-DSK-20` and
+`docs/product/desk-ui-design-rollout.md` section 6.18. FR/NFR wording,
+guard traceability, and release notes are sibling handoffs, so this
+section records only the architect-owned delta.
+
+As-built at this spec head (read-only trace):
+
+- The two write routes read the total out of the body:
+  `priceBasis.totalMinor` plus a top-level `discountName` fallback on
+  Create (`internal/handler/handler.go:130-131`), the same pair on
+  Modify (`:240-241`), decoded by `nestedPrice`/`nestedDiscount`
+  (`:346-362`).
+- Presence and `>= 0` are the only checks
+  (`internal/service/service.go:101` on Create, `:181` on Modify); the
+  validated value is handed to the store (`:120-131`, `:225-237`).
+- The store persists it verbatim (`internal/store/store.go:236`;
+  `internal/store/postgres.go:139`, `:608`) and re-freezes it on Modify
+  under an unchanged-total comparison, writing the `priceBasis`
+  change-history row with the actor (`internal/store/store.go:437-440`;
+  `internal/store/postgres.go:601-605`).
+- Nothing on the booking path quotes: the wired Rates client has one
+  operation, `Check` for `CheckRestrictions`
+  (`internal/pricing/client.go:43-87`, 5-second timeout at `:33`), and
+  boot wires only `svc.CheckRestrictionsHook`
+  (`cmd/server/main.go:42-47`, hook field
+  `internal/service/service.go:40`).
+- `docs/architecture/lld.md` section 1 already listed
+  `PricingService.QuotePrice` among Reservations' outbound calls and
+  `docs/technical/integration.md` C1 already listed the operation; the
+  call was never built. This section closes that drift rather than
+  opening a new one.
+
+### 24.1 Authority and scope
+
+| Fact | Authority | Enforced where | May the client assert it? |
+|---|---|---|---|
+| What the stay costs | Rates `QuotePrice` | Rates price/plan/discount store, read at the booking write | No |
+| The frozen price basis | Reservations (`reservations.reservations.price_basis`) | Reservations store write | No — the request total is compared and ignored |
+| The discount name a booking keeps | Rates quote response | Reservations store write | No — the quote's applied name is stored |
+| Room type, dates, discount selected | Desk | Validated by Reservations | Yes (inputs only) |
+| Actor and time of a reprice | Admin session actor, as elsewhere | `reservation_changes` row, `updated_by`/`updated_at` | Yes (`actor`), residual R6-class |
+| Availability / sellable units | Rates + the Reservations guard | unchanged (out of scope) | Yes (`sellableUnits`), unchanged |
+
+Unchanged by this section, explicitly: the request and response field
+shapes (the two price fields keep their names and types and simply
+become advisory); the stored `priceBasis` shape (no per-night
+breakdown, no plan name, no currency); the reservation schema and
+migrations; the overbooking guard and `sellableUnits`; the desk's
+matching path, which already quotes before it books
+(`app/src/views/BookView.vue:784-793`, `:926-937`); and the #600
+room-charge posting, which keeps posting the now-verified frozen total.
+
+### 24.2 Write-step algorithm (target)
+
+Both write routes gain the same three pieces: a quote hook, a replay
+pre-read, and one comparison. Order, and why each step sits where it
+does:
+
+1. **Field/date/price-shape validation** — unchanged
+   (`internal/service/service.go:87-113` on Create, `:157-201` on
+   Modify). A missing or negative total is still `VALIDATION_FAILED`
+   naming `priceBasis`, so `PRICE_CHANGED` is only ever about an
+   asserted total that disagreed.
+2. **Effective inputs** (Modify only) — the post-change type and dates,
+   an omitted field keeping the stored value, come from the existing
+   computation (`internal/service/service.go:207-222`, reading the row
+   at `:203`); the discount is the request's
+   `priceBasis.discountName`, where omitted or null means no discount
+   (the price basis is a full assertion of the new quote, and the desk
+   already sends `discountName ?? null`,
+   `app/src/views/BookView.vue:926-937`).
+3. **`CheckRestrictions`** — unchanged, with the effective values
+   (`:114-119`, `:219-224`). It keeps its place because a restriction
+   refusal means re-quoting cannot help, and it keeps its
+   `STATE_ILLEGAL` terms.
+4. **Replay pre-read** — a new `Replay(key)` repository read
+   (`internal/store/store.go:109-117` interface) resolving a
+   non-empty `idempotencyKey` to its stored reservation with the same
+   key-only lookup both stores already perform
+   (`internal/store/store.go:208-211`,
+   `internal/store/postgres.go:159-171`, `:496-508`). A hit returns the
+   stored booking unchanged — no quote, no comparison, no
+   `PRICE_CHANGED` for a booking that exists. The store's own replay
+   check inside the guarded step stays exactly as it is, so a
+   concurrent double submit still books once.
+5. **`QuotePrice`** — `POST {RATES_BASE_URL}/v1/rates/QuotePrice`
+   with `{roomTypeId, arrivalDate, departureDate, discountName}` (no
+   `ratePlanName`, matching the desk's own quote) and the caller's
+   Bearer token forwarded, 5-second timeout, reusing the existing
+   client and its configuration (`internal/pricing/client.go:26-87`;
+   `cmd/server/main.go:42-47` — one client instance wired for two
+   operations). The read stays outside the guarded store write: the
+   store step is one mutex- or transaction-held critical section
+   (`internal/store/store.go:206`), and holding it across a
+   network call would stall every booking during a Rates outage.
+6. **Compare** — `requestedTotalMinor` (the request's
+   `priceBasis.totalMinor`, which presence validation has already
+   required) against `quotedTotalMinor`. Equal: continue, storing the
+   quote's `totalMinor` and `discountName`. Different: refuse
+   `PRICE_CHANGED` (24.5) and write nothing.
+7. **Unreadable Prices** — transport failure, timeout, 5xx, non-envelope
+   reply, or an unwired hook refuses `UPSTREAM_UNAVAILABLE` (503)
+   `{upstream: "rates", operation: "QuotePrice"}` and writes nothing.
+   A definitive 4xx envelope is surfaced unchanged (24.5).
+8. **Guarded store write** — unchanged: the overbooking count over
+   active overlapping bookings under one mutex
+   (`internal/store/store.go:206-226`), insert or update with the
+   server total and discount name, the `priceBasis` change row on
+   Modify, and the outbox event. The response reports the stored total
+   (`quotedTotal` on Create, `recalculatedTotal` on Modify,
+   `internal/handler/handler.go:157`, `:264`).
+
+Service-side shape: the `Service` struct gains a `QuotePriceHook` next
+to `CheckRestrictionsHook`
+(`internal/service/service.go:30-41`), wired from the same client at
+boot (`cmd/server/main.go:42-47`); a nil hook takes the fail-closed
+branch like the restriction hook does today.
+
+### 24.3 Create — happy path
+
+```mermaid
+flowchart TD
+    A[Bearer token present, body decoded] --> B[Validate fields, dates, price shape]
+    B --> C[CheckRestrictions with type and dates]
+    C -->|pass| D{Idempotency key already stored?}
+    D -->|no| E[QuotePrice type, dates, discount, caller token]
+    E -->|read ok| F{Request total equals quoted total?}
+    F -->|yes| G[Store the quoted total and discount name]
+    G --> H[200 reservationRef, quotedTotal]
+    D -->|yes| R[200 the stored booking, its stored total]
+```
+
+Edge trace:
+
+- A–B: Bearer presence and JSON decode (`internal/handler/handler.go:104-112`,
+  `:42-53`); the same validation list as today
+  (`internal/service/service.go:87-113`).
+- B–C: the restriction call (`internal/service/service.go:114-119`;
+  `internal/pricing/client.go:43-87`).
+- C–D: the new replay pre-read (24.2 step 4) sits after the restriction
+  check so a replay is gated like any other request, exactly as today,
+  but is never re-priced.
+- D–E: the quote read with the caller's token forwarded
+  (`internal/pricing/client.go:43-87` is the transport to mirror;
+  `contracts/http/QuotePrice.json` is the shape).
+- E–F: the comparison this section adds.
+- F–G: `store.Create` receives the quote's `totalMinor` and
+  `discountName` instead of `req.TotalMinor`/`req.DiscountName`
+  (`internal/service/service.go:120-131`;
+  `internal/store/store.go:236`).
+- G–H: unchanged insert, `created` event, and response
+  (`internal/store/store.go:228-259`;
+  `internal/handler/handler.go:156-158`).
+- D–R: a replayed key returns the stored record with its stored total
+  (`internal/store/store.go:208-212`; the new pre-read narrows the same
+  result to "Pricing is not consulted").
+
+### 24.4 Create — refusal and failure path
+
+```mermaid
+flowchart TD
+    A[Create attempt] --> B{Restriction check}
+    B -->|refused| S[422 STATE_ILLEGAL, nothing written]
+    B -->|unreadable| U[503 UPSTREAM_UNAVAILABLE, nothing written]
+    B -->|pass| C{QuotePrice}
+    C -->|unreadable, timeout, 5xx, unwired| U2[503 UPSTREAM_UNAVAILABLE rates/QuotePrice, nothing written]
+    C -->|definitive refusal| P[Surface NOT_FOUND no_rate_price/no_rate_plan or VALIDATION_FAILED unchanged, nothing written]
+    C -->|ok| D{Request total equals quoted total?}
+    D -->|no| K[409 PRICE_CHANGED with both totals, nothing written]
+    D -->|yes| G[Guarded store step]
+    G -->|no unit left| O[409 CONFLICT naming type and dates, nothing written]
+    G -->|stored| W[200 the server total]
+```
+
+Edge trace:
+
+- B: unchanged restriction refusals (`internal/service/service.go:114-119`).
+- C–U2: the fail-closed branch uses the existing
+  `UPSTREAM_UNAVAILABLE` shape and the same 5-second-bounded transport
+  (`internal/pricing/client.go:88-97` is the precedent; the new branch
+  names `QuotePrice` in `details.operation`).
+- C–P: a definitive Rates envelope keeps its code, message, and details
+  (`services/rates/internal/store/store.go:271-279`, `:400-402`) —
+  `NOT_FOUND` with `reason` `no_rate_price` or `no_rate_plan`, and
+  `VALIDATION_FAILED` for an unknown discount or an ambiguous plan set.
+- D–K: the disagreement refusal (24.5). Nothing is written: no row, no
+  availability consumed, no `created` event, no idempotency record, so
+  the key can be reused for the re-quoted attempt.
+- G–O: the unchanged overbooking guard
+  (`internal/store/store.go:213-226`).
+- Rollback: none to run inside the service — every refusal happens
+  before the store step, so there is no compensation path and no
+  partial write (the same property section 4 records for today's
+  refusals).
+
+### 24.5 Modify — happy path and reprice
+
+```mermaid
+flowchart TD
+    A[Body decoded, validation passes] --> B[Read the stored booking]
+    B --> C[Effective type, dates, discount]
+    C --> D[CheckRestrictions for the effective stay]
+    D -->|pass| E{Idempotency key already stored?}
+    E -->|no| F[QuotePrice effective type, dates, discount]
+    F -->|ok| G{Request total equals quoted total?}
+    G -->|yes| H[Conditional store write with the quoted total]
+    H --> I{Frozen total differs from the stored one?}
+    I -->|yes| J[priceBasis change row with actor and time]
+    I -->|no| K[No price row; dates/type/guest rows unchanged]
+    J --> L[200 recalculatedTotal, the server total]
+    K --> L
+    E -->|yes| R[200 the stored booking unchanged]
+```
+
+Edge trace:
+
+- A–B: handler decode plus validation
+  (`internal/handler/handler.go:240-254`;
+  `internal/service/service.go:157-201`), then the existing
+  `store.Get` (`internal/service/service.go:203`).
+- B–C: the existing effective-value computation
+  (`internal/service/service.go:207-222`).
+- C–D: the existing restriction call with those values
+  (`internal/service/service.go:219-224`).
+- E–F: the new pre-read plus quote (24.2 steps 4–5), with the effective
+  discount: the request's `priceBasis.discountName` when the object
+  carries one, otherwise no discount — the price basis is a full
+  assertion of the new quote, and the desk's own send already uses
+  `discountName ?? null` (`app/src/views/BookView.vue:926-937`).
+- G–H: the comparison, then `store.Modify` with the quote's total and
+  the quote's applied discount name instead of the request's
+  (`internal/service/service.go:225-237`).
+- H–I–J: the existing change-history write, now fed by the server
+  values (`internal/store/store.go:437-440`;
+  `internal/store/postgres.go:601-605`), with the request actor.
+- I–K: a total that does not move writes no price row, as today; a
+  discount-name change that leaves the total identical also writes no
+  row (recorded, not changed, by this section).
+- L: `recalculatedTotal` reports the stored total
+  (`internal/handler/handler.go:264`).
+- E–R: a replayed key returns the stored booking unchanged
+  (`internal/store/store.go:382-385` in-memory replay;
+  `internal/store/postgres.go:496-508` Postgres replay).
+
+### 24.6 Modify — refusal and failure path
+
+```mermaid
+flowchart TD
+    A[Modify attempt] --> B{Booking found and confirmed?}
+    B -->|no| N[404 NOT_FOUND or 422 STATE_ILLEGAL, nothing written]
+    B -->|yes| C{Restriction check}
+    C -->|refused or unreadable| S[422 STATE_ILLEGAL or 503, nothing written]
+    C -->|pass| Q{QuotePrice for the effective stay}
+    Q -->|unreadable| U[503 UPSTREAM_UNAVAILABLE rates/QuotePrice, nothing written]
+    Q -->|definitive refusal| P[Surface the Rates refusal unchanged, nothing written]
+    Q -->|ok| D{Request total equals quoted total?}
+    D -->|no| K[409 PRICE_CHANGED with both totals, nothing written]
+    D -->|yes| G[Conditional store write]
+    G -->|no unit left| O[409 CONFLICT, nothing written]
+    G -->|stored| W[200 recalculatedTotal]
+```
+
+Edge trace: the same branches as 24.4, with the Modify-specific
+difference that every refusal leaves the stored dates, type, guest,
+discount, and total untouched, because the quote and comparison run
+before the store step (`internal/store/store.go:376-441` collects the
+changes inside the guarded step only). A replayed key on a repetition
+of the same change returns the stored booking instead of re-quoting
+(24.5, E–R).
+
+### 24.7 Contract delta
+
+| File | Change | Version effect |
+|---|---|---|
+| `contracts/http/CreateReservation.json` | `priceBasis` stays required for the deprecation window but becomes advisory ("compared with the Rates quote, never stored"); `priceBasis.discountName` likewise advisory; errors add `PRICE_CHANGED` (409, details `roomTypeId`, `arrivalDate`, `departureDate`, `requestedTotalMinor`, `quotedTotalMinor`) and `UPSTREAM_UNAVAILABLE` (503, `rates`/`QuotePrice`) | minor (1.1 -> 1.2; relaxed meaning plus new error codes, ADR-0004 D1) |
+| `contracts/http/ModifyReservation.json` | same delta on `priceBasis` and its `discountName`, with the note that an omitted or null `discountName` means the new quote carries no discount (the price basis asserts the whole new quote); same two error codes | minor (1.0 -> 1.1) |
+| `contracts/http/QuotePrice.json` | unchanged shape; now also consumed server-side by Reservations (C1) instead of only by the desk | none |
+| `contracts/errors/envelope.json` | add `PRICE_CHANGED` to the code enum and `409` to `statusMapping`; add `UPSTREAM_UNAVAILABLE` and `503` (emitted by Reservations today, promised by ADR-0005 section 21.5, still absent at this head: no occurrence under `contracts/`) | minor |
+| `contracts/openapi.yaml` + `frontend/docs/openapi.yaml` mirror | mirror the two operation deltas byte-identically (`script/openapi-route-check.sh`) | minor |
+| Service messages (`services/reservations/internal/messages/en.json`) | the refusal sentence for `error.price.changed`; user-visible strings come from the catalogue (`NFR-I18N-1`) | none |
+
+No schema, table, column, migration, or event change. The stored
+`priceBasis` keeps its shape, so `GetReservation`, the calendar, the
+#600 room-charge posting, and the reporting read model read the same
+fields they read today.
+
+### 24.8 Verification plan
+
+Reservations service guards (the implementation PR creates them; the
+existing create/modify blocks are
+`services/reservations/internal/service/service_test.go` and
+`services/reservations/internal/store/store_test.go`):
+
+- **Forged low** — request total `0` while the quote returns `6000`:
+  409 `PRICE_CHANGED` with `requestedTotalMinor: 0`,
+  `quotedTotalMinor: 6000`, no row stored, no availability consumed, no
+  `created` event.
+- **Forged high** — request total above the quote: the same 409.
+- **Matching** — request total equals the quote: 200; the stored
+  `priceBasis` equals the quote's `totalMinor` and its `discountName`.
+- **Legitimate zero** — a complimentary discount quotes `0` and the
+  booking is stored at `0` (proving zero is a quote value, not a
+  missing one).
+- **Replay** — the same `idempotencyKey` for a stored booking returns it
+  at its stored total and the quote hook is never called again.
+- **Unreadable Pricing** — transport failure, timeout, 5xx, non-envelope
+  reply, and an unwired hook each refuse 503 `UPSTREAM_UNAVAILABLE` with
+  `details.upstream: rates`, `details.operation: QuotePrice`, and store
+  nothing.
+- **Definitive refusals** — `NOT_FOUND` with `reason: no_rate_price`,
+  `NOT_FOUND` with `reason: no_rate_plan`, `VALIDATION_FAILED` for an
+  unknown discount, and `VALIDATION_FAILED` naming `ratePlanName` for an
+  ambiguous plan set each pass through unchanged and store nothing.
+- **Modify reprice** — a date change that moves the price stores the new
+  quote total and writes one `priceBasis` change row carrying the
+  actor; a forged total on the same change refuses 409 and leaves the
+  stored row untouched; an unreadable Pricing refuses 503 with the row
+  untouched.
+- **Unchanged pins** — the overbooking guard still refuses `CONFLICT`,
+  the restriction refusal stays `STATE_ILLEGAL`, and the postgres parity
+  block keeps the in-memory and row-store behaviour identical.
+
+Desk and downstream pins that stay green: `app/src/views/BookView.test.ts`
+(the existing quote flow; the `PRICE_CHANGED` recovery is `AC-DSK-20`
+and ships with the desk half), the #600 room-charge guards, and the
+`AC-RES-1`, `AC-RES-2`, `AC-DSK-13`, `AC-DSK-19`,
+`AC-CKO-1`/`AC-CKO-2` pins.
+
+Stack gates: `cd services/reservations && go build ./... && go vet ./... && go test ./... && test -z "$(gofmt -l .)"`;
+`script/contract-check.sh`; `script/openapi-route-check.sh`;
+`script/markdown-link-check.sh`; `script/catalogue-coverage-check.sh`.
+The qa-lead traceability row for #632 is a sibling handoff and must
+cite the guards above by `file:line` at the merged head.
+
+### 24.9 Residual risks and rollback
+
+- **R8 — booking availability now depends on Rates.** A Rates outage
+  refuses every create and modify while it lasts; bookings already
+  stored stay readable, cancellable, and checkable-in. Accepted for a
+  money path: the offline-first cached-value rule (`NFR-AVL-1`) does not
+  extend to an unverified price, and the mitigation is an availability
+  alert rather than a cached total (the ADR-0005 D4 shape).
+- **R9 — an ambiguous plan set refuses booking.** When several rate
+  plans price the type and no `ratePlanName` is named, `QuotePrice`
+  answers `VALIDATION_FAILED` naming `ratePlanName`
+  (`services/rates/internal/store/store.go:402`), and a reservation
+  cannot carry a plan name, so the booking is refused. This is not a
+  new failure mode: the desk's own quote omits `ratePlanName` too
+  (`app/src/views/BookView.vue:784-793`), so such a hotel already
+  cannot quote on the desk; re-open when a reservation records a plan.
+- **R10 — the quote and the write are one request apart.** A rate edit
+  landing between the quote and the store write is not seen by that
+  booking; bounded by reading immediately before the write on a
+  single-desk installation, and `BR-13` freezes whatever was quoted
+  either way.
+- **Actor provenance** — the reprice row's `actor` is the request's
+  actor, asserted rather than token-bound, the same residual R6 that
+  ADR-0005 records; not widened by this change.
+- **Rollback**: revert the single implementation PR. No schema, column,
+  migration, or stored shape is involved in either direction; the desk's
+  `PRICE_CHANGED` branch is inert when the service never raises the
+  code, and bookings frozen at a caller-supplied total keep their totals
+  and are repriced only when staff next modify them.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-990
