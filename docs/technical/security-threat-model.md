@@ -25,7 +25,7 @@ departed employee reusing a stale session; a device left unattended
 at the desk; a compromised LAN device sniffing or injecting
 traffic; a caller that bypasses the desk UI and calls the contract
 directly with a valid session token, asserting money facts of its
-own (the #601 case); a lost/stolen backup medium; a remote attacker reaching
+own (the #601 and #632 cases); a lost/stolen backup medium; a remote attacker reaching
 for an internet-exposed surface (there is none by design);
 vendor-support access over Tailscale.
 
@@ -75,7 +75,8 @@ beyond session hygiene.
   nothing readable.
 - B5 — Module-to-module synchronous calls inside a desk step (for
   example Stay -> Billing `GetFolioBalance` at the check-out gate,
-  Refs #601). The originating desk session token travels on the call
+  Refs #601, and Reservations -> Rates `QuotePrice` at the booking
+  write, Refs #632). The originating desk session token travels on the call
   and the provider enforces identity/role before answering. The
   caller trusts only the provider's response, never the browser's
   claim about the same fact: a money or state fact is re-read from
@@ -104,12 +105,16 @@ actor and timestamp. Co-edited inventory (owner + manager) shares
 one operation set with no primary editor (LLD [section 0](../architecture/lld.md)).
 
 Money and state facts are provider-derived, never caller-asserted
-(B5; Refs #601). At check-out the client may name the stay, the
+(B5; Refs #601, #632). At check-out the client may name the stay, the
 folio it presents as invoice, the actual departure, and an
 idempotency key; the balance and the open-balance approval are read
 back from Billing, which owns them, and an approval counts only with
 an approver identity, a role from the fixed three, and a recorded
-time (`BR-17`; ADR-0005). An unreadable provider fails the operation
+time (`BR-17`; ADR-0005). On a booking write the client may name the
+room type, dates, and discount; the total and the stored discount name
+are read back from Rates `QuotePrice`, and a request total that
+disagrees is refused with `PRICE_CHANGED` rather than adopted
+(`BR-13`; ADR-0006). An unreadable provider fails the operation
 closed with `UPSTREAM_UNAVAILABLE` rather than proceeding on an
 unverified fact.
 
@@ -226,6 +231,25 @@ recording with 24-month retrievability (`NFR-RET-1`), not display.
   money path — the offline-first cached-config rule does not extend to
   an unverified balance; an availability alert, not a cached value, is
   the mitigation (`NFR-AVL-1`).
+- R8 — Fail-closed booking availability (Refs #632): Rates unreachable
+  means every create and modify refuses with `UPSTREAM_UNAVAILABLE`,
+  while bookings already stored stay readable, cancellable, and
+  checkable-in. Accepted for a money path on the same terms as R7: the
+  alternative is freezing an unverified price, and an availability
+  alert is the mitigation.
+- R9 — Ambiguous plan set refuses booking (Refs #632): when several
+  rate plans price a type and no `ratePlanName` is named, `QuotePrice`
+  refuses `VALIDATION_FAILED` naming `ratePlanName`
+  (`services/rates/internal/store/store.go:402`) and a reservation
+  cannot carry a plan name, so the booking is refused. Not a new
+  failure mode — the desk's own quote omits `ratePlanName`
+  (`app/src/views/BookView.vue:784-793`) — and it re-opens when a
+  reservation records a plan.
+- R10 — The quote and the booking write are one request apart
+  (Refs #632): a rate edit landing between the `QuotePrice` read and
+  the store write is not seen by that booking. Bounded by reading
+  immediately before the write on a single-desk installation, and
+  `BR-13` freezes whatever was quoted either way.
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-919

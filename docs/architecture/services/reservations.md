@@ -166,3 +166,55 @@ section 22.5.
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-946
+
+## 9. Planned delta — server-side reservation price basis (Refs #632)
+
+Not as-built yet: `priceBasis.totalMinor` still reaches the store from
+the request body after only a presence and `>= 0` check
+(`internal/service/service.go:101` on Create, `:181` on Modify), the
+store persists it verbatim (`internal/store/store.go:236`) and
+re-freezes it on Modify (`:437-440`), and the wired Rates client runs
+`CheckRestrictions` only (`internal/pricing/client.go:43-87`, wired at
+`cmd/server/main.go:42-47`). This section records the target the
+implementation PR folds into sections 2, 3, 4, 5, and 6 in the same
+change (maintain-with-code).
+
+- Section 2's layer table gains the quote row: the pricing client
+  (`internal/pricing/client.go`) provides two operations to the service
+  — `CheckRestrictions` (unchanged) and `QuotePrice` (new) — from one
+  client instance and the same `RATES_BASE_URL`; the service's
+  validation layer gains the quote-and-compare step and a replay
+  pre-read; the store's `Repository` interface gains `Replay(key)`.
+- Section 3's happy-path flowchart gains the quote branch and the
+  comparison: `CheckRestrictions` passes -> replay pre-read misses ->
+  `QuotePrice` for the effective type, dates, and discount with the
+  caller token forwarded -> the request total equals the quote -> the
+  guarded store write stores the quote's total and discount name.
+- Section 4's failure flowchart gains three edges: `PRICE_CHANGED`
+  (409) when the asserted total disagrees with the quote;
+  `UPSTREAM_UNAVAILABLE` (503) `{upstream: rates, operation:
+  QuotePrice}` when Pricing cannot be read; and a definitive Rates
+  refusal (`NOT_FOUND` `no_rate_price`/`no_rate_plan`,
+  `VALIDATION_FAILED` for an unknown discount or an ambiguous plan set)
+  surfaced unchanged. Every one of them writes nothing.
+- Section 5's outbound list gains the second Rates read:
+  `POST {RATES_BASE_URL}/v1/rates/QuotePrice` on every Create and
+  Modify, caller Bearer forwarded, 5-second timeout, fail-closed on an
+  unreadable answer. The `priceBasis` the desk supplies stops being a
+  stored input and becomes an advisory assertion compared against the
+  quote.
+- Section 6's error table gains `PRICE_CHANGED` (409) and
+  `UPSTREAM_UNAVAILABLE` (503), with the 4xx-from-Rates rows kept as
+  they are for the definitive refusals.
+- Unchanged by this delta: the stored `priceBasis` shape, the schema,
+  the overbooking guard, `sellableUnits`, the response fields
+  (`quotedTotal` / `recalculatedTotal` keep their names and now report
+  the server total), and the #600 check-out room charge, which keeps
+  posting the frozen total — now a verified one.
+
+Design: `docs/architecture/decisions/adr-0006-server-side-reservation-price-authority.md`
+(proposed); flow detail, per-flow implementation diagrams, contract
+delta, and verification plan: `docs/architecture/lld.md` section 24.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-990
