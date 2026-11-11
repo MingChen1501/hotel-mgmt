@@ -116,7 +116,9 @@ require_orchestrator "merge"
 
 # --- Per-PR metadata and gates ------------------------------------------
 # The gate helpers work on the globals loaded by load_pr, so the same
-# code gates the requested PR and every lower stack member.
+# code gates the requested PR and every lower stack member. Because the
+# stack sweep re-runs these helpers for lower members, the requested
+# PR's state is snapshotted right after its own gate sweep (see below).
 
 pr_state=""
 pr_url=""
@@ -261,7 +263,7 @@ gate_pr() {
 # land several PRs.
 read_stack() {
   local num="$1" out
-  if ! out="$(gh api -H "Accept: application/vnd.github+json" "repos/${REPO}/pulls/${num}" 2>&1)"; then
+  if ! out="$(gh api -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: ${API_VERSION}" "repos/${REPO}/pulls/${num}" 2>&1)"; then
     return 1
   fi
   if ! printf '%s' "${out}" | jq -e 'type == "object"' >/dev/null 2>&1; then
@@ -286,18 +288,18 @@ stack_member_size() {
 # open PR still targets as a base, and never delete a non-deletable head
 # (missing, the default branch, or equal to the base).
 compute_keep_branch() {
+  local branch="$1" base="$2" open_bases=""
   keep_branch=0
   keep_reason=""
-  if [[ -z "${head_branch}" || "${head_branch}" == "${DEFAULT_BRANCH}" || "${head_branch}" == "${base_branch}" ]]; then
+  if [[ -z "${branch}" || "${branch}" == "${DEFAULT_BRANCH}" || "${branch}" == "${base}" ]]; then
     keep_branch=1
     keep_reason="not a deletable head branch"
     return 0
   fi
-  local open_bases=""
   if ! open_bases="$(gh pr list -R "${REPO}" --state open --json baseRefName,number -q '.[].baseRefName' 2>/dev/null)"; then
     keep_branch=1
     keep_reason="cannot list open PRs"
-  elif printf '%s' "${open_bases}" | grep -qxF -- "${head_branch}"; then
+  elif printf '%s' "${open_bases}" | grep -qxF -- "${branch}"; then
     keep_branch=1
     keep_reason="another open PR still targets it as a base"
   fi
@@ -352,7 +354,15 @@ poll_async_merge() {
 }
 
 gate_pr "${pr}"
-compute_keep_branch
+# The gate helpers publish their findings through the shared globals
+# above, and the stack sweep below re-runs them for lower members. Snapshot
+# the requested PR's state first: the head pin, the dry-run output, and the
+# branch cleanup must all describe the PR this run was asked to merge, not
+# the member gated last.
+target_head_oid="${head_oid}"
+target_head_branch="${head_branch}"
+target_base_branch="${base_branch}"
+compute_keep_branch "${target_head_branch}" "${target_base_branch}"
 
 # --- Stack detection ----------------------------------------------------
 
@@ -386,7 +396,7 @@ if [[ -n "${stack_json}" ]]; then
   stack_prs=("${pr}")
   visited=" ${pr} "
   expected_position="${stack_position}"
-  current_base="${base_branch}"
+  current_base="${target_base_branch}"
   while [[ "${current_base}" != "${DEFAULT_BRANCH}" ]]; do
     if [[ "${expected_position}" -le 1 ]]; then
       refuse "stack #${stack_number}: PR #${pr} reports position ${stack_position} but the branch chain is longer — non-linear stack; refusing, not repairing"
@@ -457,17 +467,17 @@ if [[ -n "${stack_json}" ]]; then
 
   # The request is pinned to the exact head SHA this run observed.
   async_api_path="repos/${REPO}/pulls/${pr}/merge-async"
-  async_body="$(jq -nc --arg sha "${head_oid}" '{sha:$sha,merge_method:"squash"}')"
+  async_body="$(jq -nc --arg sha "${target_head_oid}" '{sha:$sha,merge_method:"squash"}')"
 
   if [[ "${dry_run}" -eq 1 ]]; then
     echo "--- dry-run: stack #${stack_number} member #${pr} at position ${stack_position}/${stack_size}: one atomic async request lands every open member at or below that position (${stack_members_display}) ---"
-    echo "--- dry-run: would issue: PUT /${async_api_path} (merge_method=squash, sha=${head_oid}) (not merged) ---"
+    echo "--- dry-run: would issue: PUT /${async_api_path} (merge_method=squash, sha=${target_head_oid}) (not merged) ---"
     echo "--- dry-run: request body: ${async_body} ---"
     echo "--- dry-run: would run: gh api --method PUT -H 'X-GitHub-Api-Version: ${API_VERSION}' ${async_api_path} --input '${async_body}' ---"
     if [[ "${keep_branch}" -eq 1 ]]; then
-      echo "--- dry-run: would keep branch ${head_branch:-unknown} (${keep_reason}; not deleted) ---"
+      echo "--- dry-run: would keep branch ${target_head_branch:-unknown} (${keep_reason}; not deleted) ---"
     else
-      echo "--- dry-run: would delete branch ${head_branch} after a terminal merged result, only if no open PR still targets it ---"
+      echo "--- dry-run: would delete branch ${target_head_branch} after a terminal merged result, only if no open PR still targets it ---"
     fi
     echo "--- dry-run: would poll GET /${async_api_path}/<uuid> to a terminal status ---"
     exit 0
@@ -479,9 +489,9 @@ if [[ -n "${stack_json}" ]]; then
     -H "Accept: application/vnd.github+json" \
     -H "X-GitHub-Api-Version: ${API_VERSION}" \
     --input - "${async_api_path}" <<<"${async_body}" 2>&1)" || true
-  http_code="$(printf '%s\n' "${http_out}" | grep -m1 -oE 'HTTP/[0-9.]+ [0-9]{3}' | awk '{print $2}')"
+  http_code="$(printf '%s\n' "${http_out}" | grep -m1 -oE 'HTTP/[0-9.]+ [0-9]{3}' | awk '{print $2}' || true)"
   if [[ -z "${http_code}" ]]; then
-    http_code="$(printf '%s\n' "${http_out}" | grep -m1 -oE '\(HTTP [0-9]{3}\)' | grep -oE '[0-9]{3}')"
+    http_code="$(printf '%s\n' "${http_out}" | grep -m1 -oE '\(HTTP [0-9]{3}\)' | grep -oE '[0-9]{3}' || true)"
   fi
   response_body="$(printf '%s\n' "${http_out}" | sed -e '1,/^[[:space:]]*$/d')"
   if [[ -z "${response_body}" ]]; then
@@ -494,11 +504,22 @@ if [[ -n "${stack_json}" ]]; then
     request_uuid="$(printf '%s' "${response_body}" | jq -r '.uuid // empty' 2>/dev/null || true)"
   fi
   if [[ -z "${request_uuid}" ]]; then
-    request_uuid="$(printf '%s\n' "${http_out}" | grep -oE '"uuid"[[:space:]]*:[[:space:]]*"[^"]+"' | head -n 1 | sed -E 's/.*"([^"]+)"$/\1/')"
+    request_uuid="$(printf '%s\n' "${http_out}" | grep -oE '"uuid"[[:space:]]*:[[:space:]]*"[^"]+"' | head -n 1 | sed -E 's/.*"([^"]+)"$/\1/' || true)"
   fi
 
   case "${http_code}" in
     200|202|409)
+      ;;
+    "")
+      # No parseable status line (transport failure, a non-`gh` transport,
+      # a different header rendering). The request may still have been
+      # accepted: when a uuid came back, poll it instead of guessing, and
+      # fail closed when it did not.
+      if [[ -z "${request_uuid}" ]]; then
+        echo "error: async merge request for stack #${stack_number} returned no readable HTTP status and no request uuid; cannot tell whether it landed (fail closed)." >&2
+        exit 1
+      fi
+      echo "warning: async merge request for stack #${stack_number} returned no readable HTTP status; polling uuid ${request_uuid} instead of guessing." >&2
       ;;
     *)
       echo "error: async merge request for stack #${stack_number} failed (HTTP ${http_code:-unknown}): $(printf '%s' "${response_body:-${http_out}}" | head -n 1)" >&2
@@ -532,15 +553,15 @@ if [[ -n "${stack_json}" ]]; then
       fi
     done
     if [[ "${keep_branch}" -eq 1 ]]; then
-      echo "Kept branch ${head_branch:-unknown}: ${keep_reason}."
+      echo "Kept branch ${target_head_branch:-unknown}: ${keep_reason}."
     else
-      delete_merged_head_branch "${head_branch}"
+      delete_merged_head_branch "${target_head_branch}"
     fi
     exit 0
   fi
 
   if [[ "${poll_result}" == "enqueued" ]]; then
-    echo "Async merge request uuid ${request_uuid} is enqueued (merge queued, not yet landed); branch ${head_branch:-unknown} was not deleted."
+    echo "Async merge request uuid ${request_uuid} is enqueued (merge queued, not yet landed); branch ${target_head_branch:-unknown} was not deleted."
     exit 0
   fi
   if [[ "${poll_result}" == "failed" ]]; then
@@ -561,7 +582,7 @@ fi
 if [[ "${dry_run}" -eq 1 ]]; then
   echo "--- dry-run: would run: ${merge_cmd[*]} (not merged) ---"
   if [[ "${keep_branch}" -eq 1 ]]; then
-    echo "--- dry-run: would keep branch ${head_branch:-unknown} (${keep_reason}; not deleted) ---"
+    echo "--- dry-run: would keep branch ${target_head_branch:-unknown} (${keep_reason}; not deleted) ---"
   fi
   exit 0
 fi
@@ -576,14 +597,14 @@ if [[ "${merge_failed}" -ne 0 ]]; then
   # Fail-safe: if the PR is MERGED anyway (e.g. the merge succeeded but
   # branch deletion failed), a successful merge never exits non-zero.
   if [[ "$(gh pr view "${pr}" -R "${REPO}" --json state -q '.state' 2>/dev/null)" == "MERGED" ]]; then
-    echo "warning: PR #${pr} is MERGED but branch cleanup may have failed; delete ${head_branch} manually if it still exists." >&2
+    echo "warning: PR #${pr} is MERGED but branch cleanup may have failed; delete ${target_head_branch} manually if it still exists." >&2
   else
     echo "error: merge failed for PR #${pr}." >&2
     exit 1
   fi
 elif [[ "${keep_branch}" -eq 1 ]]; then
-  echo "Kept branch ${head_branch:-unknown}: ${keep_reason}."
+  echo "Kept branch ${target_head_branch:-unknown}: ${keep_reason}."
 else
-  echo "Merged PR #${pr} (squash) and deleted branch ${head_branch}."
+  echo "Merged PR #${pr} (squash) and deleted branch ${target_head_branch}."
 fi
 exit 0

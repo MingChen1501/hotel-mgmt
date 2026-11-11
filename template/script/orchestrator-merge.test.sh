@@ -545,6 +545,15 @@ HIGH_LABELS='[{"name":"chore"},{"name":"risk-high"}]'
 DUPLICATE_LABELS='[{"name":"risk-medium"},{"name":"risk-low"}]'
 BAD_CHECKS='[{"bucket":"pass","name":"ci","state":"SUCCESS"},{"bucket":"fail","name":"go-build","state":"FAILED"}]'
 
+# Distinct heads and per-head APPROVEs for the multi-member stack cases:
+# a sweep that leaves the last-gated member's state in the shared globals
+# pins the request to that member's head and cleans up its branch, so the
+# two members must NOT share a head or a head-quoting verdict.
+HEAD_674="1111111111111111111111111111111111111111"
+HEAD_675="2222222222222222222222222222222222222222"
+APPROVE_674='[{"body":"APPROVE — reviewed head 1111111: diff scoped, checks green. Role: dev-peer-review"}]'
+APPROVE_675='[{"body":"APPROVE — reviewed head 2222222: diff scoped, checks green. Role: dev-peer-review"}]'
+
 # (a) Stack member -> async dry-run, pinned to the observed head.
 reset_stack_fixtures
 export TEST_STACK_MEMBERS="674"
@@ -578,6 +587,24 @@ if [[ -z "$(cat "${TEST_GH_LOG}")" ]] || ! grep -q 'pr merge' "${TEST_GH_LOG}"; 
 else
   echo "FAIL: stack dry-run issued a merge call:"; cat "${TEST_GH_LOG}"; fail=$((fail + 1))
 fi
+
+# (a) A position-2 member pins the request to ITS OWN head and branch, not
+# to the lower member gated last: the members carry different heads and
+# head-quoting verdicts, so a stale-global regression is visible here.
+reset_stack_fixtures
+export TEST_STACK_MEMBERS="674 675"
+write_pr 674 "${TEST_DEFAULT_BRANCH}" "${MEDIUM_LABELS}" "${APPROVE_674}" "${NO_REVIEWS}" "${HEAD_674}"
+write_checks 674 "${GREEN_CHECKS}"
+write_pr 675 branch-674 "${MEDIUM_LABELS}" "${APPROVE_675}" "${NO_REVIEWS}" "${HEAD_675}"
+write_checks 675 "${GREEN_CHECKS}"
+build_open_prs 674 675
+invoke 675 --dry-run
+expect_ok "distinct-head position 2 dry-run exits clean"
+expect_contains "distinct-head position 2 gates the lower member" "gating member PR #674"
+expect_contains "distinct-head position 2 pins the requested head" "sha=${HEAD_675}"
+expect_absent "distinct-head position 2 never pins the lower member's head" "sha=${HEAD_674}"
+expect_contains "distinct-head position 2 cleans up the requested branch" "would delete branch branch-675 after a terminal merged result"
+expect_absent "distinct-head position 2 never cleans up the lower member's branch" "branch-674 after a terminal merged result"
 
 # (b) A lower open member failing a gate aborts the call and names it.
 reset_stack_fixtures
@@ -735,6 +762,26 @@ else
   echo "FAIL: async 409 issued an unexpected number of merge requests:"; cat "${TEST_GH_LOG}"; fail=$((fail + 1))
 fi
 
+# (3) A PUT response with no header block is not fatal: the uuid is still
+# parsed out of the bare body and polled, instead of the run dying on an
+# unguarded pipeline under `set -euo pipefail` after the request was sent.
+reset_stack_fixtures
+export TEST_STACK_MEMBERS="674"
+write_pr 674 "${TEST_DEFAULT_BRANCH}" "${MEDIUM_LABELS}" "${APPROVE_SHORT}" "${NO_REVIEWS}"
+write_checks 674 "${GREEN_CHECKS}"
+build_open_prs 674
+export TEST_ASYNC_PUT_RESPONSE='{"status":"pending","uuid":"bare-uuid"}'
+export TEST_POLL_STATUSES="merged"
+invoke 674
+expect_ok "header-less PUT response still reaches a verified result"
+expect_contains "header-less PUT response reports the unreadable status" "returned no readable HTTP status"
+expect_contains "header-less PUT response polls the parsed uuid" "Merged stack #678"
+if grep -q 'merge-async/bare-uuid' "${TEST_GH_LOG}"; then
+  echo "ok: header-less PUT response uuid was parsed and polled"; pass=$((pass + 1))
+else
+  echo "FAIL: header-less PUT response uuid was not used:"; cat "${TEST_GH_LOG}"; fail=$((fail + 1))
+fi
+
 # (5) Pending is never reported as landed; polling exhaustion fails.
 reset_stack_fixtures
 export TEST_STACK_MEMBERS="674"
@@ -785,6 +832,25 @@ if grep -q 'git/refs/heads/branch-674' "${TEST_GH_LOG}"; then
   echo "ok: branch deletion went through the guarded ref API"; pass=$((pass + 1))
 else
   echo "FAIL: no branch deletion call was recorded:"; cat "${TEST_GH_LOG}"; fail=$((fail + 1))
+fi
+
+# (7) A position-2 stack merge deletes the REQUESTED member's head branch
+# (branch-675), never the lower member's branch the sweep gated last.
+reset_stack_fixtures
+export TEST_STACK_MEMBERS="674 675"
+write_pr 674 "${TEST_DEFAULT_BRANCH}" "${MEDIUM_LABELS}" "${APPROVE_674}" "${NO_REVIEWS}" "${HEAD_674}"
+write_checks 674 "${GREEN_CHECKS}"
+write_pr 675 branch-674 "${MEDIUM_LABELS}" "${APPROVE_675}" "${NO_REVIEWS}" "${HEAD_675}"
+write_checks 675 "${GREEN_CHECKS}"
+build_open_prs 674 675
+export TEST_POLL_STATUSES="merged"
+invoke 675
+expect_ok "distinct-head position 2 merge exits clean"
+expect_contains "distinct-head position 2 deletes the requested branch" "Deleted branch branch-675"
+if grep -q 'git/refs/heads/branch-675' "${TEST_GH_LOG}" && ! grep -q 'git/refs/heads/branch-674' "${TEST_GH_LOG}"; then
+  echo "ok: position-2 branch deletion targeted the requested branch ref"; pass=$((pass + 1))
+else
+  echo "FAIL: position-2 branch deletion targeted the wrong ref:"; cat "${TEST_GH_LOG}"; fail=$((fail + 1))
 fi
 
 reset_stack_fixtures
