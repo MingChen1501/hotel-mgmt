@@ -145,71 +145,99 @@
       <template #content>
         <!-- One static column-header row. The guest cell is two lines
           (name, then the reference in muted ink), so its heading is
-          two lines too. -->
+          two lines too. The grid carries table semantics so a screen
+          reader can name the columns each cell belongs to. -->
         <div
-          class="bookings-row bookings-row-head"
-          data-testid="bookings-header"
-          role="row"
+          class="bookings-table"
+          role="table"
+          :aria-label="t('desk.bookings.title', {}, 'Bookings')"
         >
-          <span
-            class="bookings-guest-cell"
-            role="columnheader"
+          <div
+            class="bookings-row bookings-row-head"
+            data-testid="bookings-header"
+            role="row"
           >
-            <span>{{ t('desk.bookings.col_guest', {}, 'Guest') }}</span>
-            <span class="bookings-row-ref">{{ t('desk.bookings.col_ref', {}, 'Reference') }}</span>
-          </span>
-          <span role="columnheader">{{ t('desk.bookings.col_room_type', {}, 'Room type') }}</span>
-          <span role="columnheader">{{ t('desk.bookings.col_room', {}, 'Room') }}</span>
-          <span role="columnheader">{{ t('desk.bookings.col_arrival', {}, 'Arrival') }}</span>
-          <span role="columnheader">{{ t('desk.bookings.col_departure', {}, 'Departure') }}</span>
-          <span role="columnheader">{{ t('desk.bookings.col_nights', {}, 'Nights') }}</span>
-          <span role="columnheader">{{ t('desk.bookings.col_total', {}, 'Total') }}</span>
-          <span role="columnheader">{{ t('desk.bookings.col_state', {}, 'State') }}</span>
-        </div>
+            <span
+              class="bookings-guest-cell"
+              role="columnheader"
+            >
+              <span>{{ t('desk.bookings.col_guest', {}, 'Guest') }}</span>
+              <span class="bookings-row-ref">{{ t('desk.bookings.col_ref', {}, 'Reference') }}</span>
+            </span>
+            <span role="columnheader">{{ t('desk.bookings.col_room_type', {}, 'Room type') }}</span>
+            <span role="columnheader">{{ t('desk.bookings.col_room', {}, 'Room') }}</span>
+            <span role="columnheader">{{ t('desk.bookings.col_arrival', {}, 'Arrival') }}</span>
+            <span role="columnheader">{{ t('desk.bookings.col_departure', {}, 'Departure') }}</span>
+            <span role="columnheader">{{ t('desk.bookings.col_nights', {}, 'Nights') }}</span>
+            <span role="columnheader">{{ t('desk.bookings.col_total', {}, 'Total') }}</span>
+            <span role="columnheader">{{ t('desk.bookings.col_state', {}, 'State') }}</span>
+          </div>
 
-        <div
-          v-for="row in rows"
-          :key="row.ref"
-          class="bookings-row"
-          :class="{
-            'bookings-row-selected': row.ref === selectedRef,
-            'bookings-row-inactive': row.state === 'cancelled' || row.state === 'no-show',
-          }"
-          data-testid="bookings-row"
-          role="row"
-          @click="selectRow(row)"
-        >
-          <span class="bookings-guest-cell">
-            <!-- The guest name is the row's single action, so keyboard
+          <div
+            v-for="row in rows"
+            :key="row.ref"
+            class="bookings-row"
+            :class="{
+              'bookings-row-selected': row.ref === selectedRef,
+              'bookings-row-inactive': row.state === 'cancelled' || row.state === 'no-show',
+            }"
+            data-testid="bookings-row"
+            role="row"
+            @click="selectRow(row)"
+          >
+            <span
+              class="bookings-guest-cell"
+              role="cell"
+            >
+              <!-- The guest name is the row's single action, so keyboard
               and screen-reader users have one obvious control per row;
               a pointer click anywhere else on the row does the same. -->
-            <button
-              type="button"
-              class="bookings-row-open"
-              data-testid="bookings-row-open"
-              :aria-label="rowActionLabel(row)"
-              @click.stop="selectRow(row)"
-            >
-              {{ guestCell(row) }}
-            </button>
+              <button
+                type="button"
+                class="bookings-row-open"
+                data-testid="bookings-row-open"
+                :aria-label="rowActionLabel(row)"
+                @click.stop="selectRow(row)"
+              >
+                {{ guestCell(row) }}
+              </button>
+              <span
+                class="bookings-row-ref"
+                data-testid="bookings-row-ref"
+              >{{ row.ref }}</span>
+            </span>
             <span
-              class="bookings-row-ref"
-              data-testid="bookings-row-ref"
-            >{{ row.ref }}</span>
-          </span>
-          <span data-testid="bookings-row-room-type">{{ roomTypeCell(row.roomTypeId) }}</span>
-          <span data-testid="bookings-row-room">{{ roomCell(row) }}</span>
-          <span data-testid="bookings-row-arrival">{{ formatDeskDate(row.arrivalDate) }}</span>
-          <span data-testid="bookings-row-departure">{{ formatDeskDate(row.departureDate) }}</span>
-          <span data-testid="bookings-row-nights">{{ nightsBetween(row.arrivalDate, row.departureDate) }}</span>
-          <span data-testid="bookings-row-total">{{ totalCell(row) }}</span>
-          <span>
-            <Tag
-              :value="stateLabel(row.state)"
-              severity="secondary"
-              data-testid="bookings-row-state"
-            />
-          </span>
+              data-testid="bookings-row-room-type"
+              role="cell"
+            >{{ roomTypeCell(row.roomTypeId) }}</span>
+            <span
+              data-testid="bookings-row-room"
+              role="cell"
+            >{{ roomCell(row) }}</span>
+            <span
+              data-testid="bookings-row-arrival"
+              role="cell"
+            >{{ formatDeskDate(row.arrivalDate) }}</span>
+            <span
+              data-testid="bookings-row-departure"
+              role="cell"
+            >{{ formatDeskDate(row.departureDate) }}</span>
+            <span
+              data-testid="bookings-row-nights"
+              role="cell"
+            >{{ nightsBetween(row.arrivalDate, row.departureDate) }}</span>
+            <span
+              data-testid="bookings-row-total"
+              role="cell"
+            >{{ totalCell(row) }}</span>
+            <span role="cell">
+              <Tag
+                :value="stateLabel(row.state)"
+                severity="secondary"
+                data-testid="bookings-row-state"
+              />
+            </span>
+          </div>
         </div>
 
         <p
