@@ -311,7 +311,7 @@
     "script.runbook.e2e_report_ok": "e2e: PASS: desk shows the backup success line through the proxy.",
     "script.runbook.e2e_drill_failed": "e2e: FAIL: restore drill failed.",
     "script.runbook.e2e_booking_lost": "e2e: FAIL: booking lost after drill.",
-    "script.runbook.e2e_checkin_lost": "e2e: FAIL: checked-in booking lost after drill.",
+    "script.runbook.e2e_checkin_lost": "e2e: FAIL: completed booking lost after drill.",
     "script.runbook.e2e_stay_lost": "e2e: FAIL: closed stay lost after drill.",
     "script.runbook.e2e_departures_lost": "e2e: FAIL: closed stay missing from departures after drill.",
     "script.runbook.e2e_dayclose_changed": "e2e: FAIL: day-close totals changed across the drill.",

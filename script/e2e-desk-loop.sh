@@ -431,21 +431,24 @@ EXPECT_FILE="$STAGING_DIR/e2e-expect.json"
 mkdir -p "$STAGING_DIR"
 PAYMENTS_JSON="$(python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["paymentsByMethod"], sort_keys=True))' <<<"$DAY_CLOSE")"
 # Pre-failure ground truth for the runbook section 5 owner checks
-# (issue #117): the hotel's own name, the checked-in room's state,
-# and the rate plan's nightly prices, read from the live database
-# just before the backup so the drill compares against what the
-# desk actually showed.
+# (issue #117): the hotel's own name, the booking's state, the
+# vacated room's state, and the rate plan's nightly prices, read from
+# the live database just before the backup so the drill compares
+# against what the desk actually showed. Since #646 the committed
+# check-out completes the booking, so the state is read back instead
+# of being hardcoded.
 HOTEL_NAME="$("${COMPOSE[@]}" exec -T db psql -U hotel -d hotel -tAc "SELECT name FROM admin.hotel_profile LIMIT 1;")"
+RESERVATION_STATE="$("${COMPOSE[@]}" exec -T db psql -U hotel -d hotel -tAc "SELECT state FROM reservations.reservations WHERE reference = '$TODAY_REF';")"
 ROOM_STATE="$("${COMPOSE[@]}" exec -T db psql -U hotel -d hotel -tAc "SELECT state FROM rooms.rooms WHERE number = 'E2E-101';")"
 RATE_PRICES_JSON="$("${COMPOSE[@]}" exec -T db psql -U hotel -d hotel -tAc "SELECT coalesce(json_object_agg(night_date::text, price_minor ORDER BY night_date)::text, '{}') FROM rates.rate_prices WHERE rate_plan_id = (SELECT id FROM rates.rate_plans WHERE name = 'E2E-RACK');")"
-python3 - "$EXPECT_FILE" "$TODAY" "$TODAY_REF" "$STAY_ID" "$FOLIO_ID" "$FOLIO_BALANCE" "$CHARGES_TOTAL" "$PAYMENTS_JSON" "$HOTEL_NAME" "$ROOM_STATE" "$RATE_PRICES_JSON" <<'PYEOF'
+python3 - "$EXPECT_FILE" "$TODAY" "$TODAY_REF" "$STAY_ID" "$FOLIO_ID" "$FOLIO_BALANCE" "$CHARGES_TOTAL" "$PAYMENTS_JSON" "$HOTEL_NAME" "$RESERVATION_STATE" "$ROOM_STATE" "$RATE_PRICES_JSON" <<'PYEOF'
 import json, sys
-_, path, today, ref, stay, folio, balance, charges, payments, hotel, room_state, prices = sys.argv
+_, path, today, ref, stay, folio, balance, charges, payments, hotel, res_state, room_state, prices = sys.argv
 record = {
     "arrivalsDate": today,
     "arrivalRefs": [ref],
     "reservationRef": ref,
-    "reservationState": "checked-in",
+    "reservationState": res_state,
     "stayId": stay,
     "stayState": "closed",
     "folioId": folio,
@@ -484,7 +487,7 @@ step "script.runbook.e2e_step_reverify" "e2e: === re-verify the desk after the d
 REGET_RESP="$(api reservations GetReservation "{\"reservationRef\": \"$REF\"}" "$TOKEN")" || { teardown; exit 1; }
 [[ "$(field state "$REGET_RESP")" == "confirmed" ]] || { echo "$(msg "script.runbook.e2e_booking_lost" "e2e: FAIL: booking lost after drill.")" >&2; teardown; exit 1; }
 TODAY_REGET="$(api reservations GetReservation "{\"reservationRef\": \"$TODAY_REF\"}" "$TOKEN")" || { teardown; exit 1; }
-[[ "$(field state "$TODAY_REGET")" == "checked-in" ]] || { echo "$(msg "script.runbook.e2e_checkin_lost" "e2e: FAIL: checked-in booking lost after drill.")" >&2; teardown; exit 1; }
+[[ "$(field state "$TODAY_REGET")" == "closed" ]] || { echo "$(msg "script.runbook.e2e_checkin_lost" "e2e: FAIL: completed booking lost after drill.")" >&2; teardown; exit 1; }
 TODAY_STAY="$(api stay GetStay "{\"stayId\": \"$STAY_ID\"}" "$TOKEN")" || { teardown; exit 1; }
 [[ "$(field state "$TODAY_STAY")" == "closed" ]] || { echo "$(msg "script.runbook.e2e_stay_lost" "e2e: FAIL: closed stay lost after drill.")" >&2; teardown; exit 1; }
 TODAY_LISTS="$(api stay ListArrivalsDepartures "{\"businessDate\": \"$TODAY\"}" "$TOKEN")" || { teardown; exit 1; }
