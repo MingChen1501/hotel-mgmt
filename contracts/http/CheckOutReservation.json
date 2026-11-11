@@ -1,0 +1,41 @@
+{
+  "operation": "CheckOutReservation",
+  "contract": "ReservationService",
+  "version": "1.0",
+  "traces": [
+    "docs/architecture/lld.md section 22",
+    "docs/architecture/state-machine.md section 1.1",
+    "FR-DEP-1",
+    "FR-DEP-3",
+    "NFR-AUD-1"
+  ],
+  "transport": {
+    "method": "POST",
+    "path": "/v1/reservations/CheckOutReservation",
+    "auth": "Bearer session token"
+  },
+  "request": {
+    "type": "object",
+    "required": ["stayId", "actor"],
+    "properties": {
+      "stayId": { "type": "string", "format": "uuid", "description": "Stay the close committed; the booking is resolved by its unique stay link, never by guest or dates." },
+      "actor": { "type": "string", "description": "Operator performing the close; recorded on the change history with the time." }
+    }
+  },
+  "response": {
+    "type": "object",
+    "required": ["reservationId", "reservationRef", "state", "stayId"],
+    "properties": {
+      "reservationId": { "type": "string", "format": "uuid" },
+      "reservationRef": { "type": "string" },
+      "state": { "type": "string", "const": "closed" },
+      "stayId": { "type": "string", "format": "uuid" }
+    }
+  },
+  "errors": [
+    { "code": "UNAUTHENTICATED", "status": 401, "when": "Missing session token." },
+    { "code": "VALIDATION_FAILED", "status": 400, "when": "Missing or blank stayId or actor; details name the field." },
+    { "code": "NOT_FOUND", "status": 404, "when": "No reservation carries the stay link; details name the stay." },
+    { "code": "STATE_ILLEGAL", "status": 422, "when": "The linked booking is not checked in; details name the reservation and its state." }
+  ]
+}

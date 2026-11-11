@@ -1,0 +1,10 @@
+{
+  "operation": "CheckOutReservation",
+  "case": "unknown-stay",
+  "description": "No booking carries the stay link, so the completion is refused NOT_FOUND naming the stay.",
+  "request": {
+    "stayId": "<stay-id>",
+    "actor": "front-desk"
+  },
+  "expect": { "status": 404, "code": "NOT_FOUND" }
+}

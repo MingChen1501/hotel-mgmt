@@ -1439,3 +1439,264 @@ describe('QA-EDGE-12 mid-flow locale switch', () => {
     }
   });
 });
+
+// DR12 (Refs #646, AC-DEP-3, FR-DEP-4): one same-day turnover chain —
+// the committed close releases the departed room vacant-dirty,
+// housekeeping advances it clean then inspected through the desk
+// buttons, and the assignment list offers it so the next guest checks
+// in the same day. No manual state edit, and a dirty or clean-only
+// room is never offered.
+describe('QA-EDGE-8 same-day departure reuse chain', () => {
+  interface StateRoom {
+    roomId: string;
+    number: string;
+    roomTypeId: string;
+    state: string;
+  }
+
+  it('releases, cleans, inspects, offers, and checks in the same room the same day', async () => {
+    const localDate = (() => {
+      const now = new Date();
+      const pad = (value: number): string => (value < 10 ? '0' : '') + String(value);
+      return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+    })();
+    const next = (() => {
+      const date = new Date(`${localDate}T00:00:00Z`);
+      date.setUTCDate(date.getUTCDate() + 1);
+      return date.toISOString().slice(0, 10);
+    })();
+    const byState: Record<string, StateRoom[]> = {
+      occupied: [{ roomId: 'room-9', number: '109', roomTypeId: 'standard', state: 'occupied' }],
+      'vacant-dirty': [],
+      'vacant-clean': [],
+      'vacant-inspected': [],
+      'out-of-order': [],
+    };
+    const moveRoom = (number: string, toState: string): { oldState: string; newState: string } => {
+      for (const rooms of Object.values(byState)) {
+        const at = rooms.findIndex((room) => room.number === number);
+        if (at >= 0) {
+          const [room] = rooms.splice(at, 1);
+          const moved = { ...(room as StateRoom), state: toState };
+          byState[toState]?.push(moved);
+          return { oldState: room.state, newState: toState };
+        }
+      }
+      throw new Error(`room ${number} is not on the map`);
+    };
+    let released = false;
+    let checkedIn = false;
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      const body = parseBody(init);
+      if (url === '/v1/admin/SignIn') {
+        return Promise.resolve(
+          jsonResponse({ token: 'tok-1', userId: 'u-1', displayName: 'Ada Owner', role: 'owner' }),
+        );
+      }
+      if (url === '/v1/stay/ListArrivalsDepartures') {
+        return Promise.resolve(
+          jsonResponse({
+            businessDate: localDate,
+            arrivals: checkedIn
+              ? []
+              : [{ reservationRef: 'RSV-2', guestId: 'g-3', roomId: null, actualArrival: null, actualDeparture: null }],
+            inHouse: released
+              ? []
+              : [
+                  {
+                    stayId: 's-1',
+                    guestId: 'g-2',
+                    roomId: 'room-9',
+                    actualArrival: `${localDate}T14:00:00.000Z`,
+                    actualDeparture: null,
+                  },
+                ],
+            departures: released
+              ? [
+                  {
+                    stayId: 's-1',
+                    guestId: 'g-2',
+                    roomId: 'room-9',
+                    actualArrival: `${localDate}T14:00:00.000Z`,
+                    actualDeparture: `${localDate}T11:00:00.000Z`,
+                  },
+                ]
+              : [],
+          }),
+        );
+      }
+      if (url === '/v1/rooms/ListRoomsByState') {
+        const state = String(body.state ?? '');
+        return Promise.resolve(jsonResponse({ state, rooms: byState[state] ?? [] }));
+      }
+      if (url === '/v1/rooms/ListRoomTypes') {
+        return Promise.resolve(jsonResponse({ roomTypes: [{ id: 'standard', name: 'Standard' }] }));
+      }
+      if (url === '/v1/guests/GetGuest') {
+        const names: Record<string, string> = { 'g-2': 'Guest Two', 'g-3': 'Guest Three' };
+        const guestId = String(body.guestId ?? '');
+        return Promise.resolve(jsonResponse({ guestId, fullName: names[guestId] ?? guestId }));
+      }
+      if (url === '/v1/reservations/QueryCalendar') {
+        return Promise.resolve(
+          jsonResponse({
+            dateFrom: body.dateFrom ?? null,
+            dateTo: body.dateTo ?? null,
+            reservations: [
+              {
+                reservationRef: 'RSV-1',
+                stayId: 's-1',
+                roomTypeId: 'standard',
+                arrivalDate: localDate,
+                departureDate: next,
+                state: released ? 'closed' : 'checked-in',
+              },
+              {
+                reservationRef: 'RSV-2',
+                stayId: null,
+                roomTypeId: 'standard',
+                arrivalDate: localDate,
+                departureDate: next,
+                state: 'confirmed',
+              },
+            ],
+          }),
+        );
+      }
+      if (url === '/v1/reservations/GetReservation') {
+        const ref = String(body.reservationRef ?? '');
+        const guestId = ref === 'RSV-2' ? 'g-3' : 'g-2';
+        return Promise.resolve(
+          jsonResponse({
+            reservationId: ref === 'RSV-2' ? 'r-2' : 'r-1',
+            reservationRef: ref,
+            roomTypeId: 'standard',
+            arrivalDate: localDate,
+            departureDate: next,
+            guest: { guestId, fullName: guestId === 'g-3' ? 'Guest Three' : 'Guest Two' },
+            priceBasis: { totalMinor: 120000, discountName: null },
+            state: ref === 'RSV-2' ? 'confirmed' : released ? 'closed' : 'checked-in',
+          }),
+        );
+      }
+      if (url === '/v1/billing/GetFolioBalance') {
+        return Promise.resolve(
+          jsonResponse({
+            folioId: 'f-1',
+            stayId: body.stayId,
+            balanceMinor: 0,
+            openBalanceApproval: null,
+            charges: [
+              {
+                itemKind: 'nightly-room-charge',
+                itemName: 'Room 109',
+                amountMinor: 120000,
+                taxMinor: 0,
+                feeMinor: 0,
+                postedAt: `${localDate}T08:00:00.000Z`,
+              },
+            ],
+            payments: [{ method: 'cash', amountMinor: 120000, paidAt: `${localDate}T09:00:00.000Z` }],
+          }),
+        );
+      }
+      if (url === '/v1/rooms/ReleaseRoom') {
+        released = true;
+        const { oldState, newState } = moveRoom(String(body.roomNumber), 'vacant-dirty');
+        return Promise.resolve(jsonResponse({ roomNumber: body.roomNumber, oldState, newState }));
+      }
+      if (url === '/v1/rooms/UpdateRoomState') {
+        const { oldState, newState } = moveRoom(String(body.roomNumber), String(body.newState));
+        return Promise.resolve(jsonResponse({ roomNumber: body.roomNumber, oldState, newState }));
+      }
+      if (url === '/v1/stay/CheckOut') {
+        return Promise.resolve(
+          jsonResponse({
+            stayId: body.stayId,
+            invoiceRef: 'INV-1',
+            bookingCompletion: { state: 'completed', reservationRef: 'RSV-1' },
+          }),
+        );
+      }
+      if (url === '/v1/rooms/AssignRoom') {
+        const number = String(body.roomNumber);
+        moveRoom(number, 'occupied');
+        return Promise.resolve(
+          jsonResponse({ roomId: 'room-9', roomNumber: number, stayLink: body.stayLink, state: 'occupied' }),
+        );
+      }
+      if (url === '/v1/stay/CheckIn') {
+        checkedIn = true;
+        return Promise.resolve(
+          jsonResponse({
+            stayId: body.stayId,
+            reservationId: 'r-2',
+            guestId: 'g-3',
+            roomId: body.roomId,
+            state: 'in-house',
+          }),
+        );
+      }
+      if (url === '/v1/reservations/CheckInReservation') {
+        return Promise.resolve(jsonResponse({ reservationRef: 'RSV-2', stayId: body.stayId }));
+      }
+      if (url === '/v1/admin/SignOut') {
+        return Promise.resolve(jsonResponse({ ok: true }));
+      }
+      throw new Error(`unexpected call ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    useSessionStore().signIn('tok-1', 'Ada Owner', 'owner');
+    const stay = mount(StayView, { global: { plugins: [pinia] } });
+    await vi.waitFor(() => {
+      expect(stay.find('[data-testid="stay-checkin-arrival"] option[value="RSV-2"]').exists()).toBe(true);
+    });
+
+    // The close releases the departed room vacant-dirty.
+    await stay.find('[data-testid="stay-checkout-stay"]').setValue('s-1');
+    await stay.find('[data-testid="stay-review"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(stay.find('[data-testid="stay-checkout-status"]').text()).toContain('balance is zero');
+    });
+    await stay.find('[data-testid="stay-checkout"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(stay.find('[data-testid="stay-checkout-dialog"]').exists()).toBe(true);
+    });
+    await stay.find('[data-testid="stay-checkout-confirm"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(stay.find('[data-testid="stay-checkout-status"]').text()).toContain('Checked out');
+    });
+    expect(byState['vacant-dirty']?.some((room) => room.number === '109')).toBe(true);
+    expect(byState['vacant-inspected']?.some((room) => room.number === '109')).toBe(false);
+
+    // Housekeeping advances the released room through the desk buttons.
+    const rooms = mount(RoomsView, { global: { plugins: [pinia] } });
+    await rooms.find('[data-testid="rooms-refresh"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(rooms.find('[data-testid="rooms-mark-cleaned-109"]').exists()).toBe(true);
+    });
+    await rooms.find('[data-testid="rooms-mark-cleaned-109"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(rooms.find('[data-testid="rooms-mark-inspected-109"]').exists()).toBe(true);
+    });
+    await rooms.find('[data-testid="rooms-mark-inspected-109"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(byState['vacant-inspected']?.some((room) => room.number === '109')).toBe(true);
+    });
+
+    // The next guest books the same type the same day and is checked
+    // into the reused room through the existing assignment flow.
+    await stay.find('[data-testid="stay-checkin-arrival"]').setValue('RSV-2');
+    await vi.waitFor(() => {
+      expect(stay.find('[data-testid="stay-checkin-room"]').text()).toContain('109');
+    });
+    await stay.find('[data-testid="stay-checkin"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(stay.find('[data-testid="stay-checkin-status"]').text()).toContain('Checked in');
+    });
+    expect(checkedIn).toBe(true);
+    expect(fetchMock.mock.calls.filter((call) => call[0] === '/v1/stay/CheckIn')).toHaveLength(1);
+  });
+});

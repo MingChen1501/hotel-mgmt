@@ -111,6 +111,7 @@ type Repository interface {
 	Get(ref string) (*Reservation, *OpError)
 	Query(dateFrom, dateTo, roomTypeID string) []*CalendarEntry
 	CheckIn(ref, stayID, actor string) (*Reservation, *OpError)
+	CheckOutReservation(stayID, actor string) (*Reservation, *OpError)
 	Modify(input ModifyInput, idempotencyKey string) (*Reservation, *OpError)
 	Cancel(ref, reason, actor, idempotencyKey string) (*Reservation, *OpError)
 	MarkNoShow(ref, reason, actor string) (*Reservation, *OpError)
@@ -314,6 +315,45 @@ func (s *Store) CheckIn(ref, stayID string, actor string) (*Reservation, *OpErro
 		"aggregate": "reservation", "eventType": "checked-in",
 		"payload": map[string]any{"reservationRef": record.Ref, "stayId": stayID},
 	})
+	return record, nil
+}
+
+// CheckOutReservation completes the booking behind a closed stay
+// (FR-DEP-1, #646). The stay link set at check-in selects the booking,
+// never a guest or date match. A checked-in booking flips to the
+// terminal closed state once and records the change with its actor and
+// time (NFR-AUD-1); a repeated call for an already closed booking is a
+// no-op that returns the same row, so a replayed close completes once.
+// No event is written (LLD D5).
+func (s *Store) CheckOutReservation(stayID, actor string) (*Reservation, *OpError) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	stayID = strings.TrimSpace(stayID)
+	var record *Reservation
+	for _, candidate := range s.byRef {
+		if candidate.StayID != "" && candidate.StayID == stayID {
+			record = candidate
+			break
+		}
+	}
+	if record == nil {
+		return nil, notFound(
+			messages.Text("error.notfound.reservation_for_stay", map[string]string{"stayId": stayID}),
+			map[string]any{"stayId": stayID},
+		)
+	}
+	if record.State == "closed" {
+		return record, nil
+	}
+	if record.State != "checked-in" {
+		return nil, &OpError{
+			Code: "STATE_ILLEGAL", Status: 422,
+			Message: messages.Text("error.state.not_checked_in_complete", map[string]string{"ref": record.Ref, "state": record.State}),
+			Details: map[string]any{"reservationRef": record.Ref, "state": record.State},
+		}
+	}
+	s.changes = append(s.changes, changeEntry(record.Ref, "state", record.State, "closed", actor))
+	record.State = "closed"
 	return record, nil
 }
 
