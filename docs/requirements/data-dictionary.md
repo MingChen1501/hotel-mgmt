@@ -64,7 +64,15 @@ house. A committed close completes the booking behind the stay
 (`FR-DEP-1`), so the completed booking keeps its link to this closed
 stay.
 
-Owning FRs: FR-FDK-1, FR-FDK-2, FR-FDK-3, FR-FDK-4, FR-FDK-5.
+The stay's room is the desk's assignment, never a booking fact: a
+check-in commit assigns only the room the guest is in and takes back
+the room it assigned when that commit does not land while no stay was
+recorded, and a change of room keeps the stay in house and records the
+from-room, the to-room, and the time in its move history (`FR-REA-1`,
+`FR-REA-2`, `FR-REA-4`).
+
+Owning FRs: FR-FDK-1, FR-FDK-2, FR-FDK-3, FR-FDK-4, FR-FDK-5,
+FR-REA-1, FR-REA-2, FR-REA-3, FR-REA-4.
 
 ## 3. Folio
 
@@ -152,8 +160,14 @@ features; current state (occupied, vacant dirty, vacant clean,
 vacant inspected, out of order); state-change history with actor and
 timestamp.
 
+A room reads `occupied` only while a stay names it. The assigned room
+is released to `vacant-dirty` when the stay that used it leaves it —
+on check-out or on a move — and back to `vacant-inspected` when the
+assignment never became a stay, because no guest was in it (`FR-REA-1`,
+`FR-REA-2`, `FR-REA-3`; `BR-19`).
+
 Owning FRs: FR-RMS-1, FR-RMS-2, FR-RMS-3, FR-RMS-4, FR-ADM-3,
-FR-FDK-1, FR-FDK-3.
+FR-FDK-1, FR-FDK-3, FR-REA-1, FR-REA-2, FR-REA-3, FR-REA-4.
 
 ## 9. Room type
 
@@ -275,7 +289,13 @@ add no entry, field, or behaviour beyond those sources. The
 Reservation entry (section 1) and the Stay entry (section 2) state the
 active set the #646 departure release relies on — a completed booking
 holds nothing and never reopens (`FR-DEP-1`..`FR-DEP-3`, `BR-1`) — and
-add no entry, field, or behaviour beyond those sources.
+add no entry, field, or behaviour beyond those sources. The Stay entry
+(section 2) and the Room entry (section 8) state the assignment and
+release obligation the #647 reassignment relies on — the room is the
+desk's assignment, a used room is released to housekeeping, and a room
+whose assignment never became a stay returns to ready (`FR-REA-1`..
+`FR-REA-4`, `BR-19`) — and add no entry, field, or behaviour beyond
+those sources.
 
 Counts: 15 dictionary entries covering the 7 entity terminology concepts (T-1..T-7); T-8 is a spelling convention with no entry.
 
