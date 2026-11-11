@@ -512,10 +512,13 @@ Extensions/exceptions:
   [FR-BMV-3]
 - 2b. No booking stays in the range: one plain sentence names the
   range and no row is invented. [FR-BMV-4]
-- 3a. A list, per-row, room-type, in-house, occupied-room, or detail
-  read fails: one plain sentence names what could not be read with a
-  retry, the affected cells say they could not be read, and the rest
-  of the desk stays usable. [FR-BMV-6]
+- 3a. A list read or a detail read fails: one plain sentence names what
+  could not be read with a retry. A per-row, room-type, in-house, or
+  occupied-room read fails: the row stays, the affected cells say they
+  could not be read, and one notice above the list counts the incomplete
+  rows and names the failed column, with no retry of its own —
+  re-applying the range reads again. The rest of the desk stays usable.
+  [FR-BMV-6]
 
 Postconditions: staff read the bookings for the range and the selected
 booking's read-back detail; nothing was created, changed, cancelled,

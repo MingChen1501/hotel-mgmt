@@ -5714,12 +5714,16 @@ The decided behaviour, in five parts:
    (`BR-1`). It carries no action; another selection replaces it and a
    new range clears it (`FR-BMV-5`).
 5. **Failures are plain sentences, never guessed values.** A failed
-   list, per-row, room-type, in-house, occupied-room, or detail read is
-   one plain catalogue sentence naming what could not be read with a
-   retry, and the affected cells state that they could not be read
-   instead of showing a guessed guest name, amount, room, or type. No
-   failure surfaces a stack trace or an envelope code, and the rest of
-   the desk stays usable (`FR-BMV-6`).
+   list read or detail read is one plain catalogue sentence naming what
+   could not be read with a retry action. A failed per-row, room-type,
+   in-house, or occupied-room read keeps every row it can; the affected
+   cells state that they could not be read instead of showing a guessed
+   guest name, amount, room, or type; and one notice above the list
+   counts the incomplete rows and names each failed column in a plain
+   sentence. The partial classes carry no retry action of their own:
+   re-applying the range reads again. No failure surfaces a stack trace
+   or an envelope code, and the rest of the desk stays usable
+   (`FR-BMV-6`).
 
 | Option | Verdict | Reason |
 |---|---|---|
@@ -5870,16 +5874,20 @@ never fakes an empty booking. Traces to: `AC-BMV-5`; US-RES-5;
 
 FR-BMV-6 — Every failed read is a plain sentence and no value is
 guessed.
-Given a list, per-row, room-type, in-house-stay, occupied-room, or
-detail read fails; when the screen renders; then the failure is one
-plain catalogue sentence naming what could not be read with a retry
-action, the affected cells state that they could not be read instead of
-showing a guessed guest name, amount, room, or type, one notice counts
-the rows that could not be completed, no booking is silently dropped, no
-stack trace or envelope code is surfaced, and the rest of the desk
-remains usable. Given the detail read fails; then one sentence names the
-booking that could not be read with a retry, the list stays as it was,
-and the previous detail is not kept as if it were current. Traces to:
+Given a list or detail read fails; when the screen renders; then the
+failure is one plain catalogue sentence naming what could not be read
+with a retry action. Given a per-row, room-type, in-house-stay, or
+occupied-room (shared-map) read fails; then the screen keeps every row
+it can, the affected cells state that they could not be read instead of
+showing a guessed guest name, amount, room, or type, and one notice
+above the list counts the rows that could not be completed and names each
+failed column in one plain sentence; these partial classes carry no retry
+action of their own, because re-applying the range reads again. In every
+class no booking is silently dropped, no stack trace or envelope code is
+surfaced, and the rest of the desk remains usable. Given the detail read
+fails; then one sentence names the booking that could not be read with a
+retry, the list stays as it was, and the previous detail is not kept as
+if it were current. Traces to:
 `AC-BMV-6`; US-RES-5; `FR-RES-5`, `FR-DSP-3`.
 
 FR-BMV-7 — The register is read-only over the operations that exist,
@@ -5951,7 +5959,7 @@ guard listed as "stay green" must pass untouched.
 | FR-BMV-3 inclusive range and validation | `app/src/views/DeskView.vue:531-535` (local business date the default range anchors on) | Missing guards: the inclusive-night mapping asserts `dateFrom` = first night and `dateTo` = last night plus one day, that a booking staying the last night is listed and one departing on the first night is not, one read per apply with the fields disabled, the no-op second click, the selection clear, and the inverted or missing range sending nothing with the field named |
 | FR-BMV-4 empty range sentence | `app/src/views/DeskView.test.ts:617` (the plain-words empty-state wording precedent) | Missing guard: an empty range renders one sentence naming the range in the desk date form, no row, and a usable filter |
 | FR-BMV-5 fresh read-back detail | `services/reservations/internal/handler/handler.go:161-180` (the read-back shape), `services/reservations/internal/handler/handler_test.go:171` (`TestDeskLifecycleModifyCancelNoShowCalendar`; the record read already answers dates, guest, price, and state on every entry) | Missing guards: selecting a row issues a fresh `GetReservation` and renders its values; the recorded discount name shows when the basis carries one; a second selection replaces and a new range clears; the detail offers no action |
-| FR-BMV-6 failure states and unreadable cells | `app/src/views/DeskView.test.ts:582-606` (a failed guest read renders the catalogue wording instead of a raw value), `:265` (the unknown-guest fallback in a departures row) | Missing guards: the list read failure, a per-row read failure, a failed type or in-house or occupied-room read, and a detail failure each render their plain catalogue sentence with a retry; unreadable cells say so; the notice counts the partial rows; no row is dropped and no value is invented |
+| FR-BMV-6 failure states and unreadable cells | `app/src/views/DeskView.test.ts:582-606` (a failed guest read renders the catalogue wording instead of a raw value), `:265` (the unknown-guest fallback in a departures row) | Missing guards: the list read failure and the detail read failure each render their plain catalogue sentence with a retry; a per-row read failure and a failed type or in-house or occupied-room read keep the row, leave the affected cells saying they could not be read, and state it in the notice that counts the incomplete rows and names the failed column, with no retry action of its own and re-applying the range reading again; no row is dropped and no value is invented |
 | FR-BMV-7 read-only, catalogue parity, design facts, owner review | `script/catalogue-coverage-check.sh`, `app/e2e/design-facts.spec.ts:651-660` (allowance label and design-source comparison), `messages/en.json:713-715` and `messages/vi.json:713-715` (the `manage` tab and title keys as the pattern), `contracts/http/QueryCalendar.json`, `contracts/http/GetReservation.json` | Missing guards: the screen's call set is exactly the five read operations with no store or database access, every new key exists in both catalogues with matching placeholders, the allowance entry names the tab position and design source, and the owner's screen review is recorded on the issue (the `owner-review` label) |
 | `FR-RES-5` MVP row stays green | `docs/testing/traceability-matrix.md` (FR-RES-5 row), `services/reservations/internal/handler/handler_test.go:171`, the `QueryCalendar.json` fixture | These pin the calendar read this screen consumes; the read semantics do not change here, so they must pass without a service edit |
 | #646/#647 desk guards stay green | `app/src/views/StayView.test.ts` (departure release and reassignment suites), `script/e2e-desk-loop.sh` | The register only reads the stay and room lists these flows write; no desk copy, control, or flow they pin changes here |
@@ -5971,7 +5979,7 @@ flowchart TD
     C -- list read fails --> Z2[One plain read-failed sentence with retry; no row invented; the rest of the desk usable  FR-BMV-6]
     C -- entries returned --> D[Sort by arrival then reference; cap at 50 with the narrow-the-dates sentence  FR-BMV-2]
     D --> E[Complete each row: GetReservation for guest and priceBasis  handler.go:161-180; ListRoomTypes for the type name; ListArrivalsDepartures  stay/server.ts:157-165 and ListRoomsByState  rooms/server.ts:112-126 for the in-house room  FR-BMV-2]
-    E -- a per-row or map read fails --> Z3[That row keeps its calendar fields and says which cells are unreadable; one notice counts the partial rows; no row dropped  FR-BMV-6]
+    E -- a per-row or map read fails --> Z3[That row keeps its calendar fields and says which cells are unreadable; one notice counts the incomplete rows and names the failed column; no retry of its own — re-applying the range reads again; no row dropped  FR-BMV-6]
     E -- every row complete --> F[Render rows; an empty range shows one sentence naming the range  FR-BMV-4]
     F --> G[Staff select a row]
     G --> H[GetReservation fresh read-back rendered as the detail card  FR-BMV-5]
@@ -5980,10 +5988,12 @@ flowchart TD
 ```
 
 Failure/rollback path: every failed read is named in plain catalogue
-words and leaves the rest of the desk usable; an unreadable cell is
-stated rather than filled with a guessed value, and a booking is never
-dropped from the list. There is no write in this flow, so there is
-nothing to compensate: rolling the change back is the single
+words and leaves the rest of the desk usable; the list and the detail
+reads carry one retry action, while the partial row and shared-map
+classes degrade in place and re-applying the range reads again; an
+unreadable cell is stated rather than filled with a guessed value, and a
+booking is never dropped from the list. There is no write in this flow,
+so there is nothing to compensate: rolling the change back is the single
 implementation PR — the tab, the route, and the read calls go away,
 the eight-tab shell returns, and no schema, contract, or data changes
 in either direction. A reverted build leaves every other desk screen
@@ -5992,7 +6002,8 @@ as it was.
 ### 25.6 Explicitly not specified here (plus gate dependencies)
 
 - Implementation — the component split, the per-row read sequencing
-  and its retry wiring, the error-state rendering, and the lab
+  and the retry wiring for the list and detail reads, the error-state
+  rendering, and the lab
   reproduction record — is the downstream `dev` PR for #648, not this
   section.
 - The technical shape is the `architect` handoff: the LLD delta for the

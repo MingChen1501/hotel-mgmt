@@ -482,7 +482,7 @@ sequenceDiagram
         Reg->>Res: GetReservation per listed booking for guest, price basis, and state [FR-BMV-2, FR-RTE-5; price frozen at booking, BR-13]
         Reg->>Rooms: ListRoomTypes, ListArrivalsDepartures, ListRoomsByState for the type name and the in-house room [FR-BMV-2; state per BR-1]
         alt A per-row or map read fails
-            Reg-->>Staff: That row keeps its calendar fields and says which cells are unreadable; one notice counts them [FR-BMV-6]
+            Reg-->>Staff: That row keeps its calendar fields and says which cells are unreadable; one notice counts the incomplete rows and names the failed column; no retry of its own — re-applying the range reads again [FR-BMV-6]
         else Every row complete
             Reg-->>Staff: Rows ordered by arrival then reference, capped at 50 with the narrow-the-dates sentence [FR-BMV-2]
         end
