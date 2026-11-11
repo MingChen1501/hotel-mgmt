@@ -1,6 +1,7 @@
 package store
 
 import (
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -442,7 +443,9 @@ func TestCheckOutReservationIsIdempotent(t *testing.T) {
 
 // TestCheckOutReservationRefusals is the DR3 guard: a booking in
 // another state is refused STATE_ILLEGAL naming the state and writes
-// nothing, and an unknown stay link is NOT_FOUND naming the stay.
+// nothing, an unknown stay link is NOT_FOUND naming the stay, and both
+// envelopes render the catalogue copy rather than the message-missing
+// marker.
 func TestCheckOutReservationRefusals(t *testing.T) {
 	st := New()
 	created, oerr := st.Create(loopInput("deluxe-type"), "")
@@ -455,12 +458,16 @@ func TestCheckOutReservationRefusals(t *testing.T) {
 		t.Fatalf("confirmed completion = %v, want STATE_ILLEGAL", refusal)
 	} else if refusal.Details["state"] != "confirmed" || refusal.Details["reservationRef"] != created.Ref {
 		t.Fatalf("STATE_ILLEGAL details = %v, want state and ref named", refusal.Details)
+	} else if strings.HasPrefix(refusal.Message, "message-missing:") || !strings.Contains(refusal.Message, "not checked in") {
+		t.Fatalf("STATE_ILLEGAL message = %q, want the catalogue copy naming the state", refusal.Message)
 	}
 	if len(st.Changes()) != changesBefore || created.State != "confirmed" {
 		t.Fatal("refused completion changed the booking")
 	}
 	if _, oerr := st.CheckOutReservation("stay-unknown", "front-desk"); oerr == nil || oerr.Code != "NOT_FOUND" {
 		t.Fatalf("unknown stay = %v, want NOT_FOUND", oerr)
+	} else if strings.HasPrefix(oerr.Message, "message-missing:") || !strings.Contains(oerr.Message, "stay-unknown") {
+		t.Fatalf("NOT_FOUND message = %q, want the catalogue copy naming the stay", oerr.Message)
 	}
 }
 
