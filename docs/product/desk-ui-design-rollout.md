@@ -2220,6 +2220,181 @@ screen and its guards return as they were, and rooms stranded by a
 move in the reverted build are cleared through the existing desk
 release.
 
+### 6.18 Booking management desk view (Refs #648)
+
+Status: product-owner scope decision and UI contract delta for the
+owner-reported gap from manual QA on 2026-11-10 (#648): the desk has no
+booking-management view, so staff cannot read who booked which room,
+for which dates, at what price, without fetching records one reference
+at a time. Tier T2 (reader-visible screen over existing contracts
+only). The binding done-conditions are `AC-BMV-1`..`AC-BMV-7` in
+`docs/product/acceptance-criteria.md` [section 17](acceptance-criteria.md);
+the full screen spec is `docs/product/booking-management-view.md`
+(active), and `AC-RES-5` gains the `AC-BMV-2`/`AC-BMV-5` pointer. The
+requirement is not new: `US-RES-5`, `FR-RES-5`, and `AC-RES-5` already
+promise staff a screen that shows reservations across dates with type,
+state, guest, reference, and price. FR/NFR wording is owned by
+`business-analyst`, the route/nav LLD delta and the per-flow
+implementation diagram by `architect`, guard mapping and traceability
+by `qa-lead`, the release note by `release-manager`, and the gate
+verdict by `spec-reviewer`. Recorded as D-28 in
+`docs/project/decision-log.md`.
+
+As-built trace that confirms the report — there is no browse surface,
+although every value it needs is already served — is in
+`docs/product/acceptance-criteria.md` [section 17](acceptance-criteria.md)
+("As-built validation"): `app/src/router.ts` registers desk, book,
+stay, onboarding, rooms, manage, folio, print, and admin and nothing
+that lists bookings; `BookView` ends at its confirmation;
+`QueryCalendar` already returns the overlapping bookings with
+reference, room type, dates, state, and stay link
+(`contracts/http/QueryCalendar.json`; overlap is
+`arrival < dateTo` and `departure > dateFrom`,
+`services/reservations/internal/store/store.go:191-193`), and
+`GetReservation` already returns the guest snapshot and frozen price
+basis (`services/reservations/internal/handler/handler.go:167-180`).
+The assigned room is the in-house stay's `roomId` resolved through the
+occupied room list (`services/stay/src/server.ts:42-60`,
+`services/rooms/src/server.ts:114-126`), because a booking carries no
+room number (Refs #647).
+
+Decision:
+
+1. **One new read-only screen, one new tab.** Route `bookings` at
+   `/app/bookings`, view `app/src/views/BookingsView.vue`, tab
+   immediately after `Book` (`desk.shell.nav_bookings`,
+   `Sổ đặt phòng` / `Bookings`). The tab sits next to the screen that
+   creates bookings and leaves the operational `Stay` -> `Folio` chain
+   uninterrupted. The screen writes nothing: no edit, cancel, no-show,
+   check-in, or check-out control, and no link into an edit flow.
+2. **A date range in nights, not an open scan.** The filter is
+   first night and last night, inclusive in product words, defaulting
+   to the business date through the next six nights. The screen maps it
+   to `QueryCalendar` as `dateFrom` = first night and `dateTo` = last
+   night plus one day, because the contract window is
+   `[dateFrom, dateTo)`; an inverted range names the field and sends
+   nothing. Applying a range clears the selection.
+3. **Rows carry the whole answer.** One row per booking staying at
+   least one night in the range, ordered by arrival then reference (the
+   calendar reads guarantee no order), each row showing guest,
+   reference, room type, assigned room when in house (otherwise a plain
+   `—`), arrival, departure, nights, quoted total, and state. The guest
+   name is the row's action (one keyboard stop per row); a pointer
+   click anywhere on the row does the same. At most 50 rows render per
+   read, with one plain sentence and the narrow-the-dates next step;
+   the cap bounds the per-row `GetReservation` fan-out.
+4. **The detail is a fresh read, not a cached row.** Selecting a row
+   reads `GetReservation` and shows the record it returns: reference,
+   guest, room type, assigned room, dates, nights, quoted total, the
+   recorded discount when present, and the state. Nothing is
+   recalculated or re-derived, and the detail never overrides the list
+   silently — a changed booking reads fresh, and the next list read
+   catches the row up.
+5. **Every value is read, never guessed.** The list completes rows
+   through `GetReservation`; the room type comes from `ListRoomTypes`;
+   the assigned room from `ListArrivalsDepartures` plus
+   `ListRoomsByState("occupied")`. A failed read leaves the affected
+   cells saying they could not be read, with one plain notice counting
+   the affected rows, and no booking is silently dropped. A closed booking shows
+   `—` for its room because no read exposes the room a departed guest
+   held.
+
+UI contract delta (T2):
+
+- **Layout and navigation scope.** The shared shell is unchanged and
+  this change adds exactly one tab and one route. The new tab is
+  app-only: no owner board draws it, so the v2 boards stay authoritative
+  for everything they do draw, no board file is edited, and no new
+  board is invented. The nine-tab row keeps the brand-only shrink rule
+  (`docs/product/desk-ui-pixel-faithful-restyle.md`, section 4, ninth
+  tab): every tab, the locale pill, and the session control keep their
+  size, the short label keeps the row inside the `1200px` content
+  width, and the first implementation PR carries the 1200px evidence in
+  both locales. If the measured row overflows, the owner decides
+  between a shorter label and a shell rule change — the row never
+  silently truncates or wraps.
+- **Screen layout.** Title plus a read-only intro line, then a filter
+  card (first night, last night, apply action, one helper line stating
+  the night-range meaning), then a list card (one static column-header
+  row plus one row per booking), then — only after a selection — a
+  detail card under the list. The detail never replaces the list.
+- **Component mapping.** The filter card reuses the Book screen's
+  app-locale date pickers and button pattern; the list card reuses the
+  board list rows and the desk's divider/ink treatment; each row's
+  guest name is a link-styled button (the row's single action) with the
+  reference in muted ink beneath it; the state renders through the
+  existing chip shape, neutral surface and border, so no booking state
+  claims a status colour; the selected row is marked with a 3px inset
+  left rule in the primary accent plus the ink weight. PrimeVue stays
+  the logic carrier only, as on every restyled screen.
+- **Design-token scope.** Zero new tokens; `app/src/theme/tokens.ts` is
+  untouched. Money renders through `formatVnd`, row dates through the
+  desk date form (`dd/mm/yyyy`), and the range fields keep ISO on the
+  wire.
+- **States in plain words:** loading names the screen being read with
+  the filter disabled and a repeat apply a no-op; empty is one muted
+  sentence naming the range; a list read failure is one plain sentence
+  with a retry; a partial row keeps its calendar fields and says its
+  guest or total could not be read, counted in one notice; a failed
+  room-type, in-house, or occupied-room read leaves those cells
+  unreadable and puts a column-truthful sentence naming the failed
+  column in the same notice (`desk.bookings.column_partial`,
+  `{column}`); neither partial class carries a retry — re-applying the
+  range reads again, as the LLD's failure table states; a detail read
+  failure names the booking with a retry and keeps the list as it was.
+  The view has no refusal state: it writes nothing.
+- **Catalogue keys.** Every new key lands in `messages/vi.json` and
+  `messages/en.json` in the implementation PRs with `{param}`
+  placeholders intact and `script/catalogue-coverage-check.sh` green.
+  The shell keys this section adds are `desk.shell.nav_bookings`
+  (`Sổ đặt phòng` / `Bookings`) and `desk.shell.doc_title_bookings`
+  (`Sổ đặt phòng` / `Bookings`); the full `desk.bookings.*` table —
+  column headings, filter labels, hints, the five state chips plus the
+  unknown fallback, the empty, capped, partial-row, partial-column, and
+  detail sentences (41 keys: 39 `desk.bookings.*` plus the two shell
+  keys), and the row's accessible label — is in
+  `docs/product/booking-management-view.md` section 9, and the detail
+  reuses `desk.book.reference`, `desk.book.night_count`, and
+  `desk.book.quote_total`.
+- **Design facts.** The screen has no board, so the gate's job is the
+  shell tab plus every board screen unchanged. The second app-only
+  allowance entry is already recorded in
+  `docs/technical/desk-ui-fact-schema.md` section 8 at the spec stage
+  (`architect`, #676); the implementation PR adds only its consumer
+  entry in `app/e2e/design-facts.ts` (`NAV_TAB_ALLOWANCES`: route key
+  `bookings`, after `book`, `Sổ đặt phòng` / `Bookings`, design source
+  `docs/design/Main.dc.html` for the tab pattern and this spec for the
+  screen body), and pins the screen's static content in its own unit
+  and flow tests, the same split the `manage` screen uses. The guards
+  that carry the tab count and route title move with it
+  (`app/src/App.test.ts:182-207`, `app/src/shell-restyle.test.ts:26-27`,
+  `app/src/router.test.ts:155-175`, `app/e2e/manage.spec.ts:73`).
+- **Print rules.** Unchanged: no print surface or route is touched.
+
+Cross-references: the story and FR are `US-RES-5` and `FR-RES-5`
+(`docs/product/user-stories.md`,
+`docs/requirements/mvp-requirements.md`), the frozen price basis is
+`FR-RTE-5`, the state coverage rule is `FR-DSP-3`, the nav rule is
+`FR-DSP-1`, and the operations are `contracts/http/QueryCalendar.json`,
+`GetReservation.json`, `ListRoomTypes.json`,
+`ListArrivalsDepartures.json`, and `ListRoomsByState.json` (owned by
+`architect`). The per-flow diagram is the LLD's. The isolated-lab
+reproduction record belongs in the implementation PR body or an issue
+comment.
+
+Out: implementation; any booking write (modify, cancel, no-show) or
+stay write (check-in, check-out, room assignment); a date-by-room-type
+calendar grid, a state or room-type filter, column sorting, paging,
+export, or reporting output; a room column for closed bookings (no read
+exposes it); a new backend endpoint or contract change, including a
+list operation that would return guest and total in one read; and
+changes to the board, Stay, Book, Folio, or Rooms screens.
+
+Rollback: revert the implementation PRs in reverse merge order; no
+schema migration, no new operation, and no data change exist on the
+decided path, so the desk simply loses the tab and the route and every
+other screen is unchanged.
+
 ## 7. Catalogue and locale rule
 
 - Single source of truth stays `messages/` (`messages/README.md`):
@@ -2589,5 +2764,18 @@ Section 4 stays the rollout-wide contract; for steps 2–4:
 | The T2 spec set exists and `spec-reviewer` posts `SPEC-GATE PASS` before implementation starts | This section, section 6.17, `docs/product/acceptance-criteria.md` section 16 (`AC-REA-1..5`, the `AC-FDK-1`/`AC-FDK-3` pointers), `docs/project/decision-log.md` D-27; `business-analyst` FR/NFR delta, `architect` per-flow diagram, and `qa-lead` traceability are the sibling handoffs |
 | Rollback is a single revert with no migration and no new operation | Section 6.17 (rollback); the desk calls only operations that already exist, so the reverted build is the two-panel Stay screen it is today |
 
+## 23. Acceptance mapping (issue #648)
+
+| Criterion | Evidence in this spec |
+|---|---|
+| With bookings present, each row shows guest, reference, room type and assigned room when checked in, arrival, departure, and quoted total | Section 6.18 decision 3; `AC-BMV-2`; `docs/product/booking-management-view.md` section 5 (the reads behind each cell and the assigned-room rules) |
+| A date range lists only the bookings overlapping it, and an empty range shows a plain empty state naming the range | Section 6.18 decision 2 and the states; `AC-BMV-3`, `AC-BMV-4`; `docs/product/booking-management-view.md` section 4 (inclusive nights and the `dateTo` mapping) |
+| Selecting a row opens the read-back booking (dates, price basis, state, assigned room) from `GetReservation` | Section 6.18 decision 4; `AC-BMV-5`; `docs/product/booking-management-view.md` section 6 |
+| A failed read shows plain catalogue words and the rest of the desk stays usable | Section 6.18 decision 5 and the states; `AC-BMV-6` |
+| Every new string is catalogue-backed EN+VI, the design-facts gate asserts the new screen, and the view performs no direct database access | Section 6.18 catalogue keys and design-facts paragraphs; `AC-BMV-7`; `docs/product/booking-management-view.md` section 9 (full key table) and section 8 (design-facts allowance); the screen reads existing operations only |
+| The owner has reviewed the screen against the design boards | Section 6.18 (design source, owner review); `AC-BMV-7`; the `owner-review` label on #648 |
+| The T2 spec set exists and `spec-reviewer` posts `SPEC-GATE PASS` before implementation starts | This section, section 6.18, `docs/product/booking-management-view.md`, `docs/product/acceptance-criteria.md` section 17 (`AC-BMV-1..7`, the `AC-RES-5` pointer), `docs/project/decision-log.md` D-28; `business-analyst` FR/NFR delta, `architect` LLD delta and allowance entry, and `qa-lead` traceability are the sibling handoffs |
+| Rollback is a single revert with no migration and no new operation | Section 6.18 (rollback); the screen calls only operations that already exist |
+
 <!-- ao-role: product-owner -->
-Role: product-owner · AO session hotel-mgmt-964
+Role: product-owner · AO session hotel-mgmt-979
