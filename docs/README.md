@@ -149,7 +149,7 @@ docs and plans, not gated specs.
 | Type | Path | Status | Owner | Purpose |
 |---|---|---|---|---|
 | Test strategy | `testing/test-strategy.md` | active | `qa-lead` | testing approach, levels, and entry/exit criteria (Closes #62) |
-| Traceability matrix | `testing/traceability-matrix.md` | active | `qa-lead` | FR/NFR-to-guard map (every item keeps at least one guard) (Closes #62; section 11 Refs #590, section 12 Refs #600, section 13 Refs #601) |
+| Traceability matrix | `testing/traceability-matrix.md` | active | `qa-lead` | FR/NFR-to-guard map (every item keeps at least one guard) (Closes #62; section 11 Refs #590, section 12 Refs #600, section 13 Refs #601, section 14 Refs #646) |
 | Test report | `testing/test-report.md` | active | `qa-lead` | consolidated full-MVP results with pass evidence per cell (Closes #214) |
 | Phase 6 QA plan | `testing/phase-6-qa-plan.md` | active | `qa-lead` | scoped independent-QA pass plan: entry, activities, bug flow, exit (Closes #264) |
 | A1 desk-loop run log | `testing/phase-6-qa-a1-run-log.md` | active | `qa-lead` | scripted live-stack desk-loop record: per-step observed-vs-expected, screen surfaces, admin reads, evidence, defects (Closes #267) |
@@ -167,6 +167,7 @@ docs and plans, not gated specs.
 | V2 evidence re-baseline plan | `testing/v2-evidence-rebaseline-plan.md` | active | `qa-lead` | side-by-side re-baseline cases, stale-disposition table, and traceability for the v2 boards (Closes #550) |
 | Rooms and rates management test traceability | `testing/rooms-rates-management-test-traceability.md` | active | `qa-lead` | cases, guard registry `M1`–`M10` mapped by `file:line` at the merged head, per-section evidence rule `MR-1`, and the `AC-MANAGE-1..11` / `FR-MGMT-1..12` map for the #590 management screen (Refs #590, #609) |
 | Check-out settlement test traceability | `testing/checkout-settlement-test-traceability.md` | active | `qa-lead` | cases `CKS-1..CKS-11`, guard registry `S1`–`S12`, evidence rule `SR-1`, and the `AC-CKO-1/2` / `FR-CKS-1..5` map for the server-side check-out settlement gate, with the #588 desk pins that must stay green (Refs #601) |
+| Departure release test traceability | `testing/departure-release-test-traceability.md` | active | `qa-lead` | cases `DEP-1..DEP-9`, guard registry `DR1`–`DR13`, evidence rule `DR-E1`, and the `AC-DEP-1..5` / `FR-DEP-1..5` map for the departure release and same-day reuse after check-out, with the #588/#600/#601 pins that must stay green and the lifecycle `D5`/`D6` rows (Refs #646) |
 
 ## DevOps / Operations / Release
 
