@@ -2733,7 +2733,10 @@ describe('arrival reassignment and stale-hold release (Refs #647)', () => {
     const assigned = callsTo(fetchMock, '/v1/rooms/AssignRoom');
     expect(assigned).toHaveLength(1);
     expect(assigned[0].body.roomNumber).toBe('101');
-    expect(assigned[0].body.stayLink).toBeTruthy();
+    // RR1 asks for the generated stay id, not merely a non-empty link.
+    const checkedIn = callsTo(fetchMock, '/v1/stay/CheckIn');
+    expect(checkedIn).toHaveLength(1);
+    expect(assigned[0].body.stayLink).toBe(checkedIn[0].body.stayId);
     expect(
       fetchMock.mock.calls
         .map((call) => parseBody(call[1]).roomNumber)
@@ -2840,7 +2843,38 @@ describe('arrival reassignment and stale-hold release (Refs #647)', () => {
     expect(callsTo(fetchMock, '/v1/stay/CheckIn')).toHaveLength(1);
   });
 
-  it('RR5 releases nothing on an unreadable booking read or assignment', async () => {
+  // RR5 (traceability section 3): the unreadable matrix is one fixture
+  // with a single variable — the failing step and the failure class —
+  // so the same-fixture positive controls below share exactly the
+  // setup their negative cells use.
+  type CheckinStep = 'assignment' | 'booking read' | 'stay write';
+  type UnreadableClass = 'offline throw' | '5xx envelope' | 'non-envelope reply';
+
+  function unreadableAnswer(kind: UnreadableClass): () => Promise<Response> {
+    if (kind === 'offline throw') {
+      return () => Promise.reject(new TypeError('offline'));
+    }
+    if (kind === '5xx envelope') {
+      return () => Promise.resolve(jsonResponse({ code: 'INTERNAL', message: 'boom' }, 500));
+    }
+    // A non-envelope reply: the body is not an error envelope, so the
+    // desk cannot read what happened.
+    return () =>
+      Promise.resolve(
+        new Response('upstream unavailable', {
+          status: 503,
+          headers: { 'Content-Type': 'text/plain' },
+        }),
+      );
+  }
+
+  async function commitWithStepAnswer(
+    step: CheckinStep,
+    answer: () => Promise<Response>,
+  ): Promise<{
+    wrapper: Awaited<ReturnType<typeof mountSignedIn>>;
+    fetchMock: ReturnType<typeof vi.fn>;
+  }> {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     const wrapper = await mountSignedIn(fetchMock);
@@ -2852,45 +2886,125 @@ describe('arrival reassignment and stale-hold release (Refs #647)', () => {
     fetchMock.mockImplementation((url: string, init?: RequestInit) => {
       if (url === '/v1/reservations/GetReservation') {
         bookingReads += 1;
-        if (bookingReads === 2) {
-          return Promise.resolve(jsonResponse({ code: 'INTERNAL', message: 'boom' }, 500));
+        // The arrival pick preloads the booking; the commit's read-back
+        // is the second read.
+        if (step === 'booking read' && bookingReads === 2) {
+          return answer();
         }
+      }
+      if (step === 'assignment' && url === '/v1/rooms/AssignRoom') {
+        return answer();
+      }
+      if (step === 'stay write' && url === '/v1/stay/CheckIn') {
+        return answer();
       }
       return happy(url, init);
     });
 
     await pickArrivalAndRoom(wrapper, 'room-1');
     await wrapper.find('[data-testid="stay-checkin"]').trigger('click');
-    await vi.waitFor(() => {
-      expect(wrapper.find('[data-testid="stay-checkin-error"]').text()).toContain(
-        'check-in result could not be read',
-      );
-    });
-    expect(wrapper.find('[data-testid="stay-checkin-error"]').text()).toContain('room 101');
-    expect(callsTo(fetchMock, '/v1/rooms/ReleaseRoom')).toHaveLength(0);
+    return { wrapper, fetchMock };
+  }
 
-    // Same rule for an unreadable assignment: nothing is released.
-    const second = vi.fn();
-    vi.stubGlobal('fetch', second);
-    const secondWrapper = await mountSignedIn(second);
-    const secondHappy = second.getMockImplementation() as (
-      url: string,
-      init?: RequestInit,
-    ) => Promise<Response>;
-    second.mockImplementation((url: string, init?: RequestInit) => {
-      if (url === '/v1/rooms/AssignRoom') {
-        return Promise.reject(new TypeError('offline'));
-      }
-      return secondHappy(url, init);
-    });
-    await pickArrivalAndRoom(secondWrapper, 'room-1');
-    await secondWrapper.find('[data-testid="stay-checkin"]').trigger('click');
+  const unreadableMatrix: Array<[CheckinStep, UnreadableClass]> = (
+    ['assignment', 'booking read', 'stay write'] as CheckinStep[]
+  ).flatMap((step) =>
+    (['offline throw', '5xx envelope', 'non-envelope reply'] as UnreadableClass[]).map(
+      (kind): [CheckinStep, UnreadableClass] => [step, kind],
+    ),
+  );
+
+  it.each(unreadableMatrix)(
+    'RR5 releases nothing when the %s step returns an unreadable %s',
+    async (step, kind) => {
+      const { wrapper, fetchMock } = await commitWithStepAnswer(step, unreadableAnswer(kind));
+      await vi.waitFor(() => {
+        expect(wrapper.find('[data-testid="stay-checkin-error"]').text()).toContain(
+          'check-in result could not be read',
+        );
+      });
+      const error = wrapper.find('[data-testid="stay-checkin-error"]').text();
+      // The unreadable class names the room for a re-read and never
+      // claims a freed room.
+      expect(error).toContain('room 101');
+      expect(error).not.toContain('free again');
+      expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).not.toContain('free again');
+      // Nothing is released: the write may have landed.
+      expect(callsTo(fetchMock, '/v1/rooms/ReleaseRoom')).toHaveLength(0);
+      // The commit stops at the failing step: the failing call was
+      // attempted once and no later write ran.
+      expect(callsTo(fetchMock, '/v1/rooms/AssignRoom')).toHaveLength(1);
+      expect(callsTo(fetchMock, '/v1/stay/CheckIn')).toHaveLength(
+        step === 'stay write' ? 1 : 0,
+      );
+      expect(callsTo(fetchMock, '/v1/reservations/CheckInReservation')).toHaveLength(0);
+    },
+  );
+
+  // RR5 positive control (traceability section 3): in the same fixture,
+  // a definitive refusal at the same step must release, otherwise "no
+  // release" could hide an always-silent compensation path. The
+  // assignment step is exempt by design: a definitive assignment
+  // refusal wrote nothing, so there is no room to take back (RR2/RR3
+  // are the release-bearing steps).
+  const definitiveControls: Array<[CheckinStep, () => Promise<Response>, string]> = [
+    [
+      'booking read',
+      () => Promise.resolve(jsonResponse({ code: 'NOT_FOUND', message: 'gone' }, 404)),
+      'Unknown booking reference',
+    ],
+    [
+      'stay write',
+      () => Promise.resolve(jsonResponse({ code: 'CONFLICT', message: 'already in' }, 409)),
+      'already checked in',
+    ],
+  ];
+
+  it.each(definitiveControls)(
+    'RR5 positive control releases on a definitive %s refusal',
+    async (step, answer, refusal) => {
+      const { wrapper, fetchMock } = await commitWithStepAnswer(step, answer);
+      await vi.waitFor(() => {
+        expect(wrapper.find('[data-testid="stay-checkin-error"]').text()).toContain(refusal);
+      });
+      expect(wrapper.find('[data-testid="stay-checkin-status"]').text()).toContain(
+        'room 101 is free again',
+      );
+      const releases = callsTo(fetchMock, '/v1/rooms/ReleaseRoom');
+      expect(releases).toHaveLength(1);
+      expect(releases[0].body).toMatchObject({ roomNumber: '101', toState: 'vacant-inspected' });
+    },
+  );
+
+  // LLD 23.2 names the four definitive codes and their statuses. A
+  // transport-level 408/429 or a non-envelope 4xx is unreadable: the
+  // write may have landed, so nothing is released (review finding 3 on
+  // PR #673).
+  it('RR5 reads a 408 and a non-envelope 4xx as unreadable, never definitive', async () => {
+    const timeout = await commitWithStepAnswer('stay write', () =>
+      Promise.resolve(jsonResponse({ code: 'REQUEST_TIMEOUT', message: 'timeout' }, 408)),
+    );
     await vi.waitFor(() => {
-      expect(secondWrapper.find('[data-testid="stay-checkin-error"]').text()).toContain(
+      expect(timeout.wrapper.find('[data-testid="stay-checkin-error"]').text()).toContain(
         'check-in result could not be read',
       );
     });
-    expect(callsTo(second, '/v1/rooms/ReleaseRoom')).toHaveLength(0);
+    expect(callsTo(timeout.fetchMock, '/v1/rooms/ReleaseRoom')).toHaveLength(0);
+
+    const nonEnvelope = await commitWithStepAnswer('booking read', () =>
+      Promise.resolve(
+        new Response('bad request', {
+          status: 400,
+          headers: { 'Content-Type': 'text/plain' },
+        }),
+      ),
+    );
+    await vi.waitFor(() => {
+      expect(nonEnvelope.wrapper.find('[data-testid="stay-checkin-error"]').text()).toContain(
+        'check-in result could not be read',
+      );
+    });
+    expect(callsTo(nonEnvelope.fetchMock, '/v1/rooms/ReleaseRoom')).toHaveLength(0);
   });
 
   it('RR6 names a compensation that fails and never claims a freed room', async () => {

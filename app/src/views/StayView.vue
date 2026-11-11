@@ -631,17 +631,31 @@ function errorMessage(): string {
 }
 
 // Refs #647 (LLD 23.2): a definitive refusal is the operation's own
-// `4xx` envelope answer. Every target operation validates and guards
-// before it mutates, so a definitive answer proves the call wrote
-// nothing and the desk may and must take back what it wrote earlier
-// in the same action. Every other failure — offline, `5xx`, a
-// non-envelope reply — is an unreadable outcome: the write may have
-// landed, so the desk releases nothing and asks staff to re-read.
-// `401` is never a business outcome; the shared client routes it to
-// the sign-in gate first.
+// `4xx` envelope answer carrying one of the four contracted refusal
+// codes. Every target operation validates and guards before it
+// mutates, so a definitive answer proves the call wrote nothing and
+// the desk may and must take back what it wrote earlier in the same
+// action. Every other failure — offline, `5xx`, a non-envelope reply,
+// a transport-level `408`/`429`, or any other `4xx` code — is an
+// unreadable outcome: the write may have landed, so the desk releases
+// nothing and asks staff to re-read. `401` is never a business
+// outcome; the shared client routes it to the sign-in gate first.
+const DEFINITIVE_REFUSALS: Record<string, number> = {
+  VALIDATION_FAILED: 400,
+  NOT_FOUND: 404,
+  CONFLICT: 409,
+  STATE_ILLEGAL: 422,
+};
+
 function isDefinitiveFailure(err: unknown): boolean {
-  const status = typeof err === 'object' && err !== null ? (err as ApiError).status : undefined;
-  return typeof status === 'number' && status >= 400 && status < 500 && status !== 401;
+  if (typeof err !== 'object' || err === null) {
+    return false;
+  }
+  const { status, code } = err as ApiError;
+  if (typeof status !== 'number' || typeof code !== 'string') {
+    return false;
+  }
+  return DEFINITIVE_REFUSALS[code] === status;
 }
 
 // Billing serves the recorded approval as a JSON string while the
