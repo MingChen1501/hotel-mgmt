@@ -4037,3 +4037,454 @@ Stack and repo gates: `cd app && npm ci && npm run build && npm run lint
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-961
+
+## 24. Booking register read for the desk (Refs #648)
+
+Tier **T2 confirmed** (a reader-visible desk screen that only reads).
+Owner manual QA (2026-11-10) found that the desk has no place to read
+existing bookings: `BookView` creates one and shows its confirmation,
+and no screen lists bookings across dates
+(`app/src/router.ts:49-104`; `app/src/App.vue:255-272`). The data and
+the requirement already exist: `QueryCalendar` returns the bookings
+overlapping a range (`contracts/http/QueryCalendar.json`),
+`GetReservation` the full record with the guest snapshot and the frozen
+price basis (`contracts/http/GetReservation.json`), and `ListRoomTypes`,
+`ListArrivalsDepartures` and `ListRoomsByState` name the type and the
+room (`contracts/http/ListRoomTypes.json`,
+`contracts/http/ListArrivalsDepartures.json`,
+`contracts/http/ListRoomsByState.json`). Every one of those reads is
+already made from another desk screen
+(`app/src/views/DeskView.vue:996`, `:1025`, `:1112`, `:1125`;
+`app/src/views/BookView.vue:676`, `:948`;
+`app/src/views/PrintView.vue:788`, `:1208`;
+`app/src/stay-options.ts:88`, `:125`), so no integration edge is new.
+
+This section records the architect-owned delta: the screen boundary and
+the route/nav entry (24.1), the load composition, the range mapping and
+the cap that bounds it (24.2), the failure classes and what an empty
+cell means (24.3), the target algorithm (24.4), the two per-flow
+implementation diagrams with their edge traces (24.5, 24.6), the
+contract no-change statement plus the G2 decision (24.7), the
+verification plan (24.8), and the residual risks, the closed copy gap,
+and the re-tier trigger (24.9). Acceptance criteria are
+`AC-BMV-1..7` in `docs/product/acceptance-criteria.md`
+[section 17](../product/acceptance-criteria.md); FR/NFR wording is
+`docs/requirements/mvp-requirements.md` [section 25](../requirements/mvp-requirements.md);
+the screen spec and its UI contract are
+`docs/product/booking-management-view.md`; the app-only nav allowance is
+`docs/technical/desk-ui-fact-schema.md` [section 8](../technical/desk-ui-fact-schema.md);
+guard mapping is the `qa-lead` handoff; the verdict is the
+`spec-reviewer` gate.
+
+Explicit no-change statements for this change:
+
+- **Route and shell, additive only.** One route (`bookings`, path
+  `/bookings`, under the existing `/app/` history base) and one tab
+  between `book` and `stay`. The router shape, the document-title meta
+  pattern, and the shell's brand-only shrink rule are unchanged
+  (`app/src/router.ts:44-112`, the app-only `manage` route at `:85-89`
+  is the precedent; `app/src/App.vue:255-272`). Onboarding keeps no
+  tab; every other destination, the locale pill, the session control,
+  the sign-in gate, and the `1200px` content column keep their
+  behaviour.
+- **Operation surface.** No new operation, path, field, parameter, or
+  error code: the five reads above are used exactly as contracted, and
+  the view calls no write operation at all. `ModifyReservation`,
+  `CancelReservation`, `MarkNoShow`, check-in/out, and room assignment
+  stay with their own flows (issue #648 scope, "Out").
+- **Schema, events, migrations.** None. The register persists nothing:
+  the range, the selection, and the rows live in the view's own state
+  only.
+- **Services.** Reservations, Rooms, Stay, and Guests keep their code.
+  In particular the calendar read keeps its in-memory iteration and its
+  `ORDER BY`-free query (24.2), because ordering is a screen concern.
+- **Lifecycle.** No state is added. The register renders the existing
+  reservation lifecycle (`confirmed`, `checked-in`, `closed`,
+  `cancelled`, `no-show`) plus a catalogue fallback for anything else,
+  and it never derives a state from dates
+  (`docs/architecture/state-machine.md` [section 1.1](state-machine.md)).
+- **The desk's other screens.** No change to the board, Stay, Book,
+  Folio, Print, Rooms, or Manage behaviour. The shared helpers the
+  register reuses keep their current callers' contracts (24.1).
+- **No role gate.** The view writes nothing, so it adds no client-side
+  role gate and every signed-in hotel role sees it. That is the opposite
+  of the Manage screen's refusal path
+  (section 19.7), which exists because Manage writes.
+
+### 24.1 Which layer owns what
+
+| Fact | Owner | Read / written where | May the screen assert it? |
+|---|---|---|---|
+| The bookings overlapping the range | Reservations | `QueryCalendar`; overlap predicate `arrival < dateTo && departure > dateFrom` (`services/reservations/internal/store/store.go:191-193`; Postgres `services/reservations/internal/store/postgres.go:311-321`) | No — it renders the entries the read returned |
+| Row order and the 50-row cap | Desk | sort by `arrivalDate` then `reservationRef`, then slice 50 (`docs/product/booking-management-view.md` sections 3 and 5) | Yes, and it must: the read guarantees no order (map iteration `services/reservations/internal/store/store.go:274-291`; no `ORDER BY` at `services/reservations/internal/store/postgres.go:311-321`) |
+| Guest name and quoted total | Reservations (frozen at booking) | `GetReservation` — the stored snapshot `guest.fullName` and `priceBasis.totalMinor` / `discountName` (`services/reservations/internal/handler/handler.go:172-181`; `contracts/http/GetReservation.json`) | Read-back only — never re-derived, never repriced |
+| Room-type name | Rooms | `ListRoomTypes` (`contracts/http/ListRoomTypes.json`) | Read only |
+| Assigned room | Stay, then Rooms | `ListArrivalsDepartures.inHouse` for `stayId -> roomId` (`services/stay/src/server.ts:42-60`, `services/stay/src/store.ts:432-439`), then `ListRoomsByState("occupied")` for `roomId -> number` | Read only; a row shows a room only when both reads agree (24.3) |
+| The business date the in-house read uses | Desk | `localBusinessDate()` (`app/src/stay-options.ts:50-54`), the same value Main and Stay send | Yes — it is the desk business date, never the chosen range |
+| The range's inclusive-nights mapping | Desk | `dateFrom` = first night, `dateTo` = last night + 1 day | Yes — the contract window is `[dateFrom, dateTo)` |
+| Money and date rendering | Desk i18n | `formatVnd` (`app/src/i18n/index.ts:165-171`), `formatDeskDate` (`:179-187`) | Presentation only; the stored and wire values never change |
+| The ninth tab's comparison allowance | This project's contract | `docs/technical/desk-ui-fact-schema.md` section 8 (committed text) | Yes |
+
+Four load-bearing consequences of that ownership:
+
+1. **The range mapping is one-way and must be applied in one place.** In
+   product words the range is inclusive of both nights; the calendar
+   window is half-open. A screen that sends the last night as `dateTo`
+   silently loses that night, and a screen that sends `dateFrom` = first
+   night - 1 silently adds the previous one. The view computes the pair
+   once per apply from the two picked nights.
+2. **The order and the cap are the screen's, and the cap bounds the
+   read.** `QueryCalendar` returns every overlapping booking with no
+   order guarantee, so the view sorts and slices before it issues the
+   per-row reads; slicing after them would leave the fan-out unbounded.
+   The same range therefore always reads the same 50 bookings.
+3. **The assigned-room resolution is a point-in-time read, not a range
+   read.** `inHouse` is the current in-house set for the business date
+   (`services/stay/src/store.ts:432-439`), so it answers a booking that
+   is in house now. A `closed` booking has no room to show because no
+   list read exposes the room a departed guest held (G4), and a
+   `confirmed` booking never has one because assignment is the desk's
+   room-state write (section 23). Both read `—`.
+4. **An empty in-house read is a legitimate answer, not a failure.** The
+   calendar may still return `checked-in` rows for a range in the past,
+   or for a stay that ended between the two reads. The row reads `—` and
+   is not counted as a partial row; only a failed read is a failure
+   (24.3).
+
+### 24.2 The load composition, the range mapping, and the cap
+
+- **One apply = one calendar read + one shared-map load + at most 50
+  row reads.** The cap is the issue's bound on the per-row fan-out
+  (risk register R-12), not pagination.
+- **Shared maps, one read each per apply.** `ListRoomTypes` once per
+  load (`app/src/views/DeskView.vue:996` is the precedent);
+  `ListArrivalsDepartures { businessDate: localBusinessDate() }` and
+  `ListRoomsByState { state: "occupied" }` as one pair, ordered stay
+  first (the room id comes from the stay row, the number from the room
+  read). That pair is the one the Folio/Print stay picker already reads
+  (`app/src/stay-options.ts:85-153`), so the register consumes the
+  committed path instead of a second copy: extract the pair into one
+  exported helper returning the `stayId -> room number` map and the
+  failed flag, and have `loadInHouseStayOptions` keep its guest-label
+  loop on top of it. The register reads the map only: it must not call
+  `loadInHouseStayOptions`, because that helper resolves one `GetGuest`
+  per in-house stay (`app/src/stay-options.ts:63-82`, `:144`) for
+  labels the register already has from its row reads — a per-stay guest
+  fan-out the register would pay for nothing. One read pair, one
+  degradation rule, and no new guest read.
+- **Default range.** On entry, the business date through six nights
+  after it (`localBusinessDate()`, `app/src/stay-options.ts:50-54`), so
+  `dateFrom` = business date and `dateTo` = business date + 7 days. The
+  screen reads on entry; it never lands on a blank page waiting for
+  input.
+- **Validation.** Both fields are required and the last night must not
+  be before the first; an invalid range sends nothing
+  (`desk.bookings.range_invalid`).
+- **Order of work.** Validate, clear the selection and the detail (a
+  detail read back for a row the new range no longer lists would
+  contradict the list), read the calendar, then sort and cap, then issue
+  the shared-map reads and the ≤50 row reads in parallel. The calendar
+  read decides whether there is a list at all; the remaining reads are
+  independent of each other and a failure in one degrades only the
+  cells it owns.
+- **In-flight.** The apply action and both fields are disabled while a
+  list load runs, and a second click is a no-op; a row selection while a
+  detail read is in flight is a no-op in the same way.
+- **No polling and no queue.** One read per apply and one per row
+  selection. Nothing retries in the background: a failed read renders
+  the plain read-error state with an explicit retry (FR-DSP-3,
+  NFR-SHL-3).
+
+### 24.3 Failure classes and what an empty cell means
+
+Four failure classes, each owned by the read that failed:
+
+| Class | Trigger | Rendering | Does the list survive? |
+|---|---|---|---|
+| List read failure | `QueryCalendar` fails: transport or offline (`code: "OFFLINE"`, `app/src/api/client.ts:159-168`), `5xx`, or a non-envelope reply | One plain sentence naming what could not be read plus one retry action (`desk.bookings.read_failed`, `desk.bookings.retry`); no row is invented, no zero-filled row is shown | No rows, but the shell and the rest of the desk stay usable |
+| Shared-map failure | `ListRoomTypes`, `ListArrivalsDepartures`, or the occupied-room read fails | The affected column reads `cell_unreadable` and one notice above the list names that column (`desk.bookings.column_partial`, `{column}`, filled from the failed read's own heading `desk.bookings.col_room_type` / `desk.bookings.col_room`); every other cell still renders | Yes |
+| Row read failure | `GetReservation` for one listed booking fails | The row keeps its calendar fields (reference, type id resolved from the map, dates, nights, state); the guest-name and total cells read `cell_unreadable`; the row is counted in the partial notice (`desk.bookings.row_partial`, `{count}`); the booking is never dropped | Yes |
+| Detail read failure | `GetReservation` on selection fails | One sentence naming the booking (`detail_failed`, `{ref}`) plus one retry action; the list stays exactly as it was and the previous detail is not kept as if it were current | Yes |
+
+A `401` is not one of these classes: the shared client signs the session
+out and rethrows `UNAUTHENTICATED` (`app/src/api/client.ts:113-140`,
+`:169`), the view rethrows instead of degrading
+(`app/src/stay-options.ts:40-46` is the pattern), and the sign-in gate
+takes over.
+
+**An empty cell has exactly two meanings, and the view must pick one
+deliberately:**
+
+- **`—` — absent by rule.** The fact does not exist for this row and the
+  screen says so with the plain glyph. `confirmed` (a type, not a room),
+  `closed` (G4: no read exposes the departed guest's room), and a
+  `checked-in` row whose `stayId` is missing from the in-house read or
+  whose `roomId` is missing from the occupied read. Never an invented
+  room, never an id.
+- **`cell_unreadable` — absent by failure.** The read that owns the cell
+  failed. The cell says so, the row stays, and the notice above the list
+  states the count.
+
+Two absences that are neither, with their rule:
+
+- A successful row read whose snapshot carries no usable
+  `guest.fullName` is a data defect, not a failed read. It renders the
+  already catalogue-backed `desk.today.unknown_guest` wording
+  (`app/src/stay-options.ts:56-58`) and never the `guestId` (the #372
+  rule: no raw record id reaches the desk). It is not counted in the
+  partial notice because nothing failed.
+- A successful `ListRoomTypes` read that does not contain the row's
+  `roomTypeId` cannot happen while room types have no delete (the Manage
+  screen offers none, section 19.7), so it is treated as
+  `cell_unreadable` rather than printing a UUID.
+
+### 24.4 Target algorithm
+
+1. On entry, default the range from the business date (24.2) and load.
+2. Apply: validate the range; on failure show `range_invalid` and send
+   nothing.
+3. Clear the selection and the detail card.
+4. `QueryCalendar { dateFrom: firstNight, dateTo: lastNight + 1 day }`.
+   On failure, render the list read-error state with its retry and stop
+   this load.
+5. Sort the entries by `arrivalDate` then `reservationRef`; slice to 50;
+   keep the entry count only to decide the `capped` sentence.
+6. In parallel: `ListRoomTypes`; the
+   `ListArrivalsDepartures { businessDate: localBusinessDate() }` ->
+   `ListRoomsByState { state: "occupied" }` pair; one
+   `GetReservation { reservationRef }` per capped entry.
+7. Build one row per capped entry: reference from the calendar entry,
+   guest and total from its row read, type name from the type map, room
+   from the stay/room maps, nights from the dates, state chip from the
+   catalogue. Resolve every absent value by 24.3.
+8. On row selection, read `GetReservation { reservationRef }` fresh and
+   render the detail card under the list. The read-back is authoritative
+   over the row it came from; a failure renders the detail-error state
+   and leaves the list untouched.
+9. Nothing else: no write call, no second range, no refresh timer, no
+   re-derivation of price or state.
+
+### 24.5 Per-flow diagram — list read, happy path
+
+```mermaid
+flowchart TD
+    A[Staff open the bookings screen; range defaults to business date + six nights  stay-options.ts:50-54] --> B[Apply validates the two nights  product spec section 4]
+    B -->|missing or inverted| B1[Plain range sentence; nothing sent  desk.bookings.range_invalid]
+    B -->|valid| C[QueryCalendar dateFrom first night, dateTo last night + 1  contracts/http/QueryCalendar.json; DeskView.vue:1025-1032]
+    C -->|entries| D[Sort by arrival then reference; slice 50  product spec section 5]
+    D --> E[ListRoomTypes once  DeskView.vue:996]
+    D --> F[ListArrivalsDepartures businessDate, then ListRoomsByState occupied  stay-options.ts:85-153]
+    D --> G[One GetReservation per capped row  BookView.vue:948-952]
+    E --> H[One row per booking; cells resolved by 24.3]
+    F --> H
+    G --> H
+    H --> I[Row chosen: fresh GetReservation and the detail card  product spec section 6]
+```
+
+Edge trace:
+
+- A–B: `localBusinessDate()` is the same desk business date Main and
+  Stay send (`app/src/stay-options.ts:50-54`); the pickers carry the
+  Book screen's app-localized treatment (`app/src/views/BookView.vue:157-190`,
+  `:539-575`).
+- B–C: the half-open mapping of 24.2; the calendar read is the one
+  `DeskView` already makes (`app/src/views/DeskView.vue:1025-1032`).
+- C–D: ordering is mandatory because the read is unordered
+  (`services/reservations/internal/store/store.go:274-291`,
+  `services/reservations/internal/store/postgres.go:311-321`).
+- D–E/F/G: the cap is applied before the reads, so the fan-out is
+  bounded (24.2, G2 decision in 24.7).
+- E/F–H: the maps are read once per apply, not once per row.
+- G–H: the per-row read supplies the guest and the frozen total
+  (`services/reservations/internal/handler/handler.go:172-181`).
+- H–I: the detail is a second, fresh read of the same operation, never a
+  copy of the row.
+
+### 24.6 Per-flow diagram — failure and partial paths
+
+```mermaid
+flowchart TD
+    A[Apply or entry load] --> B{QueryCalendar readable?}
+    B -->|no: offline, 5xx, non-envelope| Z1[Plain read-error sentence with retry; no rows invented  desk.bookings.read_failed; api/client.ts:159-196]
+    B -->|yes| C[Sort, cap, then read the maps and the rows]
+    C --> D{Shared map readable?}
+    D -->|no| E1[Affected column reads cell_unreadable; one notice names that column  desk.bookings.column_partial; product spec section 7]
+    D -->|yes| E2[Column resolves from the map]
+    C --> F{Row read readable?}
+    F -->|no| G1[Row keeps calendar fields; guest and total read cell_unreadable; counted in the notice  desk.bookings.row_partial; product spec section 7]
+    F -->|yes| G2[Row completes full]
+    E1 --> H[List renders; no booking dropped]
+    E2 --> H
+    G1 --> H
+    G2 --> H
+    H --> I{Row chosen and detail read}
+    I -->|read fails| J1[Detail-error sentence with retry; list unchanged  desk.bookings.detail_failed; product spec section 6]
+    I -->|read succeeds| J2[Detail card renders the read-back]
+    Z1 --> K[Retry re-runs the same apply]
+```
+
+Edge trace:
+
+- B–Z1: the list failure is one state for the whole list; it never
+  produces rows. The classification matches the shell's plain-words rule
+  (`app/src/api/client.ts:186-196`).
+- D/E1, F/G1: the two partial classes of 24.3. A partial row keeps its
+  calendar facts, so the desk can still act on the booking.
+- C–H: no booking in the capped set is ever silently dropped.
+- H–J1: a detail failure never rewrites the list, and the previous
+  detail is cleared rather than left as if current.
+- K: the retry re-runs the same apply with the same range; it is a staff
+  action, never an automatic poll.
+
+### 24.7 Contract delta and the G2 decision
+
+None. The change reads the five existing operations in the shapes the
+contracts already carry:
+
+| File | Change | Version effect |
+|---|---|---|
+| `contracts/http/QueryCalendar.json` | unchanged — `dateFrom`, `dateTo`, optional `roomTypeId`; the reply's `reservations[]` carries reference, type, dates, state, stay id | none |
+| `contracts/http/GetReservation.json` | unchanged — the reply carries `guest`, `priceBasis`, state, `stayId` | none |
+| `contracts/http/ListRoomTypes.json` | unchanged | none |
+| `contracts/http/ListArrivalsDepartures.json` | unchanged — `inHouse[]` carries `stayId` and `roomId` (`services/stay/src/server.ts:42-60`) | none |
+| `contracts/http/ListRoomsByState.json` | unchanged — `state: "occupied"`, `rooms[]` carries `roomId` and `number` | none |
+| `contracts/errors/envelope.json` | unchanged — no new code; the view uses the existing statuses and codes | none |
+| schema and migrations | none — nothing is persisted | none |
+
+**G2 decision: keep the per-row `GetReservation` fan-out for v1.** The
+register completes each row through one row read, bounded by the 50-row
+cap (at most 53 reads per apply: one calendar, one type list, one
+in-house pair, ≤50 row reads). A `ListReservations` read that returned
+guest, total, type, and assigned room in one call would remove the
+fan-out, but it is a new operation with its own contract, versioning,
+service work, and spec — T3, not this change. The trigger for revisiting
+it is measured latency on the lab stack: if a full 50-row apply is
+noticeably slower than the other desk lists, the follow-up is filed
+against the Reservations contract with those measurements, and the
+screen's cap stays the interim bound. Nothing in this delta pre-empts
+that read: the view consumes the row fields through one small
+"reservation summary" seam, so a future single-read backend can replace
+the fan-out without touching the row rendering.
+
+### 24.8 Verification plan
+
+The implementation PRs create the register guards and re-pin the shell
+guards the ninth tab moves. No service test changes: the five operations
+are untouched.
+
+Desk unit guards (`app/src/views/BookingsView.test.ts`, new; patterns:
+`app/src/views/ManageView.test.ts` for a read/write screen's state
+matrix, `app/src/views/DeskView.test.ts` for calendar reads):
+
+- **Range mapping** — the apply sends `dateFrom` = first night and
+  `dateTo` = last night + 1 day; the default range is the business date
+  through six nights after it; an inverted or missing range sends no
+  request and shows `range_invalid`.
+- **One load, bounded reads** — exactly one `QueryCalendar`, one
+  `ListRoomTypes`, one in-house pair, and one `GetReservation` per
+  capped row; a second click while a read is in flight issues nothing;
+  applying a new range clears the selection and the detail.
+- **Row fields** — guest, reference, type name, assigned room for an
+  in-house row, arrival, departure, nights, quoted total through
+  `formatVnd`, and the state chip; a `confirmed` and a `closed` row read
+  `—` for the room; a `checked-in` row whose stay is absent from the
+  in-house read reads `—`, not a guessed room.
+- **Ordering and cap** — rows sort by arrival then reference whatever
+  order the read returned; a range with 51+ bookings renders 50 and the
+  `capped` sentence; the 51st booking issues no row read.
+- **Empty and failures** — the empty sentence names the range; a
+  calendar failure renders `read_failed` plus a working retry; a failed
+  map read marks the column `cell_unreadable` and counts it; a failed
+  row read keeps the calendar cells and counts the row; a failed detail
+  read renders `detail_failed {ref}` and leaves the list; a `401`
+  rethrows to the gate and renders no local error.
+- **Read-only** — the suite's fetch stub accepts only the five read
+  paths; any write call fails the test, which is the `AC-BMV-7`
+  no-write guard.
+- **Catalogue parity** — every visible string resolves from
+  `messages/en.json` and `messages/vi.json` with matching placeholders;
+  `script/catalogue-coverage-check.sh` is the gate.
+
+Shell and route guards to extend, never delete:
+
+- `app/src/App.test.ts:179-207` — the rendered tab list moves from eight
+  to nine with `Bookings` between `Book` and `Stay`, in the same VI and
+  EN labels.
+- `app/src/shell-restyle.test.ts:26-27` — the `EN_NAV` / `VI_NAV`
+  arrays follow the same nine-tab order.
+- `app/src/router.test.ts:155-175` — the `bookings` route carries
+  `desk.shell.doc_title_bookings` with its fallback, and the route
+  registry test sees the new path.
+- `docs/product/desk-ui-pixel-faithful-restyle.md`'s 1200px rule — the
+  first implementation PR carries the nine-tab measurement in both
+  locales (product spec section 3; risk register R-12).
+
+Browser/lab guards (`app/e2e/bookings.spec.ts`, new; the
+`app/e2e/manage.spec.ts:73` flow is the shape): a created booking is
+found again on `/app/bookings` with its guest, type, dates, and total;
+its row opens and the detail re-reads the same booking; an empty range
+shows the plain empty sentence; a failed read is triggered by route
+interception and renders plain catalogue words; the tab count, label,
+and active pill are asserted; VI and EN screenshots of the screen are
+recorded against the boards it borrows from
+(`docs/product/booking-management-view.md` section 13).
+
+Design facts: the schema entry is committed here; its consumer entry in
+`app/e2e/design-facts.ts` (`NAV_TAB_ALLOWANCES`) lands in the
+implementation PR that first renders the tab, because the gate diffs
+against the running DOM and an allowance for an unrendered tab fails
+`nav.order` and `nav.labels.bookings` (`app/e2e/design-facts.spec.ts:643-662`).
+That split is the #590 precedent (schema in the spec PR #607, consumer
+entry with the screen in #609). Until it lands, the gate keeps
+asserting the seven boards and the `manage` allowance unchanged.
+
+Stack and repo gates: `cd app && npm ci && npm run build && npm run lint
+&& npm test`; the Playwright browser suite; `script/catalogue-coverage-check.sh`;
+`script/markdown-link-check.sh`; `script/harness-conventions-check.sh`;
+`git diff --check`.
+
+### 24.9 Residual risks, closed copy gap, and re-tier trigger
+
+- **R15 — the assigned room is a point-in-time reading.** The in-house
+  pair is read once per apply, so a move made on another desk after the
+  load shows the room the row read, not the room after the move, until
+  the range is applied again or the page reloads. Accepted: the view is
+  read-only and the next load corrects it; the cell never guesses, and
+  the Stay screen remains the place where a move is seen immediately.
+- **R16 — the register cannot show a departed guest's room.** No read
+  exposes the room a `closed` booking held (G4), so the cell and the
+  detail read `—` for it. Adding that fact is a new read and a separate
+  change, not a widening of this one.
+- **R17 — the fan-out is bounded, not removed.** ≤50 row reads per apply
+  is accepted for v1 with the cap as the bound (24.7). The G2 trigger is
+  measured latency; a single-read list operation would be T3.
+- **R18 — closed: the partial-column notice is worded, and the row
+  sentence keeps its scope.** The earlier gap was that the catalogue
+  named only `desk.bookings.row_partial` (guest name and total) while
+  24.3 asks a failed `ListRoomTypes` / in-house / occupied read to be
+  stated in the same notice; using the row sentence there would
+  misreport what failed. The copy now landed in
+  `docs/product/booking-management-view.md` section 9 as
+  `desk.bookings.column_partial` ("The {column} column could not be
+  read."), with `{column}` filled from the failed read's own column
+  heading (`desk.bookings.col_room_type`, `desk.bookings.col_room`), so
+  the two classes stay distinct. The implementation therefore cites
+  both keys and never merges them: the row class is one
+  `row_partial` count, each failed column is its own `column_partial`
+  sentence. The screen's full copy set is 41 new keys: 39
+  `desk.bookings.*` plus `desk.shell.nav_bookings` and
+  `desk.shell.doc_title_bookings`.
+- **R19 — the ninth tab at `1200px`.** The shell keeps the brand-only
+  shrink rule and the tab, locale pill, and session control keep their
+  size. If the measured nine-tab row overflows, the owner decides
+  between a shorter label and a shell rule change (product spec section
+  3, decision D-28); the tab never truncates or wraps silently.
+- **Re-tier trigger.** A shape that needs a new operation or field, a
+  stored register row, a paginated read, a server-side join, a new
+  lifecycle state, or a migration is T3: it needs an ADR, the owner's
+  `proposed -> accepted` flip, and its rollback note in the
+  implementation PR. The decided shape needs none of these, which is why
+  the tier stays T2 and the risk stays `risk-medium`.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-981
