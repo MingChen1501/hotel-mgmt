@@ -550,7 +550,7 @@ export default defineComponent({
           text: t(
             'desk.bookings.row_partial',
             { count: incompleteCount.value },
-            '{count} bookings could not be completed: their guest name or total is unreadable.',
+            'Could not read the guest name or total for {count} of the listed bookings.',
           ),
         });
       }

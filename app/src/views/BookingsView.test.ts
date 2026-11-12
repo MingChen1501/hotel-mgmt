@@ -764,7 +764,7 @@ describe('booking register (Refs #648)', () => {
     expect(cellText(wrapper, 'bookings-row-arrival', index)).toBe(deskDate(day(1)));
     expect(cellText(wrapper, 'bookings-row-room-type', index)).toBe('Deluxe');
     expect(wrapper.find('[data-testid="bookings-row-partial"]').text()).toBe(
-      '1 bookings could not be completed: their guest name or total is unreadable.',
+      'Could not read the guest name or total for 1 of the listed bookings.',
     );
     // The partial class has no retry of its own.
     expect(wrapper.find('[data-testid="bookings-notices"]').findAll('button')).toHaveLength(0);

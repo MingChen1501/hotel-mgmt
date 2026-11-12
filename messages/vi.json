@@ -792,7 +792,7 @@
     "desk.bookings.empty": "Không có đặt phòng nào trong khoảng {from} – {to}.",
     "desk.bookings.read_failed": "Không đọc được sổ đặt phòng.",
     "desk.bookings.retry": "Thử lại",
-    "desk.bookings.row_partial": "{count} đặt phòng chưa đọc được tên khách hoặc tổng tiền.",
+    "desk.bookings.row_partial": "Không đọc được tên khách hoặc tổng tiền của {count} đặt phòng trong danh sách.",
     "desk.bookings.column_partial": "Không đọc được cột {column}.",
     "desk.bookings.capped": "Đang hiện {count} đặt phòng đầu tiên. Thu hẹp khoảng ngày để xem phần còn lại.",
     "desk.bookings.cell_unreadable": "không đọc được",

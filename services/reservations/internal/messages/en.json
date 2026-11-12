@@ -792,7 +792,7 @@
     "desk.bookings.empty": "No booking stays between {from} and {to}.",
     "desk.bookings.read_failed": "Could not read the booking register.",
     "desk.bookings.retry": "Try again",
-    "desk.bookings.row_partial": "{count} bookings could not be completed: their guest name or total is unreadable.",
+    "desk.bookings.row_partial": "Could not read the guest name or total for {count} of the listed bookings.",
     "desk.bookings.column_partial": "The {column} column could not be read.",
     "desk.bookings.capped": "Showing the first {count} bookings. Narrow the dates to see the rest.",
     "desk.bookings.cell_unreadable": "could not read",
