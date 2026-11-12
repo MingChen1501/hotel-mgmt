@@ -2307,12 +2307,19 @@ UI contract delta (T2):
   for everything they do draw, no board file is edited, and no new
   board is invented. The nine-tab row keeps the brand-only shrink rule
   (`docs/product/desk-ui-pixel-faithful-restyle.md`, section 4, ninth
-  tab): every tab, the locale pill, and the session control keep their
-  size, the short label keeps the row inside the `1200px` content
-  width, and the first implementation PR carries the 1200px evidence in
-  both locales. If the measured row overflows, the owner decides
-  between a shorter label and a shell rule change — the row never
-  silently truncates or wraps.
+  tab): the brand stays the only shrinkable item and every tab, the
+  locale pill, and the session control keep their height, `44px`
+  target, label, and ink, with the short label keeping the row inside
+  the `1200px` content width. Below a `1280px` viewport the owner
+  decided to tighten the nav spacing rather than shorten the label —
+  inter-tab gap `8px` -> `4px`, tab side padding `10px 16px` ->
+  `10px 12px`, everything else unchanged, `1280px` and wider keeping
+  the design values (D-29; `docs/product/booking-management-view.md`
+  section 3) — and the first implementation PR carries the 1200px
+  evidence in both locales plus the two widths either side of that
+  breakpoint. If a measured row still overflows, the owner decides
+  between a shorter label and a further shell rule change — the row
+  never silently truncates or wraps.
 - **Screen layout.** Title plus a read-only intro line, then a filter
   card (first night, last night, apply action, one helper line stating
   the night-range meaning), then a list card (one static column-header
@@ -2778,4 +2785,4 @@ Section 4 stays the rollout-wide contract; for steps 2–4:
 | Rollback is a single revert with no migration and no new operation | Section 6.18 (rollback); the screen calls only operations that already exist |
 
 <!-- ao-role: product-owner -->
-Role: product-owner · AO session hotel-mgmt-979
+Role: product-owner · AO session hotel-mgmt-1011

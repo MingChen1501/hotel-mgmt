@@ -9,7 +9,7 @@ and the behaviour-scoped requirements `FR-BMV-1`..`FR-BMV-7`, owned
 by `business-analyst` in
 `docs/requirements/mvp-requirements.md` [section 25](../requirements/mvp-requirements.md),
 to their guards: the pins that exist on disk at this spec head, the
-guard registry `BM1`–`BM15`, and the evidence rule `BM-E1`.
+guard registry `BM1`–`BM16`, and the evidence rule `BM-E1`.
 
 Written before the implementation PR. Every guard in the registry is a
 **named, missing obligation** at this head: no row here marks a guard
@@ -83,6 +83,16 @@ changes no guard, adds no catalogue key, and moves no MVP row.
   ninth tab; the implementation PR adds a `#648` note but drops no
   case. `BM14` fails a deleted or relaxed pin, not only a missing
   allowance entry.
+- The narrow-width nav block is pinned the same way, never relaxed. The
+  existing shell reader takes the first matching rule body, so it reads
+  the design `gap`/`padding` and would keep passing on the override;
+  the dedicated `BM16` case therefore reads the band with its own reader
+  scoped from the `@media screen and (max-width: 1279px)` opener and
+  asserts both bands (`app/src/App.vue:534`, `:573`, `:2735-2744` on the
+  #689 head, with the case and readers at
+  `app/src/shell-restyle.test.ts:40-59` and `:118-133` there). The base
+  assertions stay as they are, the design values hold at `1280px` and
+  wider, and the narrow values hold below it (D-29).
 - Copy: the 41 keys of product spec section 9 (39 `desk.bookings.*`
   plus `desk.shell.nav_bookings` and `desk.shell.doc_title_bookings`)
   are the implementation PRs' to add in both locales with placeholders
@@ -168,16 +178,23 @@ and never deletes one.
 | `app/src/views/StayView.test.ts:350-2695`, `:2696-3310`; `app/src/views/desk-edge-guards.test.ts:912-1032`, `:1449-1700`; `app/e2e/stay.spec.ts:30-314`; `script/e2e-desk-loop.sh:342-348` | The #588/#600/#601/#646/#647 desk and stay behaviour the register only reads from | Stay green untouched; a desk flow edit in the implementation PR fails the desk-stay-green row |
 | `script/catalogue-coverage-check.sh` | The catalogue parity gate (EN/VI coverage, placeholders, mirrors) | Run on every implementation PR; `BM15` is its `desk.bookings.*` half |
 
-## 3. Guard registry BM1–BM15 and the evidence rule BM-E1
+## 3. Guard registry BM1–BM16 and the evidence rule BM-E1
 
-All fifteen guards are **missing at this spec head** and created by the
+All sixteen guards are **missing at this spec head** and created by the
 implementation PRs: `BM1`–`BM12` in `app/src/views/BookingsView.test.ts`
 (new) plus the extended shell suites (`App.test.ts`,
 `shell-restyle.test.ts`, `router.test.ts`), `BM13` in
 `app/e2e/bookings.spec.ts` (new), `BM14` across
-`app/e2e/design-facts.ts` and the gate run, and `BM15` across
+`app/e2e/design-facts.ts` and the gate run, `BM15` across
 `messages/en.json`, `messages/vi.json`, and
-`script/catalogue-coverage-check.sh`. A register guard is not complete
+`script/catalogue-coverage-check.sh`, and `BM16` in the extended shell
+suite. `BM16` is the narrow-width nav block of product spec section 3
+and of the `AC-BMV-1` / `AC-RST-1` re-baseline (D-29): its case exists
+on the #689 implementation head (`app/src/App.vue:2735-2744`,
+`app/src/shell-restyle.test.ts:118-133` with the band readers at
+`:40-59`) and, as with every other row here, is absent from this
+docs-only head and from `origin/master` until that PR lands. A register
+guard is not complete
 on a rendered sentence alone: every list guard also asserts the exact
 call list (which of the five operations ran, in which order, how many
 times) and the values it returned, because this screen composes five
@@ -200,7 +217,8 @@ reads and a cell can be right while the read behind it is wrong.
 | `BM13` | **Browser read path on the served SPA**: a booking created through the Book screen or the API is found again on `/app/bookings` with its guest, room type, arrival, departure, and quoted total; its row opens and the detail re-reads the same booking; a far-future range shows the plain empty sentence; a route-intercepted failure renders the plain catalogue words with a usable retry; the tab count (nine), the `Bookings` label, position after `Book`, and the active pill are asserted; VI and EN screenshots are recorded | `app/e2e/bookings.spec.ts` |
 | `BM14` | **Design facts and the unchanged boards**: `NAV_TAB_ALLOWANCES` carries the second entry — route key `bookings`, position after `book`, labels `Sổ đặt phòng` / `Bookings`, design source `docs/design/Main.dc.html` — matching the schema text of section 8; the gate's nav-order and per-allowance label checks pass with the nine rendered tabs; the seven board screens and the `manage` allowance stay green; no board file is edited and no new board is created; the screen's static content is pinned in its own unit and flow suites (the `manage` precedent) because it has no board record | `app/e2e/design-facts.ts`, `app/e2e/design-facts.spec.ts`, `app/src/views/BookingsView.test.ts` |
 | `BM15` | **Catalogue parity**: all 41 keys of product spec section 9 exist in `messages/en.json` and `messages/vi.json` with their placeholders intact and their EN/VI pairs matching the table (39 `desk.bookings.*`, including the `{column}` placeholder in `desk.bookings.column_partial`, plus the two shell keys); the reused keys (`desk.book.reference`, `desk.book.night_count`, `desk.book.quote_total`, `desk.today.unknown_guest`) still resolve; no invented string stands in for a table key (the case fails on an invented key, not only on an absent one); `script/catalogue-coverage-check.sh` is green | `messages/en.json`, `messages/vi.json`, `script/catalogue-coverage-check.sh` |
-| `BM-E1` | **Evidence rule**: the implementation PR records the live read-path check (a booking created through the desk appears on `/app/bookings` with its guest, type, dates, and total, and the detail re-reads the same booking), the before/after pair in `docs/testing/evidence/648/README.md` (before: no screen lists bookings and staff read one reference at a time; after: the row and the read-back), the nine-tab `1200px` measurement in both locales, and the owner's screen review recorded on the issue (`owner-review`, `AC-BMV-7`); the slice is recorded in `docs/testing/test-report.md` (exit criterion 6 of `test-strategy.md` section 3) | evidence record + `test-report.md` |
+| `BM16` | **Narrow-width nav spacing, both bands pinned**: the shell suite reads the narrow band with its own reader (`narrowBandSource` / `narrowRuleBody` scoped from the `@media screen and (max-width: 1279px)` opener) instead of the first-match `ruleBody`, so the tightening override can never be read as the design value and a missing band fails closed; the case asserts the base `#shell .shell-nav` body still carries `gap: 8px` and the `#shell .shell-nav-item` body still carries `padding: 10px 16px` (the `1280px`-and-wider design values), and that inside the band `#shell .shell-nav` reads `gap: 4px` and `#shell .shell-nav-item` / `#shell .shell-nav-item.shell-nav-active` read `padding: 10px 12px`; the label, the `10px` vertical padding, the `44px` minimum height, the `8px` radius, the active-tab inversion, the locale pill, the session control, and the brand-only shrink rule are asserted unchanged in both bands; a dropped band, a moved breakpoint, or a value flipped between the bands fails the case, and a first-match read of the narrow block is the negative control that fails it | `app/src/shell-restyle.test.ts` (extend the R1 shell suite; the case and its readers sit at `:40-59` and `:118-133` on the #689 head against `app/src/App.vue:534`, `:573`, `:2735-2744`) |
+| `BM-E1` | **Evidence rule**: the implementation PR records the live read-path check (a booking created through the desk appears on `/app/bookings` with its guest, type, dates, and total, and the detail re-reads the same booking), the before/after pair in `docs/testing/evidence/648/README.md` (before: no screen lists bookings and staff read one reference at a time; after: the row and the read-back), the nine-tab `1200px` measurement in both locales plus the narrow band either side of the breakpoint (`1279px` and `1280px`) in both locales, so the record shows the design spacing returning at `1280px` and the decided narrow values holding at `1279px` with no label wrapped or truncated, and the owner's screen review recorded on the issue (`owner-review`, `AC-BMV-7`); the slice is recorded in `docs/testing/test-report.md` (exit criterion 6 of `test-strategy.md` section 3) | evidence record + `test-report.md` |
 
 ## 4. Traceability map
 
@@ -213,14 +231,14 @@ the guard passes.
 
 | Item | Required guard | Guard |
 |---|---|---|
-| `AC-BMV-1` — the bookings tab sits immediately after `Book`, opens `/app/bookings` inside the unchanged shell, with the tab label, route title, screen title, and intro resolved through the catalogue in the active locale, the nine-tab row inside the `1200px` content width, and every other route, gate, and print surface behaving as before | L1 acceptance: route, tab, titles, width evidence | **Pending** — `BM1`, `BM3` (default range on entry), `BM-E1` (the 1200px measurement); today's eight-tab pins are `app/src/App.test.ts:182-215`, `app/src/shell-restyle.test.ts:28-29`, `app/src/router.test.ts:155-179`, `app/e2e/manage.spec.ts:72-75` |
+| `AC-BMV-1` — the bookings tab sits immediately after `Book`, opens `/app/bookings` inside the unchanged shell, with the tab label, route title, screen title, and intro resolved through the catalogue in the active locale, the nine-tab row inside the `1200px` content width, the design nav spacing (`8px` inter-tab gap, `10px 16px` tab padding) from a `1280px` viewport and wider and the decided narrow spacing below it (`4px` gap, `10px 12px` padding, with the label, height, `44px` target, radius, and inversion unchanged; D-29), and every other route, gate, and print surface behaving as before | L1 acceptance: route, tab, titles, both width bands | **Pending** — `BM1`, `BM3` (default range on entry), `BM16` (the narrow block's own rule-body assertion, so the base design values cannot be read for the override), `BM-E1` (the `1200px` measurement plus the `1279px`/`1280px` pair, all in both locales); today's eight-tab pins are `app/src/App.test.ts:182-215`, `app/src/shell-restyle.test.ts:28-29` (the first-match reader only, so it cannot see the narrow band), `app/src/router.test.ts:155-179`, `app/e2e/manage.spec.ts:72-75` |
 | `AC-BMV-2` — every booking staying at least one night in the range is listed once, ordered by arrival then reference, each row carrying guest, reference, room type, assigned room when in house and a plain placeholder otherwise, arrival, departure, nights, quoted total, and the state chip; never invented or silently dropped, and more than 50 renders the earliest 50 with one sentence | L1 acceptance: row fields, order, cap, assigned-room rules | **Pending** — `BM5`, `BM6`, `BM7`, `BM8`; the service halves exist at `services/reservations/internal/handler/handler.go:161-181`, `services/stay/src/server.ts:157-165`, `services/rooms/src/server.ts:112-126` and stay green |
 | `AC-BMV-3` — an applied inclusive night range lists only bookings staying at least one night in it (`dateFrom` = first night, `dateTo` = last night + 1 day), the list re-reads once with the fields and action disabled, the selection and detail clear, and an inverted or missing range names the field and sends nothing | L1 acceptance: both boundaries, one read per apply, validation | **Pending** — `BM3`, `BM4`; the contract rule is pinned today at `services/reservations/internal/store/store.go:191-193` and `services/reservations/internal/store/postgres.go:311-323` |
 | `AC-BMV-4` — an empty range shows one plain catalogue sentence naming the range in the desk date form, invents no row, and leaves the filter usable | L1 acceptance: wording plus the usable filter | **Pending** — `BM9`, with the wording pattern at `app/src/views/DeskView.test.ts:617` |
 | `AC-BMV-5` — selecting a row reads the booking back with `GetReservation` and shows reference, guest, room type, assigned room, arrival, departure, nights, quoted total, the recorded discount when present, and the state — read back, never re-derived, with no write action; another selection replaces it and a new range clears it | L1 acceptance: read-back fields, no re-derivation, selection rules | **Pending** — `BM12`; the read shape is pinned today at `services/reservations/internal/handler/handler.go:161-181` and `services/reservations/internal/handler/handler_test.go:166-171` and stays green |
 | `AC-BMV-6` — a failed read follows its class: a failed list or detail read is one plain catalogue sentence with a retry; a failed per-row, room-type, in-house, or occupied-room read keeps every row it can, the affected cells say they could not be read instead of a guessed value, and one notice above the list counts the incomplete rows and names each failed column in its own sentence, with no retry action because re-applying the range reads again; no booking is dropped, no stack trace or code is shown, and the rest of the desk remains usable | L1 acceptance: the whole failure matrix | **Pending** — `BM10`, `BM11`, `BM12` (detail half); the client classification is pinned at `app/src/api/client.ts:143-202`; both partial-class sentences are now worded (`desk.bookings.row_partial`, `desk.bookings.column_partial`), so the row asserts the distinct keys rather than an open R18 gap |
 | `AC-BMV-7` — the screen offers no write action and calls only the five existing operations with no direct database or store access, every new string exists in both catalogues with matching placeholders and the catalogue check is green, the design-facts gate records the app-only tab with every board screen green, and the owner has reviewed the built screen | L1 + call-set + catalogue + design-facts + owner evidence | **Pending** — `BM2` (call set and no write), `BM15`, `BM14`, `BM-E1` (owner review recorded) |
-| `FR-BMV-1` — one read-only booking register in the shared desk shell: tab after `Book`, `/app/bookings`, catalogue-resolved label, title, and intro, every other tab and route unchanged, nothing added to the shell or the token set, and no write action or edit link anywhere (section 25.3) | L1 acceptance + a no-write assertion | **Pending** — `BM1`, `BM2`; no guard on disk |
+| `FR-BMV-1` — one read-only booking register in the shared desk shell: tab after `Book`, `/app/bookings`, catalogue-resolved label, title, and intro, every other tab and route unchanged, the shell's one decided exception below a `1280px` viewport (inter-tab gap `8px` -> `4px` and tab side padding `10px 16px` -> `10px 12px`, while `1280px` and wider keep the design values and the label, `10px` vertical padding, `44px` target, `8px` radius, active-tab inversion, locale pill, session control, and brand-only shrink rule are unchanged in both bands; D-29), the design token set gaining nothing, and no write action or edit link anywhere (section 25.3) | L1 acceptance + a no-write assertion + both nav bands | **Pending** — `BM1`, `BM2`, `BM16` (each band read through its own rule-body reader, because the first-match reader reads the design value for the override), `BM-E1` (the `1200px` measurement plus the `1279px`/`1280px` pair, all in both locales); no guard on disk |
 | `FR-BMV-2` — every booking staying at least one night is listed once with the desk's facts, ordered by arrival then reference, every state listed, at most 50 rows with the narrow-the-dates sentence, assigned room only when in house, a per-row failure kept and stated, and nothing invented or dropped (section 25.3) | L1 acceptance: fields, order, cap, states, assigned room, partial row | **Pending** — `BM5`, `BM6`, `BM7`, `BM8`, `BM11`; no guard on disk |
 | `FR-BMV-3` — the night filter is inclusive and maps `dateFrom`/`dateTo` as above, one read per apply with fields and action disabled and a repeated click a no-op, the selection clears on every list read, an invalid range sends nothing, and the range length is uncapped (section 25.3) | L1 acceptance + call-count assertion | **Pending** — `BM3`, `BM4`; the `overlaps` rule it depends on is `services/reservations/internal/store/store.go:191-193` |
 | `FR-BMV-4` — an empty range is one plain sentence naming the range in the desk date form, with no row invented and a usable filter (section 25.3) | L1 acceptance | **Pending** — `BM9`; no guard on disk |
@@ -230,7 +248,7 @@ the guard passes.
 | Desk screens stay green (`AC-DSK-*`, `AC-CKO-*`, `AC-DEP-*`, `AC-REA-*`) | Behaviour check: the board, Book, Stay, Folio, Print, Rooms, and Manage screens keep their words, calls, and flows; no desk flow they pin changes | **Covered by re-run at this spec head** — `app/src/views/StayView.test.ts:350-2695`, `:2696-3310`, `app/src/views/desk-edge-guards.test.ts:912-1032`, `:1449-1700`, `app/e2e/stay.spec.ts:30-314`, `script/e2e-desk-loop.sh:342-348`, plus the board, Book, Rooms, Manage, Folio, Print, and Admin unit suites. These must pass unchanged after the implementation PR; a flow edit fails the row |
 | Contract and LC | Re-run only: the five operations keep their shapes, no error code is added, and the existing fixtures replay unchanged | **Pending gate** — `contracts/http/QueryCalendar.json`, `GetReservation.json`, `ListRoomTypes.json`, `ListArrivalsDepartures.json`, `ListRoomsByState.json`, `contracts/errors/envelope.json`, `services/reservations/contract-tests/`, `services/stay/contract-tests/`, `services/rooms/contract-tests/`, `script/contract-check.sh`, `script/openapi-route-check.sh`; a contract delta here is a re-tier finding (LLD 24.7, 24.9) |
 | MVP no-change statement | No new MVP row, story, or FR id; `FR-RES-5` gains only the amendment pointer and `AC-RES-5` the `AC-BMV-2`/`AC-BMV-5` pointer | **Pending gate** — the 57-row MVP coverage count stands unchanged in `traceability-matrix.md` and no MVP row cites this slice as its guard |
-| Evidence cross-reference (`BM-E1`) | The live read path, the before/after pair, the 1200px measurement, and the owner's screen review are recorded | **Pending** — `docs/testing/evidence/648/README.md` and the `test-report.md` row are created by the implementation PR; the owner review is recorded on #648 |
+| Evidence cross-reference (`BM-E1`) | The live read path, the before/after pair, the `1200px` measurement, the `1279px`/`1280px` pair in both locales, and the owner's screen review are recorded | **Pending** — `docs/testing/evidence/648/README.md` and the `test-report.md` row are created by the implementation PR; the owner review is recorded on #648 |
 
 ## 5. Test plan
 
@@ -239,7 +257,7 @@ the guard passes.
 | Level | What runs | Command (authoritative: LLD [section 24.8](../architecture/lld.md)) |
 |---|---|---|
 | L1 desk unit, new screen | `BM1`–`BM12` in `app/src/views/BookingsView.test.ts` | `cd app && npm ci && npm run build && npm run lint && npm test` (CI `app-build`) |
-| L1 desk unit, extended shell pins | `BM1`'s tab, label, and title cases in `App.test.ts`, `shell-restyle.test.ts`, `router.test.ts` | same command |
+| L1 desk unit, extended shell pins | `BM1`'s tab, label, and title cases in `App.test.ts`, `shell-restyle.test.ts`, `router.test.ts`, and `BM16`'s narrow-band rule-body case in `shell-restyle.test.ts` | same command |
 | L1 service, green half | The five operations' existing suites, unchanged (Reservations Go, Stay Node, Rooms Node) | `cd services/reservations && go build ./... && go test ./...`; `cd services/stay && npm ci && npm run build && npm test`; `cd services/rooms && npm ci && npm run build && npm test` |
 | LC contract | The five unchanged operation fixtures and the desk seams | `script/contract-check.sh`, `script/openapi-route-check.sh` |
 | Desk browser | `BM13` on the served SPA, plus the existing screen specs and the `manage` tab-count pin moved to nine | CI `browser-e2e` |
@@ -262,10 +280,11 @@ PR is a scope finding rather than an expected path.
    consumes their behaviour and adds no service code.
 2. Contract and route checks (the re-run must prove the no-change
    statement).
-3. Desk unit suite (`BM1`–`BM12`). A red `BM*` case stops the run.
+3. Desk unit suite (`BM1`–`BM12`) and the extended shell pins (`BM1`,
+   `BM16`). A red `BM*` case stops the run.
 4. Desk browser suite (`BM13`) and the design-facts run (`BM14`).
-5. `BM-E1`: the live read path, the before/after pair, the 1200px
-   measurement, and the owner review.
+5. `BM-E1`: the live read path, the before/after pair, the `1200px`
+   measurement, the `1279px`/`1280px` pair, and the owner review.
 6. Catalogue, link, and harness-convention gates, then the
    test-report row.
 
@@ -286,16 +305,19 @@ PR is a scope finding rather than an expected path.
 
 ### Exit criteria
 
-1. `BM1`–`BM15` exist and pass; every list case also asserts the exact
+1. `BM1`–`BM16` exist and pass; every list case also asserts the exact
    call list and the values returned, and `BM2` proves no path outside
-   the five reads can run.
+   the five reads can run. `BM16` pins both nav bands, so neither the
+   design values nor the narrow override can pass on the other's
+   assertion.
 2. Every pin in section 2 passes unchanged — no dropped shell
    assertion and no board-screen edit; the eight-tab pins moved to
    nine rather than relaxed.
 3. The contract stage is green with no contract delta.
 4. `BM-E1` is recorded: the live read path, the before/after pair in
-   `docs/testing/evidence/648/README.md`, the 1200px measurement in
-   both locales, the owner review on #648, and the slice row in
+   `docs/testing/evidence/648/README.md`, the `1200px` measurement and
+   the `1279px`/`1280px` pair in both locales, the owner review on
+   #648, and the slice row in
    `docs/testing/test-report.md`.
 5. The 57/57 MVP coverage count stands; `qa-lead` has re-pinned
    section 4 at the merged head and flipped the rows.
@@ -351,7 +373,7 @@ read the row, the detail, and the API's `GetReservation` reply.
 
 | Case | Setup | Expected |
 |---|---|---|
-| `BMV-1` | Sign in and read the tab row; open `Bookings`; switch the locale | Nine tabs, `Bookings` / `Sổ đặt phòng` immediately after `Book`, the screen title and the read-only intro in the active locale, the row inside the 1200px content width with no tab wrapped or truncated, and every other tab and the print routes unchanged |
+| `BMV-1` | Sign in and read the tab row; open `Bookings`; switch the locale | Nine tabs, `Bookings` / `Sổ đặt phòng` immediately after `Book`, the screen title and the read-only intro in the active locale, the row inside the 1200px content width with no tab wrapped or truncated, the design nav spacing at `1280px` and the decided narrow spacing at `1279px` (labels, heights, and targets unchanged in both), and every other tab and the print routes unchanged |
 | `BMV-2` | Open the screen on its default range (business date through six nights) | One row per booking staying in that range with guest, reference, room type, assigned room (in house only), arrival, departure, nights, quoted total, and state; rows ordered by arrival then reference |
 | `BMV-3` | Book A arriving Tuesday and departing Wednesday (it departs on the first night), and B arriving Wednesday and departing Thursday (it stays the last night); set Wednesday as both the first and the last night, then apply | B is listed; A is not. That is the inclusive-night mapping in one glance: the night of the last night is in range, and a booking that leaves on the first night is not |
 | `BMV-4` | Set the last night before the first night and apply | One plain sentence naming the field, nothing sent (no list change, no spinner), and the previous list still readable |
@@ -359,7 +381,7 @@ read the row, the detail, and the API's `GetReservation` reply.
 | `BMV-6` | Stop the reservations service, apply; then stop the rooms service and apply; then fail only one row's read | First: one plain read-failed sentence with a retry, no invented rows, the rest of the desk usable. Second: the affected cells say they could not be read and one notice sentence names the failed column; there is no retry control — applying the range again reads again. Third: the row keeps its calendar fields, its guest and total say they could not be read, and it is counted in the row-partial notice |
 | `BMV-7` | Apply a range with no bookings (a far-future week) | One muted sentence naming the range in `dd/mm/yyyy`, no row, and the filter still usable |
 | `BMV-8` | Seed 51 bookings (API loop) in one range and apply | The earliest 50 render, the count sentence names 50 and asks to narrow the dates, and the 51st booking is not read (no detail, no row) |
-| `BMV-9` | Read the screen for write affordances and re-read it in both locales at 1200px | No create, edit, cancel, no-show, check-in, check-out, or room control and no edit link; every string in EN and VI with its values filled; the nine-tab row measured in both locales and recorded in the evidence note; the owner's acceptance recorded on #648 |
+| `BMV-9` | Read the screen for write affordances and re-read it in both locales at `1200px`, `1279px`, and `1280px` | No create, edit, cancel, no-show, check-in, check-out, or room control and no edit link; every string in EN and VI with its values filled; the nine-tab row measured in both locales at all three widths and recorded in the evidence note, with the narrow values at `1279px` and the design values returning at `1280px`; the owner's acceptance recorded on #648 |
 
 ## 7. Evidence rule BM-E1
 
@@ -379,11 +401,17 @@ The implementation PR records, in `docs/testing/evidence/648/README.md`
   reference, type, assigned room, dates, nights, total, and state, plus
   the read-back detail. The record confirms or corrects that
   description rather than repeating it.
-- **The ninth tab at `1200px`.** The measured nine-tab row in both
-  locales, with the tab, locale pill, and session control unsized and
-  the brand as the only shrinkable item (product spec section 3, risk
-  register R-12). An overflow is an owner decision, never a silent
-  truncation.
+- **The ninth tab across the width bands.** The measured nine-tab row
+  in both locales at `1200px`, the design column, and at the pair
+  either side of the breakpoint (`1279px` and `1280px`), with the tab,
+  locale pill, and session control unsized and the brand as the only
+  shrinkable item (product spec section 3, risk register R-12). At
+  `1280px` and wider the record shows the design `8px` gap and
+  `10px 16px` tab padding; at `1279px` it shows the decided narrow
+  values (`4px` gap, `10px 12px` padding, D-29) with no label wrapped
+  or truncated. An overflow at either width is an owner decision, never
+  a silent truncation, and the narrow block's rule-body case (`BM16`)
+  is the automated half of the same evidence.
 - **The owner's screen review.** The owner reviews the built screen
   against the v2 design boards and the state list, and the acceptance
   is recorded on #648 (the issue carries `owner-review`); the screen
@@ -400,9 +428,9 @@ section 1 pattern.
 At this spec head: 18 rows mapped, 1 covered by re-run only (the
 desk-stay-green row — its pins exist and pass today and must keep
 passing), and 17 pending rows whose guards are the registry
-`BM1`–`BM15` plus the contract/LC gate, the MVP no-change gate, and
+`BM1`–`BM16` plus the contract/LC gate, the MVP no-change gate, and
 `BM-E1`. The slice is **not complete**. It completes when the
-implementation PRs merge with `BM1`–`BM15` green, the section 2 pins
+implementation PRs merge with `BM1`–`BM16` green, the section 2 pins
 unchanged, `BM-E1` recorded with the owner review on #648, and
 `qa-lead` re-pins every row in section 4 with `file:line` at the merged
 head.
@@ -412,4 +440,4 @@ absent from the tree or failing: a pending row is honest, a fabricated
 pin is a phantom promise.
 
 <!-- ao-role: qa-lead -->
-Role: qa-lead · AO session hotel-mgmt-982
+Role: qa-lead · AO session hotel-mgmt-1016

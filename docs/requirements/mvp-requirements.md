@@ -5672,8 +5672,18 @@ The decided behaviour, in five parts:
 
 1. **One read-only screen, one tab, existing operations only.** The
    desk gains one tab immediately after `Book` and one screen at
-   `/app/bookings`, inside the unchanged shared shell. The screen reads
-   with the signed-in session through the operations that already
+   `/app/bookings`, inside the shared shell. The shell takes one
+   deliberate exception for that ninth tab, decided as D-29: below a
+   `1280px` viewport the nav row tightens its spacing — the inter-tab
+   gap `8px` -> `4px` and each tab's side padding `10px 16px` ->
+   `10px 12px` — so the nine-tab row fits the `1200px` desk band, while
+   `1280px` and wider keep every design value; the label, the `10px`
+   vertical padding, the `44px` target, the `8px` radius, the
+   active-tab inversion, the locale pill, the session control, and the
+   brand-only shrink rule are unchanged in both bands, and no design
+   token changes (`FR-BMV-1`; decision `D-29` in
+   `docs/project/decision-log.md`). The screen reads with the
+   signed-in session through the operations that already
    exist — `QueryCalendar`, `GetReservation`, `ListRoomTypes`,
    `ListArrivalsDepartures`, and `ListRoomsByState` — and offers no
    write action of any kind: no create, modify, cancel, no-show,
@@ -5771,6 +5781,16 @@ The decided behaviour, in five parts:
 - The board, the Book, Stay, Folio, Rooms, Manage, and Print screens are
   unchanged: this change adds one route and one tab and edits no
   existing screen.
+- The shared shell keeps its design values at `1280px` and wider (`8px`
+  inter-tab gap, `10px 16px` tab padding); the one decided exception is
+  the sub-`1280px` band the ninth tab needs (D-29), which tightens the
+  gap to `4px` and each tab's side padding to `10px 12px` without moving
+  the label, the vertical padding, the `44px` target, the radius, the
+  active-tab inversion, the locale pill, the session control, or the
+  brand-only shrink rule. No other shell value and no design token
+  changes, and the boards stay read-only: the divergence is recorded in
+  the screen spec and the restyle spec, not in a board file
+  (`FR-BMV-1`).
 - Money and dates keep their decided display shape (sections 12 and 14,
   `BR-43`): integer minor units on the wire, the desk VND money form for
   the quoted total, ISO dates on the wire, and the desk date form for
@@ -5805,11 +5825,19 @@ shell; then a bookings tab labelled `Sổ đặt phòng` (VI) / `Bookings`
 `/app/bookings`; the tab label, the route document title, the screen
 title, and the intro resolve through the catalogue in the active
 locale; every other tab, route, the sign-in gate, and the print
-surfaces behave exactly as before; the shell layout and the design
-token set gain nothing; and the screen offers no write action of any
-kind — no create, modify, cancel, no-show, check-in, check-out, or room
-action, and no link into an edit flow. Traces to: `AC-BMV-1`,
-`AC-BMV-7`; US-RES-5; `FR-RES-5`, `FR-DSP-1`; `NFR-I18N-1`.
+surfaces behave exactly as before; the shared shell changes in exactly
+one decided way — below a `1280px` viewport the nav row tightens its
+spacing so the nine tabs fit (the inter-tab gap `8px` -> `4px` and each
+tab's side padding `10px 16px` -> `10px 12px`), while `1280px` and
+wider keep the design `8px` gap and `10px 16px` padding, and the tab
+label, the `10px` vertical padding, the `44px` target, the `8px`
+radius, the active-tab inversion, the locale pill, the session control,
+and the brand-only shrink rule are unchanged at every width (D-29) —
+and the design token set gains nothing; and the screen offers no write
+action of any kind — no create, modify, cancel, no-show, check-in,
+check-out, or room action, and no link into an edit flow. Traces to:
+`AC-BMV-1`, `AC-BMV-7`, `AC-RST-1`; US-RES-5; `FR-RES-5`,
+`FR-DSP-1`; `NFR-I18N-1`, `NFR-DSP-3`.
 
 FR-BMV-2 — The register lists every booking staying in the range
 once, with the facts the desk reads.
@@ -5880,15 +5908,15 @@ with a retry action. Given a per-row, room-type, in-house-stay, or
 occupied-room (shared-map) read fails; then the screen keeps every row
 it can, the affected cells state that they could not be read instead of
 showing a guessed guest name, amount, room, or type, and one notice
-above the list counts the rows that could not be completed and names each
-failed column in one plain sentence; these partial classes carry no retry
-action of their own, because re-applying the range reads again. In every
-class no booking is silently dropped, no stack trace or envelope code is
-surfaced, and the rest of the desk remains usable. Given the detail read
-fails; then one sentence names the booking that could not be read with a
-retry, the list stays as it was, and the previous detail is not kept as
-if it were current. Traces to:
-`AC-BMV-6`; US-RES-5; `FR-RES-5`, `FR-DSP-3`.
+above the list counts the rows whose guest name or total could not be
+read and names each failed column in one plain sentence; these partial
+classes carry no retry action of their own, because re-applying the
+range reads again. In every class no booking is silently dropped, no
+stack trace or envelope code is surfaced, and the rest of the desk
+remains usable. Given the detail read fails; then one sentence names
+the booking that could not be read with a retry, the list stays as it
+was, and the previous detail is not kept as if it were current. Traces
+to: `AC-BMV-6`; US-RES-5; `FR-RES-5`, `FR-DSP-3`.
 
 FR-BMV-7 — The register is read-only over the operations that exist,
 and its copy and design facts are checked.
@@ -5938,8 +5966,9 @@ No new NFR is added. The existing NFRs cover the change:
   is retained, purged, or fetched from outside the installation
   differently; the calls are between modules of the same installation.
 - Touch targets and focus (`NFR-DSP-3`, `NFR-DSP-2` hold): the row
-  action and every control keep the 44px target, and each row carries
-  one keyboard stop.
+  action and every control keep the 44px target, each row carries
+  one keyboard stop, and the decided narrow nav spacing keeps the tab's
+  `44px` target and its `10px` vertical padding at every width (D-29).
 - Print isolation (`NFR-DSK-2` holds): the screen has no print output
   and its styling does not reach the print routes.
 
@@ -5954,7 +5983,7 @@ guard listed as "stay green" must pass untouched.
 
 | Item | Guard (on disk today; a row marked missing is created by the implementation PR) | Handoff note for `qa-lead` |
 |---|---|---|
-| FR-BMV-1 tab, route, titles, and no write action | `app/src/App.test.ts:182-209` (design-header destinations, labels, and hrefs), `app/src/shell-restyle.test.ts:26-27` (EN and VI nav labels), `app/src/router.test.ts:155-179` (per-route document titles), `app/e2e/design-facts.ts:509-516` (`NAV_TAB_ALLOWANCES`) | Missing guard: a ninth tab immediately after `Book` in route order, the `/app/bookings` route name and title meta, and the screen render with its intro; assert the screen carries no write control (no create, modify, cancel, no-show, check-in, check-out, or room action) and no link into an edit flow |
+| FR-BMV-1 tab, route, titles, nav spacing bands, and no write action | `app/src/App.test.ts:182-209` (design-header destinations, labels, and hrefs), `app/src/shell-restyle.test.ts:26-27` (EN and VI nav labels), `app/src/router.test.ts:155-179` (per-route document titles), `app/e2e/design-facts.ts:509-516` (`NAV_TAB_ALLOWANCES`), `app/src/App.vue:530-590` (the base `#shell .shell-nav` `gap: 8px` and `.shell-nav-item` `padding: 10px 16px` the `1280px`-and-wider band keeps) | Missing guard: a ninth tab immediately after `Book` in route order, the `/app/bookings` route name and title meta, and the screen render with its intro; assert the screen carries no write control (no create, modify, cancel, no-show, check-in, check-out, or room action) and no link into an edit flow; `BM16` (`docs/testing/booking-management-view-test-traceability.md`) pins both nav bands with a band-scoped reader — the base design spacing plus `gap: 4px` and `padding: 10px 12px` inside `@media screen and (max-width: 1279px)` — because a first-match rule-body read cannot see the override, and the width evidence is the one `BM-E1` asks for (the nine-tab `1200px` band and the `1279px`/`1280px` pair, in both locales) |
 | FR-BMV-2 rows, order, cap, and assigned room | `app/src/views/ManageView.test.ts:261` (the app-only-screen precedent: static content pinned in the screen's own suite), `services/reservations/internal/store/store.go:191-193` (overlap rule), `services/reservations/internal/store/postgres.go:311-321` (range read) | Missing guards: a seeded list asserts one row per booking staying in the range with guest, reference, type, assigned room when in house, dates, nights, total, and state; arrival-then-reference order; the 50-row cap with the narrow-the-dates sentence; `—` for a confirmed and a closed row; all five states listed; the empty range |
 | FR-BMV-3 inclusive range and validation | `app/src/views/DeskView.vue:531-535` (local business date the default range anchors on) | Missing guards: the inclusive-night mapping asserts `dateFrom` = first night and `dateTo` = last night plus one day, that a booking staying the last night is listed and one departing on the first night is not, one read per apply with the fields disabled, the no-op second click, the selection clear, and the inverted or missing range sending nothing with the field named |
 | FR-BMV-4 empty range sentence | `app/src/views/DeskView.test.ts:617` (the plain-words empty-state wording precedent) | Missing guard: an empty range renders one sentence naming the range in the desk date form, no row, and a usable filter |
@@ -5994,8 +6023,10 @@ classes degrade in place and re-applying the range reads again; an
 unreadable cell is stated rather than filled with a guessed value, and a
 booking is never dropped from the list. There is no write in this flow,
 so there is nothing to compensate: rolling the change back is the single
-implementation PR — the tab, the route, and the read calls go away,
-the eight-tab shell returns, and no schema, contract, or data changes
+implementation PR — the tab, the route, the read calls, and the
+sub-`1280px` nav spacing override go away,
+the eight-tab shell returns at the design spacing at every width, and
+no schema, contract, or data changes
 in either direction. A reverted build leaves every other desk screen
 as it was.
 
@@ -6033,4 +6064,4 @@ as it was.
   `SPEC-GATE PASS` on #648.
 
 <!-- ao-role: business-analyst -->
-Role: business-analyst · AO session hotel-mgmt-980
+Role: business-analyst · AO session hotel-mgmt-1021

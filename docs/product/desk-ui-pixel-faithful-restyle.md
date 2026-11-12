@@ -167,8 +167,29 @@ Rebuild (markup + styling to the design values):
   implementation PR carries the 1200px evidence in both locales, and
   an overflow is an owner decision between a shorter label and a shell
   rule change, never a silent truncation or wrap.
+- Narrow-width nav overrides (Refs #648; owner decision recorded on
+  #648, D-29). Below a `1280px` viewport the shell tightens the nav
+  spacing rather than shorten the ninth tab's label: the inter-tab
+  `gap` goes `8px` -> `4px` and each tab's side padding
+  `10px 16px` -> `10px 12px`, returning `8px` of width per tab to the
+  row. The breakpoint rule is `@media screen and (max-width: 1279px)`
+  in `app/src/App.vue`, so `1280px` and wider keep every design value
+  in this section byte for byte. Nothing else moves in the narrow band:
+  the label, the `10px` vertical padding, the `44px` target, the `8px`
+  radius, the active-tab inversion, the locale pill, the session
+  control, and the brand-only shrink rule all hold, and the
+  `1200px` desk-kiosk viewport the owner measured sits inside this
+  band. This is the one deliberate departure from the boards on the
+  shell, it is recorded here and in
+  `docs/product/booking-management-view.md` (section 3), the board
+  files stay read-only (D-12/D-15 record the rule), and
+  `app/src/shell-restyle.test.ts` pins the narrow block with its own
+  rule-body assertion so a future breakpoint or value change fails the
+  guard instead of the render.
 - Nav tabs: `padding:10px 16px`, `radius:8px`; the active tab is
   inverted (`background:#fff`, `color:#0F4C47`, `font-weight:600`).
+  The padding is the design value at `1280px` and wider; the
+  narrow-width override above applies below it.
 - Locale pill: `margin-left:auto`, `1px solid #9CC9C4`,
   `radius:8px`, `padding:6px 12px`; the header pill renders the
   design's compact `VI | EN` codes in design order
@@ -432,4 +453,4 @@ this spec references them by section, never repeats them:
 | Every child issue and its PR carry before/after screenshot evidence and per-screen owner review | Section 8 / AC-RST-8; owner-review labels on #517–#524 |
 
 <!-- ao-role: product-owner -->
-Role: product-owner · AO session hotel-mgmt-979
+Role: product-owner · AO session hotel-mgmt-1011
