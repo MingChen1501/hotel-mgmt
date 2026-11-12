@@ -4353,13 +4353,14 @@ contracts already carry:
 
 **G2 decision: keep the per-row `GetReservation` fan-out for v1.** The
 register completes each row through one row read, bounded by the 50-row
-cap (at most 53 reads per apply: one calendar, one type list, one
-in-house pair, ≤50 row reads). A `ListReservations` read that returned
-guest, total, type, and assigned room in one call would remove the
-fan-out, but it is a new operation with its own contract, versioning,
-service work, and spec — T3, not this change. The trigger for revisiting
-it is measured latency on the lab stack: if a full 50-row apply is
-noticeably slower than the other desk lists, the follow-up is filed
+cap (at most 54 reads per apply: one calendar, one type list, the two
+calls of the in-house pair, ≤50 row reads). A `ListReservations` read
+that returned guest, total, type, and assigned room in one call would
+remove the fan-out, but it is a new operation with its own contract,
+versioning, service work, and spec — T3, not this change. The trigger
+for revisiting it is measured latency on the lab stack: if a full
+50-row apply is noticeably slower than the other desk lists, the
+follow-up is filed
 against the Reservations contract with those measurements, and the
 screen's cap stays the interim bound. Nothing in this delta pre-empts
 that read: the view consumes the row fields through one small

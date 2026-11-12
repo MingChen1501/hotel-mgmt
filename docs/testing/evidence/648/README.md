@@ -43,7 +43,7 @@ retry.
 
 | File | Shows |
 |---|---|
-| `bookings-register-vi-en.png` | The register with three bookings and the read-back detail card open. Left VI, right EN, same fixture data; the selected row carries the 3px primary-accent left rule and the ink weight, and the state chips are the neutral chip surface (`In house` / `Đang lưu trú`, `Booked` / `Đã đặt`, `Cancelled` / `Đã huỷ`). |
+| `bookings-register-vi-en.png` | The register with three bookings and the read-back detail card open. Left VI, right EN, same fixture data; the selected row carries the 3px primary-accent left rule and the ink weight with every column still on the header's grid (the offset sits inside the guest cell, not on the row), and the state chips are the neutral chip surface (`In house` / `Đang lưu trú`, `Booked` / `Đã đặt`, `Cancelled` / `Đã huỷ`). |
 | `bookings-empty-vi-en.png` | The empty range: one muted sentence naming both nights in `dd/mm/yyyy`, no invented row, filter still usable. Left VI, right EN. |
 | `measurements.json` | The rendered shell measurement in both locales at the desk kiosk width (1280px viewport, `1200px` content column) and in the design's 1200px band: nine tabs, no wrap, and no horizontal overflow of the tab row (`scrollWidth == clientWidth`). |
 
@@ -143,6 +143,24 @@ spec-doc half of the shell decision is a separate change.
   showing an unexplained unreadable cell.
 - **Touch targets (G5).** `app/src/bookings-restyle.test.ts` pins the two
   filter actions and the row action at the 44px target.
+
+### Second review (head `ae7261d`)
+
+- **Empty in-house negative control (B1).** `BM6` now seeds `inHouse: []`
+  with one `checked-in` row: the Room cell reads `—` and neither a
+  `bookings-column-partial` nor a `bookings-row-partial` notice renders,
+  so an empty answer can never be counted as a failed column. The same
+  case also asserts that re-applying the same range reads the same 50
+  bookings, the other registry claim that had no case.
+- **Selected-row alignment (S1).** The 10px offset moved from the grid
+  row into the guest cell, so the selected row's columns stay on the
+  header and sibling-row tracks; `app/src/bookings-restyle.test.ts` pins
+  the row rule as the 3px inset only and the offset inside the guest
+  cell, and the register capture above was regenerated from this head.
+- **LLD read bound (S2).** `docs/architecture/lld.md` section 24.7 G2
+  now states at most 54 reads per apply (the in-house pair is two
+  calls), matching `BM7`, the traceability row, `docs/testing/test-report.md`,
+  and this record.
 
 ## Owner review
 

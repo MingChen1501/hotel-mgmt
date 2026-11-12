@@ -45,6 +45,19 @@ describe('booking register design values (Refs #648)', () => {
     expect(rowOpen).toContain(`color: ${deskTokens.colors.primary}`);
   });
 
+  it('marks the selected row with the inset rule, not a column shift', () => {
+    // Spec section 5 asks for the 3px inset rule plus the ink weight as
+    // the marker. The offset lives inside the guest cell: a padding-left
+    // on the grid row re-lays the template and moves every column right
+    // of the header and the sibling rows (PR #689 review S1).
+    const selected = ruleBody(`#shell ${VIEW} .bookings-row-selected`);
+    expect(selected).toContain(`box-shadow: inset 3px 0 0 ${deskTokens.colors.primary}`);
+    expect(selected).not.toContain('padding');
+    expect(
+      ruleBody(`#shell ${VIEW} .bookings-row-selected .bookings-guest-cell`),
+    ).toContain('padding-left: 10px');
+  });
+
   it('mutes the guest-name action on a cancelled or no-show row', () => {
     // Spec section 5: an inactive row renders its value text in the
     // muted ink so it reads as inactive at a glance. The row scope alone

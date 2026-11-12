@@ -2658,6 +2658,13 @@ export default defineComponent({
 
   #shell [data-testid="bookings-view"] .bookings-row-selected {
     box-shadow: inset 3px 0 0 #0F766E;
+  }
+
+  /* The selected-row offset sits inside the guest cell, never on the grid
+     row: a row-level padding-left re-lays the grid template and moves
+     every column right of the header and the sibling rows (PR #689
+     review S1). */
+  #shell [data-testid="bookings-view"] .bookings-row-selected .bookings-guest-cell {
     padding-left: 10px;
   }
 

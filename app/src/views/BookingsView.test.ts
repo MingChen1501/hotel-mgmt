@@ -603,6 +603,38 @@ describe('booking register (Refs #648)', () => {
     expect(wrapper.find('[data-testid="bookings-column-partial"]').exists()).toBe(false);
   });
 
+  // BM6 - the negative control for "partial": an empty in-house answer is
+  // a valid read, not a failed column. Without this case the empty read
+  // could start counting as a partial row or raise the column notice, and
+  // staff would read the room column as broken when it simply answered.
+  it('keeps the Room cell at — with no column notice on an empty in-house read', async () => {
+    const backend = seedBackend({
+      calendar: [
+        {
+          reservationRef: 'REF-6001',
+          roomTypeId: SUITE_TYPE,
+          arrivalDate: day(0),
+          departureDate: day(2),
+          state: 'checked-in',
+          stayId: 'stay-uuid-1',
+        },
+      ],
+      records: {
+        'REF-6001': { guestFullName: 'In House', totalMinor: 100000 },
+      },
+      inHouse: [],
+    });
+    installFetch(backend);
+    const wrapper = mountView();
+    await waitForLoad(wrapper);
+    expect(rows(wrapper)).toHaveLength(1);
+    expect(cellText(wrapper, 'bookings-row-room', 0)).toBe('—');
+    // The empty answer is still an answer: no row and no column may claim
+    // a bad read.
+    expect(wrapper.find('[data-testid="bookings-row-partial"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="bookings-column-partial"]').exists()).toBe(false);
+  });
+
   // BM7 - ordering and the 50-row cap.
   it('sorts by arrival then reference and reads only the earliest 50', async () => {
     const calendar: FakeEntry[] = [];
@@ -642,6 +674,13 @@ describe('booking register (Refs #648)', () => {
     // the in-house pair, and one read per capped row. The qa-lead row
     // states 54, so the total is what the case pins.
     expect(backend.calls).toHaveLength(1 + 1 + 2 + 50);
+    // The same range reads the same 50 bookings on a re-run (BM7 row).
+    const firstRun = readRefs(backend);
+    await wrapper.find('[data-testid="bookings-filter-form"]').trigger('submit');
+    await waitForLoad(wrapper);
+    const secondRun = readRefs(backend).slice(firstRun.length);
+    expect(secondRun).toEqual(firstRun);
+    expect(rows(wrapper)).toHaveLength(50);
   });
 
   // BM8 - every state is listed with catalogue wording.
