@@ -1595,4 +1595,4 @@ sections 1–16 done-conditions keep their behaviour. `BMV` is the
 domain code for this family.
 
 <!-- ao-role: product-owner -->
-Role: product-owner · AO session hotel-mgmt-1011
+Role: product-owner · AO session hotel-mgmt-1013
