@@ -368,12 +368,12 @@ matching. The table holds 41 keys: 39 `desk.bookings.*` and the two
 `desk.shell.*` keys.
 
 The catalogue layer substitutes `{param}` into one flat pattern and has
-no plural forms, so every `{count}` sentence is worded to read correctly
-for one and for many. `desk.bookings.row_partial` therefore counts *of*
-the listed bookings instead of putting the numeral in front of a
-countable noun: one failed row reads "Could not read the guest name or
-total for 1 of the listed bookings.", and several read the same sentence
-with the higher count (G1 on PR #689).
+no plural forms, so `desk.bookings.row_partial` counts *of* the listed
+bookings instead of putting the numeral in front of a countable noun:
+one failed row reads "Could not read the guest name or total for 1 of
+the listed bookings.", and several read the same sentence with the
+higher count (G1 on PR #689). `desk.bookings.capped` keeps its plural
+wording because its count is always the 50-row cap, never one.
 
 | Key | English | Vietnamese (primary) |
 |---|---|---|
