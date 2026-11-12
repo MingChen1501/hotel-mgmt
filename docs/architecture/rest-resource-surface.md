@@ -213,10 +213,13 @@ changes nothing structural.
 
 ## 9. Coverage checklist
 
-All 62 `contracts/http/*.json` files mapped above (9 reservations +
+All 62 `contracts/http/*.json` files mapped above (8 reservations +
 8 stay + 10 rooms + 7 rates + 6 guests + 9 billing + 4 reporting +
-10 admin = 64 rows counting the two cross-module placements of
-`ProduceConfirmation`; every file appears at least once):
+10 admin = 62 rows, one per file; that 62 excludes the 6 LLD-only
+non-file rows, so sections 1–8 hold 68 data rows in total, and
+`ProduceConfirmation` occupies a single row, in section 5, even
+though its path lives under reservations; every file appears at
+least once):
 
 - Reservations: `CreateReservation`, `ModifyReservation`,
   `CancelReservation`, `MarkNoShow`, `GetReservation`,
