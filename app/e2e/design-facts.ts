@@ -495,10 +495,11 @@ export interface RoomMapFacts {
 // App-only nav tab allowance (Refs #590, schema section 8): the
 // rooms and rates management screen adds one desk tab the seven owner
 // boards do not draw, and the owner boards must not be edited to
-// follow the implementation. The allowance is committed text with
-// exactly one entry today; the comparison inserts it at the declared
-// position instead of loosening the order check, so every other
-// missing, extra, reordered, or relabelled tab still fails.
+// follow the implementation. Refs #648: the read-only booking register
+// adds the second. The allowance is committed text; the comparison
+// inserts each entry at its declared position instead of loosening the
+// order check, so every other missing, extra, reordered, or relabelled
+// tab still fails.
 export interface NavTabAllowance {
   routeKey: string;
   afterRouteKey: string;
@@ -512,6 +513,15 @@ export const NAV_TAB_ALLOWANCES: readonly NavTabAllowance[] = [
     afterRouteKey: 'rooms',
     labels: { vi: 'Quản lý', en: 'Manage' },
     designSource: 'docs/design/RoomsRates.dc.md',
+  },
+  {
+    // Refs #648: the read-only booking register is app-only too. The
+    // shell tab pattern it reuses comes from the Main board; the screen
+    // body is specified by `docs/product/booking-management-view.md`.
+    routeKey: 'bookings',
+    afterRouteKey: 'book',
+    labels: { vi: 'Sổ đặt phòng', en: 'Bookings' },
+    designSource: 'docs/design/Main.dc.html',
   },
 ];
 

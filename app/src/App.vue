@@ -255,16 +255,20 @@ interface NavItem {
 // Design-header order (Refs #539, #472, FR-DSK-1, D1): Desk ·
 // Rooms · Manage · Book · Stay · Folio · Print · Admin — the seven
 // v2 `.dc.html` header tabs plus the app-only `manage` tab (#590,
-// owner decision O-1, allowance in
-// `docs/technical/desk-ui-fact-schema.md` section 8). Onboarding has
-// no design-header tab: /onboarding stays reachable through the
-// empty-database auto-launch plus its deep route (the route stays
-// registered in `router.ts`; this list is the visible set only).
+// owner decision O-1) and the app-only `bookings` tab (#648), both
+// with allowance entries in
+// `docs/technical/desk-ui-fact-schema.md` section 8. `bookings` sits
+// immediately after `Book`, grouping booking creation with booking
+// browsing. Onboarding has no design-header tab: /onboarding stays
+// reachable through the empty-database auto-launch plus its deep
+// route (the route stays registered in `router.ts`; this list is the
+// visible set only).
 const NAV_ITEMS: NavItem[] = [
   { name: 'desk', to: '/', labelKey: 'desk.shell.nav_desk', fallback: 'Desk' },
   { name: 'rooms', to: '/rooms', labelKey: 'desk.shell.nav_rooms', fallback: 'Rooms' },
   { name: 'manage', to: '/manage', labelKey: 'desk.shell.nav_manage', fallback: 'Manage' },
   { name: 'book', to: '/book', labelKey: 'desk.shell.nav_book', fallback: 'Book' },
+  { name: 'bookings', to: '/bookings', labelKey: 'desk.shell.nav_bookings', fallback: 'Bookings' },
   { name: 'stay', to: '/stay', labelKey: 'desk.shell.nav_stay', fallback: 'Stay' },
   { name: 'folio', to: '/folio', labelKey: 'desk.shell.nav_folio', fallback: 'Folio' },
   { name: 'print', to: '/print', labelKey: 'desk.shell.nav_print', fallback: 'Print' },
@@ -2447,6 +2451,302 @@ export default defineComponent({
     flex-direction: column;
     gap: 8px;
     align-items: flex-start;
+  }
+
+  /* Read-only booking register (Refs #648): an app-only screen over
+     five existing reads, so no owner board styles it. The screen borrows
+     the desk shell, card, and row vocabulary: the h1 `22px/700` plus the
+     muted `14px` intro, one filter card, one list card with a static
+     header row and one row per booking, and a detail card under the
+     list. Cards render `background:#FFFFFF;border:1px solid #D9E0DE;
+     border-radius:12px;padding:18px`; rows are `15px` lines with `1px
+     solid #EEF1F0` dividers; the row's guest name is a link-styled `44px`
+     action with the reference in muted ink beneath it, and the selected
+     row carries a `3px` inset left rule in the primary accent plus the
+     ink weight. Token values live in `src/theme/tokens.ts`; this rule
+     duplicates them because CSS cannot import the TS constants. Views
+     carry no style blocks (M4), so the presentation lives here. Zero new
+     tokens: no value below is outside the shared palette. */
+  #shell .bookings-head {
+    margin-bottom: 8px;
+  }
+
+  #shell .bookings-title {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 700;
+    color: #1B2B2A;
+  }
+
+  #shell .bookings-intro {
+    margin: 4px 0 0;
+    font-size: 14px;
+    color: #4B5D5B;
+  }
+
+  #shell [data-testid="bookings-view"] .p-card {
+    border: 1px solid #D9E0DE;
+    border-radius: 12px;
+    background: #FFFFFF;
+    box-shadow: none;
+    margin: 16px 0 0;
+  }
+
+  #shell [data-testid="bookings-view"] .p-card-body {
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  #shell [data-testid="bookings-view"] .p-card-caption,
+  #shell [data-testid="bookings-view"] .p-card-content {
+    padding: 0;
+  }
+
+  #shell [data-testid="bookings-view"] .p-card-title h2 {
+    margin: 0;
+    font-size: 16px;
+    color: #1B2B2A;
+  }
+
+  #shell [data-testid="bookings-view"] .bookings-filter {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 16px;
+  }
+
+  #shell [data-testid="bookings-view"] .bookings-filter label {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 14px;
+    color: #1B2B2A;
+  }
+
+  #shell [data-testid="bookings-view"] .bookings-filter .p-datepicker,
+  #shell [data-testid="bookings-view"] .bookings-filter .p-datepicker-input {
+    width: 180px;
+    min-height: 44px;
+    box-sizing: border-box;
+    font: inherit;
+  }
+
+  #shell [data-testid="bookings-view"] .bookings-filter-action {
+    display: flex;
+    align-items: flex-end;
+  }
+
+  #shell [data-testid="bookings-view"] .bookings-action.p-button {
+    min-height: 44px;
+    padding: 0 18px;
+    border-radius: 8px;
+    border: 0;
+    background: #0F766E;
+    color: #FFFFFF;
+    font-weight: 600;
+  }
+
+  #shell [data-testid="bookings-view"] .bookings-action-secondary.p-button {
+    min-height: 44px;
+    padding: 0 18px;
+    border-radius: 8px;
+    border: 1px solid #0F766E;
+    background: #FFFFFF;
+    color: #0F766E;
+    font-weight: 600;
+  }
+
+  #shell [data-testid="bookings-view"] .bookings-hint {
+    margin: 8px 0 0;
+    font-size: 14px;
+    color: #4B5D5B;
+  }
+
+  #shell [data-testid="bookings-view"] .bookings-error {
+    margin: 8px 0 0;
+    font-size: 14px;
+    color: #B91C1C;
+  }
+
+  #shell [data-testid="bookings-view"] .bookings-list-error {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    margin-top: 16px;
+  }
+
+  #shell [data-testid="bookings-view"] .bookings-notices {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 16px;
+  }
+
+  #shell [data-testid="bookings-view"] .bookings-notice {
+    margin: 0;
+    font-size: 14px;
+    color: #4B5D5B;
+  }
+
+  #shell [data-testid="bookings-view"] .bookings-row {
+    display: grid;
+    grid-template-columns:
+      minmax(180px, 1.6fr)
+      minmax(110px, 1fr)
+      80px
+      110px
+      110px
+      70px
+      minmax(110px, 1fr)
+      120px;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 0;
+    border-top: 1px solid #EEF1F0;
+    font-size: 15px;
+    color: #1B2B2A;
+  }
+
+  #shell [data-testid="bookings-view"] .bookings-row-head {
+    border-top: 0;
+    padding-top: 0;
+    font-size: 13px;
+    color: #4B5D5B;
+  }
+
+  #shell [data-testid="bookings-view"] .bookings-guest-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  #shell [data-testid="bookings-view"] .bookings-row-ref {
+    font-size: 13px;
+    color: #4B5D5B;
+  }
+
+  #shell [data-testid="bookings-view"] .bookings-row-open {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 0;
+    margin: 0;
+    border: 0;
+    background: none;
+    color: #0F766E;
+    font: inherit;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  /* A cancelled or no-show row reads as inactive at a glance: its value
+     text takes the muted ink (spec section 5). The guest name is a
+     button with its own active-link ink, so the inactive scope has to
+     re-ink it explicitly or the one cell staff read first stays teal. */
+  #shell [data-testid="bookings-view"] .bookings-row-inactive {
+    color: #4B5D5B;
+  }
+
+  #shell [data-testid="bookings-view"] .bookings-row-inactive .bookings-row-open {
+    color: #4B5D5B;
+  }
+
+  #shell [data-testid="bookings-view"] .bookings-row-selected {
+    box-shadow: inset 3px 0 0 #0F766E;
+  }
+
+  /* The selected-row offset sits inside the guest cell, never on the grid
+     row: a row-level padding-left re-lays the grid template and moves
+     every column right of the header and the sibling rows (PR #689
+     review S1). */
+  #shell [data-testid="bookings-view"] .bookings-row-selected .bookings-guest-cell {
+    padding-left: 10px;
+  }
+
+  #shell [data-testid="bookings-view"] .bookings-row-selected .bookings-row-open {
+    color: #1B2B2A;
+  }
+
+  #shell [data-testid="bookings-view"] .p-tag {
+    background: #F4F6F5;
+    color: #1B2B2A;
+    border: 1px solid #D9E0DE;
+    white-space: nowrap;
+  }
+
+  #shell [data-testid="bookings-view"] .bookings-empty {
+    margin: 0;
+    padding: 10px 0;
+    font-size: 15px;
+    color: #4B5D5B;
+  }
+
+  #shell [data-testid="bookings-view"] .bookings-detail-ref {
+    margin: 0 0 8px;
+    font-size: 15px;
+    font-weight: 600;
+    color: #1B2B2A;
+  }
+
+  #shell [data-testid="bookings-view"] .bookings-detail {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin: 0;
+  }
+
+  #shell [data-testid="bookings-view"] .bookings-detail-line {
+    display: flex;
+    gap: 12px;
+    font-size: 15px;
+    color: #1B2B2A;
+  }
+
+  #shell [data-testid="bookings-view"] .bookings-detail-line dt {
+    min-width: 160px;
+    color: #4B5D5B;
+  }
+
+  #shell [data-testid="bookings-view"] .bookings-detail-line dd {
+    margin: 0;
+  }
+
+  #shell [data-testid="bookings-view"] .bookings-detail-error {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+  }
+}
+
+/* Narrow header row (Refs #648, R-12). The ninth tab is app-only, so
+   below the design width the nine localized tabs plus the locale pill
+   and the session control no longer fit beside a visible brand: with
+   the brand already shrunk to zero, the VI row overflowed a 1200px
+   viewport (the `signin.spec.ts` header pin). The design keeps every
+   tab, the pill, and the session control at their size and leaves the
+   brand as the only shrinkable item, so this rule tightens the tab
+   row's own spacing below the 1280px desk kiosk width: the inter-item
+   gap goes 8px -> 4px (owner decision for #648) and each tab's side
+   padding 16px -> 12px, which leaves the brand room to stay visible and
+   gives the row enough slack for the font-metric differences between
+   hosts. Every control keeps its size, and 1280px and wider keep the
+   design values. The product spec reserves the alternative (a shorter tab
+   label) to the owner; the owner chose this spelling, recorded in
+   `docs/testing/evidence/648/README.md`. */
+@media screen and (max-width: 1279px) {
+  #shell .shell-nav {
+    gap: 4px;
+  }
+
+  #shell .shell-nav-item,
+  #shell .shell-nav-item.shell-nav-active {
+    padding: 10px 12px;
   }
 }
 </style>
