@@ -4086,7 +4086,8 @@ Explicit no-change statements for this change:
   is the precedent; `app/src/App.vue:255-272`). Onboarding keeps no
   tab; every other destination, the locale pill, the session control,
   the sign-in gate, and the `1200px` content column keep their
-  behaviour.
+  behaviour. One shell value is the decided exception, not an incidental
+  one (R19): the sub-`1280px` nav-spacing rule from D-29.
 - **Operation surface.** No new operation, path, field, parameter, or
   error code: the five reads above are used exactly as contracted, and
   the view calls no write operation at all. `ModifyReservation`,
@@ -4415,9 +4416,23 @@ Shell and route guards to extend, never delete:
 - `app/src/router.test.ts:155-175` — the `bookings` route carries
   `desk.shell.doc_title_bookings` with its fallback, and the route
   registry test sees the new path.
+- `app/src/shell-restyle.test.ts` — new case for the narrow band (D-29):
+  the suite reads the `@media screen and (max-width: 1279px)` block
+  through its own band-scoped reader, because the existing assertion
+  reads only the first matching rule body and would keep passing on the
+  design value. It asserts the base `gap: 8px` / `padding: 10px 16px`
+  still holds for the design band and `gap: 4px` / `padding: 10px 12px`
+  inside the band, with the label, `10px` vertical padding, `44px`
+  target, `8px` radius, inversion, pill, session control, and brand-only
+  shrink rule unchanged. A first-match read of the narrow block is the
+  negative control that fails it.
 - `docs/product/desk-ui-pixel-faithful-restyle.md`'s 1200px rule — the
   first implementation PR carries the nine-tab measurement in both
-  locales (product spec section 3; risk register R-12).
+  locales at the `1200px` band and the narrow band either side of the
+  breakpoint (`1279px` and `1280px`), so the record shows the row
+  fitting, nothing truncating or wrapping, and the design values
+  returning at and above `1280px` (product spec section 3; risk
+  register R-12; D-29).
 
 Browser/lab guards (`app/e2e/bookings.spec.ts`, new; the
 `app/e2e/manage.spec.ts:73` flow is the shape): a created booking is
@@ -4474,11 +4489,29 @@ Stack and repo gates: `cd app && npm ci && npm run build && npm run lint
   sentence. The screen's full copy set is 41 new keys: 39
   `desk.bookings.*` plus `desk.shell.nav_bookings` and
   `desk.shell.doc_title_bookings`.
-- **R19 — the ninth tab at `1200px`.** The shell keeps the brand-only
-  shrink rule and the tab, locale pill, and session control keep their
-  size. If the measured nine-tab row overflows, the owner decides
-  between a shorter label and a shell rule change (product spec section
-  3, decision D-28); the tab never truncates or wraps silently.
+- **R19 — closed: the ninth tab at `1200px` (D-29).** Measured in the
+  `1200px` desk band, the nine-tab row does not fit at the boards' nav
+  spacing, and the owner decided on #648 to tighten that spacing below a
+  `1280px` viewport instead of shortening the label. The decided shell
+  change is one `@media screen and (max-width: 1279px)` block in
+  `app/src/App.vue`: the inter-tab `gap` goes `8px` -> `4px` and each
+  tab's side padding `10px 16px` -> `10px 12px`, which returns `8px` of
+  width per tab to the row, so `1280px` and wider keep every design
+  value byte for byte. Nothing else moves in that band: the label, the
+  `10px` vertical padding, the `44px` target, the `8px` radius, the
+  active-tab inversion, the locale pill, the session control, and the
+  brand-only shrink rule all hold, and the tab never truncates or wraps
+  silently. This is the one deliberate departure from the boards on the
+  shell; because the boards stay read-only (D-12/D-15) the divergence is
+  recorded in the specs rather than in a board file — product spec
+  section 3 and
+  `docs/product/desk-ui-pixel-faithful-restyle.md` section 4
+  ("Narrow-width nav overrides"), with D-29 in
+  `docs/project/decision-log.md`. The shorter-label alternative stays
+  reserved to the owner and was declined for this change, and the
+  overflow rule survives for a row that still overflows at the narrow
+  spacing. The guard that keeps this decided value from drifting is the
+  narrow-block assertion in 24.8.
 - **Re-tier trigger.** A shape that needs a new operation or field, a
   stored register row, a paginated read, a server-side join, a new
   lifecycle state, or a migration is T3: it needs an ADR, the owner's
@@ -4487,4 +4520,4 @@ Stack and repo gates: `cd app && npm ci && npm run build && npm run lint
   the tier stays T2 and the risk stays `risk-medium`.
 
 <!-- ao-role: architect -->
-Role: architect · AO session hotel-mgmt-981
+Role: architect · AO session hotel-mgmt-1017
