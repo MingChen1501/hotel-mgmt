@@ -5908,15 +5908,15 @@ with a retry action. Given a per-row, room-type, in-house-stay, or
 occupied-room (shared-map) read fails; then the screen keeps every row
 it can, the affected cells state that they could not be read instead of
 showing a guessed guest name, amount, room, or type, and one notice
-above the list counts the rows that could not be completed and names each
-failed column in one plain sentence; these partial classes carry no retry
-action of their own, because re-applying the range reads again. In every
-class no booking is silently dropped, no stack trace or envelope code is
-surfaced, and the rest of the desk remains usable. Given the detail read
-fails; then one sentence names the booking that could not be read with a
-retry, the list stays as it was, and the previous detail is not kept as
-if it were current. Traces to:
-`AC-BMV-6`; US-RES-5; `FR-RES-5`, `FR-DSP-3`.
+above the list counts the rows whose guest name or total could not be
+read and names each failed column in one plain sentence; these partial
+classes carry no retry action of their own, because re-applying the
+range reads again. In every class no booking is silently dropped, no
+stack trace or envelope code is surfaced, and the rest of the desk
+remains usable. Given the detail read fails; then one sentence names
+the booking that could not be read with a retry, the list stays as it
+was, and the previous detail is not kept as if it were current. Traces
+to: `AC-BMV-6`; US-RES-5; `FR-RES-5`, `FR-DSP-3`.
 
 FR-BMV-7 — The register is read-only over the operations that exist,
 and its copy and design facts are checked.
@@ -6064,4 +6064,4 @@ as it was.
   `SPEC-GATE PASS` on #648.
 
 <!-- ao-role: business-analyst -->
-Role: business-analyst · AO session hotel-mgmt-1019
+Role: business-analyst · AO session hotel-mgmt-1021
