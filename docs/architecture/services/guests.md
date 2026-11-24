@@ -130,5 +130,13 @@ Contract tests: `contract-tests/` holds fixtures per provided/consumed operation
 script/contract-check.sh
 ```
 
+Ingress bounds (Refs #630): `src/server.ts` caps a request body at
+65 536 bytes (`MAX_BODY_BYTES`) and refuses an oversized body with the
+shared envelope (`VALIDATION_FAILED`, `details` naming `body`) before
+parsing; the server it returns carries `headersTimeout` 5 s,
+`requestTimeout` 10 s, `timeout` 15 s, and `keepAliveTimeout` 10 s. No
+environment variable overrides either value. Details: LLD
+[section 29](../lld.md#29-bounded-request-bodies-and-finite-server-timeouts-refs-630).
+
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-249

@@ -4989,3 +4989,322 @@ accept it so the enum and the maps stay aligned (AC-ERR-2).
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1061
+
+## 29. Bounded request bodies and finite server timeouts (Refs #630)
+
+Tier **T2 confirmed**: a caller-visible refusal for a request body above
+one declared ceiling plus an explicit server-settings change on every
+ingress path, with no new subsystem, dependency edge, data model,
+lifecycle state, reader-visible surface, or code token. ADR-0004 D1 keeps
+the envelope and its status mapping byte-identical, so no ADR and no T3
+record. Product done-conditions are `docs/product/acceptance-criteria.md`
+section 22 (`AC-BND-1`..`AC-BND-5`) with D-34 in
+`docs/project/decision-log.md` and R-13 in
+`docs/project/risk-register.md`; FR/NFR wording is the `business-analyst`
+handoff (`docs/requirements/mvp-requirements.md` section 30, the
+`NFR-BND-*` family, and business rule BR-60), guard traceability the
+`qa-lead` handoff (`docs/testing/traceability-matrix.md` section 22), the
+release note the `release-manager` handoff, and implementation the `dev`
+handoff. This section records only the architect-owned delta: the ceiling
+and its enforcement point in each of the eight services, the server
+timeout table with its sizing rule, the per-flow diagram, the per-service
+Operations notes (`docs/architecture/services/*.md` section 7), and two
+cross-cutting spec edits (`docs/technical/error-handling.md` section 1.1
+and `docs/technical/integration.md` section 10).
+
+### 29.1 One ceiling, and where each service enforces it
+
+**65 536 bytes (64 KiB)** is the request-body maximum for all eight
+backend services, declared once per service as a named constant
+(`MAX_BODY_BYTES` in the four Node services and in Billing,
+`maxBodyBytes` in the three Go services). It is a code constant, not
+configuration: no environment variable, deployment file, runbook step, or
+per-hotel setting carries or overrides it (D-34). The value is 18.6 times
+the largest request schema the contracts hold —
+`contracts/http/ModifyReservation.json` at 3 530 bytes, then
+`CreateReservation.json` at 3 153, `AttachReservation.json` at 3 118, and
+`CheckOut.json` at 3 093 — so every desk payload and contract fixture
+sits far below it.
+
+One constant per service rather than one shared module: the eight services
+are separate build and deploy units (ADR-0001) with no cross-service
+import, and the four Node services already repeat `readBody` and
+`errors.ts` (section 28 records that deduplication as its own repo-layout
+decision). Copying one literal is smaller than a shared package no
+service can import today.
+
+The ceiling is enforced in the one place each stack reads a request body,
+before JSON parsing and before any store, provider, or folio call:
+
+| Service | Stack | Enforcement point | Mechanism |
+|---|---|---|---|
+| Stay, Guests, Rooms, Admin | Node | `readBody`: `services/stay/src/server.ts:10-35`, `services/guests/src/server.ts:10-35`, `services/rooms/src/server.ts:10-35`, `services/admin/src/server.ts:9-34` | count the bytes as chunks arrive, refuse at byte 65 537 and stop accumulating; a declared `content-length` above the ceiling refuses before the first `data` event |
+| Reservations, Rates, Reporting | Go | `decodeBody`: `services/reservations/internal/handler/handler.go:43-66`, `services/rates/internal/handler/handler.go:41-64`, `services/reporting/internal/handler/handler.go:45-68` | refuse when `r.ContentLength` exceeds the ceiling, then wrap `r.Body` in `http.MaxBytesReader(w, r.Body, maxBodyBytes)` before `json.NewDecoder` (`:48`, `:46`, `:50`) and drain the bounded reader after the decode, so a body that under-declares cannot slip its surplus past the decoder |
+| Billing | Spring Boot | a servlet `Filter` on `/*`, ahead of dispatch | refuse when `Content-Length` exceeds the ceiling; otherwise wrap the body in a counting stream that refuses at byte 65 537 and buffers at most the ceiling, then hand Spring that bounded stream |
+
+Why Billing's filter sits ahead of its controller while Node and Go refuse
+after their route and session check: Billing has no ingress session layer
+— Spring resolves the `@RequestBody` argument
+(`services/billing/src/main/java/com/hotel/billing/web/BillingController.java:76`
+and every sibling operation) before the controller's `requireToken` body
+runs (`:67-71`), so a filter is the only place that can precede Jackson.
+Node and Go answer an unknown path
+(`services/stay/src/server.ts:101-109`) and a missing token (`:110-113`;
+`services/reservations/internal/handler/handler.go:102-120`) before
+touching the body, and that order stays: the ceiling governs every request
+whose body the service reads, and every earlier refusal keeps its existing
+answer (AC-BND-4).
+
+Both enforcement shapes refuse before work: no store row, folio line,
+balance, outbox event, or state transition is written, and no operation
+handler runs.
+
+### 29.2 What the refusal carries
+
+- **Code and status: `VALIDATION_FAILED`, 400.** The existing code and the
+  existing status mapping. `contracts/errors/envelope.json` is untouched,
+  so the enum, the four Node maps
+  (`services/stay/src/errors.ts:16-27`, the three siblings carrying the
+  same shape), and Billing's handler keep exactly what they serve today
+  (ADR-0004 D1).
+- **Message: a new plain catalogue sentence,
+  `error.transport.body_too_large`** ("Request body is too large.") added
+  to all eight catalogues:
+  `services/{stay,guests,rooms,admin}/src/messages.en.json`,
+  `services/{reservations,rates,reporting}/internal/messages/en.json`, and
+  `services/billing/src/main/resources/messages/en.json`. It joins the
+  existing `error.transport.*` family; the sentence names no byte count,
+  field path, or internal name.
+- **Details: `{"field": "body"}`** — the established `details.field` shape
+  (`services/admin/src/store.ts:210` is one of many), naming the whole
+  body. `body` matches none of the field names a desk refusal branches on
+  (`stayId`, `folioId`, `paymentId`), so no desk branch changes.
+- **Trace: a fresh `traceId`**, as every refusal carries
+  (`services/stay/src/errors.ts:42-49`; Go `writeJSON`,
+  `services/reservations/internal/handler/handler.go:28-32`; Billing
+  `services/billing/src/main/java/com/hotel/billing/web/ApiExceptionHandler.java:36-42`).
+- **One complete answer, no partial write.** The refusal is one response
+  with `Content-Type: application/json`; the surplus is never
+  concatenated, no truncated JSON is parsed, and no status line or body is
+  written twice. Node stops reading and destroys the unread surplus after
+  the answer; Go's `http.MaxBytesReader` marks the connection to close
+  after the reply; Billing's `server.tomcat.max-swallow-size=65536` bounds
+  how much of the abandoned body the connector discards, so a larger
+  surplus closes the connection instead of being drained in full.
+- **Nothing under the ceiling changes.** Same codes, statuses, messages,
+  and stored effect; a body at exactly 65 536 bytes is served and one byte
+  more is refused (AC-BND-4).
+
+### 29.3 Server timeouts, per stack
+
+Every server the bundle runs declares four finite bounds; no zero,
+disabled, or unset value remains. `0` is not used for any of them.
+
+| Server (services) | Header read | Body read | Response write | Idle |
+|---|---|---|---|---|
+| Go (Reservations, Rates, Reporting) | `ReadHeaderTimeout` 5 s | `ReadTimeout` 10 s | `WriteTimeout` 15 s | `IdleTimeout` 60 s |
+| Node (Stay, Guests, Rooms, Admin) | `headersTimeout` 5 000 ms | `requestTimeout` 10 000 ms | `timeout` 15 000 ms | `keepAliveTimeout` 10 000 ms |
+| Billing (embedded Tomcat) | `server.tomcat.connection-timeout` 5 s | the same connector timeout, 5 s | the same connector timeout, 5 s | `server.tomcat.keep-alive-timeout` 10 s |
+
+Where each server sets them:
+
+- Go: the three `main`s build an `http.Server` carrying `ReadHeaderTimeout`,
+  `ReadTimeout`, `WriteTimeout`, and `IdleTimeout`, then call its
+  `ListenAndServe`, instead of the bare
+  `http.ListenAndServe(addr, newHandler(mux))` at
+  `services/reservations/cmd/server/main.go:52`,
+  `services/rates/cmd/server/main.go:42`, and
+  `services/reporting/cmd/server/main.go:34`.
+- Node: `createServiceServer` sets `headersTimeout`, `requestTimeout`,
+  `timeout`, and `keepAliveTimeout` on the server it returns
+  (`services/stay/src/server.ts:74-89`,
+  `services/guests/src/server.ts:45-60`,
+  `services/rooms/src/server.ts:45-60`, and
+  `services/admin/src/server.ts:53-68`) before `listen` runs
+  (`services/stay/src/index.ts:34`, `services/guests/src/index.ts:21`,
+  `services/rooms/src/index.ts:21`, `services/admin/src/index.ts:34`).
+- Billing: `services/billing/src/main/resources/application.properties`
+  (today eight lines: port, datasource, Flyway — no timeout) gains the
+  three properties. Tomcat's connector timeout is the socket `SO_TIMEOUT`
+  applied to both blocking reads and writes, so the one 5-second value
+  covers header read, body read, and response write on that embedded
+  server; it bounds I/O only, never handler execution, so it cannot cut a
+  handler that waits on a provider.
+
+Sizing rule: every bound is above the largest wait a legitimate desk call
+can make. The longest is the Reservations → Rates pricing read, whose
+client carries a 5-second budget
+(`services/reservations/internal/pricing/client.go:33`); next is Stay's
+completion read at 2 seconds
+(`services/stay/src/reservationsClient.ts:31`). The 15-second
+response-write bound clears the 5-second pricing wait with 10 seconds to
+spare for the store work around it, and the 10-second body-read bound is a
+stall bound, not a throughput target: 64 KiB over the compose network
+arrives in milliseconds. The idle bounds only reclaim a keep-alive socket
+whose peer has gone; they never bound a handler.
+
+A timeout is not a refusal: a peer that stalls mid-body or mid-response
+gets no envelope, because the server cannot answer a request it never
+finished reading or a peer that stopped reading. The connection is freed,
+no operation ran, and the desk sees the request fail the same way it does
+for any dropped connection (AC-BND-3).
+
+### 29.4 Per-flow diagram — body read: served, refused, timed out
+
+```mermaid
+flowchart TD
+    A[POST /v1/MODULE/Operation carrying a body] --> B{route and session answer first, unchanged}
+    B -->|unknown path or wrong method| X1[404 NOT_FOUND, no body read]
+    B -->|missing or invalid session| X2[401 UNAUTHENTICATED, no body read]
+    B -->|route and session accepted| C[read the body under the 65 536-byte ceiling]
+    C -->|declared content-length above the ceiling| R1[refuse before the first chunk]
+    C -->|whole body is 65 536 bytes or fewer| P[parse JSON after the read ends]
+    C -->|streamed byte 65 537 arrives| R2[stop reading, never parse]
+    R1 --> R3[one envelope: 400 VALIDATION_FAILED, details field body, error.transport.body_too_large, fresh traceId]
+    R2 --> R3
+    R3 --> E[no store, provider, folio, or state call ran]
+    P -->|readable object| O[run the operation]
+    P -->|unreadable JSON or not an object| V[existing 400 VALIDATION_FAILED bad_json or body_not_object, unchanged]
+    O --> W[payload written inside the response-write bound]
+    C -->|no byte arrives inside the body-read bound| T1[server closes the connection]
+    T1 --> T2[no operation ran and no envelope is promised: the peer stopped sending]
+    W -->|peer stops draining past the write bound| T3[server abandons the write and frees the connection]
+```
+
+Edge trace (every edge cites code at this spec head; the ceiling and the
+two timeout edges are the guards `AC-BND-5` requires the implementation to
+add):
+
+- A–B: the Node route match is
+  `services/stay/src/server.ts:101-109` (the operation `default` arm at
+  `:167-173` answers an unknown operation with the same 404), the session
+  check `:110-113`; the Go equivalent is the `authed` wrapper
+  `services/reservations/internal/handler/handler.go:102-120`, reached
+  through the envelope chain in
+  `services/reservations/cmd/server/main.go:61-63`.
+- B–X1–X2: the existing `NOT_FOUND` and `UNAUTHENTICATED` answers, and
+  every other existing refusal, are untouched (AC-BND-4); none of them
+  reads a body.
+- B–C: Node `readBody`
+  (`services/stay/src/server.ts:10-35`; Guests and Rooms the same range,
+  Admin `:9-34`); Go `decodeBody`
+  (`services/reservations/internal/handler/handler.go:43-66`; Rates
+  `:41-64`, Reporting `:45-68`); Billing's body-bounding filter ahead of
+  `services/billing/src/main/java/com/hotel/billing/web/BillingController.java:76`.
+- C–R1 and C–R2: the ceiling check the implementation adds in those
+  functions; the refusal stops the read, so the surplus is never
+  accumulated (AC-BND-1).
+- R1–R3 and R2–R3: one `writeJson`/`writeJSON`/`ResponseEntity` answer.
+  Node builds the envelope from `HttpError`
+  (`services/stay/src/errors.ts:42-49`, written by the catch-all at
+  `services/stay/src/server.ts:76-78` and the three siblings); Go writes
+  the same four fields through `writeJSON`
+  (`services/reservations/internal/handler/handler.go:28-32`); Billing
+  through `ApiExceptionHandler`'s `envelope`
+  (`services/billing/src/main/java/com/hotel/billing/web/ApiExceptionHandler.java:36-42`).
+- R3–E: the refusal returns before the operation switch
+  (`services/stay/src/server.ts:114-116`) or before the Go handler body
+  runs (`services/reservations/internal/handler/handler.go:114-118`), so
+  no store, provider, or folio call is reached.
+- P–O and P–V: the existing parse path — `JSON.parse`
+  (`services/stay/src/server.ts:21`), the Go decoder
+  (`services/reservations/internal/handler/handler.go:48-61`), the Spring
+  `@RequestBody` binding — and its existing `bad_json` and
+  `body_not_object` refusals are unchanged.
+- O–W: the existing success write (`services/stay/src/server.ts:37-40`;
+  Go `writeJSON`; the Billing controller's return value).
+- C–T1–T2: the body-read bound in the timeout table; Go `ReadTimeout`,
+  Node `requestTimeout`, Tomcat `connection-timeout`.
+- W–T3: the response-write bound in the same table; Go `WriteTimeout`,
+  Node `timeout`, Tomcat's connector timeout.
+
+### 29.5 Contract delta and what does not change
+
+- **No contract file changes.** `contracts/` is untouched:
+  `VALIDATION_FAILED` is already in `contracts/errors/envelope.json` and
+  its status mapping, no operation schema, request field, or response
+  shape changes, and `script/contract-check.sh` stays green with every
+  fixture resolving (AC-BND-4).
+- **No new dependency.** `http.MaxBytesReader` is Go's standard library;
+  the Node counter and the Billing filter use only the runtime and
+  `spring-boot-starter-web` the service already declares.
+- **No deployment, environment, or runbook delta.** The ceiling and the
+  timeout values are constants (for Billing, fixed properties in the
+  packaged `application.properties`, not environment placeholders), so
+  `deploy/`, the compose file, and the runbooks are untouched; T4 would
+  begin only if a limit moved into configuration, which D-34 forbids.
+- **No desk surface, route, catalogue key other than the one sentence, or
+  print rule changes.** The desk never sends a body near the ceiling and
+  the refusal's `body` field matches no desk branch (AC-BND-4).
+- **No change to any earlier refusal or to a payload under the ceiling.**
+  The `NOT_FOUND`, `UNAUTHENTICATED`, `bad_json`, and `body_not_object`
+  answers keep their code, status, message, and `details`.
+
+### 29.6 Verification plan
+
+`qa-lead` owns the traceability rows (`docs/testing/traceability-matrix.md`
+section 22); this is the architecture-side check the implementation must
+satisfy, one guard per service (AC-BND-5):
+
+- **Boundary, per service (eight guards).** A body at exactly 65 536 bytes
+  is served, one byte more is refused with HTTP 400, `VALIDATION_FAILED`,
+  `details.field` `body`, the `error.transport.body_too_large` sentence,
+  and a `traceId`, with "no operation ran" evidence (no store row, folio
+  line, or balance changed). Natural homes: the four
+  `services/*/src/server.test.ts` files, the three
+  `services/*/internal/handler/handler_test.go` files, and
+  `services/billing/src/test/java/com/hotel/billing/web/BillingControllerTest.java`.
+- **Timeout guards (eight).** Each Go `main`'s `http.Server` carries the
+  four non-zero fields; each Node server reports the four non-zero
+  properties after `createServiceServer`; Billing's effective
+  `application.properties` carries the three settings. A guard that reads
+  the value is enough — no sleeping test.
+- **Catalogue guards (eight).** Each service's message-catalogue test
+  pins `error.transport.body_too_large` to its plain sentence, the way the
+  existing `messages.test.ts` / `messages_test.go` / `MessagesTest.java`
+  tests pin their keys.
+- **Gate commands, per stack** (from the service docs section 7):
+  `go build ./... && go vet ./... && go test ./...` (Go);
+  `npm ci && npm run build && npm run lint && npm test` (Node);
+  `mvn verify` (Billing); plus `script/contract-check.sh` and
+  `script/catalogue-coverage-check.sh` from the repo root.
+- **No fixture drift.** Every existing contract fixture and request schema
+  keeps its answer, because each is under the ceiling (the largest is
+  3 530 bytes).
+
+### 29.7 Residual risks and re-tier trigger
+
+- **The ceiling can be wrong in either direction.** Too small refuses a
+  legitimate desk payload; too large buffers more than the host should
+  hold. R-13 records both. The 18.6-times headroom is the mitigation, and
+  the boundary guard pins it so a future ceiling change is a deliberate
+  edit.
+- **Tomcat has no separate response-write property.** Its connector
+  timeout is the socket read and write timeout, so Billing's one 5-second
+  value serves both; the desk's response envelopes are a few hundred
+  bytes, far inside any socket buffer, so a write stall is a non-issue in
+  practice. If a future Billing response grows, that value is the one to
+  re-check.
+- **Timeouts are not a load control.** Connection limits and rate
+  limiting stay out of scope here; a peer that sends many small requests
+  is bounded per connection, not per volume.
+- **The four Node `readBody` copies and the three Go `decodeBody` copies
+  stay duplicated**, like the four `errors.ts` copies in section 28.
+  Deduplicating them is a repo-layout decision with its own issue; this
+  change adds one constant and one refusal branch per copy.
+- **Re-tier trigger:** moving the ceiling or a timeout into configuration
+  (an environment variable, deployment setting, or per-hotel override) is
+  a T4 change with its own release, deployment, and runbook delta.
+
+### 29.8 Maintain-with-code
+
+The implementation change adds the ceiling, the two refusal branches, the
+eight catalogue keys, the three Go server structs, the four Node server
+properties, and Billing's three settings and filter; it also refreshes this
+section's line pins and the per-service Operations notes if any cited line
+moves (AC-BND-5, `qa-lead`'s traceability section 22). `dev-peer-review`
+treats a stale pin or a missing timeout field as a review finding, the
+same as any drifted spec.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1078
