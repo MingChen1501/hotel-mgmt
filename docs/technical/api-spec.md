@@ -33,7 +33,7 @@ section 4).
   that owns the fact is re-read at the decision point, and an unreadable
   provider fails the operation closed with `UPSTREAM_UNAVAILABLE`
   (`docs/architecture/lld.md` section 21; Refs #601; the folio write path
-  is the second instance, LLD section 25, Refs #634).
+  is the second instance, LLD section 27, Refs #634).
 
 ## 2. Contract outline (per HLD module)
 

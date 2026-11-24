@@ -141,7 +141,7 @@ every request before they write, and `GetFolioBalance` calls it before it
 creates a folio for a stay that has none (a folio Billing already holds
 is served without a Stay read, so a departed stay's invoice and receipts
 keep presenting; ADR-0008, LLD
-[section 25](../architecture/lld.md#25-folio-writes-verify-the-stay-refs-634)).
+[section 27](../architecture/lld.md#27-folio-writes-verify-the-stay-refs-634)).
 The call is `POST {STAY_BASE_URL}/v1/stay/GetStayRef` with the stay id,
 the caller's Bearer token forwarded, `STAY_BASE_URL` default
 `http://stay:8084`, a 2-second timeout (inside NFR-PERF-1's 3-second
@@ -179,7 +179,7 @@ an unknown stay -> `NOT_FOUND`, a stay outside in-house -> `STATE_ILLEGAL`
 naming the state, an unread Stay -> `UPSTREAM_UNAVAILABLE` (503) with
 nothing written. A folio Billing already holds stays readable in every
 stay state, so `ProduceInvoice` / `ProduceReceipt` and `GetDayClose` are
-unaffected (ADR-0008, LLD section 25).
+unaffected (ADR-0008, LLD section 27).
 
 ## 5. Housekeeping loop (BA section 5; provider: Rooms, SYNC)
 

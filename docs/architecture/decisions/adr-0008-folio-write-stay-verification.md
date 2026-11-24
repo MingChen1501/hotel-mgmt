@@ -48,9 +48,9 @@ unknown stay and `STATE_ILLEGAL` naming the state for anything outside
 Inputs this record builds on:
 
 - Product scope and done-conditions:
-  `docs/product/acceptance-criteria.md` section 18 (`AC-FWV-1`..`AC-FWV-7`),
-  the scope decision D-30 in `docs/project/decision-log.md`, and the desk
-  delta in `docs/product/desk-ui-design-rollout.md` section 6.19.
+  `docs/product/acceptance-criteria.md` section 20 (`AC-FWV-1`..`AC-FWV-7`),
+  the scope decision D-32 in `docs/project/decision-log.md`, and the desk
+  delta in `docs/product/desk-ui-design-rollout.md` section 6.21.
 - `BR-18` already states that no folio line posts against a closed stay
   and `BR-21` that a stay carries exactly one folio; `FR-BIL-1`..`FR-BIL-4`
   and `FR-BIL-7` already require that every folio line and receipt
@@ -94,7 +94,7 @@ folio is served in every stay state) governs it, and `AC-FWV-3`'s
 "open the folio balance" clause binds the folio-creating read. Serving an
 existing folio cannot produce an unverified folio, which is what
 `AC-FWV-3` exists to prevent, so the readings do not conflict in effect;
-the resolution is written out in `docs/architecture/lld.md` section 25.2
+the resolution is written out in `docs/architecture/lld.md` section 27.2
 for the `product-owner` to confirm at the spec gate.
 
 ### D3 — No new refusal vocabulary
@@ -213,7 +213,7 @@ unchanged: the provider side already answers correctly.
 - Guards: Billing unit guards for the unknown-stay, closed-stay, and
   unreadable-Stay callers on each route plus the two regression paths
   (`AC-FWV-7`); the verification plan is
-  `docs/architecture/lld.md` section 25.8 and the qa-lead traceability
+  `docs/architecture/lld.md` section 27.8 and the qa-lead traceability
   row is a sibling handoff.
 - This ADR starts at `proposed`; only the owner flips it to `accepted`.
   The implementation PR starts only after owner acceptance plus a T3
@@ -238,7 +238,7 @@ unchanged: the provider side already answers correctly.
 - Any caching, mirroring, or offline replica of stay state inside
   Billing.
 - Desk panel, copy, and print changes: the refusal sentences are product
-  section 6.19 and land with the implementation PR.
+  section 6.21 and land with the implementation PR.
 
 ## Options considered
 
