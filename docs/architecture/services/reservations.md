@@ -171,7 +171,7 @@ folds into sections 2, 3, 4, 5, 6, and 7 in the same change
 (maintain-with-code). Today section 5 says the Rooms
 `CheckRoomTypeSellability` outbound call "remains a future slice" and the
 desk supplies `sellableUnits`, which is the guard's only ceiling
-(`internal/store/store.go:221`, `:375`).
+(`internal/store/store.go:222`, `:415`).
 
 - New outbound client beside `internal/pricing/`: one Rooms
   `CheckRoomTypeSellability` read per booking attempt,
@@ -184,9 +184,9 @@ desk supplies `sellableUnits`, which is the guard's only ceiling
   `totalCount - len(blockedRooms)` for the effective room type and dates
   and pass it to the store as a derived input; the request's
   `sellableUnits` stops reaching the store, so the
-  `input.SellableUnits < 1` validation (`internal/store/store.go:202`,
-  `:337`) and the handler's absent-means-zero default
-  (`internal/handler/handler.go:344`) go with it.
+  `input.SellableUnits < 1` validation (`internal/store/store.go:203`,
+  `:377`) and the handler's absent-means-zero default
+  (`internal/handler/handler.go:366`) go with it.
 - The store keeps its one-critical-section count-and-insert shape; the
   counted states stay `confirmed` + `checked-in`.
 - New `UPSTREAM_UNAVAILABLE` branch in the message catalogue plus the
