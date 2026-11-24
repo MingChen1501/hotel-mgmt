@@ -277,10 +277,4 @@ fixed within the working day, roll back:
    restore-and-redeploy procedure) and file an issue for the failure.
 
 <!-- ao-role: release-manager -->
-Role: release-manager · AO session hotel-mgmt-948
-
-<!-- ao-role: release-manager -->
-Role: release-manager · AO session hotel-mgmt-963
-
-<!-- ao-role: release-manager -->
-Role: release-manager · AO session hotel-mgmt-993
+Role: release-manager · AO session hotel-mgmt-1041

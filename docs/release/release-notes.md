@@ -341,13 +341,4 @@ and until then the desk reports it per `../operations/runbook.md`
 section 7); and the availability decision stays with its own issue.
 
 <!-- ao-role: release-manager -->
-Role: release-manager · AO session hotel-mgmt-948
-
-<!-- ao-role: release-manager -->
-Role: release-manager · AO session hotel-mgmt-963
-
-<!-- ao-role: release-manager -->
-Role: release-manager · AO session hotel-mgmt-969
-
-<!-- ao-role: release-manager -->
-Role: release-manager · AO session hotel-mgmt-993
+Role: release-manager · AO session hotel-mgmt-1041

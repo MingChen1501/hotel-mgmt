@@ -552,10 +552,4 @@ monitoring exporter lands it is read from these desk reports, so log
 every occurrence in the support ticket with its time.
 
 <!-- ao-role: release-manager -->
-Role: release-manager · AO session hotel-mgmt-948
-
-<!-- ao-role: release-manager -->
-Role: release-manager · AO session hotel-mgmt-963
-
-<!-- ao-role: release-manager -->
-Role: release-manager · AO session hotel-mgmt-993
+Role: release-manager · AO session hotel-mgmt-1041

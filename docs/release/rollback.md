@@ -270,10 +270,4 @@ implementation PR (`../requirements/mvp-requirements.md` section 23.6,
 `../architecture/lld.md` section 22.7).
 
 <!-- ao-role: release-manager -->
-Role: release-manager · AO session hotel-mgmt-948
-
-<!-- ao-role: release-manager -->
-Role: release-manager · AO session hotel-mgmt-963
-
-<!-- ao-role: release-manager -->
-Role: release-manager · AO session hotel-mgmt-993
+Role: release-manager · AO session hotel-mgmt-1041
