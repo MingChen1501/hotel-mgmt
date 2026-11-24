@@ -1475,8 +1475,8 @@ Tier T3: the availability decision moves from a request field to a
 server-side read of the hotel's recorded capacity, which gives the
 booking path a fail-closed capacity dependency and changes the
 booking workflow's trust boundary. The decision record is the
-`architect`'s ADR for the capacity seam (proposed; the owner accepts
-it before the implementation PR merges), and the implementation
+`architect`'s ADR for the capacity seam (ADR-0006, accepted
+2026-11-24), and the implementation
 design plus the per-flow happy and failure/rollback diagrams are the
 `architect`'s HLD/LLD delta. Which service owns the capacity read —
 Rates' per-date sellable inventory or the Rooms room inventory — is

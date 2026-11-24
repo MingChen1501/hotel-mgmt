@@ -2413,8 +2413,8 @@ binding done-conditions are `AC-OVB-1`, `AC-OVB-2`, and `AC-OVB-3` in
 `docs/product/acceptance-criteria.md`
 [section 19](acceptance-criteria.md); `AC-RES-1` and `AC-RES-2` gain
 the pointer. The capacity seam's decision record is the `architect`'s
-ADR (proposed; the owner accepts it before the implementation PR
-merges), with the implementation design and the per-flow happy and
+ADR (ADR-0006, accepted 2026-11-24), with the implementation design
+and the per-flow happy and
 failure/rollback diagrams in the HLD/LLD delta. FR/NFR wording and
 business rules are owned by `business-analyst`, guard mapping and
 traceability by `qa-lead`, the release and rollback note by
