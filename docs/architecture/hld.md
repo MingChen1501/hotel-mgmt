@@ -452,7 +452,7 @@ plus one error code). The Rates availability count is not the ceiling: its
 `totalUnits` input is itself a request value and its fallback number is
 not maintained. Decision record:
 `docs/architecture/decisions/adr-0006-server-side-availability-derivation.md`
-(proposed); flow detail and the verification plan:
+(accepted 2026-11-24); flow detail and the verification plan:
 `docs/architecture/lld.md` section 22; trust-boundary and
 residual-risk deltas: `docs/technical/security-threat-model.md`
 sections 2 and 8; product conditions `AC-OVB-1`..`AC-OVB-3` and risk R-10.

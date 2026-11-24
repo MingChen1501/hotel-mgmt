@@ -127,7 +127,7 @@ Contract tests: `contract-tests/` holds fixtures per provided/consumed operation
 script/contract-check.sh
 ```
 
-## 8. Planned delta — server-side availability derivation (Refs #631, ADR-0006 proposed)
+## 8. Planned delta — server-side availability derivation (Refs #631, ADR-0006 accepted)
 
 Not as-built yet: this section records the target the implementation PR
 folds into sections 2, 3, 4, 5, 6, and 7 in the same change

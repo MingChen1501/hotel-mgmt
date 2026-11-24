@@ -1,8 +1,10 @@
 # ADR-0006: Reservation availability — the recorded room inventory is the ceiling
 
-Status: proposed (Refs #631). Owned by `architect`.
+Status: accepted (owner acceptance 2026-11-24, recorded on #631 as
+issuecomment-7128035394; the spec gate re-run is the remaining start
+condition). Owned by `architect`.
 
-Date: 2026-11-10 (proposed).
+Date: 2026-11-10 (proposed); accepted 2026-11-24.
 
 ## Context
 
@@ -228,9 +230,10 @@ No new catalogue key, control, or screen.
   behaviour returns with the request's number; the desk still sends the
   field in both directions, so no desk change and no data migration is
   needed either way.
-- This ADR starts `proposed`; only the owner flips it to `accepted`.
-  Implementation starts only after owner acceptance plus a T3
-  `SPEC-GATE PASS` on #631.
+- This ADR was accepted by the owner on 2026-11-24 (#631
+  issuecomment-7128035394; only the owner flips `proposed -> accepted`).
+  Implementation still starts only after a T3 `SPEC-GATE PASS` on the
+  then-current spec-stack tip.
 
 ## Out of scope
 

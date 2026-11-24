@@ -3225,8 +3225,8 @@ request field to another module's recorded inventory, adding one
 synchronous module-to-module read with a fail-closed refusal; no schema
 or data-model change; the contract change is additive only). ADR-0006
 (`docs/architecture/decisions/adr-0006-server-side-availability-derivation.md`,
-proposed) records the source choice and the seam. The finding is audit
-item R1: `sellableUnits` is read from the request body
+accepted 2026-11-24) records the source choice and the seam. The finding
+is audit item R1: `sellableUnits` is read from the request body
 (`services/reservations/internal/handler/handler.go:129`, `:144`,
 `:217`, `:229`) and is the guard's only ceiling
 (`services/reservations/internal/store/store.go:221`, `:375`), so a

@@ -134,7 +134,7 @@ Contract tests: `contract-tests/` holds fixtures per provided/consumed operation
 script/contract-check.sh
 ```
 
-## 8. Planned delta — capacity consumer on the booking path (Refs #631, ADR-0006 proposed)
+## 8. Planned delta — capacity consumer on the booking path (Refs #631, ADR-0006 accepted)
 
 Not as-built yet: this section records the target the implementation PR
 reads back into sections 3 and 5 in the same change
