@@ -158,7 +158,7 @@ func (p *Postgres) Create(input CreateInput, idempotencyKey string) (*Reservatio
 	}()
 	if idempotencyKey != "" {
 		var existingRef string
-		err := tx.QueryRow(`SELECT result_ref FROM reservations.idempotency_keys WHERE key = $1`, idempotencyKey).Scan(&existingRef)
+		err := tx.QueryRow(`SELECT result_ref FROM reservations.idempotency_keys WHERE key = $1`, idemKey("CreateReservation", "", idempotencyKey)).Scan(&existingRef)
 		if err == nil && existingRef != "" {
 			record, oerr := p.getInTx(tx, existingRef)
 			if oerr != nil {
@@ -230,13 +230,13 @@ func (p *Postgres) Create(input CreateInput, idempotencyKey string) (*Reservatio
 			`INSERT INTO reservations.idempotency_keys (key, operation, result_ref)
 			 VALUES ($1,'CreateReservation',$2)
 			 ON CONFLICT (key) DO NOTHING RETURNING result_ref`,
-			idempotencyKey, record.Ref,
+			idemKey("CreateReservation", "", idempotencyKey), record.Ref,
 		).Scan(&winner)
 		if err != nil {
 			// Another attempt won the key first: roll back this
 			// insert and return the original reservation instead.
 			var originalRef string
-			if qerr := tx.QueryRow(`SELECT result_ref FROM reservations.idempotency_keys WHERE key = $1`, idempotencyKey).Scan(&originalRef); qerr != nil || originalRef == "" {
+			if qerr := tx.QueryRow(`SELECT result_ref FROM reservations.idempotency_keys WHERE key = $1`, idemKey("CreateReservation", "", idempotencyKey)).Scan(&originalRef); qerr != nil || originalRef == "" {
 				return nil, &OpError{Code: "VALIDATION_FAILED", Status: 500, Message: messages.Text("error.store.unavailable", nil), Details: map[string]any{}}
 			}
 			original, oerr := p.getInTx(tx, originalRef)
@@ -495,7 +495,7 @@ func (p *Postgres) Modify(input ModifyInput, idempotencyKey string) (*Reservatio
 	}()
 	if idempotencyKey != "" {
 		var existingRef string
-		if err := tx.QueryRow(`SELECT result_ref FROM reservations.idempotency_keys WHERE key = $1`, idempotencyKey).Scan(&existingRef); err == nil && existingRef != "" {
+		if err := tx.QueryRow(`SELECT result_ref FROM reservations.idempotency_keys WHERE key = $1`, idemKey("ModifyReservation", input.Ref, idempotencyKey)).Scan(&existingRef); err == nil && existingRef != "" {
 			record, oerr := p.getInTx(tx, existingRef)
 			if oerr != nil {
 				return nil, oerr
@@ -617,7 +617,7 @@ func (p *Postgres) Modify(input ModifyInput, idempotencyKey string) (*Reservatio
 		if _, err := tx.Exec(
 			`INSERT INTO reservations.idempotency_keys (key, operation, result_ref)
 			 VALUES ($1,'ModifyReservation',$2) ON CONFLICT (key) DO NOTHING`,
-			idempotencyKey, strings.TrimSpace(input.Ref),
+			idemKey("ModifyReservation", input.Ref, idempotencyKey), strings.TrimSpace(input.Ref),
 		); err != nil {
 			return nil, storeUnavailable()
 		}
@@ -663,7 +663,7 @@ func (p *Postgres) Cancel(ref, reason, actor, idempotencyKey string) (*Reservati
 	}()
 	if idempotencyKey != "" {
 		var existingRef string
-		if err := tx.QueryRow(`SELECT result_ref FROM reservations.idempotency_keys WHERE key = $1`, idempotencyKey).Scan(&existingRef); err == nil && existingRef != "" {
+		if err := tx.QueryRow(`SELECT result_ref FROM reservations.idempotency_keys WHERE key = $1`, idemKey("CancelReservation", ref, idempotencyKey)).Scan(&existingRef); err == nil && existingRef != "" {
 			record, oerr := p.getInTx(tx, existingRef)
 			if oerr != nil {
 				return nil, oerr
@@ -710,7 +710,7 @@ func (p *Postgres) Cancel(ref, reason, actor, idempotencyKey string) (*Reservati
 		if _, err := tx.Exec(
 			`INSERT INTO reservations.idempotency_keys (key, operation, result_ref)
 			 VALUES ($1,'CancelReservation',$2) ON CONFLICT (key) DO NOTHING`,
-			idempotencyKey, strings.TrimSpace(ref),
+			idemKey("CancelReservation", ref, idempotencyKey), strings.TrimSpace(ref),
 		); err != nil {
 			return nil, storeUnavailable()
 		}

@@ -381,6 +381,69 @@ describe("desk loop", () => {
     });
   });
 
+  it("scopes an assignment key per room so the same key assigns another room", async () => {
+    const store = new RoomStore();
+    await store.upsertRoomType({ name: "Deluxe", actor: "manager" });
+    await store.upsertRoom({ number: "101", roomType: "Deluxe", actor: "manager" });
+    await store.upsertRoom({ number: "102", roomType: "Deluxe", actor: "manager" });
+    await withServer(async (port) => {
+      const first = await request(port, "POST", "/v1/rooms/AssignRoom", {
+        roomNumber: "101",
+        businessDate: "2026-11-01",
+        stayLink: "stay-1",
+        idempotencyKey: "checkin-1",
+        actor: "front-desk",
+      });
+      const second = await request(port, "POST", "/v1/rooms/AssignRoom", {
+        roomNumber: "102",
+        businessDate: "2026-11-01",
+        stayLink: "stay-1",
+        idempotencyKey: "checkin-1",
+        actor: "front-desk",
+      });
+      assert.equal(first.status, 200);
+      assert.equal(second.status, 200);
+      assert.equal((first.body as { roomNumber: string }).roomNumber, "101");
+      assert.equal((second.body as { roomNumber: string }).roomNumber, "102");
+      const replay = await request(port, "POST", "/v1/rooms/AssignRoom", {
+        roomNumber: "101",
+        businessDate: "2026-11-01",
+        stayLink: "stay-1",
+        idempotencyKey: "checkin-1",
+        actor: "front-desk",
+      });
+      assert.deepEqual(replay.body, first.body);
+    }, store);
+  });
+
+  it("runs the target room's check for an assignment key reused from another room", async () => {
+    const store = new RoomStore();
+    await store.upsertRoomType({ name: "Deluxe", actor: "manager" });
+    await store.upsertRoom({ number: "101", roomType: "Deluxe", actor: "manager" });
+    await store.upsertRoom({ number: "102", roomType: "Deluxe", actor: "manager" });
+    await store.updateRoomState({ roomNumber: "102", newState: "vacant-dirty", actor: "housekeeping" });
+    await withServer(async (port) => {
+      const first = await request(port, "POST", "/v1/rooms/AssignRoom", {
+        roomNumber: "101",
+        businessDate: "2026-11-01",
+        stayLink: "stay-1",
+        idempotencyKey: "checkin-1",
+        actor: "front-desk",
+      });
+      assert.equal(first.status, 200);
+      const otherRoom = await request(port, "POST", "/v1/rooms/AssignRoom", {
+        roomNumber: "102",
+        businessDate: "2026-11-01",
+        stayLink: "stay-1",
+        idempotencyKey: "checkin-1",
+        actor: "front-desk",
+      });
+      assert.equal(otherRoom.status, 422);
+      assert.equal((otherRoom.body as { code: string }).code, "STATE_ILLEGAL");
+      assert.equal((otherRoom.body as { details: { roomNumber: string } }).details.roomNumber, "102");
+    }, store);
+  });
+
   it("blocks a range, releases it, and returns the room to sale", async () => {
     const store = new RoomStore();
     await store.upsertRoomType({ name: "Deluxe", actor: "manager" });

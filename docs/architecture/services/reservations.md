@@ -43,7 +43,7 @@ Edge trace (every edge cites code):
 - B: malformed JSON → `VALIDATION_FAILED` 400 (`internal/handler/handler.go:43-54`).
 - C: `roomTypeId` required (`internal/service/service.go:87-88`), dates must be `YYYY-MM-DD` with departure after arrival (:90-100), `priceBasis.totalMinor` required and non-negative (:101-102), `guest.guestId` required (:104-106), hotel-mandatory fields (default `fullName`) required (:108-113) — all in `internal/service/service.go`.
 - D: server-side `POST {RATES_BASE_URL}/v1/rates/CheckRestrictions` with the caller Bearer token forwarded (`internal/pricing/client.go:43-87`; POST at :52, Bearer forward at :57-59); an unwired hook fails closed with 503 `UPSTREAM_UNAVAILABLE` (`internal/service/service.go:114-116,219-221` via `restrictionsUnavailable` at :76-83); a rates refusal returns its `OpError` unchanged, so the violated restriction stays named in the 422 `STATE_ILLEGAL` envelope (`internal/service/service.go:117-119,222-224`).
-- E: overbooking count over same-type active overlapping stays under one mutex (:211-221), tripping at `booked >= SellableUnits` (:221); idempotency-key replay returns the original record (:207-210) — `internal/store/store.go`.
+- E: overbooking count over same-type active overlapping stays under one mutex (:211-221), tripping at `booked >= SellableUnits` (:221); idempotency-key replay returns the original record (:208-210) — `internal/store/store.go`, with the key namespaced by operation and, for modify/cancel, by the reservation reference. A key reused across operations or reservations runs the new operation instead of replaying another call's result (issue #644).
 - F: record stored `confirmed` with a unique ref, `created` event queued (:228-259); G: `reservationId`, `reservationRef`, `state`, `quotedTotal` returned (`internal/handler/handler.go:157-159`).
 
 ## 4. Failure/rollback flowchart
@@ -52,7 +52,7 @@ Edge trace (every edge cites code):
 flowchart TD
     V[Validation fails] --> R400[400 VALIDATION_FAILED, nothing written]
     O[No unit left] --> R409[409 CONFLICT, nothing written]
-    K[Idempotency key replay] --> R200[200 original record, no double write]
+    K[Same operation/resource key replay] --> R200[200 original record, no double write]
     S[Wrong state for step] --> R422[422 STATE_ILLEGAL, nothing written]
     N[Unknown ref] --> R404[404 NOT_FOUND, nothing written]
 ```
@@ -61,7 +61,7 @@ Edge trace:
 
 - V: any service/handler validation rejects before the store is touched (`internal/service/service.go:87-119`; handler required-field checks, e.g. `internal/handler/handler.go:163-165`).
 - O: `booked >= SellableUnits` → `CONFLICT` "No sellable unit left" (`internal/store/store.go:221`).
-- K: create/modify/cancel replays return the stored record (`internal/store/store.go:208,343,426`; Create/Modify/Cancel thread the key through `internal/service/service.go:120-130,225-236,258`).
+- K: create/modify/cancel replays return the stored record, each keyed by its operation and — for modify/cancel — the reservation reference (`internal/store/store.go:209,383,466`; Create/Modify/Cancel thread the key through `internal/service/service.go:120-130,225-236,258`).
 - S: `CheckIn` requires `confirmed`; Modify/Cancel/MarkNoShow on a non-`confirmed` record go through `stateRefusal` → `STATE_ILLEGAL` 422 (`internal/store/store.go`). `CheckOutReservation` requires `checked-in`, returns the already `closed` booking idempotently, and writes one `state` change row with the actor and time (no event, LLD D5).
 - N: unknown ref → `NOT_FOUND` 404 (`internal/store/store.go:263-268`).
 
@@ -166,3 +166,6 @@ section 22.5.
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-946
+
+<!-- ao-role: dev -->
+Role: dev · AO session hotel-mgmt-1075
