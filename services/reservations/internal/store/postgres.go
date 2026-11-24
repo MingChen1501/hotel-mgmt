@@ -397,6 +397,77 @@ func (p *Postgres) CheckIn(ref, stayID, actor string) (*Reservation, *OpError) {
 	return record, nil
 }
 
+// CheckOutReservation completes the booking behind a closed stay,
+// mirroring the in-memory store (FR-DEP-1, #646, LLD section 22). The
+// stay link selects the row, the conditional write makes the flip
+// exactly-once, and the change history records the actor and time in
+// the same transaction. No outbox row is written (LLD D5).
+func (p *Postgres) CheckOutReservation(stayID, actor string) (*Reservation, *OpError) {
+	tx, err := p.db.Begin()
+	if err != nil {
+		return nil, storeUnavailable()
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+	record, err := scanReservationRows(tx.QueryRow(
+		`SELECT `+reservationColumns+` FROM reservations.reservations WHERE stay_id = $1 FOR UPDATE`,
+		strings.TrimSpace(stayID),
+	))
+	if err == sql.ErrNoRows {
+		return nil, notFound(
+			messages.Text("error.notfound.reservation_for_stay", map[string]string{"stayId": stayID}),
+			map[string]any{"stayId": stayID},
+		)
+	}
+	if err != nil {
+		return nil, storeUnavailable()
+	}
+	if record.State == "closed" {
+		if err := tx.Commit(); err != nil {
+			return nil, storeUnavailable()
+		}
+		committed = true
+		return record, nil
+	}
+	if record.State != "checked-in" {
+		return nil, &OpError{
+			Code: "STATE_ILLEGAL", Status: 422,
+			Message: messages.Text("error.state.not_checked_in_complete", map[string]string{"ref": record.Ref, "state": record.State}),
+			Details: map[string]any{"reservationRef": record.Ref, "state": record.State},
+		}
+	}
+	updated, err := tx.Exec(
+		`UPDATE reservations.reservations
+		  SET state = 'closed', updated_by = $2, updated_at = now()
+		  WHERE stay_id = $1 AND state = 'checked-in'`,
+		strings.TrimSpace(stayID), actor,
+	)
+	if err != nil {
+		return nil, mapDBError(err, "state")
+	}
+	if affected, err := updated.RowsAffected(); err != nil || affected != 1 {
+		return nil, storeUnavailable()
+	}
+	if _, err := tx.Exec(
+		`INSERT INTO reservations.reservation_changes
+		  (reservation_id, changed_field, old_value, new_value, created_by)
+		 VALUES ($1,'state','"checked-in"','"closed"',$2)`,
+		record.ID, actor,
+	); err != nil {
+		return nil, storeUnavailable()
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, storeUnavailable()
+	}
+	committed = true
+	record.State = "closed"
+	return record, nil
+}
+
 // storeUnavailable is the envelope error for unexpected driver
 // failures the handler reports without leaking internals.
 func storeUnavailable() *OpError {

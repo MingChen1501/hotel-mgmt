@@ -54,49 +54,50 @@ Development table, which use a `../` prefix.
 | Roadmap | `product/roadmap.md` | active | `product-owner` | sequenced direction across milestones (Closes #30) |
 | Personas | `product/personas.md` | active | `product-owner` | user archetypes the product serves (Closes #30) |
 | User stories | `product/user-stories.md` | active | `product-owner` | stories expressing user needs per slice (Closes #30) |
-| Acceptance criteria | `product/acceptance-criteria.md` | active | `product-owner` | done-conditions per slice (Closes #59) |
+| Acceptance criteria | `product/acceptance-criteria.md` | active | `product-owner` | done-conditions per slice (Closes #59; section 15 Refs #646, section 16 Refs #647, section 17 Refs #648) |
 | Phase glossary | `product/phase-glossary.md` | active | `product-owner` | project phase definitions with entry/exit evidence (Closes #226) |
 | UX flows and wireframes | `product/ux-flows-wireframes.md` | active | `product-owner` | full-system journey flow maps, screen inventory, wireframes, wording rules, prototype record (Closes #412) |
-| Desk UI design rollout | `product/desk-ui-design-rollout.md` | active | `product-owner` | six-screen Claude UI rollout scope, tokens, UI contract, per-screen breakdown (Closes #419) |
+| Desk UI design rollout | `product/desk-ui-design-rollout.md` | active | `product-owner` | six-screen Claude UI rollout scope, tokens, UI contract, per-screen breakdown (Closes #419; section 6.16 Refs #646, section 6.17 Refs #647, section 6.18 Refs #648) |
 | Desk UI pixel-faithful restyle | `product/desk-ui-pixel-faithful-restyle.md` | active | `product-owner` | shell-plus-six-screen owner-design rebuild scope, tokens, rebuild-vs-keep mappings, UI contract, per-surface breakdown (Closes #517) |
 | FE design reference | `design/README.md` | active | `product-owner` | owner-supplied authoritative FE designs: six `.dc.html` boards plus `manifest.json` that implementation must follow (Closes #462) |
 | Rooms and rates management design | `design/RoomsRates.dc.md` | active | `product-owner` | owner-approved board for the rooms/rates management desk screen: wireframes for room types, rooms and floors, nightly prices, no-price empty state, refusal path, catalogue keys (Refs #590; approved 2026-11-09, D-23) |
 | Rooms and rates management | `product/rooms-rates-management.md` | active | `product-owner` | product spec for the rooms and rates management desk screen: scope, screen sections, no-price empty state, refusal path, UI contract, AC-MANAGE id map (Refs #590) |
+| Booking management view | `product/booking-management-view.md` | active | `product-owner` | product spec for the read-only booking register desk screen: night-range filter, booking rows (guest, reference, room type, assigned room, dates, nights, quoted total, state), `GetReservation` row detail, plain-word states, UI contract, AC-BMV id map (Refs #648) |
 | Scope | `product/scope.md` | stub (not needed yet) | `product-owner` | in/out scope statement for the product (`product/mvp-scope.md` is the operative scope statement) |
 
 ## Requirements
 
 | Type | Path | Status | Owner | Purpose |
 |---|---|---|---|---|
-| MVP requirements | `requirements/mvp-requirements.md` | active | `business-analyst` | numbered FRs, measurable NFRs, per-hotel workflow customisation, traceability (Closes #10; section 8 Refs #338) |
+| MVP requirements | `requirements/mvp-requirements.md` | active | `business-analyst` | numbered FRs, measurable NFRs, per-hotel workflow customisation, traceability (Closes #10; section 8 Refs #338; section 23 Refs #646; section 24 Refs #647; section 25 Refs #648) |
 | Domain consistency audit | `requirements/domain-consistency-audit.md` | active | `business-analyst` | cross-doc audit: scope↔PRD↔stories↔FRs/NFRs, gaps, contradictions, deduped questions, terminology (Closes #41) |
-| Behaviour sequence diagrams | `requirements/sequence-diagrams.md` | active | `business-analyst` | time-ordered booking, check-in/out, folio and housekeeping flows with FR and FR-CUS mapping (Closes #43) |
+| Behaviour sequence diagrams | `requirements/sequence-diagrams.md` | active | `business-analyst` | time-ordered booking, check-in/out, folio and housekeeping flows with FR and FR-CUS mapping (Closes #43; Seq-9 Refs #646; Seq-8 Refs #647; Seq-15 Refs #648) |
 | Functional requirements | `requirements/functional-requirements.md` | stub (not needed yet) | `business-analyst` | numbered functional requirements with one guard each |
 | Non-functional requirements | `requirements/non-functional-requirements.md` | stub (not needed yet) | `business-analyst` | measurable NFRs (performance, reliability, usability) |
 | SRD | `requirements/srd.md` | stub (not needed yet) | `business-analyst` | stakeholder requirements definition |
 | SRS | `requirements/srs.md` | stub (not needed yet) | `business-analyst` | software requirements specification |
 | Business rules | `requirements/business-rules.md` | active | `business-analyst` | domain policies constraining behaviour (Closes #58) |
-| Use cases | `requirements/use-cases.md` | active | `business-analyst` | actor-goal flows through the system (Closes #58) |
-| Data dictionary | `requirements/data-dictionary.md` | active | `business-analyst` | shared definitions of data entities and fields (Closes #58) |
+| Use cases | `requirements/use-cases.md` | active | `business-analyst` | actor-goal flows through the system (Closes #58; UC-8 Refs #646; UC-6/UC-7 Refs #647; UC-13 Refs #648) |
+| Data dictionary | `requirements/data-dictionary.md` | active | `business-analyst` | shared definitions of data entities and fields (Closes #58; sections 1-2 Refs #646; sections 2/8 Refs #647; section 1 Refs #648) |
 | Integration contract needs | `requirements/integration-contract-needs.md` | active | `business-analyst` | requirements-side input to module contracts: operations, payloads, sync/async, errors, config (Closes #96) |
 
 ## Architecture
 
 | Type | Path | Status | Owner | Purpose |
 |---|---|---|---|---|
-| HLD | `architecture/hld.md` | active | `architect` | high-level design: subsystems and their responsibilities (Closes #11; sections 15–16 Refs #601, #631) |
-| LLD | `architecture/lld.md` | active | `architect` | low-level design: modules, interfaces, data flow (Closes #97; sections 21–22 Refs #601, #631) |
+| HLD | `architecture/hld.md` | active | `architect` | high-level design: subsystems and their responsibilities (Closes #11; section 15 Refs #601; section 16 Refs #646; section 17 Refs #647; section 19 Refs #631) |
+| LLD | `architecture/lld.md` | active | `architect` | low-level design: modules, interfaces, data flow (Closes #97; section 21 Refs #601; section 22 Refs #646; section 23 Refs #647; section 24 Refs #648; section 26 Refs #631) |
 | System architecture | `architecture/system-architecture.md` | active | `architect` | overall system structure and deployment view (Closes #11) |
 | ERD | `architecture/erd.md` | active | `architect` | entity-relationship model of the domain data (Closes #11) |
 | Sequence diagrams | `requirements/sequence-diagrams.md` (see Requirements) | stub (not needed yet) | `architect` | behaviour depiction lives with requirements per #43; no separate architecture diagram |
-| State machine | `architecture/state-machine.md` | active | `architect` | lifecycle states and transitions of core entities (Closes #11) |
+| State machine | `architecture/state-machine.md` | active | `architect` | lifecycle states and transitions of core entities (Closes #11; section 1.1 Refs #646; section 2.1 Refs #647) |
 | ADR template | `architecture/decisions/adr-0001-template.md` | stub (not needed yet) | `architect` | decision-record template (the decisions directory holds ADRs) |
 | ADR-0001 monorepo polyglot | `architecture/decisions/adr-0001-monorepo-polyglot.md` | active | `architect` | accepted monorepo with polyglot modules (Closes #11; accepted 2026-10-23, Closes #85) |
 | ADR-0002 cross-stack layering | `architecture/decisions/adr-0002-cross-stack-layering.md` | active | `architect` | stack-idiomatic layering differences are intentional (Closes #181; accepted 2026-10-24, Closes #188) |
 | ADR-0003 desk UI framework | `architecture/decisions/adr-0003-desk-ui-vue-vite.md` | active | `architect` | desk UI migrates to Vue 3 + Vite CSR static build served by Nginx (Refs #285; accepted 2026-10-25; desk-surface visuals partially superseded by owner decision B, Refs #517) |
 | ADR-0004 REST versioning, auth, errors | `architecture/decisions/adr-0004-rest-versioning-auth-errors.md` | active | `architect` | versioned REST cross-cutting design: URL+contract versioning, session auth, problem+json error envelope (Closes #414; proposed) |
 | ADR-0005 server-side check-out gate | `architecture/decisions/adr-0005-server-side-checkout-gate.md` | active | `architect` | Stay re-derives the check-out balance and approval provenance from Billing; client claims advisory; fail-closed (Refs #601; proposed) |
-| ADR-0006 server-side availability derivation | `architecture/decisions/adr-0006-server-side-availability-derivation.md` | active | `architect` | the overbooking ceiling comes from the recorded room inventory (Rooms), not the request's `sellableUnits`; advisory field, fail-closed capacity read (Refs #631; proposed) |
+| ADR-0006 server-side availability derivation | `architecture/decisions/adr-0006-server-side-availability-derivation.md` | active | `architect` | the overbooking ceiling comes from the recorded room inventory (Rooms), not the request's `sellableUnits`; advisory field, fail-closed capacity read (Refs #631; accepted 2026-11-24) |
 | REST resource surface | `architecture/rest-resource-surface.md` | active | `architect` | per-module REST surface: resource naming, methods, statuses, shape refs, Idempotency-Key rule (Closes #415; proposed) |
 | REST migration rollout | `architecture/rest-migration-rollout.md` | active | `architect` | migration path and rollout plan: strangler phases, gates, rollback, compat matrix, decommission (Closes #416; proposed) |
 | Candidate architectures | `architecture/candidate-architectures.md` | active | `architect` | candidate structures, customisation, strategies, trade-offs, recommendation (Closes #67) |
@@ -108,9 +109,9 @@ Development table, which use a `../` prefix.
 
 | Type | Path | Status | Owner | Purpose |
 |---|---|---|---|---|
-| Reservations design | `architecture/services/reservations.md` | active | `architect` | as-built pattern/layers, verified flowcharts, deps, error mapping, operations (Closes #181; section 8 planned delta Refs #631) |
-| Stay design | `architecture/services/stay.md` | active | `architect` | as-built pattern/layers, verified flowcharts, deps, error mapping, operations (Closes #181; section 8 planned delta Refs #601) |
-| Rooms design | `architecture/services/rooms.md` | active | `architect` | as-built pattern/layers, verified flowcharts, deps, error mapping, operations (Closes #181; section 8 planned delta Refs #631) |
+| Reservations design | `architecture/services/reservations.md` | active | `architect` | as-built pattern/layers, verified flowcharts, deps, error mapping, operations (Closes #181; section 8 planned delta Refs #646; section 10 planned delta Refs #631) |
+| Stay design | `architecture/services/stay.md` | active | `architect` | as-built pattern/layers, verified flowcharts, deps, error mapping, operations (Closes #181; section 8 planned delta Refs #601; section 9 planned delta Refs #646; section 10 Refs #647) |
+| Rooms design | `architecture/services/rooms.md` | active | `architect` | as-built pattern/layers, verified flowcharts, deps, error mapping, operations (Closes #181; section 8 Refs #647; section 9 planned delta Refs #631) |
 | Rates design | `architecture/services/rates.md` | active | `architect` | as-built pattern/layers, verified flowcharts, deps, error mapping, operations (Closes #181) |
 | Guests design | `architecture/services/guests.md` | active | `architect` | as-built pattern/layers, verified flowcharts, deps, error mapping, operations (Closes #181) |
 | Billing design | `architecture/services/billing.md` | active | `architect` | as-built pattern/layers, verified flowcharts, deps, error mapping, operations (Closes #181; section 8 planned delta Refs #601) |
@@ -123,9 +124,9 @@ Development table, which use a `../` prefix.
 |---|---|---|---|---|
 | API spec | `technical/api-spec.md` | active | `architect` | contracts for service interfaces and endpoints (outline, Closes #11) |
 | Schema | `technical/schema.md` | active | `architect` | data schemas and validation rules (Closes #97) |
-| Desk UI fact schema | `technical/desk-ui-fact-schema.md` | active | `architect` | DOM-vs-design UI fact schema contract for the six desk screens: fields, record shape, provenance convention, determinism and zero-binary requirements (Closes #465); app-only nav tab allowance for the eighth desk tab (Refs #590) |
-| Integration | `technical/integration.md` | active | `architect` | third-party and cross-system integration contracts (Closes #97; C7 Refs #601) |
-| Error handling | `technical/error-handling.md` | active | `architect` | error taxonomy and handling conventions (outline, Closes #11) |
+| Desk UI fact schema | `technical/desk-ui-fact-schema.md` | active | `architect` | DOM-vs-design UI fact schema contract for the six desk screens: fields, record shape, provenance convention, determinism and zero-binary requirements (Closes #465); app-only nav tab allowances for the eighth and ninth desk tabs (Refs #590; bookings Refs #648) |
+| Integration | `technical/integration.md` | active | `architect` | third-party and cross-system integration contracts (Closes #97; C7 Refs #601; C4 Refs #646) |
+| Error handling | `technical/error-handling.md` | active | `architect` | error taxonomy and handling conventions (outline, Closes #11; section 4 Refs #647) |
 | Security threat model | `technical/security-threat-model.md` | active | `architect` | threats, mitigations, and trust boundaries (Closes #97; B5 + R5–R7 Refs #601) |
 
 ## Development
@@ -150,7 +151,7 @@ docs and plans, not gated specs.
 | Type | Path | Status | Owner | Purpose |
 |---|---|---|---|---|
 | Test strategy | `testing/test-strategy.md` | active | `qa-lead` | testing approach, levels, and entry/exit criteria (Closes #62) |
-| Traceability matrix | `testing/traceability-matrix.md` | active | `qa-lead` | FR/NFR-to-guard map (every item keeps at least one guard) (Closes #62; section 11 Refs #590, section 12 Refs #600, section 13 Refs #601, section 14 Refs #631) |
+| Traceability matrix | `testing/traceability-matrix.md` | active | `qa-lead` | FR/NFR-to-guard map (every item keeps at least one guard) (Closes #62; section 11 Refs #590, section 12 Refs #600, section 13 Refs #601, section 14 Refs #646, section 15 Refs #647, section 16 Refs #648, section 18 Refs #631) |
 | Test report | `testing/test-report.md` | active | `qa-lead` | consolidated full-MVP results with pass evidence per cell (Closes #214) |
 | Phase 6 QA plan | `testing/phase-6-qa-plan.md` | active | `qa-lead` | scoped independent-QA pass plan: entry, activities, bug flow, exit (Closes #264) |
 | A1 desk-loop run log | `testing/phase-6-qa-a1-run-log.md` | active | `qa-lead` | scripted live-stack desk-loop record: per-step observed-vs-expected, screen surfaces, admin reads, evidence, defects (Closes #267) |
@@ -164,10 +165,13 @@ docs and plans, not gated specs.
 | Desk UI rollout test traceability | `testing/desk-ui-rollout-test-traceability.md` | active | `qa-lead` | parity + new-guard traceability for the #419 six-screen rollout: AC-DSK-1..19 to guards, D1–D19 created by the screen PRs and the later slices (Refs #419; #438, #565, #568, #581, #600) |
 | Manual QA testsuite (6-screen desk UI) | `testing/manual-qa-testsuite.md` | active | `qa-lead` | Vietnamese-first manual QA cases per screen plus end-to-end journey, each with preconditions, steps, expected results, and AC-DSK trace (Closes #448); validation + edge-case matrix QA-EDGE-1..14 with scriptable/human-only split (Refs #450; QA-EDGE-8 rewritten and QA-EDGE-13 added for the #588 check-out release and unpaid-close gate; QA-EDGE-14 added for the #600 room-charge posting) |
 | DOM diff dynamic-data allowlist | `testing/dom-diff-allowlist.md` | active | `qa-lead` | owner-approved dynamic-data exemptions for the DOM diff gate: what is exempt, why, and how the gate references it (Closes #482) |
-| Desk restyle test traceability | `testing/desk-restyle-test-traceability.md` | active | `qa-lead` | parity + new-guard traceability for the #517 pixel-faithful restyle: AC-RST-1..8 and FR/NFR-RST to guards, R1–R9 created by the screen PRs (Refs #517) |
+| Desk restyle test traceability | `testing/desk-restyle-test-traceability.md` | active | `qa-lead` | parity + new-guard traceability for the #517 pixel-faithful restyle: AC-RST-1..8 and FR/NFR-RST to guards, R1–R9 created by the screen PRs, with the #648 narrow-width nav-band clause on R1/AC-RST-1 (D-29) (Refs #517, Refs #648) |
 | V2 evidence re-baseline plan | `testing/v2-evidence-rebaseline-plan.md` | active | `qa-lead` | side-by-side re-baseline cases, stale-disposition table, and traceability for the v2 boards (Closes #550) |
 | Rooms and rates management test traceability | `testing/rooms-rates-management-test-traceability.md` | active | `qa-lead` | cases, guard registry `M1`–`M10` mapped by `file:line` at the merged head, per-section evidence rule `MR-1`, and the `AC-MANAGE-1..11` / `FR-MGMT-1..12` map for the #590 management screen (Refs #590, #609) |
 | Check-out settlement test traceability | `testing/checkout-settlement-test-traceability.md` | active | `qa-lead` | cases `CKS-1..CKS-11`, guard registry `S1`–`S12`, evidence rule `SR-1`, and the `AC-CKO-1/2` / `FR-CKS-1..5` map for the server-side check-out settlement gate, with the #588 desk pins that must stay green (Refs #601) |
+| Departure release test traceability | `testing/departure-release-test-traceability.md` | active | `qa-lead` | cases `DEP-1..DEP-9`, guard registry `DR1`–`DR13`, evidence rule `DR-E1`, and the `AC-DEP-1..5` / `FR-DEP-1..5` map for the departure release and same-day reuse after check-out, with the #588/#600/#601 pins that must stay green and the lifecycle `D5`/`D6` rows (Refs #646) |
+| Arrival reassignment test traceability | `testing/arrival-reassign-test-traceability.md` | active | `qa-lead` | cases `REA-1..REA-9`, guard registry `RR1`–`RR13`, evidence rule `RR-E1`, and the `AC-REA-1..5` / `FR-REA-1..5` map for the arrival room reassignment and vacated-room release, with the definitive-versus-unreadable ordering, the `AC-REA-1` / `FR-REA-1` disposition, and the #586/#588/#596/#600/#601/#614/#646 pins that must stay green (Refs #647) |
+| Booking management view test traceability | `testing/booking-management-view-test-traceability.md` | active | `qa-lead` | cases `BMV-1..BMV-9`, guard registry `BM1`–`BM16`, evidence rule `BM-E1`, and the `AC-BMV-1..7` / `FR-BMV-1..7` map for the read-only booking register desk screen, with the inclusive-night boundary pair, the read-count and cap bounds, the `—`-versus-`cell_unreadable` split, the R18 partial-column copy gap, the narrow-width nav-band pin (`BM16`, D-29), and the shell/board pins that must stay green (Refs #648) |
 | Reservation availability derivation test traceability | `testing/availability-derivation-test-traceability.md` | active | `qa-lead` | cases `AVD-1..AVD-10`, guard registry `O1`–`O13`, evidence rule `OR-1`, and the `AC-OVB-1..3` / `FR-OVB-1..4` / `BR-47..49` map for the server-side reservation availability derivation, with the desk Book pins that must stay green (Refs #631) |
 
 ## DevOps / Operations / Release
@@ -175,17 +179,17 @@ docs and plans, not gated specs.
 | Type | Path | Status | Owner | Purpose |
 |---|---|---|---|---|
 | CI/CD | `devops/ci-cd.md` | active | `release-manager` | pipeline stages, checks, and merge gates (Closes #133) |
-| Deployment | `devops/deployment.md` | active | `release-manager` | deployment targets and procedures (Closes #63; bundle-level service addresses and the capacity-read pre-flight, Refs #631) |
+| Deployment | `devops/deployment.md` | active | `release-manager` | deployment targets and procedures (Closes #63; bundle-level service addresses and the stay-to-reservations pre-flight, Refs #646; the upgrade-time stranded-room clearance, Refs #647; the capacity-read pre-flight, Refs #631) |
 | Local dev setup | `devops/local-dev-setup.md` | active | `release-manager` | dev-lab setup + admin secret management (Closes #283) |
 | Environment | `devops/environment.md` | stub (not needed yet) | `release-manager` | environment inventory and configuration |
-| Runbook | `operations/runbook.md` | active | `release-manager` | step-by-step operating procedures, fresh at merge time (Closes #63; section 6 split into the no-price refusal and the availability-read fault, Refs #631) |
+| Runbook | `operations/runbook.md` | active | `release-manager` | step-by-step operating procedures, fresh at merge time (Closes #63; section 8 adds the same-day room turnover and the stuck departed booking, Refs #646; section 9 adds the room stranded with no guest in it, Refs #647; section 11 adds the availability-read fault, Refs #631) |
 | Monitoring and alerting | `operations/monitoring-alerting.md` | stub (not needed yet) | `release-manager` | signals, dashboards, and alert routing — stub stays until the first exporter lands (ADR-0001 Prometheus + Grafana) |
 | Backup and DR | `operations/backup-dr.md` | active | `release-manager` | backup, restore, and disaster-recovery plan (Closes #63) |
 | Pilot exit checklist | `operations/pilot-exit-checklist.md` | active | `release-manager` | per-sale runbook walkthrough record and pilot exit checklist (Closes #153) |
 | POC demo checklist | `operations/demo-poc-checklist.md` | active | `release-manager` | owner-runnable demo pass/fail checklist with sign-off (Closes #185) |
 | Incident response | `operations/incident-response.md` | stub (not needed yet) | `release-manager` | incident roles, severity, and response flow |
-| Release notes | `release/release-notes.md` | active | `release-manager` | per-release change entries: staff-visible effect, install/upgrade delta, rollback pointer, evidence state (Refs #631) |
-| Rollback | `release/rollback.md` | active | `release-manager` | per-change rollback notes and the decision/verification/record rules around them (Refs #631) |
+| Release notes | `release/release-notes.md` | active | `release-manager` | per-release change entries: staff-visible effect, install/upgrade delta, rollback pointer, evidence state (Refs #646, #647, #631) |
+| Rollback | `release/rollback.md` | active | `release-manager` | per-change rollback notes and the decision/verification/record rules around them (Refs #646, #647, #631) |
 
 ## Project
 

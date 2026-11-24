@@ -92,9 +92,18 @@ hotel. The reservations module reads two of them at boot: `RATES_BASE_URL`
 `services/reservations/cmd/server/main.go:42-47`). Both calls forward the
 caller's session token and fail closed. `ROOMS_BASE_URL` is the ceiling
 source for the overbooking guard (Refs #631,
-`../architecture/lld.md` section 22): a booking whose capacity read fails
+`../architecture/lld.md` section 26): a booking whose capacity read fails
 is refused with `UPSTREAM_UNAVAILABLE` (503) instead of being allowed
-(`../operations/runbook.md`, section 6.2). The single-host default and
+(`../operations/runbook.md`, section 11). Target state for this bundle
+(Refs #646): the stay module reads `RESERVATIONS_BASE_URL` (default
+`http://reservations:8081`) and calls the reservations module once
+after a check-out commits, so the booking behind the stay is completed
+with the same close (`../architecture/lld.md`, section 22). That call
+carries a short timeout and is fail-soft, unlike the booking guard: a
+close that already committed is never turned into a desk refusal, so an
+unreachable reservations module blocks no check-out — it leaves the
+booking active and reported as such, and the procedure for that row is
+`../operations/runbook.md`, section 8.2. The single-host default and
 the small-cluster variant both address the modules by service name, so
 the defaults hold unless a module moves to another host — then only that
 address value changes, in the bundle's configuration file, never inside
@@ -120,10 +129,13 @@ on them once the change ships.
    `docs/operations/runbook.md`).
 5. Run the bundle's health check: proxy reachable from a desk
    client on the hotel LAN, each module answering through the
-   proxy, each module connected to its own store, and the
+   proxy, each module connected to its own store, the
    reservations module reaching the rates and rooms modules on the
    hotel LAN (a booking is refused, never guessed, when either is
-   unreadable — `../operations/runbook.md`, section 6.2).
+   unreadable — `../operations/runbook.md`, section 11), and the stay
+   module reaching the reservations module on the hotel LAN (a
+   close still commits when that call fails, but the booking is
+   then left active — `../operations/runbook.md`, section 8.2).
 6. Sign in as the owner account, verify the hotel profile, rooms,
    rate plans, and charge items from step 3, and record one test
    reservation end to end (book, check in, post a charge, check
@@ -147,8 +159,9 @@ every inter-host endpoint over the hotel LAN before step 6.
    hotel's existing configuration set unchanged; carry forward no
    state from inside old containers. Bundle-level module addresses
    come from the new bundle, not from the hotel's configuration set
-   (section 2, "Bundle-level service addresses") — a new one, such as
-   `ROOMS_BASE_URL` for the reservations module (Refs #631), is
+   (section 2, "Bundle-level service addresses") — new ones, such as
+   `ROOMS_BASE_URL` for the reservations module (Refs #631) and
+   `RESERVATIONS_BASE_URL` for the stay module (Refs #646), are
    already set in it and needs no hotel input.
 5. Start the database host first, then the module containers, then
    the reverse proxy.
@@ -156,6 +169,16 @@ every inter-host endpoint over the hotel LAN before step 6.
    the end-to-end reservation check from section 3 step 6.
 7. Keep the pre-upgrade backup until the hotel has operated at
    least one full business day on the new version.
+
+**Rooms stranded by an older bundle (upgrade only, Refs #647).** An
+installation upgraded from a bundle that predates the desk room
+reassignment change inherits rooms that read occupied with no stay
+behind them: a check-in refused after the desk had already set the
+room aside was never handed back. This bundle repairs the desk, not the
+data — there is no migration and no backfill. Before resuming desk
+work, clear every such room per `../operations/runbook.md` section 9.3
+and record the cleared rooms, their times, and the actor in the upgrade
+record; the same section 9 procedure is the support step afterwards.
 
 For the small-cluster variant, stop and start hosts in the same
 relative order and verify inter-host endpoints after step 5.
@@ -178,7 +201,12 @@ Run before every install and every upgrade; stop on any failure:
   the hotel LAN: a new booking is refused with `UPSTREAM_UNAVAILABLE`
   (503) when either read fails, so an unreachable rooms module blocks
   booking and date changes while check-in, check-out, and existing
-  bookings keep working (`../operations/runbook.md`, section 6.2).
+  bookings keep working (`../operations/runbook.md`, section 11).
+- The stay module reaches the reservations module over the hotel LAN:
+  a check-out still commits when that call fails, but the booking
+  behind the stay is then left active and has to be completed by hand
+  (`../operations/runbook.md`, section 8.2), so an unreachable
+  reservations module leaves a booking to repair after every close.
 - The per-hotel configuration set validates against the release
   bundle's configuration schema with no missing required values.
 - First secrets are provisioned and handed over per the handover
@@ -205,8 +233,8 @@ fixed within the working day, roll back:
    confirm with the hotel manager before resuming desk work.
 5. Record the failed version, the failure symptom, and the
    rollback outcome in `../release/rollback.md` (active: the per-change
-   note lives there, and the same section records the outcome of this
+   note lives there, and section 4 records the outcome of this
    restore-and-redeploy procedure) and file an issue for the failure.
 
 <!-- ao-role: release-manager -->
-Role: release-manager · AO session hotel-mgmt-936
+Role: release-manager · AO session hotel-mgmt-963

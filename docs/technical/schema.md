@@ -65,6 +65,16 @@ section 1). No engine-level
 exclusion constraint is assumed across the logical room-type
 reference; the atomic transaction is the guard.
 
+Departure completion (Refs #646, LLD [section 22](../architecture/lld.md)):
+no column, index, migration, or constraint is added. The `state` CHECK
+above already admits `closed`, `stay_id` UNIQUE already resolves the
+booking for a closed stay, and `reservation_changes` already records the
+transition. The completion writes `state = 'closed'` with
+`updated_by`/`updated_at` plus the change-history row in one
+transaction; the guard above needs no change because it already counts
+only `confirmed` / `checked-in`, so a completed booking releases its
+unit. No event row is written by this change (LLD D5).
+
 ## 2. `stay` schema (FR-FDK-1..5; dictionary section 2 Stay)
 
 `stays` — one row per in-house occupation.
@@ -258,4 +268,4 @@ appear as CHECK constraints and singletons, never as editable
 config.
 
 <!-- ao-role: architect -->
-Role: architect · AO session hotel-mgmt-137
+Role: architect · AO session hotel-mgmt-946

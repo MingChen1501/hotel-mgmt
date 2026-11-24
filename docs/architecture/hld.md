@@ -65,7 +65,7 @@ proposals only.
 
 | Module | Responsibility (FRs served) | Data ownership (one store owner) | Exposed contract | Proposed runtime / footprint (envelope note, `proposed`) |
 |---|---|---|---|---|
-| Reservations | Direct reservations, modify/cancel, walk-in, calendar, no-show (`FR-RES-*`) | Owns the reservation store: reservations, holds, cancellation records; no other module writes it | `ReservationService` (HTTP/gRPC); emits `ReservationEvents` | Go service (~30–50 MB RAM): static binary fits 2*4*50; goroutines serve the `NFR-CON-1` paired-booking guard; dedicated schema in the shared engine |
+| Reservations | Direct reservations, modify/cancel, walk-in, calendar, no-show, check-out completion (`FR-RES-*`, `FR-DEP-1`) | Owns the reservation store: reservations, holds, cancellation records; no other module writes it | `ReservationService` (HTTP/gRPC); emits `ReservationEvents` | Go service (~30–50 MB RAM): static binary fits 2*4*50; goroutines serve the `NFR-CON-1` paired-booking guard; dedicated schema in the shared engine |
 | Stay (front desk) | Check-in, check-out, room moves, early/late times, arrivals/departures (`FR-FDK-*`) | Owns the stay store: stays, room assignments, move history; no other module writes it | `StayService` (HTTP/gRPC); emits `StayEvents` | Node.js/TypeScript service (~100–150 MB): CRUD fit; shares one runtime with Rooms/Guests/Admin; dedicated schema in the shared engine |
 | Rooms | Inventory, housekeeping states, out-of-order blocks, room setup (`FR-RMS-*`) | Owns the room store: rooms, room types, status history, blocks; no other module writes it | `RoomInventoryService` (HTTP/gRPC); emits `RoomStateEvents` | Node.js/TypeScript service (~100–150 MB): shared runtime with Stay; dedicated schema in the shared engine |
 | Rates & Availability | Rate plans, availability counts, discounts, stay restrictions, price basis (`FR-RTE-*`) | Owns the pricing store: rate plans, restrictions, discount definitions, quoted price bases; no other module writes it | `PricingService` (HTTP/gRPC); emits `RateEvents` | Go service (~30–50 MB): quote latency for `NFR-PERF-1`; shares the Go toolchain; dedicated schema in the shared engine |
@@ -97,6 +97,14 @@ resolve in the Reservations store so exactly one succeeds
 (`NFR-CON-1`); simultaneous check-ins into one room resolve in the
 Stay store (`NFR-CON-2`). Overbooking refusal names the conflict
 (error semantics: `docs/technical/error-handling.md`).
+
+Only active bookings (`confirmed`, `checked-in`) hold a unit: a booking
+completed by a check-out (`closed`, section 16) contributes nothing to
+the count and blocks no overlap the moment the close commits, so a
+same-day arrival is not refused because a departed guest's booking is
+still on file (`FR-DEP-2`, Refs #646). The booking's recorded dates are
+not rewritten on an early departure; the state is what releases the
+remaining nights.
 
 ## 6. Per-hotel workflow customisation boundary
 
@@ -431,7 +439,137 @@ stays deferred (integration F4). Decision record:
 `docs/architecture/lld.md` section 21; trust-boundary and residual-risk
 deltas: `docs/technical/security-threat-model.md` sections 2 and 8.
 
-## 16. Reservation availability authority (Refs #631)
+## 16. Departure completion authority (Refs #646)
+
+A committed check-out must also complete the booking behind the stay.
+The layer that holds the owner-reported stale state (manual QA
+2026-11-10) is the reservation lifecycle, not the room: `closed` is
+already the accepted terminal booking state
+(`docs/architecture/state-machine.md`), the reservations schema already
+allows it and already carries the stay link
+(`services/reservations/migrations/000002_schema.up.sql:29-33`), and the
+availability guards already count only `confirmed` / `checked-in`
+(`services/reservations/internal/store/store.go:194-196`). Nothing ever
+wrote `closed` when a stay closed, so the departed booking kept a
+sellable unit and the calendar kept naming it as active. This change
+adds that write; it adds no module, no store, no lifecycle state, no
+schema, and no migration.
+
+Which service owns which fact:
+
+| Fact | Owner | Written where | May a caller assert it? |
+|---|---|---|---|
+| The stay's close | Stay | Conditional `in-house -> closed` flip in the Stay store | No — `stayId` selects; the server decides |
+| The booking's state | Reservations | Conditional `checked-in -> closed` flip in the Reservations store | No — the close triggers it; no client field carries it |
+| Which booking belongs to the stay | Reservations | `stay_id` UNIQUE, set by `CheckInReservation`; resolution is by this link, never by guest name or dates | Only `stayId` |
+| The active set for availability | Reservations | The existing create/modify guard filters (`activeState`) | No |
+| Actor and time of the completion | Admin session actor forwarded by Stay | `updated_by` / `updated_at` plus a change-history row | Yes (`actor`), same residual as the #601 actor caveat |
+
+One synchronous edge is added: Stay `CheckOut`, after its own
+conditional flip commits, calls
+`ReservationService.CheckOutReservation` with the closed `stayId` and the
+caller's session token (2-second timeout, the same shape as the
+Stay -> Billing read in section 15 below). Reservations resolves the
+reservation by the stay link it already carries and flips
+`checked-in -> closed` under a conditional write; a second call returns
+the completed booking unchanged, so a replay or a double confirmation
+completes once. The desk keeps its one confirmation and its existing
+`ReleaseRoom` call, and the room half is untouched (`ReleaseRoom` ->
+`vacant-dirty`, housekeeping -> `vacant-inspected`, assignment offers
+inspected rooms only).
+
+The close can commit while the completion cannot be recorded
+(Reservations unreachable, or no booking resolves for the stay link).
+That split is accepted as visible, never silent: the close response
+carries the observed outcome, the desk reports the check-out without
+claiming a completed booking, and the booking stays `checked-in` until a
+replay of the idempotent completion records it. A `reservation.completed`
+event for the reporting read model and a reconciliation tool for rows
+stranded by the old behaviour are named follow-ups, not part of this
+change.
+
+Tier T2 (confirmed). The shape adds no lifecycle state and no migration;
+a shape that adds either re-tiers the change to T3. Flow detail, contract
+delta, and verification plan: `docs/architecture/lld.md` [section 22](lld.md).
+
+Rollback: revert the single implementation PR. The state value and the
+stay link already exist in the schema, so there is no migration in
+either direction; bookings already completed keep reading completed
+while new closes stop completing until the revert is itself reverted.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-946
+
+## 17. Desk room reassignment authority (Refs #647)
+
+A guest expected in room 101 who checks into 102 leaves room 101
+reading occupied with a stale stay link, and the desk has no action to
+correct it. The layer that holds the fix is the desk, not the services:
+Rooms already owns assignment and release (`assignRoom` flips a ready
+room to `occupied` and records the stay link; only an explicit
+`releaseRoom` takes it back, `services/rooms/src/store.ts:361-405`,
+`:407-436`), Stay already owns the move and its history (`moveRoom`
+keeps the stay in house with `fromRoomId`, `toRoomId`, `movedAt`,
+`services/stay/src/store.ts:332-376`), and the contract already says the
+desk owns the assignment and release around a move
+(`contracts/http/MoveRoom.json`). What was missing is an owner for the
+sequence: the check-in commit assigns first and returns from every later
+refusal without releasing the room it assigned
+(`app/src/views/StayView.vue:1249-1336`), and nothing under `app/src`
+called `MoveRoom`.
+
+The desk therefore owns the ordering and the compensation, and no module
+learns to compensate for another:
+
+- **Order.** Arrival commit: assign the chosen room, read the booking,
+  write the stay, link the reservation; a definitive refusal at the
+  booking read or the stay write releases the room it assigned back to
+  `vacant-inspected` in the same commit. Reassignment and mid-stay move:
+  assign the target, move the stay, release the vacated room to
+  `vacant-dirty` — in that order, so a taken target refuses before the
+  stay moves and the old room frees only after the stay no longer names
+  it.
+- **Read the move before releasing.** The release targets the
+  `move.fromRoomId` the `MoveRoom` reply carries, not the room the panel
+  remembered, so two desks moving the same guest each release exactly
+  the room their own move vacated.
+- **Only definitive refusals compensate.** A `4xx` envelope answer
+  proves the call wrote nothing, so the earlier write is taken back; an
+  unreadable outcome (transport failure, `5xx`, non-envelope) releases
+  nothing and is reported as an outcome to re-read, because a room the
+  guest may be standing in must never be freed on a guess.
+
+Which service owns which fact:
+
+| Fact | Owner | Written where | May a caller assert it? |
+|---|---|---|---|
+| Which room a check-in names | Desk chooses, Rooms decides | `AssignRoom` conditional write, stay id as `stayLink` | No |
+| A room's occupancy | Rooms | `assignRoom` / `releaseRoom` | No |
+| The stay's current room and move history | Stay | `moveRoom` conditional in-house write + `stay_moves` row | Only `stayId` |
+| The from-room of a move | Stay | `move {fromRoomId, toRoomId, movedAt}` in the reply | Yes — it is the release input |
+| The sequence and the compensation | Desk | the click handler's ordered calls | Not applicable |
+
+No module, store, lifecycle state, operation, schema, or event is added,
+and no service-side rollback exists: the compensation is the desk's own
+`ReleaseRoom`, not a distributed transaction or a saga. The residual risk
+that follows is that a browser closed mid-action can leave a room
+occupied with no stay behind it; the desk names the room and the
+existing release clears it, which is where this change sits.
+
+Tier T2 (confirmed). Flow detail, the per-flow diagrams, the contract
+no-change statement, and the verification plan: `docs/architecture/lld.md`
+[section 23](lld.md); the room-side lifecycle statement:
+`docs/architecture/state-machine.md` [section 2.1](state-machine.md).
+
+Rollback: revert the single implementation PR. The desk stops calling
+operations that already exist, the two-panel Stay screen and its guards
+return as they were, and no migration or data backfill exists in either
+direction.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-961
+
+## 19. Reservation availability authority (Refs #631)
 
 The desk browser is not a trust boundary for occupancy facts either.
 Rooms owns how many units a room type can host for a date range;
@@ -452,10 +590,10 @@ plus one error code). The Rates availability count is not the ceiling: its
 `totalUnits` input is itself a request value and its fallback number is
 not maintained. Decision record:
 `docs/architecture/decisions/adr-0006-server-side-availability-derivation.md`
-(proposed); flow detail and the verification plan:
-`docs/architecture/lld.md` section 22; trust-boundary and
+(accepted 2026-11-24); flow detail and the verification plan:
+`docs/architecture/lld.md` section 26; trust-boundary and
 residual-risk deltas: `docs/technical/security-threat-model.md`
-sections 2 and 8; product conditions `AC-OVB-1`..`AC-OVB-3` and risk R-10.
+sections 2 and 8; product conditions `AC-OVB-1`..`AC-OVB-3` and risk R-14.
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-941
