@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/MingChen1501/hotel-mgmt/services/reporting/internal/envelope"
 	"github.com/MingChen1501/hotel-mgmt/services/reporting/internal/messages"
 	"github.com/MingChen1501/hotel-mgmt/services/reporting/internal/service"
 	"github.com/MingChen1501/hotel-mgmt/services/reporting/internal/store"
@@ -187,6 +188,10 @@ func NewMux(svc *service.Service) *http.ServeMux {
 			"asOf":  asOf.UTC().Format("2006-01-02T15:04:05Z07:00"),
 		})
 	}))
+
+	// An unknown operation under the mounted prefix answers the shared
+	// envelope instead of the mux's plain-text 404 (Refs #628).
+	mux.Handle("/", envelope.NotFound())
 
 	return mux
 }

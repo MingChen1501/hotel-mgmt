@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/MingChen1501/hotel-mgmt/services/rates/internal/envelope"
 	"github.com/MingChen1501/hotel-mgmt/services/rates/internal/handler"
 	"github.com/MingChen1501/hotel-mgmt/services/rates/internal/health"
 	"github.com/MingChen1501/hotel-mgmt/services/rates/internal/store"
@@ -38,7 +39,15 @@ func main() {
 	mux.Handle("POST /v1/rates/", pricing)
 	addr := ":" + port
 	log.Printf("rates listening on %s", addr)
-	if err := http.ListenAndServe(addr, mux); err != nil {
+	if err := http.ListenAndServe(addr, newHandler(mux)); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// newHandler answers every request through the shared envelope: a
+// handler panic becomes 500 INTERNAL_ERROR, and a request the mux
+// cannot route becomes 404 NOT_FOUND or 405 METHOD_NOT_ALLOWED
+// (docs/technical/error-handling.md section 1; Refs #628).
+func newHandler(mux *http.ServeMux) http.Handler {
+	return envelope.Recover(envelope.Fallback(mux))
 }
