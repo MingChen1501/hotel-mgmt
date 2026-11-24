@@ -3,9 +3,9 @@
 Before/after reproduction record for
 [issue #630](https://github.com/MingChen1501/hotel-mgmt/issues/630)
 (audit finding C5; `AC-BND-1`..`AC-BND-5`, `NFR-BND-1`..`NFR-BND-3`,
-`BR-60`, LLD [section 29](../../architecture/lld.md#29-bounded-request-bodies-and-finite-server-timeouts-refs-630),
+`BR-60`, LLD [section 29](../../../architecture/lld.md#29-bounded-request-bodies-and-finite-server-timeouts-refs-630),
 guards `BND1`–`BND28` and evidence rule `BND-E1` in
-[the test traceability](../body-bounds-test-traceability.md)).
+[the test traceability](../../body-bounds-test-traceability.md)).
 Left column is the pre-change build; right column is this change.
 Every answer below was captured from a running service process, not
 from a test assertion.
