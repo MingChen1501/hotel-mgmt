@@ -4522,3 +4522,326 @@ Stack and repo gates: `cd app && npm ci && npm run build && npm run lint
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1017
+
+## 25. Folio writes verify the stay (Refs #634)
+
+Tier **T3 confirmed**: Billing gains its first runtime outbound read of
+Stay and a new fail-closed dependency edge on the money path, with a new
+contract error set; no data-model change, no new operation, no schema,
+no migration, and no event change. ADR-0008
+(`docs/architecture/decisions/adr-0008-folio-write-stay-verification.md`,
+proposed) records the decision; the owner flips it `proposed` ->
+`accepted` before the implementation PR merges. Product done-conditions
+are `docs/product/acceptance-criteria.md` section 18
+(`AC-FWV-1`..`AC-FWV-7`) with D-30 in
+`docs/project/decision-log.md`; FR/NFR wording is the
+`business-analyst` handoff, guard traceability the `qa-lead` handoff, and
+the release and availability notes the `release-manager` handoff. This
+section records only the architect-owned delta.
+
+### 25.1 Which layer owns what
+
+| Fact | Authority | Enforced where | May the client assert it? |
+|---|---|---|---|
+| Whether a stay exists, and its lifecycle state | Stay (`stay.stays.state`) | Stay `GetStayRef` (`services/stay/src/store.ts:406-423`) | No — `stayId` selects the stay, it does not prove it |
+| A folio's existence, lines, and balance | Billing (`billing.folios`, folio lines) | Billing inserts | No |
+| Whether a folio write may land at all | Billing, from Stay's read | The verify-before-write guard (25.2) | No |
+| The recorded open-balance approval | Billing (`billing.folios.open_balance_approval`) | Billing write; the #601 provenance rule is unchanged | No — #625 owns who may approve |
+| The stay's close | Stay | Conditional `in-house -> closed` flip | No |
+| A well-formed stay id | Billing | `stayUuid` before any call (`service/BillingService.java:86-92`) | Yes (`stayId`) |
+| The session actor | Admin session token | Body `actor` today; token binding is residual risk R6 | Yes (`actor`), today |
+
+### 25.2 Target algorithm
+
+Per route, in order — shape validation, stay verification, idempotency
+claim, then the writes:
+
+| Route | Shape checks first (unchanged) | Stay read | Writes that follow |
+|---|---|---|---|
+| `GetFolioBalance` (`web/BillingController.java:74`) | `stayId` UUID, `actor` (`service/BillingService.java:121`) | only when the stay carries no folio (`findFolioByStay` miss, `repo/BillingRepository.java:73-77`) | `ensureFolio` for a verified in-house stay |
+| `PostCharge` (`web/BillingController.java:81`) | `itemKind`, `itemName`, `amountMinor`, defined charge item (`service/BillingService.java:126-140`) | every request | key claim (`:146`), charge insert, balance movement, `folio.charge-posted` (`:158-162`) |
+| `RecordPayment` (`web/BillingController.java:89`) | `method`, positive `amountMinor` (`service/BillingService.java:166-175`) | every request | key claim (`:180`), payment insert, balance movement, `folio.payment-recorded` (`:185-188`) |
+| `RecordOpenBalanceApproval` (`web/BillingController.java:141`) | `approvedBy`, `role` (`service/BillingService.java:255-262`) | every request | key claim (`:267`), `recordApproval`, `folio.approval-recorded` (`:275-277`) |
+
+The verification call:
+
+- `POST {STAY_BASE_URL}/v1/stay/GetStayRef` with `{"stayId": "<uuid>"}`,
+  `Content-Type: application/json`, and the caller's `Authorization`
+  header forwarded verbatim — the established shape
+  (`services/reservations/internal/pricing/client.go:43-75`;
+  `docs/technical/integration.md` C8).
+- `STAY_BASE_URL` defaults to `http://stay:8084` on the compose network
+  (the port Stay publishes, `deploy/compose.yaml:81`) and is wired on the
+  `billing` service the way Stay wires `RESERVATIONS_BASE_URL`
+  (`deploy/compose.yaml:84-85`, `:116-121`).
+- Timeout 2 seconds, so a stuck Stay cannot push a charge posting or a
+  payment past `NFR-PERF-1`'s 3-second bound; it matches the #646
+  completion timeout and leaves the local write inside the remainder.
+- The call runs **outside** the route's database transaction. Holding a
+  Hikari connection open across a call that may take the full timeout
+  would starve the 10-connection billing pool
+  (`config/DatabaseConfig.java:55`) under the `NFR-PERF-1` load of five
+  signed-in staff, and rolling back a transaction that never wrote is
+  noise. Implementation shape: the existing transactional body moves to
+  a transactional writer bean and `BillingService` keeps the step order
+  (validate, verify, delegate); the bean's name is the implementer's
+  choice, and the seam the guards mock is the stay-verification client
+  interface.
+
+Answer classification (ADR-0008 D3/D4), applied to every route the same
+way:
+
+| Stay's answer | Billing's answer | Writes |
+|---|---|---|
+| `200` stay link, state `in-house` | continue the route | the route's own writes |
+| `404` `NOT_FOUND` whose `details.stayId` equals the requested id | `404 NOT_FOUND`, details `{upstream: "stay", stayId}` | none |
+| `422` `STATE_ILLEGAL` | `422 STATE_ILLEGAL`, details `{upstream: "stay", stayId, state}` | none |
+| `404` `NOT_FOUND` naming a different stay, or with no `stayId` | `503 UPSTREAM_UNAVAILABLE` (wiring fault, not a stay fact) | none |
+| `401` / `403` / any other `4xx` envelope | surfaced unchanged, code and details | none |
+| transport failure, timeout, `5xx`, non-envelope body, unreadable JSON, unwired client | `503 UPSTREAM_UNAVAILABLE`, details `{upstream: "stay", operation: "GetStayRef"}` | none |
+
+`UPSTREAM_UNAVAILABLE` messages come from the message catalogue like
+every other refusal (`docs/technical/error-handling.md` section 1;
+`NFR-I18N-1`), never a hard-coded English sentence.
+
+Where the product conditions overlap, this is the reading the
+implementation follows, and `product-owner` confirms it at the spec
+gate: `AC-FWV-5` settles the read of an **existing** folio — it is
+served from Billing in every stay state, so a Stay outage never blocks
+the departure invoice or a receipt — and `AC-FWV-3`'s "open the folio
+balance" clause therefore binds the **folio-creating** read, which does
+fail closed for a stay with no folio. Serving an existing folio can
+never produce an unverified folio, which is the outcome `AC-FWV-3`
+exists to prevent, and the alternative — refusing a departed guest's
+invoice because Stay is briefly down — would fail `AC-FWV-5` and the
+print path the desk depends on (`app/src/views/PrintView.vue:1028`,
+`:1120`, `:1157`). If the owner wants the stricter reading instead, that
+is a product change to both conditions and re-tiers this delta.
+
+### 25.3 Per-flow diagram — happy path
+
+The three writes and the folio-creating read, on a stay Stay confirms is
+in house:
+
+```mermaid
+flowchart TD
+    A[Desk calls a folio route] --> B{Bearer present and fields valid}
+    B -->|no| R400[400 VALIDATION_FAILED naming the field]
+    B -->|yes| C{GetFolioBalance and the stay already has a folio}
+    C -->|yes| S[200 the folio Billing holds, in any stay state]
+    C -->|no| D[Stay verifier asks GetStayRef with the caller token]
+    D -->|200 in-house| E{Which route}
+    E -->|GetFolioBalance| G[Create the folio at zero balance]
+    G --> S2[200 empty folio, zero balance]
+    E -->|PostCharge, RecordPayment, Approval| F{Idempotency key already claimed}
+    F -->|yes| H[Return the original line, no second write]
+    F -->|no| I[Insert line or approval, move balance, emit outbox event, commit]
+    I --> J[200 view of the line and the fresh balance]
+```
+
+Edge trace:
+
+- A–B: Bearer presence at the transport
+  (`web/BillingController.java:67-72`); UUID, actor, item, method, and
+  amount checks in the service (`service/BillingService.java:86-92`, `:111-116`,
+  `:126-140`, `:166-175`, `:255-262`).
+- B–C: an existing folio is served without a stay read, so a departed
+  stay's invoice and receipts keep reading and printing (product
+  `AC-FWV-5`; the print path is `app/src/views/PrintView.vue:1028`,
+  `:1120`, `:1157`).
+- C–D: the verification read (target `client/StayClient.java`, patterned
+  on `services/reservations/internal/pricing/client.go:43-75` — POST,
+  Bearer forward, 2-second timeout).
+- D–E–G–S2: a verified in-house stay with no folio still gets its folio on
+  the first balance read, exactly as today (product `AC-FWV-4`; the desk
+  check-out review and the Folio screen both depend on it).
+- E–F–H: the claim precedes the insert today
+  (`service/BillingService.java:146-151`); the verification now precedes
+  the claim, so a replay on a closed stay refuses instead of returning a
+  line (25.9).
+- F–I–J: unchanged writes — insert, `addToBalance`, `outbox`, response
+  (`repo/BillingRepository.java:99-135`;
+  `service/BillingService.java:158-162`).
+
+Rollback: revert the single implementation PR. The previous
+ensure-on-first-use behaviour returns with the client that made the read,
+and no data migration exists in either direction (ADR-0008).
+
+### 25.4 Per-flow diagram — unknown stay
+
+```mermaid
+flowchart TD
+    A[Stay verifier asks GetStayRef] -->|404 NOT_FOUND| B{details.stayId equals the requested stay}
+    B -->|no, or absent, a wiring fault| U[503 UPSTREAM_UNAVAILABLE, nothing written]
+    B -->|yes| C[404 NOT_FOUND naming the stay]
+    C --> D[No folio row, no line, no balance move, no approval, no outbox event]
+    D --> E[Desk says no stay matches that ID and nothing was recorded]
+```
+
+Edge trace:
+
+- A–B: Stay's own refusal carries the id it could not find
+  (`services/stay/src/store.ts:413-415`); comparing it keeps a
+  misconfigured base URL from reading as a product refusal on a money
+  path.
+- B–C: the definitive answer, surfaced with its own code and status — no
+  new vocabulary (ADR-0008 D3).
+- C–D: the verification runs before the claim and before any insert, so
+  nothing is written; a repeated request, with or without an idempotency
+  key, answers the same (product `AC-FWV-1`).
+- D–E: the desk sentence is product section 6.19
+  (`desk.folio.refused_unknown_stay`).
+
+### 25.5 Per-flow diagram — closed stay
+
+```mermaid
+flowchart TD
+    A[Stay verifier asks GetStayRef] -->|422 STATE_ILLEGAL| B{Does the stay already carry a folio}
+    B -->|no| C[422 STATE_ILLEGAL naming stay and state, no folio created]
+    B -->|yes| D[422 STATE_ILLEGAL, the existing folio keeps every line and its balance]
+    C --> E[Nothing written, no outbox event]
+    D --> F[Nothing written, the invoice still presents what Billing holds]
+```
+
+Edge trace:
+
+- A–B: Stay refuses anything outside `in-house` and names the state
+  (`services/stay/src/store.ts:416-421`).
+- B–C: a write against a closed stay that never had a folio creates none,
+  so no new orphan folio exists for a stay Billing cannot verify (product
+  `AC-FWV-5`).
+- B–D–F: a closed stay that does have a folio keeps it readable and
+  printable — the read path serves it without a stay read at all (25.3
+  edge B–C); only writes refuse. The document still matches the folio
+  (`BR-24`).
+- E: no line, no approval, no balance movement, no `folio.*` event.
+
+### 25.6 Per-flow diagram — unreadable Stay
+
+```mermaid
+flowchart TD
+    A[Stay verifier makes one call with a 2 second timeout] --> B{What came back}
+    B -->|transport failure, timeout, 5xx, unwired client, non-envelope| U[503 UPSTREAM_UNAVAILABLE, upstream stay, operation GetStayRef]
+    B -->|4xx envelope other than the stay answers| P[Surface the provider refusal unchanged, UNAUTHENTICATED stays UNAUTHENTICATED]
+    B -->|404 naming another stay| U
+    U --> X[No folio created or written, no balance move, no approval, no outbox event]
+    P --> X
+    X --> R[Desk says the stay could not be checked and nothing was recorded, retry offered]
+```
+
+Edge trace:
+
+- A–U: fail closed on an unread stay (ADR-0008 D4; the Reservations ->
+  Rates precedent returns the same code and detail shape,
+  `services/reservations/internal/pricing/client.go:88-96`). The
+  offline-first cached-config rule does not extend here (product
+  `AC-FWV-3`).
+- A–P: a rejected session is a session problem, not an outage, and must
+  not be reported as one.
+- U/P–X: the refusal precedes every write, so no unverified folio is ever
+  created and no write is half-recorded; once Stay answers, the retried
+  call commits once because the claim still guards the insert (25.3 edge
+  E–F).
+- X–R: the desk sentence is product section 6.19
+  (`desk.folio.refused_unreadable_stay`).
+
+### 25.7 Contract delta and error codes
+
+| File | Change | Version effect |
+|---|---|---|
+| `contracts/http/GetFolioBalance.json` | errors add `NOT_FOUND` (folio-less read of an unknown stay), `STATE_ILLEGAL` (stay not in house), `UPSTREAM_UNAVAILABLE` (Stay unreadable) | minor (`1.0 -> 1.1`, ADR-0004 D1: new error codes are additive) |
+| `contracts/http/PostCharge.json` | errors add the same three | minor (`1.0 -> 1.1`) |
+| `contracts/http/RecordPayment.json` | errors add the same three | minor (`1.0 -> 1.1`) |
+| `contracts/http/RecordOpenBalanceApproval.json` | errors add the same three | minor (`1.0 -> 1.1`) |
+| `contracts/errors/envelope.json` | add `UPSTREAM_UNAVAILABLE` to the `code` enum and `503` to `statusMapping` — the drift ADR-0005 already names | minor |
+| `contracts/http/GetStayRef.json` | unchanged — the provider already answers `NOT_FOUND` and `STATE_ILLEGAL` | none |
+
+Detail shapes carried on the refusals, so a desk or a log can act on them:
+`{upstream: "stay", stayId}` on `NOT_FOUND`;
+`{upstream: "stay", stayId, state}` on `STATE_ILLEGAL`;
+`{upstream: "stay", operation: "GetStayRef"}` on `UPSTREAM_UNAVAILABLE`.
+`VALIDATION_FAILED` keeps today's `{field: "stayId"}` for a malformed id.
+
+No new operation, request field, response field, schema, table, column,
+migration, or event exists. `contracts/openapi.yaml` and its
+`frontend/docs/openapi.yaml` mirror list no Billing folio operation, so
+neither gains an entry; `script/contract-check.sh` and
+`script/openapi-route-check.sh` must both stay green on the
+implementation PR.
+
+### 25.8 Verification plan
+
+Billing guards (the implementation PR creates them; the existing service
+suite is
+`services/billing/src/test/java/com/hotel/billing/service/BillingServiceTest.java`
+and the transport suite is `web/BillingControllerTest.java`, both
+database-free so `mvn test` stays offline):
+
+| Product condition | Guard (target) |
+|---|---|
+| `AC-FWV-1` unknown stay | `PostCharge`, `RecordPayment`, and `RecordOpenBalanceApproval` against an id Stay answers `404` for: `404 NOT_FOUND`, and the repository mock records no `ensureFolio`, no insert, no `addToBalance`, no `recordApproval`, no `outbox` — with and without an idempotency key, and on a repeated call |
+| `AC-FWV-2` closed stay | the same three writes against a stay Stay answers `422` for, with and without an existing folio: `422 STATE_ILLEGAL` naming the state, nothing written |
+| `AC-FWV-3` unreadable Stay | transport failure, timeout, `5xx`, non-envelope body, and an unwired client each answer `503 UPSTREAM_UNAVAILABLE` with `{upstream, operation}`; a `401` envelope surfaces as `UNAUTHENTICATED`; a `404` naming another stay answers `503`, not `NOT_FOUND` |
+| `AC-FWV-4` fresh check-in regression | `GetFolioBalance` on a verified in-house stay with no folio creates exactly one folio at zero balance; the three writes then commit with the same line, balance movement, and `folio.*` event as today |
+| `AC-FWV-5` departed-stay reads | `GetFolioBalance` on a stay with an existing folio answers it and makes no Stay call, so `ProduceInvoice` / `ProduceReceipt` still match; a closed stay with no folio answers `STATE_ILLEGAL` and creates nothing |
+| `AC-FWV-7` bounded close path | a guard pins that `GetStayRef` is the only outbound call on the folio path and that the verification is not made from inside the transactional writer (an ordering assertion on the mocked client and repository) |
+
+Client guards: the stay client's answer classification (25.2 table) is
+unit-tested against a JDK `HttpServer` stub — JDK-only, so the suite stays
+database-free — covering `200`, an unknown-stay `404`, a wrong-id `404`,
+a `422`, a `503`, a malformed body, and a connection refusal. Existing
+desk guards stay green unchanged: `AC-DSK-18`, `AC-DSK-19`, `AC-CKO-1`,
+`AC-CKO-2`, `AC-DEP-1`..`AC-DEP-5`, plus the `app/src/views/FolioView.test.ts`
+refusal mapping once the three catalogue keys land.
+
+Stack gates: `cd services/billing && mvn verify`;
+`cd services/stay && npm ci && npm run build && npm test && npm run lint`;
+`script/contract-check.sh`; `script/openapi-route-check.sh`;
+`script/catalogue-coverage-check.sh`; `script/markdown-link-check.sh`.
+The qa-lead traceability row for #634 is a sibling handoff and must cite
+the guards above by `file:line` at the merged head.
+
+### 25.9 Residual risks, the post-departure consequence, and the re-tier trigger
+
+- **R5 mirror — the verify-then-write window.** The stay is verified, then
+  the line is written; a stay that closes in between still takes the line.
+  It is not atomic across services and not fixable without a Billing-side
+  conditional write (`RequestCheckoutGate` stays deferred, integration
+  F4). Bounded by the 2-second timeout, single-desk scale, and the #601
+  close re-reading the balance immediately before its flip. The threat
+  model records the pairing in
+  `docs/technical/security-threat-model.md` section 8 (R5, R8).
+- **R8 — folio writes fail closed while Stay is unreadable.** A Stay
+  outage now blocks charge posting, payment recording, approval
+  recording, and a folio-less balance read, where before it blocked
+  nothing. Accepted for a money path: the mitigation is an availability
+  alert and the existing offline desk banner, never a cached stay state
+  (`NFR-AVL-1` does not extend to a fact that decides money).
+- **Post-departure settlement — named consequence, out of scope.** An open
+  balance approved at check-out can no longer be settled by a
+  `RecordPayment` once the stay is closed, because every write verifies
+  the stay. Product records it as a named consequence and explicitly out
+  of scope (D-30, product section 6.19): a late-settlement flow is its own
+  decision and its own issue. Nothing already recorded moves — a payment
+  taken before departure still records, still receipts, and still prints —
+  and the desk can still print the departure invoice and every receipt.
+- **A replay on a closed stay refuses.** A charge whose first attempt
+  committed and whose retry arrives after the close now answers
+  `STATE_ILLEGAL` instead of replaying the stored line. The recorded line
+  is untouched and the folio still shows it; the retry is simply refused,
+  which is the honest answer for a stay that may no longer take money.
+- **Orphan folios already written stay.** This change prevents new ones;
+  it does not delete, migrate, or repair existing rows.
+- **The actor is still asserted, not token-bound** (R6, unchanged), and
+  the approval-role rule stays with #625.
+- **Re-tier trigger.** Any of these re-tiers the change to a new ADR and
+  the owner's `accepted` flip before implementation: caching or mirroring
+  stay state inside Billing (Option F in ADR-0008), a late-settlement
+  operation or any new operation on the money path, a Billing-side
+  conditional close (`RequestCheckoutGate`), a schema or migration for
+  folio or stay links, or a retry/backoff policy beyond the single
+  2-second call. The decided shape needs none of them, which is why the
+  tier stays T3 and the risk stays `risk-medium`.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1046

@@ -121,11 +121,40 @@ re-validates all three fields on the read. Whether approval is needed
 and which of the three may approve is the hotel open-balance rule
 (section 3.1) and is not enforced yet (config fan-out slice).
 
+From #634 on the read itself verifies the stay first when the stay
+carries no folio (C8): a close on a stay with no folio and no verified
+stay therefore answers `NOT_FOUND` / `STATE_ILLEGAL` rather than opening
+an empty folio, and a Stay that cannot be read answers
+`UPSTREAM_UNAVAILABLE`. An existing folio is served in every stay state,
+so the close of a checked-in stay is unchanged.
+
 ### C8. BIL -> STAY (`StayService`) — SYNC read
 
 `GetStayRef` (stayRef -> guest, room, in-house state; FR-BIL-2/3/4).
-Errors: `STATE_ILLEGAL` (not in house / closed; BR-1/18). Every
-folio line and receipt matches its stay exactly (FR-BIL-4; BR-24).
+Errors: `NOT_FOUND` (unknown stay), `STATE_ILLEGAL` (not in house /
+closed; BR-1/18). Every folio line and receipt matches its stay exactly
+(FR-BIL-4; BR-24).
+
+From #634 on it is consumed by Billing itself, not only available to it:
+`PostCharge`, `RecordPayment`, and `RecordOpenBalanceApproval` call it on
+every request before they write, and `GetFolioBalance` calls it before it
+creates a folio for a stay that has none (a folio Billing already holds
+is served without a Stay read, so a departed stay's invoice and receipts
+keep presenting; ADR-0008, LLD
+[section 25](../architecture/lld.md#25-folio-writes-verify-the-stay-refs-634)).
+The call is `POST {STAY_BASE_URL}/v1/stay/GetStayRef` with the stay id,
+the caller's Bearer token forwarded, `STAY_BASE_URL` default
+`http://stay:8084`, a 2-second timeout (inside NFR-PERF-1's 3-second
+action bound), and it runs outside Billing's database transaction.
+
+Errors Billing raises from the seam: an unknown stay -> `NOT_FOUND`;
+a stay outside in-house -> `STATE_ILLEGAL` naming the state; an unread
+Stay -> `UPSTREAM_UNAVAILABLE` (503) and nothing is written. A provider
+`4xx` envelope is surfaced unchanged (a rejected session stays
+`UNAUTHENTICATED`), and a `404` that does not name the requested stay is
+treated as unreadable, not as an unknown stay. Bounded path: `GetStayRef`
+is a leaf read with no outbound call, so the Billing <-> Stay cycle ends
+after one hop (C7 -> C8 -> return).
 
 ## 4. Charge, payment, day-close (BA section 4; provider: Billing, SYNC)
 
@@ -143,6 +172,14 @@ charge posting; FR-BIL-5); `RecordOpenBalanceApproval`
 FR-BIL-7; BR-17). Undefined item -> `VALIDATION_FAILED` naming
 item (assigned here). Fixed-until-decided: method enum cash/card
 only (OQ-1); day-close totals without sign-off (OQ-3).
+
+From #634 on, `PostCharge`, `RecordPayment`, and
+`RecordOpenBalanceApproval` verify the stay through C8 before writing:
+an unknown stay -> `NOT_FOUND`, a stay outside in-house -> `STATE_ILLEGAL`
+naming the state, an unread Stay -> `UPSTREAM_UNAVAILABLE` (503) with
+nothing written. A folio Billing already holds stays readable in every
+stay state, so `ProduceInvoice` / `ProduceReceipt` and `GetDayClose` are
+unaffected (ADR-0008, LLD section 25).
 
 ## 5. Housekeeping loop (BA section 5; provider: Rooms, SYNC)
 
@@ -257,4 +294,4 @@ sections 4–6 and change only through requirements wording, never through
 implementation drift.
 
 <!-- ao-role: architect -->
-Role: architect · AO session hotel-mgmt-946
+Role: architect · AO session hotel-mgmt-1046

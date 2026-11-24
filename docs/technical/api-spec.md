@@ -32,7 +32,8 @@ section 4).
   decision, the caller's claim about the fact is advisory. The module
   that owns the fact is re-read at the decision point, and an unreadable
   provider fails the operation closed with `UPSTREAM_UNAVAILABLE`
-  (`docs/architecture/lld.md` section 21; Refs #601).
+  (`docs/architecture/lld.md` section 21; Refs #601; the folio write path
+  is the second instance, LLD section 25, Refs #634).
 
 ## 2. Contract outline (per HLD module)
 
@@ -43,7 +44,7 @@ section 4).
 | `RoomInventoryService` | Room/room-type setup, status updates, out-of-order blocks, availability query. Emits `RoomStateEvents`. |
 | `PricingService` | Rate-plan setup, price quote, discount application, restriction check. Emits `RateEvents`. |
 | `GuestService` | Profile CRUD, preference/notes update, repeat-guest flag, confirmation record. Emits `GuestEvents`. |
-| `BillingService` | Folio open, charge posting, payment recording, tax/fee derivation, day-close, settlement check. Emits `FolioEvents`. |
+| `BillingService` | Folio open, charge posting, payment recording, tax/fee derivation, day-close, settlement check; stay verification before every folio write (Refs #634). Emits `FolioEvents`. |
 | `ReportingService` | Occupancy, revenue, daily sheet, housekeeping reports (read API over the reporting read model). |
 | `AdminService` | Hotel profile, users/roles, configuration values, export/backup runs. Emits `ConfigChangedEvents`. |
 
@@ -78,4 +79,4 @@ bullets are preserved and annotated, not rewritten.
   (LLD D3; integration F3).
 
 <!-- ao-role: architect -->
-Role: architect · AO session hotel-mgmt-946
+Role: architect · AO session hotel-mgmt-1046
