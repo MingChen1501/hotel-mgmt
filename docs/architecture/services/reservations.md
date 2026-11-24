@@ -127,6 +127,15 @@ Contract tests: `contract-tests/` holds fixtures per provided/consumed operation
 script/contract-check.sh
 ```
 
+Ingress bounds (Refs #630): `internal/handler` caps a request body at
+65 536 bytes (`maxBodyBytes`) through `http.MaxBytesReader` and refuses an
+oversized body with the shared envelope (`VALIDATION_FAILED`, `details`
+naming `body`) before parsing; `cmd/server/main.go` runs an `http.Server`
+with `ReadHeaderTimeout` 5 s, `ReadTimeout` 10 s, `WriteTimeout` 15 s, and
+`IdleTimeout` 60 s. No environment variable overrides either value.
+Details: LLD
+[section 29](../lld.md#29-bounded-request-bodies-and-finite-server-timeouts-refs-630).
+
 ## 8. Planned delta — departure completion (Refs #646)
 
 Not as-built yet: the operation surface stops at the seven routes in

@@ -155,6 +155,16 @@ Contract tests: `contract-tests/` holds fixtures per provided/consumed operation
 script/contract-check.sh
 ```
 
+Ingress bounds (Refs #630): a body-bounding filter caps a request body at
+65 536 bytes (`MAX_BODY_BYTES`) and refuses an oversized body with the
+shared envelope (`VALIDATION_FAILED`, `details` naming `body`) before
+`@RequestBody` binding; `application.properties` carries
+`server.tomcat.connection-timeout=5s`,
+`server.tomcat.keep-alive-timeout=10s`, and
+`server.tomcat.max-swallow-size=65536`. No environment variable overrides
+them. Details: LLD
+[section 29](../lld.md#29-bounded-request-bodies-and-finite-server-timeouts-refs-630).
+
 ## 8. Planned delta — approval provenance at write (Refs #601, ADR-0005 proposed)
 
 Today `recordOpenBalanceApproval` (section 4 edge W) requires a
