@@ -4845,3 +4845,147 @@ the guards above by `file:line` at the merged head.
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1046
+
+## 28. Backend faults answer INTERNAL_ERROR (Refs #627)
+
+Tier **T2 confirmed**: a caller-visible wire-vocabulary change — a new
+`code` on the `5xx` path plus a grown contract enum — with no new
+subsystem, dependency edge, data model, lifecycle state, or
+reader-visible surface. ADR-0004 D1 already covers additive error
+codes, so no new ADR and no T3 record. Product done-conditions are
+`docs/product/acceptance-criteria.md` section 21 (`AC-ERR-1`..`AC-ERR-5`)
+with D-33 in `docs/project/decision-log.md`; FR/NFR wording is the
+`business-analyst` handoff (`docs/requirements/mvp-requirements.md`
+section 29), guard traceability the `qa-lead` handoff
+(`docs/testing/traceability-matrix.md` section 21), the release note the
+`release-manager` handoff, and implementation the `dev` handoff. This
+section records only the architect-owned delta: the contract enum, the
+technical taxonomy
+(`docs/technical/error-handling.md` [section 1](../technical/error-handling.md)),
+and the per-flow diagram below.
+
+### 28.1 What the contract registers
+
+One edit owns the vocabulary — `contracts/errors/envelope.json` (`code`
+enum plus `statusMapping`). The technical taxonomy
+(`docs/technical/error-handling.md` section 1) describes the same three
+tokens; the four Node `errors.ts` maps follow in the implementation
+change, so the enum and the served maps cannot drift.
+
+| Code | Status | Raised when | Emitting change |
+|---|---|---|---|
+| `INTERNAL_ERROR` | 500 | an unexpected exception reaches a Node service's catch-all: a store or driver failure, a wiring fault, or a crash — never the caller's input | #627 (Stay, Guests, Rooms, Admin) |
+| `UPSTREAM_UNAVAILABLE` | 503 | a provider that must be read to decide the operation cannot be read, so the operation fails closed | already emitted: Reservations -> Rates (`services/reservations/internal/service/service.go:76-83`, Refs #601); Billing -> Stay (LLD [section 27](#27-folio-writes-verify-the-stay-refs-634), Refs #634) |
+| `METHOD_NOT_ALLOWED` | 405 | a wrong method on a known route: a caller-conformance answer, not a product refusal | #628 (Go) and #629 (Billing) conformance changes; no desk action sends or can receive it |
+
+Why one edit and not three: the Admin contract-sync guard walks every
+`statusMapping` entry and constructs the matching code
+(`services/admin/src/errors.test.ts:25-29`), and `script/contract-check.sh`
+gates the file itself. A code added to the contract without its map (or
+a map entry without the contract) turns a gate red, so the enum, the
+taxonomy, and the four maps move together. `UPSTREAM_UNAVAILABLE` was
+documented at `docs/technical/error-handling.md` section 1 and emitted
+by Reservations while absent from the enum; the D-32 clause that assigned
+its registration to the #634 change is superseded by D-33, and section 5
+of the taxonomy now points at this change instead.
+
+### 28.2 The unexpected-exception path, per Node service
+
+Four services, one shape. The catch-all already distinguishes a product
+refusal (`HttpError`, answered with its mapped code and status) from
+anything else; only the `else` arm changes, from
+`code: "VALIDATION_FAILED"` to `code: "INTERNAL_ERROR"`. The envelope
+shape, its plain `error.transport.unexpected` sentence, an empty
+`details`, and a fresh `traceId` stay exactly as they are.
+
+```mermaid
+flowchart TD
+    A[POST /v1/MODULE/Operation] --> B[handleRequest: route, session, body, store call]
+    B -->|success| C[200 operation payload]
+    B -->|HttpError product refusal| D[4xx code and status from the map, unchanged]
+    B -->|unexpected throw: not an HttpError| S1[Stay catch-all]
+    B -->|unexpected throw: not an HttpError| S2[Guests catch-all]
+    B -->|unexpected throw: not an HttpError| S3[Rooms catch-all]
+    B -->|unexpected throw: not an HttpError| S4[Admin catch-all]
+    S1 --> E[writeJson 500]
+    S2 --> E
+    S3 --> E
+    S4 --> E
+    E --> F[code INTERNAL_ERROR, plain unexpected-failure sentence, empty details, traceId]
+    F --> G[desk reads a 5xx as an unreadable outcome: nothing released, rooms named to re-read]
+```
+
+Edge trace (every edge cites code at this spec head):
+
+- B–D: product refusals are `HttpError` instances whose status comes from
+  the service's map (`services/stay/src/errors.ts:23-33`; Guests, Rooms,
+  and Admin carry the same shape), and the catch-all answers
+  `errorEnvelope(err)` (`services/stay/src/server.ts:77-78`).
+- B–S1: Stay's catch-all — `services/stay/src/server.ts:76-87`, the
+  `else` arm at `:79-85`, the `500` body at `:80-85`, today's
+  `VALIDATION_FAILED` literal at `:81`.
+- B–S2: Guests' catch-all — `services/guests/src/server.ts:47-58`, the
+  `else` arm at `:50-56`, the `500` body at `:51-56`, the literal at
+  `:52`.
+- B–S3: Rooms' catch-all — `services/rooms/src/server.ts:47-58`, the
+  `else` arm at `:50-56`, the `500` body at `:51-56`, the literal at
+  `:52`.
+- B–S4: Admin's catch-all — `services/admin/src/server.ts:55-66`, the
+  `else` arm at `:58-65`, the `500` body at `:59-64`, the literal at
+  `:60`.
+- S1–S4–E: the four arms write the same four-field envelope with
+  `writeJson(res, 500, ...)` and a fresh `traceId`
+  (`services/stay/src/server.ts:80-85` and the three siblings above).
+- F–G: the desk already applies the unreadable-outcome rule to every
+  `5xx` (`docs/technical/error-handling.md` section 4, Refs #647) and
+  renders a failed read with the shell's plain request-failed sentence
+  (`app/src/views/RoomsView.vue:669-681`); the code token is never
+  rendered (`app/src/views/desk-edge-guards.test.ts:42`).
+
+Which throws reach S1–S4: only an `HttpError` is a product refusal. A
+store or driver failure is an ordinary exception, so it lands in the
+`else` arm — for example Stay's Postgres store calls the pool and its
+clients directly (`services/stay/src/pgstore.ts:207-219`, `:302-306`,
+`:344-362`) and throws `HttpError` only for a product refusal
+(`:212-219`, `:300`, `:352-362`). That is why the wrong token reached
+the desk for a database fault.
+
+An unknown operation on a Node service keeps its answer: the route match
+fails, so a non-`POST` method or an unknown operation answers
+`404 NOT_FOUND` (`services/stay/src/server.ts:101-107`, the operation
+`default` arm at `:167-174`). Node emits no `405`; the token exists for
+the Go and Billing conformance changes (#628, #629), and the four maps
+accept it so the enum and the maps stay aligned (AC-ERR-2).
+
+### 28.3 Failure, rollback, and what does not change
+
+- **No rollback per answer.** The catch-all writes one envelope and
+  mutates nothing; there is no earlier write of that call to take back.
+  A multi-call desk action that receives the `5xx` applies the existing
+  unreadable-outcome rule (taxonomy section 4): it releases nothing and
+  names the rooms to re-read.
+- **Every existing refusal is untouched.** `VALIDATION_FAILED` (400),
+  `UNAUTHENTICATED` (401), `IDENTITY_LOCKED` (401), `FORBIDDEN` (403),
+  `NOT_FOUND` (404), `CONFLICT` (409), `SETTLEMENT_REQUIRED` (409),
+  `STATE_ILLEGAL` (422), and `UPSTREAM_UNAVAILABLE` (503) keep the code
+  and status they answer today (AC-ERR-3).
+- **No descriptor leaks.** The `5xx` message stays the plain
+  `error.transport.unexpected` catalogue sentence (no driver, SQL, host,
+  path, or stack text) and `details` stays empty; `traceId` links the
+  answer to the audit entry (`NFR-I18N-1`, `NFR-AUD-1`).
+- **No desk, copy, route, or print change.** No catalogue key, layout,
+  or print rule moves; the desk renders the same sentences it does today
+  (AC-ERR-5).
+- **Change-level rollback** is one revert: the four literals fall back to
+  `VALIDATION_FAILED`-on-500 and the enum loses the three tokens.
+- **Out of scope here.** Deduplicating the four `errors.ts` copies into a
+  shared module is a repo-layout decision with its own issue; retry and
+  backoff policy is not set by this change; and the Go/Java services'
+  own `5xx` mappings are their issues (#628, #629).
+- **Maintain-with-code.** The implementation change updates the four
+  literals and the four maps, adds one `5xx`-path guard per Node service
+  (AC-ERR-4), and refreshes this diagram and its line pins if any cited
+  line moves; `qa-lead`'s traceability section 21 cites those guards.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1061

@@ -107,6 +107,7 @@ front-desk staff, manager, or owner account acting within its access
 | BR-43 | The business date has one canonical form and one display form. Stored, transmitted, validated, and day-close values stay ISO `YYYY-MM-DD`; the desk header renders the locale long-weekday form derived from the canonical value (VI weekday long plus `dd/MM/yyyy`, EN weekday long plus `MM/dd/yyyy`). No consumer parses the displayed string. | FR-DSK-11; FR-BIL-6; NFR-I18N-1; NFR-TZ-1; contracts/http/DailySheet.json |
 | BR-41 | The desk keeps working through an internet outage: booking, check-in, check-out, charge posting, payment recording, and invoice printing all complete on the on-premise installation as when connected. | NFR-AVL-1; PRD assumptions |
 | BR-42 | A wrong secret entered 5 times in a row locks the identity until the owner or manager unlocks it; a sign-in attempt against the locked identity is refused with `IDENTITY_LOCKED` (distinct from `UNAUTHENTICATED`). A session idle 15 minutes signs out. | NFR-SEC-2 |
+| BR-59 | A failure the system did not plan for is reported as an internal fault, never as bad input from the person at the desk. `VALIDATION_FAILED` states that the caller's request or a field of it was wrong and keeps that meaning only; an unexpected exception — a store or driver failure, a wiring fault, or a crash — is answered with `INTERNAL_ERROR` (500) in the shared envelope, so the same meaning always carries the same token in every service that serves the desk. The answer keeps the envelope's four fields, reads as one plain catalogue sentence carrying no driver, SQL, host, path, or stack-trace text, and carries a correlation id, so no internal detail reaches the desk and support can trace the answer. The code vocabulary is the shared contract's single enum: a service answers no code the enum does not list, and every refusal the hotel already decided keeps its own code and status. | FR-ERR-1; FR-ERR-2; FR-ERR-3; `AC-ERR-1`; `AC-ERR-2`; `AC-ERR-3`; NFR-I18N-1; Refs #627 |
 
 ## 9. Per-hotel configurable vs fixed split
 
@@ -175,14 +176,20 @@ already held stays readable in every stay state — tracing `FR-BIL-1`,
 `FR-FWV-1`, `FR-FWV-5`, and `AC-FWV-4`, and BR-51 states that an
 unverifiable stay refuses the write and changes nothing, tracing
 `FR-BIL-2`, `FR-BIL-3`, `FR-BIL-7`, `FR-FWV-1`..`FR-FWV-4`, and
-`AC-FWV-1`..`AC-FWV-3`, neither adding behaviour beyond those sources.
+`AC-FWV-1`..`AC-FWV-3`, neither adding behaviour beyond those sources, and BR-59 states that a
+failure the system did not plan for is reported as an internal fault and
+never as bad input — `VALIDATION_FAILED` keeps meaning the caller's
+request was wrong, the answer carries no internal descriptor, and the
+shared contract enum stays the single vocabulary every service follows —
+tracing `FR-ERR-1`..`FR-ERR-3` and `AC-ERR-1`..`AC-ERR-3`, without
+adding behaviour beyond those sources.
 Policies with no decided source appear as open questions
 OQ-1..OQ-5. No rule introduces behaviour beyond the traced
 FRs/NFRs/stories. Later capabilities from requirements section 6
 (waitlist, split folios, integrated payments, automated workflow
 rules, multi-property operation, and the rest) carry no rule here.
 
-Counts: 48 business rules, 5 open questions.
+Counts: 49 business rules, 5 open questions.
 
 <!-- ao-role: business-analyst -->
-Role: business-analyst · AO session hotel-mgmt-1047
+Role: business-analyst · AO session hotel-mgmt-1062

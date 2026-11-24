@@ -8,18 +8,35 @@ the message catalogue (`NFR-I18N-1`).
 
 ## 1. Error envelope
 
-Every failed contract call returns the same shape:
+Every failed contract call returns the same shape, and `code` comes from
+the one contract enum (`contracts/errors/envelope.json`, gated by
+`script/contract-check.sh`); no service answers a code the enum does not
+list:
 
-- `code`: a stable machine-readable token (for example
-  `RATE_LIMIT` is not MVP; representative MVP codes:
-  `VALIDATION_FAILED`, `NOT_FOUND`, `UNAUTHENTICATED`
-  (session-expiry/lockout refusals, assigned in
-  `docs/architecture/lld.md` [section 0](../architecture/lld.md) and
-  `docs/technical/integration.md` [section 6](integration.md) C10), `FORBIDDEN`,
-  `CONFLICT`, `STATE_ILLEGAL`, `SETTLEMENT_REQUIRED`,
-  `UPSTREAM_UNAVAILABLE` (503 — a provider that must be read to decide
-  the operation could not be read, so the operation fails closed;
-  registered in `docs/architecture/lld.md` section 0, Refs #601)).
+- `code`: a stable machine-readable token from the contract enum
+  (`contracts/errors/envelope.json`; `RATE_LIMIT` is not MVP). The MVP
+  vocabulary, with its status mapping:
+  - `VALIDATION_FAILED` (400 — the caller's body or a field is wrong),
+    `NOT_FOUND` (404), `FORBIDDEN` (403), `CONFLICT` (409),
+    `STATE_ILLEGAL` (422), `SETTLEMENT_REQUIRED` (409).
+  - `UNAUTHENTICATED` (401) and `IDENTITY_LOCKED` (401) —
+    session-expiry/lockout refusals, assigned in
+    `docs/architecture/lld.md` [section 0](../architecture/lld.md) and
+    `docs/technical/integration.md` [section 6](integration.md) C10.
+  - `UPSTREAM_UNAVAILABLE` (503) — a provider that must be read to
+    decide the operation could not be read, so the operation fails
+    closed (`docs/architecture/lld.md` section 0; Refs #601).
+  - `INTERNAL_ERROR` (500) — an unexpected exception: a store or
+    driver failure, a wiring fault, or a crash. Never the caller's
+    input and never `VALIDATION_FAILED`; the message is the existing
+    plain unexpected-failure sentence and carries no driver, SQL,
+    host, path, or stack-trace text (`NFR-I18N-1`; Refs #627, LLD
+    [section 28](../architecture/lld.md)).
+  - `METHOD_NOT_ALLOWED` (405) — a wrong method on a known route: a
+    caller-conformance answer, not a product refusal. Consumed by the
+    Go and Billing conformance changes (#628, #629); no desk action
+    sends or can receive it (Refs #627, LLD
+    [section 28](../architecture/lld.md)).
 - `message`: a human-readable sentence naming what was refused and
   why, suitable to show staff at the desk.
 - `details`: the named field, restriction, room, or conflicting
@@ -130,10 +147,12 @@ than on the caller's id. The rule set, applied to `PostCharge`,
   product refusal on a money path.
 - **No new code.** `NOT_FOUND`, `STATE_ILLEGAL`, `VALIDATION_FAILED`, and
   `UNAUTHENTICATED` are already in section 1 and in
-  `contracts/errors/envelope.json`; `UPSTREAM_UNAVAILABLE` is the code
-  section 1 already describes and the envelope file was missing — this
-  change registers it there (enum plus `statusMapping` 503), which also
-  closes the drift ADR-0005 records.
+  `contracts/errors/envelope.json`. `UPSTREAM_UNAVAILABLE` is the code
+  section 1 already describes and the envelope file was missing it; the
+  registration (enum plus `statusMapping` 503) belongs to the #627 change,
+  whose D-33 supersedes the D-32 clause that placed that edit here — this
+  rule set adds no enum entry, and the #627 registration also closes the
+  drift ADR-0005 records.
 - **Refusals precede writes.** The verification runs before the
   idempotency claim and before any insert, so a refusal leaves no folio
   row, no line, no balance movement, no approval, and no outbox event.
