@@ -50,7 +50,7 @@ Reservations provider operation `CheckOutReservation` after its
 `in-house -> closed` flip commits, resolving the booking by the
 `stay_id` link set at check-in (`services/stay/src/store.ts:260-292`
 is the as-built close that completes nothing;
-`services/reservations/internal/store/store.go:194-196` is the active
+`services/reservations/internal/store/store.go:195-197` is the active
 set the booking now leaves). The `CheckOut` response gains the additive
 `bookingCompletion` object (`1.0 -> 1.1`), which tells the desk whether
 the completion was recorded. No lifecycle state is added: `closed`
