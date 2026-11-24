@@ -151,7 +151,7 @@ docs and plans, not gated specs.
 | Type | Path | Status | Owner | Purpose |
 |---|---|---|---|---|
 | Test strategy | `testing/test-strategy.md` | active | `qa-lead` | testing approach, levels, and entry/exit criteria (Closes #62) |
-| Traceability matrix | `testing/traceability-matrix.md` | active | `qa-lead` | FR/NFR-to-guard map (every item keeps at least one guard) (Closes #62; section 11 Refs #590, section 12 Refs #600, section 13 Refs #601, section 14 Refs #646, section 15 Refs #647, section 16 Refs #648) |
+| Traceability matrix | `testing/traceability-matrix.md` | active | `qa-lead` | FR/NFR-to-guard map (every item keeps at least one guard) (Closes #62; section 11 Refs #590, section 12 Refs #600, section 13 Refs #601, section 14 Refs #646, section 15 Refs #647, section 16 Refs #648, section 20 Refs #634) |
 | Test report | `testing/test-report.md` | active | `qa-lead` | consolidated full-MVP results with pass evidence per cell (Closes #214) |
 | Phase 6 QA plan | `testing/phase-6-qa-plan.md` | active | `qa-lead` | scoped independent-QA pass plan: entry, activities, bug flow, exit (Closes #264) |
 | A1 desk-loop run log | `testing/phase-6-qa-a1-run-log.md` | active | `qa-lead` | scripted live-stack desk-loop record: per-step observed-vs-expected, screen surfaces, admin reads, evidence, defects (Closes #267) |
@@ -172,6 +172,7 @@ docs and plans, not gated specs.
 | Departure release test traceability | `testing/departure-release-test-traceability.md` | active | `qa-lead` | cases `DEP-1..DEP-9`, guard registry `DR1`–`DR13`, evidence rule `DR-E1`, and the `AC-DEP-1..5` / `FR-DEP-1..5` map for the departure release and same-day reuse after check-out, with the #588/#600/#601 pins that must stay green and the lifecycle `D5`/`D6` rows (Refs #646) |
 | Arrival reassignment test traceability | `testing/arrival-reassign-test-traceability.md` | active | `qa-lead` | cases `REA-1..REA-9`, guard registry `RR1`–`RR13`, evidence rule `RR-E1`, and the `AC-REA-1..5` / `FR-REA-1..5` map for the arrival room reassignment and vacated-room release, with the definitive-versus-unreadable ordering, the `AC-REA-1` / `FR-REA-1` disposition, and the #586/#588/#596/#600/#601/#614/#646 pins that must stay green (Refs #647) |
 | Booking management view test traceability | `testing/booking-management-view-test-traceability.md` | active | `qa-lead` | cases `BMV-1..BMV-9`, guard registry `BM1`–`BM16`, evidence rule `BM-E1`, and the `AC-BMV-1..7` / `FR-BMV-1..7` map for the read-only booking register desk screen, with the inclusive-night boundary pair, the read-count and cap bounds, the `—`-versus-`cell_unreadable` split, the R18 partial-column copy gap, the narrow-width nav-band pin (`BM16`, D-29), and the shell/board pins that must stay green (Refs #648) |
+| Folio write verification test traceability | `testing/folio-write-verification-test-traceability.md` | active | `qa-lead` | cases `FWV-1..FWV-10`, guard registry `FW1`–`FW13`, evidence rule `FW-E1`, and the `AC-FWV-1..7` / `FR-FWV-1..5` map for the folio write verification change, with the folio-creating-versus-existing-folio read split, the unknown-stay / closed-stay / unreadable-Stay caller split, the 2-second bounded read, and the #588/#600/#601/#646/#647/#648 pins that must stay green (Refs #634) |
 
 ## DevOps / Operations / Release
 
