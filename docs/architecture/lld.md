@@ -4556,8 +4556,8 @@ or data-model change; the contract change is additive only). ADR-0006
 accepted 2026-11-24) records the source choice and the seam. The finding
 is audit item R1: `sellableUnits` is read from the request body
 (`services/reservations/internal/handler/handler.go:129`, `:144`,
-`:217`, `:229`) and is the guard's only ceiling
-(`services/reservations/internal/store/store.go:221`, `:375`), so a
+`:239`, `:251`) and is the guard's only ceiling
+(`services/reservations/internal/store/store.go:222`, `:415`), so a
 caller that sends a large number overbooks. Product conditions
 `AC-OVB-1`..`AC-OVB-3` (`docs/product/acceptance-criteria.md` section
 19) and decision D-31 are sibling artefacts, as are the FR/NFR wording
@@ -4609,17 +4609,17 @@ architect-owned delta.
    to the store, which counts overlapping `confirmed` + `checked-in`
    rows for the type and dates **excluding the reservation itself on
    Modify** and inserts only when the count is below the ceiling
-   (`services/reservations/internal/store/store.go:205-221` and `:340-375`;
+   (`services/reservations/internal/store/store.go:206-226` and `:376-415`;
    the Postgres transaction twins at
-   `services/reservations/internal/store/postgres.go:150-189` and
-   `:415-496`). A ceiling of `0` is a sold-out answer: `CONFLICT` 409
-   naming the type and dates (`store.go:221-225`), never a 5xx.
+   `services/reservations/internal/store/postgres.go:149-189` and
+   `:486-640`). A ceiling of `0` is a sold-out answer: `CONFLICT` 409
+   naming the type and dates (`store.go:222-226`), never a 5xx.
 7. Ignore the request's `sellableUnits` for the decision. It is
    shape-validated only when present (integer `>= 0`, otherwise
    `VALIDATION_FAILED` naming the field) and does not reach the store:
-   the store's `input.SellableUnits < 1` validation (`store.go:202`,
-   `:337`; `postgres.go:146`, `:412`) and the handler's absent-means-zero
-   default (`handler.go:344`) are removed with this change, otherwise an
+   the store's `input.SellableUnits < 1` validation (`store.go:203`,
+   `:377`; `postgres.go:146`, `:483`) and the handler's absent-means-zero
+   default (`handler.go:366`) are removed with this change, otherwise an
    advisory field would still decide (an absent field would refuse as
    `VALIDATION_FAILED`).
 8. Keep the idempotency replay inside the store (no second unit
@@ -4627,8 +4627,8 @@ architect-owned delta.
    evaluated on every attempt, replay included.
 
 **Counted states stay as built.** The guard counts `confirmed` and
-`checked-in` rows and nothing else (`activeState`, `store.go:194-196`;
-`postgres.go:176-183`, `:482-489`), so a cancelled, no-show, or closed
+`checked-in` rows and nothing else (`activeState`, `store.go:195-197`;
+`postgres.go:176-183`, `:552-557`), so a cancelled, no-show, or closed
 reservation releases its unit while an in-house guest keeps holding its
 own. `AC-OVB-1` words that same set — a cancelled, no-show, or closed
 reservation "releases its held unit exactly as today", a checked-in one
@@ -4669,10 +4669,10 @@ Edge trace:
 - D–E: `totalCount` and `blockedRooms` are the date-ranged facts
   (`services/rooms/src/store.ts:343-356`); the derived `sellableCount`
   is not consumed (ADR-0006 D2).
-- E–F–G: the guarded store step (`internal/store/store.go:205-259`;
-  Postgres `internal/store/postgres.go:150-189`).
+- E–F–G: the guarded store step (`internal/store/store.go:206-260`;
+  Postgres `internal/store/postgres.go:149-189`).
 - F–H: `booked >= ceiling` -> `CONFLICT` naming type and dates
-  (`store.go:221-225`), no row, no event.
+  (`store.go:222-226`), no row, no event.
 - G–I: response fields (`internal/handler/handler.go:156-158`).
 
 ### 26.4 Failure and rollback paths
