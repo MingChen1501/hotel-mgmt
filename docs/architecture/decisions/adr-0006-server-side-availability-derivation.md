@@ -1,8 +1,10 @@
 # ADR-0006: Reservation availability — the recorded room inventory is the ceiling
 
-Status: proposed (Refs #631). Owned by `architect`.
+Status: accepted (owner acceptance 2026-11-24, recorded on #631 as
+issuecomment-7128035394; the spec gate re-run is the remaining start
+condition). Owned by `architect`.
 
-Date: 2026-11-10 (proposed).
+Date: 2026-11-10 (proposed); accepted 2026-11-24.
 
 ## Context
 
@@ -65,10 +67,10 @@ Precedents this record builds on:
   fail-closed `UPSTREAM_UNAVAILABLE`), boot wiring in
   `services/reservations/cmd/server/main.go:42-47`, compose env
   `RATES_BASE_URL` (`deploy/compose.yaml:46`).
-- Product decision D-26 and conditions `AC-OVB-1`..`AC-OVB-3`
-  (`docs/product/acceptance-criteria.md` section 15,
-  `docs/product/desk-ui-design-rollout.md` section 6.16,
-  `docs/project/decision-log.md`). D-26 leaves the source choice and the
+- Product decision D-31 and conditions `AC-OVB-1`..`AC-OVB-3`
+  (`docs/product/acceptance-criteria.md` section 19,
+  `docs/product/desk-ui-design-rollout.md` section 6.20,
+  `docs/project/decision-log.md`). D-31 leaves the source choice and the
   seam shape to this role; the conditions hold whichever source is
   chosen.
 - HLD section 5 already states the intended path — Reservations
@@ -212,14 +214,14 @@ No new catalogue key, control, or screen.
   section 5).
 - Booking and modification now need Rooms reachable. An outage of Rooms
   refuses the booking fail-closed — a desk-visible loss of the booking
-  function accepted by product risk R-10
+  function accepted by product risk R-14
   (`docs/project/risk-register.md`) and a runbook item for
   `release-manager`.
 - Each attempt gains one synchronous read; the order is restriction check
   first (unchanged), then the capacity read, then the guarded store step.
   A restricted stay therefore still refuses as `STATE_ILLEGAL` before
   capacity is consulted.
-- Guards (LLD section 22.6): inflated and absent `sellableUnits`,
+- Guards (LLD section 26.6): inflated and absent `sellableUnits`,
   zero-capacity type, Modify into sold-out dates, unreadable/unwired
   Rooms (503), 4xx pass-through, two simultaneous last-unit attempts
   (exactly one winner and one `CONFLICT`), replay consumes nothing, and
@@ -228,9 +230,10 @@ No new catalogue key, control, or screen.
   behaviour returns with the request's number; the desk still sends the
   field in both directions, so no desk change and no data migration is
   needed either way.
-- This ADR starts `proposed`; only the owner flips it to `accepted`.
-  Implementation starts only after owner acceptance plus a T3
-  `SPEC-GATE PASS` on #631.
+- This ADR was accepted by the owner on 2026-11-24 (#631
+  issuecomment-7128035394; only the owner flips `proposed -> accepted`).
+  Implementation still starts only after a T3 `SPEC-GATE PASS` on the
+  then-current spec-stack tip.
 
 ## Out of scope
 

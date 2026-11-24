@@ -1,0 +1,12 @@
+{
+  "operation": "CheckOut",
+  "case": "booking-completion-split",
+  "description": "The close committed but the booking completion could not be recorded, so the split is reported instead of claimed.",
+  "request": {
+    "stayId": "<stay-id>",
+    "folioId": "<folio-id>",
+    "folioBalanceMinor": 0,
+    "actor": "front-desk"
+  },
+  "expect": { "status": 200, "state": "closed", "bookingCompletion": { "state": "not-recorded", "reason": "UPSTREAM_UNAVAILABLE" } }
+}

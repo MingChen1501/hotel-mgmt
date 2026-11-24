@@ -238,7 +238,7 @@ recording with 24-month retrievability (`NFR-RET-1`), not display.
 - R-OVB-1 — Fail-closed booking availability (Refs #631): the
   overbooking ceiling is read live from Rooms, so a Rooms outage refuses
   new bookings and modifications with `UPSTREAM_UNAVAILABLE`. Accepted
-  for an occupancy fact by product risk R-10
+  for an occupancy fact by product risk R-14
   (`docs/project/risk-register.md`): a booking against a capacity nobody
   verified is worse than a refused booking, the desk shows its existing
   plain request-failed sentence, and the runbook's restart order covers

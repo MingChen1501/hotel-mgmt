@@ -551,7 +551,30 @@
       }
     },
     {
+      "key": "error.notfound.reservation_for_stay",
+      "surface": "reservations envelope",
+      "sources": [
+        "services/reservations/internal/store/store.go",
+        "services/reservations/internal/store/postgres.go"
+      ],
+      "params": {
+        "stayId": "string"
+      }
+    },
+    {
       "key": "error.state.not_confirmed_checkin",
+      "surface": "reservations envelope",
+      "sources": [
+        "services/reservations/internal/store/store.go",
+        "services/reservations/internal/store/postgres.go"
+      ],
+      "params": {
+        "ref": "string",
+        "state": "string"
+      }
+    },
+    {
+      "key": "error.state.not_checked_in_complete",
       "surface": "reservations envelope",
       "sources": [
         "services/reservations/internal/store/store.go",

@@ -1,0 +1,10 @@
+{
+  "operation": "CheckOutReservation",
+  "case": "not-checked-in",
+  "description": "The linked booking is not checked in, so the completion is refused and nothing changes.",
+  "request": {
+    "stayId": "<stay-id>",
+    "actor": "front-desk"
+  },
+  "expect": { "status": 422, "code": "STATE_ILLEGAL" }
+}

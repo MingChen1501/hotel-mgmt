@@ -1027,8 +1027,8 @@ paths:
       tags:
       - Stay
       summary: Check out, closed state with the folio as invoice (desk loop step 13).
-      description: 'StayService: Stays from check-in to check-out (Stay module). Contract version 1.0. Traces: docs/architecture/lld.md
-        section 2, docs/technical/integration.md section 3 C7, FR-FDK-2, FR-BIL-7, NFR-CON-2.'
+      description: 'StayService: Stays from check-in to check-out (Stay module). Contract version 1.1. Traces: docs/architecture/lld.md
+        sections 2 and 22, docs/technical/integration.md section 3 C7, FR-FDK-2, FR-BIL-7, FR-DEP-1, FR-DEP-5, NFR-CON-2.'
       requestBody:
         required: true
         content:
@@ -1078,6 +1078,7 @@ paths:
                 - roomId
                 - state
                 - invoiceRef
+                - bookingCompletion
                 properties:
                   stayId:
                     type: string
@@ -1105,6 +1106,23 @@ paths:
                     type: string
                     format: uuid
                     description: The presented folio id.
+                  bookingCompletion:
+                    type: object
+                    description: Whether the close recorded the booking completion (FR-DEP-1, FR-DEP-5); additive in 1.1.
+                    required:
+                    - state
+                    properties:
+                      state:
+                        type: string
+                        enum:
+                        - completed
+                        - not-recorded
+                      reservationRef:
+                        type: string
+                        description: The completed booking; present when state is completed.
+                      reason:
+                        type: string
+                        description: The observed envelope code for support; the desk never renders it.
         '401':
           description: 'UNAUTHENTICATED: Missing session token.'
           content:
