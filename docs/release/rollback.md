@@ -198,8 +198,85 @@ the migration is forward-only, and the rollback note moves into that
 implementation PR (`../requirements/mvp-requirements.md` section 23.6,
 `../architecture/lld.md` section 22.7).
 
+### 5.5 Folio writes verify the stay before writing (Refs #634)
+
+**Decision.** Roll back if the change refuses a folio write the desk needs
+for a guest who is in house — a charge, a payment, or an open-balance
+approval that used to land now answers that the stay could not be
+checked, or that the stay is not in house, while the guest is checked
+in; if opening a fresh check-in's balance no longer creates its folio; if
+a departed stay's folio balance, invoice, or a receipt stops opening or
+printing; if a folio write lands on a stay the provider reports as
+unknown or already closed (the finding returns in the other direction);
+or if the desk reports the "could not be checked" sentence while the
+stay module answers its reads for the same guest. The change is
+`risk-medium` (issue #634 labels `security`, `risk-medium`); it rolls
+back on the normal merge gate, without owner approval. The owner's
+`proposed -> accepted` flip of ADR-0008 and the `SPEC-GATE PASS` are
+merge conditions of the forward change; they are not conditions of the
+revert.
+
+**Mechanics.** Revert the single implementation PR and redeploy the
+bundle per `../devops/deployment.md` section 4. No schema migration and
+no data backfill exist on this path, in either direction: no table,
+column, or migration is added
+(`../architecture/decisions/adr-0008-folio-write-stay-verification.md`,
+`../architecture/lld.md` section 25), so the revert keeps the database as
+it is and no restore is needed; a data restore is the bundle-failure path
+in `../devops/deployment.md` section 6, not this one. The revert ships
+code whose folio routes stop verifying the stay and whose
+`GetFolioBalance` creates the folio for any id again — the previous
+ensure-on-first-use behaviour
+(`services/billing/src/main/java/com/hotel/billing/repo/BillingRepository.java:65-71`);
+the stay client, the `STAY_BASE_URL` value it read, and the
+`UPSTREAM_UNAVAILABLE` builder go with the code, and the four folio
+contracts return from `1.1` to `1.0` in the same revert, with the desk
+that maps them. Folios already written — including the orphan folios an
+earlier bundle wrote — stay as they are: nothing rewrites a line, moves
+a balance, or deletes a row, and the change carries no repair in either
+direction. What comes back is the original defect: a caller that bypasses
+the desk can post a charge, a payment, or an approval against a stay that
+does not exist or has already left, and a balance read on such an id
+creates an orphan folio; the desk has no button that does this, so the
+exposure is a caller sending its own stay id. The three new refusal
+sentences disappear with the desk build and the desk falls back to its
+generic "the request could not be completed" sentence. The #588 release,
+the #600 room charge, the #601 settlement gate, and the changes of #646
+and #647 behave as before in both directions.
+
+**Verification.** After the revert, on the restored bundle: post one
+charge and record one payment on a guest who is in house and confirm both
+land with their balance movement and a printable receipt; open a fresh
+check-in's balance and confirm exactly one zero-balance folio appears;
+open a departed stay's folio, invoice, and a receipt and confirm they
+still present the stored lines and balance; confirm the #588 release, the
+#600 room-charge review, the #601 settlement refusal, and the #646/#647
+desk paths behave as before; run the health check and the end-to-end
+reservation check from `../devops/deployment.md` sections 3 and 4; run
+the Billing and Stay suites and the desk pins the release entry names
+(`../release/release-notes.md` section 2.5). The expected regression —
+a folio write against a random UUID creating an orphan folio again — is
+verified on the lab or QA installation, never against the hotel's own
+money: record the stay id it created so support can identify the row, and
+delete nothing.
+
+**Record.** Add the rollback outcome here (date, commit range, symptom,
+revert reference, verification, and every orphan write the reverted build
+accepted during the check) and file the defect issue. Because this note
+assumes no migration, no cached stay state, and no extra call, a rework
+that adds a schema or migration, mirrors or caches stay state inside
+Billing, adds a late-settlement operation, adds a Billing-side
+conditional close, or adds a retry or backoff beyond the single
+two-second call re-tiers the change per
+`../architecture/lld.md` section 25.9: the decision record is
+re-authored, the migration is forward-only, and the rollback note moves
+into that implementation PR.
+
 <!-- ao-role: release-manager -->
 Role: release-manager · AO session hotel-mgmt-948
 
 <!-- ao-role: release-manager -->
 Role: release-manager · AO session hotel-mgmt-963
+
+<!-- ao-role: release-manager -->
+Role: release-manager · AO session hotel-mgmt-1049

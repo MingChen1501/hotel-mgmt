@@ -103,6 +103,26 @@ that address value changes, in the bundle's configuration file, never
 inside an image. Section 5 carries the matching pre-flight check and
 section 3 the health check.
 
+**Billing's stay read (Refs #634).** Target state for this bundle: the
+billing module reads `STAY_BASE_URL` (default `http://stay:8084`, the
+port the stay module already publishes, `deploy/compose.yaml:81`) and
+asks the stay module through `GetStayRef` before every folio write —
+charge, payment, open-balance approval — and before it creates a folio
+on a balance read (`../architecture/lld.md`, section 25). The call
+forwards the caller's session token and carries a 2-second timeout,
+inside `NFR-PERF-1`'s three-second action bound. This one is
+**fail-closed**, unlike the #646 completion: while the stay module cannot
+be read, charge posting, payment recording, open-balance approval, and a
+first, folio-less balance read refuse with `UPSTREAM_UNAVAILABLE` (503)
+and nothing is recorded, so an unreachable stay module stops new money
+from being written instead of writing it unverified. The desk procedure
+for that window is `../operations/runbook.md`, section 12. Both
+placements address the module by service name, so the default holds
+unless the stay module moves to another host — then only that address
+value changes, in the bundle's configuration file, never inside an
+image. Section 5 carries the matching pre-flight check and section 3 the
+health check.
+
 ## 3. Install procedure (both variants)
 
 1. Confirm the pre-flight checks in section 5 pass and a blank
@@ -121,10 +141,14 @@ section 3 the health check.
    `docs/operations/runbook.md`).
 5. Run the bundle's health check: proxy reachable from a desk
    client on the hotel LAN, each module answering through the
-   proxy, each module connected to its own store, and the stay
+   proxy, each module connected to its own store, the stay
    module reaching the reservations module on the hotel LAN (a
    close still commits when that call fails, but the booking is
-   then left active — `../operations/runbook.md`, section 8.2).
+   then left active — `../operations/runbook.md`, section 8.2),
+   and the billing module reaching the stay module on the hotel
+   LAN (a folio write refuses while it cannot, so new charges and
+   payments are blocked until it answers — section 5,
+   `../operations/runbook.md`, section 12).
 6. Sign in as the owner account, verify the hotel profile, rooms,
    rate plans, and charge items from step 3, and record one test
    reservation end to end (book, check in, post a charge, check
@@ -150,7 +174,8 @@ every inter-host endpoint over the hotel LAN before step 6.
    come from the new bundle, not from the hotel's configuration set
    (section 2, "Bundle-level service addresses") — one such address,
    `RESERVATIONS_BASE_URL` for the stay module (Refs #646), is
-   already set in it and needs no hotel input.
+   already set in it and needs no hotel input, and the same holds
+   for `STAY_BASE_URL` for the billing module (Refs #634).
 5. Start the database host first, then the module containers, then
    the reverse proxy.
 6. Run the health check from section 3 step 5, sign in, and repeat
@@ -190,6 +215,14 @@ Run before every install and every upgrade; stop on any failure:
   behind the stay is then left active and has to be completed by hand
   (`../operations/runbook.md`, section 8.2), so an unreachable
   reservations module leaves a booking to repair after every close.
+- The billing module reaches the stay module over the hotel LAN: every
+  folio write reads the stay first, so while that address does not
+  answer, charge posting, payment recording, open-balance approval, and
+  a first, folio-less balance read refuse with `UPSTREAM_UNAVAILABLE`
+  (503) and nothing is recorded — the desk takes the items on paper
+  (`../operations/runbook.md`, section 12). This is fail-closed by
+  design: never work around it by pointing `STAY_BASE_URL` at another
+  module or by writing money by hand.
 - The per-hotel configuration set validates against the release
   bundle's configuration schema with no missing required values.
 - First secrets are provisioned and handed over per the handover
@@ -224,3 +257,6 @@ Role: release-manager · AO session hotel-mgmt-948
 
 <!-- ao-role: release-manager -->
 Role: release-manager · AO session hotel-mgmt-963
+
+<!-- ao-role: release-manager -->
+Role: release-manager · AO session hotel-mgmt-1049
