@@ -107,7 +107,8 @@ async function handleRequest(
     );
     return;
   }
-  if (!extractBearer(req)) {
+  const bearer = extractBearer(req);
+  if (bearer === null) {
     throw new HttpError("UNAUTHENTICATED", msg("error.auth.missing_token", {}), {});
   }
   const body = await readBody(req);
@@ -129,8 +130,10 @@ async function handleRequest(
       return;
     }
     case "CheckOut": {
-      const { stay, invoiceRef } = await store.checkOut(body);
-      writeJson(res, 200, { ...stayPayload(stay), invoiceRef });
+      // The completion call forwards the caller's own Bearer token so
+      // Reservations sees the same session the desk used (LLD 22.2).
+      const { stay, invoiceRef, bookingCompletion } = await store.checkOut(body, bearer);
+      writeJson(res, 200, { ...stayPayload(stay), invoiceRef, bookingCompletion });
       return;
     }
     case "MoveRoom": {

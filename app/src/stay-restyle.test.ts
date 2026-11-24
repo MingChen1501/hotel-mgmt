@@ -133,20 +133,28 @@ describe('Stay v2 design values (Refs #541)', () => {
       'stay-use-arrival-',
       'stay-use-stay-',
       'data-testid="stay-booking-ref"',
-      'data-testid="stay-move-card"',
       'data-testid="stay-move-stay-id"',
-      'stay-move-room',
       'data-testid="stay-times-card"',
       'data-testid="stay-times-stay-id"',
       'data-testid="stay-checkin-arrival" type="datetime-local"',
-      '/v1/stay/MoveRoom',
       '/v1/stay/RecordActualTimes',
-      'onMove',
       'onRecordTimes',
       'pickArrival',
       'pickStay',
     ]) {
       expect(stayViewSource, `retired hook still present: ${hook}`).not.toContain(hook);
+    }
+    // Refs #647 (rollout 6.17, LLD R16): the move card and the
+    // `MoveRoom` call are the two retired v1 hooks the owner-reported
+    // defect re-decided, so they are asserted present as decided
+    // additions — every other retired hook above stays absent.
+    for (const hook of [
+      'data-testid="stay-move-card"',
+      'data-testid="stay-move-room"',
+      '/v1/stay/MoveRoom',
+      'onMove',
+    ]) {
+      expect(stayViewSource, `decided #647 addition missing: ${hook}`).toContain(hook);
     }
     // The v2 board carries no screen title: no h1 renders.
     expect(stayViewSource).not.toContain('<h1');
@@ -162,6 +170,12 @@ describe('Stay v2 design values (Refs #541)', () => {
     const checkoutAt = stayViewSource.indexOf('data-testid="stay-checkout-card"');
     expect(checkinAt).toBeGreaterThanOrEqual(0);
     expect(checkoutAt).toBeGreaterThan(checkinAt);
+    // Refs #647 (rollout 6.17): the one additive move card is the
+    // third row of the same grid, below the two panels and spanning
+    // both columns.
+    const moveAt = stayViewSource.indexOf('data-testid="stay-move-card"');
+    expect(moveAt).toBeGreaterThan(checkoutAt);
+    expect(ruleBody('#shell [data-testid="stay-move-card"]')).toContain('grid-column: 1 / -1');
     // The template wears the design class on the panels wrapper.
     expect(stayViewSource).toContain('class="stay-panels"');
   });
@@ -182,8 +196,9 @@ describe('Stay v2 design values (Refs #541)', () => {
     // The card content is the board column: labels, hints, and
     // buttons stretch as its direct flex items.
     const content = combinedRuleBody(
-      `#shell [data-testid="stay-checkout-card"] .p-card-content {` +
-        `\n    display: flex;`,
+      '#shell [data-testid="stay-checkin-card"] .p-card-content,\n' +
+        '  #shell [data-testid="stay-checkout-card"] .p-card-content,\n' +
+        '  #shell [data-testid="stay-move-card"] .p-card-content {',
     );
     expect(content).toContain('display: flex');
     expect(content).toContain('flex-direction: column');
@@ -241,8 +256,9 @@ describe('Stay v2 design values (Refs #541)', () => {
     expect(buttons).toContain('font-weight: 600');
     // The template wears the design class on every primary
     // action (the dialog cancel keeps its secondary
-    // logic-carrier styling).
+    // logic-carrier styling). Refs #647: the move card adds the
+    // sixth `stay-action` button.
     const actionCount = stayViewSource.split('class="stay-action"').length - 1;
-    expect(actionCount).toBe(5);
+    expect(actionCount).toBe(6);
   });
 });

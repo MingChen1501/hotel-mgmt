@@ -61,3 +61,40 @@ Every failed contract call returns the same shape:
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-919
+
+## 4. Definitive refusals and unreadable outcomes on a multi-call desk action (Refs #647)
+
+A desk action that writes through more than one service (the arrival
+check-in commit, a room reassignment) must decide, per failed call,
+whether the earlier writes of that action are taken back. One rule, so
+two screens cannot disagree:
+
+- **Definitive refusal — a `4xx` envelope answer to the call itself.**
+  `VALIDATION_FAILED` (400), `NOT_FOUND` (404), `CONFLICT` (409), and
+  `STATE_ILLEGAL` (422) are raised before the target mutates, so a
+  definitive answer proves that call wrote nothing. The action may and
+  must undo what it wrote earlier in the same action (the desk issues the
+  compensating release).
+- **Unreadable outcome — everything else.** A transport failure or
+  offline state (`code: "OFFLINE"`, no status), a `5xx`
+  (`UPSTREAM_UNAVAILABLE` included), a non-envelope reply, and a `401`
+  (routed to the sign-in gate) all leave the write's fate unknown. The
+  desk releases nothing and names the rooms to re-read, because freeing a
+  room the guest may be in is worse than a room that still reads
+  occupied.
+- **A refusal speaks only for its own call.** Codes name the call that
+  refused, never the earlier writes of the action; the compensation is
+  chosen by the step that failed.
+- **Compensation is the caller's explicit call, not a service
+  behaviour.** No module rolls back another module's write
+  (`docs/architecture/services/rooms.md` section 4); the compensating
+  release is an ordinary `ReleaseRoom` with an explicit `toState`, and a
+  compensating release that fails is reported, never hidden.
+- **No new code.** The classification reads the codes and statuses in
+  section 1; no error code, envelope field, or retry policy is added by
+  this rule.
+
+Applied flow detail: `docs/architecture/lld.md` section 23.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-961

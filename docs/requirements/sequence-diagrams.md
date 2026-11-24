@@ -8,7 +8,7 @@ names the `FR-CUS-*` control from requirements section 3.1 that governs
 it. Fixed lifecycle order (section 3.2) is never configurable. States cited
 below are those of `docs/architecture/state-machine.md`; entity
 relationships are those of `docs/architecture/erd.md`. Where the
-behaviour docs disagree, section 15 lists the conflict and this document
+behaviour docs disagree, section 16 lists the conflict and this document
 follows the FR.
 
 Terminology follows `docs/requirements/domain-consistency-audit.md`
@@ -180,10 +180,11 @@ sequenceDiagram
 ## 7. Check-in
 
 Register arrival against a ready room; the atomic assignment check
-guards against a simultaneous check-in taking the same room.
+guards against a simultaneous check-in taking the same room, and the
+commit takes back the room it assigned when that commit does not land.
 
 - Preconditions: the reservation is due for arrival and a vacant, clean, inspected room of the booked type exists.
-- Postconditions: the stay is in house linked to the room and the room is occupied, or check-in was refused with the cause named and nothing was created.
+- Postconditions: the stay is in house linked to the room the guest is in and the room is occupied, or check-in was refused with the cause named and the room the commit assigned released back to ready, so no room is left occupied with no stay behind it.
 
 ```mermaid
 sequenceDiagram
@@ -192,12 +193,21 @@ sequenceDiagram
     participant Rooms as Room inventory
     Staff->>Stay: Open arrivals list for today [FR-FDK-5; CUS: FR-CUS-2 hotel times]
     Staff->>Rooms: Pick a vacant, clean, inspected room of the booked type [FR-FDK-1, FR-RMS-2; CUS: FR-RMS-4 room attributes used at assignment]
-    Rooms->>Rooms: Atomic assignment check on the room [NFR-CON-2]
+    Note over Rooms: The pick reads candidates and assigns nothing, so a room changed after the pick is the room the commit assigns [FR-REA-1]
+    Rooms->>Rooms: Atomic assignment check on the chosen room [NFR-CON-2, FR-REA-1]
     alt Room just taken by a simultaneous check-in
         Rooms-->>Staff: Check-in refused, room conflict named [NFR-CON-2]
     else Room free
         Staff->>Stay: Check guest in against the room [FR-FDK-1; CUS: FR-CUS-1 check-in fields enforced; FIXED section 3.2 order, states per state-machine: confirmed to checked-in]
         Stay->>Rooms: Room state becomes occupied [FR-FDK-1]
+        alt A later step of the commit does not land and no stay was recorded
+            Stay-->>Staff: Check-in refused in plain words [FR-REA-1]
+            Stay->>Rooms: Release the room this commit assigned back to vacant-inspected [FR-REA-1; only for a definitive refusal]
+        else An outcome cannot be read
+            Stay-->>Staff: Outcome to re-read; nothing released, the room named [FR-REA-1]
+        else Stay recorded, reservation check-in refused
+            Stay-->>Staff: Guest is in house in the room; split reported, room not released [FR-REA-1]
+        end
     end
     opt Early arrival recorded [FR-FDK-4]
         Staff->>Stay: Record actual arrival time against the stay [FR-FDK-4; CUS: FR-CUS-2 hotel times]
@@ -209,31 +219,55 @@ Every status change records who made it and when (`NFR-AUD-1`).
 ## 8. Room move mid-stay
 
 Move an in-house guest to another ready room; the stay remains in
-house with history.
+house with history, and the desk path that does it is the same one
+that corrects a check-in made into the wrong room.
 
 - Preconditions: the stay is in house and a vacant, clean, inspected room exists.
-- Postconditions: the stay links to the new room, the old room is vacant and dirty, and the move with both room numbers and its time is kept in the stay history.
+- Postconditions: the stay links to the new room, the old room is vacant and dirty, and the move with both room numbers and its time is kept in the stay history — or the attempt was refused and left no room occupied by it.
 
 ```mermaid
 sequenceDiagram
     participant Staff as Front-desk staff
     participant Stay as Stay record
     participant Rooms as Room inventory
-    Staff->>Rooms: Pick a vacant, clean, inspected room [FR-FDK-3]
-    Staff->>Stay: Move guest; stay stays in house with history [FR-FDK-3; FIXED section 3.2: stay remains in house, no state change]
-    Stay->>Rooms: Old room becomes vacant and dirty [FR-FDK-3]
-    Stay-->>Staff: Move with both room numbers and time kept in stay history [FR-FDK-3; NFR-AUD-1]
+    Staff->>Rooms: Pick a vacant, clean, inspected room [FR-FDK-3, FR-REA-2]
+    Staff->>Rooms: Assign the target room first [FR-REA-2; BR-19]
+    alt Target room just taken, not ready, or blocked
+        Rooms-->>Staff: One plain refusal; nothing moved; picker reloads [FR-REA-3]
+    else Target room assigned for this move
+        Staff->>Stay: Move guest; stay stays in house with history [FR-FDK-3; FIXED section 3.2: stay remains in house, no state change]
+        alt Stay-side move refused
+            Stay-->>Staff: Move refused in plain words [FR-REA-3]
+            Stay->>Rooms: Release the target back to vacant-inspected it held [FR-REA-3; the compensating release]
+        else Moved
+            Stay->>Rooms: Release the vacated room as vacant and dirty [FR-FDK-3, FR-REA-2, BR-19]
+            Stay-->>Staff: Move with both room numbers and time kept and shown [FR-FDK-3, FR-REA-5; NFR-AUD-1]
+        end
+    end
 ```
+
+Every status change records who made it and when (`NFR-AUD-1`); a
+refusal or unreadable outcome never frees a room the stay still names
+(`FR-REA-3`).
 
 ## 9. Check-out
 
 Review the folio — posting the stay's room charge when the folio
 carries none — settle it or record an approved open balance, then
-close the stay, present the invoice, and release the room as
-vacant-dirty.
+close the stay, complete the booking behind it, present the invoice,
+and release the room as vacant-dirty.
 
 - Preconditions: the stay is in house with its single folio open (diagram 10); settlement or approval follows diagram 11.
-- Postconditions: the stay is closed with the invoice presented and the room vacant and dirty, or check-out was refused until the folio is settled or approved; the refusal is decided on the folio the system holds, so a balance or approval a request carries changes nothing (`FR-CKS-1`, `BR-46`); a close whose room release could not be confirmed stays closed with the room owed a release; a folio reviewed for a stay that could not be charged is left as it was, with no close.
+- Postconditions: the stay is closed with the invoice presented, the
+  booking behind it completed, and the room vacant and dirty, or
+  check-out was refused until the folio is settled or approved; the
+  refusal is decided on the folio the system holds, so a balance or
+  approval a request carries changes nothing (`FR-CKS-1`, `BR-46`);
+  a close whose room release could not be confirmed stays closed with
+  the room owed a release; a close whose booking completion could not
+  be recorded stays closed with the booking still active and the split
+  reported (`FR-DEP-5`); a folio reviewed for a stay that could not be
+  charged is left as it was, with no close.
 
 ```mermaid
 sequenceDiagram
@@ -281,6 +315,10 @@ sequenceDiagram
             Stay-->>Staff: Check-out refused until the folio is settled or a provenanced approval is recorded [FR-CKS-3, FR-BIL-7, BR-17]
         else Zero balance or a provenanced approval
             Note over Stay: Close commits, the in-house to closed flip and the checked-out event [FR-CKS-5]
+            Stay->>Res: Complete the booking behind the stay; terminal closed, never reopened [FR-FDK-2, FR-DEP-1; BR-1]
+            alt Booking completion cannot be recorded
+                Stay-->>Staff: Guest checked out, booking still active, next step named [FR-DEP-5]
+            end
         end
     end
     Stay->>Rooms: Release the room the stay held as vacant and dirty [FR-FDK-2, BR-18; only for a close that committed]
@@ -420,7 +458,52 @@ Owner or manager changes to any section 3.1 item apply at once with no code
 changes, and each change records who made it and when (`NFR-AUD-1`,
 requirements section 3.3).
 
-## 15. Consistency statement and conflicts
+## 15. Booking register read
+
+Read the bookings staying in an inclusive night range, complete each
+row from the record, and open one row's read-back detail. Nothing is
+created, changed, cancelled, checked in, or checked out.
+
+- Preconditions: staff are signed in; the register opens on the business date through the next six nights.
+- Postconditions: the range's bookings are listed in arrival-then-reference order with guest, reference, room type, assigned room when in house, dates, nights, total, and state, with the plain empty or failure sentence where they apply, and the selected booking's read-back detail is shown — or the read was refused and nothing was written.
+
+```mermaid
+sequenceDiagram
+    participant Staff as Front-desk staff
+    participant Reg as Booking register
+    participant Res as Reservation records
+    participant Rooms as Room and stay reads
+    Staff->>Reg: Open the register (default range: business date through six nights) [FR-BMV-1, FR-BMV-3]
+    Reg->>Reg: Validate the range; an inverted or missing range names the field and sends nothing [FR-BMV-3]
+    Reg->>Res: QueryCalendar(dateFrom = first night, dateTo = last night + 1) [FR-RES-5, FR-BMV-3; overlap arrival < dateTo and departure > dateFrom]
+    alt List read fails
+        Res-->>Staff: One plain read-failed sentence with retry; no row invented [FR-BMV-6]
+    else Entries returned
+        Reg->>Res: GetReservation per listed booking for guest, price basis, and state [FR-BMV-2, FR-RTE-5; price frozen at booking, BR-13]
+        Reg->>Rooms: ListRoomTypes, ListArrivalsDepartures, ListRoomsByState for the type name and the in-house room [FR-BMV-2; state per BR-1]
+        alt A per-row or map read fails
+            Reg-->>Staff: That row keeps its calendar fields and says which cells are unreadable; one notice counts the incomplete rows and names the failed column; no retry of its own — re-applying the range reads again [FR-BMV-6]
+        else Every row complete
+            Reg-->>Staff: Rows ordered by arrival then reference, capped at 50 with the narrow-the-dates sentence [FR-BMV-2]
+        end
+        alt No booking stays in the range
+            Reg-->>Staff: One plain sentence naming the range; no row invented [FR-BMV-4]
+        end
+    end
+    Staff->>Reg: Select a row [FR-BMV-5]
+    Reg->>Res: GetReservation fresh read-back [FR-BMV-5]
+    alt Detail read fails
+        Res-->>Staff: One plain sentence naming the reference with retry; the list stands [FR-BMV-6]
+    else Read-back returned
+        Res-->>Staff: Reference, guest, type, assigned room, dates, nights, total, discount, state — no action offered [FR-BMV-5]
+    end
+```
+
+No status change is written anywhere in this flow: the register offers
+no create, modify, cancel, no-show, check-in, check-out, or room action
+(`FR-BMV-1`, `FR-BMV-7`).
+
+## 16. Consistency statement and conflicts
 
 Each step above was checked against `docs/architecture/state-machine.md`
 (booking: confirmed to checked-in to closed, with cancelled and

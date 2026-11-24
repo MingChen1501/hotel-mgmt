@@ -25,7 +25,7 @@ Inputs this record builds on:
   plus versioned contracts, unchanged session auth, RFC 9457 problem+json
   error envelope. This surface follows all three decisions without
   restating them, except where an endpoint needs a direct hook.
-- As built today: 61 operations in `contracts/http/*.json` plus LLD-only
+- As built today: 62 operations in `contracts/http/*.json` plus LLD-only
   operations with no contract file yet (section 9 names each one).
 
 ## 0. Surface-wide rules
@@ -90,6 +90,7 @@ Noun: `/v2/reservations`, addressed by `{ref}` (the human
 | `MarkNoShow` | `POST /v2/reservations/{ref}/no-show` | 200, state=no-show | `contracts/http/MarkNoShow.json` | `STATE_ILLEGAL`, `VALIDATION_FAILED`, `NOT_FOUND` | `Idempotency-Key` required. |
 | `GetReservation` | `GET /v2/reservations/{ref}` | 200, full reservation | `contracts/http/GetReservation.json` | `NOT_FOUND`, `VALIDATION_FAILED` | Read slice: GETs first per #368. |
 | `CheckInReservation` | `POST /v2/reservations/{ref}/check-in-link` | 200, state=checked-in with stay link | `contracts/http/CheckInReservation.json` | `NOT_FOUND`, `STATE_ILLEGAL`, `VALIDATION_FAILED` | `Idempotency-Key` required. Stay-side link step; the stay itself is section 2. |
+| `CheckOutReservation` | `POST /v2/reservations/{stayId}/check-out-completion` | 200, state=closed | `contracts/http/CheckOutReservation.json` | `NOT_FOUND`, `STATE_ILLEGAL`, `VALIDATION_FAILED` | Provider-to-provider completion called by Stay after a committed close (#646, `FR-DEP-1`); resolved by the stay link, idempotent on an already closed booking. |
 | `QueryCalendar` | `GET /v2/reservations?dateFrom=&dateTo=[&roomType=]` | 200, reservations per date/type with state | `contracts/http/QueryCalendar.json` | `VALIDATION_FAILED` | Query fields become query params. |
 | `GetDueReservation` (LLD-only, STAY → RES) | — (no public endpoint; served by `GET /v2/reservations/{ref}`) | — | — | — | Explicit non-endpoint: the stay provider reads the same item and applies the due/arrivable check itself. No separate contract file exists; none is added here. |
 
@@ -104,7 +105,7 @@ stay-ref are collection views and sub-resources.
 | `GetStay` | `GET /v2/stays/{stayId}` | 200, stay record | `contracts/http/GetStay.json` | `NOT_FOUND`, `VALIDATION_FAILED` | The reservationId lookup variant becomes `GET /v2/stays?reservationId=` (200, single-item list). |
 | `QueryStays` | `GET /v2/stays?[state=]` | 200, stays each exactly once | `contracts/http/QueryStays.json` | `VALIDATION_FAILED` (unknown state) | |
 | `CheckOut` | `POST /v2/stays/{stayId}/check-out` | 200, stay closed + invoiceRef | `contracts/http/CheckOut.json` | `SETTLEMENT_REQUIRED`, `STATE_ILLEGAL`, `NOT_FOUND`, `VALIDATION_FAILED` | `Idempotency-Key` required. Folio gate unchanged (stay-side). |
-| `MoveRoom` | `POST /v2/stays/{stayId}/moves` | 201 + move history entry | `contracts/http/MoveRoom.json` | `CONFLICT`, `STATE_ILLEGAL`, `NOT_FOUND`, `VALIDATION_FAILED` | `Idempotency-Key` required. Delta vs LLD noted: the LLD table lists no `idempotencyKey` field for `MoveRoom`; the contract file carries one, and this surface follows the contract (key required like every stay write). |
+| `MoveRoom` | `POST /v2/stays/{stayId}/moves` | 201 + move history entry | `contracts/http/MoveRoom.json` | `CONFLICT`, `STATE_ILLEGAL`, `NOT_FOUND`, `VALIDATION_FAILED` | `Idempotency-Key` required. The former delta vs the LLD table (no `idempotencyKey` there) is closed: the LLD request row carries the contract's field set (Refs #647). |
 | `RecordActualTimes` | `POST /v2/stays/{stayId}/actual-times` | 200, kept times | `contracts/http/RecordActualTimes.json` | `NOT_FOUND`, `VALIDATION_FAILED` | `Idempotency-Key` required (stay write). |
 | `ListArrivalsDepartures` | `GET /v2/stays/arrivals-departures?businessDate=` | 200, arrivals + in-house + departures each exactly once | `contracts/http/ListArrivalsDepartures.json` | `VALIDATION_FAILED` | Fixed view resource under the collection. |
 | `GetStayRef` (BIL → STAY) | `GET /v2/stays/{stayId}/ref` | 200, stay link (guest, room, in-house state) | `contracts/http/GetStayRef.json` | `NOT_FOUND`, `STATE_ILLEGAL` (closed) | Provider-to-provider read exposed as a link sub-resource so billing uses the same path as any reader. |
@@ -212,14 +213,17 @@ changes nothing structural.
 
 ## 9. Coverage checklist
 
-All 61 `contracts/http/*.json` files mapped above (8 reservations +
-8 stay + 11 rooms + 7 rates + 6 guests + 9 billing + 4 reporting +
-10 admin = 63 rows counting the two cross-module placements of
-`ProduceConfirmation`; every file appears at least once):
+All 62 `contracts/http/*.json` files mapped above (8 reservations +
+8 stay + 10 rooms + 7 rates + 6 guests + 9 billing + 4 reporting +
+10 admin = 62 rows, one per file; that 62 excludes the 6 LLD-only
+non-file rows, so sections 1–8 hold 68 data rows in total, and
+`ProduceConfirmation` occupies a single row, in section 5, even
+though its path lives under reservations; every file appears at
+least once):
 
 - Reservations: `CreateReservation`, `ModifyReservation`,
   `CancelReservation`, `MarkNoShow`, `GetReservation`,
-  `CheckInReservation`, `QueryCalendar` → section 1.
+  `CheckInReservation`, `CheckOutReservation`, `QueryCalendar` → section 1.
 - Stay: `CheckIn`, `GetStay`, `QueryStays`, `CheckOut`, `MoveRoom`,
   `RecordActualTimes`, `ListArrivalsDepartures`, `GetStayRef` →
   section 2.
@@ -277,8 +281,9 @@ here):
    `AssignRoom` in 3) plus the missing-key (`400`) and key-reuse
    (`422` on payload mismatch, replay on match) semantics.
 2. `MoveRoom` key requirement follows the contract file (which carries
-   `idempotencyKey`) over the LLD table (which omits it) — section 2
-   notes the delta.
+   `idempotencyKey`); the LLD request row was corrected to the same field
+   set in the #647 delta, so no LLD-versus-contract delta remains
+   (section 2).
 3. Upsert transport rule (`PUT` on the contract's identifying field;
    query-keyed items for composite keys; POST-upsert only for
    `UpsertGuest`, reason recorded) is new: no prior record states it.

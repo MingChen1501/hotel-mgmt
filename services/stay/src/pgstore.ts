@@ -23,6 +23,7 @@ import {
   type StayState,
   type StayStoreAPI,
 } from "./store.js";
+import { notRecorded, UPSTREAM_UNAVAILABLE, type BookingCompletion, type BookingCompletionClient } from "./reservationsClient.js";
 
 // Postgres-backed StayService store (issue #149). Implements
 // StayStoreAPI against the stay schema (docs/technical/schema.md
@@ -30,7 +31,21 @@ import {
 // UNIQUE(reservation_id) row is the one-stay-per-reservation rule:
 // a repeat check-in is refused with CONFLICT.
 export class PostgresStayStore implements StayStoreAPI {
-  constructor(private readonly pool: Pool) {}
+  constructor(
+    private readonly pool: Pool,
+    private readonly completion?: BookingCompletionClient,
+  ) {}
+
+  private async completeBooking(stayId: string, actor: string, callerToken: string): Promise<BookingCompletion> {
+    if (this.completion === undefined) {
+      return notRecorded(UPSTREAM_UNAVAILABLE);
+    }
+    try {
+      return await this.completion.complete({ stayId, actor, bearerToken: callerToken });
+    } catch (err) {
+      return notRecorded(err instanceof HttpError ? err.code : UPSTREAM_UNAVAILABLE);
+    }
+  }
 
   private static toStay(row: {
     id: string;
@@ -158,7 +173,11 @@ export class PostgresStayStore implements StayStoreAPI {
   // (NFR-CON-2) and a replayed idempotencyKey returns the original
   // close. The folio gate runs first; a refusal leaves the stay in
   // house (BR-17).
-  async checkOut(input: CheckOutInput): Promise<{ stay: StayRecord; invoiceRef: string }> {
+  async checkOut(input: CheckOutInput, callerToken = ""): Promise<{
+    stay: StayRecord;
+    invoiceRef: string;
+    bookingCompletion: BookingCompletion;
+  }> {
     const id = requireUuid(input.stayId, "stayId");
     const invoiceRef = requireUuid(input.folioId, "folioId");
     checkFolioGate(input.folioBalanceMinor, input.openBalanceApproval);
@@ -172,7 +191,8 @@ export class PostgresStayStore implements StayStoreAPI {
         const replayed = await this.claimOrFind(client, `CheckOut:${key}`, id);
         if (replayed !== null) {
           await client.query("ROLLBACK");
-          return { stay: replayed, invoiceRef };
+          const bookingCompletion = await this.completeBooking(id, actor, callerToken);
+          return { stay: replayed, invoiceRef, bookingCompletion };
         }
       }
       const closed = await client.query(
@@ -207,7 +227,8 @@ export class PostgresStayStore implements StayStoreAPI {
           [`CheckOut:${key}`, id],
         );
       }
-      return { stay, invoiceRef };
+      const bookingCompletion = await this.completeBooking(id, actor, callerToken);
+      return { stay, invoiceRef, bookingCompletion };
     } catch (err) {
       await client.query("ROLLBACK");
       throw err;
