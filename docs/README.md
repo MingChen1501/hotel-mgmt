@@ -85,8 +85,8 @@ Development table, which use a `../` prefix.
 
 | Type | Path | Status | Owner | Purpose |
 |---|---|---|---|---|
-| HLD | `architecture/hld.md` | active | `architect` | high-level design: subsystems and their responsibilities (Closes #11; section 15 Refs #601; section 16 Refs #646; section 17 Refs #647; section 18 Refs #634) |
-| LLD | `architecture/lld.md` | active | `architect` | low-level design: modules, interfaces, data flow (Closes #97; section 21 Refs #601; section 22 Refs #646; section 23 Refs #647; section 24 Refs #648; section 25 Refs #634) |
+| HLD | `architecture/hld.md` | active | `architect` | high-level design: subsystems and their responsibilities (Closes #11; section 15 Refs #601; section 16 Refs #646; section 17 Refs #647; section 20 Refs #634) |
+| LLD | `architecture/lld.md` | active | `architect` | low-level design: modules, interfaces, data flow (Closes #97; section 21 Refs #601; section 22 Refs #646; section 23 Refs #647; section 24 Refs #648; section 27 Refs #634) |
 | System architecture | `architecture/system-architecture.md` | active | `architect` | overall system structure and deployment view (Closes #11) |
 | ERD | `architecture/erd.md` | active | `architect` | entity-relationship model of the domain data (Closes #11) |
 | Sequence diagrams | `requirements/sequence-diagrams.md` (see Requirements) | stub (not needed yet) | `architect` | behaviour depiction lives with requirements per #43; no separate architecture diagram |

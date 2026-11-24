@@ -137,7 +137,7 @@ than on the caller's id. The rule set, applied to `PostCharge`,
 - **Refusals precede writes.** The verification runs before the
   idempotency claim and before any insert, so a refusal leaves no folio
   row, no line, no balance movement, no approval, and no outbox event.
-  Applied flows: `docs/architecture/lld.md` section 25.
+  Applied flows: `docs/architecture/lld.md` section 27.
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1046
