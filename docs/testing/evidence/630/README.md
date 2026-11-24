@@ -42,7 +42,7 @@ own timeouts:
   with its own toolchain (`npm run build` with the module's
   `node_modules`; `go build ./cmd/server`; `mvn -DskipTests package`
   for Billing).
-- Post-change build: this branch, built the same way.
+- Post-change build: this branch at `363a274`, built the same way.
 - Every service ran as its own process on a dedicated loopback port
   (18710–18803), the way the #627 record
   ([`../627/README.md`](../627/README.md)) did — no shared compose lab
