@@ -162,7 +162,7 @@ Call support the same day when any of these happen:
   refused check-in or a room move (section 9).
 - A charge or payment refused with "the stay could not be checked" while
   the guest is in house, or a refusal for a stay the desk says is still
-  in house (section 12).
+  in house (section 14).
 
 Escalation contacts (placeholders — fill in per sale before
 handover):
@@ -420,7 +420,7 @@ The one case the released desk can still leave behind is LLD section
 room aside and finishing the action. The steps above clear it, which is
 why no data backfill or migration is needed.
 
-## 12. A charge or payment was refused because the stay could not be checked
+## 14. A charge or payment was refused because the stay could not be checked
 
 From this release on the billing side reads the guest's stay before it
 puts money on the bill. Two things follow: money can no longer be posted
@@ -429,7 +429,7 @@ and while the stay side cannot answer, the desk refuses the charge or the
 payment instead of guessing. Nothing is ever recorded when one of these
 sentences appears.
 
-### 12.1 What you see
+### 14.1 What you see
 
 Three new sentences can appear in the charge form, the payment form, the
 open-balance form, and when a bill is opened:
@@ -455,7 +455,7 @@ one needs no action either. If the board and the Stay screen still list
 the guest in house while the charge form says the stay could not be
 checked, the fault is on the stay side, not with the guest.
 
-### 12.2 What to do at the desk
+### 14.2 What to do at the desk
 
 1. Read the sentence: it tells you whether nothing was recorded (all
    three above do) and whether trying again can help (only the "could
@@ -486,7 +486,7 @@ checked, the fault is on the stay side, not with the guest.
    mistakes this release stops, and they put money on the wrong guest's
    bill.
 
-### 12.3 Delivery team note (at an upgrade)
+### 14.3 Delivery team note (at an upgrade)
 
 The billing side now needs to reach the stay side on the hotel's own
 network. Confirm the pre-flight check in `../devops/deployment.md`
@@ -502,14 +502,14 @@ before handing the desk back:
 3. On the lab or QA installation only: post a charge against a stay ID
    that names no stay and confirm it is refused "nothing was recorded",
    that no bill appears for that ID, and that no row was written (support
-   step 12.4). Do not run this check against the hotel's own bills.
+   step 14.4). Do not run this check against the hotel's own bills.
 
 No data is migrated, repaired, or deleted at this upgrade: bills an older
 version wrote against a stay that does not exist stay exactly as they
 are. Record the checks, the refused ID, and who ran them in the upgrade
 record.
 
-### 12.4 Support note (technical)
+### 14.4 Support note (technical)
 
 What a refused folio write answers, and what to read from it:
 

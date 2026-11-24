@@ -198,7 +198,7 @@ the migration is forward-only, and the rollback note moves into that
 implementation PR (`../requirements/mvp-requirements.md` section 23.6,
 `../architecture/lld.md` section 22.7).
 
-### 5.5 Folio writes verify the stay before writing (Refs #634)
+### 5.6 Folio writes verify the stay before writing (Refs #634)
 
 **Decision.** Roll back if the change refuses a folio write the desk needs
 for a guest who is in house — a charge, a payment, or an open-balance
@@ -221,7 +221,7 @@ bundle per `../devops/deployment.md` section 4. No schema migration and
 no data backfill exist on this path, in either direction: no table,
 column, or migration is added
 (`../architecture/decisions/adr-0008-folio-write-stay-verification.md`,
-`../architecture/lld.md` section 25), so the revert keeps the database as
+`../architecture/lld.md` section 27), so the revert keeps the database as
 it is and no restore is needed; a data restore is the bundle-failure path
 in `../devops/deployment.md` section 6, not this one. The revert ships
 code whose folio routes stop verifying the stay and whose
@@ -254,7 +254,7 @@ still present the stored lines and balance; confirm the #588 release, the
 desk paths behave as before; run the health check and the end-to-end
 reservation check from `../devops/deployment.md` sections 3 and 4; run
 the Billing and Stay suites and the desk pins the release entry names
-(`../release/release-notes.md` section 2.5). The expected regression —
+(`../release/release-notes.md` section 2.6). The expected regression —
 a folio write against a random UUID creating an orphan folio again — is
 verified on the lab or QA installation, never against the hotel's own
 money: record the stay id it created so support can identify the row, and
@@ -268,7 +268,7 @@ that adds a schema or migration, mirrors or caches stay state inside
 Billing, adds a late-settlement operation, adds a Billing-side
 conditional close, or adds a retry or backoff beyond the single
 two-second call re-tiers the change per
-`../architecture/lld.md` section 25.9: the decision record is
+`../architecture/lld.md` section 27.9: the decision record is
 re-authored, the migration is forward-only, and the rollback note moves
 into that implementation PR.
 

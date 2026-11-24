@@ -231,7 +231,7 @@ repair for rooms stranded before this bundle; and no dedicated move-history
 list, because no read operation exposes the stay's move rows (a follow-up
 issue if the owner wants one).
 
-### 2.5 Folio writes refuse a stay Billing cannot verify (Refs #634)
+### 2.6 Folio writes refuse a stay Billing cannot verify (Refs #634)
 
 **Change and trace.** Billing now reads the stay before it writes money.
 Today `ensureFolio` creates a folio for any UUID `stayId` it is handed,
@@ -262,14 +262,14 @@ folio contracts gain the three codes additively (`1.0 -> 1.1`) and
 `contracts/errors/envelope.json` registers `UPSTREAM_UNAVAILABLE` with
 its `503` mapping — the drift ADR-0005 already named. Design:
 `../architecture/decisions/adr-0008-folio-write-stay-verification.md`
-(proposed), `../architecture/lld.md` section 25, `../architecture/hld.md`
-section 18, seam `../technical/integration.md` C8, refusals
+(proposed), `../architecture/lld.md` section 27, `../architecture/hld.md`
+section 20, seam `../technical/integration.md` C8, refusals
 `../technical/error-handling.md` section 5; product conditions
-`AC-FWV-1`..`AC-FWV-7` (`../product/acceptance-criteria.md` section 18),
-desk delta and copy `../product/desk-ui-design-rollout.md` section 6.19,
-decision D-30 in `../project/decision-log.md`; requirements
+`AC-FWV-1`..`AC-FWV-7` (`../product/acceptance-criteria.md` section 20),
+desk delta and copy `../product/desk-ui-design-rollout.md` section 6.21,
+decision D-32 in `../project/decision-log.md`; requirements
 `FR-FWV-1`..`FR-FWV-5` (`../requirements/mvp-requirements.md` section
-26). Risk label: `risk-medium`, tier T3 — the owner accepts ADR-0008
+28). Risk label: `risk-medium`, tier T3 — the owner accepts ADR-0008
 (`proposed -> accepted`) and #634 carries a `SPEC-GATE PASS` before the
 implementation PR merges.
 
@@ -299,7 +299,7 @@ own follow-up, out of scope here. While the stay module cannot be
 reached, the three writes and a first, folio-less balance read refuse
 with the "could not be checked" sentence and nothing is recorded
 (fail-closed by design); the desk work that keeps guests moving and the
-paper list to keep are `../operations/runbook.md`, section 12.
+paper list to keep are `../operations/runbook.md`, section 14.
 
 **Install/upgrade delta.** Nothing beyond the standard upgrade procedure
 (`../devops/deployment.md` sections 4–5). One bundle-level service
@@ -320,10 +320,10 @@ shows its generic "the request could not be completed" fallback instead
 of the three new sentences. Folios an older bundle already wrote against
 a stay that does not exist stay as they are — this change prevents new
 ones and ships no deletion, migration, or repair
-(`../operations/runbook.md` section 12.4 is the read-only inventory step
+(`../operations/runbook.md` section 14.4 is the read-only inventory step
 for support).
 
-**Rollback pointer.** `rollback.md` [section 5.5](rollback.md): revert
+**Rollback pointer.** `rollback.md` [section 5.6](rollback.md): revert
 the single implementation PR. The revert restores the previous
 ensure-on-first-use behaviour — a folio is created and money is written
 for the id the caller sends, with no Stay read — and has no data effect:
@@ -366,7 +366,7 @@ R8's mitigation (`../technical/security-threat-model.md` section 8) is
 not shipped with this change — `../operations/monitoring-alerting.md`
 stays a stub until the first exporter lands (ADR-0001), so until then
 the desk's refused-write reports and the support check in
-`../operations/runbook.md` section 12.4 are the watch.
+`../operations/runbook.md` section 14.4 are the watch.
 
 <!-- ao-role: release-manager -->
 Role: release-manager · AO session hotel-mgmt-948
