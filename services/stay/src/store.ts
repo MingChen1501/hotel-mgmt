@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { HttpError } from "./errors.js";
 import { msg } from "./messages.js";
+import { notRecorded, UPSTREAM_UNAVAILABLE, type BookingCompletion, type BookingCompletionClient } from "./reservationsClient.js";
 
 // In-memory StayService store (LLD section 2). Check-in records one
 // in-house occupation after the desk loop assigns the room through
@@ -130,7 +131,11 @@ export interface StayStoreAPI {
   checkIn(input: CheckInInput): Promise<StayRecord>;
   getStay(input: GetStayInput): Promise<StayRecord>;
   queryStays(input: QueryStaysInput): Promise<StayRecord[]>;
-  checkOut(input: CheckOutInput): Promise<{ stay: StayRecord; invoiceRef: string }>;
+  checkOut(input: CheckOutInput, callerToken?: string): Promise<{
+    stay: StayRecord;
+    invoiceRef: string;
+    bookingCompletion: BookingCompletion;
+  }>;
   moveRoom(input: MoveRoomInput): Promise<{ stay: StayRecord; move: MoveRecord }>;
   recordActualTimes(input: RecordActualTimesInput): Promise<StayRecord>;
   getStayRef(input: GetStayRefInput): Promise<StayRef>;
@@ -184,6 +189,23 @@ export class StayStore implements StayStoreAPI {
   private readonly moves: MoveRecord[] = [];
   private readonly idempotency = new Map<string, StayRecord>();
   private readonly outbox: { aggregate: string; eventType: string; payload: Record<string, unknown> }[] = [];
+
+  // The completion client is injected at boot (index.ts) from
+  // RESERVATIONS_BASE_URL. Without one the close still stands and
+  // reports the split, exactly as an unreachable provider would
+  // (FR-DEP-5).
+  constructor(private readonly completion?: BookingCompletionClient) {}
+
+  private async completeBooking(stayId: string, actor: string, callerToken: string): Promise<BookingCompletion> {
+    if (this.completion === undefined) {
+      return notRecorded(UPSTREAM_UNAVAILABLE);
+    }
+    try {
+      return await this.completion.complete({ stayId, actor, bearerToken: callerToken });
+    } catch (err) {
+      return notRecorded(err instanceof HttpError ? err.code : UPSTREAM_UNAVAILABLE);
+    }
+  }
 
   async checkIn(input: CheckInInput): Promise<StayRecord> {
     const id = input.stayId === undefined || input.stayId === null || input.stayId === "" ? randomUUID() : requireUuid(input.stayId, "stayId");
@@ -257,7 +279,15 @@ export class StayStore implements StayStoreAPI {
   // replayed idempotencyKey returns the original close (NFR-CON-2).
   // The folio is presented as the final invoice, so the invoice
   // reference is the reviewed folio id (FR-BIL-4 presentation only).
-  async checkOut(input: CheckOutInput): Promise<{ stay: StayRecord; invoiceRef: string }> {
+  // Once the flip commits the close completes the booking behind the
+  // stay through Reservations (FR-DEP-1, #646): a replay re-attempts
+  // the idempotent completion so a split is repaired, and the outcome
+  // rides back to the desk as bookingCompletion (FR-DEP-5).
+  async checkOut(input: CheckOutInput, callerToken = ""): Promise<{
+    stay: StayRecord;
+    invoiceRef: string;
+    bookingCompletion: BookingCompletion;
+  }> {
     const id = requireUuid(input.stayId, "stayId");
     const invoiceRef = requireUuid(input.folioId, "folioId");
     checkFolioGate(input.folioBalanceMinor, input.openBalanceApproval);
@@ -266,7 +296,8 @@ export class StayStore implements StayStoreAPI {
     if (key !== "") {
       const replay = this.idempotency.get(`CheckOut:${key}`);
       if (replay !== undefined) {
-        return { stay: replay, invoiceRef };
+        const bookingCompletion = await this.completeBooking(id, actor, callerToken);
+        return { stay: replay, invoiceRef, bookingCompletion };
       }
     }
     const record = this.stays.get(id);
@@ -289,7 +320,8 @@ export class StayStore implements StayStoreAPI {
     if (key !== "") {
       this.idempotency.set(`CheckOut:${key}`, record);
     }
-    return { stay: record, invoiceRef };
+    const bookingCompletion = await this.completeBooking(id, actor, callerToken);
+    return { stay: record, invoiceRef, bookingCompletion };
   }
 
   // MoveRoom keeps the stay in-house on the new room and keeps the

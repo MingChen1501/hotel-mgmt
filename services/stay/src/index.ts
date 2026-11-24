@@ -2,8 +2,21 @@ import { Pool } from "pg";
 import { createServiceServer } from "./server.js";
 import { StayStore } from "./store.js";
 import { PostgresStayStore } from "./pgstore.js";
+import { createReservationsClient } from "./reservationsClient.js";
 
 const port = Number(process.env["PORT"] ?? "8084");
+
+// The committed check-out completes the booking behind the stay
+// through Reservations (FR-DEP-1, #646). The base address defaults to
+// the compose-network name the LLD documents
+// (docs/architecture/lld.md section 22.2), the way Reservations
+// defaults RATES_BASE_URL, so a close outside deploy/compose.yaml still
+// reaches the provider; an unreachable Reservations leaves the close
+// standing and reports the split instead of claiming a completion
+// (FR-DEP-5).
+const reservationsBaseURL =
+  process.env["RESERVATIONS_BASE_URL"]?.trim() || "http://reservations:8081";
+const completion = createReservationsClient(reservationsBaseURL);
 
 // Row storage is selected at boot: when DATABASE_URL is set the
 // Postgres-backed store persists every row in the stay schema
@@ -12,8 +25,8 @@ const port = Number(process.env["PORT"] ?? "8084");
 const databaseUrl = process.env["DATABASE_URL"];
 const store =
   databaseUrl !== undefined && databaseUrl !== ""
-    ? new PostgresStayStore(new Pool({ connectionString: databaseUrl }))
-    : new StayStore();
+    ? new PostgresStayStore(new Pool({ connectionString: databaseUrl }), completion)
+    : new StayStore(completion);
 if (store instanceof PostgresStayStore) {
   console.log("stay using Postgres row storage");
 }

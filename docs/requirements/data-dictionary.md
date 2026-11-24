@@ -18,6 +18,9 @@ check-out, **receipt** the proof of one payment; **charge item** is a
 hotel-defined sellable entity and **charge** a posted folio line;
 **price basis** is what a reservation was quoted from; **hotel** is
 the business and **property** the deployment/data-isolation context.
+A **booking register** is the desk's read-only list of the reservations
+staying in a chosen night range: a view of the section 1 records that
+holds no field of its own.
 
 ## 1. Reservation
 
@@ -40,7 +43,27 @@ capacity is reached (`BR-47`). A booking whose capacity source cannot
 be read is refused fail-closed and no reservation is stored (`BR-48`).
 
 Owning FRs: FR-RES-1, FR-RES-2, FR-RES-3, FR-RES-4, FR-RES-5,
-FR-RES-6, FR-RTE-5, FR-CUS-1, FR-CUS-2, FR-OVB-1, FR-OVB-2.
+FR-RES-6, FR-RTE-5, FR-CUS-1, FR-CUS-2, FR-BMV-2, FR-BMV-5,
+FR-BMV-6, FR-OVB-1, FR-OVB-2.
+
+A reservation is **active** — and therefore holds sellable
+availability — only in `confirmed` and `checked-in`; a `closed`,
+`cancelled`, or no-show reservation holds nothing for the dates it
+covers. On check-out the stay's close completes the reservation to the
+terminal `closed` state, which is never reopened, and the recorded
+dates are not rewritten by an early departure: the state records that
+the stay ended while the dates keep recording what was booked
+(`FR-DEP-1`..`FR-DEP-3`, `BR-1`).
+
+The booking register reads these records and introduces no field of its
+own: the guest name and the quoted total come from the reservation, the
+room type from the type list, and the assigned room — only while the
+guest is in house — from the stay's room link resolved through the
+occupied room list. A reservation holds a room type, not a room, so a
+`confirmed` row shows no assigned room, and no read exposes the room a
+departed guest held, so a `closed` row shows none either; a register
+cell a read could not fill states that it could not be read rather than
+guessing (`FR-BMV-2`, `FR-BMV-5`, `FR-BMV-6`, `BR-19`).
 
 ## 2. Stay
 
@@ -59,9 +82,19 @@ A stay reaches `closed` only through the settlement gate, and that
 gate is decided on the folio the system holds: the stored balance and
 the approval recorded against it, never a balance or approval a
 request supplies (`BR-46`). A stay whose folio cannot be read stays in
-house.
+house. A committed close completes the booking behind the stay
+(`FR-DEP-1`), so the completed booking keeps its link to this closed
+stay.
 
-Owning FRs: FR-FDK-1, FR-FDK-2, FR-FDK-3, FR-FDK-4, FR-FDK-5.
+The stay's room is the desk's assignment, never a booking fact: a
+check-in commit assigns only the room the guest is in and takes back
+the room it assigned when that commit does not land while no stay was
+recorded, and a change of room keeps the stay in house and records the
+from-room, the to-room, and the time in its move history (`FR-REA-1`,
+`FR-REA-2`, `FR-REA-4`).
+
+Owning FRs: FR-FDK-1, FR-FDK-2, FR-FDK-3, FR-FDK-4, FR-FDK-5,
+FR-REA-1, FR-REA-2, FR-REA-3, FR-REA-4.
 
 ## 3. Folio
 
@@ -149,8 +182,14 @@ features; current state (occupied, vacant dirty, vacant clean,
 vacant inspected, out of order); state-change history with actor and
 timestamp.
 
+A room reads `occupied` only while a stay names it. The assigned room
+is released to `vacant-dirty` when the stay that used it leaves it —
+on check-out or on a move — and back to `vacant-inspected` when the
+assignment never became a stay, because no guest was in it (`FR-REA-1`,
+`FR-REA-2`, `FR-REA-3`; `BR-19`).
+
 Owning FRs: FR-RMS-1, FR-RMS-2, FR-RMS-3, FR-RMS-4, FR-ADM-3,
-FR-FDK-1, FR-FDK-3.
+FR-FDK-1, FR-FDK-3, FR-REA-1, FR-REA-2, FR-REA-3, FR-REA-4.
 
 ## 9. Room type
 
@@ -276,6 +315,21 @@ entry (section 3) states which of its fields the #601 settlement gate
 decides on, and the Stay entry (section 2) states that the close is
 decided on those stored facts (`BR-46`, `FR-CKS-1`..`FR-CKS-5`); both
 add no entry, field, or behaviour beyond those sources. The
+Reservation entry (section 1) and the Stay entry (section 2) state the
+active set the #646 departure release relies on — a completed booking
+holds nothing and never reopens (`FR-DEP-1`..`FR-DEP-3`, `BR-1`) — and
+add no entry, field, or behaviour beyond those sources. The Stay entry
+(section 2) and the Room entry (section 8) state the assignment and
+release obligation the #647 reassignment relies on — the room is the
+desk's assignment, a used room is released to housekeeping, and a room
+whose assignment never became a stay returns to ready (`FR-REA-1`..
+`FR-REA-4`, `BR-19`) — and add no entry, field, or behaviour beyond
+those sources. The Reservation entry (section 1) defines the **booking
+register** the #648 desk view renders — a read-only list of reservations
+staying in a chosen night range, with no field of its own — and states
+which read supplies each cell, including why a `confirmed` or `closed`
+row shows no assigned room (`FR-BMV-2`, `FR-BMV-5`, `FR-BMV-6`); it
+adds no entry, field, or behaviour beyond those sources.
 Reservation entry (section 1) and the Room type entry (section 9)
 state where a booking's capacity ceiling comes from — the recorded
 room inventory, never the request's `sellableUnits` (`BR-47`,
@@ -285,4 +339,4 @@ behaviour beyond those sources.
 Counts: 15 dictionary entries covering the 7 entity terminology concepts (T-1..T-7); T-8 is a spelling convention with no entry.
 
 <!-- ao-role: business-analyst -->
-Role: business-analyst · AO session hotel-mgmt-934
+Role: business-analyst · AO session hotel-mgmt-980

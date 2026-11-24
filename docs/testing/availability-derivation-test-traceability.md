@@ -4,10 +4,10 @@ Status: active. Testing spec for the T3 server-side reservation
 availability derivation ([issue #631](https://github.com/MingChen1501/hotel-mgmt/issues/631)),
 owned by `qa-lead`. It maps the done-conditions of the change —
 `AC-OVB-1`..`AC-OVB-3`, owned by `product-owner` in
-`docs/product/acceptance-criteria.md` [section 15](../product/acceptance-criteria.md) —
+`docs/product/acceptance-criteria.md` [section 19](../product/acceptance-criteria.md) —
 the behaviour-scoped requirements `FR-OVB-1`..`FR-OVB-4`, owned by
 `business-analyst` in
-`docs/requirements/mvp-requirements.md` [section 23](../requirements/mvp-requirements.md),
+`docs/requirements/mvp-requirements.md` [section 27](../requirements/mvp-requirements.md),
 and business rules `BR-47`..`BR-49` in
 `docs/requirements/business-rules.md`, to their guards: the pins that
 exist on disk at this spec head, the guard registry `O1`–`O13`, and
@@ -25,8 +25,8 @@ which pins it rewrites (never deletes).
 Companion specs: ADR-0006
 (`docs/architecture/decisions/adr-0006-server-side-availability-derivation.md`,
 proposed; the owner accepts it before the implementation PR merges),
-LLD [section 22](../architecture/lld.md) (guard algorithm, per-flow
-diagrams, and the section 22.6 verification plan this plan aligns
+LLD [section 26](../architecture/lld.md) (guard algorithm, per-flow
+diagrams, and the section 26.6 verification plan this plan aligns
 with), HLD section 5, the `AC-OVB-1`..`AC-OVB-3` product conditions,
 and the #588 evidence record `docs/testing/evidence/588/README.md`
 (the prior client-trust boundary record this slice's evidence pair
@@ -51,7 +51,7 @@ catalogue key, and moves no MVP row.
   gain only the amendment pointer; the 57-row MVP coverage count in
   `traceability-matrix.md` stands unchanged and no MVP row may cite
   this slice as its guard. The slice rows live in
-  `traceability-matrix.md` section 14.
+  `traceability-matrix.md` section 18.
 - No new NFR and no new catalogue key. The refusals reach the panel
   through the strings that already exist: `desk.book.refused_soldout`
   for `CONFLICT` (`app/src/views/BookView.vue:916-919`) and
@@ -171,7 +171,7 @@ the guard passes.
 | `AC-OVB-1` — the guard decides on the recorded capacity, not the request's `sellableUnits`: inflated buys nothing, low or absent refuses nothing, the Nth overlapping confirmed reservation is the last accepted, the next refuses `CONFLICT` naming type and dates and writes nothing; a modification into sold-out capacity refuses with the reservation unchanged; a recorded capacity of zero is that same sold-out `CONFLICT`, never a fail-closed `UPSTREAM_UNAVAILABLE`; a cancelled, no-show, or closed reservation releases its held unit exactly as today, so freed capacity becomes sellable again, while a checked-in row keeps holding its unit exactly as today, because the in-house share of a room type must not be subtracted from the recorded capacity twice (`BR-47`) | L1 acceptance, both directions, plus L3 pairing | **Pending** — `O1`, `O2`, `O3`, `O4`, `O8`, `O10`; existing pins `store_test.go:31-70`, `:173-235`, `handler_test.go:59-91` prove today's request-fed guard and are rewritten |
 | `AC-OVB-2` — an unreadable capacity source refuses fail-closed with `UPSTREAM_UNAVAILABLE` (503) naming the upstream and the operation, nothing written, no earlier read reused, no request number as fallback; a 4xx envelope is surfaced unchanged; an unwired client refuses the same way | L1 acceptance + fail-closed check | **Pending** — `O6` (transport, timeout, 5xx, unparseable, unwired), `O7` (4xx pass-through); existing pin `pricing/client.go:89-96` is the code precedent and `client_test.go:61-84` the test pattern |
 | `AC-OVB-3` — two simultaneous last-unit requests yield exactly one winner and one `CONFLICT`, the capacity read on the attempt and the count-and-insert in one critical section; a replay returns the original and consumes no second unit; the desk Book flow, its pre-check, its request, and its refusal sentences stay as they are | L1 + L3 paired concurrency + desk re-run | **Pending** for the service half (`O8`, `O9`); **covered by re-run** for the desk half (`O12`) |
-| `FR-OVB-1` — the ceiling is the capacity the hotel records for the room type and dates; the request's number can neither raise nor lower it (mvp-requirements section 23.3) | L1 acceptance, inflated and low/absent | **Pending** — `O1`, `O2` (inflated), `O3` (low, absent, malformed), `O11` (Postgres parity) |
+| `FR-OVB-1` — the ceiling is the capacity the hotel records for the room type and dates; the request's number can neither raise nor lower it (mvp-requirements section 27.3) | L1 acceptance, inflated and low/absent | **Pending** — `O1`, `O2` (inflated), `O3` (low, absent, malformed), `O11` (Postgres parity) |
 | `FR-OVB-2` — a modification is decided on the same ceiling and refuses without changing the reservation: previous dates, type, guest, and price kept, no change-history entry, the request's number changes nothing | L1 acceptance | **Pending** — `O4`, `O11`; existing pin `store_test.go:173-235` proves the pairing but feeds the ceiling from the request |
 | `FR-OVB-3` — an unreadable capacity source refuses fail-closed with `UPSTREAM_UNAVAILABLE` (503) naming upstream and operation and writes nothing; a 4xx envelope is surfaced unchanged; a readable zero capacity is a sold-out `CONFLICT`, never a 5xx | L1 acceptance + fail-closed | **Pending** — `O5` (zero is a conflict), `O6` (unreadable), `O7` (4xx); no guard on disk |
 | `FR-OVB-4` — the guard stays atomic and a replay consumes no second unit: capacity read on the attempt, the request's number never in the comparison, count-and-insert in one critical section | L1 + L3 paired concurrency | **Pending** — `O8`, `O9`, `O11`; existing pins `store_test.go:31-70`, `:86-105`, `:173-235`, `postgres_test.go:106-135` keep the one-winner and replay assertions and are rewritten |
@@ -187,7 +187,7 @@ the guard passes.
 
 ### Levels and suites
 
-| Level | What runs | Command (authoritative: LLD [section 22.6](../architecture/lld.md)) |
+| Level | What runs | Command (authoritative: LLD [section 26.6](../architecture/lld.md)) |
 |---|---|---|
 | L1 service, Reservations | `O1`–`O11` and the rewritten pins | `cd services/reservations && go build ./... && go test ./... && go vet ./... && gofmt -l .` |
 | L1 service, Rooms (unaffected, must stay green) | The sellability reply the ceiling derives from | `cd services/rooms && npm ci && npm run build && npm test && npm run lint` |
@@ -219,8 +219,8 @@ coverage and link checks).
 1. ADR-0006 is owner-accepted (`proposed -> accepted`) and this spec
    set has a `SPEC-GATE PASS` on #631 (T3).
 2. The stack specs this plan cites are active: `AC-OVB-1`..`AC-OVB-3`
-   (acceptance-criteria section 15), `FR-OVB-1`..`FR-OVB-4` and
-   `BR-47`..`BR-49`, and LLD section 22.
+   (acceptance-criteria section 19), `FR-OVB-1`..`FR-OVB-4` and
+   `BR-47`..`BR-49`, and LLD section 26.
 3. The build under test is identified by commit and the lab seed
    matches `deploy/config/hotel.example.json`, with room counts and
    blocks the cases state.

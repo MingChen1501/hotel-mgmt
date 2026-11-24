@@ -256,3 +256,127 @@ func TestDeskLifecycleModifyCancelNoShowCalendar(t *testing.T) {
 		}
 	}
 }
+
+// TestDeskCheckOutReservationCompletesBooking is the handler half of
+// DR1/DR2/DR3/DR4/DR10 (#646): the close completion endpoint flips the
+// linked booking to closed once, keeps it in history, releases the
+// sellable unit for a same-day rebooking, and refuses wrong states,
+// unknown stays, blank fields, and a missing session token without
+// writing anything.
+func TestDeskCheckOutReservationCompletesBooking(t *testing.T) {
+	mux := newMux()
+	code, created := post(t, mux, "/v1/reservations/CreateReservation", loopBody("complete-1"), deskToken)
+	if code != http.StatusOK {
+		t.Fatalf("CreateReservation status = %d (%v)", code, created)
+	}
+	ref, _ := created["reservationRef"].(string)
+	code, checked := post(t, mux, "/v1/reservations/CheckInReservation", map[string]any{"reservationRef": ref, "stayId": "stay-1", "actor": "front-desk"}, deskToken)
+	if code != http.StatusOK || checked["state"] != "checked-in" {
+		t.Fatalf("CheckInReservation = %d %v, want checked-in", code, checked)
+	}
+
+	// The in-house booking still consumes the unit: the negative
+	// control that proves the release comes from the state flip.
+	code, blocked := post(t, mux, "/v1/reservations/CreateReservation", loopBody("complete-2"), deskToken)
+	if code != http.StatusConflict || blocked["code"] != "CONFLICT" {
+		t.Fatalf("same-day booking beside the in-house guest = %d %v, want 409 CONFLICT", code, blocked)
+	}
+
+	code, completed := post(t, mux, "/v1/reservations/CheckOutReservation", map[string]any{"stayId": "stay-1", "actor": "front-desk"}, deskToken)
+	if code != http.StatusOK || completed["state"] != "closed" || completed["reservationRef"] != ref || completed["stayId"] != "stay-1" {
+		t.Fatalf("CheckOutReservation = %d %v, want closed with the stay link kept", code, completed)
+	}
+	code, replay := post(t, mux, "/v1/reservations/CheckOutReservation", map[string]any{"stayId": "stay-1", "actor": "front-desk"}, deskToken)
+	if code != http.StatusOK || replay["state"] != "closed" {
+		t.Fatalf("replayed completion = %d %v, want the same closed booking", code, replay)
+	}
+
+	code, fetched := post(t, mux, "/v1/reservations/GetReservation", map[string]any{"reservationRef": ref}, deskToken)
+	if code != http.StatusOK || fetched["state"] != "closed" {
+		t.Fatalf("GetReservation = %d %v, want closed", code, fetched)
+	}
+	code, calendar := post(t, mux, "/v1/reservations/QueryCalendar", map[string]any{"dateFrom": "2026-11-01", "dateTo": "2026-11-03", "roomTypeId": "deluxe-type"}, deskToken)
+	if code != http.StatusOK {
+		t.Fatalf("QueryCalendar status = %d", code)
+	}
+	entries, _ := calendar["reservations"].([]any)
+	if len(entries) != 1 {
+		t.Fatalf("calendar holds %d entries, want the completed booking kept in history", len(entries))
+	}
+	entry, _ := entries[0].(map[string]any)
+	if entry["state"] != "closed" || entry["reservationRef"] != ref {
+		t.Fatalf("calendar row = %v, want the closed booking", entry)
+	}
+
+	code, rebooked := post(t, mux, "/v1/reservations/CreateReservation", loopBody("complete-3"), deskToken)
+	if code != http.StatusOK || rebooked["state"] != "confirmed" {
+		t.Fatalf("same-day rebooking after the close = %d %v, want confirmed", code, rebooked)
+	}
+
+	for name, body := range map[string]map[string]any{
+		"check-in": {"reservationRef": ref, "stayId": "stay-2"},
+		"modify":   {"reservationRef": ref, "arrivalDate": "2026-11-02", "departureDate": "2026-11-04", "sellableUnits": 2, "priceBasis": map[string]any{"totalMinor": 26000}},
+		"cancel":   {"reservationRef": ref, "reason": "guest-request"},
+		"no-show":  {"reservationRef": ref, "reason": "no-arrival"},
+	} {
+		path := map[string]string{
+			"check-in": "/v1/reservations/CheckInReservation",
+			"modify":   "/v1/reservations/ModifyReservation",
+			"cancel":   "/v1/reservations/CancelReservation",
+			"no-show":  "/v1/reservations/MarkNoShow",
+		}[name]
+		code, refused := post(t, mux, path, body, deskToken)
+		if code != 422 || refused["code"] != "STATE_ILLEGAL" {
+			t.Fatalf("%s on a completed booking = %d %v, want 422 STATE_ILLEGAL", name, code, refused)
+		}
+	}
+
+	code, unknown := post(t, mux, "/v1/reservations/CheckOutReservation", map[string]any{"stayId": "stay-unknown", "actor": "front-desk"}, deskToken)
+	if code != http.StatusNotFound || unknown["code"] != "NOT_FOUND" {
+		t.Fatalf("unknown stay completion = %d %v, want 404 NOT_FOUND", code, unknown)
+	}
+	for _, field := range []string{"stayId", "actor"} {
+		body := map[string]any{"stayId": "stay-1", "actor": "front-desk"}
+		delete(body, field)
+		code, blank := post(t, mux, "/v1/reservations/CheckOutReservation", body, deskToken)
+		if code != http.StatusBadRequest || blank["code"] != "VALIDATION_FAILED" || blank["details"].(map[string]any)["field"] != field {
+			t.Fatalf("completion without %s = %d %v, want 400 naming the field", field, code, blank)
+		}
+	}
+	code, unauth := post(t, mux, "/v1/reservations/CheckOutReservation", map[string]any{"stayId": "stay-1", "actor": "front-desk"}, "")
+	if code != http.StatusUnauthorized || unauth["code"] != "UNAUTHENTICATED" {
+		t.Fatalf("completion without token = %d %v, want 401 UNAUTHENTICATED", code, unauth)
+	}
+}
+
+// TestEarlyDepartureUnblocksSameDayBooking is the handler half of
+// DR6 (#646): a same-day booking already on file is refused while the
+// early-departing guest is in house and accepted after the completion.
+func TestEarlyDepartureUnblocksSameDayBooking(t *testing.T) {
+	mux := newMux()
+	early := loopBody("early-1")
+	early["arrivalDate"] = "2026-11-01"
+	early["departureDate"] = "2026-11-05"
+	code, created := post(t, mux, "/v1/reservations/CreateReservation", early, deskToken)
+	if code != http.StatusOK {
+		t.Fatalf("CreateReservation status = %d (%v)", code, created)
+	}
+	ref, _ := created["reservationRef"].(string)
+	if code, _ := post(t, mux, "/v1/reservations/CheckInReservation", map[string]any{"reservationRef": ref, "stayId": "stay-early", "actor": "front-desk"}, deskToken); code != http.StatusOK {
+		t.Fatalf("CheckInReservation status = %d", code)
+	}
+	next := loopBody("early-2")
+	next["arrivalDate"] = "2026-11-03"
+	next["departureDate"] = "2026-11-06"
+	code, blocked := post(t, mux, "/v1/reservations/CreateReservation", next, deskToken)
+	if code != http.StatusConflict {
+		t.Fatalf("same-type booking beside the in-house guest = %d (%v), want 409", code, blocked)
+	}
+	if code, completed := post(t, mux, "/v1/reservations/CheckOutReservation", map[string]any{"stayId": "stay-early", "actor": "front-desk"}, deskToken); code != http.StatusOK || completed["state"] != "closed" {
+		t.Fatalf("early completion = %d %v, want closed", code, completed)
+	}
+	code, rebooked := post(t, mux, "/v1/reservations/CreateReservation", next, deskToken)
+	if code != http.StatusOK {
+		t.Fatalf("early departure still blocks the same-day booking = %d (%v)", code, rebooked)
+	}
+}

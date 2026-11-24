@@ -1,0 +1,10 @@
+{
+  "operation": "CheckOutReservation",
+  "case": "happy-path",
+  "description": "Completes the checked-in booking linked to the stay a committed check-out closed.",
+  "request": {
+    "stayId": "<stay-id>",
+    "actor": "front-desk"
+  },
+  "expect": { "status": 200, "state": "closed" }
+}
