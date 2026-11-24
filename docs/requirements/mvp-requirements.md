@@ -6644,8 +6644,8 @@ The decided behaviour, in five parts:
 - The refusal vocabulary is not re-decided: every code and status the
   hotel already answers with stays as written (`FR-ERR-3`), and the
   requirements-side error index
-  (`integration-contract-needs.md` section 9) gains rows for the new
-  fault token and the enum-conformance rule and loses none.
+  (`integration-contract-needs.md` section 9) gains the fault-token row
+  and loses none.
 - The envelope shape is not re-decided: `code`, `message`, `details`,
   and `traceId` stay the four fields (`docs/technical/error-handling.md`
   section 1 stands), the fault message stays the existing catalogue
