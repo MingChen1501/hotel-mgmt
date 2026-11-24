@@ -6180,7 +6180,7 @@ The decided behaviour, in five parts:
    carries no folio (a `findFolioByStay` miss); a stay that already
    carries a folio is served from Billing in every stay state, so the
    departure invoice and each payment receipt keep printing
-   (`FR-FWV-5`). This is the reading LLD 25.2 records and it resolves the
+   (`FR-FWV-5`). This is the reading LLD 27.2 records and it resolves the
    one overlap in the `AC-FWV` set: `AC-FWV-3`'s "open the folio balance"
    clause binds the **folio-creating** read, while `AC-FWV-5` settles the
    read of an **existing** folio. Serving an existing folio can never
@@ -6385,7 +6385,7 @@ No new NFR is added. The existing NFRs cover the change:
   refused route stores no key and a repeated request answers the same,
   and paired simultaneous writes keep today's exactly-once claim. The
   verify-then-write window — a stay closing between the read and the
-  committed line — is a recorded residual risk (LLD 25.9, threat-model
+  committed line — is a recorded residual risk (LLD 27.9, threat-model
   `R5`) and changes no requirement here.
 - Security (`NFR-SEC-1`, `NFR-SEC-2` hold): the caller's session travels
   on the read and a rejected session surfaces unchanged; no role,
@@ -6470,7 +6470,7 @@ ones included, stay as they are.
   `AC-FWV-3`'s "open the folio balance" clause reads broadly, while
   `AC-FWV-5` requires an existing folio to be served in every stay
   state. This section reads `AC-FWV-3` as binding the folio-creating
-  read, which is the reading LLD 25.2 records and the one the
+  read, which is the reading LLD 27.2 records and the one the
   requirements above state. `product-owner` confirms that reading at the
   spec gate, or tightens `AC-FWV-3` to "opens the balance of a stay that
   carries no folio"; until then the reading is explicit here rather than
