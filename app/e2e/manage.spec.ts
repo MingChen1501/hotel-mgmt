@@ -68,9 +68,10 @@ test('manage tab: create a type, add and move a room, and price a range', async 
   await expect(page.getByTestId('manage-rooms')).toBeVisible();
   await expect(page.getByTestId('manage-rates')).toBeVisible();
 
-  // The tab sits immediately after Rooms (owner decision O-1).
+  // The tab sits immediately after Rooms (owner decision O-1); the
+  // read-only booking register adds the ninth tab after Book (#648).
   const tabs = page.locator('[data-testid^="shell-nav-"]');
-  await expect(tabs).toHaveCount(8);
+  await expect(tabs).toHaveCount(9);
   await expect(page.getByTestId('shell-nav-manage')).toHaveText('Manage');
   await expect(page.getByTestId('shell-nav-manage')).toHaveClass(/shell-nav-active/);
 

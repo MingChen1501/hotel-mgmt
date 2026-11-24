@@ -37,6 +37,16 @@ interface StayRow {
   roomId?: string;
 }
 
+interface InHousePair {
+  rows: StayRow[];
+  /** Room number keyed by room id, from the occupied lane. */
+  roomNumbers: Record<string, string>;
+  /** True when the in-house stay list read failed. */
+  staysFailed: boolean;
+  /** True when the occupied-room read failed. */
+  roomsFailed: boolean;
+}
+
 function isSignedOut(err: unknown): boolean {
   return (
     typeof err === 'object' &&
@@ -82,7 +92,10 @@ async function readGuestName(guestId: string | undefined): Promise<string> {
 // In-house stays sit in occupied rooms, so one state read covers every
 // option. A failed room read keeps the stay pickable with the
 // catalogue's unavailable-room wording instead of failing the list.
-async function readOccupiedRoomNumbers(): Promise<Record<string, string>> {
+async function readOccupiedRoomNumbers(): Promise<{
+  numbers: Record<string, string>;
+  failed: boolean;
+}> {
   try {
     const listed = await apiFetch<{ rooms?: Array<{ roomId?: string; number?: string }> }>(
       '/v1/rooms/ListRoomsByState',
@@ -94,13 +107,71 @@ async function readOccupiedRoomNumbers(): Promise<Record<string, string>> {
         numbers[room.roomId] = room.number;
       }
     }
-    return numbers;
+    return { numbers, failed: false };
   } catch (err) {
     if (isSignedOut(err)) {
       throw err;
     }
-    return {};
+    return { numbers: {}, failed: true };
   }
+}
+
+// One read pair, one degradation rule (LLD section 24.2): the business
+// date's in-house list supplies `stayId -> roomId` and the occupied
+// lane supplies `roomId -> number`. The stay read runs first because
+// the room id comes from it. Neither failure throws past the caller —
+// only a signed-out response does, so the one 401 gate still owns it.
+async function readInHousePair(): Promise<InHousePair> {
+  let rows: StayRow[];
+  try {
+    const lists = await apiFetch<{ inHouse?: StayRow[] }>(
+      '/v1/stay/ListArrivalsDepartures',
+      { method: 'POST', body: JSON.stringify({ businessDate: localBusinessDate() }) },
+    );
+    rows = lists.inHouse ?? [];
+  } catch (err) {
+    if (isSignedOut(err)) {
+      throw err;
+    }
+    return { rows: [], roomNumbers: {}, staysFailed: true, roomsFailed: false };
+  }
+  const occupied = await readOccupiedRoomNumbers();
+  return {
+    rows,
+    roomNumbers: occupied.numbers,
+    staysFailed: false,
+    roomsFailed: occupied.failed,
+  };
+}
+
+// Read-only in-house room map for the booking register (Refs #648, LLD
+// section 24.2). The register resolves a checked-in booking's room from
+// this map and never calls `loadInHouseStayOptions`, because that helper
+// pays one `GetGuest` read per in-house stay for labels the register
+// already has from its row reads.
+export interface InHouseRoomMap {
+  /** Room number keyed by stay id; a stay with no resolvable room is absent. */
+  roomsByStayId: Record<string, string>;
+  /** True when the room column could not be read (either read failed). */
+  failed: boolean;
+}
+
+export async function loadInHouseRoomMap(): Promise<InHouseRoomMap> {
+  const pair = await readInHousePair();
+  if (pair.staysFailed) {
+    return { roomsByStayId: {}, failed: true };
+  }
+  const roomsByStayId: Record<string, string> = {};
+  for (const row of pair.rows) {
+    if (!row.stayId) {
+      continue;
+    }
+    const number = row.roomId ? pair.roomNumbers[row.roomId] : undefined;
+    if (number) {
+      roomsByStayId[row.stayId] = number;
+    }
+  }
+  return { roomsByStayId, failed: pair.roomsFailed };
 }
 
 function roomLabel(roomId: string | undefined, numbers: Record<string, string>): string {
@@ -119,30 +190,20 @@ function roomLabel(roomId: string | undefined, numbers: Record<string, string>):
 // state (`failed: true`), while a signed-out response is rethrown so
 // the caller returns to the sign-in gate.
 export async function loadInHouseStayOptions(): Promise<InHouseStayOptions> {
-  let rows: StayRow[];
-  try {
-    const lists = await apiFetch<{ inHouse?: StayRow[] }>(
-      '/v1/stay/ListArrivalsDepartures',
-      { method: 'POST', body: JSON.stringify({ businessDate: localBusinessDate() }) },
-    );
-    rows = lists.inHouse ?? [];
-  } catch (err) {
-    if (isSignedOut(err)) {
-      throw err;
-    }
+  const pair = await readInHousePair();
+  if (pair.staysFailed) {
     return { options: [], failed: true };
   }
 
-  const numbers = await readOccupiedRoomNumbers();
   const options: InHouseStayOption[] = [];
   const seen = new Set<string>();
-  for (const row of rows) {
+  for (const row of pair.rows) {
     if (!row.stayId || seen.has(row.stayId)) {
       continue;
     }
     seen.add(row.stayId);
     const guestName = await readGuestName(row.guestId);
-    const room = roomLabel(row.roomId, numbers);
+    const room = roomLabel(row.roomId, pair.roomNumbers);
     options.push({
       stayId: row.stayId,
       label: t('desk.today.name_detail', { name: guestName, detail: room }, `${guestName} · ${room}`),
