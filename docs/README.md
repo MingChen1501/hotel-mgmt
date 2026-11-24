@@ -151,7 +151,7 @@ docs and plans, not gated specs.
 | Type | Path | Status | Owner | Purpose |
 |---|---|---|---|---|
 | Test strategy | `testing/test-strategy.md` | active | `qa-lead` | testing approach, levels, and entry/exit criteria (Closes #62) |
-| Traceability matrix | `testing/traceability-matrix.md` | active | `qa-lead` | FR/NFR-to-guard map (every item keeps at least one guard) (Closes #62; section 11 Refs #590, section 12 Refs #600, section 13 Refs #601, section 14 Refs #646, section 15 Refs #647, section 16 Refs #648, section 19 Refs #634) |
+| Traceability matrix | `testing/traceability-matrix.md` | active | `qa-lead` | FR/NFR-to-guard map (every item keeps at least one guard) (Closes #62; section 11 Refs #590, section 12 Refs #600, section 13 Refs #601, section 14 Refs #646, section 15 Refs #647, section 16 Refs #648, section 20 Refs #634) |
 | Test report | `testing/test-report.md` | active | `qa-lead` | consolidated full-MVP results with pass evidence per cell (Closes #214) |
 | Phase 6 QA plan | `testing/phase-6-qa-plan.md` | active | `qa-lead` | scoped independent-QA pass plan: entry, activities, bug flow, exit (Closes #264) |
 | A1 desk-loop run log | `testing/phase-6-qa-a1-run-log.md` | active | `qa-lead` | scripted live-stack desk-loop record: per-step observed-vs-expected, screen surfaces, admin reads, evidence, defects (Closes #267) |
