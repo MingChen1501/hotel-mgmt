@@ -25,7 +25,9 @@ The operation table (`web/BillingController.java`): `GetFolioBalance` (:74), `Po
 
 ## 3. Happy-path flowchart
 
-PostCharge (`POST /v1/billing/PostCharge`) — the folio write:
+PostCharge (`POST /v1/billing/PostCharge`) — the folio write. As built
+today; from #634 on the stay is verified between C and D (section 9, LLD
+[section 27](../lld.md#27-folio-writes-verify-the-stay-refs-634)):
 
 ```mermaid
 flowchart TD
@@ -73,7 +75,14 @@ Rollback: none — each operation is a single validated write with the idempoten
 
 ## 5. Outbound dependencies
 
-None at runtime. Consumed by the desk loop: `GetFolioBalance` feeds the Stay check-out folio gate; `RunDayClose`/`GetDayClose` feed Reporting revenue via `folio.charge-posted` / `folio.payment-recorded` events; `ProduceInvoice`/`ProduceReceipt` present the folio/payment the stay close references. Money is exact (`BigDecimal` in memory, BIGINT minor units persisted). Hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (LLD [section 0](../lld.md)).
+One runtime outbound call from #634 on: `StayService.GetStayRef` (C8),
+made before every folio write and before a folio is created on a
+read — `STAY_BASE_URL` (default `http://stay:8084`), the caller's
+Bearer token forwarded, 2-second timeout, fail-closed on anything
+unreadable (section 9; `docs/technical/integration.md` C8). Before that
+change this section read "none at runtime".
+
+Consumed by the desk loop: `GetFolioBalance` feeds the Stay check-out folio gate; `RunDayClose`/`GetDayClose` feed Reporting revenue via `folio.charge-posted` / `folio.payment-recorded` events; `ProduceInvoice`/`ProduceReceipt` present the folio/payment the stay close references. Money is exact (`BigDecimal` in memory, BIGINT minor units persisted). Hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (LLD [section 0](../lld.md)).
 
 See also: [deployment](../system-architecture.md) (section 1), [C4 containers](../c4-containers.md), and [event flow](../event-flow.md) (this service's outbox emissions).
 
@@ -84,9 +93,11 @@ Envelope `{code, message, details, traceId}` (`web/ApiExceptionHandler.java:12-2
 | Code | Status | Raised when |
 |---|---|---|
 | `VALIDATION_FAILED` | 400 | missing/blank field, bad UUID/date, bad item kind or method, negative amount, out-of-range percent (`service/BillingService.java:126-193,255-325`) |
-| `UNAUTHENTICATED` | 401 | missing session token (`web/BillingController.java:67-72`) |
-| `NOT_FOUND` | 404 | unknown day-close, folio, payment, or charge line (`service/BillingService.java:206-243`) |
+| `UNAUTHENTICATED` | 401 | missing session token (`web/BillingController.java:67-72`); a `401` forwarded from Stay is surfaced unchanged |
+| `NOT_FOUND` | 404 | unknown day-close, folio, payment, or charge line (`service/BillingService.java:206-243`); from #634 an unknown stay on a folio route |
 | `SETTLEMENT_REQUIRED` | 409 | settlement refused without approval (`web/ApiException.java:41-42`) |
+| `STATE_ILLEGAL` | 422 | from #634 a stay outside `in-house` on a folio route, naming the stay and its state |
+| `UPSTREAM_UNAVAILABLE` | 503 | from #634 a Stay that cannot be read for a folio route; also planned for the #601 deltas above |
 
 ## 7. Operations
 
@@ -158,5 +169,45 @@ three may approve, and whether approval is needed — stays the section
 shape and becomes the gate read Stay calls at the close (integration
 C7). Design: `docs/architecture/lld.md` section 21.
 
+## 9. Planned delta — folio writes verify the stay (Refs #634, ADR-0008 proposed)
+
+Today `ensureFolio` creates a folio for any UUID `stayId` with no Stay
+read (`repo/BillingRepository.java:65-71`), reached from `GetFolioBalance`
+(`service/BillingService.java:121`), `PostCharge` (`:142`),
+`RecordPayment` (`:176`), and `RecordOpenBalanceApproval` (`:264`), so
+money can be written against a stay that does not exist or is already
+closed.
+
+Target, from #634 on:
+
+- `PostCharge`, `RecordPayment`, and `RecordOpenBalanceApproval` call
+  `StayService.GetStayRef` (C8) on every request before they write,
+  whether or not a folio exists; `GetFolioBalance` calls it only when the
+  stay has no folio, so a folio Billing already holds stays readable and
+  printable in every stay state.
+- The call is `POST {STAY_BASE_URL}/v1/stay/GetStayRef` with the caller's
+  Bearer token forwarded, a 2-second timeout, and it runs outside the
+  route's database transaction (the transactional body moves to a writer
+  bean; holding a Hikari connection across the call would starve the
+  10-connection pool, `config/DatabaseConfig.java:55`).
+- Refusals: unknown stay -> `NOT_FOUND` (404); stay not in house ->
+  `STATE_ILLEGAL` (422) naming the state; unreadable Stay -> a new
+  `web/ApiException.upstreamUnavailable` builder rendering
+  `UPSTREAM_UNAVAILABLE` (503) with
+  `{upstream: "stay", operation: "GetStayRef"}`; a `404` that names
+  another stay is unreadable, not unknown. `UPSTREAM_UNAVAILABLE` is
+  registered in `contracts/errors/envelope.json` in the same change, and
+  the four folio contracts bump minor for the new error set.
+- Order: validate, verify, claim, write — so a refusal leaves no folio
+  row, no line, no balance movement, no approval, and no outbox event.
+- No schema, migration, operation, request field, response field, or
+  event change; `RunDayClose`, `GetDayClose`, `ProduceInvoice`, and
+  `ProduceReceipt` are untouched.
+
+Design: `docs/architecture/lld.md` section 27; decision record
+`docs/architecture/decisions/adr-0008-folio-write-stay-verification.md`
+(proposed). Rollback: revert the single implementation PR; the previous
+ensure-on-first-use behaviour returns and no data migration exists.
+
 <!-- ao-role: architect -->
-Role: architect · AO session hotel-mgmt-919
+Role: architect · AO session hotel-mgmt-1046

@@ -98,3 +98,46 @@ Applied flow detail: `docs/architecture/lld.md` section 23.
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-961
+
+## 5. Folio-route refusals (Refs #634)
+
+A folio route creates or moves money, so it reads the stay it is about
+before it writes anything and refuses on the provider's answer rather
+than on the caller's id. The rule set, applied to `PostCharge`,
+`RecordPayment`, `RecordOpenBalanceApproval`, and the folio-creating
+`GetFolioBalance`:
+
+- **Unknown stay** -> `NOT_FOUND` (404) naming the stay. Stay answered
+  for that id and found nothing; Billing adds nothing to the vocabulary
+  (ADR-0008 D3).
+- **Stay not in house** -> `STATE_ILLEGAL` (422) naming the stay and the
+  state it is in, whether or not the stay already carries a folio. A
+  closed stay's folio still reads and still prints; only writes refuse.
+- **Malformed stay id** -> `VALIDATION_FAILED` (400) naming `stayId`,
+  unchanged and raised before any call.
+- **Unreadable Stay** -> `UPSTREAM_UNAVAILABLE` (503) with
+  `{upstream: "stay", operation: "GetStayRef"}`, and nothing is written.
+  Fail closed, never a cached or guessed stay state: the offline-first
+  rule is for configuration, not for a fact that decides money
+  (section 2's #601 reading, applied to the write path).
+- **A provider `4xx` envelope is surfaced unchanged.** A rejected
+  session stays `UNAUTHENTICATED`; it is not an outage and must not be
+  reported as one.
+- **A `404` that does not name the requested stay is unreadable.** Stay
+  sends the id it could not find, so a `404` naming another stay (or
+  none) is a wiring fault — a wrong base URL or path — and takes
+  `UPSTREAM_UNAVAILABLE`. A misconfiguration must never read as a
+  product refusal on a money path.
+- **No new code.** `NOT_FOUND`, `STATE_ILLEGAL`, `VALIDATION_FAILED`, and
+  `UNAUTHENTICATED` are already in section 1 and in
+  `contracts/errors/envelope.json`; `UPSTREAM_UNAVAILABLE` is the code
+  section 1 already describes and the envelope file was missing — this
+  change registers it there (enum plus `statusMapping` 503), which also
+  closes the drift ADR-0005 records.
+- **Refusals precede writes.** The verification runs before the
+  idempotency claim and before any insert, so a refusal leaves no folio
+  row, no line, no balance movement, no approval, and no outbox event.
+  Applied flows: `docs/architecture/lld.md` section 27.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1046
