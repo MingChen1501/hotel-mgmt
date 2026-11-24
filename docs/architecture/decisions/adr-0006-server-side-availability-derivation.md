@@ -13,13 +13,13 @@ outcome) on the booking path:
 
 - `sellableUnits` arrives straight from the request body:
   `services/reservations/internal/handler/handler.go:129` and `:144` on
-  `CreateReservation`, `:217` and `:229` on `ModifyReservation`.
+  `CreateReservation`, `:239` and `:251` on `ModifyReservation`.
 - The overbooking guard's only ceiling is that number:
   `if booked >= input.SellableUnits`
-  (`services/reservations/internal/store/store.go:221` on Create,
-  `:375` on Modify; the Postgres twins read the request value at
+  (`services/reservations/internal/store/store.go:222` on Create,
+  `:415` on Modify; the Postgres twins read the request value at
   `services/reservations/internal/store/postgres.go:146`/`:183` and
-  `:412`/`:489`). Nothing on either path reads the capacity the hotel
+  `:483`/`:560`). Nothing on either path reads the capacity the hotel
   actually records for the room type and the stay dates, so a caller
   that sends a large number overbooks without ever seeing `CONFLICT`,
   and a caller that sends a small number refuses availability the hotel
@@ -110,10 +110,10 @@ attempts).
   derivation whose meaning moves with an unrelated change.
 - **The held count stays local.** The guard keeps counting overlapping
   `confirmed` + `checked-in` rows in the Reservations store
-  (`activeState`, `services/reservations/internal/store/store.go:194-196`;
+  (`activeState`, `services/reservations/internal/store/store.go:195-197`;
   the Postgres twin's `state IN ('confirmed','checked-in')`,
   `services/reservations/internal/store/postgres.go:176-183`,
-  `:482-489`). Each held unit is therefore subtracted exactly once:
+  `:552-557`). Each held unit is therefore subtracted exactly once:
   inventory by Rooms, holds by Reservations. In particular the ceiling
   must not be a "still free" number — a rooms-held-by-reservation count
   would double-subtract the same unit. `AC-OVB-1` words the same set —
@@ -125,7 +125,7 @@ attempts).
   the restriction hook already uses
   (`services/reservations/internal/service/service.go:207-218`), and the
   reservation itself stays excluded from the count as today
-  (`services/reservations/internal/store/store.go:368`).
+  (`services/reservations/internal/store/store.go:408`).
 
 ### D3 — The request's `sellableUnits` becomes advisory
 
@@ -143,10 +143,10 @@ nothing, so the criterion, the requirement, and this record agree.
 
 Two current code paths must go with this change or the advisory field
 would still decide: the store's `input.SellableUnits < 1` validation
-(`services/reservations/internal/store/store.go:202`, `:337`;
-`services/reservations/internal/store/postgres.go:146`, `:412`) and the
+(`services/reservations/internal/store/store.go:203`, `:377`;
+`services/reservations/internal/store/postgres.go:146`, `:483`) and the
 handler's "absent means 0" default (`sellUnits`,
-`services/reservations/internal/handler/handler.go:344`).
+`services/reservations/internal/handler/handler.go:366`).
 
 ### D4 — Fail closed on an unread ceiling
 
@@ -168,8 +168,10 @@ is a legitimate answer — the type holds no sellable unit for those dates
 The ceiling is read outside the store (it is another module's fact),
 immediately before the store call. The count-and-insert comparison stays
 in the store's single critical section — the in-memory mutex
-(`services/reservations/internal/store/store.go:205-221`) or the one
-Postgres transaction (`services/reservations/internal/store/postgres.go:150-189`),
+(`services/reservations/internal/store/store.go:206-226`) or the one
+Postgres transaction
+(`services/reservations/internal/store/postgres.go:149-189`; the Modify
+twin `:483-560`),
 which is what makes two simultaneous last-unit requests yield exactly
 one winner and one `CONFLICT` (`NFR-CON-1`). The capacity reaches the
 store as a derived input (`CreateInput` / `ModifyInput` capacity

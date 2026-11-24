@@ -2413,8 +2413,8 @@ binding done-conditions are `AC-OVB-1`, `AC-OVB-2`, and `AC-OVB-3` in
 `docs/product/acceptance-criteria.md`
 [section 19](acceptance-criteria.md); `AC-RES-1` and `AC-RES-2` gain
 the pointer. The capacity seam's decision record is the `architect`'s
-ADR (proposed; the owner accepts it before the implementation PR
-merges), with the implementation design and the per-flow happy and
+ADR (ADR-0006, accepted 2026-11-24), with the implementation design
+and the per-flow happy and
 failure/rollback diagrams in the HLD/LLD delta. FR/NFR wording and
 business rules are owned by `business-analyst`, guard mapping and
 traceability by `qa-lead`, the release and rollback note by
@@ -2426,9 +2426,9 @@ sellability read into the booking request
 (`app/src/views/BookView.vue:893-929`), and the service passed it
 straight to the guard —
 `services/reservations/internal/handler/handler.go:129` and `:144` on
-`CreateReservation`, `:217` and `:229` on `ModifyReservation` — where
+`CreateReservation`, `:239` and `:251` on `ModifyReservation` — where
 the only comparison was `booked >= input.SellableUnits`
-(`services/reservations/internal/store/store.go:221` on Create, `:375`
+(`services/reservations/internal/store/store.go:222` on Create, `:415`
 on Modify). Nothing read the capacity the hotel actually holds, so a
 caller that bypassed the desk and sent a large number could overbook
 without ever seeing `CONFLICT`, and a caller that sent a small number
@@ -2446,7 +2446,7 @@ Decision (four parts):
    room-state accounting inside that source (#636). The product rule is
    only that the caller never sets the ceiling. The demand side keeps
    the as-built counted-state set (`confirmed` and `checked-in`,
-   `services/reservations/internal/store/store.go:194-196`): cancelled,
+   `services/reservations/internal/store/store.go:195-197`): cancelled,
    no-show, and closed rows release their unit, while a checked-in row
    keeps holding its own, so the in-house share of a type is never
    subtracted from the recorded capacity twice (`AC-OVB-1`).
@@ -2926,14 +2926,14 @@ Role: product-owner · AO session hotel-mgmt-1011
 
 | Criterion | Evidence in this spec |
 |---|---|
-| A `CreateReservation`/`ModifyReservation` request with an inflated `sellableUnits` no longer bypasses the overbooking guard | Section 6.20 decisions 1 and 2; `AC-OVB-1`; the guard's ceiling becomes the recorded capacity while today's comparison takes it from the request field (`store.go:221` on Create, `:375` on Modify) |
+| A `CreateReservation`/`ModifyReservation` request with an inflated `sellableUnits` no longer bypasses the overbooking guard | Section 6.20 decisions 1 and 2; `AC-OVB-1`; the guard's ceiling becomes the recorded capacity while today's comparison takes it from the request field (`store.go:222` on Create, `:415` on Modify) |
 | A below-capacity `sellableUnits` no longer refuses a bookable stay — including a zero or absent value — and a Modify into a sold-out date or type refuses with `CONFLICT` while keeping the reservation unchanged | Section 6.20 decision 2 (optional and advisory, shape-validated only); `AC-OVB-1` (the below-capacity, zero, and absent clauses and the Modify clause); the change-history refusal clause |
-| The counted reservation states stay as-built: cancelled, no-show, and closed rows release their unit, a checked-in row keeps holding its own | Section 6.20 decision 1 (the counted-state clause); `AC-OVB-1` final clauses; `BR-47`; the as-built set at `services/reservations/internal/store/store.go:194-196` |
+| The counted reservation states stay as-built: cancelled, no-show, and closed rows release their unit, a checked-in row keeps holding its own | Section 6.20 decision 1 (the counted-state clause); `AC-OVB-1` final clauses; `BR-47`; the as-built set at `services/reservations/internal/store/store.go:195-197` |
 | When the capacity source cannot be read, the booking is refused fail-closed with `UPSTREAM_UNAVAILABLE` (503), not allowed | Section 6.20 decision 3 and the fail-closed state row of the UI contract delta; `AC-OVB-2`; the unwired-client and 4xx-passthrough clauses |
 | The guard stays atomic: two simultaneous last-unit requests still yield exactly one winner and one `CONFLICT` | Section 6.20 decision 4; `AC-OVB-3`; `NFR-CON-1`; the single-critical-section clause and the replay clause |
 | Tests cover the inflated-input caller and the unreadable-capacity caller | Section 6.20 desk-guards paragraph (existing Book cases stay green) and the service-guard list handed to the architect's LLD verification plan; the `qa-lead` traceability rows for #631 are the sibling handoff |
 | The desk Book surface, its copy, and its design facts are unchanged | Section 6.20 UI contract delta (layout, component mapping, tokens, states, catalogue keys, print all unchanged or existing-key only); `AC-OVB-3` final clause |
-| The T3 spec set exists and `spec-reviewer` posts `SPEC-GATE PASS` before implementation starts, and the owner accepts the capacity-seam ADR | This section, section 6.16, `docs/product/acceptance-criteria.md` section 19 (`AC-OVB-1`..`AC-OVB-3`, `AC-RES-1`/`AC-RES-2` pointers), decision log D-31; the architect ADR/HLD/LLD delta and the `business-analyst`, `qa-lead`, and `release-manager` deltas are the sibling handoffs |
+| The T3 spec set exists and `spec-reviewer` posts `SPEC-GATE PASS` before implementation starts, and the owner accepts the capacity-seam ADR | This section, section 6.20, `docs/product/acceptance-criteria.md` section 19 (`AC-OVB-1`..`AC-OVB-3`, `AC-RES-1`/`AC-RES-2` pointers), decision log D-31; the architect ADR/HLD/LLD delta and the `business-analyst`, `qa-lead`, and `release-manager` deltas are the sibling handoffs |
 | Rollback is a single revert with no schema or data migration | Section 6.20 (rollback); `sellableUnits` stays in both contracts for the desk build, so no migration exists in either direction |
 
 <!-- ao-role: product-owner -->

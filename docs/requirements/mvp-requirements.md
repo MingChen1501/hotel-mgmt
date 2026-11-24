@@ -6098,9 +6098,9 @@ availability, `NFR-CON-1` already requires exactly one winner on the
 last unit, and `BR-8` already states the no-double-booking policy —
 but until now the guard's only ceiling was `sellableUnits` from the
 request body (`services/reservations/internal/handler/handler.go:129`,
-`:144` on `CreateReservation`, `:217`, `:229` on `ModifyReservation`),
+`:144` on `CreateReservation`, `:239`, `:251` on `ModifyReservation`),
 compared against the count of overlapping rows
-(`services/reservations/internal/store/store.go:221` on Create, `:375`
+(`services/reservations/internal/store/store.go:222` on Create, `:415`
 on Modify). A caller that sends a large number therefore never sees
 `CONFLICT` and can overbook, and nothing on the booking path read the
 capacity the hotel actually holds.
@@ -6168,8 +6168,9 @@ The decided behaviour, in five parts:
 
 **Counted states.** The holds the guard counts stay the as-built state
 set: `confirmed` and `checked-in` rows
-(`services/reservations/internal/store/store.go:194-196`; Postgres twin
-`services/reservations/internal/store/postgres.go:175-183`), so
+(`services/reservations/internal/store/store.go:195-197`; Postgres twins
+`services/reservations/internal/store/postgres.go:175-183` and
+`:552-557`), so
 cancelled, no-show, and closed reservations release their unit and a
 checked-in reservation keeps holding its own exactly as today
 (`BR-47`). `AC-OVB-1` words the checked-in row the same way — "it keeps
@@ -6306,17 +6307,16 @@ No new NFR is added. The existing NFRs cover the change:
 
 Each row traces to `AC-OVB-1`..`AC-OVB-3`, to this section's FRs, and
 to `BR-47`..`BR-49`. Guards that exist are cited `file:line` against
-the tree this requirement was written on (`efd11a5`, docs-only ahead of
-`8745afa` on the requirements paths); where no guard exists yet, the
-row names the missing guard and the implementation PR creates it, for
-`qa-lead` to re-pin at the merged head.
+the merged code tree (`464b864`, after master's #664); where no guard
+exists yet, the row names the missing guard and the implementation PR
+creates it, for `qa-lead` to re-pin at the merged head.
 
 | Item | Guard (on disk today; a row marked missing is created by the implementation PR) | Handoff note for `qa-lead` |
 |---|---|---|
-| FR-OVB-1 inflated create | `services/reservations/internal/store/store_test.go:31-70` (paired create, one winner, `CONFLICT` naming type+dates) and `services/reservations/internal/handler/handler_test.go:59-76` (desk loop: first booking accepted, second overlapping one refused 409 `CONFLICT`) — both feed the ceiling from the request today. Missing guards: `sellableUnits: 999` against a recorded capacity of 1 already held by one confirmed row → 409 `CONFLICT`, nothing written; `sellableUnits` absent on a bookable stay → accepted; `sellableUnits: 1` with a recorded capacity of 3 and two holds → accepted | The obligation is one pair: the value must be provably ignored up (cannot buy) and down (cannot refuse), not merely overridden in the unsafe direction |
-| FR-OVB-2 inflated modify | `services/reservations/internal/store/store_test.go:173-235` (paired modify, exactly one winner) — ceiling from the request today. Missing guards: modify into sold-out dates and into a sold-out type with `sellableUnits: 999` → 409 `CONFLICT`, reservation unchanged, no change-history entry | The unchanged-reservation assertion is the part the refusal must carry, not just the code |
-| FR-OVB-3 unreadable capacity | `services/reservations/internal/pricing/client.go:88-97` (the fail-closed `UPSTREAM_UNAVAILABLE` precedent on the restriction read). Missing guards: inventory source unreachable, timeout, 5xx, and unwired client each → 503 `UPSTREAM_UNAVAILABLE` naming upstream `rooms` and operation `CheckRoomTypeSellability`, nothing written; a 4xx provider envelope surfaced unchanged; a recorded capacity of 0 → 409 `CONFLICT`, not 503 | A sold-out type is not an outage, and an outage is never reported as sold out |
-| FR-OVB-4 atomic guard and replay | `services/reservations/internal/store/store_test.go:31-70`, `:173-235`; Postgres twin `services/reservations/internal/store/postgres_test.go:106-135`; replay `services/reservations/internal/store/store_test.go:86-105` (`TestIdempotentReplayReturnsOriginal`). Missing guard: a replay still consumes no second unit when the ceiling is derived | The replay case must prove the read happens on the attempt but the second unit is never taken |
+| FR-OVB-1 inflated create | `services/reservations/internal/store/store_test.go:32-70` (paired create, one winner, `CONFLICT` naming type+dates) and `services/reservations/internal/handler/handler_test.go:59-76` (desk loop: first booking accepted, second overlapping one refused 409 `CONFLICT`) — both feed the ceiling from the request today. Missing guards: `sellableUnits: 999` against a recorded capacity of 1 already held by one confirmed row → 409 `CONFLICT`, nothing written; `sellableUnits` absent on a bookable stay → accepted; `sellableUnits: 1` with a recorded capacity of 3 and two holds → accepted | The obligation is one pair: the value must be provably ignored up (cannot buy) and down (cannot refuse), not merely overridden in the unsafe direction |
+| FR-OVB-2 inflated modify | `services/reservations/internal/store/store_test.go:174-235` (paired modify, exactly one winner) — ceiling from the request today. Missing guards: modify into sold-out dates and into a sold-out type with `sellableUnits: 999` → 409 `CONFLICT`, reservation unchanged, no change-history entry | The unchanged-reservation assertion is the part the refusal must carry, not just the code |
+| FR-OVB-3 unreadable capacity | `services/reservations/internal/pricing/client.go:88-96` (the fail-closed `UPSTREAM_UNAVAILABLE` precedent on the restriction read). Missing guards: inventory source unreachable, timeout, 5xx, and unwired client each → 503 `UPSTREAM_UNAVAILABLE` naming upstream `rooms` and operation `CheckRoomTypeSellability`, nothing written; a 4xx provider envelope surfaced unchanged; a recorded capacity of 0 → 409 `CONFLICT`, not 503 | A sold-out type is not an outage, and an outage is never reported as sold out |
+| FR-OVB-4 atomic guard and replay | `services/reservations/internal/store/store_test.go:32-70`, `:174-235`; Postgres twin `services/reservations/internal/store/postgres_test.go:106-135`; replay `services/reservations/internal/store/store_test.go:87-105` (`TestIdempotentReplayReturnsOriginal`). Missing guard: a replay still consumes no second unit when the ceiling is derived | The replay case must prove the read happens on the attempt but the second unit is never taken |
 | Desk flows stay green | `app/src/views/BookView.test.ts:556` (confirm sends the searched `sellableUnits`), `:770` (second overlapping booking sends the searched count), `:919` (nothing sellable refuses without calling `CreateReservation`), `:1093` (sold-out refusal copy), `:1158` (double-click yields one create), `script/e2e-desk-loop.sh` (its booking step) — unchanged by this change | These trace to `AC-OVB-3` and must pass without a desk edit: no client assertion, catalogue key, control, or copy changes here |
 | Evidence cross-reference | `docs/testing/evidence/588/README.md` is the prior trust-boundary record this change's evidence can follow | The implementation PR records the before/after payload pair for the inflated `sellableUnits` booking |
 
@@ -6326,7 +6326,7 @@ the same flow, citing the code edges the `architect` named:
 
 ```mermaid
 flowchart TD
-    A[CreateReservation or ModifyReservation: request carries sellableUnits  handler.go:129-149, 217-236] --> B[Validate fields, dates, guest, price basis]
+    A[CreateReservation or ModifyReservation: request carries sellableUnits  handler.go:129-149, 239-258] --> B[Validate fields, dates, guest, price basis]
     B --> C[Restriction check passes  service.go:114-119, 219-224]
     C --> D[Read capacity: Rooms CheckRoomTypeSellability for the effective type and dates]
     D -- unreachable, timeout, 5xx, unparseable, unwired --> U[503 UPSTREAM_UNAVAILABLE naming rooms and CheckRoomTypeSellability; nothing written]
