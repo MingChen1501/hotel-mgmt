@@ -36,13 +36,19 @@ acting within its access.
   confirm, then the reservation exists with a unique reference, the
   requested dates, room type, guest link, and quoted price, and it
   appears on the reservation calendar. Traces to: US-RES-1; FR-RES-1,
-  FR-RTE-5.
+  FR-RTE-5. Pointer: the quoted price this condition freezes is the
+  Pricing quote read at commit, and a request asserting a different
+  total is refused rather than repaired — this condition in price terms
+  is `AC-PRC-1`/`AC-PRC-2` (Refs #632).
 - AC-RES-2 — Given a reservation that has not been checked in, when
   staff change its dates, room type, or guest and confirm, then the
   reservation reflects the new values, its quoted price is
   recalculated from the rate plan in force, and the change is recorded
-  with who made it and when. Traces to: US-RES-2; FR-RES-2. Open
-  question: reason format for changes is undecided (PRD OQ-2).
+  with who made it and when. Traces to: US-RES-2; FR-RES-2. Pointer:
+  the recalculated price is the Pricing quote re-frozen on the same
+  terms, with the price-basis change and its actor kept in the change
+  history — this condition in price terms is `AC-PRC-4` (Refs #632).
+  Open question: reason format for changes is undecided (PRD OQ-2).
 - AC-RES-3 — Given a reservation that has not been checked in, when
   staff cancel it and record a cancellation reason, then the
   reservation state becomes cancelled with the reason kept, and the
@@ -701,7 +707,9 @@ below check behaviour only.
   FR-BIL-7, FR-RTE-5, BR-17 (Refs #600; charge posting on the desk
   check-out review only — no nightly scheduler, no rates repricing
   or proration, no payment capture, no gate, print, or stored-value
-  change).
+  change). Pointer: the Book screen's price-changed recovery, which is
+  what keeps a posted total one the clerk has seen, is `AC-DSK-20`
+  (Refs #632); its guard mapping stays `qa-lead`'s handoff.
 
 - AC-DSK-20 — Given the Book screen has quoted a stay and the clerk
   confirms it, when the reservation service refuses because the total
@@ -1483,9 +1491,9 @@ price basis is client-supplied. `CreateReservation` reads
 `priceBasis.totalMinor` from the request body and only checks that it
 is present and non-negative
 (`services/reservations/internal/service/service.go:101-103`), the
-handler reads the same value from the body for Modify
-(`services/reservations/internal/handler/handler.go:130`,
-`:240-254`), the store persists it verbatim
+handler reads the same value from the body — Create at
+`services/reservations/internal/handler/handler.go:130`, Modify at
+`:240` — the store persists it verbatim
 (`services/reservations/internal/store/store.go:236`) and re-freezes
 it on Modify (`:437-441`), and no `QuotePrice` call exists on the
 booking path — the rates client the service wires today runs only
