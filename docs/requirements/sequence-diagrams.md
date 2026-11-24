@@ -360,7 +360,7 @@ stay outside in-house — a closed departure included — is refused
 `STATE_ILLEGAL`, and a stay that cannot be read is refused
 `UPSTREAM_UNAVAILABLE`; every one of those refusals writes no folio
 row, no line, no balance movement, and no event (`FR-FWV-1`..`FR-FWV-4`,
-`BR-47`, `BR-48`). Opening a folio Billing already holds needs no stay
+`BR-50`, `BR-51`). Opening a folio Billing already holds needs no stay
 read, in any stay state (`FR-FWV-5`).
 
 ## 11. Settlement, receipt, and approved open balance
@@ -396,7 +396,7 @@ refused `NOT_FOUND`, a stay outside in-house is refused
 `STATE_ILLEGAL` (an approval recorded at check-out does not licence a
 payment after departure), and a stay that cannot be read is refused
 `UPSTREAM_UNAVAILABLE`; each refusal records nothing, moves no balance,
-and emits no event (`FR-FWV-1`..`FR-FWV-4`, `BR-47`, `BR-48`). Producing
+and emits no event (`FR-FWV-1`..`FR-FWV-4`, `BR-50`, `BR-51`). Producing
 the invoice and the receipts is unchanged: a folio Billing already holds
 is read in every stay state, so the departure invoice and payments
 taken before departure still print (`FR-FWV-5`, `FR-BIL-4`).
