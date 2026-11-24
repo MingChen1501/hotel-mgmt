@@ -9,8 +9,11 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.HttpMediaTypeNotAcceptableException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -19,9 +22,10 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 // Renders every failure with the shared error envelope
 // {code, message, details, traceId} (contracts/errors/envelope.json;
 // docs/technical/error-handling.md section 1). An ApiException keeps
-// its own code and status; an unreadable body, an unknown path, a
-// wrong method, and any unexpected failure used to reach Spring's
-// default /error body and now answer the same envelope (Refs #629).
+// its own code and status; an unreadable body, an unreadable or
+// unanswerable media type, an unknown path, a wrong method, and any
+// unexpected failure used to reach Spring's default /error body and
+// now answer the same envelope (Refs #629).
 @RestControllerAdvice
 public class ApiExceptionHandler {
 
@@ -60,6 +64,21 @@ public class ApiExceptionHandler {
       key = "error.transport.body_read_failed";
     }
     return refusal("VALIDATION_FAILED", 400, key);
+  }
+
+  // A media type Spring cannot read (Content-Type text/plain, a bare
+  // `curl -d` form post) or cannot answer (Accept naming no JSON) is
+  // the caller's conformance, not a fault: answering it as
+  // INTERNAL_ERROR would report the caller's own input as a server
+  // fault. The contract status mapping has no 415 or 406 entry, so
+  // both take the caller-input code VALIDATION_FAILED (400) with the
+  // read-failure sentence. The JSON content type is preset because an
+  // Accept header that cannot negotiate JSON would otherwise refuse
+  // the refusal body itself.
+  @ExceptionHandler({HttpMediaTypeNotSupportedException.class, HttpMediaTypeNotAcceptableException.class})
+  public ResponseEntity<Map<String, Object>> handleUnreadableMediaType(Exception err) {
+    return ResponseEntity.status(400).contentType(MediaType.APPLICATION_JSON)
+        .body(envelope("VALIDATION_FAILED", Messages.text("error.transport.body_read_failed", Map.of()), Map.of()));
   }
 
   // A path no route claims: 404 NOT_FOUND in the envelope instead of

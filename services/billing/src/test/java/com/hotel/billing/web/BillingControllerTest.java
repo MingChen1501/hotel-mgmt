@@ -189,6 +189,32 @@ class BillingControllerTest {
   }
 
   @Test
+  void unsupportedMediaTypeAnswersTheValidationRefusal() throws Exception {
+    // A body sent as text/plain (what a bare `curl -d` sends as a form
+    // post) cannot be read by the JSON converter: the caller's input,
+    // not a server fault, so it answers VALIDATION_FAILED 400 in the
+    // envelope and never the 500 a catch-all would report.
+    mvc.perform(post("/v1/billing/PostCharge").header("Authorization", "Bearer test-token")
+        .contentType(MediaType.TEXT_PLAIN).content("stayId=not-json"))
+        .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+        .andExpect(jsonPath("$.message").value("Failed to read the request body."))
+        .andExpect(jsonPath("$.details").isEmpty()).andExpect(jsonPath("$.traceId").isNotEmpty());
+  }
+
+  @Test
+  void notAcceptableMediaTypeAnswersTheValidationRefusal() throws Exception {
+    // Accept: application/xml cannot be satisfied by the JSON-only
+    // route: still the caller's conformance, so the refusal is a
+    // readable envelope rather than Spring's default negotiation body.
+    mvc.perform(post("/v1/billing/PostCharge").header("Authorization", "Bearer test-token")
+        .contentType(MediaType.APPLICATION_JSON).accept(MediaType.APPLICATION_XML)
+        .content("{\"stayId\":\"" + STAY + "\"}"))
+        .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+        .andExpect(jsonPath("$.message").value("Failed to read the request body."))
+        .andExpect(jsonPath("$.traceId").isNotEmpty());
+  }
+
+  @Test
   void nonObjectBodyAnswersTheEnvelope() throws Exception {
     mvc.perform(post("/v1/billing/PostCharge").header("Authorization", "Bearer test-token")
         .contentType(MediaType.APPLICATION_JSON).content("[1,2]")).andExpect(status().isBadRequest())
@@ -198,10 +224,10 @@ class BillingControllerTest {
   }
 
   @Test
-  void wrongFieldTypeAnswersTheEnvelope() throws Exception {
-    // The body is a JSON object but a field carries the wrong type, so
-    // no field the adapter accepts is present: the existing
-    // VALIDATION_FAILED refusal answers, never a Spring default body.
+  void wrongFieldTypeAnswersTheValidationRefusal() throws Exception {
+    // The controller reads the body as a Map, so a nested field still
+    // deserialises; this pins that the existing VALIDATION_FAILED
+    // refusal answers it, never a Spring default body.
     mvc.perform(post("/v1/billing/PostCharge").header("Authorization", "Bearer test-token")
         .contentType(MediaType.APPLICATION_JSON)
         .content("{\"stayId\":{\"nested\":true},\"actor\":\"front-desk\"}"))
