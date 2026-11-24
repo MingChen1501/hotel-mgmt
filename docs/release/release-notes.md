@@ -279,7 +279,7 @@ before. Bookings already stored keep the total they were stored with,
 including totals stored before this bundle: nothing is re-derived,
 backfilled, or rewritten, and a reprice happens only when staff change
 that booking. The desk-facing steps are `../operations/runbook.md`
-section 10.
+section 15.
 
 **Install/upgrade delta.** Nothing beyond the standard upgrade procedure
 (`../devops/deployment.md` sections 4–5): no new bundle-level service
@@ -297,7 +297,7 @@ cancellations, check-in, and check-out keep working. The pre-flight
 step 5) now confirm that reachability, and the pre-flight runs before
 every install and upgrade. An installation upgraded from an older bundle
 inherits bookings frozen at a caller-supplied total; they are handled per
-`../operations/runbook.md` section 10.3, never by editing a booking at
+`../operations/runbook.md` section 15.3, never by editing a booking at
 the desk and never by a bulk correction.
 
 **Rollback pointer.** `rollback.md` [section 5.1](rollback.md): revert
@@ -335,10 +335,162 @@ the slice row in `../testing/test-report.md`. Deliberately open: no
 backfill or re-derivation for bookings frozen before this bundle
 (`../architecture/lld.md` section 25.9); a rates outage now refuses
 bookings until it clears, mitigated by an availability alert rather than
-a cached total (R8 — the alert is an obligation for
+a cached total (R9 — the alert is an obligation for
 `../operations/monitoring-alerting.md` when the first exporter lands,
 and until then the desk reports it per `../operations/runbook.md`
 section 7); and the availability decision stays with its own issue.
 
+### 2.6 Folio writes refuse a stay Billing cannot verify (Refs #634)
+
+**Change and trace.** Billing now reads the stay before it writes money.
+Today `ensureFolio` creates a folio for any UUID `stayId` it is handed,
+with no Stay read, and the four folio routes reach it with the caller's
+id (`services/billing/src/main/java/com/hotel/billing/repo/BillingRepository.java:65-71`
+reached from
+`services/billing/src/main/java/com/hotel/billing/service/BillingService.java:121`
+`GetFolioBalance`, `:142` `PostCharge`, `:176` `RecordPayment`, `:264`
+`RecordOpenBalanceApproval`), so a charge, a payment, or an
+open-balance approval can be written against a stay that does not exist
+or is already closed — an orphan folio Stay's check-out gate never
+reads, and money rows with no stay behind them. From #634 on
+`PostCharge`, `RecordPayment`, and `RecordOpenBalanceApproval` call the
+already-registered C8 read `GetStayRef`
+(`POST {STAY_BASE_URL}/v1/stay/GetStayRef`;
+`services/stay/src/store.ts:406-423` refuses an unknown stay with
+`NOT_FOUND` and anything outside `in-house` with `STATE_ILLEGAL`) on
+every request, before the idempotency claim and before any insert, and
+`GetFolioBalance` calls it only when the stay carries no folio — a
+folio Billing already holds is served from Billing in every stay state,
+so the departure invoice and its receipts keep printing. An unknown
+stay refuses `NOT_FOUND` (404), a stay outside `in-house` refuses
+`STATE_ILLEGAL` (422) naming the state, an unreadable Stay refuses
+`UPSTREAM_UNAVAILABLE` (503), and a malformed id keeps
+`VALIDATION_FAILED` naming `stayId`; no new operation, request or
+response field, event, schema, migration, or backfill exists. The four
+folio contracts gain the three codes additively (`1.0 -> 1.1`) and
+`contracts/errors/envelope.json` registers `UPSTREAM_UNAVAILABLE` with
+its `503` mapping — the drift ADR-0005 already named. Design:
+`../architecture/decisions/adr-0008-folio-write-stay-verification.md`
+(proposed), `../architecture/lld.md` section 27, `../architecture/hld.md`
+section 20, seam `../technical/integration.md` C8, refusals
+`../technical/error-handling.md` section 5; product conditions
+`AC-FWV-1`..`AC-FWV-7` (`../product/acceptance-criteria.md` section 20),
+desk delta and copy `../product/desk-ui-design-rollout.md` section 6.21,
+decision D-32 in `../project/decision-log.md`; requirements
+`FR-FWV-1`..`FR-FWV-5` (`../requirements/mvp-requirements.md` section
+28). Risk label: `risk-medium`, tier T3 — the owner accepts ADR-0008
+(`proposed -> accepted`) and #634 carries a `SPEC-GATE PASS` before the
+implementation PR merges.
+
+**What staff see.** A folio write no longer depends on the id the desk
+happens to send. Three plain sentences are added in both locales and
+none shows a code, a status, or a trace: "No stay matches that ID, so
+nothing was recorded. Check the stay ID and try again."
+(`desk.folio.refused_unknown_stay`), "That stay is already checked out,
+so nothing was recorded. Charges and payments cannot be added after
+check-out." (`desk.folio.refused_closed_stay`), and "The stay could not
+be checked, so nothing was recorded. Try again."
+(`desk.folio.refused_unreadable_stay`). Everything the desk does today
+keeps working: opening the balance of a fresh check-in still creates the
+folio at zero balance, a charge, a payment, and an open-balance approval
+on a guest in house still commit with the same line, balance movement,
+and receipt, and a departed stay's folio balance, invoice, and receipts
+still open and print without asking the stay module at all. What changes
+is the money path against a stay Billing cannot verify: a charge, a
+payment, or an approval against an unknown id or against a stay already
+checked out is refused and nothing is recorded, which also means a
+retried charge whose first attempt landed before the close now refuses
+while the recorded line stays on the folio. Because every write verifies
+the stay, an approved open balance can no longer be settled by a folio
+write **after** the guest leaves — take the payment before completing
+the check-out; a late-settlement path is a named consequence with its
+own follow-up, out of scope here. While the stay module cannot be
+reached, the three writes and a first, folio-less balance read refuse
+with the "could not be checked" sentence and nothing is recorded
+(fail-closed by design); the desk work that keeps guests moving and the
+paper list to keep are `../operations/runbook.md`, section 14.
+
+**Install/upgrade delta.** Nothing beyond the standard upgrade procedure
+(`../devops/deployment.md` sections 4–5). One bundle-level service
+address is added, not a per-hotel setting: the `billing` module reads
+`STAY_BASE_URL` from the release bundle (default `http://stay:8084`, the
+port the stay module already publishes, `deploy/compose.yaml:81`),
+forwards the caller's session token, and caps the call at two seconds —
+inside `NFR-PERF-1`'s three-second action bound and the same pattern the
+stay module uses for `RESERVATIONS_BASE_URL`. The call is fail-closed,
+unlike the #646 completion: an unreachable stay module refuses the folio
+write rather than writing an unverified folio, so the pre-flight and
+health checks now confirm the billing module reaches the stay module on
+the hotel LAN (`../devops/deployment.md` sections 3 and 5). No schema
+migration, no data backfill, no restart-order change, and no desk
+rebuild beyond the bundle's own: the contract change is error-code
+additive, so a desk build that predates the field keeps working, but it
+shows its generic "the request could not be completed" fallback instead
+of the three new sentences. Folios an older bundle already wrote against
+a stay that does not exist stay as they are — this change prevents new
+ones and ships no deletion, migration, or repair
+(`../operations/runbook.md` section 14.4 is the read-only inventory step
+for support).
+
+**Rollback pointer.** `rollback.md` [section 5.6](rollback.md): revert
+the single implementation PR. The revert restores the previous
+ensure-on-first-use behaviour — a folio is created and money is written
+for the id the caller sends, with no Stay read — and has no data effect:
+no table, column, or migration exists on this path in either direction,
+so no migration runs and no restore is needed. Folios already written,
+already-orphaned ones included, stay as they are; the four folio
+contracts return to `1.0` with the code, and the desk loses the three
+refusal sentences and falls back to its generic sentence. The #588
+release, the #600 room charge, the #601 settlement gate, the changes of
+#646 and #647 are untouched in both directions, and `STAY_BASE_URL`
+stops being read.
+
+**Evidence state and follow-ups.** The change is T3 and needs the
+`spec-reviewer` `SPEC-GATE PASS` on #634 plus the owner's
+`proposed -> accepted` flip of ADR-0008 before the implementation PR
+merges. The guard registry `FW1`–`FW13` and the evidence rule `FW-E1`
+(`../testing/folio-write-verification-test-traceability.md`) are the
+`qa-lead` handoff, and every one of those guards is an obligation the
+implementation PR creates; the `AC-BIL-*`, `AC-DSK-*`, `AC-CKO-*`,
+`AC-DEP-*`, and `AC-REA-*` pins that must stay green unchanged are
+listed there. Verification at merge: `cd services/billing && mvn
+verify`; `cd services/stay && npm ci && npm run build && npm test &&
+npm run lint`; the desk suite with the `FolioView` and `PrintView` pins
+green; `script/contract-check.sh` and `script/openapi-route-check.sh`
+over the four `1.1` contracts and the envelope registration;
+`script/catalogue-coverage-check.sh` over the three keys in both
+locales; the live desk loop `script/e2e-desk-loop.sh` with the
+post-close refusal step and an unchanged row count for the closed stay;
+and `script/markdown-link-check.sh`. Before handover, the lab re-runs
+the finding both ways — an orphan folio for a random UUID before the
+change, and the same write refused with no row after it — and records
+the before/after pair in `../testing/evidence/634/README.md` and the
+slice in `../testing/test-report.md` (`FW-E1`). Deliberately open: no
+late-settlement path for an open balance approved at check-out and paid
+after the departure (its own decision and issue); no cleanup, backfill,
+or repair of orphan folios an older bundle wrote; no cached, mirrored,
+or offline replica of stay state inside Billing (`NFR-AVL-1` does not
+extend to a fact that decides money); and the availability alert that is
+R8's mitigation (`../technical/security-threat-model.md` section 8) is
+not shipped with this change — `../operations/monitoring-alerting.md`
+stays a stub until the first exporter lands (ADR-0001), so until then
+the desk's refused-write reports and the support check in
+`../operations/runbook.md` section 14.4 are the watch.
+
 <!-- ao-role: release-manager -->
 Role: release-manager · AO session hotel-mgmt-1041
+
+<!-- ao-role: release-manager -->
+Role: release-manager · AO session hotel-mgmt-948
+
+<!-- ao-role: release-manager -->
+Role: release-manager · AO session hotel-mgmt-963
+
+<!-- ao-role: release-manager -->
+Role: release-manager · AO session hotel-mgmt-969
+
+<!-- ao-role: release-manager -->
+Role: release-manager · AO session hotel-mgmt-1049
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1057

@@ -50,7 +50,7 @@ front-desk staff, manager, or owner account acting within its access
 | BR-14 | New reservations quote the nightly price the manager saved for that room type, season, and day. | FR-RTE-1; US-RTE-1 |
 | BR-15 | A named discount or special price applied by the manager is kept by name on the reservation, and folio charges follow the adjusted price. | FR-RTE-3; US-RTE-3 |
 | BR-44 | A nightly price covers exactly one night. A room type is open for booking on a night only when a price exists for that room type, rate plan, and night; a missing night is never priced by inference from a neighbouring night, a plan or season default, or zero, and the desk states the type as not open for booking for that date until a manager sets the night's price. | FR-RTE-1; FR-RTE-5; FR-RES-1; US-RTE-1; `AC-MANAGE-9`; #589 |
-| BR-47 | The total and applied discount name a reservation freezes are the ones Pricing quotes for its effective room type, dates, and named discount when the booking is created or changed — never a total the caller supplies. A request's price basis is advisory input: a total that disagrees with that quote is refused and nothing is stored or repaired in place, and a quote that cannot be read refuses the booking rather than freezing an unverified total. A later rate change still does not alter a frozen total except by an explicit recalculation under `BR-2`/`BR-13`. | FR-RES-1; FR-RES-2; FR-RTE-5; FR-PRC-1..FR-PRC-5; `AC-PRC-1`..`AC-PRC-5`; #632 |
+| BR-52 | The total and applied discount name a reservation freezes are the ones Pricing quotes for its effective room type, dates, and named discount when the booking is created or changed — never a total the caller supplies. A request's price basis is advisory input: a total that disagrees with that quote is refused and nothing is stored or repaired in place, and a quote that cannot be read refuses the booking rather than freezing an unverified total. A later rate change still does not alter a frozen total except by an explicit recalculation under `BR-2`/`BR-13`. | FR-RES-1; FR-RES-2; FR-RTE-5; FR-PRC-1..FR-PRC-5; `AC-PRC-1`..`AC-PRC-5`; #632 |
 
 ## 4. Check-in, stay, and check-out
 
@@ -75,6 +75,8 @@ front-desk staff, manager, or owner account acting within its access
 | BR-27 | Which payment methods beyond cash and card (for example bank transfer or hotel credit) payment recording must support on day one is undecided. Until decided, payment recording covers cash and card only. | OQ-1 (requirements section 5); FR-BIL-3 |
 | BR-45 | A stay's room charge is posted once per stay, at the stay's own frozen quoted total, and never derived again from today's prices. The desk check-out posts it at its review step, before any balance is presented, so no folio closes carrying no room charge; a second room charge is never posted for the same stay, a stay quoted at zero is charged nothing, and a room charge that cannot be posted refuses the check-out instead of closing an uncharged folio. Whether the guest settled or the hotel approved the open balance stays the check-out gate's question, not the charge's. | FR-BIL-2; FR-BIL-7; FR-RTE-5; FR-CKP-1..FR-CKP-5; BR-13; BR-17; `AC-DSK-19`; Refs #600 |
 | BR-46 | The check-out gate is decided on the folio the system holds, never on what a request asserts. The balance is the folio's stored balance, re-read when the close is attempted, and an approval counts only as the record stored against that folio — approver identity, a role from the hotel's fixed three, and the recorded time — while a balance or approval object supplied with the request is advisory input that decides nothing. The folio presented as the final invoice must be the folio the balance came from. A folio that cannot be read refuses the close instead of closing on an unverified balance, and every refusal leaves the stay in house with nothing released. Which role may approve, and whether approval is needed, stays the hotel's open-balance rule (`BR-17`). | FR-FDK-2; FR-BIL-7; FR-CKS-1..FR-CKS-5; BR-17; BR-21; requirements section 3.1; requirements section 3.2; `AC-CKO-1`; `AC-CKO-2`; Refs #601 |
+| BR-50 | A folio is created, and a charge, a payment, or an open-balance approval recorded, only for a stay the system confirms exists and is in house at that moment. A stay id selects which stay a write is about; it never proves one. The stay's existence and lifecycle state are Stay's facts, read through the registered stay-reference read with the caller's session, before every folio write whether or not the folio already exists, and before a folio is created on a balance read. A stay that already carries a folio stays readable in every stay state, so the departure invoice and its receipts never depend on the stay still being in house. | FR-BIL-1; FR-FWV-1; FR-FWV-5; BR-21; `AC-FWV-4`; Refs #634 |
+| BR-51 | A folio write for a stay that cannot be verified is refused and changes nothing: an unknown stay is refused as not found naming it, a stay outside in-house is refused naming it and its state — a charge, a payment, or an approval after departure is refused the same way, and the existing folio keeps every line and its balance — and a stay that cannot be read is refused as an upstream failure naming the upstream and the operation. No such refusal creates a folio row, a line, an approval, a balance movement, an idempotency record, or an outbox event, and a repeated request answers the same. An unreadable stay is never replaced by a cached or assumed state, and an approval recorded for an open balance does not permit a folio write after the stay leaves house. | FR-BIL-2; FR-BIL-3; FR-BIL-7; FR-FWV-1..FR-FWV-4; BR-24; BR-46; `AC-FWV-1`; `AC-FWV-2`; `AC-FWV-3`; Refs #634 |
 
 ## 6. Rooms and housekeeping
 
@@ -125,7 +127,7 @@ section 3.3). Fixed items no hotel may change in the MVP.
 | Taxes and fees | The hotel's tax and fee rules (`BR-25`) | — |
 | Stay restrictions | Minimum stay and closed-to-arrival days per date range (`BR-10`) | Violating reservations refused with the restriction named |
 | Discounts | Named discounts the manager may apply (`BR-15`) | Applied discounts kept by name |
-| Rate plans | Sellable prices per room type, season, day (`BR-14`) | Quoted price basis unchanged unless recalculated (`BR-13`); the frozen total is the quote Pricing returns for the type, dates, and discount (`BR-47`) |
+| Rate plans | Sellable prices per room type, season, day (`BR-14`) | Quoted price basis unchanged unless recalculated (`BR-13`); the frozen total is the quote Pricing returns for the type, dates, and discount (`BR-52`) |
 | Out-of-order blocks | Reason and date range per block (`BR-29`) | Blocked dates take no reservation or check-in |
 | Payment methods | — (none) | Cash and card only (`BR-23`) |
 | Folio structure | — (none) | One folio per stay; no split across payers (`BR-21`) |
@@ -167,19 +169,29 @@ behaviour beyond those sources, and BR-46 states where the check-out
 gate's facts come from — the folio stored balance and the approval
 recorded against it, never a request's claim — tracing `FR-BIL-7`,
 `FR-FDK-2`, `FR-CKS-1`..`FR-CKS-5`, and `AC-CKO-1`/`AC-CKO-2`
-without adding behaviour beyond those sources, and BR-47 states where
-the frozen price basis comes from — the Pricing quote for the
-effective room type, dates, and discount, never the request's total —
-tracing `FR-RES-1`, `FR-RES-2`, `FR-RTE-5`, `FR-PRC-1`..`FR-PRC-5`,
-and `AC-PRC-1`..`AC-PRC-5` without adding behaviour beyond those
-sources.
+without adding behaviour beyond those sources, and BR-50 states that a
+stay id selects a stay but never proves one — a folio is created and a
+folio write records only for a stay verified in house, while a folio
+already held stays readable in every stay state — tracing `FR-BIL-1`,
+`FR-FWV-1`, `FR-FWV-5`, and `AC-FWV-4`, and BR-51 states that an
+unverifiable stay refuses the write and changes nothing, tracing
+`FR-BIL-2`, `FR-BIL-3`, `FR-BIL-7`, `FR-FWV-1`..`FR-FWV-4`, and
+`AC-FWV-1`..`AC-FWV-3`, neither adding behaviour beyond those sources,
+and BR-52 states where the frozen price basis comes from — the Pricing
+quote for the effective room type, dates, and discount, never the
+request's total — tracing `FR-RES-1`, `FR-RES-2`, `FR-RTE-5`,
+`FR-PRC-1`..`FR-PRC-5`, and `AC-PRC-1`..`AC-PRC-5` without adding
+behaviour beyond those sources.
 Policies with no decided source appear as open questions
 OQ-1..OQ-5. No rule introduces behaviour beyond the traced
 FRs/NFRs/stories. Later capabilities from requirements section 6
 (waitlist, split folios, integrated payments, automated workflow
 rules, multi-property operation, and the rest) carry no rule here.
 
-Counts: 47 business rules, 5 open questions.
+Counts: 49 business rules, 5 open questions.
 
 <!-- ao-role: business-analyst -->
 Role: business-analyst · AO session hotel-mgmt-991
+
+<!-- ao-role: business-analyst -->
+Role: business-analyst · AO session hotel-mgmt-1047

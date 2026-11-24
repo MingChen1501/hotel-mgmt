@@ -36,11 +36,11 @@ the planned as-built delta in
 `docs/architecture/services/reservations.md`
 [section 9](../architecture/services/reservations.md); the error
 registration in `docs/technical/error-handling.md`
-[section 5](../technical/error-handling.md); the advisory-field
+[section 6](../technical/error-handling.md); the advisory-field
 convention in `docs/technical/api-spec.md` and C1 in
 `docs/technical/integration.md`; the desk delta and T2 UI contract in
 `docs/product/desk-ui-design-rollout.md`
-[section 6.19](../product/desk-ui-design-rollout.md); `BR-47` in
+[section 6.19](../product/desk-ui-design-rollout.md); `BR-52` in
 `docs/requirements/business-rules.md`; D-30 in
 `docs/project/decision-log.md`; R-13 in
 `docs/project/risk-register.md`; and the sibling tests this slice must
@@ -384,3 +384,6 @@ fabricated pin is a phantom promise.
 
 <!-- ao-role: qa-lead -->
 Role: qa-lead · AO session hotel-mgmt-992
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1057

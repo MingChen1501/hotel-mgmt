@@ -117,7 +117,7 @@ rates module that cannot be read refuses the booking
 (`UPSTREAM_UNAVAILABLE`, 503) rather than freezing an unverified price,
 so an unreachable rates module stops the desk booking and modifying for
 as long as it lasts (`../architecture/lld.md`, section 25; the
-desk-facing procedure is `../operations/runbook.md`, section 10).
+desk-facing procedure is `../operations/runbook.md`, section 15).
 Reading bookings, cancellations, check-in, and check-out do not call
 rates on this path and keep working. No hotel input and no new
 configuration value arrive with it; only the reachability requirement
@@ -125,9 +125,28 @@ the pre-flight and health check already apply to this address becomes
 load-bearing for the booking action, which is why both checks now name
 it (section 3 step 5 and section 5). No new container, no restart-order
 change, and no monitoring exporter ships with this bundle: until the
-first exporter lands, the alert obligation recorded for R8 in
+first exporter lands, the alert obligation recorded for R9 in
 `../release/release-notes.md` section 2.3 is carried by the desk
 escalation in `../operations/runbook.md` section 7.
+**Billing's stay read (Refs #634).** Target state for this bundle: the
+billing module reads `STAY_BASE_URL` (default `http://stay:8084`, the
+port the stay module already publishes, `deploy/compose.yaml:81`) and
+asks the stay module through `GetStayRef` before every folio write —
+charge, payment, open-balance approval — and before it creates a folio
+on a balance read (`../architecture/lld.md`, section 27). The call
+forwards the caller's session token and carries a 2-second timeout,
+inside `NFR-PERF-1`'s three-second action bound. This one is
+**fail-closed**, unlike the #646 completion: while the stay module cannot
+be read, charge posting, payment recording, open-balance approval, and a
+first, folio-less balance read refuse with `UPSTREAM_UNAVAILABLE` (503)
+and nothing is recorded, so an unreachable stay module stops new money
+from being written instead of writing it unverified. The desk procedure
+for that window is `../operations/runbook.md`, section 14. Both
+placements address the module by service name, so the default holds
+unless the stay module moves to another host — then only that address
+value changes, in the bundle's configuration file, never inside an
+image. Section 5 carries the matching pre-flight check and section 3 the
+health check.
 
 ## 3. Install procedure (both variants)
 
@@ -154,7 +173,11 @@ escalation in `../operations/runbook.md` section 7.
    and the reservations module reaching the rates module on the
    hotel LAN (a booking or a booking change is refused when that
    read fails, so the desk cannot book at an unverified price —
-   `../operations/runbook.md`, section 10.2).
+   `../operations/runbook.md`, section 15.2).
+   and the billing module reaching the stay module on the hotel
+   LAN (a folio write refuses while it cannot, so new charges and
+   payments are blocked until it answers — section 5,
+   `../operations/runbook.md`, section 14).
 6. Sign in as the owner account, verify the hotel profile, rooms,
    rate plans, and charge items from step 3, and record one test
    reservation end to end (book, check in, post a charge, check
@@ -185,7 +208,9 @@ every inter-host endpoint over the hotel LAN before step 6.
    but now also carries the booking quote read, so confirm the rates
    module answers on it (section 3 step 5) before the desk resumes:
    an unreachable rates module refuses every booking create and
-   modify (`../operations/runbook.md`, section 10.2).
+   modify (`../operations/runbook.md`, section 15.2).
+   already set in it and needs no hotel input, and the same holds
+   for `STAY_BASE_URL` for the billing module (Refs #634).
 5. Start the database host first, then the module containers, then
    the reverse proxy.
 6. Run the health check from section 3 step 5, sign in, and repeat
@@ -212,7 +237,7 @@ ones: there is no migration, no backfill, and no automatic re-derivation
 of an existing booking's total. Do not correct them in bulk and do not
 edit a booking at the desk. A booking that staff change is repriced
 against the rates in one change that records the actor and the time
-(`../operations/runbook.md`, section 10.3), and a total that has to be
+(`../operations/runbook.md`, section 15.3), and a total that has to be
 corrected without changing the booking goes to support. Record the
 booking references found, their stored totals, and the times in the
 upgrade record.
@@ -245,8 +270,16 @@ Run before every install and every upgrade; stop on any failure:
   `UPSTREAM_UNAVAILABLE` when that read fails, so an unreachable rates
   module leaves the desk unable to book or change bookings while
   reading, cancelling, checking in, and checking out keep working
-  (`../operations/runbook.md`, section 10.2; `../architecture/lld.md`,
+  (`../operations/runbook.md`, section 15.2; `../architecture/lld.md`,
   section 25.2).
+- The billing module reaches the stay module over the hotel LAN: every
+  folio write reads the stay first, so while that address does not
+  answer, charge posting, payment recording, open-balance approval, and
+  a first, folio-less balance read refuse with `UPSTREAM_UNAVAILABLE`
+  (503) and nothing is recorded — the desk takes the items on paper
+  (`../operations/runbook.md`, section 14). This is fail-closed by
+  design: never work around it by pointing `STAY_BASE_URL` at another
+  module or by writing money by hand.
 - The per-hotel configuration set validates against the release
   bundle's configuration schema with no missing required values.
 - First secrets are provisioned and handed over per the handover
@@ -278,3 +311,15 @@ fixed within the working day, roll back:
 
 <!-- ao-role: release-manager -->
 Role: release-manager · AO session hotel-mgmt-1041
+
+<!-- ao-role: release-manager -->
+Role: release-manager · AO session hotel-mgmt-948
+
+<!-- ao-role: release-manager -->
+Role: release-manager · AO session hotel-mgmt-963
+
+<!-- ao-role: release-manager -->
+Role: release-manager · AO session hotel-mgmt-1049
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1057

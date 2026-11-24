@@ -133,7 +133,7 @@ was booked at.
 
 A refusal that says the price could not be read is a different case:
 the rate is set and the pricing part of the system did not answer. That
-is section 10.2, and the desk keeps the quote it showed while it
+is section 15.2, and the desk keeps the quote it showed while it
 retries.
 
 ## 7. When to call support (escalation contacts)
@@ -156,10 +156,10 @@ Call support the same day when any of these happen:
 - Anything that looks like wrong money figures (folio, invoice,
   or day-close totals that do not match).
 - A booking or booking change refused because the price could not be
-  read, after one retry also refused (section 10.2) — the pricing part
+  read, after one retry also refused (section 15.2) — the pricing part
   of the system is not answering and the desk cannot book until it does.
 - A booking whose saved total does not match the hotel's rates,
-  including one saved before this release (section 10.3).
+  including one saved before this release (section 15.3).
 - A guest who checked out still shows as checked in in the booking
   history or the calendar, or their booking still stops the room type
   from being sold (section 8.2).
@@ -170,6 +170,9 @@ Call support the same day when any of these happen:
   leaves behind (section 9).
 - A panel sentence that names a room still reading occupied after a
   refused check-in or a room move (section 9).
+- A charge or payment refused with "the stay could not be checked" while
+  the guest is in house, or a refusal for a stay the desk says is still
+  in house (section 14).
 
 Escalation contacts (placeholders — fill in per sale before
 handover):
@@ -427,7 +430,133 @@ The one case the released desk can still leave behind is LLD section
 room aside and finishing the action. The steps above clear it, which is
 why no data backfill or migration is needed.
 
-## 10. Booking refused: the price could not be confirmed
+## 14. A charge or payment was refused because the stay could not be checked
+
+From this release on the billing side reads the guest's stay before it
+puts money on the bill. Two things follow: money can no longer be posted
+against a stay that does not exist or one the guest has already left,
+and while the stay side cannot answer, the desk refuses the charge or the
+payment instead of guessing. Nothing is ever recorded when one of these
+sentences appears.
+
+### 14.1 What you see
+
+Three new sentences can appear in the charge form, the payment form, the
+open-balance form, and when a bill is opened:
+
+- **"The stay could not be checked, so nothing was recorded. Try again."**
+  The billing side could not reach the stay side. Nothing was written, so
+  trying again is safe. If it keeps appearing, the stay side is not
+  answering — that is a system fault, not a mistake at the desk.
+- **"That stay is already checked out, so nothing was recorded. Charges
+  and payments cannot be added after check-out."** The guest has left, so
+  the stay may no longer take money. This is deliberate: after check-out
+  the bill is history and keeps only what was recorded while the guest
+  was in house. Nothing was written.
+- **"No stay matches that ID, so nothing was recorded. Check the stay ID
+  and try again."** The stay behind the charge or payment does not exist.
+  Nothing was written. Do not try the same ID again — check the guest on
+  the board and use that guest's stay.
+
+Two things are **not** this refusal: an internet outage (billing and
+stay both run on the hotel's own equipment, so the desk keeps working,
+section 4), and a charge that posts normally for a guest in house — that
+one needs no action either. If the board and the Stay screen still list
+the guest in house while the charge form says the stay could not be
+checked, the fault is on the stay side, not with the guest.
+
+### 14.2 What to do at the desk
+
+1. Read the sentence: it tells you whether nothing was recorded (all
+   three above do) and whether trying again can help (only the "could
+   not be checked" one).
+2. For "the stay could not be checked", try the same action once more.
+   If it appears again, stop retrying and treat it as a module fault: the
+   desk keeps working for booking, check-in, check-out, and printing, but
+   new charges and payments on the bill will keep refusing. Call support
+   the same day (section 7).
+3. Until it is fixed, write each item on the paper list: guest name,
+   room, stay, what was charged or paid, the amount, any approval, the
+   time, and who took it. Take the money the way the hotel normally does.
+   Give the guest a handwritten receipt if one is needed.
+4. When the desk answers again, post each paper item in time order and
+   hand the guest the printed receipt. Nothing was recorded earlier, so
+   nothing is counted twice.
+5. For "that stay is already checked out": take the payment **before**
+   completing the check-out. After the guest has left, the desk cannot
+   add a charge, take a payment, or record a new approval on that stay —
+   that is the rule, not a fault. An open balance approved at check-out
+   can no longer be settled through the bill afterwards: record it on the
+   paper list and tell the manager. Recording a payment on a stay the
+   guest has already left is a named follow-up and is not possible in
+   this release. The hotel's own open-balance rule (who may approve what
+   the guest leaves owing) is unchanged.
+6. Never work around a refusal by using a different guest's stay, by
+   retyping a stay ID, or by editing the database. Those are exactly the
+   mistakes this release stops, and they put money on the wrong guest's
+   bill.
+
+### 14.3 Delivery team note (at an upgrade)
+
+The billing side now needs to reach the stay side on the hotel's own
+network. Confirm the pre-flight check in `../devops/deployment.md`
+section 5 (billing reaches stay) before the upgrade and the health check
+in section 3 step 5 afterwards, then verify on the installed system
+before handing the desk back:
+
+1. Sign in as the front desk, open the balance of a guest in house, post
+   one charge, and record one payment — all three must succeed and the
+   receipt must print.
+2. Open a stay the guest has already left and confirm its bill, invoice,
+   and receipts still open and print.
+3. On the lab or QA installation only: post a charge against a stay ID
+   that names no stay and confirm it is refused "nothing was recorded",
+   that no bill appears for that ID, and that no row was written (support
+   step 14.4). Do not run this check against the hotel's own bills.
+
+No data is migrated, repaired, or deleted at this upgrade: bills an older
+version wrote against a stay that does not exist stay exactly as they
+are. Record the checks, the refused ID, and who ran them in the upgrade
+record.
+
+### 14.4 Support note (technical)
+
+What a refused folio write answers, and what to read from it:
+
+| Answer | Meaning |
+|---|---|
+| `404 NOT_FOUND`, details `{upstream: "stay", stayId}` | No stay carries that id; nothing was written. |
+| `422 STATE_ILLEGAL`, details `{upstream: "stay", stayId, state}` | The stay exists but is not `in-house`; `state` is what it is (`closed` after check-out); nothing was written. |
+| `503 UPSTREAM_UNAVAILABLE`, details `{upstream: "stay", operation: "GetStayRef"}` | The stay side could not be read — transport failure, timeout, `5xx`, a non-envelope body, an unwired client, or a `404` that names a different stay (a wiring fault, not an unknown stay); nothing was written. |
+| `400 VALIDATION_FAILED`, details `{field: "stayId"}` | The id is not a well-formed stay id; raised before any call, unchanged. |
+| `401 UNAUTHENTICATED` | A session problem, not an outage: have the clerk sign in again. |
+
+1. For a run of `503`s, check the billing container's `STAY_BASE_URL`
+   (default `http://stay:8084`, the port the stay module publishes,
+   `deploy/compose.yaml:81`) and confirm the address is the installed
+   stay service, not another module. A wrong address is exactly what the
+   `503` is there to catch: it is never reported as an unknown stay, and
+   it must be fixed in the bundle's configuration, not worked around.
+2. Confirm the stay side itself answers: call `GetStayRef` for a guest
+   who is in house and confirm a `200` with the stay's guest and room.
+   `422` for that guest means the guest really has left.
+3. To prove nothing was recorded for a refused write, count the rows for
+   that stay: no `billing.folios` row for the id, and no
+   `folio_charge_lines` or `folio_payment_lines` row on a folio that
+   existed before. Never insert a row by hand to "correct" a refusal.
+4. Bills an older bundle wrote against a stay that does not exist are not
+   touched by this release and are not deleted: `GetStayRef` answering
+   `404` or `422` for a bill's stay is the read-only inventory, and the
+   decision to keep, settle, or delete such a bill is an owner decision,
+   not a support fix.
+5. The fail-closed answer is the design (`NFR-AVL-1` is for cached
+   configuration, never for a fact that decides money). The named
+   mitigation is an availability alert on the `503` rate; until that
+   exporter lands `../operations/monitoring-alerting.md` stays a stub, so
+   the desk's refused-write reports are the watch, and the stay module's
+   own outage is handled as a module restart per section 3.
+
+## 15. Booking refused: the price could not be confirmed
 
 This release checks the price of a stay against the hotel's own rates at
 the moment the booking is saved, and freezes the price it finds. The
@@ -436,7 +565,7 @@ the stay before the clerk confirms, so the saved total is the total the
 clerk saw. Two refusals are new, and both of them save nothing — no
 booking, no room held, no guest charged.
 
-### 10.1 "The rate changed while you were booking"
+### 15.1 "The rate changed while you were booking"
 
 **What you see.** The clerk confirms a booking and the screen says, in
 those plain words, that the rate changed while you were booking, shows
@@ -458,14 +587,14 @@ yet, and no room is held.
 5. If the screen instead says the price could not be re-read and
    nothing was booked — or shows the no-rate-price sentence from
    section 6 — the desk could not fetch the price after the change.
-   Book nothing further, follow section 10.2 steps 3 to 5 for the guest,
+   Book nothing further, follow section 15.2 steps 3 to 5 for the guest,
    and call support (section 7).
 
 The total on the booking, on the printed confirmation, and in the
 booking history is always the total the screen confirmed: the desk never
 books a price it has not shown.
 
-### 10.2 The booking is refused: the price could not be read
+### 15.2 The booking is refused: the price could not be read
 
 **What you see.** The booking is refused with the panel's plain error
 sentence, the screen keeps the quote it was showing, and nothing was
@@ -491,7 +620,7 @@ way.
 5. Write down the exact sentence from the screen, the room type, the
    dates, and the time, for the support call.
 
-### 10.3 A booking saved before this release looks the wrong price
+### 15.3 A booking saved before this release looks the wrong price
 
 Bookings saved **before** this release were not checked against the
 rates. They keep the total they were saved with, and this release does
@@ -509,7 +638,7 @@ and no repair pass at the upgrade.
 3. Record the booking reference, the total found, and the time in the
    upgrade record, so the correction is traceable.
 
-### 10.4 Support note (technical)
+### 15.4 Support note (technical)
 
 The two refusals are the error envelope's `PRICE_CHANGED` (`409`,
 `details` with `roomTypeId`, `arrivalDate`, `departureDate`,
@@ -547,9 +676,21 @@ outage.
 No retry worker, no cached total, and no backfill exist by design: a
 total is either read from rates in the booking request or the booking is
 refused. Growth in the `UPSTREAM_UNAVAILABLE` rate is the availability
-signal R8 records (`docs/release/release-notes.md` section 2.3); until a
+signal R9 records (`docs/release/release-notes.md` section 2.3); until a
 monitoring exporter lands it is read from these desk reports, so log
 every occurrence in the support ticket with its time.
 
 <!-- ao-role: release-manager -->
 Role: release-manager · AO session hotel-mgmt-1041
+
+<!-- ao-role: release-manager -->
+Role: release-manager · AO session hotel-mgmt-948
+
+<!-- ao-role: release-manager -->
+Role: release-manager · AO session hotel-mgmt-963
+
+<!-- ao-role: release-manager -->
+Role: release-manager · AO session hotel-mgmt-1049
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1057
