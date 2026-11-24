@@ -42,7 +42,7 @@ total Pricing returns for the effective room type, dates, and discount
 when the booking commits; the price basis a request carries is
 advisory, a total that disagrees with that quote is refused rather than
 stored, and a quote that cannot be read refuses the booking (section
-25, `FR-PRC-1`..`FR-PRC-3`).
+26, `FR-PRC-1`..`FR-PRC-3`).
 
 FR-RES-2 — Modify reservation. Staff can change the dates, room type,
 or guest of an existing reservation before check-in.
@@ -55,7 +55,7 @@ Amendment (Refs #632): the recalculated price is the Pricing quote for
 the effective post-change type, dates, and discount; a request total
 that disagrees, or a quote that cannot be read, refuses the change and
 leaves the reservation as stored, and a price-basis change is recorded
-with the actor and the time (section 25, `FR-PRC-4`).
+with the actor and the time (section 26, `FR-PRC-4`).
 
 FR-RES-3 — Cancel reservation with reason. Staff can cancel a
 reservation before check-in and must record a reason.
@@ -235,7 +235,7 @@ unless staff explicitly recalculate it under `FR-RES-2`.
 Amendment (Refs #632): the price the reservation freezes is read from
 Pricing (`QuotePrice`) at the moment the booking or the change
 commits, not asserted by the caller, and a later rate change still does
-not alter it (section 25, `FR-PRC-1`, `FR-PRC-4`).
+not alter it (section 26, `FR-PRC-1`, `FR-PRC-4`).
 
 ### 1.5 Guests and CRM (`FR-GST-*`)
 
@@ -6142,7 +6142,7 @@ As-built validation at this spec head, read-only:
   screen reads `QuotePrice` with the room type, arrival date,
   departure date, and the typed discount (`app/src/views/BookView.vue:784-793`)
   and sends that total back as `priceBasis` (`:926-937`), a pairing its
-  own guard pins (`app/src/views/BookView.test.ts:546-584`), so a
+  own guard pins (`app/src/views/BookView.test.ts:556-602`), so a
   server-side recompute over the same inputs reproduces the number the
   clerk saw on the normal path.
 - **The recompute needs no stored rate plan.** `QuotePrice` resolves
@@ -6425,12 +6425,12 @@ must pass untouched.
 
 | Item | Guard (on disk today; a row marked missing is created by the implementation PR) | Handoff note for `qa-lead` |
 |---|---|---|
-| FR-PRC-1 the quote sets the frozen total on create | `services/reservations/internal/service/service_test.go:34-47` (create books the supplied `24000` — the current trust being replaced), `services/reservations/internal/handler/handler_test.go:53` (create body carries `priceBasis`), `app/src/views/BookView.vue:784-793` with `:926-937` and `app/src/views/BookView.test.ts:546-584` (the desk quotes and sends that total back) | Missing guards: a matching request stores the quote's `totalMinor` and `discountName` and reports the same number; the quote's values win when the request carries a discount name the quote applies; a legitimate zero (complimentary discount) is stored at zero; the stored total is what `GetReservation` and the #600 room charge read |
+| FR-PRC-1 the quote sets the frozen total on create | `services/reservations/internal/service/service_test.go:34-47` (create books the supplied `24000` — the current trust being replaced), `services/reservations/internal/handler/handler_test.go:53` (create body carries `priceBasis`), `app/src/views/BookView.vue:784-793` with `:926-937` and `app/src/views/BookView.test.ts:556-602` (the desk quotes and sends that total back) | Missing guards: a matching request stores the quote's `totalMinor` and `discountName` and reports the same number; the quote's values win when the request carries a discount name the quote applies; a legitimate zero (complimentary discount) is stored at zero; the stored total is what `GetReservation` and the #600 room charge read |
 | FR-PRC-2 a disagreeing total is refused, nothing booked | `services/reservations/internal/service/service_test.go:137-149` (the missing-total branch is the only price guard today: `VALIDATION_FAILED` naming `priceBasis`) | Missing guards: forged low (request `0`, quote `6000`) → 409 `PRICE_CHANGED` with `requestedTotalMinor: 0`, `quotedTotalMinor: 6000`, type, and dates, no row, no availability consumed, no event, no change row, no idempotency record; forged high (request above the quote) → the same 409; an absent total still → 400 `VALIDATION_FAILED` (the 409 is only for an asserted disagreement) |
 | FR-PRC-3 unreadable Pricing fails closed; definitive surfaced | `services/reservations/internal/pricing/client.go:43-87` (the refusal-unchanged / fail-closed shape the new `QuotePrice` call must copy), `services/reservations/internal/pricing/client_test.go:61-72` (unreachable Rates → 503 for `CheckRestrictions`), `services/reservations/internal/service/service_test.go:80-90` (nil hook → 503, nothing stored), `services/reservations/internal/handler/handler_restrictions_test.go:65-82` (end-to-end 503 when Rates is down) | Missing guards for the quote itself: transport failure, timeout, 5xx, non-envelope reply, and unwired client each → 503 `UPSTREAM_UNAVAILABLE` naming `rates`/`QuotePrice`, nothing stored; `NOT_FOUND` with `reason: no_rate_price`, `NOT_FOUND` with `reason: no_rate_plan`, `VALIDATION_FAILED` for an unknown `discountName`, and `VALIDATION_FAILED` naming `ratePlanName` for an ambiguous plan set each pass through unchanged and store nothing |
 | FR-PRC-4 Modify reprices and records the change | `services/reservations/internal/store/store_test.go:108-148` (the `FR-RES-2` guard: a `priceBasis` change row with actor and timestamp), `services/reservations/internal/service/service_test.go:121-135` (modify stores the supplied `26000` — the hole), `:166-185` (modify with an unwired hook → 503 and the stored dates kept), `services/reservations/internal/handler/handler_test.go:160` (modify body carries `priceBasis`) | Missing guards: a date/type change stores the new quote total and the quote's discount name and writes one `priceBasis` change row with the actor; a forged total on the same change → 409 with the stored row untouched; an unreadable Pricing → 503 with the stored row untouched; each definitive refusal surfaced unchanged with the row untouched; an omitted discount name means no discount on the new quote |
 | FR-PRC-5 replay returns the stored booking and refusals write nothing | `services/reservations/internal/store/store_test.go:87-103` (idempotent replay returns the original reference), `:32-71` (paired booking exactly one winner), `services/reservations/internal/service/service_test.go:92-107` (last unit → `CONFLICT`), `:62-78` (restriction refusal stores nothing) | Missing guard: a replay of a stored `idempotencyKey` returns the booking at its stored total and the quote hook is never called again; a refused create writes no row, no availability, no change row, no event; the restriction refusal keeps its place and `STATE_ILLEGAL` terms |
-| Desk and downstream pins stay green | `app/src/views/BookView.test.ts:546-584` (quote then send the quoted total), the #600 room-charge guards, and the `AC-RES-1`, `AC-RES-2`, `AC-DSK-13`, `AC-DSK-19`, `AC-CKO-1`/`AC-CKO-2` pins | These must pass without a desk edit on the service half; the price-changed recovery is `AC-DSK-20` and ships with the desk half |
+| Desk and downstream pins stay green | `app/src/views/BookView.test.ts:556-602` (quote then send the quoted total), the #600 room-charge guards, and the `AC-RES-1`, `AC-RES-2`, `AC-DSK-13`, `AC-DSK-19`, `AC-CKO-1`/`AC-CKO-2` pins | These must pass without a desk edit on the service half; the price-changed recovery is `AC-DSK-20` and ships with the desk half |
 
 Per-flow implementation diagrams (T3). These are the requirements-side
 views; the service-side shapes and the authoritative architecture
