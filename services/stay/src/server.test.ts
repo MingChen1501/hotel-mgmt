@@ -411,21 +411,30 @@ describe("stay postgres store", { skip: DATABASE_URL === undefined || DATABASE_U
       await pool.query("DELETE FROM stay.idempotency_keys");
       await pool.query("DELETE FROM stay.stays");
       const store = new PostgresStayStore(pool);
+      // Both actual times are pinned so the fixture never depends on the host
+      // clock: without an explicit arrival the row is stamped with `now()`,
+      // which eventually overtakes the fixed departure and trips the
+      // departure-order validation.
+      const actualArrival = "2026-10-24T10:00:00.000Z";
+      const actualDeparture = "2026-10-26T15:30:00.000Z";
       const stay = await store.checkIn({
         reservationId: RESERVATION_ID,
         guestId: GUEST_ID,
         roomId: ROOM_ID,
+        actualArrival,
         actor: "front-desk",
       });
+      assert.equal(stay.actualArrival, actualArrival);
       const moved = await store.moveRoom({ stayId: stay.id, toRoomId: ROOM2_ID, actor: "front-desk" });
       assert.equal(moved.stay.currentRoomId, ROOM2_ID);
       assert.equal(moved.move.fromRoomId, ROOM_ID);
       const timed = await store.recordActualTimes({
         stayId: stay.id,
-        actualDeparture: "2026-10-26T15:30:00.000Z",
+        actualDeparture,
         actor: "front-desk",
       });
-      assert.equal(timed.actualDeparture, "2026-10-26T15:30:00.000Z");
+      assert.equal(timed.actualArrival, actualArrival);
+      assert.equal(timed.actualDeparture, actualDeparture);
       await assert.rejects(
         store.checkOut({ stayId: stay.id, folioId: FOLIO_ID, folioBalanceMinor: 6000, actor: "front-desk" }),
         /open balance/,

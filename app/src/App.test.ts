@@ -176,7 +176,8 @@ describe('shell navigation', () => {
   }
 
   // D1 design-header order (Refs #539, #472, FR-DSK-1): Desk,
-  // Rooms, Manage (#590), Book, Stay, Folio, Print, Admin.
+  // Rooms, Manage (#590), Book, Bookings (#648), Stay, Folio, Print,
+  // Admin.
   // Onboarding has no design-header tab: /onboarding stays reachable
   // through the empty-database auto-launch plus its deep route.
   it('renders the design-header destinations plus the app-only manage tab, the user, and sign-out', async () => {
@@ -192,6 +193,7 @@ describe('shell navigation', () => {
         'Rooms',
         'Manage',
         'Book',
+        'Bookings',
         'Stay',
         'Folio',
         'Print',
@@ -202,6 +204,7 @@ describe('shell navigation', () => {
         '/app/rooms',
         '/app/manage',
         '/app/book',
+        '/app/bookings',
         '/app/stay',
         '/app/folio',
         '/app/print',
@@ -380,6 +383,7 @@ describe('shell navigation', () => {
     ['/', 'shell-nav-desk'],
     ['/rooms', 'shell-nav-rooms'],
     ['/book', 'shell-nav-book'],
+    ['/bookings', 'shell-nav-bookings'],
     ['/stay', 'shell-nav-stay'],
     ['/folio', 'shell-nav-folio'],
     ['/print', 'shell-nav-print'],

@@ -481,9 +481,52 @@ Postconditions: the hotel operates on its own setup with users,
 policies, and oversight in place; every configuration change
 records who made it and when. [NFR-AUD-1]
 
+## UC-13 — Read the booking register
+
+Actor: Front-desk staff. Goal: answer "who booked which room type, for
+which dates, at what price" for a range of nights without reading
+records one reference at a time. Story: US-RES-5. Depiction: Seq-15.
+
+Preconditions: the staff member is signed in.
+
+Main flow:
+
+1. Staff open the bookings tab; the register reads the default range —
+   the business date through the next six nights. [FR-RES-5,
+   FR-BMV-1, FR-BMV-3]
+2. Staff set the first and last night and apply the range; the list
+   holds every booking staying at least one night in that inclusive
+   range. [FR-RES-5, FR-BMV-3]
+3. Each row shows the guest, reference, room type, assigned room when
+   the guest is in house, arrival, departure, nights, quoted total, and
+   state, ordered by arrival then reference and capped at 50 with the
+   narrow-the-dates sentence. [FR-RES-5, FR-BMV-2]
+4. Staff select a row; the detail reads the booking back and shows its
+   dates, price basis, state, assigned room, guest, and room type.
+   [FR-RES-5, FR-BMV-5]
+
+Extensions/exceptions:
+
+- 2a. The last night is before the first night, or a field is missing:
+  the field is named in plain words and no request is sent.
+  [FR-BMV-3]
+- 2b. No booking stays in the range: one plain sentence names the
+  range and no row is invented. [FR-BMV-4]
+- 3a. A list read or a detail read fails: one plain sentence names what
+  could not be read with a retry. A per-row, room-type, in-house, or
+  occupied-room read fails: the row stays, the affected cells say they
+  could not be read, and one notice above the list counts the incomplete
+  rows and names the failed column, with no retry of its own —
+  re-applying the range reads again. The rest of the desk stays usable.
+  [FR-BMV-6]
+
+Postconditions: staff read the bookings for the range and the selected
+booking's read-back detail; nothing was created, changed, cancelled,
+checked in, or checked out. [FR-BMV-1, FR-BMV-7]
+
 ## Coverage statement
 
-The 12 use cases cover all 43 FRs and the 14 NFRs where they
+The 13 use cases cover all 43 FRs and the 14 NFRs where they
 constrain behaviour (NFR-CON-1 in UC-1/UC-2/UC-4, NFR-CON-2 in UC-6,
 NFR-AVL-1 in UC-8, NFR-AUD-1 wherever a change is recorded, NFR-SEC-1/NFR-SEC-2 and
 NFR-RET-1 in UC-12, NFR-DEP-1/NFR-BKP-1/NFR-BKP-2/NFR-TZ-1 in the
@@ -492,7 +535,7 @@ appears in at least one use case:
 
 | FR | Use case(s) |
 |---|---|
-| FR-RES-1..6 | UC-1, UC-2, UC-3, UC-4, UC-5 |
+| FR-RES-1..6 | UC-1, UC-2, UC-3, UC-4, UC-5, UC-13 |
 | FR-FDK-1..5 | UC-6, UC-8, UC-7, UC-6/UC-8, UC-1/UC-4/UC-6 |
 | FR-RMS-1..4 | UC-10, UC-10, UC-10, UC-6/UC-11 |
 | FR-RTE-1..5 | UC-11, UC-1/UC-4, UC-1/UC-11, UC-1/UC-2/UC-11, UC-1/UC-2/UC-4 |
@@ -511,6 +554,7 @@ sections 7–9 are presentation/scaffold deltas outside this
 actor-goal count: they are traced in their own slice handoff
 tables, not in the table above, and the later slice ids (`FR-DSK-*`,
 `NFR-DSK-*`, `FR-RST-*`, `NFR-RST-*`, `FR-CIP-*`, `FR-CKO-*`,
-`FR-CKP-*`, `FR-CKS-*`, `FR-DEP-*`, `FR-REA-*`) follow the same rule.
+`FR-CKP-*`, `FR-CKS-*`, `FR-DEP-*`, `FR-REA-*`, `FR-BMV-*`) follow the
+same rule.
 
-Counts: 12 use cases; 43/43 FRs mapped.
+Counts: 13 use cases; 43/43 FRs mapped.
