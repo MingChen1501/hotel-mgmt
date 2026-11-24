@@ -183,8 +183,8 @@ land in.
   reply — `RESERVATIONS_BASE_URL` (default `http://reservations:8081`),
   caller Bearer token forwarded, 2-second timeout. `src/server.ts`
   threads the caller bearer into `checkOut` the way the Reservations
-  handler threads it (`services/reservations/internal/handler/handler.go:207`,
-  `:235`).
+  handler threads it (`services/reservations/internal/handler/handler.go:208`,
+  `:236`).
 - The response carries `bookingCompletion`:
   `{state: "completed" | "not-recorded", reservationRef?, reason?}`.
   Any non-recording outcome (transport, timeout, 5xx, unwired, provider

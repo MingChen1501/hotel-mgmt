@@ -1089,7 +1089,7 @@ or an issue comment):
   (`:274-291`). `CheckIn` (`:297-318`) is the only transition out of
   `confirmed` besides cancel and no-show, and the operation surface
   stops at Create / Get / CheckIn / Modify / Cancel / MarkNoShow /
-  QueryCalendar (`services/reservations/internal/handler/handler.go:121-285`),
+  QueryCalendar (`services/reservations/internal/handler/handler.go:122-286`),
   so nothing closes a booking when the stay closes.
 - **Stay closes only its own record.** `checkOut` moves the stay to
   `closed` and emits a `checked-out` outbox event
@@ -1361,7 +1361,7 @@ or an issue comment):
   `GetReservation` returns the guest snapshot and the frozen price
   basis (`priceBasis.totalMinor`, `priceBasis.discountName`) beside the
   state and stay link
-  (`services/reservations/internal/handler/handler.go:167-180`).
+  (`services/reservations/internal/handler/handler.go:168-181`).
 - **The assigned room needs two reads.** A booking carries no room
   number; the room a guest holds is the in-house stay's `roomId`
   (`services/stay/src/server.ts:42-60`) resolved to a number through

@@ -2823,7 +2823,7 @@ server-side role enforcement. When an owner request opens the
 enforcement slice it is T3 (permissions/authorisation): ADR, HLD
 delta, threat-model delta, and per-operation policy on the
 `authed(operation, …)` seam the rates handler already threads
-(`services/rates/internal/handler/handler.go:97-116`).
+(`services/rates/internal/handler/handler.go:98-117`).
 
 ### 19.9 Technical no-change note
 
@@ -2962,7 +2962,7 @@ Edge trace (every edge cites code; `StayView` paths are relative to
   from the stay's actual arrival day (`:837-844`) to tomorrow
   (`nextDay`, `:474-480`), matched on `stayId` (`:845`), then
   `GetReservation` (`:849-852`)). The `stayId` link is emitted by the reservations
-  handler (`services/reservations/internal/handler/handler.go:315`) and
+  handler (`services/reservations/internal/handler/handler.go:316`) and
   declared in `contracts/http/QueryCalendar.json`.
 - D–E: a booking that does not resolve, or a quote that is not a
   non-negative integer, returns `null` (`StayView.vue:846-854`).
@@ -3315,7 +3315,7 @@ end):
    Rates pattern (`services/reservations/internal/pricing/client.go:43-97`).
    The bearer is threaded from the transport into the store the way the
    Reservations handler threads it
-   (`services/reservations/internal/handler/handler.go:207`, `:235`);
+   (`services/reservations/internal/handler/handler.go:208`, `:236`);
    today the Stay transport only checks presence
    (`services/stay/src/server.ts:110-112`).
 5. `200` -> `bookingCompletion: {state: "completed", reservationRef}`.
@@ -3348,7 +3348,7 @@ end):
 5. Any other state -> `STATE_ILLEGAL` naming the state, nothing written.
 6. No row with that `stay_id` -> `NOT_FOUND` `{stayId}`.
 7. No `idempotencyKey` field: the state transition is the guard, the
-   `MarkNoShow` precedent (`services/reservations/internal/handler/handler.go:266-284`).
+   `MarkNoShow` precedent (`services/reservations/internal/handler/handler.go:267-285`).
 
 Shapes considered and rejected:
 
@@ -3394,7 +3394,7 @@ Edge trace:
   (`services/reservations/internal/pricing/client.go:43-97` is the
   pattern; wiring target `deploy/compose.yaml:77-87`).
 - E–F: target `CheckOutReservation` handler beside
-  `CheckInReservation` (`services/reservations/internal/handler/handler.go:184-205`)
+  `CheckInReservation` (`services/reservations/internal/handler/handler.go:185-206`)
   and the store transition beside `CheckIn`
   (`services/reservations/internal/store/store.go:297-320`;
   Postgres `services/reservations/internal/store/postgres.go:344-389`);
@@ -4118,7 +4118,7 @@ Explicit no-change statements for this change:
 |---|---|---|---|
 | The bookings overlapping the range | Reservations | `QueryCalendar`; overlap predicate `arrival < dateTo && departure > dateFrom` (`services/reservations/internal/store/store.go:191-193`; Postgres `services/reservations/internal/store/postgres.go:311-321`) | No — it renders the entries the read returned |
 | Row order and the 50-row cap | Desk | sort by `arrivalDate` then `reservationRef`, then slice 50 (`docs/product/booking-management-view.md` sections 3 and 5) | Yes, and it must: the read guarantees no order (map iteration `services/reservations/internal/store/store.go:274-291`; no `ORDER BY` at `services/reservations/internal/store/postgres.go:311-321`) |
-| Guest name and quoted total | Reservations (frozen at booking) | `GetReservation` — the stored snapshot `guest.fullName` and `priceBasis.totalMinor` / `discountName` (`services/reservations/internal/handler/handler.go:172-181`; `contracts/http/GetReservation.json`) | Read-back only — never re-derived, never repriced |
+| Guest name and quoted total | Reservations (frozen at booking) | `GetReservation` — the stored snapshot `guest.fullName` and `priceBasis.totalMinor` / `discountName` (`services/reservations/internal/handler/handler.go:173-182`; `contracts/http/GetReservation.json`) | Read-back only — never re-derived, never repriced |
 | Room-type name | Rooms | `ListRoomTypes` (`contracts/http/ListRoomTypes.json`) | Read only |
 | Assigned room | Stay, then Rooms | `ListArrivalsDepartures.inHouse` for `stayId -> roomId` (`services/stay/src/server.ts:42-60`, `services/stay/src/store.ts:432-439`), then `ListRoomsByState("occupied")` for `roomId -> number` | Read only; a row shows a room only when both reads agree (24.3) |
 | The business date the in-house read uses | Desk | `localBusinessDate()` (`app/src/stay-options.ts:50-54`), the same value Main and Stay send | Yes — it is the desk business date, never the chosen range |
@@ -4297,7 +4297,7 @@ Edge trace:
   bounded (24.2, G2 decision in 24.7).
 - E/F–H: the maps are read once per apply, not once per row.
 - G–H: the per-row read supplies the guest and the frozen total
-  (`services/reservations/internal/handler/handler.go:172-181`).
+  (`services/reservations/internal/handler/handler.go:173-182`).
 - H–I: the detail is a second, fresh read of the same operation, never a
   copy of the row.
 

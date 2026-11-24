@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/MingChen1501/hotel-mgmt/services/rates/internal/envelope"
 	"github.com/MingChen1501/hotel-mgmt/services/rates/internal/messages"
 	"github.com/MingChen1501/hotel-mgmt/services/rates/internal/store"
 )
@@ -316,6 +317,10 @@ func NewMux(st store.Repository) *http.ServeMux {
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"roomTypeId": roomTypeID, "allowed": true})
 	}))
+
+	// An unknown operation under the mounted prefix answers the shared
+	// envelope instead of the mux's plain-text 404 (Refs #628).
+	mux.Handle("/", envelope.NotFound())
 
 	return mux
 }

@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MingChen1501/hotel-mgmt/services/reservations/internal/envelope"
 	"github.com/MingChen1501/hotel-mgmt/services/reservations/internal/messages"
 	"github.com/MingChen1501/hotel-mgmt/services/reservations/internal/service"
 	"github.com/MingChen1501/hotel-mgmt/services/reservations/internal/store"
@@ -339,6 +340,10 @@ func NewMux(svc *service.Service, st store.Repository) *http.ServeMux {
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"dateFrom": from, "dateTo": to, "reservations": encoded})
 	}))
+
+	// An unknown operation under the mounted prefix answers the shared
+	// envelope instead of the mux's plain-text 404 (Refs #628).
+	mux.Handle("/", envelope.NotFound())
 
 	return mux
 }
