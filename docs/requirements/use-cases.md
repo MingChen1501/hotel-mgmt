@@ -59,7 +59,7 @@ Extensions/exceptions:
   dates named as conflict. [NFR-CON-1]
 - 3d. The total the request asserts disagrees with the Pricing quote:
   the booking is refused with the requested and quoted totals named
-  (`PRICE_CHANGED`) and nothing is created. [FR-PRC-2, BR-47]
+  (`PRICE_CHANGED`) and nothing is created. [FR-PRC-2, BR-52]
 - 3e. The Pricing quote cannot be read: the booking is refused with
   the upstream and operation named (`UPSTREAM_UNAVAILABLE`) and
   nothing is created; a definitive Pricing refusal — no price for a
@@ -103,7 +103,7 @@ Extensions/exceptions:
   [NFR-CON-1]
 - 2c. The total the request asserts disagrees with the new quote: the
   modification is refused with both totals named (`PRICE_CHANGED`)
-  and the reservation keeps its stored values. [FR-PRC-4, BR-47]
+  and the reservation keeps its stored values. [FR-PRC-4, BR-52]
 - 2d. The new quote cannot be read: the modification is refused with
   the upstream and operation named (`UPSTREAM_UNAVAILABLE`) and the
   reservation keeps its stored values; a definitive Pricing refusal

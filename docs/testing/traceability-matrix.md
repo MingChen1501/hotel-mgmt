@@ -894,11 +894,44 @@ Each row traces `AC-PRC-1`..`AC-PRC-5` and the desk condition
 `AC-DSK-20` (owned by `product-owner`), the behaviour-scoped
 requirements `FR-PRC-1`..`FR-PRC-5` (owned by `business-analyst`), the
 unchanged MVP rows `FR-RES-1`, `FR-RES-2`, and `FR-RTE-5`, and business
-rules `BR-2`, `BR-13`, and `BR-47`
+rules `BR-2`, `BR-13`, and `BR-52`
 ([business-rules.md](../requirements/business-rules.md)). The owner
 cases `PA-1`..`PA-8`, the guard registry `PA1`–`PA14`, and the evidence
 rule `PA-E1` live in
 [price-authority-test-traceability.md](price-authority-test-traceability.md)
+sections 3, 4, 6, and 7. Like the slices above, these rows add no MVP
+capability: the 57-row MVP coverage count stands unchanged and no MVP
+row may cite this slice as its guard.
+
+## 20. Folio write verification slice (Refs #634)
+
+Security slice for audit finding B1 (the #625 class: a client-supplied
+identifier decides a money outcome). Billing creates a folio for any
+UUID `stayId` it is handed, with no Stay read
+(`services/billing/src/main/java/com/hotel/billing/repo/BillingRepository.java:65-71`),
+so a charge, a payment, or an open-balance approval can be written
+against a stay that does not exist or is already closed. The slice makes
+every folio write verify the stay through the registered C8 `GetStayRef`
+read first, fail closed with `UPSTREAM_UNAVAILABLE` (503) when Stay
+cannot be read, keep the provider's `NOT_FOUND` / `STATE_ILLEGAL`
+refusals, and keep a folio Billing already holds readable in every stay
+state. No new operation, field, lifecycle state, event, schema,
+migration, or MVP capability is added. Tier T3 (LLD
+[section 27](../architecture/lld.md);
+[ADR-0008](../architecture/decisions/adr-0008-folio-write-stay-verification.md),
+`proposed`; `product-owner` scope in
+[acceptance-criteria.md section 20](../product/acceptance-criteria.md)
+and [desk-ui-design-rollout.md section 6.21](../product/desk-ui-design-rollout.md);
+`business-analyst` requirements in
+[mvp-requirements.md section 28](../requirements/mvp-requirements.md)).
+
+Each row traces `AC-FWV-1`..`AC-FWV-7` (owned by `product-owner`) and
+the behaviour-scoped requirements `FR-FWV-1`..`FR-FWV-5` (owned by
+`business-analyst`), plus business rules `BR-50` / `BR-51`
+([business-rules.md](../requirements/business-rules.md)). The owner
+cases `FWV-1`..`FWV-10`, the guard registry `FW1`–`FW13`, and the
+evidence rule `FW-E1` live in
+[folio-write-verification-test-traceability.md](folio-write-verification-test-traceability.md)
 sections 3, 4, 6, and 7. Like the slices above, these rows add no MVP
 capability: the 57-row MVP coverage count stands unchanged and no MVP
 row may cite this slice as its guard.
@@ -926,10 +959,10 @@ therefore **not complete** at this spec head.
 
 | Item | Required guard type | Guard |
 |---|---|---|
-| `AC-PRC-1` — the frozen total and stored discount name are the `QuotePrice` values for the effective room type, dates, and discount read in the same request; the request's total never sets a stored value; a repeated `idempotencyKey` is returned at its stored total, never re-quoted (traces to US-RES-1; `FR-RES-1`, `FR-RTE-5`, `BR-13`, `BR-47`) | L1 acceptance + downstream read | **Pending** — `PA3`, `PA4`, `PA6` in `services/reservations/internal/service/service_test.go`; today's opposite is pinned at `services/reservations/internal/service/service.go:101-103`, `:127` and `internal/store/store.go:236-237`, with the rewired pins at `internal/service/service_test.go:34-47`, `internal/handler/handler_test.go:59-91` |
-| `AC-PRC-2` — a disagreeing total (lower, higher, or zero for a priced stay) is refused `PRICE_CHANGED` (409) naming both totals, the type, and the dates; no reservation, availability, change entry, idempotency record, or event is written; a legitimate zero is booked only when the quote says zero (traces to US-RES-1; `FR-RES-1`, `FR-RTE-5`, `BR-13`, `BR-47`) | L1 acceptance: the three disagreement shapes + the no-write set | **Pending** — `PA1`, `PA2`, `PA4`; the absent/negative 400 that must stay a different refusal is `PA5` |
-| `AC-PRC-3` — an unreadable Pricing (transport, timeout, 5xx, unparseable envelope, unwired client) refuses `UPSTREAM_UNAVAILABLE` (503) naming `rates`/`QuotePrice` with nothing stored, and each definitive Rates refusal (`NOT_FOUND` `no_rate_price`/`no_rate_plan`, `VALIDATION_FAILED` for an unknown discount, `VALIDATION_FAILED` naming `ratePlanName`) is surfaced unchanged (traces to US-RES-1; `FR-RTE-1`, `FR-RTE-5`, `BR-13`, `BR-47`, `NFR-AVL-1`) | L1 acceptance: five unreadable shapes + four definitive shapes | **Pending** — `PA7`, `PA8`; the shape to copy is pinned at `internal/pricing/client.go:43-87`, `internal/pricing/client_test.go:61-84`, `internal/handler/handler_restrictions_test.go:65-99` and stays green |
-| `AC-PRC-4` — Modify recomputes from the effective post-change type, dates, and discount, refuses a disagreement and an unreadable Pricing, surfaces a definitive refusal unchanged, keeps the stored row in every refusal, and records the price-basis change with actor and time (traces to US-RES-2; `FR-RES-2`, `FR-RTE-5`, `BR-2`, `BR-13`, `BR-47`, `NFR-AUD-1`) | L1 acceptance + audit row | **Pending** — `PA10`, `PA11`, `PA12`; the change-row half exists at `internal/store/store.go:437-441` / `internal/store/store_test.go:108-148` and stays green |
+| `AC-PRC-1` — the frozen total and stored discount name are the `QuotePrice` values for the effective room type, dates, and discount read in the same request; the request's total never sets a stored value; a repeated `idempotencyKey` is returned at its stored total, never re-quoted (traces to US-RES-1; `FR-RES-1`, `FR-RTE-5`, `BR-13`, `BR-52`) | L1 acceptance + downstream read | **Pending** — `PA3`, `PA4`, `PA6` in `services/reservations/internal/service/service_test.go`; today's opposite is pinned at `services/reservations/internal/service/service.go:101-103`, `:127` and `internal/store/store.go:236-237`, with the rewired pins at `internal/service/service_test.go:34-47`, `internal/handler/handler_test.go:59-91` |
+| `AC-PRC-2` — a disagreeing total (lower, higher, or zero for a priced stay) is refused `PRICE_CHANGED` (409) naming both totals, the type, and the dates; no reservation, availability, change entry, idempotency record, or event is written; a legitimate zero is booked only when the quote says zero (traces to US-RES-1; `FR-RES-1`, `FR-RTE-5`, `BR-13`, `BR-52`) | L1 acceptance: the three disagreement shapes + the no-write set | **Pending** — `PA1`, `PA2`, `PA4`; the absent/negative 400 that must stay a different refusal is `PA5` |
+| `AC-PRC-3` — an unreadable Pricing (transport, timeout, 5xx, unparseable envelope, unwired client) refuses `UPSTREAM_UNAVAILABLE` (503) naming `rates`/`QuotePrice` with nothing stored, and each definitive Rates refusal (`NOT_FOUND` `no_rate_price`/`no_rate_plan`, `VALIDATION_FAILED` for an unknown discount, `VALIDATION_FAILED` naming `ratePlanName`) is surfaced unchanged (traces to US-RES-1; `FR-RTE-1`, `FR-RTE-5`, `BR-13`, `BR-52`, `NFR-AVL-1`) | L1 acceptance: five unreadable shapes + four definitive shapes | **Pending** — `PA7`, `PA8`; the shape to copy is pinned at `internal/pricing/client.go:43-87`, `internal/pricing/client_test.go:61-84`, `internal/handler/handler_restrictions_test.go:65-99` and stays green |
+| `AC-PRC-4` — Modify recomputes from the effective post-change type, dates, and discount, refuses a disagreement and an unreadable Pricing, surfaces a definitive refusal unchanged, keeps the stored row in every refusal, and records the price-basis change with actor and time (traces to US-RES-2; `FR-RES-2`, `FR-RTE-5`, `BR-2`, `BR-13`, `BR-52`, `NFR-AUD-1`) | L1 acceptance + audit row | **Pending** — `PA10`, `PA11`, `PA12`; the change-row half exists at `internal/store/store.go:437-441` / `internal/store/store_test.go:108-148` and stays green |
 | `AC-PRC-5` — the guards cover the forged-low, forged-high, matching (including a legitimate zero), unreadable, and definitive callers plus the Modify reprice with its history row and actor; the #600 room charge still posts the frozen total and the `AC-RES-1`, `AC-RES-2`, `AC-DSK-13`, `AC-DSK-19`, `AC-CKO-1`/`AC-CKO-2` guards keep passing (traces to `NFR-AUD-1`) | L1 + audit + downstream + re-run | **Pending** — `PA1`–`PA12`, with the green half on the downstream-green row and the desk half in `PA13` |
 | `FR-PRC-1` — the total a new reservation freezes is the Pricing quote, read for the effective type, dates, and discount with the caller's session forwarded; the stored discount name is the quote's applied name; the request value is compared and nothing more; an absent or negative basis still refuses `VALIDATION_FAILED` (section 26.3) | L1 acceptance | **Pending** — `PA3`, `PA4`, `PA5`; today's trust is pinned at `internal/service/service_test.go:34-47`, the desk pairing at `app/src/views/BookView.test.ts:556-602` |
 | `FR-PRC-2` — a request total that disagrees is refused with `PRICE_CHANGED` naming both totals, type, and dates, and nothing is written (section 26.3) | L1 acceptance: the disagreement set + the no-write set | **Pending** — `PA1`, `PA2`; no guard on disk |
@@ -957,6 +990,13 @@ at 57/57.
 
 Coverage: 43 FRs mapped, 14 NFRs mapped, 57 rows total, 57 guards
 filled (PR #112 slice: FR-RES-1, FR-RMS-1..4, FR-RTE-1/2/4/5, FR-ADM-1/2, FR-CUS-1, NFR-CON-1/2; PR #149 slice: FR-FDK-1, FR-FDK-5, FR-BIL-1/2/3/6, FR-ADM-5, NFR-BKP-1/2, NFR-AUD-1, NFR-TZ-1, plus FR-RES-1 persistence; PR #150 slice: FR-FDK-2, FR-FDK-3, FR-FDK-4, FR-BIL-7, plus the NFR-CON-2 stay-side checkout guard; PR #151 slice: FR-BIL-4, FR-CUS-3; PR #156 slice: FR-RPT-1..3; PR #157 slice: FR-GST-1..3; PR #158 slice: NFR-DEP-1, FR-ADM-4 config level, plus the FR-ADM-1 deployment extension; PR #159 slice: FR-RES-2/3/5/6 plus the NFR-CON-1 modify-path extension; PR #160 slice: ReleaseBlock plus rooms-side move coordination (FR-RMS-3, FR-FDK-3); PR #161 slice: full rates handling (FR-RTE-3 filled, FR-RTE-4/5 extended — remaining TBD cells fill in later slices); count corrected to the live total 48 (later slices filled cells without updating this line); PR #153 slice: NFR-RET-1, NFR-AVL-1; PR #182 slice: FR-RES-4, FR-ADM-3, FR-CUS-2, NFR-PERF-1/2 filled (5 guards — count corrected to the live total 53); FR-GST-4, FR-BIL-5, FR-RPT-4 point at follow-ups #189, #190, #191 and fill with those issues; NFR-I18N-1 filled by the #192 slice (count corrected to the live total 54); #189/#190/#191/#192/#201 slices filled FR-GST-4, FR-BIL-5, FR-RPT-4, NFR-I18N-1 (plus the #201 extension) — count corrected to the live total 57 (Closes #214)). Section 10 (Refs #588) adds 10 slice rows mapped to the #588 acceptance and `FR-CKO-1`..`FR-CKO-5`; the MVP row count stands unchanged at 57/57 because the slice adds no MVP capability. Section 11 (Refs #590) adds 15 slice rows mapped to `AC-MANAGE-1..11` and `FR-MGMT-1..12`; the MVP row count stands unchanged at 57/57 for the same reason. Section 12 (Refs #600) adds 10 slice rows mapped to `AC-DSK-19` and `FR-CKP-1`..`FR-CKP-5`; the MVP row count stands unchanged at 57/57 for the same reason. Section 13 (Refs #601) adds 11 slice rows mapped to `AC-CKO-1`, `AC-CKO-2`, and `FR-CKS-1`..`FR-CKS-5`; the MVP row count stands unchanged at 57/57 for the same reason. Section 14 (Refs #646) adds 16 slice rows mapped to `AC-DEP-1`..`AC-DEP-5`, `FR-DEP-1`..`FR-DEP-5`, and the lifecycle `D5`/`D6` notes; the MVP row count stands unchanged at 57/57 for the same reason. Section 15 (Refs #647) adds 15 slice rows mapped to `AC-REA-1`..`AC-REA-5`, `FR-REA-1`..`FR-REA-5`, the `AC-REA-1` / `FR-REA-1` disposition (LLD 23.9 R14), and the gate boxes; the MVP row count stands unchanged at 57/57 for the same reason. Section 16 (Refs #648) adds 18 slice rows mapped to `AC-BMV-1`..`AC-BMV-7` and `FR-BMV-1`..`FR-BMV-7`; the MVP row count stands unchanged at 57/57 for the same reason. Section 17 (Refs #632) adds 15 slice rows mapped to `AC-PRC-1`..`AC-PRC-5`, the desk condition `AC-DSK-20`, `FR-PRC-1`..`FR-PRC-5`, and the gate boxes; the MVP row count stands unchanged at 57/57 for the same reason.
+Section 20 (Refs #634) adds 17 slice rows mapped to `AC-FWV-1`..`AC-FWV-7` and `FR-FWV-1`..`FR-FWV-5`, the `AC-FWV-3` / `AC-FWV-5` disposition, and the gate boxes; the MVP row count stands unchanged at 57/57 for the same reason.
 
 <!-- ao-role: qa-lead -->
-Role: qa-lead · AO session hotel-mgmt-922
+Role: qa-lead · AO session hotel-mgmt-1048
+
+<!-- ao-role: qa-lead -->
+Role: qa-lead · AO session hotel-mgmt-992
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1057

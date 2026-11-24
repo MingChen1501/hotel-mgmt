@@ -65,7 +65,7 @@ Operations needed:
   caller's session forwarded, to derive the price basis a booking
   freezes: the returned total and applied discount name are stored, and
   the request's own total is only compared with them (FR-PRC-1,
-  FR-PRC-4, BR-47).
+  FR-PRC-4, BR-52).
 
 Sync recommendation: synchronous request/response. Reason: the desk
 flow refuses immediately with the cause named (Seq-2 restriction and
@@ -83,10 +83,10 @@ Error cases:
 - Unknown room type or rate plan: `NOT_FOUND`.
 - The request's price basis disagrees with the quote: `PRICE_CHANGED`
   (409) naming the requested total, the quoted total, the room type,
-  and the dates, with nothing stored (FR-PRC-2; BR-47).
+  and the dates, with nothing stored (FR-PRC-2; BR-52).
 - The quote cannot be read (unreachable, timeout, 5xx, non-envelope,
   unwired): `UPSTREAM_UNAVAILABLE` (503) naming upstream `rates` and
-  operation `QuotePrice`, with nothing stored (FR-PRC-3; BR-47); a
+  operation `QuotePrice`, with nothing stored (FR-PRC-3; BR-52); a
   definitive Pricing refusal — `NOT_FOUND` with `details.reason`
   `no_rate_price` or `no_rate_plan`, `VALIDATION_FAILED` for an unknown
   discount or an ambiguous plan set — is surfaced unchanged
@@ -286,6 +286,37 @@ be posted or presented against a stale stay reference.
 
 Error cases: stay not in house or already closed: `STATE_ILLEGAL`
 (BR-1; BR-18).
+
+Amendment (Refs #634): Billing consumes `GetStayRef` on the money path.
+Every folio write — `PostCharge`, `RecordPayment`, and
+`RecordOpenBalanceApproval`, in section 4 below — calls it on each
+request, whether or not the stay already carries a folio, with the
+caller's session forwarded and the call bounded so the desk action
+still fits `NFR-PERF-1` (`FR-FWV-1`; BR-50). A stay that carries no
+folio is verified the same way before `GetFolioBalance` creates one; a
+stay that already carries a folio is served by Billing itself in every
+stay state, so the departure invoice and receipts still print
+(`FR-FWV-5`; BR-50). The requirements-side error cases, in addition to
+the `STATE_ILLEGAL` above:
+
+- Unknown stay: `NOT_FOUND` naming the stay, and nothing is written
+  (`FR-FWV-2`; BR-51).
+- A `NOT_FOUND` that names a different stay or names none: a wiring
+  fault, refused `UPSTREAM_UNAVAILABLE` (503), never read as a stay
+  fact (`FR-FWV-4`; BR-51).
+- Stay unreadable — transport failure, timeout, 5xx, non-envelope body,
+  or no client configured: `UPSTREAM_UNAVAILABLE` (503) naming the
+  upstream and the operation, and nothing is written (`FR-FWV-4`;
+  BR-51). The read fails closed; the offline-first cached-config rule
+  (`NFR-AVL-1`) does not extend to a fact that decides money.
+- A 4xx provider envelope: surfaced unchanged, so a rejected session
+  still reads `UNAUTHENTICATED` (`FR-FWV-4`; `NFR-SEC-2`).
+
+No operation, request member, response member, stored value, or event
+is added: `GetStayRef` is served today, and the contract change is
+error-code additive on Billing's four folio operations plus the
+`UPSTREAM_UNAVAILABLE` registration in `contracts/errors/envelope.json`
+(the `architect` owns both).
 
 Per-hotel config: none beyond the stay record itself.
 
@@ -529,12 +560,12 @@ its UTC offset, every date renders on the hotel-local day).
 
 | Directed pair(s) | Recommendation | Reason (requirements-side) |
 |---|---|---|
-| RES -> RATE; RES -> ROOM | Sync | Immediate refuse-with-reason inside the booking step (Seq-2/3/6); NFR-PERF-1 3 s; NFR-CON-1 exactly-one-winner; the booking freezes the `QuotePrice` total or is refused with the disagreement or the unreadable upstream named (FR-PRC-1..FR-PRC-3, BR-47) |
+| RES -> RATE; RES -> ROOM | Sync | Immediate refuse-with-reason inside the booking step (Seq-2/3/6); NFR-PERF-1 3 s; NFR-CON-1 exactly-one-winner; the booking freezes the `QuotePrice` total or is refused with the disagreement or the unreadable upstream named (FR-PRC-1..FR-PRC-3, BR-52) |
 | RES -> GST | Sync | Preferences/notes shown before confirm (FR-GST-2); returning flag at booking time (FR-GST-3) |
 | STAY -> RES; STAY -> GST | Sync | Check-in acts on the reservation and guest record in one step (Seq-7; FR-CUS-1 refusal); the check-out review resolves the stay's booking for its frozen quoted total in the same step (section 3c; FR-CKP-1) |
 | STAY -> ROOM (`AssignRoom`) | Sync, atomic at provider | NFR-CON-2 exactly-one-winner inside check-in; no eventual consistency |
 | STAY -> BIL (gate) | Sync | Check-out refused until settled or approved (FR-BIL-7) |
-| BIL -> STAY (stay ref) | Sync read | Folio lines and receipts match their stay exactly (FR-BIL-4) |
+| BIL -> STAY (stay ref) | Sync read | Folio lines and receipts match their stay exactly (FR-BIL-4); every folio write verifies the stay's existence and state before it writes, and the folio-creating read does too, bounded so the desk action fits (section 3b amendment; FR-FWV-1, FR-FWV-5) |
 | BIL charge/payment/day-close | Sync | Immediate balance feedback in the folio step (Seq-10/11); NFR-PERF-1 3 s |
 | ROOM state/list/block | Sync | Vacant-dirty release and inspected-only assignment are live desk handoffs (Seq-12; BR-28) |
 | ADM -> all (config read) | Sync at startup | Refusals inside desk steps need current values locally (FR-CUS-1, FR-RTE-4) |
@@ -553,8 +584,8 @@ need.
 |---|---|---|---|
 | Missing hotel-mandatory guest field | `VALIDATION_FAILED` | the missing field | FR-CUS-1; BR-33 |
 | Stay-restriction violation | `STATE_ILLEGAL` | the violated restriction | FR-RTE-4; BR-10 |
-| Booking or change whose request total disagrees with the quote | `PRICE_CHANGED` (409) | the requested total, the quoted total, the room type, and the dates | FR-PRC-2, FR-PRC-4; BR-47 |
-| Pricing unreadable at booking (upstream down, timeout, 5xx, unwired) | `UPSTREAM_UNAVAILABLE` (503) | the upstream and the operation | FR-PRC-3; BR-47 |
+| Booking or change whose request total disagrees with the quote | `PRICE_CHANGED` (409) | the requested total, the quoted total, the room type, and the dates | FR-PRC-2, FR-PRC-4; BR-52 |
+| Pricing unreadable at booking (upstream down, timeout, 5xx, unwired) | `UPSTREAM_UNAVAILABLE` (503) | the upstream and the operation | FR-PRC-3; BR-52 |
 | No sellable unit / simultaneous booking won | `CONFLICT` | room type and dates | NFR-CON-1; BR-8 |
 | Simultaneous check-in won the room | `CONFLICT` | the room | NFR-CON-2; BR-11 |
 | Room not ready for assignment | `STATE_ILLEGAL` | room and its state | FR-FDK-1; BR-16 |
@@ -562,6 +593,9 @@ need.
 | Open balance, no payment or approval | `SETTLEMENT_REQUIRED` | — | FR-BIL-7; BR-17 |
 | Presented folio is not the folio the balance came from | `CONFLICT` | both folio ids | FR-CKS-2; BR-21 |
 | Folio unreadable at the close (upstream down, timeout, 5xx, unwired) | `UPSTREAM_UNAVAILABLE` (503) | the upstream and the operation | FR-CKS-4; BR-46 |
+| Folio write for an unknown stay | `NOT_FOUND` | the stay | FR-FWV-2; BR-51 |
+| Folio write for a stay outside in-house (closed included) | `STATE_ILLEGAL` | the stay and its state | FR-FWV-3; BR-51 |
+| Folio route whose stay cannot be read (upstream down, timeout, 5xx, unwired, or a `NOT_FOUND` naming another stay) | `UPSTREAM_UNAVAILABLE` (503) | the upstream and the operation | FR-FWV-4; BR-51 |
 | Out-of-role attempt | `FORBIDDEN` | — | NFR-SEC-1; BR-35 |
 | Unknown entity (room type, reservation, guest, folio) | `NOT_FOUND` | the reference | guard completeness |
 | Undefined charge item | (architect assigns; suggested `VALIDATION_FAILED`) | the item | FR-BIL-2, FR-CUS-3; BR-22 |
@@ -635,7 +669,14 @@ request member. The #632 price authority (section 1a amendment) adds no
 operation either: it reads the existing `QuotePrice` server-side on
 create and modify, with two named error cases and no new request
 member (the existing `priceBasis` becomes advisory, which is a contract
-delta `architect` owns). No operation, field, or error case introduces
+delta `architect` owns). The #634 folio-write verification (section 3b
+amendment) adds no operation either: every folio write consumes the
+same `GetStayRef` through the C8 seam, with the three refusal classes
+named in section 9, and a stay that carries no folio is verified the
+same way before its folio is created. `GetFolioBalance`, `PostCharge`,
+`RecordPayment`, and `RecordOpenBalanceApproval` keep their payloads,
+and the contract change is error-code additive only. No operation,
+field, or error case introduces
 behaviour beyond the mapped FRs. Later capabilities from
 requirements section 6 carry no contract need here.
 
@@ -643,3 +684,6 @@ Counts: 8/8 HLD modules covered (7 consumer-facing pairs plus
 config/identity/reporting/export fans); 6 contract open questions
 (OQ-C1..OQ-C6) plus 5 product open questions (OQ-1..OQ-5) restated
 where they touch the contracts.
+
+<!-- ao-role: business-analyst -->
+Role: business-analyst · AO session hotel-mgmt-1047

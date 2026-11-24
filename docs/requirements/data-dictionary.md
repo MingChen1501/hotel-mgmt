@@ -60,7 +60,7 @@ guessing (`FR-BMV-2`, `FR-BMV-5`, `FR-BMV-6`, `BR-19`).
 The quoted total a reservation carries is the Pricing quote taken when
 the booking or change committed, never a value the request supplied,
 and a later rate change does not alter it (`FR-PRC-1`, `FR-PRC-4`,
-`BR-13`, `BR-47`). A booking whose request total disagreed with that
+`BR-13`, `BR-52`). A booking whose request total disagreed with that
 quote was never stored (`FR-PRC-2`).
 
 ## 2. Stay
@@ -224,7 +224,7 @@ unless staff explicitly recalculate it by modifying the reservation.
 The quoted total and the applied discount name are the ones Pricing
 quotes for the reservation's effective room type, dates, and named
 discount at the moment the booking or change was committed, not a
-total the caller supplies (`FR-PRC-1`, `FR-PRC-4`, `BR-47`). A
+total the caller supplies (`FR-PRC-1`, `FR-PRC-4`, `BR-52`). A
 request's `priceBasis.totalMinor` is advisory input: it is compared
 with that quote and never stored, and a total that disagrees is
 refused with `PRICE_CHANGED` while nothing is written (`FR-PRC-2`); a
@@ -335,7 +335,7 @@ basis entry (section 11) and the Reservation entry (section 1) state
 the price-authority obligation the #632 recompute relies on — the
 frozen total and applied discount name are the Pricing quote, a request
 total is advisory, and a reprice is recorded — and add no entry, field,
-or behaviour beyond those sources (`FR-PRC-1`..`FR-PRC-5`, `BR-47`).
+or behaviour beyond those sources (`FR-PRC-1`..`FR-PRC-5`, `BR-52`).
 
 Counts: 15 dictionary entries covering the 7 entity terminology concepts (T-1..T-7); T-8 is a spelling convention with no entry.
 
