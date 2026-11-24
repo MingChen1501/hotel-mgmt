@@ -7,11 +7,13 @@
 // folio screen (Refs #296) at `/folio`, the print screen
 // (Refs #297) at `/print`, the admin console (Refs #298) at
 // `/admin`, and the rooms and rates management desk screen (#590) at
-// `/manage`. Every other path still falls through to
-// the placeholder (LLD section 11.1 edge U–V).
+// `/manage`, and the read-only booking register (#648) at
+// `/bookings`. Every other path still falls through to the
+// placeholder (LLD section 11.1 edge U–V).
 import { createRouter, createWebHistory } from 'vue-router';
 import type { Router } from 'vue-router';
 import AdminView from './views/AdminView.vue';
+import BookingsView from './views/BookingsView.vue';
 import BookView from './views/BookView.vue';
 import DeskView from './views/DeskView.vue';
 import FolioView from './views/FolioView.vue';
@@ -56,6 +58,20 @@ export function createAppRouter(): Router {
         name: 'book',
         component: BookView,
         meta: { docTitleKey: 'desk.shell.doc_title_book', docTitleFallback: 'Book a room' },
+      },
+      {
+        // Read-only booking register (Refs #648): the list-and-detail
+        // screen over the existing reservation, room, and stay reads.
+        // The tab sits immediately after `Book`, grouping booking
+        // creation with booking browsing (spec section 3; the app-only
+        // `manage` route below is the shape).
+        path: '/bookings',
+        name: 'bookings',
+        component: BookingsView,
+        meta: {
+          docTitleKey: 'desk.shell.doc_title_bookings',
+          docTitleFallback: 'Bookings',
+        },
       },
       {
         path: '/stay',

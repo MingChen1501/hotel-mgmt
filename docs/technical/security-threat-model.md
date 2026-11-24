@@ -114,7 +114,7 @@ time (`BR-17`; ADR-0005). On a booking write the client may name the
 room type, dates, and discount; the total and the stored discount name
 are read back from Rates `QuotePrice`, and a request total that
 disagrees is refused with `PRICE_CHANGED` rather than adopted
-(`BR-13`; ADR-0006). An unreadable provider fails the operation
+(`BR-13`; ADR-0007). An unreadable provider fails the operation
 closed with `UPSTREAM_UNAVAILABLE` rather than proceeding on an
 unverified fact.
 

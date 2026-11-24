@@ -212,9 +212,9 @@ change (maintain-with-code).
   the server total), and the #600 check-out room charge, which keeps
   posting the frozen total — now a verified one.
 
-Design: `docs/architecture/decisions/adr-0006-server-side-reservation-price-authority.md`
-(proposed); flow detail, per-flow implementation diagrams, contract
-delta, and verification plan: `docs/architecture/lld.md` section 24.
+Design: `docs/architecture/decisions/adr-0007-server-side-reservation-price-authority.md`
+(accepted 2026-11-24); flow detail, per-flow implementation diagrams, contract
+delta, and verification plan: `docs/architecture/lld.md` section 25.
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-990

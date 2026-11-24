@@ -173,9 +173,11 @@ restate the list here — link it. Summary for orchestration use only.
   head, so a re-pushed head needs a fresh verdict.
 - Merge gate: a reviewer verdict of **APPROVE** + green CI +
   risk-low/risk-medium => the orchestrator merges autonomously with
-  `script/orchestrator-merge.sh <n>` (squash merge, delete branch) and
-  reports. `risk-high`, `risk-very-high`, or a missing label =>
-  explicit owner approval required before merging.
+  `script/orchestrator-merge.sh <n>` (squash merge; a native stack
+  member goes through one atomic async request, and a member retargeted
+  by an earlier stack merge is accepted only when the stack resource
+  proves the merged prefix) and reports. `risk-high`, `risk-very-high`,
+  or a missing label => explicit owner approval required before merging.
 - Review happens **after the PR is up**, never before.
 - A review session counts as a task worker (see Pool).
 - Route review findings to the responsible worker; do not fix code in
@@ -185,14 +187,51 @@ restate the list here — link it. Summary for orchestration use only.
 
 - Merge only through `script/orchestrator-merge.sh <n>` (run in the
   orchestrator worktree holding the uncommitted `.ao-orchestrator`
-  marker). The wrapper is the only merge path: it squash-merges via
-  `gh pr merge <n> --squash --delete-branch` as a child process of the
-  script (permission evaluation does not see it), while direct
-  `gh pr merge` stays denied for every session by
+  marker). The wrapper is the only merge path: for an unstacked PR it
+  squash-merges via `gh pr merge <n> --squash --delete-branch` as a
+  child process of the script (permission evaluation does not see it),
+  while direct `gh pr merge` stays denied for every session by
   `.opencode/opencode.jsonc` — so `--merge` (merge commit) and
   `--rebase` are unreachable. gh deletes the PR head branch after
   merging; when another open PR still targets the head as a base, the
   wrapper merges without `--delete-branch` and keeps the branch.
+- A native stack member (the PR's REST resource carries a `stack`
+  object) cannot be merged through `gh pr merge` at all: GitHub
+  requires the asynchronous merge REST API, and one request merges
+  every open PR at or below the requested position atomically. So the
+  wrapper gates every open member of the stack at or below that
+  position individually (exact-head APPROVE, green/skipped checks,
+  exactly one non-high risk label) and refuses on any failing or
+  unreadable member — including a non-linear or broken stack — before
+  it submits anything. A lower member already merged by an earlier
+  stack merge is skipped (it is not open, so the request cannot land it
+  again). After a stack merge, GitHub retargets the surviving members
+  onto the new default-branch head and leaves the stack metadata
+  unchanged, so a member's branch chain can be shorter than its
+  recorded position: that shape is accepted only when the stack
+  resource (`GET /repos/{owner}/{repo}/stacks/<n>`) proves every
+  position at or below the requested one that the branch chain does not
+  occupy is a merged member of the same stack. Each chain member is
+  mapped to the position the walk reached it at, never to a contiguous
+  run, so a skipped merged ancestor cannot shift a later member onto its
+  neighbour. The stale metadata is reported, never repaired, and every
+  other break (a longer chain, a chain member outside the stack, an open
+  lower member the chain does not contain, an unreadable resource, a
+  loop) still refuses. Treating such a member as unstacked is not an option:
+  GitHub refuses the synchronous endpoint for stack members. It then
+  issues one `PUT /repos/{owner}/{repo}/pulls/<n>/merge-async` request
+  pinned to the observed head SHA (`merge_method=squash`) and polls
+  the returned uuid to a terminal status: only `merged` means landed,
+  `enqueued` means queued (not merged), and `pending` is never
+  reported as merged. A `409` means a request already exists, so the
+  wrapper reuses its uuid instead of submitting a second one. A PUT
+  response with no readable HTTP status is not fatal: with a uuid the
+  wrapper polls that request, and without one it refuses as
+  unverifiable (fail closed). The async API never deletes branches: the
+  wrapper deletes the head branch afterwards only when no open PR still
+  targets it, and a failed deletion is a warning, never a failed merge.
+  `--dry-run` prints the exact request (synchronous or async) without
+  issuing it.
 - Merge only when CI is green: `pass` plus `skipping`/`SKIPPED` (jobs the
   path-aware CI marks as not applicable to the change) count as green.
   The script still refuses on `fail`/`failed`, `pending`, or `cancelled`
