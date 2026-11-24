@@ -111,7 +111,7 @@ bundle per `../devops/deployment.md` section 4. No schema migration and
 no data backfill exist on this path, in either direction: the stored
 `priceBasis` keeps its shape, and no table, column, migration, event,
 lifecycle state, or operation is added
-(`../architecture/lld.md` section 24.7). The revert keeps the database
+(`../architecture/lld.md` section 25.7). The revert keeps the database
 as it is and no restore is needed; a data restore is the bundle-failure
 path in `../devops/deployment.md` section 6, not this one. The revert
 ships a reservations module that stops calling
@@ -157,7 +157,7 @@ this note assumes no migration and no stored-shape change, a rework that
 adds a per-night breakdown, a rate-plan or quote-snapshot column, a
 stored quote reference, or a migration re-tiers the change: the migration
 is forward-only, and the rollback note moves into that implementation PR
-(`../architecture/lld.md` section 24.9).
+(`../architecture/lld.md` section 25.9).
 
 ### 5.2 Desk room reassignment and vacated-room release (Refs #647)
 

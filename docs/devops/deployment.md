@@ -116,7 +116,7 @@ address and not like the fail-soft stay-to-reservations completion: a
 rates module that cannot be read refuses the booking
 (`UPSTREAM_UNAVAILABLE`, 503) rather than freezing an unverified price,
 so an unreachable rates module stops the desk booking and modifying for
-as long as it lasts (`../architecture/lld.md`, section 24; the
+as long as it lasts (`../architecture/lld.md`, section 25; the
 desk-facing procedure is `../operations/runbook.md`, section 10).
 Reading bookings, cancellations, check-in, and check-out do not call
 rates on this path and keep working. No hotel input and no new
@@ -246,7 +246,7 @@ Run before every install and every upgrade; stop on any failure:
   module leaves the desk unable to book or change bookings while
   reading, cancelling, checking in, and checking out keep working
   (`../operations/runbook.md`, section 10.2; `../architecture/lld.md`,
-  section 24.2).
+  section 25.2).
 - The per-hotel configuration set validates against the release
   bundle's configuration schema with no missing required values.
 - First secrets are provisioned and handed over per the handover

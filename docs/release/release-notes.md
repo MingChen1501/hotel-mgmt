@@ -244,19 +244,19 @@ total — lower, higher, or zero for a priced stay — is refused
 `PRICE_CHANGED` (409) naming both totals, and a Pricing service that
 cannot be read refuses the booking `UPSTREAM_UNAVAILABLE` (503) instead
 of freezing an unverified price, so nothing is written in either refusal
-(`../architecture/lld.md` section 24.2–24.6; as-built defect trace
+(`../architecture/lld.md` section 25.2–25.6; as-built defect trace
 `../architecture/services/reservations.md` section 9). The stored
 `priceBasis` keeps its shape, and the #600 check-out room charge keeps
 posting the frozen total — now a verified one. Done-conditions
-`AC-PRC-1`..`AC-PRC-5` (`../product/acceptance-criteria.md` section 17)
+`AC-PRC-1`..`AC-PRC-5` (`../product/acceptance-criteria.md` section 18)
 with the desk recovery `AC-DSK-20`; requirements `FR-PRC-1`..`FR-PRC-5`
-(`../requirements/mvp-requirements.md` section 25); decision ADR-0006
-(`../architecture/decisions/adr-0006-server-side-reservation-price-authority.md`,
-proposed — the owner accepts it before the implementation PR merges) and
-D-28 in `../project/decision-log.md`; risk R-12 in
+(`../requirements/mvp-requirements.md` section 26); decision ADR-0007
+(`../architecture/decisions/adr-0007-server-side-reservation-price-authority.md`,
+accepted 2026-11-24 on owner approval) and D-30 in
+`../project/decision-log.md`; risk R-13 in
 `../project/risk-register.md`. Risk label: `risk-high`, tier T3. No
 schema, table, column, migration, backfill, event, lifecycle state, or
-stored-shape change (`../architecture/lld.md` section 24.7).
+stored-shape change (`../architecture/lld.md` section 25.7).
 
 **What staff see.** On the normal path nothing changes: the Book screen
 already quotes the stay before the clerk confirms, so the total the
@@ -312,7 +312,7 @@ a caller that bypasses the desk can freeze any total again, and the #600
 room charge posts it.
 
 **Evidence state and follow-ups.** The change is T3 and `risk-high`: it
-needs owner acceptance of ADR-0006 (`proposed -> accepted`) plus the
+needs the ADR-0007 record (accepted 2026-11-24) plus the
 `spec-reviewer` `SPEC-GATE PASS` on #632 before the implementation PR
 merges, and the owner merges it personally. The guard registry
 `PA1`–`PA14`, cases `PA-1`..`PA-8`, and the evidence rule `PA-E1` are the
@@ -333,7 +333,7 @@ unchanged; and the lab records the forged-low and unreadable-Pricing
 before/after pair in `../testing/evidence/632/README.md` (`PA-E1`) with
 the slice row in `../testing/test-report.md`. Deliberately open: no
 backfill or re-derivation for bookings frozen before this bundle
-(`../architecture/lld.md` section 24.9); a rates outage now refuses
+(`../architecture/lld.md` section 25.9); a rates outage now refuses
 bookings until it clears, mitigated by an availability alert rather than
 a cached total (R8 — the alert is an obligation for
 `../operations/monitoring-alerting.md` when the first exporter lands,
