@@ -656,6 +656,13 @@ product scope have no FR and are listed in section 6.
 
 Coverage: 40 MVP capabilities mapped, 0 unmapped.
 
+Amendment (Refs #627): the shared failure vocabulary is a transport-wide
+requirement, not a capability — `FR-ERR-1`..`FR-ERR-3` (section 29)
+constrain every operation's answer when it fails for a reason that is
+not one of the hotel's refusals — so this table gains no row, the
+40-capability count stands, and the handoff for those three requirements
+is section 29.5.
+
 ## 5. Open questions (decided by `product-owner`, impact worded by `business-analyst`)
 
 - OQ-1 — Which payment methods beyond cash and card must payment
@@ -937,6 +944,12 @@ sentence naming the cause (for example, an open-balance
 check-out refusal names the balance and the payment-or-
 approval next step). Refusal conditions are unchanged —
 only the wording becomes stand-in readable.
+
+Amendment (Refs #627): the service-side counterpart of this rule is
+worded in section 29 — an unexpected exception answers `INTERNAL_ERROR`
+(500) instead of `VALIDATION_FAILED`, and that token is never rendered,
+so this condition's no-technical-codes rule keeps holding unchanged
+(section 29, `FR-ERR-1`).
 
 FR-DSP-4 — Print output unchanged. Receipts, invoices, and
 confirmations print exactly as today.
@@ -6498,5 +6511,346 @@ ones included, stay as they are.
   change), confirmed by `architect`. This section is its FR/NFR part; no
   implementation PR opens until `SPEC-GATE PASS` on #634.
 
+## 29. Backend faults answer an internal-error code (Refs #627)
+
+Requirements delta for the #627 change (audit finding C1): every Node
+service answers an unexpected exception with HTTP 500 but the body code
+`VALIDATION_FAILED`, the token that states the caller's request was
+wrong (`services/stay/src/server.ts:79-85`,
+`services/guests/src/server.ts:50-56`, `services/rooms/src/server.ts:50-56`,
+`services/admin/src/server.ts:58-64`), so a database or driver failure
+reaches the desk as bad input. No canonical FR stated what a service must
+answer when an operation fails for a reason that is not one of the
+hotel's refusals, and none bound the codes a service serves to the one
+shared contract enum. This section words both, for the four Node
+services that serve the desk.
+
+The scope decision, the counted done-conditions, and the desk no-change
+rule are `product-owner` work: `docs/product/acceptance-criteria.md`
+[section 21](../product/acceptance-criteria.md) (`AC-ERR-1`..`AC-ERR-5`)
+and D-33 in `docs/project/decision-log.md`
+[the decision log](../project/decision-log.md). The contract
+registration, the technical taxonomy, and the architecture-side
+per-flow diagram are `architect` work: `contracts/errors/envelope.json`,
+`docs/technical/error-handling.md`
+[section 1](../technical/error-handling.md), and LLD
+[section 28](../architecture/lld.md). Guard traceability is the
+`qa-lead` handoff (`docs/testing/traceability-matrix.md` section 21);
+the release note and the rollback pointer are the `release-manager`
+handoff. This section words the requirements half: the decision (29.1),
+the explicit no-change statements (29.2), the FR delta (29.3), the NFR
+statement (29.4), the traceability handoff with its per-flow diagram
+(29.5), and the gate dependencies plus out-of-scope list (29.6). No
+`docs/README.md` row flips: every requirements file this change touches
+is already `active`.
+
+### 29.1 Decision: a backend fault is never bad input, and the contract enum is the one vocabulary
+
+As-built trace at this spec head, read-only — the lab reproduction of
+the finding belongs in the implementation PR body or an issue comment,
+per the issue's scope:
+
+- **Every Node catch-all answers a 500 with a refusal code.** The
+  unexpected-exception arm of each service writes `writeJson(res, 500,
+  …)` with the literal `code: "VALIDATION_FAILED"`:
+  `services/stay/src/server.ts:79-85` (the literal at `:81`),
+  `services/guests/src/server.ts:50-56` (`:52`),
+  `services/rooms/src/server.ts:50-56` (`:52`), and
+  `services/admin/src/server.ts:58-64` (`:60`).
+- **No internal-error token exists in the maps.** Each service's
+  `ErrorCode` union and `STATUS_BY_CODE` register refusal codes only —
+  seven in Stay, Guests, and Rooms; eight in Admin, which adds
+  `IDENTITY_LOCKED` (`services/{stay,guests,rooms}/src/errors.ts:4-21`,
+  `services/admin/src/errors.ts:4-23`) — so a fault has no token of its
+  own to answer with, and the catch-all borrows a refusal's.
+- **A store failure reaches that arm.** Stay's Postgres store calls the
+  pool and its clients directly and throws `HttpError` only for a
+  product refusal (`services/stay/src/pgstore.ts:207-219`, `:302-306`,
+  `:344-362`; the `HttpError` throws at `:212-219`, `:300`,
+  `:352-362`), so a driver error is an ordinary exception and lands in
+  the 500 arm.
+- **The contract enum is what the maps have to follow.**
+  `contracts/errors/envelope.json:9` holds the `code` enum and `:16-28`
+  the `statusMapping`; the Admin contract-sync guard constructs every
+  `statusMapping` entry as an `HttpError` and asserts its status
+  (`services/admin/src/errors.test.ts:25-29`), and
+  `script/contract-check.sh` gates the file itself.
+- **`UPSTREAM_UNAVAILABLE` was emitted and described but
+  unregistered.** Reservations answers it when the stay-restriction
+  check cannot be trusted
+  (`services/reservations/internal/service/service.go:76-83`), while the
+  token was absent from the enum and from all four Node maps. The
+  architect part of this change registers it together with
+  `INTERNAL_ERROR` (500) and the `METHOD_NOT_ALLOWED` (405) the Go and
+  Billing conformance changes consume
+  (`docs/technical/error-handling.md:26-40`).
+- **The desk already refuses to render a code.** A desk guard forbids a
+  raw envelope token or a status number in rendered text
+  (`app/src/views/desk-edge-guards.test.ts:38-45`), and a failed read
+  renders the shell's plain request-failed sentence
+  (`app/src/views/RoomsView.vue:669-681`), so the token changes none of
+  the desk's words.
+- **No guard drives the catch-all today.** The four service suites pin
+  health, routing, and refusal answers (`services/guests/src/server.test.ts:43-51`
+  and the same test in the three siblings) and none constructs a
+  non-`HttpError` failure, which is why the wrong token never failed a
+  test.
+
+The decided behaviour, in five parts:
+
+1. **A backend fault is never bad input.** `VALIDATION_FAILED` (400)
+   states that the caller's body or a field is wrong and keeps exactly
+   that meaning; an unexpected exception — a store or driver failure, a
+   wiring fault, a crash — is answered with `INTERNAL_ERROR` (500), so
+   the desk and support can tell a fault from a mistake (`FR-ERR-1`).
+2. **One token for one meaning, in all four services.** Every Node
+   service that serves the desk answers the same code for the same
+   meaning; no service keeps a local variant, and a later caller that
+   copies the catch-all inherits the token.
+3. **The envelope shape does not change.** The `5xx` answer keeps
+   `code`, `message`, `details`, and `traceId`; the message stays the
+   existing plain `error.transport.unexpected` catalogue sentence,
+   `details` stays empty rather than inventing a field, and `traceId` is
+   present on every answer. No driver, SQL, host, path, or stack-trace
+   text ever reaches the envelope (`NFR-I18N-1`).
+4. **The contract enum is the single vocabulary and the maps follow
+   it.** `INTERNAL_ERROR` (500), `UPSTREAM_UNAVAILABLE` (503), and
+   `METHOD_NOT_ALLOWED` (405) are registered in
+   `contracts/errors/envelope.json` in the same change, and all four
+   Node maps accept the three tokens with those statuses, so no service
+   answers a code the contract does not list and no gate drifts
+   (`FR-ERR-2`).
+5. **Existing refusals are untouched.** Every refusal path keeps its
+   code and its status; nothing is reclassified as an internal error
+   because the transport now has a token for faults (`FR-ERR-3`).
+
+| Option | Verdict | Reason |
+|---|---|---|
+| Keep `VALIDATION_FAILED` on the 500 (status quo) | rejected | That is the finding: a database failure reads to the desk as bad input, so staff act on a wrong reading and support cannot separate a fault from a mistake (`AC-ERR-1`). |
+| Add a service-local token per Node service | rejected | Four spellings of one meaning is the drift the contract enum exists to prevent; the Admin contract-sync guard and `contract-check` read one vocabulary (`AC-ERR-2`). |
+| Answer a fault with `UPSTREAM_UNAVAILABLE` (503) | rejected | That token means a provider that had to be read could not be read, so the operation fails closed; a local crash or store failure names no upstream and carries no operation (`BR-59`). |
+| Add an envelope field (for example `kind: "fault"`) | rejected | The envelope shape is `code`, `message`, `details`, `traceId`; the `code` token carries the distinction and no client schema changes (`FR-ERR-1`). |
+| One internal-error token registered in the contract enum and honoured by all four Node maps, refusals untouched | **chosen** | It states the meaning once, keeps every refusal as decided, changes no envelope field or desk surface, and holds the enum, the taxonomy, and the four maps in one vocabulary (`FR-ERR-1`..`FR-ERR-3`). |
+
+### 29.2 Explicit no-change statements
+
+- The MVP capabilities keep their wording and targets: no `FR-RES-*`,
+  `FR-FDK-*`, `FR-RMS-*`, `FR-RTE-*`, `FR-GST-*`, `FR-BIL-*`,
+  `FR-RPT-*`, `FR-ADM-*`, or `FR-CUS-*` condition changes. No new MVP
+  capability, story, or business-rule count moves: section 4 keeps its
+  40 mapped capabilities and its coverage line, and the behaviour is
+  numbered as slice-scoped requirements (`FR-ERR-*`, 29.3) on the
+  section 10–28 pattern.
+- The refusal vocabulary is not re-decided: every code and status the
+  hotel already answers with stays as written (`FR-ERR-3`), and the
+  requirements-side error index
+  (`integration-contract-needs.md` section 9) gains the fault-token row
+  and loses none.
+- The envelope shape is not re-decided: `code`, `message`, `details`,
+  and `traceId` stay the four fields (`docs/technical/error-handling.md`
+  section 1 stands), the fault message stays the existing catalogue
+  sentence, and no field is added, renamed, or removed.
+- The desk is not changed: no route, shell layout, catalogue key,
+  sentence, or print rule moves. `FR-DSP-3` stands — a rendered failure
+  is one plain sentence and never a code, status number, or stack trace
+  — so `INTERNAL_ERROR` is not new copy and reaches no screen.
+- Authorization is not re-decided: no role, account, or reach changes,
+  and a rejected session still answers `UNAUTHENTICATED` and routes the
+  desk to its sign-in gate (`NFR-SEC-2` holds).
+- Availability and desk response are not re-decided: a fault is still a
+  `5xx` outcome that the desk already treats as an unreadable outcome
+  (`docs/technical/error-handling.md` section 4, Refs #647), and the
+  change adds no call, retry, backoff, or wait (`NFR-AVL-1`,
+  `NFR-PERF-1` hold).
+- No schema, table, column, migration, stored value, or event change is
+  specified; the data dictionary is unchanged and nothing is backfilled
+  or repaired.
+- Audit content is unchanged (`NFR-AUD-1`, `BR-36`): a fault writes no
+  audit entry today and none is added, and a committed change keeps the
+  acting staff member exactly as today.
+- Idempotency is unchanged (`NFR-CON-1`, `NFR-CON-2` hold): a fault
+  leaves the write's fate unknown exactly as a `5xx` does today, and no
+  retry policy is introduced by this change.
+- Sections 7 through 28 stand with their wording and targets unchanged,
+  except the `FR-DSP-3` amendment pointer (section 8.2), the section 4
+  cross-cutting amendment paragraph, and the one business rule added in
+  `business-rules.md` (`BR-59`).
+
+### 29.3 Behaviour-scoped functional requirements
+
+Ids use the `ERR` (shared failure vocabulary) namespace, continuing the
+slice-scoped pattern of sections 10 through 28. They constrain the four
+Node services' answer to a failed operation, and each maps to an accepted
+done-condition in `AC-ERR-1`..`AC-ERR-3`.
+
+FR-ERR-1 — An unexpected failure answers `INTERNAL_ERROR`, never
+`VALIDATION_FAILED`.
+Given any operation of Stay, Guests, Rooms, or Admin is reached and the
+call fails for a reason that is not one of the hotel's refusals — an
+unexpected exception, a store or driver failure, a wiring fault, or a
+crash; when the service answers; then the answer is HTTP 500 carrying
+the shared envelope with `code` equal to `INTERNAL_ERROR` and never
+`VALIDATION_FAILED`, `message` equal to the existing plain
+unexpected-failure sentence carrying no driver, SQL, host, path, or
+stack-trace text, `details` empty rather than carrying an invented
+field, and `traceId` present, so the desk and support can tell a fault
+from bad input and trace it. Given the same service serves its next
+request; then it answers normally, so one fault never leaves the module
+unable to serve. Given the same failing call is repeated; then it
+answers the same way and a fault is never reported as bad input on a
+retry. Given the failure is one of the hotel's refusals — a malformed
+body or field, a rejected session, a locked identity, an out-of-role
+attempt, an unknown route or entity, a conflict, an illegal state, an
+unmet settlement gate, or an unreadable provider; then that refusal's
+own code and status answer and only the non-refusal throw answers
+`INTERNAL_ERROR` (`FR-ERR-3`). Traces to: `AC-ERR-1`; FR-DSP-3;
+NFR-I18N-1; NFR-AUD-1; `BR-59`.
+
+FR-ERR-2 — The codes a service serves are the contract's one
+vocabulary.
+Given the shared contract registers the envelope vocabulary in
+`contracts/errors/envelope.json`; when any of the four Node services
+answers a failure; then its `code` is one the contract enum lists and
+its HTTP status is that code's `statusMapping` entry, and the service
+answers no code the enum omits. Given this change lands; then the enum
+and its status mapping register `INTERNAL_ERROR` (500),
+`UPSTREAM_UNAVAILABLE` (503), and `METHOD_NOT_ALLOWED` (405) beside the
+codes already registered, `docs/technical/error-handling.md` section 1
+describes all three with their statuses, and each of the four Node maps
+accepts the three tokens at those statuses — Stay, Guests, and Rooms
+keep `IDENTITY_LOCKED` admin-only as today, and Admin keeps the entry it
+already carries — so the enumeration of emitted codes and the contract
+cannot drift. Given the change is verified; then `script/contract-check.sh`
+passes with every served or derived copy matching the single source, and
+the Admin guard that resolves every `statusMapping` entry in code passes
+(`services/admin/src/errors.test.ts:25-29`). Given a later change adds a
+code to the contract; then the maps and the guard move in that same
+change rather than drifting apart. Traces to: `AC-ERR-2`; ADR-0004 D1
+(additive code); `BR-59`.
+
+FR-ERR-3 — Every existing refusal keeps its code and its status.
+Given a refusal the hotel already decided — a malformed body or field
+(`VALIDATION_FAILED`, 400), a rejected or expired session
+(`UNAUTHENTICATED`, 401), a locked identity (`IDENTITY_LOCKED`, 401), an
+out-of-role attempt (`FORBIDDEN`, 403), an unknown route, path, entity,
+or stay (`NOT_FOUND`, 404), a conflict (`CONFLICT`, 409), an unmet
+settlement gate (`SETTLEMENT_REQUIRED`, 409), an illegal state
+(`STATE_ILLEGAL`, 422), or a provider that had to be read and could not
+be (`UPSTREAM_UNAVAILABLE`, 503); when it is raised; then its code and
+HTTP status are exactly what they answer today, its `message` and
+`details` name what they name today, and no product refusal is
+reclassified as `INTERNAL_ERROR`. Given a refusal and a fault are
+possible on the same operation; then the refusal answers with its own
+code and only the non-refusal throw answers the internal-error token, so
+the two meanings never share a token. Given the refusal conditions
+written earlier — `AC-FDK-2`, `AC-CKO-1`, `AC-CKO-2`, and
+`FR-FWV-2`..`FR-FWV-4`; then they hold exactly as written. Given a Node
+service is reached with an unknown operation or a wrong method; then it
+keeps its `404 NOT_FOUND` answer: `METHOD_NOT_ALLOWED` (405) is
+registered for the Go and Billing conformance changes (#628, #629) and
+no desk action sends or can receive it. Traces to: `AC-ERR-3`;
+`FR-FDK-2`; `FR-BIL-7`; `FR-FWV-2`..`FR-FWV-4`; `BR-59`.
+
+### 29.4 Non-functional requirements delta: no-change statement
+
+No new NFR is added. The existing NFRs cover the change:
+
+- Internationalisation (`NFR-I18N-1` holds): the fault sentence stays
+  the `error.transport.unexpected` catalogue string in both locales, no
+  catalogue key is added or removed, and the new token is never rendered
+  as text (`FR-DSP-3`, `AC-ERR-5`). The answer carries no driver, SQL,
+  host, path, or stack-trace text.
+- Audit (`NFR-AUD-1`, `BR-36` hold): a fault writes no audit entry and
+  a committed change keeps the acting staff member and timestamp exactly
+  as today; the envelope's `traceId` correlation is unchanged.
+- Availability (`NFR-AVL-1` holds): the desk keeps working on-premise
+  for every other step, and a fault is still an unreadable outcome under
+  the existing rule (`docs/technical/error-handling.md` section 4) —
+  nothing released, the rooms named to re-read.
+- Desk response (`NFR-PERF-1` holds): no call, retry, backoff, or wait
+  is added; the `5xx` answer is written in the same request.
+- Concurrency and safety (`NFR-CON-1`, `NFR-CON-2` hold): idempotency
+  and the paired-write guards are untouched, and a fault leaves the
+  write's fate unknown exactly as today.
+- Security (`NFR-SEC-1`, `NFR-SEC-2` hold): no role, account, or reach
+  changes, a rejected session keeps `UNAUTHENTICATED`, and the `5xx`
+  message discloses strictly less than a driver error would.
+- Print (`NFR-DSK-2` holds): no print surface or rule moves.
+- Time and locale (`NFR-TZ-1`, `BR-43` hold): no timestamp or date form
+  is added or changed.
+
+### 29.5 Traceability handoff for `qa-lead`
+
+Each row traces to the `AC-ERR` conditions and to this section's FRs.
+Guards that exist are cited `file:line` against the tree this
+requirement was written on; where no guard exists yet, the row names the
+missing guard explicitly and the implementation PR creates it, for
+`qa-lead` to re-pin at the merged head. The existing suites must pass
+untouched, which is the `FR-ERR-3` proof.
+
+| Item | Guard (on disk today; a row marked missing is created by the implementation PR) | Handoff note for `qa-lead` |
+|---|---|---|
+| FR-ERR-1 the `INTERNAL_ERROR` answer, per service | `services/{guests,rooms,stay,admin}/src/server.test.ts` — the bind-and-request harness every answer test reuses (`guests/src/server.test.ts:10-27`, `rooms:8-25`, `stay:15-32`, `admin:6-23`); the fault sentence is catalogue-owned (`services/stay/src/messages.test.ts:21`). Missing today: no test drives the catch-all | Missing guards, one per service: stub the store so an operation throws a plain `Error` (not an `HttpError`), then assert HTTP 500, a JSON body, exactly the four envelope keys, `code: "INTERNAL_ERROR"`, the `error.transport.unexpected` sentence, `details` equal `{}`, a non-empty `traceId`, and no `VALIDATION_FAILED`; assert the next request on the same server answers normally; assert an `HttpError` refusal on the same route still answers its own code and status |
+| FR-ERR-2 contract-enum conformance | `contracts/errors/envelope.json:9`, `:16-28`; `script/contract-check.sh`; `services/admin/src/errors.test.ts:25-29` (the Admin map resolves every `statusMapping` entry) | Missing guards: each of the four maps yields `INTERNAL_ERROR` 500, `UPSTREAM_UNAVAILABLE` 503, and `METHOD_NOT_ALLOWED` 405 through `new HttpError(...).status`; a guard enumerates every code a service can emit and fails on any code the enum omits, so a later token cannot drift |
+| FR-ERR-3 refusals unchanged | `services/stay/src/server.test.ts:48-56` (unknown path → `NOT_FOUND` envelope) and the same test in the three siblings; the four `errors.ts` maps (`services/{stay,guests,rooms}/src/errors.ts:4-21`, `admin:4-23`); `services/admin/src/errors.test.ts:25-29`; `app/src/views/desk-edge-guards.test.ts:38-45` (no raw envelope token or status number rendered) | These pin today's refusal codes, statuses, and the desk's no-leak rule; they must pass without an edit. The new `5xx` guards above must not move any refusal assertion, and `METHOD_NOT_ALLOWED` must stay unreachable from a Node route |
+| Desk behaviour unchanged | `app/src/views/desk-edge-guards.test.ts:38-45`; `app/src/views/RoomsView.vue:669-681` (the plain request-failed sentence); `script/catalogue-coverage-check.sh` | Missing: no new desk guard is needed — the change adds no sentence; confirm no catalogue key was added or removed and that a `5xx` still renders the plain sentence with no token |
+
+Per-flow implementation diagram (T2). The architecture-side diagram is
+LLD section 28.2; this is the requirements-side view of the same flow,
+citing the code edges this section was written against:
+
+```mermaid
+flowchart TD
+    A[Desk calls an operation of Stay, Guests, Rooms, or Admin: POST /v1/MODULE/Operation  stay/src/server.ts:76] --> B{Route, session, and body accepted}
+    B -- no --> R400[4xx refusal with its own code and status: VALIDATION_FAILED 400, UNAUTHENTICATED 401, IDENTITY_LOCKED 401, FORBIDDEN 403, NOT_FOUND 404, CONFLICT 409, STATE_ILLEGAL 422, SETTLEMENT_REQUIRED 409  FR-ERR-3]
+    B -- yes --> C{Operation outcome}
+    C -- success --> S[200 operation payload]
+    C -- HttpError product refusal --> R4B[4xx refusal from the service map, unchanged  errors.ts:13-33; FR-ERR-3]
+    C -- unexpected throw: not an HttpError --> E[500 INTERNAL_ERROR  server.ts:79-85; FR-ERR-1]
+    E --> F[message: plain unexpected-failure sentence; details empty; fresh traceId]
+    F --> G[desk applies the unreadable-outcome rule: nothing released, rooms named to re-read  RoomsView.vue:669-681]
+    G --> H[Support traces traceId; the next request answers normally]
+```
+
+Failure/rollback path: the catch-all writes one envelope and mutates
+nothing, so a fault has no earlier write of its own call to take back; a
+multi-call desk action that receives the `5xx` applies the existing
+unreadable-outcome rule (`docs/technical/error-handling.md` section 4)
+and releases nothing. The whole change reverts with the single
+implementation PR: the four literals fall back to
+`VALIDATION_FAILED`-on-500, the four maps lose the three entries, and
+the contract enum loses the three tokens — no migration, backfill, or
+data repair exists in either direction, and the desk's words, routes,
+and print output are unaffected either way.
+
+### 29.6 Explicitly not specified here (plus gate dependencies)
+
+- Implementation — the four catch-all literals, the four `errors.ts`
+  maps, and the per-service `5xx` guards — is the downstream `dev` PR for
+  #627, not this section.
+- Contract delta: the `contracts/errors/envelope.json` enum and
+  `statusMapping`, the technical taxonomy
+  (`docs/technical/error-handling.md` section 1), and the
+  architecture-side per-flow diagram (LLD section 28) are `architect`
+  work; this section states only the requirements-side need and cites the
+  registered vocabulary without re-authoring it.
+- The `AC-ERR` conditions, D-33, and the desk no-change rule are
+  `product-owner` work; the guard mapping above is `qa-lead` work
+  (`docs/testing/traceability-matrix.md` section 21); the release note,
+  the rollback pointer, and the operations note are `release-manager`
+  work. No implementation PR opens until `SPEC-GATE PASS` on #627.
+- Out of scope: deduplicating the four `errors.ts` copies into a shared
+  module (a repo-layout decision for `architect` with its own issue);
+  the Go and Java services' own `5xx` mappings (#628 and #629, including
+  their `METHOD_NOT_ALLOWED` consumption); any retry or backoff policy; a
+  new envelope field or a client-side change in what a `500` means beyond
+  the code token; and per-answer rollback semantics, which the existing
+  unreadable-outcome rule already settles.
+- The specified change is tier T2 (a caller-visible wire-vocabulary
+  change — a new token on the `5xx` path plus a grown contract enum —
+  with no new subsystem, dependency edge, data model, lifecycle state, or
+  reader-visible surface), confirmed by `product-owner` and `architect`.
+  This section is its FR/NFR part.
+
 <!-- ao-role: business-analyst -->
-Role: business-analyst · AO session hotel-mgmt-1047
+Role: business-analyst · AO session hotel-mgmt-1062
