@@ -224,8 +224,13 @@ Markdown states intent; config + scripts enforce it:
 - `script/orchestrator-merge.sh`: the only merge path — squash merge
   via `gh pr merge --squash --delete-branch` as a child process, only
   on OPEN PR + exactly one risk label (`risk-low`/`risk-medium`) +
-  green CI. `risk-high`, `risk-very-high`, or a missing label needs
-  explicit owner approval, and then the owner merges manually.
+  green CI. A native stack member cannot use `gh pr merge`: the wrapper
+  gates every open member at or below the requested position
+  individually, then submits one atomic async `merge-async` request
+  pinned to the observed head, polls the uuid to a terminal status, and
+  deletes the head branch only when no open PR still targets it.
+  `risk-high`, `risk-very-high`, or a missing label needs explicit
+  owner approval, and then the owner merges manually.
 - `script/orchestrator-review.sh`: the sanctioned native-review
   trigger (only when the orchestrator uses native review mode).
 

@@ -175,6 +175,17 @@ decided headings); app-side list rows carry no entry yet (fresh
 lab renders empty DataTables — flow-state, rows proposed when a
 run with stay data shows them).
 
+Stay decision update (Refs #647, owner-reported stale-hold defect):
+the additive `Move room` card is a **decided addition** beyond the
+owner board, recorded in the fact-level comparison
+(`app/e2e/design-facts.ts` `DECIDED_CONTENT`: the third h3, the two
+picks, and the `Chuyển khách` button) rather than exempted here. The
+Stay screen stays in both gates; no DD entry is added or retired, and
+the live dom-diff run reports the app-only card nodes as the accepted
+S1 shape divergence (PrimeVue shell vs design markup) like every
+other app-only node. Exempting it would hide the screen from the
+comparison, which the decision forbids.
+
 Lab evidence (isolated `hotel-lab-695`, 2026-11-06, `vi` locale,
 Chromium, `--workers=1`): Folio `137` non-allowlisted diffs before
 wiring (design 41 nodes, app 106 nodes: 36 design-side `x-dc`

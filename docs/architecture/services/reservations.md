@@ -21,7 +21,7 @@ Go `handler / service / store`, wired in `services/reservations/cmd/server/main.
 | Health | `internal/health/` | `GET /healthz` with the module identity |
 | Boot | `cmd/server/main.go` | selects Postgres storage when `DATABASE_URL` is set, mounts health + booking routes |
 
-The routing table (`internal/handler/handler.go`): `CreateReservation` (:121), `GetReservation` (:161), `CheckInReservation` (:184), `ModifyReservation` (:207), `CancelReservation` (:246), `MarkNoShow` (:266), `QueryCalendar` (:285). Read-only `GetReservation`/`QueryCalendar` call the store directly; the four lifecycle writes go through `service.Service` first.
+The routing table (`internal/handler/handler.go`): `CreateReservation` (:121), `GetReservation` (:161), `CheckInReservation` (:184), `CheckOutReservation` (:207), `ModifyReservation` (:229), `CancelReservation` (:268), `MarkNoShow` (:288), `QueryCalendar` (:307). Read-only `GetReservation`/`QueryCalendar` call the store directly; the four booking lifecycle writes go through `service.Service` first, and `CheckOutReservation` — the provider-to-provider completion called by Stay after a committed close (#646, `FR-DEP-1`) — writes through the store's conditional `checked-in -> closed` transition, resolved by the unique stay link.
 
 ## 3. Happy-path flowchart
 
@@ -62,7 +62,7 @@ Edge trace:
 - V: any service/handler validation rejects before the store is touched (`internal/service/service.go:87-119`; handler required-field checks, e.g. `internal/handler/handler.go:162-164`).
 - O: `booked >= SellableUnits` → `CONFLICT` "No sellable unit left" (`internal/store/store.go:221`).
 - K: create/modify/cancel replays return the stored record (`internal/store/store.go:208,343,426`; Create/Modify/Cancel thread the key through `internal/service/service.go:120-130,225-236,258`).
-- S: `CheckIn` requires `confirmed` (:297-311); Modify/Cancel/MarkNoShow on a non-`confirmed` record go through `stateRefusal` → `STATE_ILLEGAL` 422 (`internal/store/store.go:322-329`).
+- S: `CheckIn` requires `confirmed`; Modify/Cancel/MarkNoShow on a non-`confirmed` record go through `stateRefusal` → `STATE_ILLEGAL` 422 (`internal/store/store.go`). `CheckOutReservation` requires `checked-in`, returns the already `closed` booking idempotently, and writes one `state` change row with the actor and time (no event, LLD D5).
 - N: unknown ref → `NOT_FOUND` 404 (`internal/store/store.go:263-268`).
 
 Rollback: there is none to run — every write is a single mutex-guarded step (`internal/store/store.go:205`); a refusal happens before any mutation, so no compensation path exists in code.
@@ -127,7 +127,44 @@ Contract tests: `contract-tests/` holds fixtures per provided/consumed operation
 script/contract-check.sh
 ```
 
-## 8. Planned delta — server-side availability derivation (Refs #631, ADR-0006 accepted)
+## 8. Planned delta — departure completion (Refs #646)
+
+Not as-built yet: the operation surface stops at the seven routes in
+section 2 (`internal/handler/handler.go:121-300`), the repository
+interface stops at create/get/query/check-in/modify/cancel/no-show
+(`internal/store/store.go:109-117`), and nothing writes the terminal
+`closed` state, which is why a departed booking keeps counting as
+active. This section records the target the implementation PR folds
+into sections 2, 3, 4, 5, and 6 in the same change (maintain-with-code).
+
+- New provider operation `CheckOutReservation` (`POST
+  /v1/reservations/CheckOutReservation`), called by Stay after its close
+  commits: request `{stayId, actor}`, response `{reservationId,
+  reservationRef, state: "closed", stayId}`; resolved by the `stay_id`
+  link set at check-in (`migrations/000002_schema.up.sql:33`), never by
+  guest name or dates. A `checked-in` booking flips to `closed` under a
+  conditional write, with the `reservation_changes` row and
+  `updated_by`/`updated_at` (NFR-AUD-1); an already-`closed` booking
+  returns unchanged (the state is its own exactly-once guard); any other
+  state is `STATE_ILLEGAL`, an unmatched link `NOT_FOUND`.
+- The purpose line's state machine gains the terminal step
+  `checked-in -> closed` on check-out, matching
+  `docs/architecture/state-machine.md` section 1.1; it stays
+  unreachable from every other route (no reopen, no check-out from
+  `confirmed`).
+- No guard rewrite: the create/modify guard already counts only
+  `confirmed` / `checked-in`, so a completed booking releases its unit
+  and its remaining nights on an early departure. No outbox event is
+  added by this change (LLD D5).
+- The section 2 routing table gains the operation row and section 6 gains
+  no new code (the operation reuses `NOT_FOUND`, `STATE_ILLEGAL`, and
+  `VALIDATION_FAILED`); those are the maintain-with-code edits.
+
+Design: `docs/architecture/lld.md` section 22; state diagram
+`docs/architecture/state-machine.md` section 1.1; contract delta LLD
+section 22.5.
+
+## 10. Planned delta — server-side availability derivation (Refs #631, ADR-0006 accepted)
 
 Not as-built yet: this section records the target the implementation PR
 folds into sections 2, 3, 4, 5, 6, and 7 in the same change
@@ -153,10 +190,10 @@ desk supplies `sellableUnits`, which is the guard's only ceiling
 - The store keeps its one-critical-section count-and-insert shape; the
   counted states stay `confirmed` + `checked-in`.
 - New `UPSTREAM_UNAVAILABLE` branch in the message catalogue plus the
-  contract delta in LLD section 22.5 and the fixture updates in
+  contract delta in LLD section 26.5 and the fixture updates in
   `contract-tests/` (advisory field, new error).
 
-Design: `docs/architecture/lld.md` section 22; threat-model B6 and
+Design: `docs/architecture/lld.md` section 26; threat-model B6 and
 residual risks R-OVB-1..R-OVB-6 in
 `docs/technical/security-threat-model.md`.
 

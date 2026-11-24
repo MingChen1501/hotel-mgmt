@@ -96,6 +96,7 @@ Interfaces (provider: `ReservationService`):
 | `MarkNoShow` | reservationRef, reason | state=no-show | `STATE_ILLEGAL` (arrival date not passed / already in house) |
 | `GetReservation` | reservationRef | full reservation incl. price basis, history | `NOT_FOUND` |
 | `CheckInReservation` | reservationRef, stayId, actor | reservation state=checked-in with the stay link | `NOT_FOUND`, `STATE_ILLEGAL` (not confirmed) |
+| `CheckOutReservation` | stayId, actor (STAY -> RES; resolved by the stay link) | reservationId, reservationRef, state=closed, stayId | `NOT_FOUND` (no booking carries the stay link), `STATE_ILLEGAL` (the booking behind the stay is not checked in) |
 | `QueryCalendar` | dateFrom, dateTo, roomType? | reservations per date/type with state | — |
 | `GetDueReservation` | reservationRef (STAY -> RES) | reservation with dates, type, guestLink, priceBasis | `NOT_FOUND`, `STATE_ILLEGAL` (not due/arrivable) |
 
@@ -103,7 +104,7 @@ Outbound calls (consumer): `PricingService.CheckRestrictions`,
 `QuotePrice`; `RoomInventoryService.CheckRoomTypeSellability` (the
 overbooking guard's ceiling from #631; the `CheckSellableCount` call
 listed here earlier is the desk-facing availability overview, not the
-ceiling — section 22); `GuestService.IdentifyGuest`,
+ceiling — section 26); `GuestService.IdentifyGuest`,
 `GetBookingContext` — all synchronous inside the booking step
 (BA needs section 1).
 
@@ -111,7 +112,7 @@ Internal data flow (`CreateReservation`): validate token + role ->
 load hotel config values (mandatory guest fields, restrictions) ->
 call Pricing (restrictions, quote) and Guests (identify) -> derive the
 overbooking ceiling from Rooms `CheckRoomTypeSellability` for the type
-and dates (server-side, caller token forwarded, fail-closed; section 22)
+and dates (server-side, caller token forwarded, fail-closed; section 26)
 -> atomically insert the reservation row guarded by the overbooking
 check (one transaction: count overlapping confirmed and checked-in
 reservation rows for the type/dates against the derived ceiling —
@@ -129,6 +130,20 @@ type+dates (`NFR-CON-1`); capacity source unreadable ->
 `UPSTREAM_UNAVAILABLE` 503 (`Refs #631`); missing mandatory guest field ->
 `VALIDATION_FAILED` naming the field (`FR-CUS-1`); unknown type/plan
 -> `NOT_FOUND`.
+
+`CheckOutReservation` (Refs #646, flow detail in
+[section 22](#22-departure-completes-the-booking-and-releases-availability-refs-646)):
+resolve the booking by `stay_id = stayId` (the unique stay link set at
+check-in, `migrations/000002_schema.up.sql:33`) -> an already-`closed`
+booking returns unchanged (`closed` is its own idempotency guard, so a
+replayed close completes once) -> a `checked-in` booking flips to
+`closed` in one transaction with its `reservation_changes` row
+(`state`, `checked-in` -> `closed`, actor, timestamp, `NFR-AUD-1`) and
+`updated_by`/`updated_at` on the row -> any other state is
+`STATE_ILLEGAL` naming it, and an unmatched `stay_id` is `NOT_FOUND`.
+No outbox row is written by this change (22.5); the dates are kept, so
+an early departure releases the remaining nights by state, not by
+rewriting the booking.
 
 Outbox events (`ReservationEvents`): `created`, `modified`,
 `cancelled`, `no-show` — each carrying ref, dates, roomType,
@@ -153,16 +168,21 @@ Interfaces (provider: `StayService`):
 | `CheckIn` | reservationRef, roomNumber, actualArrivalTime?, idempotencyKey | stayId, roomNumber, state=in-house | `CONFLICT` (room taken), `STATE_ILLEGAL` (room not ready / reservation not due), `VALIDATION_FAILED` (missing check-in field) |
 | `GetStay` | stayId or reservationId | stay record | `NOT_FOUND`, `VALIDATION_FAILED` (neither identifier) |
 | `QueryStays` | state? | stays, each exactly once | `VALIDATION_FAILED` (unknown state) |
-| `CheckOut` | stayId, folioId, actor, idempotencyKey; `folioBalanceMinor` / `openBalanceApproval` accepted as advisory and ignored (Refs #601) | stay closed, invoiceRef | `SETTLEMENT_REQUIRED` (open balance, no provenanced approval), `CONFLICT` (presented folio is not the stay's), `UPSTREAM_UNAVAILABLE` (Billing unreadable), `STATE_ILLEGAL` (not in house) |
-| `MoveRoom` | stayId, newRoomNumber | stayId, move history entry | `CONFLICT` / `STATE_ILLEGAL` as in check-in |
+| `CheckOut` | stayId, folioId, actor, idempotencyKey; `folioBalanceMinor` / `openBalanceApproval` accepted as advisory and ignored (Refs #601) | stay closed, invoiceRef, `bookingCompletion` (completed / not-recorded, Refs #646) | `SETTLEMENT_REQUIRED` (open balance, no provenanced approval), `CONFLICT` (presented folio is not the stay's), `UPSTREAM_UNAVAILABLE` (Billing unreadable), `STATE_ILLEGAL` (not in house) |
+| `MoveRoom` | stayId, toRoomId, actor, idempotencyKey (Refs #647: the request shape the contract carries) | stayId, roomId, state=in-house, move (fromRoomId, toRoomId, movedAt) | `STATE_ILLEGAL` (not in house), `NOT_FOUND` (unknown stay), `VALIDATION_FAILED` (the guest is already in that room), `CONFLICT` (target room just taken — raised by `AssignRoom` before the move) |
 | `RecordActualTimes` | stayId, actualArrival?, actualDeparture? | stayId, kept times | `VALIDATION_FAILED` (implausible values per hotel times) |
 | `ListArrivalsDepartures` | businessDate | arrivals, in-house, departures, each exactly once | — |
 | `GetStayRef` | stayId (BIL -> STAY) | stay link: guest, room, in-house state | `NOT_FOUND`, `STATE_ILLEGAL` (closed) |
 
 Outbound calls (consumer): `ReservationService.GetDueReservation`;
-`RoomInventoryService.FindReadyRoom`, `AssignRoom`, `ReleaseRoom`,
-`RecordActualTimes`(room side release on move/check-out);
-`GuestService.GetGuest`; `BillingService.GetFolioBalance` — the last
+`ReservationService.CheckOutReservation` (from #646 on, after the close
+commits — LLD [section 22](#22-departure-completes-the-booking-and-releases-availability-refs-646));
+`RoomInventoryService.FindReadyRoom`; the desk, not this service, calls
+`RoomInventoryService.AssignRoom` and `ReleaseRoom` around check-in,
+check-out, and room moves (Refs #647, as built
+`app/src/views/StayView.vue:1249-1261`, `:1652-1690`; ownership table in
+[section 23.1](#231-which-layer-owns-what)); `GuestService.GetGuest`;
+`BillingService.GetFolioBalance` — the last
 one is read by the service itself at the check-out gate from #601 on
 (LLD [section 21](#21-server-side-check-out-gate-and-approval-provenance-refs-601)),
 not only by the desk; `RequestCheckoutGate` stays deferred (F4) — all
@@ -176,7 +196,11 @@ own update -> emit `StayEvents.checked-in` via outbox. Check-out
 additionally re-reads the folio through Billing and applies the gate
 first, refusing with `SETTLEMENT_REQUIRED` unless settled or a
 provenanced approval is recorded (BR-17; server-side read from #601,
-LLD [section 21](#21-server-side-check-out-gate-and-approval-provenance-refs-601)).
+LLD [section 21](#21-server-side-check-out-gate-and-approval-provenance-refs-601)),
+then flips `in-house -> closed` and, before answering, completes the
+booking through `CheckOutReservation` (section 22). A completion that
+cannot be recorded does not undo or refuse the committed close: it is
+reported in `bookingCompletion` instead (FR-DEP-5).
 
 Outbox events (`StayEvents`): `checked-in`, `moved`, `actual-times-
 recorded`, `checked-out` — stayId, guestLink, room links, times,
@@ -186,7 +210,10 @@ Error mapping: room just taken -> `CONFLICT` naming the room
 (`NFR-CON-2`); room not vacant/clean/inspected -> `STATE_ILLEGAL`
 naming room+state (BR-16, BR-28); blocked date -> refusal naming the
 block (`FR-RMS-3`); open balance without approval ->
-`SETTLEMENT_REQUIRED` (`FR-BIL-7`).
+`SETTLEMENT_REQUIRED` (`FR-BIL-7`). A booking completion that cannot be
+recorded is not a close refusal: the close stays `200` with
+`state: closed` and names the outcome in `bookingCompletion`
+(section 22.2, FR-DEP-5).
 
 ## 3. Rooms (Node.js/TypeScript)
 
@@ -227,7 +254,7 @@ block attempt -> `STATE_ILLEGAL` (Seq-13 precondition).
 Consumed by the booking path from #631: Reservations reads
 `CheckRoomTypeSellability` per booking attempt and derives the
 overbooking ceiling from `totalCount - len(blockedRooms)` (LLD section
-22; ADR-0006). The derived `sellableCount` stays the desk-facing
+26; ADR-0006). The derived `sellableCount` stays the desk-facing
 availability figure — the guard does not consume it, so #636's
 room-state accounting can change that number without silently moving the
 guard's ceiling.
@@ -255,7 +282,7 @@ later rate changes never alter it unless explicitly recalculated
 inventory input per date (the plan `defaultUnits`, else the caller's
 `totalUnits`, else `0`) — a desk-facing overview, not the booking
 guard's ceiling: the guard derives its ceiling from the Rooms room
-inventory since #631 (section 22; ADR-0006), because this operation's
+inventory since #631 (section 26; ADR-0006), because this operation's
 `totalUnits` input is itself a request value and its plan-default
 fallback is not a maintained inventory figure. The authoritative guard
 stays in the Reservations store transaction (section 1).
@@ -486,6 +513,20 @@ Per-module directory (shape per stack, same obligations):
   the folio gate against Billing `GetFolioBalance` plus the
   recorded `RecordOpenBalanceApproval` approval. Re-open only
   with a product decision that needs a provider-side gate op.
+- D5 — `ReservationEvents.completed`: not emitted by the #646
+  departure completion (section 22). Reason: no consumer needs the
+  booking's completion today — availability is read synchronously from
+  the reservations store, and Reporting's current projections take
+  occupancy from `stay.*` events (`docs/architecture/event-flow.md`
+  section 1) — so no outbox row and no event-schema change is added.
+  Re-open with the reporting slice that projects completed bookings;
+  it adds the event shape and its projection together.
+- D6 — Reconciliation of bookings stranded before #646: the completion
+  only runs on a close from this change onward, and no backfill is
+  specified (requirements section 23.2). A tool that completes
+  `checked-in` bookings whose stay is already `closed` is an operations
+  follow-up owned by `release-manager` with the implementation team, not
+  a silent data correction.
 
 Coverage: 8/8 modules with responsibilities, signatures, data flow,
 outbox events, and error mapping; every BA contract need (sections 1–7, section 9
@@ -3218,7 +3259,1294 @@ the merged head.
   availability alert, not a cached value, is the mitigation
   (`NFR-AVL-1` does not extend to an unverified balance).
 
-## 22. Server-side reservation availability (Refs #631)
+## 22. Departure completes the booking and releases availability (Refs #646)
+
+Tier **T2 confirmed** (behaviour change inside existing module
+boundaries: one additive provider operation and one additive response
+field; no new subsystem, no lifecycle state, no data-model change, no
+schema, no migration, no desk flow change). The owner-reported defect
+(manual QA 2026-11-10) is the missing terminal effect of check-out on
+the booking: the room half already works (`ReleaseRoom` ->
+`vacant-dirty`, housekeeping -> inspected, assignment offers inspected
+only), and the availability guards already ignore everything except
+`confirmed` / `checked-in`; nothing ever wrote the terminal `closed`
+state. This section records the architect-owned delta: the lifecycle
+shape, the state diagram (maintained in
+`docs/architecture/state-machine.md` section 1.1), the per-flow
+implementation diagrams (22.3, 22.4), the additive contract delta
+(22.5), and the verification plan (22.6). Acceptance criteria, FR/NFR
+wording, guard mapping, and the operational note for already-stranded
+rows are sibling handoffs.
+
+Explicit no-change statements for this change:
+
+- **Room lifecycle.** `docs/architecture/state-machine.md` section 2
+  stands: the close releases `occupied -> vacant-dirty`, housekeeping
+  walks dirty -> clean -> inspected, and only inspected vacant rooms are
+  assignable (`FR-RMS-2`, `BR-16`, `BR-28`). No room state, transition,
+  or control is added.
+- **Availability guards.** No guard rewrite: the create and modify
+  guards already count only `confirmed` / `checked-in`
+  (`services/reservations/internal/store/store.go:194-196`, `:214-227`,
+  `:367-380`; Postgres `services/reservations/internal/store/postgres.go:177`,
+  `:483`), so a `closed` booking already contributes nothing once it
+  exists.
+- **Calendar and read-back.** `QueryCalendar` keeps returning every
+  overlapping row with its stored state
+  (`services/reservations/internal/store/store.go:274-291`; Postgres
+  `services/reservations/internal/store/postgres.go:312-318`), so the
+  completed booking stays visible in history; the desk's arrival pick
+  filters `confirmed` itself (`app/src/views/StayView.vue:928-941`).
+  `GetReservation` returns the stored state unchanged.
+- **The desk flow.** One confirmation, no second user-facing action and
+  no new control. The only desk delta is rendering the split sentence
+  when `bookingCompletion.state` is `not-recorded` (product UI contract
+  `docs/product/desk-ui-design-rollout.md` section 6.16; a catalogue key
+  addition in both locales if the implementation names it).
+
+### 22.1 Which service owns what
+
+| Fact | Owner | Written where | May a caller assert it? |
+|---|---|---|---|
+| The stay's close | Stay | Conditional `in-house -> closed` flip (`services/stay/src/store.ts:282-290`; Postgres `services/stay/src/pgstore.ts:161-206`) | No — `stayId` selects; the server decides |
+| The booking's state | Reservations | Conditional `checked-in -> closed` flip (`services/reservations/internal/store/store.go:297-320` is the check-in shape; `services/reservations/internal/store/postgres.go:344-389`) | No — no request field carries a booking state |
+| Which booking belongs to the stay | Reservations | `stay_id` UUID UNIQUE set at check-in (`services/reservations/migrations/000002_schema.up.sql:33`); resolution is by this link, never by guest name or dates | Only `stayId` |
+| The active set for availability | Reservations | The existing guard filters (`activeState`, `services/reservations/internal/store/store.go:194-196`) | No |
+| Actor and time of the completion | Admin session actor, forwarded by Stay | `updated_by` / `updated_at` plus a `reservation_changes` row | Yes (`actor`), same residual as #601 R6 |
+| Whether the close committed | Stay | The conditional flip's outcome | No |
+
+### 22.2 Algorithm (target)
+
+**Stay `CheckOut`** (keeps the as-built order and adds one step at the
+end):
+
+1. Validate `stayId` / `folioId` / `actor` and run the folio gate the
+   #601 slice installs (as-built shape:
+   `services/stay/src/store.ts:148-168`, called at `:263`).
+2. Idempotency replay: a seen key returns the stored close.
+3. Conditional `in-house -> closed` flip, `actualDeparture` stamp, and
+   the `stay.checked-out` outbox row in one transaction
+   (`services/stay/src/store.ts:282-290`;
+   `services/stay/src/pgstore.ts:161-206`, outbox write at `:201`).
+4. After the flip commits and before replying, call
+   `POST {RESERVATIONS_BASE_URL}/v1/reservations/CheckOutReservation`
+   with `{stayId, actor}` and the caller's Bearer token forwarded,
+   2-second timeout. `RESERVATIONS_BASE_URL` defaults to
+   `http://reservations:8081` and is wired on the `stay` service
+   (`deploy/compose.yaml:77-87`, the way Reservations wires
+   `RATES_BASE_URL` at `:37-50`); the client follows the Reservations ->
+   Rates pattern (`services/reservations/internal/pricing/client.go:43-97`).
+   The bearer is threaded from the transport into the store the way the
+   Reservations handler threads it
+   (`services/reservations/internal/handler/handler.go:207`, `:235`);
+   today the Stay transport only checks presence
+   (`services/stay/src/server.ts:110-112`).
+5. `200` -> `bookingCompletion: {state: "completed", reservationRef}`.
+6. Any outcome that does not record the completion — transport error,
+   timeout, 5xx, unwired client, or a provider `4xx` — becomes
+   `bookingCompletion: {state: "not-recorded", reason: <observed code>}`.
+   The reply stays `200` with `state: closed`: the close committed, and
+   the split is reported, never hidden (`FR-DEP-5`).
+7. Replay (step 2 hit): return the stored close and re-attempt the
+   completion, which is idempotent, so a retry after a split repairs the
+   booking instead of stranding it; the booking still transitions once.
+
+**Reservations `CheckOutReservation`** (new provider operation):
+
+1. Require a session token, a non-blank `stayId`, and a non-blank
+   `actor` (`VALIDATION_FAILED` naming the field otherwise).
+2. Resolve the booking by `stay_id = stayId` — the unique stay link, so
+   the booking of the stay that closed is the one completed, never a
+   guest-name or date match.
+3. `checked-in` -> one conditional write
+   (`UPDATE ... SET state = 'closed', updated_by = $actor,
+   updated_at = now() WHERE stay_id = $1 AND state = 'checked-in'`) plus
+   its `reservation_changes` row (`state`, `checked-in` -> `closed`,
+   actor, timestamp) in the same transaction; respond `200` with
+   `state: "closed"`. No outbox row (22.5, D5). The dates, room type,
+   price basis, and stay link are kept.
+4. Already `closed` -> `200` with the same body, no second change and no
+   second history row (`closed` is its own exactly-once guard, so a
+   replayed close completes once; `FR-DEP-1`).
+5. Any other state -> `STATE_ILLEGAL` naming the state, nothing written.
+6. No row with that `stay_id` -> `NOT_FOUND` `{stayId}`.
+7. No `idempotencyKey` field: the state transition is the guard, the
+   `MarkNoShow` precedent (`services/reservations/internal/handler/handler.go:266-284`).
+
+Shapes considered and rejected:
+
+| Shape | Verdict | Reason |
+|---|---|---|
+| Complete from the `stay.checked-out` outbox event (async consumer) | rejected | Availability would stay blocked until the dispatcher ran, so the desk's very next action could still be refused; the close could not report a completion it never attempted; and no consumer owns reservations writes today (`Reservations` owns its store). |
+| The desk sends a second completion call after the close | rejected (FR-DEP-1) | The second call can be skipped or fail after the close stands, with nothing in the close knowing — the split becomes routine instead of exceptional; the close itself must be the trigger. |
+| Complete the booking before the stay flip | rejected | A completion that commits and is then followed by a refused close (folio gate, wrong state) would leave the booking `closed` while the guest is still in house — the opposite divergence, on a money path that is already gated before the flip. |
+| Store the completion outcome on the stay row | rejected | A new column and migration (T3) for no product gain: the completion is idempotent, so a replay re-derives the truth, and the close response carries it to the desk. |
+| The close writes the booking row directly | impossible | Modules never read or write another module's store (HLD section 4); the write must travel the `ReservationService` contract. |
+
+### 22.3 Happy path
+
+```mermaid
+flowchart TD
+    A[Staff confirm the close in the desk panel  StayView.vue:1538, :1603] --> B[Stay validates stay, folio, actor]
+    B --> C{Folio gate passes?}
+    C -->|no| Z[Existing refusal: stay in house, booking checked-in, no release  FR-DEP-5]
+    C -->|yes| D[Conditional in-house to closed flip and checked-out event  store.ts:282-290]
+    D --> E[POST CheckOutReservation stayId, actor, caller token, 2 s]
+    E -->|200 closed| F[bookingCompletion completed plus reservationRef]
+    F --> G[200 closed; desk says checked out]
+    G --> H[Desk releases the room vacant-dirty  StayView.vue:1624-1634]
+    H --> I[Housekeeping clean then inspected; assignment offers the room]
+    I --> J[Next guest books and checks in the same day]
+    G --> K[Availability guard counts the closed booking as nothing  store.go:214-227]
+```
+
+Edge trace:
+
+- A–B: the desk confirm calls `CheckOut` with the freshly re-read folio
+  and a client idempotency key (`app/src/views/StayView.vue:1538`,
+  `:1603`).
+- B–C: gate before any state read (as-built `services/stay/src/store.ts:148-168`,
+  call site `:263`; the #601 slice replaces the request claim with the
+  Billing read, LLD section 21).
+- C–Z: a gate refusal never reaches the flip, so the booking keeps
+  `checked-in` (`FR-DEP-5`).
+- D: conditional flip + `actualDeparture` + outbox row
+  (`services/stay/src/store.ts:282-290`;
+  `services/stay/src/pgstore.ts:161-206`).
+- D–E: target client call after commit, caller token forwarded
+  (`services/reservations/internal/pricing/client.go:43-97` is the
+  pattern; wiring target `deploy/compose.yaml:77-87`).
+- E–F: target `CheckOutReservation` handler beside
+  `CheckInReservation` (`services/reservations/internal/handler/handler.go:184-205`)
+  and the store transition beside `CheckIn`
+  (`services/reservations/internal/store/store.go:297-320`;
+  Postgres `services/reservations/internal/store/postgres.go:344-389`);
+  response shape in 22.5.
+- F–G: the close reply carries `bookingCompletion` (22.5).
+- G–H: the desk releases the departed room once the close stands
+  (`app/src/views/StayView.vue:1624-1634`; Rooms
+  `services/rooms/src/store.ts:407-436`).
+- H–I: housekeeping advances dirty -> clean -> inspected
+  (`app/src/views/RoomsView.vue:168`, `:182`); the assignment list loads
+  `vacant-inspected` (`app/src/views/StayView.vue:1139-1140`).
+- I–J: check-in refuses a non-ready room (`FR-RMS-2`, `BR-16`, `BR-28`).
+- G–K: the guard sees only `confirmed` / `checked-in`
+  (`services/reservations/internal/store/store.go:214-227`), so the
+  completed booking consumes nothing; the calendar still returns it with
+  state `closed` for history (`:274-291`).
+
+### 22.4 Failure and rollback paths
+
+```mermaid
+flowchart TD
+    A[Stay close committed: closed, departed, checked-out event written] --> B{CheckOutReservation call}
+    B -->|200 closed| C[completed: desk claims the completed booking]
+    B -->|already closed| D[Same 200, no second change]
+    B -->|transport, timeout, 5xx, unwired| E[not-recorded, reason UPSTREAM_UNAVAILABLE]
+    B -->|404 no link| F[not-recorded, reason NOT_FOUND]
+    B -->|422 wrong booking state| G[not-recorded, reason STATE_ILLEGAL]
+    C --> H[Booking leaves the active set]
+    D --> H
+    E --> I[Plain split sentence; booking still reads checked-in; no claim]
+    F --> I
+    G --> I
+    I --> J[Replay of the close re-attempts the idempotent completion; manager/operations follow-up repairs the row]
+```
+
+Edge trace:
+
+- A: the flip already committed; nothing below can undo it
+  (`services/stay/src/store.ts:282-290`).
+- B–C / B–D: `200 closed` and the idempotent already-closed return
+  (22.2 steps 3–4).
+- B–E: fail-soft, not fail-closed — the close is a money-and-stay fact
+  that already committed; an unread Reservations must not turn a
+  committed close into a client-visible failure. Reason code reused from
+  the #601 precedent (`services/reservations/internal/pricing/client.go:88-97`).
+- B–F / B–G: provider refusals reported as the split reason; the booking
+  is not touched.
+- E–I: the desk renders plain words and claims no completion (product UI
+  contract section 6.16, `FR-DEP-5`).
+- I–J: the technical repair is a replay of the same close — the
+  idempotent completion runs again and records the row — or the
+  operations follow-up (D6). The desk-generated key differs on a fresh
+  click, so staff-facing recovery is the operational note, not a new
+  control.
+
+Rollback: revert the single implementation PR. The `closed` state and
+the `stay_id` link already exist (`migrations/000002_schema.up.sql:29-33`),
+so no migration exists in either direction and no data backfill runs.
+Bookings already completed keep reading completed (a valid state the
+desk already renders as history); new closes stop completing and return
+to the pre-change behaviour until the revert is itself reverted.
+
+### 22.5 Contract delta
+
+| File | Change | Version effect |
+|---|---|---|
+| `contracts/http/CheckOutReservation.json` | new file: operation `CheckOutReservation`, contract `ReservationService`; request `{stayId, actor}`; response `{reservationId, reservationRef, state: "closed", stayId}`; errors `UNAUTHENTICATED`, `NOT_FOUND`, `STATE_ILLEGAL`, `VALIDATION_FAILED` | new operation -> `1.0` (ADR-0004 D1: new operations are additive/minor) |
+| `contracts/http/CheckOut.json` | response gains the required `bookingCompletion` object: `state` (`completed` / `not-recorded`), optional `reservationRef`, optional `reason` (the observed envelope code, for support; the desk never renders it); `traces` gains `FR-DEP-1` and `FR-DEP-5`; request unchanged, no new error code | minor, `1.0` -> `1.1` (additive field) |
+| `contracts/events/reservation-events.json` | unchanged — no event in this change (D5) | none |
+| `contracts/errors/envelope.json` | unchanged — the completion reuses `NOT_FOUND`, `STATE_ILLEGAL`, `VALIDATION_FAILED`, `UNAUTHENTICATED`, and `UPSTREAM_UNAVAILABLE` for an unread provider | none |
+| `contracts/openapi.yaml` + `frontend/docs/openapi.yaml` | mirror the `CheckOut` response delta; add `CheckOutReservation` only if the curated desk-loop subset carries it (`script/openapi-route-check.sh`) | minor |
+| `services/reservations/contract-tests/` + `services/stay/contract-tests/` | provider fixture for the new operation and consumer fixtures for the completion outcomes | new fixtures |
+| schema and migrations | none: `state` CHECK already includes `closed` (`services/reservations/migrations/000002_schema.up.sql:29-31`), `stay_id` is UUID UNIQUE (`:33`), and the change-history table exists (`:38-45`) | none |
+| `docs/architecture/rest-resource-surface.md` | the row for `CheckOutReservation` and the coverage count (61 -> 62 `contracts/http/*.json` files) land in the implementation PR, because that document maps files on disk | docs, with the code |
+
+No new error code, no new state, no new field on any other operation,
+and no event-schema change. The `bookingCompletion` field is required in
+the response so the contract states the close's full truth; a desk build
+that ignores it keeps working (it reads `stayId` / `invoiceRef`).
+
+### 22.6 Verification plan
+
+Reservations guards (the implementation PR creates them; existing
+patterns: `services/reservations/internal/store/store_test.go:31-85`,
+`internal/handler/handler_test.go:171-257`, Postgres parity
+`postgres_test.go:106-138`):
+
+- **Completed on the close** — seed a `checked-in` booking with a
+  `stay_id`, call `CheckOutReservation`: `closed`, stay link and dates
+  kept, `reservation_changes` row naming `state` with the actor and time;
+  the booking read-back returns `closed`.
+- **Completed once** — a second call returns `200 closed` with no second
+  change row; the idempotent replay of the whole close also completes
+  once.
+- **Wrong state** — the `stay_id` of a booking not in `checked-in`
+  (`confirmed` or `cancelled`) returns `STATE_ILLEGAL` and writes
+  nothing; an unknown `stayId` returns `NOT_FOUND`.
+- **Availability after completion** — a `closed` booking overlapping a
+  new same-type booking does not consume the unit and a same-day booking
+  is accepted; the negative case (a `checked-in` booking still consumes
+  it) proves the fix is the state and not a wider rule.
+- **Early departure** — a booking whose recorded departure is later than
+  the close releases the remaining nights with no date rewrite.
+- **Terminal reads and refusals** — the calendar row shows `closed`
+  while remaining in history; check-in, modify, cancel, and no-show on a
+  completed booking are refused by the existing state checks; no reopen
+  operation exists.
+
+Stay guards (existing check-out block
+`services/stay/src/server.test.ts:128-238`, Postgres parity `:406-460`):
+
+- **Completion is called** — a committed close sends `stayId` and the
+  actor to `CheckOutReservation` with the caller token forwarded (stub
+  client), and the reply carries `bookingCompletion.state =
+  completed`.
+- **Split is reported** — each failure mode (transport, timeout, 5xx,
+  unwired, `NOT_FOUND`, `STATE_ILLEGAL`) still returns `200`, `state:
+  closed`, `bookingCompletion.state = not-recorded`, with the stay
+  closed and the `checked-out` event written exactly once, and no
+  refusal code invented.
+- **Replay repairs** — a replayed key returns the stored close and
+  re-attempts the idempotent completion; the booking transitions once.
+- **Refusals untouched** — the folio gate, the #588 release, and the
+  #600 room charge keep their refusal paths: no flip, no completion
+  call, no release.
+
+Desk guards (the implementation PR extends them): the arrival pick never
+offers a completed booking (`app/src/views/StayView.test.ts:394-463`
+is the ready-room precedent); the split sentence renders plain words and
+never the envelope code; the one same-day chain (departed `vacant-dirty`
+-> clean -> inspected -> offered -> assigned -> checked in) is pinned
+end to end.
+
+Stack gates: `cd services/reservations && go build ./... && go vet ./...
+&& go test ./... && test -z "$(gofmt -l .)"`; `cd services/stay && npm ci
+&& npm run build && npm run lint && npm test`;
+`script/contract-check.sh` (new contract + fixtures);
+`script/openapi-route-check.sh`; `script/markdown-link-check.sh`. The
+`qa-lead` traceability rows for #646 are a sibling handoff and must cite
+these guards by `file:line` at the merged head.
+
+### 22.7 Residual risks and re-tier trigger
+
+- **R8 — the close can commit and the completion fail.** Accepted by
+  `FR-DEP-5`/`AC-DEP-5` as a visible split: the reply names it, the desk
+  never claims the completion, the replay re-attempts it, and D6 is the
+  reconciliation follow-up. Path cost: the call runs synchronously
+  before the reply and adds its 2-second cap only when Reservations is
+  unreachable; on the normal local-network path it is milliseconds, and
+  the #601 gate's own bound (LLD section 21.2) is unchanged.
+- **R9 — already-stranded bookings are not repaired.** Bookings whose
+  stay closed before this change keep `checked-in` until the D6
+  operations follow-up; there is no backfill (requirements section 23.2).
+- **R10 — no `reservation.completed` event.** No consumer needs it
+  today (D5); the reporting slice that projects completed bookings adds
+  the event and projection together.
+- **R11 — the actor is forwarded, not token-bound.** Same residual as
+  #601 R6 (`docs/technical/security-threat-model.md` section 8), so the
+  completion's audit trail is read for what it is until token-bound
+  actors land.
+- **Re-tier trigger.** A shape that adds a lifecycle state, a stored
+  completion-outcome column, or a migration is T3: it would need an ADR,
+  the owner's `proposed -> accepted` flip, and its rollback note in the
+  implementation PR. The decided shape needs none of these.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-946
+
+## 23. Desk room reassignment and vacated-room release (Refs #647)
+
+Tier **T2 confirmed** (a reader-visible desk action over room and stay
+state, delivered with operations that already exist). The owner-reported
+defect (manual QA 2026-11-10) is that a guest expected in room 101 who
+checks into 102 leaves room 101 reading occupied with a stale stay link,
+and the desk has no action to correct it. Read-only trace: the rooms
+half already works (`assignRoom` flips a ready room to `occupied` and
+records the stay link; only an explicit `releaseRoom` takes it back,
+`services/rooms/src/store.ts:361-405`, `:407-436`), the stay half
+already works (`moveRoom` keeps the stay in house with `fromRoomId`,
+`toRoomId`, `movedAt`, `services/stay/src/store.ts:332-376`), and the
+contract already states that the desk owns the assignment and release
+around a move (`contracts/http/MoveRoom.json`). What is missing is the
+desk's ordering: the check-in commit assigns first and returns from
+every later refusal without releasing the room it assigned
+(`app/src/views/StayView.vue:1249-1336`), and nothing under `app/src`
+calls `MoveRoom` (`app/src/stay-restyle.test.ts:120-151` records that
+absence on purpose). This change therefore adds no capability, no
+operation, no state, and no schema: it names the layer that owns the
+sequence and the compensation, and it draws the two flows.
+
+This section records the architect-owned delta: which layer owns which
+fact (23.1), the rule that decides when a failed action is compensated
+(23.2), the two target algorithms (23.3, 23.4), the per-flow
+implementation diagrams with their edge traces (23.5, 23.6), the
+contract no-change statement (23.7), the verification plan (23.8), and
+the residual risks with the re-tier trigger (23.9). Acceptance criteria
+are `AC-REA-1`..`AC-REA-5` in `docs/product/acceptance-criteria.md`
+[section 16](../product/acceptance-criteria.md); FR/NFR wording is
+`docs/requirements/mvp-requirements.md` [section 24](../requirements/mvp-requirements.md);
+the UI contract and the EN+VI copy are
+`docs/product/desk-ui-design-rollout.md` [section 6.17](../product/desk-ui-design-rollout.md);
+guard mapping is the `qa-lead` handoff; the verdict is the
+`spec-reviewer` gate.
+
+Explicit no-change statements for this change:
+
+- **Operation surface.** No new operation, path, field, or parameter:
+  `AssignRoom` (`roomNumber`, `businessDate`, `stayLink`, `actor`,
+  `idempotencyKey`), `MoveRoom` (`stayId`, `toRoomId`, `actor`,
+  `idempotencyKey`), and `ReleaseRoom` (`roomNumber`, `toState`,
+  `actor`) are used exactly as contracted. No version bump, no new error
+  code (`contracts/http/AssignRoom.json`, `MoveRoom.json`,
+  `ReleaseRoom.json`, `contracts/errors/envelope.json`).
+- **Lifecycle.** No room or stay state is added. Both release targets
+  already exist (`vacant-inspected`, `vacant-dirty`), and the move never
+  changes the stay's state: it stays in house with its folio link
+  (`FR-FDK-3`, `BR-19`). The lifecycle statement for the two release
+  targets is maintained in `docs/architecture/state-machine.md`
+  [section 2.1](state-machine.md).
+- **Schema, events, migrations.** None. `rooms.room_status_history`
+  and `stay_moves` already record what this change produces, and the
+  existing `room.state-changed` / `stay.moved` outbox events already
+  carry the facts, so no consumer contract changes.
+- **Services.** Stay and Rooms keep their code. `assignRoom` keeps the
+  atomic conditional write and the idempotent receipt
+  (`services/rooms/src/store.ts:361-405`), `releaseRoom` keeps its
+  occupied-only guard and its explicit `toState`
+  (`:407-436`; Postgres parity `services/rooms/src/pgstore.ts:499-544`),
+  and `moveRoom` keeps the in-house conditional write, the same-room
+  refusal, and the idempotent replay (`services/stay/src/store.ts:332-376`).
+- **Booking.** Untouched: no room number, date, price basis, room type,
+  or guest field is read or written by a reassignment, and the booking
+  keeps its state through the move (booking modification is a separate
+  flow).
+- **The desk's other flows.** The #586/#596/#614 preload and
+  commit-window guards stand and keep running
+  (`app/src/views/StayView.vue:1054-1090`, `:1121-1222`, `:1244`,
+  `:1369`); #588/#600/#601/#646 check-out behaviour is untouched
+  (`:1553-1700`).
+- **No service-side rollback and no saga.** The modules never
+  compensate for each other
+  (`docs/architecture/services/rooms.md` [section 4](services/rooms.md)),
+  and this change keeps that: the compensation is the desk's own
+  `ReleaseRoom`, there is no distributed transaction, no queue, no retry
+  worker, and no state machine spanning two services. Section 23.1
+  names the desk as the owner of the sequence, which is the whole
+  architectural decision here.
+- **No new integration edge.** The desk already calls Stay and Rooms
+  directly (`docs/architecture/c4-containers.md`), so no container or
+  dependency edge is added.
+
+### 23.1 Which layer owns what
+
+| Fact | Owner | Written where | May a caller assert it? |
+|---|---|---|---|
+| Which room a check-in names | Desk chooses, Rooms decides | `assignRoom` conditional write, stay id passed as `stayLink` (`services/rooms/src/store.ts:361-405`; `app/src/views/StayView.vue:1246-1261`) | No — the desk names a room; the service decides whether it may be taken |
+| A room's occupancy | Rooms | `assignRoom` / `releaseRoom` (`:361-405`, `:407-436`; Postgres `:499-544`) | No — state is derived by the service, never written by a caller |
+| The stay's current room | Stay | `moveRoom` conditional in-house write + `stay_moves` row (`services/stay/src/store.ts:332-376`) | Only `stayId`; the target is a room id |
+| The from-room of a move | Stay | `move.fromRoomId` in the `MoveRoom` reply (`contracts/http/MoveRoom.json`) | Read it from the echo — never from the panel's remembered row (see below) |
+| The sequence and the compensation | Desk | the click handler's ordered calls; no service orchestrates another | Not applicable — this is the layer this delta names |
+| Whether a failed action is compensated | Desk | definitive-refusal rule over `apiFetch`'s `status` / `code` (23.2; `app/src/api/client.ts:143-197`) | Not applicable |
+| Actor and time of each write | Each owning service | state history / change rows / outbox payloads (`NFR-AUD-1`) | Yes (`actor`), same residual as #601 R6 |
+
+As-built drift corrected in this delta: section 2's `MoveRoom` request
+row named `newRoomNumber`, which no contract carries, and its consumer
+sentence listed `AssignRoom` / `ReleaseRoom` among Stay's outbound
+calls. As built the desk makes those calls and Stay makes neither (the
+service stores room ids as logical references); the two rows now say
+so.
+
+Two load-bearing consequences of that ownership:
+
+1. **The release follows the echo, not the panel's row.** A move
+   releases the room named by `move.fromRoomId` in the `MoveRoom`
+   reply, not the room the in-house row showed when the guest was
+   picked. If two desks move the same guest at once, each releases
+   exactly the room its own move vacated (the second move's from-room
+   is the first move's target), so no action frees a room a live stay
+   still names and no action strands the room it actually vacated.
+2. **An arrival assignment names a stay that does not exist yet.** The
+   desk generates the stay id at the start of the commit and passes it
+   as `stayLink` (`app/src/views/StayView.vue:1246-1253`); `CheckIn`
+   later stores the same id. A room assigned by a commit that never
+   becomes a stay therefore holds a link no stay row answers, which is
+   exactly the reported stale hold — and the only correct end state for
+   it is the compensating release back to ready, which the room history
+   keeps (`services/rooms/src/store.ts:398-402`, `:428-432`).
+
+### 23.2 Definitive refusals and unreadable outcomes
+
+One rule decides compensation on both flows, so the two flows cannot
+drift apart:
+
+- **A definitive refusal** is a `4xx` envelope answer to the call
+  itself: `VALIDATION_FAILED` (400), `NOT_FOUND` (404), `CONFLICT`
+  (409), or `STATE_ILLEGAL` (422). Every target operation validates and
+  guards before it mutates, so a definitive answer proves this call
+  wrote nothing, and the desk may and must take back what it wrote
+  earlier in the same action.
+- **An unreadable outcome** is every other failure: a transport failure
+  or offline state (`apiFetch` throws `code: "OFFLINE"` with no status,
+  `app/src/api/client.ts:160-168`), a `5xx` (`UPSTREAM_UNAVAILABLE`
+  included), a non-envelope reply, or a `401` (which routes to the
+  sign-in gate and is never read as a business outcome,
+  `app/src/api/client.ts:108-140`, `:168-172`). The write may have
+  landed, so the desk releases nothing and names the rooms to re-read.
+- **A refusal speaks only for its own call.** A `NOT_FOUND` from the
+  booking read after a successful assignment is definitive for the
+  read; it says nothing about the assignment, which is why the
+  compensation is chosen by the step that failed, not by the last error
+  code the panel saw.
+- **One compensation per action.** Each action generates its write keys
+  once at the start (`newIdempotencyKey`, `app/src/views/StayView.vue:571`)
+  and the in-flight flag makes a second click a no-op
+  (`commitInFlight`, `:624-631`, `:1244`, `:1369`), so the
+  compensating release is attempted at most once. The shared client's
+  manual retry replays the same request body, so a replayed
+  `AssignRoom` / `MoveRoom` key returns the stored receipt instead of a
+  second write (`services/rooms/src/store.ts:365-369`,
+  `services/stay/src/store.ts:337-345`); a release replayed after it
+  already ran answers `STATE_ILLEGAL` (not occupied), which the desk
+  reads as the room already being free, the #588 precedent
+  (`app/src/views/StayView.vue:1674-1685`).
+- **The two release targets are not interchangeable.** A room a
+  committed stay left goes to `vacant-dirty` (housekeeping, the same
+  release a check-out performs). A room this action assigned and nobody
+  used goes back to `vacant-inspected`. Sending an unused room to
+  housekeeping loses a ready room and misstates what happened; leaving a
+  used room reading ready would offer it to the next guest.
+
+### 23.3 Arrival check-in commit (target algorithm)
+
+As built, steps 1-8; the delta is the compensation in step 9 and the
+outcome classification that chooses it.
+
+1. The arrival pick preloads the booking and the booked type's ready
+   rooms and assigns nothing (`app/src/views/StayView.vue:1121-1222`),
+   so a room changed after the preload is the room the commit assigns.
+2. `Check in` guards: a commit or read in flight is a no-op
+   (`:1224-1247`, `commitInFlight` at `:624-631`).
+3. The stay id and the per-write keys are generated once (`:1246`).
+4. `AssignRoom {roomNumber: <chosen>, businessDate, stayLink: <stayId>,
+   actor, idempotencyKey}` (`:1249-1261`).
+5. `GetReservation {reservationRef}` (`:1281-1295`) — `reservationId`,
+   `guestId`.
+6. `CheckIn {stayId, reservationId, guestId, roomId: <assigned room>,
+   actor}` (`:1304-1323`). `CheckIn` is idempotent by `stayId`
+   (`services/stay/src/store.ts:223-225`) and refuses an
+   already-checked-in reservation before writing (`:217-221`).
+7. `CheckInReservation {reservationRef, stayId, actor}` (`:1325-1336`).
+8. The success reset clears the picker and reloads the panel
+   (`:1337-1368`).
+9. **New:** the outcome table below decides the compensation and the
+   sentence shown.
+
+| Failure at | Room / stay state | Desk action | Wording |
+|---|---|---|---|
+| Step 4, `CONFLICT` / `STATE_ILLEGAL` / `VALIDATION_FAILED` | Nothing assigned, nothing written | No release (as built today) | Plain refusal naming the room; picker reloads |
+| Step 5 or 6, definitive | Room occupied by this commit, no stay row | One `ReleaseRoom {roomNumber: <chosen>, toState: "vacant-inspected", actor}` in the same commit; a `STATE_ILLEGAL` answer means the room is already free again | Plain refusal plus "the room is free again"; if the release itself fails or is unreadable, name the room that still reads occupied |
+| Step 7 after step 6 committed | Room occupied, and a live stay names it | Release nothing — the stay is the truth | Say the guest is in the room and the reservation link is not recorded; name the room; next step is the manager (see 23.9 for the copy gap) |
+| Any step, unreadable (offline, `5xx`, non-envelope) | Unknown — possibly assigned and possibly checked in | Release nothing | Name the room and ask staff to reload and check before acting again |
+| Any step, `401` | Unknown | Release nothing | The shared client routes to sign-in; the gate owns the rest |
+
+Why the split matters: a definitive `CheckIn` refusal proves no stay was
+written, so the assignment must be taken back; an unreadable `CheckIn`
+proves nothing, so releasing could free a room the guest is standing in.
+A `CheckInReservation` refusal after the stay landed is the case
+`FR-REA-1` words as "stay recorded, reservation check-in refused": the
+room stays occupied because the stay names it.
+
+### 23.4 Reassignment and mid-stay move (target algorithm)
+
+One path serves the switch after a committed check-in and the mid-stay
+move; there is no second mechanic and no separate screen.
+
+1. The card's inputs are the reads the panel already runs: in-house rows
+   carry `roomId` (`app/src/views/StayView.vue:981-1002`) and the ready
+   pool is the `vacant-inspected` list loaded with the panel
+   (`:1004-1042`, `readyRooms` at `:597`). No new read is added.
+2. `Move guest` guards: in flight is a no-op, a guest and a room must be
+   picked. The guest's own room is not offered, because an
+   `occupied` room is never in the ready pool.
+3. Keys are generated once (`:571`).
+4. `AssignRoom {roomNumber: <target>, businessDate, stayLink: <stayId>,
+   actor, idempotencyKey}` — the target is occupied under this stay
+   before the stay moves. Assignment first is what makes a target that
+   was just taken, is not ready, or is blocked refuse before anything
+   moves (`NFR-CON-2`).
+5. `MoveRoom {stayId, toRoomId: <assigned room id>, actor,
+   idempotencyKey}` (`services/stay/src/store.ts:332-376`); the reply
+   carries `move {fromRoomId, toRoomId, movedAt}`. The stay stays in
+   house with its folio link and keeps the row in `stay_moves`.
+6. `ReleaseRoom {roomNumber: <number of move.fromRoomId>,
+   toState: "vacant-dirty", actor}` — last, so the room only becomes
+   free once the stay no longer names it.
+7. The receipt names the guest, both rooms, and `move.movedAt` in the
+   hotel's local time; the panel then reloads so the board and the Rooms
+   map agree.
+
+| Failure at | Room / stay state | Desk action | Wording |
+|---|---|---|---|
+| Step 4, definitive | Target not assigned, stay unchanged | Nothing to release; reload the ready pool | One plain refusal naming the cause |
+| Step 5, definitive (`STATE_ILLEGAL` not in house, `VALIDATION_FAILED` same room, `NOT_FOUND`) | Target occupied by this action, stay unchanged | One `ReleaseRoom {target, "vacant-inspected"}`; a `STATE_ILLEGAL` answer means the target is already free | Refusal plus "the target is free again"; if the compensation fails, name the target that still reads occupied |
+| Step 5, unreadable | The move may have landed | Release nothing | Name both rooms and ask staff to reload before acting again |
+| Step 6, `STATE_ILLEGAL` (old room no longer occupied) | Stay in the new room; the old room is already free | Claim no release; say the old room is free | Reuse the #588 already-free sentence |
+| Step 6, unreadable or another refusal | Stay in the new room; the old room may still read occupied | Do not roll the move back (a rollback would need a second stay write and a second assignment — a saga this change rejects); name the old room | Say the guest is in the new room and the old room still reads occupied |
+| Any step, `401` | Unknown | Release nothing | The shared client routes to sign-in |
+
+Why the ordering is architectural, not cosmetic: releasing first would
+leave the stay naming a free room — sellable to the next guest while
+someone is in it — and moving before assigning would let a taken target
+refuse after the stay already moved. The chosen order makes every
+refusal happen before the guest's record changes, and every remaining
+failure visible instead of silent.
+
+### 23.5 Per-flow diagram — arrival check-in commit
+
+```mermaid
+flowchart TD
+    A[Arrival pick preloads booking and ready rooms; assigns nothing  StayView.vue:1121-1222] --> B[Staff pick the room and click Check in  StayView.vue:1224-1247]
+    B --> C[Generate stay id and keys once  StayView.vue:1246]
+    C --> D[AssignRoom chosen room, stayLink is the stay id  StayView.vue:1249-1261; store.ts:361-405]
+    D -->|definitive refusal| Z1[Nothing assigned; plain refusal; picker reloads  StayView.vue:1262-1280]
+    D -->|assigned| E[GetReservation  StayView.vue:1281-1295]
+    E -->|definitive refusal| R1[ReleaseRoom to vacant-inspected  store.ts:407-436; FR-REA-1]
+    E -->|unreadable| R2[No release; name the room; reload before acting  FR-REA-1]
+    E --> F[CheckIn with the assigned room id  StayView.vue:1304-1323; store.ts:210-229]
+    F -->|definitive refusal| R1
+    F -->|unreadable| R2
+    F --> G[CheckInReservation  StayView.vue:1325-1336]
+    G -->|refusal after the stay committed| X[Stay in house in the room; say the link is not recorded; release nothing  FR-REA-1]
+    G -->|recorded| H[Stay in house; the room reads occupied; panel reloads  StayView.vue:1337-1368]
+    R1 --> H1[Room free again, named in plain words  FR-REA-1]
+    R1 -->|release fails or is unreadable| R2
+```
+
+Edge trace:
+
+- A–B: the preload reads the booking and the booked type's ready rooms
+  and assigns nothing (`app/src/views/StayView.vue:1121-1222`); the click
+  guard is the in-flight no-op (`:1224-1247`, `commitInFlight` at
+  `:624-631`).
+- C: one stay id and one key per write (`:1246`, `newIdempotencyKey` at
+  `:571`).
+- D: `AssignRoom` with `stayLink: stayId` (`:1249-1261`;
+  `services/rooms/src/store.ts:361-405`). A `CONFLICT` here means no
+  room was taken (`:1272-1278`).
+- D–E / E–F: the booking read and the stay write as built (`:1281-1295`,
+  `:1304-1323`); `CheckIn` is idempotent by `stayId` and refuses a
+  double check-in before writing (`services/stay/src/store.ts:217-225`).
+- F–G: the reservation link (`:1325-1336`); this is the step that can
+  fail after the stay landed.
+- R1: the compensating release with the explicit target
+  (`services/rooms/src/store.ts:407-436`), which records the pair in
+  `room_status_history` and emits `room.state-changed`.
+- R1–R2: a compensation that is itself refused or unreadable is named,
+  never hidden; the desk never claims a free room it did not see freed.
+
+### 23.6 Per-flow diagram — reassignment and mid-stay move
+
+```mermaid
+flowchart TD
+    A[Staff pick a guest in house and a ready room; Move guest  rollout 6.17] --> B[Generate keys once  StayView.vue:571]
+    B --> C[AssignRoom target, stayLink is the stay id  store.ts:361-405]
+    C -->|just taken, not ready, blocked| Z1[One plain refusal; nothing moved; ready list reloads  FR-REA-3]
+    C -->|assigned| D[MoveRoom target room id  stay store.ts:332-376]
+    D -->|definitive refusal| Z2[ReleaseRoom target to vacant-inspected  store.ts:407-436; FR-REA-3]
+    Z2 -->|release fails or is unreadable| Z3[Name the target that still reads occupied; claim no move  FR-REA-3]
+    D -->|unreadable| Z5[Nothing released; name both rooms; reload before acting  FR-REA-3]
+    D -->|moved| E[ReleaseRoom echo move.fromRoomId to vacant-dirty  store.ts:407-436; FR-REA-2]
+    E -->|old room already free| Z6[Say the old room is free; the stay keeps the new room  FR-REA-2]
+    E -->|release fails or is unreadable| Z4[Stay names the new room; name the old room as still occupied  FR-REA-2]
+    E -->|released| F[Board and Rooms map show only the new room occupied  FR-REA-2]
+    F --> G[Receipt names both rooms and the move time; stay_moves keeps from, to, time  FR-REA-5]
+```
+
+Edge trace:
+
+- A–C: the guest and room picks come from the panel's existing reads
+  (`app/src/views/StayView.vue:981-1042`); the target is occupied under
+  this stay before the move (`services/rooms/src/store.ts:361-405`), so a
+  taken target refuses first (`NFR-CON-2`).
+- C–Z1: a `CONFLICT` / `STATE_ILLEGAL` answer proves no write, so
+  nothing is compensated.
+- D: `MoveRoom` keeps the stay in house, refuses a closed stay and a
+  same-room move, and records `fromRoomId`, `toRoomId`, `movedAt`
+  (`services/stay/src/store.ts:332-376`).
+- D–Z2: a definitive lead refusal means the stay did not move, so the
+  target is released back to the state it held.
+- D–E: the release target is the echo's `move.fromRoomId`, not the
+  panel's remembered room (23.1 consequence 1), and it is the last call
+  so the guest is recorded in the new room before the old one frees.
+- E–Z6: `STATE_ILLEGAL` from the release means the old room is not
+  occupied — the intended end state already holds, so the desk says it
+  is free and claims no housekeeping state it did not set (the #588
+  precedent, `app/src/views/StayView.vue:1674-1685`).
+- E–Z4: a release that fails or cannot be read leaves the move standing
+  and names the old room; there is no rollback path, by decision.
+- F–G: the receipt and the durable row come from the same echo
+  (`contracts/http/MoveRoom.json`).
+
+Failure/rollback summary: every refusal before the target assignment
+changes nothing; a refusal after it runs exactly one compensating
+release back to ready; an unreadable outcome releases nothing and is
+reported as an outcome to re-read; a release that fails after the move
+committed leaves the stay in the new room and names the old room.
+Rolling the change back is the single implementation PR: the desk stops
+calling operations that already exist, the two-panel Stay screen and its
+guards return as they were, and any room left stranded by a move in the
+reverted build is cleared through the existing desk release. No schema
+migration and no data backfill exists in either direction.
+
+### 23.7 Contract delta
+
+None. The change uses the three operations in the shapes the contract
+already carries:
+
+| File | Change | Version effect |
+|---|---|---|
+| `contracts/http/AssignRoom.json` | unchanged — `roomNumber`, `businessDate`, `stayLink`, `actor`, `idempotencyKey` as contracted; the desk passes the stay id (arrival) or the in-house stay id (move) as `stayLink` | none |
+| `contracts/http/MoveRoom.json` | unchanged — `stayId`, `toRoomId`, `actor`, `idempotencyKey`; the reply's `move {fromRoomId, toRoomId, movedAt}` is the release input | none |
+| `contracts/http/ReleaseRoom.json` | unchanged — `toState` already accepts `vacant-inspected` and defaults to `vacant-dirty`; no new field, no new error code | none |
+| `contracts/errors/envelope.json` | unchanged — no new code; the desk's definitive/unreadable split reads the existing codes and statuses, not new ones | none |
+| `contracts/events/*.json` | unchanged — `room.state-changed` and `stay.moved` already carry room, state, actor, and time | none |
+| `contracts/openapi.yaml` + `frontend/docs/openapi.yaml` | unchanged — no operation is added, removed, or reshaped | none |
+| schema and migrations | none — `rooms.room_status_history` and `stay_moves` already store what this change emits | none |
+
+If the implementation PR finds the contract lacking anything the desk
+needs (for example a client-visible move read), that finding is recorded
+and a follow-up is filed instead of widening this change (issue scope,
+"Out").
+
+### 23.8 Verification plan
+
+The implementation PR creates the desk guards and re-pins the ones this
+change retires; the service tests are unchanged and must stay green.
+
+Desk guards (`app/src/views/StayView.test.ts`; existing patterns:
+`:394-463` ready-room load and one-click commit, `:2253-2279`
+double-clicked check-in, `:2390-2666` the #586/#596/#614 commit-window
+guards):
+
+- **Switch after preload** — the preload calls no `AssignRoom`; a room
+  changed after the preload is the room the commit assigns, and exactly
+  one `AssignRoom` leaves the panel.
+- **Switch after commit (arrival compensation)** — a definitive refusal
+  at the booking read, and again at the stay write, issues exactly one
+  `ReleaseRoom` with `toState: "vacant-inspected"` and shows the plain
+  refusal plus the freed-room sentence; an unreadable failure issues no
+  `ReleaseRoom`; a failed compensating release names the room and claims
+  no free room; a reservation-link refusal after the stay committed
+  issues no release.
+- **Reassignment after a committed check-in** — the card assigns the
+  target, moves the stay, releases the echo's from-room to
+  `vacant-dirty`, in that order, and shows the receipt with both numbers
+  and the time.
+- **Mid-stay move** — the same path on an earlier-day in-house stay
+  keeps the stay's state and folio link, and the release follows the
+  echo even when the panel's row is stale.
+- **Partial-failure ordering** — a lead refusal changes nothing; a
+  stay-side refusal compensates the target once; a release that fails
+  after the move names the old room and rolls nothing back; a replayed
+  action performs one compensation at most.
+- **Retired-pin re-pin** — `app/src/stay-restyle.test.ts:120-151` keeps
+  every retired v1 hook absent except the two this change decides
+  (`data-testid="stay-move-card"`, `stay-move-room` / the `MoveRoom`
+  call), which are re-pinned as decided additions.
+
+Browser/lab guards (existing placement: `app/e2e/stay.spec.ts`,
+`app/e2e/design-facts.spec.ts`, the design-facts extractor job and
+Playwright step in `.github/workflows/ci.yml`, and
+`script/e2e-desk-loop.sh:338-349` for the assign/move/release chain):
+
+- **Arrival commit and compensation** — one switch-after-preload
+  scenario and one switch-after-commit scenario in the browser suite,
+  asserting the desk board and the Rooms map show only the room the
+  guest is in.
+- **Isolated-lab reproduction record** — which path leaves the stale
+  hold (switch after a preload, switch after a committed check-in, or a
+  mid-stay move) recorded in the implementation PR body or an issue
+  comment, per the issue's scope.
+- **Catalogue coverage** — `script/catalogue-coverage-check.sh` green
+  with every new move/check-in string in `messages/en.json` and
+  `messages/vi.json`, placeholders intact.
+- **Design facts** — the one additive card recorded as a decided fact in
+  the design-facts comparison rather than silencing the Stay screen
+  (`app/e2e/design-facts.spec.ts`).
+
+Stack and repo gates: `cd app && npm ci && npm run build && npm run lint
+&& npm test`; the Playwright E2E job (`npm run test:e2e` in `app`);
+`script/contract-check.sh`; `script/openapi-route-check.sh`;
+`script/markdown-link-check.sh`. Service suites stay unchanged:
+`services/rooms/src/server.test.ts:328-381`, `:455-500` and
+`services/stay/src/server.test.ts:240-292` must pass untouched.
+
+### 23.9 Residual risks, gate points closed at the stack base, and re-tier trigger
+
+- **R12 — the compensation lives in the browser.** A desk closed
+  between the target assignment and the release leaves the target
+  occupied with a stay link that no stay answers (arrival) or a stale
+  link (move). Accepted for this change: there is no server-side saga,
+  queue, or retry worker, and building one is a different change. The
+  next panel load shows the room `occupied`, and the operator clears it
+  with the existing desk release; naming the room in the refusal is what
+  makes it findable rather than silent.
+- **R13 — a reservation link can fail after the stay landed.** The stay
+  and the room agree (guest in house, room occupied) but the booking
+  keeps `confirmed`. That split is reported, not hidden; the technical
+  repair is the same idempotent `CheckInReservation` call, and the #646
+  split is the precedent for accepting it as visible.
+- **R14 — closed at the stack base: the `AC-REA-1` release list is
+  scoped.** The criterion already words the condition as a later step of
+  the same commit not landing "while no stay was recorded (the booking
+  read or the stay write)", and states the post-stay split explicitly:
+  a reservation-link failure after the stay write releases nothing and
+  keeps the room occupied
+  (`docs/product/acceptance-criteria.md:1229-1247`). This delta adds no
+  wording of its own; LLD 23.2, 23.3 (step 7 row), 23.6, and
+  `FR-REA-1` follow that text unchanged, so no residual discrepancy
+  remains for the implementation to resolve.
+- **R15 — closed at the stack base: both copy points are keyed.** The
+  UI contract table keys the arrival-compensation sentence
+  (`desk.stay.checkin_compensated`) and the post-stay reservation-link
+  sentence (`desk.stay.checkin_link_not_recorded`) in both locales with
+  matching placeholders (`docs/product/desk-ui-design-rollout.md:2171-2172`).
+  No copy work is outstanding for the implementation, which must still
+  not invent wording. The move path needs no new key for "the old room
+  is already free": `desk.stay.room_already_free` already exists
+  (`messages/en.json:472`, `messages/vi.json:472`).
+- **R16 — the owner board gains one card.** The additive `Move room`
+  card is a decided UI fact beyond `docs/design/Stay.dc.html`; the
+  design-facts and dom-diff records must carry it as a decision, not as
+  an exemption that hides the screen.
+- **Re-tier trigger.** A shape that needs a new operation or field, a
+  lifecycle state, a stored compensation record, a server-side saga or
+  retry worker, or a migration is T3: it needs an ADR, the owner's
+  `proposed -> accepted` flip, and its rollback note in the
+  implementation PR. The decided shape needs none of these, which is why
+  the tier stays T2 and the risk stays `risk-medium`.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-961
+
+## 24. Booking register read for the desk (Refs #648)
+
+Tier **T2 confirmed** (a reader-visible desk screen that only reads).
+Owner manual QA (2026-11-10) found that the desk has no place to read
+existing bookings: `BookView` creates one and shows its confirmation,
+and no screen lists bookings across dates
+(`app/src/router.ts:49-104`; `app/src/App.vue:255-272`). The data and
+the requirement already exist: `QueryCalendar` returns the bookings
+overlapping a range (`contracts/http/QueryCalendar.json`),
+`GetReservation` the full record with the guest snapshot and the frozen
+price basis (`contracts/http/GetReservation.json`), and `ListRoomTypes`,
+`ListArrivalsDepartures` and `ListRoomsByState` name the type and the
+room (`contracts/http/ListRoomTypes.json`,
+`contracts/http/ListArrivalsDepartures.json`,
+`contracts/http/ListRoomsByState.json`). Every one of those reads is
+already made from another desk screen
+(`app/src/views/DeskView.vue:996`, `:1025`, `:1112`, `:1125`;
+`app/src/views/BookView.vue:676`, `:948`;
+`app/src/views/PrintView.vue:788`, `:1208`;
+`app/src/stay-options.ts:88`, `:125`), so no integration edge is new.
+
+This section records the architect-owned delta: the screen boundary and
+the route/nav entry (24.1), the load composition, the range mapping and
+the cap that bounds it (24.2), the failure classes and what an empty
+cell means (24.3), the target algorithm (24.4), the two per-flow
+implementation diagrams with their edge traces (24.5, 24.6), the
+contract no-change statement plus the G2 decision (24.7), the
+verification plan (24.8), and the residual risks, the closed copy gap,
+and the re-tier trigger (24.9). Acceptance criteria are
+`AC-BMV-1..7` in `docs/product/acceptance-criteria.md`
+[section 17](../product/acceptance-criteria.md); FR/NFR wording is
+`docs/requirements/mvp-requirements.md` [section 25](../requirements/mvp-requirements.md);
+the screen spec and its UI contract are
+`docs/product/booking-management-view.md`; the app-only nav allowance is
+`docs/technical/desk-ui-fact-schema.md` [section 8](../technical/desk-ui-fact-schema.md);
+guard mapping is the `qa-lead` handoff; the verdict is the
+`spec-reviewer` gate.
+
+Explicit no-change statements for this change:
+
+- **Route and shell, additive only.** One route (`bookings`, path
+  `/bookings`, under the existing `/app/` history base) and one tab
+  between `book` and `stay`. The router shape, the document-title meta
+  pattern, and the shell's brand-only shrink rule are unchanged
+  (`app/src/router.ts:44-112`, the app-only `manage` route at `:85-89`
+  is the precedent; `app/src/App.vue:255-272`). Onboarding keeps no
+  tab; every other destination, the locale pill, the session control,
+  the sign-in gate, and the `1200px` content column keep their
+  behaviour. One shell value is the decided exception, not an incidental
+  one (R19): the sub-`1280px` nav-spacing rule from D-29.
+- **Operation surface.** No new operation, path, field, parameter, or
+  error code: the five reads above are used exactly as contracted, and
+  the view calls no write operation at all. `ModifyReservation`,
+  `CancelReservation`, `MarkNoShow`, check-in/out, and room assignment
+  stay with their own flows (issue #648 scope, "Out").
+- **Schema, events, migrations.** None. The register persists nothing:
+  the range, the selection, and the rows live in the view's own state
+  only.
+- **Services.** Reservations, Rooms, Stay, and Guests keep their code.
+  In particular the calendar read keeps its in-memory iteration and its
+  `ORDER BY`-free query (24.2), because ordering is a screen concern.
+- **Lifecycle.** No state is added. The register renders the existing
+  reservation lifecycle (`confirmed`, `checked-in`, `closed`,
+  `cancelled`, `no-show`) plus a catalogue fallback for anything else,
+  and it never derives a state from dates
+  (`docs/architecture/state-machine.md` [section 1.1](state-machine.md)).
+- **The desk's other screens.** No change to the board, Stay, Book,
+  Folio, Print, Rooms, or Manage behaviour. The shared helpers the
+  register reuses keep their current callers' contracts (24.1).
+- **No role gate.** The view writes nothing, so it adds no client-side
+  role gate and every signed-in hotel role sees it. That is the opposite
+  of the Manage screen's refusal path
+  (section 19.7), which exists because Manage writes.
+
+### 24.1 Which layer owns what
+
+| Fact | Owner | Read / written where | May the screen assert it? |
+|---|---|---|---|
+| The bookings overlapping the range | Reservations | `QueryCalendar`; overlap predicate `arrival < dateTo && departure > dateFrom` (`services/reservations/internal/store/store.go:191-193`; Postgres `services/reservations/internal/store/postgres.go:311-321`) | No — it renders the entries the read returned |
+| Row order and the 50-row cap | Desk | sort by `arrivalDate` then `reservationRef`, then slice 50 (`docs/product/booking-management-view.md` sections 3 and 5) | Yes, and it must: the read guarantees no order (map iteration `services/reservations/internal/store/store.go:274-291`; no `ORDER BY` at `services/reservations/internal/store/postgres.go:311-321`) |
+| Guest name and quoted total | Reservations (frozen at booking) | `GetReservation` — the stored snapshot `guest.fullName` and `priceBasis.totalMinor` / `discountName` (`services/reservations/internal/handler/handler.go:172-181`; `contracts/http/GetReservation.json`) | Read-back only — never re-derived, never repriced |
+| Room-type name | Rooms | `ListRoomTypes` (`contracts/http/ListRoomTypes.json`) | Read only |
+| Assigned room | Stay, then Rooms | `ListArrivalsDepartures.inHouse` for `stayId -> roomId` (`services/stay/src/server.ts:42-60`, `services/stay/src/store.ts:432-439`), then `ListRoomsByState("occupied")` for `roomId -> number` | Read only; a row shows a room only when both reads agree (24.3) |
+| The business date the in-house read uses | Desk | `localBusinessDate()` (`app/src/stay-options.ts:50-54`), the same value Main and Stay send | Yes — it is the desk business date, never the chosen range |
+| The range's inclusive-nights mapping | Desk | `dateFrom` = first night, `dateTo` = last night + 1 day | Yes — the contract window is `[dateFrom, dateTo)` |
+| Money and date rendering | Desk i18n | `formatVnd` (`app/src/i18n/index.ts:165-171`), `formatDeskDate` (`:179-187`) | Presentation only; the stored and wire values never change |
+| The ninth tab's comparison allowance | This project's contract | `docs/technical/desk-ui-fact-schema.md` section 8 (committed text) | Yes |
+
+Four load-bearing consequences of that ownership:
+
+1. **The range mapping is one-way and must be applied in one place.** In
+   product words the range is inclusive of both nights; the calendar
+   window is half-open. A screen that sends the last night as `dateTo`
+   silently loses that night, and a screen that sends `dateFrom` = first
+   night - 1 silently adds the previous one. The view computes the pair
+   once per apply from the two picked nights.
+2. **The order and the cap are the screen's, and the cap bounds the
+   read.** `QueryCalendar` returns every overlapping booking with no
+   order guarantee, so the view sorts and slices before it issues the
+   per-row reads; slicing after them would leave the fan-out unbounded.
+   The same range therefore always reads the same 50 bookings.
+3. **The assigned-room resolution is a point-in-time read, not a range
+   read.** `inHouse` is the current in-house set for the business date
+   (`services/stay/src/store.ts:432-439`), so it answers a booking that
+   is in house now. A `closed` booking has no room to show because no
+   list read exposes the room a departed guest held (G4), and a
+   `confirmed` booking never has one because assignment is the desk's
+   room-state write (section 23). Both read `—`.
+4. **An empty in-house read is a legitimate answer, not a failure.** The
+   calendar may still return `checked-in` rows for a range in the past,
+   or for a stay that ended between the two reads. The row reads `—` and
+   is not counted as a partial row; only a failed read is a failure
+   (24.3).
+
+### 24.2 The load composition, the range mapping, and the cap
+
+- **One apply = one calendar read + one shared-map load + at most 50
+  row reads.** The cap is the issue's bound on the per-row fan-out
+  (risk register R-12), not pagination.
+- **Shared maps, one read each per apply.** `ListRoomTypes` once per
+  load (`app/src/views/DeskView.vue:996` is the precedent);
+  `ListArrivalsDepartures { businessDate: localBusinessDate() }` and
+  `ListRoomsByState { state: "occupied" }` as one pair, ordered stay
+  first (the room id comes from the stay row, the number from the room
+  read). That pair is the one the Folio/Print stay picker already reads
+  (`app/src/stay-options.ts:85-153`), so the register consumes the
+  committed path instead of a second copy: extract the pair into one
+  exported helper returning the `stayId -> room number` map and the
+  failed flag, and have `loadInHouseStayOptions` keep its guest-label
+  loop on top of it. The register reads the map only: it must not call
+  `loadInHouseStayOptions`, because that helper resolves one `GetGuest`
+  per in-house stay (`app/src/stay-options.ts:63-82`, `:144`) for
+  labels the register already has from its row reads — a per-stay guest
+  fan-out the register would pay for nothing. One read pair, one
+  degradation rule, and no new guest read.
+- **Default range.** On entry, the business date through six nights
+  after it (`localBusinessDate()`, `app/src/stay-options.ts:50-54`), so
+  `dateFrom` = business date and `dateTo` = business date + 7 days. The
+  screen reads on entry; it never lands on a blank page waiting for
+  input.
+- **Validation.** Both fields are required and the last night must not
+  be before the first; an invalid range sends nothing
+  (`desk.bookings.range_invalid`).
+- **Order of work.** Validate, clear the selection and the detail (a
+  detail read back for a row the new range no longer lists would
+  contradict the list), read the calendar, then sort and cap, then issue
+  the shared-map reads and the ≤50 row reads in parallel. The calendar
+  read decides whether there is a list at all; the remaining reads are
+  independent of each other and a failure in one degrades only the
+  cells it owns.
+- **In-flight.** The apply action and both fields are disabled while a
+  list load runs, and a second click is a no-op; a row selection while a
+  detail read is in flight is a no-op in the same way.
+- **No polling and no queue.** One read per apply and one per row
+  selection. Nothing retries in the background: a failed read renders
+  the plain read-error state with an explicit retry (FR-DSP-3,
+  NFR-SHL-3).
+
+### 24.3 Failure classes and what an empty cell means
+
+Four failure classes, each owned by the read that failed:
+
+| Class | Trigger | Rendering | Does the list survive? |
+|---|---|---|---|
+| List read failure | `QueryCalendar` fails: transport or offline (`code: "OFFLINE"`, `app/src/api/client.ts:159-168`), `5xx`, or a non-envelope reply | One plain sentence naming what could not be read plus one retry action (`desk.bookings.read_failed`, `desk.bookings.retry`); no row is invented, no zero-filled row is shown | No rows, but the shell and the rest of the desk stay usable |
+| Shared-map failure | `ListRoomTypes`, `ListArrivalsDepartures`, or the occupied-room read fails | The affected column reads `cell_unreadable` and one notice above the list names that column (`desk.bookings.column_partial`, `{column}`, filled from the failed read's own heading `desk.bookings.col_room_type` / `desk.bookings.col_room`); every other cell still renders | Yes |
+| Row read failure | `GetReservation` for one listed booking fails | The row keeps its calendar fields (reference, type id resolved from the map, dates, nights, state); the guest-name and total cells read `cell_unreadable`; the row is counted in the partial notice (`desk.bookings.row_partial`, `{count}`); the booking is never dropped | Yes |
+| Detail read failure | `GetReservation` on selection fails | One sentence naming the booking (`detail_failed`, `{ref}`) plus one retry action; the list stays exactly as it was and the previous detail is not kept as if it were current | Yes |
+
+A `401` is not one of these classes: the shared client signs the session
+out and rethrows `UNAUTHENTICATED` (`app/src/api/client.ts:113-140`,
+`:169`), the view rethrows instead of degrading
+(`app/src/stay-options.ts:40-46` is the pattern), and the sign-in gate
+takes over.
+
+**An empty cell has exactly two meanings, and the view must pick one
+deliberately:**
+
+- **`—` — absent by rule.** The fact does not exist for this row and the
+  screen says so with the plain glyph. `confirmed` (a type, not a room),
+  `closed` (G4: no read exposes the departed guest's room), and a
+  `checked-in` row whose `stayId` is missing from the in-house read or
+  whose `roomId` is missing from the occupied read. Never an invented
+  room, never an id.
+- **`cell_unreadable` — absent by failure.** The read that owns the cell
+  failed. The cell says so, the row stays, and the notice above the list
+  states the count.
+
+Two absences that are neither, with their rule:
+
+- A successful row read whose snapshot carries no usable
+  `guest.fullName` is a data defect, not a failed read. It renders the
+  already catalogue-backed `desk.today.unknown_guest` wording
+  (`app/src/stay-options.ts:56-58`) and never the `guestId` (the #372
+  rule: no raw record id reaches the desk). It is not counted in the
+  partial notice because nothing failed.
+- A successful `ListRoomTypes` read that does not contain the row's
+  `roomTypeId` cannot happen while room types have no delete (the Manage
+  screen offers none, section 19.7), so it is treated as
+  `cell_unreadable` rather than printing a UUID.
+
+### 24.4 Target algorithm
+
+1. On entry, default the range from the business date (24.2) and load.
+2. Apply: validate the range; on failure show `range_invalid` and send
+   nothing.
+3. Clear the selection and the detail card.
+4. `QueryCalendar { dateFrom: firstNight, dateTo: lastNight + 1 day }`.
+   On failure, render the list read-error state with its retry and stop
+   this load.
+5. Sort the entries by `arrivalDate` then `reservationRef`; slice to 50;
+   keep the entry count only to decide the `capped` sentence.
+6. In parallel: `ListRoomTypes`; the
+   `ListArrivalsDepartures { businessDate: localBusinessDate() }` ->
+   `ListRoomsByState { state: "occupied" }` pair; one
+   `GetReservation { reservationRef }` per capped entry.
+7. Build one row per capped entry: reference from the calendar entry,
+   guest and total from its row read, type name from the type map, room
+   from the stay/room maps, nights from the dates, state chip from the
+   catalogue. Resolve every absent value by 24.3.
+8. On row selection, read `GetReservation { reservationRef }` fresh and
+   render the detail card under the list. The read-back is authoritative
+   over the row it came from; a failure renders the detail-error state
+   and leaves the list untouched.
+9. Nothing else: no write call, no second range, no refresh timer, no
+   re-derivation of price or state.
+
+### 24.5 Per-flow diagram — list read, happy path
+
+```mermaid
+flowchart TD
+    A[Staff open the bookings screen; range defaults to business date + six nights  stay-options.ts:50-54] --> B[Apply validates the two nights  product spec section 4]
+    B -->|missing or inverted| B1[Plain range sentence; nothing sent  desk.bookings.range_invalid]
+    B -->|valid| C[QueryCalendar dateFrom first night, dateTo last night + 1  contracts/http/QueryCalendar.json; DeskView.vue:1025-1032]
+    C -->|entries| D[Sort by arrival then reference; slice 50  product spec section 5]
+    D --> E[ListRoomTypes once  DeskView.vue:996]
+    D --> F[ListArrivalsDepartures businessDate, then ListRoomsByState occupied  stay-options.ts:85-153]
+    D --> G[One GetReservation per capped row  BookView.vue:948-952]
+    E --> H[One row per booking; cells resolved by 24.3]
+    F --> H
+    G --> H
+    H --> I[Row chosen: fresh GetReservation and the detail card  product spec section 6]
+```
+
+Edge trace:
+
+- A–B: `localBusinessDate()` is the same desk business date Main and
+  Stay send (`app/src/stay-options.ts:50-54`); the pickers carry the
+  Book screen's app-localized treatment (`app/src/views/BookView.vue:157-190`,
+  `:539-575`).
+- B–C: the half-open mapping of 24.2; the calendar read is the one
+  `DeskView` already makes (`app/src/views/DeskView.vue:1025-1032`).
+- C–D: ordering is mandatory because the read is unordered
+  (`services/reservations/internal/store/store.go:274-291`,
+  `services/reservations/internal/store/postgres.go:311-321`).
+- D–E/F/G: the cap is applied before the reads, so the fan-out is
+  bounded (24.2, G2 decision in 24.7).
+- E/F–H: the maps are read once per apply, not once per row.
+- G–H: the per-row read supplies the guest and the frozen total
+  (`services/reservations/internal/handler/handler.go:172-181`).
+- H–I: the detail is a second, fresh read of the same operation, never a
+  copy of the row.
+
+### 24.6 Per-flow diagram — failure and partial paths
+
+```mermaid
+flowchart TD
+    A[Apply or entry load] --> B{QueryCalendar readable?}
+    B -->|no: offline, 5xx, non-envelope| Z1[Plain read-error sentence with retry; no rows invented  desk.bookings.read_failed; api/client.ts:159-196]
+    B -->|yes| C[Sort, cap, then read the maps and the rows]
+    C --> D{Shared map readable?}
+    D -->|no| E1[Affected column reads cell_unreadable; one notice names that column  desk.bookings.column_partial; product spec section 7]
+    D -->|yes| E2[Column resolves from the map]
+    C --> F{Row read readable?}
+    F -->|no| G1[Row keeps calendar fields; guest and total read cell_unreadable; counted in the notice  desk.bookings.row_partial; product spec section 7]
+    F -->|yes| G2[Row completes full]
+    E1 --> H[List renders; no booking dropped]
+    E2 --> H
+    G1 --> H
+    G2 --> H
+    H --> I{Row chosen and detail read}
+    I -->|read fails| J1[Detail-error sentence with retry; list unchanged  desk.bookings.detail_failed; product spec section 6]
+    I -->|read succeeds| J2[Detail card renders the read-back]
+    Z1 --> K[Retry re-runs the same apply]
+```
+
+Edge trace:
+
+- B–Z1: the list failure is one state for the whole list; it never
+  produces rows. The classification matches the shell's plain-words rule
+  (`app/src/api/client.ts:186-196`).
+- D/E1, F/G1: the two partial classes of 24.3. A partial row keeps its
+  calendar facts, so the desk can still act on the booking.
+- C–H: no booking in the capped set is ever silently dropped.
+- H–J1: a detail failure never rewrites the list, and the previous
+  detail is cleared rather than left as if current.
+- K: the retry re-runs the same apply with the same range; it is a staff
+  action, never an automatic poll.
+
+### 24.7 Contract delta and the G2 decision
+
+None. The change reads the five existing operations in the shapes the
+contracts already carry:
+
+| File | Change | Version effect |
+|---|---|---|
+| `contracts/http/QueryCalendar.json` | unchanged — `dateFrom`, `dateTo`, optional `roomTypeId`; the reply's `reservations[]` carries reference, type, dates, state, stay id | none |
+| `contracts/http/GetReservation.json` | unchanged — the reply carries `guest`, `priceBasis`, state, `stayId` | none |
+| `contracts/http/ListRoomTypes.json` | unchanged | none |
+| `contracts/http/ListArrivalsDepartures.json` | unchanged — `inHouse[]` carries `stayId` and `roomId` (`services/stay/src/server.ts:42-60`) | none |
+| `contracts/http/ListRoomsByState.json` | unchanged — `state: "occupied"`, `rooms[]` carries `roomId` and `number` | none |
+| `contracts/errors/envelope.json` | unchanged — no new code; the view uses the existing statuses and codes | none |
+| schema and migrations | none — nothing is persisted | none |
+
+**G2 decision: keep the per-row `GetReservation` fan-out for v1.** The
+register completes each row through one row read, bounded by the 50-row
+cap (at most 54 reads per apply: one calendar, one type list, the two
+calls of the in-house pair, ≤50 row reads). A `ListReservations` read
+that returned guest, total, type, and assigned room in one call would
+remove the fan-out, but it is a new operation with its own contract,
+versioning, service work, and spec — T3, not this change. The trigger
+for revisiting it is measured latency on the lab stack: if a full
+50-row apply is noticeably slower than the other desk lists, the
+follow-up is filed
+against the Reservations contract with those measurements, and the
+screen's cap stays the interim bound. Nothing in this delta pre-empts
+that read: the view consumes the row fields through one small
+"reservation summary" seam, so a future single-read backend can replace
+the fan-out without touching the row rendering.
+
+### 24.8 Verification plan
+
+The implementation PRs create the register guards and re-pin the shell
+guards the ninth tab moves. No service test changes: the five operations
+are untouched.
+
+Desk unit guards (`app/src/views/BookingsView.test.ts`, new; patterns:
+`app/src/views/ManageView.test.ts` for a read/write screen's state
+matrix, `app/src/views/DeskView.test.ts` for calendar reads):
+
+- **Range mapping** — the apply sends `dateFrom` = first night and
+  `dateTo` = last night + 1 day; the default range is the business date
+  through six nights after it; an inverted or missing range sends no
+  request and shows `range_invalid`.
+- **One load, bounded reads** — exactly one `QueryCalendar`, one
+  `ListRoomTypes`, one in-house pair, and one `GetReservation` per
+  capped row; a second click while a read is in flight issues nothing;
+  applying a new range clears the selection and the detail.
+- **Row fields** — guest, reference, type name, assigned room for an
+  in-house row, arrival, departure, nights, quoted total through
+  `formatVnd`, and the state chip; a `confirmed` and a `closed` row read
+  `—` for the room; a `checked-in` row whose stay is absent from the
+  in-house read reads `—`, not a guessed room.
+- **Ordering and cap** — rows sort by arrival then reference whatever
+  order the read returned; a range with 51+ bookings renders 50 and the
+  `capped` sentence; the 51st booking issues no row read.
+- **Empty and failures** — the empty sentence names the range; a
+  calendar failure renders `read_failed` plus a working retry; a failed
+  map read marks the column `cell_unreadable` and counts it; a failed
+  row read keeps the calendar cells and counts the row; a failed detail
+  read renders `detail_failed {ref}` and leaves the list; a `401`
+  rethrows to the gate and renders no local error.
+- **Read-only** — the suite's fetch stub accepts only the five read
+  paths; any write call fails the test, which is the `AC-BMV-7`
+  no-write guard.
+- **Catalogue parity** — every visible string resolves from
+  `messages/en.json` and `messages/vi.json` with matching placeholders;
+  `script/catalogue-coverage-check.sh` is the gate.
+
+Shell and route guards to extend, never delete:
+
+- `app/src/App.test.ts:179-207` — the rendered tab list moves from eight
+  to nine with `Bookings` between `Book` and `Stay`, in the same VI and
+  EN labels.
+- `app/src/shell-restyle.test.ts:26-27` — the `EN_NAV` / `VI_NAV`
+  arrays follow the same nine-tab order.
+- `app/src/router.test.ts:155-175` — the `bookings` route carries
+  `desk.shell.doc_title_bookings` with its fallback, and the route
+  registry test sees the new path.
+- `app/src/shell-restyle.test.ts` — new case for the narrow band (D-29):
+  the suite reads the `@media screen and (max-width: 1279px)` block
+  through its own band-scoped reader, because the existing assertion
+  reads only the first matching rule body and would keep passing on the
+  design value. It asserts the base `gap: 8px` / `padding: 10px 16px`
+  still holds for the design band and `gap: 4px` / `padding: 10px 12px`
+  inside the band, with the label, `10px` vertical padding, `44px`
+  target, `8px` radius, inversion, pill, session control, and brand-only
+  shrink rule unchanged. A first-match read of the narrow block is the
+  negative control that fails it.
+- `docs/product/desk-ui-pixel-faithful-restyle.md`'s 1200px rule — the
+  first implementation PR carries the nine-tab measurement in both
+  locales at the `1200px` band and the narrow band either side of the
+  breakpoint (`1279px` and `1280px`), so the record shows the row
+  fitting, nothing truncating or wrapping, and the design values
+  returning at and above `1280px` (product spec section 3; risk
+  register R-12; D-29).
+
+Browser/lab guards (`app/e2e/bookings.spec.ts`, new; the
+`app/e2e/manage.spec.ts:73` flow is the shape): a created booking is
+found again on `/app/bookings` with its guest, type, dates, and total;
+its row opens and the detail re-reads the same booking; an empty range
+shows the plain empty sentence; a failed read is triggered by route
+interception and renders plain catalogue words; the tab count, label,
+and active pill are asserted; VI and EN screenshots of the screen are
+recorded against the boards it borrows from
+(`docs/product/booking-management-view.md` section 13).
+
+Design facts: the schema entry is committed here; its consumer entry in
+`app/e2e/design-facts.ts` (`NAV_TAB_ALLOWANCES`) lands in the
+implementation PR that first renders the tab, because the gate diffs
+against the running DOM and an allowance for an unrendered tab fails
+`nav.order` and `nav.labels.bookings` (`app/e2e/design-facts.spec.ts:643-662`).
+That split is the #590 precedent (schema in the spec PR #607, consumer
+entry with the screen in #609). Until it lands, the gate keeps
+asserting the seven boards and the `manage` allowance unchanged.
+
+Stack and repo gates: `cd app && npm ci && npm run build && npm run lint
+&& npm test`; the Playwright browser suite; `script/catalogue-coverage-check.sh`;
+`script/markdown-link-check.sh`; `script/harness-conventions-check.sh`;
+`git diff --check`.
+
+### 24.9 Residual risks, closed copy gap, and re-tier trigger
+
+- **R15 — the assigned room is a point-in-time reading.** The in-house
+  pair is read once per apply, so a move made on another desk after the
+  load shows the room the row read, not the room after the move, until
+  the range is applied again or the page reloads. Accepted: the view is
+  read-only and the next load corrects it; the cell never guesses, and
+  the Stay screen remains the place where a move is seen immediately.
+- **R16 — the register cannot show a departed guest's room.** No read
+  exposes the room a `closed` booking held (G4), so the cell and the
+  detail read `—` for it. Adding that fact is a new read and a separate
+  change, not a widening of this one.
+- **R17 — the fan-out is bounded, not removed.** ≤50 row reads per apply
+  is accepted for v1 with the cap as the bound (24.7). The G2 trigger is
+  measured latency; a single-read list operation would be T3.
+- **R18 — closed: the partial-column notice is worded, and the row
+  sentence keeps its scope.** The earlier gap was that the catalogue
+  named only `desk.bookings.row_partial` (guest name and total) while
+  24.3 asks a failed `ListRoomTypes` / in-house / occupied read to be
+  stated in the same notice; using the row sentence there would
+  misreport what failed. The copy now landed in
+  `docs/product/booking-management-view.md` section 9 as
+  `desk.bookings.column_partial` ("The {column} column could not be
+  read."), with `{column}` filled from the failed read's own column
+  heading (`desk.bookings.col_room_type`, `desk.bookings.col_room`), so
+  the two classes stay distinct. The implementation therefore cites
+  both keys and never merges them: the row class is one
+  `row_partial` count, each failed column is its own `column_partial`
+  sentence. The screen's full copy set is 41 new keys: 39
+  `desk.bookings.*` plus `desk.shell.nav_bookings` and
+  `desk.shell.doc_title_bookings`.
+- **R19 — closed: the ninth tab at `1200px` (D-29).** Measured in the
+  `1200px` desk band, the nine-tab row does not fit at the boards' nav
+  spacing, and the owner decided on #648 to tighten that spacing below a
+  `1280px` viewport instead of shortening the label. The decided shell
+  change is one `@media screen and (max-width: 1279px)` block in
+  `app/src/App.vue`: the inter-tab `gap` goes `8px` -> `4px` and each
+  tab's side padding `10px 16px` -> `10px 12px`, which returns `8px` of
+  width per tab to the row, so `1280px` and wider keep every design
+  value byte for byte. Nothing else moves in that band: the label, the
+  `10px` vertical padding, the `44px` target, the `8px` radius, the
+  active-tab inversion, the locale pill, the session control, and the
+  brand-only shrink rule all hold, and the tab never truncates or wraps
+  silently. This is the one deliberate departure from the boards on the
+  shell; because the boards stay read-only (D-12/D-15) the divergence is
+  recorded in the specs rather than in a board file — product spec
+  section 3 and
+  `docs/product/desk-ui-pixel-faithful-restyle.md` section 4
+  ("Narrow-width nav overrides"), with D-29 in
+  `docs/project/decision-log.md`. The shorter-label alternative stays
+  reserved to the owner and was declined for this change, and the
+  overflow rule survives for a row that still overflows at the narrow
+  spacing. The guard that keeps this decided value from drifting is the
+  narrow-block assertion in 24.8.
+- **Re-tier trigger.** A shape that needs a new operation or field, a
+  stored register row, a paginated read, a server-side join, a new
+  lifecycle state, or a migration is T3: it needs an ADR, the owner's
+  `proposed -> accepted` flip, and its rollback note in the
+  implementation PR. The decided shape needs none of these, which is why
+  the tier stays T2 and the risk stays `risk-medium`.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1017
+
+## 26. Server-side reservation availability (Refs #631)
 
 Tier T3 (architectural: the overbooking decision's ceiling moves from a
 request field to another module's recorded inventory, adding one
@@ -3232,23 +4560,23 @@ is audit item R1: `sellableUnits` is read from the request body
 (`services/reservations/internal/store/store.go:221`, `:375`), so a
 caller that sends a large number overbooks. Product conditions
 `AC-OVB-1`..`AC-OVB-3` (`docs/product/acceptance-criteria.md` section
-15) and decision D-26 are sibling artefacts, as are the FR/NFR wording
+19) and decision D-31 are sibling artefacts, as are the FR/NFR wording
 (`business-analyst`), guard traceability (`qa-lead`), and the release and
 rollback note (`release-manager`); this section records only the
 architect-owned delta.
 
-### 22.1 Which service decides what
+### 26.1 Which service decides what
 
 | Fact | Authority | Enforced where | May the client assert it? |
 |---|---|---|---|
 | Units of a room type for a date range | Rooms (`rooms.rooms` + `rooms.blocks`) | Rooms answers `CheckRoomTypeSellability`; Reservations reads it | No |
-| Which units a reservation holds | Reservations (`reservations.reservations`) | The store's overlapping-row count (section 22.2 step 6) | No |
+| Which units a reservation holds | Reservations (`reservations.reservations`) | The store's overlapping-row count (section 26.2 step 6) | No |
 | The booking decision | Reservations | One critical section: count + insert | No |
 | Which room type, dates, guest | Client | Reservations validates shape and existence | Yes |
 | Idempotency key | Client | The store's replay lookup | Yes |
 | Session actor | Admin session token | Body `actor` today; token binding is residual risk R6 | Yes (`actor`), today |
 
-### 22.2 Guard algorithm (target)
+### 26.2 Guard algorithm (target)
 
 1. Validate the request as today — room type, dates, price basis,
    mandatory guest fields, hotel-mandatory guest fields
@@ -3306,15 +4634,15 @@ own. `AC-OVB-1` words that same set — a cancelled, no-show, or closed
 reservation "releases its held unit exactly as today", a checked-in one
 "keeps holding its unit exactly as today, because the in-house share of
 a room type must not be subtracted from the recorded capacity twice"
-(`docs/product/acceptance-criteria.md` section 15; `BR-47`) — so the
-criterion, `FR-OVB-4`, and this design read the same at the gate. The
+(`docs/product/acceptance-criteria.md` section 19; `BR-47`) — so the
+criterion, `FR-OVB-1`, and this design read the same at the gate. The
 state set stands because the consumed inventory reply carries no
 date-ranged occupancy fact — room state is current-state, blocks are
 date-ranged (`services/rooms/src/store.ts:307-359`) — so letting room
 state deduct the in-house share would subtract it twice and shrink every
 future date range until release.
 
-### 22.3 Happy path (create or modify with a readable ceiling)
+### 26.3 Happy path (create or modify with a readable ceiling)
 
 ```mermaid
 flowchart TD
@@ -3347,7 +4675,7 @@ Edge trace:
   (`store.go:221-225`), no row, no event.
 - G–I: response fields (`internal/handler/handler.go:156-158`).
 
-### 22.4 Failure and rollback paths
+### 26.4 Failure and rollback paths
 
 ```mermaid
 flowchart TD
@@ -3378,7 +4706,7 @@ Edge trace:
   behaviour returns with the request's number; the desk still sends the
   field, and no data migration exists in either direction.
 
-### 22.5 Contract delta
+### 26.5 Contract delta
 
 | File | Change | Version effect |
 |---|---|---|
@@ -3390,7 +4718,7 @@ Edge trace:
 No schema, table, migration, or event change; the reservation row, its
 state set, the change history, and the outbox payloads are untouched.
 
-### 22.6 Verification plan
+### 26.6 Verification plan
 
 Reservations guards (the implementation PR creates them; the existing
 suites are `services/reservations/internal/store/store_test.go`,
@@ -3430,7 +4758,7 @@ suites are `services/reservations/internal/store/store_test.go`,
 
 Desk guards stay green unchanged: `app/src/views/BookView.test.ts`
 (the sold-out refusal and the sent `sellableUnits` assertions),
-`app/src/book-restyle.test.ts`, `app/e2e/book.spec.ts` if present,
+`app/src/book-restyle.test.ts`, `app/e2e/book.spec.ts`,
 and the booking step of `script/e2e-desk-loop.sh`, tracing to
 `AC-OVB-3`.
 
@@ -3441,11 +4769,11 @@ build && npm test && npm run lint`; `script/contract-check.sh`;
 a sibling handoff and must cite the guards above by `file:line` at the
 merged head.
 
-### 22.7 Residual risks
+### 26.7 Residual risks
 
 - **R-OVB-1 — a fail-closed dependency in the booking path.** A Rooms
   outage refuses new bookings and modifications. Accepted by product risk
-  R-10 (`docs/project/risk-register.md`): a booking against a capacity
+  R-14 (`docs/project/risk-register.md`): a booking against a capacity
   nobody verified is worse than a refused booking, the desk shows its
   existing plain request-failed sentence, and the runbook's restart
   order (release-manager handoff) covers the source. An alert or a

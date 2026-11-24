@@ -38,7 +38,7 @@ The availability count is a desk-facing overview per date; since #631
 the guard's ceiling comes from the Rooms read in C2 instead (its
 `totalUnits` input is itself a request value), and the booking refuses
 fail-closed with `UPSTREAM_UNAVAILABLE` when that read fails (LLD
-[section 22](../architecture/lld.md); ADR-0006).
+[section 26](../architecture/lld.md); ADR-0006).
 
 ### C2. RES -> ROOM (`RoomInventoryService`) — SYNC
 
@@ -50,7 +50,7 @@ Same-step refusal branch (Seq-2/3/6); exactly-one-winner guard
 (BR-8). Live from #631 as the booking guard's capacity read: the ceiling
 is `totalCount - blockedRooms` for the effective type and dates, read per
 attempt with the caller's token forwarded; an unreadable reply refuses
-the booking `UPSTREAM_UNAVAILABLE` (LLD [section 22](../architecture/lld.md)).
+the booking `UPSTREAM_UNAVAILABLE` (LLD [section 26](../architecture/lld.md)).
 
 ### C3. RES -> GST (`GuestService`) — SYNC
 
@@ -70,6 +70,17 @@ flag at booking time (FR-GST-3). Mandatory-field set
 `GetDueReservation`: reservationRef -> dates, roomType, guestLink,
 priceBasis (FR-RES-1, FR-RTE-5, FR-FDK-5). Errors: `NOT_FOUND` /
 `STATE_ILLEGAL` (not due, already checked-in/cancelled; BR-1).
+
+`CheckOutReservation` (from #646 on): stayId -> the booking resolved by
+the stay link it carries, flipped `checked-in -> closed` (FR-DEP-1;
+LLD [section 22](../architecture/lld.md#22-departure-completes-the-booking-and-releases-availability-refs-646)).
+Stay calls it synchronously after its own close commits, forwards the
+caller's Bearer token, and times out at 2 seconds. Errors: `NOT_FOUND`
+(no booking carries the stay link), `STATE_ILLEGAL` (the booking behind
+the stay is not checked in), `VALIDATION_FAILED`. A completion the call
+cannot record is reported by the close (`bookingCompletion`), never
+turned into a failed close: the stay close is not rolled back by a
+downstream refusal.
 
 ### C5. STAY -> ROOM (`RoomInventoryService`) — SYNC, atomic at provider
 
@@ -254,4 +265,4 @@ sections 4–6 and change only through requirements wording, never through
 implementation drift.
 
 <!-- ao-role: architect -->
-Role: architect · AO session hotel-mgmt-919
+Role: architect · AO session hotel-mgmt-946

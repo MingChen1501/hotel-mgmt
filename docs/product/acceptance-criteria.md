@@ -25,8 +25,9 @@ domain code matches the story and FR domains (`RES` reservations and
 booking, `FDK` front desk, `RMS` rooms and housekeeping, `RTE` rates
 and availability, `GST` guests/CRM, `BIL` billing and folio, `RPT`
 reporting, `ADM` configuration and administration, `CUS` per-hotel
-workflow customisation). "Staff" means any signed-in owner, manager,
-or front-desk account acting within its access.
+workflow customisation, `DEP` departure release and same-day reuse).
+"Staff" means any signed-in owner, manager, or front-desk account
+acting within its access.
 
 ## 1. Booking flow (reservations)
 
@@ -61,7 +62,10 @@ or front-desk account acting within its access.
   types, when staff open the calendar, then every reservation appears
   on its correct dates with its room type and state, and selecting one
   shows its reference, guest, and price. Traces to: US-RES-5;
-  FR-RES-5.
+  FR-RES-5. Pointer: the desk list-and-detail surface that satisfies
+  this condition in list form is `AC-BMV-2`/`AC-BMV-5` (Refs #648);
+  the date-by-room-type grid half stays open and is recorded as a gap
+  in `docs/product/booking-management-view.md`.
 - AC-RES-6 — Given a reservation whose arrival date has passed without
   check-in, when staff mark it as no-show, then the reservation state
   becomes no-show, the held room is released for sale, and the no-show
@@ -76,8 +80,10 @@ the calendar with correct dates, room type, and state.
 - AC-FDK-1 — Given a reservation due for arrival and a vacant, clean,
   inspected room of the booked type, when staff check the guest in
   against that room, then the reservation becomes an in-house stay
-  linked to the room, and the room state becomes occupied. Traces to:
-  US-FDK-1; FR-FDK-1.
+  linked to the room, and the room state becomes occupied. The desk
+  commit assigns only the room the guest is actually in and takes back
+  the room it assigned when that commit does not land and no stay was
+  recorded (`AC-REA-1`, Refs #647). Traces to: US-FDK-1; FR-FDK-1.
 - AC-FDK-2 — Given an in-house stay with a settled folio (zero
   balance) or an authorised approval recorded under FR-BIL-7, when
   staff check the guest out, then the stay is closed, the folio is
@@ -90,13 +96,17 @@ the calendar with correct dates, room type, and state.
   (`AC-DSK-19`, Refs #600), and the service refuses that same
   close on its own when it is not asked against the folio Billing
   holds or carries an approval Billing did not record, whatever
-  the request asserts (`AC-CKO-1`, `AC-CKO-2`, Refs #601).
+  the request asserts (`AC-CKO-1`, `AC-CKO-2`, Refs #601). The booking
+  behind the stay is completed by that same close and stops counting
+  as an active booking, so the departed room type can be sold again
+  the same day (`AC-DEP-1`, `AC-DEP-2`, `AC-DEP-4`, Refs #646).
   Traces to: US-FDK-2; FR-FDK-2, FR-BIL-2, FR-BIL-7.
 - AC-FDK-3 — Given an in-house stay and a vacant, clean, inspected
   room, when staff move the guest to the new room, then the stay links
   to the new room, the old room becomes vacant and dirty, and the move
-  with both room numbers and its time is kept in the stay history.
-  Traces to: US-FDK-3; FR-FDK-3.
+  with both room numbers and its time is kept in the stay history. The
+  Stay screen carries the reassignment affordance that performs it
+  (`AC-REA-2`, `AC-REA-4`, Refs #647). Traces to: US-FDK-3; FR-FDK-3.
 - AC-FDK-4 — Given an in-house stay whose actual arrival or departure
   falls outside the hotel's standard times, when staff record the
   early arrival or late departure, then the actual times are kept on
@@ -775,8 +785,14 @@ follows that decision.
   size, the nav tabs render the design padding, radius, and
   active-tab inversion with the shared-shell tab set, and the
   locale pill renders the design border, radius, and padding
-  with the whole screen switching between EN and VI. Traces to:
-  US-FDK-5; FR-FDK-5 (no MVP story change; shell visuals only).
+  with the whole screen switching between EN and VI. The nav-spacing
+  clause is re-baselined by the #648 owner decision (D-29): the design
+  `8px` gap and `10px 16px` tab padding hold from a `1280px` viewport
+  and wider, and below `1280px` the decided narrow values (`4px` gap,
+  `10px 12px` padding) hold with the label, height, `44px` target,
+  radius, and inversion unchanged. Traces to:
+  US-FDK-5; FR-FDK-5 (no MVP story change; shell visuals only; Refs
+  #648).
 - AC-RST-2 — Given today has arrivals, in-house stays, rooms
   needing cleaning, and an out-of-service room, when staff open
   the Main board, then the business-date row, the two card-grid
@@ -1030,7 +1046,417 @@ fail-closed instead of closing on an unverified balance, and the
 green unchanged (`AC-DSK-18`, `AC-DSK-19`, `FR-CKO-4`,
 `FR-CKO-5`).
 
-## 15. Server-side reservation availability (Refs #631)
+## 15. Departure release and same-day reuse after check-out (Refs #646)
+
+Product-owner scope decision and acceptance conditions for the
+owner-reported defect from manual QA on 2026-11-10: after guest A
+checks out, A's booking still reads as booked/checked-in in the
+booking history and calendar, keeps counting as an active booking
+against sellable availability, and the departed room is therefore not
+usable for a same-day arrival. The report is confirmed against the
+as-built code at this spec head; the layer that holds the stale state
+is the reservation lifecycle, not room state and not the desk read
+(details below).
+
+Tier T2 (proposed; `architect` confirms and re-tiers if the chosen
+shape adds a lifecycle state the accepted state machine does not
+already carry): this closes a lifecycle gap on an existing state set
+rather than introducing a subsystem or a new state — the terminal
+`closed` booking state is already normative in `BR-1`
+(`docs/requirements/business-rules.md`) and in the accepted booking
+state machine (`docs/architecture/state-machine.md`,
+`checked_in -> closed` on check-out per `FR-FDK-2`), so the product
+expectation does not change. The conditions below are the product
+half. FR/NFR wording (including the active-reservation set and the
+check-out amendment to `FR-FDK-2`) is owned by `business-analyst`,
+the lifecycle shape and per-flow diagrams by `architect`, guard
+mapping and traceability by `qa-lead`, and the gate verdict by
+`spec-reviewer`. The desk-visible delta and the T2 UI contract
+statements are in `docs/product/desk-ui-design-rollout.md`
+[section 6.16](desk-ui-design-rollout.md); the scope decision is
+recorded as D-26 in `docs/project/decision-log.md`.
+
+As-built validation (read-only code trace at this spec head — the
+implementation lab reproduction belongs in the implementation PR body
+or an issue comment):
+
+- **Reservations holds the stale state.** Only `confirmed` and
+  `checked-in` count as active (`activeState`,
+  `services/reservations/internal/store/store.go:194-196`), the
+  booking guard counts overlapping active rows (`:214-226`), and
+  `QueryCalendar` returns every overlapping row whatever its state
+  (`:274-291`). `CheckIn` (`:297-318`) is the only transition out of
+  `confirmed` besides cancel and no-show, and the operation surface
+  stops at Create / Get / CheckIn / Modify / Cancel / MarkNoShow /
+  QueryCalendar (`services/reservations/internal/handler/handler.go:121-285`),
+  so nothing closes a booking when the stay closes.
+- **Stay closes only its own record.** `checkOut` moves the stay to
+  `closed` and emits a `checked-out` outbox event
+  (`services/stay/src/store.ts:260-292`); it makes no Reservations
+  call, so the booking behind the stay keeps its `checked-in` state.
+- **Rooms is not stale after #588/#637.** `ReleaseRoom` moves the
+  room `occupied -> vacant-dirty`
+  (`services/rooms/src/store.ts:407-436`); the Rooms map already
+  offers `Mark cleaned` and `Mark inspected`
+  (`app/src/views/RoomsView.vue:162-183`, `:695-741`), and the Stay
+  check-in list already loads `vacant-inspected` rooms
+  (`app/src/views/StayView.vue:1139-1140`), so the housekeeping half
+  of the same-day turnover path is reachable from the desk today.
+- **Conclusion.** The defect is the missing terminal effect of
+  check-out on the booking. Room turnover (`BR-16`, `BR-28`) and the
+  desk release (`BR-18`, `AC-DSK-18`) already behave as specified;
+  they are blocked only because the departed booking still reads
+  active.
+
+- AC-DEP-1 — Given an in-house stay whose check-out commits, when
+  staff read the booking for the stay's dates — the reservation
+  calendar, the booking read-back, or any surface that names it —
+  then the booking is recorded in the terminal closed (completed)
+  state `BR-1` and the state machine already name, never as
+  `checked-in`; the past stay remains visible in the guest's booking
+  history; and the room-charge review that precedes the close still
+  resolves the stay's booking (`AC-DSK-19` holds). Traces to:
+  US-FDK-2, US-GST-1; FR-FDK-2, FR-GST-1; BR-1, BR-18 (Refs #646).
+- AC-DEP-2 — Given guest A has checked out from a booking whose
+  recorded departure is today or later (a normal or an early
+  departure), when staff book guest B for the same room type with
+  arrival today, then the booking is accepted: A's completed booking
+  contributes nothing to the sellable-unit count or the overbooking
+  guard, and no no-availability refusal is caused by it. Given B's
+  same-day booking exists before A's early departure is recorded,
+  when A checks out, then A's booking stops blocking B from that
+  moment, with no edit to B's booking and no manual availability
+  correction. Traces to: US-RES-1, US-RES-5, US-FDK-2; FR-RES-5,
+  FR-RTE-2, FR-FDK-2; BR-1, BR-8, BR-9 (Refs #646).
+- AC-DEP-3 — Given A departed room 101 today and the room reads
+  `vacant-dirty`, when housekeeping marks it clean and then inspected
+  on the desk's rooms surface, then the room is offered for
+  assignment and guest B can be checked into 101 the same day, with
+  no manual state edit behind the UI and no new control; the desk
+  release the close performs (`AC-DSK-18`) and the inspected-only
+  assignment rule (`BR-16`, `BR-28`) hold exactly as written.
+  Traces to: US-RMS-2, US-FDK-1; FR-RMS-2, FR-FDK-1; BR-16, BR-28
+  (Refs #646).
+- AC-DEP-4 — Given a booking completed by check-out, when staff read
+  it or attempt to act on it again (check in, modify, cancel, or mark
+  no-show), then the booking never returns to an active state and
+  those attempts are refused; the completed stay's nights stay in
+  history, and a guest who returns the same day is a new booking, not
+  a reopened one. Traces to: US-FDK-2; FR-FDK-2; BR-1, BR-18
+  (Refs #646).
+- AC-DEP-5 — Given an in-house stay, when a check-out is refused —
+  an open balance with no provenanced approval, an unreadable folio,
+  an already-closed stay, or any other refusal — then the stay
+  remains in house and the booking remains active, because nothing is
+  completed or released for a close that did not commit; and when a
+  close commits but the booking's terminal effect cannot be recorded,
+  then the desk reports that outcome in plain words instead of
+  claiming a truth the booking read contradicts, and the split is
+  named as a follow-up rather than left silent. The #588 release
+  guards, the #600 room-charge posting, and the #601 settlement
+  enforcement refuse and commit exactly as they do today. Traces to:
+  US-FDK-2; FR-FDK-2, FR-BIL-7; BR-17, BR-18, BR-46 (Refs #646).
+
+Done when: a departed booking reads completed and stops appearing as
+an active/checked-in booking, the same room type can be booked and the
+same room checked into again the same day after the housekeeping
+steps, an early departure releases the remaining nights without
+touching the next booking, a completed booking can never be reopened
+or acted on, and every refusal leaves the stay in house with the
+booking still active and the existing check-out guards green.
+
+## 16. Arrival room reassignment and stale-hold release (Refs #647)
+
+Product-owner scope decision and acceptance conditions for the
+owner-reported defect from manual QA on 2026-11-10 (#647): a guest
+expected in room 101 is checked into 102 instead, and room 101 keeps
+reading booked/occupied with a stale stay link. The desk has no
+swap/reassign action, so the only cure today is a manual room-state
+edit or a direct API call. The move semantics themselves are already
+normative — `AC-FDK-3`, `FR-FDK-3`, and `BR-19` say a move keeps the
+stay on the new room, leaves the old room vacant and dirty, and keeps
+both room numbers and the time in the stay history. What the product
+spec never stated is the arrival-time half: which room a check-in
+commit may assign, and what happens to a room the commit assigned when
+the commit does not land. That is the gap this section closes; it adds
+no story, FR, or business rule, and it rewords none.
+
+Tier T2 (proposed; `architect` confirms): a reader-visible desk action
+over room and stay state, delivered with existing operations only
+(`AssignRoom`, `MoveRoom`, `ReleaseRoom`) — no new endpoint, no schema
+change, no lifecycle state, since the mid-stay move already exists in
+the contract (`contracts/http/MoveRoom.json`) and in `stay_moves`. The
+conditions below are the product half. FR/NFR wording is owned by
+`business-analyst`, the per-flow implementation diagram (happy path
+plus failure/rollback path) by `architect`, guard mapping and
+traceability by `qa-lead`, and the gate verdict by `spec-reviewer`.
+The desk-visible delta and the T2 UI contract statements are in
+`docs/product/desk-ui-design-rollout.md`
+[section 6.17](desk-ui-design-rollout.md); the scope decision is
+recorded as D-27 in `docs/project/decision-log.md`.
+
+As-built validation (read-only code trace at this spec head — the
+isolated-lab reproduction belongs in the implementation PR body or an
+issue comment, per the issue's scope):
+
+- **A booking carries no room number.** `CreateReservation` takes room
+  type, dates, and price only (`contracts/http/CreateReservation.json`),
+  so "the room the guest is in" is the desk's assignment, never a
+  booking fact.
+- **Assignment is a plain room-state write.** `assignRoom` flips
+  `vacant-inspected -> occupied`, records the transition and the
+  `stayLink` (`services/rooms/src/store.ts:365-405`), and nothing but
+  an explicit `ReleaseRoom` (`:407-436`) moves that room out of
+  `occupied`. `UpdateRoomState` cannot even reach `vacant-inspected`
+  from `occupied` (`:34-40`), which is why the stale hold needs a
+  manual fix today.
+- **The check-in commit assigns first and never takes it back.** The
+  commit runs `AssignRoom` (`app/src/views/StayView.vue:1249-1261`),
+  then the booking read (`:1280-1295`), then the stay write
+  (`:1303-1323`), then the reservation check-in (`:1324-1336`). Every
+  refusal path in that window returns without releasing the room it
+  just assigned, so a refused check-in after the assignment leaves the
+  room `occupied` with a `stayLink` no stay row answers — the reported
+  stale hold, whichever of the desk's three paths leaves it (the lab
+  reproduction records which one does).
+- **The panel has no move control, and deliberately so.** The v2 Stay
+  panel is the two-card check-in/check-out board
+  (`app/src/views/StayView.vue:1-12`), its success reset clears the
+  picker (`:1337-1356`), and nothing under `app/src` calls
+  `/v1/stay/MoveRoom` — a pin the restyle suite holds on purpose
+  (`app/src/stay-restyle.test.ts:136-142`).
+- **The move itself already behaves.** `moveRoom` keeps the stay
+  in-house, refuses a same-room move and a closed stay, and keeps
+  `fromRoomId`, `toRoomId`, and `movedAt` in the stay history
+  (`services/stay/src/store.ts:327-373`); the contract states that the
+  room assignment and release around it are the desk's own calls
+  (`contracts/http/MoveRoom.json`). The defect is therefore the desk's
+  missing affordance and its commit ordering, not the stay operation
+  and not the room state machine.
+- **The preload guards are intact and stay.** The #586/#596/#614
+  candidate-preload and commit-window guards are in place
+  (`app/src/views/StayView.vue:1117-1372`); none of them handles the
+  desk changing the room after a preload or after a commit, which is
+  the new half here (`AC-DSK-17` stands).
+
+- AC-REA-1 — Given an arrival pick has preloaded the booked type's
+  ready rooms and staff then choose a different ready room, when the
+  check-in commits, then that commit assigns only the chosen room and
+  never assigns the room the preload bound; and given the commit has
+  assigned a room and a later step of that same commit does not land
+  while no stay was recorded (the booking read or the stay write),
+  when the refusal returns, then the panel releases the room it
+  assigned in that same commit back to the ready (`vacant-inspected`)
+  state it held before the attempt, reports the refusal in plain
+  catalogue words, and leaves no room occupied with no stay behind it.
+  A room a live stay names is never freed: when the stay write landed
+  and only the reservation check-in did not, the panel releases
+  nothing, reports that split in plain words, and leaves the room
+  occupied with the stay in house. A definitive refusal only: an
+  unreadable outcome (transport failure, timeout, server error)
+  releases nothing and is reported as an outcome to re-read, so a
+  guest who did arrive is never left in a room the system has just
+  handed back. Traces to: US-FDK-1; FR-FDK-1; BR-16, BR-28, NFR-CON-2
+  (Refs #647).
+- AC-REA-2 — Given a committed check-in in room 101, when staff
+  reassign the guest to room 102 through the Stay screen, then the
+  stay names 102, room 102 reads occupied, room 101 reads vacant and
+  dirty, both changes land in the same commit window so the board and
+  the Rooms map show only 102 occupied, and the move — from room 101
+  to room 102 with its time — is kept in the stay history and shown to
+  staff in plain words. The stay stays in house and keeps its folio
+  link. Traces to: US-FDK-1, US-FDK-3; FR-FDK-1, FR-FDK-3; BR-19
+  (Refs #647).
+- AC-REA-3 — Given a reassignment attempt, when any step refuses — the
+  target room was just taken, is not ready, or is blocked; the stay is
+  no longer in house; a required field is missing — then no room is
+  left occupied by the aborted attempt: a refusal before the target is
+  assigned changes nothing, a refusal after the target was assigned
+  releases that target back to the ready state it held before the
+  attempt, and the refusal is one plain catalogue sentence, never an
+  envelope code. When that compensating release itself fails, the
+  panel names the room that still reads occupied and does not claim
+  the move happened; when the refusal is an unreadable outcome, the
+  panel names both rooms and asks staff to reload before acting again.
+  Traces to: US-FDK-3; FR-FDK-3; BR-19, BR-28, NFR-CON-2 (Refs #647).
+- AC-REA-4 — Given an in-house stay from an earlier day, when staff
+  move the guest to another ready room, then the old room becomes
+  vacant and dirty, the stay names the new room, and the move with
+  both room numbers and its time is kept in the stay history — the
+  same single path as the arrival-time reassignment, with the stay's
+  in-house state and folio link unchanged. Traces to: US-FDK-3;
+  FR-FDK-3; BR-19 (Refs #647).
+- AC-REA-5 — Given the reassignment path ships, when the change is
+  verified, then switch-after-preload, switch-after-commit, mid-stay
+  move, and the partial-failure ordering each have a unit test plus
+  the e2e/lab guard the issue asks for; the #586/#596/#614 preload and
+  commit guards, `AC-DSK-17`, the `AC-DSK-18` release, the
+  `AC-DSK-19` room charge, `AC-CKO-1`/`AC-CKO-2` settlement, and
+  `AC-DEP-1`..`AC-DEP-5` all keep passing; every new string exists in
+  both locales with its placeholders intact and the catalogue coverage
+  check is green; and the one decided UI fact this change adds — the
+  move card the owner board does not carry — is recorded as a decided
+  addition in the design-facts gate instead of being silenced by
+  deleting the screen's comparison. Traces to: NFR-CON-2,
+  NFR-I18N-1; Refs #647.
+
+Pointer: `AC-FDK-1` gains the `AC-REA-1` pointer (the desk assigns only
+the room the commit uses and releases a room it assigned when the
+commit does not land and no stay was recorded, never a room a live stay
+names), and `AC-FDK-3` gains the `AC-REA-2`/`AC-REA-4`
+pointer (the desk path that performs a move); both conditions stand as
+written otherwise.
+
+Done when: a guest checked into the wrong room ends up recorded in the
+right one, the vacated room reads vacant and dirty on the board and
+the Rooms map, the move with both room numbers and its time is kept
+and shown to staff, and no refused or aborted attempt leaves a room
+occupied with no stay behind it — with the existing check-in,
+check-out, settlement, and departure guards green.
+
+## 17. Booking management desk view (Refs #648)
+
+Product-owner scope decision and acceptance conditions for the
+owner-reported gap from manual QA on 2026-11-10: the desk has no
+booking-management view, so staff cannot answer "who booked which
+room, for which dates, at what price" without reading records one
+reference at a time. The requirement already exists — `US-RES-5`,
+`FR-RES-5`, and `AC-RES-5` say staff see reservations across dates
+and room types on one screen with the reference, guest, and price on
+selection — and only the surface is missing. These conditions cover
+that surface in its list-and-detail form; the date-by-room-type grid
+half of `FR-RES-5` stays unimplemented and is recorded as a gap, not
+claimed here.
+
+Tier T2: a reader-visible screen over existing contracts only
+(`QueryCalendar`, `GetReservation`, `ListRoomTypes`,
+`ListArrivalsDepartures`, `ListRoomsByState`) — no new endpoint, no
+contract or schema change, no lifecycle state, and no write. The
+conditions below are the product half. FR/NFR wording is owned by
+`business-analyst`, the route/nav LLD delta and the per-flow
+implementation diagram by `architect`, guard mapping and traceability
+by `qa-lead`, and the gate verdict by `spec-reviewer`. The desk-visible
+delta and the EN+VI copy are in
+`docs/product/desk-ui-design-rollout.md`
+[section 6.18](desk-ui-design-rollout.md); the full screen spec is
+`docs/product/booking-management-view.md` (active); the scope decision
+is recorded as D-28 in `docs/project/decision-log.md`.
+
+As-built validation (read-only trace at this spec head — the
+implementation lab reproduction belongs in the implementation PR body
+or an issue comment):
+
+- **No screen lists bookings.** `app/src/router.ts` registers the desk,
+  book, stay, onboarding, rooms, manage, folio, print, and admin routes
+  and nothing else; `BookView` creates a booking and renders the
+  confirmation, and no view calls `QueryCalendar` to list bookings for
+  staff browsing.
+- **The data is all there.** `QueryCalendar` returns the overlapping
+  bookings with reference, room type, dates, state, and stay link
+  (`contracts/http/QueryCalendar.json`), and the overlap rule is
+  `arrival < dateTo` and `departure > dateFrom`
+  (`services/reservations/internal/store/store.go:191-193`,
+  `services/reservations/internal/store/postgres.go:311-321`).
+  `GetReservation` returns the guest snapshot and the frozen price
+  basis (`priceBasis.totalMinor`, `priceBasis.discountName`) beside the
+  state and stay link
+  (`services/reservations/internal/handler/handler.go:167-180`).
+- **The assigned room needs two reads.** A booking carries no room
+  number; the room a guest holds is the in-house stay's `roomId`
+  (`services/stay/src/server.ts:42-60`) resolved to a number through
+  the occupied room list
+  (`services/rooms/src/server.ts:114-126`), which is how the desk
+  already maps rooms on other screens.
+- **Neither list read guarantees an order.** The in-memory calendar
+  read iterates a map and the Postgres read carries no `ORDER BY`, so
+  the screen must sort the rows itself.
+
+- AC-BMV-1 — Given a signed-in user of any hotel role, when they open
+  the desk shell and choose the bookings tab, then the tab sits
+  immediately after `Book` and opens the screen at `/app/bookings`
+  inside the unchanged shared shell, with the tab label, route title,
+  screen title, and intro resolved through the catalogue in the active
+  locale, the nine-tab row inside the `1200px` content width with the
+  brand as the only shrinkable item, at the design nav spacing from a
+  `1280px` viewport and wider and the decided narrow spacing below it
+  (`4px` inter-tab gap, `10px 12px` tab padding, labels and `44px`
+  targets unchanged; D-29), and every other route, the
+  sign-in gate, and the print surfaces behaving as before. Traces to:
+  US-RES-5; FR-RES-5, FR-DSP-1, NFR-I18N-1 (Refs #648).
+- AC-BMV-2 — Given bookings exist, when staff open the screen on its
+  default range (the business date through the next six nights) or
+  apply another range, then every booking staying at least one night
+  in the range is listed once, ordered by arrival then reference, each
+  row carrying the guest name, booking reference, room type, the
+  assigned room when the guest is in house and a plain placeholder
+  otherwise, the arrival and departure dates, the night count, the
+  quoted total in the desk money form, and the state chip; no booking
+  in the range is invented or silently dropped, and a range holding
+  more than 50 bookings renders the earliest 50 with one plain sentence
+  stating the count and asking staff to narrow the dates. Traces to:
+  US-RES-5; FR-RES-5, FR-RTE-5 (Refs #648).
+- AC-BMV-3 — Given the first-night and last-night fields, when staff
+  choose an inclusive night range and apply it, then only bookings
+  staying at least one night in that range are listed (`dateFrom` is
+  the first night and `dateTo` is the last night plus one day, so a
+  booking staying the last night is included and one departing on the
+  first night is not), the list re-reads once with the apply action
+  and fields disabled while it runs, the selection and detail clear,
+  and a last night before the first night or a missing field names the
+  field in plain words and sends nothing. Traces to: US-RES-5;
+  FR-RES-5 (Refs #648).
+- AC-BMV-4 — Given the chosen range holds no booking, when the list
+  renders, then one plain catalogue sentence names the range in the
+  desk date form, no row is invented, and the filter stays usable.
+  Traces to: US-RES-5; FR-RES-5, FR-DSP-3 (Refs #648).
+- AC-BMV-5 — Given a listed booking, when staff select its row, then
+  the detail reads the booking back with `GetReservation` and shows
+  its reference, guest, room type, assigned room when the guest is in
+  house and a plain placeholder otherwise, arrival, departure, nights,
+  quoted total, the recorded discount when the price basis carries
+  one, and its state — read back rather than re-derived, with no
+  write, edit, cancel, no-show, check-in, or check-out action — and
+  selecting another row replaces the detail while applying a new range
+  clears it. Traces to: US-RES-5; FR-RES-5, FR-RTE-5 (Refs #648).
+- AC-BMV-6 — Given a list, per-row, room-type, in-house, occupied-room,
+  or detail read fails, when the screen renders, then the failure
+  follows its class: a failed list read or detail read is one plain
+  catalogue sentence naming what could not be read with a retry
+  action; a failed per-row, room-type, in-house, or occupied-room read
+  keeps every row it can, shows that the affected cells could not be
+  read instead of a guessed guest name, amount, room, or type, and
+  states the degradation in one notice above the list — the rows whose
+  guest name or total could not be read are counted, and each failed
+  column is named in one plain sentence — with no retry action of its
+  own, because re-applying the range reads again; no booking is
+  silently dropped, no stack trace or code is shown, and the rest of
+  the desk remains usable. Traces to:
+  US-RES-5; FR-RES-5, FR-DSP-3 (Refs #648).
+- AC-BMV-7 — Given the screen ships, when it is verified, then it
+  offers no write action and calls only the existing operations
+  (`QueryCalendar`, `GetReservation`, `ListRoomTypes`,
+  `ListArrivalsDepartures`, `ListRoomsByState`) with no direct
+  database or service-store access; every new string exists in both
+  catalogues with matching placeholders and
+  `script/catalogue-coverage-check.sh` is green; the design-facts gate
+  records the new app-only tab through a declared allowance entry and
+  pins the screen's static content in its own tests, with every board
+  screen still green; and the owner has reviewed the built screen
+  against the v2 design boards. Traces to: US-RES-5; FR-RES-5,
+  FR-DSP-3, NFR-I18N-1 (evidence condition; no behaviour change).
+
+Pointer: `AC-RES-5` gains the `AC-BMV-2`/`AC-BMV-5` pointer (the desk
+list-and-detail surface that shows each booking on its dates with type,
+state, guest, reference, and price); the condition stands as written
+otherwise, and its grid-placement half stays open as the spec records.
+
+Done when: staff open the bookings tab, read one row per booking for
+the chosen range with guest, reference, room type, assigned room,
+dates, nights, quoted total, and state, open any row for the fresh
+`GetReservation` read-back, see the plain empty and failure sentences
+instead of invented values, and the owner accepts the screen against
+the design boards — with the desk's existing guards green.
+## 19. Server-side reservation availability (Refs #631)
 
 Product-owner scope decision and acceptance conditions for audit
 finding R1 on the booking path (#625 class: a client-supplied value
@@ -1220,8 +1646,63 @@ behaviour: `AC-FDK-2` gains only the pointer, and the desk
 conditions `AC-DSK-18` and `AC-DSK-19` stand as written with their
 guards unchanged.
 
+Departure-release addendum (Refs #646): five further conditions
+(AC-DEP-1..5, section 15) cover the terminal effect of a check-out on
+the booking behind the stay — the departed booking reads completed
+and stops counting as an active booking, the same room type sells and
+the same room turns over the same day, an early departure releases
+the remaining nights, a completed booking never reopens, and a
+refused close completes and releases nothing. They trace to existing
+stories and FRs (US-FDK-2, US-GST-1, US-RES-1, US-RES-5, US-RMS-2,
+US-FDK-1; FR-FDK-2, FR-GST-1, FR-RES-5, FR-RTE-2, FR-RMS-2, FR-BIL-7)
+and to existing business rules (BR-1, BR-8, BR-9, BR-16, BR-17,
+BR-18, BR-28, BR-46); no story, FR, or business rule is added or
+reworded, and the state they rely on is the `closed` state `BR-1` and
+the booking state machine already name. The 43-condition MVP count
+above stands unchanged, and the sections 1–14 done-conditions keep
+their behaviour: `AC-FDK-2` gains only the pointer. `DEP` is the
+domain code for this family.
+
+Reassignment addendum (Refs #647): five further conditions
+(AC-REA-1..5, section 16) cover the arrival-time half of a room move —
+the desk commit assigns only the room the guest is in and releases a
+room it assigned when the commit does not land and no stay was
+recorded (switch after a preload), the Stay screen's reassignment
+affordance releases the
+vacated room to housekeeping and keeps the move (from room, to room,
+time) visible to staff (switch after a commit, and mid-stay), and
+every refused or aborted attempt leaves no room occupied with no stay
+behind it. They trace to existing stories and FRs (US-FDK-1,
+US-FDK-3; FR-FDK-1, FR-FDK-3) and to existing business rules (BR-16,
+BR-19, BR-28) plus NFR-CON-2; no story, FR, or business rule is added
+or reworded, the move semantics are the ones `AC-FDK-3`, `FR-FDK-3`,
+and `BR-19` already state, and no lifecycle state, contract operation,
+or schema change is introduced. The 43-condition MVP count above
+stands unchanged, and the sections 1–15 done-conditions keep their
+behaviour: `AC-FDK-1` and `AC-FDK-3` gain only the pointer. `REA` is
+the domain code for this family.
+
+Booking-register addendum (Refs #648): seven further conditions
+(AC-BMV-1..7, section 17) cover the missing booking-management desk
+view — its tab and route, the date-range list with guest, reference,
+room type, assigned room, dates, nights, quoted total, and state, the
+inclusive-night filter and its plain empty state, the fresh
+`GetReservation` row detail, the plain failure states with no invented
+values, and the read-only evidence rule (no write, existing operations
+only, catalogue parity, design-facts allowance, owner review of the
+screen). They trace to the existing story and FRs (US-RES-5;
+FR-RES-5, FR-RTE-5, FR-DSP-1, FR-DSP-3, NFR-I18N-1) — this is the
+surface `AC-RES-5` already promised, not a new MVP capability, and no
+story, FR, or business rule is added or reworded. `AC-RES-5` gains
+only the `AC-BMV-2`/`AC-BMV-5` pointer, its grid-placement half stays
+open, and the 43-condition MVP count above stands unchanged, so the
+sections 1–16 done-conditions keep their behaviour. `BMV` is the
+domain code for this family.
+
+<!-- ao-role: product-owner -->
+Role: product-owner · AO session hotel-mgmt-1013
 Server-derived availability addendum (Refs #631): three further
-conditions (AC-OVB-1..AC-OVB-3, section 15) cover audit finding R1 on
+conditions (AC-OVB-1..AC-OVB-3, section 19) cover audit finding R1 on
 the booking path — the overbooking guard decides on the capacity the
 hotel records for the room type and dates instead of the
 `sellableUnits` the request carries, an unreadable capacity source
@@ -1230,9 +1711,6 @@ than accepting it, and the guard keeps its single-critical-section
 atomic shape. They trace to the existing stories and FRs (US-RES-1,
 US-RES-2; FR-RES-1, FR-RES-2, FR-RTE-5, NFR-CON-1) and add no story,
 FR, or business rule, so the 43-condition MVP count above stands
-unchanged and the sections 1–14 done-conditions keep their behaviour:
+unchanged and the sections 1–17 done-conditions keep their behaviour:
 `AC-RES-1` and `AC-RES-2` gain only the pointer, and the desk Book
 conditions and their refusal copy stand as written.
-
-<!-- ao-role: product-owner -->
-Role: product-owner · AO session hotel-mgmt-938
