@@ -1821,6 +1821,203 @@ and the four Node maps follow them, every existing refusal keeps its
 code and status, each service carries a `5xx`-path guard, and the
 desk's sentences, routes, catalogues, and print surfaces are unchanged.
 
+## 22. Bounded request bodies and finite server timeouts (Refs #630)
+
+Product-owner scope decision and acceptance conditions for audit
+finding C5 (issue #630): no backend service bounds a request body and
+no server declares its own timeouts, so one oversized body or one slow
+peer can exhaust the memory of the single on-premise host or hold a
+connection and a worker for as long as the peer likes. One declared
+maximum per service, one shared refusal, and finite read/write/idle
+bounds on every server the bundle runs.
+
+Tier T2: a caller-visible refusal (a body over the declared limit) plus
+a server-settings change on every ingress path, with no new subsystem,
+dependency edge, data model, lifecycle state, or reader-visible surface,
+and no new code token — ADR-0004 D1 keeps the error envelope and its
+status mapping exactly as they are. The conditions below are the
+product half. FR/NFR wording is owned by `business-analyst`
+(`docs/requirements/mvp-requirements.md` section 30, the `NFR-BND-*`
+family these conditions cite); the over-limit edge diagram and the
+chosen Go timeout values by `architect` (LLD section 29 and
+`docs/architecture/services/*.md` section 7); guard mapping by
+`qa-lead` (`docs/testing/traceability-matrix.md` section 22); the gate
+verdict by `spec-reviewer`. No UI contract section: no desk surface
+changes, because the desk never sends a body near the limit and every
+refusal it can meet is already read through the existing plain
+refusal and request-failed sentences. The scope decision is D-34 in
+`docs/project/decision-log.md`.
+
+As-built validation (read-only trace at this spec head — the
+implementation lab reproduction belongs in the implementation PR body
+or an issue comment):
+
+- **The four Node services accumulate a body with no bound.** `readBody`
+  pushes every chunk into an array and concatenates the lot before
+  parsing: `services/stay/src/server.ts:10-35` (the chunk push at `:13`,
+  the concatenation at `:15`), `services/guests/src/server.ts:10-35`
+  (`:13`, `:15`), `services/rooms/src/server.ts:10-35` (`:13`, `:15`),
+  and `services/admin/src/server.ts:9-34` (`:12`, `:14`). No service
+  inspects `content-length`, counts bytes, or stops reading.
+- **The four Node servers set no timeout of their own.** Each server is
+  created bare (`services/stay/src/server.ts:75`,
+  `services/guests/src/server.ts:46`, `services/rooms/src/server.ts:46`,
+  `services/admin/src/server.ts:54`) and started as it came back
+  (`services/stay/src/index.ts:34`, `services/guests/src/index.ts:21`,
+  `services/rooms/src/index.ts:21`, `services/admin/src/index.ts:34`),
+  so the socket-inactivity timeout keeps Node's "disabled" default and a
+  half-open body read holds the socket indefinitely.
+- **The three Go services decode the raw body with no cap.** `decodeBody`
+  hands `r.Body` straight to the decoder:
+  `services/reservations/internal/handler/handler.go:43` (decoder at
+  `:48`), `services/rates/internal/handler/handler.go:41` (`:46`), and
+  `services/reporting/internal/handler/handler.go:45` (`:50`); no
+  `http.MaxBytesReader` is used anywhere in the tree.
+- **The three Go servers run with zero explicit timeouts.** Each `main`
+  calls `http.ListenAndServe` with an `http.Server` that carries only an
+  address: `services/reservations/cmd/server/main.go:52`,
+  `services/rates/cmd/server/main.go:42`,
+  `services/reporting/cmd/server/main.go:34`. `ReadHeaderTimeout`,
+  `ReadTimeout`, `WriteTimeout`, and `IdleTimeout` are all unset, so a
+  peer may take unlimited time to send headers, body, or drain the
+  response.
+- **Billing's embedded server declares no bound either.**
+  `services/billing/src/main/resources/application.properties:1-9`
+  carries only the port, the datasource, and Flyway — no
+  `server.tomcat.*` timeout or size setting — and every operation reads
+  the body through `@RequestBody Map<String, Object>`
+  (`services/billing/src/main/java/com/hotel/billing/web/BillingController.java:20`,
+  e.g. `:74-76`), so Jackson buffers whatever arrives before any handler
+  validation runs.
+- **No bound exists anywhere in the tree today.** No `MaxBytesReader`,
+  `maxBody`/`MAX_BODY`, `maxPostSize`, `maxSwallowSize`, or
+  `*-http.*-size` setting is written in `services/`, `contracts/`, or
+  `app/`, and no document states a body size rule.
+- **The largest contract payload is small and known.**
+  `contracts/http/ModifyReservation.json` is the biggest request schema
+  at 3 530 bytes (next: `CreateReservation.json` 3 153,
+  `AttachReservation.json` 3 118, `CheckOut.json` 3 093) and the
+  contract-test fixtures sit below those, so a 64 KiB ceiling leaves
+  more than 18× headroom over anything the desk can send.
+
+Product rules (decided here):
+
+1. **One number for every ingress path.** The request-body maximum is
+   **65 536 bytes (64 KiB)** in all eight backend services — Stay,
+   Guests, Rooms, Admin, Reservations, Rates, Reporting, and Billing —
+   declared as a named constant in each service's own code. The number
+   is derived from the largest existing contract fixture with wide
+   headroom, so no legitimate desk payload is anywhere near it.
+2. **The bound is a constant, not configuration.** It is not an
+   environment variable, not a deployment setting, and not something an
+   operator tunes per hotel. Keeping it in code keeps this a T2 change
+   with no deployment, environment, runbook, or per-hotel configuration
+   delta; a hotel that ever needs a different ceiling files an issue
+   that owns the T4 work.
+3. **An oversized body is the caller's mistake, not a fault.** It
+   refuses with the shared envelope and `VALIDATION_FAILED` (400) with
+   `details` naming `body` and the new plain catalogue sentence
+   `error.transport.body_too_large` ("Request body is too large.") — the
+   existing refusal vocabulary, not a new `PAYLOAD_TOO_LARGE` token — so
+   the contract enum, the status mapping, the four Node code maps, and
+   the Billing exception handler stay unchanged. The key joins the
+   existing `error.transport.*` family in every service's catalogue (the
+   four Node `messages.en.json` files, the three Go message sets, and
+   Billing's `messages/en.json`), so the refusal is a plain sentence in
+   every service and both desk locales, never a raw code or a byte
+   count.
+4. **Refuse before work.** The ceiling is enforced while the body is
+   read, before it is parsed and before any store, provider, or folio
+   call runs, so a refused request changes nothing: no row, line,
+   balance, outbox event, or state transition, and no half-finished
+   operation left for a retry to trip over.
+5. **One complete answer, never a partial one.** The refusal is exactly
+   one envelope reply with `code`, `message`, `details`, and `traceId`;
+   the rest of the surplus body is not buffered in memory and no
+   truncated JSON is parsed or half-written response is sent.
+6. **Finite timeouts on every server the bundle runs.** Each server
+   binds a header-read, a body-read, a response-write, and an idle
+   bound; none is left zero or unset. A peer that opens a connection
+   and sends nothing, or stalls mid-body or mid-response, is freed
+   within the declared bound while a legitimate desk call — including a
+   handler that waits on a bounded provider read (the Reservations →
+   Rates pricing client's 5-second budget,
+   `services/reservations/internal/pricing/client.go:33`, and Stay's
+   2-second completion read,
+   `services/stay/src/reservationsClient.ts:31`) — still completes.
+7. **Nothing under the limit changes.** Every body at or below the
+   ceiling is served exactly as today: same codes, statuses, messages,
+   and state. No desk screen, catalogue key, route, print rule, or
+   contract file changes, and the conditions written earlier
+   (`AC-ERR-1`, `AC-FWV-1`, `AC-CKO-1`) hold as written.
+
+- AC-BND-1 — Given any request that carries a body, when its size
+  exceeds the declared maximum, then the service answers exactly one
+  HTTP 400 with the shared envelope — `code` `VALIDATION_FAILED`,
+  `details` naming the field `body`, `traceId` present, and the plain
+  `error.transport.body_too_large` sentence — in each of Stay, Guests,
+  Rooms, Admin, Reservations, Rates, Reporting, and Billing; the body is
+  never scanned or parsed as JSON, the operation never runs, no store
+  row, folio line, balance, outbox event, or state change is written,
+  and the surplus bytes are never accumulated in full, so a refused
+  request leaves no trace beyond the refusal itself. Traces to:
+  NFR-BND-1 (Refs #630); NFR-I18N-1, NFR-AVL-1.
+- AC-BND-2 — Given the eight services and their body ceilings, when the
+  change lands, then each service declares its ceiling once as a named
+  constant, the value is 65 536 bytes in all eight, and no environment
+  variable, deployment file, runbook step, or per-hotel configuration
+  entry carries or overrides it, so the bundle's behaviour is the same
+  on every installation. The ceiling is at least ten times the largest
+  request schema the contracts hold (`contracts/http/ModifyReservation.json`,
+  3 530 bytes), and the refusal adds no code token: the contract enum
+  and `statusMapping` (`contracts/errors/envelope.json`), the four Node
+  maps, and the Billing exception handler keep exactly the codes they
+  have today. Traces to: NFR-BND-2 (Refs #630); ADR-0004 D1.
+- AC-BND-3 — Given a peer that connects to any of the eight services,
+  when it sends headers slowly, stalls part-way through a body, stops
+  reading the response, or sits idle on an open connection, then the
+  server frees that connection within a declared bound instead of
+  holding a worker indefinitely: each server carries an explicit
+  header-read, body-read, response-write, and idle value (the three Go
+  servers set `ReadHeaderTimeout`, `ReadTimeout`, `WriteTimeout`, and
+  `IdleTimeout`; the four Node servers and Billing's embedded server set
+  their equivalents), no unbounded or disabled timeout remains, and the
+  chosen values stay long enough for a legitimate desk call — including
+  a handler waiting on the 5-second pricing read and the 2-second
+  completion read — so no in-limit request is cut off by a timeout.
+  Traces to: NFR-BND-3 (Refs #630); NFR-PERF-1, NFR-AVL-1.
+- AC-BND-4 — Given every request schema, contract-test fixture, and
+  desk payload the product already sends, when it is under the ceiling,
+  then it behaves exactly as today — same status, code, message,
+  `details`, and stored effect — a body at exactly 65 536 bytes is
+  accepted and one byte more is refused, `contract-check` stays green
+  with no contract file changed, and the desk's screens, plain refusal
+  sentences, routes, catalogue keys, and print rules are untouched
+  (the refusal's `body` field name deliberately matches none of the
+  field names the desk branches on, `stayId`, `folioId`, `paymentId`,
+  so no desk branch changes). Traces to: NFR-BND-1 (Refs #630);
+  FR-DSP-3, NFR-I18N-1.
+- AC-BND-5 — Given the change ships, when it is verified, then each of
+  the eight services carries a guard that drives an over-limit body at
+  its own ceiling and asserts the refusal envelope (HTTP 400,
+  `VALIDATION_FAILED`, `details.body`, a `traceId`) together with "no
+  operation ran" evidence, each guard also covers the boundary (a body
+  at the ceiling is accepted, one byte over is refused), each server has
+  a guard asserting its timeout values are explicit and non-zero, and
+  each service's message-catalogue guard pins the
+  `error.transport.body_too_large` sentence, so a future change cannot
+  drop a ceiling, a timeout, or the sentence silently. Traces to:
+  NFR-BND-1, NFR-BND-2, NFR-BND-3 (Refs #630); NFR-I18N-1 (evidence
+  condition; no behaviour change).
+
+Done when: every one of the eight backend services refuses a request
+body above 65 536 bytes with the shared envelope and `VALIDATION_FAILED`
+naming `body`, has changed nothing for that request, and runs with
+explicit finite read/write/idle timeouts; no environment variable,
+deployment file, or contract file changes; every payload under the
+ceiling behaves as before; and each service carries an over-limit
+boundary guard plus a timeout guard.
+
 ## Traceability summary
 
 43 done-conditions cover all 9 MVP slices from the roadmap
@@ -2001,5 +2198,28 @@ the 43-condition MVP count above stands unchanged, so the sections 1–17
 and 20 done-conditions keep their behaviour. `ERR` is the domain code
 for this family.
 
+Body-bound addendum (Refs #630): five further conditions (AC-BND-1..5,
+section 22) cover audit finding C5 — every backend service refuses a
+request body above one declared 64 KiB ceiling with the shared envelope
+and `VALIDATION_FAILED` naming `body`, writes nothing for the refused
+request, and never buffers the surplus; each server the bundle runs
+carries explicit finite read/write/idle timeouts; the ceiling is a code
+constant in all eight services rather than an environment or deployment
+setting; every payload under the ceiling behaves exactly as today with
+no contract, desk, catalogue, route, or print change; and each service
+carries an over-limit boundary guard plus a timeout guard. They trace to
+the requirements-side `NFR-BND-1`..`NFR-BND-3` family this spec set
+adds (`docs/requirements/mvp-requirements.md` section 30) and to the
+existing `NFR-I18N-1`, `NFR-AVL-1`, `NFR-PERF-1`, and `FR-DSP-3`; no
+story is added or reworded, and the wording of the body-bound business
+rule is the `business-analyst` handoff
+(`docs/requirements/business-rules.md` BR-60). The refusal reuses the
+existing vocabulary, so `AC-ERR-1` and its sections keep their
+behaviour, the refusal conditions written earlier (`AC-FDK-2`,
+`AC-CKO-1`, `AC-CKO-2`, `AC-FWV-1`) hold as written, the 43-condition
+MVP count above stands unchanged, and the sections 1–17, 20, and 21
+done-conditions keep their behaviour. `BND` is the domain code for this
+family.
+
 <!-- ao-role: product-owner -->
-Role: product-owner · AO session hotel-mgmt-1060
+Role: product-owner · AO session hotel-mgmt-1077
