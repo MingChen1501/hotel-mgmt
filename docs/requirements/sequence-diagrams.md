@@ -73,7 +73,7 @@ sequenceDiagram
         else Restrictions pass
             Res->>Res: Read the Pricing quote for the type, dates, and discount [FR-PRC-1, FR-RTE-5; CUS: FR-RTE-3 discount applies in the quote]
             alt Request total disagrees with the quote
-                Res-->>Staff: Reservation refused, requested and quoted totals named [FR-PRC-2; BR-47]
+                Res-->>Staff: Reservation refused, requested and quoted totals named [FR-PRC-2; BR-52]
             else Pricing cannot be read
                 Res-->>Staff: Reservation refused, upstream and operation named [FR-PRC-3]
             else Quote read
@@ -112,7 +112,7 @@ sequenceDiagram
     else Restrictions pass
         Res->>Res: Read the Pricing quote for the effective type, dates, and discount [FR-PRC-4, FR-RTE-5; CUS: FR-RTE-3 discount applies in the quote]
         alt Request total disagrees with the quote
-            Res-->>Staff: Modification refused, requested and quoted totals named; reservation unchanged [FR-PRC-4; BR-47]
+            Res-->>Staff: Modification refused, requested and quoted totals named; reservation unchanged [FR-PRC-4; BR-52]
         else Pricing cannot be read
             Res-->>Staff: Modification refused, upstream and operation named; reservation unchanged [FR-PRC-4]
         else Quote read
@@ -368,6 +368,17 @@ sequenceDiagram
     end
 ```
 
+Amendment (Refs #634): both the open and the post now verify the stay
+first. Billing reads the stay through the registered C8 `GetStayRef`
+call with the caller's session before the folio is created or the
+charge line is written, so an unknown stay is refused `NOT_FOUND`, a
+stay outside in-house — a closed departure included — is refused
+`STATE_ILLEGAL`, and a stay that cannot be read is refused
+`UPSTREAM_UNAVAILABLE`; every one of those refusals writes no folio
+row, no line, no balance movement, and no event (`FR-FWV-1`..`FR-FWV-4`,
+`BR-50`, `BR-51`). Opening a folio Billing already holds needs no stay
+read, in any stay state (`FR-FWV-5`).
+
 ## 11. Settlement, receipt, and approved open balance
 
 Record payments, issue invoices and per-payment receipts, run
@@ -393,6 +404,18 @@ sequenceDiagram
     Manager->>Folio: Run day-close totals of charges and payments per method [FR-BIL-6]
     Folio-->>Manager: Totals agree with the folios posted that day [FR-BIL-6]
 ```
+
+Amendment (Refs #634): recording a payment, and recording an
+open-balance approval, verify the stay first — through the registered
+C8 `GetStayRef` call with the caller's session — so an unknown stay is
+refused `NOT_FOUND`, a stay outside in-house is refused
+`STATE_ILLEGAL` (an approval recorded at check-out does not licence a
+payment after departure), and a stay that cannot be read is refused
+`UPSTREAM_UNAVAILABLE`; each refusal records nothing, moves no balance,
+and emits no event (`FR-FWV-1`..`FR-FWV-4`, `BR-50`, `BR-51`). Producing
+the invoice and the receipts is unchanged: a folio Billing already holds
+is read in every stay state, so the departure invoice and payments
+taken before departure still print (`FR-FWV-5`, `FR-BIL-4`).
 
 ## 12. Housekeeping cleaning loop and front-desk handoff
 
@@ -541,3 +564,6 @@ Path note: issue #43 asked for `docs/architecture/sequence-diagrams.md`;
 behaviour content belongs to requirements, so this depiction lives at
 `docs/requirements/sequence-diagrams.md` and the document index points
 here.
+
+<!-- ao-role: business-analyst -->
+Role: business-analyst · AO session hotel-mgmt-1047
