@@ -566,3 +566,69 @@ direction.
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-961
+
+## 20. Folio write verification authority (Refs #634)
+
+A stay id is not evidence. Billing creates the folio for any UUID it is
+handed (`ensureFolio`,
+`services/billing/src/main/java/com/hotel/billing/repo/BillingRepository.java:65-71`,
+reached from the four folio routes at
+`service/BillingService.java:121`, `:142`, `:176`, `:264`), so a charge,
+a payment, or an open-balance approval can be written against a stay that
+does not exist or is already closed — an orphan folio Stay's check-out
+gate never reads, and money rows with no stay behind them. From #634 on,
+Billing asks Stay before it writes: the stay's existence and lifecycle
+state are Stay's facts, the folio's lines, balance, and approval are
+Billing's, and the caller's `stayId` only selects which stay the write is
+about.
+
+Three properties define the change:
+
+- **Verify before every write, and before creating a folio on a read.**
+  `PostCharge`, `RecordPayment`, and `RecordOpenBalanceApproval` call the
+  already-registered C8 read `GetStayRef` on every request, whether or not
+  a folio exists, so nothing lands on a closed stay. `GetFolioBalance`
+  verifies only when the stay carries no folio, so a folio Billing already
+  holds stays readable and printable in every stay state — the departure
+  invoice and its receipts never depend on the stay still being in house.
+- **No new refusal vocabulary.** An unknown stay refuses with
+  `NOT_FOUND` (404), a stay outside `in-house` with `STATE_ILLEGAL`
+  (422) naming the state, a malformed id with `VALIDATION_FAILED` (400) —
+  the codes the provider already answers with, surfaced by Billing.
+- **Fail closed.** A Stay that cannot be read refuses the route with
+  `UPSTREAM_UNAVAILABLE` (503) and writes nothing. The offline-first
+  cached-config rule (`NFR-AVL-1`) does not extend to a fact that decides
+  money, the same reading ADR-0005 took for the balance.
+
+The change adds one synchronous edge and no module, store, lifecycle
+state, operation, request field, event, or migration: Billing -> Stay
+`GetStayRef` with `STAY_BASE_URL` (`http://stay:8084` on the compose
+network), the caller's session token forwarded, a 2-second timeout inside
+`NFR-PERF-1`'s 3-second action bound, and a fail-closed 503. `GetStayRef`
+is a leaf read, so the Billing <-> Stay cycle is bounded at one hop and
+the close path cannot recurse. The contract change is error-code additive
+(four operations gain `NOT_FOUND`, `STATE_ILLEGAL`, and
+`UPSTREAM_UNAVAILABLE`; `contracts/errors/envelope.json` registers the
+503 code). Decision record:
+`docs/architecture/decisions/adr-0008-folio-write-stay-verification.md`
+(proposed); flow detail, the per-flow diagrams, the contract delta, and
+the verification plan: `docs/architecture/lld.md`
+[section 27](lld.md#27-folio-writes-verify-the-stay-refs-634); seam and
+error contracts: `docs/technical/integration.md` C8 and
+`docs/technical/error-handling.md` section 5; the availability and
+residual-risk deltas: `docs/technical/security-threat-model.md`
+section 8 (R5, R8).
+
+Tier T3 (confirmed by `architect`): a new fail-closed dependency edge on
+the money path plus a new contract error set, with no data-model change.
+The owner accepts the ADR (`proposed` -> `accepted`) before the
+implementation PR merges.
+
+Rollback: revert the single implementation PR. The previous
+ensure-on-first-use behaviour returns, the new client and its
+configuration go with the code, and no migration or backfill exists in
+either direction; folios already written — orphaned ones included — stay
+as they are.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1046

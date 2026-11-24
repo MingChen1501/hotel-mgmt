@@ -75,11 +75,12 @@ beyond session hygiene.
   nothing readable.
 - B5 — Module-to-module synchronous calls inside a desk step (for
   example Stay -> Billing `GetFolioBalance` at the check-out gate,
-  Refs #601). The originating desk session token travels on the call
+  Refs #601, and Billing -> Stay `GetStayRef` before every folio write,
+  Refs #634). The originating desk session token travels on the call
   and the provider enforces identity/role before answering. The
   caller trusts only the provider's response, never the browser's
   claim about the same fact: a money or state fact is re-read from
-  the module that owns it at the decision point (ADR-0005).
+  the module that owns it at the decision point (ADR-0005, ADR-0008).
 
 ## 3. RBAC enforcement points and matrix
 
@@ -104,14 +105,16 @@ actor and timestamp. Co-edited inventory (owner + manager) shares
 one operation set with no primary editor (LLD [section 0](../architecture/lld.md)).
 
 Money and state facts are provider-derived, never caller-asserted
-(B5; Refs #601). At check-out the client may name the stay, the
+(B5; Refs #601, #634). At check-out the client may name the stay, the
 folio it presents as invoice, the actual departure, and an
 idempotency key; the balance and the open-balance approval are read
 back from Billing, which owns them, and an approval counts only with
 an approver identity, a role from the fixed three, and a recorded
-time (`BR-17`; ADR-0005). An unreadable provider fails the operation
-closed with `UPSTREAM_UNAVAILABLE` rather than proceeding on an
-unverified fact.
+time (`BR-17`; ADR-0005). On a folio write the client may name the stay;
+whether that stay exists and is in house is read back from Stay, which
+owns it (ADR-0008). An unreadable provider fails the operation closed
+with `UPSTREAM_UNAVAILABLE` rather than proceeding on an unverified
+fact.
 
 ## 4. Session and authentication controls (`NFR-SEC-2`)
 
@@ -208,14 +211,16 @@ recording with 24-month retrievability (`NFR-RET-1`), not display.
   handover.
 - R4 — Single-host loss beyond the backup window: bounded by RPO
   24 h; restore drills (runbook) keep RTO 4 h honest.
-- R5 — A charge races the check-out close (Refs #601): the gate reads
-  the folio, then Stay flips the stay; a charge that lands in between
-  is not seen by that close. Billing has no conditional close
-  operation (`RequestCheckoutGate` stays deferred, integration F4) and
-  does not call `GetStayRef` today, so a post-close charge is a
-  separate BR-18 gap. Bounded by reading immediately before the flip,
-  the #600 review-step charge posting, and single-desk scale; the
-  charge-posting follow-up owns the remaining window.
+- R5 — A charge races the check-out close (Refs #601, narrowed by #634):
+  the gate reads the folio, then Stay flips the stay; a charge that lands
+  in between is not seen by that close. Billing has no conditional close
+  operation (`RequestCheckoutGate` stays deferred, integration F4). From
+  #634 on Billing verifies the stay through `GetStayRef` before every
+  folio write, so a charge posted after the close commits is refused with
+  `STATE_ILLEGAL`; the remaining window is the same read-then-write gap
+  in the other direction (R8 below). Bounded by the 2-second timeout and
+  the #600 review-step charge posting; single-desk, single-property
+  scale.
 - R6 — The check-out actor is asserted, not token-bound (Refs #601):
   `actor` travels in the request body until HMAC token validation
   lands (section 4). The gate's audit trail records the asserted
@@ -226,6 +231,19 @@ recording with 24-month retrievability (`NFR-RET-1`), not display.
   money path — the offline-first cached-config rule does not extend to
   an unverified balance; an availability alert, not a cached value, is
   the mitigation (`NFR-AVL-1`).
+- R8 — Folio writes fail closed while Stay is unreadable (Refs #634):
+  with Billing verifying the stay on every folio write (ADR-0008), a Stay
+  outage now blocks charge posting, payment recording, approval
+  recording, and a folio-less balance read, where before it blocked
+  nothing. Accepted for a money path — a folio write never proceeds on a
+  stay nobody verified, and the offline-first rule does not extend to
+  stay state; the mitigation is an availability alert plus the desk's
+  existing offline banner (`NFR-AVL-1`). The paired half: the verify and
+  the write are not atomic across services, so a stay that closes in
+  between still takes the line — the mirror of R5, bounded the same way.
+  A named consequence, out of scope here: an approved open balance cannot
+  be settled by a folio write after the departure, so a late-settlement
+  path needs its own decision and issue.
 
 <!-- ao-role: architect -->
-Role: architect · AO session hotel-mgmt-919
+Role: architect · AO session hotel-mgmt-1046
