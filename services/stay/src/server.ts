@@ -78,7 +78,7 @@ export function createServiceServer(service: string, store: StayStoreAPI = new S
         writeJson(res, err.status, errorEnvelope(err));
       } else {
         writeJson(res, 500, {
-          code: "VALIDATION_FAILED",
+          code: "INTERNAL_ERROR",
           message: msg("error.transport.unexpected", {}),
           details: {},
           traceId: randomUUID(),

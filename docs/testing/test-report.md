@@ -330,6 +330,7 @@ consolidation of record for their own slices):
 | #321/#322 book-confirm payload (guest name + searched sellable count) | PRs #327/#328 | FR-RES-1, FR-CUS-1 |
 | #323 ProduceConfirmation end-to-end wiring | PR #329 | FR-GST-4 |
 | #330/#332 IDENTITY_LOCKED contract naming + #325 locked-specific sign-in message | PRs #325/#330/#332 | NFR-SEC-2 |
+| #627 backend-fault vocabulary (`INTERNAL_ERROR` on the 5xx path, three tokens registered, four maps aligned) | PR #704 | `traceability-matrix.md` section 21 — guards `ERR1`–`ERR9` plus evidence rule `ERR-E1`; MVP count stands at 57/57 |
 
 ## 9. Open gaps and reproduce pointers
 

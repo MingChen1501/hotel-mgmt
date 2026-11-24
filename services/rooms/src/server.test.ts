@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createServiceServer } from "./server.js";
+import { HttpError } from "./errors.js";
+import { msg } from "./messages.js";
 import { type RoomStoreAPI, RoomStore } from "./store.js";
 
 const TOKEN = "skeleton-test-token";
@@ -519,5 +521,65 @@ describe("desk loop", () => {
       });
       assert.equal(nextStay.status, 200);
     }, store);
+  });
+});
+
+// ERR3 (issue #627): the same fault contract as Stay — an unexpected
+// exception answers INTERNAL_ERROR, not VALIDATION_FAILED.
+const FAULT_ROOM_NUMBER = "999";
+
+class FaultRoomStore extends RoomStore {
+  override async releaseRoom(): Promise<never> {
+    throw new Error("connect ECONNREFUSED 127.0.0.1:5432 rooms.rooms");
+  }
+}
+
+class RefusingRoomStore extends RoomStore {
+  override async releaseRoom(): Promise<never> {
+    throw new HttpError("NOT_FOUND", msg("rooms.notfound.room", { roomNumber: FAULT_ROOM_NUMBER }), {
+      roomNumber: FAULT_ROOM_NUMBER,
+    });
+  }
+}
+
+describe("internal error envelope (#627)", () => {
+  it("answers an unexpected exception with INTERNAL_ERROR and keeps serving", async () => {
+    await withServer(async (port) => {
+      const { status, body } = await request(port, "POST", "/v1/rooms/ReleaseRoom", {
+        roomNumber: FAULT_ROOM_NUMBER,
+        toState: "vacant-dirty",
+        actor: "housekeeping",
+      });
+      assert.equal(status, 500);
+      assert.deepEqual(Object.keys(body as Record<string, unknown>).sort(), [
+        "code",
+        "details",
+        "message",
+        "traceId",
+      ]);
+      const envelope = body as { code: string; message: string; details: unknown; traceId: string };
+      assert.equal(envelope.code, "INTERNAL_ERROR");
+      assert.notEqual(envelope.code, "VALIDATION_FAILED");
+      assert.equal(envelope.message, msg("error.transport.unexpected", {}));
+      assert.deepEqual(envelope.details, {});
+      assert.equal(typeof envelope.traceId, "string");
+      assert.ok(envelope.traceId.length > 0);
+
+      const next = await request(port, "GET", "/healthz");
+      assert.equal(next.status, 200);
+    }, new FaultRoomStore());
+  });
+
+  it("keeps an HttpError refusal on the same route on its own code and status", async () => {
+    await withServer(async (port) => {
+      const { status, body } = await request(port, "POST", "/v1/rooms/ReleaseRoom", {
+        roomNumber: FAULT_ROOM_NUMBER,
+        toState: "vacant-dirty",
+        actor: "housekeeping",
+      });
+      assert.equal(status, 404);
+      assert.equal((body as { code: string }).code, "NOT_FOUND");
+      assert.deepEqual((body as { details: unknown }).details, { roomNumber: FAULT_ROOM_NUMBER });
+    }, new RefusingRoomStore());
   });
 });

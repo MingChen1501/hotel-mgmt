@@ -6546,9 +6546,12 @@ is already `active`.
 
 ### 29.1 Decision: a backend fault is never bad input, and the contract enum is the one vocabulary
 
-As-built trace at this spec head, read-only — the lab reproduction of
-the finding belongs in the implementation PR body or an issue comment,
-per the issue's scope:
+As-built trace at this spec head (pre-change), read-only — the lab
+reproduction of the finding belongs in the implementation PR body or an
+issue comment, per the issue's scope. The implementation PR moves the
+four literals to `INTERNAL_ERROR` and the four maps to the contract's
+eleven codes; the pins below are the state this requirement was written
+against and are refreshed at the merged head by `qa-lead`.
 
 - **Every Node catch-all answers a 500 with a refusal code.** The
   unexpected-exception arm of each service writes `writeJson(res, 500,
@@ -6560,8 +6563,8 @@ per the issue's scope:
 - **No internal-error token exists in the maps.** Each service's
   `ErrorCode` union and `STATUS_BY_CODE` register refusal codes only —
   seven in Stay, Guests, and Rooms; eight in Admin, which adds
-  `IDENTITY_LOCKED` (`services/{stay,guests,rooms}/src/errors.ts:4-21`,
-  `services/admin/src/errors.ts:4-23`) — so a fault has no token of its
+  `IDENTITY_LOCKED` (`services/{stay,guests,rooms}/src/errors.ts:4-27`,
+  `services/admin/src/errors.ts:4-29`) — so a fault has no token of its
   own to answer with, and the catch-all borrows a refusal's.
 - **A store failure reaches that arm.** Stay's Postgres store calls the
   pool and its clients directly and throws `HttpError` only for a
@@ -6573,7 +6576,7 @@ per the issue's scope:
   `contracts/errors/envelope.json:9` holds the `code` enum and `:16-28`
   the `statusMapping`; the Admin contract-sync guard constructs every
   `statusMapping` entry as an `HttpError` and asserts its status
-  (`services/admin/src/errors.test.ts:25-29`), and
+  (`services/admin/src/errors.test.ts:30-34`), and
   `script/contract-check.sh` gates the file itself.
 - **`UPSTREAM_UNAVAILABLE` was emitted and described but
   unregistered.** Reservations answers it when the stay-restriction
@@ -6723,7 +6726,7 @@ already carries — so the enumeration of emitted codes and the contract
 cannot drift. Given the change is verified; then `script/contract-check.sh`
 passes with every served or derived copy matching the single source, and
 the Admin guard that resolves every `statusMapping` entry in code passes
-(`services/admin/src/errors.test.ts:25-29`). Given a later change adds a
+(`services/admin/src/errors.test.ts:30-34`). Given a later change adds a
 code to the contract; then the maps and the guard move in that same
 change rather than drifting apart. Traces to: `AC-ERR-2`; ADR-0004 D1
 (additive code); `BR-59`.
@@ -6791,8 +6794,8 @@ untouched, which is the `FR-ERR-3` proof.
 | Item | Guard (on disk today; a row marked missing is created by the implementation PR) | Handoff note for `qa-lead` |
 |---|---|---|
 | FR-ERR-1 the `INTERNAL_ERROR` answer, per service | `services/{guests,rooms,stay,admin}/src/server.test.ts` — the bind-and-request harness every answer test reuses (`guests/src/server.test.ts:10-27`, `rooms:8-25`, `stay:15-32`, `admin:6-23`); the fault sentence is catalogue-owned (`services/stay/src/messages.test.ts:21`). Missing today: no test drives the catch-all | Missing guards, one per service: stub the store so an operation throws a plain `Error` (not an `HttpError`), then assert HTTP 500, a JSON body, exactly the four envelope keys, `code: "INTERNAL_ERROR"`, the `error.transport.unexpected` sentence, `details` equal `{}`, a non-empty `traceId`, and no `VALIDATION_FAILED`; assert the next request on the same server answers normally; assert an `HttpError` refusal on the same route still answers its own code and status |
-| FR-ERR-2 contract-enum conformance | `contracts/errors/envelope.json:9`, `:16-28`; `script/contract-check.sh`; `services/admin/src/errors.test.ts:25-29` (the Admin map resolves every `statusMapping` entry) | Missing guards: each of the four maps yields `INTERNAL_ERROR` 500, `UPSTREAM_UNAVAILABLE` 503, and `METHOD_NOT_ALLOWED` 405 through `new HttpError(...).status`; a guard enumerates every code a service can emit and fails on any code the enum omits, so a later token cannot drift |
-| FR-ERR-3 refusals unchanged | `services/stay/src/server.test.ts:48-56` (unknown path → `NOT_FOUND` envelope) and the same test in the three siblings; the four `errors.ts` maps (`services/{stay,guests,rooms}/src/errors.ts:4-21`, `admin:4-23`); `services/admin/src/errors.test.ts:25-29`; `app/src/views/desk-edge-guards.test.ts:38-45` (no raw envelope token or status number rendered) | These pin today's refusal codes, statuses, and the desk's no-leak rule; they must pass without an edit. The new `5xx` guards above must not move any refusal assertion, and `METHOD_NOT_ALLOWED` must stay unreachable from a Node route |
+| FR-ERR-2 contract-enum conformance | `contracts/errors/envelope.json:9`, `:16-28`; `script/contract-check.sh`; `services/admin/src/errors.test.ts:30-34` (the Admin map resolves every `statusMapping` entry) | Missing guards: each of the four maps yields `INTERNAL_ERROR` 500, `UPSTREAM_UNAVAILABLE` 503, and `METHOD_NOT_ALLOWED` 405 through `new HttpError(...).status`; a guard enumerates every code a service can emit and fails on any code the enum omits, so a later token cannot drift |
+| FR-ERR-3 refusals unchanged | `services/stay/src/server.test.ts:48-56` (unknown path → `NOT_FOUND` envelope) and the same test in the three siblings; the four `errors.ts` maps (`services/{stay,guests,rooms}/src/errors.ts:4-27`, `admin:4-29`); `services/admin/src/errors.test.ts:30-34`; `app/src/views/desk-edge-guards.test.ts:38-45` (no raw envelope token or status number rendered) | These pin today's refusal codes, statuses, and the desk's no-leak rule; they must pass without an edit. The new `5xx` guards above must not move any refusal assertion, and `METHOD_NOT_ALLOWED` must stay unreachable from a Node route |
 | Desk behaviour unchanged | `app/src/views/desk-edge-guards.test.ts:38-45`; `app/src/views/RoomsView.vue:669-681` (the plain request-failed sentence); `script/catalogue-coverage-check.sh` | Missing: no new desk guard is needed — the change adds no sentence; confirm no catalogue key was added or removed and that a `5xx` still renders the plain sentence with no token |
 
 Per-flow implementation diagram (T2). The architecture-side diagram is
