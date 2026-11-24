@@ -1,10 +1,15 @@
 package com.hotel.billing.web;
 
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -160,6 +165,126 @@ class BillingControllerTest {
         .andExpect(jsonPath("$.balanceMinor").value(62500))
         .andExpect(jsonPath("$.openBalanceApproval.approvedBy").value("manager"))
         .andExpect(jsonPath("$.openBalanceApproval.role").value("manager"));
+  }
+
+  // The shared envelope covers the failures Spring used to answer with
+  // its own /error body: an unreadable body, an unknown path, a wrong
+  // method, and any unexpected fault (Refs #629).
+  @Test
+  void malformedJsonBodyAnswersTheEnvelope() throws Exception {
+    mvc.perform(post("/v1/billing/PostCharge").header("Authorization", "Bearer test-token")
+        .contentType(MediaType.APPLICATION_JSON).content("{\"stayId\":"))
+        .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+        .andExpect(jsonPath("$.message").value("Request body is not valid JSON."))
+        .andExpect(jsonPath("$.details").isEmpty()).andExpect(jsonPath("$.traceId").isNotEmpty());
+  }
+
+  @Test
+  void missingBodyAnswersTheEnvelope() throws Exception {
+    mvc.perform(post("/v1/billing/PostCharge").header("Authorization", "Bearer test-token")
+        .contentType(MediaType.APPLICATION_JSON)).andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+        .andExpect(jsonPath("$.message").value("Failed to read the request body."))
+        .andExpect(jsonPath("$.details").isEmpty()).andExpect(jsonPath("$.traceId").isNotEmpty());
+  }
+
+  @Test
+  void unsupportedMediaTypeAnswersTheValidationRefusal() throws Exception {
+    // A body sent as text/plain (what a bare `curl -d` sends as a form
+    // post) cannot be read by the JSON converter: the caller's input,
+    // not a server fault, so it answers VALIDATION_FAILED 400 in the
+    // envelope and never the 500 a catch-all would report.
+    mvc.perform(post("/v1/billing/PostCharge").header("Authorization", "Bearer test-token")
+        .contentType(MediaType.TEXT_PLAIN).content("stayId=not-json"))
+        .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+        .andExpect(jsonPath("$.message").value("Failed to read the request body."))
+        .andExpect(jsonPath("$.details").isEmpty()).andExpect(jsonPath("$.traceId").isNotEmpty());
+  }
+
+  @Test
+  void notAcceptableMediaTypeAnswersTheValidationRefusal() throws Exception {
+    // Accept: application/xml cannot be satisfied by the JSON-only
+    // route: still the caller's conformance, so the refusal is a
+    // readable envelope rather than Spring's default negotiation body.
+    mvc.perform(post("/v1/billing/PostCharge").header("Authorization", "Bearer test-token")
+        .contentType(MediaType.APPLICATION_JSON).accept(MediaType.APPLICATION_XML)
+        .content("{\"stayId\":\"" + STAY + "\"}"))
+        .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+        .andExpect(jsonPath("$.message").value("Failed to read the request body."))
+        .andExpect(jsonPath("$.traceId").isNotEmpty());
+  }
+
+  @Test
+  void nonObjectBodyAnswersTheEnvelope() throws Exception {
+    mvc.perform(post("/v1/billing/PostCharge").header("Authorization", "Bearer test-token")
+        .contentType(MediaType.APPLICATION_JSON).content("[1,2]")).andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+        .andExpect(jsonPath("$.message").value("Request body must be a JSON object."))
+        .andExpect(jsonPath("$.traceId").isNotEmpty());
+  }
+
+  @Test
+  void wrongFieldTypeAnswersTheValidationRefusal() throws Exception {
+    // The controller reads the body as a Map, so a nested field still
+    // deserialises; this pins that the existing VALIDATION_FAILED
+    // refusal answers it, never a Spring default body.
+    mvc.perform(post("/v1/billing/PostCharge").header("Authorization", "Bearer test-token")
+        .contentType(MediaType.APPLICATION_JSON)
+        .content("{\"stayId\":{\"nested\":true},\"actor\":\"front-desk\"}"))
+        .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+        .andExpect(jsonPath("$.details.field").value("stayId")).andExpect(jsonPath("$.traceId").isNotEmpty());
+  }
+
+  @Test
+  void unknownPathAnswersTheEnvelope() throws Exception {
+    mvc.perform(get("/v1/billing/NoSuchOperation")).andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.code").value("NOT_FOUND"))
+        .andExpect(jsonPath("$.message").value("unknown path"))
+        .andExpect(jsonPath("$.details").isEmpty()).andExpect(jsonPath("$.traceId").isNotEmpty());
+  }
+
+  @Test
+  void wrongMethodAnswersTheEnvelope() throws Exception {
+    mvc.perform(get("/v1/billing/PostCharge")).andExpect(status().isMethodNotAllowed())
+        .andExpect(header().string("Allow", containsString("POST")))
+        .andExpect(jsonPath("$.code").value("METHOD_NOT_ALLOWED"))
+        .andExpect(jsonPath("$.message").value("That request method is not allowed on this route."))
+        .andExpect(jsonPath("$.details").isEmpty()).andExpect(jsonPath("$.traceId").isNotEmpty());
+  }
+
+  @Test
+  void unexpectedRuntimeExceptionAnswersTheEnvelopeAndKeepsServing() throws Exception {
+    // A stored-row defect throws IllegalStateException from the service
+    // (BillingService), so it reaches the catch-all as an ordinary
+    // RuntimeException: a 500 INTERNAL_ERROR envelope, never a Spring
+    // default body and never the caller's input.
+    when(service.getDayClose(anyString())).thenThrow(new IllegalStateException("folio line has no stay"));
+    mvc.perform(post("/v1/billing/GetDayClose").header("Authorization", "Bearer test-token")
+        .contentType(MediaType.APPLICATION_JSON).content("{\"businessDate\":\"2026-10-26\"}"))
+        .andExpect(status().isInternalServerError()).andExpect(jsonPath("$.code").value("INTERNAL_ERROR"))
+        .andExpect(jsonPath("$.message").value("Unexpected failure handling the request."))
+        .andExpect(jsonPath("$.details").isEmpty()).andExpect(jsonPath("$.traceId").isNotEmpty())
+        .andExpect(content().string(not(containsString("IllegalStateException"))))
+        .andExpect(content().string(not(containsString("folio line has no stay"))));
+
+    UUID folio = UUID.randomUUID();
+    when(service.getFolioBalance(anyString(), anyString())).thenReturn(new BillingService.FolioView(folio,
+        UUID.fromString(STAY), 6000, null, List.of(), List.of()));
+    mvc.perform(post("/v1/billing/GetFolioBalance").header("Authorization", "Bearer test-token")
+        .contentType(MediaType.APPLICATION_JSON)
+        .content("{\"stayId\":\"" + STAY + "\",\"actor\":\"front-desk\"}")).andExpect(status().isOk())
+        .andExpect(jsonPath("$.balanceMinor").value(6000));
+  }
+
+  @Test
+  void envelopeKeepsTheNotFoundApiExceptionCodeAndStatus() throws Exception {
+    when(service.produceInvoice(anyString(), anyString()))
+        .thenThrow(ApiException.notFound("unknown folio.", Map.of("folioId", "missing")));
+    mvc.perform(post("/v1/billing/ProduceInvoice").header("Authorization", "Bearer test-token")
+        .contentType(MediaType.APPLICATION_JSON).content("{\"folioId\":\"missing\",\"actor\":\"front-desk\"}"))
+        .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("NOT_FOUND"))
+        .andExpect(jsonPath("$.message").value("unknown folio."))
+        .andExpect(jsonPath("$.details.folioId").value("missing"));
   }
 
   @Test
