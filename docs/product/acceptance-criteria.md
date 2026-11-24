@@ -1462,11 +1462,11 @@ Product-owner scope decision and acceptance conditions for audit
 finding R1 on the booking path (#625 class: a client-supplied value
 decides the outcome). Today `sellableUnits` arrives in the request
 body — `services/reservations/internal/handler/handler.go:129` and
-`:144` on `CreateReservation`, `:217` and `:229` on
+`:144` on `CreateReservation`, `:239` and `:251` on
 `ModifyReservation` — and the overbooking guard compares the count of
 overlapping active reservations against that caller-supplied number
-(`services/reservations/internal/store/store.go:221` on Create,
-`:375` on Modify). A caller that sends a large number therefore never
+(`services/reservations/internal/store/store.go:222` on Create,
+`:415` on Modify). A caller that sends a large number therefore never
 sees `CONFLICT` and can overbook, and nothing on the booking path
 reads the capacity the hotel actually holds for the room type and the
 stay dates.
