@@ -6,11 +6,11 @@ authority change
 audit finding R2 of the #625 class), owned by `qa-lead`. It maps the
 done-conditions of the change — `AC-PRC-1`..`AC-PRC-5` and the desk
 condition `AC-DSK-20`, owned by `product-owner` in
-`docs/product/acceptance-criteria.md` [section 17](../product/acceptance-criteria.md)
+`docs/product/acceptance-criteria.md` [section 18](../product/acceptance-criteria.md)
 and [section 11](../product/acceptance-criteria.md) — and the
 behaviour-scoped requirements `FR-PRC-1`..`FR-PRC-5`, owned by
 `business-analyst` in
-`docs/requirements/mvp-requirements.md` [section 25](../requirements/mvp-requirements.md),
+`docs/requirements/mvp-requirements.md` [section 26](../requirements/mvp-requirements.md),
 to their guards: the pins that exist on disk at this spec head, the
 guard registry `PA1`–`PA14`, and the evidence rule `PA-E1`.
 
@@ -26,13 +26,13 @@ section 5 says which cases it must create.
 
 Companion specs: the authority boundary, the contract delta, and the
 four per-flow diagrams in `docs/architecture/lld.md`
-[section 24](../architecture/lld.md) (24.1 ownership, 24.2 the write
-algorithm, 24.3–24.6 the Create and Modify happy/refusal diagrams,
-24.7 the contract delta, 24.8 the verification plan this plan aligns
-with, 24.9 residual risks and rollback); ADR-0006
-(`docs/architecture/decisions/adr-0006-server-side-reservation-price-authority.md`,
-status `proposed` — the owner accepts it before the implementation PR
-merges); the planned as-built delta in
+[section 25](../architecture/lld.md) (25.1 ownership, 25.2 the write
+algorithm, 25.3–25.6 the Create and Modify happy/refusal diagrams,
+25.7 the contract delta, 25.8 the verification plan this plan aligns
+with, 25.9 residual risks and rollback); ADR-0007
+(`docs/architecture/decisions/adr-0007-server-side-reservation-price-authority.md`,
+status `accepted` 2026-11-24 on owner approval, issuecomment-7128035918);
+the planned as-built delta in
 `docs/architecture/services/reservations.md`
 [section 9](../architecture/services/reservations.md); the error
 registration in `docs/technical/error-handling.md`
@@ -40,9 +40,9 @@ registration in `docs/technical/error-handling.md`
 convention in `docs/technical/api-spec.md` and C1 in
 `docs/technical/integration.md`; the desk delta and T2 UI contract in
 `docs/product/desk-ui-design-rollout.md`
-[section 6.18](../product/desk-ui-design-rollout.md); `BR-47` in
-`docs/requirements/business-rules.md`; D-28 in
-`docs/project/decision-log.md`; R-12 in
+[section 6.19](../product/desk-ui-design-rollout.md); `BR-47` in
+`docs/requirements/business-rules.md`; D-30 in
+`docs/project/decision-log.md`; R-13 in
 `docs/project/risk-register.md`; and the sibling tests this slice must
 not disturb: `checkout-settlement-test-traceability.md` (#601),
 `departure-release-test-traceability.md` (#646),
@@ -53,9 +53,9 @@ catalogue key, and moves no MVP row.
 
 ## 1. Scope, tier, and no-change statements
 
-- Tier T3, confirmed by `architect` (ADR-0006; HLD
+- Tier T3, confirmed by `architect` (ADR-0007; HLD
   [section 18](../architecture/hld.md), LLD
-  [section 24](../architecture/lld.md)): Pricing becomes the authority
+  [section 25](../architecture/lld.md)): Pricing becomes the authority
   for a stored money fact and Reservations gains its first synchronous
   read of Rates' pricing side. The contract change is additive only
   (`PRICE_CHANGED` 409, `UPSTREAM_UNAVAILABLE` 503, advisory
@@ -66,7 +66,7 @@ catalogue key, and moves no MVP row.
   pointer; the 57-row MVP coverage count in `traceability-matrix.md`
   stands unchanged and no MVP row may cite this slice as its guard. The
   slice rows live in `traceability-matrix.md` section 16.
-- No new NFR. Requirements section 25.4 is a no-change statement:
+- No new NFR. Requirements section 26.4 is a no-change statement:
   performance (`NFR-PERF-1` — one bounded read inside a request the
   operator already made, the existing 5-second client timeout),
   availability (`NFR-AVL-1` — every module on the same installation;
@@ -90,13 +90,13 @@ catalogue key, and moves no MVP row.
   their expectation to the quote's total; every other pin in section 2
   keeps its assertions. A deleted assertion is a failing review
   finding, not a simplification.
-- Copy: `desk.book.refused_price_changed` (rollout section 6.18) and
+- Copy: `desk.book.refused_price_changed` (rollout section 6.19) and
   the service message `error.price.changed` do not exist at this head.
   The implementation PR adds the desk key in both locales with its
   `{total}` placeholder intact, and the recovery-failed case reuses the
   existing `desk.book.refused_noprice` (`messages/en.json:425`);
   `PA14` fails an invented string rather than accepting one.
-- Contract and LC: this slice **has** a contract delta (LLD 24.7), so
+- Contract and LC: this slice **has** a contract delta (LLD 25.7), so
   the LC stage is not a bare re-run — the two new codes, the advisory
   `priceBasis` wording, the version bumps, the OpenAPI mirror, and the
   new fixtures are the implementation PR's to land (`PA14`). A shape
@@ -156,7 +156,7 @@ values; "stays green" means it must pass untouched.
 | `app/src/views/StayView.test.ts:1308`, `:1391`, `:1458`, `:1528`, `:1582` | The #600 room charge posts `priceBasis.totalMinor` on the check-out review and gates the close on it | Stays green: this is the downstream money the change protects; `PA3` reads the same field |
 | `app/src/views/StayView.test.ts:1750`, `:1949`, `:2040` | The #601 settlement gate: a provenanced approval, an unpaid close refused, `SETTLEMENT_REQUIRED` mapped plainly | Stays green unchanged |
 | `app/src/stay-restyle.test.ts`, `app/e2e/stay.spec.ts`, `app/e2e/design-facts.spec.ts` | The #647 desk pins that landed with #673 | Stay green; this slice touches none of the desk stay surfaces |
-| `contracts/http/CreateReservation.json`, `ModifyReservation.json`, `contracts/errors/envelope.json` | `priceBasis` is required and unconditional; the envelope enum has no `PRICE_CHANGED` and no `UPSTREAM_UNAVAILABLE` (no occurrence under `contracts/`) | Changed by the implementation PR per LLD 24.7; `PA14` is the guard, and `contracts/openapi.yaml` plus the `frontend/docs/openapi.yaml` mirror must move byte-identically |
+| `contracts/http/CreateReservation.json`, `ModifyReservation.json`, `contracts/errors/envelope.json` | `priceBasis` is required and unconditional; the envelope enum has no `PRICE_CHANGED` and no `UPSTREAM_UNAVAILABLE` (no occurrence under `contracts/`) | Changed by the implementation PR per LLD 25.7; `PA14` is the guard, and `contracts/openapi.yaml` plus the `frontend/docs/openapi.yaml` mirror must move byte-identically |
 | `services/reservations/contract-tests/` (`CreateReservation.json`, `CreateReservation-restricted.json`, `CreateReservation-missing-guest-field.json`, `ModifyReservation.json`, …) | The passenger fixtures that replay today's shapes and refusals | Extended with the two new refusals; `PA14` names the fixtures the implementation PR adds |
 
 ## 3. Guard registry PA1–PA14 and the evidence rule PA-E1
@@ -228,7 +228,7 @@ guard passes.
 
 ### Levels and suites
 
-| Level | What runs | Command (authoritative: LLD [section 24.8](../architecture/lld.md)) |
+| Level | What runs | Command (authoritative: LLD [section 25.8](../architecture/lld.md)) |
 |---|---|---|
 | L1 + L3 service, Reservations | `PA1`–`PA12`, plus every section 2 pin: the create/modify/handler/store suites and the Postgres parity block | `cd services/reservations && go build ./... && go vet ./... && go test ./... && test -z "$(gofmt -l .)"` (CI `go-build`) |
 | LC contract | The two new fixtures replay, the operation manifests parse, and the OpenAPI mirror is byte-identical | `script/contract-check.sh`, `script/openapi-route-check.sh` (CI `contract-check`) |
@@ -257,12 +257,12 @@ harness conventions).
 ### Entry criteria
 
 1. The #632 T3 spec set (`docs/product/acceptance-criteria.md`
-   section 17, `docs/product/desk-ui-design-rollout.md` section 6.18,
-   `docs/requirements/mvp-requirements.md` section 25, ADR-0006, HLD
-   section 18, LLD section 24, and this document) carries a
+   section 18, `docs/product/desk-ui-design-rollout.md` section 6.19,
+   `docs/requirements/mvp-requirements.md` section 26, ADR-0007, HLD
+   section 18, LLD section 25, and this document) carries a
    `SPEC-GATE PASS` on #632.
-2. The owner has accepted ADR-0006 (`proposed -> accepted`); a T3
-   change does not merge on a proposed decision record.
+2. The owner has accepted ADR-0007 (`proposed -> accepted`, 2026-11-24);
+   a T3 change does not merge on a proposed decision record.
 3. The #600 room charge, the #601 settlement gate, the #646 departure
    release, and the #647 reassignment are merged (all on `master` at
    this spec head), so the downstream pins in section 2 are the real

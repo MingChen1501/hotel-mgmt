@@ -51,6 +51,10 @@ describe('shell document titles', () => {
     await router.push('/manage');
     await nextTick();
     expect(document.title).toBe('Rooms and rates');
+    // Refs #648: the read-only booking register serves its own title.
+    await router.push('/bookings');
+    await nextTick();
+    expect(document.title).toBe('Bookings');
     await router.push('/onboarding');
     await nextTick();
     expect(document.title).toBe('First-time setup');

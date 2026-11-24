@@ -38,7 +38,7 @@ section 4).
   quote and never stored, a disagreement is refused with
   `PRICE_CHANGED` (409) naming both totals rather than swapped
   silently, and a definitive Rates refusal is surfaced unchanged
-  (`docs/architecture/lld.md` section 24).
+  (`docs/architecture/lld.md` section 25).
 
 ## 2. Contract outline (per HLD module)
 

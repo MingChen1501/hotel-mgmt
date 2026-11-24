@@ -51,8 +51,8 @@ unknown discount or an ambiguous plan set) is surfaced unchanged. A
 replayed `idempotencyKey` returns the stored booking at its stored
 total without a second quote. Advisory-field discipline and the
 fail-closed rule are C7's (ADR-0005) applied to the booking write;
-decision record ADR-0006, flow detail LLD
-[section 24](../architecture/lld.md#24-server-side-reservation-price-authority-refs-632).
+decision record ADR-0007, flow detail LLD
+[section 25](../architecture/lld.md#25-server-side-reservation-price-authority-refs-632).
 
 ### C2. RES -> ROOM (`RoomInventoryService`) — SYNC
 
