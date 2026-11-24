@@ -74,6 +74,8 @@ front-desk staff, manager, or owner account acting within its access
 | BR-27 | Which payment methods beyond cash and card (for example bank transfer or hotel credit) payment recording must support on day one is undecided. Until decided, payment recording covers cash and card only. | OQ-1 (requirements section 5); FR-BIL-3 |
 | BR-45 | A stay's room charge is posted once per stay, at the stay's own frozen quoted total, and never derived again from today's prices. The desk check-out posts it at its review step, before any balance is presented, so no folio closes carrying no room charge; a second room charge is never posted for the same stay, a stay quoted at zero is charged nothing, and a room charge that cannot be posted refuses the check-out instead of closing an uncharged folio. Whether the guest settled or the hotel approved the open balance stays the check-out gate's question, not the charge's. | FR-BIL-2; FR-BIL-7; FR-RTE-5; FR-CKP-1..FR-CKP-5; BR-13; BR-17; `AC-DSK-19`; Refs #600 |
 | BR-46 | The check-out gate is decided on the folio the system holds, never on what a request asserts. The balance is the folio's stored balance, re-read when the close is attempted, and an approval counts only as the record stored against that folio — approver identity, a role from the hotel's fixed three, and the recorded time — while a balance or approval object supplied with the request is advisory input that decides nothing. The folio presented as the final invoice must be the folio the balance came from. A folio that cannot be read refuses the close instead of closing on an unverified balance, and every refusal leaves the stay in house with nothing released. Which role may approve, and whether approval is needed, stays the hotel's open-balance rule (`BR-17`). | FR-FDK-2; FR-BIL-7; FR-CKS-1..FR-CKS-5; BR-17; BR-21; requirements section 3.1; requirements section 3.2; `AC-CKO-1`; `AC-CKO-2`; Refs #601 |
+| BR-47 | A folio is created, and a charge, a payment, or an open-balance approval recorded, only for a stay the system confirms exists and is in house at that moment. A stay id selects which stay a write is about; it never proves one. The stay's existence and lifecycle state are Stay's facts, read through the registered stay-reference read with the caller's session, before every folio write whether or not the folio already exists, and before a folio is created on a balance read. A stay that already carries a folio stays readable in every stay state, so the departure invoice and its receipts never depend on the stay still being in house. | FR-BIL-1; FR-FWV-1; FR-FWV-5; BR-21; `AC-FWV-4`; Refs #634 |
+| BR-48 | A folio write for a stay that cannot be verified is refused and changes nothing: an unknown stay is refused as not found naming it, a stay outside in-house is refused naming it and its state — a charge, a payment, or an approval after departure is refused the same way, and the existing folio keeps every line and its balance — and a stay that cannot be read is refused as an upstream failure naming the upstream and the operation. No such refusal creates a folio row, a line, an approval, a balance movement, an idempotency record, or an outbox event, and a repeated request answers the same. An unreadable stay is never replaced by a cached or assumed state, and an approval recorded for an open balance does not permit a folio write after the stay leaves house. | FR-BIL-2; FR-BIL-3; FR-BIL-7; FR-FWV-1..FR-FWV-4; BR-24; BR-46; `AC-FWV-1`; `AC-FWV-2`; `AC-FWV-3`; Refs #634 |
 
 ## 6. Rooms and housekeeping
 
@@ -166,14 +168,21 @@ behaviour beyond those sources, and BR-46 states where the check-out
 gate's facts come from — the folio stored balance and the approval
 recorded against it, never a request's claim — tracing `FR-BIL-7`,
 `FR-FDK-2`, `FR-CKS-1`..`FR-CKS-5`, and `AC-CKO-1`/`AC-CKO-2`
-without adding behaviour beyond those sources.
+without adding behaviour beyond those sources, and BR-47 states that a
+stay id selects a stay but never proves one — a folio is created and a
+folio write records only for a stay verified in house, while a folio
+already held stays readable in every stay state — tracing `FR-BIL-1`,
+`FR-FWV-1`, `FR-FWV-5`, and `AC-FWV-4`, and BR-48 states that an
+unverifiable stay refuses the write and changes nothing, tracing
+`FR-BIL-2`, `FR-BIL-3`, `FR-BIL-7`, `FR-FWV-1`..`FR-FWV-4`, and
+`AC-FWV-1`..`AC-FWV-3`, neither adding behaviour beyond those sources.
 Policies with no decided source appear as open questions
 OQ-1..OQ-5. No rule introduces behaviour beyond the traced
 FRs/NFRs/stories. Later capabilities from requirements section 6
 (waitlist, split folios, integrated payments, automated workflow
 rules, multi-property operation, and the rest) carry no rule here.
 
-Counts: 46 business rules, 5 open questions.
+Counts: 48 business rules, 5 open questions.
 
 <!-- ao-role: business-analyst -->
-Role: business-analyst · AO session hotel-mgmt-921
+Role: business-analyst · AO session hotel-mgmt-1047
