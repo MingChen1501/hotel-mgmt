@@ -256,6 +256,11 @@ room charges and charge items.
 Given a checked-in stay; when staff open its folio; then a single
 folio exists for the stay showing every posted charge and payment
 with a running balance.
+Amendment (Refs #634): the folio is created only for a stay Stay
+confirms exists and is in house, verified through the registered
+Billing -> Stay read before the folio row is written, and a folio
+Billing already holds stays readable in every stay state (section 28,
+`FR-FWV-5`, `BR-50`).
 
 FR-BIL-2 — Room and extra charges. Staff can post nightly room
 charges and charge items to the folio.
@@ -269,12 +274,21 @@ per stay and never a second time, and posts nothing for a stay whose
 quoted total is zero; a room charge that cannot be posted refuses the
 check-out instead of closing an uncharged folio (section 21,
 `FR-CKP-1`..`FR-CKP-5`).
+Amendment (Refs #634): a charge posts only after the stay is verified
+in house on that same request, so an unknown, closed, or unreadable
+stay takes no line and no balance change (section 28,
+`FR-FWV-1`..`FR-FWV-3`, `BR-51`).
 
 FR-BIL-3 — Payment recording. Staff can record cash and card
 payments against the folio.
 Given an open folio with a balance; when staff record a cash or card
 payment with its amount; then the payment appears on the folio with
 method and time, and the balance decreases by the paid amount.
+Amendment (Refs #634): a payment records only after the stay is
+verified in house on that same request, so an unknown, closed, or
+unreadable stay takes no payment and no balance change, and a payment
+arriving after the stay closed is refused rather than recorded
+(section 28, `FR-FWV-1`, `FR-FWV-3`, `FR-FWV-4`, `BR-51`).
 
 FR-BIL-4 — Invoice and receipt. Staff can produce a printable
 invoice and payment receipt for the guest.
@@ -313,6 +327,11 @@ provenanced approval — approver identity, a role from the hotel's
 fixed three, and a recorded time — and an approval written with a
 role outside that set is refused at recording time and stamped with
 the service's own clock (section 22, `FR-CKS-3`, `BR-46`).
+Amendment (Refs #634): an approval records only after the stay is
+verified in house on that same request, so an unknown, closed, or
+unreadable stay records no approval — the check-out gate never reads
+an approval written after the stay left house (section 28,
+`FR-FWV-1`..`FR-FWV-3`, `BR-51`).
 
 ### 1.7 Reporting (`FR-RPT-*`)
 
@@ -600,7 +619,7 @@ product scope have no FR and are listed in section 6.
 | Reservation calendar | FR-RES-5 | Guard seeds multi-date, multi-type bookings and checks placement and detail drill-down; guard reads the booking register across an inclusive night range and checks each row's guest, reference, type, assigned room, dates, nights, total, and state, the plain empty range, the fresh read-back detail, and the failure states with no invented value (Refs #648) |
 | No-show handling | FR-RES-6 | Guard marks a past-arrival booking no-show and checks state, released room, and history |
 | Check-in | FR-FDK-1 | Guard checks in against a ready room and checks stay link and occupied state; guard refuses a commit after the assignment and checks that the room it assigned is released back to ready with the refusal named, and that a refusal after the stay committed keeps the room occupied with the stay in house (Refs #647) |
-| Check-out | FR-FDK-2, FR-BIL-7 | Guard checks out a settled stay and checks closure, final invoice, and vacant-dirty state with the departed room released once and the desk lists re-read; guard attempts open-balance check-out and checks refusal on every desk route unless an authorised, provenanced approval is recorded, and that an approved close stays closed when the release fails (Refs #588); guard closes through the service with a forged balance and again with a forged approval and checks that both are refused on the folio Billing holds, that an unreadable folio refuses rather than closes, and that the desk flows keep passing (Refs #601); guard completes the booking behind the stay on the same close and checks that the departed booking reads closed, holds nothing for availability, and leaves the departed room reusable the same day (Refs #646) |
+| Check-out | FR-FDK-2, FR-BIL-7 | Guard checks out a settled stay and checks closure, final invoice, and vacant-dirty state with the departed room released once and the desk lists re-read; guard attempts open-balance check-out and checks refusal on every desk route unless an authorised, provenanced approval is recorded, and that an approved close stays closed when the release fails (Refs #588); guard closes through the service with a forged balance and again with a forged approval and checks that both are refused on the folio Billing holds, that an unreadable folio refuses rather than closes, and that the desk flows keep passing (Refs #601); guard completes the booking behind the stay on the same close and checks that the departed booking reads closed, holds nothing for availability, and leaves the departed room reusable the same day (Refs #646); guard attempts a charge, a payment, and an approval against an unknown stay, a closed stay, and an unreadable Stay and checks each is refused with nothing written, while a departed stay's folio, invoice, and receipts still read and print (Refs #634) |
 | Room moves | FR-FDK-3 | Guard moves an in-house guest and checks both room states and kept history; guard reassigns a guest checked into the wrong room through the desk path and checks that the vacated room is released vacant-dirty, the target room occupied, and the move with both rooms and its time visible, with a refused attempt leaving no room occupied by it (Refs #647) |
 | Early check-in and late check-out | FR-FDK-4 | Guard records off-hours arrival/departure and checks kept times and list visibility |
 | Arrivals and departures list | FR-FDK-5 | Guard seeds all three groups and checks exactly-once listing with names and states |
@@ -616,10 +635,10 @@ product scope have no FR and are listed in section 6.
 | Guest preferences and notes | FR-GST-2 | Guard saves notes and checks they surface before booking confirmation |
 | Repeat-guest recognition | FR-GST-3 | Guard books for a past guest and checks the returning flag and stay count |
 | Booking confirmation record | FR-GST-4 | Guard produces a confirmation and checks hotel, guest, dates, type, and price |
-| Guest folio | FR-BIL-1 | Guard opens a stay folio and checks single folio with running balance |
-| Room and extra charges | FR-BIL-2 | Guard posts room and extra lines and checks lines plus balance movement; the desk check-out review posts the stay's one nightly room charge at its frozen quoted total when the folio carries none, posts nothing for an already-charged folio or a zero quote, and refuses the review when the charge cannot be posted (Refs #600) |
-| Payment recording | FR-BIL-3 | Guard records cash and card payments and checks method, time, and balance movement |
-| Invoice and receipt | FR-BIL-4 | Guard prints the invoice and receipts and checks exact match to folio and payments |
+| Guest folio | FR-BIL-1 | Guard opens a stay folio and checks single folio with running balance; guard opens a fresh in-house check-in's balance and checks the one zero-balance folio is still created, and attempts an open for a stay with no folio that is unknown, closed, or unreadable and checks nothing is created (Refs #634) |
+| Room and extra charges | FR-BIL-2 | Guard posts room and extra lines and checks lines plus balance movement; the desk check-out review posts the stay's one nightly room charge at its frozen quoted total when the folio carries none, posts nothing for an already-charged folio or a zero quote, and refuses the review when the charge cannot be posted (Refs #600); guard posts a charge only for a stay Stay confirms is in house and checks an unknown, closed, or unreadable stay writes no line, no balance change, and no event (Refs #634) |
+| Payment recording | FR-BIL-3 | Guard records cash and card payments and checks method, time, and balance movement; guard checks a payment for an unknown, closed, or unreadable stay is refused with nothing recorded, and that a departed stay's receipt still prints for a payment taken before departure (Refs #634) |
+| Invoice and receipt | FR-BIL-4 | Guard prints the invoice and receipts and checks exact match to folio and payments; guard opens a departed stay's folio read and checks the invoice and receipts still print and still match after check-out (Refs #634) |
 | Configurable taxes and fees | FR-BIL-5 | Guard sets rules, posts a charge, and checks derived amounts and balance |
 | Day-close totals | FR-BIL-6 | Guard posts a day of activity, closes, and checks per-method totals agree with folios |
 | Occupancy report | FR-RPT-1 | Guard compares per-date counts against seeded bookings |
@@ -6063,5 +6082,421 @@ as it was.
   This section is its FR/NFR part; no implementation PR opens until
   `SPEC-GATE PASS` on #648.
 
+## 28. Folio writes require a verifiable stay (Refs #634)
+
+Requirements delta for the #634 change (audit finding B1, the #625
+class: a client-supplied identifier decides a money outcome).
+`ensureFolio` creates a folio for any UUID stay id it is handed with no
+Stay read
+(`services/billing/src/main/java/com/hotel/billing/repo/BillingRepository.java:65-71`),
+and all four folio routes reach it with the caller's id
+(`services/billing/src/main/java/com/hotel/billing/service/BillingService.java:121`
+GetFolioBalance, `:142` PostCharge, `:176` RecordPayment, `:264`
+RecordOpenBalanceApproval). A charge, a payment, or an open-balance
+approval can therefore be written against a stay that does not exist or
+is already closed — an orphan folio Stay's check-out gate never reads,
+and money rows with no stay behind them. `FR-BIL-1`, `FR-BIL-2`,
+`FR-BIL-3`, and `FR-BIL-7` already promise a folio per stay and the
+charges, payments, and approval recorded on it; what they never stated
+is whose fact "the stay exists and is in house" is, or what a folio
+route must do when Billing cannot read that fact. This section words it.
+
+The scope decision, the done-conditions, the desk copy, and the rollout
+delta are `product-owner` work:
+`docs/product/acceptance-criteria.md`
+[section 20](../product/acceptance-criteria.md) (`AC-FWV-1`..`AC-FWV-7`),
+`docs/product/desk-ui-design-rollout.md`
+[section 6.21](../product/desk-ui-design-rollout.md) (three plain
+refusal sentences, EN + VI), and D-32 in
+`docs/project/decision-log.md`
+[the decision log](../project/decision-log.md). The tier-T3 architecture
+delta is ADR-0008
+(`docs/architecture/decisions/adr-0008-folio-write-stay-verification.md`)
+and LLD [section 27](../architecture/lld.md); guard traceability and the
+release/availability notes are the `qa-lead` and `release-manager`
+handoffs. This section words the requirements half: the decision (28.1),
+the explicit no-change statements (28.2), the FR delta (28.3), the NFR
+statement (28.4), the traceability handoff with its per-flow diagram
+(28.5), and the gate dependencies plus the one open reading (28.6). No
+`docs/README.md` row flips: every requirements file this change touches
+is already `active`.
+
+### 28.1 Decision: the stay's existence and state are Stay's fact, asked before every folio write
+
+As-built trace at this spec head, read-only — the lab reproduction of
+the finding belongs in the implementation PR body or an issue comment,
+per the issue's scope:
+
+- **A folio is created for any id.** `ensureFolio` inserts the row for
+  the handed stay id with `ON CONFLICT (stay_id) DO NOTHING` and never
+  asks Stay (`repo/BillingRepository.java:65-71`); all four folio routes
+  reach it with the client's id (`service/BillingService.java:121`,
+  `:142`, `:176`, `:264`).
+- **The provider-side read already exists and already refuses.**
+  `GetStayRef` returns the stay link, answers an unknown stay with
+  `NOT_FOUND` naming it and a stay outside `in-house` with
+  `STATE_ILLEGAL` naming it and its state
+  (`services/stay/src/store.ts:406-423`, routed at
+  `services/stay/src/server.ts:152-156`); the seam is registered as C8
+  in `docs/technical/integration.md` and this document's
+  [section 3b](integration-contract-needs.md).
+- **Billing never calls it.** No Stay client exists under
+  `services/billing/src`, and ADR-0005 records that "Billing's C8
+  `GetStayRef` is specified but not called today"; the threat model
+  carries the consequence as the post-close charge gap that names this
+  change as its follow-up (`docs/technical/security-threat-model.md`,
+  R5).
+- **Neither definitive refusal is wired in Billing yet.** `ApiException`
+  offers `validation`, `notFound`, and `settlementRequired` only
+  (`services/billing/src/main/java/com/hotel/billing/web/ApiException.java:34-45`),
+  and `UPSTREAM_UNAVAILABLE` is absent from the shared envelope enum
+  (`contracts/errors/envelope.json`), so registering the code is part of
+  this change — the registration ADR-0005 already requires.
+- **The desk reads a departed guest's folio today.** The print screen
+  opens the folio with `GetFolioBalance` and then presents
+  `ProduceInvoice` / `ProduceReceipt`
+  (`app/src/views/PrintView.vue:1028`, `:1120`, `:1157`), so a
+  post-departure read must keep working.
+- **No producer-side guard exists for the new obligation.** The Billing
+  service suite pins today's branch behaviour against a mocked
+  repository (`services/billing/src/test/java/com/hotel/billing/service/BillingServiceTest.java:53-261`)
+  and mocks no stay read, because none exists; the transport suite
+  (`web/BillingControllerTest.java`) pins the routes' shapes only.
+
+The decided behaviour, in five parts:
+
+1. **A stay id selects a stay; it never proves one.** A stay's existence
+   and lifecycle state are Stay's facts; a folio's existence, lines,
+   balance, and recorded approval are Billing's; the caller's `stayId` is
+   which stay the write is about, not evidence that it may take money
+   (`BR-50`).
+2. **Every folio write verifies the stay, whether or not the folio
+   exists.** `PostCharge`, `RecordPayment`, and `RecordOpenBalanceApproval`
+   ask Stay on every request — before the idempotency claim and before
+   any row — so nothing lands on a closed stay and a replay on a closed
+   stay refuses instead of returning a stored line (`FR-FWV-1`).
+3. **The folio-creating read verifies; a read of a folio Billing already
+   holds does not.** `GetFolioBalance` asks Stay only when the stay
+   carries no folio (a `findFolioByStay` miss); a stay that already
+   carries a folio is served from Billing in every stay state, so the
+   departure invoice and each payment receipt keep printing
+   (`FR-FWV-5`). This is the reading LLD 25.2 records and it resolves the
+   one overlap in the `AC-FWV` set: `AC-FWV-3`'s "open the folio balance"
+   clause binds the **folio-creating** read, while `AC-FWV-5` settles the
+   read of an **existing** folio. Serving an existing folio can never
+   produce an unverified folio, which is the outcome `AC-FWV-3` exists to
+   prevent, and refusing a departed guest's invoice because Stay is
+   briefly down would fail `AC-FWV-5` and the print path the desk depends
+   on. `product-owner` confirms the reading at the spec gate (28.6).
+4. **No new refusal vocabulary.** The definitive answers are the ones
+   Stay already returns, surfaced by Billing: `NOT_FOUND` (404) for an
+   unknown stay, `STATE_ILLEGAL` (422) for a stay outside `in-house`
+   naming the state, and `VALIDATION_FAILED` (400) naming `stayId` for a
+   malformed id. `UPSTREAM_UNAVAILABLE` (503) is the fail-closed answer
+   for a Stay that cannot be read, and the shared envelope registration
+   is the `architect`'s contract edit.
+5. **Fail closed, never guess.** An unread Stay refuses the route and
+   writes nothing; the offline-first cached-config rule (`NFR-AVL-1`)
+   does not extend to a fact that decides money — the same reading
+   ADR-0005 took for the folio balance.
+
+Named consequence, deliberately not a requirement here: once writes
+refuse on a closed stay, an open balance approved at check-out can no
+longer be settled by a folio write after departure. D-32 records it as a
+named consequence and the issue's scope lists no late-settlement flow;
+nothing already recorded moves — a payment taken before departure still
+records, still receipts, and still prints. A late-settlement flow is its
+own decision and its own issue (28.6).
+
+| Option | Verdict | Reason |
+|---|---|---|
+| Keep ensure-on-first-use (status quo) | rejected | That is the finding: a UUID the caller supplies opens a folio and takes money rows with no stay behind them (`AC-FWV-1`). |
+| Verify only when the folio is created | rejected | A stay that already carries a folio would still take a post-departure charge, payment, or approval, and the check-out gate would read a folio whose balance moved after the close (`AC-FWV-2`, `BR-46`). |
+| Verify on the desk (client-side) | rejected | The desk is the untrusted caller the finding names; a call that skips the desk posts the same rows, so the rule would hold only for clients that honour it. |
+| Cache or mirror the stay state inside Billing | rejected | A cached state decides money and goes stale exactly at the close; ADR-0008 records it as a re-tier trigger. |
+| Move the folio into Stay or add a conditional folio write | rejected | Folio facts stay Billing's and `RequestCheckoutGate` stays deferred (`docs/technical/integration.md` F4); the bounded read is the one-hop answer. |
+| Verify before every write through the registered C8 read, fail closed, no new vocabulary | **chosen** | It uses the provider read that already refuses both definitive cases, adds no operation, state, schema, or event, keeps the close path (Stay -> Billing -> Stay) bounded at one hop, and leaves every recorded folio readable. |
+
+### 28.2 Explicit no-change statements
+
+- The MVP capabilities keep their wording and targets: `FR-BIL-1`,
+  `FR-BIL-2`, `FR-BIL-3`, and `FR-BIL-7` gain an amendment pointer to
+  this section and keep their Given/When/Then conditions. What changes is
+  what Billing must prove before it writes, not what the folio promises.
+- No new MVP capability, story, or business-rule id enters the MVP count:
+  section 4 keeps its 40 mapped capabilities and its coverage line, and
+  the `Check-out`, `Guest folio`, `Room and extra charges`,
+  `Payment recording`, and `Invoice and receipt` handoff notes gain a
+  `Refs #634` clause. The behaviour is numbered as slice-scoped
+  requirements (`FR-FWV-*`, 28.3) on the section 10–25 pattern.
+- Charging, settlement, and approval policy are not re-decided: section
+  21 keeps the room-charge posting point (`FR-CKP-1`..`FR-CKP-5`,
+  `BR-45`), section 22 keeps the close decided on the folio Billing holds
+  (`FR-CKS-1`..`FR-CKS-5`, `BR-46`), and whether an approval is needed
+  and which role may approve stays the hotel's open-balance rule
+  (`BR-17`). The approval-role rule is #625 and is out of scope here.
+- Authorization is not re-decided: the caller's session travels on the
+  verification read and a rejected session surfaces unchanged, so a
+  `401` still reads `UNAUTHENTICATED` (`NFR-SEC-2`). No role gate,
+  account, or reach changes; the three fixed roles stay fixed.
+- No schema, table, column, migration, stored value, or event change is
+  specified. The folio row, its lines, its balance, the recorded
+  approval, and the outbox events keep their shape; nothing is
+  backfilled, and existing orphan folios are neither deleted, migrated,
+  nor repaired (out of scope).
+- Read-only invoice and receipt lookups by folio id are unchanged
+  (`FR-BIL-4`): `ProduceInvoice` and `ProduceReceipt` keep their shape
+  and keep serving a departed stay's folio.
+- The desk copy is `product-owner` work: the three plain refusal
+  sentences and their EN + VI keys are specified in
+  `docs/product/desk-ui-design-rollout.md` section 6.21 and bound by
+  `AC-FWV-6`; they reach the panel through `FR-DSP-3`'s existing
+  plain-sentence rule. This section adds no catalogue key.
+- Money, dates, and numbers keep their decided display shape (sections
+  12 and 14, `BR-43`), and print output is unchanged (`FR-BIL-4`,
+  `NFR-DSK-2`): a refused route writes nothing, so no invoice or receipt
+  changes.
+- Audit content is unchanged (`NFR-AUD-1`, `BR-36`): a refusal writes no
+  audit entry and a committed write keeps the acting staff member exactly
+  as today.
+- Sections 7 through 25 stand with their wording and targets unchanged,
+  except the four amendment pointers in section 1.6, the five handoff
+  clauses in section 4, the two amendment notes in
+  `sequence-diagrams.md` (diagrams 10 and 11), the two business rules
+  added to `business-rules.md` (section 5, `BR-50`/`BR-51`), and the
+  `integration-contract-needs.md` amendments (section 3b, section 8, and
+  the section 9 error index).
+
+### 28.3 Behaviour-scoped functional requirements
+
+Ids use the `FWV` (folio write verification) namespace, continuing the
+slice-scoped pattern of sections 10 through 25; `BIL` stays the folio
+capability namespace. They constrain Billing's folio routes, and each
+maps to an accepted done-condition in `AC-FWV-1`..`AC-FWV-7`.
+
+FR-FWV-1 — Every folio write verifies the stay before it writes.
+Given a `PostCharge`, `RecordPayment`, or `RecordOpenBalanceApproval`
+request; when it is served; then Billing reads the stay through the
+registered C8 `GetStayRef` call with the caller's session forwarded,
+before the idempotency claim and before any folio row is created, any
+line or approval is inserted, the folio balance moves, or an outbox
+event is emitted — whether or not the stay already carries a folio — and
+only an answer reporting the stay in house proceeds; a stay id selects
+the stay and never proves it. Given the same write is repeated with or
+without an idempotency key after an earlier attempt; then the
+verification still runs first, and the replay is served only from a
+verified in-house stay (FR-FWV-3 governs a repeated write after the
+close). Traces to: `AC-FWV-1`, `AC-FWV-2`, `AC-FWV-4`; US-BIL-1,
+US-BIL-2, US-BIL-3, US-BIL-7; FR-BIL-1, FR-BIL-2, FR-BIL-3, FR-BIL-7;
+`BR-50`.
+
+FR-FWV-2 — An unknown stay is refused and nothing is written.
+Given a stay id that names no stay Stay knows — the read answers
+`NOT_FOUND` naming that same stay; when a charge, a payment, or an
+open-balance approval is requested; then the request is refused
+`NOT_FOUND` (404) naming the stay, and afterwards no folio row exists
+for the id, no charge line, no payment line, no balance movement, no
+recorded approval, no idempotency record, and no outbox event. The
+refusal is the provider's definitive answer surfaced with its own code
+and status, carries no stack trace, and answers the same on all three
+writes, on a repeated request, and with or without an idempotency key.
+Given the answer is a `NOT_FOUND` naming a different stay or naming
+none; then it is a wiring fault, not a stay fact, and FR-FWV-4's
+fail-closed answer applies instead. Traces to: `AC-FWV-1`; US-BIL-1,
+US-BIL-2, US-BIL-3, US-BIL-7; FR-BIL-1, FR-BIL-2, FR-BIL-3, FR-BIL-7;
+`BR-51`.
+
+FR-FWV-3 — A stay outside in-house is refused, with or without a folio.
+Given a stay Stay reports outside `in-house` — a closed departure above
+all — answering `STATE_ILLEGAL` and naming the state; when a charge, a
+payment, or an open-balance approval is requested against it; then the
+request is refused `STATE_ILLEGAL` (422) naming the stay and the state,
+whether or not the stay already carries a folio, and nothing is written:
+no folio row, no line, no approval, no balance movement, no idempotency
+record, and no outbox event. Given the stay already carries a folio;
+then that folio keeps exactly the lines and the balance it had, and its
+invoice still matches what Billing holds (`BR-24`). Given a retry of a
+write whose first attempt committed arrives after the close; then the
+retry is refused rather than replayed, and the recorded line stays on
+the folio. Traces to: `AC-FWV-1`, `AC-FWV-2`; US-BIL-1, US-BIL-2,
+US-BIL-3, US-BIL-7; FR-BIL-1, FR-BIL-2, FR-BIL-3, FR-BIL-7; `BR-24`,
+`BR-51`.
+
+FR-FWV-4 — An unreadable Stay refuses the folio route and writes
+nothing.
+Given the verification read cannot establish the stay — a transport
+failure, a timeout (the call is bounded so the desk action still fits
+its budget), a `5xx`, a non-envelope or unreadable body, or no Stay
+client configured; when a folio route is served; then it is refused
+`UPSTREAM_UNAVAILABLE` (503) naming the upstream (`stay`) and the
+operation (`GetStayRef`), and nothing is created, written, moved,
+recorded, or emitted — no folio row, no line, no approval, no balance
+movement, no idempotency record, no outbox event — so no unverified
+folio is ever created and no write is half-recorded; once Stay answers
+again the retried call commits once and not twice. Given a `401`, a
+`403`, or another `4xx` envelope from Stay; then it is surfaced
+unchanged, so a rejected session still reads `UNAUTHENTICATED` and is
+never reported as an outage. An unread Stay is never replaced by a
+cached or assumed state: the offline-first availability promise
+(`NFR-AVL-1`) does not extend to a fact that decides money. Traces to:
+`AC-FWV-3`; US-BIL-1, US-BIL-2, US-BIL-3, US-BIL-7; FR-BIL-1,
+FR-BIL-2, FR-BIL-3, FR-BIL-7; `NFR-AVL-1`, `NFR-SEC-2`; `BR-51`.
+
+FR-FWV-5 — A folio Billing already holds stays readable in every stay
+state; only the folio-creating read verifies.
+Given a stay that already carries a folio; when staff open its balance;
+then the read is served from what Billing holds without a stay read, in
+every stay state — a closed, departed stay included — so the departure
+invoice and each payment receipt still print and still match the folio
+lines and balance exactly (`FR-BIL-4`, `BR-24`). Given a stay that
+carries no folio; when its balance is opened; then the stay is verified
+first and the folio is created only for a stay Stay confirms is in
+house, exactly as today — one folio for the stay, a zero balance, the
+acting account recorded, and the empty folio shown with its plain
+no-lines sentence. Given the stay carrying no folio is unknown, outside
+`in-house`, or unreadable; then the open is refused with the same
+`NOT_FOUND` / `STATE_ILLEGAL` / `UPSTREAM_UNAVAILABLE` answer and the
+same write-nothing rule as FR-FWV-2..FR-FWV-4, so no orphan folio exists
+for a stay Billing cannot verify. Traces to: `AC-FWV-3`, `AC-FWV-4`,
+`AC-FWV-5`; US-BIL-1, US-BIL-4; FR-BIL-1, FR-BIL-4; `BR-24`, `BR-50`.
+
+The three desk refusals need no new FR: `FR-DSP-3` already binds every
+folio refusal to one plain sentence in the active locale, never a
+technical code, status number, or stack trace, and the sentences
+themselves are the `product-owner` copy in
+`docs/product/desk-ui-design-rollout.md` section 6.21 (`AC-FWV-6`).
+
+### 28.4 Non-functional requirements delta: no-change statement
+
+No new NFR is added. The existing NFRs cover the change:
+
+- Availability (`NFR-AVL-1` holds, with its scope clarified): the desk
+  keeps working on-premise for every other step, and a folio route whose
+  stay cannot be read refuses in the plain catalogue sentence rather
+  than serving a cached or assumed stay state. The on-premise promise
+  never covered a fact that decides money (`BR-51`).
+- Desk response (`NFR-PERF-1` holds): every folio write costs one
+  synchronous read bounded by a timeout inside the 3-second action
+  bound, and opening an existing folio adds no read; nothing polls and
+  no read repeats on a keystroke. A route that cannot verify fails in
+  bounded time instead of hanging.
+- Concurrency and safety (`NFR-CON-1`, `NFR-CON-2` hold): verification
+  runs before the idempotency claim and before every write, so a
+  refused route stores no key and a repeated request answers the same,
+  and paired simultaneous writes keep today's exactly-once claim. The
+  verify-then-write window — a stay closing between the read and the
+  committed line — is a recorded residual risk (LLD 25.9, threat-model
+  `R5`) and changes no requirement here.
+- Security (`NFR-SEC-1`, `NFR-SEC-2` hold): the caller's session travels
+  on the read and a rejected session surfaces unchanged; no role,
+  account, or reach changes; a client-supplied id no longer decides a
+  money outcome.
+- Internationalisation (`NFR-I18N-1`, `NFR-DSK-1` hold): service
+  messages resolve through the catalogue like every other refusal, the
+  three desk sentences are the section 6.21 keys with EN + VI parity and
+  matching placeholders, and `script/catalogue-coverage-check.sh` stays
+  green. No sentence renders an envelope code.
+- Audit (`NFR-AUD-1`, `BR-36` hold): a refused route writes no audit
+  entry; a committed write keeps the acting staff member exactly as
+  today.
+- Print (`NFR-DSK-2` holds): output is unchanged, because a refused
+  route writes nothing and an existing folio still reads in every stay
+  state.
+- Time and locale (`NFR-TZ-1`, `BR-43` hold): no timestamp form is
+  added or changed.
+
+### 28.5 Traceability handoff for `qa-lead`
+
+Each row traces to the `AC-FWV` conditions and to this section's FRs.
+Guards that exist are cited `file:line` against the tree this
+requirement was written on; where no guard exists yet, the row names the
+missing guard explicitly and the implementation PR creates it, for
+`qa-lead` to re-pin at the merged head. The existing Billing and Stay
+suites must pass untouched.
+
+| Item | Guard (on disk today; a row marked missing is created by the implementation PR) | Handoff note for `qa-lead` |
+|---|---|---|
+| FR-FWV-1 verify before every write | `services/billing/src/test/java/com/hotel/billing/service/BillingServiceTest.java:53-261` (today's branch guards against the mocked repository, with no stay read because none exists — the hole this change closes), `web/BillingControllerTest.java:44-142` (the route shapes) | Missing guards: each of the three writes calls the verifier with the caller's session and the requested stay before `ensureFolio`, the claim, and every insert; an existing folio is verified too; with and without an idempotency key. The repository mock must record no `ensureFolio`, `insertCharge`, `insertPayment`, `addToBalance`, `recordApproval`, `claimOrWait`, or `outbox` on a refusal — a call count, not only the returned status |
+| FR-FWV-2 unknown stay | `services/stay/src/server.test.ts:332-348` (the provider already answers an in-house `200` and a closed `422 STATE_ILLEGAL`; no unknown-id guard exists there yet) | Missing guards: all three writes on an id Stay answers `NOT_FOUND` for → `404 NOT_FOUND` naming the stay, nothing written; a repeated request and an idempotency key answer the same; a `NOT_FOUND` naming a different stay or naming none → `503`, never `404` |
+| FR-FWV-3 closed stay | `services/stay/src/server.test.ts:332-348` (the provider refusal is pinned), `services/stay/src/store.ts:406-423` (the refusal and its details) | Missing guards: all three writes on a `422` → `STATE_ILLEGAL` naming the stay and state, nothing written, with and without an existing folio; the existing folio keeps its lines and balance; a retry of a committed write after the close refuses while the recorded line stays |
+| FR-FWV-4 unreadable Stay | `services/reservations/internal/pricing/client.go:43-96` (the established upstream-call and fail-closed shape this client follows) | Missing guards: transport failure, timeout, `5xx`, non-envelope body, and an unwired client each → `503 UPSTREAM_UNAVAILABLE` naming `stay` and `GetStayRef`, nothing written; a `401` envelope surfaces `UNAUTHENTICATED`; a retry after Stay answers commits once |
+| FR-FWV-5 existing-folio read and the fresh folio | `app/src/views/PrintView.vue:1028`, `:1120`, `:1157` (the departure print path opens a departed stay's folio), `BillingServiceTest.java:180-238` (folio balance, approval object, and invoice guards), `:240-261` (receipt guards) | Missing guards: opening an existing folio issues no stay read and answers in every stay state, a closed one included; a folio-less in-house stay still creates exactly one zero-balance folio; a folio-less unknown or closed open refuses and creates nothing |
+| Desk refusals stay plain | `app/src/views/FolioView.vue:944-962` (the unknown-folio sentence and its code mapping), `:566-575` (the generic plain fallback), `script/catalogue-coverage-check.sh` | Missing guards: the three section 6.21 sentences render in EN and VI through catalogue keys with matching placeholders, show no code, status, or stack trace, and leave the fields usable; the existing unknown-folio sentence, the departure statements, and the Stay panel sentences stay as they are |
+| Regression paths stay green | `BillingServiceTest.java:71-84` (replay), `:148-198` (approval record and its read-back), `:211-261` (invoice and receipts), `app/src/views/PrintView.test.ts` (print exact-match and isolation), `script/e2e-desk-loop.sh` (the desk charge/payment/check-out steps) | These pin today's successful writes, the recorded approval, and the printed documents; they must pass without a desk edit, which is the `AC-FWV-4` fresh-check-in proof |
+| Contract and envelope registration | `contracts/errors/envelope.json` (`UPSTREAM_UNAVAILABLE` absent today), `contracts/http/GetFolioBalance.json`, `PostCharge.json`, `RecordPayment.json`, `RecordOpenBalanceApproval.json`, `script/contract-check.sh` | Missing: the four operations gain `NOT_FOUND`, `STATE_ILLEGAL`, and `UPSTREAM_UNAVAILABLE`, the envelope registers `503`, and `contract-check.sh` stays green; the `architect` owns the contract edit, the guard only proves it landed |
+
+Per-flow implementation diagram (T3). The architecture-side diagrams are
+LLD sections 27.3 through 27.6; this is the requirements-side view of the
+same flow, citing the code edges this section was written against:
+
+```mermaid
+flowchart TD
+    A[Desk calls a folio route: stayId  BillingService.java:121, :142, :176, :264] --> B{Bearer present and the route's fields valid}
+    B -- no --> R400[400 VALIDATION_FAILED naming the field; nothing written]
+    B -- yes --> C{GetFolioBalance and the stay already has a folio}
+    C -- yes --> S[200 the folio Billing holds, in every stay state; no stay read  FR-FWV-5]
+    C -- no --> D[Read GetStayRef with the caller token  store.ts:406-423; server.ts:152-156; FR-FWV-1]
+    D -- 404 naming this stay --> N[404 NOT_FOUND naming the stay; no folio row, line, balance move, approval, key, or event  FR-FWV-2]
+    D -- 404 naming another stay, or naming none --> W[503 UPSTREAM_UNAVAILABLE: a wiring fault is not a stay fact  FR-FWV-4]
+    D -- 422 STATE_ILLEGAL --> X[422 STATE_ILLEGAL naming stay and state; existing folio keeps its lines and balance  FR-FWV-3]
+    D -- transport, timeout, 5xx, non-envelope, unwired --> U[503 UPSTREAM_UNAVAILABLE naming stay and GetStayRef; nothing created or written  FR-FWV-4]
+    D -- 401 or other 4xx envelope --> P[Surface the provider refusal unchanged  FR-FWV-4]
+    D -- 200 in-house --> E{Which route}
+    E -- GetFolioBalance --> G[Create the one folio at zero balance  FR-FWV-5]
+    G --> S2[200 empty folio, zero balance, no-lines sentence]
+    E -- PostCharge, RecordPayment, RecordOpenBalanceApproval --> F{Idempotency key already claimed}
+    F -- yes --> H[Return the original line from a verified in-house stay]
+    F -- no --> I[Insert line or approval, move balance, emit the folio event, commit  BillingRepository.java:99-135]
+    I --> J[200 the line and the fresh balance]
+```
+
+Failure/rollback path: every refusal above precedes the claim and every
+write, so it leaves no folio row, no line, no approval, no balance
+movement, no idempotency record, and no outbox event, and the desk shows
+one plain catalogue sentence with nothing recorded. A folio that already
+existed is untouched and still readable and printable in every stay
+state. The whole change reverts with the single implementation PR: the
+new client and its configuration go with the code, the previous
+ensure-on-first-use behaviour returns, and no migration, backfill, or
+data repair exists in either direction — folios already written, orphaned
+ones included, stay as they are.
+
+### 28.6 Explicitly not specified here (plus gate dependencies)
+
+- Implementation — the Billing -> Stay client, the transactional writer
+  split, the contract edits, and the guards — is the downstream `dev` PR
+  for #634, not this section.
+- **The one open reading, for `product-owner` at the gate.**
+  `AC-FWV-3`'s "open the folio balance" clause reads broadly, while
+  `AC-FWV-5` requires an existing folio to be served in every stay
+  state. This section reads `AC-FWV-3` as binding the folio-creating
+  read, which is the reading LLD 25.2 records and the one the
+  requirements above state. `product-owner` confirms that reading at the
+  spec gate, or tightens `AC-FWV-3` to "opens the balance of a stay that
+  carries no folio"; until then the reading is explicit here rather than
+  silently narrowed.
+- Contract delta: the four folio operations' error sets and the
+  `UPSTREAM_UNAVAILABLE` registration are `architect` work
+  (`contracts/http/*.json`, `contracts/errors/envelope.json`);
+  this section states only the requirements-side need (28.3 and
+  `integration-contract-needs.md` sections 3b and 9).
+- ADR-0008 must move `proposed` to `accepted` with the owner before the
+  implementation PR merges; the `AC-FWV` conditions and the desk copy
+  are `product-owner` work; the guard mapping above is `qa-lead` work;
+  the release note, the availability note, and the rollback pointer are
+  `release-manager` work.
+- Out of scope: the approval-role rule (#625); read-only invoice and
+  receipt lookups by folio id; deleting, migrating, or repairing existing
+  orphan folios; caching or mirroring stay state inside Billing; a
+  Billing-side conditional close (`RequestCheckoutGate` stays deferred);
+  a late-settlement flow for an approval recorded before departure (D-32
+  names the consequence; it needs its own issue and decision); binding
+  the asserted `actor` to the session token (`R6`); and any
+  retry/backoff policy beyond the single bounded read.
+- The specified change is tier T3 (a new fail-closed dependency edge on
+  the money path plus a new contract error set, with no data-model
+  change), confirmed by `architect`. This section is its FR/NFR part; no
+  implementation PR opens until `SPEC-GATE PASS` on #634.
+
 <!-- ao-role: business-analyst -->
-Role: business-analyst · AO session hotel-mgmt-1021
+Role: business-analyst · AO session hotel-mgmt-1047
