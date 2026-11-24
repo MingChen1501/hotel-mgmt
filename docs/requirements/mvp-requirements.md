@@ -6110,7 +6110,7 @@ server-side read of the hotel's recorded room inventory, which gives
 the booking path a fail-closed capacity dependency and moves the
 booking workflow's trust boundary. The tier-T3 architecture delta —
 ADR-0006 (`docs/architecture/decisions/adr-0006-server-side-availability-derivation.md`,
-proposed) and LLD section 26 — is the sibling `architect` handoff this
+accepted 2026-11-24) and LLD section 26 — is the sibling `architect` handoff this
 section words in requirements terms; `AC-OVB-1`..`AC-OVB-3`
 (`docs/product/acceptance-criteria.md` section 19) are the matching
 `product-owner` conditions, and `BR-47`..`BR-49` are the matching
