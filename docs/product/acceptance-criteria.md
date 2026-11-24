@@ -1458,7 +1458,7 @@ dates, nights, quoted total, and state, open any row for the fresh
 instead of invented values, and the owner accepts the screen against
 the design boards — with the desk's existing guards green.
 
-## 18. Folio writes refuse a stay Billing cannot verify (Refs #634)
+## 20. Folio writes refuse a stay Billing cannot verify (Refs #634)
 
 Product-owner scope decision and acceptance conditions for audit
 finding B1 (#625 class: a client-supplied identifier decides a money
@@ -1480,7 +1480,7 @@ mapping and traceability by `qa-lead`, the release note and the
 availability ops note by `release-manager`, and the gate verdict by
 `spec-reviewer`. The desk-visible delta and the EN+VI copy are in
 `docs/product/desk-ui-design-rollout.md`
-[section 6.19](desk-ui-design-rollout.md); the scope decision is D-30 in
+[section 6.21](desk-ui-design-rollout.md); the scope decision is D-32 in
 `docs/project/decision-log.md`. `FWV` is the domain code for this
 family — no `FR-FWV-*` family exists, and these conditions trace to the
 existing `FR-BIL-*` family.
@@ -1789,7 +1789,7 @@ sections 1–16 done-conditions keep their behaviour. `BMV` is the
 domain code for this family.
 
 Folio-verification addendum (Refs #634): seven further conditions
-(AC-FWV-1..7, section 18) cover the money-path half of audit
+(AC-FWV-1..7, section 20) cover the money-path half of audit
 finding B1 — a folio is created only for a stay Stay confirms exists
 and is in house, the three folio writes verify the stay every time
 (an unknown stay refuses with `NOT_FOUND`, a closed stay with
