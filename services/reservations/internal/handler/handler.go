@@ -9,6 +9,8 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -40,15 +42,51 @@ func writeOpError(w http.ResponseWriter, oerr *store.OpError) {
 	})
 }
 
+// maxBodyBytes is the one request-body ceiling this service declares
+// (LLD section 29.1, NFR-BND-2): a code constant, never configuration.
+// It is 18.6 times the largest request schema the contracts hold, so
+// every desk payload sits far below it.
+const maxBodyBytes = 65536
+
+// writeTooLarge answers an over-ceiling body with the shared envelope
+// (LLD section 29.2, AC-BND-1).
+func writeTooLarge(w http.ResponseWriter) {
+	writeJSON(w, http.StatusBadRequest, map[string]any{
+		"code":    "VALIDATION_FAILED",
+		"message": messages.Text("error.transport.body_too_large", nil),
+		"details": map[string]any{"field": "body"},
+		"traceId": traceID(),
+	})
+}
+
 func decodeBody(w http.ResponseWriter, r *http.Request) (map[string]any, bool) {
-	var body map[string]any
 	if r.Body == nil {
 		return map[string]any{}, true
 	}
+	// A declared content-length above the ceiling is refused before the
+	// first chunk; the bounded reader refuses byte 65 537 of a body that
+	// under-declares it and marks the connection to close (LLD 29.1).
+	if r.ContentLength > int64(maxBodyBytes) {
+		writeTooLarge(w)
+		return nil, false
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
+	var body map[string]any
 	decoder := json.NewDecoder(r.Body)
 	decoder.UseNumber()
-	if err := decoder.Decode(&body); err != nil {
-		if err.Error() == "EOF" {
+	err := decoder.Decode(&body)
+	if err == nil {
+		// Drain the bounded reader so a body that under-declares its
+		// content-length cannot slip its surplus past the decoder.
+		_, err = io.Copy(io.Discard, r.Body)
+	}
+	if err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			writeTooLarge(w)
+			return nil, false
+		}
+		if errors.Is(err, io.EOF) {
 			return map[string]any{}, true
 		}
 		writeJSON(w, http.StatusBadRequest, map[string]any{

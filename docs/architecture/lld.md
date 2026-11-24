@@ -5038,9 +5038,9 @@ before JSON parsing and before any store, provider, or folio call:
 
 | Service | Stack | Enforcement point | Mechanism |
 |---|---|---|---|
-| Stay, Guests, Rooms, Admin | Node | `readBody`: `services/stay/src/server.ts:10-35`, `services/guests/src/server.ts:10-35`, `services/rooms/src/server.ts:10-35`, `services/admin/src/server.ts:9-34` | count the bytes as chunks arrive, refuse at byte 65 537 and stop accumulating; a declared `content-length` above the ceiling refuses before the first `data` event |
-| Reservations, Rates, Reporting | Go | `decodeBody`: `services/reservations/internal/handler/handler.go:43-66`, `services/rates/internal/handler/handler.go:41-64`, `services/reporting/internal/handler/handler.go:45-68` | refuse when `r.ContentLength` exceeds the ceiling, then wrap `r.Body` in `http.MaxBytesReader(w, r.Body, maxBodyBytes)` before `json.NewDecoder` (`:48`, `:46`, `:50`) and drain the bounded reader after the decode, so a body that under-declares cannot slip its surplus past the decoder |
-| Billing | Spring Boot | a servlet `Filter` on `/*`, ahead of dispatch | refuse when `Content-Length` exceeds the ceiling; otherwise wrap the body in a counting stream that refuses at byte 65 537 and buffers at most the ceiling, then hand Spring that bounded stream |
+| Stay, Guests, Rooms, Admin | Node | `readBody`: `services/stay/src/server.ts:25-77`, `services/guests/src/server.ts:25-77`, `services/rooms/src/server.ts:25-77`, `services/admin/src/server.ts:24-76`, beside the `MAX_BODY_BYTES` constant (`stay:14`, `guests:14`, `rooms:14`, `admin:13`) | count the bytes as chunks arrive, refuse at byte 65 537 and stop accumulating; a declared `content-length` above the ceiling refuses before the first `data` event |
+| Reservations, Rates, Reporting | Go | `decodeBody`: `services/reservations/internal/handler/handler.go:62-104`, `services/rates/internal/handler/handler.go:60-102`, `services/reporting/internal/handler/handler.go:64-106`, beside the `maxBodyBytes` constant (`:49`, `:47`, `:51`) and the `writeTooLarge` refusal (`:53`, `:51`, `:55`) | refuse when `r.ContentLength` exceeds the ceiling, then wrap `r.Body` in `http.MaxBytesReader(w, r.Body, maxBodyBytes)` before `json.NewDecoder` (`:75`, `:73`, `:77`) and drain the bounded reader after the decode, so a body that under-declares cannot slip its surplus past the decoder |
+| Billing | Spring Boot | a servlet `Filter` on `/*`, ahead of dispatch (`services/billing/src/main/java/com/hotel/billing/web/MaxBodySizeFilter.java:36`, `doFilterInternal` `:43`) | refuse when `Content-Length` exceeds the ceiling; otherwise wrap the body in a counting stream that refuses at byte 65 537 and buffers at most the ceiling, then hand Spring that bounded stream |
 
 Why Billing's filter sits ahead of its controller while Node and Go refuse
 after their route and session check: Billing has no ingress session layer
@@ -5049,8 +5049,8 @@ after their route and session check: Billing has no ingress session layer
 and every sibling operation) before the controller's `requireToken` body
 runs (`:67-71`), so a filter is the only place that can precede Jackson.
 Node and Go answer an unknown path
-(`services/stay/src/server.ts:101-109`) and a missing token (`:110-113`;
-`services/reservations/internal/handler/handler.go:102-120`) before
+(`services/stay/src/server.ts:150-158`) and a missing token (`:159-162`;
+`services/reservations/internal/handler/handler.go:140-158`) before
 touching the body, and that order stays: the ceiling governs every request
 whose body the service reads, and every earlier refusal keeps its existing
 answer (AC-BND-4).
@@ -5112,20 +5112,21 @@ Where each server sets them:
   `ReadTimeout`, `WriteTimeout`, and `IdleTimeout`, then call its
   `ListenAndServe`, instead of the bare
   `http.ListenAndServe(addr, newHandler(mux))` at
-  `services/reservations/cmd/server/main.go:52`,
-  `services/rates/cmd/server/main.go:42`, and
-  `services/reporting/cmd/server/main.go:34`.
+  `services/reservations/cmd/server/main.go:53` (constructor at
+  `:62`), `services/rates/cmd/server/main.go:43` (constructor at
+  `:52`), and `services/reporting/cmd/server/main.go:35` (constructor at
+  `:44`).
 - Node: `createServiceServer` sets `headersTimeout`, `requestTimeout`,
   `timeout`, and `keepAliveTimeout` on the server it returns
-  (`services/stay/src/server.ts:74-89`,
-  `services/guests/src/server.ts:45-60`,
-  `services/rooms/src/server.ts:45-60`, and
-  `services/admin/src/server.ts:53-68`) before `listen` runs
+  (`services/stay/src/server.ts:118-138`,
+  `services/guests/src/server.ts:89-109`,
+  `services/rooms/src/server.ts:89-109`, and
+  `services/admin/src/server.ts:97-117`) before `listen` runs
   (`services/stay/src/index.ts:34`, `services/guests/src/index.ts:21`,
   `services/rooms/src/index.ts:21`, `services/admin/src/index.ts:34`).
 - Billing: `services/billing/src/main/resources/application.properties`
-  (today eight lines: port, datasource, Flyway — no timeout) gains the
-  three properties. Tomcat's connector timeout is the socket `SO_TIMEOUT`
+  carries the three properties at `:18-20`, below the unchanged port,
+  datasource, and Flyway block. Tomcat's connector timeout is the socket `SO_TIMEOUT`
   applied to both blocking reads and writes, so the one 5-second value
   covers header read, body read, and response write on that embedded
   server; it bounds I/O only, never handler execution, so it cannot cut a
@@ -5176,20 +5177,22 @@ two timeout edges are the guards `AC-BND-5` requires the implementation to
 add):
 
 - A–B: the Node route match is
-  `services/stay/src/server.ts:101-109` (the operation `default` arm at
-  `:167-173` answers an unknown operation with the same 404), the session
-  check `:110-113`; the Go equivalent is the `authed` wrapper
-  `services/reservations/internal/handler/handler.go:102-120`, reached
+  `services/stay/src/server.ts:150-158` (the operation `default` arm at
+  `:216-222` answers an unknown operation with the same 404), the session
+  check `:159-162`; the Go equivalent is the `authed` wrapper
+  `services/reservations/internal/handler/handler.go:140-158`, reached
   through the envelope chain in
-  `services/reservations/cmd/server/main.go:61-63`.
+  `services/reservations/cmd/server/main.go:77-79`.
 - B–X1–X2: the existing `NOT_FOUND` and `UNAUTHENTICATED` answers, and
   every other existing refusal, are untouched (AC-BND-4); none of them
   reads a body.
 - B–C: Node `readBody`
-  (`services/stay/src/server.ts:10-35`; Guests and Rooms the same range,
-  Admin `:9-34`); Go `decodeBody`
-  (`services/reservations/internal/handler/handler.go:43-66`; Rates
-  `:41-64`, Reporting `:45-68`); Billing's body-bounding filter ahead of
+  (`services/stay/src/server.ts:25-77`; Guests and Rooms the same range,
+  Admin `:24-76`); Go `decodeBody`
+  (`services/reservations/internal/handler/handler.go:62-104`; Rates
+  `:60-102`, Reporting `:64-106`); Billing's body-bounding filter
+  (`services/billing/src/main/java/com/hotel/billing/web/MaxBodySizeFilter.java:43`)
+  ahead of
   `services/billing/src/main/java/com/hotel/billing/web/BillingController.java:76`.
 - C–R1 and C–R2: the ceiling check the implementation adds in those
   functions; the refusal stops the read, so the surplus is never
@@ -5197,21 +5200,22 @@ add):
 - R1–R3 and R2–R3: one `writeJson`/`writeJSON`/`ResponseEntity` answer.
   Node builds the envelope from `HttpError`
   (`services/stay/src/errors.ts:42-49`, written by the catch-all at
-  `services/stay/src/server.ts:76-78` and the three siblings); Go writes
+  `services/stay/src/server.ts:120-131` and the three siblings); Go writes
   the same four fields through `writeJSON`
-  (`services/reservations/internal/handler/handler.go:28-32`); Billing
+  (`services/reservations/internal/handler/handler.go:30-34`, the refusal
+  built by `writeTooLarge` at `:53-60`); Billing
   through `ApiExceptionHandler`'s `envelope`
   (`services/billing/src/main/java/com/hotel/billing/web/ApiExceptionHandler.java:36-42`).
 - R3–E: the refusal returns before the operation switch
-  (`services/stay/src/server.ts:114-116`) or before the Go handler body
-  runs (`services/reservations/internal/handler/handler.go:114-118`), so
+  (`services/stay/src/server.ts:163-165`) or before the Go handler body
+  runs (`services/reservations/internal/handler/handler.go:152-156`), so
   no store, provider, or folio call is reached.
 - P–O and P–V: the existing parse path — `JSON.parse`
-  (`services/stay/src/server.ts:21`), the Go decoder
-  (`services/reservations/internal/handler/handler.go:48-61`), the Spring
+  (`services/stay/src/server.ts:63`), the Go decoder
+  (`services/reservations/internal/handler/handler.go:75-92`), the Spring
   `@RequestBody` binding — and its existing `bad_json` and
   `body_not_object` refusals are unchanged.
-- O–W: the existing success write (`services/stay/src/server.ts:37-40`;
+- O–W: the existing success write (`services/stay/src/server.ts:166-169`;
   Go `writeJSON`; the Billing controller's return value).
 - C–T1–T2: the body-read bound in the timeout table; Go `ReadTimeout`,
   Node `requestTimeout`, Tomcat `connection-timeout`.
@@ -5250,14 +5254,17 @@ satisfy, one guard per service (AC-BND-5):
   is served, one byte more is refused with HTTP 400, `VALIDATION_FAILED`,
   `details.field` `body`, the `error.transport.body_too_large` sentence,
   and a `traceId`, with "no operation ran" evidence (no store row, folio
-  line, or balance changed). Natural homes: the four
-  `services/*/src/server.test.ts` files, the three
-  `services/*/internal/handler/handler_test.go` files, and
-  `services/billing/src/test/java/com/hotel/billing/web/BillingControllerTest.java`.
+  line, or balance changed). Landed in the four `services/*/src/bodyBound.test.ts` files (beside the
+  existing suite each reuses), the three
+  `services/*/internal/handler/body_bound_test.go` files, and
+  `services/billing/src/test/java/com/hotel/billing/web/BillingControllerTest.java`
+  (`BND1`–`BND8`).
 - **Timeout guards (eight).** Each Go `main`'s `http.Server` carries the
-  four non-zero fields; each Node server reports the four non-zero
-  properties after `createServiceServer`; Billing's effective
-  `application.properties` carries the three settings. A guard that reads
+  four non-zero fields (`services/*/cmd/server/main_test.go`,
+  `BND13`–`BND15`); each Node server reports the four non-zero properties
+  after `createServiceServer` (`BND9`–`BND12`); Billing's packaged
+  `application.properties` carries the three settings
+  (`config/ServerTimeoutPropertiesTest.java`, `BND16`). A guard that reads
   the value is enough — no sleeping test.
 - **Catalogue guards (eight).** Each service's message-catalogue test
   pins `error.transport.body_too_large` to its plain sentence, the way the

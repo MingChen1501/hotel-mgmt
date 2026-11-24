@@ -4,6 +4,7 @@
     "error.transport.bad_json": "Nội dung yêu cầu không phải JSON hợp lệ.",
     "error.transport.body_not_object": "Nội dung yêu cầu phải là một đối tượng JSON.",
     "error.transport.body_read_failed": "Không đọc được nội dung yêu cầu.",
+    "error.transport.body_too_large": "Nội dung yêu cầu quá lớn.",
     "error.transport.unexpected": "Xử lý yêu cầu thất bại ngoài dự kiến.",
     "error.transport.unknown_path": "đường dẫn không xác định",
     "error.transport.method_not_allowed": "Phương thức yêu cầu này không được phép cho đường dẫn này.",

@@ -11,6 +11,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/MingChen1501/hotel-mgmt/services/rates/internal/envelope"
 	"github.com/MingChen1501/hotel-mgmt/services/rates/internal/handler"
@@ -39,8 +40,23 @@ func main() {
 	mux.Handle("POST /v1/rates/", pricing)
 	addr := ":" + port
 	log.Printf("rates listening on %s", addr)
-	if err := http.ListenAndServe(addr, newHandler(mux)); err != nil {
+	if err := newServer(addr, newHandler(mux)).ListenAndServe(); err != nil {
 		log.Fatal(err)
+	}
+}
+
+// newServer builds the HTTP server with the four finite bounds the
+// bundle runs with (LLD section 29.3, AC-BND-3): no zero, disabled, or
+// unset value remains, and every bound stays above the longest
+// legitimate provider wait.
+func newServer(addr string, handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
 }
 

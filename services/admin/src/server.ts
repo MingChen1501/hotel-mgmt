@@ -6,11 +6,53 @@ import { msg } from "./messages.js";
 
 type Body = Record<string, unknown>;
 
-function readBody(req: IncomingMessage): Promise<Body> {
+// MAX_BODY_BYTES is the one request-body ceiling this service declares
+// (LLD section 29.1, NFR-BND-2): a code constant, never configuration.
+// It is 18.6 times the largest request schema the contracts hold, so
+// every desk payload sits far below it.
+export const MAX_BODY_BYTES = 65536;
+
+function bodyTooLarge(): HttpError {
+  return new HttpError("VALIDATION_FAILED", msg("error.transport.body_too_large", {}), { field: "body" });
+}
+
+// readBody reads the request body under the declared ceiling: it
+// refuses a declared content-length above it before the first chunk,
+// stops accumulating at byte 65 537, and tells the connection to close
+// after the answer so the unread surplus is never buffered whole
+// (LLD section 29.1, AC-BND-1).
+function readBody(req: IncomingMessage, res: ServerResponse): Promise<Body> {
   return new Promise((resolve, reject) => {
+    const refused = (err: HttpError): void => {
+      res.setHeader("Connection", "close");
+      reject(err);
+    };
+    const declared = req.headers["content-length"];
+    if (declared !== undefined && !Number.isNaN(Number(declared)) && Number(declared) > MAX_BODY_BYTES) {
+      refused(bodyTooLarge());
+      return;
+    }
     const chunks: Buffer[] = [];
-    req.on("data", (chunk: Buffer) => chunks.push(chunk));
+    let size = 0;
+    let overLimit = false;
+    req.on("data", (chunk: Buffer) => {
+      if (overLimit) {
+        return;
+      }
+      size += chunk.length;
+      if (size > MAX_BODY_BYTES) {
+        overLimit = true;
+        chunks.length = 0;
+        req.pause();
+        refused(bodyTooLarge());
+        return;
+      }
+      chunks.push(chunk);
+    });
     req.on("end", () => {
+      if (overLimit) {
+        return;
+      }
       const raw = Buffer.concat(chunks).toString("utf8");
       if (raw.trim() === "") {
         resolve({});
@@ -49,9 +91,11 @@ function bearerToken(req: IncomingMessage): string | null {
 
 // createServiceServer answers GET /healthz with the module identity,
 // routes POST /v1/admin/<Operation> per contracts/http, and refuses
-// every other path with the shared error envelope.
+// every other path with the shared error envelope. It also declares
+// the four finite server bounds the bundle runs with (LLD section
+// 29.3, AC-BND-3), before any caller can listen on it.
 export function createServiceServer(service: string, store: AdminStoreAPI = new AdminStore()): Server {
-  return createServer((req, res) => {
+  const server = createServer((req, res) => {
     void handleRequest(req, res, service, store).catch((err: unknown) => {
       if (err instanceof HttpError) {
         writeJson(res, err.status, errorEnvelope(err));
@@ -65,6 +109,11 @@ export function createServiceServer(service: string, store: AdminStoreAPI = new 
       }
     });
   });
+  server.headersTimeout = 5000;
+  server.requestTimeout = 10000;
+  server.timeout = 15000;
+  server.keepAliveTimeout = 10000;
+  return server;
 }
 
 export async function bootStoreFromEnvironment(store: AdminStoreAPI): Promise<void> {
@@ -92,7 +141,7 @@ async function handleRequest(
     );
     return;
   }
-  const body = await readBody(req);
+  const body = await readBody(req, res);
   const operation = route[1];
   if (operation === "SignIn") {
     const { token, user } = await store.signIn(body["signinIdentity"], body["secret"]);

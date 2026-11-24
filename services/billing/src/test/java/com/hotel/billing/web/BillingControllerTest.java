@@ -1,10 +1,13 @@
 package com.hotel.billing.web;
 
+import static org.hamcrest.Matchers.aMapWithSize;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -14,6 +17,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.hotel.billing.service.BillingService;
+import com.hotel.billing.util.Messages;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -298,5 +303,56 @@ class BillingControllerTest {
         .content("{\"paymentId\":\"" + payment + "\",\"actor\":\"front-desk\"}")).andExpect(status().isOk())
         .andExpect(jsonPath("$.receiptId").value(payment.toString()))
         .andExpect(jsonPath("$.method").value("cash")).andExpect(jsonPath("$.amountMinor").value(60000));
+  }
+
+  // BND8 covers AC-BND-1, AC-BND-4, NFR-BND-1, and NFR-BND-2 for
+  // Billing (Refs #630): the filter refuses an over-limit body with the
+  // shared envelope before @RequestBody binding and before the
+  // controller's requireToken, so no operation runs.
+
+  private static byte[] paddedBody(String base, int size) {
+    StringBuilder out = new StringBuilder(base.substring(0, base.length() - 1));
+    out.append(",\"pad\":\"");
+    for (int i = base.length() + 9; i < size; i++) {
+      out.append('x');
+    }
+    out.append("\"}");
+    byte[] body = out.toString().getBytes(StandardCharsets.UTF_8);
+    assertEquals(size, body.length);
+    return body;
+  }
+
+  @Test
+  void overLimitBodyIsRefusedBeforeTheOperationRuns() throws Exception {
+    assertEquals(65536, MaxBodySizeFilter.MAX_BODY_BYTES);
+    byte[] over = paddedBody("{\"stayId\":\"" + STAY + "\",\"itemKind\":\"x\",\"itemName\":\"Room 101\","
+        + "\"amountMinor\":12000,\"actor\":\"front-desk\"}", 65537);
+    mvc.perform(post("/v1/billing/PostCharge").header("Authorization", "Bearer test-token")
+        .contentType(MediaType.APPLICATION_JSON).content(over)).andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$", aMapWithSize(4))).andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+        .andExpect(jsonPath("$.message").value(Messages.text("error.transport.body_too_large", Map.of())))
+        .andExpect(jsonPath("$.details.field").value("body"))
+        .andExpect(jsonPath("$.details", aMapWithSize(1))).andExpect(jsonPath("$.traceId").isNotEmpty());
+    verifyNoInteractions(service);
+  }
+
+  @Test
+  void overLimitBodyWithoutATokenIsTheSizeRefusal() throws Exception {
+    // The filter precedes the controller's requireToken, so the
+    // over-limit answer is the size refusal, not UNAUTHENTICATED.
+    byte[] over = paddedBody("{\"stayId\":\"" + STAY + "\",\"actor\":\"front-desk\"}", 65537);
+    mvc.perform(post("/v1/billing/GetFolioBalance").contentType(MediaType.APPLICATION_JSON).content(over))
+        .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+        .andExpect(jsonPath("$.details.field").value("body"));
+    verifyNoInteractions(service);
+  }
+
+  @Test
+  void bodyAtTheCeilingIsNotRefusedForSize() throws Exception {
+    // 65 536 bytes reaches the controller's own refusal, so nothing
+    // under the ceiling changed (one byte more is refused above).
+    byte[] at = paddedBody("{\"stayId\":\"" + STAY + "\",\"actor\":\"front-desk\"}", 65536);
+    mvc.perform(post("/v1/billing/GetFolioBalance").contentType(MediaType.APPLICATION_JSON).content(at))
+        .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
   }
 }
