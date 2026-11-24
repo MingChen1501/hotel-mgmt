@@ -24,8 +24,7 @@ which pins it rewrites (never deletes).
 
 Companion specs: ADR-0006
 (`docs/architecture/decisions/adr-0006-server-side-availability-derivation.md`,
-proposed; the owner accepts it before the implementation PR merges),
-LLD [section 26](../architecture/lld.md) (guard algorithm, per-flow
+accepted 2026-11-24), LLD [section 26](../architecture/lld.md) (guard algorithm, per-flow
 diagrams, and the section 26.6 verification plan this plan aligns
 with), HLD section 5, the `AC-OVB-1`..`AC-OVB-3` product conditions,
 and the #588 evidence record `docs/testing/evidence/588/README.md`
