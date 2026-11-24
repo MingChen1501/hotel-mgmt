@@ -4918,21 +4918,21 @@ flowchart TD
 Edge trace (every edge cites code at this spec head):
 
 - B–D: product refusals are `HttpError` instances whose status comes from
-  the service's map (`services/stay/src/errors.ts:23-33`; Guests, Rooms,
-  and Admin carry the same shape), and the catch-all answers
-  `errorEnvelope(err)` (`services/stay/src/server.ts:77-78`).
+  the service's map (`services/stay/src/errors.ts:29-39`; Guests, Rooms,
+  and Admin carry the same shape, Admin at `:31-41`), and the catch-all
+  answers `errorEnvelope(err)` (`services/stay/src/server.ts:77-78`).
 - B–S1: Stay's catch-all — `services/stay/src/server.ts:76-87`, the
-  `else` arm at `:79-85`, the `500` body at `:80-85`, today's
-  `VALIDATION_FAILED` literal at `:81`.
+  `else` arm at `:79-85`, the `500` body at `:80-85`, the
+  `INTERNAL_ERROR` literal at `:81`.
 - B–S2: Guests' catch-all — `services/guests/src/server.ts:47-58`, the
-  `else` arm at `:50-56`, the `500` body at `:51-56`, the literal at
-  `:52`.
+  `else` arm at `:50-56`, the `500` body at `:51-56`, the
+  `INTERNAL_ERROR` literal at `:52`.
 - B–S3: Rooms' catch-all — `services/rooms/src/server.ts:47-58`, the
-  `else` arm at `:50-56`, the `500` body at `:51-56`, the literal at
-  `:52`.
+  `else` arm at `:50-56`, the `500` body at `:51-56`, the
+  `INTERNAL_ERROR` literal at `:52`.
 - B–S4: Admin's catch-all — `services/admin/src/server.ts:55-66`, the
-  `else` arm at `:58-65`, the `500` body at `:59-64`, the literal at
-  `:60`.
+  `else` arm at `:58-65`, the `500` body at `:59-64`, the
+  `INTERNAL_ERROR` literal at `:60`.
 - S1–S4–E: the four arms write the same four-field envelope with
   `writeJson(res, 500, ...)` and a fresh `traceId`
   (`services/stay/src/server.ts:80-85` and the three siblings above).
