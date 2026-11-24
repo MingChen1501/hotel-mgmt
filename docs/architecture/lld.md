@@ -4523,7 +4523,7 @@ Stack and repo gates: `cd app && npm ci && npm run build && npm run lint
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1017
 
-## 25. Folio writes verify the stay (Refs #634)
+## 27. Folio writes verify the stay (Refs #634)
 
 Tier **T3 confirmed**: Billing gains its first runtime outbound read of
 Stay and a new fail-closed dependency edge on the money path, with a new
@@ -4532,26 +4532,26 @@ no migration, and no event change. ADR-0008
 (`docs/architecture/decisions/adr-0008-folio-write-stay-verification.md`,
 proposed) records the decision; the owner flips it `proposed` ->
 `accepted` before the implementation PR merges. Product done-conditions
-are `docs/product/acceptance-criteria.md` section 18
-(`AC-FWV-1`..`AC-FWV-7`) with D-30 in
+are `docs/product/acceptance-criteria.md` section 20
+(`AC-FWV-1`..`AC-FWV-7`) with D-32 in
 `docs/project/decision-log.md`; FR/NFR wording is the
 `business-analyst` handoff, guard traceability the `qa-lead` handoff, and
 the release and availability notes the `release-manager` handoff. This
 section records only the architect-owned delta.
 
-### 25.1 Which layer owns what
+### 27.1 Which layer owns what
 
 | Fact | Authority | Enforced where | May the client assert it? |
 |---|---|---|---|
 | Whether a stay exists, and its lifecycle state | Stay (`stay.stays.state`) | Stay `GetStayRef` (`services/stay/src/store.ts:406-423`) | No — `stayId` selects the stay, it does not prove it |
 | A folio's existence, lines, and balance | Billing (`billing.folios`, folio lines) | Billing inserts | No |
-| Whether a folio write may land at all | Billing, from Stay's read | The verify-before-write guard (25.2) | No |
+| Whether a folio write may land at all | Billing, from Stay's read | The verify-before-write guard (27.2) | No |
 | The recorded open-balance approval | Billing (`billing.folios.open_balance_approval`) | Billing write; the #601 provenance rule is unchanged | No — #625 owns who may approve |
 | The stay's close | Stay | Conditional `in-house -> closed` flip | No |
 | A well-formed stay id | Billing | `stayUuid` before any call (`service/BillingService.java:86-92`) | Yes (`stayId`) |
 | The session actor | Admin session token | Body `actor` today; token binding is residual risk R6 | Yes (`actor`), today |
 
-### 25.2 Target algorithm
+### 27.2 Target algorithm
 
 Per route, in order — shape validation, stay verification, idempotency
 claim, then the writes:
@@ -4618,7 +4618,7 @@ print path the desk depends on (`app/src/views/PrintView.vue:1028`,
 `:1120`, `:1157`). If the owner wants the stricter reading instead, that
 is a product change to both conditions and re-tiers this delta.
 
-### 25.3 Per-flow diagram — happy path
+### 27.3 Per-flow diagram — happy path
 
 The three writes and the folio-creating read, on a stay Stay confirms is
 in house:
@@ -4658,7 +4658,7 @@ Edge trace:
 - E–F–H: the claim precedes the insert today
   (`service/BillingService.java:146-151`); the verification now precedes
   the claim, so a replay on a closed stay refuses instead of returning a
-  line (25.9).
+  line (27.9).
 - F–I–J: unchanged writes — insert, `addToBalance`, `outbox`, response
   (`repo/BillingRepository.java:99-135`;
   `service/BillingService.java:158-162`).
@@ -4667,7 +4667,7 @@ Rollback: revert the single implementation PR. The previous
 ensure-on-first-use behaviour returns with the client that made the read,
 and no data migration exists in either direction (ADR-0008).
 
-### 25.4 Per-flow diagram — unknown stay
+### 27.4 Per-flow diagram — unknown stay
 
 ```mermaid
 flowchart TD
@@ -4689,10 +4689,10 @@ Edge trace:
 - C–D: the verification runs before the claim and before any insert, so
   nothing is written; a repeated request, with or without an idempotency
   key, answers the same (product `AC-FWV-1`).
-- D–E: the desk sentence is product section 6.19
+- D–E: the desk sentence is product section 6.21
   (`desk.folio.refused_unknown_stay`).
 
-### 25.5 Per-flow diagram — closed stay
+### 27.5 Per-flow diagram — closed stay
 
 ```mermaid
 flowchart TD
@@ -4711,12 +4711,12 @@ Edge trace:
   so no new orphan folio exists for a stay Billing cannot verify (product
   `AC-FWV-5`).
 - B–D–F: a closed stay that does have a folio keeps it readable and
-  printable — the read path serves it without a stay read at all (25.3
+  printable — the read path serves it without a stay read at all (27.3
   edge B–C); only writes refuse. The document still matches the folio
   (`BR-24`).
 - E: no line, no approval, no balance movement, no `folio.*` event.
 
-### 25.6 Per-flow diagram — unreadable Stay
+### 27.6 Per-flow diagram — unreadable Stay
 
 ```mermaid
 flowchart TD
@@ -4740,12 +4740,12 @@ Edge trace:
   not be reported as one.
 - U/P–X: the refusal precedes every write, so no unverified folio is ever
   created and no write is half-recorded; once Stay answers, the retried
-  call commits once because the claim still guards the insert (25.3 edge
+  call commits once because the claim still guards the insert (27.3 edge
   E–F).
-- X–R: the desk sentence is product section 6.19
+- X–R: the desk sentence is product section 6.21
   (`desk.folio.refused_unreadable_stay`).
 
-### 25.7 Contract delta and error codes
+### 27.7 Contract delta and error codes
 
 | File | Change | Version effect |
 |---|---|---|
@@ -4769,7 +4769,7 @@ neither gains an entry; `script/contract-check.sh` and
 `script/openapi-route-check.sh` must both stay green on the
 implementation PR.
 
-### 25.8 Verification plan
+### 27.8 Verification plan
 
 Billing guards (the implementation PR creates them; the existing service
 suite is
@@ -4786,7 +4786,7 @@ database-free so `mvn test` stays offline):
 | `AC-FWV-5` departed-stay reads | `GetFolioBalance` on a stay with an existing folio answers it and makes no Stay call, so `ProduceInvoice` / `ProduceReceipt` still match; a closed stay with no folio answers `STATE_ILLEGAL` and creates nothing |
 | `AC-FWV-7` bounded close path | a guard pins that `GetStayRef` is the only outbound call on the folio path and that the verification is not made from inside the transactional writer (an ordering assertion on the mocked client and repository) |
 
-Client guards: the stay client's answer classification (25.2 table) is
+Client guards: the stay client's answer classification (27.2 table) is
 unit-tested against a JDK `HttpServer` stub — JDK-only, so the suite stays
 database-free — covering `200`, an unknown-stay `404`, a wrong-id `404`,
 a `422`, a `503`, a malformed body, and a connection refusal. Existing
@@ -4801,7 +4801,7 @@ Stack gates: `cd services/billing && mvn verify`;
 The qa-lead traceability row for #634 is a sibling handoff and must cite
 the guards above by `file:line` at the merged head.
 
-### 25.9 Residual risks, the post-departure consequence, and the re-tier trigger
+### 27.9 Residual risks, the post-departure consequence, and the re-tier trigger
 
 - **R5 mirror — the verify-then-write window.** The stay is verified, then
   the line is written; a stay that closes in between still takes the line.
@@ -4821,7 +4821,7 @@ the guards above by `file:line` at the merged head.
   balance approved at check-out can no longer be settled by a
   `RecordPayment` once the stay is closed, because every write verifies
   the stay. Product records it as a named consequence and explicitly out
-  of scope (D-30, product section 6.19): a late-settlement flow is its own
+  of scope (D-32, product section 6.21): a late-settlement flow is its own
   decision and its own issue. Nothing already recorded moves — a payment
   taken before departure still records, still receipts, and still prints —
   and the desk can still print the departure invoice and every receipt.

@@ -567,7 +567,7 @@ direction.
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-961
 
-## 18. Folio write verification authority (Refs #634)
+## 20. Folio write verification authority (Refs #634)
 
 A stay id is not evidence. Billing creates the folio for any UUID it is
 handed (`ensureFolio`,
@@ -613,7 +613,7 @@ the close path cannot recurse. The contract change is error-code additive
 `docs/architecture/decisions/adr-0008-folio-write-stay-verification.md`
 (proposed); flow detail, the per-flow diagrams, the contract delta, and
 the verification plan: `docs/architecture/lld.md`
-[section 25](lld.md#25-folio-writes-verify-the-stay-refs-634); seam and
+[section 27](lld.md#27-folio-writes-verify-the-stay-refs-634); seam and
 error contracts: `docs/technical/integration.md` C8 and
 `docs/technical/error-handling.md` section 5; the availability and
 residual-risk deltas: `docs/technical/security-threat-model.md`

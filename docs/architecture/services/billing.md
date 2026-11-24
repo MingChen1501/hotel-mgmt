@@ -27,7 +27,7 @@ The operation table (`web/BillingController.java`): `GetFolioBalance` (:74), `Po
 
 PostCharge (`POST /v1/billing/PostCharge`) — the folio write. As built
 today; from #634 on the stay is verified between C and D (section 9, LLD
-[section 25](../lld.md#25-folio-writes-verify-the-stay-refs-634)):
+[section 27](../lld.md#27-folio-writes-verify-the-stay-refs-634)):
 
 ```mermaid
 flowchart TD
@@ -204,7 +204,7 @@ Target, from #634 on:
   event change; `RunDayClose`, `GetDayClose`, `ProduceInvoice`, and
   `ProduceReceipt` are untouched.
 
-Design: `docs/architecture/lld.md` section 25; decision record
+Design: `docs/architecture/lld.md` section 27; decision record
 `docs/architecture/decisions/adr-0008-folio-write-stay-verification.md`
 (proposed). Rollback: revert the single implementation PR; the previous
 ensure-on-first-use behaviour returns and no data migration exists.
