@@ -18,6 +18,9 @@ check-out, **receipt** the proof of one payment; **charge item** is a
 hotel-defined sellable entity and **charge** a posted folio line;
 **price basis** is what a reservation was quoted from; **hotel** is
 the business and **property** the deployment/data-isolation context.
+A **booking register** is the desk's read-only list of the reservations
+staying in a chosen night range: a view of the section 1 records that
+holds no field of its own.
 
 ## 1. Reservation
 
@@ -32,7 +35,8 @@ no-show); cancellation or no-show reason where applicable; change
 history with actor and timestamp.
 
 Owning FRs: FR-RES-1, FR-RES-2, FR-RES-3, FR-RES-4, FR-RES-5,
-FR-RES-6, FR-RTE-5, FR-CUS-1, FR-CUS-2.
+FR-RES-6, FR-RTE-5, FR-CUS-1, FR-CUS-2, FR-BMV-2, FR-BMV-5,
+FR-BMV-6.
 
 A reservation is **active** — and therefore holds sellable
 availability — only in `confirmed` and `checked-in`; a `closed`,
@@ -42,6 +46,16 @@ terminal `closed` state, which is never reopened, and the recorded
 dates are not rewritten by an early departure: the state records that
 the stay ended while the dates keep recording what was booked
 (`FR-DEP-1`..`FR-DEP-3`, `BR-1`).
+
+The booking register reads these records and introduces no field of its
+own: the guest name and the quoted total come from the reservation, the
+room type from the type list, and the assigned room — only while the
+guest is in house — from the stay's room link resolved through the
+occupied room list. A reservation holds a room type, not a room, so a
+`confirmed` row shows no assigned room, and no read exposes the room a
+departed guest held, so a `closed` row shows none either; a register
+cell a read could not fill states that it could not be read rather than
+guessing (`FR-BMV-2`, `FR-BMV-5`, `FR-BMV-6`, `BR-19`).
 
 ## 2. Stay
 
@@ -295,9 +309,14 @@ release obligation the #647 reassignment relies on — the room is the
 desk's assignment, a used room is released to housekeeping, and a room
 whose assignment never became a stay returns to ready (`FR-REA-1`..
 `FR-REA-4`, `BR-19`) — and add no entry, field, or behaviour beyond
-those sources.
+those sources. The Reservation entry (section 1) defines the **booking
+register** the #648 desk view renders — a read-only list of reservations
+staying in a chosen night range, with no field of its own — and states
+which read supplies each cell, including why a `confirmed` or `closed`
+row shows no assigned room (`FR-BMV-2`, `FR-BMV-5`, `FR-BMV-6`); it
+adds no entry, field, or behaviour beyond those sources.
 
 Counts: 15 dictionary entries covering the 7 entity terminology concepts (T-1..T-7); T-8 is a spelling convention with no entry.
 
 <!-- ao-role: business-analyst -->
-Role: business-analyst · AO session hotel-mgmt-945
+Role: business-analyst · AO session hotel-mgmt-980

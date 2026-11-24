@@ -1,8 +1,10 @@
-# ADR-0006: Server-side reservation price authority — Reservations re-derives the frozen total from Pricing
+# ADR-0007: Server-side reservation price authority — Reservations re-derives the frozen total from Pricing
 
-Status: proposed (Refs #632). Owned by `architect`.
+Status: accepted (owner acceptance 2026-11-24, recorded on #632 as
+issuecomment-7128035918; the spec gate re-run at the renumbered head is
+the remaining start condition). Owned by `architect`.
 
-Date: 2026-11-11 (proposed).
+Date: 2026-11-11 (proposed); accepted 2026-11-24.
 
 ## Context
 
@@ -46,9 +48,9 @@ adds no new failure mode the desk does not already handle.
 Inputs this record builds on:
 
 - Product scope and done-conditions: `docs/product/acceptance-criteria.md`
-  section 17 (`AC-PRC-1`..`AC-PRC-5`), the record in
-  `docs/project/decision-log.md` D-28, and the risk in
-  `docs/project/risk-register.md` R-12.
+  section 18 (`AC-PRC-1`..`AC-PRC-5`), the record in
+  `docs/project/decision-log.md` D-30, and the risk in
+  `docs/project/risk-register.md` R-13.
 - `BR-13` / `FR-RTE-5` already state that the price basis recorded at
   booking is the quoted one and never changes unless staff explicitly
   recalculate it; `BR-2`, `FR-RES-2`, and `NFR-AUD-1` already require
@@ -222,7 +224,7 @@ schema, table, migration, column, or event changes: the stored
   promised but which is absent from `contracts/errors/envelope.json` at
   this head (no occurrence under `contracts/`).
 - Guards: the verification plan is `docs/architecture/lld.md` section
-  24.6 — forged-low, forged-high, matching (including a legitimate
+  25.6 — forged-low, forged-high, matching (including a legitimate
   zero), unreadable, each definitive refusal, the replay, and the
   Modify reprice with its history row. The #600 room-charge posting and
   the #588/#601/#646/#647 pins stay green.
@@ -232,9 +234,11 @@ schema, table, migration, column, or event changes: the stored
   migration in either direction; bookings frozen at a client-supplied
   total before this change keep their totals and are repriced only when
   staff next modify them.
-- This ADR starts at `proposed`; only the owner flips it to `accepted`.
-  The implementation PR starts only after owner acceptance plus a T3
-  `SPEC-GATE PASS` on #632.
+- The owner accepted this record on 2026-11-24 (`proposed -> accepted`,
+  recorded on #632 as issuecomment-7128035918). The implementation PR
+  starts only after a T3 `SPEC-GATE PASS` on #632 re-run at the
+  renumbered head (this record is ADR-0007; ADR-0006 is the availability
+  decision from the #631 set).
 
 ## Out of scope
 

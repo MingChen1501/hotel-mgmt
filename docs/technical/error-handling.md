@@ -141,7 +141,7 @@ answer proves the call wrote nothing, so it is reported as the provider
 named it; everything else is an unknown outcome and fails the write
 closed. No new envelope field is added by this section; `PRICE_CHANGED`
 joins the code enum in section 1 and the flow detail is
-`docs/architecture/lld.md` [section 24](../architecture/lld.md#24-server-side-reservation-price-authority-refs-632).
+`docs/architecture/lld.md` [section 25](../architecture/lld.md#25-server-side-reservation-price-authority-refs-632).
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-990

@@ -616,14 +616,14 @@ is additive (advisory request fields plus the registered
 Tier T3 (confirmed here; `architect` owns the T3 call and the product
 spec proposed it): this is Reservations' first synchronous read of
 Rates' pricing side and it makes Pricing the authority for a stored
-money fact, the shape ADR-0005 records for the check-out gate. The ADR
-stays `proposed`: the owner accepts the decision record
-(`proposed -> accepted`) before the implementation PR merges. Decision
-record:
-`docs/architecture/decisions/adr-0006-server-side-reservation-price-authority.md`
-(proposed); flow detail, the per-flow implementation diagrams, the
+money fact, the shape ADR-0005 records for the check-out gate. The owner
+accepted the decision record on 2026-11-24 (`proposed -> accepted`,
+recorded on #632 as issuecomment-7128035918), so the remaining start
+condition is the T3 `SPEC-GATE PASS` re-run. Decision record:
+`docs/architecture/decisions/adr-0007-server-side-reservation-price-authority.md`
+(accepted 2026-11-24); flow detail, the per-flow implementation diagrams, the
 contract delta, and the verification plan: `docs/architecture/lld.md`
-[section 24](lld.md); trust-boundary and residual-risk deltas:
+[section 25](lld.md); trust-boundary and residual-risk deltas:
 `docs/technical/security-threat-model.md` sections 2, 3, and 8; the
 desk half (`AC-DSK-20`) stays with `product-owner`.
 

@@ -61,13 +61,18 @@ and adoption checklists — those gates are not acceptance criteria.
 ## Merge policy
 
 - Merge only through `script/orchestrator-merge.sh <n>`. The wrapper
-  is the only merge path: it squash-merges via `gh pr merge <n>
-  --squash --delete-branch` as a child process (direct `gh pr merge`
-  stays denied for every session), so `--merge` and `--rebase` are
-  unreachable. gh deletes the PR head branch after merging, unless a
-  stacked PR still targets it — then the wrapper merges without
-  `--delete-branch` and keeps the branch. Never push directly to the
-  default branch; work on a branch + PR.
+  is the only merge path: it squash-merges an unstacked PR via `gh pr
+  merge <n> --squash --delete-branch` as a child process (direct
+  `gh pr merge` stays denied for every session), so `--merge` and
+  `--rebase` are unreachable. gh deletes the PR head branch after
+  merging, unless a stacked PR still targets it — then the wrapper
+  merges without `--delete-branch` and keeps the branch. A native
+  stack member is merged through the asynchronous merge API instead:
+  the wrapper gates every open member at or below the requested
+  position individually, submits one atomic `merge-async` request
+  pinned to the observed head, polls the uuid to a terminal status,
+  and deletes the head branch only when no open PR still targets it.
+  Never push directly to the default branch; work on a branch + PR.
 - Merge only when CI is green.
 - `risk-low` / `risk-medium`: merge autonomously once CI is green + the
   reviewer COMMENT verdict is APPROVE, then report.
