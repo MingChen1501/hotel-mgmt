@@ -2402,7 +2402,7 @@ schema migration, no new operation, and no data change exist on the
 decided path, so the desk simply loses the tab and the route and every
 other screen is unchanged.
 
-### 6.19 Folio write refusals for a stay Billing cannot verify (Refs #634)
+### 6.21 Folio write refusals for a stay Billing cannot verify (Refs #634)
 
 Status: product-owner scope decision and UI contract delta for audit
 finding B1 (#634): Billing creates a folio for any stay id it is handed,
@@ -2412,7 +2412,7 @@ proposed — a new fail-closed Billing -> Stay read on the money path, the
 mirror of #601 — with `architect` confirming the tier and owning the ADR
 plus the per-flow diagrams. The binding done-conditions are
 `AC-FWV-1`..`AC-FWV-7` in `docs/product/acceptance-criteria.md`
-[section 18](acceptance-criteria.md); the scope decision is D-30 in
+[section 20](acceptance-criteria.md); the scope decision is D-32 in
 `docs/project/decision-log.md`. FR/NFR wording is owned by
 `business-analyst`, guard mapping and traceability by `qa-lead`, the
 release note and the availability ops note by `release-manager`, and the
@@ -2536,7 +2536,7 @@ stay, as the scope says.
   `desk.stay.moved_named`, and the two aborted-commit lines
   (#647, section 6.17, with both locales listed there), and the
   three `desk.folio.*` refusal keys of the folio-write
-  verification (#634, section 6.19, with both locales in its
+  verification (#634, section 6.21, with both locales in its
   key table).
 - The hotel name is configuration (persisted through the
   existing hotel-configuration surface, `FR-ADM-1`), shown in
@@ -2900,17 +2900,17 @@ Section 4 stays the rollout-wide contract; for steps 2–4:
 | The T2 spec set exists and `spec-reviewer` posts `SPEC-GATE PASS` before implementation starts | This section, section 6.18, `docs/product/booking-management-view.md`, `docs/product/acceptance-criteria.md` section 17 (`AC-BMV-1..7`, the `AC-RES-5` pointer), `docs/project/decision-log.md` D-28; `business-analyst` FR/NFR delta, `architect` LLD delta and allowance entry, and `qa-lead` traceability are the sibling handoffs |
 | Rollback is a single revert with no migration and no new operation | Section 6.18 (rollback); the screen calls only operations that already exist |
 
-## 24. Acceptance mapping (issue #634)
+## 26. Acceptance mapping (issue #634)
 
 | Criterion | Evidence in this spec |
 |---|---|
-| A `PostCharge`, `RecordPayment`, or `RecordOpenBalanceApproval` for an unknown stay is refused and writes no folio line, no balance change, and no outbox event | Section 6.19 decision 1 and the states; `AC-FWV-1`; `docs/product/acceptance-criteria.md` section 18 ("As-built validation": `ensureFolio` at `services/billing/src/main/java/com/hotel/billing/repo/BillingRepository.java:65-71`, reached from `BillingService.java:121`, `:142`, `:176`, `:264`) |
-| An unreadable Stay refuses the write with `UPSTREAM_UNAVAILABLE` (503) instead of creating an unverified folio | Section 6.19 decision 1 and the unreadable-stay state; `AC-FWV-3`; the code is `UPSTREAM_UNAVAILABLE` and must be registered in `contracts/errors/envelope.json` (`AC-FWV-7`) |
-| The desk flows that read a fresh check-in's balance still create the folio as today | Section 6.19 decision 3 and 4; `AC-FWV-4`, `AC-FWV-5`; the print path stays as it is (`app/src/views/PrintView.vue:1028`, `:1120`, `:1157`) |
+| A `PostCharge`, `RecordPayment`, or `RecordOpenBalanceApproval` for an unknown stay is refused and writes no folio line, no balance change, and no outbox event | Section 6.21 decision 1 and the states; `AC-FWV-1`; `docs/product/acceptance-criteria.md` section 20 ("As-built validation": `ensureFolio` at `services/billing/src/main/java/com/hotel/billing/repo/BillingRepository.java:65-71`, reached from `BillingService.java:121`, `:142`, `:176`, `:264`) |
+| An unreadable Stay refuses the write with `UPSTREAM_UNAVAILABLE` (503) instead of creating an unverified folio | Section 6.21 decision 1 and the unreadable-stay state; `AC-FWV-3`; the code is `UPSTREAM_UNAVAILABLE` and must be registered in `contracts/errors/envelope.json` (`AC-FWV-7`) |
+| The desk flows that read a fresh check-in's balance still create the folio as today | Section 6.21 decision 3 and 4; `AC-FWV-4`, `AC-FWV-5`; the print path stays as it is (`app/src/views/PrintView.vue:1028`, `:1120`, `:1157`) |
 | Tests cover the unknown-stay caller, the closed-stay caller, and the unreadable-Stay caller | `AC-FWV-7` (guards for all three callers on each of the three writes and the folio-creating read, plus the two regression paths); the guard set itself is the `qa-lead` handoff |
-| Every refusal reads in plain words in both locales, with no technical code | Section 6.19 catalogue table (three new `desk.folio.*` keys, EN + VI) and the states; `AC-FWV-6`; `script/catalogue-coverage-check.sh` green on the implementation PR |
-| The T3 spec set exists and `spec-reviewer` posts `SPEC-GATE PASS` before implementation starts, and the owner accepts the decision record | This section, section 6.19, `docs/product/acceptance-criteria.md` section 18 (`AC-FWV-1..7` plus the four `AC-BIL-*` pointers), `docs/project/decision-log.md` D-30; the ADR, the HLD/LLD delta, and the per-flow diagram are the `architect` handoff, FR/NFR wording the `business-analyst` handoff, and guard traceability the `qa-lead` handoff |
-| Rollback is a single revert with the previous ensure-on-first-use behaviour returning | Section 6.19 (rollback); no schema migration, backfill, or data repair exists on the decided path |
+| Every refusal reads in plain words in both locales, with no technical code | Section 6.21 catalogue table (three new `desk.folio.*` keys, EN + VI) and the states; `AC-FWV-6`; `script/catalogue-coverage-check.sh` green on the implementation PR |
+| The T3 spec set exists and `spec-reviewer` posts `SPEC-GATE PASS` before implementation starts, and the owner accepts the decision record | This section, section 6.21, `docs/product/acceptance-criteria.md` section 20 (`AC-FWV-1..7` plus the four `AC-BIL-*` pointers), `docs/project/decision-log.md` D-32; the ADR, the HLD/LLD delta, and the per-flow diagram are the `architect` handoff, FR/NFR wording the `business-analyst` handoff, and guard traceability the `qa-lead` handoff |
+| Rollback is a single revert with the previous ensure-on-first-use behaviour returning | Section 6.21 (rollback); no schema migration, backfill, or data repair exists on the decided path |
 
 <!-- ao-role: product-owner -->
 Role: product-owner · AO session hotel-mgmt-1045
