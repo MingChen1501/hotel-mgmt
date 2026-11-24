@@ -65,7 +65,7 @@ catalogue key, and moves no MVP row.
   wording and their existing guards and gain only the amendment
   pointer; the 57-row MVP coverage count in `traceability-matrix.md`
   stands unchanged and no MVP row may cite this slice as its guard. The
-  slice rows live in `traceability-matrix.md` section 16.
+  slice rows live in `traceability-matrix.md` section 17.
 - No new NFR. Requirements section 26.4 is a no-change statement:
   performance (`NFR-PERF-1` — one bounded read inside a request the
   operator already made, the existing 5-second client timeout),
@@ -105,11 +105,14 @@ catalogue key, and moves no MVP row.
 ## 2. Pins on disk at this spec head
 
 Every `file:line` below was read on this spec branch head (the stack's
-requirements commit `15c1320`; the service tree is the `master` tree at
-`8cb42ca`, since the sibling spec PRs touch only `docs/`). They prove
-today's behaviour: the frozen total is whatever the caller sent and
-nothing on the booking path quotes. "Rewired" means the pin exists,
-must keep its coverage, and its expectation moves to the quote's
+requirements commit `dce9684`; the service tree is the `master` tree at
+`464b864`, since the sibling spec PRs touch only `docs/` — the only
+movement since the pins were first read is catalogue-key additions after
+line 714 of each service's `messages/en.json` and one stay test file no
+pin cites, so no cited line shifts and every one was re-read there).
+They prove today's behaviour: the frozen total is whatever the caller
+sent and nothing on the booking path quotes. "Rewired" means the pin
+exists, must keep its coverage, and its expectation moves to the quote's
 values; "stays green" means it must pass untouched.
 
 | Pin | What it proves today | Note for the implementation PR |
@@ -194,7 +197,7 @@ stored number, and a 409 can be right while a row was still written.
 | `PA11` | **Modify refusals change nothing**: a forged total refuses 409, an unreadable Pricing refuses 503, and each definitive refusal is surfaced unchanged — in every case the stored dates, type, guest, total, discount, and change history are byte-identical to before the attempt | same files as `PA10` |
 | `PA12` | **Modify effective values**: an omitted field keeps its stored value, an omitted or null `discountName` means the new quote carries none, the quote is read for the post-change type and dates (asserted on the stub's received arguments), and a booking that left `confirmed` (checked in, cancelled, no-show) still refuses as today | same files as `PA10` + `internal/store/store_test.go` |
 | `PA13` | **Desk price-changed recovery (`AC-DSK-20`)**: on `PRICE_CHANGED` the Book screen re-reads `QuotePrice` for the type, dates, and discount it already holds, shows the new total in `desk.book.refused_price_changed`, and only a second `Confirm` books — at the new total, never reporting the earlier one as booked, with one key per quote so a double click books once; a failed re-read says the price could not be re-read and books nothing, reusing `desk.book.refused_noprice` when the type lost its price; a `UPSTREAM_UNAVAILABLE` refusal keeps the displayed quote and the plain panel error with no re-quote; a matching total leaves the screen unchanged | `app/src/views/BookView.test.ts` |
-| `PA14` | **Contract, fixtures, and copy**: `PRICE_CHANGED` (409) and `UPSTREAM_UNAVAILABLE` (503) are in `contracts/errors/envelope.json`'s enum and `statusMapping`; `CreateReservation.json` and `ModifyReservation.json` carry the advisory `priceBasis` wording, both error codes, and their version bump; `contracts/openapi.yaml` and the `frontend/docs/openapi.yaml` mirror are byte-identical; `services/reservations/contract-tests/` gains a price-changed and an unreadable-Pricing fixture that replay; `error.price.changed` exists in the service messages; `desk.book.refused_price_changed` exists in `messages/en.json` and `messages/vi.json` with `{total}` intact and the pair matching rollout section 6.18; no invented key stands in for a table key | `contracts/`, `services/reservations/contract-tests/`, `services/reservations/internal/messages/en.json`, `messages/en.json`, `messages/vi.json` |
+| `PA14` | **Contract, fixtures, and copy**: `PRICE_CHANGED` (409) and `UPSTREAM_UNAVAILABLE` (503) are in `contracts/errors/envelope.json`'s enum and `statusMapping`; `CreateReservation.json` and `ModifyReservation.json` carry the advisory `priceBasis` wording, both error codes, and their version bump; `contracts/openapi.yaml` and the `frontend/docs/openapi.yaml` mirror are byte-identical; `services/reservations/contract-tests/` gains a price-changed and an unreadable-Pricing fixture that replay; `error.price.changed` exists in the service messages; `desk.book.refused_price_changed` exists in `messages/en.json` and `messages/vi.json` with `{total}` intact and the pair matching rollout section 6.19; no invented key stands in for a table key | `contracts/`, `services/reservations/contract-tests/`, `services/reservations/internal/messages/en.json`, `messages/en.json`, `messages/vi.json` |
 | `PA-E1` | **Evidence rule**: the implementation PR records, in `docs/testing/evidence/632/README.md` (same capture method as the #588/#647 records), the forged-low and unreadable-Pricing reproduction — before, against the pre-fix build: a caller-supplied total is stored verbatim and read back by the booking read and the check-out charge; after, against the fixed build: the same attempts refuse 409 and 503 with nothing stored — plus the guard-suite run and the slice row in `docs/testing/test-report.md` (exit criterion 6 of `test-strategy.md` [section 3](test-strategy.md)). This row stays pending until both records exist | evidence record + `test-report.md` |
 
 ## 4. Traceability map
