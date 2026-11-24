@@ -44,6 +44,27 @@ list:
 - `traceId`: the hotel-local correlation id linking the error to the
   audit entry (`NFR-AUD-1`).
 
+### 1.1 Request-body ceiling (Refs #630)
+
+Every backend service caps the request body it reads at **65 536 bytes
+(64 KiB)**, declared once per service as a code constant and never
+configuration (D-34). A body above the ceiling is the caller's mistake,
+so it uses the established caller-input code, not a fault and not a new
+token: HTTP 400 `VALIDATION_FAILED` with `details` `{"field": "body"}`,
+a fresh `traceId`, and the plain catalogue sentence
+`error.transport.body_too_large` ("Request body is too large.") in every
+service's catalogue. The refusal is one complete envelope: the surplus
+is not accumulated, no truncated JSON is parsed, and no partial answer
+is written. It is raised where the service reads the body — Node
+`readBody`, Go `decodeBody` through `http.MaxBytesReader`, Billing's
+body-bounding filter — before parsing and before any store, provider, or
+folio call, so a refused request changes nothing. A body at exactly
+65 536 bytes is served; one byte more is refused. The ceiling and its
+per-service enforcement points are LLD
+[section 29.1](../architecture/lld.md#291-one-ceiling-and-where-each-service-enforces-it);
+the product conditions are `docs/product/acceptance-criteria.md`
+section 22 (`AC-BND-1`..`AC-BND-5`).
+
 ## 2. Conflict semantics (overbooking and double assignment)
 
 - A booking refused for lack of sellable availability returns
