@@ -585,6 +585,8 @@ need.
 | Stay's room charge cannot be posted (booking not resolvable, or post refused/failed) | no new code; the desk refuses the review in plain words and the existing refusal or `NOT_FOUND` governs | the room charge and the next step | FR-CKP-4; BR-45 |
 | Locked identity sign-in | `IDENTITY_LOCKED` | the locked identity (distinct from `UNAUTHENTICATED`) | NFR-SEC-2; BR-42 |
 | Expired or signed-out session | `UNAUTHENTICATED` | — | NFR-SEC-2; BR-42 |
+| Unexpected failure in a Node service (store or driver failure, wiring fault, crash) | `INTERNAL_ERROR` (500) | — (no invented field; the answer keeps the plain unexpected-failure sentence and its `traceId`) | FR-ERR-1; BR-59 |
+| A service code outside the shared contract enum | none permitted — the contract enum is the single vocabulary | — (a contract-version mismatch, not a refusal) | FR-ERR-2; BR-59 |
 
 ## 10. Open questions (where the FRs do not decide)
 
@@ -665,4 +667,4 @@ config/identity/reporting/export fans); 6 contract open questions
 where they touch the contracts.
 
 <!-- ao-role: business-analyst -->
-Role: business-analyst · AO session hotel-mgmt-1047
+Role: business-analyst · AO session hotel-mgmt-1062
