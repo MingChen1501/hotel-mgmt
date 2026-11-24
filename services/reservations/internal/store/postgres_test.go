@@ -262,3 +262,49 @@ func TestPostgresCheckOutReservationParity(t *testing.T) {
 		t.Fatalf("unknown stay completion = %v, want NOT_FOUND", oerr)
 	}
 }
+
+// TestPostgresIdempotencyKeyScopedPerOperationAndResource is the R4
+// parity guard: a create key still cancels its own reservation, and the
+// same cancel key on a second reservation cancels that one instead of
+// replaying the first (issue #644).
+func TestPostgresIdempotencyKeyScopedPerOperationAndResource(t *testing.T) {
+	db := pgTestDB(t)
+	pgWipe(t, db)
+	pg := NewPostgres(db)
+
+	shared := "pg-scoped-key"
+	created, oerr := pg.Create(pgLoopInput(), shared)
+	if oerr != nil {
+		t.Fatalf("create refused: %v", oerr)
+	}
+	cancelled, oerr := pg.Cancel(created.Ref, "guest-request", "front-desk", shared)
+	if oerr != nil {
+		t.Fatalf("cancel with a create key refused: %v", oerr)
+	}
+	if cancelled.State != "cancelled" {
+		t.Fatalf("cancelled state = %s, want cancelled (not the create replay)", cancelled.State)
+	}
+
+	second := pgLoopInput()
+	second.ArrivalDate = "2026-11-05"
+	second.DepartureDate = "2026-11-07"
+	other, oerr := pg.Create(second, "")
+	if oerr != nil {
+		t.Fatalf("second create refused: %v", oerr)
+	}
+	otherCancelled, oerr := pg.Cancel(other.Ref, "guest-request", "front-desk", shared)
+	if oerr != nil {
+		t.Fatalf("second cancel with the reused key refused: %v", oerr)
+	}
+	if otherCancelled.Ref != other.Ref || otherCancelled.State != "cancelled" {
+		t.Fatalf("second cancel = %s/%s, want %s cancelled", otherCancelled.Ref, otherCancelled.State, other.Ref)
+	}
+
+	replay, oerr := pg.Cancel(other.Ref, "guest-request", "front-desk", shared)
+	if oerr != nil {
+		t.Fatalf("replayed cancel refused: %v", oerr)
+	}
+	if replay.Ref != other.Ref || replay.State != "cancelled" {
+		t.Fatalf("replayed cancel = %s/%s, want the same cancelled reservation", replay.Ref, replay.State)
+	}
+}
