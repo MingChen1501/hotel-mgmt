@@ -3169,7 +3169,7 @@ Edge trace:
 
 - A–U: fail closed on an unread folio (D4 of ADR-0005; the
   Reservations -> Rates precedent returns the same code,
-  `services/reservations/internal/pricing/client.go:89-97`). The stay
+  `services/reservations/internal/pricing/client.go:89-96`). The stay
   remains in house because the gate precedes the state read.
 - A–P: a provider refusal keeps its code and details so the desk acts
   on the same envelope (for example `UNAUTHENTICATED`).
@@ -3335,7 +3335,7 @@ end):
    `http://reservations:8081` and is wired on the `stay` service
    (`deploy/compose.yaml:77-87`, the way Reservations wires
    `RATES_BASE_URL` at `:37-50`); the client follows the Reservations ->
-   Rates pattern (`services/reservations/internal/pricing/client.go:43-97`).
+   Rates pattern (`services/reservations/internal/pricing/client.go:43-96`).
    The bearer is threaded from the transport into the store the way the
    Reservations handler threads it
    (`services/reservations/internal/handler/handler.go:208`, `:236`);
@@ -3414,7 +3414,7 @@ Edge trace:
   (`services/stay/src/store.ts:282-290`;
   `services/stay/src/pgstore.ts:161-206`).
 - D–E: target client call after commit, caller token forwarded
-  (`services/reservations/internal/pricing/client.go:43-97` is the
+  (`services/reservations/internal/pricing/client.go:43-96` is the
   pattern; wiring target `deploy/compose.yaml:77-87`).
 - E–F: target `CheckOutReservation` handler beside
   `CheckInReservation` (`services/reservations/internal/handler/handler.go:185-206`)
@@ -3462,7 +3462,7 @@ Edge trace:
 - B–E: fail-soft, not fail-closed — the close is a money-and-stay fact
   that already committed; an unread Reservations must not turn a
   committed close into a client-visible failure. Reason code reused from
-  the #601 precedent (`services/reservations/internal/pricing/client.go:89-97`).
+  the #601 precedent (`services/reservations/internal/pricing/client.go:89-96`).
 - B–F / B–G: provider refusals reported as the split reason; the booking
   is not touched.
 - E–I: the desk renders plain words and claims no completion (product UI
@@ -4737,7 +4737,7 @@ Edge trace:
 - B: unchanged restriction refusals (`internal/service/service.go:168-174`).
 - C–U2: the fail-closed branch uses the existing
   `UPSTREAM_UNAVAILABLE` shape and the same 5-second-bounded transport
-  (`internal/pricing/client.go:89-97` is the precedent; the new branch
+  (`internal/pricing/client.go:89-96` is the precedent; the new branch
   names `QuotePrice` in `details.operation`).
 - C–P: a definitive Rates envelope keeps its code, message, and details
   (`services/rates/internal/store/store.go:271-279`, `:400-402`) —
@@ -4832,11 +4832,11 @@ of the same change returns the stored booking instead of re-quoting
 
 | File | Change | Version effect |
 |---|---|---|
-| `contracts/http/CreateReservation.json` | `priceBasis` stays required for the deprecation window but becomes advisory ("compared with the Rates quote, never stored"); `priceBasis.discountName` likewise advisory; errors add `PRICE_CHANGED` (409, details `roomTypeId`, `arrivalDate`, `departureDate`, `requestedTotalMinor`, `quotedTotalMinor`) and `UPSTREAM_UNAVAILABLE` (503, `rates`/`QuotePrice`) | minor (1.1 -> 1.2; relaxed meaning plus new error codes, ADR-0004 D1) |
-| `contracts/http/ModifyReservation.json` | same delta on `priceBasis` and its `discountName`, with the note that an omitted or null `discountName` means the new quote carries no discount (the price basis asserts the whole new quote); same two error codes | minor (1.0 -> 1.1) |
-| `contracts/http/QuotePrice.json` | unchanged shape; now also consumed server-side by Reservations (C1) instead of only by the desk | none |
-| `contracts/errors/envelope.json` | add `PRICE_CHANGED` to the code enum and `409` to `statusMapping`; `UPSTREAM_UNAVAILABLE` (503) is already registered (`:9` in the `code` enum, `:27` in `statusMapping`) by #627, so no code or mapping is added for it here | minor |
-| `contracts/openapi.yaml` + `frontend/docs/openapi.yaml` mirror | mirror the two operation deltas byte-identically (`script/openapi-route-check.sh`) | minor |
+| `contracts/http/CreateReservation.json` | `priceBasis` stays required for the deprecation window but becomes advisory ("compared with the Rates quote, never stored"); `priceBasis.discountName` likewise advisory; the error set gains `PRICE_CHANGED` (409, details `roomTypeId`, `arrivalDate`, `departureDate`, `requestedTotalMinor`, `quotedTotalMinor`); `UPSTREAM_UNAVAILABLE` (503) is already listed (`:136`) for the availability read, so only its `when` sentence extends to name `rates`/`QuotePrice` | none — the file already carries `1.2` (`:4`), bumped by the availability delta (section 26, landed as #716); `PRICE_CHANGED` is additive and rides that version, so no second bump, the same convention as `CheckOut` (21.5 and 22.5 both stated `1.0 -> 1.1`, and one bump landed) |
+| `contracts/http/ModifyReservation.json` | same delta on `priceBasis` and its `discountName`, with the note that an omitted or null `discountName` means the new quote carries no discount (the price basis asserts the whole new quote); same error delta, `UPSTREAM_UNAVAILABLE` already listed at `:129` | none — already `1.1` (`:4`), bumped by the same availability delta |
+| `contracts/http/QuotePrice.json` | unchanged shape (still `1.0`); now also consumed server-side by Reservations (C1) instead of only by the desk | none |
+| `contracts/errors/envelope.json` | add `PRICE_CHANGED` to the code enum (`:9`) and `409` to `statusMapping`; `UPSTREAM_UNAVAILABLE` (503) is already registered (`:9` in the `code` enum, `:27` in `statusMapping`) by #627, so no code or mapping is added for it here; the file carries no version field | none |
+| `contracts/openapi.yaml` + `frontend/docs/openapi.yaml` mirror | mirror the two operation deltas byte-identically (`script/openapi-route-check.sh`) | follows the two operation versions (`1.2` / `1.1`); no separate bump |
 | Service messages (`services/reservations/internal/messages/en.json`) | the refusal sentence for `error.price.changed`; user-visible strings come from the catalogue (`NFR-I18N-1`) | none |
 
 No schema, table, column, migration, or event change. The stored
