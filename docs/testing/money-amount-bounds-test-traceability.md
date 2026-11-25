@@ -191,8 +191,8 @@ Twenty obligations, all inside the one Billing service.
 implementation PR creates (three fractional, three present non-number,
 three over-ceiling, the constant, the boundary pair, the decimal-point
 acceptance, the in-range regression, the percent split, the sign-rule
-pins, the two catalogue sentences, and the idempotency case); `AMT12` re-runs the service's
-percent-range case with no edit; `AMT16`-`AMT19` are re-runs and gates
+pins, the two catalogue sentences, and the idempotency case); `AMT12`
+re-runs the service's percent-range case with no edit; `AMT16`-`AMT19` are re-runs and gates
 the same PR must prove; `AMT-E1` is the evidence record. A money guard
 is not complete on the returned status alone: every refusal case also
 asserts the exact four-key envelope, the catalogue sentence,
