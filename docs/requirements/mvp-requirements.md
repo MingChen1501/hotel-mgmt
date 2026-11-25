@@ -6553,7 +6553,7 @@ nothing needs converting.
   its rollback note into the implementation PR.
 - Acceptance criteria, the tier record, and the UI contract and copy
   table are `product-owner` work (acceptance-criteria section 18,
-  rollout section 6.19, D-30, R-13); the guard mapping above is
+  rollout section 6.19, D-30, R-15); the guard mapping above is
   `qa-lead` work (re-pin at the merged head); the release note,
   rollback note, and the operational note for installs holding
   bookings frozen at caller-supplied totals are `release-manager`
