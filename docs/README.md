@@ -183,17 +183,17 @@ docs and plans, not gated specs.
 | Type | Path | Status | Owner | Purpose |
 |---|---|---|---|---|
 | CI/CD | `devops/ci-cd.md` | active | `release-manager` | pipeline stages, checks, and merge gates (Closes #133) |
-| Deployment | `devops/deployment.md` | active | `release-manager` | deployment targets and procedures (Closes #63; bundle-level service addresses and the stay-to-reservations pre-flight, Refs #646; the upgrade-time stranded-room clearance, Refs #647; the billing-to-stay folio-write address, fail-closed pre-flight, and health check, Refs #634) |
+| Deployment | `devops/deployment.md` | active | `release-manager` | deployment targets and procedures (Closes #63; bundle-level service addresses and the stay-to-reservations pre-flight, Refs #646; the upgrade-time stranded-room clearance, Refs #647; the capacity-read pre-flight, Refs #631; the billing-to-stay folio-write address, fail-closed pre-flight, and health check, Refs #634) |
 | Local dev setup | `devops/local-dev-setup.md` | active | `release-manager` | dev-lab setup + admin secret management (Closes #283) |
 | Environment | `devops/environment.md` | stub (not needed yet) | `release-manager` | environment inventory and configuration |
-| Runbook | `operations/runbook.md` | active | `release-manager` | step-by-step operating procedures, fresh at merge time (Closes #63; section 8 adds the same-day room turnover and the stuck departed booking, Refs #646; section 9 adds the room stranded with no guest in it, Refs #647; section 14 adds the folio write refused because the stay could not be checked, Refs #634) |
+| Runbook | `operations/runbook.md` | active | `release-manager` | step-by-step operating procedures, fresh at merge time (Closes #63; section 8 adds the same-day room turnover and the stuck departed booking, Refs #646; section 9 adds the room stranded with no guest in it, Refs #647; section 11 adds the availability-read fault, Refs #631; section 14 adds the folio write refused because the stay could not be checked, Refs #634) |
 | Monitoring and alerting | `operations/monitoring-alerting.md` | stub (not needed yet) | `release-manager` | signals, dashboards, and alert routing — stub stays until the first exporter lands (ADR-0001 Prometheus + Grafana) |
 | Backup and DR | `operations/backup-dr.md` | active | `release-manager` | backup, restore, and disaster-recovery plan (Closes #63) |
 | Pilot exit checklist | `operations/pilot-exit-checklist.md` | active | `release-manager` | per-sale runbook walkthrough record and pilot exit checklist (Closes #153) |
 | POC demo checklist | `operations/demo-poc-checklist.md` | active | `release-manager` | owner-runnable demo pass/fail checklist with sign-off (Closes #185) |
 | Incident response | `operations/incident-response.md` | stub (not needed yet) | `release-manager` | incident roles, severity, and response flow |
-| Release notes | `release/release-notes.md` | active | `release-manager` | per-release change entries: staff-visible effect, install/upgrade delta, rollback pointer, evidence state (Refs #646, #647, #634) |
-| Rollback | `release/rollback.md` | active | `release-manager` | per-change rollback notes and the decision/verification/record rules around them (Refs #646, #647, #634) |
+| Release notes | `release/release-notes.md` | active | `release-manager` | per-release change entries: staff-visible effect, install/upgrade delta, rollback pointer, evidence state (Refs #646, #647, #634, #631) |
+| Rollback | `release/rollback.md` | active | `release-manager` | per-change rollback notes and the decision/verification/record rules around them (Refs #646, #647, #634, #631) |
 
 ## Project
 
