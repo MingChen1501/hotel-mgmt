@@ -15,7 +15,7 @@ in `docs/requirements/mvp-requirements.md`
 `BR-61` in `docs/requirements/business-rules.md`
 [the business rules](../requirements/business-rules.md) to their guards:
 the pins that exist on disk at this spec head, the guard registry
-`AMT1`–`AMT19`, and the evidence rule `AMT-E1`.
+`AMT1`–`AMT20`, and the evidence rule `AMT-E1`.
 
 Written before the implementation PR. Every new guard in the registry
 is a **named, missing obligation** at this head — `amountOf` truncates
@@ -88,7 +88,10 @@ no MVP row.
   `AC-AMT-2`).
 - Whole-ness is a property of the value, not of its JSON spelling:
   `12.0` is the whole amount 12 and is accepted exactly as `12` is. An
-  absent money field keeps `error.validation.field_required`.
+  absent money field keeps `error.validation.field_required`, and a
+  present value that is not a JSON number is refused with the existing
+  `error.validation.field_number` sentence naming the field (`AC-AMT-1`,
+  `AMT20`).
 - The bound is on the magnitude: a huge negative amount is refused by
   the ceiling rule, while an in-range negative amount passes the
   adapter and keeps the service's existing sign refusal
@@ -104,14 +107,13 @@ no MVP row.
   `error.validation.field_number` naming `percent` instead of the
   missing-field sentence (LLD 30.3). No whole-number rule and no money
   ceiling apply to `percent`.
-- A present **money** value that is not a JSON number is product rule
-  5's case in acceptance criteria section 23; `AC-AMT-1`..`AC-AMT-5`
-  carry no condition for it and LLD 30.3 records that no gating guard
-  is required for it. This spec therefore registers no guard row for
-  that case and fixes no expectation for it: should the implementation
-  add the presence/type split, no existing assertion may move
-  (`AMT17`), and the owner reads the outcome by sending a string money
-  value on `PostCharge` in the lab.
+- A present **money** value that is not a JSON number is `AC-AMT-1`'s
+  second case in acceptance criteria section 23 (LLD 30.3 states the
+  adapter shape), and `AC-AMT-5` requires its guard: it answers
+  `error.validation.field_number` naming the field instead of today's
+  missing-field sentence and writes nothing. This spec therefore
+  registers `AMT20` for that case, one assertion set per money field,
+  and no existing assertion may move (`AMT17`).
 - No new token, no contract change: `VALIDATION_FAILED` is already in
   the contract enum and maps to 400
   (`contracts/errors/envelope.json:9`, `:17`), the three request
@@ -157,7 +159,7 @@ the service. The implementation PR extends these in place with a
 
 | Pin | What it proves today | Note for the implementation PR |
 |---|---|---|
-| `services/billing/src/main/java/com/hotel/billing/web/BillingController.java:47-53` | `amountOf` accepts any `Number` and returns `number.longValue()` (`:50`); a non-`Number` falls through to the required-field refusal (`:52`); no whole-number check and no bound | `AMT1`-`AMT9` depend on `amountOf` doing a `BigDecimal` whole-number test, a magnitude check against the constant, and `longValueExact()` instead of the truncating conversion |
+| `services/billing/src/main/java/com/hotel/billing/web/BillingController.java:47-53` | `amountOf` accepts any `Number` and returns `number.longValue()` (`:50`); a non-`Number` falls through to the required-field refusal (`:52`); no whole-number check and no bound | `AMT1`-`AMT9` depend on `amountOf` doing a `BigDecimal` whole-number test, a magnitude check against the constant, and `longValueExact()` instead of the truncating conversion; `AMT20` splits presence from type so a present non-number names the field with `field_number` |
 | `BillingController.java:55-64` | `percentOf` builds a `BigDecimal` from `number.toString()` (`:59`), maps a failed conversion to `error.validation.field_number` (`:61`), and otherwise answers the missing-field sentence (`:63`); the `instanceof Number` test doubles as the presence test | `AMT11` splits presence from type so a present non-number percent names `percent` with `field_number`; the conversion itself stays |
 | `BillingController.java:86`, `:93`, `:129` | `PostCharge` reads `amountMinor` (`:86`), `RecordPayment` reads `amountMinor` (`:93`), `UpsertChargeItem` reads `priceMinor` (`:129`); no caller checks magnitude | `AMT1`-`AMT10` exercise all three call sites; the checks live in the one helper, not in the callers |
 | `BillingController.java:67-72` | `requireToken` runs before any field is read on every route (`:84`, `:92`, `:128`, `:137`) | A money refusal must still answer after the token check, so a missing token stays `UNAUTHENTICATED` (`AMT17`) |
@@ -165,7 +167,7 @@ the service. The implementation PR extends these in place with a
 | `BillingService.java:340-342` | The percent 0-100 range refuses with `error.validation.percent_range`, `{min}`/`{max}` rendered through `Messages.formatNumber` (`:341`) | `AMT12` keeps this refusal unedited; the new ceiling sentence reuses the same formatter call |
 | `services/billing/src/main/resources/messages/en.json:22-53` | The `error.validation.*` family: `:22` `field_required`, `:23` `field_number`, `:36` `amount_negative`, `:37` `amount_positive`, `:39` `price_negative`, `:40` `percent_range`; no `amount_not_integer` and no `amount_above_ceiling` | `AMT14` adds the two keys; the gate requires this file to stay byte-identical to the canonical `messages/en.json` |
 | `messages/en.json:22-53`, `messages/vi.json` | The canonical catalogue carries the same family at the same lines and the same two absent keys; `messages/vi.json` carries the exact en key set with matching placeholders (`script/catalogue-coverage-check.sh:213-252`) | `AMT14` adds both keys to the canonical file, the byte-identical Billing mirror, and `messages/vi.json` in the same change |
-| `services/billing/src/test/java/com/hotel/billing/web/BillingControllerTest.java:36-37` | `@WebMvcTest(BillingController.class)` with `MockMvc` (`:39-40`) and a mocked `BillingService` (`@MockBean` `:42-43`), so a refusal can be proven to precede any service call | `AMT1`-`AMT11`, `AMT13`, `AMT15` extend this suite; every refusal case asserts `verifyNoInteractions(service)` |
+| `services/billing/src/test/java/com/hotel/billing/web/BillingControllerTest.java:36-37` | `@WebMvcTest(BillingController.class)` with `MockMvc` (`:39-40`) and a mocked `BillingService` (`@MockBean` `:42-43`), so a refusal can be proven to precede any service call | `AMT1`-`AMT11`, `AMT13`, `AMT15`, `AMT20` extend this suite; every refusal case asserts `verifyNoInteractions(service)` |
 | `BillingControllerTest.java:48`, `:63`, `:78`, `:296` | The existing controller cases: `PostCharge` 12 000 (`:48`), the taxed `PostCharge` 100 000 with tax 8 000 (`:63`), a whole percent `8` (`:78`), a receipt (`:296`) | `AMT10` and `AMT17` keep every one of these assertions untouched |
 | `BillingControllerTest.java:326`, `:340`, `:351` | The #630 body-ceiling cases: over-limit refusal with `verifyNoInteractions`, the no-token over-limit case, and the at-ceiling control | `AMT17` keeps them green; `AMT1`-`AMT9` reuse the same harness and envelope assertions |
 | `BillingControllerTest.java` (no case) | No controller test drives `RecordPayment` or `UpsertChargeItem` at all, and none sends a fractional value, a whole value written with a decimal point, or an over-ceiling amount | `AMT2`, `AMT3`, `AMT5`, `AMT6`, `AMT9`, `AMT10` create those cases |
@@ -182,11 +184,12 @@ the service. The implementation PR extends these in place with a
 | `script/catalogue-coverage-check.sh` | The catalogue-coverage gate (run in CI's `ci` job) | `AMT14` keeps it green with the two added keys |
 | `grep -rn "MONEY_CEILING\|amount_not_integer\|amount_above_ceiling\|longValueExact" services/ contracts/ app/ messages/ script/` | No ceiling constant, no whole-number check, and neither new key exists anywhere in the tree at this head | The finding itself; `AMT1`-`AMT14` are the guards that would have caught it |
 
-## 3. Guard registry AMT1-AMT19 and the evidence rule AMT-E1
+## 3. Guard registry AMT1-AMT20 and the evidence rule AMT-E1
 
-Nineteen obligations, all inside the one Billing service.
-`AMT1`-`AMT11` and `AMT13`-`AMT15` are **missing guards** the
-implementation PR creates (three fractional, three over-ceiling, the
+Twenty obligations, all inside the one Billing service.
+`AMT1`-`AMT11`, `AMT13`-`AMT15`, and `AMT20` are **missing guards** the
+implementation PR creates (three fractional, three present non-number,
+three over-ceiling, the
 constant, the boundary pair, the decimal-point acceptance, the in-range
 regression, the percent split, the sign-rule pins, the two catalogue
 sentences, and the idempotency case); `AMT12` re-runs the service's
@@ -219,6 +222,7 @@ status-only check.
 | `AMT17` | **Existing Billing suites pass unedited (`AC-AMT-3`, `NFR-AMT-4`) — re-run, no edit**: every existing success and refusal assertion in `BillingControllerTest` (`:48`, `:63`, `:78`, `:106`, `:296`, `:326`, `:340`, `:351`) and `BillingServiceTest` (`:54`, `:71`, `:86`, `:103`, `:120`) passes with its assertions untouched, the missing-token case still answers `UNAUTHENTICATED`, and `mvn verify` is green — the boundary proof that nothing in-ceiling changed | both suites — no edit to an existing assertion |
 | `AMT18` | **Desk parity re-run (`AC-AMT-3`, `BR-61`)**: the desk no-leak guard, the Folio money-input tests, the print tests, and the desk suites are green; `parseMinor` still sends whole minor units and no desk branch on `amountMinor` or `priceMinor` appears; no route, layout, print rule, or catalogue key beyond the two service sentences moves; `script/catalogue-coverage-check.sh` is green | `app/src/views/desk-edge-guards.test.ts:41-46`, `app/src/views/FolioView.test.ts`, `app/src/views/PrintView.test.ts`, `script/catalogue-coverage-check.sh` — no edit permitted |
 | `AMT19` | **No-configuration gate (`AC-AMT-2`, `NFR-AMT-2`, `BR-61`)**: the diff carries no money ceiling in an environment variable, `deploy/` file, compose file, `docs/devops/`, `docs/operations/`, or per-hotel setting; `MONEY_CEILING_MINOR` is the only source of the value and `Messages.formatNumber` the only renderer | diff inspection recorded in the implementation PR body; `deploy/**`, `docs/devops/**`, `docs/operations/**` — no ceiling edit permitted |
+| `AMT20` | **Present non-number money refusal on all three adapters (`AC-AMT-1`, `AC-AMT-5`, `NFR-AMT-1`, `BR-61`)**: for each money field, send a present value that is not a JSON number (a string `"12"`, an object) and assert HTTP 400, the four-key envelope, `code: "VALIDATION_FAILED"`, `details` deep-equal `{"field": "<that field>"}`, `message === Messages.text("error.validation.field_number", Map.of("field", "<that field>"))` and **not** the `field_required` sentence, a non-empty `traceId`, and `verifyNoInteractions(service)`; an absent field still answers `field_required`, so "absent" and "wrong type" answer differently | `services/billing/src/test/java/com/hotel/billing/web/BillingControllerTest.java` (extend) |
 | `AMT-E1` | **Evidence rule**: the implementation PR reproduces the finding on the pre-fix build and records the before/after pair in `docs/testing/evidence/635/README.md`, and records the slice in `docs/testing/test-report.md` (exit criterion 6 of the `test-strategy.md` [section 3](test-strategy.md)). This row stays pending until both records exist | evidence record + `test-report.md` |
 
 ## 4. Traceability map
@@ -236,15 +240,15 @@ Maven); they are the unchanged baselines the `billing-build` and
 
 | Item | Required guard | Guard |
 |---|---|---|
-| `AC-AMT-1` — a fractional money value on `PostCharge`, `RecordPayment`, or `UpsertChargeItem` answers exactly one HTTP 400 shared envelope (`VALIDATION_FAILED`, `details` naming that field, the `error.validation.amount_not_integer` sentence, a `traceId`), is never truncated, and writes nothing (traces to `NFR-AMT-1`, `BR-61`) | L1 acceptance: one fractional case per money field plus the no-service-call evidence | **Pending** — `AMT1`-`AMT3`, `AMT15`; today's opposite is `BillingController.java:47-53` (the truncation at `:50`) reached from `:86`, `:93`, `:129` |
+| `AC-AMT-1` — a fractional or present non-number money value on `PostCharge`, `RecordPayment`, or `UpsertChargeItem` answers exactly one HTTP 400 shared envelope (`VALIDATION_FAILED`, `details` naming that field, the `error.validation.amount_not_integer` sentence for a fractional number and the `error.validation.field_number` sentence for a present non-number value, a `traceId`), is never truncated, and writes nothing (traces to `NFR-AMT-1`, `BR-61`) | L1 acceptance: one fractional case and one present non-number case per money field plus the no-service-call evidence | **Pending** — `AMT1`-`AMT3`, `AMT15`, `AMT20`; today's opposite is `BillingController.java:47-53` (the truncation at `:50`, the missing-field answer at `:52`) reached from `:86`, `:93`, `:129` |
 | `AC-AMT-2` — a magnitude above 1 000 000 000 000 minor units on the same three fields answers the same envelope with `error.validation.amount_above_ceiling` carrying the ceiling and writes nothing; a huge negative is refused by this rule while an in-range negative keeps the service's sign refusal (traces to `NFR-AMT-2`, `BR-61`) | L1 acceptance: the over-ceiling pair per field, the boundary pair, and the sign pass-through | **Pending** — `AMT4`-`AMT8`, `AMT13`, `AMT19`; no bound exists at `BillingController.java:47-53` |
 | `AC-AMT-3` — a whole amount inside the ceiling behaves exactly as today (same status, code, message, `details`, stored effect), including `0`, an idempotent replay, the tax/fee derivation, and `12.0` accepted as `12`; an amount at exactly the ceiling is accepted and one minor unit more is refused; `contract-check` stays green with no contract file changed (traces to `NFR-AMT-1`, `NFR-AMT-4`, `BR-61`) | L1: the boundary pair, the decimal-point case, and the in-range regression; re-run: existing suites and contract gate | **Covered by re-run today for the existing in-ceiling answers (`AMT17`), and pending for the boundary pair, the decimal-point case, and the explicit regression (`AMT8`-`AMT10`, `AMT16`)** — the existing answers are pinned at `BillingControllerTest.java:48`, `:63`, `:296` and `BillingServiceTest.java:71`, `:86` |
 | `AC-AMT-4` — the percent adapter answers `field_number` naming `percent` for a present value it cannot read as a finite number, keeps a fractional percent such as `8.5` accepted, keeps the service's 0-100 `percent_range` refusal, and keeps `field_required` for an absent `percent` (traces to `NFR-AMT-3`, `BR-61`) | L1 acceptance: the four percent cases | **Covered by re-run today for the 0-100 and absent-field halves (`AMT12`, `BillingServiceTest.java:103`), and pending for the type split and the `8.5` acceptance (`AMT11`)** — today's type fall-through is `BillingController.java:63-64` |
-| `AC-AMT-5` — each of the three money adapters carries a fractional guard and an over-ceiling guard with "the service was never called" evidence, the percent adapter has its unreadable-value guard, the boundary pair exists, an in-range regression case exists per field, and the catalogue guard pins both new sentences (evidence condition; no behaviour change) | L1 + evidence: `AMT1`-`AMT7`, `AMT8`, `AMT10`, `AMT11`, `AMT14`, and the record | **Pending** — `AMT1`-`AMT7`, `AMT10`, `AMT11`, `AMT14`, `AMT-E1` |
-| `NFR-AMT-1` — a money amount is a whole number of minor units refused before any work when it is not: one 400 envelope naming the field, never truncated, nothing written, an absent field still `field_required`, and a whole value written with a decimal point accepted (section 31.3) | L1 acceptance: the three fractional cases, the decimal-point case, and the catalogue sentence | **Pending** — `AMT1`-`AMT3`, `AMT9`, `AMT14`, `AMT15` |
+| `AC-AMT-5` — each of the three money adapters carries a fractional guard, a present non-number guard, and an over-ceiling guard with "the service was never called" evidence, the percent adapter has its unreadable-value guard, the boundary pair exists, an in-range regression case exists per field, and the catalogue guard pins both new sentences (evidence condition; no behaviour change) | L1 + evidence: `AMT1`-`AMT7`, `AMT8`, `AMT10`, `AMT11`, `AMT14`, `AMT20`, and the record | **Pending** — `AMT1`-`AMT7`, `AMT10`, `AMT11`, `AMT14`, `AMT20`, `AMT-E1` |
+| `NFR-AMT-1` — a money amount is a whole number of minor units refused before any work when it is not: one 400 envelope naming the field, never truncated, nothing written, an absent field still `field_required`, a present non-number value refused with `field_number`, and a whole value written with a decimal point accepted (section 31.3) | L1 acceptance: the three fractional cases, the three present non-number cases, the decimal-point case, and the catalogue sentence | **Pending** — `AMT1`-`AMT3`, `AMT9`, `AMT14`, `AMT15`, `AMT20` |
 | `NFR-AMT-2` — every money amount is bounded by one declared ceiling of 1 000 000 000 000 minor units, the same for all three fields, below 2<sup>53</sup>, carried by no configuration source; an amount at the ceiling is accepted and one more refused, and a 730-night charge at the standard rate (65 700 000 000) is accepted (section 31.3) | L1: the constant assertion and the boundary pair; LC: contract gate; diff gate: no configuration source | **Pending** — `AMT4`-`AMT8`, `AMT7`, `AMT16`, `AMT19`; the constant is missing from `BillingController.java:47-53`, and the shape to copy is `MaxBodySizeFilter.java:38` |
 | `NFR-AMT-3` — the tax-rule percent is bounded as a number, never as money: an unreadable present value answers `field_number` naming `percent`, `8.5` stays accepted, the 0-100 range and the absent-field refusal keep their layer, and no money rule applies to a percent (section 31.3) | L1 acceptance: the percent cases plus the unedited service range case | **Pending** — `AMT11`, `AMT12` (the range half covered by re-run today) |
-| `NFR-AMT-4` — every whole amount inside the ceiling behaves exactly as today, each money adapter carries its fractional and over-ceiling guards, the boundary pair and an in-range regression exist, the two catalogue sentences are pinned, `contract-check` stays green, and no desk surface changes (section 31.3) | L1 acceptance + re-run: the regression set, the catalogue guard, the contract gate, the desk suites | **Covered by re-run today for the existing answers and the desk (`AMT17`, `AMT18`, `AMT16`), and pending for the new guards and sentences (`AMT1`-`AMT14`)** |
+| `NFR-AMT-4` — every whole amount inside the ceiling behaves exactly as today, each money adapter carries its fractional, present non-number, and over-ceiling guards, the boundary pair and an in-range regression exist, the two catalogue sentences are pinned, `contract-check` stays green, and no desk surface changes (section 31.3) | L1 acceptance + re-run: the regression set, the catalogue guard, the contract gate, the desk suites | **Covered by re-run today for the existing answers and the desk (`AMT17`, `AMT18`, `AMT16`), and pending for the new guards and sentences (`AMT1`-`AMT14`, `AMT20`)** |
 | `BR-61` — a money amount is a whole number of minor units bounded by one declared ceiling of 1 000 000 000 000 on every Billing money field; a fractional or over-ceiling value is refused with the shared envelope naming the field before any service, store, provider, or folio call, writes nothing, and leaves no idempotency record or outbox event; in-ceiling amounts behave as today; the ceiling is one code constant and the percent is bounded as a number (business rules) | L1 acceptance + evidence: the three fractional cases, the three over-ceiling cases, the boundary pair, and the lab record | **Pending** — `AMT1`-`AMT15`, `AMT19`, `AMT-E1`; today's breach is `BillingController.java:50` |
 | Desk flows stay green (`AC-DSK-18`, `AC-DSK-19`, `AC-CKO-1`, `AC-CKO-2`, `AC-DEP-1`..`AC-DEP-5`, and the #647/#648 pins) | Behaviour check: the check-out review, the settlement refusals, the departure completion, the reassignment path, and the booking register keep their words and calls | **Covered by re-run** — `AMT18`; `app/src/views/StayView.test.ts:1113-1233`, `:1308-1457`, `:1528-1629`, `:1630-1750`, `:1884-2040`, `app/src/views/PrintView.test.ts:273-342`, `:724-756`, `app/src/views/desk-edge-guards.test.ts:621`, `:687`, `app/e2e/stay.spec.ts`, `script/e2e-desk-loop.sh`; a flow edit fails the row |
 | Contract and LC | Real delta: no contract file changes, no code token added, the envelope keeps its four fields, and both check scripts stay green; no `contracts/http/` operation changes | **Covered by re-run today** — `AMT16`; the files are `contracts/errors/envelope.json`, `contracts/http/PostCharge.json`, `RecordPayment.json`, `UpsertChargeItem.json`, `services/billing/src/main/java/com/hotel/billing/web/ApiExceptionHandler.java`, `script/contract-check.sh`, `script/openapi-route-check.sh`; a schema, operation, envelope-field, or event change here is a re-tier finding (LLD 30.5, 30.7) |
@@ -257,7 +261,7 @@ Maven); they are the unchanged baselines the `billing-build` and
 
 | Level | What runs | Command (authoritative: LLD [section 30](../architecture/lld.md) and `docs/architecture/services/billing.md` section 7 Operations) |
 |---|---|---|
-| L1 Billing controller | `AMT1`-`AMT11`, `AMT13`, `AMT15` plus the `AMT17` re-run, no database needed (the service is mocked) | `cd services/billing && mvn test` (CI `billing-build` packages with the unit tests) |
+| L1 Billing controller | `AMT1`-`AMT11`, `AMT13`, `AMT15`, `AMT20` plus the `AMT17` re-run, no database needed (the service is mocked) | `cd services/billing && mvn test` (CI `billing-build` packages with the unit tests) |
 | L1 Billing service | `AMT12`, `AMT13`, and the `AMT17` re-run | the same `mvn test` / `mvn verify` |
 | L1 acceptance (owner) | The lab cases `AMT-1`..`AMT-8` of section 6 | isolated compose lab (section 7) |
 | LC contract | `AMT16`: the contract byte-identical and both gates green | `script/contract-check.sh`, `script/openapi-route-check.sh` (CI `contract-check`, plus the repo gate in `ci`) |
@@ -272,7 +276,8 @@ CI jobs that must be green on the implementation PR: `billing-build`,
 
 ### Execution order
 
-1. The three fractional guards (`AMT1`-`AMT3`) — fastest signal, the
+1. The three fractional guards (`AMT1`-`AMT3`) and the three present
+   non-number guards (`AMT20`) — fastest signal, the
    mocked service makes the "no call ran" assertion direct.
 2. The ceiling constant and the three over-ceiling guards (`AMT7`,
    `AMT4`-`AMT6`), with the huge-negative case in each.
@@ -313,7 +318,7 @@ CI jobs that must be green on the implementation PR: `billing-build`,
 
 ### Exit criteria
 
-1. `AMT1`-`AMT7` exist and pass, each asserting the full envelope, the
+1. `AMT1`-`AMT7` and `AMT20` exist and pass, each asserting the full envelope, the
    catalogue sentence, `details.field`, a non-empty `traceId`, and
    `verifyNoInteractions(service)` on every refusal, with the constant
    read from the declaration.
@@ -365,6 +370,10 @@ value is insufficient.
   legitimate 730-night charge.
 - `AMT9` asserts `12.0` reaches the service with `long` 12, so a check
   that reads the JSON type or the scale instead of the value fails.
+- `AMT20` asserts `field_number` naming the field and **not**
+  `field_required`, so a guard that leaves a present string on today's
+  missing-field sentence fails, while an absent field still answers
+  `field_required`.
 - `AMT11` asserts `8.5` is **accepted**, so a guard that applies the
   money whole-number rule to a percent fails.
 - `AMT12` and `AMT17` fail on a loosened assertion, not only on a red
@@ -389,7 +398,7 @@ surface.
 
 | Case | Setup | Expected |
 |---|---|---|
-| `AMT-1` | Send `amountMinor: 12.99` to `PostCharge`, then to `RecordPayment`, then `priceMinor: 12.99` to `UpsertChargeItem`, for the seeded in-house stay | Each answers exactly one HTTP 400 with `code: "VALIDATION_FAILED"`, `details` naming the field, the sentence "<field> must be a whole number of minor units.", and a `traceId`; nothing posts 12: the folio lines, balance, payments, and charge items are unchanged (`psql` count and balance before/after) |
+| `AMT-1` | Send `amountMinor: 12.99` to `PostCharge`, then to `RecordPayment`, then `priceMinor: 12.99` to `UpsertChargeItem`, for the seeded in-house stay; then send the string form (`amountMinor: "12"`, `priceMinor: "12"`) to the same three | Each fractional value answers exactly one HTTP 400 with `code: "VALIDATION_FAILED"`, `details` naming the field, the sentence "<field> must be a whole number of minor units.", and a `traceId`; each string answers the same envelope with "<field> must be a number." (`field_number`, not `field_required`); nothing posts 12: the folio lines, balance, payments, and charge items are unchanged (`psql` count and balance before/after) |
 | `AMT-2` | Send `amountMinor: 1000000000001`, then `amountMinor: -1000000000001` to `PostCharge` and repeat both on the payment route and on `UpsertChargeItem` (`priceMinor`); then send `amountMinor: -1` to `PostCharge`, `amountMinor: 0` to `RecordPayment`, and `priceMinor: -1` to `UpsertChargeItem` | The over-ceiling values answer the same envelope with "<field> must be at most 1,000,000,000,000 minor units." and write nothing; the in-range values answer the existing sign refusals: "amountMinor cannot be negative.", "amountMinor must be positive.", and "priceMinor cannot be negative." |
 | `AMT-3` | Send `amountMinor: 1000000000000`, then `1000000000001`, then `12.0`, then `12` to `PostCharge` | The ceiling amount is accepted, one minor unit more is refused, and `12.0` is accepted exactly as `12` is (same line amount, same balance movement) |
 | `AMT-4` | Run the ordinary desk money path: post a room charge, post an extra charge item, take a cash payment, let the tax rule derive, retry a charge with the same idempotency key | Everything behaves exactly as before the change: same amounts, same tax and fee, same balance, and the retry returns the original line |
@@ -415,7 +424,9 @@ scope asks for the reproduction to live with the implementation:
 - **After**, the same steps against the fixed build: `12.99` and
   `1000000000001` get the one 400 envelope (`VALIDATION_FAILED`,
   `details.field` the money field, the plain sentence, a `traceId`) and
-  the folio rows and balance are unchanged.
+  the folio rows and balance are unchanged; a present non-number money
+  value (a string `"12"`) answers `error.validation.field_number` naming
+  the field instead of the missing-field sentence.
 - **Plus the honest boundary control:** 1 000 000 000 000 is accepted
   and 1 000 000 000 001 refused, and `12.0` is accepted exactly as `12`
   is, so the pair shows a bound and a whole-number rule rather than a
@@ -440,10 +451,10 @@ are covered by re-run today (the desk-green row, the contract/LC gate,
 and the existing in-ceiling answers named inside `AC-AMT-3`,
 `AC-AMT-4`, and `NFR-AMT-4` — their pins exist and pass and must keep
 passing untouched), and the rest are **pending** the implementation PR:
-the rows whose guards are the registry `AMT1`-`AMT19`, the `BR-61`
+the rows whose guards are the registry `AMT1`-`AMT20`, the `BR-61`
 evidence row, the MVP no-change gate, and `AMT-E1`. The slice is **not
 complete** at this spec head. It completes when the implementation PR
-merges with `AMT1`-`AMT19` green, the section 2 pins refreshed where the
+merges with `AMT1`-`AMT20` green, the section 2 pins refreshed where the
 implementation moved a line, `AMT-E1` recorded, and `qa-lead` re-pins
 every row in section 4 with `file:line` at the merged head.
 
