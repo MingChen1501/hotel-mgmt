@@ -44,6 +44,10 @@ services:
       # Direct rates base URL for the server-side stay-restriction check
       # (FR-RTE-4, issue #361); the caller Bearer token travels on the call.
       RATES_BASE_URL: http://rates:8082
+      # Direct rooms base URL for the server-derived sellable ceiling the
+      # overbooking guard counts against (ADR-0006, issue #631); the caller
+      # Bearer token travels on the call and an unread ceiling fails closed.
+      ROOMS_BASE_URL: http://rooms:8085
     depends_on:
       db:
         condition: service_healthy

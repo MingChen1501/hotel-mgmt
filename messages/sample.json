@@ -529,11 +529,9 @@
       "key": "error.validation.sellable_units",
       "surface": "reservations envelope",
       "sources": [
-        "services/reservations/internal/store/store.go"
+        "services/reservations/internal/service/service.go"
       ],
-      "params": {
-        "min": "integer"
-      }
+      "params": {}
     },
     {
       "key": "error.conflict.no_availability",
@@ -1016,6 +1014,14 @@
       "params": {
         "field": "string"
       }
+    },
+    {
+      "key": "error.upstream.availability_unavailable",
+      "surface": "reservations envelope",
+      "sources": [
+        "services/reservations/internal/availability/client.go"
+      ],
+      "params": {}
     },
     {
       "key": "reporting.validation.sellable_units",
