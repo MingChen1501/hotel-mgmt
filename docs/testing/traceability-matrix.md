@@ -901,41 +901,41 @@ sections 3, 4, 6, and 7. Like the slices above, these rows add no MVP
 capability: the 57-row MVP coverage count stands unchanged and no MVP
 row may cite this slice as its guard.
 
-Every `file:line` in the existing pins was read at the restacked head
-`091ff62` (code tree identical to `master` `e1b5ca3`; the stack
-commits above `master` are docs-only). Those pins prove today's
-request-fed guard, and the implementation PR rewrites them in place
-with a `#631` note, never deleting one. All `O1`–`O11` and `O13`
-guards are **missing at this spec head** and created by the
-implementation PR (`O12`, the desk re-run, exists and passes today and
-must stay unchanged); a row is complete only when that PR lands,
-passes, and `qa-lead` re-pins it at the merged head. The slice is
-therefore **not complete** at this spec head.
+Every `file:line` in the existing pins was re-read at the #631
+implementation head; the request-fed pins were rewritten in place with
+a `#631` note, never deleted, and
+[availability-derivation-test-traceability.md](availability-derivation-test-traceability.md)
+section 2 carries the re-pinned table. `O1`–`O11` and `O13` were
+missing at the spec head and are **created by the implementation PR**
+(`O12`, the desk re-run, exists throughout and must stay unchanged).
+The rows stay `pending` until that PR merges, passes, and `qa-lead`
+re-pins them at the merged head; the slice is **not complete** until
+then.
 
 | Item | Required guard type | Guard |
 |---|---|---|
-| `AC-OVB-1` — the guard decides on the recorded capacity, not the request's `sellableUnits`: inflated buys nothing, low or absent refuses nothing, the Nth overlapping confirmed reservation is the last accepted, the next refuses `CONFLICT` naming type and dates and writes nothing; a modification into sold-out capacity refuses with the reservation unchanged; a recorded capacity of zero is that same sold-out `CONFLICT`, never a fail-closed `UPSTREAM_UNAVAILABLE`; a cancelled, no-show, or closed reservation releases its held unit exactly as today, so freed capacity becomes sellable again, while a checked-in row keeps holding its unit exactly as today, because the in-house share of a room type must not be subtracted from the recorded capacity twice (`BR-47`) (Refs #631; traces to US-RES-1, US-RES-2; `FR-RES-1`, `FR-RES-2`, `FR-RTE-5`, `NFR-CON-1`) | L1 acceptance, both directions, plus L3 pairing | **Pending** — `O1`, `O2`, `O3`, `O4`, `O8`, `O10`; existing pins to rewrite: `store_test.go:32-70`, `:253-316`, `handler_test.go:59-91` |
+| `AC-OVB-1` — the guard decides on the recorded capacity, not the request's `sellableUnits`: inflated buys nothing, low or absent refuses nothing, the Nth overlapping confirmed reservation is the last accepted, the next refuses `CONFLICT` naming type and dates and writes nothing; a modification into sold-out capacity refuses with the reservation unchanged; a recorded capacity of zero is that same sold-out `CONFLICT`, never a fail-closed `UPSTREAM_UNAVAILABLE`; a cancelled, no-show, or closed reservation releases its held unit exactly as today, so freed capacity becomes sellable again, while a checked-in row keeps holding its unit exactly as today, because the in-house share of a room type must not be subtracted from the recorded capacity twice (`BR-47`) (Refs #631; traces to US-RES-1, US-RES-2; `FR-RES-1`, `FR-RES-2`, `FR-RTE-5`, `NFR-CON-1`) | L1 acceptance, both directions, plus L3 pairing | **Pending** — `O1`, `O2`, `O3`, `O4`, `O8`, `O10`; re-pinned pins: `store_test.go:32-70`, `:671-`, `:702-`, `handler_test.go:72-104`, `handler_availability_test.go:72-` |
 | `AC-OVB-2` — an unreadable capacity source refuses fail-closed with `UPSTREAM_UNAVAILABLE` (503) naming the upstream and the operation, nothing written, no earlier read reused, no request number as fallback; a 4xx envelope is surfaced unchanged; an unwired client refuses the same way | L1 acceptance + fail-closed check | **Pending** — `O6` (transport, timeout, 5xx, unparseable, unwired), `O7` (4xx pass-through); the code precedent is `pricing/client.go:88-96` and the test pattern `client_test.go:61-84` |
 | `AC-OVB-3` — two simultaneous last-unit requests yield exactly one winner and one `CONFLICT`, the capacity read on the attempt and the count-and-insert in one critical section; a replay returns the original and consumes no second unit; the desk Book flow, its pre-check, its request, and its refusal sentences stay as they are | L1 + L3 paired concurrency + desk re-run | **Pending** for the service half (`O8`, `O9`); **covered by re-run** for the desk half (`O12`) |
 | `FR-OVB-1` — the ceiling is the capacity the hotel records for the room type and dates; the request's number can neither raise nor lower it (mvp-requirements section 27.3) | L1 acceptance, inflated and low/absent | **Pending** — `O1`, `O2` (inflated), `O3` (low, absent, malformed), `O11` (Postgres parity) |
-| `FR-OVB-2` — a modification is decided on the same ceiling and refuses without changing the reservation: previous dates, type, guest, and price kept, no change-history entry | L1 acceptance | **Pending** — `O4`, `O11`; existing pin `store_test.go:253-316` proves the pairing but feeds the ceiling from the request |
-| `FR-OVB-3` — an unreadable capacity source refuses fail-closed 503 naming upstream and operation and writes nothing; a 4xx envelope is surfaced unchanged; a readable zero capacity is a sold-out `CONFLICT`, never a 5xx | L1 acceptance + fail-closed | **Pending** — `O5`, `O6`, `O7`; no guard on disk |
-| `FR-OVB-4` — the guard stays atomic and a replay consumes no second unit: capacity read on the attempt, the request's number never in the comparison, count-and-insert in one critical section | L1 + L3 paired concurrency | **Pending** — `O8`, `O9`, `O11`; existing pins `store_test.go:32-70`, `:87-105`, `:253-316`, `postgres_test.go:106-135` keep the one-winner and replay assertions and are rewritten |
+| `FR-OVB-2` — a modification is decided on the same ceiling and refuses without changing the reservation: previous dates, type, guest, and price kept, no change-history entry | L1 acceptance | **Pending** — `O4`, `O11`; existing pin `store_test.go:253-315` proves the pairing on the derived ceiling |
+| `FR-OVB-3` — an unreadable capacity source refuses fail-closed 503 naming upstream and operation and writes nothing; a 4xx envelope is surfaced unchanged; a readable zero capacity is a sold-out `CONFLICT`, never a 5xx | L1 acceptance + fail-closed | **Pending** — `O5`, `O6`, `O7` (created by the implementation PR) |
+| `FR-OVB-4` — the guard stays atomic and a replay consumes no second unit: capacity read on the attempt, the request's number never in the comparison, count-and-insert in one critical section | L1 + L3 paired concurrency | **Pending** — `O8`, `O9`, `O11`; existing pins `store_test.go:32-70`, `:87-105`, `:253-315`, `postgres_test.go:106-135` keep the one-winner and replay assertions on the derived ceiling |
 | `BR-47` — the overbooking ceiling is the recorded capacity for the type and dates; a request value neither raises nor lowers it; cancelled, no-show, and closed reservations release their hold, a checked-in one keeps it | L1 acceptance + counted-state check | **Pending** — `O1`–`O5`, `O10`; existing pins `store_test.go:318-344`, `:384-417` prove the releases today |
-| `BR-48` — the capacity is read on every attempt and never cached or inferred; an unreadable source refuses fail-closed 503 and nothing is written; a 4xx envelope is surfaced unchanged; a zero capacity is a sold-out `CONFLICT` | L1 acceptance + fail-closed | **Pending** — `O5`, `O6`, `O7`; no guard on disk |
+| `BR-48` — the capacity is read on every attempt and never cached or inferred; an unreadable source refuses fail-closed 503 and nothing is written; a 4xx envelope is surfaced unchanged; a zero capacity is a sold-out `CONFLICT` | L1 acceptance + fail-closed | **Pending** — `O5`, `O6`, `O7` (created by the implementation PR) |
 | `BR-49` — the guard keeps its atomic shape, so two simultaneous last-unit requests yield one winner and one `CONFLICT`, and a replay takes no second unit | L1 + L3 paired concurrency | **Pending** — `O8`, `O9`, `O11` |
 | Desk flows stay green (`AC-DSK` Book slice, `FR-RES-1`, `FR-RES-2`, `AC-OVB-3`) | Behaviour check: the desk's own booking still passes and shows the same lines, and every desk pin passes unchanged | **Covered by re-run** — `app/src/views/BookView.test.ts:556`, `:770`, `:919`, `:1093`, `:1158`, `app/e2e/book.spec.ts:51`, `:102`, `script/e2e-desk-loop.sh:299`, `:332`; a desk edit in the implementation PR fails the row |
-| Contract and LC | Re-run only: `CreateReservation` 1.2 and `ModifyReservation` 1.1 keep the now-advisory field, the envelope registers `UPSTREAM_UNAVAILABLE` (503), the existing fixtures stay valid, and the Reservations -> Rooms `CheckRoomTypeSellability` seam passes the per-module contract stage | **Pending gate** — `O13`: `contracts/http/CreateReservation.json`, `contracts/http/ModifyReservation.json`, `contracts/errors/envelope.json:9`, `:22`, `services/reservations/contract-tests/*.json`, `script/contract-check.sh`, `script/openapi-route-check.sh`; the contract edit is `architect`'s (ADR-0006 D6) |
+| Contract and LC | Re-run only: `CreateReservation` 1.2 and `ModifyReservation` 1.1 keep the now-advisory field, add `NOT_FOUND` (404, an unknown room type surfaced from Rooms) alongside `UPSTREAM_UNAVAILABLE` (503), the existing fixtures stay valid, and the Reservations -> Rooms `CheckRoomTypeSellability` seam passes the per-module contract stage | **Pending gate** — `O13`: `contracts/http/CreateReservation.json`, `contracts/http/ModifyReservation.json`, `contracts/errors/envelope.json:9`, `:27`, `services/reservations/contract-tests/*.json`, `script/contract-check.sh`, `script/openapi-route-check.sh`; the contract edit is `architect`'s (ADR-0006 D6) |
 | MVP no-change statement | No new MVP row, story, or FR id; `FR-RES-1`, `FR-RES-2`, `FR-RTE-2`, `NFR-CON-1` gain only the amendment pointer | **Pending gate** — the 57-row MVP coverage count stands unchanged and no MVP row cites this slice |
-| Evidence cross-reference (`OR-1`) | The inflated-input and unreadable-capacity pairs are recorded before/after, and the slice is recorded in the test report | **Pending** — `O2` and `O6` are the payloads as guards; `docs/testing/evidence/631/README.md` and the `test-report.md` row are created by the implementation PR |
+| Evidence cross-reference (`OR-1`) | The inflated-input and unreadable-capacity pairs are recorded before/after, and the slice is recorded in the test report | **Pending** — `O2` and `O6` are the payloads as guards; the implementation PR records `docs/testing/evidence/631/README.md` and the `test-report.md` row |
 
 Slice coverage (Refs #631): 14 rows mapped to `AC-OVB-1`..`AC-OVB-3`,
 `FR-OVB-1`..`FR-OVB-4`, and `BR-47`..`BR-49`. One row is covered by a
 gate re-run today (the desk-green row, whose pins exist and pass and
-must keep passing untouched); thirteen are **pending** the
-implementation PR — the ten condition and rule rows whose guards are
-the registry `O1`–`O11`, the contract/LC gate, the MVP no-change gate,
-and `OR-1`. The slice is **not complete** at this spec head; it
+must keep passing untouched); thirteen are **pending**
+the implementation PR's merge and `qa-lead`'s re-pin — the ten
+condition and rule rows whose guards are the registry `O1`–`O11`, the
+contract/LC gate, the MVP no-change gate, and `OR-1`. The slice is **not complete** at this spec head; it
 completes when the implementation PR merges with `O1`–`O11` and `O13`
 green, the desk pins unchanged, `OR-1` recorded, and `qa-lead` re-pins
 the rows at the merged head. The MVP Coverage line below stands

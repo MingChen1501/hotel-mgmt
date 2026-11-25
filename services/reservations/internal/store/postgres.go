@@ -143,9 +143,6 @@ const reservationColumns = `id, reference, arrival_date::text, departure_date::t
 // reservation instead of booking again (the idempotency_keys UNIQUE
 // row wins and the loser's insert rolls back with its transaction).
 func (p *Postgres) Create(input CreateInput, idempotencyKey string) (*Reservation, *OpError) {
-	if input.SellableUnits < 1 {
-		return nil, validation("sellableUnits", "sellableUnits must be at least 1.")
-	}
 	tx, err := p.db.Begin()
 	if err != nil {
 		return nil, &OpError{Code: "VALIDATION_FAILED", Status: 500, Message: messages.Text("error.store.unavailable", nil), Details: map[string]any{}}
@@ -180,7 +177,7 @@ func (p *Postgres) Create(input CreateInput, idempotencyKey string) (*Reservatio
 	).Scan(&booked); err != nil {
 		return nil, mapDBError(err, "roomTypeId")
 	}
-	if booked >= input.SellableUnits {
+	if booked >= input.Ceiling {
 		return nil, conflict(
 			messages.Text("error.conflict.no_availability", map[string]string{"arrivalDate": input.ArrivalDate, "departureDate": input.DepartureDate}),
 			map[string]any{"roomTypeId": input.RoomTypeID, "arrivalDate": input.ArrivalDate, "departureDate": input.DepartureDate},
@@ -480,9 +477,6 @@ func storeUnavailable() *OpError {
 // change history, idempotency key, and modified outbox event commit
 // together (NFR-CON-1, NFR-AUD-1).
 func (p *Postgres) Modify(input ModifyInput, idempotencyKey string) (*Reservation, *OpError) {
-	if input.SellableUnits < 1 {
-		return nil, validation("sellableUnits", "sellableUnits must be at least 1.")
-	}
 	tx, err := p.db.Begin()
 	if err != nil {
 		return nil, storeUnavailable()
@@ -557,7 +551,7 @@ func (p *Postgres) Modify(input ModifyInput, idempotencyKey string) (*Reservatio
 	).Scan(&booked); err != nil {
 		return nil, mapDBError(err, "roomTypeId")
 	}
-	if booked >= input.SellableUnits {
+	if booked >= input.Ceiling {
 		return nil, conflict(
 			messages.Text("error.conflict.no_availability", map[string]string{"arrivalDate": newArrival, "departureDate": newDeparture}),
 			map[string]any{"roomTypeId": newRoomType, "arrivalDate": newArrival, "departureDate": newDeparture},
