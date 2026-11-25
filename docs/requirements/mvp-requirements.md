@@ -576,6 +576,14 @@ then every one of those actions completes on the on-premise
 installation exactly as when connected. Target: 100% of the named
 desk actions succeed with no outside connectivity.
 
+Amendment (Refs #630): the transport every operation is served under
+is stated in section 30 (`NFR-BND-1`..`NFR-BND-3`) — one declared
+request-body ceiling for all eight backend services with the refusal
+raised before any work, and explicit finite header-read, body-read,
+response-write, and idle bounds on every server the bundle runs — so
+the NFRs above keep their wording and targets and this section gains
+no other clause.
+
 ## 3. Per-hotel workflow customisation behaviour
 
 ### 3.1 Configurable per hotel (no code changes)
@@ -670,6 +678,20 @@ product scope have no FR and are listed in section 6.
 | Custom charge items | FR-CUS-3 | Guard defines an item and checks posting availability and invoice naming |
 
 Coverage: 40 MVP capabilities mapped, 0 unmapped.
+
+Amendment (Refs #627): the shared failure vocabulary is a transport-wide
+requirement, not a capability — `FR-ERR-1`..`FR-ERR-3` (section 29)
+constrain every operation's answer when it fails for a reason that is
+not one of the hotel's refusals — so this table gains no row, the
+40-capability count stands, and the handoff for those three requirements
+is section 29.5.
+
+Amendment (Refs #630): the transport bounds are likewise requirements on
+every operation, not a capability — `NFR-BND-1`..`NFR-BND-3` (section
+30) cap the body every backend service reads and bound each server's
+header-read, body-read, response-write, and idle time — so this table
+gains no row, the 40-capability count stands, and the handoff for those
+three requirements is section 30.4.
 
 ## 5. Open questions (decided by `product-owner`, impact worded by `business-analyst`)
 
@@ -952,6 +974,12 @@ sentence naming the cause (for example, an open-balance
 check-out refusal names the balance and the payment-or-
 approval next step). Refusal conditions are unchanged —
 only the wording becomes stand-in readable.
+
+Amendment (Refs #627): the service-side counterpart of this rule is
+worded in section 29 — an unexpected exception answers `INTERNAL_ERROR`
+(500) instead of `VALIDATION_FAILED`, and that token is never rendered,
+so this condition's no-technical-codes rule keeps holding unchanged
+(section 29, `FR-ERR-1`).
 
 FR-DSP-4 — Print output unchanged. Receipts, invoices, and
 confirmations print exactly as today.
@@ -4146,8 +4174,8 @@ them.
 | FR-MGMT-4 add or update a room | `M4` `app/src/views/ManageView.test.ts:434-497`; parity `services/rooms/src/server.test.ts:149-202` (owner-defined room reaches inventory and availability), `:241-269` (stored floor in inventory rows), `services/rooms/src/pgstore.ts:194-263` (`:213` `COALESCE($3, floor)`), `services/rooms/src/store.ts:237-260` (`:246` keeps a stored floor, `:255` keeps a stored state), `services/rooms/src/server.ts:112-125` (a room with no floor omits the member); `app/e2e/manage.spec.ts:92-97` | A save posts one `UpsertRoom` keyed by number with the selected type's name, the actor, and a `floor` member only when the field is non-blank (never `''`); a new room appears in its floor group after the re-read; an existing number updates that room instead of adding a second one; the screen writes no room state of its own |
 | FR-MGMT-5 floor move with read-back | `M5` `app/src/views/ManageView.test.ts:499-566`; parity `app/src/views/RoomsView.vue:460-495` (floor grouping plus the unknown-floor group), `:601-613`, `app/src/views/RoomsView.test.ts:495-525`; `app/e2e/manage.spec.ts:99-107` | Editing a row's floor and saving posts `UpsertRoom` for that number with the typed floor, then re-reads `ListRoomTypes` and the five `ListRoomsByState` reads merged by `roomId`; the room renders under the new floor with its state and occupancy unchanged and is not duplicated; a blank floor keeps the stored floor and sends no `floor` member; a failed state read renders that group unavailable with a plain sentence and a retry while the other groups still render |
 | FR-MGMT-6 nightly price read | `M6` `app/src/views/ManageView.test.ts:568-662`; parity `app/src/views/BookView.vue:498-506` (the `no_rate_price` / `no_rate_plan` mapping), `services/rates/internal/store/store.go:265-274` (the priced-night refusal reason), `:395-401` (the plan-level refusal reason) | With a type, a plan name, and a first and last night, the grid renders one column per night with the weekday, the desk date form, and the stored price in the desk money shape; a night with no stored price reads the no-price state and never a carried, defaulted, or zero price; a failed read reads the could-not-read state; an unknown plan takes the plan-missing state instead of prices; a longer range pages seven nights at a time, each visible page issuing one single-night `QuotePrice` per visible night and none off-page |
-| FR-MGMT-7 range write, one row per night | `M7` `app/src/views/ManageView.test.ts:664-751`; parity `services/rates/internal/store/postgres_test.go:46-89` (two nights become two `rate_prices` rows at `:56-70` and the quote follows), `services/rates/internal/handler/handler.go:140-167` (route and field validation), `services/rates/internal/store/postgres.go:114-145` (`:134-135` the upsert key); `app/e2e/manage.spec.ts:111-129` and `:141-151` | One save over an inclusive range posts one `UpsertRatePrice` per night in date order, each carrying the plan name, the room-type uuid, the ISO night date, and the amount in integer minor units; the 1st-to-7th range posts seven calls; a range longer than 31 nights or a last night before the first is refused in plain words with zero requests; a missing, non-integer, or out-of-range amount names the field and sends nothing; the save action is disabled while a write is in flight; the browser case writes three nights, re-reads the grid, and gets `QuotePrice.totalMinor` `120000000` for each night afterwards (acceptance criterion 4) |
-| FR-MGMT-8 explicit plan creation | `M8` `app/src/views/ManageView.test.ts:753-861`; parity `services/rates/internal/store/postgres.go:83-101` (`:92-95` a name conflict overwrites the description), `services/rates/internal/handler/handler.go:118-138` (name-only payload is valid), `services/rates/internal/store/store.go:179-195` (`:188-191` unknown plan `NOT_FOUND`); `app/e2e/manage.spec.ts:115-125` | A first write refused as an unknown plan shows the plain plan-missing sentence plus the explicit create action and writes no further night; the create action posts exactly one `UpsertRatePlan` with the name only and then retries the nights still pending; declining creates no plan and writes no night; no plan is created before or as a precaution during a save |
+| FR-MGMT-7 range write, one row per night | `M7` `app/src/views/ManageView.test.ts:664-751`; parity `services/rates/internal/store/postgres_test.go:46-89` (two nights become two `rate_prices` rows at `:56-70` and the quote follows), `services/rates/internal/handler/handler.go:141-168` (route and field validation), `services/rates/internal/store/postgres.go:114-145` (`:134-135` the upsert key); `app/e2e/manage.spec.ts:111-129` and `:141-151` | One save over an inclusive range posts one `UpsertRatePrice` per night in date order, each carrying the plan name, the room-type uuid, the ISO night date, and the amount in integer minor units; the 1st-to-7th range posts seven calls; a range longer than 31 nights or a last night before the first is refused in plain words with zero requests; a missing, non-integer, or out-of-range amount names the field and sends nothing; the save action is disabled while a write is in flight; the browser case writes three nights, re-reads the grid, and gets `QuotePrice.totalMinor` `120000000` for each night afterwards (acceptance criterion 4) |
+| FR-MGMT-8 explicit plan creation | `M8` `app/src/views/ManageView.test.ts:753-861`; parity `services/rates/internal/store/postgres.go:83-101` (`:92-95` a name conflict overwrites the description), `services/rates/internal/handler/handler.go:119-139` (name-only payload is valid), `services/rates/internal/store/store.go:179-195` (`:188-191` unknown plan `NOT_FOUND`); `app/e2e/manage.spec.ts:115-125` | A first write refused as an unknown plan shows the plain plan-missing sentence plus the explicit create action and writes no further night; the create action posts exactly one `UpsertRatePlan` with the name only and then retries the nights still pending; declining creates no plan and writes no night; no plan is created before or as a precaution during a save |
 | FR-MGMT-9 no-price empty state | `M9` `app/src/views/ManageView.test.ts:863-885`; reused keys `messages/en.json:424-425`, `messages/vi.json:424-425`; parity `app/src/views/BookView.vue:658-670` and `:498-506`, `app/src/views/BookView.test.ts:999-1059`; `app/e2e/manage.spec.ts:131-139` | When no visible night has a price, the section renders the not-open-for-booking title and body using the existing `desk.book.room_type_not_operational` keys (no second phrase), states that a price is needed for those dates, shows no price and no zero, and keeps the pricing form visible and usable inside the state |
 | FR-MGMT-10 partial save and resume | `M8` `app/src/views/ManageView.test.ts:789-861` (the stop, the saved-of-total line, the named night, the resume); parity `services/rates/internal/store/postgres.go:134-135` (the upsert key that makes resume safe) | A failure at any night stops the loop with the nights already written left written, states saved-of-total, names the first night that did not save, and resumes from that night, so no night is written twice or skipped; a replayed click during the write starts no second round |
 | FR-MGMT-11 refusal path | `M10` `app/src/views/ManageView.test.ts:887-952`; parity `app/src/views/AdminView.vue:482` (the cosmetic gate precedent), `app/src/views/AdminView.test.ts:465-485` (manager sees the console), `:487-516` (front-desk read-only with zero admin calls), `app/src/stores/session.ts:22`, `:54`, `:63-72` (role persisted beside the token), `app/src/api/client.ts:96-110` (`expireSession` and the single 401 path), `:168-183` (the 401 branch) | With a front-desk role, every list still renders, the plain notice states that only the owner or a manager can change the setup, and every create and save action is disabled with the plain refusal sentence; triggering a disabled action sends zero requests; a server refusal renders that same sentence with no envelope code, field name, or status number; a 401 follows the existing expire-to-gate path; owner and manager roles render the same screen with actions enabled and no refusal copy |
@@ -4834,7 +4862,7 @@ reproduction belongs in the implementation PR body:
   surface stops at create, get, query, check-in, modify, cancel, and
   no-show (`services/reservations/internal/store/store.go:109-117`),
   the operation endpoints are those same seven
-  (`services/reservations/internal/handler/handler.go:121-285`), and
+  (`services/reservations/internal/handler/handler.go:122-286`), and
   only `confirmed` and `checked-in` count as active
   (`store.go:194-196`). Nothing closes a booking when a stay closes.
 - **Stay closes only its own record.** `checkOut` flips the stay to
@@ -5685,7 +5713,7 @@ an issue comment, per the issue's scope:
   `GetReservation` returns the guest snapshot and
   `priceBasis.totalMinor` / `priceBasis.discountName` beside the dates
   and the state
-  (`services/reservations/internal/handler/handler.go:161-180`).
+  (`services/reservations/internal/handler/handler.go:162-181`).
 - **The assigned room needs two existing reads.** A booking carries no
   room number: the room a guest holds is the in-house stay's room link
   (`services/stay/src/server.ts:157-165`, `ListArrivalsDepartures`),
@@ -6021,7 +6049,7 @@ guard listed as "stay green" must pass untouched.
 | FR-BMV-2 rows, order, cap, and assigned room | `app/src/views/ManageView.test.ts:261` (the app-only-screen precedent: static content pinned in the screen's own suite), `services/reservations/internal/store/store.go:191-193` (overlap rule), `services/reservations/internal/store/postgres.go:311-321` (range read) | Missing guards: a seeded list asserts one row per booking staying in the range with guest, reference, type, assigned room when in house, dates, nights, total, and state; arrival-then-reference order; the 50-row cap with the narrow-the-dates sentence; `—` for a confirmed and a closed row; all five states listed; the empty range |
 | FR-BMV-3 inclusive range and validation | `app/src/views/DeskView.vue:531-535` (local business date the default range anchors on) | Missing guards: the inclusive-night mapping asserts `dateFrom` = first night and `dateTo` = last night plus one day, that a booking staying the last night is listed and one departing on the first night is not, one read per apply with the fields disabled, the no-op second click, the selection clear, and the inverted or missing range sending nothing with the field named |
 | FR-BMV-4 empty range sentence | `app/src/views/DeskView.test.ts:617` (the plain-words empty-state wording precedent) | Missing guard: an empty range renders one sentence naming the range in the desk date form, no row, and a usable filter |
-| FR-BMV-5 fresh read-back detail | `services/reservations/internal/handler/handler.go:161-180` (the read-back shape), `services/reservations/internal/handler/handler_test.go:171` (`TestDeskLifecycleModifyCancelNoShowCalendar`; the record read already answers dates, guest, price, and state on every entry) | Missing guards: selecting a row issues a fresh `GetReservation` and renders its values; the recorded discount name shows when the basis carries one; a second selection replaces and a new range clears; the detail offers no action |
+| FR-BMV-5 fresh read-back detail | `services/reservations/internal/handler/handler.go:162-181` (the read-back shape), `services/reservations/internal/handler/handler_test.go:171` (`TestDeskLifecycleModifyCancelNoShowCalendar`; the record read already answers dates, guest, price, and state on every entry) | Missing guards: selecting a row issues a fresh `GetReservation` and renders its values; the recorded discount name shows when the basis carries one; a second selection replaces and a new range clears; the detail offers no action |
 | FR-BMV-6 failure states and unreadable cells | `app/src/views/DeskView.test.ts:582-606` (a failed guest read renders the catalogue wording instead of a raw value), `:265` (the unknown-guest fallback in a departures row) | Missing guards: the list read failure and the detail read failure each render their plain catalogue sentence with a retry; a per-row read failure and a failed type or in-house or occupied-room read keep the row, leave the affected cells saying they could not be read, and state it in the notice that counts the incomplete rows and names the failed column, with no retry action of its own and re-applying the range reading again; no row is dropped and no value is invented |
 | FR-BMV-7 read-only, catalogue parity, design facts, owner review | `script/catalogue-coverage-check.sh`, `app/e2e/design-facts.spec.ts:651-660` (allowance label and design-source comparison), `messages/en.json:713-715` and `messages/vi.json:713-715` (the `manage` tab and title keys as the pattern), `contracts/http/QueryCalendar.json`, `contracts/http/GetReservation.json` | Missing guards: the screen's call set is exactly the five read operations with no store or database access, every new key exists in both catalogues with matching placeholders, the allowance entry names the tab position and design source, and the owner's screen review is recorded on the issue (the `owner-review` label) |
 | `FR-RES-5` MVP row stays green | `docs/testing/traceability-matrix.md` (FR-RES-5 row), `services/reservations/internal/handler/handler_test.go:171`, the `QueryCalendar.json` fixture | These pin the calendar read this screen consumes; the read semantics do not change here, so they must pass without a service edit |
@@ -6525,7 +6553,7 @@ nothing needs converting.
   its rollback note into the implementation PR.
 - Acceptance criteria, the tier record, and the UI contract and copy
   table are `product-owner` work (acceptance-criteria section 18,
-  rollout section 6.19, D-30, R-13); the guard mapping above is
+  rollout section 6.19, D-30, R-15); the guard mapping above is
   `qa-lead` work (re-pin at the merged head); the release note,
   rollback note, and the operational note for installs holding
   bookings frozen at caller-supplied totals are `release-manager`
@@ -6964,5 +6992,726 @@ ones included, stay as they are.
   change), confirmed by `architect`. This section is its FR/NFR part; no
   implementation PR opens until `SPEC-GATE PASS` on #634.
 
+## 29. Backend faults answer an internal-error code (Refs #627)
+
+Requirements delta for the #627 change (audit finding C1): every Node
+service answers an unexpected exception with HTTP 500 but the body code
+`VALIDATION_FAILED`, the token that states the caller's request was
+wrong (`services/stay/src/server.ts:79-85`,
+`services/guests/src/server.ts:50-56`, `services/rooms/src/server.ts:50-56`,
+`services/admin/src/server.ts:58-64`), so a database or driver failure
+reaches the desk as bad input. No canonical FR stated what a service must
+answer when an operation fails for a reason that is not one of the
+hotel's refusals, and none bound the codes a service serves to the one
+shared contract enum. This section words both, for the four Node
+services that serve the desk.
+
+The scope decision, the counted done-conditions, and the desk no-change
+rule are `product-owner` work: `docs/product/acceptance-criteria.md`
+[section 21](../product/acceptance-criteria.md) (`AC-ERR-1`..`AC-ERR-5`)
+and D-33 in `docs/project/decision-log.md`
+[the decision log](../project/decision-log.md). The contract
+registration, the technical taxonomy, and the architecture-side
+per-flow diagram are `architect` work: `contracts/errors/envelope.json`,
+`docs/technical/error-handling.md`
+[section 1](../technical/error-handling.md), and LLD
+[section 28](../architecture/lld.md). Guard traceability is the
+`qa-lead` handoff (`docs/testing/traceability-matrix.md` section 21);
+the release note and the rollback pointer are the `release-manager`
+handoff. This section words the requirements half: the decision (29.1),
+the explicit no-change statements (29.2), the FR delta (29.3), the NFR
+statement (29.4), the traceability handoff with its per-flow diagram
+(29.5), and the gate dependencies plus out-of-scope list (29.6). No
+`docs/README.md` row flips: every requirements file this change touches
+is already `active`.
+
+### 29.1 Decision: a backend fault is never bad input, and the contract enum is the one vocabulary
+
+As-built trace at this spec head (pre-change), read-only — the lab
+reproduction of the finding belongs in the implementation PR body or an
+issue comment, per the issue's scope. The implementation PR moves the
+four literals to `INTERNAL_ERROR` and the four maps to the contract's
+eleven codes; the pins below are the state this requirement was written
+against and are refreshed at the merged head by `qa-lead`.
+
+- **Every Node catch-all answers a 500 with a refusal code.** The
+  unexpected-exception arm of each service writes `writeJson(res, 500,
+  …)` with the literal `code: "VALIDATION_FAILED"`:
+  `services/stay/src/server.ts:79-85` (the literal at `:81`),
+  `services/guests/src/server.ts:50-56` (`:52`),
+  `services/rooms/src/server.ts:50-56` (`:52`), and
+  `services/admin/src/server.ts:58-64` (`:60`).
+- **No internal-error token exists in the maps.** Each service's
+  `ErrorCode` union and `STATUS_BY_CODE` register refusal codes only —
+  seven in Stay, Guests, and Rooms; eight in Admin, which adds
+  `IDENTITY_LOCKED` (`services/{stay,guests,rooms}/src/errors.ts:4-27`,
+  `services/admin/src/errors.ts:4-29`) — so a fault has no token of its
+  own to answer with, and the catch-all borrows a refusal's.
+- **A store failure reaches that arm.** Stay's Postgres store calls the
+  pool and its clients directly and throws `HttpError` only for a
+  product refusal (`services/stay/src/pgstore.ts:207-219`, `:302-306`,
+  `:344-362`; the `HttpError` throws at `:212-219`, `:300`,
+  `:352-362`), so a driver error is an ordinary exception and lands in
+  the 500 arm.
+- **The contract enum is what the maps have to follow.**
+  `contracts/errors/envelope.json:9` holds the `code` enum and `:16-28`
+  the `statusMapping`; the Admin contract-sync guard constructs every
+  `statusMapping` entry as an `HttpError` and asserts its status
+  (`services/admin/src/errors.test.ts:30-34`), and
+  `script/contract-check.sh` gates the file itself.
+- **`UPSTREAM_UNAVAILABLE` was emitted and described but
+  unregistered.** Reservations answers it when the stay-restriction
+  check cannot be trusted
+  (`services/reservations/internal/service/service.go:76-83`), while the
+  token was absent from the enum and from all four Node maps. The
+  architect part of this change registers it together with
+  `INTERNAL_ERROR` (500) and the `METHOD_NOT_ALLOWED` (405) the Go and
+  Billing conformance changes consume
+  (`docs/technical/error-handling.md:26-40`).
+- **The desk already refuses to render a code.** A desk guard forbids a
+  raw envelope token or a status number in rendered text
+  (`app/src/views/desk-edge-guards.test.ts:38-45`), and a failed read
+  renders the shell's plain request-failed sentence
+  (`app/src/views/RoomsView.vue:669-681`), so the token changes none of
+  the desk's words.
+- **No guard drives the catch-all today.** The four service suites pin
+  health, routing, and refusal answers (`services/guests/src/server.test.ts:43-51`
+  and the same test in the three siblings) and none constructs a
+  non-`HttpError` failure, which is why the wrong token never failed a
+  test.
+
+The decided behaviour, in five parts:
+
+1. **A backend fault is never bad input.** `VALIDATION_FAILED` (400)
+   states that the caller's body or a field is wrong and keeps exactly
+   that meaning; an unexpected exception — a store or driver failure, a
+   wiring fault, a crash — is answered with `INTERNAL_ERROR` (500), so
+   the desk and support can tell a fault from a mistake (`FR-ERR-1`).
+2. **One token for one meaning, in all four services.** Every Node
+   service that serves the desk answers the same code for the same
+   meaning; no service keeps a local variant, and a later caller that
+   copies the catch-all inherits the token.
+3. **The envelope shape does not change.** The `5xx` answer keeps
+   `code`, `message`, `details`, and `traceId`; the message stays the
+   existing plain `error.transport.unexpected` catalogue sentence,
+   `details` stays empty rather than inventing a field, and `traceId` is
+   present on every answer. No driver, SQL, host, path, or stack-trace
+   text ever reaches the envelope (`NFR-I18N-1`).
+4. **The contract enum is the single vocabulary and the maps follow
+   it.** `INTERNAL_ERROR` (500), `UPSTREAM_UNAVAILABLE` (503), and
+   `METHOD_NOT_ALLOWED` (405) are registered in
+   `contracts/errors/envelope.json` in the same change, and all four
+   Node maps accept the three tokens with those statuses, so no service
+   answers a code the contract does not list and no gate drifts
+   (`FR-ERR-2`).
+5. **Existing refusals are untouched.** Every refusal path keeps its
+   code and its status; nothing is reclassified as an internal error
+   because the transport now has a token for faults (`FR-ERR-3`).
+
+| Option | Verdict | Reason |
+|---|---|---|
+| Keep `VALIDATION_FAILED` on the 500 (status quo) | rejected | That is the finding: a database failure reads to the desk as bad input, so staff act on a wrong reading and support cannot separate a fault from a mistake (`AC-ERR-1`). |
+| Add a service-local token per Node service | rejected | Four spellings of one meaning is the drift the contract enum exists to prevent; the Admin contract-sync guard and `contract-check` read one vocabulary (`AC-ERR-2`). |
+| Answer a fault with `UPSTREAM_UNAVAILABLE` (503) | rejected | That token means a provider that had to be read could not be read, so the operation fails closed; a local crash or store failure names no upstream and carries no operation (`BR-59`). |
+| Add an envelope field (for example `kind: "fault"`) | rejected | The envelope shape is `code`, `message`, `details`, `traceId`; the `code` token carries the distinction and no client schema changes (`FR-ERR-1`). |
+| One internal-error token registered in the contract enum and honoured by all four Node maps, refusals untouched | **chosen** | It states the meaning once, keeps every refusal as decided, changes no envelope field or desk surface, and holds the enum, the taxonomy, and the four maps in one vocabulary (`FR-ERR-1`..`FR-ERR-3`). |
+
+### 29.2 Explicit no-change statements
+
+- The MVP capabilities keep their wording and targets: no `FR-RES-*`,
+  `FR-FDK-*`, `FR-RMS-*`, `FR-RTE-*`, `FR-GST-*`, `FR-BIL-*`,
+  `FR-RPT-*`, `FR-ADM-*`, or `FR-CUS-*` condition changes. No new MVP
+  capability, story, or business-rule count moves: section 4 keeps its
+  40 mapped capabilities and its coverage line, and the behaviour is
+  numbered as slice-scoped requirements (`FR-ERR-*`, 29.3) on the
+  section 10–28 pattern.
+- The refusal vocabulary is not re-decided: every code and status the
+  hotel already answers with stays as written (`FR-ERR-3`), and the
+  requirements-side error index
+  (`integration-contract-needs.md` section 9) gains the fault-token row
+  and loses none.
+- The envelope shape is not re-decided: `code`, `message`, `details`,
+  and `traceId` stay the four fields (`docs/technical/error-handling.md`
+  section 1 stands), the fault message stays the existing catalogue
+  sentence, and no field is added, renamed, or removed.
+- The desk is not changed: no route, shell layout, catalogue key,
+  sentence, or print rule moves. `FR-DSP-3` stands — a rendered failure
+  is one plain sentence and never a code, status number, or stack trace
+  — so `INTERNAL_ERROR` is not new copy and reaches no screen.
+- Authorization is not re-decided: no role, account, or reach changes,
+  and a rejected session still answers `UNAUTHENTICATED` and routes the
+  desk to its sign-in gate (`NFR-SEC-2` holds).
+- Availability and desk response are not re-decided: a fault is still a
+  `5xx` outcome that the desk already treats as an unreadable outcome
+  (`docs/technical/error-handling.md` section 4, Refs #647), and the
+  change adds no call, retry, backoff, or wait (`NFR-AVL-1`,
+  `NFR-PERF-1` hold).
+- No schema, table, column, migration, stored value, or event change is
+  specified; the data dictionary is unchanged and nothing is backfilled
+  or repaired.
+- Audit content is unchanged (`NFR-AUD-1`, `BR-36`): a fault writes no
+  audit entry today and none is added, and a committed change keeps the
+  acting staff member exactly as today.
+- Idempotency is unchanged (`NFR-CON-1`, `NFR-CON-2` hold): a fault
+  leaves the write's fate unknown exactly as a `5xx` does today, and no
+  retry policy is introduced by this change.
+- Sections 7 through 28 stand with their wording and targets unchanged,
+  except the `FR-DSP-3` amendment pointer (section 8.2), the section 4
+  cross-cutting amendment paragraph, and the one business rule added in
+  `business-rules.md` (`BR-59`).
+
+### 29.3 Behaviour-scoped functional requirements
+
+Ids use the `ERR` (shared failure vocabulary) namespace, continuing the
+slice-scoped pattern of sections 10 through 28. They constrain the four
+Node services' answer to a failed operation, and each maps to an accepted
+done-condition in `AC-ERR-1`..`AC-ERR-3`.
+
+FR-ERR-1 — An unexpected failure answers `INTERNAL_ERROR`, never
+`VALIDATION_FAILED`.
+Given any operation of Stay, Guests, Rooms, or Admin is reached and the
+call fails for a reason that is not one of the hotel's refusals — an
+unexpected exception, a store or driver failure, a wiring fault, or a
+crash; when the service answers; then the answer is HTTP 500 carrying
+the shared envelope with `code` equal to `INTERNAL_ERROR` and never
+`VALIDATION_FAILED`, `message` equal to the existing plain
+unexpected-failure sentence carrying no driver, SQL, host, path, or
+stack-trace text, `details` empty rather than carrying an invented
+field, and `traceId` present, so the desk and support can tell a fault
+from bad input and trace it. Given the same service serves its next
+request; then it answers normally, so one fault never leaves the module
+unable to serve. Given the same failing call is repeated; then it
+answers the same way and a fault is never reported as bad input on a
+retry. Given the failure is one of the hotel's refusals — a malformed
+body or field, a rejected session, a locked identity, an out-of-role
+attempt, an unknown route or entity, a conflict, an illegal state, an
+unmet settlement gate, or an unreadable provider; then that refusal's
+own code and status answer and only the non-refusal throw answers
+`INTERNAL_ERROR` (`FR-ERR-3`). Traces to: `AC-ERR-1`; FR-DSP-3;
+NFR-I18N-1; NFR-AUD-1; `BR-59`.
+
+FR-ERR-2 — The codes a service serves are the contract's one
+vocabulary.
+Given the shared contract registers the envelope vocabulary in
+`contracts/errors/envelope.json`; when any of the four Node services
+answers a failure; then its `code` is one the contract enum lists and
+its HTTP status is that code's `statusMapping` entry, and the service
+answers no code the enum omits. Given this change lands; then the enum
+and its status mapping register `INTERNAL_ERROR` (500),
+`UPSTREAM_UNAVAILABLE` (503), and `METHOD_NOT_ALLOWED` (405) beside the
+codes already registered, `docs/technical/error-handling.md` section 1
+describes all three with their statuses, and each of the four Node maps
+accepts the three tokens at those statuses — Stay, Guests, and Rooms
+keep `IDENTITY_LOCKED` admin-only as today, and Admin keeps the entry it
+already carries — so the enumeration of emitted codes and the contract
+cannot drift. Given the change is verified; then `script/contract-check.sh`
+passes with every served or derived copy matching the single source, and
+the Admin guard that resolves every `statusMapping` entry in code passes
+(`services/admin/src/errors.test.ts:30-34`). Given a later change adds a
+code to the contract; then the maps and the guard move in that same
+change rather than drifting apart. Traces to: `AC-ERR-2`; ADR-0004 D1
+(additive code); `BR-59`.
+
+FR-ERR-3 — Every existing refusal keeps its code and its status.
+Given a refusal the hotel already decided — a malformed body or field
+(`VALIDATION_FAILED`, 400), a rejected or expired session
+(`UNAUTHENTICATED`, 401), a locked identity (`IDENTITY_LOCKED`, 401), an
+out-of-role attempt (`FORBIDDEN`, 403), an unknown route, path, entity,
+or stay (`NOT_FOUND`, 404), a conflict (`CONFLICT`, 409), an unmet
+settlement gate (`SETTLEMENT_REQUIRED`, 409), an illegal state
+(`STATE_ILLEGAL`, 422), or a provider that had to be read and could not
+be (`UPSTREAM_UNAVAILABLE`, 503); when it is raised; then its code and
+HTTP status are exactly what they answer today, its `message` and
+`details` name what they name today, and no product refusal is
+reclassified as `INTERNAL_ERROR`. Given a refusal and a fault are
+possible on the same operation; then the refusal answers with its own
+code and only the non-refusal throw answers the internal-error token, so
+the two meanings never share a token. Given the refusal conditions
+written earlier — `AC-FDK-2`, `AC-CKO-1`, `AC-CKO-2`, and
+`FR-FWV-2`..`FR-FWV-4`; then they hold exactly as written. Given a Node
+service is reached with an unknown operation or a wrong method; then it
+keeps its `404 NOT_FOUND` answer: `METHOD_NOT_ALLOWED` (405) is
+registered for the Go and Billing conformance changes (#628, #629) and
+no desk action sends or can receive it. Traces to: `AC-ERR-3`;
+`FR-FDK-2`; `FR-BIL-7`; `FR-FWV-2`..`FR-FWV-4`; `BR-59`.
+
+### 29.4 Non-functional requirements delta: no-change statement
+
+No new NFR is added. The existing NFRs cover the change:
+
+- Internationalisation (`NFR-I18N-1` holds): the fault sentence stays
+  the `error.transport.unexpected` catalogue string in both locales, no
+  catalogue key is added or removed, and the new token is never rendered
+  as text (`FR-DSP-3`, `AC-ERR-5`). The answer carries no driver, SQL,
+  host, path, or stack-trace text.
+- Audit (`NFR-AUD-1`, `BR-36` hold): a fault writes no audit entry and
+  a committed change keeps the acting staff member and timestamp exactly
+  as today; the envelope's `traceId` correlation is unchanged.
+- Availability (`NFR-AVL-1` holds): the desk keeps working on-premise
+  for every other step, and a fault is still an unreadable outcome under
+  the existing rule (`docs/technical/error-handling.md` section 4) —
+  nothing released, the rooms named to re-read.
+- Desk response (`NFR-PERF-1` holds): no call, retry, backoff, or wait
+  is added; the `5xx` answer is written in the same request.
+- Concurrency and safety (`NFR-CON-1`, `NFR-CON-2` hold): idempotency
+  and the paired-write guards are untouched, and a fault leaves the
+  write's fate unknown exactly as today.
+- Security (`NFR-SEC-1`, `NFR-SEC-2` hold): no role, account, or reach
+  changes, a rejected session keeps `UNAUTHENTICATED`, and the `5xx`
+  message discloses strictly less than a driver error would.
+- Print (`NFR-DSK-2` holds): no print surface or rule moves.
+- Time and locale (`NFR-TZ-1`, `BR-43` hold): no timestamp or date form
+  is added or changed.
+
+### 29.5 Traceability handoff for `qa-lead`
+
+Each row traces to the `AC-ERR` conditions and to this section's FRs.
+Guards that exist are cited `file:line` against the tree this
+requirement was written on; where no guard exists yet, the row names the
+missing guard explicitly and the implementation PR creates it, for
+`qa-lead` to re-pin at the merged head. The existing suites must pass
+untouched, which is the `FR-ERR-3` proof.
+
+| Item | Guard (on disk today; a row marked missing is created by the implementation PR) | Handoff note for `qa-lead` |
+|---|---|---|
+| FR-ERR-1 the `INTERNAL_ERROR` answer, per service | `services/{guests,rooms,stay,admin}/src/server.test.ts` — the bind-and-request harness every answer test reuses (`guests/src/server.test.ts:10-27`, `rooms:8-25`, `stay:15-32`, `admin:6-23`); the fault sentence is catalogue-owned (`services/stay/src/messages.test.ts:21`). Missing today: no test drives the catch-all | Missing guards, one per service: stub the store so an operation throws a plain `Error` (not an `HttpError`), then assert HTTP 500, a JSON body, exactly the four envelope keys, `code: "INTERNAL_ERROR"`, the `error.transport.unexpected` sentence, `details` equal `{}`, a non-empty `traceId`, and no `VALIDATION_FAILED`; assert the next request on the same server answers normally; assert an `HttpError` refusal on the same route still answers its own code and status |
+| FR-ERR-2 contract-enum conformance | `contracts/errors/envelope.json:9`, `:16-28`; `script/contract-check.sh`; `services/admin/src/errors.test.ts:30-34` (the Admin map resolves every `statusMapping` entry) | Missing guards: each of the four maps yields `INTERNAL_ERROR` 500, `UPSTREAM_UNAVAILABLE` 503, and `METHOD_NOT_ALLOWED` 405 through `new HttpError(...).status`; a guard enumerates every code a service can emit and fails on any code the enum omits, so a later token cannot drift |
+| FR-ERR-3 refusals unchanged | `services/stay/src/server.test.ts:48-56` (unknown path → `NOT_FOUND` envelope) and the same test in the three siblings; the four `errors.ts` maps (`services/{stay,guests,rooms}/src/errors.ts:4-27`, `admin:4-29`); `services/admin/src/errors.test.ts:30-34`; `app/src/views/desk-edge-guards.test.ts:38-45` (no raw envelope token or status number rendered) | These pin today's refusal codes, statuses, and the desk's no-leak rule; they must pass without an edit. The new `5xx` guards above must not move any refusal assertion, and `METHOD_NOT_ALLOWED` must stay unreachable from a Node route |
+| Desk behaviour unchanged | `app/src/views/desk-edge-guards.test.ts:38-45`; `app/src/views/RoomsView.vue:669-681` (the plain request-failed sentence); `script/catalogue-coverage-check.sh` | Missing: no new desk guard is needed — the change adds no sentence; confirm no catalogue key was added or removed and that a `5xx` still renders the plain sentence with no token |
+
+Per-flow implementation diagram (T2). The architecture-side diagram is
+LLD section 28.2; this is the requirements-side view of the same flow,
+citing the code edges this section was written against:
+
+```mermaid
+flowchart TD
+    A[Desk calls an operation of Stay, Guests, Rooms, or Admin: POST /v1/MODULE/Operation  stay/src/server.ts:76] --> B{Route, session, and body accepted}
+    B -- no --> R400[4xx refusal with its own code and status: VALIDATION_FAILED 400, UNAUTHENTICATED 401, IDENTITY_LOCKED 401, FORBIDDEN 403, NOT_FOUND 404, CONFLICT 409, STATE_ILLEGAL 422, SETTLEMENT_REQUIRED 409  FR-ERR-3]
+    B -- yes --> C{Operation outcome}
+    C -- success --> S[200 operation payload]
+    C -- HttpError product refusal --> R4B[4xx refusal from the service map, unchanged  errors.ts:13-33; FR-ERR-3]
+    C -- unexpected throw: not an HttpError --> E[500 INTERNAL_ERROR  server.ts:79-85; FR-ERR-1]
+    E --> F[message: plain unexpected-failure sentence; details empty; fresh traceId]
+    F --> G[desk applies the unreadable-outcome rule: nothing released, rooms named to re-read  RoomsView.vue:669-681]
+    G --> H[Support traces traceId; the next request answers normally]
+```
+
+Failure/rollback path: the catch-all writes one envelope and mutates
+nothing, so a fault has no earlier write of its own call to take back; a
+multi-call desk action that receives the `5xx` applies the existing
+unreadable-outcome rule (`docs/technical/error-handling.md` section 4)
+and releases nothing. The whole change reverts with the single
+implementation PR: the four literals fall back to
+`VALIDATION_FAILED`-on-500, the four maps lose the three entries, and
+the contract enum loses the three tokens — no migration, backfill, or
+data repair exists in either direction, and the desk's words, routes,
+and print output are unaffected either way.
+
+### 29.6 Explicitly not specified here (plus gate dependencies)
+
+- Implementation — the four catch-all literals, the four `errors.ts`
+  maps, and the per-service `5xx` guards — is the downstream `dev` PR for
+  #627, not this section.
+- Contract delta: the `contracts/errors/envelope.json` enum and
+  `statusMapping`, the technical taxonomy
+  (`docs/technical/error-handling.md` section 1), and the
+  architecture-side per-flow diagram (LLD section 28) are `architect`
+  work; this section states only the requirements-side need and cites the
+  registered vocabulary without re-authoring it.
+- The `AC-ERR` conditions, D-33, and the desk no-change rule are
+  `product-owner` work; the guard mapping above is `qa-lead` work
+  (`docs/testing/traceability-matrix.md` section 21); the release note,
+  the rollback pointer, and the operations note are `release-manager`
+  work. No implementation PR opens until `SPEC-GATE PASS` on #627.
+- Out of scope: deduplicating the four `errors.ts` copies into a shared
+  module (a repo-layout decision for `architect` with its own issue);
+  the Go and Java services' own `5xx` mappings (#628 and #629, including
+  their `METHOD_NOT_ALLOWED` consumption); any retry or backoff policy; a
+  new envelope field or a client-side change in what a `500` means beyond
+  the code token; and per-answer rollback semantics, which the existing
+  unreadable-outcome rule already settles.
+- The specified change is tier T2 (a caller-visible wire-vocabulary
+  change — a new token on the `5xx` path plus a grown contract enum —
+  with no new subsystem, dependency edge, data model, lifecycle state, or
+  reader-visible surface), confirmed by `product-owner` and `architect`.
+  This section is its FR/NFR part.
+
+## 30. Bounded request bodies and finite server timeouts (Refs #630)
+
+Requirements delta for the #630 change (audit finding C5): no backend
+service bounds a request body — the four Node `readBody` copies
+accumulate every chunk and concatenate the lot
+(`services/stay/src/server.ts:10-35`, `services/guests/src/server.ts:10-35`,
+`services/rooms/src/server.ts:10-35`, `services/admin/src/server.ts:9-34`)
+and the three Go `decodeBody` copies hand `r.Body` straight to the JSON
+decoder (`services/reservations/internal/handler/handler.go:43-66`,
+`services/rates/internal/handler/handler.go:41-64`,
+`services/reporting/internal/handler/handler.go:45-68`) — and no server
+declares a timeout of its own (the three `main`s call the package-level
+`http.ListenAndServe` with an address and a handler only:
+`services/reservations/cmd/server/main.go:52`,
+`services/rates/cmd/server/main.go:42`,
+`services/reporting/cmd/server/main.go:34`). One oversized body or one
+slow peer can therefore exhaust the memory of the single on-premise host
+or hold a connection and a worker for as long as the peer chooses. The
+shared envelope already owns the refusal vocabulary, but no NFR stated a
+body ceiling, a refusal raised before any work, or a finite server
+bound, so nothing in the requirements set could fail when a service
+buffered an unbounded body or waited forever.
+
+The scope decision, the counted done-conditions, and the desk no-change
+rule are `product-owner` work: `docs/product/acceptance-criteria.md`
+[section 22](../product/acceptance-criteria.md) (`AC-BND-1`..`AC-BND-5`),
+D-34 in `docs/project/decision-log.md`
+[the decision log](../project/decision-log.md), and R-13 in
+`docs/project/risk-register.md`. The ceiling's enforcement point per
+service, the chosen timeout values, and the architecture-side per-flow
+diagram are `architect` work: LLD
+[section 29](../architecture/lld.md), `docs/technical/error-handling.md`
+[section 1.1](../technical/error-handling.md), and
+`docs/technical/integration.md`
+[section 10](../technical/integration.md). Guard traceability is the
+`qa-lead` handoff (`docs/testing/traceability-matrix.md` section 22);
+the release note and the rollback pointer are the `release-manager`
+handoff. This section words the requirements half: the decision (30.1),
+the explicit no-change statements (30.2), the NFR delta (30.3), the
+traceability handoff with its per-flow diagram (30.4), and the gate
+dependencies plus out-of-scope list (30.5). No `docs/README.md` row
+flips: every requirements file this change touches is already `active`.
+
+### 30.1 Decision: one declared ceiling and finite server bounds on every ingress path
+
+As-built trace at this spec head (pre-change), read-only — the lab
+reproduction of the finding belongs in the implementation PR body or an
+issue comment, per the issue's scope. The pins below are the state this
+requirement was written against and are refreshed at the merged head by
+`qa-lead`.
+
+- **The four Node services accumulate a body with no bound.** `readBody`
+  pushes every chunk into an array (`services/stay/src/server.ts:13`,
+  `services/guests/src/server.ts:13`, `services/rooms/src/server.ts:13`,
+  `services/admin/src/server.ts:12`) and concatenates the lot before
+  parsing (`services/stay/src/server.ts:15`,
+  `services/guests/src/server.ts:15`, `services/rooms/src/server.ts:15`,
+  `services/admin/src/server.ts:14`). No copy inspects `content-length`,
+  counts bytes, or stops reading.
+- **The four Node servers declare no timeout of their own.** Each server
+  is created bare (`services/stay/src/server.ts:74`,
+  `services/guests/src/server.ts:45`, `services/rooms/src/server.ts:45`,
+  `services/admin/src/server.ts:53`) and started as it came back
+  (`services/stay/src/index.ts:34`, `services/guests/src/index.ts:21`,
+  `services/rooms/src/index.ts:21`, `services/admin/src/index.ts:34`):
+  no service sets `headersTimeout`, `requestTimeout`, `timeout`, or
+  `keepAliveTimeout`, so no bound is declared by the service itself.
+- **The three Go services decode the raw body with no cap.** `decodeBody`
+  hands `r.Body` to `json.NewDecoder`
+  (`services/reservations/internal/handler/handler.go:48`,
+  `services/rates/internal/handler/handler.go:46`,
+  `services/reporting/internal/handler/handler.go:50`) and no
+  `http.MaxBytesReader` is written anywhere in the tree.
+- **The three Go servers run with no declared timeout.** Each `main`
+  calls the package-level `http.ListenAndServe(addr, newHandler(mux))`
+  (`services/reservations/cmd/server/main.go:52`,
+  `services/rates/cmd/server/main.go:42`,
+  `services/reporting/cmd/server/main.go:34`), which builds a server with
+  no `ReadHeaderTimeout`, `ReadTimeout`, `WriteTimeout`, or
+  `IdleTimeout`: a peer may take unlimited time to send headers, send a
+  body, or drain the response.
+- **Billing's embedded server declares no bound either.**
+  `services/billing/src/main/resources/application.properties:1-8`
+  carries only the port, the datasource, and Flyway — no
+  `server.tomcat.*` size or timeout setting — and every operation binds
+  its body through `@RequestBody Map<String, Object>`
+  (`services/billing/src/main/java/com/hotel/billing/web/BillingController.java:76`
+  and the siblings), which Jackson fills before the controller's
+  `requireToken` (`:67-72`) runs, so the body is read and parsed before
+  any handler validation at all.
+- **The code and status a too-large body needs already exist.**
+  `VALIDATION_FAILED` is in the contract enum and maps to 400
+  (`contracts/errors/envelope.json:9`, `:16-28`), every Node map carries
+  it (`services/stay/src/errors.ts:16-27`; Guests, Rooms, and Admin carry
+  the same shape), and Billing renders every refusal through one envelope
+  builder (`services/billing/src/main/java/com/hotel/billing/web/ApiExceptionHandler.java:34-49`).
+  No new token, status, or envelope field is needed.
+- **No body or timeout guard exists today.** The service suites pin
+  health, routing, and refusal answers through their bind-and-request
+  harnesses (`services/stay/src/server.test.ts:17`,
+  `services/guests/src/server.test.ts:12`,
+  `services/rooms/src/server.test.ts:10`,
+  `services/admin/src/server.test.ts:8`,
+  `services/reservations/internal/handler/handler_test.go:32`,
+  `services/billing/src/test/java/com/hotel/billing/web/BillingControllerTest.java:35`)
+  and none sends an over-limit body or asserts a timeout value. The
+  message-catalogue guards pin the transport sentences one by one
+  (`services/stay/src/messages.test.ts:18-22`, the three siblings with
+  the same block; `services/reservations/internal/messages/messages_test.go:26`,
+  and the Rates/Reporting siblings; Billing's
+  `services/billing/src/test/java/com/hotel/billing/util/MessagesTest.java:24`)
+  and none pins a too-large sentence, because none exists.
+- **The largest contract payload is far below any sane ceiling.**
+  `contracts/http/ModifyReservation.json` is the biggest request schema
+  at 3 530 bytes (next: `CreateReservation.json` 3 153,
+  `AttachReservation.json` 3 118, `CheckOut.json` 3 093), so a 65 536-byte
+  ceiling leaves more than 18× headroom over anything the desk can send.
+
+The decided behaviour, in six parts:
+
+1. **One number for every ingress path.** The request-body maximum is
+   **65 536 bytes (64 KiB)** in all eight backend services — Stay,
+   Guests, Rooms, Admin, Reservations, Rates, Reporting, and Billing —
+   declared once per service as a named constant (`NFR-BND-2`).
+2. **An oversized body is the caller's mistake, not a fault.** It is
+   refused with the shared envelope and `VALIDATION_FAILED` (400), with
+   `details` naming the field `body`, a fresh `traceId`, and the new
+   plain catalogue sentence `error.transport.body_too_large` ("Request
+   body is too large.") in every service's catalogue. The established
+   caller-input code is reused (`BR-59` keeps its meaning: the caller's
+   request was wrong) and no `PAYLOAD_TOO_LARGE` token is added
+   (`NFR-BND-1`).
+3. **Refuse before work.** The ceiling is enforced while the body is
+   read, before JSON parsing and before any store, provider, or folio
+   call, so a refused request writes nothing and leaves no half-finished
+   operation (`NFR-BND-1`).
+4. **One complete answer, never a partial one.** The refusal is exactly
+   one envelope reply; the surplus is never accumulated in full, no
+   truncated JSON is parsed, and no second answer is written
+   (`NFR-BND-1`).
+5. **Finite bounds on every server the bundle runs.** Each server binds
+   a header-read, a body-read, a response-write, and an idle bound; the
+   chosen values stay above the longest wait a legitimate desk call can
+   make — the 5-second Reservations → Rates pricing read
+   (`services/reservations/internal/pricing/client.go:33`) and Stay's
+   2-second completion read
+   (`services/stay/src/reservationsClient.ts:31`) — so no in-ceiling
+   request is cut off (`NFR-BND-3`).
+6. **Nothing under the ceiling changes.** Every body at or below the
+   ceiling is served exactly as today, a body at exactly 65 536 bytes is
+   accepted and one byte more is refused, and no contract file, desk
+   screen, catalogue key other than the one sentence, or print rule
+   changes (`NFR-BND-1`).
+
+| Option | Verdict | Reason |
+|---|---|---|
+| Keep no body ceiling and no server timeout (status quo) | rejected | That is the finding: one oversized body or one stalled peer can exhaust the single on-premise host or hold a worker indefinitely, and no requirement states otherwise (`AC-BND-1`, `AC-BND-3`). |
+| Refuse with a new `PAYLOAD_TOO_LARGE` (413) token | rejected | The contract enum and its status mapping are the one vocabulary (ADR-0004 D1), a too-large body is already the caller's input being wrong, and adding a token forces a contract, four Node map, and Billing handler change for no new meaning (`AC-BND-2`). |
+| Put the ceiling and the timeouts in configuration | rejected | That is a deployment/environment delta (T4) with per-hotel drift, and the 18× headroom means no hotel needs to tune it; D-34 keeps both as code constants. |
+| Let each service pick its own ceiling and timeouts | rejected | Eight numbers to reason about invites drift; one ceiling states the transport rule once, and the per-service timeout values are sized by the same rule (above the longest legitimate wait). |
+| One 65 536-byte code constant per service, the established `VALIDATION_FAILED` refusal raised before parse, and explicit finite header/body/write/idle bounds | **chosen** | It states the transport rule once, reuses the refusal vocabulary and the envelope unchanged, writes nothing for a refused request, keeps every in-ceiling payload and every existing refusal exactly as today, and bounds every stalled peer (`NFR-BND-1`..`NFR-BND-3`). |
+
+### 30.2 Explicit no-change statements
+
+- The MVP capabilities keep their wording and targets: no `FR-RES-*`,
+  `FR-FDK-*`, `FR-RMS-*`, `FR-RTE-*`, `FR-GST-*`, `FR-BIL-*`,
+  `FR-RPT-*`, `FR-ADM-*`, or `FR-CUS-*` condition changes. Section 4
+  keeps its 40 mapped capabilities and its coverage line: the transport
+  bound is a requirement on every operation, not a capability.
+- The refusal vocabulary is not re-decided: no code or status is added
+  or changed, the contract enum and `statusMapping`
+  (`contracts/errors/envelope.json:9`, `:16-28`), the four Node maps
+  (`services/stay/src/errors.ts:16-27` and the three siblings), and
+  Billing's handler
+  (`services/billing/src/main/java/com/hotel/billing/web/ApiExceptionHandler.java:34-49`)
+  stay exactly as they are, and the requirements-side error index
+  (`integration-contract-needs.md` section 9) gains the over-limit row
+  and loses none.
+- The envelope shape is not re-decided: `code`, `message`, `details`,
+  and `traceId` stay the four fields (`docs/technical/error-handling.md`
+  section 1 stands), and `details` uses the established `field` shape.
+- The desk is not changed: no route, shell layout, catalogue key beyond
+  `error.transport.body_too_large`, sentence, or print rule moves.
+  `FR-DSP-3` stands — a rendered failure is one plain sentence and never
+  a code, status number, or stack trace — and the refusal's
+  `details.field` value `body` matches none of the field names a desk
+  refusal branches on (`stayId`, `folioId`, `paymentId`), so no desk
+  branch or sentence changes.
+- Authorization is not re-decided: no role, account, or reach changes
+  (`NFR-SEC-1`, `NFR-SEC-2` hold). On the Node and Go services the route
+  and session answer before the body is read, so a missing token still
+  answers `UNAUTHENTICATED`; Billing reads and binds the body before its
+  controller's token check, so an over-limit body there is refused as
+  `VALIDATION_FAILED` even when no token is present — a refusal on the
+  same request, never an admitted one, and every in-ceiling request
+  keeps its answers.
+- Availability and desk response are not re-decided: a refusal is one
+  answer inside the request that carried the body, no call, retry,
+  backoff, or wait is added, and the desk keeps working on-premise
+  (`NFR-AVL-1`, `NFR-PERF-1` hold).
+- No schema, table, column, migration, stored value, or event change is
+  specified; the data dictionary gains no entity or field and nothing is
+  backfilled or repaired.
+- Audit content is unchanged (`NFR-AUD-1`, `BR-36`): a refused request
+  writes no audit entry, and a committed change keeps the acting staff
+  member exactly as today.
+- Idempotency is unchanged (`NFR-CON-1`, `NFR-CON-2` hold): a refused
+  request never reaches the operation, so no idempotency key is consumed
+  and no write is left with an unknown fate by this change.
+- A timeout is not a refusal: a peer that stalls mid-body or mid-response
+  is disconnected without an envelope, because the server cannot answer a
+  request it never finished reading or a peer that stopped reading; no
+  operation ran, and the desk reads that request as failed exactly as it
+  reads any dropped connection today.
+- Sections 7 through 29 stand with their wording and targets unchanged,
+  except the section 2 amendment pointer, the section 4 amendment
+  pointer, the one business rule added in `business-rules.md` (`BR-60`),
+  the `integration-contract-needs.md` transport paragraph and error row,
+  and the `data-dictionary.md` coverage sentence.
+
+### 30.3 Non-functional requirements delta
+
+Ids use the `BND` (transport bounds) area code and continue the
+`NFR-<area>-<n>` form. They constrain the transport every operation of
+all eight backend services is served under, and each maps to accepted
+done-conditions in `AC-BND-1`..`AC-BND-5`.
+
+NFR-BND-1 — Request bodies are read under one declared ceiling and
+refused before any work.
+Given any request that carries a body reaches Stay, Guests, Rooms,
+Admin, Reservations, Rates, Reporting, or Billing; when the body is
+larger than the declared maximum of 65 536 bytes; then the service
+answers exactly one HTTP 400 carrying the shared envelope with `code`
+equal to `VALIDATION_FAILED`, `details` naming the field `body`, the
+plain `error.transport.body_too_large` sentence in the active locale,
+and a fresh `traceId`; the surplus bytes are never accumulated in full,
+no truncated JSON is parsed, and no second or partial answer is written.
+Given the same request; then it is refused while the body is read —
+before JSON parsing and before any store, provider, or folio call — so
+no row, folio line, balance, outbox event, or state transition is
+written and no operation is left half-done for a retry. Given a body of
+exactly 65 536 bytes; then it is read and served exactly as today, and
+one byte more is refused. Given the refusal is rendered; then it names
+no byte count, field path, or internal name beyond the field `body`.
+Targets: 100% of over-limit bodies in all eight services refused with
+the envelope and zero writes; 0 over-limit bodies buffered past the
+ceiling; a body at the ceiling accepted and one byte more refused.
+Traces to: `AC-BND-1`; `AC-BND-4`; `AC-BND-5`; FR-DSP-3; NFR-I18N-1;
+NFR-AVL-1; `BR-60`.
+
+NFR-BND-2 — The ceiling is one declared constant in all eight services,
+never configuration.
+Given the eight backend services; when this change lands; then each
+declares its body ceiling once as a named constant, the value is
+65 536 bytes in all eight, and no environment variable, deployment
+file, runbook step, or per-hotel configuration entry carries or
+overrides it, so the bundle behaves the same on every installation.
+Given the largest request schema the contracts hold
+(`contracts/http/ModifyReservation.json`, 3 530 bytes); then the ceiling
+is at least ten times it, so no legitimate desk payload is near the
+limit. Given a body is refused for size; then the refusal uses the
+already-registered `VALIDATION_FAILED` code at its 400 status and adds
+no token to the contract enum or its status mapping and no client
+field, so the contract file and every served copy stay aligned.
+Targets: 8 of 8 services at exactly 65 536 bytes; 0 configuration
+sources for the ceiling; 0 contract files changed.
+Traces to: `AC-BND-2`; ADR-0004 D1; `BR-60`.
+
+NFR-BND-3 — Every server the bundle runs declares finite read, write,
+and idle bounds.
+Given any of the eight backend services; when its server accepts a
+connection; then the server carries an explicit header-read, a body-read,
+a response-write, and an idle bound, none zero and none unset — the
+three Go servers set `ReadHeaderTimeout`, `ReadTimeout`, `WriteTimeout`,
+and `IdleTimeout`, the four Node servers set their equivalents, and
+Billing's embedded server sets its connector and keep-alive values — so
+a peer that sends headers slowly, stalls part-way through a body, stops
+draining the response, or sits idle on an open connection is freed
+within the declared bound instead of holding a worker. Given a
+legitimate desk call whose body is inside the ceiling; then no bound cuts
+it off, including a handler that waits on the 5-second
+Reservations → Rates pricing read and Stay's 2-second completion read.
+Given a peer is disconnected by a bound; then no operation is left
+running for it and no envelope is promised to a peer that stopped
+sending or reading.
+Targets: 8 of 8 servers carrying four explicit non-zero bounds;
+0 legitimate in-ceiling calls cut off by a bound.
+Traces to: `AC-BND-3`; NFR-PERF-1; NFR-AVL-1; `BR-60`.
+
+### 30.4 Traceability handoff for `qa-lead`
+
+Each row traces to the `AC-BND` conditions and to this section's NFRs.
+Guards that exist are cited `file:line` against the tree this
+requirement was written on; where no guard exists yet, the row names the
+missing guard explicitly and the implementation PR creates it, for
+`qa-lead` to re-pin at the merged head. The existing suites must pass
+untouched, which is the `NFR-BND-1` boundary proof.
+
+| Item | Guard (on disk today; a row marked missing is created by the implementation PR) | Handoff note for `qa-lead` |
+|---|---|---|
+| NFR-BND-1 over-limit refusal, per service | The bind-and-request harnesses every answer test reuses: `services/stay/src/server.test.ts:17`, `services/guests/src/server.test.ts:12`, `services/rooms/src/server.test.ts:10`, `services/admin/src/server.test.ts:8`; the Go `post` helper `services/reservations/internal/handler/handler_test.go:32`, `services/rates/internal/handler/handler_test.go:15`, `services/reporting/internal/handler/handler_test.go:35`; Billing's MockMvc harness `services/billing/src/test/java/com/hotel/billing/web/BillingControllerTest.java:35`. Missing today: no test sends a body over a ceiling | Missing guards, one per service: send a 65 537-byte body and assert HTTP 400, a JSON body with exactly the four envelope keys, `code: "VALIDATION_FAILED"`, `details.field` `body`, the `error.transport.body_too_large` sentence, and a non-empty `traceId`; assert the operation did not run (stub store/provider call count 0, no row or folio line written); assert the boundary pair (65 536 bytes served, 65 537 refused) and a declared `content-length` over the ceiling refused without buffering; assert a later in-ceiling request on the same server still answers normally |
+| NFR-BND-2 ceiling constant and no configuration | `contracts/errors/envelope.json:9`, `:16-28`; the four Node maps `services/stay/src/errors.ts:16-27` (Guests, Rooms, Admin the same shape); `script/contract-check.sh`; `services/admin/src/errors.test.ts:36-40` (the contract-sync guard) | Missing guards: one per service reads the ceiling constant and asserts 65 536; a repo-level guard asserts no environment variable, deployment file, or runbook entry carries or overrides it; `contract-check` stays green with no `contracts/` change |
+| NFR-BND-3 explicit timeout values, per server | The bare servers cited in 30.1: `services/stay/src/server.ts:74` (Guests `:45`, Rooms `:45`, Admin `:53`) started at `services/stay/src/index.ts:34` (Guests `:21`, Rooms `:21`, Admin `:34`); `services/reservations/cmd/server/main.go:52` (Rates `:42`, Reporting `:34`); `services/billing/src/main/resources/application.properties:1-8`. Missing today: no timeout assertion | Missing guards: one per service reads the four values and asserts they are explicit and non-zero — Node after `createServiceServer` (`headersTimeout`, `requestTimeout`, `timeout`, `keepAliveTimeout`), Go on the `http.Server` the `main` builds, Billing on the effective property set — with no sleeping test; assert each value exceeds the 5-second pricing read and the 2-second completion read |
+| NFR-BND-1 catalogue sentence, per service | The catalogue guards: `services/stay/src/messages.test.ts:18-22` (Guests, Rooms, Admin the same block); `services/reservations/internal/messages/messages_test.go:26` (Rates, Reporting the same row); `services/billing/src/test/java/com/hotel/billing/util/MessagesTest.java:24`; `script/catalogue-coverage-check.sh`. Missing: the `error.transport.body_too_large` key | Missing guards: one assertion per service pins "Request body is too large." in its own catalogue, and the catalogue-coverage gate stays green in both locales |
+| NFR-BND-1 nothing under the ceiling changes | The existing service suites (`services/*/src/server.test.ts`, the three `handler_test.go` files, `services/billing/src/test/java/com/hotel/billing/web/BillingControllerTest.java`); `script/contract-check.sh` | These must pass without an edit: no existing refusal or success assertion moves, and `contract-check` stays green with no contract fixture change |
+
+Per-flow implementation diagram (T2). The architecture-side diagram is
+LLD section 29.4; this is the requirements-side view of the same flow,
+citing the code edges this section was written against:
+
+```mermaid
+flowchart TD
+    A[Desk or a provider posts a body to one of the eight services: POST /v1/MODULE/Operation  stay/src/server.ts:101] --> B{Route and session answer first, unchanged}
+    B -- unknown path or wrong method --> X1[404 NOT_FOUND, no body read  stay/src/server.ts:101-109]
+    B -- missing or invalid session --> X2[401 UNAUTHENTICATED, no body read  stay/src/server.ts:110-113]
+    B -- accepted --> C[read the body under the 65 536-byte ceiling  NFR-BND-1]
+    C -- declared content-length above the ceiling --> R1[refuse before the first chunk]
+    C -- streamed byte 65 537 arrives --> R2[stop reading, never parse]
+    R1 --> R3[one envelope: 400 VALIDATION_FAILED, details field body, error.transport.body_too_large, fresh traceId]
+    R2 --> R3
+    R3 --> E[no store, provider, folio, or state call ran  stay/src/server.ts:114-116]
+    C -- whole body is 65 536 bytes or fewer --> P[parse JSON after the read ends  stay/src/server.ts:15-31]
+    P -- readable object --> O[run the operation]
+    P -- unreadable JSON or not an object --> V[existing 400 VALIDATION_FAILED bad_json or body_not_object, unchanged]
+    O --> W[payload written inside the response-write bound  stay/src/server.ts:37-40]
+    C -- no byte arrives inside the body-read bound --> T1[server closes the connection  NFR-BND-3]
+    W -- peer stops draining past the write bound --> T2[server abandons the write and frees the connection  NFR-BND-3]
+```
+
+Failure/rollback path: a refused request has no earlier write of its own
+to take back — the ceiling is checked while the body is read, before the
+operation switch (`services/stay/src/server.ts:114-116`) or the Go
+handler body runs — so nothing is released and no compensating call
+exists or is needed; a peer disconnected by a timeout gets no envelope,
+and the desk reads that request as failed exactly as it reads any
+dropped connection. The whole change reverts with the single
+implementation PR: the ceiling checks, the eight catalogue keys, the
+four Node server properties, the three Go server structs, and Billing's
+filter and properties fall back to today's unbounded read and bare
+server — no migration, backfill, or data repair exists in either
+direction, and the desk's words, routes, and print output are unaffected
+either way.
+
+### 30.5 Explicitly not specified here (plus gate dependencies)
+
+- Implementation — the per-service ceiling checks, the eight catalogue
+  keys, the three Go `http.Server` structs, the four Node server
+  properties, and Billing's filter and connector settings — is the
+  downstream `dev` PR for #630, not this section.
+- The enforcement mechanism per stack, the exact timeout values, the
+  per-service Operations notes, and the architecture-side diagram are
+  `architect` work (LLD section 29,
+  `docs/technical/error-handling.md` section 1.1,
+  `docs/technical/integration.md` section 10,
+  `docs/architecture/services/*.md` section 7); this section states only
+  the requirements-side need and cites the decided values without
+  re-authoring them.
+- The `AC-BND` conditions, D-34, R-13, and the desk no-change rule are
+  `product-owner` work; the guard mapping above is `qa-lead` work
+  (`docs/testing/traceability-matrix.md` section 22); the release note,
+  the rollback pointer, and the operations note are `release-manager`
+  work. No implementation PR opens until `SPEC-GATE PASS` on #630.
+- Out of scope: rate limiting, connection limits, and reverse-proxy
+  configuration (the issue's own scope line); a configurable ceiling or
+  timeout (a T4 change with its own release, deployment, and runbook
+  delta); deduplicating the four Node `readBody` copies and the three Go
+  `decodeBody` copies (a repo-layout decision with its own issue); body
+  compression, streaming, and multipart handling; and any change to a
+  contract file, desk surface, or catalogue key other than the one
+  refusal sentence.
+- The specified change is tier T2 (a caller-visible refusal on every
+  ingress path plus a server-settings change, with no new subsystem,
+  dependency edge, data model, lifecycle state, reader-visible surface,
+  or code token), confirmed by `product-owner` and `architect`. This
+  section is its NFR part.
+
 <!-- ao-role: business-analyst -->
-Role: business-analyst · AO session hotel-mgmt-1047
+Role: business-analyst · AO session hotel-mgmt-1079
+

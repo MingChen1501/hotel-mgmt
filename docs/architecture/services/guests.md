@@ -14,14 +14,14 @@ Node.js/TypeScript flat `src/` files over raw `node:http`, wired in `services/gu
 
 | Layer | Files | Responsibility |
 |---|---|---|
-| Transport + routing | `src/server.ts` | `createServiceServer` answers `GET /healthz` (:68), enforces Bearer presence (:81), routes `POST /v1/guests/<Operation>` by case label |
+| Transport + routing | `src/server.ts` | `createServiceServer` answers `GET /healthz` (:117), enforces Bearer presence (:130), routes `POST /v1/guests/<Operation>` by case label |
 | Identity | `src/auth.ts` | `extractBearer`: Bearer presence check, same skeleton contract as Stay |
 | Validation + step order | `src/store.ts` (`GuestStore`, `GuestStoreAPI` at :126) | upsert/identify/context reads, idempotent stay-link ingestion |
 | Row storage | `src/store.ts` (in-memory), `src/pgstore.ts` (`PostgresGuestStore implements GuestStoreAPI` at :34) | identical semantics; Postgres selected at boot when `DATABASE_URL` is set |
 | Errors | `src/errors.ts` | shared `HttpError` envelope (same code set as Stay) |
 | Boot | `src/index.ts` | store selection by `DATABASE_URL`, `listen(PORT)` (default `8086`) |
 
-The operation table (`src/server.ts:87-147`): `UpsertGuest` (:87), `IdentifyGuest` (:100), `GetBookingContext` (:114), `GetGuest` (:118), `AttachReservation` (:133), `ProduceConfirmation` (:137). `LinkStay` is a store-level ingestion entry (`src/store.ts`, `linkStay`), not a separate route.
+The operation table (`src/server.ts:136-198`): `UpsertGuest` (:136), `IdentifyGuest` (:149), `GetBookingContext` (:163), `GetGuest` (:167), `AttachReservation` (:182), `ProduceConfirmation` (:186). `LinkStay` is a store-level ingestion entry (`src/store.ts`, `linkStay`), not a separate route.
 
 ## 3. Happy-path flowchart
 
@@ -38,7 +38,7 @@ flowchart TD
 
 Edge trace (every edge cites code):
 
-- A–B: same transport contract as Stay (`src/server.ts:68-81`).
+- A–B: same transport contract as Stay (`src/server.ts:121-133`).
 - C: required fields checked (`requireUuid`/`requireString`, `src/store.ts:48-55`); profile stored and returned (`src/store.ts:198-218`).
 - D: lookup by `guestId` first, then exact `fullName` match (`src/store.ts:220-223` via `findGuest` at :286-303).
 - E: profile returned with linked stays and the returning flag derived from the link count (`src/store.ts:235-242`).
@@ -77,7 +77,7 @@ Same shared Node envelope as Stay (`src/errors.ts`; `docs/technical/error-handli
 | Code | Status | Raised when |
 |---|---|---|
 | `VALIDATION_FAILED` | 400 | bad UUID/field, neither identifier given (:48, :55, :303) |
-| `UNAUTHENTICATED` | 401 | missing session token (`src/server.ts:81`) |
+| `UNAUTHENTICATED` | 401 | missing session token (`src/server.ts:130-131`) |
 | `NOT_FOUND` | 404 | unknown guest by id or name, unknown reservation for confirmation (:249, :275, :290, :301) |
 
 ## 7. Operations
@@ -129,6 +129,14 @@ Contract tests: `contract-tests/` holds fixtures per provided/consumed operation
 ```sh
 script/contract-check.sh
 ```
+
+Ingress bounds (Refs #630): `src/server.ts` caps a request body at
+65 536 bytes (`MAX_BODY_BYTES`) and refuses an oversized body with the
+shared envelope (`VALIDATION_FAILED`, `details` naming `body`) before
+parsing; the server it returns carries `headersTimeout` 5 s,
+`requestTimeout` 10 s, `timeout` 15 s, and `keepAliveTimeout` 10 s. No
+environment variable overrides either value. Details: LLD
+[section 29](../lld.md#29-bounded-request-bodies-and-finite-server-timeouts-refs-630).
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-249

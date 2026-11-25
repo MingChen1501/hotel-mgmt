@@ -1901,7 +1901,7 @@ holds the stale state — is in `docs/product/acceptance-criteria.md`
 `confirmed` and `checked-in` count as active
 (`services/reservations/internal/store/store.go:194-196`), nothing
 closes a booking on check-out
-(`services/reservations/internal/handler/handler.go:121-285`;
+(`services/reservations/internal/handler/handler.go:122-286`;
 `services/stay/src/store.ts:260-292`), and the room and housekeeping
 half already works (`services/rooms/src/store.ts:407-436`,
 `app/src/views/RoomsView.vue:162-183`, `:695-741`). The desk is
@@ -2252,7 +2252,7 @@ reference, room type, dates, state, and stay link
 `arrival < dateTo` and `departure > dateFrom`,
 `services/reservations/internal/store/store.go:191-193`), and
 `GetReservation` already returns the guest snapshot and frozen price
-basis (`services/reservations/internal/handler/handler.go:167-180`).
+basis (`services/reservations/internal/handler/handler.go:168-181`).
 The assigned room is the in-house stay's `roomId` resolved through the
 occupied room list (`services/stay/src/server.ts:42-60`,
 `services/rooms/src/server.ts:114-126`), because a booking carries no
@@ -2974,7 +2974,7 @@ Section 4 stays the rollout-wide contract; for steps 2–4:
 
 | Criterion | Evidence in this spec |
 |---|---|
-| The departed booking is recorded completed and stops counting as an active booking, and the past stay stays in history | Section 6.16 decisions 1 and 3; `AC-DEP-1`, `AC-DEP-4`; the as-built trace in `docs/product/acceptance-criteria.md` section 15 (`activeState`, `services/reservations/internal/store/store.go:194-196`; no booking close in `services/reservations/internal/handler/handler.go:121-285`) |
+| The departed booking is recorded completed and stops counting as an active booking, and the past stay stays in history | Section 6.16 decisions 1 and 3; `AC-DEP-1`, `AC-DEP-4`; the as-built trace in `docs/product/acceptance-criteria.md` section 15 (`activeState`, `services/reservations/internal/store/store.go:194-196`; no booking close in `services/reservations/internal/handler/handler.go:122-286`) |
 | Guest B's same-room-type booking with arrival today is accepted after A's normal or early departure, including when B was booked before A's early check-out | Section 6.16 decision 2; `AC-DEP-2`; the booking guard reads the active set (`services/reservations/internal/store/store.go:214-226`), so a completed booking contributes nothing |
 | Room 101 turns over and B checks in the same day after housekeeping marks it ready, with no manual state edit | Section 6.16 decision 4; `AC-DEP-3`; `ReleaseRoom` to `vacant-dirty` (`services/rooms/src/store.ts:407-436`), the Rooms surface buttons (`app/src/views/RoomsView.vue:162-183`, `:695-741`), and the ready-room assignment list (`app/src/views/StayView.vue:1139-1140`) |
 | Every refused close leaves the stay in house and the booking active, and the #588 release, #600 charge, and #601 settlement gates still run | Section 6.16 decision 5; `AC-DEP-5`; `AC-DSK-18`, `AC-DSK-19`, `AC-CKO-1`, `AC-CKO-2` stand as written with their existing guards |
