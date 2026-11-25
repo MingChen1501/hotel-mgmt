@@ -129,4 +129,46 @@ describe("rooms postgres store", { skip: DATABASE_URL === undefined || DATABASE_
       await pool.end();
     }
   });
+
+  it("scopes an assignment key per room so a reused key checks the second room", async () => {
+    const pool = new Pool({ connectionString: DATABASE_URL });
+    try {
+      await wipe(pool);
+      const store = new PostgresRoomStore(pool);
+      await store.upsertRoomType({ name: "Deluxe", actor: "manager" });
+      await store.upsertRoom({ number: "101", roomType: "Deluxe", actor: "manager" });
+      await store.upsertRoom({ number: "102", roomType: "Deluxe", actor: "manager" });
+      const first = await store.assignRoom({
+        roomNumber: "101",
+        businessDate: "2026-11-01",
+        stayLink: "stay-1",
+        idempotencyKey: "checkin-1",
+        actor: "front-desk",
+      });
+      assert.equal(first.roomNumber, "101");
+      const second = await store.assignRoom({
+        roomNumber: "102",
+        businessDate: "2026-11-01",
+        stayLink: "stay-1",
+        idempotencyKey: "checkin-1",
+        actor: "front-desk",
+      });
+      assert.equal(second.roomNumber, "102");
+      const replay = await store.assignRoom({
+        roomNumber: "101",
+        businessDate: "2026-11-01",
+        stayLink: "stay-1",
+        idempotencyKey: "checkin-1",
+        actor: "front-desk",
+      });
+      assert.deepEqual(replay, first);
+      const occupied = await store.listRoomsByState("occupied");
+      assert.deepEqual(
+        occupied.map((room) => room.number).sort(),
+        ["101", "102"],
+      );
+    } finally {
+      await pool.end();
+    }
+  });
 });

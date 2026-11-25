@@ -380,3 +380,17 @@ func TestEarlyDepartureUnblocksSameDayBooking(t *testing.T) {
 		t.Fatalf("early departure still blocks the same-day booking = %d (%v)", code, rebooked)
 	}
 }
+
+// TestUnknownOperationAnswersEnvelope pins the mounted mux fallback: an
+// unknown operation under the registered prefix answers the shared
+// envelope (404 NOT_FOUND) instead of the built-in plain-text 404
+// (Refs #628).
+func TestUnknownOperationAnswersEnvelope(t *testing.T) {
+	code, body := post(t, newMux(), "/v1/reservations/NoSuchOperation", map[string]any{}, deskToken)
+	if code != http.StatusNotFound || body["code"] != "NOT_FOUND" {
+		t.Fatalf("unknown operation = %d %v, want 404 NOT_FOUND", code, body)
+	}
+	if _, ok := body["traceId"].(string); !ok {
+		t.Fatalf("unknown operation carries no traceId: %v", body)
+	}
+}

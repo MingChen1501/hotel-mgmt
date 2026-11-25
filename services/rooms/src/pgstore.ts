@@ -32,7 +32,7 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
 // conditional UPDATE in assignRoom: the room flips to occupied only
 // when it is currently vacant-inspected with no covering block, so
 // two simultaneous assignments cannot both succeed. AssignRoom
-// idempotency receipts stay in memory (see store.ts).
+// idempotency receipts stay in memory, scoped per room (see store.ts).
 export class PostgresRoomStore implements RoomStoreAPI {
   private readonly idempotency = new Map<string, { roomId: string; roomNumber: string; stayLink: string; state: RoomState }>();
 
@@ -404,13 +404,13 @@ export class PostgresRoomStore implements RoomStoreAPI {
   }
 
   async assignRoom(input: AssignRoomInput): Promise<{ roomId: string; roomNumber: string; stayLink: string; state: RoomState }> {
-    if (typeof input.idempotencyKey === "string" && input.idempotencyKey !== "") {
-      const replay = this.idempotency.get(input.idempotencyKey);
-      if (replay) {
-        return replay;
-      }
-    }
     const roomNumber = requireString(input.roomNumber, "roomNumber");
+    const idempotencyKey = typeof input.idempotencyKey === "string" ? input.idempotencyKey : "";
+    const replay =
+      idempotencyKey === "" ? undefined : this.idempotency.get(`AssignRoom:${roomNumber}:${idempotencyKey}`);
+    if (replay) {
+      return replay;
+    }
     const businessDate = requireDate(input.businessDate, "businessDate");
     const stayLink = requireString(input.stayLink, "stayLink");
     const actor = requireString(input.actor, "actor");
@@ -446,8 +446,8 @@ export class PostgresRoomStore implements RoomStoreAPI {
       );
       return { roomId: room.id, roomNumber: room.number, stayLink, state: room.state };
     });
-    if (typeof input.idempotencyKey === "string" && input.idempotencyKey !== "") {
-      this.idempotency.set(input.idempotencyKey, receipt);
+    if (idempotencyKey !== "") {
+      this.idempotency.set(`AssignRoom:${roomNumber}:${idempotencyKey}`, receipt);
     }
     return receipt;
   }

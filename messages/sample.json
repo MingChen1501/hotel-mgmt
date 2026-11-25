@@ -60,6 +60,16 @@
       "params": {}
     },
     {
+      "key": "error.transport.method_not_allowed",
+      "surface": "reservations+rates+reporting envelope",
+      "sources": [
+        "services/reservations/internal/envelope/envelope.go",
+        "services/rates/internal/envelope/envelope.go",
+        "services/reporting/internal/envelope/envelope.go"
+      ],
+      "params": {}
+    },
+    {
       "key": "error.auth.missing_token",
       "surface": "reservations+admin+billing envelope",
       "sources": [

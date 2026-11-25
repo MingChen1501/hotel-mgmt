@@ -559,6 +559,29 @@ its UTC offset, every date renders on the hotel-local day).
 | All -> ADM (export slices) | Async job + visible report | Full copy is not a desk-speed action; owner-visible success/failure (NFR-BKP-2) |
 | All -> RPT (domain events) | Async events; RPT read API sync | Own read model, never cross-reads (HLD [section 3](../architecture/hld.md)); 5 s report target tolerates bounded lag (NFR-PERF-2) |
 
+Transport bound on every pair (Refs #630): every sync pair above carries
+JSON over HTTP, and from this change each receiving server bounds that
+transport without changing any contract term. A request body above
+65 536 bytes (64 KiB) is refused with the shared envelope — HTTP 400
+`VALIDATION_FAILED`, `details` naming the field `body`, the plain
+`error.transport.body_too_large` sentence, a fresh `traceId` — while the
+body is read, before the payload is parsed and before the provider does
+any work, so a refused request writes nothing; a body at exactly
+65 536 bytes is served and one byte more is refused (`NFR-BND-1`,
+`BR-60`). The ceiling is one code constant per service, never an
+environment variable, deployment file, or per-hotel setting, and it sits
+more than 18× above the largest request schema the contracts hold
+(`contracts/http/ModifyReservation.json`, 3 530 bytes), so no fixture or
+desk payload moves (`NFR-BND-2`). Every server also declares finite
+header-read, body-read, response-write, and idle bounds sized above the
+longest legitimate pair wait — the 5-second Reservations → Rates pricing
+read and the 2-second completion reads — so a stalled peer is freed
+without cutting an in-limit call (`NFR-BND-3`). This is a transport
+setting, not a contract revision: no operation, request field, response
+shape, status, or code changes, so no `Contract-Version` bump and no
+contract file or manifest edit follows
+(`docs/technical/integration.md` section 10).
+
 ## 9. Error cases named (index)
 
 All codes are those of `docs/technical/error-handling.md`; the
@@ -585,6 +608,8 @@ need.
 | Stay's room charge cannot be posted (booking not resolvable, or post refused/failed) | no new code; the desk refuses the review in plain words and the existing refusal or `NOT_FOUND` governs | the room charge and the next step | FR-CKP-4; BR-45 |
 | Locked identity sign-in | `IDENTITY_LOCKED` | the locked identity (distinct from `UNAUTHENTICATED`) | NFR-SEC-2; BR-42 |
 | Expired or signed-out session | `UNAUTHENTICATED` | — | NFR-SEC-2; BR-42 |
+| Unexpected failure in a Node service — a store or driver failure, a wiring fault, or a crash; not a refusal | `INTERNAL_ERROR` (500) | — (no invented field; the answer keeps the plain unexpected-failure sentence and its `traceId`) | FR-ERR-1; BR-59 |
+| Request body above the declared 65 536-byte ceiling — the caller's mistake, in any of the eight services | `VALIDATION_FAILED` (400) | the field `body` (the whole request body; the plain `error.transport.body_too_large` sentence, raised before parsing and before any store, provider, or folio call) | NFR-BND-1; `AC-BND-1`; `BR-60` |
 
 ## 10. Open questions (where the FRs do not decide)
 
@@ -654,7 +679,12 @@ same `GetStayRef` through the C8 seam, with the three refusal classes
 named in section 9, and a stay that carries no folio is verified the
 same way before its folio is created. `GetFolioBalance`, `PostCharge`,
 `RecordPayment`, and `RecordOpenBalanceApproval` keep their payloads,
-and the contract change is error-code additive only. No operation,
+and the contract change is error-code additive only. The #630 transport
+bounds (section 8 amendment) add no operation, field, or error class of
+their own either: every pair keeps its payload and codes, the
+over-limit refusal reuses `VALIDATION_FAILED` with `details.field`
+`body`, and no contract file or version changes (`NFR-BND-1`..
+`NFR-BND-3`, `BR-60`). No operation,
 field, or error case introduces
 behaviour beyond the mapped FRs. Later capabilities from
 requirements section 6 carry no contract need here.
@@ -665,4 +695,4 @@ config/identity/reporting/export fans); 6 contract open questions
 where they touch the contracts.
 
 <!-- ao-role: business-analyst -->
-Role: business-analyst · AO session hotel-mgmt-1047
+Role: business-analyst · AO session hotel-mgmt-1079
