@@ -190,10 +190,17 @@ whether Pricing needs to be asked.
 `CreateReservation` and `ModifyReservation` keep requiring `priceBasis`
 for the deprecation window so the current desk build keeps working, but
 it becomes advisory: "compared with the quote, never stored". The error
-sets gain `PRICE_CHANGED` (409) and `UPSTREAM_UNAVAILABLE` (503). That
-is a minor contract bump under ADR-0004 D1 (relaxed meaning plus new
-error codes; no field removed, renamed, retyped, or made newly
-required), and `PRICE_CHANGED` is registered as an envelope code. No
+sets gain `PRICE_CHANGED` (409); `UPSTREAM_UNAVAILABLE` (503) is
+already listed on both operations for the availability read (#631), and
+only its `when` sentence extends to the quote read. No field is
+removed, renamed, retyped, or made newly required, and both contracts
+already carry the additive minor bump that covers this delta
+(`contracts/http/CreateReservation.json:4` at `1.2`,
+`contracts/http/ModifyReservation.json:4` at `1.1`, both bumped by the
+availability delta landed as #716), so `PRICE_CHANGED` rides that
+version instead of a second bump; it is registered as an envelope code
+(`contracts/errors/envelope.json` `:9`, `:27` after the mapping is
+added). No
 schema, table, migration, column, or event changes: the stored
 `priceBasis` keeps its shape.
 
