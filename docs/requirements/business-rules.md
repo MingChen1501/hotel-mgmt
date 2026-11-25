@@ -77,6 +77,8 @@ front-desk staff, manager, or owner account acting within its access
 | BR-27 | Which payment methods beyond cash and card (for example bank transfer or hotel credit) payment recording must support on day one is undecided. Until decided, payment recording covers cash and card only. | OQ-1 (requirements section 5); FR-BIL-3 |
 | BR-45 | A stay's room charge is posted once per stay, at the stay's own frozen quoted total, and never derived again from today's prices. The desk check-out posts it at its review step, before any balance is presented, so no folio closes carrying no room charge; a second room charge is never posted for the same stay, a stay quoted at zero is charged nothing, and a room charge that cannot be posted refuses the check-out instead of closing an uncharged folio. Whether the guest settled or the hotel approved the open balance stays the check-out gate's question, not the charge's. | FR-BIL-2; FR-BIL-7; FR-RTE-5; FR-CKP-1..FR-CKP-5; BR-13; BR-17; `AC-DSK-19`; Refs #600 |
 | BR-46 | The check-out gate is decided on the folio the system holds, never on what a request asserts. The balance is the folio's stored balance, re-read when the close is attempted, and an approval counts only as the record stored against that folio — approver identity, a role from the hotel's fixed three, and the recorded time — while a balance or approval object supplied with the request is advisory input that decides nothing. The folio presented as the final invoice must be the folio the balance came from. A folio that cannot be read refuses the close instead of closing on an unverified balance, and every refusal leaves the stay in house with nothing released. Which role may approve, and whether approval is needed, stays the hotel's open-balance rule (`BR-17`). | FR-FDK-2; FR-BIL-7; FR-CKS-1..FR-CKS-5; BR-17; BR-21; requirements section 3.1; requirements section 3.2; `AC-CKO-1`; `AC-CKO-2`; Refs #601 |
+| BR-50 | A folio is created, and a charge, a payment, or an open-balance approval recorded, only for a stay the system confirms exists and is in house at that moment. A stay id selects which stay a write is about; it never proves one. The stay's existence and lifecycle state are Stay's facts, read through the registered stay-reference read with the caller's session, before every folio write whether or not the folio already exists, and before a folio is created on a balance read. A stay that already carries a folio stays readable in every stay state, so the departure invoice and its receipts never depend on the stay still being in house. | FR-BIL-1; FR-FWV-1; FR-FWV-5; BR-21; `AC-FWV-4`; Refs #634 |
+| BR-51 | A folio write for a stay that cannot be verified is refused and changes nothing: an unknown stay is refused as not found naming it, a stay outside in-house is refused naming it and its state — a charge, a payment, or an approval after departure is refused the same way, and the existing folio keeps every line and its balance — and a stay that cannot be read is refused as an upstream failure naming the upstream and the operation. No such refusal creates a folio row, a line, an approval, a balance movement, an idempotency record, or an outbox event, and a repeated request answers the same. An unreadable stay is never replaced by a cached or assumed state, and an approval recorded for an open balance does not permit a folio write after the stay leaves house. | FR-BIL-2; FR-BIL-3; FR-BIL-7; FR-FWV-1..FR-FWV-4; BR-24; BR-46; `AC-FWV-1`; `AC-FWV-2`; `AC-FWV-3`; Refs #634 |
 
 ## 6. Rooms and housekeeping
 
@@ -108,6 +110,8 @@ front-desk staff, manager, or owner account acting within its access
 | BR-43 | The business date has one canonical form and one display form. Stored, transmitted, validated, and day-close values stay ISO `YYYY-MM-DD`; the desk header renders the locale long-weekday form derived from the canonical value (VI weekday long plus `dd/MM/yyyy`, EN weekday long plus `MM/dd/yyyy`). No consumer parses the displayed string. | FR-DSK-11; FR-BIL-6; NFR-I18N-1; NFR-TZ-1; contracts/http/DailySheet.json |
 | BR-41 | The desk keeps working through an internet outage: booking, check-in, check-out, charge posting, payment recording, and invoice printing all complete on the on-premise installation as when connected. | NFR-AVL-1; PRD assumptions |
 | BR-42 | A wrong secret entered 5 times in a row locks the identity until the owner or manager unlocks it; a sign-in attempt against the locked identity is refused with `IDENTITY_LOCKED` (distinct from `UNAUTHENTICATED`). A session idle 15 minutes signs out. | NFR-SEC-2 |
+| BR-59 | A failure the system did not plan for is reported as an internal fault, never as bad input from the person at the desk. `VALIDATION_FAILED` states that the caller's request or a field of it was wrong and keeps that meaning only; an unexpected exception — a store or driver failure, a wiring fault, or a crash — is answered with `INTERNAL_ERROR` (500) in the shared envelope, so the same meaning always carries the same token in every service that serves the desk. The answer keeps the envelope's four fields, reads as one plain catalogue sentence carrying no driver, SQL, host, path, or stack-trace text, and carries a correlation id, so no internal detail reaches the desk and support can trace the answer. The code vocabulary is the shared contract's single enum: a service answers no code the enum does not list, and every refusal the hotel already decided keeps its own code and status. | FR-ERR-1; FR-ERR-2; FR-ERR-3; `AC-ERR-1`; `AC-ERR-2`; `AC-ERR-3`; NFR-I18N-1; Refs #627 |
+| BR-60 | Every backend service reads a request body under one declared ceiling, and every server bounds a stalled peer. A body above 65 536 bytes (64 KiB) is the caller's mistake, not a fault: it is refused with the shared envelope and `VALIDATION_FAILED` (400), `details` naming the field `body`, the plain `error.transport.body_too_large` sentence, and a fresh correlation id, while the body is read — before JSON parsing and before any store, provider, or folio call — so nothing is written, the surplus is never buffered in full, and one complete answer is sent instead of a partial one. The ceiling is one number declared in code in all eight services, never an environment variable, deployment file, or per-hotel setting, and it sits far above the largest request schema the contracts hold; a body at the ceiling is served and one byte more is refused. Every server also declares finite header-read, body-read, response-write, and idle bounds sized above the longest legitimate provider wait, so a peer that stalls cannot hold a worker, and a timeout frees the connection without promising a refusal. | NFR-BND-1; NFR-BND-2; NFR-BND-3; `AC-BND-1`..`AC-BND-5`; Refs #630 |
 
 ## 9. Per-hotel configurable vs fixed split
 
@@ -170,7 +174,26 @@ behaviour beyond those sources, and BR-46 states where the check-out
 gate's facts come from — the folio stored balance and the approval
 recorded against it, never a request's claim — tracing `FR-BIL-7`,
 `FR-FDK-2`, `FR-CKS-1`..`FR-CKS-5`, and `AC-CKO-1`/`AC-CKO-2`
-without adding behaviour beyond those sources, and BR-47..BR-49 state
+without adding behaviour beyond those sources, and BR-50 states that a
+stay id selects a stay but never proves one — a folio is created and a
+folio write records only for a stay verified in house, while a folio
+already held stays readable in every stay state — tracing `FR-BIL-1`,
+`FR-FWV-1`, `FR-FWV-5`, and `AC-FWV-4`, and BR-51 states that an
+unverifiable stay refuses the write and changes nothing, tracing
+`FR-BIL-2`, `FR-BIL-3`, `FR-BIL-7`, `FR-FWV-1`..`FR-FWV-4`, and
+`AC-FWV-1`..`AC-FWV-3`, neither adding behaviour beyond those sources, and BR-59 states that a
+failure the system did not plan for is reported as an internal fault and
+never as bad input — `VALIDATION_FAILED` keeps meaning the caller's
+request was wrong, the answer carries no internal descriptor, and the
+shared contract enum stays the single vocabulary every service follows —
+tracing `FR-ERR-1`..`FR-ERR-3` and `AC-ERR-1`..`AC-ERR-3`, without
+adding behaviour beyond those sources, and BR-60 states the transport
+obligation every service owes its caller — one declared 65 536-byte body
+ceiling refused as the caller's mistake before parsing or any store,
+provider, or folio call, one ceiling constant in code rather than
+configuration, and finite header-read, body-read, response-write, and
+idle bounds on every server — tracing `NFR-BND-1`..`NFR-BND-3` and
+`AC-BND-1`..`AC-BND-5`, without adding behaviour beyond those sources, and BR-47..BR-49 state
 the overbooking ceiling's source, its fail-closed refusal, and its
 atomic shape (tracing `FR-OVB-1`..`FR-OVB-4`, `NFR-CON-1`, and
 `AC-OVB-1`..`AC-OVB-3`) without adding behaviour beyond those sources.
@@ -180,7 +203,10 @@ FRs/NFRs/stories. Later capabilities from requirements section 6
 (waitlist, split folios, integrated payments, automated workflow
 rules, multi-property operation, and the rest) carry no rule here.
 
-Counts: 49 business rules, 5 open questions.
+Counts: 53 business rules, 5 open questions.
+
+<!-- ao-role: business-analyst -->
+Role: business-analyst · AO session hotel-mgmt-1079
 
 <!-- ao-role: business-analyst -->
 Role: business-analyst · AO session hotel-mgmt-934

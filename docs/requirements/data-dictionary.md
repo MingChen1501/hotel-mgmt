@@ -329,7 +329,12 @@ register** the #648 desk view renders — a read-only list of reservations
 staying in a chosen night range, with no field of its own — and states
 which read supplies each cell, including why a `confirmed` or `closed`
 row shows no assigned room (`FR-BMV-2`, `FR-BMV-5`, `FR-BMV-6`); it
-adds no entry, field, or behaviour beyond those sources.
+adds no entry, field, or behaviour beyond those sources. The #630
+request-body ceiling adds no entry or field either: it is a transport
+bound, and the refusal's `details` field `body` names the whole request
+body in the shared envelope (`docs/technical/error-handling.md`
+section 1.1), not a domain field of any entity, so the 15 entries stand
+unchanged (`NFR-BND-1`, `BR-60`).
 Reservation entry (section 1) and the Room type entry (section 9)
 state where a booking's capacity ceiling comes from — the recorded
 room inventory, never the request's `sellableUnits` (`BR-47`,
@@ -339,4 +344,4 @@ behaviour beyond those sources.
 Counts: 15 dictionary entries covering the 7 entity terminology concepts (T-1..T-7); T-8 is a spelling convention with no entry.
 
 <!-- ao-role: business-analyst -->
-Role: business-analyst · AO session hotel-mgmt-980
+Role: business-analyst · AO session hotel-mgmt-1079

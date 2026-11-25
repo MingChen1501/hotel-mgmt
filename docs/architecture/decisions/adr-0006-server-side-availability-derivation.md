@@ -12,8 +12,8 @@ Audit finding R1 (the #625 class — a client-supplied value decides the
 outcome) on the booking path:
 
 - `sellableUnits` arrives straight from the request body:
-  `services/reservations/internal/handler/handler.go:129` and `:144` on
-  `CreateReservation`, `:239` and `:251` on `ModifyReservation`.
+  `services/reservations/internal/handler/handler.go:168` and `:183` on
+  `CreateReservation`, `:278` and `:290` on `ModifyReservation`.
 - The overbooking guard's only ceiling is that number:
   `if booked >= input.SellableUnits`
   (`services/reservations/internal/store/store.go:222` on Create,
@@ -46,12 +46,12 @@ unchanged:
 - **Rooms `CheckRoomTypeSellability`**
   (`contracts/http/CheckRoomTypeSellability.json`;
   `services/rooms/src/store.ts:307-359`, route
-  `services/rooms/src/server.ts:141`): the date-ranged room inventory of
+  `services/rooms/src/server.ts:190-191`): the date-ranged room inventory of
   a type — `totalCount` (rooms of the type), `blockedRooms` (rooms with
   an overlapping block, `src/store.ts:344-350`) and the derived
   `sellableCount` (rooms with no overlapping block). This is the source
   the desk's Book panel already pre-checks
-  (`app/src/views/BookView.vue:893-922`) and then forwards as
+  (`app/src/views/BookView.vue:893-929`) and then forwards as
   `sellableUnits` — the value the guard currently believes.
 
 Precedents this record builds on:
@@ -63,9 +63,9 @@ Precedents this record builds on:
   unread fact fails the operation closed with `UPSTREAM_UNAVAILABLE`.
 - The wired Reservations -> Rates client is the shape to reuse
   (`services/reservations/internal/pricing/client.go:33` five-second
-  timeout, `:52-59` POST with the Bearer token forwarded, `:88-97`
+  timeout, `:52-59` POST with the Bearer token forwarded, `:88-96`
   fail-closed `UPSTREAM_UNAVAILABLE`), boot wiring in
-  `services/reservations/cmd/server/main.go:42-47`, compose env
+  `services/reservations/cmd/server/main.go:44-48`, compose env
   `RATES_BASE_URL` (`deploy/compose.yaml:46`).
 - Product decision D-31 and conditions `AC-OVB-1`..`AC-OVB-3`
   (`docs/product/acceptance-criteria.md` section 19,
@@ -146,7 +146,7 @@ would still decide: the store's `input.SellableUnits < 1` validation
 (`services/reservations/internal/store/store.go:203`, `:377`;
 `services/reservations/internal/store/postgres.go:146`, `:483`) and the
 handler's "absent means 0" default (`sellUnits`,
-`services/reservations/internal/handler/handler.go:366`).
+`services/reservations/internal/handler/handler.go:409-414`).
 
 ### D4 — Fail closed on an unread ceiling
 
@@ -190,7 +190,7 @@ instead of returning the stored record (residual risk R-OVB-4).
 | `contracts/http/CreateReservation.json` | `sellableUnits` required -> optional and advisory ("ignored; the server derives the ceiling from Rooms"); errors add `UPSTREAM_UNAVAILABLE` (503) | minor (1.1 -> 1.2; relaxed requirement plus a new error code, ADR-0004 D1) |
 | `contracts/http/ModifyReservation.json` | same delta for the new type and dates | minor (1.0 -> 1.1) |
 | `contracts/http/CheckRoomTypeSellability.json` | shape unchanged; gains a server-side consumer (integration C2 becomes live) | none |
-| `contracts/errors/envelope.json` | register `UPSTREAM_UNAVAILABLE` in the enum and add `503` to `statusMapping` — Reservations already emits it (`services/reservations/internal/service/service.go:76-83`, `internal/pricing/client.go:88-96`) while the enum omits it, the same drift ADR-0005 D5 records; whichever implementation PR lands first registers it, both need it | minor |
+| `contracts/errors/envelope.json` | unchanged — `UPSTREAM_UNAVAILABLE` (503) is already in the enum and `statusMapping` (registered by #627), so the code adds no contract file edit | none |
 
 No schema, table, migration, or event change: reservation rows, the
 state set, the change history, and the outbox are untouched.
@@ -210,7 +210,7 @@ No new catalogue key, control, or screen.
 
 - Reservations gains a second outbound dependency: `ROOMS_BASE_URL`
   (default `http://rooms:8085`, compose service `rooms`,
-  `deploy/compose.yaml:89-99`), wired at boot beside `RATES_BASE_URL`,
+  `deploy/compose.yaml:92-102`), wired at boot beside `RATES_BASE_URL`,
   five-second timeout, caller Bearer token forwarded. No runtime cycle:
   Rooms has no outbound dependency (`docs/architecture/services/rooms.md`
   section 5).

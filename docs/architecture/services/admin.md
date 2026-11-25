@@ -14,7 +14,7 @@ Node.js/TypeScript flat `src/` files over raw `node:http`, wired in `services/ad
 
 | Layer | Files | Responsibility |
 |---|---|---|
-| Transport + routing | `src/server.ts` | `createServiceServer` answers `GET /healthz` (:82); `SignIn` is the one unauthenticated operation (:97); every other `/v1/*` call requires a Bearer token |
+| Transport + routing | `src/server.ts` | `createServiceServer` answers `GET /healthz` (:131); `SignIn` is the one unauthenticated operation (:146); every other `/v1/*` call requires a Bearer token |
 | Identity + sessions | `src/store.ts` (`AdminStore`, `AdminStoreAPI` at :114), `src/auth.ts` | `signIn` with failure counting and lockout, `authenticate` with 15-minute idle expiry and revocation checks, role enforcement |
 | Hotel config + users | `src/store.ts` | `GetHotelConfig`/`UpdateHotelConfig`, `CreateUser`/`UpdateUserRole`/`UnlockIdentity`/`ChangeSecret`/`ListUsers`, `QueryAuditLog` |
 | Row storage | `src/store.ts` (in-memory; lockout counters memory-only by design at :10-16), `src/pgstore.ts` (`PostgresAdminStore implements AdminStoreAPI` at :61) | identical semantics; Postgres selected at boot when `DATABASE_URL` is set |
@@ -22,7 +22,7 @@ Node.js/TypeScript flat `src/` files over raw `node:http`, wired in `services/ad
 | Errors | `src/errors.ts` | shared `HttpError` envelope (same code set as Stay, plus `FORBIDDEN` for role refusals) |
 | Boot | `src/index.ts`, `src/migrate.ts` | migration chain first (schema must exist before sign-in traffic), then store selection, `listen(PORT)` (default `8088`) |
 
-The operation table (`src/server.ts:108-143`): `GetHotelConfig` (:108), `UpdateHotelConfig` (:112), `CreateUser` (:116), `UpdateUserRole` (:120), `UnlockIdentity` (:124), `SignOut` (:128), `ChangeSecret` (self-service rotation, issue #284), `ListUsers`, `QueryAuditLog`; `SignIn` precedes auth at :97.
+The operation table (`src/server.ts:157-193`): `GetHotelConfig` (:157), `UpdateHotelConfig` (:161), `CreateUser` (:165), `UpdateUserRole` (:169), `UnlockIdentity` (:173), `SignOut` (:177), `ChangeSecret` (self-service rotation, issue #284), `ListUsers`, `QueryAuditLog`; `SignIn` precedes auth at :146.
 
 ## 3. Happy-path flowchart
 
@@ -59,7 +59,7 @@ flowchart TD
 
 Edge trace:
 
-- S: invalid/expired token, revoked/signed-out session, 15-minute idle expiry, or deleted user → `UNAUTHENTICATED` (`src/store.ts:241-257`); `SignOut` revokes (`src/server.ts:128`).
+- S: invalid/expired token, revoked/signed-out session, 15-minute idle expiry, or deleted user → `UNAUTHENTICATED` (`src/store.ts:241-257`); `SignOut` revokes (`src/server.ts:177`).
 - P: front-desk accounts are refused admin operations with `FORBIDDEN` (`src/store.ts:177`); unknown roles refused (`:272, :307`); duplicate identities refused (`:276`).
 - Self-role change and last-owner demotion are refused (`:315-319`); unlocking a non-locked identity is refused (`:338-341`).
 
@@ -131,6 +131,14 @@ Contract tests: `contract-tests/` holds fixtures per provided/consumed operation
 ```sh
 script/contract-check.sh
 ```
+
+Ingress bounds (Refs #630): `src/server.ts` caps a request body at
+65 536 bytes (`MAX_BODY_BYTES`) and refuses an oversized body with the
+shared envelope (`VALIDATION_FAILED`, `details` naming `body`) before
+parsing; the server it returns carries `headersTimeout` 5 s,
+`requestTimeout` 10 s, `timeout` 15 s, and `keepAliveTimeout` 10 s. No
+environment variable overrides either value. Details: LLD
+[section 29](../lld.md#29-bounded-request-bodies-and-finite-server-timeouts-refs-630).
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-249
