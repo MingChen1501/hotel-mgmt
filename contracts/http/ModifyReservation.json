@@ -1,11 +1,14 @@
 {
   "operation": "ModifyReservation",
   "contract": "ReservationService",
-  "version": "1.0",
+  "version": "1.1",
   "traces": [
     "docs/architecture/lld.md section 1",
     "FR-RES-2",
-    "NFR-CON-1"
+    "NFR-CON-1",
+    "FR-OVB-2",
+    "FR-OVB-3",
+    "ADR-0006"
   ],
   "transport": {
     "method": "POST",
@@ -16,7 +19,6 @@
     "type": "object",
     "required": [
       "reservationRef",
-      "sellableUnits",
       "priceBasis"
     ],
     "properties": {
@@ -60,8 +62,8 @@
       },
       "sellableUnits": {
         "type": "integer",
-        "minimum": 1,
-        "description": "Desk-loop input from the Rates/Rooms search step for the new dates and type; the atomic guard re-runs excluding the reservation itself."
+        "minimum": 0,
+        "description": "Optional and advisory (ADR-0006): ignored for the repriced change; the server derives the ceiling from the room inventory Rooms records for the effective type and dates. A malformed value is still VALIDATION_FAILED."
       },
       "priceBasis": {
         "type": "object",
@@ -124,6 +126,11 @@
       "when": "No sellable unit left for the new type and dates; details name type+dates (NFR-CON-1)."
     },
     {
+      "code": "UPSTREAM_UNAVAILABLE",
+      "status": 503,
+      "when": "The room inventory could not be read, so the change was refused; details name upstream rooms and CheckRoomTypeSellability (ADR-0006 D4)."
+    },
+    {
       "code": "STATE_ILLEGAL",
       "status": 422,
       "when": "The reservation already left the confirmed state, or a stay restriction is violated for the new dates."
@@ -136,7 +143,7 @@
     {
       "code": "NOT_FOUND",
       "status": 404,
-      "when": "Unknown reservation reference."
+      "when": "Unknown reservation reference, or an unknown new room type refused by Rooms and surfaced unchanged (ADR-0006 D4)."
     }
   ]
 }

@@ -5,11 +5,13 @@
 // guard in the store.
 //
 // The restriction check is a server-side call to Pricing
-// CheckRestrictions (FR-RTE-4): the hook below is wired at boot to
-// the pricing client, which forwards the caller Bearer token and
-// fails closed when rates is unreachable. The desk loop still
-// supplies the sellableUnits and priceBasis search outputs in the
-// request.
+// CheckRestrictions (FR-RTE-4) and the capacity read is a server-side
+// call to Rooms CheckRoomTypeSellability (ADR-0006, issue #631): both
+// hooks below are wired at boot, both forward the caller Bearer token,
+// and both fail closed when their upstream is unreachable. The desk
+// still sends the sellableUnits and priceBasis search outputs, but
+// sellableUnits is advisory: the ceiling the guard counts against is
+// derived from the recorded room inventory.
 package service
 
 import (
@@ -29,6 +31,14 @@ const dateLayout = "2006-01-02"
 // Bearer token and fails closed when rates is unreachable.
 type RestrictionCheck func(roomTypeID, arrivalDate, departureDate, bearerToken string) *store.OpError
 
+// AvailabilityCheck derives the sellable ceiling of one booking
+// attempt from the module that owns the room inventory (Rooms,
+// ADR-0006). It returns the ceiling the store guard counts against;
+// an unreadable source returns UPSTREAM_UNAVAILABLE so the booking is
+// refused fail-closed. The request's advisory sellableUnits never
+// reaches it.
+type AvailabilityCheck func(roomTypeID, arrivalDate, departureDate, bearerToken string) (int, *store.OpError)
+
 // Service validates booking attempts and runs the store guard.
 // CheckRestrictionsHook must be wired at boot (main.go wires the
 // pricing client). It is never optional: a nil hook fails closed
@@ -38,6 +48,11 @@ type Service struct {
 	store                 store.Repository
 	RequiredGuestFields   []string
 	CheckRestrictionsHook RestrictionCheck
+	// AvailabilityHook must be wired at boot beside
+	// CheckRestrictionsHook. It is never optional: a nil hook fails
+	// closed with UPSTREAM_UNAVAILABLE so unwired construction can
+	// never silently fall back to the request's number.
+	AvailabilityHook AvailabilityCheck
 }
 
 // New returns a Service over store.
@@ -47,13 +62,16 @@ func New(st store.Repository) *Service {
 
 // CreateRequest is one validated booking attempt. BearerToken is the
 // full caller "Bearer ..." Authorization header value, forwarded to
-// the stay-restriction check.
+// the stay-restriction and capacity checks. SellableUnits is the
+// request's optional, advisory number (ADR-0006 D3): it is shape
+// validated only and never decides the booking — the ceiling comes
+// from AvailabilityHook.
 type CreateRequest struct {
 	RoomTypeID     string
 	ArrivalDate    string
 	DepartureDate  string
 	Guest          map[string]any
-	SellableUnits  int
+	SellableUnits  *int
 	TotalMinor     int64
 	HasTotal       bool
 	DiscountName   *string
@@ -82,8 +100,44 @@ func restrictionsUnavailable() *store.OpError {
 	}
 }
 
-// Create runs one booking attempt through validation and the guard.
+// availabilityUnavailable refuses the booking when the capacity read
+// itself cannot be trusted — including an unwired (nil)
+// AvailabilityHook — instead of silently falling back to the request's
+// number. Nothing is written because the read precedes the store call.
+func availabilityUnavailable() *store.OpError {
+	return &store.OpError{
+		Code:    "UPSTREAM_UNAVAILABLE",
+		Status:  http.StatusServiceUnavailable,
+		Message: messages.Text("error.upstream.availability_unavailable", nil),
+		Details: map[string]any{"upstream": "rooms", "operation": "CheckRoomTypeSellability"},
+	}
+}
+
+// capacity reads the ceiling the guard compares against, failing
+// closed when no hook is wired.
+func (s *Service) capacity(roomTypeID, arrivalDate, departureDate, bearerToken string) (int, *store.OpError) {
+	if s.AvailabilityHook == nil {
+		return 0, availabilityUnavailable()
+	}
+	return s.AvailabilityHook(roomTypeID, arrivalDate, departureDate, bearerToken)
+}
+
+// validateAdvisoryUnits shape-checks the optional, advisory
+// sellableUnits field (ADR-0006 D3). A malformed value still fails
+// loudly naming the field; a valid value changes no decision.
+func validateAdvisoryUnits(units *int) *store.OpError {
+	if units == nil || *units >= 0 {
+		return nil
+	}
+	return validation("sellableUnits", messages.Text("error.validation.sellable_units", nil), map[string]any{"field": "sellableUnits"})
+}
+
+// Create runs one booking attempt through validation, the
+// stay-restriction check, the capacity read, and the guard.
 func (s *Service) Create(req CreateRequest) (*store.Reservation, *store.OpError) {
+	if err := validateAdvisoryUnits(req.SellableUnits); err != nil {
+		return nil, err
+	}
 	if strings.TrimSpace(req.RoomTypeID) == "" {
 		return nil, validation("roomTypeId", messages.Text("error.validation.room_type_required", nil), nil)
 	}
@@ -117,13 +171,18 @@ func (s *Service) Create(req CreateRequest) (*store.Reservation, *store.OpError)
 	if oerr := s.CheckRestrictionsHook(req.RoomTypeID, req.ArrivalDate, req.DepartureDate, req.BearerToken); oerr != nil {
 		return nil, oerr
 	}
+	roomTypeID := strings.TrimSpace(req.RoomTypeID)
+	ceiling, oerr := s.capacity(roomTypeID, req.ArrivalDate, req.DepartureDate, req.BearerToken)
+	if oerr != nil {
+		return nil, oerr
+	}
 	return s.store.Create(store.CreateInput{
-		RoomTypeID:    strings.TrimSpace(req.RoomTypeID),
+		RoomTypeID:    roomTypeID,
 		ArrivalDate:   req.ArrivalDate,
 		DepartureDate: req.DepartureDate,
 		GuestID:       strings.TrimSpace(guestID),
 		Guest:         req.Guest,
-		SellableUnits: req.SellableUnits,
+		Ceiling:       ceiling,
 		TotalMinor:    req.TotalMinor,
 		DiscountName:  req.DiscountName,
 		Actor:         req.Actor,
@@ -135,7 +194,9 @@ func (s *Service) Create(req CreateRequest) (*store.Reservation, *store.OpError)
 // fresh QuotePrice total for the new dates, type, and discount, so a
 // missing total is a desk-step error, not a silent keep of the old price.
 // BearerToken is the full caller "Bearer ..." Authorization header
-// value, forwarded to the stay-restriction check.
+// value, forwarded to the stay-restriction and capacity checks.
+// SellableUnits is the request's optional, advisory number (ADR-0006
+// D3): shape validated only, never a decision input.
 type ModifyRequest struct {
 	Ref            string
 	ArrivalDate    string
@@ -143,7 +204,7 @@ type ModifyRequest struct {
 	RoomTypeID     string
 	Guest          map[string]any
 	HasGuest       bool
-	SellableUnits  int
+	SellableUnits  *int
 	TotalMinor     int64
 	HasTotal       bool
 	DiscountName   *string
@@ -154,6 +215,9 @@ type ModifyRequest struct {
 
 // Modify validates one repriced change and runs the guarded store step.
 func (s *Service) Modify(req ModifyRequest) (*store.Reservation, *store.OpError) {
+	if err := validateAdvisoryUnits(req.SellableUnits); err != nil {
+		return nil, err
+	}
 	if strings.TrimSpace(req.Ref) == "" {
 		return nil, validation("reservationRef", messages.Text("error.validation.reservation_ref_required", nil), nil)
 	}
@@ -222,6 +286,10 @@ func (s *Service) Modify(req ModifyRequest) (*store.Reservation, *store.OpError)
 	if oerr := s.CheckRestrictionsHook(effectiveRoomType, effectiveArrival, effectiveDeparture, req.BearerToken); oerr != nil {
 		return nil, oerr
 	}
+	ceiling, oerr := s.capacity(effectiveRoomType, effectiveArrival, effectiveDeparture, req.BearerToken)
+	if oerr != nil {
+		return nil, oerr
+	}
 	return s.store.Modify(store.ModifyInput{
 		Ref:           strings.TrimSpace(req.Ref),
 		ArrivalDate:   arrival,
@@ -229,7 +297,7 @@ func (s *Service) Modify(req ModifyRequest) (*store.Reservation, *store.OpError)
 		RoomTypeID:    strings.TrimSpace(req.RoomTypeID),
 		GuestID:       strings.TrimSpace(guestID),
 		Guest:         guest,
-		SellableUnits: req.SellableUnits,
+		Ceiling:       ceiling,
 		TotalMinor:    req.TotalMinor,
 		DiscountName:  req.DiscountName,
 		Actor:         req.Actor,
