@@ -173,8 +173,46 @@ Design: `docs/architecture/lld.md` section 22; state diagram
 `docs/architecture/state-machine.md` section 1.1; contract delta LLD
 section 22.5.
 
+## 10. Planned delta — server-side availability derivation (Refs #631, ADR-0006 accepted)
+
+Not as-built yet: this section records the target the implementation PR
+folds into sections 2, 3, 4, 5, 6, and 7 in the same change
+(maintain-with-code). Today section 5 says the Rooms
+`CheckRoomTypeSellability` outbound call "remains a future slice" and the
+desk supplies `sellableUnits`, which is the guard's only ceiling
+(`internal/store/store.go:222`, `:415`).
+
+- New outbound client beside `internal/pricing/`: one Rooms
+  `CheckRoomTypeSellability` read per booking attempt,
+  `ROOMS_BASE_URL` (default `http://rooms:8085`), caller Bearer token
+  forwarded, five-second timeout, fail closed with
+  `UPSTREAM_UNAVAILABLE` 503 `{upstream: "rooms", operation:
+  "CheckRoomTypeSellability"}` — the same shape as
+  `internal/pricing/client.go`.
+- `Create`/`Modify` derive the guard's ceiling from
+  `totalCount - len(blockedRooms)` for the effective room type and dates
+  and pass it to the store as a derived input; the request's
+  `sellableUnits` stops reaching the store, so the
+  `input.SellableUnits < 1` validation (`internal/store/store.go:203`,
+  `:377`) and the handler's absent-means-zero default
+  (`internal/handler/handler.go:409-414`) go with it.
+- The store keeps its one-critical-section count-and-insert shape; the
+  counted states stay `confirmed` + `checked-in`.
+- New `UPSTREAM_UNAVAILABLE` message branch in the catalogue for the
+  capacity read (the code itself is already in
+  `contracts/errors/envelope.json` since #627) plus the contract delta in
+  LLD section 26.5 and the fixture updates in `contract-tests/`
+  (advisory field, the new error on the two booking operations).
+
+Design: `docs/architecture/lld.md` section 26; threat-model B6 and
+residual risks R-OVB-1..R-OVB-6 in
+`docs/technical/security-threat-model.md`.
+
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-946
 
 <!-- ao-role: dev -->
 Role: dev · AO session hotel-mgmt-1075
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-941
