@@ -701,3 +701,49 @@ as they are.
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1046
+
+## 21. Bounded request bodies and finite server timeouts (Refs #630)
+
+The single on-premise host runs every backend service, and until #630 no
+ingress path had a body ceiling or an explicit server timeout: one
+oversized body could exhaust the host's memory and one stalled peer could
+hold a connection and a worker indefinitely. From #630, every backend
+service caps a request body at **65 536 bytes (64 KiB)** — a code
+constant, never configuration (D-34) — refuses an oversized body with the
+shared envelope (`VALIDATION_FAILED`, 400, `details` naming `body`, the
+plain `error.transport.body_too_large` sentence), and runs with explicit
+finite header-read, body-read, response-write, and idle bounds on the Go
+`http.Server`, the four Node servers, and Billing's embedded Tomcat.
+
+Three properties define the change:
+
+- **Refuse before work.** The ceiling is enforced where each stack reads
+  the body — Node `readBody`, Go `decodeBody` with `http.MaxBytesReader`,
+  and a servlet filter ahead of Billing's `@RequestBody` — before parsing
+  and before any store, provider, or folio call, so a refused request
+  writes nothing.
+- **No new vocabulary.** `VALIDATION_FAILED` is already in
+  `contracts/errors/envelope.json`; no `PAYLOAD_TOO_LARGE` token, enum
+  edit, or desk branch is added, and an under-ceiling payload behaves
+  exactly as today (ADR-0004 D1).
+- **Finite bounds sized above legitimate waits.** The 15-second response
+  write bound clears the 5-second Reservations → Rates pricing read
+  (`services/reservations/internal/pricing/client.go:33`) and Stay's
+  2-second completion read (`services/stay/src/reservationsClient.ts:31`);
+  no legitimate desk call is cut off.
+
+The change adds no subsystem, dependency edge, data model, lifecycle
+state, environment setting, deployment delta, or reader-visible surface;
+it is a transport hardening of paths that already exist, so the container
+and component views (sections 2 and 3) stand unchanged. Enforcement
+points, the timeout table, and the per-flow diagram:
+`docs/architecture/lld.md` [section 29](lld.md#29-bounded-request-bodies-and-finite-server-timeouts-refs-630);
+per-service Operations notes: `docs/architecture/services/*.md`
+section 7; the refusal in the taxonomy:
+`docs/technical/error-handling.md` section 1.1; the pair-wise transport
+note: `docs/technical/integration.md` section 10. Risk R-13 records that
+the ceiling and the timeout values can be set too tight as well as too
+loose; rollback is the single implementation PR.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1078

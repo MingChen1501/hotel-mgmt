@@ -284,7 +284,40 @@ the desk.
   least two distinct per-hotel config sets per release candidate,
   covering every section 3.1 item in at least one setup.
 
-## 10. Deferred needs (explicit, with reason)
+## 10. Transport bounds on every pair (Refs #630)
+
+Every sync pair in sections 1–7 carries JSON over HTTP, and from #630
+every receiving server bounds that transport in two ways without changing
+any contract term:
+
+- **Request-body ceiling.** A receiver caps the body at **65 536 bytes
+  (64 KiB)**, a code constant per service and never configuration (D-34).
+  A body above it is refused with the shared envelope — HTTP 400
+  `VALIDATION_FAILED`, `details` `{"field": "body"}`, the plain
+  `error.transport.body_too_large` sentence, a fresh `traceId` — before
+  the payload is parsed and before the provider does any work. A body at
+  exactly 65 536 bytes is served; one more is refused. `details.field`
+  `body` matches no field a consumer branches on, and the consumer-facing
+  tables above are unchanged.
+- **Finite server timeouts.** Every server declares header-read,
+  body-read, response-write, and idle bounds (LLD
+  [section 29.3](../architecture/lld.md#293-server-timeouts-per-stack)),
+  all sized above the longest wait a legitimate pair call can make — the
+  5-second Reservations → Rates pricing read (C1,
+  `services/reservations/internal/pricing/client.go:33`) and the
+  2-second completion reads (C4 Stay → Reservations,
+  `services/stay/src/reservationsClient.ts:31`; C8 Billing → Stay,
+  specified at 2 seconds in section 3 above).
+
+This is a transport setting, not a contract revision: no operation,
+request field, response shape, status, or code changes, so no
+`Contract-Version` bump and no contract file or manifest edit follows.
+`script/contract-check.sh` stays green with every fixture resolving, and
+every fixture sits far below the ceiling (the largest request schema,
+`contracts/http/ModifyReservation.json`, is 3 530 bytes). Rate limiting,
+connection limits, and reverse-proxy configuration stay out of scope.
+
+## 11. Deferred needs (explicit, with reason)
 
 - F1 — Conditional RES -> BIL operation for no-show charges (BA
   OQ-C6): no such contract exists. Reason: undecided product rule
