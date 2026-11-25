@@ -12,9 +12,11 @@ and checked-in `STATE_ILLEGAL` branches), `MarkNoShow` (plus the
 too-early and in-house `STATE_ILLEGAL` branches), `GetReservation`,
 `QueryCalendar`, and the consumed `CheckSellableCount` /
 `CheckRoomTypeSellability` shapes from the booking step
-(integration C1/C2); the sellability consumer fixture asserts the
-derived ceiling (`totalCount - blockedRooms`) the guard counts against
-(ADR-0006, #631).
+(integration C1/C2); the sellability consumer fixture records the
+expected derived ceiling (`totalCount - blockedRooms`) the guard counts
+against, as a documented expectation — `script/contract-check.sh`
+parses the fixtures and checks the operation name, it asserts no
+payload value (ADR-0006, #631).
 
 The paired-concurrency guards for `NFR-CON-1` (booking and modify)
 run in `internal/store/store_test.go` against the real store. The

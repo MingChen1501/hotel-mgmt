@@ -143,7 +143,7 @@
     {
       "code": "NOT_FOUND",
       "status": 404,
-      "when": "Unknown reservation reference."
+      "when": "Unknown reservation reference, or an unknown new room type refused by Rooms and surfaced unchanged (ADR-0006 D4)."
     }
   ]
 }

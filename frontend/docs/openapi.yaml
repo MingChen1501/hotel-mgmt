@@ -272,6 +272,13 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: 'NOT_FOUND: Unknown room type: Rooms refused the capacity read and the refusal is surfaced unchanged
+            (ADR-0006 D4).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
         '409':
           description: 'CONFLICT: No sellable unit left for the type and dates; details name type+dates (NFR-CON-1).'
           content:

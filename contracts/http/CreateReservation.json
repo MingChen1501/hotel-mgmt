@@ -146,6 +146,11 @@
       "code": "VALIDATION_FAILED",
       "status": 400,
       "when": "Missing field, bad date order, or a hotel-mandatory guest field is missing (FR-CUS-1)."
+    },
+    {
+      "code": "NOT_FOUND",
+      "status": 404,
+      "when": "Unknown room type: Rooms refused the capacity read and the refusal is surfaced unchanged (ADR-0006 D4)."
     }
   ]
 }

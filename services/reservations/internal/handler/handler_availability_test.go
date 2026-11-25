@@ -35,6 +35,7 @@ func stubRoomsInventory(t *testing.T, inventory map[string]map[string]any, seenA
 			w.WriteHeader(http.StatusNotFound)
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"code": "NOT_FOUND", "message": "Unknown room type.", "traceId": "rooms-stub",
+				"details": map[string]any{"roomType": roomType},
 			})
 			return
 		}
@@ -233,5 +234,52 @@ func TestUnwiredCapacityRefusesBooking(t *testing.T) {
 	}
 	if got := len(st.Query("2026-11-01", "2026-11-03", "deluxe-type")); got != 0 {
 		t.Fatalf("store holds %d reservations after refusal, want 0", got)
+	}
+}
+
+// TestUnknownRoomTypeSurfacesNotFound pins the contract's `NOT_FOUND`
+// 404 on both booking writes (ADR-0006 D4): Rooms refuses an unknown room
+// type inside CheckRoomTypeSellability, the client surfaces that
+// envelope unchanged, and nothing is written.
+func TestUnknownRoomTypeSurfacesNotFound(t *testing.T) {
+	var seenAuth string
+	var seenBody map[string]any
+	rooms := stubRoomsInventory(t, map[string]map[string]any{
+		"deluxe-type": sellableReply("deluxe-type", 2),
+	}, &seenAuth, &seenBody)
+	defer rooms.Close()
+	mux, st := muxOverRooms(rooms.URL)
+
+	create := loopBody("unknown-type-create")
+	create["roomTypeId"] = "ghost-type"
+	code, body := post(t, mux, "/v1/reservations/CreateReservation", create, deskToken)
+	if code != http.StatusNotFound || body["code"] != "NOT_FOUND" {
+		t.Fatalf("unknown-type create = %d %v, want 404 NOT_FOUND", code, body)
+	}
+	details, _ := body["details"].(map[string]any)
+	if details["roomType"] != "ghost-type" {
+		t.Fatalf("create details = %v, want the unknown room type named", body["details"])
+	}
+	if got := len(st.Query("2026-11-01", "2026-11-03", "ghost-type")); got != 0 {
+		t.Fatalf("store holds %d reservations after the refusal, want 0", got)
+	}
+
+	// Modify takes the same pass-through; the booking itself exists.
+	code, created := post(t, mux, "/v1/reservations/CreateReservation", loopBody("unknown-type-holder"), deskToken)
+	if code != http.StatusOK {
+		t.Fatalf("holder create = %d (%v), want 200", code, created)
+	}
+	ref, _ := created["reservationRef"].(string)
+	code, body = post(t, mux, "/v1/reservations/ModifyReservation", map[string]any{
+		"reservationRef": ref,
+		"roomTypeId":     "ghost-type",
+		"priceBasis":     map[string]any{"totalMinor": 24000},
+		"actor":          "front-desk",
+	}, deskToken)
+	if code != http.StatusNotFound || body["code"] != "NOT_FOUND" {
+		t.Fatalf("unknown-type modify = %d %v, want 404 NOT_FOUND", code, body)
+	}
+	if got := len(st.Query("2026-11-01", "2026-11-03", "deluxe-type")); got != 1 {
+		t.Fatalf("store holds %d reservations after the refused modify, want the original 1", got)
 	}
 }

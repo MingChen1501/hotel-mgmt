@@ -4583,7 +4583,7 @@ architect-owned delta.
    (`services/reservations/internal/service/service.go:137-167`).
 2. Resolve the effective room type and dates: the request's value where
    supplied, otherwise the stored row's
-   (`services/reservations/internal/service/service.go:207-218`).
+   (`services/reservations/internal/service/service.go:271-282`).
 3. Consult the Rates stay-restriction check first, unchanged
    (`service.go:168-173` on Create, `:283-288` on Modify), so a
    restricted stay still refuses as `STATE_ILLEGAL` naming the
@@ -4620,18 +4620,18 @@ architect-owned delta.
 7. Ignore the request's `sellableUnits` for the decision. It is
    shape-validated only when present (integer `>= 0`, otherwise
    `VALIDATION_FAILED` naming the field) and does not reach the store
-   (`services/reservations/internal/handler/handler.go:417-436`;
+   (`services/reservations/internal/handler/handler.go:417-438`;
    `service.go:125-132`): the store's `input.SellableUnits < 1`
    validation and the handler's absent-means-zero default are gone, and
    the ceiling arrives as `CreateInput.Ceiling` / `ModifyInput.Ceiling`
-   (`store.go:63-77`, `:93-107`).
+   (`store.go:63-77`, `:93-108`).
 8. Keep the idempotency replay inside the store (no second unit
    consumed) and keep the read before the store call, so the ceiling is
    evaluated on every attempt, replay included.
 
 **Counted states stay as built.** The guard counts `confirmed` and
-`checked-in` rows and nothing else (`activeState`, `store.go:195-197`;
-`postgres.go:176-183`, `:552-557`), so a cancelled, no-show, or closed
+`checked-in` rows and nothing else (`activeState`, `store.go:204-206`;
+`postgres.go:174`, `:548`), so a cancelled, no-show, or closed
 reservation releases its unit while an in-house guest keeps holding its
 own. `AC-OVB-1` words that same set — a cancelled, no-show, or closed
 reservation "releases its held unit exactly as today", a checked-in one
@@ -4715,8 +4715,8 @@ Edge trace:
 
 | File | Change | Version effect |
 |---|---|---|
-| `contracts/http/CreateReservation.json` | `sellableUnits` required -> optional and advisory ("ignored; the server derives the ceiling from Rooms"); errors add `UPSTREAM_UNAVAILABLE` (503) | minor (1.1 -> 1.2, ADR-0004 D1) |
-| `contracts/http/ModifyReservation.json` | same delta for the new type and dates | minor (1.0 -> 1.1) |
+| `contracts/http/CreateReservation.json` | `sellableUnits` required -> optional and advisory ("ignored; the server derives the ceiling from Rooms"); errors add `NOT_FOUND` (404, an unknown room type refused by Rooms and surfaced unchanged) and `UPSTREAM_UNAVAILABLE` (503) | minor (1.1 -> 1.2, ADR-0004 D1) |
+| `contracts/http/ModifyReservation.json` | same delta for the new type and dates; its existing `NOT_FOUND` row now also covers an unknown new room type | minor (1.0 -> 1.1) |
 | `contracts/http/CheckRoomTypeSellability.json` | shape unchanged; gains a server-side consumer (integration C2 becomes live) | none |
 | `contracts/errors/envelope.json` | unchanged — `UPSTREAM_UNAVAILABLE` (503) is already in the enum and `statusMapping` (#627), so no contract file edit comes from this change | none |
 
@@ -4753,7 +4753,9 @@ suites are `services/reservations/internal/store/store_test.go`,
   `{upstream: "rooms", operation: "CheckRoomTypeSellability"}`, nothing
   written.
 - **Provider 4xx** — Rooms answers `NOT_FOUND` for an unknown type and
-  `UNAUTHENTICATED` for a rejected session: both surfaced unchanged.
+  `UNAUTHENTICATED` for a rejected session: both surfaced unchanged,
+  and a `Create`/`Modify` naming an unknown room type answers the
+  contract's `NOT_FOUND` 404 (`TestUnknownRoomTypeSurfacesNotFound`).
 - **Atomicity** — two simultaneous last-unit creates (and two
   simultaneous modifies into the last unit): exactly one 200 and one
   409 `CONFLICT`.
