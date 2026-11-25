@@ -758,3 +758,57 @@ the single implementation PR.
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1117
+
+## 23. Report date ranges are bounded by one declared span (Refs #641)
+
+Reporting checked a report window's shape and order but never its span,
+and both range reads then walk every date in the window under the store
+mutex (`services/reporting/internal/store/store.go:440-453` for the
+validation, the loops at `:460-534`), so a request such as
+`0001-01-01`..`9999-12-31` looped over millions of dates while every
+other report waited behind the same lock — a self-inflicted denial of
+service on the single on-premise host. From #641, `OccupancyReport` and
+`RevenueSummary` accept a window of **at most 730 nights between
+`dateFrom` and `dateTo`** (731 inclusive dates), refused naming `dateTo`
+otherwise.
+
+Three properties define the change:
+
+- **Refuse before work.** The span is checked where the window is
+  already validated — the one `parseRange` helper both range reads call
+  — so it runs after the session check and the presence checks and
+  strictly before the store lock and before any per-date walk. A refused
+  window takes no mutex, reads no projection, and changes nothing.
+- **One number, in code, agreed across backends.** 730 nights is the
+  two-year window `NFR-PERF-2` documents and the existing perf guard
+  drives, and the same bound Rates already applies to a stay range
+  (`services/rates/internal/store/store.go:254-256`), so the two
+  backends stop disagreeing on the longest range they accept. It is a
+  store constant, never configuration (D-36), so this change carries no
+  deployment, environment, runbook, or per-hotel delta.
+- **No new vocabulary and nothing moved inside the cap.** A wider window
+  answers the existing caller-input code — `VALIDATION_FAILED`, 400,
+  `details` naming `dateTo`, one new plain catalogue sentence
+  `reporting.validation.date_range_span` — so no token, status, enum
+  edit, or contract file changes (ADR-0004 D1), no desk screen calls
+  either operation, and every window at or under the cap returns
+  exactly today's rows, row order, zero-filled dates, and `asOf`.
+  `DailySheet` and `HousekeepingReport` are not on this path.
+
+The change adds no subsystem, dependency edge, data model, lifecycle
+state, operation, or reader-visible surface: it is one guard on two
+existing read operations, so the container and component views
+(sections 2 and 3) stand unchanged. Enforcement point and the
+nights-versus-dates arithmetic, the refusal contents, the per-flow
+diagram with the happy and refusal edges, the contract decision, and the
+verification plan: `docs/architecture/lld.md`
+[section 31](lld.md#31-reporting-date-ranges-carry-a-declared-span-cap-refs-641);
+per-service note: `docs/architecture/services/reporting.md` sections 4,
+6, and 8; the refusal in the taxonomy:
+`docs/technical/error-handling.md` section 1.3; the date-window
+convention: `docs/technical/api-spec.md` section 1. Risk R-17 records
+that the cap can be set too tight as well as too loose; rollback is the
+single implementation PR.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1130

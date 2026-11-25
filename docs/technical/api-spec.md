@@ -18,7 +18,18 @@ section 4).
 - Identity: every call carries the signed-in user and role; each
   module enforces role checks (`FR-ADM-2`, `NFR-SEC-1`).
 - Time: timestamps carry their UTC offset; dates follow the hotel's
-  local calendar day (`NFR-TZ-1`).
+  local calendar day (`NFR-TZ-1`). A contract that accepts a date range
+  also declares its maximum span, because the span is a cross-field bound
+  a request schema cannot express: Reporting's two range reports accept
+  at most **730 nights** between `dateFrom` and `dateTo` (731 inclusive
+  dates) and refuse a wider window with `VALIDATION_FAILED` naming
+  `dateTo`, before the store lock — the same bound Rates applies to a
+  stay range (`services/rates/internal/store/store.go:254-256`), a store
+  constant rather than configuration (LLD
+  [section 31](../architecture/lld.md#31-reporting-date-ranges-carry-a-declared-span-cap-refs-641);
+  Refs #641). The two request manifests publish no `maximum`: the bound
+  relates two fields, so no keyword in them states it and no validator on
+  the request path would read one.
 - Money: amounts are integers in the hotel's minor currency unit; the
   price basis recorded at booking never changes unless staff
   explicitly recalculate it (`FR-RTE-5`). Wherever a service accepts a
@@ -54,7 +65,7 @@ section 4).
 | `PricingService` | Rate-plan setup, price quote, discount application, restriction check. Emits `RateEvents`. |
 | `GuestService` | Profile CRUD, preference/notes update, repeat-guest flag, confirmation record. Emits `GuestEvents`. |
 | `BillingService` | Folio open, charge posting, payment recording, tax/fee derivation, day-close, settlement check; stay verification before every folio write (Refs #634); money amounts whole and bounded by one ceiling, refused in the adapter (Refs #635). Emits `FolioEvents`. |
-| `ReportingService` | Occupancy, revenue, daily sheet, housekeeping reports (read API over the reporting read model). |
+| `ReportingService` | Occupancy, revenue, daily sheet, housekeeping reports (read API over the reporting read model); the two range reports cap a window at 730 nights and refuse a wider one before any read (Refs #641). |
 | `AdminService` | Hotel profile, users/roles, configuration values, export/backup runs. Emits `ConfigChangedEvents`. |
 
 ## 3. Open points (superseded — decided or deferred elsewhere; kept as history)
@@ -92,3 +103,6 @@ Role: architect · AO session hotel-mgmt-1046
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1117
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1130
