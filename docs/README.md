@@ -69,7 +69,7 @@ Development table, which use a `../` prefix.
 
 | Type | Path | Status | Owner | Purpose |
 |---|---|---|---|---|
-| MVP requirements | `requirements/mvp-requirements.md` | active | `business-analyst` | numbered FRs, measurable NFRs, per-hotel workflow customisation, traceability (Closes #10; section 8 Refs #338; section 23 Refs #646; section 24 Refs #647; section 25 Refs #648; section 28 Refs #634; section 29 Refs #627; section 30 Refs #630) |
+| MVP requirements | `requirements/mvp-requirements.md` | active | `business-analyst` | numbered FRs, measurable NFRs, per-hotel workflow customisation, traceability (Closes #10; section 8 Refs #338; section 23 Refs #646; section 24 Refs #647; section 25 Refs #648; section 27 Refs #631; section 28 Refs #634; section 29 Refs #627; section 30 Refs #630) |
 | Domain consistency audit | `requirements/domain-consistency-audit.md` | active | `business-analyst` | cross-doc audit: scope↔PRD↔stories↔FRs/NFRs, gaps, contradictions, deduped questions, terminology (Closes #41) |
 | Behaviour sequence diagrams | `requirements/sequence-diagrams.md` | active | `business-analyst` | time-ordered booking, check-in/out, folio and housekeeping flows with FR and FR-CUS mapping (Closes #43; Seq-9 Refs #646; Seq-8 Refs #647; Seq-15 Refs #648; Seq-10/Seq-11 Refs #634) |
 | Functional requirements | `requirements/functional-requirements.md` | stub (not needed yet) | `business-analyst` | numbered functional requirements with one guard each |
