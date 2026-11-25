@@ -16,7 +16,7 @@ Go `handler / service / store`, where the service is a thin validation-and-deleg
 |---|---|---|
 | Transport + auth + body decoding | `internal/handler/handler.go` | `NewMux(svc)` routes `POST /v1/reporting/<Operation>`; Bearer presence check; date-window required-field checks before delegating |
 | Read step order | `internal/service/service.go` | validates nothing itself beyond delegating: `OccupancyReport` (:31), `RevenueSummary` (:37), `DailySheet` (:43), `HousekeepingReport` (:49) straight to the store; never reads other modules' stores |
-| Projections + storage | `internal/store/store.go` (`Store`), `internal/store/postgres.go` | `Apply` ingests one domain event (:191), `Rebuild` replays the log (:217), `project` routes by event type (:237); `Occupancy` (:460), `Revenue` (:515), `Sheet` (:542), `Housekeeping` (:618) serve reads with an as-of timestamp |
+| Projections + storage | `internal/store/store.go` (`Store`), `internal/store/postgres.go` | `Apply` ingests one domain event (:199), `Rebuild` replays the log (:225), `project` routes by event type (:245); `Occupancy` (:474), `Revenue` (:529), `Sheet` (:556), `Housekeeping` (:632) serve reads with an as-of timestamp |
 | Health | `internal/health/` | `GET /healthz` with the module identity (`cmd/server/main.go:30`) |
 | Boot | `cmd/server/main.go` | store wiring exposed for the rebuild job (`service.Store()`), mounts health + read routes (:28-32) |
 
@@ -37,7 +37,7 @@ flowchart TD
 Edge trace (every edge cites code):
 
 - A–B: Bearer presence + JSON decode (`internal/handler/handler.go:114-133`).
-- C: `dateFrom`/`dateTo` required (:136-139); the store validates the window shape (`internal/store/store.go:460`).
+- C: `dateFrom`/`dateTo` required (:136-139); the store validates the window shape and span (`internal/store/store.go:448`).
 - D: per-night, per-type occupied/available counts served from the rebuilt projection — the service never touches another module's rows (`internal/service/service.go:31-35`).
 - E: `nights` plus the read-model `asOf` timestamp returned so freshness is explicit (`internal/handler/handler.go:147-160`).
 
@@ -56,10 +56,10 @@ flowchart TD
 
 Edge trace:
 
-- W: missing `dateFrom`/`dateTo`/`businessDate` → `VALIDATION_FAILED` before any store call (`internal/handler/handler.go:136-229`); malformed windows refused in `Occupancy`/`Revenue`/`Sheet`/`Housekeeping` (`internal/store/store.go:460-618`).
-- C (from #641, planned — refreshed to the as-built `file:line` by the implementation PR per maintain-with-code): a window whose `dateTo` is more than 730 nights after `dateFrom` is refused in `parseRange` (`internal/store/store.go:440-453`) before `Occupancy` takes the lock (`:465`) and before either loop runs (`:480`, `:523`), so the refused read holds no mutex and walks no date; details: [section 8](#8-delta--report-date-ranges-carry-a-declared-span-cap-refs-641) and `docs/architecture/lld.md` [section 31](../lld.md#31-reporting-date-ranges-carry-a-declared-span-cap-refs-641).
-- V: `Sheet` on an unknown business date surfaces `NOT_FOUND` (`internal/store/store.go:542`).
-- J–K: `Apply` ingests one event at a time and `project` routes known types only — `reservation.created` (:243), `reservation.cancelled`/`no-show` (:267), `stay.checked-in` (:275), `stay.checked-out` (:299), `rate.availability-set` (:331), `folio.charge-posted` (:345), `folio.payment-recorded` (:373), `config.changed` (:383); `Rebuild` replays the whole log to replace the projection (:217-235).
+- W: missing `dateFrom`/`dateTo`/`businessDate` → `VALIDATION_FAILED` before any store call (`internal/handler/handler.go:136-229`); malformed or over-wide windows refused in `Occupancy`/`Revenue`/`Sheet`/`Housekeeping` (`internal/store/store.go:474-632`).
+- C (from #641): a window whose `dateTo` is more than 730 nights after `dateFrom` is refused in `parseRange` (`internal/store/store.go:448-467`) before `Occupancy` takes the lock (`:479`) and before either loop runs (`:494`, `:537`), so the refused read holds no mutex and walks no date; details: [section 8](#8-delta--report-date-ranges-carry-a-declared-span-cap-refs-641) and `docs/architecture/lld.md` [section 31](../lld.md#31-reporting-date-ranges-carry-a-declared-span-cap-refs-641).
+- V: `Sheet` on an unknown business date surfaces `NOT_FOUND` (`internal/store/store.go:556`).
+- J–K: `Apply` ingests one event at a time and `project` routes known types only — `reservation.created` (:251), `reservation.cancelled`/`no-show` (:275), `stay.checked-in` (:283), `stay.checked-out` (:307), `rate.availability-set` (:339), `folio.charge-posted` (:353), `folio.payment-recorded` (:381), `config.changed` (:391); `Rebuild` replays the whole log to replace the projection (:225-243).
 
 Rollback: none needed — reads never mutate, and rebuild replaces rather than patches the projection.
 
@@ -75,9 +75,9 @@ Envelope `{code, message, details, traceId}` (same shape as reservations) to `do
 
 | Code | Status | Raised when |
 |---|---|---|
-| `VALIDATION_FAILED` | 400 | missing/malformed date window or business date (`internal/handler/handler.go:136-229`; `internal/store/store.go:460-618`); from #641 a window wider than 730 nights, naming `dateTo` (`internal/store/store.go:440-453`, section 8) |
+| `VALIDATION_FAILED` | 400 | missing/malformed date window or business date (`internal/handler/handler.go:136-229`; `internal/store/store.go:474-632`); from #641 a window wider than 730 nights, naming `dateTo` (`internal/store/store.go:448-467`, section 8) |
 | `UNAUTHENTICATED` | 401 | missing session token (`internal/handler/handler.go:118-128`) |
-| `NOT_FOUND` | 404 | unknown business date for the daily sheet (`internal/store/store.go:542`) |
+| `NOT_FOUND` | 404 | unknown business date for the daily sheet (`internal/store/store.go:556`) |
 
 ## 7. Operations
 
@@ -159,11 +159,11 @@ refreshes these line pins per maintain-with-code):
   most {max} nights after dateFrom.") with `{max}` rendered from the
   constant through `messages.Num`, raised in `parseRange` as its last
   check — after the format and order refusals, after the handler's
-  session and presence checks, and before `s.mu.Lock()` at `:465`/`:520`.
+  session and presence checks, and before `s.mu.Lock()` at `:479`/`:534`.
   A refused window therefore takes no lock, walks no date, and reads no
   projection.
 - **Nothing inside the cap changes**, and nothing moves for
-  `DailySheet` (`:542`) or `HousekeepingReport` (`:618`): same rows, row
+  `DailySheet` (`:556`) or `HousekeepingReport` (`:632`): same rows, row
   order, zero-filled dates, and `asOf`; same missing, malformed, and
   out-of-order sentences; the catalogue gains one key and no code token,
   operation, request or response field, event, or contract file changes

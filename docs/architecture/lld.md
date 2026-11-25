@@ -6008,16 +6008,16 @@ currently disagree on the longest range they accept.
 ### 31.1 Where the check sits: in `parseRange`, before the lock, after auth
 
 The refusal is added inside `parseRange`
-(`services/reporting/internal/store/store.go:440-453`), as the fourth
+(`services/reporting/internal/store/store.go:448-467`), as the fourth
 and last of its window checks, after both format refusals and after the
 order refusal. That position is the whole design:
 
 - **It is the one helper both range reports already share.**
-  `Occupancy` calls it at `:461` and `Revenue` at `:516`, and no other
+  `Occupancy` calls it at `:475` and `Revenue` at `:530`, and no other
   read does, so the span rule has exactly one home and no second copy to
   drift from — the same "one helper, one rule" reasoning as the Billing
-  money adapter (section 30.1). `Sheet` (`:542`) and `Housekeeping`
-  (`:618`) never call it, which keeps the one-date read and the
+  money adapter (section 30.1). `Sheet` (`:556`) and `Housekeeping`
+  (`:632`) never call it, which keeps the one-date read and the
   no-range read untouched by construction rather than by a second
   condition.
 - **It runs after authentication and after the presence checks.** The
@@ -6028,9 +6028,9 @@ order refusal. That position is the whole design:
   reached without a session, and a missing field keeps its existing
   sentence instead of being reinterpreted as an over-wide window.
 - **It runs before the store mutex.** Both call sites take `s.mu.Lock()`
-  only after `parseRange` returns (`Occupancy` `:461` then `:465`,
-  `Revenue` `:516` then `:520`), and the per-date loops start after the
-  lock (`:480`, `:523`). A refused window therefore takes no lock, walks
+  only after `parseRange` returns (`Occupancy` `:475` then `:479`,
+  `Revenue` `:530` then `:534`), and the per-date loops start after the
+  lock (`:494`, `:537`). A refused window therefore takes no lock, walks
   no date, reads no projection, and never holds up another report — the
   property `AC-RPT-5` states and the only reason the cap is worth having.
 - **Why not the handler.** The handler is transport: it tests presence
@@ -6078,7 +6078,7 @@ keeps the backends in agreement and cuts no documented look-back.
 
 Both reports treat their window as inclusive at both ends — the loops
 advance one calendar day at a time and stop only when the day is after
-`dateTo` (`store.go:480`, `:523`) — so the cap is stated in **nights
+`dateTo` (`store.go:494`, `:537`) — so the cap is stated in **nights
 between the ends** and the accepted row count is one more than that:
 
 | `dateFrom` | `dateTo` | nights | inclusive dates | answer |
@@ -6091,19 +6091,19 @@ between the ends** and the accepted row count is one more than that:
 The comparison is calendar arithmetic on the two parsed values, not a
 duration assumption:
 
-- Both ends come from `time.Parse(dateLayout, …)` (`store.go:441`,
-  `:445`), so both are UTC midnights and neither carries an offset or a
+- Both ends come from `time.Parse(dateLayout, …)` (`store.go:449`,
+  `:453`), so both are UTC midnights and neither carries an offset or a
   DST transition.
 - The check refuses when `to.After(from.AddDate(0, 0,
   maxReportRangeNights))`, i.e. when the far end is more than 730
   calendar days after the near end. Using the same `AddDate(0, 0, n)`
-  form the loops advance by (`:480`, `:523`) means the bound and the
+  form the loops advance by (`:494`, `:537`) means the bound and the
   walk count dates the same way: month lengths and the leap day are the
   calendar's problem in both places, so 2024-02-28..2024-03-01 (two
   nights in a leap year) and 2023-02-28..2023-03-01 (one night) are each
   counted correctly without a special case.
 - Order still answers first. A reversed window has a negative span; the
-  existing order refusal (`:450-452`) fires before the span comparison,
+  existing order refusal (`:457-459`) fires before the span comparison,
   so it keeps `error.validation.date_range_order` naming `dateTo` and
   never borrows the span sentence.
 
@@ -6117,7 +6117,7 @@ duration assumption:
   handler's rendering keep what they serve today (`writeOpError`,
   `services/reporting/internal/handler/handler.go:38-45`).
 - **Details: `{"field": "dateTo"}`.** The far end is the offending one,
-  which matches the existing order refusal (`:450-452`) and the field
+  which matches the existing order refusal (`:457-459`) and the field
   Rates names for its own bound (`departureDate`,
   `services/rates/internal/store/store.go:254-256`), so a caller reads
   one field name for every "your window is too long" answer.
@@ -6139,15 +6139,15 @@ duration assumption:
   (`handler.go:38-45`).
 - **One complete answer, no work done.** The refusal returns from
   `parseRange`, so the caller's read is over: no mutex is taken
-  (`:465`, `:520`), no date is walked (`:480`, `:523`), no projection is
+  (`:479`, `:534`), no date is walked (`:494`, `:537`), no projection is
   read, no `asOf` is sampled, and no other report waits. Nothing is
   written — the reports are read-only projections — so there is no
   partial state to unwind.
 - **Nothing inside the cap changes.** Every accepted window keeps its
   rows, row order, zero rows for dates without data, and `asOf`; the
   missing, malformed, and out-of-order refusals keep their code, status,
-  field, and sentence; `DailySheet` (`:542`) and `HousekeepingReport`
-  (`:618`) are not on this path and answer exactly as before
+  field, and sentence; `DailySheet` (`:556`) and `HousekeepingReport`
+  (`:632`) are not on this path and answer exactly as before
   (`AC-RPT-6`).
 
 ### 31.4 Per-flow diagram — range read: served, refused, and why nothing waits
@@ -6158,12 +6158,12 @@ flowchart TD
     B -->|missing or blank| X1[401 UNAUTHENTICATED, no field read]
     B -->|present| C{dateFrom and dateTo present  handler.go:137-145 / :163-170}
     C -->|absent| X2[existing 400 VALIDATION_FAILED, field dateFrom or dateTo, error.validation.date_from_required / date_to_required]
-    C -->|present| D[parseRange  store.go:440]
-    D -->|malformed end| X3[existing 400 VALIDATION_FAILED naming the field, error.validation.date_from_format / date_to_format  store.go:441-449]
-    D -->|dateTo before dateFrom| X4[existing 400 VALIDATION_FAILED naming dateTo, error.validation.date_range_order  store.go:450-452]
+    C -->|present| D[parseRange  store.go:448]
+    D -->|malformed end| X3[existing 400 VALIDATION_FAILED naming the field, error.validation.date_from_format / date_to_format  store.go:449-456]
+    D -->|dateTo before dateFrom| X4[existing 400 VALIDATION_FAILED naming dateTo, error.validation.date_range_order  store.go:457-459]
     D -->|dateTo more than 730 nights after dateFrom| R[new 400 VALIDATION_FAILED, details field dateTo, reporting.validation.date_range_span with 730  new check]
-    D -->|span at or under 730 nights| E[Take the store lock  Occupancy store.go:465 / Revenue store.go:520]
-    E --> F[Walk each inclusive date  Occupancy store.go:480 / Revenue store.go:523]
+    D -->|span at or under 730 nights| E[Take the store lock  Occupancy store.go:479 / Revenue store.go:534]
+    E --> F[Walk each inclusive date  Occupancy store.go:494 / Revenue store.go:537]
     F --> G[200 rows, asOf]
     R --> N[no lock taken, no date walked, no projection read, no state written]
     X1 --> N2[nothing read, nothing written]
@@ -6184,25 +6184,25 @@ adds):
   `strField` (`:137-145`, `:163-170`), unchanged.
 - C–D: `svc.OccupancyReport` / `svc.RevenueSummary`
   (`services/reporting/internal/service/service.go:31-41`), which
-  delegate straight to `store.Occupancy` (`store.go:460`) and
-  `store.Revenue` (`:515`); each calls `parseRange` first (`:461`,
-  `:516`).
-- D–X3 and D–X4: the existing format and order refusals (`:441-449`,
-  `:450-452`), unchanged — order answers before span, so a reversed
+  delegate straight to `store.Occupancy` (`store.go:474`) and
+  `store.Revenue` (`:529`); each calls `parseRange` first (`:475`,
+  `:530`).
+- D–X3 and D–X4: the existing format and order refusals (`:449-456`,
+  `:457-459`), unchanged — order answers before span, so a reversed
   window keeps the order sentence.
 - D–R: the new span comparison against `from.AddDate(0, 0,
   maxReportRangeNights)` (31.2), raised through `validation("dateTo",
   messages.Text("reporting.validation.date_range_span", …))`
   (`store.go:30-32`).
-- D–E: the lock is taken only after `parseRange` returns (`:465`,
-  `:520`); a refusal never reaches it, which is the difference between
+- D–E: the lock is taken only after `parseRange` returns (`:479`,
+  `:534`); a refusal never reaches it, which is the difference between
   this change and the finding.
-- E–F–G: the per-date walk (`:480`, `:523`) and the handler's response
+- E–F–G: the per-date walk (`:494`, `:537`) and the handler's response
   rendering (`handler.go:147-159`, `:173-185`), unchanged.
 - R–N and X1/X3/X4–N2: `writeOpError` renders one envelope with
   `code`, `message`, `details`, and a fresh `traceId` (`handler.go:38-45`);
-  no lock, no walk, no projection read (`Occupancy` `:465-480`,
-  `Revenue` `:520-523` are all below the refusal).
+  no lock, no walk, no projection read (`Occupancy` `:479-494`,
+  `Revenue` `:534-537` are all below the refusal).
 - N2–N3: the rollback frame. The reports are reads over the rebuilt
   projection, so a refusal has no earlier write of its own to take back
   and no compensating call exists or is needed. The whole change reverts
@@ -6270,9 +6270,9 @@ satisfy.
   400, `details.field` `dateTo`, the `reporting.validation.date_range_span`
   sentence carrying `730`, and no rows — at store level beside
   `TestReportWindowsAreValidated`
-  (`services/reporting/internal/service/service_test.go:31-42`) and at
+  (`services/reporting/internal/service/service_test.go:33-44`) and at
   HTTP level beside `TestReportingAuthAndValidation`
-  (`services/reporting/internal/handler/handler_test.go:106-123`), which
+  (`services/reporting/internal/handler/handler_test.go:108-125`), which
   asserts the four envelope keys and a non-empty `traceId`.
 - **Boundary pair, per operation.** The at-cap window
   (2024-01-01..2025-12-31, 731 inclusive dates) is served and returns
@@ -6282,18 +6282,21 @@ satisfy.
   unedited: it is the acceptance evidence that the documented two-year
   window is inside the cap.
 - **The finding's own window.** A `0001-01-01`..`9999-12-31` request
-  returns the refusal with no rows. The guard asserts the answer, not a
-  timing: a mutex-placement check would be a flaky duration test, so the
-  position rule stays a review item (31.8) and the unchanged perf guard
-  is the latency evidence.
+  returns the refusal with no rows. The position rule is guarded
+  directly: `TestSpanCheckRunsBeforeTheStoreLock`
+  (`services/reporting/internal/store/store_test.go:413`) holds `s.mu`
+  and requires both over-cap reads to answer within the failure-path
+  timeout, so a check placed below the lock fails the guard rather than
+  passing on status. The guard asserts placement, not latency; the
+  unchanged perf guard remains the latency evidence.
 - **Existing window guards unchanged.** The missing, malformed, and
   out-of-order refusals keep their code, status, field, and sentence
-  with no assertion edit (`service_test.go:31-42`,
-  `handler_test.go:106-123`, `messages_test.go:28-51`); a reversed window
+  with no assertion edit (`service_test.go:33-44`,
+  `handler_test.go:108-125`, `messages_test.go:28-51`); a reversed window
   still answers the order sentence, not the span sentence.
 - **One-date and no-range reads unchanged.** `DailySheet` and
   `HousekeepingReport` guards stay green with no edit
-  (`service_test.go:44`, `handler_test.go:129`, the perf reads at
+  (`service_test.go:46`, `handler_test.go:131`, the perf reads at
   `perf_test.go:226-291`).
 - **Catalogue guards.** One sample assertion pins the new sentence with
   `{max}` rendered through `messages.Num`
@@ -6314,7 +6317,7 @@ satisfy.
   drifts.
 - **The cap bounds the date walk, not the per-night scan.** Inside the
   cap, `Occupancy` still scans every active reservation per room type per
-  date (`store.go:480-505`), so the measured 505 ms over 731 dates
+  date (`store.go:494-516`), so the measured 505 ms over 731 dates
   (`docs/testing/test-report.md:297-298`) grows with booking volume
   regardless of this change. `NFR-PERF-2` keeps that target; bounding
   the scan is a separate change.

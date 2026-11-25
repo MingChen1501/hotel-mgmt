@@ -37,6 +37,9 @@ func TestSampledMessagesRenderByteIdentical(t *testing.T) {
 		{"error.validation.date_from_format", nil, "dateFrom must be a YYYY-MM-DD date."},
 		{"error.validation.date_to_format", nil, "dateTo must be a YYYY-MM-DD date."},
 		{"error.validation.date_range_order", nil, "dateTo is before dateFrom."},
+		// RPT10: the report span cap sentence (Refs #641), {max}
+		// rendered from the declared constant through Num.
+		{"reporting.validation.date_range_span", map[string]string{"max": Num(730)}, "dateTo must be at most 730 nights after dateFrom."},
 		{"error.validation.business_date", nil, "businessDate must be a YYYY-MM-DD date."},
 		{"reporting.validation.event_required", nil, "eventId is required."},
 		{"reporting.validation.departure_after_arrival", nil, "departureDate must be a YYYY-MM-DD date after arrivalDate."},
