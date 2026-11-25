@@ -50,7 +50,7 @@ Inputs this record builds on:
 - Product scope and done-conditions: `docs/product/acceptance-criteria.md`
   section 18 (`AC-PRC-1`..`AC-PRC-5`), the record in
   `docs/project/decision-log.md` D-30, and the risk in
-  `docs/project/risk-register.md` R-13.
+  `docs/project/risk-register.md` R-15.
 - `BR-13` / `FR-RTE-5` already state that the price basis recorded at
   booking is the quoted one and never changes unless staff explicitly
   recalculate it; `BR-2`, `FR-RES-2`, and `NFR-AUD-1` already require
