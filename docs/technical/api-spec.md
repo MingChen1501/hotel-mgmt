@@ -19,9 +19,18 @@ section 4).
   module enforces role checks (`FR-ADM-2`, `NFR-SEC-1`).
 - Time: timestamps carry their UTC offset; dates follow the hotel's
   local calendar day (`NFR-TZ-1`).
-- Money: amounts are integers in the hotel's minor currency unit;
-  the price basis recorded at booking never changes unless staff
-  explicitly recalculate it (`FR-RTE-5`).
+- Money: amounts are integers in the hotel's minor currency unit; the
+  price basis recorded at booking never changes unless staff
+  explicitly recalculate it (`FR-RTE-5`). Wherever a service accepts a
+  money amount it is a whole number of minor units at or below one
+  declared ceiling — 1 000 000 000 000 — refused naming the field
+  otherwise, with the ceiling a code constant rather than configuration
+  (Billing enforces it today in its adapter — LLD
+  [section 30](../architecture/lld.md#30-money-amount-bounds-on-the-billing-folio-write-adapter-refs-635);
+  Refs #635). The three request schemas publish the integer type and a
+  `minimum` and deliberately declare no `maximum`: no validator runs on
+  the request path, so a schema bound would be a promise the service
+  does not read.
 - Localisation readiness: every user-visible string comes from a
   message catalogue; no behaviour depends on English wording
   (`NFR-I18N-1`).
@@ -44,7 +53,7 @@ section 4).
 | `RoomInventoryService` | Room/room-type setup, status updates, out-of-order blocks, availability query. Emits `RoomStateEvents`. |
 | `PricingService` | Rate-plan setup, price quote, discount application, restriction check. Emits `RateEvents`. |
 | `GuestService` | Profile CRUD, preference/notes update, repeat-guest flag, confirmation record. Emits `GuestEvents`. |
-| `BillingService` | Folio open, charge posting, payment recording, tax/fee derivation, day-close, settlement check; stay verification before every folio write (Refs #634). Emits `FolioEvents`. |
+| `BillingService` | Folio open, charge posting, payment recording, tax/fee derivation, day-close, settlement check; stay verification before every folio write (Refs #634); money amounts whole and bounded by one ceiling, refused in the adapter (Refs #635). Emits `FolioEvents`. |
 | `ReportingService` | Occupancy, revenue, daily sheet, housekeeping reports (read API over the reporting read model). |
 | `AdminService` | Hotel profile, users/roles, configuration values, export/backup runs. Emits `ConfigChangedEvents`. |
 
@@ -80,3 +89,6 @@ bullets are preserved and annotated, not rewritten.
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1046
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1117

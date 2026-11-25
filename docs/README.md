@@ -69,14 +69,14 @@ Development table, which use a `../` prefix.
 
 | Type | Path | Status | Owner | Purpose |
 |---|---|---|---|---|
-| MVP requirements | `requirements/mvp-requirements.md` | active | `business-analyst` | numbered FRs, measurable NFRs, per-hotel workflow customisation, traceability (Closes #10; section 8 Refs #338; section 23 Refs #646; section 24 Refs #647; section 25 Refs #648; section 27 Refs #631; section 28 Refs #634; section 29 Refs #627; section 30 Refs #630) |
+| MVP requirements | `requirements/mvp-requirements.md` | active | `business-analyst` | numbered FRs, measurable NFRs, per-hotel workflow customisation, traceability (Closes #10; section 8 Refs #338; section 23 Refs #646; section 24 Refs #647; section 25 Refs #648; section 27 Refs #631; section 28 Refs #634; section 29 Refs #627; section 30 Refs #630; section 31 Refs #635) |
 | Domain consistency audit | `requirements/domain-consistency-audit.md` | active | `business-analyst` | cross-doc audit: scope↔PRD↔stories↔FRs/NFRs, gaps, contradictions, deduped questions, terminology (Closes #41) |
 | Behaviour sequence diagrams | `requirements/sequence-diagrams.md` | active | `business-analyst` | time-ordered booking, check-in/out, folio and housekeeping flows with FR and FR-CUS mapping (Closes #43; Seq-9 Refs #646; Seq-8 Refs #647; Seq-15 Refs #648; Seq-10/Seq-11 Refs #634) |
 | Functional requirements | `requirements/functional-requirements.md` | stub (not needed yet) | `business-analyst` | numbered functional requirements with one guard each |
 | Non-functional requirements | `requirements/non-functional-requirements.md` | stub (not needed yet) | `business-analyst` | measurable NFRs (performance, reliability, usability) |
 | SRD | `requirements/srd.md` | stub (not needed yet) | `business-analyst` | stakeholder requirements definition |
 | SRS | `requirements/srs.md` | stub (not needed yet) | `business-analyst` | software requirements specification |
-| Business rules | `requirements/business-rules.md` | active | `business-analyst` | domain policies constraining behaviour (Closes #58; BR-50/BR-51 Refs #634; BR-59 Refs #627; BR-60 Refs #630) |
+| Business rules | `requirements/business-rules.md` | active | `business-analyst` | domain policies constraining behaviour (Closes #58; BR-50/BR-51 Refs #634; BR-59 Refs #627; BR-60 Refs #630; BR-61 Refs #635) |
 | Use cases | `requirements/use-cases.md` | active | `business-analyst` | actor-goal flows through the system (Closes #58; UC-8 Refs #646; UC-6/UC-7 Refs #647; UC-13 Refs #648) |
 | Data dictionary | `requirements/data-dictionary.md` | active | `business-analyst` | shared definitions of data entities and fields (Closes #58; sections 1-2 Refs #646; sections 2/8 Refs #647; section 1 Refs #648; section 16 Refs #630) |
 | Integration contract needs | `requirements/integration-contract-needs.md` | active | `business-analyst` | requirements-side input to module contracts: operations, payloads, sync/async, errors, config (Closes #96; section 3b Refs #634; section 9 Refs #627; sections 8/9 Refs #630) |
@@ -85,8 +85,8 @@ Development table, which use a `../` prefix.
 
 | Type | Path | Status | Owner | Purpose |
 |---|---|---|---|---|
-| HLD | `architecture/hld.md` | active | `architect` | high-level design: subsystems and their responsibilities (Closes #11; section 15 Refs #601; section 16 Refs #646; section 17 Refs #647; section 19 Refs #631; section 20 Refs #634; section 21 Refs #630) |
-| LLD | `architecture/lld.md` | active | `architect` | low-level design: modules, interfaces, data flow (Closes #97; section 21 Refs #601; section 22 Refs #646; section 23 Refs #647; section 24 Refs #648; section 26 Refs #631; section 27 Refs #634; section 28 Refs #627; section 29 Refs #630) |
+| HLD | `architecture/hld.md` | active | `architect` | high-level design: subsystems and their responsibilities (Closes #11; section 15 Refs #601; section 16 Refs #646; section 17 Refs #647; section 19 Refs #631; section 20 Refs #634; section 21 Refs #630; section 22 Refs #635) |
+| LLD | `architecture/lld.md` | active | `architect` | low-level design: modules, interfaces, data flow (Closes #97; section 21 Refs #601; section 22 Refs #646; section 23 Refs #647; section 24 Refs #648; section 26 Refs #631; section 27 Refs #634; section 28 Refs #627; section 29 Refs #630; section 30 Refs #635) |
 | System architecture | `architecture/system-architecture.md` | active | `architect` | overall system structure and deployment view (Closes #11) |
 | ERD | `architecture/erd.md` | active | `architect` | entity-relationship model of the domain data (Closes #11) |
 | Sequence diagrams | `requirements/sequence-diagrams.md` (see Requirements) | stub (not needed yet) | `architect` | behaviour depiction lives with requirements per #43; no separate architecture diagram |
@@ -115,7 +115,7 @@ Development table, which use a `../` prefix.
 | Rooms design | `architecture/services/rooms.md` | active | `architect` | as-built pattern/layers, verified flowcharts, deps, error mapping, operations (Closes #181; section 8 Refs #647; section 9 planned delta Refs #631; section 7 bounds Refs #630) |
 | Rates design | `architecture/services/rates.md` | active | `architect` | as-built pattern/layers, verified flowcharts, deps, error mapping, operations (Closes #181; section 7 bounds Refs #630) |
 | Guests design | `architecture/services/guests.md` | active | `architect` | as-built pattern/layers, verified flowcharts, deps, error mapping, operations (Closes #181; section 7 bounds Refs #630) |
-| Billing design | `architecture/services/billing.md` | active | `architect` | as-built pattern/layers, verified flowcharts, deps, error mapping, operations (Closes #181; section 8 planned delta Refs #601; section 9 planned delta Refs #634; section 7 bounds Refs #630) |
+| Billing design | `architecture/services/billing.md` | active | `architect` | as-built pattern/layers, verified flowcharts, deps, error mapping, operations (Closes #181; section 8 planned delta Refs #601; section 9 planned delta Refs #634; section 7 bounds Refs #630; section 10 planned delta Refs #635) |
 | Reporting design | `architecture/services/reporting.md` | active | `architect` | as-built pattern/layers, verified flowcharts, deps, error mapping, operations (Closes #181; section 7 bounds Refs #630) |
 | Admin design | `architecture/services/admin.md` | active | `architect` | as-built pattern/layers, verified flowcharts, deps, error mapping, operations (Closes #181; section 7 bounds Refs #630) |
 
@@ -123,11 +123,11 @@ Development table, which use a `../` prefix.
 
 | Type | Path | Status | Owner | Purpose |
 |---|---|---|---|---|
-| API spec | `technical/api-spec.md` | active | `architect` | contracts for service interfaces and endpoints (outline, Closes #11) |
+| API spec | `technical/api-spec.md` | active | `architect` | contracts for service interfaces and endpoints (outline, Closes #11; section 1 money ceiling Refs #635) |
 | Schema | `technical/schema.md` | active | `architect` | data schemas and validation rules (Closes #97) |
 | Desk UI fact schema | `technical/desk-ui-fact-schema.md` | active | `architect` | DOM-vs-design UI fact schema contract for the six desk screens: fields, record shape, provenance convention, determinism and zero-binary requirements (Closes #465); app-only nav tab allowances for the eighth and ninth desk tabs (Refs #590; bookings Refs #648) |
 | Integration | `technical/integration.md` | active | `architect` | third-party and cross-system integration contracts (Closes #97; C7 Refs #601; C4 Refs #646; C8 Refs #634; C2 Refs #631; section 10 Refs #630) |
-| Error handling | `technical/error-handling.md` | active | `architect` | error taxonomy and handling conventions (outline, Closes #11; section 1 Refs #627; section 1.1 Refs #630; section 2 Refs #631; section 4 Refs #647; section 5 Refs #634) |
+| Error handling | `technical/error-handling.md` | active | `architect` | error taxonomy and handling conventions (outline, Closes #11; section 1 Refs #627; section 1.1 Refs #630; section 1.2 Refs #635; section 2 Refs #631; section 4 Refs #647; section 5 Refs #634) |
 | Security threat model | `technical/security-threat-model.md` | active | `architect` | threats, mitigations, and trust boundaries (Closes #97; B5 + R5–R7 Refs #601; B6 + R-OVB-1/R-OVB-6 Refs #631; R5 narrowed + R8 Refs #634) |
 
 ## Development
@@ -152,7 +152,7 @@ docs and plans, not gated specs.
 | Type | Path | Status | Owner | Purpose |
 |---|---|---|---|---|
 | Test strategy | `testing/test-strategy.md` | active | `qa-lead` | testing approach, levels, and entry/exit criteria (Closes #62) |
-| Traceability matrix | `testing/traceability-matrix.md` | active | `qa-lead` | FR/NFR-to-guard map (every item keeps at least one guard) (Closes #62; section 11 Refs #590, section 12 Refs #600, section 13 Refs #601, section 14 Refs #646, section 15 Refs #647, section 16 Refs #648, section 18 Refs #631, section 20 Refs #634, section 21 Refs #627, section 22 Refs #630) |
+| Traceability matrix | `testing/traceability-matrix.md` | active | `qa-lead` | FR/NFR-to-guard map (every item keeps at least one guard) (Closes #62; section 11 Refs #590, section 12 Refs #600, section 13 Refs #601, section 14 Refs #646, section 15 Refs #647, section 16 Refs #648, section 18 Refs #631, section 20 Refs #634, section 21 Refs #627, section 22 Refs #630, section 23 Refs #635) |
 | Test report | `testing/test-report.md` | active | `qa-lead` | consolidated full-MVP results with pass evidence per cell (Closes #214) |
 | Phase 6 QA plan | `testing/phase-6-qa-plan.md` | active | `qa-lead` | scoped independent-QA pass plan: entry, activities, bug flow, exit (Closes #264) |
 | A1 desk-loop run log | `testing/phase-6-qa-a1-run-log.md` | active | `qa-lead` | scripted live-stack desk-loop record: per-step observed-vs-expected, screen surfaces, admin reads, evidence, defects (Closes #267) |
@@ -177,6 +177,7 @@ docs and plans, not gated specs.
 | Folio write verification test traceability | `testing/folio-write-verification-test-traceability.md` | active | `qa-lead` | cases `FWV-1..FWV-10`, guard registry `FW1`–`FW13`, evidence rule `FW-E1`, and the `AC-FWV-1..7` / `FR-FWV-1..5` map for the folio write verification change, with the folio-creating-versus-existing-folio read split, the unknown-stay / closed-stay / unreadable-Stay caller split, the 2-second bounded read, and the #588/#600/#601/#646/#647/#648 pins that must stay green (Refs #634) |
 | Internal-error envelope test traceability | `testing/internal-error-envelope-test-traceability.md` | active | `qa-lead` | cases `ERR-1..ERR-8`, guard registry `ERR1`–`ERR9`, evidence rule `ERR-E1`, and the `AC-ERR-1..5` / `FR-ERR-1..3` / `BR-59` map for the backend-fault vocabulary change, with one unexpected-exception guard per Node service, the four-map contract conformance (Stay, Guests, Rooms, Admin), the no-drift pair, and the #588/#600/#601/#646/#647/#648 pins that must stay green (Refs #627) |
 | Request-body bounds test traceability | `testing/body-bounds-test-traceability.md` | active | `qa-lead` | cases `BND-1..BND-7`, guard registry `BND1`–`BND28`, evidence rule `BND-E1`, and the `AC-BND-1..5` / `NFR-BND-1..3` / `BR-60` map for the bounded request bodies and finite server timeouts change, with one over-limit refusal guard, one timeout-value guard, and one catalogue guard per backend service across all eight (Stay, Guests, Rooms, Admin, Reservations, Rates, Reporting, Billing), the 65 536/65 537 boundary pair, the no-configuration gate, and the #588/#600/#601/#646/#647/#648 pins that must stay green (Refs #630) |
+| Money amount bounds test traceability | `testing/money-amount-bounds-test-traceability.md` | active | `qa-lead` | cases `AMT-1..AMT-8`, guard registry `AMT1`–`AMT20`, evidence rule `AMT-E1`, and the `AC-AMT-1..5` / `NFR-AMT-1..4` / `BR-61` map for the whole-number rule and the one 1 000 000 000 000-minor-unit ceiling on Billing's money adapters, with one fractional guard, one present non-number guard, one over-ceiling guard, and its boundary pair per money field, the `12.0`-is-whole case, the percent split (fractional accepted, 0-100 still the service's), the catalogue pin for both sentences, the no-configuration gate, and the #588/#600/#601/#646/#647/#648 pins that must stay green (Refs #635) |
 
 ## DevOps / Operations / Release
 
