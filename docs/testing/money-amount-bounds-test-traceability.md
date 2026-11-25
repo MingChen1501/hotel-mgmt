@@ -189,10 +189,9 @@ the service. The implementation PR extends these in place with a
 Twenty obligations, all inside the one Billing service.
 `AMT1`-`AMT11`, `AMT13`-`AMT15`, and `AMT20` are **missing guards** the
 implementation PR creates (three fractional, three present non-number,
-three over-ceiling, the
-constant, the boundary pair, the decimal-point acceptance, the in-range
-regression, the percent split, the sign-rule pins, the two catalogue
-sentences, and the idempotency case); `AMT12` re-runs the service's
+three over-ceiling, the constant, the boundary pair, the decimal-point
+acceptance, the in-range regression, the percent split, the sign-rule
+pins, the two catalogue sentences, and the idempotency case); `AMT12` re-runs the service's
 percent-range case with no edit; `AMT16`-`AMT19` are re-runs and gates
 the same PR must prove; `AMT-E1` is the evidence record. A money guard
 is not complete on the returned status alone: every refusal case also
@@ -277,8 +276,8 @@ CI jobs that must be green on the implementation PR: `billing-build`,
 ### Execution order
 
 1. The three fractional guards (`AMT1`-`AMT3`) and the three present
-   non-number guards (`AMT20`) — fastest signal, the
-   mocked service makes the "no call ran" assertion direct.
+   non-number guards (`AMT20`) — fastest signal, the mocked service
+   makes the "no call ran" assertion direct.
 2. The ceiling constant and the three over-ceiling guards (`AMT7`,
    `AMT4`-`AMT6`), with the huge-negative case in each.
 3. The boundary pair and the decimal-point acceptance (`AMT8`, `AMT9`),
@@ -318,10 +317,10 @@ CI jobs that must be green on the implementation PR: `billing-build`,
 
 ### Exit criteria
 
-1. `AMT1`-`AMT7` and `AMT20` exist and pass, each asserting the full envelope, the
-   catalogue sentence, `details.field`, a non-empty `traceId`, and
-   `verifyNoInteractions(service)` on every refusal, with the constant
-   read from the declaration.
+1. `AMT1`-`AMT7` and `AMT20` exist and pass, each asserting the full
+   envelope, the catalogue sentence, `details.field`, a non-empty
+   `traceId`, and `verifyNoInteractions(service)` on every refusal, with
+   the constant read from the declaration.
 2. `AMT8`-`AMT10` pass: the boundary pair (1 000 000 000 000 accepted,
    1 000 000 000 001 refused) on all three fields, the 730-night charge
    accepted, `12.0` accepted as `12`, and `0` plus an idempotent replay
