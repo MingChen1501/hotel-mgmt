@@ -54,7 +54,10 @@ Operations needed:
 
 - `CheckSellableCount` — sellable units for a room type and date
   range. Payload: room type, arrival and departure dates
-  (Reservation: FR-RES-1; Room type: FR-RTE-2).
+  (Reservation: FR-RES-1; Room type: FR-RTE-2). Amendment (Refs
+  #631): this read stays the availability-view fact; it is not the
+  booking guard's ceiling, which is the Rooms room-inventory read in
+  section 1b (`BR-47`).
 - `CheckRestrictions` — minimum-stay / closed-to-arrival days for
   the dates. Payload: room type, date range (Room type: FR-RTE-4).
 - `QuotePrice` — nightly breakdown and rate plan in force for the
@@ -115,6 +118,36 @@ Error cases:
 - No sellable unit left: `CONFLICT` naming room type and dates
   (NFR-CON-1).
 - Blocked dates: refusal naming the block (FR-RMS-3; BR-12).
+
+Amendment (Refs #631): `CheckRoomTypeSellability` becomes a live
+consumer-side read. Reservations calls it inside `CreateReservation`
+and `ModifyReservation`, with the caller's session forwarded and a
+bounded timeout, and derives the overbooking guard's ceiling from what
+it returns — the rooms of the type less the rooms blocked for the
+dates — so the request's `sellableUnits` decides nothing
+(`FR-OVB-1`, `FR-OVB-2`; `BR-47`). The reply members the guard reads
+are the type, the date range, the total room count, and the blocked
+rooms; the derived still-free count is not consumed, because the
+guard counts the holds itself (`BR-47`). Two error cases are added to
+this pair, and the sold-out refusal already listed above is restated
+for the consumer:
+
+- The capacity cannot be read — transport failure, timeout, 5xx,
+  unparseable reply, or an unwired client: `UPSTREAM_UNAVAILABLE`
+  (503) naming the upstream and the operation, nothing written
+  (`FR-OVB-3`; `BR-48`). No earlier read is reused and the request's
+  number is never a fallback.
+- A 4xx provider envelope: surfaced unchanged, so a rejected session
+  still reads `UNAUTHENTICATED` (`FR-OVB-3`; `NFR-SEC-2`).
+- A readable reply with no sellable unit for the dates: `CONFLICT`
+  naming room type and dates, never a 503 — a sold-out type is not an
+  outage (`FR-OVB-3`; `BR-48`).
+
+No operation or payload member is added: `sellableUnits` on the two
+Reservations request contracts becomes advisory input the server
+ignores (the `architect` owns that contract edit; the
+`UPSTREAM_UNAVAILABLE` code is already registered in the shared error
+envelope).
 
 Per-hotel config: out-of-order reason lists are recorded per block
 (FR-RMS-3); no hotel-wide values travel here beyond the block
@@ -609,7 +642,8 @@ need.
 | Stay-restriction violation | `STATE_ILLEGAL` | the violated restriction | FR-RTE-4; BR-10 |
 | Booking or change whose request total disagrees with the quote | `PRICE_CHANGED` (409) | the requested total, the quoted total, the room type, and the dates | FR-PRC-2, FR-PRC-4; BR-52 |
 | Pricing unreadable at booking (upstream down, timeout, 5xx, unwired) | `UPSTREAM_UNAVAILABLE` (503) | the upstream and the operation | FR-PRC-3; BR-52 |
-| No sellable unit / simultaneous booking won | `CONFLICT` | room type and dates | NFR-CON-1; BR-8 |
+| No sellable unit / simultaneous booking won | `CONFLICT` | room type and dates | NFR-CON-1; BR-8; BR-47 |
+| Reservation capacity unreadable at booking (Rooms down, timeout, 5xx, unparseable, unwired) | `UPSTREAM_UNAVAILABLE` (503) | the upstream and the operation | FR-OVB-3; BR-48 |
 | Simultaneous check-in won the room | `CONFLICT` | the room | NFR-CON-2; BR-11 |
 | Room not ready for assignment | `STATE_ILLEGAL` | room and its state | FR-FDK-1; BR-16 |
 | Blocked-date reservation / check-in | refusal naming the block | the block | FR-RMS-3; BR-12 |
@@ -705,10 +739,12 @@ bounds (section 8 amendment) add no operation, field, or error class of
 their own either: every pair keeps its payload and codes, the
 over-limit refusal reuses `VALIDATION_FAILED` with `details.field`
 `body`, and no contract file or version changes (`NFR-BND-1`..
-`NFR-BND-3`, `BR-60`). No operation,
-field, or error case introduces
-behaviour beyond the mapped FRs. Later capabilities from
-requirements section 6 carry no contract need here.
+`NFR-BND-3`, `BR-60`). The #631 booking guard (section 1b
+amendment; requirements section 27) adds no operation either: it
+consumes the existing `CheckRoomTypeSellability` read server-side, with
+three named error cases and no new request member. No operation,
+field, or error case introduces behaviour beyond the mapped FRs. Later
+capabilities from requirements section 6 carry no contract need here.
 
 Counts: 8/8 HLD modules covered (7 consumer-facing pairs plus
 config/identity/reporting/export fans); 6 contract open questions
