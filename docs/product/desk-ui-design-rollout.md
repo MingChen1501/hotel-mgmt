@@ -1901,7 +1901,7 @@ holds the stale state — is in `docs/product/acceptance-criteria.md`
 `confirmed` and `checked-in` count as active
 (`services/reservations/internal/store/store.go:194-196`), nothing
 closes a booking on check-out
-(`services/reservations/internal/handler/handler.go:121-285`;
+(`services/reservations/internal/handler/handler.go:122-286`;
 `services/stay/src/store.ts:260-292`), and the room and housekeeping
 half already works (`services/rooms/src/store.ts:407-436`,
 `app/src/views/RoomsView.vue:162-183`, `:695-741`). The desk is
@@ -2252,7 +2252,7 @@ reference, room type, dates, state, and stay link
 `arrival < dateTo` and `departure > dateFrom`,
 `services/reservations/internal/store/store.go:191-193`), and
 `GetReservation` already returns the guest snapshot and frozen price
-basis (`services/reservations/internal/handler/handler.go:167-180`).
+basis (`services/reservations/internal/handler/handler.go:168-181`).
 The assigned room is the in-house stay's `roomId` resolved through the
 occupied room list (`services/stay/src/server.ts:42-60`,
 `services/rooms/src/server.ts:114-126`), because a booking carries no
@@ -2425,8 +2425,8 @@ The finding: `sellableUnits` travelled from the desk's own
 sellability read into the booking request
 (`app/src/views/BookView.vue:893-929`), and the service passed it
 straight to the guard —
-`services/reservations/internal/handler/handler.go:129` and `:144` on
-`CreateReservation`, `:239` and `:251` on `ModifyReservation` — where
+`services/reservations/internal/handler/handler.go:168` and `:183` on
+`CreateReservation`, `:278` and `:290` on `ModifyReservation` — where
 the only comparison was `booked >= input.SellableUnits`
 (`services/reservations/internal/store/store.go:222` on Create, `:415`
 on Modify). Nothing read the capacity the hotel actually holds, so a
@@ -2538,6 +2538,119 @@ sending `sellableUnits`, no schema, stored value, or migration is
 introduced, and the previous guard behaviour returns with no data
 repair.
 
+### 6.21 Folio write refusals for a stay Billing cannot verify (Refs #634)
+
+Status: product-owner scope decision and UI contract delta for audit
+finding B1 (#634): Billing creates a folio for any stay id it is handed,
+so the desk can post a charge, a payment, or an open-balance approval
+against a stay that does not exist or is already checked out. Tier T3
+proposed — a new fail-closed Billing -> Stay read on the money path, the
+mirror of #601 — with `architect` confirming the tier and owning the ADR
+plus the per-flow diagrams. The binding done-conditions are
+`AC-FWV-1`..`AC-FWV-7` in `docs/product/acceptance-criteria.md`
+[section 20](acceptance-criteria.md); the scope decision is D-32 in
+`docs/project/decision-log.md`. FR/NFR wording is owned by
+`business-analyst`, guard mapping and traceability by `qa-lead`, the
+release note and the availability ops note by `release-manager`, and the
+gate verdict by `spec-reviewer`.
+
+The change is service-side. The only desk-visible effect is what staff
+read when a folio route is refused: the folio panel falls back to the
+generic "That did not work. Try again; if it keeps failing, tell the
+manager." sentence for every failure it does not name
+(`app/src/views/FolioView.vue:566-575`), which is wrong for a stay that
+is closed or unknown — retrying can never work. The unknown-stay open
+already has its own plain sentence (`:944-962`), which stays.
+
+Decision:
+
+1. **Two honest refusals, one retry.** A stay that does not exist and a
+   stay that is already checked out are refused in their own plain
+   words, each saying that nothing was recorded, because no retry can
+   help either. A Stay that could not be read says the stay could not be
+   checked and nothing was recorded, and keeps a retry that can help.
+2. **Same panel, same controls, no new step.** The Folio screen keeps
+   its open form, the in-house stay picker and its manual stay-ID field,
+   the charges card, the payment card, and their buttons. A refused
+   write leaves the entered values in place and the screen open, so
+   staff correct the stay id or retry instead of retyping the line.
+3. **The departed guest's paper trail does not move.** Opening a folio
+   that already exists still works after check-out, and the print screen
+   still presents the departure invoice and each payment receipt
+   (`app/src/views/PrintView.vue:1028`, `:1120`, `:1157`).
+4. **The check-out review is untouched.** The desk check-out review
+   still posts its one room charge and reads its balance for an in-house
+   stay (`AC-DSK-19`, D-24); an unreadable Stay there ends the review in
+   the panel's existing refusal sentence, and no new key is added to the
+   Stay panel.
+
+UI contract delta (presentation half of T3; no T2 screen change):
+
+- **Layout and navigation scope.** Unchanged. No new screen, route, nav
+  entry, card, dialog, or control; the Folio screen's cards and the
+  Stay panel's check-out review keep their layout, order, and labels.
+- **Component mapping.** Unchanged. The refusal sentences render through
+  the existing inline error slots of the charges card, the payment card,
+  and the open form.
+- **Design-token scope.** Unchanged — no new colour, radius, spacing, or
+  target size, and no new state colour: a refusal is the existing error
+  ink, never a red chip that implies a status the folio does not have.
+- **States in plain words:**
+  - Unknown stay on a write: no stay matches the id, nothing was
+    recorded; the fields keep their values.
+  - Closed stay on a write: the stay is already checked out, nothing was
+    recorded, and charges and payments cannot be added after that.
+  - Unreadable stay on any folio route: the stay could not be checked,
+    nothing was recorded, and a retry is offered.
+  - Opening an existing folio of a departed stay: the folio, its lines,
+    and its balance render as today; no refusal.
+  - Any refusal: no amount, running balance, or line is shown as if the
+    write had landed, and the rest of the desk stays usable.
+- **Catalogue keys.** Three new `desk.folio.*` keys, both locales,
+  `{param}`-free so no placeholder drift is possible, with
+  `script/catalogue-coverage-check.sh` green on the implementation PR:
+
+  | Key | English | Vietnamese |
+  |---|---|---|
+  | `desk.folio.refused_unknown_stay` | No stay matches that ID, so nothing was recorded. Check the stay ID and try again. | Không có kỳ lưu trú nào khớp mã đó nên chưa ghi gì. Kiểm tra lại mã lưu trú rồi thử lại. |
+  | `desk.folio.refused_closed_stay` | That stay is already checked out, so nothing was recorded. Charges and payments cannot be added after check-out. | Kỳ lưu trú đó đã trả phòng nên chưa ghi gì. Không thể thêm khoản phí hay thanh toán sau khi trả phòng. |
+  | `desk.folio.refused_unreadable_stay` | The stay could not be checked, so nothing was recorded. Try again. | Không kiểm tra được kỳ lưu trú nên chưa ghi gì. Vui lòng thử lại. |
+
+  The open form keeps `desk.folio.refused_unknown_folio`
+  (`No folio for that stay. Check the stay ID and try again.`) for an
+  unknown stay and uses `refused_closed_stay` / `refused_unreadable_stay`
+  for the other two, so the open path's existing wording does not
+  regress.
+- **Print rules.** Unchanged. No print surface, route, or document is
+  touched, and the departure invoice still matches the folio Billing
+  holds.
+
+Cross-references: the seam is `GetStayRef` (C8 in
+`docs/technical/integration.md`,
+`docs/architecture/rest-resource-surface.md:111`), the provider's
+refusal codes are `NOT_FOUND` and `STATE_ILLEGAL`
+(`services/stay/src/store.ts:406-423`), the folio write routes are
+`services/billing/src/main/java/com/hotel/billing/service/BillingService.java:121`,
+`:142`, `:176`, `:264`, and the desk's refusal surfaces are
+`app/src/views/FolioView.vue:944-962` and `:566-575`. The per-flow
+diagram belongs to the LLD, and the reproduction record belongs in the
+implementation PR body or an issue comment.
+
+Out: implementation; any new desk screen, route, control, or layout
+change; new copy on the Stay panel's check-out review; a reopen or
+"undo check-out" path; deleting or migrating the orphan folios a live
+install may already hold; read-only invoice and receipt lookups by folio
+id; the approval-role rule (#625); and a late-settlement flow — a
+balance approved at check-out and paid after departure has no folio
+write once writes refuse on a closed stay, and giving it one is a
+separate decision, not part of this change.
+
+Rollback: revert the single implementation PR. The previous
+ensure-on-first-use behaviour returns, the three catalogue keys go with
+the view code that resolves them, and no schema migration, backfill, or
+data repair exists on the decided path — orphan folios already written
+stay, as the scope says.
+
 ## 7. Catalogue and locale rule
 
 - Single source of truth stays `messages/` (`messages/README.md`):
@@ -2557,7 +2670,10 @@ repair.
   states where the design needs one with no key yet,
   `desk.stay.move_*` plus `desk.stay.moving`,
   `desk.stay.moved_named`, and the two aborted-commit lines
-  (#647, section 6.17, with both locales listed there).
+  (#647, section 6.17, with both locales listed there), and the
+  three `desk.folio.*` refusal keys of the folio-write
+  verification (#634, section 6.21, with both locales in its
+  key table).
 - The hotel name is configuration (persisted through the
   existing hotel-configuration surface, `FR-ADM-1`), shown in
   the shell header and on printed documents; the design's hotel
@@ -2886,7 +3002,7 @@ Section 4 stays the rollout-wide contract; for steps 2–4:
 
 | Criterion | Evidence in this spec |
 |---|---|
-| The departed booking is recorded completed and stops counting as an active booking, and the past stay stays in history | Section 6.16 decisions 1 and 3; `AC-DEP-1`, `AC-DEP-4`; the as-built trace in `docs/product/acceptance-criteria.md` section 15 (`activeState`, `services/reservations/internal/store/store.go:194-196`; no booking close in `services/reservations/internal/handler/handler.go:121-285`) |
+| The departed booking is recorded completed and stops counting as an active booking, and the past stay stays in history | Section 6.16 decisions 1 and 3; `AC-DEP-1`, `AC-DEP-4`; the as-built trace in `docs/product/acceptance-criteria.md` section 15 (`activeState`, `services/reservations/internal/store/store.go:194-196`; no booking close in `services/reservations/internal/handler/handler.go:122-286`) |
 | Guest B's same-room-type booking with arrival today is accepted after A's normal or early departure, including when B was booked before A's early check-out | Section 6.16 decision 2; `AC-DEP-2`; the booking guard reads the active set (`services/reservations/internal/store/store.go:214-226`), so a completed booking contributes nothing |
 | Room 101 turns over and B checks in the same day after housekeeping marks it ready, with no manual state edit | Section 6.16 decision 4; `AC-DEP-3`; `ReleaseRoom` to `vacant-dirty` (`services/rooms/src/store.ts:407-436`), the Rooms surface buttons (`app/src/views/RoomsView.vue:162-183`, `:695-741`), and the ready-room assignment list (`app/src/views/StayView.vue:1139-1140`) |
 | Every refused close leaves the stay in house and the booking active, and the #588 release, #600 charge, and #601 settlement gates still run | Section 6.16 decision 5; `AC-DEP-5`; `AC-DSK-18`, `AC-DSK-19`, `AC-CKO-1`, `AC-CKO-2` stand as written with their existing guards |
@@ -2920,8 +3036,6 @@ Section 4 stays the rollout-wide contract; for steps 2–4:
 | The T2 spec set exists and `spec-reviewer` posts `SPEC-GATE PASS` before implementation starts | This section, section 6.18, `docs/product/booking-management-view.md`, `docs/product/acceptance-criteria.md` section 17 (`AC-BMV-1..7`, the `AC-RES-5` pointer), `docs/project/decision-log.md` D-28; `business-analyst` FR/NFR delta, `architect` LLD delta and allowance entry, and `qa-lead` traceability are the sibling handoffs |
 | Rollback is a single revert with no migration and no new operation | Section 6.18 (rollback); the screen calls only operations that already exist |
 
-<!-- ao-role: product-owner -->
-Role: product-owner · AO session hotel-mgmt-1011
 ## 25. Acceptance mapping (issue #631)
 
 | Criterion | Evidence in this spec |
@@ -2938,3 +3052,18 @@ Role: product-owner · AO session hotel-mgmt-1011
 
 <!-- ao-role: product-owner -->
 Role: product-owner · AO session hotel-mgmt-938
+
+## 26. Acceptance mapping (issue #634)
+
+| Criterion | Evidence in this spec |
+|---|---|
+| A `PostCharge`, `RecordPayment`, or `RecordOpenBalanceApproval` for an unknown stay is refused and writes no folio line, no balance change, and no outbox event | Section 6.21 decision 1 and the states; `AC-FWV-1`; `docs/product/acceptance-criteria.md` section 20 ("As-built validation": `ensureFolio` at `services/billing/src/main/java/com/hotel/billing/repo/BillingRepository.java:65-71`, reached from `BillingService.java:121`, `:142`, `:176`, `:264`) |
+| An unreadable Stay refuses the write with `UPSTREAM_UNAVAILABLE` (503) instead of creating an unverified folio | Section 6.21 decision 1 and the unreadable-stay state; `AC-FWV-3`; the code is `UPSTREAM_UNAVAILABLE` and must be registered in `contracts/errors/envelope.json` (`AC-FWV-7`) |
+| The desk flows that read a fresh check-in's balance still create the folio as today | Section 6.21 decision 3 and 4; `AC-FWV-4`, `AC-FWV-5`; the print path stays as it is (`app/src/views/PrintView.vue:1028`, `:1120`, `:1157`) |
+| Tests cover the unknown-stay caller, the closed-stay caller, and the unreadable-Stay caller | `AC-FWV-7` (guards for all three callers on each of the three writes and the folio-creating read, plus the two regression paths); the guard set itself is the `qa-lead` handoff |
+| Every refusal reads in plain words in both locales, with no technical code | Section 6.21 catalogue table (three new `desk.folio.*` keys, EN + VI) and the states; `AC-FWV-6`; `script/catalogue-coverage-check.sh` green on the implementation PR |
+| The T3 spec set exists and `spec-reviewer` posts `SPEC-GATE PASS` before implementation starts, and the owner accepts the decision record | This section, section 6.21, `docs/product/acceptance-criteria.md` section 20 (`AC-FWV-1..7` plus the four `AC-BIL-*` pointers), `docs/project/decision-log.md` D-32; the ADR, the HLD/LLD delta, and the per-flow diagram are the `architect` handoff, FR/NFR wording the `business-analyst` handoff, and guard traceability the `qa-lead` handoff |
+| Rollback is a single revert with the previous ensure-on-first-use behaviour returning | Section 6.21 (rollback); no schema migration, backfill, or data repair exists on the decided path |
+
+<!-- ao-role: product-owner -->
+Role: product-owner · AO session hotel-mgmt-1045

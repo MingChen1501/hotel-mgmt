@@ -14,14 +14,14 @@ Node.js/TypeScript flat `src/` files over raw `node:http`, wired in `services/ro
 
 | Layer | Files | Responsibility |
 |---|---|---|
-| Transport + routing | `src/server.ts` | `createServiceServer` answers `GET /healthz` (:68), enforces Bearer presence (:81), routes `POST /v1/rooms/<Operation>` by case label |
+| Transport + routing | `src/server.ts` | `createServiceServer` answers `GET /healthz` (:117), enforces Bearer presence (:130), routes `POST /v1/rooms/<Operation>` by case label |
 | Identity | `src/auth.ts` | `extractBearer`: Bearer presence check, same skeleton contract as Stay |
 | Validation + step order | `src/store.ts` (`RoomStore`, `RoomStoreAPI` at :167) | per-operation checks, sellability math, guarded assign/release/block transitions |
 | Row storage | `src/store.ts` (in-memory), `src/pgstore.ts` (`PostgresRoomStore implements RoomStoreAPI` at :36) | identical semantics; Postgres selected at boot when `DATABASE_URL` is set |
 | Errors | `src/errors.ts` | shared `HttpError` envelope (same code set as Stay) |
 | Boot | `src/index.ts` | store selection by `DATABASE_URL`, `listen(PORT)` (default `8085`) |
 
-The operation table (`src/server.ts:87-153`): `UpsertRoomType` (:87), `UpsertRoom` (:98), `UpdateRoomState` (:108), `ListRoomsByState` (:112), `ListRoomTypes` (:125), `CheckRoomTypeSellability` (:137), `AssignRoom` (:141), `ReleaseRoom` (:145), `BlockRoom` (:149), `ReleaseBlock` (:153).
+The operation table (`src/server.ts:136-206`): `UpsertRoomType` (:136), `UpsertRoom` (:147), `UpdateRoomState` (:157), `ListRoomsByState` (:161), `ListRoomTypes` (:178), `CheckRoomTypeSellability` (:190), `AssignRoom` (:194), `ReleaseRoom` (:198), `BlockRoom` (:202), `ReleaseBlock` (:206).
 
 ## 3. Happy-path flowchart
 
@@ -38,7 +38,7 @@ flowchart TD
 
 Edge trace (every edge cites code):
 
-- A–B: same transport contract as Stay (`src/server.ts:68-81`; body read per-operation from :87).
+- A–B: same transport contract as Stay (`src/server.ts:121-133`; body read per-operation from :136).
 - C: unknown room key → `NOT_FOUND` (`src/store.ts:203-212`).
 - D: block overlap for the dates → `STATE_ILLEGAL` (:327, :381); non-ready room → `STATE_ILLEGAL` (:392); a simultaneous last-room race refuses the loser with `CONFLICT` "was just taken" (:389).
 - E: state flips to `occupied` with the stay link kept (`src/store.ts:397-400`); F: `roomNumber`, `stayLink`, `state` returned to the desk, which pairs it with Stay `MoveRoom`.
@@ -82,7 +82,7 @@ Same shared Node envelope as Stay (`src/errors.ts`; `docs/technical/error-handli
 | `NOT_FOUND` | 404 | unknown room type or room (:203, :212) |
 | `CONFLICT` | 409 | room just taken in a race (:389) |
 | `STATE_ILLEGAL` | 422 | blocked dates, wrong room state, occupied block target (:327, :381, :392, :415, :425, :443) |
-| `UNAUTHENTICATED` | 401 | missing session token (`src/server.ts:81`) |
+| `UNAUTHENTICATED` | 401 | missing session token (`src/server.ts:130-131`) |
 
 ## 7. Operations
 
@@ -134,6 +134,14 @@ Contract tests: `contract-tests/` holds fixtures per provided/consumed operation
 script/contract-check.sh
 ```
 
+Ingress bounds (Refs #630): `src/server.ts` caps a request body at
+65 536 bytes (`MAX_BODY_BYTES`) and refuses an oversized body with the
+shared envelope (`VALIDATION_FAILED`, `details` naming `body`) before
+parsing; the server it returns carries `headersTimeout` 5 s,
+`requestTimeout` 10 s, `timeout` 15 s, and `keepAliveTimeout` 10 s. No
+environment variable overrides either value. Details: LLD
+[section 29](../lld.md#29-bounded-request-bodies-and-finite-server-timeouts-refs-630).
+
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-249
 
@@ -181,7 +189,7 @@ future Reservations restriction seam"; from #631 on it is the booking
 guard's capacity source.
 
 - Reservations calls `POST /v1/rooms/CheckRoomTypeSellability`
-  (`src/server.ts:141`) once per booking attempt with the caller Bearer
+  (`src/server.ts:190-191`) once per booking attempt with the caller Bearer
   token forwarded and consumes `totalCount` and `blockedRooms`; the
   ceiling is `totalCount - len(blockedRooms)` for the effective room type
   and dates (`src/store.ts:343-356` builds both date-ranged facts).

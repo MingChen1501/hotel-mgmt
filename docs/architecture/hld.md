@@ -91,7 +91,7 @@ and price basis; the sellable count is a desk-facing overview, not the
 guard's ceiling since #631) -> derives the guard's ceiling from
 `RoomInventoryService.CheckRoomTypeSellability` for the type and dates
 (the date-ranged room inventory net of blocks, read server-side and
-fail-closed, section 16) -> creates the reservation and emits
+fail-closed, section 19) -> creates the reservation and emits
 `ReservationEvents`. Simultaneous bookings for the last sellable unit
 resolve in the Reservations store so exactly one succeeds
 (`NFR-CON-1`); simultaneous check-ins into one room resolve in the
@@ -597,3 +597,115 @@ sections 2 and 8; product conditions `AC-OVB-1`..`AC-OVB-3` and risk R-14.
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-941
+
+## 20. Folio write verification authority (Refs #634)
+
+A stay id is not evidence. Billing creates the folio for any UUID it is
+handed (`ensureFolio`,
+`services/billing/src/main/java/com/hotel/billing/repo/BillingRepository.java:65-71`,
+reached from the four folio routes at
+`service/BillingService.java:121`, `:142`, `:176`, `:264`), so a charge,
+a payment, or an open-balance approval can be written against a stay that
+does not exist or is already closed — an orphan folio Stay's check-out
+gate never reads, and money rows with no stay behind them. From #634 on,
+Billing asks Stay before it writes: the stay's existence and lifecycle
+state are Stay's facts, the folio's lines, balance, and approval are
+Billing's, and the caller's `stayId` only selects which stay the write is
+about.
+
+Three properties define the change:
+
+- **Verify before every write, and before creating a folio on a read.**
+  `PostCharge`, `RecordPayment`, and `RecordOpenBalanceApproval` call the
+  already-registered C8 read `GetStayRef` on every request, whether or not
+  a folio exists, so nothing lands on a closed stay. `GetFolioBalance`
+  verifies only when the stay carries no folio, so a folio Billing already
+  holds stays readable and printable in every stay state — the departure
+  invoice and its receipts never depend on the stay still being in house.
+- **No new refusal vocabulary.** An unknown stay refuses with
+  `NOT_FOUND` (404), a stay outside `in-house` with `STATE_ILLEGAL`
+  (422) naming the state, a malformed id with `VALIDATION_FAILED` (400) —
+  the codes the provider already answers with, surfaced by Billing.
+- **Fail closed.** A Stay that cannot be read refuses the route with
+  `UPSTREAM_UNAVAILABLE` (503) and writes nothing. The offline-first
+  cached-config rule (`NFR-AVL-1`) does not extend to a fact that decides
+  money, the same reading ADR-0005 took for the balance.
+
+The change adds one synchronous edge and no module, store, lifecycle
+state, operation, request field, event, or migration: Billing -> Stay
+`GetStayRef` with `STAY_BASE_URL` (`http://stay:8084` on the compose
+network), the caller's session token forwarded, a 2-second timeout inside
+`NFR-PERF-1`'s 3-second action bound, and a fail-closed 503. `GetStayRef`
+is a leaf read, so the Billing <-> Stay cycle is bounded at one hop and
+the close path cannot recurse. The contract change is error-code additive
+(four operations gain `NOT_FOUND`, `STATE_ILLEGAL`, and
+`UPSTREAM_UNAVAILABLE`; `contracts/errors/envelope.json` registers the
+503 code). Decision record:
+`docs/architecture/decisions/adr-0008-folio-write-stay-verification.md`
+(proposed); flow detail, the per-flow diagrams, the contract delta, and
+the verification plan: `docs/architecture/lld.md`
+[section 27](lld.md#27-folio-writes-verify-the-stay-refs-634); seam and
+error contracts: `docs/technical/integration.md` C8 and
+`docs/technical/error-handling.md` section 5; the availability and
+residual-risk deltas: `docs/technical/security-threat-model.md`
+section 8 (R5, R8).
+
+Tier T3 (confirmed by `architect`): a new fail-closed dependency edge on
+the money path plus a new contract error set, with no data-model change.
+The owner accepts the ADR (`proposed` -> `accepted`) before the
+implementation PR merges.
+
+Rollback: revert the single implementation PR. The previous
+ensure-on-first-use behaviour returns, the new client and its
+configuration go with the code, and no migration or backfill exists in
+either direction; folios already written — orphaned ones included — stay
+as they are.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1046
+
+## 21. Bounded request bodies and finite server timeouts (Refs #630)
+
+The single on-premise host runs every backend service, and until #630 no
+ingress path had a body ceiling or an explicit server timeout: one
+oversized body could exhaust the host's memory and one stalled peer could
+hold a connection and a worker indefinitely. From #630, every backend
+service caps a request body at **65 536 bytes (64 KiB)** — a code
+constant, never configuration (D-34) — refuses an oversized body with the
+shared envelope (`VALIDATION_FAILED`, 400, `details` naming `body`, the
+plain `error.transport.body_too_large` sentence), and runs with explicit
+finite header-read, body-read, response-write, and idle bounds on the Go
+`http.Server`, the four Node servers, and Billing's embedded Tomcat.
+
+Three properties define the change:
+
+- **Refuse before work.** The ceiling is enforced where each stack reads
+  the body — Node `readBody`, Go `decodeBody` with `http.MaxBytesReader`,
+  and a servlet filter ahead of Billing's `@RequestBody` — before parsing
+  and before any store, provider, or folio call, so a refused request
+  writes nothing.
+- **No new vocabulary.** `VALIDATION_FAILED` is already in
+  `contracts/errors/envelope.json`; no `PAYLOAD_TOO_LARGE` token, enum
+  edit, or desk branch is added, and an under-ceiling payload behaves
+  exactly as today (ADR-0004 D1).
+- **Finite bounds sized above legitimate waits.** The 15-second response
+  write bound clears the 5-second Reservations → Rates pricing read
+  (`services/reservations/internal/pricing/client.go:33`) and Stay's
+  2-second completion read (`services/stay/src/reservationsClient.ts:31`);
+  no legitimate desk call is cut off.
+
+The change adds no subsystem, dependency edge, data model, lifecycle
+state, environment setting, deployment delta, or reader-visible surface;
+it is a transport hardening of paths that already exist, so the container
+and component views (sections 2 and 3) stand unchanged. Enforcement
+points, the timeout table, and the per-flow diagram:
+`docs/architecture/lld.md` [section 29](lld.md#29-bounded-request-bodies-and-finite-server-timeouts-refs-630);
+per-service Operations notes: `docs/architecture/services/*.md`
+section 7; the refusal in the taxonomy:
+`docs/technical/error-handling.md` section 1.1; the pair-wise transport
+note: `docs/technical/integration.md` section 10. Risk R-13 records that
+the ceiling and the timeout values can be set too tight as well as too
+loose; rollback is the single implementation PR.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1078

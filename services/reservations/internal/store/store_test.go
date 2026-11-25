@@ -102,6 +102,85 @@ func TestIdempotentReplayReturnsOriginal(t *testing.T) {
 	}
 }
 
+// TestIdempotencyKeyScopedPerOperation is the R4 guard: one key reused
+// across CreateReservation and CancelReservation performs both
+// operations instead of replaying the create, and repeating the cancel
+// key on that same reservation stays idempotent.
+func TestIdempotencyKeyScopedPerOperation(t *testing.T) {
+	st := New()
+	shared := "desk-loop-shared"
+	created, oerr := st.Create(loopInput("deluxe-type"), shared)
+	if oerr != nil {
+		t.Fatalf("booking refused: %v", oerr)
+	}
+	cancelled, oerr := st.Cancel(created.Ref, "guest-request", "front-desk", shared)
+	if oerr != nil {
+		t.Fatalf("cancel with a create key refused: %v", oerr)
+	}
+	if cancelled.State != "cancelled" {
+		t.Fatalf("cancelled state = %s, want cancelled (not the create replay)", cancelled.State)
+	}
+	changesAfterCancel := len(st.Changes())
+	replay, oerr := st.Cancel(created.Ref, "guest-request", "front-desk", shared)
+	if oerr != nil {
+		t.Fatalf("replayed cancel refused: %v", oerr)
+	}
+	if replay.Ref != created.Ref || replay.State != "cancelled" {
+		t.Fatalf("replayed cancel = %s/%s, want the same cancelled reservation", replay.Ref, replay.State)
+	}
+	if len(st.Changes()) != changesAfterCancel {
+		t.Fatalf("replayed cancel wrote another change row")
+	}
+}
+
+// TestIdempotencyKeyScopedPerReservation is the resource half of the
+// R4 guard: the same cancel key on a different reservation runs that
+// reservation's cancel instead of replaying the first.
+func TestIdempotencyKeyScopedPerReservation(t *testing.T) {
+	st := New()
+	first, oerr := st.Create(loopInput("deluxe-type"), "")
+	if oerr != nil {
+		t.Fatalf("first booking refused: %v", oerr)
+	}
+	second, oerr := st.Create(loopInput("suite-type"), "")
+	if oerr != nil {
+		t.Fatalf("second booking refused: %v", oerr)
+	}
+	shared := "cancel-shared"
+	if _, oerr := st.Cancel(first.Ref, "guest-request", "front-desk", shared); oerr != nil {
+		t.Fatalf("first cancel refused: %v", oerr)
+	}
+	cancelled, oerr := st.Cancel(second.Ref, "guest-request", "front-desk", shared)
+	if oerr != nil {
+		t.Fatalf("second cancel with the reused key refused: %v", oerr)
+	}
+	if cancelled.Ref != second.Ref || cancelled.State != "cancelled" {
+		t.Fatalf("second cancel = %s/%s, want %s cancelled", cancelled.Ref, cancelled.State, second.Ref)
+	}
+}
+
+// TestModifyIdempotencyKeyScopedPerOperation extends the R4 guard to
+// the modify path: a key first used by CreateReservation still runs
+// the modify instead of replaying the confirmed create.
+func TestModifyIdempotencyKeyScopedPerOperation(t *testing.T) {
+	st := New()
+	shared := "desk-loop-modify"
+	created, oerr := st.Create(loopInput("deluxe-type"), shared)
+	if oerr != nil {
+		t.Fatalf("booking refused: %v", oerr)
+	}
+	modified, oerr := st.Modify(ModifyInput{
+		Ref: created.Ref, ArrivalDate: "2026-11-02", DepartureDate: "2026-11-04",
+		SellableUnits: 2, TotalMinor: 26000, Actor: "front-desk",
+	}, shared)
+	if oerr != nil {
+		t.Fatalf("modify with a create key refused: %v", oerr)
+	}
+	if modified.ArrivalDate != "2026-11-02" || modified.TotalMinor != 26000 {
+		t.Fatalf("modified = %+v, want the modify applied (not the create replay)", modified)
+	}
+}
+
 // TestModifyRepricesAndRecordsChange is the FR-RES-2 guard: changing
 // dates and type before check-in recalculates the quoted total from
 // the rate plan in force and records who made the change and when.

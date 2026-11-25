@@ -200,3 +200,17 @@ func TestRequiresSessionToken(t *testing.T) {
 		t.Fatalf("missing token = %d %v, want 401 UNAUTHENTICATED", code, body)
 	}
 }
+
+// TestUnknownOperationAnswersEnvelope pins the mounted mux fallback: an
+// unknown operation under the registered prefix answers the shared
+// envelope (404 NOT_FOUND) instead of the built-in plain-text 404
+// (Refs #628).
+func TestUnknownOperationAnswersEnvelope(t *testing.T) {
+	code, body := post(t, NewMux(store.New()), "/v1/rates/NoSuchOperation", map[string]any{}, deskToken)
+	if code != http.StatusNotFound || body["code"] != "NOT_FOUND" {
+		t.Fatalf("unknown operation = %d %v, want 404 NOT_FOUND", code, body)
+	}
+	if _, ok := body["traceId"].(string); !ok {
+		t.Fatalf("unknown operation carries no traceId: %v", body)
+	}
+}

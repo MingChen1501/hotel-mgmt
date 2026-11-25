@@ -69,6 +69,9 @@ class MessagesTest {
         Messages.text("error.validation.field_required", Map.of("field", "stayId")));
     assertEquals("amountMinor must be a number.",
         Messages.text("error.validation.field_number", Map.of("field", "amountMinor")));
+    // BND24: the too-large refusal sentence (Refs #630).
+    assertEquals("Request body is too large.",
+        Messages.text("error.transport.body_too_large", Map.of()));
   }
 
   @Test
