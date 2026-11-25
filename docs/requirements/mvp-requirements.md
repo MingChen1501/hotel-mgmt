@@ -36,7 +36,11 @@ Given a room type has sellable availability for the requested dates;
 when staff enter the dates, room type, guest, and price basis and
 confirm; then the reservation exists with a unique reference, the
 requested dates, room type, guest link, and quoted price, and it
-appears on the reservation calendar.
+appears on the reservation calendar. Amendment (Refs #631): the
+availability the guard decides on is the capacity the hotel records
+for the room type and dates, never a number the request carries; the
+capability statement and the conditions above are unchanged
+(section 27; `BR-47`, `BR-48`).
 
 FR-RES-2 — Modify reservation. Staff can change the dates, room type,
 or guest of an existing reservation before check-in.
@@ -44,7 +48,10 @@ Given a reservation that has not been checked in; when staff change
 its dates, room type, or guest and confirm; then the reservation
 reflects the new values, its quoted price is recalculated from the
 rate plan in force, and the change is recorded with who made it and
-when.
+when. Amendment (Refs #631): a modification is guarded against the
+same recorded capacity as a creation, and a refused modification
+leaves the reservation and its change history untouched (section 27;
+`FR-OVB-2`).
 
 FR-RES-3 — Cancel reservation with reason. Staff can cancel a
 reservation before check-in and must record a reason.
@@ -201,6 +208,12 @@ active set only — `confirmed` or `checked-in`; a closed (completed),
 cancelled, or no-show reservation holds nothing for the dates it
 covers, so a departed booking never reduces the sellable count
 (section 23, `FR-DEP-2`).
+Amendment (Refs #631): the
+booking guard's ceiling comes from the same recorded room inventory
+this view counts — the rooms of the type less the rooms blocked for
+the dates — so the count staff see and the capacity the guard enforces
+cannot disagree about which rooms are blocked or held (section 27;
+`BR-47`).
 
 FR-RTE-3 — Manual discounts and special rates. The manager can apply
 a named discount or special price to a reservation.
@@ -474,7 +487,10 @@ Given one remaining sellable unit for the requested dates; when two
 staff submit bookings for overlapping dates at the same time; then
 exactly one booking succeeds and the other is refused with the
 conflict named. Target: 0 double-bookings across repeated paired
-simultaneous attempts in acceptance testing.
+simultaneous attempts in acceptance testing. Amendment (Refs #631):
+the last sellable unit is the capacity the hotel records for those
+dates; a request's `sellableUnits` can neither raise nor lower it, and
+the target is unchanged (section 27; `FR-OVB-4`, `BR-49`).
 
 NFR-CON-2 — No double room assignment at check-in. Two staff
 checking different guests into the same ready room at the same time
@@ -621,8 +637,8 @@ product scope have no FR and are listed in section 6.
 
 | Product-scope capability | FR id(s) | Test-spec handoff note for `qa-lead` |
 |---|---|---|
-| Create direct reservation | FR-RES-1, FR-RTE-5 | Guard books each room type across a season boundary and checks quoted price and reference |
-| Modify and cancel reservation | FR-RES-2, FR-RES-3 | Guard changes dates/type/guest, checks repricing, then cancels and checks the reason and released availability |
+| Create direct reservation | FR-RES-1, FR-RTE-5 | Guard books each room type across a season boundary and checks quoted price and reference; guard books with an inflated, a low, and an absent `sellableUnits` against the hotel's recorded capacity and checks none of them moves the ceiling, and checks an unreadable capacity source refuses rather than overbooks (Refs #631) |
+| Modify and cancel reservation | FR-RES-2, FR-RES-3 | Guard changes dates/type/guest, checks repricing, then cancels and checks the reason and released availability; guard modifies into sold-out dates and into a sold-out type with an inflated `sellableUnits` and checks the conflict with the reservation unchanged (Refs #631) |
 | Walk-in booking | FR-RES-4 | Guard creates a same-day booking and checks arrival-state readiness and arrivals-list entry |
 | Reservation calendar | FR-RES-5 | Guard seeds multi-date, multi-type bookings and checks placement and detail drill-down; guard reads the booking register across an inclusive night range and checks each row's guest, reference, type, assigned room, dates, nights, total, and state, the plain empty range, the fresh read-back detail, and the failure states with no invented value (Refs #648) |
 | No-show handling | FR-RES-6 | Guard marks a past-arrival booking no-show and checks state, released room, and history |

@@ -193,10 +193,11 @@ ceiling refused as the caller's mistake before parsing or any store,
 provider, or folio call, one ceiling constant in code rather than
 configuration, and finite header-read, body-read, response-write, and
 idle bounds on every server — tracing `NFR-BND-1`..`NFR-BND-3` and
-`AC-BND-1`..`AC-BND-5`, without adding behaviour beyond those sources, and BR-47..BR-49 state
-the overbooking ceiling's source, its fail-closed refusal, and its
-atomic shape (tracing `FR-OVB-1`..`FR-OVB-4`, `NFR-CON-1`, and
-`AC-OVB-1`..`AC-OVB-3`) without adding behaviour beyond those sources.
+`AC-BND-1`..`AC-BND-5`, without adding behaviour beyond those sources,
+and BR-47..BR-49 state the overbooking ceiling's source, its
+fail-closed refusal, and its atomic shape (tracing `FR-OVB-1`..
+`FR-OVB-4`, `NFR-CON-1`, and `AC-OVB-1`..`AC-OVB-3`) without adding
+behaviour beyond those sources.
 Policies with no decided source appear as open questions
 OQ-1..OQ-5. No rule introduces behaviour beyond the traced
 FRs/NFRs/stories. Later capabilities from requirements section 6
