@@ -1497,8 +1497,8 @@ price basis is client-supplied. `CreateReservation` reads
 is present and non-negative
 (`services/reservations/internal/service/service.go:101-103`), the
 handler reads the same value from the body — Create at
-`services/reservations/internal/handler/handler.go:130`, Modify at
-`:240` — the store persists it verbatim
+`services/reservations/internal/handler/handler.go:169`, Modify at
+`:279` — the store persists it verbatim
 (`services/reservations/internal/store/store.go:236`) and re-freezes
 it on Modify (`:437-441`), and no `QuotePrice` call exists on the
 booking path — the rates client the service wires today runs only
