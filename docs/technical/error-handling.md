@@ -130,6 +130,76 @@ product conditions: `docs/product/acceptance-criteria.md` section 24
 (`AC-RPT-5`..`AC-RPT-7`); requirement `NFR-RPT-1` in
 `docs/requirements/mvp-requirements.md` section 32; business rule BR-62.
 
+### 1.4 Guest identity and payload bounds (Refs #640)
+
+A guest name lookup is **unambiguous or refused**. `IdentifyGuest`
+answers a `fullName` that matches exactly one guest as it does today and
+a name that matches none with the existing `NOT_FOUND`
+(`guests.notfound.guest_by_name`); a name that matches **two or more**
+guests is the caller's input being insufficient, so it uses the
+caller-input code, not a fault and not a new token: HTTP 400
+`VALIDATION_FAILED` with `details` `{"field": "fullName", "fullName":
+<the searched name>, "matches": <the exact count>}`, a fresh `traceId`,
+and the plain catalogue sentence `guests.validation.ambiguous_name`
+("The name {fullName} matches more than one guest; identify the guest by
+id."), with the match count carried in `details.matches` and no second
+placeholder. The refusal replaces the whole answer: no profile, `contact`,
+`preferences`, `notes`, `returningFlag`, `pastStayCount`, or `stayLinks`
+are returned, the links read is never issued, and nothing is written.
+Every `guestId` read through `IdentifyGuest`, `GetGuest`, or
+`GetBookingContext` is untouched, including for two guests who share a
+name.
+
+A guest write is **inside one declared shape or refused**. On
+`UpsertGuest`:
+
+- `contact` and `preferences` are plain objects of at most **16**
+  fields; each key is non-empty and at most **64** UTF-16 code units;
+  each value is text of at most **256** code units, a finite number, or a
+  boolean. A present field that is an array, string, number, or boolean,
+  or an object with more fields, an empty or longer key, a nested object,
+  an array entry, a `null` entry, a longer string entry, or a non-finite
+  number entry is refused with `details` naming `contact` or
+  `preferences` and the plain `guests.validation.contact_shape`
+  sentence.
+- `notes` is text of at most **2 000** UTF-16 code units; a present
+  non-string value (including `null`) or a longer string is refused with
+  `details` naming `notes` and the plain `guests.validation.notes_length`
+  sentence ("{field} must be at most {max} characters.") with `{max}`
+  rendered from the code constant through the catalogue number
+  formatter.
+- The checks run in the order `contact`, `preferences`, `notes`, so one
+  request answers exactly one envelope naming the first offending field,
+  and they run **before the first store access**, so a refusal writes no
+  row, no stay link, and no `guest-upserted` event and leaves a stored
+  profile exactly as it was. An absent field keeps today's per-store
+  behaviour: the in-memory store resets `contact` to `{}` while a
+  Postgres update keeps the stored `contact`, and both keep the stored
+  `preferences` and, on update, the stored `notes`; an explicit `null`
+  `contact`/`preferences` keeps today's `{}` coercion.
+- Reads are unbounded: no stored profile is re-validated, truncated, or
+  dropped, and no migration, backfill, or repair exists. The four bounds
+  are code constants, never configuration.
+
+A confirmation snapshot's two dates must **exist on the calendar**.
+`AttachReservation` refuses a shape-valid but calendar-invalid
+`dates.checkIn` or `dates.checkOut` (`2026-13-45`, `2026-02-31`,
+`2026-00-10`) with HTTP 400 `VALIDATION_FAILED` naming that field and the
+existing `guests.validation.date_format` sentence; `2024-02-29` is
+accepted; an ordering between the two dates is still not enforced; and
+no confirmation is stored, so a later `ProduceConfirmation` still answers
+`NOT_FOUND`.
+
+No code, status, enum entry, envelope field, or operation is added:
+`VALIDATION_FAILED` is already published for the three operations, and
+`contracts/errors/envelope.json` is untouched (ADR-0004 D1). Enforcement
+points, the exact bounds, the per-flow diagrams, and the contract
+decision: LLD
+[section 32](../architecture/lld.md#32-guest-identity-lookups-refuse-an-ambiguous-name-and-guest-payloads-carry-declared-bounds-refs-640);
+product conditions: `docs/product/acceptance-criteria.md` section 25
+(`AC-GID-1`..`AC-GID-7`); requirements: `FR-GID-1`..`FR-GID-3` in
+`docs/requirements/mvp-requirements.md` section 33; business rule BR-63.
+
 ## 2. Conflict semantics (overbooking and double assignment)
 
 - A booking refused for lack of sellable availability returns
@@ -259,3 +329,6 @@ Role: architect · AO session hotel-mgmt-1117
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1130
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1141

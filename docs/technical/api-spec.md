@@ -42,6 +42,23 @@ section 4).
   `minimum` and deliberately declare no `maximum`: no validator runs on
   the request path, so a schema bound would be a promise the service
   does not read.
+- Guest identity and payloads: a guest read by name (`fullName`) is
+  either unambiguous or refused — a name that matches two or more guests
+  answers `VALIDATION_FAILED` naming `fullName` with the searched name
+  and the exact match count and returns no profile, while every
+  `guestId` read is unchanged; a name that matches exactly one guest is
+  served as before. A guest write accepts `contact` and `preferences` as
+  plain objects of at most 16 fields, keys of 1-64 UTF-16 code units, and
+  values of text at most 256 code units, a finite number, or a boolean,
+  and `notes` as text of at most 2 000 code units, refused naming the
+  field otherwise, with all four bounds code constants rather than
+  configuration (LLD
+  [section 32](../architecture/lld.md#32-guest-identity-lookups-refuse-an-ambiguous-name-and-guest-payloads-carry-declared-bounds-refs-640);
+  Refs #640). The `UpsertGuest` manifest publishes no `maxProperties`,
+  `propertyNames`, or `maxLength` for those fields, for the same reason
+  the money ceiling publishes no `maximum`: no validator reads it.
+  Confirmation dates are hotel-local calendar days that must exist on the
+  calendar, not only match the `YYYY-MM-DD` shape.
 - Localisation readiness: every user-visible string comes from a
   message catalogue; no behaviour depends on English wording
   (`NFR-I18N-1`).
@@ -63,7 +80,7 @@ section 4).
 | `StayService` | Check in, check out, move room, record early/late times; stay reads, arrivals/departures queries. Emits `StayEvents`. |
 | `RoomInventoryService` | Room/room-type setup, status updates, out-of-order blocks, availability query. Emits `RoomStateEvents`. |
 | `PricingService` | Rate-plan setup, price quote, discount application, restriction check. Emits `RateEvents`. |
-| `GuestService` | Profile CRUD, preference/notes update, repeat-guest flag, confirmation record. Emits `GuestEvents`. |
+| `GuestService` | Profile CRUD, preference/notes update, repeat-guest flag, confirmation record. Emits `GuestEvents`. A name lookup that matches more than one guest is refused rather than resolved by first match, and guest payloads carry declared shape and length bounds (Refs #640). |
 | `BillingService` | Folio open, charge posting, payment recording, tax/fee derivation, day-close, settlement check; stay verification before every folio write (Refs #634); money amounts whole and bounded by one ceiling, refused in the adapter (Refs #635). Emits `FolioEvents`. |
 | `ReportingService` | Occupancy, revenue, daily sheet, housekeeping reports (read API over the reporting read model); the two range reports cap a window at 730 nights and refuse a wider one before any read (Refs #641). |
 | `AdminService` | Hotel profile, users/roles, configuration values, export/backup runs. Emits `ConfigChangedEvents`. |
@@ -106,3 +123,6 @@ Role: architect · AO session hotel-mgmt-1117
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1130
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1141
