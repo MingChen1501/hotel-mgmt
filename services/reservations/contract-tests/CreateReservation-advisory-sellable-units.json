@@ -1,0 +1,16 @@
+{
+  "operation": "CreateReservation",
+  "case": "advisory-sellable-units-refused-when-held",
+  "description": "ADR-0006: sellableUnits is optional and advisory. An inflated value buys no unit; the server-derived ceiling refuses the booking with CONFLICT when the recorded capacity is already held.",
+  "request": {
+    "roomTypeId": "<deluxe-type-id>",
+    "arrivalDate": "2026-11-01",
+    "departureDate": "2026-11-03",
+    "guest": { "guestId": "<guest-id-3>", "fullName": "Chi Le", "contact": "+84-900-000-003" },
+    "sellableUnits": 999,
+    "priceBasis": { "totalMinor": 24000 },
+    "idempotencyKey": "desk-loop-3"
+  },
+  "precondition": "The room type records one unit and one confirmed reservation already holds it; the advisory number is ignored.",
+  "expect": { "status": 409, "code": "CONFLICT" }
+}
