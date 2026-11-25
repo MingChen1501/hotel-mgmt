@@ -812,3 +812,65 @@ single implementation PR.
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1130
+
+## 24. Guest identity is disambiguated and guest payloads are bounded (Refs #640)
+
+Guests answered a full-name lookup with the first matching profile, in
+both stores (`services/guests/src/store.ts:308-326` walks the map and
+returns the first hit; `services/guests/src/pgstore.ts:181-191` asks for
+`LIMIT 1`), so two guests sharing a name handed the desk one guest's
+profile, contact, preferences, notes, and stay links with no sign that a
+choice was made. The same write accepted any `contact`/`preferences`
+object and any `notes` string with no per-field bound, and the
+confirmation snapshot's date check tested the shape of a date, not the
+calendar, so `2026-13-45` was accepted where the Go services refuse it.
+From #640, a name that matches more than one guest is refused, guest
+payloads carry one declared shape and one declared length, and both
+confirmation dates must exist on the calendar.
+
+Three properties define the change:
+
+- **Refuse before a profile is served or a row is written.** The
+  ambiguity is decided in the one lookup helper both stores implement,
+  and it counts every match before it answers, so no first row is ever
+  assembled; the payload bounds and the calendar check run before the
+  guest write and before the confirmation snapshot is stored. A refusal
+  therefore returns one envelope, writes nothing, and leaves every stored
+  profile readable exactly as it is.
+- **One rule, one home, both stores.** Each rule lives once — the
+  ambiguity constructor and the two validators in `store.ts` (which the
+  Postgres twin already imports its shared helpers from), the calendar
+  check inside the existing `requireDate` — so the in-memory and
+  Postgres stores cannot answer the same request differently, which the
+  done-conditions require. The bounds are fixed code constants, never
+  configuration, so this change carries no deployment, environment,
+  runbook, or per-hotel delta.
+- **No new vocabulary and no data-model change.** Every refusal answers
+  the existing caller-input code — `VALIDATION_FAILED`, 400 — with the
+  offending field in `details` and one new plain catalogue sentence per
+  rule (the date rule reuses the existing guests date sentence). No error
+  code, envelope field, status mapping, endpoint, event, index, column,
+  migration, or stored-row shape changes; reads stay unbounded, so no
+  stored note is truncated and no profile is dropped. One caller-facing
+  error-list line in `contracts/http/IdentifyGuest.json` gains the
+  ambiguity clause, prose only; the request manifests publish no schema
+  keyword for the bounds because no validator on the request path would
+  read one (ADR-0004 D1).
+
+The change adds no subsystem, dependency edge, data model, lifecycle
+state, operation, or new surface: it is three guards on existing
+operations plus one reader-visible refusal state on the existing Book
+screen, so the container and component views (sections 2 and 3) stand
+unchanged. Enforcement points, the refusal shapes, the exact bounds, the
+per-flow diagrams for the three touched flows, the contract decision, the
+verification plan, and the `NFR-GID` disposition: `docs/architecture/lld.md`
+[section 32](lld.md#32-guest-identity-lookups-refuse-an-ambiguous-name-and-guest-payloads-carry-declared-bounds-refs-640);
+per-service note: `docs/architecture/services/guests.md` sections 4, 6,
+and 8; the refusals in the taxonomy:
+`docs/technical/error-handling.md` section 1.4; the payload convention:
+`docs/technical/api-spec.md` section 1. Risk R-18 records both the
+first-match refusal and an over-strict bound; rollback is the single
+implementation PR.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1141

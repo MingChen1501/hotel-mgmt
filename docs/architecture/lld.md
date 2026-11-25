@@ -6353,3 +6353,580 @@ findings, the same as any drifted spec.
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1130
+
+## 32. Guest identity lookups refuse an ambiguous name and guest payloads carry declared bounds (Refs #640)
+
+Tier **T2 confirmed** (recorded by `product-owner` in
+`docs/product/acceptance-criteria.md` section 25): caller-visible
+refusals on one read operation (`IdentifyGuest`), one write operation
+(`UpsertGuest`), and one snapshot ingestion (`AttachReservation`), plus
+one reader-visible desk state on the existing Book screen — no new
+subsystem, dependency edge, data model, lifecycle state, endpoint, token
+family, or error code. ADR-0004 D1 keeps the envelope and its status
+mapping byte-identical, so no ADR and no T3 record. Product
+done-conditions are `AC-GID-1`..`AC-GID-7`
+(`docs/product/acceptance-criteria.md` section 25) with D-37 in
+`docs/project/decision-log.md` and R-18 in
+`docs/project/risk-register.md`, plus the Book-screen UI contract delta
+in `docs/product/desk-ui-design-rollout.md` section 6.22; FR wording is
+the `business-analyst` handoff (`docs/requirements/mvp-requirements.md`
+section 33, `FR-GID-1`..`FR-GID-3`, and business rule BR-63); guard
+traceability the `qa-lead` handoff (`docs/testing/traceability-matrix.md`
+section 25); the release note and rollback pointer the `release-manager`
+handoff; and implementation the `dev` handoff. This section records only
+the architect-owned delta: where each check sits and why (32.1), the
+ambiguity refusal shape (32.2), the payload bounds (32.3), the calendar
+date rule (32.4), the per-flow diagrams (32.5), the contract decision
+(32.6), the verification plan (32.7), the `NFR-GID` disposition (32.8),
+the residual risks and re-tier triggers (32.9), and maintain-with-code
+(32.10).
+
+As found (audit findings G1, G2, G3, traced read-only at this spec
+head):
+
+- **G1 — a name lookup serves the first match.** The in-memory
+  `findGuest` walks the map and returns the first record whose
+  `fullName` equals the wanted name
+  (`services/guests/src/store.ts:308-326`, the loop and return at
+  `:318-322`), and the Postgres twin asks for one row
+  (`services/guests/src/pgstore.ts:169-194`, the `LIMIT 1` query at
+  `:183-187`). Two guests sharing a name therefore hand the desk one
+  guest's profile, contact, preferences, notes, and stay links with no
+  sign that a choice was made — the wrong-profile (PII) read the finding
+  names. The name branch is reachable only through `IdentifyGuest`
+  (`store.ts:242-245`, `pgstore.ts:87-90`); `GetGuest` and
+  `GetBookingContext` pass `guestId` only (`store.ts:247-264`,
+  `pgstore.ts:92-109`) and never reach it.
+- **G2 — the guest write stores any object and any note.** `asObject`
+  turns any non-object into `{}` and passes any object through
+  (`store.ts:166-168`); `upsertGuest` uses it for `contact` and
+  `preferences` with no shape, field-count, key, or value check, and
+  accepts `notes` as any string with no bound (`store.ts:220-240`, the
+  three fields at `:231-233`; the Postgres twin at `pgstore.ts:63-85`,
+  the fields at `:70-72`). The 64 KiB body ceiling (LLD
+  [section 29](#29-bounded-request-bodies-and-finite-server-timeouts-refs-630))
+  bounds the request, not one guest field.
+- **G3 — a confirmation date is shape-checked, not calendar-checked.**
+  `requireDate` tests `^\d{4}-\d{2}-\d{2}$` only (`store.ts:170-175`); it
+  is reached from `toConfirmationRecord` for `dates.checkIn` and
+  `dates.checkOut` (`store.ts:191-212`, the dates at `:208`), so
+  `2026-13-45` and `2026-02-31` are accepted where the Go services'
+  `time.Parse` refuses them.
+
+### 32.1 Where each check sits: in the shared store helpers, before any profile read or write
+
+- **The ambiguity check goes in `findGuest`, in both stores, on the name
+  branch only.** The match set is store-specific (a map scan against a
+  SQL read), so each store counts its own matches, but the refusal itself
+  is built by one shared constructor in `store.ts` (32.2), so code,
+  status, details, and sentence cannot drift between the twin
+  implementations — the precedent is `requireUuid`, `requireString`, and
+  `toConfirmationRecord`, all exported from `store.ts` and imported by
+  `pgstore.ts:4-24`. It counts every match before it answers, which is
+  the whole finding: a `LIMIT 1` or a `return` on the first hit is
+  exactly the regression the guard must catch. The `guestId` branch stays
+  first and untouched (`store.ts:309-315`, `pgstore.ts:170-180`), so a
+  caller holding an id always reads the profile it asked for — including
+  one of two same-named guests — and the blank/absent-identifier refusal
+  stays where it is (`store.ts:325`, `pgstore.ts:193`).
+- **The payload checks go in a shared validator pair in `store.ts`,
+  called at the top of both `upsertGuest` implementations** — after
+  `guestId`/`fullName`/`actor` are validated and before the first store
+  access: in the in-memory store before `this.guests.get(id)`
+  (`store.ts:227`) and therefore before the record write and the outbox
+  push (`:237-238`); in the Postgres store before either object is
+  serialised and before the `INSERT ... ON CONFLICT` (`pgstore.ts:70-84`).
+  They validate the request fields, never the stored rows.
+- **The date check goes inside `requireDate`** (`store.ts:170-175`),
+  which both stores already reach through `toConfirmationRecord`
+  (`store.ts:191`, called from `attachReservation` at `:287-291` and
+  `pgstore.ts:139-143`) — one home, one calendar, no second parser.
+- **Why not the handler.** `server.ts` reads the body and dispatches by
+  operation label (`server.ts:121-198`; `UpsertGuest` `:136`,
+  `IdentifyGuest` `:149`, `AttachReservation` `:182`) and performs no
+  field validation; the store layer is where `requireUuid`,
+  `requireString`, `requireDate`, and `requirePriceMinor` already live.
+  A handler rule would sit above the `GuestStoreAPI` interface both
+  stores implement and leave the other store free to disagree — the
+  drift `AC-GID-1` and `AC-GID-7` forbid ("both stores refuse the same
+  values").
+- **Why not the request schema.** No validator runs on the Guests request
+  path, and the manifests declare open objects
+  (`contracts/http/UpsertGuest.json:14-21`, `additionalProperties: true`).
+  A `maxLength`/`maxProperties` published there would be a promise
+  nothing reads (32.6), the same decision the money ceiling records in
+  `docs/technical/api-spec.md` section 1.
+- **Why not the Postgres schema.** The bounds are write-time guards on
+  one request, not column constraints: stored rows may already hold a
+  longer note or another object shape, and `AC-GID-7` forbids a
+  migration, backfill, or repair. `guests.guests` keeps its columns
+  (`services/guests/migrations/002_schema.sql:22-34`).
+
+### 32.2 The ambiguity refusal: count, refuse, serve nothing
+
+- **Code and status: `VALIDATION_FAILED`, 400**, raised through the
+  existing `HttpError` (`services/guests/src/errors.ts:29-40`) — the code
+  a bad lookup field already answers. No enum entry, status mapping, or
+  envelope field changes (`contracts/errors/envelope.json` untouched).
+- **Details:
+  `{"field": "fullName", "fullName": <the trimmed name searched>, "matches": <exact match count>}`.**
+  The field name is what the desk branches on (below), the searched name
+  is what staff typed, and the count is the real number of matching
+  guests — not "2 or more" — so the sentence and the details agree.
+- **Message: one new plain catalogue sentence `guests.validation.ambiguous_name`**
+  beside today's guests keys (`services/guests/src/messages.en.json:196-200`),
+  pattern "{fullName} matches {matches} guests, so no profile was
+  opened.", with `{matches}` rendered through `formatNumber`
+  (`services/guests/src/messages.ts:77-79`) so digit grouping follows
+  the active locale. It names no envelope code, status, SQL, host, path,
+  or stack trace (`NFR-I18N-1`).
+- **One shared constructor** (for example `ambiguousGuestName(fullName,
+  matches)` in `store.ts`) builds the refusal for both stores, so the
+  details shape and the sentence have exactly one home; counting the
+  matches is the only store-specific part.
+- **Nothing is served.** The refusal returns from `findGuest`, so
+  `identifyGuest` never assembles the profile-with-links object
+  (`store.ts:242-245`, `pgstore.ts:87-90`): no `guestId`, `fullName`,
+  `contact`, `preferences`, `notes`, `returningFlag`, `pastStayCount`,
+  or `stayLinks` appears in the body, the links read is never issued
+  (`pgstore.ts:88-89`), and nothing is written on this path.
+- **Precedence inside the name branch.** Exact equality on the trimmed
+  name (today's rule, unchanged) resolves the set: zero matches keep
+  `NOT_FOUND` with `guests.notfound.guest_by_name` (`store.ts:323`,
+  `pgstore.ts:188-190`); one match serves exactly as today; two or more
+  refuse. An absent or blank name keeps `guests.validation.guest_or_name`
+  naming `guestId` (`store.ts:325`, `pgstore.ts:193`) before the branch
+  runs.
+- **The desk distinguishes the refusal by code and field, never by
+  wording.** `code === "VALIDATION_FAILED"` together with
+  `details.field === "fullName"` selects the Book screen's
+  `desk.book.guest_ambiguous` sentence; every other failure keeps the
+  generic fallback (`app/src/views/BookView.vue:710-745`, the code check
+  at `:736-744`, the fallback at `:480-485`; `details` is already read
+  this way at `:488-496`). `IdentifyGuest` has exactly one other
+  `VALIDATION_FAILED` today and it names `guestId` (`store.ts:325`), so
+  the pair is unambiguous for this operation; switching on resolved
+  wording is forbidden by the catalogue rule
+  (`docs/product/desk-ui-design-rollout.md` section 7).
+- **Postgres read shape.** The count must be exact, so the statement
+  returns the total beside at most the rows needed — for example
+  `count(*) OVER ()` beside `LIMIT 2` in one statement — because a bare
+  `LIMIT 1` can answer neither the zero case nor the count without a
+  second query. Reading at most two profile rows keeps the refused case
+  from materialising every matching profile; the count scan itself is a
+  residual cost recorded in 32.9.
+
+### 32.3 The payload bounds: one declared shape, one declared length
+
+Four named code constants in `services/guests/src/store.ts`, shared by
+both stores:
+
+| Constant | Value | Field(s) | Rule |
+|---|---|---|---|
+| `MAX_GUEST_PAYLOAD_FIELDS` | 16 | `contact`, `preferences` | at most 16 own fields |
+| `MAX_GUEST_PAYLOAD_KEY_LENGTH` | 64 | `contact`, `preferences` | every key non-empty and at most 64 UTF-16 code units |
+| `MAX_GUEST_PAYLOAD_STRING_LENGTH` | 256 | `contact`, `preferences` | a string value at most 256 UTF-16 code units |
+| `MAX_GUEST_NOTES_LENGTH` | 2000 | `notes` | at most 2 000 UTF-16 code units |
+
+- **Accepted:** `contact` and `preferences` are plain JSON objects with
+  at most 16 own fields; every key is non-empty and at most 64 code
+  units; every value is a string of at most 256 code units, a finite
+  number, or a boolean. `notes` is a string of at most 2 000 code units.
+- **Refused, naming the field, one envelope, nothing written:** a
+  present `contact`/`preferences` that is an array, a string, a number,
+  or a boolean; an object with more than 16 fields, an empty or
+  over-64-character key, a nested object, an array entry, a `null`
+  entry, a string entry longer than 256 characters, or a number entry
+  that is not finite; a present `notes` that is not a string (including
+  an explicit `null`) or is longer than 2 000 code units.
+- **Sentences:** `guests.validation.contact_shape` — "{field} must be a
+  plain object with at most 16 fields whose values are text of at most
+  256 characters, a finite number, or true/false." — and
+  `guests.validation.notes_length` — "{field} must be at most {max}
+  characters." — with `{max}` rendered from `MAX_GUEST_NOTES_LENGTH`
+  through `formatNumber`, so the sentence shows `2,000` in the `en`
+  locale instead of a pasted literal. Both carry the field name, and
+  neither names a code, status, or stack trace (`NFR-I18N-1`).
+  **Details:** `{"field": "contact" | "preferences" | "notes"}`.
+- **Order:** `contact`, then `preferences`, then `notes`, in both
+  stores, so a request with several offending fields answers exactly one
+  envelope naming the first offender in declaration order.
+- **Present, absent, and explicit null.** An absent field
+  (`undefined`) keeps today's defaults: `contact` becomes `{}`,
+  `preferences` keeps the stored object on update, and `notes` keeps the
+  stored value on update and is `""` on create (`store.ts:231-233`;
+  the Postgres `COALESCE`/`CASE` at `pgstore.ts:74-81`). An explicit
+  `null` for `contact` or `preferences` keeps today's coercion (both
+  stores store `{}` through `asObject`, `store.ts:166-168`,
+  `pgstore.ts:70-71`), so no validator runs on a null object field; an
+  explicit `null` for `notes` is refused, because `AC-GID-4` and
+  `FR-GID-2` refuse a present non-string `notes` and today's
+  invalid-value-means-keep path accepted it silently. No desk caller
+  sends `notes` as null today: the Book screen's register sends
+  `fullName` and `actor` only (`app/src/views/BookView.vue:758-762`).
+- **Bound provenance.** The largest fixtures in the tree are a
+  28-character note (`services/guests/src/server.test.ts:120-139`) and a
+  one-field preference object
+  (`services/guests/contract-tests/UpsertGuest.json:5-9`), so 2 000 code
+  units is more than seventy times the only note fixture, and 16 fields,
+  64-character keys, and 256-character values sit far above one field.
+  The whole request also stays under the 64 KiB body ceiling (LLD
+  section 29), so these bounds shape one field rather than police body
+  size.
+- **Reads are unchanged, and no migration exists.** No re-validation
+  happens in `toGuest` (`pgstore.ts:43-61`) or on an in-memory record,
+  so a stored longer note or differently shaped object keeps reading
+  through `GetGuest`, `IdentifyGuest`, and `GetBookingContext` exactly as
+  stored; no truncation, backfill, or repair is attempted
+  (`AC-GID-7`).
+- **Constants, not configuration.** No environment variable, deployment
+  file, runbook step, or per-hotel entry carries or overrides any of the
+  four values — the same rule the body ceiling and the money ceiling
+  follow (LLD sections 29.1 and 30.1).
+
+### 32.4 The confirmation date rule: the date must exist on the calendar
+
+- **Shape first, then the calendar.** `requireDate` keeps its
+  `YYYY-MM-DD` shape test and trim (`store.ts:170-175`), then parses the
+  three components and requires them to round-trip through a UTC date:
+  build the date with `setUTCFullYear(y, m - 1, d)` (which treats a year
+  such as `0099` literally, unlike `Date.UTC`, whose 0-99 mapping is
+  1900+n) and require `getUTCFullYear() === y`,
+  `getUTCMonth() === m - 1`, and `getUTCDate() === d`. An overflowing day
+  or month fails the round-trip; the real leap day `2024-02-29` passes;
+  `2026-13-45`, `2026-02-31`, and `2026-00-10` fail.
+- **The refusal keeps today's kind and sentence.** `VALIDATION_FAILED`,
+  400, `details` naming `dates.checkIn` or `dates.checkOut`, and the
+  existing `guests.validation.date_format` sentence
+  (`store.ts:171-173`, catalogue `messages.en.json:196`) — no new
+  catalogue key for the date rule, per `AC-GID-5`.
+- **One home, before the snapshot is stored.** `requireDate` is called
+  only by `toConfirmationRecord` (`store.ts:208`), which both
+  `attachReservation` implementations call before the confirmation write
+  (`store.ts:288-289`, `pgstore.ts:140-141`), so an invalid date refuses
+  before the map write and a later `produceConfirmation` still answers
+  `NOT_FOUND` (`store.ts:293-301`, `pgstore.ts:145-153`).
+- **Nothing else moves.** No other operation calls `requireDate`; a
+  `checkIn` after `checkOut` stays as accepted as it is today (no
+  ordering rule is added, per `AC-GID-5`); and the value stays a
+  hotel-local calendar-day string (`NFR-TZ-1`, BR-43), with no timestamp
+  form or display rule touched.
+
+### 32.5 Per-flow implementation diagrams
+
+Three touched flows. Each diagram is the specified shape; the
+implementation PR refreshes the code pins and keeps the edges.
+
+**(a) `IdentifyGuest` — served, ambiguous, and not found.**
+
+```mermaid
+flowchart TD
+    A[POST /v1/guests/IdentifyGuest  server.ts:149] --> B{Bearer session present  server.ts:130-132}
+    B -->|missing| X1[401 UNAUTHENTICATED, no field read]
+    B -->|present| C{guestId given  store.ts:309 / pgstore.ts:170}
+    C -->|yes| D[Read the one record by id  store.ts:310-314 / pgstore.ts:171-179]
+    C -->|no, fullName given| E[Count every record whose fullName equals the trimmed name  store.ts:317-322 / pgstore.ts:181-187]
+    C -->|neither| X2[existing 400 VALIDATION_FAILED naming guestId, guests.validation.guest_or_name  store.ts:325 / pgstore.ts:193]
+    E -->|0 matches| X3[existing 404 NOT_FOUND, guests.notfound.guest_by_name  store.ts:323 / pgstore.ts:188-190]
+    E -->|1 match| F[Serve the profile with its stay links  store.ts:242-245 / pgstore.ts:87-90]
+    E -->|2 or more matches| R[new 400 VALIDATION_FAILED, details field fullName, fullName, matches, guests.validation.ambiguous_name]
+    D --> F
+    F --> O[200 profile exactly as today]
+    R --> N[no profile, contact, preferences, notes, returningFlag, pastStayCount, or stayLinks returned; no links read; nothing written]
+    X1 --> N2[rollback frame: read-only path, nothing to compensate; the whole change reverts with the single implementation PR]
+    X2 --> N2
+    X3 --> N2
+    N --> N2
+```
+
+Edge trace (every edge cites code as it stands at this head; the one
+new branch is the refusal `AC-GID-1` requires and the implementation PR
+adds):
+
+- A–B: the shared Bearer check (`services/guests/src/server.ts:130-132`),
+  unchanged.
+- B–C: `IdentifyGuest` dispatch (`server.ts:149`) into
+  `identifyGuest` (`store.ts:242`, `pgstore.ts:87`), which calls
+  `findGuest` first (`store.ts:243`, `pgstore.ts:88`).
+- C–D: the `guestId` branch (`store.ts:309-315`,
+  `pgstore.ts:170-180`), unchanged; an unknown id keeps `NOT_FOUND`
+  naming `guestId`.
+- C–E: the name branch (`store.ts:316-322`, `pgstore.ts:181-187`);
+  today it stops at the first match (`store.ts:320`) or asks for
+  `LIMIT 1` (`pgstore.ts:185`), which the change replaces with a count.
+- E–X3 and E–F: the existing not-found and served outcomes
+  (`store.ts:323` vs `:242-245`; `pgstore.ts:188-190` vs `:191`), with
+  the profile assembled only after the branch returns.
+- E–R: the new refusal, built by the shared constructor (32.2) and
+  raised before any profile is assembled.
+- R–N: no read of `contact`, `preferences`, `notes`, or `stayLinks`
+  happens below the refusal in either store; `stayLinksFor` is only
+  called after a record is returned (`pgstore.ts:88-89`).
+- X1/X2/X3–N2 and N–N2: the rollback frame. The operation is a read, so
+  a refusal has no earlier write of its own and no compensating call
+  exists or is needed; the change reverts with the single implementation
+  PR.
+
+**(b) `UpsertGuest` — inside the declared shape, or nothing written.**
+
+```mermaid
+flowchart TD
+    A[POST /v1/guests/UpsertGuest  server.ts:136] --> B[Validate guestId, fullName, actor  store.ts:221-226 / pgstore.ts:64-69]
+    B --> C{contact, then preferences, then notes inside their declared bound  new checks}
+    C -->|yes| D[Write the row and, in the in-memory store, the guest-upserted event  store.ts:237-238 / pgstore.ts:73-84]
+    C -->|no| R[new 400 VALIDATION_FAILED naming the field, guests.validation.contact_shape or guests.validation.notes_length]
+    R --> N[no row, no stay link, no guest-upserted event; the stored profile is untouched]
+    D --> O[200 profile as today]
+    R --> N2[rollback frame: refusal precedes the write, so there is no partial row or event to unwind]
+    N --> N2
+```
+
+Edge trace:
+
+- A–B: dispatch (`server.ts:136`) into `upsertGuest`
+  (`store.ts:220`, `pgstore.ts:63`); the three existing field checks run
+  exactly as today (`store.ts:221-226`, `pgstore.ts:64-69`).
+- B–C: the new validators, shared from `store.ts` (32.3), run in the
+  declared order before the first store access (`store.ts:227`),
+  before either object is serialised (`pgstore.ts:70-71`), and before
+  the insert (`pgstore.ts:73`).
+- C–D: the record write and the in-memory outbox push
+  (`store.ts:237-238`) or the `INSERT ... ON CONFLICT` with its
+  `RETURNING` (`pgstore.ts:73-84`), unchanged below the guard.
+- C–R: the two new sentences and the `details` field (32.3).
+- R–N: every write in both implementations sits below the guard, so a
+  refusal leaves the previous row — including its previously stored
+  note and objects — exactly as it was.
+- R–N2: the rollback frame; the refusal is decided before any write, so
+  there is no partial state to compensate.
+
+**(c) `AttachReservation` — a real calendar date, or nothing stored.**
+
+```mermaid
+flowchart TD
+    A[POST /v1/guests/AttachReservation  server.ts:182] --> B[toConfirmationRecord  store.ts:191]
+    B --> C{dates.checkIn and dates.checkOut shape and calendar  store.ts:171-175}
+    C -->|valid| D[Store the confirmation snapshot  store.ts:287-290 / pgstore.ts:139-142]
+    C -->|invalid or non-existent| R[existing 400 VALIDATION_FAILED naming the field, guests.validation.date_format]
+    R --> N[no confirmation stored; ProduceConfirmation still answers NOT_FOUND  store.ts:293-301 / pgstore.ts:145-153]
+    D --> O[200 confirmation record as today]
+    R --> N2[rollback frame: nothing written, nothing to compensate]
+    N --> N2
+```
+
+Edge trace:
+
+- A–B: dispatch (`server.ts:182`) into `attachReservation`
+  (`store.ts:287`, `pgstore.ts:139`), which validates the whole snapshot
+  through `toConfirmationRecord` (`store.ts:288`, `pgstore.ts:140`).
+- B–C: the existing shape test plus the new calendar round-trip in
+  `requireDate` (`store.ts:170-175`), reached from the dates line
+  (`store.ts:208`).
+- C–D: the confirmation write (`store.ts:289`, `pgstore.ts:141`),
+  unchanged.
+- C–R: the existing sentence and `details` naming the offending field
+  (`store.ts:171-173`), reused without a new key.
+- R–N: the store write is below the validator, so a refused snapshot is
+  never cached and the later read still misses.
+- R–N2: the rollback frame; confirmations are ephemeral local copies
+  (schema.md section 5), so a refusal has no stored row to undo.
+
+### 32.6 Contract decision: no new token, one error-list line, no schema keyword
+
+- **`VALIDATION_FAILED` is already published for both operations**
+  (`contracts/http/IdentifyGuest.json:32-36`,
+  `contracts/http/UpsertGuest.json:36-39`), so no code, status, enum
+  entry, operation, request or response field, or contract version
+  changes; `contracts/errors/envelope.json` is untouched (ADR-0004 D1).
+- **One caller-facing line moves: the `IdentifyGuest` error list.** The
+  existing `VALIDATION_FAILED` entry gains the ambiguity clause —
+  "Neither guestId nor fullName is given, or fullName matches more than
+  one guest." Prose only: the code, status, and operation are unchanged,
+  and this is the line `product-owner` assigned to the architect handoff
+  (`docs/product/acceptance-criteria.md` section 25); this spec PR
+  carries the edit. #641 left every `when` sentence as written because no
+  owner had assigned an edit (section 31.5); here the assignment is
+  explicit, so the sentence moves and
+  `docs/technical/error-handling.md` section 1.4 stays the authoritative
+  enumeration. The `UpsertGuest` error list keeps its `when` prose
+  ("Missing fullName or actor."), the PostCharge precedent section 31.5
+  records: the bounds are documented in section 1.4 of the taxonomy and
+  in this section, and a third copy is not kept in step.
+- **The `UpsertGuest` request manifest keeps its bytes.** `contact`,
+  `preferences`, and `notes` stay unconstrained
+  (`contracts/http/UpsertGuest.json:14-21`). JSON Schema could express
+  these bounds (`maxProperties`, `propertyNames`, an
+  `additionalProperties` union, `maxLength`) — unlike the cross-field
+  report span — but no validator runs on the Guests request path, so a
+  published bound would be documentation the service never reads; the
+  money ceiling follows the same rule (`docs/technical/api-spec.md`
+  section 1). Publishing them later is a contract change with fixture
+  and gate work of its own and would not move the enforcement point.
+- **No route or generated surface moves.** The desk-loop
+  `contracts/openapi.yaml` carries no Guests operation (its paths are
+  SignIn, QuotePrice, the reservation reads, AssignRoom, the billing
+  writes, and the stay transitions), so `script/openapi-route-check.sh`
+  and `script/contract-check.sh` stay green without an edit.
+- **Documented instead:** `docs/technical/error-handling.md` section 1.4
+  (the taxonomy entry), one `docs/technical/api-spec.md` section 1 bullet
+  for guest payloads and the `GuestService` row in section 2, one
+  `docs/technical/schema.md` section 5 note that the columns stay
+  unbounded and the bounds are write-time, `docs/architecture/services/guests.md`
+  sections 4 and 6 plus its section 8 delta, and this section.
+
+### 32.7 Verification plan
+
+`qa-lead` owns the traceability rows
+(`docs/testing/traceability-matrix.md` section 25); this is the
+architecture-side check the implementation must satisfy.
+
+- **Ambiguity refusal, both stores, with the count proven.** Two guests
+  with one `fullName`, `IdentifyGuest` by that name → 400
+  `VALIDATION_FAILED`, `details.field` `fullName`, the searched name,
+  the exact match count, the `guests.validation.ambiguous_name`
+  sentence, a non-empty `traceId`, and no profile keys in the body. The
+  guard must hold a store that contains both guests, so an early
+  `return` or a `LIMIT 1` regression fails it rather than passing on
+  status.
+- **Placement.** A refused name lookup leaves both profiles readable by
+  `guestId` afterwards, and the in-memory store's outbox and row count
+  are unchanged by the refusal — the check runs on the read path and
+  writes nothing.
+- **Unchanged outcomes.** The unique-name guard
+  (`services/guests/src/server.test.ts:86-118`), the unknown-guest and
+  missing-name guard (`:141-164`), the full-profile-by-id guard
+  (`:166-206`), and the Postgres round-trips (`:419-475`) stay green
+  without an assertion change; a `guestId` read of each of two
+  same-named guests returns its own profile.
+- **Payload refusals, one case per refused shape**, each asserting 400
+  `VALIDATION_FAILED`, `details.field` `contact` or `preferences`, the
+  shape sentence, a `traceId`, and nothing written: array, string,
+  number, and boolean in place of the object; 17 fields; an empty key; a
+  65-character key; a nested object; an array entry; a `null` entry; a
+  257-character string entry; a non-finite number. The at-bound case
+  (16 fields, a 64-character key, a 256-character string) is stored as
+  sent.
+- **`notes` refusals and the boundary pair.** A 2 000-code-unit note is
+  stored as sent; 2 001 is refused naming `notes` with the length
+  sentence; a number and an explicit `null` are refused; each refusal
+  leaves a previously stored note intact on update.
+- **Calendar dates.** `2026-13-45`, `2026-02-31`, and `2026-00-10` are
+  refused naming `dates.checkIn`/`dates.checkOut` with the existing
+  `guests.validation.date_format` sentence and no stored confirmation
+  (`ProduceConfirmation` still `NOT_FOUND`); `2024-02-29` is accepted;
+  the existing confirmation guards (`:251-280`, `:282-311`, `:342-365`)
+  keep passing unchanged.
+- **Catalogue and desk.** One sample assertion per new key
+  (`guests.validation.ambiguous_name`, `guests.validation.contact_shape`,
+  `guests.validation.notes_length`) beside
+  `services/guests/src/messages.test.ts:28-38`, with `{max}` rendered
+  from the constant; the Book-screen ambiguity state renders
+  `desk.book.guest_ambiguous` in both locales, resolves no guest, keeps
+  the name and the Find/Register controls, and never renders the
+  not-found or request-failed sentence; the unique-name and not-found
+  states keep today's wording.
+- **No migration and no read-side rule.** A profile already holding a
+  longer note or a differently shaped object still reads through all
+  three reads exactly as stored, and no migration file is added
+  (`services/guests/migrations/002_schema.sql:22-34`).
+- **Gate commands** (from `docs/architecture/services/guests.md`
+  section 7): `npm ci`, `npm run build`, `npm test`, and `npm run lint`
+  in `services/guests`; `npm test` in `app` for the desk row; plus
+  `script/contract-check.sh` and `script/catalogue-coverage-check.sh`
+  from the repo root.
+
+### 32.8 The `NFR-GID` disposition: the family does not exist, and no NFR belongs here
+
+Decision recorded for the spec set, so the gate does not fail on a
+phantom citation: **there is no `NFR-GID-*` family, and this change adds
+no NFR.**
+
+- The `business-analyst` handoff states it explicitly: "No new NFR is
+  added and no existing NFR changes"
+  (`docs/requirements/mvp-requirements.md` section 33.4), which is why
+  the requirements tree carries `FR-GID-1`..`FR-GID-3` and no
+  `NFR-GID-*` id anywhere.
+- The binding NFR citations for this change are the existing ones:
+  `NFR-I18N-1` (the three catalogue sentences, both locales), `NFR-AUD-1`
+  (a refusal records and emits nothing), `NFR-PERF-1` (the desk guest
+  find keeps its budget), `NFR-CON-1`/`NFR-CON-2`, `NFR-SEC-1`/`NFR-SEC-2`,
+  `NFR-AVL-1`, `NFR-TZ-1`, and `NFR-DSK-2` — all unchanged. `AC-GID-7`
+  traces exactly to `NFR-I18N-1` and `NFR-AUD-1`.
+- A new `NFR-GID-*` would need a measurable target this change does not
+  introduce: the four bounds are fixed code constants, not a service
+  level, latency, or ceiling that a test could measure against a budget.
+  The refusals reuse `VALIDATION_FAILED` and existing NFR budgets, so
+  writing an NFR would state a promise nothing distinct measures.
+- **Disposition:** the two product passages that name the family —
+  section 25's parenthetical ("the `FR-GID-*` / `NFR-GID-*` family") and
+  the section 25 addendum ("the requirements-side `FR-GID-*` /
+  `NFR-GID-*` family this spec set adds") — should say `FR-GID-*` only.
+  That is a `product-owner` edit and is flagged in the implementation
+  handoff, not made here (this session owns `docs/architecture/*` and
+  `docs/technical/*`). The `business-analyst` needs no change: section
+  33.4 and the `FR-GID` traces are already correct. Until the product
+  wording is corrected, this subsection is the record that the citation
+  is a phantom and that section 33.4 is authoritative.
+
+### 32.9 Residual risks and re-tier triggers
+
+- **A stricter identity read refuses a flow that relied on first match**
+  (R-18, accepted by D-37). A name shared by two guests can no longer be
+  resolved on the Book screen at all: staff must hold a `guestId` (which
+  the Stay, Folio, and Print flows already carry) or the manager must
+  distinguish the records. There is no desk search by id today; that
+  consequence is the accepted product decision, not an architecture
+  gap. A merge or distinguish flow is a separate T2/T3 change.
+- **The count is a fuller read than the lookup it replaces.**
+  `guests.guests` has no index on `full_name`
+  (`services/guests/migrations/002_schema.sql:22-34`), and today's
+  `LIMIT 1` stops at the first match, so an exact count scans the
+  matching rows and, without an index, the table. At the pilot's
+  guest-table size this stays inside `NFR-PERF-1`; adding an index is a
+  separate change that carries a migration, which `AC-GID-7` forbids
+  here. Re-tier if the guest table outgrows the desk budget.
+- **A wrong bound can refuse a legitimate note or object** (R-18). The
+  mitigation is that the constants sit far above the largest fixtures,
+  every bound has an at-bound and a one-over guard, and a refusal writes
+  nothing, so a retry with a shorter value is lossless. Changing a bound
+  is one deliberate edit of the constant, the catalogue's `{max}`, and
+  the boundary guards in the same PR.
+- **Stored rows stay unbounded and are never re-validated.** A profile
+  written before this change with a longer note or another object shape
+  keeps reading as stored; no truncation, backfill, or repair is
+  attempted.
+- **A caller that sent `notes: null` loses its silent keep.** Today that
+  value fell through the non-string path and kept the stored note; after
+  this change it is refused, per `AC-GID-4`. The desk does not send it
+  (`app/src/views/BookView.vue:758-762`), and omitting the field keeps
+  today's update semantics exactly.
+- **The Postgres store writes no outbox event on guest upsert today.**
+  That is an existing gap, not something this change introduces or
+  closes; the Postgres guard can therefore assert no row and no link,
+  while the in-memory guard asserts the outbox too. Closing the gap is a
+  separate change.
+- **Re-tier triggers.** Making any bound configurable (environment,
+  deployment, per-hotel) is T4. A uniqueness constraint, a merge or
+  distinguish flow, or enforcing the bounds on stored rows with a
+  backfill is T3. Publishing the bounds in the request manifest or
+  adding a distinct error code is a contract change. An index on
+  `full_name` is a migration.
+
+### 32.10 Maintain-with-code
+
+The implementation PR adds the four constants, the two shared
+validators, the counted name branch with its shared refusal constructor,
+the calendar round-trip in `requireDate`, the three catalogue keys, the
+desk branch on code and field, and the guards of 32.7. It also refreshes
+this section's line pins and
+`docs/architecture/services/guests.md` sections 3, 4, 6, and 8 to the
+as-built `file:line` at the merged head (`AC-GID-7`, `qa-lead`'s
+traceability section 25). `dev-peer-review` treats a stale pin, a name
+branch that still returns a first row, a bound without its at-bound and
+one-over pair, a refusal whose `details.field` is not the offending
+field or whose match count is not exact, a refusal that writes, a
+re-validation on the read path, and a desk branch that switches on
+message text as review findings, the same as any drifted spec.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1141
