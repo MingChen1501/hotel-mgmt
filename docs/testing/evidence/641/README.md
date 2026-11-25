@@ -5,7 +5,8 @@ Before/after reproduction record for
 (audit finding P1; `AC-RPT-5`..`AC-RPT-7`, `NFR-RPT-1`, `BR-62`, LLD
 [section 31](../../../architecture/lld.md#31-reporting-date-ranges-carry-a-declared-span-cap-refs-641),
 guards `RPT1`–`RPT14` and evidence rule `RPT-E1` in
-[the test traceability](../../report-range-cap-test-traceability.md)).
+[the test traceability](../../report-range-cap-test-traceability.md); the
+implementation PR is [#727](https://github.com/MingChen1501/hotel-mgmt/pull/727)).
 The left column is the pre-change build; the right column is this
 change. Every answer below was captured from a running service process,
 not from a test assertion.
