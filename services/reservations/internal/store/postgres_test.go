@@ -147,7 +147,7 @@ func TestPostgresLifecycleModifyCancelNoShow(t *testing.T) {
 	}
 	modified, oerr := pg.Modify(ModifyInput{
 		Ref: created.Ref, ArrivalDate: "2026-11-02", DepartureDate: "2026-11-04",
-		SellableUnits: 2, TotalMinor: 26000, Actor: "front-desk",
+		Ceiling: 2, TotalMinor: 26000, Actor: "front-desk",
 	}, "pg-modify-1")
 	if oerr != nil {
 		t.Fatalf("modify refused: %v", oerr)
@@ -306,5 +306,127 @@ func TestPostgresIdempotencyKeyScopedPerOperationAndResource(t *testing.T) {
 	}
 	if replay.Ref != other.Ref || replay.State != "cancelled" {
 		t.Fatalf("replayed cancel = %s/%s, want the same cancelled reservation", replay.Ref, replay.State)
+	}
+}
+
+// pgCounts returns the four row counts a refusal must leave untouched.
+func pgCounts(t *testing.T, db *sql.DB) (reservations, changes, events, keys int) {
+	t.Helper()
+	for _, query := range []struct {
+		sql string
+		to  *int
+	}{
+		{`SELECT count(*) FROM reservations.reservations`, &reservations},
+		{`SELECT count(*) FROM reservations.reservation_changes`, &changes},
+		{`SELECT count(*) FROM reservations.outbox`, &events},
+		{`SELECT count(*) FROM reservations.idempotency_keys`, &keys},
+	} {
+		if err := db.QueryRow(query.sql).Scan(query.to); err != nil {
+			t.Fatalf("count %q: %v", query.sql, err)
+		}
+	}
+	return reservations, changes, events, keys
+}
+
+func assertPGCounts(t *testing.T, db *sql.DB, wantReservations, wantChanges, wantEvents, wantKeys int) {
+	t.Helper()
+	reservations, changes, events, keys := pgCounts(t, db)
+	if reservations != wantReservations || changes != wantChanges || events != wantEvents || keys != wantKeys {
+		t.Fatalf("counts = reservations %d changes %d events %d keys %d, want %d/%d/%d/%d",
+			reservations, changes, events, keys, wantReservations, wantChanges, wantEvents, wantKeys)
+	}
+}
+
+// TestPostgresDerivedCeilingParity is `O11`: the derived-ceiling guards
+// behave over Postgres exactly as in memory — the inflated create and
+// modify are CONFLICT with nothing written, the replay returns the
+// original and consumes no second unit, and the paired last-unit create
+// keeps one winner.
+func TestPostgresDerivedCeilingParity(t *testing.T) {
+	db := pgTestDB(t)
+	pgWipe(t, db)
+	pg := NewPostgres(db)
+
+	holder, oerr := pg.Create(pgLoopInput(), "pg-derived-holder")
+	if oerr != nil {
+		t.Fatalf("holder create refused: %v", oerr)
+	}
+	assertPGCounts(t, db, 1, 1, 1, 1)
+
+	inflated := pgLoopInput()
+	inflated.GuestID = "44444444-4444-4444-8444-444444444444"
+	inflated.Guest = map[string]any{"guestId": inflated.GuestID, "fullName": "Binh Tran"}
+	if _, oerr := pg.Create(inflated, "pg-derived-inflated"); oerr == nil || oerr.Code != "CONFLICT" {
+		t.Fatalf("inflated create = %v, want CONFLICT", oerr)
+	}
+	assertPGCounts(t, db, 1, 1, 1, 1)
+
+	replay, oerr := pg.Create(pgLoopInput(), "pg-derived-holder")
+	if oerr != nil {
+		t.Fatalf("replay refused: %v", oerr)
+	}
+	if replay.Ref != holder.Ref {
+		t.Fatalf("replay ref = %s, want original %s", replay.Ref, holder.Ref)
+	}
+	assertPGCounts(t, db, 1, 1, 1, 1)
+
+	moving := pgLoopInput()
+	moving.RoomTypeID = "99999999-9999-4999-8999-999999999999"
+	moving.GuestID = "55555555-5555-4555-8555-555555555555"
+	moving.Guest = map[string]any{"guestId": moving.GuestID, "fullName": "Chi Le"}
+	moved, oerr := pg.Create(moving, "pg-derived-moving")
+	if oerr != nil {
+		t.Fatalf("moving create refused: %v", oerr)
+	}
+	assertPGCounts(t, db, 2, 2, 2, 2)
+
+	for name, input := range map[string]ModifyInput{
+		"held-dates": {
+			Ref: moved.Ref, RoomTypeID: pgLoopInput().RoomTypeID,
+			ArrivalDate: "2026-11-01", DepartureDate: "2026-11-03",
+			Ceiling: 1, TotalMinor: 26000, Actor: "front-desk",
+		},
+		"sold-out-type": {
+			Ref: moved.Ref, RoomTypeID: "88888888-8888-4888-8888-888888888888",
+			Ceiling: 0, TotalMinor: 26000, Actor: "front-desk",
+		},
+	} {
+		if _, oerr := pg.Modify(input, "pg-derived-modify-"+name); oerr == nil || oerr.Code != "CONFLICT" {
+			t.Fatalf("%s modify = %v, want CONFLICT", name, oerr)
+		}
+		kept, oerr := pg.Get(moved.Ref)
+		if oerr != nil {
+			t.Fatalf("Get refused: %v", oerr)
+		}
+		if kept.RoomTypeID != moving.RoomTypeID || kept.ArrivalDate != "2026-11-01" || kept.TotalMinor != 24000 {
+			t.Fatalf("%s refusal changed the reservation: %+v", name, kept)
+		}
+	}
+	assertPGCounts(t, db, 2, 2, 2, 2)
+
+	done := make(chan *OpError, 2)
+	for i := 0; i < 2; i++ {
+		go func(index int) {
+			paired := pgLoopInput()
+			paired.RoomTypeID = "77777777-7777-4777-8777-777777777777"
+			paired.GuestID = "66666666-6666-4666-8666-666666666666"
+			paired.Guest = map[string]any{"guestId": paired.GuestID, "fullName": "Dung Pham"}
+			_, oerr := pg.Create(paired, "")
+			done <- oerr
+		}(i)
+	}
+	var winners int
+	for i := 0; i < 2; i++ {
+		if oerr := <-done; oerr == nil {
+			winners++
+		}
+	}
+	if winners != 1 {
+		t.Fatalf("paired last-unit creates produced %d winners, want exactly 1", winners)
+	}
+	reservations, changes, events, keys := pgCounts(t, db)
+	if reservations != 3 || changes != 3 || events != 3 || keys != 2 {
+		t.Fatalf("counts after the pair = reservations %d changes %d events %d keys %d, want 3/3/3/2",
+			reservations, changes, events, keys)
 	}
 }
