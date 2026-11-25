@@ -163,6 +163,7 @@
     "reporting.validation.state_required": "state is required.",
     "reporting.validation.new_state_required": "newState is required.",
     "reporting.validation.date_to_order": "dateTo must be a YYYY-MM-DD date on or after dateFrom.",
+    "reporting.validation.date_range_span": "dateTo must be at most {max} nights after dateFrom.",
     "rooms.validation.date_format": "{field} must be a YYYY-MM-DD date.",
     "rooms.notfound.room_type": "Unknown room type {roomType}.",
     "rooms.notfound.room": "Unknown room {roomNumber}.",

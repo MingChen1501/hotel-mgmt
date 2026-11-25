@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 
+	"github.com/MingChen1501/hotel-mgmt/services/reporting/internal/messages"
 	"github.com/MingChen1501/hotel-mgmt/services/reporting/internal/service"
 	"github.com/MingChen1501/hotel-mgmt/services/reporting/internal/store"
 )
@@ -177,5 +179,81 @@ func TestUnknownOperationAnswersEnvelope(t *testing.T) {
 	}
 	if _, ok := body["traceId"].(string); !ok {
 		t.Fatalf("unknown operation carries no traceId: %v", body)
+	}
+}
+
+// TestReportRangeSpanRefusal covers the HTTP envelope for the span cap
+// (RPT1, RPT2, RPT4): one four-key VALIDATION_FAILED 400 naming
+// dateTo with the rendered catalogue sentence and a traceId, and never
+// a rows payload.
+func TestReportRangeSpanRefusal(t *testing.T) {
+	mux := newMux()
+	spanMessage := messages.Text("reporting.validation.date_range_span", map[string]string{"max": messages.Num(730)})
+	windows := []struct {
+		name     string
+		from, to string
+	}{
+		{"one night over", "2024-01-01", "2026-01-01"},
+		{"huge window", "0001-01-01", "9999-12-31"},
+	}
+	routes := []struct {
+		path string
+		rows string
+	}{
+		{"/v1/reporting/OccupancyReport", "nights"},
+		{"/v1/reporting/RevenueSummary", "days"},
+	}
+	for _, route := range routes {
+		for _, window := range windows {
+			code, body := post(t, mux, route.path, map[string]any{"dateFrom": window.from, "dateTo": window.to}, deskToken)
+			if code != http.StatusBadRequest {
+				t.Fatalf("%s %s status = %d (%v), want 400", route.path, window.name, code, body)
+			}
+			if len(body) != 4 {
+				t.Fatalf("%s %s envelope keys = %v, want exactly code/message/details/traceId", route.path, window.name, body)
+			}
+			if body["code"] != "VALIDATION_FAILED" {
+				t.Fatalf("%s %s code = %v, want VALIDATION_FAILED", route.path, window.name, body["code"])
+			}
+			if body["message"] != spanMessage {
+				t.Fatalf("%s %s message = %q, want %q", route.path, window.name, body["message"], spanMessage)
+			}
+			if !reflect.DeepEqual(body["details"], map[string]any{"field": "dateTo"}) {
+				t.Fatalf("%s %s details = %v, want {field: dateTo}", route.path, window.name, body["details"])
+			}
+			if trace, ok := body["traceId"].(string); !ok || trace == "" {
+				t.Fatalf("%s %s traceId = %v, want a non-empty string", route.path, window.name, body["traceId"])
+			}
+			if _, ok := body[route.rows]; ok {
+				t.Fatalf("%s %s carries a %s payload alongside the refusal", route.path, window.name, route.rows)
+			}
+			if _, ok := body["asOf"]; ok {
+				t.Fatalf("%s %s carries asOf alongside the refusal", route.path, window.name)
+			}
+		}
+	}
+}
+
+// TestReportRangeAtCapIsServed is the HTTP at-cap acceptance half of
+// RPT3: the documented two-year window still answers 200 with rows.
+func TestReportRangeAtCapIsServed(t *testing.T) {
+	mux := newMux()
+	for _, route := range []struct {
+		path string
+		rows string
+	}{
+		{"/v1/reporting/OccupancyReport", "nights"},
+		{"/v1/reporting/RevenueSummary", "days"},
+	} {
+		code, body := post(t, mux, route.path, map[string]any{"dateFrom": "2024-01-01", "dateTo": "2025-12-31"}, deskToken)
+		if code != http.StatusOK {
+			t.Fatalf("%s at-cap status = %d (%v), want 200", route.path, code, body)
+		}
+		if _, ok := body[route.rows]; !ok {
+			t.Fatalf("%s at-cap response carries no %s payload: %v", route.path, route.rows, body)
+		}
+		if _, ok := body["asOf"].(string); !ok {
+			t.Fatalf("%s at-cap response carries no asOf: %v", route.path, body)
+		}
 	}
 }
