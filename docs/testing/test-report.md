@@ -344,6 +344,7 @@ consolidation of record for their own slices):
 | #627 backend-fault vocabulary (`INTERNAL_ERROR` on the 5xx path, three tokens registered, four maps aligned) | PR #704 | `traceability-matrix.md` section 21 — guards `ERR1`–`ERR9` plus evidence rule `ERR-E1`; MVP count stands at 57/57 |
 | #630 request-body ceiling and finite server timeouts (all eight backend services) | PR #713 | `traceability-matrix.md` section 22 — guards `BND1`–`BND28` plus evidence rule `BND-E1` (`docs/testing/evidence/630/README.md`); MVP count stands at 57/57 |
 | #631 server-side reservation availability (Reservations -> Rooms capacity read) | implementation PR (merge pending) | `traceability-matrix.md` section 18 — guards `O1`–`O13` plus evidence rule `OR-1` (`docs/testing/evidence/631/README.md`); MVP count stands at 57/57 |
+| #635 money amount bounds (whole-number and ceiling refusals on Billing's money adapters) | implementation PR (merge pending) | `traceability-matrix.md` section 23 — guards `AMT1`–`AMT20` plus evidence rule `AMT-E1` (`docs/testing/evidence/635/README.md`); MVP count stands at 57/57 |
 
 ## 9. Open gaps and reproduce pointers
 
