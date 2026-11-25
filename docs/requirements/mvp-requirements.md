@@ -593,6 +593,13 @@ store, provider, or folio call runs, and the tax-rule percent is
 bounded as a number rather than as money — so the NFRs above keep
 their wording and targets and this section gains no other clause.
 
+Amendment (Refs #641): a report window is stated in section 32
+(`NFR-RPT-1`) — both range reports bound `dateTo` to 730 nights after
+`dateFrom`, 731 inclusive dates, and refuse a wider window with the
+shared envelope before the store lock is taken and before any per-date
+walk runs — so the NFRs above keep their wording and targets and this
+section gains no other clause.
+
 ## 3. Per-hotel workflow customisation behaviour
 
 ### 3.1 Configurable per hotel (no code changes)
@@ -714,6 +721,13 @@ every money-carrying operation, not a capability — `NFR-AMT-1`..
 whole number of minor units refused before any work — so this table
 gains no row, the 40-capability count stands, and the handoff for
 those four requirements is section 31.4.
+
+Amendment (Refs #641): the report-window cap is a requirement on the
+two range reports, not a capability — `NFR-RPT-1` (section 32) bounds
+`OccupancyReport` and `RevenueSummary` to 730 nights and refuses a
+wider window before any work — so this table gains no row, the
+40-capability count stands, and the handoff for that requirement is
+section 32.4.
 
 ## 5. Open questions (decided by `product-owner`, impact worded by `business-analyst`)
 
@@ -8024,6 +8038,288 @@ repair exists in either direction.
   token), confirmed by `product-owner` and `architect`. This section is
   its NFR part.
 
+## 32. Reporting date ranges carry a declared span cap (Refs #641)
+
+Requirements delta for the #641 change (audit finding P1): a report
+window's shape and order are validated but its span never is, and both
+range reports walk every date in the window under the store mutex, so a
+request such as `0001-01-01`..`9999-12-31` keeps every other report
+waiting while it loops over millions of dates. One declared span cap on
+both range reports, one shared refusal raised before the lock, and every
+window inside the cap served exactly as today.
+
+The scope decision, the counted done-conditions, and the
+no-reader-visible-surface rule are `product-owner` work:
+`docs/product/acceptance-criteria.md`
+[section 24](../product/acceptance-criteria.md) (`AC-RPT-5`..`AC-RPT-7`),
+D-36 in `docs/project/decision-log.md`
+[the decision log](../project/decision-log.md), and R-17 in
+`docs/project/risk-register.md`. The refusal edge on the reporting
+service design's failure flowchart and error mapping is `architect` work
+(LLD [section 31](../architecture/lld.md), the sibling section this
+change set adds, plus `docs/architecture/services/reporting.md`
+sections 4 and 6, refreshed by the implementation PR per
+maintain-with-code); guard traceability is the `qa-lead` handoff
+(`docs/testing/traceability-matrix.md` section 24, the sibling section
+this change set adds); the release note and the rollback pointer are the
+`release-manager` handoff. This section words the requirements half: the
+decision (32.1), the explicit no-change statements (32.2), the NFR delta
+(32.3), the traceability handoff with its per-flow diagram (32.4), and
+the gate dependencies plus the out-of-scope list (32.5). No
+`docs/README.md` row flips: both requirements files this change touches
+are already `active`.
+
+### 32.1 Decision: one 730-night span cap on both range reports, refused before the store lock
+
+As-built trace at this spec head (pre-change), read-only — the lab
+reproduction of the finding belongs in the implementation PR body or an
+issue comment, per the issue's scope. The pins below are the state this
+requirement was written against and are refreshed at the merged head by
+`qa-lead`.
+
+- **The window is shape- and order-checked, never bounded by span.**
+  `parseRange` parses `dateFrom` and `dateTo`
+  (`services/reporting/internal/store/store.go:440-453`), refuses a
+  malformed one naming the field (`:442-449`), and refuses `dateTo`
+  before `dateFrom` naming `dateTo` (`:450-452`); nothing compares the
+  distance between the two ends.
+- **Both range reports walk every date under the store lock.**
+  `Occupancy` takes `s.mu.Lock()` at `:465` and loops
+  `for day := from; !day.After(to)` at `:480`, scanning every active
+  reservation for every room type on every date; `Revenue` takes the
+  lock at `:520` and walks the same inclusive loop at `:523`. One
+  `0001-01-01`..`9999-12-31` window is millions of iterations holding a
+  mutex every other report read needs, so one caller stalls all
+  reporting on the single on-premise host.
+- **Both ends are inclusive, so a 730-night span is 731 dates.** The
+  loops stop at `!day.After(to)`; the window the existing perf guard
+  drives is 731 dates, 2024-01-01 to 2025-12-31
+  (`services/reporting/internal/service/perf_test.go:99-101`).
+- **The refusal vocabulary is already there.** `validation(field,
+  message)` builds an `OpError` with code `VALIDATION_FAILED`, status
+  400, and `details.field`
+  (`services/reporting/internal/store/store.go:30-32`), and the handler
+  renders the shared envelope with `code`, `message`, `details`, and
+  `traceId` (`services/reporting/internal/handler/handler.go:38-45`).
+  Both contracts already list `VALIDATION_FAILED` (400)
+  (`contracts/http/OccupancyReport.json`,
+  `contracts/http/RevenueSummary.json`).
+- **The product's documented reporting need is two years.**
+  `NFR-PERF-2` states that any standard report over two years of a
+  50-room hotel's data completes within 5 seconds
+  (`docs/requirements/mvp-requirements.md` section 2), and the guard
+  that measures it generates exactly that window — 731 dates,
+  2024-01-01 to 2025-12-31 — and asserts row counts and totals against
+  the source rows (`services/reporting/internal/service/perf_test.go:97`,
+  the window at `:99-101`, occupancy rows at `:169-170`, revenue rows at
+  `:199-200`, totals at `:223`). The recorded run measures 505 ms and
+  0 ms over 731 dates (`docs/testing/test-report.md:297-298`,
+  `docs/testing/phase-6-qa-a2-run-log.md:107-108`).
+- **Rates already refuses a range longer than 730 nights.** `Quote`
+  counts the nights and refuses above 730, naming `departureDate`
+  (`services/rates/internal/store/store.go:254`,
+  `services/rates/internal/store/postgres.go:258`), documented in
+  `docs/architecture/services/rates.md` section 3. The two backends
+  therefore disagree on the longest range they accept today; the
+  reporting cap adopts the same number.
+- **No cap exists in any document or contract today.** The two request
+  manifests declare `dateFrom` and `dateTo` with no maximum
+  (`contracts/http/OccupancyReport.json:13-16`,
+  `contracts/http/RevenueSummary.json:13-16`), and no requirement,
+  business rule, or service design bounds a report window.
+- **No over-cap guard exists today.** The guards that exist pin shape
+  and order only: `TestReportWindowsAreValidated`
+  (`services/reporting/internal/service/service_test.go:31-42`),
+  `TestReportingAuthAndValidation`
+  (`services/reporting/internal/handler/handler_test.go:106-123`), and
+  the catalogue samples
+  (`services/reporting/internal/messages/messages_test.go:37-39`). No
+  test drives a wide window or asserts a span refusal.
+
+The decided behaviour, in five parts:
+
+1. **One span cap for both range reports: 730 nights.** `dateTo` may be
+   at most 730 nights after `dateFrom`, which is 731 inclusive dates.
+   It is the two-year window `NFR-PERF-2` documents and the perf guard
+   already drives, and the same number Rates applies to a stay range, so
+   no documented reporting need is cut and the two backends agree. The
+   cap is a named constant in the reporting store, never an environment
+   variable, deployment file, or per-hotel setting, so this change
+   carries no deployment, environment, runbook, or configuration delta.
+2. **The cap is a span, not a data window.** A window ending today, one
+   that ended years ago, and one before any data exists are all served
+   as long as their span is within the cap, and dates with no data keep
+   the row shape the reports return today.
+3. **A wider window is refused with the shared envelope before any work
+   starts.** The answer is exactly one HTTP 400 with code
+   `VALIDATION_FAILED`, `details` naming `dateTo`, a fresh `traceId`,
+   and one new plain sentence `reporting.validation.date_range_span` —
+   "dateTo must be at most 730 nights after dateFrom." with the cap
+   rendered from the constant rather than pasted — raised in
+   `parseRange` before the store lock is taken and before any per-date
+   loop runs, so the refused request walks no date and holds no mutex.
+   Missing, malformed, and out-of-order windows keep today's codes,
+   statuses, fields, and sentences.
+4. **Nothing inside the cap changes.** Every accepted window returns
+   exactly the rows, row order, zero-filled dates, and `asOf` it returns
+   today. `DailySheet` (one business date,
+   `services/reporting/internal/store/store.go:542`) and
+   `HousekeepingReport` (no range in its read) are untouched, and
+   pagination stays out of scope.
+5. **The refusal is proven at the boundary and one night past it.** The
+   implementation carries a guard that drives a window one night over
+   the cap and asserts the refusal for both operations, a guard that
+   asserts the at-cap window still returns today's rows, and the
+   existing malformed-window and order guards keep passing.
+
+### 32.2 Explicit no-change statements
+
+- `FR-RPT-1`..`FR-RPT-4` are unchanged: the cap is a precondition on
+  two existing read operations, not a new report capability, a new
+  field, or a new screen. The capability count in section 4 stands at
+  40.
+- Both response shapes, `asOf` semantics, row order, and zero-fill for
+  dates without data are unchanged inside the cap. The two request and
+  response manifests keep their current shape; whether `architect` also
+  publishes the cap as a schema `maximum` is a contract decision and
+  changes none of these conditions, and `contract-check` stays green
+  either way.
+- The existing window refusals keep their code, status, `details` field,
+  and sentence: a missing `dateFrom`/`dateTo` is refused in the handler
+  (`services/reporting/internal/handler/handler.go:136-144`, `:165-170`),
+  a malformed one names the field in `parseRange`
+  (`services/reporting/internal/store/store.go:442-449`), and `dateTo`
+  before `dateFrom` names `dateTo` (`:450-452`).
+- `DailySheet` stays a one-date read (`store.go:542`) and
+  `HousekeepingReport` carries no range; neither gains a bound.
+- No reader-visible surface changes: no desk view or route reaches
+  `OccupancyReport` or `RevenueSummary`, so no UI contract section
+  applies, and no catalogue key, route, print rule, or desk copy is
+  added beyond the one API-caller sentence above.
+- The existing NFRs keep their wording and targets: `NFR-PERF-2`
+  (reports on two years of data within 5 seconds), `NFR-PERF-1` (desk
+  response), `NFR-I18N-1` (catalogue coverage), `NFR-AVL-1` (on-premise
+  availability), `NFR-SEC-1`/`NFR-SEC-2` (role access and session),
+  `NFR-TZ-1` (hotel-local dates), and `NFR-AUD-1` (audit recording) are
+  unaffected by a refusal that writes nothing.
+- No data model, stored row, event, idempotency record, or migration is
+  added or changed: the reports are read-only projections.
+- The cap is not per-hotel configuration and not tunable at runtime; the
+  fixed/configurable split in `docs/requirements/business-rules.md`
+  section 9 records it as fixed.
+
+### 32.3 Non-functional requirements delta
+
+Ids use the `RPT` (reporting) area code and continue the
+`NFR-<area>-<n>` form. The requirement constrains both range reports,
+and it maps to accepted done-conditions in `AC-RPT-5`..`AC-RPT-7`.
+
+NFR-RPT-1 — A report window is bounded by one declared 730-night span
+and refused before any store work when it is wider.
+Given a request to `OccupancyReport` or `RevenueSummary`; when `dateTo`
+is more than 730 nights after `dateFrom` — including
+`0001-01-01`..`9999-12-31` — then the service answers exactly one HTTP
+400 carrying the shared envelope with `code` equal to
+`VALIDATION_FAILED`, `details` naming `dateTo`, the plain
+`reporting.validation.date_range_span` sentence in the active locale
+with the bound rendered from the constant, and a fresh `traceId`; no
+`nights` or `days` rows come back, and the refusal is raised in
+`parseRange` before the store lock is taken and before any per-date
+loop runs, so no other report read waits behind the refused request.
+Given a window whose `dateTo` is exactly 730 nights after `dateFrom`
+(731 inclusive dates, the shape of 2024-01-01..2025-12-31); then both
+reports return exactly today's rows — same dates and row order,
+occupied and available counts, room and extra revenue totals, zero rows
+for dates without data, and `asOf` — and one night more (731 nights)
+is refused as above. Given the cap; then it is one named constant in
+the reporting store, the same number for both operations, carried by no
+environment variable, deployment file, runbook step, or per-hotel
+configuration entry, and equal to the bound Rates already applies to a
+stay range (`services/rates/internal/store/store.go:254`). Given a
+missing, malformed, or out-of-order window; then the existing
+`VALIDATION_FAILED` refusal answers naming the field, unchanged. Given
+`DailySheet` or `HousekeepingReport`; then it answers exactly as
+before.
+Targets: 1 span constant for both operations; 0 configuration sources
+for it; a 730-night window accepted and one night more refused for both
+operations; 0 dates walked and 0 lock holds on a refused window; 1
+refusal sentence.
+Traces to: `AC-RPT-5`; `AC-RPT-6`; `AC-RPT-7`; FR-RPT-1; FR-RPT-2;
+NFR-PERF-2; NFR-I18N-1; `BR-62`;
+contracts/http/OccupancyReport.json; contracts/http/RevenueSummary.json.
+
+### 32.4 Traceability handoff for `qa-lead`
+
+Each row traces to `AC-RPT-5`..`AC-RPT-7`, to this section's
+requirement, and to the existing two-year perf evidence. Guards that
+exist are cited `file:line` against the tree this requirement was
+written on (`ccd4671`); where no guard exists yet, the row names the
+missing guard and the implementation PR creates it, for `qa-lead` to
+re-pin at the merged head.
+
+| Item | Guard (on disk today; a row marked missing is created by the implementation PR) | Handoff note for `qa-lead` |
+|---|---|---|
+| NFR-RPT-1 over-cap refusal, both operations | Missing guard: `services/reporting/internal/service/service_test.go` beside `TestReportWindowsAreValidated` (`:31-42`) drives only a malformed `dateFrom` and a reversed window. Add: `OccupancyReport` and `RevenueSummary` with `0001-01-01`..`9999-12-31` and with a 731-night window each, asserting `Code == "VALIDATION_FAILED"`, `Status == 400`, `Details["field"] == "dateTo"`, the `reporting.validation.date_range_span` sentence carrying `730`, and no rows. HTTP level: `services/reporting/internal/handler/handler_test.go:106-123` gains the same window over `POST /v1/reporting/OccupancyReport` and `.../RevenueSummary`, asserting the four envelope keys and a non-empty `traceId` | The refusal must be provable before any walk; a store-only guard cannot see the lock, so the handler guard pins the envelope and the service guard pins code and field |
+| NFR-RPT-1 at-cap acceptance, both operations | `services/reporting/internal/service/perf_test.go:97` (`TestPerfTwoYearReportsRecordTimings`) drives the exact 731-date window (`:99-101`) and asserts occupancy rows (`:169-170`), revenue rows (`:199-200`), and revenue totals (`:223`); `services/reporting/internal/store/store_test.go:61` (`TestRebuildMatchesSourceRows`) pins occupancy (`:67`) and revenue (`:88`) row identity on short windows. Missing guard: an explicit at-cap/one-night-past boundary pair on the same seeded fixture that proves the at-cap rows equal today's and the 731-night window is refused | Keep the perf guard green unchanged: it is the acceptance evidence that the documented two-year window is inside the cap. The new boundary pair is the guard that fails without the constant |
+| Existing shape and order refusals stay unchanged | `services/reporting/internal/service/service_test.go:31-42`; `services/reporting/internal/handler/handler_test.go:106-123`; `services/reporting/internal/messages/messages_test.go:37-39` | Must pass without an assertion change: same codes, statuses, fields, and sentences |
+| New catalogue sentence | `services/reporting/internal/messages/en.json:49-51` (the window sentences) and `services/reporting/internal/messages/messages_test.go:28-51` (byte-identical samples). Missing: the `reporting.validation.date_range_span` key and its sample assertion | One assertion pins "dateTo must be at most 730 nights after dateFrom." with the bound rendered; the reporting catalogue stays its single English source, and `script/catalogue-coverage-check.sh` stays green |
+| DailySheet and HousekeepingReport untouched | `services/reporting/internal/service/service_test.go:44`; `services/reporting/internal/handler/handler_test.go:129`; `services/reporting/internal/service/perf_test.go:226-291` | Must stay green with no desk-visible change, proving the cap did not leak into the one-date and no-range reads |
+| Contract surface | `script/contract-check.sh` over `contracts/http/OccupancyReport.json` and `contracts/http/RevenueSummary.json` | `VALIDATION_FAILED` is already enumerated in both; if `architect` adds a `maximum` to the two request manifests, the contract guard still passes. No new code, status, or operation is added |
+| Evidence cross-reference | `docs/testing/test-report.md:290-298` and `docs/testing/phase-6-qa-a2-run-log.md:107-108` (731-date window, 505 ms and 0 ms) | The implementation PR re-runs the two-year report and records the unchanged timings beside the over-cap refusal; that before/after pair is this change's evidence |
+
+Per-flow implementation diagram (T2). The architecture-side view is the
+reporting service design's failure flowchart and error mapping
+(`docs/architecture/services/reporting.md` sections 4 and 6, refreshed
+by the implementation PR); this is the requirements-side view of the
+same flow, citing the code edges this requirement was written against:
+
+```mermaid
+flowchart TD
+    A[OccupancyReport or RevenueSummary: dateFrom, dateTo  handler.go:136-170] --> B[parseRange  store.go:440]
+    B -- field missing --> M1[400 VALIDATION_FAILED, field dateFrom or dateTo, existing sentence  handler.go:137-144, :166-170]
+    B -- malformed date --> M2[400 VALIDATION_FAILED naming dateFrom or dateTo  store.go:442-449]
+    B -- dateTo before dateFrom --> M3[400 VALIDATION_FAILED naming dateTo  store.go:450-452]
+    B -- span over 730 nights --> R[400 VALIDATION_FAILED, details dateTo, reporting.validation.date_range_span with 730  new check in parseRange]
+    B -- span at or under 730 nights --> L[Take the store lock  Occupancy :465 / Revenue :520]
+    L --> W[Walk each inclusive date  Occupancy :480 / Revenue :523]
+    W --> O[Return today's rows and asOf]
+    R -.-> N[No lock taken; no date walked; other reports keep serving]
+```
+
+Failure/rollback path: a refused request writes nothing and changes no
+projection; the reports are read-only, the read model is rebuilt from
+the event log, and there is no stored state to unwind. The whole change
+reverts with the single implementation PR — the constant, the
+`parseRange` check, the catalogue key, and the guards disappear
+together — and every window the service accepted before is accepted
+again. Rates' 730-night cap, the desk, and every other requirement stay
+as written in either direction; no data migration exists.
+
+### 32.5 Explicitly not specified here (plus gate dependencies)
+
+- Implementation — the cap constant, the `parseRange` refusal, the
+  catalogue key, the manifest decision, and the guards — is the
+  downstream `dev` PR for #641, not this section.
+- Acceptance criteria are `product-owner` work (`AC-RPT-5`..`AC-RPT-7`,
+  D-36, R-17); the LLD delta and the reporting service design's failure
+  flowchart and error-mapping rows are `architect` work (LLD section 31,
+  `docs/architecture/services/reporting.md` sections 4 and 6); the guard
+  mapping and traceability completion above are `qa-lead` work
+  (traceability matrix section 24); the rollback note is
+  `release-manager` work. `spec-reviewer` gates the set.
+- Out of scope: the `DailySheet` single-date bound (already one date);
+  any bound on `HousekeepingReport` (it carries no range); pagination;
+  changing Rates' or any other service's existing bound; and the other
+  audit findings.
+- The cap is not per-hotel configuration and adds no UI contract: no
+  reader-visible surface changes, so the T2 UI contract rule does not
+  apply.
+- The specified change is tier T2 (thin), confirmed by `product-owner`:
+  a caller-visible refusal on two read operations with no new subsystem,
+  dependency edge, data model, lifecycle state, endpoint,
+  reader-visible surface, or code token. This section is its NFR part;
+  no implementation PR opens until `SPEC-GATE PASS` on #641.
+
 <!-- ao-role: business-analyst -->
 Role: business-analyst · AO session hotel-mgmt-1079
 
@@ -8032,3 +8328,6 @@ Role: business-analyst · AO session hotel-mgmt-934
 
 <!-- ao-role: business-analyst -->
 Role: business-analyst · AO session hotel-mgmt-1116
+
+<!-- ao-role: business-analyst -->
+Role: business-analyst · AO session hotel-mgmt-1129
