@@ -253,7 +253,7 @@ with the desk recovery `AC-DSK-20`; requirements `FR-PRC-1`..`FR-PRC-5`
 (`../requirements/mvp-requirements.md` section 26); decision ADR-0007
 (`../architecture/decisions/adr-0007-server-side-reservation-price-authority.md`,
 accepted 2026-11-24 on owner approval) and D-30 in
-`../project/decision-log.md`; risk R-13 in
+`../project/decision-log.md`; risk R-15 in
 `../project/risk-register.md`. Risk label: `risk-high`, tier T3. No
 schema, table, column, migration, backfill, event, lifecycle state, or
 stored-shape change (`../architecture/lld.md` section 25.7).
