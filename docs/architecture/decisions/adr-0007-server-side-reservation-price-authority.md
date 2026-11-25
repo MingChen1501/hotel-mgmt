@@ -198,7 +198,9 @@ already carry the additive minor bump that covers this delta
 (`contracts/http/CreateReservation.json:4` at `1.2`,
 `contracts/http/ModifyReservation.json:4` at `1.1`, both bumped by the
 availability delta landed as #716), so `PRICE_CHANGED` rides that
-version instead of a second bump; it is registered as an envelope code
+version instead of a second bump — the same convention the `CheckOut`
+deltas followed, where two additive spec slices both stated
+`1.0 -> 1.1` and one bump landed. It is registered as an envelope code
 (`contracts/errors/envelope.json` `:9`, `:27` after the mapping is
 added). No
 schema, table, migration, column, or event changes: the stored
