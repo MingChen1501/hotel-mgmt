@@ -18,6 +18,8 @@ describe("message catalogue", () => {
       ["error.transport.bad_json", {}, "Request body is not valid JSON."],
       ["error.transport.body_not_object", {}, "Request body must be a JSON object."],
       ["error.transport.body_read_failed", {}, "Failed to read the request body."],
+      // BND17-BND20: the too-large refusal sentence (Refs #630).
+      ["error.transport.body_too_large", {}, "Request body is too large."],
       ["error.transport.unexpected", {}, "Unexpected failure handling the request."],
       ["error.transport.unknown_path", {}, "unknown path"],
       ["error.auth.missing_token", {}, "Missing session token."],

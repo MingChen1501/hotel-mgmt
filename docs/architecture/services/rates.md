@@ -14,12 +14,12 @@ Go `handler / store` with no service layer — reads and guarded writes go strai
 
 | Layer | Files | Responsibility |
 |---|---|---|
-| Transport + auth + body decoding | `internal/handler/handler.go` | `NewMux(st)` routes `POST /v1/rates/<Operation>`; the `authed(operation, …)` wrapper enforces Bearer presence per operation (:98-117) |
+| Transport + auth + body decoding | `internal/handler/handler.go` | `NewMux(st)` routes `POST /v1/rates/<Operation>`; the `authed(operation, …)` wrapper enforces Bearer presence per operation (:136-155) |
 | Guarded state + storage | `internal/store/store.go` (`Repository`, `Store`), `internal/store/postgres.go` | plan/price/restriction/discount writes, quote math, restriction and sellable-count checks |
-| Health | `internal/health/` | `GET /healthz` with the module identity (`cmd/server/main.go:37`) |
-| Boot | `cmd/server/main.go` | selects Postgres storage when `DATABASE_URL` is set (:27), mounts health + pricing routes (:37-38) |
+| Health | `internal/health/` | `GET /healthz` with the module identity (`cmd/server/main.go:38`) |
+| Boot | `cmd/server/main.go` | selects Postgres storage when `DATABASE_URL` is set (:28), mounts health + pricing routes (:38-39) |
 
-The routing table (`internal/handler/handler.go`): `UpsertRatePlan` (:119), `UpsertRatePrice` (:141), `UpsertRestriction` (:170), `UpsertDiscount` (:205), `QuotePrice` (:229), `CheckSellableCount` (:260), `CheckRestrictions` (:298). The operation name is threaded into `authed` for future per-operation policy (`:116`).
+The routing table (`internal/handler/handler.go`): `UpsertRatePlan` (:157), `UpsertRatePrice` (:179), `UpsertRestriction` (:208), `UpsertDiscount` (:243), `QuotePrice` (:267), `CheckSellableCount` (:298), `CheckRestrictions` (:336). The operation name is threaded into `authed` for future per-operation policy (`:154`).
 
 ## 3. Happy-path flowchart
 
@@ -37,7 +37,7 @@ flowchart TD
 
 Edge trace (every edge cites code):
 
-- A–B: Bearer presence + JSON decode, same contract as reservations (`internal/handler/handler.go:98-117`).
+- A–B: Bearer presence + JSON decode, same contract as reservations (`internal/handler/handler.go:136-155`).
 - C: arrival/departure must be `YYYY-MM-DD` with departure after arrival; ranges over 730 nights are refused (`internal/store/store.go:255`).
 - D: plan resolution falls back through the plan chain; an unknown named plan → `NOT_FOUND` (:384), and when no plan prices the type the reply carries `details.reason = "no_rate_plan"` (:400).
 - E: each night in the range must carry a price for the type or the quote fails with `details.reason = "no_rate_price"` and the missing `nightDate` (`:271`).
@@ -83,7 +83,7 @@ Envelope `{code, message, details, traceId}` (same shape as reservations) to `do
 | Code | Status | Raised when |
 |---|---|---|
 | `VALIDATION_FAILED` | 400 | bad dates, ranges, prices, discount kind/value (:51-57, :179-181, :206, :218-225, :254) |
-| `UNAUTHENTICATED` | 401 | missing session token (`internal/handler/handler.go:100-110`) |
+| `UNAUTHENTICATED` | 401 | missing session token (`internal/handler/handler.go:138-148`) |
 | `NOT_FOUND` | 404 | unknown plan, unpriced night, unknown room type (:384, :271, :365); quote refusals carry `details.reason` `no_rate_plan` / `no_rate_price` (Refs #589) |
 | `STATE_ILLEGAL` | 422 | closed-to-arrival, min-stay violation (:37, :318, :320) |
 

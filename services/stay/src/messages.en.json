@@ -4,6 +4,7 @@
     "error.transport.bad_json": "Request body is not valid JSON.",
     "error.transport.body_not_object": "Request body must be a JSON object.",
     "error.transport.body_read_failed": "Failed to read the request body.",
+    "error.transport.body_too_large": "Request body is too large.",
     "error.transport.unexpected": "Unexpected failure handling the request.",
     "error.transport.unknown_path": "unknown path",
     "error.transport.method_not_allowed": "That request method is not allowed on this route.",

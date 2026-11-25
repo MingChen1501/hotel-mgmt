@@ -331,6 +331,7 @@ consolidation of record for their own slices):
 | #323 ProduceConfirmation end-to-end wiring | PR #329 | FR-GST-4 |
 | #330/#332 IDENTITY_LOCKED contract naming + #325 locked-specific sign-in message | PRs #325/#330/#332 | NFR-SEC-2 |
 | #627 backend-fault vocabulary (`INTERNAL_ERROR` on the 5xx path, three tokens registered, four maps aligned) | PR #704 | `traceability-matrix.md` section 21 — guards `ERR1`–`ERR9` plus evidence rule `ERR-E1`; MVP count stands at 57/57 |
+| #630 request-body ceiling and finite server timeouts (all eight backend services) | PR #713 | `traceability-matrix.md` section 22 — guards `BND1`–`BND28` plus evidence rule `BND-E1` (`docs/testing/evidence/630/README.md`); MVP count stands at 57/57 |
 
 ## 9. Open gaps and reproduce pointers
 
