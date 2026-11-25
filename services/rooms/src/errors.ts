@@ -8,9 +8,12 @@ export type ErrorCode =
   | "CONFLICT"
   | "STATE_ILLEGAL"
   | "SETTLEMENT_REQUIRED"
-  | "UNAUTHENTICATED";
+  | "UNAUTHENTICATED"
+  | "INTERNAL_ERROR"
+  | "UPSTREAM_UNAVAILABLE"
+  | "METHOD_NOT_ALLOWED";
 
-const STATUS_BY_CODE: Record<ErrorCode, number> = {
+export const STATUS_BY_CODE: Record<ErrorCode, number> = {
   VALIDATION_FAILED: 400,
   UNAUTHENTICATED: 401,
   FORBIDDEN: 403,
@@ -18,6 +21,9 @@ const STATUS_BY_CODE: Record<ErrorCode, number> = {
   CONFLICT: 409,
   STATE_ILLEGAL: 422,
   SETTLEMENT_REQUIRED: 409,
+  INTERNAL_ERROR: 500,
+  UPSTREAM_UNAVAILABLE: 503,
+  METHOD_NOT_ALLOWED: 405,
 };
 
 export class HttpError extends Error {

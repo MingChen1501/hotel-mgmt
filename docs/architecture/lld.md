@@ -2846,7 +2846,7 @@ server-side role enforcement. When an owner request opens the
 enforcement slice it is T3 (permissions/authorisation): ADR, HLD
 delta, threat-model delta, and per-operation policy on the
 `authed(operation, …)` seam the rates handler already threads
-(`services/rates/internal/handler/handler.go:97-116`).
+(`services/rates/internal/handler/handler.go:98-117`).
 
 ### 19.9 Technical no-change note
 
@@ -2985,7 +2985,7 @@ Edge trace (every edge cites code; `StayView` paths are relative to
   from the stay's actual arrival day (`:837-844`) to tomorrow
   (`nextDay`, `:474-480`), matched on `stayId` (`:845`), then
   `GetReservation` (`:849-852`)). The `stayId` link is emitted by the reservations
-  handler (`services/reservations/internal/handler/handler.go:315`) and
+  handler (`services/reservations/internal/handler/handler.go:316`) and
   declared in `contracts/http/QueryCalendar.json`.
 - D–E: a booking that does not resolve, or a quote that is not a
   non-negative integer, returns `null` (`StayView.vue:846-854`).
@@ -3338,7 +3338,7 @@ end):
    Rates pattern (`services/reservations/internal/pricing/client.go:43-97`).
    The bearer is threaded from the transport into the store the way the
    Reservations handler threads it
-   (`services/reservations/internal/handler/handler.go:207`, `:235`);
+   (`services/reservations/internal/handler/handler.go:208`, `:236`);
    today the Stay transport only checks presence
    (`services/stay/src/server.ts:110-112`).
 5. `200` -> `bookingCompletion: {state: "completed", reservationRef}`.
@@ -3371,7 +3371,7 @@ end):
 5. Any other state -> `STATE_ILLEGAL` naming the state, nothing written.
 6. No row with that `stay_id` -> `NOT_FOUND` `{stayId}`.
 7. No `idempotencyKey` field: the state transition is the guard, the
-   `MarkNoShow` precedent (`services/reservations/internal/handler/handler.go:266-284`).
+   `MarkNoShow` precedent (`services/reservations/internal/handler/handler.go:267-285`).
 
 Shapes considered and rejected:
 
@@ -3417,7 +3417,7 @@ Edge trace:
   (`services/reservations/internal/pricing/client.go:43-97` is the
   pattern; wiring target `deploy/compose.yaml:77-87`).
 - E–F: target `CheckOutReservation` handler beside
-  `CheckInReservation` (`services/reservations/internal/handler/handler.go:184-205`)
+  `CheckInReservation` (`services/reservations/internal/handler/handler.go:185-206`)
   and the store transition beside `CheckIn`
   (`services/reservations/internal/store/store.go:297-320`;
   Postgres `services/reservations/internal/store/postgres.go:344-389`);
@@ -4141,7 +4141,7 @@ Explicit no-change statements for this change:
 |---|---|---|---|
 | The bookings overlapping the range | Reservations | `QueryCalendar`; overlap predicate `arrival < dateTo && departure > dateFrom` (`services/reservations/internal/store/store.go:191-193`; Postgres `services/reservations/internal/store/postgres.go:311-321`) | No — it renders the entries the read returned |
 | Row order and the 50-row cap | Desk | sort by `arrivalDate` then `reservationRef`, then slice 50 (`docs/product/booking-management-view.md` sections 3 and 5) | Yes, and it must: the read guarantees no order (map iteration `services/reservations/internal/store/store.go:274-291`; no `ORDER BY` at `services/reservations/internal/store/postgres.go:311-321`) |
-| Guest name and quoted total | Reservations (frozen at booking) | `GetReservation` — the stored snapshot `guest.fullName` and `priceBasis.totalMinor` / `discountName` (`services/reservations/internal/handler/handler.go:172-181`; `contracts/http/GetReservation.json`) | Read-back only — never re-derived, never repriced |
+| Guest name and quoted total | Reservations (frozen at booking) | `GetReservation` — the stored snapshot `guest.fullName` and `priceBasis.totalMinor` / `discountName` (`services/reservations/internal/handler/handler.go:173-182`; `contracts/http/GetReservation.json`) | Read-back only — never re-derived, never repriced |
 | Room-type name | Rooms | `ListRoomTypes` (`contracts/http/ListRoomTypes.json`) | Read only |
 | Assigned room | Stay, then Rooms | `ListArrivalsDepartures.inHouse` for `stayId -> roomId` (`services/stay/src/server.ts:42-60`, `services/stay/src/store.ts:432-439`), then `ListRoomsByState("occupied")` for `roomId -> number` | Read only; a row shows a room only when both reads agree (24.3) |
 | The business date the in-house read uses | Desk | `localBusinessDate()` (`app/src/stay-options.ts:50-54`), the same value Main and Stay send | Yes — it is the desk business date, never the chosen range |
@@ -4320,7 +4320,7 @@ Edge trace:
   bounded (24.2, G2 decision in 24.7).
 - E/F–H: the maps are read once per apply, not once per row.
 - G–H: the per-row read supplies the guest and the frozen total
-  (`services/reservations/internal/handler/handler.go:172-181`).
+  (`services/reservations/internal/handler/handler.go:173-182`).
 - H–I: the detail is a second, fresh read of the same operation, never a
   copy of the row.
 
@@ -4555,8 +4555,8 @@ or data-model change; the contract change is additive only). ADR-0006
 (`docs/architecture/decisions/adr-0006-server-side-availability-derivation.md`,
 accepted 2026-11-24) records the source choice and the seam. The finding
 is audit item R1: `sellableUnits` is read from the request body
-(`services/reservations/internal/handler/handler.go:129`, `:144`,
-`:239`, `:251`) and is the guard's only ceiling
+(`services/reservations/internal/handler/handler.go:168`, `:183`,
+`:278`, `:290`) and is the guard's only ceiling
 (`services/reservations/internal/store/store.go:222`, `:415`), so a
 caller that sends a large number overbooks. Product conditions
 `AC-OVB-1`..`AC-OVB-3` (`docs/product/acceptance-criteria.md` section
@@ -4594,8 +4594,8 @@ architect-owned delta.
    dateTo: <effective departure>}` and the caller's Bearer token
    forwarded, five-second timeout. `ROOMS_BASE_URL` defaults to
    `http://rooms:8085` (compose service `rooms`,
-   `deploy/compose.yaml:89-99`) and is wired at boot beside
-   `RATES_BASE_URL` (`services/reservations/cmd/server/main.go:42-47`;
+   `deploy/compose.yaml:92-102`) and is wired at boot beside
+   `RATES_BASE_URL` (`services/reservations/cmd/server/main.go:44-48`;
    compose env `deploy/compose.yaml:46`).
 5. Fail closed on an unread ceiling: transport error, timeout, 5xx,
    unparseable body, a reply whose `totalCount` / `blockedRooms` are not
@@ -4619,7 +4619,7 @@ architect-owned delta.
    `VALIDATION_FAILED` naming the field) and does not reach the store:
    the store's `input.SellableUnits < 1` validation (`store.go:203`,
    `:377`; `postgres.go:146`, `:483`) and the handler's absent-means-zero
-   default (`handler.go:366`) are removed with this change, otherwise an
+   default (`handler.go:409-414`) are removed with this change, otherwise an
    advisory field would still decide (an absent field would refuse as
    `VALIDATION_FAILED`).
 8. Keep the idempotency replay inside the store (no second unit
@@ -4658,7 +4658,7 @@ flowchart TD
 
 Edge trace:
 
-- A–B: Bearer presence (`services/reservations/internal/handler/handler.go:104-112`);
+- A–B: Bearer presence (`services/reservations/internal/handler/handler.go:142-143`);
   field, date, price, and guest validation
   (`services/reservations/internal/service/service.go:87-119`).
 - B–C: restriction check (target unchanged, `service.go:114-119`).
@@ -4673,7 +4673,7 @@ Edge trace:
   Postgres `internal/store/postgres.go:149-189`).
 - F–H: `booked >= ceiling` -> `CONFLICT` naming type and dates
   (`store.go:222-226`), no row, no event.
-- G–I: response fields (`internal/handler/handler.go:156-158`).
+- G–I: response fields (`internal/handler/handler.go:195-198`).
 
 ### 26.4 Failure and rollback paths
 
@@ -4713,7 +4713,7 @@ Edge trace:
 | `contracts/http/CreateReservation.json` | `sellableUnits` required -> optional and advisory ("ignored; the server derives the ceiling from Rooms"); errors add `UPSTREAM_UNAVAILABLE` (503) | minor (1.1 -> 1.2, ADR-0004 D1) |
 | `contracts/http/ModifyReservation.json` | same delta for the new type and dates | minor (1.0 -> 1.1) |
 | `contracts/http/CheckRoomTypeSellability.json` | shape unchanged; gains a server-side consumer (integration C2 becomes live) | none |
-| `contracts/errors/envelope.json` | add `UPSTREAM_UNAVAILABLE` to the enum and `503` to `statusMapping` (already emitted by Reservations, missing from the enum — the drift ADR-0005 D5 also records) | minor |
+| `contracts/errors/envelope.json` | unchanged — `UPSTREAM_UNAVAILABLE` (503) is already in the enum and `statusMapping` (#627), so no contract file edit comes from this change | none |
 
 No schema, table, migration, or event change; the reservation row, its
 state set, the change history, and the outbox payloads are untouched.
@@ -4808,3 +4808,796 @@ merged head.
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-941
+
+## 27. Folio writes verify the stay (Refs #634)
+
+Tier **T3 confirmed**: Billing gains its first runtime outbound read of
+Stay and a new fail-closed dependency edge on the money path, with a new
+contract error set; no data-model change, no new operation, no schema,
+no migration, and no event change. ADR-0008
+(`docs/architecture/decisions/adr-0008-folio-write-stay-verification.md`,
+proposed) records the decision; the owner flips it `proposed` ->
+`accepted` before the implementation PR merges. Product done-conditions
+are `docs/product/acceptance-criteria.md` section 20
+(`AC-FWV-1`..`AC-FWV-7`) with D-32 in
+`docs/project/decision-log.md`; FR/NFR wording is the
+`business-analyst` handoff, guard traceability the `qa-lead` handoff, and
+the release and availability notes the `release-manager` handoff. This
+section records only the architect-owned delta.
+
+### 27.1 Which layer owns what
+
+| Fact | Authority | Enforced where | May the client assert it? |
+|---|---|---|---|
+| Whether a stay exists, and its lifecycle state | Stay (`stay.stays.state`) | Stay `GetStayRef` (`services/stay/src/store.ts:406-423`) | No — `stayId` selects the stay, it does not prove it |
+| A folio's existence, lines, and balance | Billing (`billing.folios`, folio lines) | Billing inserts | No |
+| Whether a folio write may land at all | Billing, from Stay's read | The verify-before-write guard (27.2) | No |
+| The recorded open-balance approval | Billing (`billing.folios.open_balance_approval`) | Billing write; the #601 provenance rule is unchanged | No — #625 owns who may approve |
+| The stay's close | Stay | Conditional `in-house -> closed` flip | No |
+| A well-formed stay id | Billing | `stayUuid` before any call (`service/BillingService.java:86-92`) | Yes (`stayId`) |
+| The session actor | Admin session token | Body `actor` today; token binding is residual risk R6 | Yes (`actor`), today |
+
+### 27.2 Target algorithm
+
+Per route, in order — shape validation, stay verification, idempotency
+claim, then the writes:
+
+| Route | Shape checks first (unchanged) | Stay read | Writes that follow |
+|---|---|---|---|
+| `GetFolioBalance` (`web/BillingController.java:74`) | `stayId` UUID, `actor` (`service/BillingService.java:121`) | only when the stay carries no folio (`findFolioByStay` miss, `repo/BillingRepository.java:73-77`) | `ensureFolio` for a verified in-house stay |
+| `PostCharge` (`web/BillingController.java:81`) | `itemKind`, `itemName`, `amountMinor`, defined charge item (`service/BillingService.java:126-140`) | every request | key claim (`:146`), charge insert, balance movement, `folio.charge-posted` (`:158-162`) |
+| `RecordPayment` (`web/BillingController.java:89`) | `method`, positive `amountMinor` (`service/BillingService.java:166-175`) | every request | key claim (`:180`), payment insert, balance movement, `folio.payment-recorded` (`:185-188`) |
+| `RecordOpenBalanceApproval` (`web/BillingController.java:141`) | `approvedBy`, `role` (`service/BillingService.java:255-262`) | every request | key claim (`:267`), `recordApproval`, `folio.approval-recorded` (`:275-277`) |
+
+The verification call:
+
+- `POST {STAY_BASE_URL}/v1/stay/GetStayRef` with `{"stayId": "<uuid>"}`,
+  `Content-Type: application/json`, and the caller's `Authorization`
+  header forwarded verbatim — the established shape
+  (`services/reservations/internal/pricing/client.go:43-75`;
+  `docs/technical/integration.md` C8).
+- `STAY_BASE_URL` defaults to `http://stay:8084` on the compose network
+  (the port Stay publishes, `deploy/compose.yaml:81`) and is wired on the
+  `billing` service the way Stay wires `RESERVATIONS_BASE_URL`
+  (`deploy/compose.yaml:84-85`, `:116-121`).
+- Timeout 2 seconds, so a stuck Stay cannot push a charge posting or a
+  payment past `NFR-PERF-1`'s 3-second bound; it matches the #646
+  completion timeout and leaves the local write inside the remainder.
+- The call runs **outside** the route's database transaction. Holding a
+  Hikari connection open across a call that may take the full timeout
+  would starve the 10-connection billing pool
+  (`config/DatabaseConfig.java:55`) under the `NFR-PERF-1` load of five
+  signed-in staff, and rolling back a transaction that never wrote is
+  noise. Implementation shape: the existing transactional body moves to
+  a transactional writer bean and `BillingService` keeps the step order
+  (validate, verify, delegate); the bean's name is the implementer's
+  choice, and the seam the guards mock is the stay-verification client
+  interface.
+
+Answer classification (ADR-0008 D3/D4), applied to every route the same
+way:
+
+| Stay's answer | Billing's answer | Writes |
+|---|---|---|
+| `200` stay link, state `in-house` | continue the route | the route's own writes |
+| `404` `NOT_FOUND` whose `details.stayId` equals the requested id | `404 NOT_FOUND`, details `{upstream: "stay", stayId}` | none |
+| `422` `STATE_ILLEGAL` | `422 STATE_ILLEGAL`, details `{upstream: "stay", stayId, state}` | none |
+| `404` `NOT_FOUND` naming a different stay, or with no `stayId` | `503 UPSTREAM_UNAVAILABLE` (wiring fault, not a stay fact) | none |
+| `401` / `403` / any other `4xx` envelope | surfaced unchanged, code and details | none |
+| transport failure, timeout, `5xx`, non-envelope body, unreadable JSON, unwired client | `503 UPSTREAM_UNAVAILABLE`, details `{upstream: "stay", operation: "GetStayRef"}` | none |
+
+`UPSTREAM_UNAVAILABLE` messages come from the message catalogue like
+every other refusal (`docs/technical/error-handling.md` section 1;
+`NFR-I18N-1`), never a hard-coded English sentence.
+
+Where the product conditions overlap, this is the reading the
+implementation follows, and `product-owner` confirms it at the spec
+gate: `AC-FWV-5` settles the read of an **existing** folio — it is
+served from Billing in every stay state, so a Stay outage never blocks
+the departure invoice or a receipt — and `AC-FWV-3`'s "open the folio
+balance" clause therefore binds the **folio-creating** read, which does
+fail closed for a stay with no folio. Serving an existing folio can
+never produce an unverified folio, which is the outcome `AC-FWV-3`
+exists to prevent, and the alternative — refusing a departed guest's
+invoice because Stay is briefly down — would fail `AC-FWV-5` and the
+print path the desk depends on (`app/src/views/PrintView.vue:1028`,
+`:1120`, `:1157`). If the owner wants the stricter reading instead, that
+is a product change to both conditions and re-tiers this delta.
+
+### 27.3 Per-flow diagram — happy path
+
+The three writes and the folio-creating read, on a stay Stay confirms is
+in house:
+
+```mermaid
+flowchart TD
+    A[Desk calls a folio route] --> B{Bearer present and fields valid}
+    B -->|no| R400[400 VALIDATION_FAILED naming the field]
+    B -->|yes| C{GetFolioBalance and the stay already has a folio}
+    C -->|yes| S[200 the folio Billing holds, in any stay state]
+    C -->|no| D[Stay verifier asks GetStayRef with the caller token]
+    D -->|200 in-house| E{Which route}
+    E -->|GetFolioBalance| G[Create the folio at zero balance]
+    G --> S2[200 empty folio, zero balance]
+    E -->|PostCharge, RecordPayment, Approval| F{Idempotency key already claimed}
+    F -->|yes| H[Return the original line, no second write]
+    F -->|no| I[Insert line or approval, move balance, emit outbox event, commit]
+    I --> J[200 view of the line and the fresh balance]
+```
+
+Edge trace:
+
+- A–B: Bearer presence at the transport
+  (`web/BillingController.java:67-72`); UUID, actor, item, method, and
+  amount checks in the service (`service/BillingService.java:86-92`, `:111-116`,
+  `:126-140`, `:166-175`, `:255-262`).
+- B–C: an existing folio is served without a stay read, so a departed
+  stay's invoice and receipts keep reading and printing (product
+  `AC-FWV-5`; the print path is `app/src/views/PrintView.vue:1028`,
+  `:1120`, `:1157`).
+- C–D: the verification read (target `client/StayClient.java`, patterned
+  on `services/reservations/internal/pricing/client.go:43-75` — POST,
+  Bearer forward, 2-second timeout).
+- D–E–G–S2: a verified in-house stay with no folio still gets its folio on
+  the first balance read, exactly as today (product `AC-FWV-4`; the desk
+  check-out review and the Folio screen both depend on it).
+- E–F–H: the claim precedes the insert today
+  (`service/BillingService.java:146-151`); the verification now precedes
+  the claim, so a replay on a closed stay refuses instead of returning a
+  line (27.9).
+- F–I–J: unchanged writes — insert, `addToBalance`, `outbox`, response
+  (`repo/BillingRepository.java:99-135`;
+  `service/BillingService.java:158-162`).
+
+Rollback: revert the single implementation PR. The previous
+ensure-on-first-use behaviour returns with the client that made the read,
+and no data migration exists in either direction (ADR-0008).
+
+### 27.4 Per-flow diagram — unknown stay
+
+```mermaid
+flowchart TD
+    A[Stay verifier asks GetStayRef] -->|404 NOT_FOUND| B{details.stayId equals the requested stay}
+    B -->|no, or absent, a wiring fault| U[503 UPSTREAM_UNAVAILABLE, nothing written]
+    B -->|yes| C[404 NOT_FOUND naming the stay]
+    C --> D[No folio row, no line, no balance move, no approval, no outbox event]
+    D --> E[Desk says no stay matches that ID and nothing was recorded]
+```
+
+Edge trace:
+
+- A–B: Stay's own refusal carries the id it could not find
+  (`services/stay/src/store.ts:413-415`); comparing it keeps a
+  misconfigured base URL from reading as a product refusal on a money
+  path.
+- B–C: the definitive answer, surfaced with its own code and status — no
+  new vocabulary (ADR-0008 D3).
+- C–D: the verification runs before the claim and before any insert, so
+  nothing is written; a repeated request, with or without an idempotency
+  key, answers the same (product `AC-FWV-1`).
+- D–E: the desk sentence is product section 6.21
+  (`desk.folio.refused_unknown_stay`).
+
+### 27.5 Per-flow diagram — closed stay
+
+```mermaid
+flowchart TD
+    A[Stay verifier asks GetStayRef] -->|422 STATE_ILLEGAL| B{Does the stay already carry a folio}
+    B -->|no| C[422 STATE_ILLEGAL naming stay and state, no folio created]
+    B -->|yes| D[422 STATE_ILLEGAL, the existing folio keeps every line and its balance]
+    C --> E[Nothing written, no outbox event]
+    D --> F[Nothing written, the invoice still presents what Billing holds]
+```
+
+Edge trace:
+
+- A–B: Stay refuses anything outside `in-house` and names the state
+  (`services/stay/src/store.ts:416-421`).
+- B–C: a write against a closed stay that never had a folio creates none,
+  so no new orphan folio exists for a stay Billing cannot verify (product
+  `AC-FWV-5`).
+- B–D–F: a closed stay that does have a folio keeps it readable and
+  printable — the read path serves it without a stay read at all (27.3
+  edge B–C); only writes refuse. The document still matches the folio
+  (`BR-24`).
+- E: no line, no approval, no balance movement, no `folio.*` event.
+
+### 27.6 Per-flow diagram — unreadable Stay
+
+```mermaid
+flowchart TD
+    A[Stay verifier makes one call with a 2 second timeout] --> B{What came back}
+    B -->|transport failure, timeout, 5xx, unwired client, non-envelope| U[503 UPSTREAM_UNAVAILABLE, upstream stay, operation GetStayRef]
+    B -->|4xx envelope other than the stay answers| P[Surface the provider refusal unchanged, UNAUTHENTICATED stays UNAUTHENTICATED]
+    B -->|404 naming another stay| U
+    U --> X[No folio created or written, no balance move, no approval, no outbox event]
+    P --> X
+    X --> R[Desk says the stay could not be checked and nothing was recorded, retry offered]
+```
+
+Edge trace:
+
+- A–U: fail closed on an unread stay (ADR-0008 D4; the Reservations ->
+  Rates precedent returns the same code and detail shape,
+  `services/reservations/internal/pricing/client.go:88-96`). The
+  offline-first cached-config rule does not extend here (product
+  `AC-FWV-3`).
+- A–P: a rejected session is a session problem, not an outage, and must
+  not be reported as one.
+- U/P–X: the refusal precedes every write, so no unverified folio is ever
+  created and no write is half-recorded; once Stay answers, the retried
+  call commits once because the claim still guards the insert (27.3 edge
+  E–F).
+- X–R: the desk sentence is product section 6.21
+  (`desk.folio.refused_unreadable_stay`).
+
+### 27.7 Contract delta and error codes
+
+| File | Change | Version effect |
+|---|---|---|
+| `contracts/http/GetFolioBalance.json` | errors add `NOT_FOUND` (folio-less read of an unknown stay), `STATE_ILLEGAL` (stay not in house), `UPSTREAM_UNAVAILABLE` (Stay unreadable) | minor (`1.0 -> 1.1`, ADR-0004 D1: new error codes are additive) |
+| `contracts/http/PostCharge.json` | errors add the same three | minor (`1.0 -> 1.1`) |
+| `contracts/http/RecordPayment.json` | errors add the same three | minor (`1.0 -> 1.1`) |
+| `contracts/http/RecordOpenBalanceApproval.json` | errors add the same three | minor (`1.0 -> 1.1`) |
+| `contracts/errors/envelope.json` | add `UPSTREAM_UNAVAILABLE` to the `code` enum and `503` to `statusMapping` — the drift ADR-0005 already names | minor |
+| `contracts/http/GetStayRef.json` | unchanged — the provider already answers `NOT_FOUND` and `STATE_ILLEGAL` | none |
+
+Detail shapes carried on the refusals, so a desk or a log can act on them:
+`{upstream: "stay", stayId}` on `NOT_FOUND`;
+`{upstream: "stay", stayId, state}` on `STATE_ILLEGAL`;
+`{upstream: "stay", operation: "GetStayRef"}` on `UPSTREAM_UNAVAILABLE`.
+`VALIDATION_FAILED` keeps today's `{field: "stayId"}` for a malformed id.
+
+No new operation, request field, response field, schema, table, column,
+migration, or event exists. `contracts/openapi.yaml` and its
+`frontend/docs/openapi.yaml` mirror list no Billing folio operation, so
+neither gains an entry; `script/contract-check.sh` and
+`script/openapi-route-check.sh` must both stay green on the
+implementation PR.
+
+### 27.8 Verification plan
+
+Billing guards (the implementation PR creates them; the existing service
+suite is
+`services/billing/src/test/java/com/hotel/billing/service/BillingServiceTest.java`
+and the transport suite is `web/BillingControllerTest.java`, both
+database-free so `mvn test` stays offline):
+
+| Product condition | Guard (target) |
+|---|---|
+| `AC-FWV-1` unknown stay | `PostCharge`, `RecordPayment`, and `RecordOpenBalanceApproval` against an id Stay answers `404` for: `404 NOT_FOUND`, and the repository mock records no `ensureFolio`, no insert, no `addToBalance`, no `recordApproval`, no `outbox` — with and without an idempotency key, and on a repeated call |
+| `AC-FWV-2` closed stay | the same three writes against a stay Stay answers `422` for, with and without an existing folio: `422 STATE_ILLEGAL` naming the state, nothing written |
+| `AC-FWV-3` unreadable Stay | transport failure, timeout, `5xx`, non-envelope body, and an unwired client each answer `503 UPSTREAM_UNAVAILABLE` with `{upstream, operation}`; a `401` envelope surfaces as `UNAUTHENTICATED`; a `404` naming another stay answers `503`, not `NOT_FOUND` |
+| `AC-FWV-4` fresh check-in regression | `GetFolioBalance` on a verified in-house stay with no folio creates exactly one folio at zero balance; the three writes then commit with the same line, balance movement, and `folio.*` event as today |
+| `AC-FWV-5` departed-stay reads | `GetFolioBalance` on a stay with an existing folio answers it and makes no Stay call, so `ProduceInvoice` / `ProduceReceipt` still match; a closed stay with no folio answers `STATE_ILLEGAL` and creates nothing |
+| `AC-FWV-7` bounded close path | a guard pins that `GetStayRef` is the only outbound call on the folio path and that the verification is not made from inside the transactional writer (an ordering assertion on the mocked client and repository) |
+
+Client guards: the stay client's answer classification (27.2 table) is
+unit-tested against a JDK `HttpServer` stub — JDK-only, so the suite stays
+database-free — covering `200`, an unknown-stay `404`, a wrong-id `404`,
+a `422`, a `503`, a malformed body, and a connection refusal. Existing
+desk guards stay green unchanged: `AC-DSK-18`, `AC-DSK-19`, `AC-CKO-1`,
+`AC-CKO-2`, `AC-DEP-1`..`AC-DEP-5`, plus the `app/src/views/FolioView.test.ts`
+refusal mapping once the three catalogue keys land.
+
+Stack gates: `cd services/billing && mvn verify`;
+`cd services/stay && npm ci && npm run build && npm test && npm run lint`;
+`script/contract-check.sh`; `script/openapi-route-check.sh`;
+`script/catalogue-coverage-check.sh`; `script/markdown-link-check.sh`.
+The qa-lead traceability row for #634 is a sibling handoff and must cite
+the guards above by `file:line` at the merged head.
+
+### 27.9 Residual risks, the post-departure consequence, and the re-tier trigger
+
+- **R5 mirror — the verify-then-write window.** The stay is verified, then
+  the line is written; a stay that closes in between still takes the line.
+  It is not atomic across services and not fixable without a Billing-side
+  conditional write (`RequestCheckoutGate` stays deferred, integration
+  F4). Bounded by the 2-second timeout, single-desk scale, and the #601
+  close re-reading the balance immediately before its flip. The threat
+  model records the pairing in
+  `docs/technical/security-threat-model.md` section 8 (R5, R8).
+- **R8 — folio writes fail closed while Stay is unreadable.** A Stay
+  outage now blocks charge posting, payment recording, approval
+  recording, and a folio-less balance read, where before it blocked
+  nothing. Accepted for a money path: the mitigation is an availability
+  alert and the existing offline desk banner, never a cached stay state
+  (`NFR-AVL-1` does not extend to a fact that decides money).
+- **Post-departure settlement — named consequence, out of scope.** An open
+  balance approved at check-out can no longer be settled by a
+  `RecordPayment` once the stay is closed, because every write verifies
+  the stay. Product records it as a named consequence and explicitly out
+  of scope (D-32, product section 6.21): a late-settlement flow is its own
+  decision and its own issue. Nothing already recorded moves — a payment
+  taken before departure still records, still receipts, and still prints —
+  and the desk can still print the departure invoice and every receipt.
+- **A replay on a closed stay refuses.** A charge whose first attempt
+  committed and whose retry arrives after the close now answers
+  `STATE_ILLEGAL` instead of replaying the stored line. The recorded line
+  is untouched and the folio still shows it; the retry is simply refused,
+  which is the honest answer for a stay that may no longer take money.
+- **Orphan folios already written stay.** This change prevents new ones;
+  it does not delete, migrate, or repair existing rows.
+- **The actor is still asserted, not token-bound** (R6, unchanged), and
+  the approval-role rule stays with #625.
+- **Re-tier trigger.** Any of these re-tiers the change to a new ADR and
+  the owner's `accepted` flip before implementation: caching or mirroring
+  stay state inside Billing (Option F in ADR-0008), a late-settlement
+  operation or any new operation on the money path, a Billing-side
+  conditional close (`RequestCheckoutGate`), a schema or migration for
+  folio or stay links, or a retry/backoff policy beyond the single
+  2-second call. The decided shape needs none of them, which is why the
+  tier stays T3 and the risk stays `risk-medium`.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1046
+
+## 28. Backend faults answer INTERNAL_ERROR (Refs #627)
+
+Tier **T2 confirmed**: a caller-visible wire-vocabulary change — a new
+`code` on the `5xx` path plus a grown contract enum — with no new
+subsystem, dependency edge, data model, lifecycle state, or
+reader-visible surface. ADR-0004 D1 already covers additive error
+codes, so no new ADR and no T3 record. Product done-conditions are
+`docs/product/acceptance-criteria.md` section 21 (`AC-ERR-1`..`AC-ERR-5`)
+with D-33 in `docs/project/decision-log.md`; FR/NFR wording is the
+`business-analyst` handoff (`docs/requirements/mvp-requirements.md`
+section 29), guard traceability the `qa-lead` handoff
+(`docs/testing/traceability-matrix.md` section 21), the release note the
+`release-manager` handoff, and implementation the `dev` handoff. This
+section records only the architect-owned delta: the contract enum, the
+technical taxonomy
+(`docs/technical/error-handling.md` [section 1](../technical/error-handling.md)),
+and the per-flow diagram below.
+
+### 28.1 What the contract registers
+
+One edit owns the vocabulary — `contracts/errors/envelope.json` (`code`
+enum plus `statusMapping`). The technical taxonomy
+(`docs/technical/error-handling.md` section 1) describes the same three
+tokens; the four Node `errors.ts` maps follow in the implementation
+change, so the enum and the served maps cannot drift.
+
+| Code | Status | Raised when | Emitting change |
+|---|---|---|---|
+| `INTERNAL_ERROR` | 500 | an unexpected exception reaches a Node service's catch-all: a store or driver failure, a wiring fault, or a crash — never the caller's input | #627 (Stay, Guests, Rooms, Admin) |
+| `UPSTREAM_UNAVAILABLE` | 503 | a provider that must be read to decide the operation cannot be read, so the operation fails closed | already emitted: Reservations -> Rates (`services/reservations/internal/service/service.go:76-83`, Refs #601); Billing -> Stay (LLD [section 27](#27-folio-writes-verify-the-stay-refs-634), Refs #634) |
+| `METHOD_NOT_ALLOWED` | 405 | a wrong method on a known route: a caller-conformance answer, not a product refusal | #628 (Go) and #629 (Billing) conformance changes; no desk action sends or can receive it |
+
+Why one edit and not three: the Admin contract-sync guard walks every
+`statusMapping` entry and constructs the matching code
+(`services/admin/src/errors.test.ts:25-29`), and `script/contract-check.sh`
+gates the file itself. A code added to the contract without its map (or
+a map entry without the contract) turns a gate red, so the enum, the
+taxonomy, and the four maps move together. `UPSTREAM_UNAVAILABLE` was
+documented at `docs/technical/error-handling.md` section 1 and emitted
+by Reservations while absent from the enum; the D-32 clause that assigned
+its registration to the #634 change is superseded by D-33, and section 5
+of the taxonomy now points at this change instead.
+
+### 28.2 The unexpected-exception path, per Node service
+
+Four services, one shape. The catch-all already distinguishes a product
+refusal (`HttpError`, answered with its mapped code and status) from
+anything else; only the `else` arm changes, from
+`code: "VALIDATION_FAILED"` to `code: "INTERNAL_ERROR"`. The envelope
+shape, its plain `error.transport.unexpected` sentence, an empty
+`details`, and a fresh `traceId` stay exactly as they are.
+
+```mermaid
+flowchart TD
+    A[POST /v1/MODULE/Operation] --> B[handleRequest: route, session, body, store call]
+    B -->|success| C[200 operation payload]
+    B -->|HttpError product refusal| D[4xx code and status from the map, unchanged]
+    B -->|unexpected throw: not an HttpError| S1[Stay catch-all]
+    B -->|unexpected throw: not an HttpError| S2[Guests catch-all]
+    B -->|unexpected throw: not an HttpError| S3[Rooms catch-all]
+    B -->|unexpected throw: not an HttpError| S4[Admin catch-all]
+    S1 --> E[writeJson 500]
+    S2 --> E
+    S3 --> E
+    S4 --> E
+    E --> F[code INTERNAL_ERROR, plain unexpected-failure sentence, empty details, traceId]
+    F --> G[desk reads a 5xx as an unreadable outcome: nothing released, rooms named to re-read]
+```
+
+Edge trace (every edge cites code at this spec head):
+
+- B–D: product refusals are `HttpError` instances whose status comes from
+  the service's map (`services/stay/src/errors.ts:29-39`; Guests, Rooms,
+  and Admin carry the same shape, Admin at `:31-41`), and the catch-all
+  answers `errorEnvelope(err)` (`services/stay/src/server.ts:77-78`).
+- B–S1: Stay's catch-all — `services/stay/src/server.ts:76-87`, the
+  `else` arm at `:79-85`, the `500` body at `:80-85`, the
+  `INTERNAL_ERROR` literal at `:81`.
+- B–S2: Guests' catch-all — `services/guests/src/server.ts:47-58`, the
+  `else` arm at `:50-56`, the `500` body at `:51-56`, the
+  `INTERNAL_ERROR` literal at `:52`.
+- B–S3: Rooms' catch-all — `services/rooms/src/server.ts:47-58`, the
+  `else` arm at `:50-56`, the `500` body at `:51-56`, the
+  `INTERNAL_ERROR` literal at `:52`.
+- B–S4: Admin's catch-all — `services/admin/src/server.ts:55-66`, the
+  `else` arm at `:58-65`, the `500` body at `:59-64`, the
+  `INTERNAL_ERROR` literal at `:60`.
+- S1–S4–E: the four arms write the same four-field envelope with
+  `writeJson(res, 500, ...)` and a fresh `traceId`
+  (`services/stay/src/server.ts:80-85` and the three siblings above).
+- F–G: the desk already applies the unreadable-outcome rule to every
+  `5xx` (`docs/technical/error-handling.md` section 4, Refs #647) and
+  renders a failed read with the shell's plain request-failed sentence
+  (`app/src/views/RoomsView.vue:669-681`); the code token is never
+  rendered (`app/src/views/desk-edge-guards.test.ts:42`).
+
+Which throws reach S1–S4: only an `HttpError` is a product refusal. A
+store or driver failure is an ordinary exception, so it lands in the
+`else` arm — for example Stay's Postgres store calls the pool and its
+clients directly (`services/stay/src/pgstore.ts:207-219`, `:302-306`,
+`:344-362`) and throws `HttpError` only for a product refusal
+(`:212-219`, `:300`, `:352-362`). That is why the wrong token reached
+the desk for a database fault.
+
+An unknown operation on a Node service keeps its answer: the route match
+fails, so a non-`POST` method or an unknown operation answers
+`404 NOT_FOUND` (`services/stay/src/server.ts:101-107`, the operation
+`default` arm at `:167-174`). Node emits no `405`; the token exists for
+the Go and Billing conformance changes (#628, #629), and the four maps
+accept it so the enum and the maps stay aligned (AC-ERR-2).
+
+### 28.3 Failure, rollback, and what does not change
+
+- **No rollback per answer.** The catch-all writes one envelope and
+  mutates nothing; there is no earlier write of that call to take back.
+  A multi-call desk action that receives the `5xx` applies the existing
+  unreadable-outcome rule (taxonomy section 4): it releases nothing and
+  names the rooms to re-read.
+- **Every existing refusal is untouched.** `VALIDATION_FAILED` (400),
+  `UNAUTHENTICATED` (401), `IDENTITY_LOCKED` (401), `FORBIDDEN` (403),
+  `NOT_FOUND` (404), `CONFLICT` (409), `SETTLEMENT_REQUIRED` (409),
+  `STATE_ILLEGAL` (422), and `UPSTREAM_UNAVAILABLE` (503) keep the code
+  and status they answer today (AC-ERR-3).
+- **No descriptor leaks.** The `5xx` message stays the plain
+  `error.transport.unexpected` catalogue sentence (no driver, SQL, host,
+  path, or stack text) and `details` stays empty; `traceId` links the
+  answer to the audit entry (`NFR-I18N-1`, `NFR-AUD-1`).
+- **No desk, copy, route, or print change.** No catalogue key, layout,
+  or print rule moves; the desk renders the same sentences it does today
+  (AC-ERR-5).
+- **Change-level rollback** is one revert: the four literals fall back to
+  `VALIDATION_FAILED`-on-500 and the enum loses the three tokens.
+- **Out of scope here.** Deduplicating the four `errors.ts` copies into a
+  shared module is a repo-layout decision with its own issue; retry and
+  backoff policy is not set by this change; and the Go/Java services'
+  own `5xx` mappings are their issues (#628, #629).
+- **Maintain-with-code.** The implementation change updates the four
+  literals and the four maps, adds one `5xx`-path guard per Node service
+  (AC-ERR-4), and refreshes this diagram and its line pins if any cited
+  line moves; `qa-lead`'s traceability section 21 cites those guards.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1061
+
+## 29. Bounded request bodies and finite server timeouts (Refs #630)
+
+Tier **T2 confirmed**: a caller-visible refusal for a request body above
+one declared ceiling plus an explicit server-settings change on every
+ingress path, with no new subsystem, dependency edge, data model,
+lifecycle state, reader-visible surface, or code token. ADR-0004 D1 keeps
+the envelope and its status mapping byte-identical, so no ADR and no T3
+record. Product done-conditions are `docs/product/acceptance-criteria.md`
+section 22 (`AC-BND-1`..`AC-BND-5`) with D-34 in
+`docs/project/decision-log.md` and R-13 in
+`docs/project/risk-register.md`; FR/NFR wording is the `business-analyst`
+handoff (`docs/requirements/mvp-requirements.md` section 30, the
+`NFR-BND-*` family, and business rule BR-60), guard traceability the
+`qa-lead` handoff (`docs/testing/traceability-matrix.md` section 22), the
+release note the `release-manager` handoff, and implementation the `dev`
+handoff. This section records only the architect-owned delta: the ceiling
+and its enforcement point in each of the eight services, the server
+timeout table with its sizing rule, the per-flow diagram, the per-service
+Operations notes (`docs/architecture/services/*.md` section 7), and two
+cross-cutting spec edits (`docs/technical/error-handling.md` section 1.1
+and `docs/technical/integration.md` section 10).
+
+### 29.1 One ceiling, and where each service enforces it
+
+**65 536 bytes (64 KiB)** is the request-body maximum for all eight
+backend services, declared once per service as a named constant
+(`MAX_BODY_BYTES` in the four Node services and in Billing,
+`maxBodyBytes` in the three Go services). It is a code constant, not
+configuration: no environment variable, deployment file, runbook step, or
+per-hotel setting carries or overrides it (D-34). The value is 18.6 times
+the largest request schema the contracts hold —
+`contracts/http/ModifyReservation.json` at 3 530 bytes, then
+`CreateReservation.json` at 3 153, `AttachReservation.json` at 3 118, and
+`CheckOut.json` at 3 093 — so every desk payload and contract fixture
+sits far below it.
+
+One constant per service rather than one shared module: the eight services
+are separate build and deploy units (ADR-0001) with no cross-service
+import, and the four Node services already repeat `readBody` and
+`errors.ts` (section 28 records that deduplication as its own repo-layout
+decision). Copying one literal is smaller than a shared package no
+service can import today.
+
+The ceiling is enforced in the one place each stack reads a request body,
+before JSON parsing and before any store, provider, or folio call:
+
+| Service | Stack | Enforcement point | Mechanism |
+|---|---|---|---|
+| Stay, Guests, Rooms, Admin | Node | `readBody`: `services/stay/src/server.ts:25-77`, `services/guests/src/server.ts:25-77`, `services/rooms/src/server.ts:25-77`, `services/admin/src/server.ts:24-76`, beside the `MAX_BODY_BYTES` constant (`stay:14`, `guests:14`, `rooms:14`, `admin:13`) | count the bytes as chunks arrive, refuse at byte 65 537 and stop accumulating; a declared `content-length` above the ceiling refuses before the first `data` event |
+| Reservations, Rates, Reporting | Go | `decodeBody`: `services/reservations/internal/handler/handler.go:62-104`, `services/rates/internal/handler/handler.go:60-102`, `services/reporting/internal/handler/handler.go:64-106`, beside the `maxBodyBytes` constant (`:49`, `:47`, `:51`) and the `writeTooLarge` refusal (`:53`, `:51`, `:55`) | refuse when `r.ContentLength` exceeds the ceiling, then wrap `r.Body` in `http.MaxBytesReader(w, r.Body, maxBodyBytes)` before `json.NewDecoder` (`:75`, `:73`, `:77`) and drain the bounded reader after the decode, so a body that under-declares cannot slip its surplus past the decoder |
+| Billing | Spring Boot | a servlet `Filter` on `/*`, ahead of dispatch (`services/billing/src/main/java/com/hotel/billing/web/MaxBodySizeFilter.java:36`, `doFilterInternal` `:43`) | refuse when `Content-Length` exceeds the ceiling; otherwise wrap the body in a counting stream that refuses at byte 65 537 and buffers at most the ceiling, then hand Spring that bounded stream |
+
+Why Billing's filter sits ahead of its controller while Node and Go refuse
+after their route and session check: Billing has no ingress session layer
+— Spring resolves the `@RequestBody` argument
+(`services/billing/src/main/java/com/hotel/billing/web/BillingController.java:76`
+and every sibling operation) before the controller's `requireToken` body
+runs (`:67-71`), so a filter is the only place that can precede Jackson.
+Node and Go answer an unknown path
+(`services/stay/src/server.ts:150-158`) and a missing token (`:159-162`;
+`services/reservations/internal/handler/handler.go:140-158`) before
+touching the body, and that order stays: the ceiling governs every request
+whose body the service reads, and every earlier refusal keeps its existing
+answer (AC-BND-4).
+
+Both enforcement shapes refuse before work: no store row, folio line,
+balance, outbox event, or state transition is written, and no operation
+handler runs.
+
+### 29.2 What the refusal carries
+
+- **Code and status: `VALIDATION_FAILED`, 400.** The existing code and the
+  existing status mapping. `contracts/errors/envelope.json` is untouched,
+  so the enum, the four Node maps
+  (`services/stay/src/errors.ts:16-27`, the three siblings carrying the
+  same shape), and Billing's handler keep exactly what they serve today
+  (ADR-0004 D1).
+- **Message: a new plain catalogue sentence,
+  `error.transport.body_too_large`** ("Request body is too large.") added
+  to all eight catalogues:
+  `services/{stay,guests,rooms,admin}/src/messages.en.json`,
+  `services/{reservations,rates,reporting}/internal/messages/en.json`, and
+  `services/billing/src/main/resources/messages/en.json`. It joins the
+  existing `error.transport.*` family; the sentence names no byte count,
+  field path, or internal name.
+- **Details: `{"field": "body"}`** — the established `details.field` shape
+  (`services/admin/src/store.ts:210` is one of many), naming the whole
+  body. `body` matches none of the field names a desk refusal branches on
+  (`stayId`, `folioId`, `paymentId`), so no desk branch changes.
+- **Trace: a fresh `traceId`**, as every refusal carries
+  (`services/stay/src/errors.ts:42-49`; Go `writeJSON`,
+  `services/reservations/internal/handler/handler.go:28-32`; Billing
+  `services/billing/src/main/java/com/hotel/billing/web/ApiExceptionHandler.java:36-42`).
+- **One complete answer, no partial write.** The refusal is one response
+  with `Content-Type: application/json`; the surplus is never
+  concatenated, no truncated JSON is parsed, and no status line or body is
+  written twice. Node stops reading and destroys the unread surplus after
+  the answer; Go's `http.MaxBytesReader` marks the connection to close
+  after the reply; Billing's `server.tomcat.max-swallow-size=65536` bounds
+  how much of the abandoned body the connector discards, so a larger
+  surplus closes the connection instead of being drained in full.
+- **Nothing under the ceiling changes.** Same codes, statuses, messages,
+  and stored effect; a body at exactly 65 536 bytes is served and one byte
+  more is refused (AC-BND-4).
+
+### 29.3 Server timeouts, per stack
+
+Every server the bundle runs declares four finite bounds; no zero,
+disabled, or unset value remains. `0` is not used for any of them.
+
+| Server (services) | Header read | Body read | Response write | Idle |
+|---|---|---|---|---|
+| Go (Reservations, Rates, Reporting) | `ReadHeaderTimeout` 5 s | `ReadTimeout` 10 s | `WriteTimeout` 15 s | `IdleTimeout` 60 s |
+| Node (Stay, Guests, Rooms, Admin) | `headersTimeout` 5 000 ms | `requestTimeout` 10 000 ms | `timeout` 15 000 ms | `keepAliveTimeout` 10 000 ms |
+| Billing (embedded Tomcat) | `server.tomcat.connection-timeout` 5 s | the same connector timeout, 5 s | the same connector timeout, 5 s | `server.tomcat.keep-alive-timeout` 10 s |
+
+Where each server sets them:
+
+- Go: the three `main`s build an `http.Server` carrying `ReadHeaderTimeout`,
+  `ReadTimeout`, `WriteTimeout`, and `IdleTimeout`, then call its
+  `ListenAndServe`, instead of the bare
+  `http.ListenAndServe(addr, newHandler(mux))` at
+  `services/reservations/cmd/server/main.go:53` (constructor at
+  `:62`), `services/rates/cmd/server/main.go:43` (constructor at
+  `:52`), and `services/reporting/cmd/server/main.go:35` (constructor at
+  `:44`).
+- Node: `createServiceServer` sets `headersTimeout`, `requestTimeout`,
+  `timeout`, and `keepAliveTimeout` on the server it returns
+  (`services/stay/src/server.ts:118-138`,
+  `services/guests/src/server.ts:89-109`,
+  `services/rooms/src/server.ts:89-109`, and
+  `services/admin/src/server.ts:97-117`) before `listen` runs
+  (`services/stay/src/index.ts:34`, `services/guests/src/index.ts:21`,
+  `services/rooms/src/index.ts:21`, `services/admin/src/index.ts:34`).
+- Billing: `services/billing/src/main/resources/application.properties`
+  carries the three properties at `:18-20`, below the unchanged port,
+  datasource, and Flyway block. Tomcat's connector timeout is the socket `SO_TIMEOUT`
+  applied to both blocking reads and writes, so the one 5-second value
+  covers header read, body read, and response write on that embedded
+  server; it bounds I/O only, never handler execution, so it cannot cut a
+  handler that waits on a provider.
+
+Sizing rule: every bound is above the largest wait a legitimate desk call
+can make. The longest is the Reservations → Rates pricing read, whose
+client carries a 5-second budget
+(`services/reservations/internal/pricing/client.go:33`); next is Stay's
+completion read at 2 seconds
+(`services/stay/src/reservationsClient.ts:31`). The 15-second
+response-write bound clears the 5-second pricing wait with 10 seconds to
+spare for the store work around it, and the 10-second body-read bound is a
+stall bound, not a throughput target: 64 KiB over the compose network
+arrives in milliseconds. The idle bounds only reclaim a keep-alive socket
+whose peer has gone; they never bound a handler.
+
+A timeout is not a refusal: a peer that stalls mid-body or mid-response
+gets no envelope, because the server cannot answer a request it never
+finished reading or a peer that stopped reading. The connection is freed,
+no operation ran, and the desk sees the request fail the same way it does
+for any dropped connection (AC-BND-3).
+
+### 29.4 Per-flow diagram — body read: served, refused, timed out
+
+```mermaid
+flowchart TD
+    A[POST /v1/MODULE/Operation carrying a body] --> B{route and session answer first, unchanged}
+    B -->|unknown path or wrong method| X1[404 NOT_FOUND, no body read]
+    B -->|missing or invalid session| X2[401 UNAUTHENTICATED, no body read]
+    B -->|route and session accepted| C[read the body under the 65 536-byte ceiling]
+    C -->|declared content-length above the ceiling| R1[refuse before the first chunk]
+    C -->|whole body is 65 536 bytes or fewer| P[parse JSON after the read ends]
+    C -->|streamed byte 65 537 arrives| R2[stop reading, never parse]
+    R1 --> R3[one envelope: 400 VALIDATION_FAILED, details field body, error.transport.body_too_large, fresh traceId]
+    R2 --> R3
+    R3 --> E[no store, provider, folio, or state call ran]
+    P -->|readable object| O[run the operation]
+    P -->|unreadable JSON or not an object| V[existing 400 VALIDATION_FAILED bad_json or body_not_object, unchanged]
+    O --> W[payload written inside the response-write bound]
+    C -->|no byte arrives inside the body-read bound| T1[server closes the connection]
+    T1 --> T2[no operation ran and no envelope is promised: the peer stopped sending]
+    W -->|peer stops draining past the write bound| T3[server abandons the write and frees the connection]
+```
+
+Edge trace (every edge cites code at this spec head; the ceiling and the
+two timeout edges are the guards `AC-BND-5` requires the implementation to
+add):
+
+- A–B: the Node route match is
+  `services/stay/src/server.ts:150-158` (the operation `default` arm at
+  `:216-222` answers an unknown operation with the same 404), the session
+  check `:159-162`; the Go equivalent is the `authed` wrapper
+  `services/reservations/internal/handler/handler.go:140-158`, reached
+  through the envelope chain in
+  `services/reservations/cmd/server/main.go:77-79`.
+- B–X1–X2: the existing `NOT_FOUND` and `UNAUTHENTICATED` answers, and
+  every other existing refusal, are untouched (AC-BND-4); none of them
+  reads a body.
+- B–C: Node `readBody`
+  (`services/stay/src/server.ts:25-77`; Guests and Rooms the same range,
+  Admin `:24-76`); Go `decodeBody`
+  (`services/reservations/internal/handler/handler.go:62-104`; Rates
+  `:60-102`, Reporting `:64-106`); Billing's body-bounding filter
+  (`services/billing/src/main/java/com/hotel/billing/web/MaxBodySizeFilter.java:43`)
+  ahead of
+  `services/billing/src/main/java/com/hotel/billing/web/BillingController.java:76`.
+- C–R1 and C–R2: the ceiling check the implementation adds in those
+  functions; the refusal stops the read, so the surplus is never
+  accumulated (AC-BND-1).
+- R1–R3 and R2–R3: one `writeJson`/`writeJSON`/`ResponseEntity` answer.
+  Node builds the envelope from `HttpError`
+  (`services/stay/src/errors.ts:42-49`, written by the catch-all at
+  `services/stay/src/server.ts:120-131` and the three siblings); Go writes
+  the same four fields through `writeJSON`
+  (`services/reservations/internal/handler/handler.go:30-34`, the refusal
+  built by `writeTooLarge` at `:53-60`); Billing
+  through `ApiExceptionHandler`'s `envelope`
+  (`services/billing/src/main/java/com/hotel/billing/web/ApiExceptionHandler.java:36-42`).
+- R3–E: the refusal returns before the operation switch
+  (`services/stay/src/server.ts:163-165`) or before the Go handler body
+  runs (`services/reservations/internal/handler/handler.go:152-156`), so
+  no store, provider, or folio call is reached.
+- P–O and P–V: the existing parse path — `JSON.parse`
+  (`services/stay/src/server.ts:63`), the Go decoder
+  (`services/reservations/internal/handler/handler.go:75-92`), the Spring
+  `@RequestBody` binding — and its existing `bad_json` and
+  `body_not_object` refusals are unchanged.
+- O–W: the existing success write (`services/stay/src/server.ts:166-169`;
+  Go `writeJSON`; the Billing controller's return value).
+- C–T1–T2: the body-read bound in the timeout table; Go `ReadTimeout`,
+  Node `requestTimeout`, Tomcat `connection-timeout`.
+- W–T3: the response-write bound in the same table; Go `WriteTimeout`,
+  Node `timeout`, Tomcat's connector timeout.
+
+### 29.5 Contract delta and what does not change
+
+- **No contract file changes.** `contracts/` is untouched:
+  `VALIDATION_FAILED` is already in `contracts/errors/envelope.json` and
+  its status mapping, no operation schema, request field, or response
+  shape changes, and `script/contract-check.sh` stays green with every
+  fixture resolving (AC-BND-4).
+- **No new dependency.** `http.MaxBytesReader` is Go's standard library;
+  the Node counter and the Billing filter use only the runtime and
+  `spring-boot-starter-web` the service already declares.
+- **No deployment, environment, or runbook delta.** The ceiling and the
+  timeout values are constants (for Billing, fixed properties in the
+  packaged `application.properties`, not environment placeholders), so
+  `deploy/`, the compose file, and the runbooks are untouched; T4 would
+  begin only if a limit moved into configuration, which D-34 forbids.
+- **No desk surface, route, catalogue key other than the one sentence, or
+  print rule changes.** The desk never sends a body near the ceiling and
+  the refusal's `body` field matches no desk branch (AC-BND-4).
+- **No change to any earlier refusal or to a payload under the ceiling.**
+  The `NOT_FOUND`, `UNAUTHENTICATED`, `bad_json`, and `body_not_object`
+  answers keep their code, status, message, and `details`.
+
+### 29.6 Verification plan
+
+`qa-lead` owns the traceability rows (`docs/testing/traceability-matrix.md`
+section 22); this is the architecture-side check the implementation must
+satisfy, one guard per service (AC-BND-5):
+
+- **Boundary, per service (eight guards).** A body at exactly 65 536 bytes
+  is served, one byte more is refused with HTTP 400, `VALIDATION_FAILED`,
+  `details.field` `body`, the `error.transport.body_too_large` sentence,
+  and a `traceId`, with "no operation ran" evidence (no store row, folio
+  line, or balance changed). Landed in the four `services/*/src/bodyBound.test.ts` files (beside the
+  existing suite each reuses), the three
+  `services/*/internal/handler/body_bound_test.go` files, and
+  `services/billing/src/test/java/com/hotel/billing/web/BillingControllerTest.java`
+  (`BND1`–`BND8`).
+- **Timeout guards (eight).** Each Go `main`'s `http.Server` carries the
+  four non-zero fields (`services/*/cmd/server/main_test.go`,
+  `BND13`–`BND15`); each Node server reports the four non-zero properties
+  after `createServiceServer` (`BND9`–`BND12`); Billing's packaged
+  `application.properties` carries the three settings
+  (`config/ServerTimeoutPropertiesTest.java`, `BND16`). A guard that reads
+  the value is enough — no sleeping test.
+- **Catalogue guards (eight).** Each service's message-catalogue test
+  pins `error.transport.body_too_large` to its plain sentence, the way the
+  existing `messages.test.ts` / `messages_test.go` / `MessagesTest.java`
+  tests pin their keys.
+- **Gate commands, per stack** (from the service docs section 7):
+  `go build ./... && go vet ./... && go test ./...` (Go);
+  `npm ci && npm run build && npm run lint && npm test` (Node);
+  `mvn verify` (Billing); plus `script/contract-check.sh` and
+  `script/catalogue-coverage-check.sh` from the repo root.
+- **No fixture drift.** Every existing contract fixture and request schema
+  keeps its answer, because each is under the ceiling (the largest is
+  3 530 bytes).
+
+### 29.7 Residual risks and re-tier trigger
+
+- **The ceiling can be wrong in either direction.** Too small refuses a
+  legitimate desk payload; too large buffers more than the host should
+  hold. R-13 records both. The 18.6-times headroom is the mitigation, and
+  the boundary guard pins it so a future ceiling change is a deliberate
+  edit.
+- **Tomcat has no separate response-write property.** Its connector
+  timeout is the socket read and write timeout, so Billing's one 5-second
+  value serves both; the desk's response envelopes are a few hundred
+  bytes, far inside any socket buffer, so a write stall is a non-issue in
+  practice. If a future Billing response grows, that value is the one to
+  re-check.
+- **Timeouts are not a load control.** Connection limits and rate
+  limiting stay out of scope here; a peer that sends many small requests
+  is bounded per connection, not per volume.
+- **The four Node `readBody` copies and the three Go `decodeBody` copies
+  stay duplicated**, like the four `errors.ts` copies in section 28.
+  Deduplicating them is a repo-layout decision with its own issue; this
+  change adds one constant and one refusal branch per copy.
+- **Re-tier trigger:** moving the ceiling or a timeout into configuration
+  (an environment variable, deployment setting, or per-hotel override) is
+  a T4 change with its own release, deployment, and runbook delta.
+
+### 29.8 Maintain-with-code
+
+The implementation change adds the ceiling, the two refusal branches, the
+eight catalogue keys, the three Go server structs, the four Node server
+properties, and Billing's three settings and filter; it also refreshes this
+section's line pins and the per-service Operations notes if any cited line
+moves (AC-BND-5, `qa-lead`'s traceability section 22). `dev-peer-review`
+treats a stale pin or a missing timeout field as a review finding, the
+same as any drifted spec.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1078

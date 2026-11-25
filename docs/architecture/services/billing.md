@@ -15,7 +15,7 @@ Java 21 Spring Boot `web / service / repo (+ config)`, the only stack with a fra
 | Layer | Files | Responsibility |
 |---|---|---|
 | Transport + auth + body shaping | `src/main/java/com/hotel/billing/web/BillingController.java` | `@RestController` at `/v1/billing`; `requireToken` enforces Bearer presence (:67-72); `required`/`amountOf` extract and validate body fields (:29-55) |
-| Envelope | `src/main/java/com/hotel/billing/web/ApiException.java`, `web/ApiExceptionHandler.java` | `ApiException` carries code/status/message/details (:8-42); `@RestControllerAdvice` renders every one with the shared envelope plus `traceId` (:12-23) |
+| Envelope | `src/main/java/com/hotel/billing/web/ApiException.java`, `web/ApiExceptionHandler.java` | `ApiException` carries code/status/message/details (:8-42); `@RestControllerAdvice` renders every failure with the shared envelope plus `traceId` (:22-115): an unreadable body, an unreadable or unanswerable media type, an unknown path, and a wrong method as conformance refusals, any other exception as `INTERNAL_ERROR`, while an `ApiException` keeps its own code and status |
 | Validation + step order | `src/main/java/com/hotel/billing/service/BillingService.java` | UUID/actor checks, item-kind rules, amount rules, idempotency claims, folio/payment/invoice/receipt/approval flows |
 | Data access | `src/main/java/com/hotel/billing/repo/BillingRepository.java` | `JdbcTemplate` over the billing schema only: `ensureFolio`, charge/payment inserts, `addToBalance`, `recordApproval`, `claimOrWait`, charge-item catalog (:61-171) |
 | Wiring | `src/main/java/com/hotel/billing/config/DatabaseConfig.java`, `BillingApplication.java` | datasource and context bootstrap |
@@ -25,7 +25,9 @@ The operation table (`web/BillingController.java`): `GetFolioBalance` (:74), `Po
 
 ## 3. Happy-path flowchart
 
-PostCharge (`POST /v1/billing/PostCharge`) — the folio write:
+PostCharge (`POST /v1/billing/PostCharge`) — the folio write. As built
+today; from #634 on the stay is verified between C and D (section 9, LLD
+[section 27](../lld.md#27-folio-writes-verify-the-stay-refs-634)):
 
 ```mermaid
 flowchart TD
@@ -73,20 +75,31 @@ Rollback: none — each operation is a single validated write with the idempoten
 
 ## 5. Outbound dependencies
 
-None at runtime. Consumed by the desk loop: `GetFolioBalance` feeds the Stay check-out folio gate; `RunDayClose`/`GetDayClose` feed Reporting revenue via `folio.charge-posted` / `folio.payment-recorded` events; `ProduceInvoice`/`ProduceReceipt` present the folio/payment the stay close references. Money is exact (`BigDecimal` in memory, BIGINT minor units persisted). Hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (LLD [section 0](../lld.md)).
+One runtime outbound call from #634 on: `StayService.GetStayRef` (C8),
+made before every folio write and before a folio is created on a
+read — `STAY_BASE_URL` (default `http://stay:8084`), the caller's
+Bearer token forwarded, 2-second timeout, fail-closed on anything
+unreadable (section 9; `docs/technical/integration.md` C8). Before that
+change this section read "none at runtime".
+
+Consumed by the desk loop: `GetFolioBalance` feeds the Stay check-out folio gate; `RunDayClose`/`GetDayClose` feed Reporting revenue via `folio.charge-posted` / `folio.payment-recorded` events; `ProduceInvoice`/`ProduceReceipt` present the folio/payment the stay close references. Money is exact (`BigDecimal` in memory, BIGINT minor units persisted). Hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (LLD [section 0](../lld.md)).
 
 See also: [deployment](../system-architecture.md) (section 1), [C4 containers](../c4-containers.md), and [event flow](../event-flow.md) (this service's outbox emissions).
 
 ## 6. Error mapping
 
-Envelope `{code, message, details, traceId}` (`web/ApiExceptionHandler.java:12-23`) to `docs/technical/error-handling.md` [section 1](../../technical/error-handling.md). Constructors (`web/ApiException.java:33-42`):
+Envelope `{code, message, details, traceId}` (`web/ApiExceptionHandler.java:34-45`) to `docs/technical/error-handling.md` [section 1](../../technical/error-handling.md). Constructors (`web/ApiException.java:33-42`):
 
 | Code | Status | Raised when |
 |---|---|---|
-| `VALIDATION_FAILED` | 400 | missing/blank field, bad UUID/date, bad item kind or method, negative amount, out-of-range percent (`service/BillingService.java:126-193,255-325`) |
-| `UNAUTHENTICATED` | 401 | missing session token (`web/BillingController.java:67-72`) |
-| `NOT_FOUND` | 404 | unknown day-close, folio, payment, or charge line (`service/BillingService.java:206-243`) |
+| `VALIDATION_FAILED` | 400 | missing/blank field, bad UUID/date, bad item kind or method, negative amount, out-of-range percent (`service/BillingService.java:126-193,255-325`); from #629 a body Spring cannot read — malformed JSON, a missing body, or a JSON value that is not an object (`web/ApiExceptionHandler.java:55-67`); from #629 a caller media type Billing cannot read (`Content-Type: text/plain`, a bare `curl -d` form post) or cannot answer (`Accept` naming no JSON) answers the same code because the contract status mapping has no 415/406 entry (`web/ApiExceptionHandler.java:78-82`) |
+| `UNAUTHENTICATED` | 401 | missing session token (`web/BillingController.java:67-72`); a `401` forwarded from Stay is surfaced unchanged |
+| `NOT_FOUND` | 404 | unknown day-close, folio, payment, or charge line (`service/BillingService.java:206-243`); from #634 an unknown stay on a folio route; from #629 a path no route claims (`web/ApiExceptionHandler.java:86-89`) |
+| `METHOD_NOT_ALLOWED` | 405 | from #629 a known route reached with the wrong method, with the `Allow` header (`web/ApiExceptionHandler.java:94-102`) |
 | `SETTLEMENT_REQUIRED` | 409 | settlement refused without approval (`web/ApiException.java:41-42`) |
+| `STATE_ILLEGAL` | 422 | from #634 a stay outside `in-house` on a folio route, naming the stay and its state |
+| `INTERNAL_ERROR` | 500 | from #629 an unexpected exception, including a stored-row defect's `IllegalStateException`: the plain `error.transport.unexpected` sentence, empty `details`, and a `traceId` logged server-side (`web/ApiExceptionHandler.java:108-114`) |
+| `UPSTREAM_UNAVAILABLE` | 503 | from #634 a Stay that cannot be read for a folio route; also planned for the #601 deltas above |
 
 ## 7. Operations
 
@@ -142,6 +155,16 @@ Contract tests: `contract-tests/` holds fixtures per provided/consumed operation
 script/contract-check.sh
 ```
 
+Ingress bounds (Refs #630): a body-bounding filter caps a request body at
+65 536 bytes (`MAX_BODY_BYTES`) and refuses an oversized body with the
+shared envelope (`VALIDATION_FAILED`, `details` naming `body`) before
+`@RequestBody` binding; `application.properties` carries
+`server.tomcat.connection-timeout=5s`,
+`server.tomcat.keep-alive-timeout=10s`, and
+`server.tomcat.max-swallow-size=65536`. No environment variable overrides
+them. Details: LLD
+[section 29](../lld.md#29-bounded-request-bodies-and-finite-server-timeouts-refs-630).
+
 ## 8. Planned delta — approval provenance at write (Refs #601, ADR-0005 proposed)
 
 Today `recordOpenBalanceApproval` (section 4 edge W) requires a
@@ -158,5 +181,45 @@ three may approve, and whether approval is needed — stays the section
 shape and becomes the gate read Stay calls at the close (integration
 C7). Design: `docs/architecture/lld.md` section 21.
 
+## 9. Planned delta — folio writes verify the stay (Refs #634, ADR-0008 proposed)
+
+Today `ensureFolio` creates a folio for any UUID `stayId` with no Stay
+read (`repo/BillingRepository.java:65-71`), reached from `GetFolioBalance`
+(`service/BillingService.java:121`), `PostCharge` (`:142`),
+`RecordPayment` (`:176`), and `RecordOpenBalanceApproval` (`:264`), so
+money can be written against a stay that does not exist or is already
+closed.
+
+Target, from #634 on:
+
+- `PostCharge`, `RecordPayment`, and `RecordOpenBalanceApproval` call
+  `StayService.GetStayRef` (C8) on every request before they write,
+  whether or not a folio exists; `GetFolioBalance` calls it only when the
+  stay has no folio, so a folio Billing already holds stays readable and
+  printable in every stay state.
+- The call is `POST {STAY_BASE_URL}/v1/stay/GetStayRef` with the caller's
+  Bearer token forwarded, a 2-second timeout, and it runs outside the
+  route's database transaction (the transactional body moves to a writer
+  bean; holding a Hikari connection across the call would starve the
+  10-connection pool, `config/DatabaseConfig.java:55`).
+- Refusals: unknown stay -> `NOT_FOUND` (404); stay not in house ->
+  `STATE_ILLEGAL` (422) naming the state; unreadable Stay -> a new
+  `web/ApiException.upstreamUnavailable` builder rendering
+  `UPSTREAM_UNAVAILABLE` (503) with
+  `{upstream: "stay", operation: "GetStayRef"}`; a `404` that names
+  another stay is unreadable, not unknown. `UPSTREAM_UNAVAILABLE` is
+  registered in `contracts/errors/envelope.json` in the same change, and
+  the four folio contracts bump minor for the new error set.
+- Order: validate, verify, claim, write — so a refusal leaves no folio
+  row, no line, no balance movement, no approval, and no outbox event.
+- No schema, migration, operation, request field, response field, or
+  event change; `RunDayClose`, `GetDayClose`, `ProduceInvoice`, and
+  `ProduceReceipt` are untouched.
+
+Design: `docs/architecture/lld.md` section 27; decision record
+`docs/architecture/decisions/adr-0008-folio-write-stay-verification.md`
+(proposed). Rollback: revert the single implementation PR; the previous
+ensure-on-first-use behaviour returns and no data migration exists.
+
 <!-- ao-role: architect -->
-Role: architect · AO session hotel-mgmt-919
+Role: architect · AO session hotel-mgmt-1046
