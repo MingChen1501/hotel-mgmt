@@ -130,8 +130,9 @@ for the consumer:
 
 No operation or payload member is added: `sellableUnits` on the two
 Reservations request contracts becomes advisory input the server
-ignores (the `architect` owns that contract edit and the
-`UPSTREAM_UNAVAILABLE` registration in the error envelope).
+ignores (the `architect` owns that contract edit; the
+`UPSTREAM_UNAVAILABLE` code is already registered in the shared error
+envelope).
 
 Per-hotel config: out-of-order reason lists are recorded per block
 (FR-RMS-3); no hotel-wide values travel here beyond the block
@@ -303,6 +304,37 @@ be posted or presented against a stale stay reference.
 
 Error cases: stay not in house or already closed: `STATE_ILLEGAL`
 (BR-1; BR-18).
+
+Amendment (Refs #634): Billing consumes `GetStayRef` on the money path.
+Every folio write — `PostCharge`, `RecordPayment`, and
+`RecordOpenBalanceApproval`, in section 4 below — calls it on each
+request, whether or not the stay already carries a folio, with the
+caller's session forwarded and the call bounded so the desk action
+still fits `NFR-PERF-1` (`FR-FWV-1`; BR-50). A stay that carries no
+folio is verified the same way before `GetFolioBalance` creates one; a
+stay that already carries a folio is served by Billing itself in every
+stay state, so the departure invoice and receipts still print
+(`FR-FWV-5`; BR-50). The requirements-side error cases, in addition to
+the `STATE_ILLEGAL` above:
+
+- Unknown stay: `NOT_FOUND` naming the stay, and nothing is written
+  (`FR-FWV-2`; BR-51).
+- A `NOT_FOUND` that names a different stay or names none: a wiring
+  fault, refused `UPSTREAM_UNAVAILABLE` (503), never read as a stay
+  fact (`FR-FWV-4`; BR-51).
+- Stay unreadable — transport failure, timeout, 5xx, non-envelope body,
+  or no client configured: `UPSTREAM_UNAVAILABLE` (503) naming the
+  upstream and the operation, and nothing is written (`FR-FWV-4`;
+  BR-51). The read fails closed; the offline-first cached-config rule
+  (`NFR-AVL-1`) does not extend to a fact that decides money.
+- A 4xx provider envelope: surfaced unchanged, so a rejected session
+  still reads `UNAUTHENTICATED` (`FR-FWV-4`; `NFR-SEC-2`).
+
+No operation, request member, response member, stored value, or event
+is added: `GetStayRef` is served today, and the contract change is
+error-code additive on Billing's four folio operations plus the
+`UPSTREAM_UNAVAILABLE` registration in `contracts/errors/envelope.json`
+(the `architect` owns both).
 
 Per-hotel config: none beyond the stay record itself.
 
@@ -551,7 +583,7 @@ its UTC offset, every date renders on the hotel-local day).
 | STAY -> RES; STAY -> GST | Sync | Check-in acts on the reservation and guest record in one step (Seq-7; FR-CUS-1 refusal); the check-out review resolves the stay's booking for its frozen quoted total in the same step (section 3c; FR-CKP-1) |
 | STAY -> ROOM (`AssignRoom`) | Sync, atomic at provider | NFR-CON-2 exactly-one-winner inside check-in; no eventual consistency |
 | STAY -> BIL (gate) | Sync | Check-out refused until settled or approved (FR-BIL-7) |
-| BIL -> STAY (stay ref) | Sync read | Folio lines and receipts match their stay exactly (FR-BIL-4) |
+| BIL -> STAY (stay ref) | Sync read | Folio lines and receipts match their stay exactly (FR-BIL-4); every folio write verifies the stay's existence and state before it writes, and the folio-creating read does too, bounded so the desk action fits (section 3b amendment; FR-FWV-1, FR-FWV-5) |
 | BIL charge/payment/day-close | Sync | Immediate balance feedback in the folio step (Seq-10/11); NFR-PERF-1 3 s |
 | ROOM state/list/block | Sync | Vacant-dirty release and inspected-only assignment are live desk handoffs (Seq-12; BR-28) |
 | ADM -> all (config read) | Sync at startup | Refusals inside desk steps need current values locally (FR-CUS-1, FR-RTE-4) |
@@ -559,6 +591,29 @@ its UTC offset, every date renders on the hotel-local day).
 | ADM -> all (identity) | Sync per call | Refuse out-of-role at point of use (NFR-SEC-1) |
 | All -> ADM (export slices) | Async job + visible report | Full copy is not a desk-speed action; owner-visible success/failure (NFR-BKP-2) |
 | All -> RPT (domain events) | Async events; RPT read API sync | Own read model, never cross-reads (HLD [section 3](../architecture/hld.md)); 5 s report target tolerates bounded lag (NFR-PERF-2) |
+
+Transport bound on every pair (Refs #630): every sync pair above carries
+JSON over HTTP, and from this change each receiving server bounds that
+transport without changing any contract term. A request body above
+65 536 bytes (64 KiB) is refused with the shared envelope — HTTP 400
+`VALIDATION_FAILED`, `details` naming the field `body`, the plain
+`error.transport.body_too_large` sentence, a fresh `traceId` — while the
+body is read, before the payload is parsed and before the provider does
+any work, so a refused request writes nothing; a body at exactly
+65 536 bytes is served and one byte more is refused (`NFR-BND-1`,
+`BR-60`). The ceiling is one code constant per service, never an
+environment variable, deployment file, or per-hotel setting, and it sits
+more than 18× above the largest request schema the contracts hold
+(`contracts/http/ModifyReservation.json`, 3 530 bytes), so no fixture or
+desk payload moves (`NFR-BND-2`). Every server also declares finite
+header-read, body-read, response-write, and idle bounds sized above the
+longest legitimate pair wait — the 5-second Reservations → Rates pricing
+read and the 2-second completion reads — so a stalled peer is freed
+without cutting an in-limit call (`NFR-BND-3`). This is a transport
+setting, not a contract revision: no operation, request field, response
+shape, status, or code changes, so no `Contract-Version` bump and no
+contract file or manifest edit follows
+(`docs/technical/integration.md` section 10).
 
 ## 9. Error cases named (index)
 
@@ -578,12 +633,17 @@ need.
 | Open balance, no payment or approval | `SETTLEMENT_REQUIRED` | — | FR-BIL-7; BR-17 |
 | Presented folio is not the folio the balance came from | `CONFLICT` | both folio ids | FR-CKS-2; BR-21 |
 | Folio unreadable at the close (upstream down, timeout, 5xx, unwired) | `UPSTREAM_UNAVAILABLE` (503) | the upstream and the operation | FR-CKS-4; BR-46 |
+| Folio write for an unknown stay | `NOT_FOUND` | the stay | FR-FWV-2; BR-51 |
+| Folio write for a stay outside in-house (closed included) | `STATE_ILLEGAL` | the stay and its state | FR-FWV-3; BR-51 |
+| Folio route whose stay cannot be read (upstream down, timeout, 5xx, unwired, or a `NOT_FOUND` naming another stay) | `UPSTREAM_UNAVAILABLE` (503) | the upstream and the operation | FR-FWV-4; BR-51 |
 | Out-of-role attempt | `FORBIDDEN` | — | NFR-SEC-1; BR-35 |
 | Unknown entity (room type, reservation, guest, folio) | `NOT_FOUND` | the reference | guard completeness |
 | Undefined charge item | (architect assigns; suggested `VALIDATION_FAILED`) | the item | FR-BIL-2, FR-CUS-3; BR-22 |
 | Stay's room charge cannot be posted (booking not resolvable, or post refused/failed) | no new code; the desk refuses the review in plain words and the existing refusal or `NOT_FOUND` governs | the room charge and the next step | FR-CKP-4; BR-45 |
 | Locked identity sign-in | `IDENTITY_LOCKED` | the locked identity (distinct from `UNAUTHENTICATED`) | NFR-SEC-2; BR-42 |
 | Expired or signed-out session | `UNAUTHENTICATED` | — | NFR-SEC-2; BR-42 |
+| Unexpected failure in a Node service — a store or driver failure, a wiring fault, or a crash; not a refusal | `INTERNAL_ERROR` (500) | — (no invented field; the answer keeps the plain unexpected-failure sentence and its `traceId`) | FR-ERR-1; BR-59 |
+| Request body above the declared 65 536-byte ceiling — the caller's mistake, in any of the eight services | `VALIDATION_FAILED` (400) | the field `body` (the whole request body; the plain `error.transport.body_too_large` sentence, raised before parsing and before any store, provider, or folio call) | NFR-BND-1; `AC-BND-1`; `BR-60` |
 
 ## 10. Open questions (where the FRs do not decide)
 
@@ -647,14 +707,28 @@ calendar's stay link, `GetReservation` for the frozen quoted total,
 `PostCharge` (section 4), all cited above. The #601 settlement gate
 (section 3a amendment) adds no operation either: it reads the same
 `GetFolioBalance` server-side, with three named error cases and no new
-request member. The #631 booking guard (section 1b amendment) adds no
-operation either: it consumes the existing `CheckRoomTypeSellability`
-read server-side, with three named error cases and no new request
-member. No operation, field, or error case introduces
-behaviour beyond the mapped FRs. Later capabilities from
+request member. The #634 folio-write verification (section 3b
+amendment) adds no operation either: every folio write consumes the
+same `GetStayRef` through the C8 seam, with the three refusal classes
+named in section 9, and a stay that carries no folio is verified the
+same way before its folio is created. `GetFolioBalance`, `PostCharge`,
+`RecordPayment`, and `RecordOpenBalanceApproval` keep their payloads,
+and the contract change is error-code additive only. The #630 transport
+bounds (section 8 amendment) add no operation, field, or error class of
+their own either: every pair keeps its payload and codes, the
+over-limit refusal reuses `VALIDATION_FAILED` with `details.field`
+`body`, and no contract file or version changes (`NFR-BND-1`..
+`NFR-BND-3`, `BR-60`). The #631 booking guard (section 1b
+amendment) adds no operation either: it consumes the existing
+`CheckRoomTypeSellability` read server-side, with three named error
+cases and no new request member. No operation, field, or error case
+introduces behaviour beyond the mapped FRs. Later capabilities from
 requirements section 6 carry no contract need here.
 
 Counts: 8/8 HLD modules covered (7 consumer-facing pairs plus
 config/identity/reporting/export fans); 6 contract open questions
 (OQ-C1..OQ-C6) plus 5 product open questions (OQ-1..OQ-5) restated
 where they touch the contracts.
+
+<!-- ao-role: business-analyst -->
+Role: business-analyst · AO session hotel-mgmt-1079

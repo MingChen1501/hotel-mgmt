@@ -22,7 +22,7 @@ Node.js/TypeScript flat `src/` files over raw `node:http` (no web framework), wi
 | Booking completion | `src/reservationsClient.ts` | `createReservationsClient` posts the committed close to Reservations `CheckOutReservation` with the caller Bearer token and a 2-second cap; fail-soft, returns `bookingCompletion` |
 | Boot | `src/index.ts` | store selection by `DATABASE_URL`, `RESERVATIONS_BASE_URL` client wiring, `listen(PORT)` |
 
-The operation table (`src/server.ts:117-167`): `CheckIn` (:117), `GetStay` (:122), `QueryStays` (:127), `CheckOut` (:132), `MoveRoom` (:139), `RecordActualTimes` (:147), `GetStayRef` (:152), `ListArrivalsDepartures` (:157); unknown operations return `NOT_FOUND` (:167). `CheckOut` forwards the caller Bearer token to the completion client (LLD section 22).
+The operation table (`src/server.ts:163-222`): `CheckIn` (:166), `GetStay` (:171), `QueryStays` (:176), `CheckOut` (:181), `MoveRoom` (:188), `RecordActualTimes` (:196), `GetStayRef` (:201), `ListArrivalsDepartures` (:206); unknown operations return `NOT_FOUND` (:216-222). `CheckOut` forwards the caller Bearer token to the completion client (LLD section 22).
 
 ## 3. Happy-path flowchart
 
@@ -39,11 +39,11 @@ flowchart TD
 
 Edge trace (every edge cites code):
 
-- A: `extractBearer` absent → `UNAUTHENTICATED` (`src/server.ts:110-111`; `src/auth.ts`).
-- B: empty body → `{}`; non-object or unparsable JSON → `VALIDATION_FAILED` (`src/server.ts:9-33`).
+- A: `extractBearer` absent → `UNAUTHENTICATED` (`src/server.ts:159-162`; `src/auth.ts`).
+- B: empty body → `{}`; non-object or unparsable JSON → `VALIDATION_FAILED` (`src/server.ts:20-77`).
 - C: `stayId`/`reservationId`/`guestId`/`roomId` UUID checks, `actor` required (`src/store.ts:189-194` via `requireUuid`/`requireString` at :39-46).
 - D: existing stay for the reservation → `CONFLICT` with both ids (`src/store.ts:195-199`); an already-known `stayId` returns the stored record idempotently (:201-202).
-- E: record stored `in-house`, `stay.checked-in` outbox event queued (:204-220); F: `stayId`, `roomId`, `state` returned (`src/server.ts:116-119` via `stayPayload` at :42-59).
+- E: record stored `in-house`, `stay.checked-in` outbox event queued (:204-220); F: `stayId`, `roomId`, `state` returned (`src/server.ts:165-169` via `stayPayload` at :84-103).
 
 ## 4. Failure/rollback flowchart
 
@@ -79,7 +79,7 @@ See also: [deployment](../system-architecture.md) (section 1), [C4 containers](.
 
 ## 6. Error mapping
 
-Envelope `{code, message, details, traceId}` (`src/errors.ts:36-43`; transport mapping `src/server.ts:76-88`) to `docs/technical/error-handling.md` [section 1](../../technical/error-handling.md). Code→status map (`src/errors.ts:5-24`):
+Envelope `{code, message, details, traceId}` (`src/errors.ts:36-43`; transport mapping `src/server.ts:119-131`) to `docs/technical/error-handling.md` [section 1](../../technical/error-handling.md). Code→status map (`src/errors.ts:5-24`):
 
 | Code | Status | Raised when |
 |---|---|---|
@@ -141,6 +141,14 @@ Contract tests: `contract-tests/` holds fixtures per provided/consumed operation
 script/contract-check.sh
 ```
 
+Ingress bounds (Refs #630): `src/server.ts` caps a request body at
+65 536 bytes (`MAX_BODY_BYTES`) and refuses an oversized body with the
+shared envelope (`VALIDATION_FAILED`, `details` naming `body`) before
+parsing; the server it returns carries `headersTimeout` 5 s,
+`requestTimeout` 10 s, `timeout` 15 s, and `keepAliveTimeout` 10 s. No
+environment variable overrides either value. Details: LLD
+[section 29](../lld.md#29-bounded-request-bodies-and-finite-server-timeouts-refs-630).
+
 ## 8. Planned delta — server-side check-out gate (Refs #601, ADR-0005 proposed)
 
 Not as-built yet: this section records the target the implementation PR
@@ -183,8 +191,8 @@ land in.
   reply — `RESERVATIONS_BASE_URL` (default `http://reservations:8081`),
   caller Bearer token forwarded, 2-second timeout. `src/server.ts`
   threads the caller bearer into `checkOut` the way the Reservations
-  handler threads it (`services/reservations/internal/handler/handler.go:207`,
-  `:235`).
+  handler threads it (`services/reservations/internal/handler/handler.go:246`,
+  `:274`).
 - The response carries `bookingCompletion`:
   `{state: "completed" | "not-recorded", reservationRef?, reason?}`.
   Any non-recording outcome (transport, timeout, 5xx, unwired, provider
