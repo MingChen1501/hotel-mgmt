@@ -5610,3 +5610,356 @@ same as any drifted spec.
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1078
+
+## 30. Money amount bounds on the Billing folio-write adapter (Refs #635)
+
+Tier **T2 confirmed**: a caller-visible refusal on four Billing
+operations, with no new subsystem, dependency edge, data model,
+lifecycle state, endpoint, reader-visible surface, or error-code token.
+ADR-0004 D1 keeps the envelope and its status mapping byte-identical, so
+no ADR and no T3 record. Product done-conditions are
+`docs/product/acceptance-criteria.md` section 23 (`AC-AMT-1`..`AC-AMT-5`)
+with D-35 in `docs/project/decision-log.md` and R-16 in
+`docs/project/risk-register.md`; FR/NFR wording is the `business-analyst`
+handoff (`docs/requirements/mvp-requirements.md` section 31, the
+`NFR-AMT-1`..`NFR-AMT-4` family, and business rule BR-61), guard
+traceability the `qa-lead` handoff (`docs/testing/traceability-matrix.md`
+section 23), the release note and rollback pointer the `release-manager`
+handoff, and implementation the `dev` handoff. This section records only
+the architect-owned delta: the ceiling and its enforcement point in the
+adapter (30.1), what the refusal carries (30.2), the percent adapter's
+actual delta (30.3), the per-flow diagram with the folio-write refusal
+frame (30.4), the contract decision on the request schemas (30.5), the
+verification plan (30.6), and the residual risks with the re-tier
+trigger (30.7).
+
+### 30.1 One ceiling, enforced in the one helper every money field already uses
+
+As-built at this head: `amountOf` takes any `Number` and returns
+`number.longValue()` (`services/billing/src/main/java/com/hotel/billing/web/BillingController.java:47-53`,
+the conversion at `:50`), so `12.99` posts 12 and a magnitude beyond
+anything the product can produce enters the stored `long` with no bound.
+One helper serves all three money fields — `PostCharge.amountMinor`
+(`:86`), `RecordPayment.amountMinor` (`:93`), and
+`UpsertChargeItem.priceMinor` (`:129`) — and no caller checks the
+magnitude.
+
+The decided mechanism:
+
+- **One constant: `MONEY_CEILING_MINOR = 1_000_000_000_000L`,** declared
+  once in `BillingController`, the same value for all three fields. It is
+  a code constant, never configuration — no environment variable,
+  deployment file, runbook step, or per-hotel entry carries or overrides
+  it (D-35), exactly the `MAX_BODY_BYTES` pattern of section 29
+  (`services/billing/src/main/java/com/hotel/billing/web/MaxBodySizeFilter.java:38`).
+  It is declared `static final` with package visibility, so the guard in
+  `BillingControllerTest` reads the declared value instead of repeating
+  the literal.
+- **Enforcement point: `amountOf`**
+  (`BillingController.java:47-53`), the single place every money field
+  already passes through before its service call. The presence check
+  already lives there (`:52`), so presence, type, whole-ness, and bound
+  stay in one helper and the rule has no second copy to drift from.
+- **Why not bean validation on a request DTO:** the routes bind
+  `@RequestBody Map<String, Object>` (`:76` and every sibling) and read
+  fields by hand, so there is no typed request object to annotate.
+  Introducing one DTO per money operation to reach `@Min`/`@Max` would
+  be a wider refactor than the bound it would carry, and it would still
+  need a custom constraint for "whole number of minor units".
+- **Why not rely on the published schema:** the service runs no OpenAPI
+  validator on the request path, so a `maximum` in the schema would be a
+  promise nothing enforces (30.5).
+- **Read shape and the whole-number test.** The value is read as a
+  `BigDecimal` built from `number.toString()` — the same conversion
+  `percentOf` already uses (`:59`) — so a JSON integer arrives exact
+  (`Integer`/`Long` render as `"12000"`) and a JSON double's decimal
+  spelling decides whole-ness. The test is on the value, not the Java
+  type: strip the trailing zeros and require a scale of at most zero, so
+  `12.0` is the whole amount 12 and is accepted exactly as `12` is,
+  while `12.99` is refused instead of truncated (AC-AMT-3).
+- **The bound is on the magnitude.** The absolute value is compared with
+  `BigDecimal.valueOf(MONEY_CEILING_MINOR)`, so a huge negative amount is
+  refused by the ceiling rule while an in-range negative amount passes
+  the adapter and keeps the service's existing sign refusal. After the
+  two checks the conversion is `longValueExact()`, so no residual value
+  can wrap or truncate.
+- **A value that cannot be read as a decimal number** (`NaN`, `Infinity`
+  if a caller's serialiser writes them) is not a whole number of minor
+  units and refuses with the whole-number sentence, not a fault.
+
+The ladder a money request walks, with each step's owner and answer:
+
+| Step | Where | Answer | Spec |
+|---|---|---|---|
+| 1. body ceiling | `MaxBodySizeFilter` (`:38`, `:43`), ahead of Spring binding | `VALIDATION_FAILED` 400, `details.field` `body`, `error.transport.body_too_large` | section 29 |
+| 2. session | `requireToken` (`BillingController.java:67-72`), before any field is read (`:84`, `:92`, `:128`) | `UNAUTHENTICATED` 401 | unchanged |
+| 3. field absent | `amountOf` (`:51-52`) | `VALIDATION_FAILED` 400, `error.validation.field_required` | unchanged |
+| 4. present, not a JSON number | `amountOf` (new branch) | `VALIDATION_FAILED` 400, `error.validation.field_number` | new (30.8 shape note) |
+| 5. present, not a whole number of minor units | `amountOf` (new branch) | `VALIDATION_FAILED` 400, `details.field` the field, `error.validation.amount_not_integer` | new |
+| 6. magnitude above the ceiling | `amountOf` (new branch) | `VALIDATION_FAILED` 400, `details.field` the field, `error.validation.amount_above_ceiling` | new |
+| 7. service rules | `BillingService` (`:126-146`, `:168-190`, `:319-324`) | item kind, item defined, method, sign refusals — unchanged | unchanged |
+| 8. write | `ensureFolio`, idempotency claim, insert, balance, outbox (`:142-160`, `:176-190`, `:324`) | success payload | unchanged |
+
+The ceiling is a per-request-field bound, not a folio-balance bound: a
+folio's running total may exceed it and is settled by more than one
+payment. D-35 records that as a named consequence, not a gap.
+
+### 30.2 What the refusal carries
+
+- **Code and status: `VALIDATION_FAILED`, 400** — the existing caller-input
+  code and its existing status mapping. `contracts/errors/envelope.json`
+  is untouched, so the enum and `ApiExceptionHandler`'s rendering keep
+  what they serve today (ADR-0004 D1).
+- **Messages: two new plain catalogue sentences** in
+  `services/billing/src/main/resources/messages/en.json`, beside the
+  existing `error.validation.*` family (`:22-53`):
+  `error.validation.amount_not_integer` ("{field} must be a whole number
+  of minor units.") and `error.validation.amount_above_ceiling` ("{field}
+  must be at most {max} minor units."). `{max}` is rendered through
+  `Messages.formatNumber(MONEY_CEILING_MINOR)` — the same formatter call
+  the percent-range sentence already makes
+  (`services/billing/src/main/java/com/hotel/billing/service/BillingService.java:341`),
+  so the sentence shows the ceiling with the active locale's digit
+  grouping instead of a pasted literal. Neither sentence names a stack
+  trace, SQL, host, or internal class.
+- **Details: `{"field": "amountMinor"}` or `{"field": "priceMinor"}`** —
+  the established `ApiException.validation(field, message)` shape the
+  service's sign refusals already use (`BillingService.java:134-136`,
+  `:172-174`, `:321-323`). Neither name matches a field a desk refusal
+  branches on (`stayId`, `folioId`, `paymentId`).
+- **Trace: a fresh `traceId`**, as every envelope carries
+  (`services/billing/src/main/java/com/hotel/billing/web/ApiExceptionHandler.java:37`).
+- **One complete answer, nothing written.** The refusal is thrown in the
+  adapter, so the service is never invoked: no folio row is ensured
+  (`BillingService.java:121`, `:142`), no idempotency key is claimed
+  (`:146`, `:180`), no charge line, payment, or charge item is inserted,
+  no balance moves, and no outbox event is written. A refused request
+  therefore consumes no idempotency key, and the caller's retry with a
+  corrected amount is a first attempt, not a replay.
+- **Nothing inside the ceiling changes:** same status, code, message,
+  `details`, and stored effect for every whole amount at or below
+  1 000 000 000 000 minor units — including `0` for
+  `PostCharge.amountMinor` and `UpsertChargeItem.priceMinor`, an
+  idempotent replay, and the tax/fee derivation (AC-AMT-3).
+
+### 30.3 The percent adapter bounds the number, not the money
+
+A tax rate is not a money amount. `percentOf` already builds a
+`BigDecimal` from `number.toString()` (`BillingController.java:55-64`,
+the conversion at `:59`) and already maps an unreadable conversion to
+`error.validation.field_number` naming the field (`:60-62`); the 0–100
+range stays the service's (`BillingService.java:340-342`,
+`error.validation.percent_range`), and a fractional percent such as `8.5`
+stays accepted and drives the derivation exactly as today. No ceiling and
+no whole-number rule apply to `percent`.
+
+The one shape change: today the `value instanceof Number` test doubles as
+the presence test, so a *present* percent that is not a JSON number (a
+string, an object) falls through to `error.validation.field_required`
+(`:63-64`) — the missing-field sentence for a field the caller sent.
+After the change an absent percent keeps `field_required`, and a present
+value that is not a number answers `field_number` naming `percent`. No
+key is added: the sentence and its key already exist and are already
+pinned by the catalogue guard.
+
+Product rule 5 in `docs/product/acceptance-criteria.md` section 23 and
+`AC-AMT-1` name `error.validation.field_number` for a present non-number
+money value, and `AC-AMT-5` requires its gating guard: the adapter
+answers that sentence naming the field instead of the missing-field one
+and writes nothing, and `BillingControllerTest` drives a present
+non-number value on each of the three money adapters. This section
+states the adapter's shape; it adds no acceptance condition.
+
+### 30.4 Per-flow diagram — folio-write refusal frame (amount served, refused, rolled back)
+
+```mermaid
+flowchart TD
+    A[POST /v1/billing/PostCharge, RecordPayment, or UpsertChargeItem carrying a money field  BillingController.java:81 / :89 / :125] --> B{MaxBodySizeFilter: body within 65 536 bytes  MaxBodySizeFilter.java:38}
+    B -->|over-limit body| X1[existing 400 VALIDATION_FAILED, details field body, error.transport.body_too_large]
+    B -->|within the ceiling| C{requireToken: Bearer session present  BillingController.java:67-72}
+    C -->|missing or blank| X2[401 UNAUTHENTICATED, no field read]
+    C -->|accepted| D{amountOf reads the money field  BillingController.java:47-53}
+    D -->|absent| R1[existing 400 VALIDATION_FAILED field_required]
+    D -->|present, not a JSON number| R2[new 400 VALIDATION_FAILED field_number, details field]
+    D -->|present, not a whole number of minor units| R3[new 400 VALIDATION_FAILED amount_not_integer, details field]
+    D -->|present, magnitude above 1 000 000 000 000| R4[new 400 VALIDATION_FAILED amount_above_ceiling, details field]
+    R1 --> E[nothing written: no folio ensure, no idempotency claim, no line, no payment, no balance move, no outbox event]
+    R2 --> E
+    R3 --> E
+    R4 --> E
+    D -->|whole amount at or inside the ceiling| F[service rules unchanged: item kind and item defined, payment method, sign  BillingService.java:126-146 / :168-190 / :319-324]
+    F -->|sign or kind refused| V[existing 400 VALIDATION_FAILED amount_negative, amount_positive, price_negative, item_kind, item_undefined, or method]
+    V --> E
+    F -->|accepted| G[ensure folio, claim idempotency key, insert line or payment or charge item, move the balance, write the outbox event  BillingService.java:142-160 / :176-190 / :324]
+    G --> H[200 operation payload]
+    E --> E2[rollback frame: a refusal is the whole outcome of its call, so nothing is compensated and no retry key was consumed]
+```
+
+Edge trace (every edge cites code at this spec head; the two new refusal
+branches are the guards `AC-AMT-2` and `AC-AMT-5` require the
+implementation to add):
+
+- A–B: Billing's body-bounding filter
+  (`services/billing/src/main/java/com/hotel/billing/web/MaxBodySizeFilter.java:38`,
+  `doFilterInternal` `:43`) runs ahead of Spring's `@RequestBody`
+  binding (`BillingController.java:76` and every sibling), so the
+  transport refusal of section 29 answers first and keeps its answer.
+- B–X1: the existing `error.transport.body_too_large` envelope (LLD
+  section 29.2), untouched by this change.
+- B–C: `requireToken`
+  (`services/billing/src/main/java/com/hotel/billing/web/BillingController.java:67-72`),
+  called before any field is read on the three money routes (`:84`,
+  `:92`, `:128`) and on the percent route (`:137`).
+- C–X2: the existing `UNAUTHENTICATED` 401, unchanged — a money rule is
+  never reached without a session (AC-AMT-5's no-change clause).
+- C–D: `amountOf`
+  (`BillingController.java:47-53`), called at `:86`, `:93`, and `:129`.
+- D–R1: the existing presence refusal (`:51-52`), unchanged.
+- D–R2: the new presence-versus-type split (30.3's rule, applied to the
+  money fields too).
+- D–R3 and D–R4: the two checks the implementation adds inside
+  `amountOf`; both refuse before the service call, so nothing is written
+  (`AC-AMT-1`, `AC-AMT-2`).
+- R1–R4–E: one `ApiException` answered by
+  `ApiExceptionHandler`'s envelope
+  (`services/billing/src/main/java/com/hotel/billing/web/ApiExceptionHandler.java:30-40`),
+  carrying `details` and a fresh `traceId`; the service is mocked in
+  `BillingControllerTest` (`:41-42`), which is how the guards prove no
+  call ran.
+- D–F: the service call itself (`BillingService.java:126-146`,
+  `:168-190`, `:319-324`); the sign refusals at `:134-136`, `:172-174`,
+  and `:321-323` stay in this layer by decision (30.1).
+- F–V: the existing refusal set, unchanged.
+- F–G: `ensureFolio` and the idempotency claim, then the insert, the
+  balance movement, and the outbox event (`:142-160`, `:176-190`,
+  `:324`).
+- G–H: the operation payload the controller returns.
+- E–E2: the rollback frame. A refusal raised in the adapter has no
+  earlier write of its own to take back — no folio row, no claimed
+  idempotency key, no line, no balance delta, no outbox event — so there
+  is nothing to release and no compensating call exists or is needed.
+  The whole change reverts with the single implementation PR: the two
+  checks and the two catalogue sentences fall back to today's truncating
+  `amountOf`, and no stored amount, migration, or backfill exists in
+  either direction.
+
+### 30.5 Contract decision: the three request schemas declare no `maximum`
+
+The three money request schemas already declare the field as an integer
+with a `minimum` only
+(`contracts/http/PostCharge.json:18`, `RecordPayment.json:17`,
+`UpsertChargeItem.json:16`), so a fractional value already violates the
+contract the service publishes and the adapter's whole-number rule is
+conformance to it, not a new constraint. The **ceiling stays out of the
+schemas**:
+
+- **Nothing would enforce it.** No validator runs on Billing's request
+  path; the refusal is the adapter's. A `maximum` in the schema would
+  state a bound the service does not read, which is exactly the drift
+  `script/contract-check.sh` cannot detect.
+- **One number, one home.** A schema `maximum` plus the adapter constant
+  is two copies of the ceiling that must be kept equal by hand. The
+  constant is the authoritative one, and the refusal sentence carries
+  the value to the caller (`30.2`), so the caller learns the ceiling from
+  the answer rather than from a schema it may never read.
+- **No contract file, fixture, or `openapi.yaml` change.** The desk-loop
+  OpenAPI subset and every `contracts/` fixture keep their bytes, so
+  `script/contract-check.sh` and `script/openapi-route-check.sh` stay
+  green without an edit, which is the `AC-AMT-5` condition.
+
+What documents the bound instead: the money convention in
+`docs/technical/api-spec.md` section 1 (a whole number of minor units,
+bounded by one declared ceiling wherever a service accepts one), the
+refusal in `docs/technical/error-handling.md` section 1.2, BR-61 in the
+requirements set, and this section. Deciding later to add a `maximum` to
+a schema is a contract change with its own fixture and gate work; it
+would not move the enforcement point, and the ceiling value would then
+have to be held equal to the adapter constant in the same change.
+
+### 30.6 Verification plan
+
+`qa-lead` owns the traceability rows (`docs/testing/traceability-matrix.md`
+section 23); this is the architecture-side check the implementation must
+satisfy. Every guard lives in
+`services/billing/src/test/java/com/hotel/billing/web/BillingControllerTest.java`
+(MockMvc, service mocked at `:41-42`) unless noted.
+
+- **Constant guard.** The declared `MONEY_CEILING_MINOR` equals
+  1 000 000 000 000 and the same value bounds all three fields.
+- **Fractional guard, per money field (three).** `amountMinor` on
+  `PostCharge`, `amountMinor` on `RecordPayment`, `priceMinor` on
+  `UpsertChargeItem`: send `12.99`, assert HTTP 400, the four-key
+  envelope, `code: "VALIDATION_FAILED"`, `details.field` the field, the
+  `error.validation.amount_not_integer` sentence, a non-empty `traceId`,
+  and `verifyNoInteractions(service)` so nothing was written.
+- **Over-ceiling guard, per money field (three) plus the negative case.**
+  Send 1 000 000 000 001 and −1 000 000 000 001; assert the same
+  envelope with `error.validation.amount_above_ceiling`. An in-range
+  negative still reaches the service and keeps the sign refusal.
+- **Boundary pair.** 1 000 000 000 000 is accepted (the service is
+  called) and one minor unit more is refused.
+- **Whole value spelled with a decimal point.** `12.0` is served exactly
+  as `12` is.
+- **In-range regression, per field.** The existing amounts
+  (`BillingControllerTest.java:48`, `:63`) keep their answer, and
+  `RecordPayment`/`UpsertChargeItem` gain an in-range success case
+  because no controller test drives them today.
+- **Percent guards.** A present non-numeric `percent` answers
+  `field_number` naming `percent`; `8.5` is accepted and derives as
+  today; the existing 0–100 and absent-field refusals
+  (`services/billing/src/test/java/com/hotel/billing/service/BillingServiceTest.java:103`)
+  stay unedited.
+- **Catalogue guards.** One assertion per new key pins its sentence with
+  the placeholders rendered
+  (`services/billing/src/test/java/com/hotel/billing/util/MessagesTest.java:24`
+  carries the same sample-guard shape), and
+  `script/catalogue-coverage-check.sh` stays green.
+- **Existing suites pass unedited** — no success or refusal assertion
+  moves for an in-ceiling amount (`BillingControllerTest.java:106`,
+  `:296`, `:326`, `:351`; `BillingServiceTest.java:54`, `:86`, `:103`,
+  `:120`) — and `script/contract-check.sh` stays green with no contract
+  file change.
+- **Gate commands** (from `docs/architecture/services/billing.md`
+  section 7): `mvn verify` in `services/billing`, plus
+  `script/contract-check.sh` and `script/catalogue-coverage-check.sh`
+  from the repo root.
+
+### 30.7 Residual risks and re-tier trigger
+
+- **The ceiling can be wrong in either direction.** Too small refuses a
+  legitimate 730-night charge; too large admits a value the folio cannot
+  meaningfully hold. R-16 records both. The 15×-plus headroom over the
+  largest legitimate charge and the boundary guard are the mitigation,
+  and a future ceiling change is a deliberate, guarded edit.
+- **Value semantics follow the JSON spelling.** Because whole-ness is
+  read from the decimal spelling, a caller that writes an amount as a
+  rounded float can only be admitted when its spelling is whole
+  (`12.0`); a caller that writes `12.000000000000001` is refused, which
+  is the honest answer for an amount that is not a whole minor unit.
+- **Per field, not per folio.** A folio's running total may exceed the
+  ceiling and is settled by more than one payment (D-35's named
+  consequence). Bounding a total is a separate decision.
+- **The published schema is silent about the ceiling** (30.5). A
+  contract reader learns it from the docs and from the refusal sentence,
+  not from the schema.
+- **Re-tier trigger.** Moving the ceiling into configuration (an
+  environment variable, deployment setting, or per-hotel override) is a
+  T4 change with its own release, deployment, and runbook delta. Adding
+  a `maximum` to a request schema is a contract change with its own
+  fixture and gate work. Changing a money field's wire type (to a string
+  or a decimal) is a contract change across every caller.
+
+### 30.8 Maintain-with-code
+
+The implementation change adds the ceiling constant, the two checks and
+the presence/type split in `amountOf`, the presence/type split in
+`percentOf`, and the two catalogue sentences; it also refreshes this
+section's line pins, `docs/architecture/services/billing.md` section 10,
+and the `VALIDATION_FAILED` row of that page's section 6 if any cited
+line moves (AC-AMT-5, `qa-lead`'s traceability section 23).
+`dev-peer-review` treats a stale pin, a missing guard, or a refusal whose
+`details.field` is absent as a review finding, the same as any drifted
+spec.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1117
