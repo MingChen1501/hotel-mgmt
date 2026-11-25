@@ -165,7 +165,11 @@ func NewMux(svc *service.Service, st store.Repository) *http.ServeMux {
 		if guest == nil {
 			guest = map[string]any{}
 		}
-		sellable, hasSellable := intField(body, "sellableUnits")
+		advisory, oerr := advisoryUnits(body)
+		if oerr != nil {
+			writeOpError(w, oerr)
+			return
+		}
 		price, hasPrice := nestedPrice(body)
 		discount := nestedDiscount(body)
 		key, _ := strField(body, "idempotencyKey")
@@ -180,7 +184,7 @@ func NewMux(svc *service.Service, st store.Repository) *http.ServeMux {
 			ArrivalDate:    arrival,
 			DepartureDate:  departure,
 			Guest:          guest,
-			SellableUnits:  sellUnits(sellable, hasSellable),
+			SellableUnits:  advisory,
 			TotalMinor:     price,
 			HasTotal:       hasPrice,
 			DiscountName:   discount,
@@ -275,7 +279,11 @@ func NewMux(svc *service.Service, st store.Repository) *http.ServeMux {
 		departure, _ := body["departureDate"].(string)
 		roomTypeID, _ := strField(body, "roomTypeId")
 		guest, hasGuest := body["guest"].(map[string]any)
-		sellable, hasSellable := intField(body, "sellableUnits")
+		advisory, oerr := advisoryUnits(body)
+		if oerr != nil {
+			writeOpError(w, oerr)
+			return
+		}
 		price, hasPrice := nestedPrice(body)
 		discount := nestedDiscount(body)
 		key, _ := strField(body, "idempotencyKey")
@@ -287,7 +295,7 @@ func NewMux(svc *service.Service, st store.Repository) *http.ServeMux {
 			RoomTypeID:     roomTypeID,
 			Guest:          guest,
 			HasGuest:       hasGuest,
-			SellableUnits:  sellUnits(sellable, hasSellable),
+			SellableUnits:  advisory,
 			TotalMinor:     price,
 			HasTotal:       hasPrice,
 			DiscountName:   discount,
@@ -406,11 +414,27 @@ func nestedDiscount(body map[string]any) *string {
 	return optStr(body, "discountName")
 }
 
-func sellUnits(value int64, ok bool) int {
-	if !ok {
-		return 0
+// advisoryUnits reads the optional, advisory sellableUnits field
+// (ADR-0006 D3). It never decides a booking: when present it must be a
+// whole number of 0 or more, otherwise the body is refused with
+// VALIDATION_FAILED naming the field; a missing field is valid and
+// makes no difference.
+func advisoryUnits(body map[string]any) (*int, *store.OpError) {
+	raw, present := body["sellableUnits"]
+	if !present {
+		return nil, nil
 	}
-	return int(value)
+	value, valid := intField(map[string]any{"sellableUnits": raw}, "sellableUnits")
+	if !valid || value < 0 {
+		return nil, &store.OpError{
+			Code:    "VALIDATION_FAILED",
+			Status:  http.StatusBadRequest,
+			Message: messages.Text("error.validation.sellable_units", nil),
+			Details: map[string]any{"field": "sellableUnits"},
+		}
+	}
+	units := int(value)
+	return &units, nil
 }
 
 // strOrNull renders a nil kept reason as JSON null so callers can

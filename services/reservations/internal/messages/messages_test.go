@@ -44,7 +44,8 @@ func TestSampledMessagesRenderByteIdentical(t *testing.T) {
 		{"error.validation.guest_change_required", nil, "guest is required when changing the guest."},
 		{"error.validation.cancel_reason_required", nil, "A cancellation reason from the hotel list is required."},
 		{"error.validation.noshow_reason_required", nil, "A no-show reason from the hotel list is required."},
-		{"error.validation.sellable_units", map[string]string{"min": FormatNumber("en", 1)}, "sellableUnits must be at least 1."},
+		{"error.validation.sellable_units", nil, "sellableUnits must be a whole number of 0 or more."},
+		{"error.upstream.availability_unavailable", nil, "The room inventory is unavailable, so the booking was refused."},
 		{
 			"error.conflict.no_availability",
 			map[string]string{"arrivalDate": "2026-10-26", "departureDate": "2026-10-28"},

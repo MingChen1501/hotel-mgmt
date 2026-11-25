@@ -3,15 +3,20 @@
 Provider and consumer fixtures for `ReservationService` (issues #112
 and #159), generated from `contracts/` per
 `docs/technical/integration.md` [section 9](../../../docs/technical/integration.md): `CreateReservation` (plus
-the overbooking `CONFLICT` branch and the missing-guest-field
-`VALIDATION_FAILED` branch), `ModifyReservation` (plus the
+the overbooking `CONFLICT` branch, the missing-guest-field
+`VALIDATION_FAILED` branch, and the advisory `sellableUnits` branch
+where an inflated request number buys no unit), `ModifyReservation` (plus the
 checked-in `STATE_ILLEGAL` and guard-lost `CONFLICT` branches),
 `CancelReservation` (plus the missing-reason `VALIDATION_FAILED`
 and checked-in `STATE_ILLEGAL` branches), `MarkNoShow` (plus the
 too-early and in-house `STATE_ILLEGAL` branches), `GetReservation`,
 `QueryCalendar`, and the consumed `CheckSellableCount` /
 `CheckRoomTypeSellability` shapes from the booking step
-(integration C1/C2).
+(integration C1/C2); the sellability consumer fixture records the
+expected derived ceiling (`totalCount - blockedRooms`) the guard counts
+against, as a documented expectation — `script/contract-check.sh`
+parses the fixtures and checks the operation name, it asserts no
+payload value (ADR-0006, #631).
 
 The paired-concurrency guards for `NFR-CON-1` (booking and modify)
 run in `internal/store/store_test.go` against the real store. The

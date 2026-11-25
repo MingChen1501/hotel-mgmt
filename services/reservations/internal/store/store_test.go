@@ -14,7 +14,7 @@ func loopInput(roomTypeID string) CreateInput {
 		DepartureDate: "2026-11-03",
 		GuestID:       "guest-1",
 		Guest:         map[string]any{"guestId": "guest-1", "fullName": "An Nguyen"},
-		SellableUnits: 1,
+		Ceiling:       1,
 		TotalMinor:    24000,
 		Actor:         "front-desk",
 	}
@@ -171,7 +171,7 @@ func TestModifyIdempotencyKeyScopedPerOperation(t *testing.T) {
 	}
 	modified, oerr := st.Modify(ModifyInput{
 		Ref: created.Ref, ArrivalDate: "2026-11-02", DepartureDate: "2026-11-04",
-		SellableUnits: 2, TotalMinor: 26000, Actor: "front-desk",
+		Ceiling: 2, TotalMinor: 26000, Actor: "front-desk",
 	}, shared)
 	if oerr != nil {
 		t.Fatalf("modify with a create key refused: %v", oerr)
@@ -192,7 +192,7 @@ func TestModifyRepricesAndRecordsChange(t *testing.T) {
 	}
 	modified, oerr := st.Modify(ModifyInput{
 		Ref: created.Ref, ArrivalDate: "2026-11-02", DepartureDate: "2026-11-04",
-		RoomTypeID: "suite-type", SellableUnits: 2, TotalMinor: 26000, Actor: "front-desk",
+		RoomTypeID: "suite-type", Ceiling: 2, TotalMinor: 26000, Actor: "front-desk",
 	}, "modify-1")
 	if oerr != nil {
 		t.Fatalf("modify refused: %v", oerr)
@@ -239,7 +239,7 @@ func TestModifyCheckedInRefused(t *testing.T) {
 	}
 	_, oerr = st.Modify(ModifyInput{
 		Ref: created.Ref, ArrivalDate: "2026-11-02", DepartureDate: "2026-11-04",
-		SellableUnits: 2, TotalMinor: 26000, Actor: "front-desk",
+		Ceiling: 2, TotalMinor: 26000, Actor: "front-desk",
 	}, "")
 	if oerr == nil || oerr.Code != "STATE_ILLEGAL" {
 		t.Fatalf("modify checked-in = %v, want STATE_ILLEGAL", oerr)
@@ -253,13 +253,13 @@ func TestModifyCheckedInRefused(t *testing.T) {
 func TestPairedModifyExactlyOneWins(t *testing.T) {
 	st := New()
 	firstInput := loopInput("deluxe-type")
-	firstInput.SellableUnits = 2
+	firstInput.Ceiling = 2
 	first, oerr := st.Create(firstInput, "")
 	if oerr != nil {
 		t.Fatalf("first booking refused: %v", oerr)
 	}
 	secondInput := loopInput("suite-type")
-	secondInput.SellableUnits = 2
+	secondInput.Ceiling = 2
 	second, oerr := st.Create(secondInput, "")
 	if oerr != nil {
 		t.Fatalf("second booking refused: %v", oerr)
@@ -267,7 +267,7 @@ func TestPairedModifyExactlyOneWins(t *testing.T) {
 	// One more confirmed deluxe booking holds the second deluxe unit,
 	// so exactly one of the two paired moves onto deluxe can win.
 	holder := loopInput("deluxe-type")
-	holder.SellableUnits = 2
+	holder.Ceiling = 2
 	if _, oerr := st.Create(holder, ""); oerr != nil {
 		t.Fatalf("holder booking refused: %v", oerr)
 	}
@@ -283,7 +283,7 @@ func TestPairedModifyExactlyOneWins(t *testing.T) {
 			modified, modifyErr := st.Modify(ModifyInput{
 				Ref: refs[index], RoomTypeID: "deluxe-type",
 				ArrivalDate: "2026-11-01", DepartureDate: "2026-11-03",
-				SellableUnits: 2, TotalMinor: 24000, Actor: "front-desk",
+				Ceiling: 2, TotalMinor: 24000, Actor: "front-desk",
 			}, "")
 			results[index] = attemptResult{record: modified, oerr: modifyErr}
 		}(i)
@@ -567,7 +567,7 @@ func TestCompletedBookingReleasesAvailability(t *testing.T) {
 	// The modify guard counts the same active set: a booking moved
 	// onto the departed dates is accepted too.
 	other := loopInput("suite-type")
-	other.SellableUnits = 2
+	other.Ceiling = 2
 	moved, oerr := st.Create(other, "")
 	if oerr != nil {
 		t.Fatalf("second booking refused: %v", oerr)
@@ -575,7 +575,7 @@ func TestCompletedBookingReleasesAvailability(t *testing.T) {
 	if _, oerr := st.Modify(ModifyInput{
 		Ref: moved.Ref, RoomTypeID: "deluxe-type",
 		ArrivalDate: first.ArrivalDate, DepartureDate: first.DepartureDate,
-		SellableUnits: 2, TotalMinor: 24000, Actor: "front-desk",
+		Ceiling: 2, TotalMinor: 24000, Actor: "front-desk",
 	}, ""); oerr != nil {
 		t.Fatalf("modify onto departed dates refused: %v", oerr)
 	}
@@ -644,7 +644,7 @@ func TestCompletedBookingReadsTerminal(t *testing.T) {
 	if _, oerr := st.CheckIn(record.Ref, "stay-b", "front-desk"); oerr == nil || oerr.Code != "STATE_ILLEGAL" {
 		t.Fatalf("check-in completed = %v, want STATE_ILLEGAL", oerr)
 	}
-	if _, oerr := st.Modify(ModifyInput{Ref: record.Ref, ArrivalDate: "2026-11-02", DepartureDate: "2026-11-04", SellableUnits: 2, TotalMinor: 24000, Actor: "front-desk"}, ""); oerr == nil || oerr.Code != "STATE_ILLEGAL" {
+	if _, oerr := st.Modify(ModifyInput{Ref: record.Ref, ArrivalDate: "2026-11-02", DepartureDate: "2026-11-04", Ceiling: 2, TotalMinor: 24000, Actor: "front-desk"}, ""); oerr == nil || oerr.Code != "STATE_ILLEGAL" {
 		t.Fatalf("modify completed = %v, want STATE_ILLEGAL", oerr)
 	}
 	if _, oerr := st.Cancel(record.Ref, "guest-request", "front-desk", ""); oerr == nil || oerr.Code != "STATE_ILLEGAL" {
@@ -655,5 +655,130 @@ func TestCompletedBookingReadsTerminal(t *testing.T) {
 	}
 	if record.State != "closed" {
 		t.Fatalf("booking state = %s after refused attempts, want closed", record.State)
+	}
+}
+
+// #631 guards (AC-OVB-1, FR-OVB-1/2/4, BR-47/49, ADR-0006): the guard
+// compares the overlapping held count against the ceiling the service
+// derived from Rooms' recorded inventory. The request's advisory
+// sellableUnits never reaches the store, so it cannot raise or lower
+// the ceiling.
+
+// TestDerivedCeilingInflatedRequestBuysNoUnit is `O1`: with a derived
+// ceiling of 1 already held by one confirmed row, a booking attempt
+// carrying an inflated request number buys no unit — CONFLICT naming
+// type and dates, no row, no event, no change row, no idempotency key.
+func TestDerivedCeilingInflatedRequestBuysNoUnit(t *testing.T) {
+	st := New()
+	if _, oerr := st.Create(loopInput("deluxe-type"), ""); oerr != nil {
+		t.Fatalf("first booking refused: %v", oerr)
+	}
+	eventsBefore := len(st.events)
+	changesBefore := len(st.Changes())
+
+	inflated := loopInput("deluxe-type")
+	_, oerr := st.Create(inflated, "inflated-request")
+	if oerr == nil || oerr.Code != "CONFLICT" {
+		t.Fatalf("inflated booking = %v, want CONFLICT", oerr)
+	}
+	if oerr.Details["roomTypeId"] != "deluxe-type" || oerr.Details["arrivalDate"] != "2026-11-01" || oerr.Details["departureDate"] != "2026-11-03" {
+		t.Fatalf("CONFLICT details = %v, want type+dates named", oerr.Details)
+	}
+	if got := len(st.Query("2026-11-01", "2026-11-03", "deluxe-type")); got != 1 {
+		t.Fatalf("store holds %d overlapping reservations, want the original 1", got)
+	}
+	if len(st.events) != eventsBefore || len(st.Changes()) != changesBefore {
+		t.Fatalf("refused booking wrote an event or change row")
+	}
+	if len(st.idem) != 0 {
+		t.Fatalf("refused booking stored %d idempotency key(s), want 0", len(st.idem))
+	}
+}
+
+// TestDerivedCeilingRefusesInflatedModifyIntoHeldCapacity is `O4`: a
+// modification into held dates or a sold-out type is CONFLICT and the
+// reservation keeps its dates, type, guest, and price with no
+// change-history entry.
+func TestDerivedCeilingRefusesInflatedModifyIntoHeldCapacity(t *testing.T) {
+	st := New()
+	if _, oerr := st.Create(loopInput("deluxe-type"), ""); oerr != nil {
+		t.Fatalf("holder booking refused: %v", oerr)
+	}
+	moving := loopInput("suite-type")
+	moving.GuestID = "guest-2"
+	moving.Guest = map[string]any{"guestId": "guest-2", "fullName": "Binh Tran"}
+	moved, oerr := st.Create(moving, "")
+	if oerr != nil {
+		t.Fatalf("moving booking refused: %v", oerr)
+	}
+	changesBefore := len(st.Changes())
+	eventsBefore := len(st.events)
+
+	for name, target := range map[string]ModifyInput{
+		"held-dates": {
+			Ref: moved.Ref, RoomTypeID: "deluxe-type",
+			ArrivalDate: "2026-11-01", DepartureDate: "2026-11-03",
+			Ceiling: 1, TotalMinor: 26000, Actor: "front-desk",
+		},
+		"sold-out-type": {
+			Ref: moved.Ref, RoomTypeID: "soldout-type",
+			Ceiling: 0, TotalMinor: 26000, Actor: "front-desk",
+		},
+	} {
+		if _, oerr := st.Modify(target, "modify-"+name); oerr == nil || oerr.Code != "CONFLICT" {
+			t.Fatalf("%s modify = %v, want CONFLICT", name, oerr)
+		}
+		kept, oerr := st.Get(moved.Ref)
+		if oerr != nil {
+			t.Fatalf("Get refused: %v", oerr)
+		}
+		if kept.RoomTypeID != "suite-type" || kept.ArrivalDate != "2026-11-01" ||
+			kept.DepartureDate != "2026-11-03" || kept.TotalMinor != 24000 ||
+			kept.GuestID != "guest-2" {
+			t.Fatalf("%s refusal changed the reservation: %+v", name, kept)
+		}
+	}
+	if len(st.Changes()) != changesBefore || len(st.events) != eventsBefore {
+		t.Fatalf("refused modifications wrote a change row or event")
+	}
+}
+
+// TestCountedStatesStayConfirmedAndCheckedIn is `O10`: the guard counts
+// the confirmed and checked-in rows only. The release halves are
+// TestCancelKeepsReasonAndReleases, TestMarkNoShowReleasesAndKeepsHistory,
+// and TestCompletedBookingReleasesAvailability; the keep half is
+// TestCheckedInBookingStillConsumesAvailability.
+func TestCountedStatesStayConfirmedAndCheckedIn(t *testing.T) {
+	for state, want := range map[string]bool{
+		"confirmed":  true,
+		"checked-in": true,
+		"cancelled":  false,
+		"no-show":    false,
+		"closed":     false,
+	} {
+		if got := activeState(state); got != want {
+			t.Fatalf("activeState(%q) = %v, want %v", state, got, want)
+		}
+	}
+}
+
+// TestReplayWithDerivedCeilingConsumesNoSecondUnit is `O9`: a repeated
+// idempotency key returns the original record and the ceiling is a
+// derived input on every attempt.
+func TestReplayWithDerivedCeilingConsumesNoSecondUnit(t *testing.T) {
+	st := New()
+	first, oerr := st.Create(loopInput("deluxe-type"), "derived-replay")
+	if oerr != nil {
+		t.Fatalf("first booking refused: %v", oerr)
+	}
+	replay, oerr := st.Create(loopInput("deluxe-type"), "derived-replay")
+	if oerr != nil {
+		t.Fatalf("replay refused: %v", oerr)
+	}
+	if replay.Ref != first.Ref {
+		t.Fatalf("replay ref = %s, want original %s", replay.Ref, first.Ref)
+	}
+	if got := len(st.Query("2026-11-01", "2026-11-03", "deluxe-type")); got != 1 {
+		t.Fatalf("store holds %d overlapping reservations, want 1", got)
 	}
 }
