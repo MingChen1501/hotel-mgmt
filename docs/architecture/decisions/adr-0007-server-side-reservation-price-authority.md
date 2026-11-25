@@ -15,23 +15,23 @@ the module that owns prices. Traced read-only at this spec head:
 - The handler reads the total out of the body on both write routes —
   `priceBasis.totalMinor` (with a top-level `discountName` fallback) for
   `CreateReservation`
-  (`services/reservations/internal/handler/handler.go:130-131`, helpers
-  `nestedPrice`/`nestedDiscount` at `:346-362`) and the same pair for
-  `ModifyReservation` (`:240-241`).
+  (`services/reservations/internal/handler/handler.go:169-170`, helpers
+  `nestedPrice`/`nestedDiscount` at `:389-405`) and the same pair for
+  `ModifyReservation` (`:279-280`).
 - The service's only checks are presence and `>= 0`
   (`services/reservations/internal/service/service.go:101` on Create,
   `:181` on Modify), after which the value is handed straight to the
   store (`:127`, `:233`).
 - The store persists it verbatim (`internal/store/store.go:236`, the
-  Postgres insert/update at `internal/store/postgres.go:139`, `:608`)
+  Postgres insert/update at `internal/store/postgres.go:206`, `:608`)
   and re-freezes it on Modify under an unchanged-total comparison,
   writing the `priceBasis` change-history row with the actor
   (`internal/store/store.go:437-440`; `internal/store/postgres.go:601-605`).
 - No quote call exists on the booking path. The wired Rates client has
   one operation, `Check`
   (`POST {RATES_BASE_URL}/v1/rates/CheckRestrictions`,
-  `internal/pricing/client.go:43-87`, 5-second timeout at `:33`), and
-  boot wires exactly that one hook (`cmd/server/main.go:42-47`).
+  `internal/pricing/client.go:43-85`, 5-second timeout at `:33`), and
+  boot wires exactly that one hook (`cmd/server/main.go:43-48`).
 - Downstream money reads the frozen total: the #600 check-out review
   posts one `nightly-room-charge` line at `priceBasis.totalMinor`
   (D-24), so the number a caller invents becomes the money the guest is
@@ -102,12 +102,12 @@ during the request that writes the booking:
 - the caller's Bearer token forwarded, `RATES_BASE_URL`, 5-second
   timeout — the existing client and its existing configuration, not a
   new dependency knob (`internal/pricing/client.go:26-34`;
-  `cmd/server/main.go:42-47`).
+  `cmd/server/main.go:43-48`).
 - response `totalMinor` and `discountName` are the values the booking
   freezes: the store receives the quote's total and the quote's applied
   discount name, and the price the response reports (`quotedTotal` on
-  Create, `recalculatedTotal` on Modify, `internal/handler/handler.go:157`,
-  `:264`) is that same number.
+  Create, `recalculatedTotal` on Modify, `internal/handler/handler.go:196`,
+  `:303`) is that same number.
 
 Order inside the write step, and why:
 
@@ -219,12 +219,13 @@ schema, table, migration, column, or event changes: the stored
   values are the server's. A discount-name change that leaves the total
   identical still records no row — the history stays keyed on the total,
   unchanged by this record.
-- `PRICE_CHANGED` becomes a registered envelope code. This record also
-  registers `UPSTREAM_UNAVAILABLE` (503), which ADR-0005 section 21.5
-  promised but which is absent from `contracts/errors/envelope.json` at
-  this head (no occurrence under `contracts/`).
+- `PRICE_CHANGED` becomes a registered envelope code, and it is the only
+  new code this change adds: `UPSTREAM_UNAVAILABLE` (503) is already
+  registered in `contracts/errors/envelope.json` (`:9` in the `code`
+  enum, `:27` in `statusMapping`) by #627, so this record adds
+  `PRICE_CHANGED` and its `409` mapping alone.
 - Guards: the verification plan is `docs/architecture/lld.md` section
-  25.6 — forged-low, forged-high, matching (including a legitimate
+  25.8 — forged-low, forged-high, matching (including a legitimate
   zero), unreadable, each definitive refusal, the replay, and the
   Modify reprice with its history row. The #600 room-charge posting and
   the #588/#601/#646/#647 pins stay green.
