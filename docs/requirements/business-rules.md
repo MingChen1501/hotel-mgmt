@@ -97,6 +97,7 @@ front-desk staff, manager, or owner account acting within its access
 | BR-32 | A guest with at least one completed stay is flagged as returning at booking time, with the count of past stays visible. | FR-GST-3; US-GST-3 |
 | BR-33 | Which guest details are mandatory at booking and at check-in is set per hotel. Confirming a booking or check-in without a mandatory field is refused and the missing field is named. | FR-CUS-1; requirements section 3.1; US-CUS-1 |
 | BR-34 | Which guest fields, if any, the system must refuse to delete, and the legal minimum retention period if longer than the system floor, are undecided. | OQ-4 (requirements section 5); NFR-RET-1 |
+| BR-63 | A guest identity lookup answers with a profile only when the name is unambiguous, and the guest write bounds what it stores. A name that matches exactly one guest returns that profile and its stay links; a name that matches no guest stays `NOT_FOUND`; a name that matches two or more guests is refused with the shared envelope and `VALIDATION_FAILED` (400), `details` naming `fullName` with the searched name and the match count and one plain catalogue sentence, before any profile, `contact`, `preferences`, `notes`, or stay link is assembled — the first matching row is never an answer, and every `guestId` read through `IdentifyGuest`, `GetGuest`, and `GetBookingContext` is unchanged. `contact` and `preferences` take one declared shape — a plain object of at most 16 fields, keys of 1–64 characters, values a string of at most 256 characters, a finite number, or a boolean, with no array, nested object, or `null` entry — and `notes` one declared length of 2 000 UTF-16 code units; a present value outside its bound is refused naming the field and the whole upsert writes no row, no stay link, and no outbox event, while an absent field keeps today's behaviour and a profile already holding a longer note or a differently shaped object still reads exactly as today with no re-validation, migration, backfill, or repair. The confirmation snapshot's `dates.checkIn` and `dates.checkOut` must be dates that exist on the calendar — `2024-02-29` accepted, `2026-02-31` and `2026-13-45` refused naming the field — with the date-order behaviour unchanged. Both bounds and the refusal are constants and rules in code, never an environment variable, deployment file, or per-hotel setting. On the Book screen's guest find the ambiguity reads as one plain sentence, resolves no guest, and never reads as the not-found or the generic request-failed sentence. | FR-GID-1; FR-GID-2; FR-GID-3; FR-GST-1; FR-GST-2; FR-GST-4; NFR-I18N-1; `AC-GID-1`..`AC-GID-6`; `AC-GID-7`; Refs #640 |
 
 ## 8. Roles, audit, and data protection
 
@@ -140,6 +141,7 @@ section 3.3). Fixed items no hotel may change in the MVP.
 | Folio structure | — (none) | One folio per stay; no split across payers (`BR-21`) |
 | Room-charge posting | — (none) | One room charge per stay, at the stay's frozen quoted total, posted by the desk check-out review (`BR-45`) |
 | Report window span | — (none) | 730 nights between `dateFrom` and `dateTo` (731 inclusive dates), refused above it (`BR-62`) |
+| Guest payload bounds | — (none) | One declared `contact`/`preferences` shape and one 2 000-code-unit `notes` bound, refused naming the field on write, and one calendar-valid check on the confirmation dates (`BR-63`) |
 | Roles and access | — (none) | Three fixed roles with fixed reach (`BR-35`) |
 | Automation | — (none) | No automatic status changes, reminders, or messages from lifecycle events |
 
@@ -215,14 +217,24 @@ and before any per-date walk, a window at the cap served exactly as
 today, the cap a constant in code rather than configuration, and
 `DailySheet` and `HousekeepingReport` untouched — tracing `NFR-RPT-1`,
 `FR-RPT-1`, `FR-RPT-2`, and `AC-RPT-5`..`AC-RPT-7`, without adding
-behaviour beyond those sources.
+behaviour beyond those sources, and BR-63 states the guest-identity
+obligation the guest read and the guest write owe their caller — a name
+lookup answers only when the name is unambiguous, an ambiguous name
+refused naming `fullName` with the shared envelope and
+`VALIDATION_FAILED` before any profile is assembled, the
+`contact`/`preferences` shape and the `notes` length bounded on write
+with a refusal that writes nothing, a read never re-validated or
+migrated, and the confirmation snapshot's two dates required to exist
+on the calendar — tracing `FR-GID-1`..`FR-GID-3`, `FR-GST-1`,
+`FR-GST-2`, `FR-GST-4`, `NFR-I18N-1`, and `AC-GID-1`..`AC-GID-5` plus
+`AC-GID-7`, without adding behaviour beyond those sources.
 Policies with no decided source appear as open questions
 OQ-1..OQ-5. No rule introduces behaviour beyond the traced
 FRs/NFRs/stories. Later capabilities from requirements section 6
 (waitlist, split folios, integrated payments, automated workflow
 rules, multi-property operation, and the rest) carry no rule here.
 
-Counts: 55 business rules, 5 open questions.
+Counts: 56 business rules, 5 open questions.
 
 <!-- ao-role: business-analyst -->
 Role: business-analyst · AO session hotel-mgmt-1079
