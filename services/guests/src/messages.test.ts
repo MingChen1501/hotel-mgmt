@@ -6,6 +6,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { catalogueLocale, formatDate, formatMoney, formatNumber, loadCatalogue, msg } from "./messages.js";
+import { MAX_GUEST_NOTES_LENGTH } from "./store.js";
 import { join } from "node:path";
 
 describe("message catalogue", () => {
@@ -31,6 +32,10 @@ describe("message catalogue", () => {
       ["error.notfound.reservation", { ref: "RSV-1" }, "Unknown reservation RSV-1."],
       ["guests.notfound.guest_by_name", { fullName: "E2E Guest" }, "Unknown guest E2E Guest."],
       ["guests.validation.guest_or_name", {}, "guestId or fullName is required."],
+      // GID10: the #640 refusals carry one plain sentence each.
+      ["guests.validation.ambiguous_name", { fullName: "Same Name Guest" }, "The name Same Name Guest matches more than one guest; identify the guest by id."],
+      ["guests.validation.contact_shape", { field: "contact" }, "contact must be an object of at most 16 fields whose values are text up to 256 characters, numbers, or true/false."],
+      ["guests.validation.notes_length", { field: "notes", max: formatNumber(MAX_GUEST_NOTES_LENGTH) }, "notes must be at most 2,000 characters."],
     ];
     for (const [key, params, want] of cases) {
       assert.equal(msg(key, params), want, key);

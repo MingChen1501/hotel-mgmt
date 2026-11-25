@@ -6381,8 +6381,8 @@ date rule (32.4), the per-flow diagrams (32.5), the contract decision
 the residual risks and re-tier triggers (32.9), and maintain-with-code
 (32.10).
 
-As found (audit findings G1, G2, G3, traced read-only at this spec
-head):
+As found at the pre-change head (audit findings G1, G2, G3; the
+as-built pins follow this list):
 
 - **G1 — a name lookup serves the first match.** The in-memory
   `findGuest` walks the map and returns the first record whose
@@ -6413,6 +6413,28 @@ head):
   `2026-13-45` and `2026-02-31` are accepted where the Go services'
   `time.Parse` refuses them.
 
+As built by the #640 implementation PR (this section's pins below are
+the merged-head `file:line`):
+
+- The counted name branch is `findGuest` at `store.ts:407-438` (count
+  loop `:421-428`, shared refusal at `:432-434`) and `pgstore.ts:173-206`
+  (`count(*) OVER ()` query `:190-195`, refusal `:199-202`); the one
+  shared constructor is `ambiguousGuestName` at `store.ts:240-246`.
+- The four bound constants are `store.ts:173-176`, the shared
+  validators `:183-206` (object shape) and `:224-237` (notes), called at
+  `:320-322` in memory and `pgstore.ts:71-76` in Postgres.
+- The calendar round-trip is in `requireDate` `store.ts:248-268`
+  (shape `:249-251`, UTC round-trip `:256-266`), reached from
+  `toConfirmationRecord` `:301` and the snapshot writes `:386-390` /
+  `pgstore.ts:143-147`.
+- The catalogue keys are `guests.validation.ambiguous_name`,
+  `guests.validation.contact_shape`, and `guests.validation.notes_length`
+  (`messages/en.json:201-203`, mirrored to
+  `services/guests/src/messages.en.json` and `messages/vi.json`), and the
+  desk branch is `isAmbiguousGuestName` at
+  `app/src/views/BookView.vue:476-487`, used in `onFindGuest`
+  (`:757-767`).
+
 ### 32.1 Where each check sits: in the shared store helpers, before any profile read or write
 
 - **The ambiguity check goes in `findGuest`, in both stores, on the name
@@ -6425,22 +6447,22 @@ head):
   `pgstore.ts:4-24`. It counts every match before it answers, which is
   the whole finding: a `LIMIT 1` or a `return` on the first hit is
   exactly the regression the guard must catch. The `guestId` branch stays
-  first and untouched (`store.ts:309-315`, `pgstore.ts:170-180`), so a
+  first and untouched (`store.ts:408-414`, `pgstore.ts:174-184`), so a
   caller holding an id always reads the profile it asked for — including
   one of two same-named guests — and the blank/absent-identifier refusal
-  stays where it is (`store.ts:325`, `pgstore.ts:193`).
+  stays where it is (`store.ts:437`, `pgstore.ts:205`).
 - **The payload checks go in a shared validator pair in `store.ts`,
   called at the top of both `upsertGuest` implementations** — after
   `guestId`/`fullName`/`actor` are validated and before the first store
   access: in the in-memory store before `this.guests.get(id)`
-  (`store.ts:227`) and therefore before the record write and the outbox
-  push (`:237-238`); in the Postgres store before either object is
-  serialised and before the `INSERT ... ON CONFLICT` (`pgstore.ts:70-84`).
+  (`store.ts:325`) and therefore before the record write and the outbox
+  push (`:334-335`); in the Postgres store before either object is
+  serialised and before the `INSERT ... ON CONFLICT` (`pgstore.ts:70-85`).
   They validate the request fields, never the stored rows.
-- **The date check goes inside `requireDate`** (`store.ts:170-175`),
+- **The date check goes inside `requireDate`** (`store.ts:248-268`),
   which both stores already reach through `toConfirmationRecord`
-  (`store.ts:191`, called from `attachReservation` at `:287-291` and
-  `pgstore.ts:139-143`) — one home, one calendar, no second parser.
+  (`store.ts:284`, called from `attachReservation` at `:386-390` and
+  `pgstore.ts:143-147`) — one home, one calendar, no second parser.
 - **Why not the handler.** `server.ts` reads the body and dispatches by
   operation label (`server.ts:121-198`; `UpsertGuest` `:136`,
   `IdentifyGuest` `:149`, `AttachReservation` `:182`) and performs no
@@ -6474,7 +6496,8 @@ head):
   is what staff typed, and the count is the real number of matching
   guests — not "2 or more" — carried in `details.matches`.
 - **Message: one new plain catalogue sentence `guests.validation.ambiguous_name`**
-  beside today's guests keys (`services/guests/src/messages.en.json:196-200`),
+  beside today's guests keys (`messages/en.json:201`, mirrored in
+  `services/guests/src/messages.en.json`),
   exactly "The name {fullName} matches more than one guest; identify the
   guest by id." — the product and requirements copy
   (`docs/product/acceptance-criteria.md` section 25 rule 2;
@@ -6490,27 +6513,27 @@ head):
   matches is the only store-specific part.
 - **Nothing is served.** The refusal returns from `findGuest`, so
   `identifyGuest` never assembles the profile-with-links object
-  (`store.ts:242-245`, `pgstore.ts:87-90`): no `guestId`, `fullName`,
+  (`store.ts:341-344`, `pgstore.ts:91-94`): no `guestId`, `fullName`,
   `contact`, `preferences`, `notes`, `returningFlag`, `pastStayCount`,
   or `stayLinks` appears in the body, the links read is never issued
-  (`pgstore.ts:88-89`), and nothing is written on this path.
+  (`pgstore.ts:92-93`), and nothing is written on this path.
 - **Precedence inside the name branch.** Exact equality on the trimmed
   name (today's rule, unchanged) resolves the set: zero matches keep
-  `NOT_FOUND` with `guests.notfound.guest_by_name` (`store.ts:323`,
-  `pgstore.ts:188-190`); one match serves exactly as today; two or more
+  `NOT_FOUND` with `guests.notfound.guest_by_name` (`store.ts:429-430`,
+  `pgstore.ts:196-197`); one match serves exactly as today; two or more
   refuse. An absent or blank name keeps `guests.validation.guest_or_name`
-  naming `guestId` (`store.ts:325`, `pgstore.ts:193`) before the branch
+  naming `guestId` (`store.ts:437`, `pgstore.ts:205`) before the branch
   runs.
 - **The desk distinguishes the refusal by code and field, never by
   wording.** `code === "VALIDATION_FAILED"` together with
   `details.field === "fullName"` selects the Book screen's
-  `desk.book.guest_ambiguous` sentence; every other failure keeps the
-  generic fallback (`app/src/views/BookView.vue:710-745`, the code check
-  at `:736-744`, the fallback at `:480-485`; `details` is already read
-  this way at `:488-496`). `IdentifyGuest` has exactly one other
-  `VALIDATION_FAILED` today and it names `guestId` (`store.ts:325`), so
-  the pair is unambiguous for this operation; switching on resolved
-  wording is forbidden by the catalogue rule
+  `desk.book.guest_ambiguous` sentence (`isAmbiguousGuestName`,
+  `app/src/views/BookView.vue:476-487`, used in `onFindGuest`
+  `:757-767`); every other failure keeps the generic fallback
+  (`errorMessage` `:493-499`). `details` is already read this way at
+  `:501-508`). `IdentifyGuest` has exactly one other
+  `VALIDATION_FAILED` today and it names `guestId` (`store.ts:437`), so the pair is unambiguous for this
+  operation; switching on resolved wording is forbidden by the catalogue rule
   (`docs/product/desk-ui-design-rollout.md` section 7).
 - **Postgres read shape.** The count must be exact, so the statement
   returns the total beside at most the rows needed — for example
@@ -6562,13 +6585,14 @@ both stores:
   resets `contact` to `{}` and keeps the stored `preferences`, while a
   Postgres update keeps the stored `contact` as well as the stored
   `preferences` (`COALESCE` on insert and `CASE ... IS NULL` on update,
-  `pgstore.ts:74-81`, the `contact` `CASE` at `:77`); `notes` keeps the
+  `pgstore.ts:77-83`, the `contact` `CASE` at `:81`); `notes` keeps the
   stored value on update and is `""` on create in both stores
-  (`store.ts:231-233`; `pgstore.ts:72`). Only a present value is
+  (`store.ts:320-331`; `pgstore.ts:73-88`). Only a present value is
   validated, so no absent field is refused and no store is changed. An
   explicit `null` for `contact` or `preferences` keeps today's coercion
-  (both stores store `{}` through `asObject`, `store.ts:166-168`,
-  `pgstore.ts:70-71`), so no validator runs on a null object field; an
+  (both stores store `{}`; the shared validator returns `{}` at
+  `store.ts:183-190`, consumed at `:330-331` and `pgstore.ts:74-75`), so
+  no validator runs on a null object field; an
   explicit `null` for `notes` is refused, because `AC-GID-4` and
   `FR-GID-2` refuse a present non-string `notes` and today's
   invalid-value-means-keep path accepted it silently. No desk caller
@@ -6597,25 +6621,25 @@ both stores:
 ### 32.4 The confirmation date rule: the date must exist on the calendar
 
 - **Shape first, then the calendar.** `requireDate` keeps its
-  `YYYY-MM-DD` shape test and trim (`store.ts:170-175`), then parses the
+  `YYYY-MM-DD` shape test and trim (`store.ts:248-251`), then parses the
   three components and requires them to round-trip through a UTC date:
   build the date with `setUTCFullYear(y, m - 1, d)` (which treats a year
   such as `0099` literally, unlike `Date.UTC`, whose 0-99 mapping is
   1900+n) and require `getUTCFullYear() === y`,
-  `getUTCMonth() === m - 1`, and `getUTCDate() === d`. An overflowing day
-  or month fails the round-trip; the real leap day `2024-02-29` passes;
-  `2026-13-45`, `2026-02-31`, and `2026-00-10` fail.
+  `getUTCMonth() === m - 1`, and `getUTCDate() === d` (`:256-266`). An
+  overflowing day or month fails the round-trip; the real leap day
+  `2024-02-29` passes; `2026-13-45`, `2026-02-31`, and `2026-00-10` fail.
 - **The refusal keeps today's kind and sentence.** `VALIDATION_FAILED`,
   400, `details` naming `dates.checkIn` or `dates.checkOut`, and the
   existing `guests.validation.date_format` sentence
-  (`store.ts:171-173`, catalogue `messages.en.json:196`) — no new
+  (`store.ts:249-251`, catalogue `messages/en.json:196`) — no new
   catalogue key for the date rule, per `AC-GID-5`.
 - **One home, before the snapshot is stored.** `requireDate` is called
-  only by `toConfirmationRecord` (`store.ts:208`), which both
+  only by `toConfirmationRecord` (`store.ts:301`), which both
   `attachReservation` implementations call before the confirmation write
-  (`store.ts:288-289`, `pgstore.ts:140-141`), so an invalid date refuses
+  (`store.ts:387-388`, `pgstore.ts:144-145`), so an invalid date refuses
   before the map write and a later `produceConfirmation` still answers
-  `NOT_FOUND` (`store.ts:293-301`, `pgstore.ts:145-153`).
+  `NOT_FOUND` (`store.ts:392-400`, `pgstore.ts:149-157`).
 - **Nothing else moves.** No other operation calls `requireDate`; a
   `checkIn` after `checkOut` stays as accepted as it is today (no
   ordering rule is added, per `AC-GID-5`); and the value stays a
@@ -6633,13 +6657,13 @@ implementation PR refreshes the code pins and keeps the edges.
 flowchart TD
     A[POST /v1/guests/IdentifyGuest  server.ts:149] --> B{Bearer session present  server.ts:130-132}
     B -->|missing| X1[401 UNAUTHENTICATED, no field read]
-    B -->|present| C{guestId given  store.ts:309 / pgstore.ts:170}
-    C -->|yes| D[Read the one record by id  store.ts:310-314 / pgstore.ts:171-179]
-    C -->|no, fullName given| E[Count every record whose fullName equals the trimmed name  store.ts:317-322 / pgstore.ts:181-187]
-    C -->|neither| X2[existing 400 VALIDATION_FAILED naming guestId, guests.validation.guest_or_name  store.ts:325 / pgstore.ts:193]
-    E -->|0 matches| X3[existing 404 NOT_FOUND, guests.notfound.guest_by_name  store.ts:323 / pgstore.ts:188-190]
-    E -->|1 match| F[Serve the profile with its stay links  store.ts:242-245 / pgstore.ts:87-90]
-    E -->|2 or more matches| R[new 400 VALIDATION_FAILED, details field fullName, fullName, matches, guests.validation.ambiguous_name]
+    B -->|present| C{guestId given  store.ts:408 / pgstore.ts:174}
+    C -->|yes| D[Read the one record by id  store.ts:409-414 / pgstore.ts:175-184]
+    C -->|no, fullName given| E[Count every record whose fullName equals the trimmed name  store.ts:415-428 / pgstore.ts:185-195]
+    C -->|neither| X2[existing 400 VALIDATION_FAILED naming guestId, guests.validation.guest_or_name  store.ts:437 / pgstore.ts:205]
+    E -->|0 matches| X3[existing 404 NOT_FOUND, guests.notfound.guest_by_name  store.ts:429-430 / pgstore.ts:196-197]
+    E -->|1 match| F[Serve the profile with its stay links  store.ts:341-344 / pgstore.ts:91-94]
+    E -->|2 or more matches| R[new 400 VALIDATION_FAILED, details field fullName, fullName, matches, guests.validation.ambiguous_name  store.ts:432-434 / pgstore.ts:199-202]
     D --> F
     F --> O[200 profile exactly as today]
     R --> N[no profile, contact, preferences, notes, returningFlag, pastStayCount, or stayLinks returned; no links read; nothing written]
@@ -6649,29 +6673,27 @@ flowchart TD
     N --> N2
 ```
 
-Edge trace (every edge cites code as it stands at this head; the one
-new branch is the refusal `AC-GID-1` requires and the implementation PR
-adds):
+Edge trace (as built; the one new branch is the refusal `AC-GID-1`
+requires):
 
 - A–B: the shared Bearer check (`services/guests/src/server.ts:130-132`),
   unchanged.
 - B–C: `IdentifyGuest` dispatch (`server.ts:149`) into
-  `identifyGuest` (`store.ts:242`, `pgstore.ts:87`), which calls
-  `findGuest` first (`store.ts:243`, `pgstore.ts:88`).
-- C–D: the `guestId` branch (`store.ts:309-315`,
-  `pgstore.ts:170-180`), unchanged; an unknown id keeps `NOT_FOUND`
+  `identifyGuest` (`store.ts:341`, `pgstore.ts:91`), which calls
+  `findGuest` first (`store.ts:342`, `pgstore.ts:92`).
+- C–D: the `guestId` branch (`store.ts:409-414`,
+  `pgstore.ts:175-184`), unchanged; an unknown id keeps `NOT_FOUND`
   naming `guestId`.
-- C–E: the name branch (`store.ts:316-322`, `pgstore.ts:181-187`);
-  today it stops at the first match (`store.ts:320`) or asks for
-  `LIMIT 1` (`pgstore.ts:185`), which the change replaces with a count.
+- C–E: the name branch (`store.ts:415-428`, `pgstore.ts:185-195`);
+  the first-match loop and `LIMIT 1` are replaced by the count.
 - E–X3 and E–F: the existing not-found and served outcomes
-  (`store.ts:323` vs `:242-245`; `pgstore.ts:188-190` vs `:191`), with
-  the profile assembled only after the branch returns.
-- E–R: the new refusal, built by the shared constructor (32.2) and
-  raised before any profile is assembled.
+  (`store.ts:429-430` vs `:341-344`; `pgstore.ts:196-197` vs `:91-94`),
+  with the profile assembled only after the branch returns.
+- E–R: the new refusal, built by the shared constructor at
+  `store.ts:240-246` (32.2) and raised before any profile is assembled.
 - R–N: no read of `contact`, `preferences`, `notes`, or `stayLinks`
   happens below the refusal in either store; `stayLinksFor` is only
-  called after a record is returned (`pgstore.ts:88-89`).
+  called after a record is returned (`pgstore.ts:92-93`).
 - X1/X2/X3–N2 and N–N2: the rollback frame. The operation is a read, so
   a refusal has no earlier write of its own and no compensating call
   exists or is needed; the change reverts with the single implementation
@@ -6681,9 +6703,9 @@ adds):
 
 ```mermaid
 flowchart TD
-    A[POST /v1/guests/UpsertGuest  server.ts:136] --> B[Validate guestId, fullName, actor  store.ts:221-226 / pgstore.ts:64-69]
-    B --> C{contact, then preferences, then notes inside their declared bound  new checks}
-    C -->|yes| D[Write the row and, in the in-memory store, the guest-upserted event  store.ts:237-238 / pgstore.ts:73-84]
+    A[POST /v1/guests/UpsertGuest  server.ts:136] --> B[Validate guestId, fullName, actor  store.ts:313-319 / pgstore.ts:62-68]
+    B --> C{contact, then preferences, then notes inside their declared bound  store.ts:320-322 / pgstore.ts:71-76}
+    C -->|yes| D[Write the row and, in the in-memory store, the guest-upserted event  store.ts:334-335 / pgstore.ts:77-88]
     C -->|no| R[new 400 VALIDATION_FAILED naming the field, guests.validation.contact_shape or guests.validation.notes_length]
     R --> N[no row, no stay link, no guest-upserted event; the stored profile is untouched]
     D --> O[200 profile as today]
@@ -6694,15 +6716,15 @@ flowchart TD
 Edge trace:
 
 - A–B: dispatch (`server.ts:136`) into `upsertGuest`
-  (`store.ts:220`, `pgstore.ts:63`); the three existing field checks run
-  exactly as today (`store.ts:221-226`, `pgstore.ts:64-69`).
-- B–C: the new validators, shared from `store.ts` (32.3), run in the
-  declared order before the first store access (`store.ts:227`),
-  before either object is serialised (`pgstore.ts:70-71`), and before
-  the insert (`pgstore.ts:73`).
+  (`store.ts:313`, `pgstore.ts:62`); the three existing field checks run
+  exactly as today (`store.ts:314-319`, `pgstore.ts:63-68`).
+- B–C: the new validators, shared from `store.ts:183-237` (32.3), run in
+  the declared order before the first store access (`store.ts:320-322`),
+  before either object is serialised (`pgstore.ts:71-76`), and before
+  the insert (`pgstore.ts:77`).
 - C–D: the record write and the in-memory outbox push
-  (`store.ts:237-238`) or the `INSERT ... ON CONFLICT` with its
-  `RETURNING` (`pgstore.ts:73-84`), unchanged below the guard.
+  (`store.ts:334-335`) or the `INSERT ... ON CONFLICT` with its
+  `RETURNING` (`pgstore.ts:77-88`), unchanged below the guard.
 - C–R: the two new sentences and the `details` field (32.3).
 - R–N: every write in both implementations sits below the guard, so a
   refusal leaves the previous row — including its previously stored
@@ -6714,11 +6736,11 @@ Edge trace:
 
 ```mermaid
 flowchart TD
-    A[POST /v1/guests/AttachReservation  server.ts:182] --> B[toConfirmationRecord  store.ts:191]
-    B --> C{dates.checkIn and dates.checkOut shape and calendar  store.ts:171-175}
-    C -->|valid| D[Store the confirmation snapshot  store.ts:287-290 / pgstore.ts:139-142]
+    A[POST /v1/guests/AttachReservation  server.ts:182] --> B[toConfirmationRecord  store.ts:284]
+    B --> C{dates.checkIn and dates.checkOut shape and calendar  store.ts:248-268}
+    C -->|valid| D[Store the confirmation snapshot  store.ts:386-390 / pgstore.ts:143-147]
     C -->|invalid or non-existent| R[existing 400 VALIDATION_FAILED naming the field, guests.validation.date_format]
-    R --> N[no confirmation stored; ProduceConfirmation still answers NOT_FOUND  store.ts:293-301 / pgstore.ts:145-153]
+    R --> N[no confirmation stored; ProduceConfirmation still answers NOT_FOUND  store.ts:392-400 / pgstore.ts:149-157]
     D --> O[200 confirmation record as today]
     R --> N2[rollback frame: nothing written, nothing to compensate]
     N --> N2
@@ -6727,15 +6749,15 @@ flowchart TD
 Edge trace:
 
 - A–B: dispatch (`server.ts:182`) into `attachReservation`
-  (`store.ts:287`, `pgstore.ts:139`), which validates the whole snapshot
-  through `toConfirmationRecord` (`store.ts:288`, `pgstore.ts:140`).
+  (`store.ts:386`, `pgstore.ts:143`), which validates the whole snapshot
+  through `toConfirmationRecord` (`store.ts:387`, `pgstore.ts:144`).
 - B–C: the existing shape test plus the new calendar round-trip in
-  `requireDate` (`store.ts:170-175`), reached from the dates line
-  (`store.ts:208`).
-- C–D: the confirmation write (`store.ts:289`, `pgstore.ts:141`),
+  `requireDate` (`store.ts:248-268`), reached from the dates line
+  (`store.ts:301`).
+- C–D: the confirmation write (`store.ts:388`, `pgstore.ts:145`),
   unchanged.
 - C–R: the existing sentence and `details` naming the offending field
-  (`store.ts:171-173`), reused without a new key.
+  (`store.ts:249-251`), reused without a new key.
 - R–N: the store write is below the validator, so a refused snapshot is
   never cached and the later read still misses.
 - R–N2: the rollback frame; confirmations are ephemeral local copies
