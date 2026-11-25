@@ -2544,10 +2544,14 @@ the Book screen's guest find — so the UI contract delta is section 6.22
 in `docs/product/desk-ui-design-rollout.md` (one new plain refusal
 sentence, both locales; no layout, component, token, route, or print
 change). ADR-0004 D1 keeps the error envelope and its status mapping
-exactly as they are. The conditions below are the product half. FR/NFR
+exactly as they are. The conditions below are the product half. FR
 wording is owned by `business-analyst`
-(`docs/requirements/mvp-requirements.md` section 33, the `FR-GID-*` /
-`NFR-GID-*` family these conditions cite); the LLD delta and the
+(`docs/requirements/mvp-requirements.md` section 33, the `FR-GID-1`..
+`FR-GID-3` family these conditions cite); no NFR is added and no
+existing NFR changes — section 33.4 is the no-change statement, so the
+conditions keep tracing to the existing `NFR-I18N-1` (the three
+catalogue sentences, both locales) and `NFR-AUD-1` (a refusal records
+and emits nothing). The LLD delta and the
 refusal edges on the Guests service design's flowcharts and error
 mapping by `architect` (LLD section 32,
 `docs/architecture/services/guests.md` sections 4 and 6, refreshed by
@@ -3109,11 +3113,13 @@ fixtures in the tree (a 28-character note, one-field objects) with more
 than nine times headroom, and both sit far under the 64 KiB body
 ceiling the #630 change declares, so no legitimate desk payload is
 near them. They trace to the existing `FR-GST-1`, `FR-GST-2`,
-`FR-GST-3`, `FR-GST-4`, `FR-DSP-3`, and `NFR-I18N-1`; the
-requirements-side `FR-GID-*` / `NFR-GID-*` family this spec set adds is
+`FR-GST-3`, `FR-GST-4`, `FR-DSP-3`, `NFR-I18N-1`, and `NFR-AUD-1`; the
+requirements-side `FR-GID-1`..`FR-GID-3` family this spec set adds is
 the `business-analyst` handoff (`docs/requirements/mvp-requirements.md`
-section 33), the business rule that states the ambiguity and the two
-bounds is BR-63 (`docs/requirements/business-rules.md`), and the LLD
+section 33), no NFR is added and no existing NFR changes (section 33.4
+is the no-change statement), the business rule that states the
+ambiguity and the two bounds is BR-63
+(`docs/requirements/business-rules.md`), and the LLD
 delta, the contract error-list line, and the service-design refusal
 edges are the `architect` handoff. The refusals reuse the existing
 vocabulary and the existing guest date sentence, so the conditions
