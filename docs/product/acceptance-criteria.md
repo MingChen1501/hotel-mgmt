@@ -35,13 +35,17 @@ acting within its access.
   staff enter stay dates, room type, guest, and price basis and
   confirm, then the reservation exists with a unique reference, the
   requested dates, room type, guest link, and quoted price, and it
-  appears on the reservation calendar. Traces to: US-RES-1; FR-RES-1,
-  FR-RTE-5.
+  appears on the reservation calendar. What "sellable" means is decided
+  by the service from the capacity the hotel records, never by the
+  number the request carries (`AC-OVB-1`, Refs #631). Traces to:
+  US-RES-1; FR-RES-1, FR-RTE-5.
 - AC-RES-2 — Given a reservation that has not been checked in, when
   staff change its dates, room type, or guest and confirm, then the
   reservation reflects the new values, its quoted price is
   recalculated from the rate plan in force, and the change is recorded
-  with who made it and when. Traces to: US-RES-2; FR-RES-2. Open
+  with who made it and when. The same derived availability governs the
+  change, so a move to sold-out dates or a sold-out type refuses
+  (`AC-OVB-1`, Refs #631). Traces to: US-RES-2; FR-RES-2. Open
   question: reason format for changes is undecided (PRD OQ-2).
 - AC-RES-3 — Given a reservation that has not been checked in, when
   staff cancel it and record a cancellation reason, then the
@@ -1457,6 +1461,107 @@ dates, nights, quoted total, and state, open any row for the fresh
 `GetReservation` read-back, see the plain empty and failure sentences
 instead of invented values, and the owner accepts the screen against
 the design boards — with the desk's existing guards green.
+## 19. Server-side reservation availability (Refs #631)
+
+Product-owner scope decision and acceptance conditions for audit
+finding R1 on the booking path (#625 class: a client-supplied value
+decides the outcome). Today `sellableUnits` arrives in the request
+body — `services/reservations/internal/handler/handler.go:168` and
+`:183` on `CreateReservation`, `:278` and `:290` on
+`ModifyReservation` — and the overbooking guard compares the count of
+overlapping active reservations against that caller-supplied number
+(`services/reservations/internal/store/store.go:222` on Create,
+`:415` on Modify). A caller that sends a large number therefore never
+sees `CONFLICT` and can overbook, and nothing on the booking path
+reads the capacity the hotel actually holds for the room type and the
+stay dates.
+
+Tier T3: the availability decision moves from a request field to a
+server-side read of the hotel's recorded capacity, which gives the
+booking path a fail-closed capacity dependency and changes the
+booking workflow's trust boundary. The decision record is the
+`architect`'s ADR for the capacity seam (ADR-0006, accepted
+2026-11-24), and the implementation
+design plus the per-flow happy and failure/rollback diagrams are the
+`architect`'s HLD/LLD delta. Which service owns the capacity read —
+Rates' per-date sellable inventory or the Rooms room inventory — is
+the `architect`'s decision, and the product conditions below hold
+whichever source is chosen: the caller never sets the capacity. FR/NFR
+wording and business rules are the `business-analyst` handoff, guard
+mapping and traceability are `qa-lead`'s, the release and rollback
+note is `release-manager`'s, and the gate verdict is
+`spec-reviewer`'s. The `OVB` domain code names the overbooking guard
+family these conditions trace to.
+
+- AC-OVB-1 — Given a room type with N sellable units recorded for a
+  stay's dates, when callers create reservations for overlapping dates
+  of that type, then the guard decides on the recorded capacity and
+  not on the request's `sellableUnits`: a caller that sends a number
+  far above N buys no extra booking, a caller that sends a number
+  below N, sends zero, or omits the field altogether is not refused
+  while recorded units are still free, the Nth overlapping reservation
+  that holds a unit is the last one accepted, and the next one refuses
+  with `CONFLICT` naming the room type and the dates and writes
+  nothing — so the field is optional and advisory and can neither
+  raise nor lower the ceiling, while a malformed value is still
+  refused as `VALIDATION_FAILED` naming the field. Given a room type
+  whose recorded capacity for those dates is zero, when a caller books
+  it, then the refusal is the same sold-out `CONFLICT` naming the type
+  and dates, never a fail-closed `UPSTREAM_UNAVAILABLE`: a sold-out
+  type is not an outage. Given a confirmed reservation, when a caller
+  changes its dates or room type to a combination whose recorded
+  capacity is already fully booked, then
+  the change refuses with `CONFLICT`, the reservation keeps its
+  previous dates, type, guest, and price, and no change-history entry
+  is written. Given a reservation that is cancelled, marked no-show,
+  or closed, when its dates are considered, then it releases its held
+  unit exactly as today, so freed capacity becomes sellable again;
+  given a reservation that is checked in, when its dates are
+  considered, then it keeps holding its unit exactly as today, because
+  the in-house share of a room type must not be subtracted from the
+  recorded capacity twice (BR-47).
+  Traces to: US-RES-1, US-RES-2; FR-RES-1, FR-RES-2, FR-RTE-5,
+  NFR-CON-1 (Refs #631).
+- AC-OVB-2 — Given the capacity source for a booking's room type and
+  dates cannot be read — a transport failure, a timeout, a 5xx, or a
+  client that is not wired — when a caller creates or modifies a
+  reservation, then the booking is refused fail-closed with
+  `UPSTREAM_UNAVAILABLE` (503) naming the upstream and the operation,
+  nothing is written, no capacity is assumed from a previous request,
+  and no booking is ever accepted against an unverified capacity; a
+  capacity-source refusal that carries a 4xx envelope is surfaced
+  unchanged, so a rejected session still refuses as
+  `UNAUTHENTICATED`. Given no capacity source is configured at all,
+  when a caller books, then the booking refuses the same way, so an
+  unwired service can never fall back to the request's number.
+  Traces to: US-RES-1, US-RES-2; FR-RES-1, FR-RES-2, NFR-CON-1
+  (Refs #631).
+- AC-OVB-3 — Given the derived capacity and the counted bookings, when
+  two callers request the last sellable unit at the same time, then
+  exactly one commits and the other refuses with `CONFLICT`, and no
+  interleaving lets both through: the capacity is read on the attempt
+  and the count-and-insert comparison stays in one critical section,
+  so the guard keeps the atomic shape it has today. Given a repeated
+  request carrying the same idempotency key, when it replays, then the
+  original reservation is returned and no second unit is consumed.
+  Given the desk Book screen, when staff quote and confirm, then the
+  panel's flow, its own fresh sellability pre-check, the request it
+  sends (including `sellableUnits`), and every refusal sentence stay
+  as they are — a `CONFLICT` still reads as the sold-out sentence
+  (`desk.book.refused_soldout`) and an unreadable capacity source
+  reads as the plain request-failed sentence
+  (`desk.shell.request_failed`), with no new catalogue key, control,
+  or screen. Traces to: US-RES-1; FR-RES-1, FR-RES-2, FR-RTE-5,
+  NFR-CON-1 (Refs #631).
+
+Done when: an inflated `sellableUnits` no longer buys extra bookings on
+Create or Modify, a request that omits, zeroes, or understates the
+field is still booked while recorded capacity is free, a checked-in
+reservation still holds its unit while cancelled and no-show rows
+release theirs, an unreadable capacity source refuses the booking
+fail-closed instead of accepting it, two simultaneous last-unit
+requests still yield exactly one winner and one `CONFLICT`, and the
+desk Book panel and its guards stay green unchanged.
 
 ## 20. Folio writes refuse a stay Billing cannot verify (Refs #634)
 
@@ -2059,6 +2164,9 @@ or an issue comment):
   result, so `12.99` silently becomes `12` and a value beyond a
   `double`'s exact integer range loses precision before it is stored:
   `services/billing/src/main/java/com/hotel/billing/web/BillingController.java:47-53`.
+  A value that is present but not a JSON number also lands on the
+  missing-field sentence today (`error.validation.field_required`,
+  `:52`), so the adapter cannot tell "absent" from "wrong type".
 - **The same helper serves all three money fields and bounds none of
   them.** `PostCharge` passes `amountOf(body, "amountMinor")`
   (`BillingController.java:86`), `RecordPayment` passes
@@ -2152,9 +2260,11 @@ Product rules (decided here):
    caller whose serialiser writes whole numbers with a decimal point
    is not refused. An absent field keeps today's
    `error.validation.field_required` refusal, and a present value that
-   is not a JSON number at all refuses with the existing
-   `error.validation.field_number` sentence naming the field instead
-   of the missing-field one.
+   is not a JSON number at all (for example a string `"12"`) is refused
+   with the existing `error.validation.field_number` sentence naming
+   the field instead of today's missing-field one, so "absent" and
+   "wrong type" read as the two different caller mistakes they are;
+   `AC-AMT-1` covers both.
 6. **The percent adapter bounds the number, not the money.** A tax rate
    is not a money amount: a fractional percent such as `8.5` stays
    accepted and drives the derivation exactly as today
@@ -2180,12 +2290,16 @@ Product rules (decided here):
 
 - AC-AMT-1 — Given a money field on `PostCharge`, `RecordPayment`, or
   `UpsertChargeItem`, when the caller sends a value that is not a whole
-  number of minor units (for example `amountMinor: 12.99`), then the
-  service answers exactly one HTTP 400 with the shared envelope — code
-  `VALIDATION_FAILED`, `details` naming that field, the
-  `error.validation.amount_not_integer` sentence, and a `traceId` — the
-  value is never truncated, and no folio row, line, payment, balance
-  movement, charge item, idempotency record, or outbox event is
+  number of minor units — a fractional number such as
+  `amountMinor: 12.99`, or a present value that is not a JSON number at
+  all such as `amountMinor: "12"` — then the service answers exactly
+  one HTTP 400 with the shared envelope — code `VALIDATION_FAILED`,
+  `details` naming that field, a `traceId`, and the
+  `error.validation.amount_not_integer` sentence for the fractional
+  number while the non-number value keeps the existing
+  `error.validation.field_number` sentence instead of the missing-field
+  one — the value is never truncated, and no folio row, line, payment,
+  balance movement, charge item, idempotency record, or outbox event is
   written, because the refusal happens in the adapter before the
   service is called. Traces to: FR-BIL-2, FR-BIL-3 (Refs #635);
   AC-BIL-2, AC-BIL-3; BR-61.
@@ -2222,27 +2336,27 @@ Product rules (decided here):
   AC-BIL-5; BR-61.
 - AC-AMT-5 — Given the change ships, when it is verified, then
   `BillingControllerTest` carries, for each of the three money adapters,
-  a guard that drives the fractional and the over-ceiling value and
-  asserts the refusal (`VALIDATION_FAILED`, the field in `details`, the
-  plain sentence, a `traceId`) together with "the service was never
-  called" evidence, a guard for the percent adapter's unreadable value,
-  the boundary pair (an amount at the ceiling is accepted and one minor
-  unit more is refused), and an in-range regression case per money
-  field, and the Billing message-catalogue guard pins both new
-  sentences, so a future change cannot drop the ceiling, the
-  whole-number rule, or a sentence silently. Traces to: FR-BIL-2,
-  FR-BIL-3, FR-BIL-5 (Refs #635); NFR-I18N-1 (evidence condition; no
-  behaviour change); BR-61.
+  a guard that drives the fractional value, a present non-number value,
+  and the over-ceiling value and asserts the refusal
+  (`VALIDATION_FAILED`, the field in `details`, the plain sentence, a
+  `traceId`) together with "the service was never called" evidence, a
+  guard for the percent adapter's unreadable value, the boundary pair
+  (an amount at the ceiling is accepted and one minor unit more is
+  refused), and an in-range regression case per money field, and the
+  Billing message-catalogue guard pins both new sentences, so a future
+  change cannot drop the ceiling, the whole-number rule, or a sentence
+  silently. Traces to: FR-BIL-2, FR-BIL-3, FR-BIL-5 (Refs #635);
+  NFR-I18N-1 (evidence condition; no behaviour change); BR-61.
 
 Done when: `PostCharge`, `RecordPayment`, and `UpsertChargeItem` refuse
-a fractional or over-ceiling money value with the shared envelope and
-`VALIDATION_FAILED` naming the field and write nothing for that
-request; the tax-rule percent adapter refuses a value it cannot read as
-a finite number while keeping fractional percents and the existing
-0–100 range; every whole amount inside the ceiling behaves exactly as
-before with no contract, desk, catalogue, route, or print change; and
-each adapter carries a fractional guard, an over-ceiling guard, and its
-boundary pair.
+a fractional, non-number, or over-ceiling money value with the shared
+envelope and `VALIDATION_FAILED` naming the field and write nothing for
+that request; the tax-rule percent adapter refuses a value it cannot
+read as a finite number while keeping fractional percents and the
+existing 0–100 range; every whole amount inside the ceiling behaves
+exactly as before with no contract, desk, catalogue, route, or print
+change; and each adapter carries a fractional guard, a non-number
+guard, an over-ceiling guard, and its boundary pair.
 
 ## Traceability summary
 
@@ -2451,7 +2565,9 @@ Money-ceiling addendum (Refs #635): five further conditions
 (AC-AMT-1..5, section 23) cover audit finding B2 — Billing's money
 adapters no longer truncate a fractional amount or accept an unbounded
 one: `PostCharge`, `RecordPayment`, and `UpsertChargeItem` refuse a
-value that is not a whole number of minor units and a value above the
+value that is not a whole number of minor units, a present non-number
+value (with the existing field-number sentence instead of the
+missing-field one), and a value above the
 declared 1 000 000 000 000 minor-unit ceiling with the shared envelope
 and `VALIDATION_FAILED` naming the field, write nothing for that
 request, and serve every whole amount inside the ceiling exactly as
@@ -2470,8 +2586,30 @@ refusals reuse the existing vocabulary and the existing sentences'
 layer split, so `AC-ERR-1` keeps its sections, the refusal conditions
 written earlier (`AC-FDK-2`, `AC-CKO-1`, `AC-CKO-2`, `AC-FWV-1`,
 `AC-BND-1`) hold as written, the 43-condition MVP count above stands
-unchanged, and the sections 1–17 and 20–22 done-conditions keep their
+unchanged, and the sections 1–17 and 19–22 done-conditions keep their
 behaviour. `AMT` is the domain code for this family.
 
 <!-- ao-role: product-owner -->
 Role: product-owner · AO session hotel-mgmt-1089
+
+<!-- ao-role: product-owner -->
+Role: product-owner · AO session hotel-mgmt-1077
+
+<!-- ao-role: product-owner -->
+Role: product-owner · AO session hotel-mgmt-1013
+Server-derived availability addendum (Refs #631): three further
+conditions (AC-OVB-1..AC-OVB-3, section 19) cover audit finding R1 on
+the booking path — the overbooking guard decides on the capacity the
+hotel records for the room type and dates instead of the
+`sellableUnits` the request carries, an unreadable capacity source
+refuses the booking fail-closed with `UPSTREAM_UNAVAILABLE` rather
+than accepting it, and the guard keeps its single-critical-section
+atomic shape. They trace to the existing stories and FRs (US-RES-1,
+US-RES-2; FR-RES-1, FR-RES-2, FR-RTE-5, NFR-CON-1) and add no story,
+FR, or business rule, so the 43-condition MVP count above stands
+unchanged and the sections 1–17 done-conditions keep their behaviour:
+`AC-RES-1` and `AC-RES-2` gain only the pointer, and the desk Book
+conditions and their refusal copy stand as written.
+
+<!-- ao-role: product-owner -->
+Role: product-owner · AO session hotel-mgmt-1119

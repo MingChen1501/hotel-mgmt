@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MingChen1501/hotel-mgmt/services/reservations/internal/availability"
 	"github.com/MingChen1501/hotel-mgmt/services/reservations/internal/envelope"
 	"github.com/MingChen1501/hotel-mgmt/services/reservations/internal/handler"
 	"github.com/MingChen1501/hotel-mgmt/services/reservations/internal/health"
@@ -46,6 +47,11 @@ func main() {
 		ratesBase = "http://rates:8082"
 	}
 	svc.CheckRestrictionsHook = pricing.NewClient(ratesBase).Check
+	roomsBase := strings.TrimSpace(os.Getenv("ROOMS_BASE_URL"))
+	if roomsBase == "" {
+		roomsBase = "http://rooms:8085"
+	}
+	svc.AvailabilityHook = availability.NewClient(roomsBase).Ceiling
 	booking := handler.NewMux(svc, repo)
 	mux.Handle("POST /v1/reservations/", booking)
 	addr := ":" + port

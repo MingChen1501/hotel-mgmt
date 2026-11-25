@@ -1,11 +1,13 @@
 // Package store implements the in-memory ReservationService store
 // (LLD section 1). The overbooking guard (NFR-CON-1) counts
 // overlapping confirmed and checked-in rows for the type and dates
-// and inserts only when capacity remains, all under one mutex —
-// the same shape as the transactional guard in the schema
+// and inserts only when the count is below the ceiling the service
+// derived from Rooms' recorded inventory (ADR-0006), all under one
+// mutex — the same shape as the transactional guard in the schema
 // migration. Checked-in rows cover the in-house share, so the guard
-// never reads another store. Postgres persistence of these rows
-// hardens in a later slice; the semantics stay the same.
+// never re-reads the room state, and the ceiling is an input rather
+// than a store fact. Postgres persistence of these rows hardens in a
+// later slice; the semantics stay the same.
 package store
 
 import (
@@ -60,14 +62,19 @@ type Reservation struct {
 	CreatedAt     time.Time
 }
 
-// CreateInput carries one booking attempt.
+// CreateInput carries one booking attempt. Ceiling is the
+// server-derived sellable capacity for the type and dates (ADR-0006):
+// Rooms' totalCount minus blocked rooms, read by the service on the
+// attempt. It is the guard's only ceiling — the request's advisory
+// sellableUnits never reaches the store, so a caller cannot buy a
+// unit with a large number.
 type CreateInput struct {
 	RoomTypeID    string
 	ArrivalDate   string
 	DepartureDate string
 	GuestID       string
 	Guest         map[string]any
-	SellableUnits int
+	Ceiling       int
 	TotalMinor    int64
 	DiscountName  *string
 	Actor         string
@@ -85,10 +92,12 @@ type CalendarEntry struct {
 
 // ModifyInput carries one repriced change to a confirmed reservation.
 // Empty ArrivalDate/DepartureDate/RoomTypeID keep the current values;
-// Guest nil keeps the current guest snapshot. TotalMinor is the new
-// quoted total recalculated from the rate plan in force (BR-2); the
-// desk loop supplies the fresh QuotePrice output until the
-// Pricing-backed reprice call lands.
+// Guest nil keeps the current guest snapshot. Ceiling is the
+// server-derived capacity for the effective type and dates (ADR-0006),
+// the same input Create takes. TotalMinor is the new quoted total
+// recalculated from the rate plan in force (BR-2); the desk loop
+// supplies the fresh QuotePrice output until the Pricing-backed
+// reprice call lands.
 type ModifyInput struct {
 	Ref           string
 	ArrivalDate   string
@@ -96,7 +105,7 @@ type ModifyInput struct {
 	RoomTypeID    string
 	GuestID       string
 	Guest         map[string]any
-	SellableUnits int
+	Ceiling       int
 	TotalMinor    int64
 	DiscountName  *string
 	Actor         string
@@ -200,9 +209,6 @@ func activeState(state string) bool {
 // idempotencyKey is non-empty, a repeated key returns the original
 // reservation instead of booking again.
 func (s *Store) Create(input CreateInput, idempotencyKey string) (*Reservation, *OpError) {
-	if input.SellableUnits < 1 {
-		return nil, validation("sellableUnits", messages.Text("error.validation.sellable_units", map[string]string{"min": messages.Num(1)}))
-	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if idempotencyKey != "" {
@@ -219,7 +225,7 @@ func (s *Store) Create(input CreateInput, idempotencyKey string) (*Reservation, 
 			booked++
 		}
 	}
-	if booked >= input.SellableUnits {
+	if booked >= input.Ceiling {
 		return nil, conflict(
 			messages.Text("error.conflict.no_availability", map[string]string{"arrivalDate": input.ArrivalDate, "departureDate": input.DepartureDate}),
 			map[string]any{"roomTypeId": input.RoomTypeID, "arrivalDate": input.ArrivalDate, "departureDate": input.DepartureDate},
@@ -374,9 +380,6 @@ func stateRefusal(ref, state, operation string) *OpError {
 // (NFR-CON-1). Every changed field is recorded in the change history
 // with actor and timestamp (NFR-AUD-1) and a modified event is queued.
 func (s *Store) Modify(input ModifyInput, idempotencyKey string) (*Reservation, *OpError) {
-	if input.SellableUnits < 1 {
-		return nil, validation("sellableUnits", messages.Text("error.validation.sellable_units", map[string]string{"min": messages.Num(1)}))
-	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if idempotencyKey != "" {
@@ -412,7 +415,7 @@ func (s *Store) Modify(input ModifyInput, idempotencyKey string) (*Reservation, 
 			booked++
 		}
 	}
-	if booked >= input.SellableUnits {
+	if booked >= input.Ceiling {
 		return nil, conflict(
 			messages.Text("error.conflict.no_availability", map[string]string{"arrivalDate": newArrival, "departureDate": newDeparture}),
 			map[string]any{"roomTypeId": newRoomType, "arrivalDate": newArrival, "departureDate": newDeparture},

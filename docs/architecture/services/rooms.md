@@ -68,7 +68,7 @@ Rollback: none — each transition is a single guarded in-memory step; refusals 
 
 ## 5. Outbound dependencies
 
-None at runtime. Consumed by the desk loop (Stay `MoveRoom` pairs Rooms `AssignRoom`/`ReleaseRoom`) and by the future Reservations restriction seam via `CheckRoomTypeSellability` (`src/store.ts:307`). Hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (LLD [section 0](../lld.md)).
+None at runtime. Consumed by the desk loop (Stay `MoveRoom` pairs Rooms `AssignRoom`/`ReleaseRoom`) and by the Reservations booking path, which reads `CheckRoomTypeSellability` (`src/server.ts:190-191`, `src/store.ts:307-359`) once per booking attempt as the overbooking guard's capacity source (ADR-0006, #631). That consumer takes `totalCount` and `blockedRooms` and derives the ceiling as `totalCount - len(blockedRooms)`; it deliberately does not consume the derived `sellableCount`, so #636's room-state accounting changes the desk-facing figure without moving the guard's ceiling, and `blockedRooms` content stays as it is. The edge is fail-closed for booking: while Rooms is unreachable, Reservations refuses creates and modifies with `UPSTREAM_UNAVAILABLE` (product risk R-14; runbook section 11). No new operation, response field, or state was added for the seam. Hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (LLD [section 0](../lld.md)).
 
 See also: [deployment](../system-architecture.md) (section 1), [C4 containers](../c4-containers.md), and [event flow](../event-flow.md) (this service's outbox emissions).
 
@@ -179,3 +179,25 @@ Design: `docs/architecture/lld.md` section 23; product UI contract
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-961
+
+## 9. Capacity consumer on the booking path (Refs #631, ADR-0006 accepted)
+
+As built by the #631 implementation PR, and recorded in section 5 (which
+used to call the consumer a future seam): Reservations reads
+`CheckRoomTypeSellability` once per booking attempt with the caller Bearer
+token forwarded, consumes `totalCount` and `blockedRooms` for the
+effective room type and dates (`src/store.ts:343-356` builds both
+date-ranged facts), and derives the guard's ceiling as
+`totalCount - len(blockedRooms)`. The derived `sellableCount`
+(`src/store.ts:356`) stays the desk-facing availability figure and is not
+consumed by the guard, so #636's room-state accounting can move it
+without moving the ceiling, and `blockedRooms` content stays as it is.
+No new operation, response field, or state was needed, the rooms module
+keeps its zero outbound dependencies (section 5), and Rooms becomes a
+fail-closed dependency of booking (product risk R-14; the runbook
+restart order covers it).
+
+Design: `docs/architecture/lld.md` sections 3 and 26; ADR-0006.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-941
