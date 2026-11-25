@@ -5762,12 +5762,13 @@ value that is not a number answers `field_number` naming `percent`. No
 key is added: the sentence and its key already exist and are already
 pinned by the catalogue guard.
 
-Where product rule 5 in `docs/product/acceptance-criteria.md` section 23
-names `error.validation.field_number` for a present non-number value
-while `AC-AMT-1`..`AC-AMT-5` carry no condition for it, the product rule
-governs the sentence (product owns scope) and the requirement's silence
-means no gating guard is required for that case. This section states the
-adapter's shape; it adds no acceptance condition.
+Product rule 5 in `docs/product/acceptance-criteria.md` section 23 and
+`AC-AMT-1` name `error.validation.field_number` for a present non-number
+money value, and `AC-AMT-5` requires its gating guard: the adapter
+answers that sentence naming the field instead of the missing-field one
+and writes nothing, and `BillingControllerTest` drives a present
+non-number value on each of the three money adapters. This section
+states the adapter's shape; it adds no acceptance condition.
 
 ### 30.4 Per-flow diagram — folio-write refusal frame (amount served, refused, rolled back)
 
