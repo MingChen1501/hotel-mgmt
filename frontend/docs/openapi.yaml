@@ -181,8 +181,8 @@ paths:
       tags:
       - Reservations
       summary: Book one reservation, confirmed state (desk loop step 3).
-      description: 'ReservationService: Reservations (Reservations module). Contract version 1.1. Traces: docs/architecture/lld.md
-        section 1, docs/technical/integration.md section 1, FR-RES-1, FR-RTE-5, NFR-CON-1.'
+      description: 'ReservationService: Reservations (Reservations module). Contract version 1.2. Traces: docs/architecture/lld.md
+        section 1 and 26, docs/technical/integration.md section 1, FR-RES-1, FR-RTE-5, NFR-CON-1, FR-OVB-1, FR-OVB-3, ADR-0006.'
       requestBody:
         required: true
         content:
@@ -194,7 +194,6 @@ paths:
               - arrivalDate
               - departureDate
               - guest
-              - sellableUnits
               - priceBasis
               properties:
                 roomTypeId:
@@ -221,9 +220,9 @@ paths:
                       type: string
                 sellableUnits:
                   type: integer
-                  minimum: 1
-                  description: Desk-loop input from the Rates/Rooms search step; the atomic guard refuses when overlapping
-                    bookings reach it.
+                  minimum: 0
+                  description: Optional and advisory (ADR-0006). Ignored for the booking decision; the server derives
+                    the ceiling from the room inventory Rooms records, and a malformed value is still VALIDATION_FAILED.
                 priceBasis:
                   type: object
                   required:
@@ -286,7 +285,15 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '400':
-          description: 'VALIDATION_FAILED: Missing field, bad date order, or a hotel-mandatory guest field is missing (FR-CUS-1).'
+          description: 'VALIDATION_FAILED: Missing field, bad date order, a malformed sellableUnits, or a hotel-mandatory
+            guest field is missing (FR-CUS-1).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '503':
+          description: 'UPSTREAM_UNAVAILABLE: The room inventory could not be read, so the booking was refused; details
+            name upstream rooms and CheckRoomTypeSellability (ADR-0006 D4).'
           content:
             application/json:
               schema:

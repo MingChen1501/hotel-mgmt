@@ -1,13 +1,16 @@
 {
   "operation": "CreateReservation",
   "contract": "ReservationService",
-  "version": "1.1",
+  "version": "1.2",
   "traces": [
     "docs/architecture/lld.md section 1",
     "docs/technical/integration.md section 1",
     "FR-RES-1",
     "FR-RTE-5",
-    "NFR-CON-1"
+    "NFR-CON-1",
+    "FR-OVB-1",
+    "FR-OVB-3",
+    "ADR-0006"
   ],
   "transport": {
     "method": "POST",
@@ -21,7 +24,6 @@
       "arrivalDate",
       "departureDate",
       "guest",
-      "sellableUnits",
       "priceBasis"
     ],
     "properties": {
@@ -58,8 +60,8 @@
       },
       "sellableUnits": {
         "type": "integer",
-        "minimum": 1,
-        "description": "Desk-loop input from the Rates/Rooms search step; the atomic guard refuses when overlapping bookings reach it."
+        "minimum": 0,
+        "description": "Optional and advisory (ADR-0006): ignored for the booking decision; the server derives the ceiling from the room inventory Rooms records. A malformed value is still VALIDATION_FAILED."
       },
       "priceBasis": {
         "type": "object",
@@ -129,6 +131,11 @@
       "code": "CONFLICT",
       "status": 409,
       "when": "No sellable unit left for the type and dates; details name type+dates (NFR-CON-1)."
+    },
+    {
+      "code": "UPSTREAM_UNAVAILABLE",
+      "status": 503,
+      "when": "The room inventory could not be read, so the booking was refused; details name upstream rooms and CheckRoomTypeSellability (ADR-0006 D4)."
     },
     {
       "code": "STATE_ILLEGAL",
