@@ -8538,8 +8538,9 @@ The decided behaviour, in six parts:
    already compute — and a present value that is not a string, an
    explicit `null` included, is refused instead of today's silent
    fall-back to the stored note, with the new plain sentence
-   `guests.validation.notes_length` — "notes must be at most {max}
-   characters." — carrying the bound rendered from the constant. An
+   `guests.validation.notes_length` — "{field} must be at most {max}
+   characters." — carrying the bound rendered from the constant, with
+   `{field}` naming `notes` in the rendered sentence. An
    absent `notes` keeps today's behaviour exactly: the stored note on
    update, the empty string on create.
 5. **The two shapes and the one length are constants in code, applied
@@ -8610,8 +8611,12 @@ never on the sentence text.
   reads as today, so a hotel's existing data needs no repair, and no
   desk read can be refused by the new bounds.
 - The existing NFRs keep their wording and targets: `NFR-PERF-1` (desk
-  response — the match count is one indexed read on the name, not a
-  scan of every guest), `NFR-I18N-1` (the three new sentences resolve
+  response — `guests.guests` has no `full_name` index today
+  (`services/guests/migrations/002_schema.sql:22-34`), so the match
+  count reads the matching rows on the same table; at the pilot's
+  guest-table size that count stays inside the desk budget, and adding
+  a `full_name` index is a re-tier trigger outside this change),
+  `NFR-I18N-1` (the three new sentences resolve
   through the catalogue in both locales with matching placeholders),
   `NFR-AUD-1` (a refused write records nothing; a committed write keeps
   the acting staff member), `NFR-SEC-1`/`NFR-SEC-2` (role access and
