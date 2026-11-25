@@ -34,9 +34,17 @@ guest link; quoted price with nightly breakdown and rate plan used
 no-show); cancellation or no-show reason where applicable; change
 history with actor and timestamp.
 
+The unit a reservation holds is decided against the capacity the hotel
+records for the room type and those dates, never against a number the
+request carries: `sellableUnits` on a create or modify request is
+advisory input, not a reservation field, and a reservation is refused
+with `CONFLICT` naming the room type and dates once the recorded
+capacity is reached (`BR-47`). A booking whose capacity source cannot
+be read is refused fail-closed and no reservation is stored (`BR-48`).
+
 Owning FRs: FR-RES-1, FR-RES-2, FR-RES-3, FR-RES-4, FR-RES-5,
 FR-RES-6, FR-RTE-5, FR-CUS-1, FR-CUS-2, FR-BMV-2, FR-BMV-5,
-FR-BMV-6.
+FR-BMV-6, FR-OVB-1, FR-OVB-2.
 
 A reservation is **active** — and therefore holds sellable
 availability — only in `confirmed` and `checked-in`; a `closed`,
@@ -193,8 +201,15 @@ Key fields: name; capacity; bed type and features; nightly prices per
 season and day (rate plan); stay restrictions (minimum stay,
 closed-to-arrival days) per date range.
 
+Availability for a room type and a date range is a derived fact from
+the room inventory: the rooms of the type less the rooms blocked for
+those dates (`BR-9`). That derived capacity is the overbooking
+guard's ceiling, read on every booking attempt and never taken from a
+request (`BR-47`, `BR-48`); a type with no such unit for the dates is
+sold out, which is a conflict and not an outage.
+
 Owning FRs: FR-RTE-1, FR-RTE-2, FR-RTE-4, FR-RES-1, FR-ADM-3,
-FR-ADM-4.
+FR-ADM-4, FR-OVB-1, FR-OVB-3.
 
 ## 10. Guest
 
@@ -320,6 +335,11 @@ bound, and the refusal's `details` field `body` names the whole request
 body in the shared envelope (`docs/technical/error-handling.md`
 section 1.1), not a domain field of any entity, so the 15 entries stand
 unchanged (`NFR-BND-1`, `BR-60`).
+Reservation entry (section 1) and the Room type entry (section 9)
+state where a booking's capacity ceiling comes from — the recorded
+room inventory, never the request's `sellableUnits` (`BR-47`,
+`BR-48`, `FR-OVB-1`, `FR-OVB-3`) — and add no entry, field, or
+behaviour beyond those sources.
 
 Counts: 15 dictionary entries covering the 7 entity terminology concepts (T-1..T-7); T-8 is a spelling convention with no entry.
 
