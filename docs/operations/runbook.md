@@ -430,6 +430,62 @@ The one case the released desk can still leave behind is LLD section
 room aside and finishing the action. The steps above clear it, which is
 why no data backfill or migration is needed.
 
+## 11. Room availability cannot be checked
+
+Every booking and every change of dates or room type re-reads the
+hotel's own room list on the server before it confirms. That is what
+stops a double booking: the number of rooms on the booking screen is
+only a hint, and the server never trusts it. When the room list
+cannot be read, the booking is refused rather than guessed — the
+system will not sell a room whose availability nobody verified.
+
+This is a fault, not a sold-out answer, and it never affects work
+already booked: check-in, check-out, charge posting, payments,
+printing, and every existing reservation keep working normally. Only
+new bookings and date/room-type changes are refused.
+
+What the desk sees:
+
+- The Book screen says the action could not be completed, with no
+  confirmation, so no booking is created.
+- Nothing is lost or half-written: there is no booking to cancel and
+  no figure to correct afterwards.
+- A **sold-out** refusal looks different: it names the room type and
+  the dates it cannot sell. That one is a normal answer and needs no
+  support call — offer the guest another room type or other dates.
+
+What to do:
+
+1. Confirm it is this fault and not a sold-out answer: try a booking
+   on a room type and dates that certainly have free rooms (for
+   example tomorrow night on the room type with most rooms). If that
+   is refused too, it is this fault.
+2. Follow the restart order in section 3 once, then retry one
+   booking. A short fault clears this way.
+3. While it persists, take new bookings and date changes on paper
+   with the guest's name, room type, dates, and rate, and tell the
+   guest the confirmation follows. Enter them in the desk once
+   bookings work again, before the arrivals of those dates.
+4. Do not try to work around it: there is no desk setting that raises
+   availability, and no price or room change you can make clears this
+   — the room list is read fresh on every attempt.
+5. If one restart does not clear it, call support (section 7) with
+   the time of the first refusal and the room type you tried.
+
+Support note (technical): the reservation service reads
+`POST /v1/rooms/CheckRoomTypeSellability` on the rooms service
+(`ROOMS_BASE_URL`, default `http://rooms:8085`) and fails closed with
+`UPSTREAM_UNAVAILABLE` (503) when that read fails. Check the rooms
+module health, its database connection, and network reachability from
+the reservations module on the hotel LAN (`docs/devops/deployment.md`,
+section 5). Never fix a fault like this by letting bookings through
+again: the refusal protects the room count.
+
+*This path arrives with the #631 change (`docs/release/release-notes.md`,
+section 2.4): an installation still on an older bundle cannot refuse a
+booking this way, so on those builds a refused booking is always the
+section 6 no-price case, a sold-out answer, or a system fault.*
+
 ## 14. A charge or payment was refused because the stay could not be checked
 
 From this release on the billing side reads the guest's stay before it

@@ -339,6 +339,88 @@ a cached total (R9 — the alert is an obligation for
 `../operations/monitoring-alerting.md` when the first exporter lands,
 and until then the desk reports it per `../operations/runbook.md`
 section 7); and the availability decision stays with its own issue.
+### 2.4 Server-side reservation availability (Refs #631, ADR-0006)
+
+**Change and trace.** Audit finding R1 (the #625 class): a
+`CreateReservation` / `ModifyReservation` request decided the overbooking
+outcome with its own `sellableUnits` field, so a caller that sent a large
+number overbooked without ever seeing `CONFLICT`. The booking guard now
+derives its ceiling server-side from the recorded room inventory: Rooms
+answers `POST /v1/rooms/CheckRoomTypeSellability` for the effective room
+type and stay dates, and the ceiling is `totalCount - len(blockedRooms)`.
+The request's `sellableUnits` stays in the contract as an advisory field:
+it is shape-checked when present and never reaches the guard. Design:
+`../architecture/lld.md` section 26; decision
+`../architecture/decisions/adr-0006-server-side-availability-derivation.md`;
+product conditions `AC-OVB-1`..`AC-OVB-3`
+(`../product/acceptance-criteria.md` section 19). Risk label:
+`risk-high` — booking-path integrity on the money/occupancy line, so it
+needs explicit owner approval and the owner merges manually.
+
+**What staff see.**
+
+- A sold-out room type refuses a booking exactly as before: one refusal
+  naming the room type and the dates, and no booking is created
+  (`CONFLICT`, 409). The desk's own availability pre-check and the
+  sold-out wording are unchanged.
+- A room type that still has sellable units accepts the booking even when
+  the number the desk sends is small, absent, or stale — the desk cannot
+  refuse a bookable stay by sending a low number, and cannot overbook by
+  sending a high one.
+- When the recorded room inventory cannot be read at all, the booking (or
+  the date/room-type change on an existing booking) is refused with
+  `UPSTREAM_UNAVAILABLE` (503) instead of being guessed through. Nothing
+  is written. This is a fault, not a sold-out answer, and the runbook
+  splits the two for the front desk: `../operations/runbook.md`,
+  section 11. Check-in, check-out, charge posting, payments, printing,
+  and every existing booking keep working during such a fault.
+- The desk continues to send `sellableUnits` in the request. It is now
+  advisory, so a desk build that predates this change keeps working
+  against the new server and vice versa.
+
+**Install/upgrade delta.** The reservations module gains one bundle-level
+variable, `ROOMS_BASE_URL` (bundle default `http://rooms:8085`, wired
+beside `RATES_BASE_URL` in `deploy/compose.yaml:46`; boot wiring
+`services/reservations/cmd/server/main.go:44-48`). It is a bundle default,
+not a per-hotel value: the standard upgrade carries it automatically, and
+only the small-cluster placement changes it when the Rooms module moves
+hosts (`../devops/deployment.md`, section 2). Restart order, pre-flight
+checks, and the health-check step are updated in the same change
+(`../devops/deployment.md`, sections 3 and 5) because a booking now needs
+the Rooms module reachable on the hotel LAN. No database schema,
+migration, seed, or event-payload change exists in either direction.
+
+**Rollback pointer.** Revert the single implementation PR; the previous
+guard behaviour returns with the request's number and no data has to be
+undone. Full note and the post-rollback checks: `rollback.md`,
+section 5.4. Because the revert re-opens audit finding R1, it is an
+owner-approved action, not a routine one.
+
+**Evidence state.** Guards the implementing PR must carry (and the
+`qa-lead` traceability must cite at the merged head): inflated
+`sellableUnits` on create and on modify still answer `CONFLICT` with
+nothing written; a low or absent number refuses nothing; a zero-capacity
+room type answers `CONFLICT`, never 503; an unreadable, timing-out, 5xx,
+malformed, or unwired capacity source answers `UPSTREAM_UNAVAILABLE`
+with `{upstream: "rooms", operation: "CheckRoomTypeSellability"}`;
+Rooms 4xx envelopes pass through unchanged; two simultaneous last-unit
+attempts yield exactly one 200 and one `CONFLICT`; an idempotent replay
+consumes no second unit. Stack gates: `services/reservations` build, test,
+vet, `gofmt`; `services/rooms` build, test, lint;
+`script/contract-check.sh`; `script/markdown-link-check.sh`. Live gate:
+the desk-loop booking step and the browser end-to-end booking spec stay
+green, and the end-to-end reservation check in the upgrade procedure
+(`../devops/deployment.md`, section 4 step 6) proves the capacity read
+works on the deployed bundle.
+
+**Follow-ups (not carried by this change).** No alerting signal exists
+yet for a rising `UPSTREAM_UNAVAILABLE` rate on bookings: the monitoring
+and alerting spec stays a stub until the first exporter lands (see the
+DevOps table in `../README.md`), so the fault is detected by the desk and
+triaged with `../operations/runbook.md`, section 11. A capacity-specific
+desk sentence and a per-night ceiling are separate changes (residual
+risks R-OVB-1 and R-OVB-2, `../architecture/lld.md` section 26.7);
+neither is promised here.
 
 ### 2.6 Folio writes refuse a stay Billing cannot verify (Refs #634)
 
@@ -494,3 +576,5 @@ Role: release-manager · AO session hotel-mgmt-1049
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1057
+<!-- ao-role: release-manager -->
+Role: release-manager · AO session hotel-mgmt-936

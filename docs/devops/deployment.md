@@ -85,23 +85,31 @@ effect before handing over.
 **Bundle-level service addresses.** The module-to-module addresses
 are part of the bundle, not of the hotel's configuration set, because
 they describe the installation's own topology and never differ per
-hotel. The reservations module reads `RATES_BASE_URL`
-(`deploy/compose.yaml:46`). Target state for this bundle (Refs #646):
-the stay module reads `RESERVATIONS_BASE_URL` (default
+hotel. The reservations module reads two of them at boot: `RATES_BASE_URL`
+(`deploy/compose.yaml:46`) and — target state for the next bundle, Refs
+#631 — `ROOMS_BASE_URL` (default
+`http://rooms:8085`; wiring
+`services/reservations/cmd/server/main.go:44-48`). Both calls forward the
+caller's session token and fail closed. `ROOMS_BASE_URL` is the ceiling
+source for the overbooking guard (Refs #631,
+`../architecture/lld.md` section 26): a booking whose capacity read fails
+is refused with `UPSTREAM_UNAVAILABLE` (503) instead of being allowed
+(`../operations/runbook.md`, section 11). Target state for this bundle
+(Refs #646): the stay module reads `RESERVATIONS_BASE_URL` (default
 `http://reservations:8081`) and calls the reservations module once
 after a check-out commits, so the booking behind the stay is completed
-with the same close (`../architecture/lld.md`, section 22). Both calls
-forward the caller's session token and carry a short timeout. The
-completion is fail-soft, unlike the booking guard: a close that already
-committed is never turned into a desk refusal, so an unreachable
-reservations module blocks no check-out — it leaves the booking active
-and reported as such, and the procedure for that row is
+with the same close (`../architecture/lld.md`, section 22). That call
+carries a short timeout and is fail-soft, unlike the booking guard: a
+close that already committed is never turned into a desk refusal, so an
+unreachable reservations module blocks no check-out — it leaves the
+booking active and reported as such, and the procedure for that row is
 `../operations/runbook.md`, section 8.2. The single-host default and
 the small-cluster variant both address the modules by service name, so
-the default holds unless a module moves to another host — then only
-that address value changes, in the bundle's configuration file, never
-inside an image. Section 5 carries the matching pre-flight check and
-section 3 the health check.
+the defaults hold unless a module moves to another host — then only that
+address value changes, in the bundle's configuration file, never inside
+an image. Section 3 step 5, section 4 step 6, and section 5 carry the
+matching pre-flight and health-check checks; the health check only fails
+on them once the change ships.
 
 **The booking path now reads Rates (Refs #632).** `RATES_BASE_URL` is
 unchanged — same address, same `http://rates:8082` default, same
@@ -166,7 +174,10 @@ health check.
    `docs/operations/runbook.md`).
 5. Run the bundle's health check: proxy reachable from a desk
    client on the hotel LAN, each module answering through the
-   proxy, each module connected to its own store, the stay
+   proxy, each module connected to its own store, the
+   reservations module reaching the rates and rooms modules on the
+   hotel LAN (a booking is refused, never guessed, when either is
+   unreadable — `../operations/runbook.md`, section 11), the stay
    module reaching the reservations module on the hotel LAN (a
    close still commits when that call fails, but the booking is
    then left active — `../operations/runbook.md`, section 8.2),
@@ -201,16 +212,16 @@ every inter-host endpoint over the hotel LAN before step 6.
    hotel's existing configuration set unchanged; carry forward no
    state from inside old containers. Bundle-level module addresses
    come from the new bundle, not from the hotel's configuration set
-   (section 2, "Bundle-level service addresses") — one such address,
-   `RESERVATIONS_BASE_URL` for the stay module (Refs #646), is
-   already set in it and needs no hotel input. The reservations
-   module's `RATES_BASE_URL` is unchanged by this bundle (Refs #632)
-   but now also carries the booking quote read, so confirm the rates
-   module answers on it (section 3 step 5) before the desk resumes:
-   an unreachable rates module refuses every booking create and
-   modify (`../operations/runbook.md`, section 15.2).
-   already set in it and needs no hotel input, and the same holds
-   for `STAY_BASE_URL` for the billing module (Refs #634).
+   (section 2, "Bundle-level service addresses") — new ones, such as
+   `ROOMS_BASE_URL` for the reservations module (Refs #631),
+   `RESERVATIONS_BASE_URL` for the stay module (Refs #646), and
+   `STAY_BASE_URL` for the billing module (Refs #634), are already
+   set in it and need no hotel input. The reservations module's
+   `RATES_BASE_URL` is unchanged by this bundle (Refs #632) but now
+   also carries the booking quote read, so confirm the rates module
+   answers on it (section 3 step 5) before the desk resumes: an
+   unreachable rates module refuses every booking create and modify
+   (`../operations/runbook.md`, section 15.2).
 5. Start the database host first, then the module containers, then
    the reverse proxy.
 6. Run the health check from section 3 step 5, sign in, and repeat
@@ -259,6 +270,11 @@ Run before every install and every upgrade; stop on any failure:
   with margin.
 - Every host reaches every other host and the backup target over
   the hotel LAN; desk clients reach the proxy address.
+- The reservations module reaches the rates and rooms modules over
+  the hotel LAN: a new booking is refused with `UPSTREAM_UNAVAILABLE`
+  (503) when either read fails, so an unreachable rooms module blocks
+  booking and date changes while check-in, check-out, and existing
+  bookings keep working (`../operations/runbook.md`, section 11).
 - The stay module reaches the reservations module over the hotel LAN:
   a check-out still commits when that call fails, but the booking
   behind the stay is then left active and has to be completed by hand

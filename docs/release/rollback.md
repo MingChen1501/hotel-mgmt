@@ -269,6 +269,47 @@ the migration is forward-only, and the rollback note moves into that
 implementation PR (`../requirements/mvp-requirements.md` section 23.6,
 `../architecture/lld.md` section 22.7).
 
+### 5.4 Server-side reservation availability (Refs #631, ADR-0006)
+
+- **What the change does.** The overbooking guard's ceiling is derived
+  server-side from Rooms `CheckRoomTypeSellability`
+  (`totalCount - len(blockedRooms)`) instead of from the request's
+  `sellableUnits`, and an unreadable capacity source refuses the booking
+  with `UPSTREAM_UNAVAILABLE` (503) instead of allowing it. Behaviour,
+  ops impact, and evidence state:
+  `release-notes.md`, section 2.4.
+- **Revert unit.** One squash commit: the implementation PR for #631.
+  Reverting it restores the previous guard, whose ceiling is the request's
+  `sellableUnits` value again.
+- **Data effect.** None in either direction. No schema change, no
+  migration, no seed, no backfill, and no event-payload change; the
+  reservation rows, change history, and outbox payloads are identical
+  under both builds. No restore is needed; the rollback is a bundle swap.
+- **Contract and desk compatibility.** The desk keeps sending
+  `sellableUnits` both ways, so a backend-only revert leaves the desk
+  working, and a desk build from before the change works against the new
+  backend. Leave `ROOMS_BASE_URL` configured after the revert: the
+  reverted build does not read it, and removing it would only break a
+  later re-land.
+- **Symptom that justifies it.** Any of: bookings and booking
+  modifications refused for every room type on the installation while the
+  desk pre-check shows free rooms (a fail-closed capacity read that the
+  restart order in `../operations/runbook.md`, section 3, does not clear);
+  a capacity ceiling that does not match the configured rooms and stays
+  wrong after the room list is corrected.
+- **Must be owner-approved.** The revert re-opens audit finding R1: a
+  caller-supplied number decides overbooking again until the change is
+  re-landed. Record the exposure window and re-file the finding as the
+  follow-up issue in the same working day.
+- **Verify after the revert.** One booking on a room type with free
+  rooms returns 200; one booking on a sold-out room type still returns
+  the `CONFLICT` refusal; one modify of an existing booking returns 200;
+  the desk Book panel's availability figure and sold-out wording are
+  unchanged; then the four live actions from section 3.
+- **Re-land.** Re-land with the same change once the capacity read is
+  healthy; the release note entry (section 2.4 of `release-notes.md`) is
+  the description to reuse.
+
 ### 5.6 Folio writes verify the stay before writing (Refs #634)
 
 **Decision.** Roll back if the change refuses a folio write the desk needs
@@ -357,3 +398,5 @@ Role: release-manager · AO session hotel-mgmt-1049
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1057
+<!-- ao-role: release-manager -->
+Role: release-manager · AO session hotel-mgmt-936
