@@ -24,6 +24,8 @@ func TestSampledMessagesRenderByteIdentical(t *testing.T) {
 		want   string
 	}{
 		{"error.transport.bad_json", nil, "Request body is not valid JSON."},
+		// BND21-BND23: the too-large refusal sentence (Refs #630).
+		{"error.transport.body_too_large", nil, "Request body is too large."},
 		{"error.auth.missing_token", nil, "Missing session token."},
 		{"error.validation.reservation_ref_required", nil, "reservationRef is required."},
 		{"error.validation.stay_id_required", nil, "stayId is required."},

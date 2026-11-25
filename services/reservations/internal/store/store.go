@@ -206,7 +206,7 @@ func (s *Store) Create(input CreateInput, idempotencyKey string) (*Reservation, 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if idempotencyKey != "" {
-		if replay, ok := s.idem[idempotencyKey]; ok {
+		if replay, ok := s.idem[idemKey("CreateReservation", "", idempotencyKey)]; ok {
 			return replay, nil
 		}
 	}
@@ -247,7 +247,7 @@ func (s *Store) Create(input CreateInput, idempotencyKey string) (*Reservation, 
 	}
 	s.byRef[record.Ref] = record
 	if idempotencyKey != "" {
-		s.idem[idempotencyKey] = record
+		s.idem[idemKey("CreateReservation", "", idempotencyKey)] = record
 	}
 	s.events = append(s.events, map[string]any{
 		"aggregate": "reservation", "eventType": "created",
@@ -380,7 +380,7 @@ func (s *Store) Modify(input ModifyInput, idempotencyKey string) (*Reservation, 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if idempotencyKey != "" {
-		if replay, ok := s.idem[idempotencyKey]; ok {
+		if replay, ok := s.idem[idemKey("ModifyReservation", input.Ref, idempotencyKey)]; ok {
 			return replay, nil
 		}
 	}
@@ -449,7 +449,7 @@ func (s *Store) Modify(input ModifyInput, idempotencyKey string) (*Reservation, 
 		},
 	})
 	if idempotencyKey != "" {
-		s.idem[idempotencyKey] = record
+		s.idem[idemKey("ModifyReservation", input.Ref, idempotencyKey)] = record
 	}
 	return record, nil
 }
@@ -463,7 +463,7 @@ func (s *Store) Cancel(ref, reason, actor, idempotencyKey string) (*Reservation,
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if idempotencyKey != "" {
-		if replay, ok := s.idem[idempotencyKey]; ok {
+		if replay, ok := s.idem[idemKey("CancelReservation", ref, idempotencyKey)]; ok {
 			return replay, nil
 		}
 	}
@@ -490,7 +490,7 @@ func (s *Store) Cancel(ref, reason, actor, idempotencyKey string) (*Reservation,
 		},
 	})
 	if idempotencyKey != "" {
-		s.idem[idempotencyKey] = record
+		s.idem[idemKey("CancelReservation", ref, idempotencyKey)] = record
 	}
 	return record, nil
 }
@@ -534,4 +534,19 @@ func (s *Store) MarkNoShow(ref, reason, actor string) (*Reservation, *OpError) {
 		},
 	})
 	return record, nil
+}
+
+// idemKey namespaces an idempotency key by its operation and, when the
+// key guards one reservation, by that reservation's reference. One
+// flat key space let a key reused across operations — or, for a
+// lifecycle step, across reservations — replay another call's result
+// (issue #644); Stay already scopes its keys this way
+// (`CheckOut:${key}`, services/stay/src/store.ts), so the backends
+// agree. An empty ref keeps the key namespaced per operation only,
+// which is all a create has before the reservation exists.
+func idemKey(operation, ref, key string) string {
+	if trimmed := strings.TrimSpace(ref); trimmed != "" {
+		return operation + ":" + trimmed + ":" + key
+	}
+	return operation + ":" + key
 }

@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { Pool } from "pg";
 import { createServiceServer } from "./server.js";
+import { HttpError } from "./errors.js";
+import { msg } from "./messages.js";
 import { StayStore } from "./store.js";
 import { PostgresStayStore } from "./pgstore.js";
 
@@ -690,6 +692,71 @@ describe("stay postgres completion", { skip: DATABASE_URL === undefined || DATAB
       }
     } finally {
       await pool.end();
+    }
+  });
+});
+
+// ERR1 (issue #627): a failure that is not an HttpError answers the
+// internal-error code, never VALIDATION_FAILED, and keeps the envelope
+// shape the desk already reads. A store fault is an ordinary exception
+// (the Postgres store leaves its pool calls unguarded), so it reaches
+// the catch-all's else arm.
+const FAULT_STAY_ID = "99999999-9999-4999-8999-999999999999";
+
+class FaultStayStore extends StayStore {
+  override async getStay(): Promise<never> {
+    throw new Error("connect ECONNREFUSED 127.0.0.1:5432 stay.stays");
+  }
+}
+
+class RefusingStayStore extends StayStore {
+  override async getStay(): Promise<never> {
+    throw new HttpError("NOT_FOUND", msg("stay.notfound.stay", { stayId: FAULT_STAY_ID }), {
+      stayId: FAULT_STAY_ID,
+    });
+  }
+}
+
+describe("internal error envelope (#627)", () => {
+  it("answers an unexpected exception with INTERNAL_ERROR and keeps serving", async () => {
+    const server = createServiceServer("stay", new FaultStayStore());
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+    const port = (server.address() as { port: number }).port;
+    try {
+      const { status, body } = await request(port, "POST", "/v1/stay/GetStay", { stayId: FAULT_STAY_ID });
+      assert.equal(status, 500);
+      assert.deepEqual(Object.keys(body as Record<string, unknown>).sort(), [
+        "code",
+        "details",
+        "message",
+        "traceId",
+      ]);
+      const envelope = body as { code: string; message: string; details: unknown; traceId: string };
+      assert.equal(envelope.code, "INTERNAL_ERROR");
+      assert.notEqual(envelope.code, "VALIDATION_FAILED");
+      assert.equal(envelope.message, msg("error.transport.unexpected", {}));
+      assert.deepEqual(envelope.details, {});
+      assert.equal(typeof envelope.traceId, "string");
+      assert.ok(envelope.traceId.length > 0);
+
+      const next = await request(port, "GET", "/healthz");
+      assert.equal(next.status, 200);
+    } finally {
+      server.close();
+    }
+  });
+
+  it("keeps an HttpError refusal on the same route on its own code and status", async () => {
+    const server = createServiceServer("stay", new RefusingStayStore());
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+    const port = (server.address() as { port: number }).port;
+    try {
+      const { status, body } = await request(port, "POST", "/v1/stay/GetStay", { stayId: FAULT_STAY_ID });
+      assert.equal(status, 404);
+      assert.equal((body as { code: string }).code, "NOT_FOUND");
+      assert.deepEqual((body as { details: unknown }).details, { stayId: FAULT_STAY_ID });
+    } finally {
+      server.close();
     }
   });
 });

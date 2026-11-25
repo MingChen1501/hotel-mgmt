@@ -42,7 +42,7 @@ convention in `docs/technical/api-spec.md` and C1 in
 `docs/product/desk-ui-design-rollout.md`
 [section 6.19](../product/desk-ui-design-rollout.md); `BR-52` in
 `docs/requirements/business-rules.md`; D-30 in
-`docs/project/decision-log.md`; R-13 in
+`docs/project/decision-log.md`; R-15 in
 `docs/project/risk-register.md`; and the sibling tests this slice must
 not disturb: `checkout-settlement-test-traceability.md` (#601),
 `departure-release-test-traceability.md` (#646),

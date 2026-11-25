@@ -336,8 +336,16 @@ the price-authority obligation the #632 recompute relies on — the
 frozen total and applied discount name are the Pricing quote, a request
 total is advisory, and a reprice is recorded — and add no entry, field,
 or behaviour beyond those sources (`FR-PRC-1`..`FR-PRC-5`, `BR-52`).
+The #630 request-body ceiling adds no entry or field either: it is a
+transport bound, and the refusal's `details` field `body` names the
+whole request body in the shared envelope
+(`docs/technical/error-handling.md` section 1.1), not a domain field of
+any entity, so the 15 entries stand unchanged (`NFR-BND-1`, `BR-60`).
 
 Counts: 15 dictionary entries covering the 7 entity terminology concepts (T-1..T-7); T-8 is a spelling convention with no entry.
 
 <!-- ao-role: business-analyst -->
 Role: business-analyst · AO session hotel-mgmt-991
+
+<!-- ao-role: business-analyst -->
+Role: business-analyst · AO session hotel-mgmt-1079

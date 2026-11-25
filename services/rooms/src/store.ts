@@ -359,17 +359,17 @@ export class RoomStore implements RoomStoreAPI {
   }
 
   // Atomic conditional write (NFR-CON-2): the room flips to occupied
-  // only when it is currently vacant-inspected with no covering
-  // block. The read and the write share one synchronous section, so
-  // two simultaneous assignments cannot both succeed.
+  // only when it is currently vacant-inspected with no covering block;
+  // the read and write share one synchronous section, so paired calls
+  // cannot both win and a reused key is scoped per room (issue #644).
   async assignRoom(input: AssignRoomInput): Promise<{ roomId: string; roomNumber: string; stayLink: string; state: RoomState }> {
-    if (typeof input.idempotencyKey === "string" && input.idempotencyKey !== "") {
-      const replay = this.idempotency.get(input.idempotencyKey);
-      if (replay) {
-        return replay;
-      }
+    const roomNumber = requireString(input.roomNumber, "roomNumber");
+    const idempotencyKey = typeof input.idempotencyKey === "string" ? input.idempotencyKey : "";
+    const replay = idempotencyKey === "" ? undefined : this.idempotency.get(`AssignRoom:${roomNumber}:${idempotencyKey}`);
+    if (replay) {
+      return replay;
     }
-    const room = await this.findRoom(input.roomNumber);
+    const room = await this.findRoom(roomNumber);
     const businessDate = requireDate(input.businessDate, "businessDate");
     const stayLink = requireString(input.stayLink, "stayLink");
     const actor = requireString(input.actor, "actor");
@@ -398,8 +398,8 @@ export class RoomStore implements RoomStoreAPI {
     this.recordHistory(room.id, "vacant-inspected", "occupied", actor);
     this.emit("room", "state-changed", { roomNumber: room.number, stayLink, actor }, actor);
     const receipt = { roomId: room.id, roomNumber: room.number, stayLink, state: room.state };
-    if (typeof input.idempotencyKey === "string" && input.idempotencyKey !== "") {
-      this.idempotency.set(input.idempotencyKey, receipt);
+    if (idempotencyKey !== "") {
+      this.idempotency.set(`AssignRoom:${roomNumber}:${idempotencyKey}`, receipt);
     }
     return receipt;
   }
