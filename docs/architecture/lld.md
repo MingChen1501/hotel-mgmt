@@ -6270,9 +6270,9 @@ satisfy.
   400, `details.field` `dateTo`, the `reporting.validation.date_range_span`
   sentence carrying `730`, and no rows — at store level beside
   `TestReportWindowsAreValidated`
-  (`services/reporting/internal/service/service_test.go:31-42`) and at
+  (`services/reporting/internal/service/service_test.go:33-44`) and at
   HTTP level beside `TestReportingAuthAndValidation`
-  (`services/reporting/internal/handler/handler_test.go:106-123`), which
+  (`services/reporting/internal/handler/handler_test.go:108-125`), which
   asserts the four envelope keys and a non-empty `traceId`.
 - **Boundary pair, per operation.** The at-cap window
   (2024-01-01..2025-12-31, 731 inclusive dates) is served and returns
@@ -6282,18 +6282,21 @@ satisfy.
   unedited: it is the acceptance evidence that the documented two-year
   window is inside the cap.
 - **The finding's own window.** A `0001-01-01`..`9999-12-31` request
-  returns the refusal with no rows. The guard asserts the answer, not a
-  timing: a mutex-placement check would be a flaky duration test, so the
-  position rule stays a review item (31.8) and the unchanged perf guard
-  is the latency evidence.
+  returns the refusal with no rows. The position rule is guarded
+  directly: `TestSpanCheckRunsBeforeTheStoreLock`
+  (`services/reporting/internal/store/store_test.go:413`) holds `s.mu`
+  and requires both over-cap reads to answer within the failure-path
+  timeout, so a check placed below the lock fails the guard rather than
+  passing on status. The guard asserts placement, not latency; the
+  unchanged perf guard remains the latency evidence.
 - **Existing window guards unchanged.** The missing, malformed, and
   out-of-order refusals keep their code, status, field, and sentence
-  with no assertion edit (`service_test.go:31-42`,
-  `handler_test.go:106-123`, `messages_test.go:28-51`); a reversed window
+  with no assertion edit (`service_test.go:33-44`,
+  `handler_test.go:108-125`, `messages_test.go:28-51`); a reversed window
   still answers the order sentence, not the span sentence.
 - **One-date and no-range reads unchanged.** `DailySheet` and
   `HousekeepingReport` guards stay green with no edit
-  (`service_test.go:44`, `handler_test.go:129`, the perf reads at
+  (`service_test.go:46`, `handler_test.go:131`, the perf reads at
   `perf_test.go:226-291`).
 - **Catalogue guards.** One sample assertion pins the new sentence with
   `{max}` rendered through `messages.Num`
