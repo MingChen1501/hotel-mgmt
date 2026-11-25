@@ -904,17 +904,15 @@ capability: the 57-row MVP coverage count stands unchanged and no MVP
 row may cite this slice as its guard.
 
 Every `file:line` in the existing pins was re-read on this merged stack
-head: the requirements branch now merges `master` `a583eaf`, which moved
-only in `docs/` since `e0dcb61` (the transport change that shifted
-`handler.go`), so every cited code line is unchanged; the sole other
-movement is catalogue-key additions after line 714 of each service's
-`messages/en.json` plus one uncited stay test file. Those pins prove today's
+head: the requirements branch now merges `master` `90678ea`, the #631
+availability implementation (#716), which added the availability client
+and its tests beside these pins and three catalogue keys. Those pins prove today's
 behaviour — the frozen total is only checked
 for presence and `>= 0`
-(`services/reservations/internal/service/service.go:101-103`,
-`:181-183`), stored verbatim
-(`services/reservations/internal/store/store.go:236-237`), re-frozen on
-Modify (`:437-441`), and nothing on the booking path quotes (the wired
+(`services/reservations/internal/service/service.go:155-157`,
+`:245-247`), stored verbatim
+(`services/reservations/internal/store/store.go:242-243`), re-frozen on
+Modify (`:440-444`), and nothing on the booking path quotes (the wired
 client runs `CheckRestrictions` only,
 `services/reservations/internal/pricing/client.go:43-85`) — and the
 implementation PR rewires the two pins that assert the supplied total
@@ -926,12 +924,12 @@ therefore **not complete** at this spec head.
 
 | Item | Required guard type | Guard |
 |---|---|---|
-| `AC-PRC-1` — the frozen total and stored discount name are the `QuotePrice` values for the effective room type, dates, and discount read in the same request; the request's total never sets a stored value; a repeated `idempotencyKey` is returned at its stored total, never re-quoted (traces to US-RES-1; `FR-RES-1`, `FR-RTE-5`, `BR-13`, `BR-52`) | L1 acceptance + downstream read | **Pending** — `PA3`, `PA4`, `PA6` in `services/reservations/internal/service/service_test.go`; today's opposite is pinned at `services/reservations/internal/service/service.go:101-103`, `:127` and `internal/store/store.go:236-237`, with the rewired pins at `internal/service/service_test.go:34-47`, `internal/handler/handler_test.go:59-91` |
+| `AC-PRC-1` — the frozen total and stored discount name are the `QuotePrice` values for the effective room type, dates, and discount read in the same request; the request's total never sets a stored value; a repeated `idempotencyKey` is returned at its stored total, never re-quoted (traces to US-RES-1; `FR-RES-1`, `FR-RTE-5`, `BR-13`, `BR-52`) | L1 acceptance + downstream read | **Pending** — `PA3`, `PA4`, `PA6` in `services/reservations/internal/service/service_test.go`; today's opposite is pinned at `services/reservations/internal/service/service.go:155-157`, `:186` and `internal/store/store.go:242-243`, with the rewired pins at `internal/service/service_test.go:46-61`, `internal/handler/handler_test.go:72-105` |
 | `AC-PRC-2` — a disagreeing total (lower, higher, or zero for a priced stay) is refused `PRICE_CHANGED` (409) naming both totals, the type, and the dates; no reservation, availability, change entry, idempotency record, or event is written; a legitimate zero is booked only when the quote says zero (traces to US-RES-1; `FR-RES-1`, `FR-RTE-5`, `BR-13`, `BR-52`) | L1 acceptance: the three disagreement shapes + the no-write set | **Pending** — `PA1`, `PA2`, `PA4`; the absent/negative 400 that must stay a different refusal is `PA5` |
 | `AC-PRC-3` — an unreadable Pricing (transport, timeout, 5xx, unparseable envelope, unwired client) refuses `UPSTREAM_UNAVAILABLE` (503) naming `rates`/`QuotePrice` with nothing stored, and each definitive Rates refusal (`NOT_FOUND` `no_rate_price`/`no_rate_plan`, `VALIDATION_FAILED` for an unknown discount, `VALIDATION_FAILED` naming `ratePlanName`) is surfaced unchanged (traces to US-RES-1; `FR-RTE-1`, `FR-RTE-5`, `BR-13`, `BR-52`, `NFR-AVL-1`) | L1 acceptance: five unreadable shapes + four definitive shapes | **Pending** — `PA7`, `PA8`; the shape to copy is pinned at `internal/pricing/client.go:43-85`, `internal/pricing/client_test.go:61-84`, `internal/handler/handler_restrictions_test.go:65-99` and stays green |
-| `AC-PRC-4` — Modify recomputes from the effective post-change type, dates, and discount, refuses a disagreement and an unreadable Pricing, surfaces a definitive refusal unchanged, keeps the stored row in every refusal, and records the price-basis change with actor and time (traces to US-RES-2; `FR-RES-2`, `FR-RTE-5`, `BR-2`, `BR-13`, `BR-52`, `NFR-AUD-1`) | L1 acceptance + audit row | **Pending** — `PA10`, `PA11`, `PA12`; the change-row half exists at `internal/store/store.go:437-441` / `internal/store/store_test.go:187-230` and stays green |
+| `AC-PRC-4` — Modify recomputes from the effective post-change type, dates, and discount, refuses a disagreement and an unreadable Pricing, surfaces a definitive refusal unchanged, keeps the stored row in every refusal, and records the price-basis change with actor and time (traces to US-RES-2; `FR-RES-2`, `FR-RTE-5`, `BR-2`, `BR-13`, `BR-52`, `NFR-AUD-1`) | L1 acceptance + audit row | **Pending** — `PA10`, `PA11`, `PA12`; the change-row half exists at `internal/store/store.go:440-444` / `internal/store/store_test.go:187-230` and stays green |
 | `AC-PRC-5` — the guards cover the forged-low, forged-high, matching (including a legitimate zero), unreadable, and definitive callers plus the Modify reprice with its history row and actor; the #600 room charge still posts the frozen total and the `AC-RES-1`, `AC-RES-2`, `AC-DSK-13`, `AC-DSK-19`, `AC-CKO-1`/`AC-CKO-2` guards keep passing (traces to `NFR-AUD-1`) | L1 + audit + downstream + re-run | **Pending** — `PA1`–`PA12`, with the green half on the downstream-green row and the desk half in `PA13` |
-| `FR-PRC-1` — the total a new reservation freezes is the Pricing quote, read for the effective type, dates, and discount with the caller's session forwarded; the stored discount name is the quote's applied name; the request value is compared and nothing more; an absent or negative basis still refuses `VALIDATION_FAILED` (section 26.3) | L1 acceptance | **Pending** — `PA3`, `PA4`, `PA5`; today's trust is pinned at `internal/service/service_test.go:34-47`, the desk pairing at `app/src/views/BookView.test.ts:556-602` |
+| `FR-PRC-1` — the total a new reservation freezes is the Pricing quote, read for the effective type, dates, and discount with the caller's session forwarded; the stored discount name is the quote's applied name; the request value is compared and nothing more; an absent or negative basis still refuses `VALIDATION_FAILED` (section 26.3) | L1 acceptance | **Pending** — `PA3`, `PA4`, `PA5`; today's trust is pinned at `internal/service/service_test.go:46-61`, the desk pairing at `app/src/views/BookView.test.ts:556-602` |
 | `FR-PRC-2` — a request total that disagrees is refused with `PRICE_CHANGED` naming both totals, type, and dates, and nothing is written (section 26.3) | L1 acceptance: the disagreement set + the no-write set | **Pending** — `PA1`, `PA2`; no guard on disk |
 | `FR-PRC-3` — an unreadable Pricing refuses `UPSTREAM_UNAVAILABLE` (503) naming `rates`/`QuotePrice`, a definitive refusal is surfaced unchanged, and no stay is ever frozen at an unverified, invented, or assumed-zero total (section 26.3) | L1 acceptance: the two families kept apart | **Pending** — `PA7`, `PA8`; the fail-closed shape is `internal/pricing/client.go:43-85` |
 | `FR-PRC-4` — Modify reprices on the same terms, records the price-basis change with actor and time, keeps the stored row in every refusal, keeps an omitted field's stored value, and treats an omitted/null discount name as no discount on the new quote (section 26.3) | L1 acceptance + audit row | **Pending** — `PA10`, `PA11`, `PA12`; `internal/store/store_test.go:187-230` stays green |

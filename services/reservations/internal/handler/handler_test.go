@@ -14,14 +14,27 @@ import (
 
 const deskToken = "Bearer skeleton-test-token"
 
-func newMux() *http.ServeMux {
+// newMuxWithAvailability builds the mux over one stubbed capacity
+// answer. The shared desk-loop paths below book without a stubbed rooms
+// server, so wire the pass-through explicitly: a nil hook fails closed
+// and would refuse every booking here.
+func newMuxWithAvailability(hook service.AvailabilityCheck) (*http.ServeMux, *store.Store) {
 	st := store.New()
 	svc := service.New(st)
-	// The shared desk-loop paths below book without a stubbed rates
-	// server, so wire the pass-through explicitly: a nil hook fails
-	// closed and would refuse every booking here.
 	svc.CheckRestrictionsHook = func(_, _, _, _ string) *store.OpError { return nil }
-	return NewMux(svc, st)
+	svc.AvailabilityHook = hook
+	return NewMux(svc, st), st
+}
+
+// newMux answers a derived ceiling of one sellable unit, which is the
+// last-unit shape most desk-loop paths below exercise.
+func newMux() *http.ServeMux {
+	mux, _ := newMuxWithAvailability(func(_, _, _, _ string) (int, *store.OpError) { return 1, nil })
+	return mux
+}
+
+func capacityHook(units int) service.AvailabilityCheck {
+	return func(_, _, _, _ string) (int, *store.OpError) { return units, nil }
 }
 
 func post(t *testing.T, mux http.Handler, path string, body map[string]any, token string) (int, map[string]any) {

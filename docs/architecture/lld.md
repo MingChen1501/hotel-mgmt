@@ -4567,23 +4567,23 @@ As-built at this spec head (read-only trace):
 
 - The two write routes read the total out of the body:
   `priceBasis.totalMinor` plus a top-level `discountName` fallback on
-  Create (`internal/handler/handler.go:169-170`), the same pair on
-  Modify (`:240-241`), decoded by `nestedPrice`/`nestedDiscount`
-  (`:346-362`).
+  Create (`internal/handler/handler.go:173-174`), the same pair on
+  Modify (`:287-288`), decoded by `nestedPrice`/`nestedDiscount`
+  (`:397-413`).
 - Presence and `>= 0` are the only checks
-  (`internal/service/service.go:101` on Create, `:181` on Modify); the
-  validated value is handed to the store (`:120-131`, `:225-237`).
-- The store persists it verbatim (`internal/store/store.go:236`;
-  `internal/store/postgres.go:206`, `:608`) and re-freezes it on Modify
+  (`internal/service/service.go:155` on Create, `:245` on Modify); the
+  validated value is handed to the store (`:179-190`, `:293-305`).
+- The store persists it verbatim (`internal/store/store.go:242`;
+  `internal/store/postgres.go:203`, `:600-605`) and re-freezes it on Modify
   under an unchanged-total comparison, writing the `priceBasis`
-  change-history row with the actor (`internal/store/store.go:437-440`;
-  `internal/store/postgres.go:601-605`).
+  change-history row with the actor (`internal/store/store.go:440-443`;
+  `internal/store/postgres.go:594-598`).
 - Nothing on the booking path quotes: the wired Rates client has one
   operation, `Check` for `CheckRestrictions`
   (`internal/pricing/client.go:43-85`, 5-second timeout at `:33`), and
   boot wires only `svc.CheckRestrictionsHook`
-  (`cmd/server/main.go:43-48`, hook field
-  `internal/service/service.go:40`).
+  (`cmd/server/main.go:44-49`, hook field
+  `internal/service/service.go:50`).
 - `docs/architecture/lld.md` section 1 already listed
   `PricingService.QuotePrice` among Reservations' outbound calls and
   `docs/technical/integration.md` C1 already listed the operation; the
@@ -4617,28 +4617,28 @@ pre-read, and one comparison. Order, and why each step sits where it
 does:
 
 1. **Field/date/price-shape validation** — unchanged
-   (`internal/service/service.go:87-113` on Create, `:157-201` on
+   (`internal/service/service.go:141-167` on Create, `:221-266` on
    Modify). A missing or negative total is still `VALIDATION_FAILED`
    naming `priceBasis`, so `PRICE_CHANGED` is only ever about an
    asserted total that disagreed.
 2. **Effective inputs** (Modify only) — the post-change type and dates,
    an omitted field keeping the stored value, come from the existing
-   computation (`internal/service/service.go:207-222`, reading the row
-   at `:203`); the discount is the request's
+   computation (`internal/service/service.go:271-282`, reading the row
+   at `:267`); the discount is the request's
    `priceBasis.discountName`, where omitted or null means no discount
    (the price basis is a full assertion of the new quote, and the desk
    already sends `discountName ?? null`,
    `app/src/views/BookView.vue:926-937`).
 3. **`CheckRestrictions`** — unchanged, with the effective values
-   (`:114-119`, `:219-224`). It keeps its place because a restriction
+   (`:168-174`, `:283-289`). It keeps its place because a restriction
    refusal means re-quoting cannot help, and it keeps its
    `STATE_ILLEGAL` terms.
 4. **Replay pre-read** — a new `Replay(key)` repository read
-   (`internal/store/store.go:109-117` interface) resolving a
+   (`internal/store/store.go:118-126` interface) resolving a
    non-empty `idempotencyKey` to its stored reservation with the same
    key-only lookup both stores already perform
-   (`internal/store/store.go:208-211`,
-   `internal/store/postgres.go:159-171`, `:496-508`). A hit returns the
+   (`internal/store/store.go:214-217`,
+   `internal/store/postgres.go:156-170`, `:496-508`). A hit returns the
    stored booking unchanged — no quote, no comparison, no
    `PRICE_CHANGED` for a booking that exists. The store's own replay
    check inside the guarded step stays exactly as it is, so a
@@ -4648,10 +4648,10 @@ does:
    `ratePlanName`, matching the desk's own quote) and the caller's
    Bearer token forwarded, 5-second timeout, reusing the existing
    client and its configuration (`internal/pricing/client.go:26-85`;
-   `cmd/server/main.go:43-48` — one client instance wired for two
+   `cmd/server/main.go:44-49` — one client instance wired for two
    operations). The read stays outside the guarded store write: the
    store step is one mutex- or transaction-held critical section
-   (`internal/store/store.go:206`), and holding it across a
+   (`internal/store/store.go:212`), and holding it across a
    network call would stall every booking during a Rates outage.
 6. **Compare** — `requestedTotalMinor` (the request's
    `priceBasis.totalMinor`, which presence validation has already
@@ -4664,16 +4664,16 @@ does:
    A definitive 4xx envelope is surfaced unchanged (25.5).
 8. **Guarded store write** — unchanged: the overbooking count over
    active overlapping bookings under one mutex
-   (`internal/store/store.go:206-226`), insert or update with the
+   (`internal/store/store.go:212-232`), insert or update with the
    server total and discount name, the `priceBasis` change row on
    Modify, and the outbox event. The response reports the stored total
    (`quotedTotal` on Create, `recalculatedTotal` on Modify,
-   `internal/handler/handler.go:196`, `:264`).
+   `internal/handler/handler.go:200`, `:311`).
 
 Service-side shape: the `Service` struct gains a `QuotePriceHook` next
 to `CheckRestrictionsHook`
-(`internal/service/service.go:30-41`), wired from the same client at
-boot (`cmd/server/main.go:43-48`); a nil hook takes the fail-closed
+(`internal/service/service.go:32-51`), wired from the same client at
+boot (`cmd/server/main.go:44-49`); a nil hook takes the fail-closed
 branch like the restriction hook does today.
 
 ### 25.3 Create — happy path
@@ -4694,8 +4694,8 @@ Edge trace:
 
 - A–B: Bearer presence and JSON decode (`internal/handler/handler.go:143-156`,
   `:42-53`); the same validation list as today
-  (`internal/service/service.go:87-113`).
-- B–C: the restriction call (`internal/service/service.go:114-119`;
+  (`internal/service/service.go:141-167`).
+- B–C: the restriction call (`internal/service/service.go:168-174`;
   `internal/pricing/client.go:43-85`).
 - C–D: the new replay pre-read (25.2 step 4) sits after the restriction
   check so a replay is gated like any other request, exactly as today,
@@ -4706,13 +4706,13 @@ Edge trace:
 - E–F: the comparison this section adds.
 - F–G: `store.Create` receives the quote's `totalMinor` and
   `discountName` instead of `req.TotalMinor`/`req.DiscountName`
-  (`internal/service/service.go:120-131`;
-  `internal/store/store.go:236`).
+  (`internal/service/service.go:179-190`;
+  `internal/store/store.go:242`).
 - G–H: unchanged insert, `created` event, and response
-  (`internal/store/store.go:228-259`;
-  `internal/handler/handler.go:195-197`).
+  (`internal/store/store.go:234-265`;
+  `internal/handler/handler.go:199-201`).
 - D–R: a replayed key returns the stored record with its stored total
-  (`internal/store/store.go:208-212`; the new pre-read narrows the same
+  (`internal/store/store.go:214-218`; the new pre-read narrows the same
   result to "Pricing is not consulted").
 
 ### 25.4 Create — refusal and failure path
@@ -4734,7 +4734,7 @@ flowchart TD
 
 Edge trace:
 
-- B: unchanged restriction refusals (`internal/service/service.go:114-119`).
+- B: unchanged restriction refusals (`internal/service/service.go:168-174`).
 - C–U2: the fail-closed branch uses the existing
   `UPSTREAM_UNAVAILABLE` shape and the same 5-second-bounded transport
   (`internal/pricing/client.go:89-97` is the precedent; the new branch
@@ -4747,7 +4747,7 @@ Edge trace:
   availability consumed, no `created` event, no idempotency record, so
   the key can be reused for the re-quoted attempt.
 - G–O: the unchanged overbooking guard
-  (`internal/store/store.go:213-226`).
+  (`internal/store/store.go:219-232`).
 - Rollback: none to run inside the service — every refusal happens
   before the store step, so there is no compensation path and no
   partial write (the same property section 4 records for today's
@@ -4775,13 +4775,13 @@ flowchart TD
 Edge trace:
 
 - A–B: handler decode plus validation
-  (`internal/handler/handler.go:279-293`;
-  `internal/service/service.go:157-201`), then the existing
-  `store.Get` (`internal/service/service.go:203`).
+  (`internal/handler/handler.go:287-297`;
+  `internal/service/service.go:221-266`), then the existing
+  `store.Get` (`internal/service/service.go:267`).
 - B–C: the existing effective-value computation
-  (`internal/service/service.go:207-222`).
+  (`internal/service/service.go:271-282`).
 - C–D: the existing restriction call with those values
-  (`internal/service/service.go:219-224`).
+  (`internal/service/service.go:283-289`).
 - E–F: the new pre-read plus quote (25.2 steps 4–5), with the effective
   discount: the request's `priceBasis.discountName` when the object
   carries one, otherwise no discount — the price basis is a full
@@ -4789,18 +4789,18 @@ Edge trace:
   `discountName ?? null` (`app/src/views/BookView.vue:926-937`).
 - G–H: the comparison, then `store.Modify` with the quote's total and
   the quote's applied discount name instead of the request's
-  (`internal/service/service.go:225-237`).
+  (`internal/service/service.go:293-305`).
 - H–I–J: the existing change-history write, now fed by the server
-  values (`internal/store/store.go:437-440`;
-  `internal/store/postgres.go:601-605`), with the request actor.
+  values (`internal/store/store.go:440-443`;
+  `internal/store/postgres.go:594-598`), with the request actor.
 - I–K: a total that does not move writes no price row, as today; a
   discount-name change that leaves the total identical also writes no
   row (recorded, not changed, by this section).
 - L: `recalculatedTotal` reports the stored total
-  (`internal/handler/handler.go:303`).
+  (`internal/handler/handler.go:311`).
 - E–R: a replayed key returns the stored booking unchanged
-  (`internal/store/store.go:382-385` in-memory replay;
-  `internal/store/postgres.go:496-508` Postgres replay).
+  (`internal/store/store.go:385-388` in-memory replay;
+  `internal/store/postgres.go:490-504` Postgres replay).
 
 ### 25.6 Modify — refusal and failure path
 
@@ -4823,7 +4823,7 @@ flowchart TD
 Edge trace: the same branches as 25.4, with the Modify-specific
 difference that every refusal leaves the stored dates, type, guest,
 discount, and total untouched, because the quote and comparison run
-before the store step (`internal/store/store.go:376-441` collects the
+before the store step (`internal/store/store.go:382-444` collects the
 changes inside the guarded step only). A replayed key on a repetition
 of the same change returns the stored booking instead of re-quoting
 (25.5, E–R).
@@ -4962,28 +4962,31 @@ architect-owned delta.
 
 1. Validate the request as today — room type, dates, price basis,
    mandatory guest fields, hotel-mandatory guest fields
-   (`services/reservations/internal/service/service.go:87-119`).
+   (`services/reservations/internal/service/service.go:137-167`).
 2. Resolve the effective room type and dates: the request's value where
    supplied, otherwise the stored row's
-   (`services/reservations/internal/service/service.go:207-218`).
+   (`services/reservations/internal/service/service.go:271-282`).
 3. Consult the Rates stay-restriction check first, unchanged
-   (`service.go:114-119` on Create, `:219-224` on Modify), so a
+   (`service.go:168-173` on Create, `:283-288` on Modify), so a
    restricted stay still refuses as `STATE_ILLEGAL` naming the
    restriction before capacity is consulted.
 4. Read the ceiling:
    `POST {ROOMS_BASE_URL}/v1/rooms/CheckRoomTypeSellability` with
    `{roomType: <effective type id>, dateFrom: <effective arrival>,
    dateTo: <effective departure>}` and the caller's Bearer token
-   forwarded, five-second timeout. `ROOMS_BASE_URL` defaults to
-   `http://rooms:8085` (compose service `rooms`,
-   `deploy/compose.yaml:92-102`) and is wired at boot beside
-   `RATES_BASE_URL` (`services/reservations/cmd/server/main.go:44-48`;
-   compose env `deploy/compose.yaml:46`).
+   forwarded, five-second timeout
+   (`services/reservations/internal/availability/client.go:38`,
+   `:56-95`). `ROOMS_BASE_URL` defaults to `http://rooms:8085` (compose
+   service `rooms`, `deploy/compose.yaml:96-106`) and is wired at boot
+   beside `RATES_BASE_URL`
+   (`services/reservations/cmd/server/main.go:45-54`; compose env
+   `deploy/compose.yaml:46`, `:50`).
 5. Fail closed on an unread ceiling: transport error, timeout, 5xx,
    unparseable body, a reply whose `totalCount` / `blockedRooms` are not
    as specified, or an unwired client -> `UPSTREAM_UNAVAILABLE` 503 with
    `{upstream: "rooms", operation: "CheckRoomTypeSellability"}` and
-   nothing written. A Rooms 4xx envelope is surfaced unchanged (a
+   nothing written (`availability/client.go:99-160`;
+   `service.go:103-123`). A Rooms 4xx envelope is surfaced unchanged (a
    rejected session stays `UNAUTHENTICATED`, an unknown type stays
    `NOT_FOUND`). No earlier ceiling is reused and the request's number
    is never a fallback.
@@ -4991,26 +4994,26 @@ architect-owned delta.
    to the store, which counts overlapping `confirmed` + `checked-in`
    rows for the type and dates **excluding the reservation itself on
    Modify** and inserts only when the count is below the ceiling
-   (`services/reservations/internal/store/store.go:206-226` and `:376-415`;
+   (`services/reservations/internal/store/store.go:211-233` and `:382-423`;
    the Postgres transaction twins at
-   `services/reservations/internal/store/postgres.go:149-189` and
-   `:486-640`). A ceiling of `0` is a sold-out answer: `CONFLICT` 409
-   naming the type and dates (`store.go:222-226`), never a 5xx.
+   `services/reservations/internal/store/postgres.go:145-274` and
+   `:479-640`). A ceiling of `0` is a sold-out answer: `CONFLICT` 409
+   naming the type and dates (`store.go:228-233`), never a 5xx.
 7. Ignore the request's `sellableUnits` for the decision. It is
    shape-validated only when present (integer `>= 0`, otherwise
-   `VALIDATION_FAILED` naming the field) and does not reach the store:
-   the store's `input.SellableUnits < 1` validation (`store.go:203`,
-   `:377`; `postgres.go:146`, `:483`) and the handler's absent-means-zero
-   default (`handler.go:409-414`) are removed with this change, otherwise an
-   advisory field would still decide (an absent field would refuse as
-   `VALIDATION_FAILED`).
+   `VALIDATION_FAILED` naming the field) and does not reach the store
+   (`services/reservations/internal/handler/handler.go:417-438`;
+   `service.go:125-132`): the store's `input.SellableUnits < 1`
+   validation and the handler's absent-means-zero default are gone, and
+   the ceiling arrives as `CreateInput.Ceiling` / `ModifyInput.Ceiling`
+   (`store.go:63-77`, `:93-108`).
 8. Keep the idempotency replay inside the store (no second unit
    consumed) and keep the read before the store call, so the ceiling is
    evaluated on every attempt, replay included.
 
 **Counted states stay as built.** The guard counts `confirmed` and
-`checked-in` rows and nothing else (`activeState`, `store.go:195-197`;
-`postgres.go:176-183`, `:552-557`), so a cancelled, no-show, or closed
+`checked-in` rows and nothing else (`activeState`, `store.go:204-206`;
+`postgres.go:174`, `:548`), so a cancelled, no-show, or closed
 reservation releases its unit while an in-house guest keeps holding its
 own. `AC-OVB-1` words that same set — a cancelled, no-show, or closed
 reservation "releases its held unit exactly as today", a checked-in one
@@ -5040,22 +5043,23 @@ flowchart TD
 
 Edge trace:
 
-- A–B: Bearer presence (`services/reservations/internal/handler/handler.go:142-143`);
-  field, date, price, and guest validation
-  (`services/reservations/internal/service/service.go:87-119`).
-- B–C: restriction check (target unchanged, `service.go:114-119`).
-- C–D: the ceiling read (target client in
-  `services/reservations/internal/availability/`, patterned on
-  `services/reservations/internal/pricing/client.go:33,52-59`); request
-  and response shape `contracts/http/CheckRoomTypeSellability.json`.
+- A–B: Bearer presence
+  (`services/reservations/internal/handler/handler.go:141-152`); field,
+  date, price, and guest validation
+  (`services/reservations/internal/service/service.go:137-167`).
+- B–C: restriction check (target unchanged, `service.go:168-173`).
+- C–D: the ceiling read
+  (`services/reservations/internal/availability/client.go:56-95`,
+  patterned on `services/reservations/internal/pricing/client.go:33,52-59`);
+  request and response shape `contracts/http/CheckRoomTypeSellability.json`.
 - D–E: `totalCount` and `blockedRooms` are the date-ranged facts
   (`services/rooms/src/store.ts:343-356`); the derived `sellableCount`
   is not consumed (ADR-0006 D2).
-- E–F–G: the guarded store step (`internal/store/store.go:206-260`;
-  Postgres `internal/store/postgres.go:149-189`).
-- F–H: `booked >= ceiling` -> `CONFLICT` naming type and dates
-  (`store.go:222-226`), no row, no event.
-- G–I: response fields (`internal/handler/handler.go:195-198`).
+- E–F–G: the guarded store step (`internal/store/store.go:211-260`;
+  Postgres `internal/store/postgres.go:145-274`).
+- F–H: `booked >= Ceiling` -> `CONFLICT` naming type and dates
+  (`store.go:228-233`), no row, no event.
+- G–I: response fields (`internal/handler/handler.go:199-201`).
 
 ### 26.4 Failure and rollback paths
 
@@ -5075,8 +5079,9 @@ Edge trace:
 
 - A–U: fail closed on an unread ceiling (ADR-0006 D4; the
   Reservations -> Rates precedent returns the same code,
-  `internal/pricing/client.go:88-96`). Nothing is written because the
-  read precedes the store call.
+  `internal/pricing/client.go:88-96`; this seam's refusal is
+  `internal/availability/client.go:99-160`). Nothing is written because
+  the read precedes the store call.
 - A–P: a provider refusal keeps its code and details, so the desk acts
   on the same envelope (for example `UNAUTHENTICATED`).
 - A–B–S: a type with no sellable unit for those dates is a legitimate
@@ -5092,8 +5097,8 @@ Edge trace:
 
 | File | Change | Version effect |
 |---|---|---|
-| `contracts/http/CreateReservation.json` | `sellableUnits` required -> optional and advisory ("ignored; the server derives the ceiling from Rooms"); errors add `UPSTREAM_UNAVAILABLE` (503) | minor (1.1 -> 1.2, ADR-0004 D1) |
-| `contracts/http/ModifyReservation.json` | same delta for the new type and dates | minor (1.0 -> 1.1) |
+| `contracts/http/CreateReservation.json` | `sellableUnits` required -> optional and advisory ("ignored; the server derives the ceiling from Rooms"); errors add `NOT_FOUND` (404, an unknown room type refused by Rooms and surfaced unchanged) and `UPSTREAM_UNAVAILABLE` (503) | minor (1.1 -> 1.2, ADR-0004 D1) |
+| `contracts/http/ModifyReservation.json` | same delta for the new type and dates; its existing `NOT_FOUND` row now also covers an unknown new room type | minor (1.0 -> 1.1) |
 | `contracts/http/CheckRoomTypeSellability.json` | shape unchanged; gains a server-side consumer (integration C2 becomes live) | none |
 | `contracts/errors/envelope.json` | unchanged — `UPSTREAM_UNAVAILABLE` (503) is already in the enum and `statusMapping` (#627), so no contract file edit comes from this change | none |
 
@@ -5102,10 +5107,12 @@ state set, the change history, and the outbox payloads are untouched.
 
 ### 26.6 Verification plan
 
-Reservations guards (the implementation PR creates them; the existing
+Reservations guards (as built in the #631 implementation PR: the
 suites are `services/reservations/internal/store/store_test.go`,
 `internal/store/postgres_test.go`, `internal/service/service_test.go`,
-`internal/handler/handler_test.go`, and
+`internal/handler/handler_test.go`,
+`internal/handler/handler_availability_test.go`,
+`internal/availability/client_test.go`, and
 `internal/pricing/client_test.go`):
 
 - **Inflated input, create** — request `sellableUnits: 999` against a
@@ -5128,7 +5135,9 @@ suites are `services/reservations/internal/store/store_test.go`,
   `{upstream: "rooms", operation: "CheckRoomTypeSellability"}`, nothing
   written.
 - **Provider 4xx** — Rooms answers `NOT_FOUND` for an unknown type and
-  `UNAUTHENTICATED` for a rejected session: both surfaced unchanged.
+  `UNAUTHENTICATED` for a rejected session: both surfaced unchanged,
+  and a `Create`/`Modify` naming an unknown room type answers the
+  contract's `NOT_FOUND` 404 (`TestUnknownRoomTypeSurfacesNotFound`).
 - **Atomicity** — two simultaneous last-unit creates (and two
   simultaneous modifies into the last unit): exactly one 200 and one
   409 `CONFLICT`.
