@@ -4,9 +4,13 @@ import static org.hamcrest.Matchers.aMapWithSize;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -18,6 +22,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.hotel.billing.service.BillingService;
 import com.hotel.billing.util.Messages;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.List;
@@ -354,5 +359,275 @@ class BillingControllerTest {
     byte[] at = paddedBody("{\"stayId\":\"" + STAY + "\",\"actor\":\"front-desk\"}", 65536);
     mvc.perform(post("/v1/billing/GetFolioBalance").contentType(MediaType.APPLICATION_JSON).content(at))
         .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
+  }
+
+  // AMT1-AMT20 (Refs #635, BR-61): every money field is a whole number
+  // of minor units bounded by one declared ceiling. Each refusal case
+  // asserts the full four-key envelope, the catalogue sentence,
+  // details.field, a non-empty traceId, and that the service was never
+  // called, so an adapter that truncates or refuses late cannot pass.
+
+  private static final long CEILING = BillingController.MONEY_CEILING_MINOR;
+
+  private static String notInteger(String field) {
+    return Messages.text("error.validation.amount_not_integer", Map.of("field", field));
+  }
+
+  private static String aboveCeiling(String field) {
+    return Messages.text("error.validation.amount_above_ceiling",
+        Map.of("field", field, "max", Messages.formatNumber(BillingController.MONEY_CEILING_MINOR)));
+  }
+
+  private static String fieldNumber(String field) {
+    return Messages.text("error.validation.field_number", Map.of("field", field));
+  }
+
+  private static String postChargeBody(String amountMinor, String idempotencyKey) {
+    return "{\"stayId\":\"" + STAY + "\",\"itemKind\":\"nightly-room-charge\","
+        + "\"itemName\":\"Room 101\",\"amountMinor\":" + amountMinor
+        + (idempotencyKey == null ? "" : ",\"idempotencyKey\":\"" + idempotencyKey + "\"")
+        + ",\"actor\":\"front-desk\"}";
+  }
+
+  private static String recordPaymentBody(String amountMinor) {
+    return "{\"stayId\":\"" + STAY + "\",\"method\":\"cash\",\"amountMinor\":" + amountMinor
+        + ",\"actor\":\"front-desk\"}";
+  }
+
+  private static String chargeItemBody(String priceMinor) {
+    return "{\"name\":\"Breakfast\",\"priceMinor\":" + priceMinor + ",\"actor\":\"front-desk\"}";
+  }
+
+  private static String taxRuleBody(String percent) {
+    return "{\"name\":\"VAT\"" + (percent == null ? "" : ",\"percent\":" + percent)
+        + ",\"actor\":\"front-desk\"}";
+  }
+
+  private void expectMoneyRefusal(String path, String body, String field, String sentence) throws Exception {
+    mvc.perform(post(path).header("Authorization", "Bearer test-token")
+        .contentType(MediaType.APPLICATION_JSON).content(body))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$", aMapWithSize(4)))
+        .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+        .andExpect(jsonPath("$.message").value(sentence))
+        .andExpect(jsonPath("$.details", aMapWithSize(1)))
+        .andExpect(jsonPath("$.details.field").value(field))
+        .andExpect(jsonPath("$.traceId").isNotEmpty());
+  }
+
+  private void expectAccepted(String path, String body) throws Exception {
+    mvc.perform(post(path).header("Authorization", "Bearer test-token")
+        .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isOk());
+  }
+
+  private BillingService.LineView lineView(long amountMinor) {
+    return new BillingService.LineView(UUID.randomUUID(), UUID.randomUUID(), UUID.fromString(STAY),
+        "nightly-room-charge", "Room 101", amountMinor, 0, 0, "2026-10-26T00:00:00Z");
+  }
+
+  private BillingService.PaymentView paymentView(long amountMinor) {
+    return new BillingService.PaymentView(UUID.randomUUID(), UUID.randomUUID(), UUID.fromString(STAY), "cash",
+        amountMinor, "2026-10-26T00:00:00Z", 0);
+  }
+
+  @Test
+  void postChargeRefusesAFractionalAmount() throws Exception {
+    expectMoneyRefusal("/v1/billing/PostCharge", postChargeBody("12.99", null), "amountMinor",
+        notInteger("amountMinor"));
+    verifyNoInteractions(service);
+  }
+
+  @Test
+  void recordPaymentRefusesAFractionalAmount() throws Exception {
+    expectMoneyRefusal("/v1/billing/RecordPayment", recordPaymentBody("12.99"), "amountMinor",
+        notInteger("amountMinor"));
+    verifyNoInteractions(service);
+  }
+
+  @Test
+  void upsertChargeItemRefusesAFractionalPrice() throws Exception {
+    expectMoneyRefusal("/v1/billing/UpsertChargeItem", chargeItemBody("12.99"), "priceMinor",
+        notInteger("priceMinor"));
+    verifyNoInteractions(service);
+  }
+
+  @Test
+  void moneyAdaptersRefuseAPresentValueThatIsNotANumber() throws Exception {
+    expectMoneyRefusal("/v1/billing/PostCharge", postChargeBody("\"12\"", null), "amountMinor",
+        fieldNumber("amountMinor"));
+    expectMoneyRefusal("/v1/billing/RecordPayment", recordPaymentBody("\"12\""), "amountMinor",
+        fieldNumber("amountMinor"));
+    expectMoneyRefusal("/v1/billing/UpsertChargeItem", chargeItemBody("\"12\""), "priceMinor",
+        fieldNumber("priceMinor"));
+    verifyNoInteractions(service);
+  }
+
+  @Test
+  void postChargeRefusesAmountsAboveTheCeilingAndLetsTheSignRuleStayInTheService() throws Exception {
+    expectMoneyRefusal("/v1/billing/PostCharge", postChargeBody(Long.toString(CEILING + 1), null),
+        "amountMinor", aboveCeiling("amountMinor"));
+    expectMoneyRefusal("/v1/billing/PostCharge", postChargeBody(Long.toString(-(CEILING + 1)), null),
+        "amountMinor", aboveCeiling("amountMinor"));
+    verifyNoInteractions(service);
+
+    // An in-range negative passes the adapter and keeps the service's
+    // own sign refusal, so there is no duplicate rule in the adapter.
+    when(service.postCharge(anyString(), anyString(), anyString(), eq(-1L), any(), anyString()))
+        .thenThrow(ApiException.validation("amountMinor",
+            Messages.text("error.validation.amount_negative", Map.of())));
+    mvc.perform(post("/v1/billing/PostCharge").header("Authorization", "Bearer test-token")
+        .contentType(MediaType.APPLICATION_JSON).content(postChargeBody("-1", null)))
+        .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+        .andExpect(jsonPath("$.details.field").value("amountMinor"))
+        .andExpect(jsonPath("$.message").value(
+            Messages.text("error.validation.amount_negative", Map.of())));
+    verify(service).postCharge(anyString(), anyString(), anyString(), eq(-1L), any(), anyString());
+  }
+
+  @Test
+  void recordPaymentRefusesAmountsAboveTheCeilingAndLetsTheSignRuleStayInTheService() throws Exception {
+    expectMoneyRefusal("/v1/billing/RecordPayment", recordPaymentBody(Long.toString(CEILING + 1)),
+        "amountMinor", aboveCeiling("amountMinor"));
+    expectMoneyRefusal("/v1/billing/RecordPayment", recordPaymentBody(Long.toString(-(CEILING + 1))),
+        "amountMinor", aboveCeiling("amountMinor"));
+    verifyNoInteractions(service);
+
+    when(service.recordPayment(anyString(), anyString(), anyLong(), any(), anyString()))
+        .thenThrow(ApiException.validation("amountMinor",
+            Messages.text("error.validation.amount_positive", Map.of())));
+    expectMoneyRefusal("/v1/billing/RecordPayment", recordPaymentBody("0"), "amountMinor",
+        Messages.text("error.validation.amount_positive", Map.of()));
+    expectMoneyRefusal("/v1/billing/RecordPayment", recordPaymentBody("-1"), "amountMinor",
+        Messages.text("error.validation.amount_positive", Map.of()));
+    verify(service).recordPayment(anyString(), anyString(), eq(0L), any(), anyString());
+    verify(service).recordPayment(anyString(), anyString(), eq(-1L), any(), anyString());
+  }
+
+  @Test
+  void upsertChargeItemRefusesPricesAboveTheCeilingAndLetsTheSignRuleStayInTheService() throws Exception {
+    expectMoneyRefusal("/v1/billing/UpsertChargeItem", chargeItemBody(Long.toString(CEILING + 1)),
+        "priceMinor", aboveCeiling("priceMinor"));
+    expectMoneyRefusal("/v1/billing/UpsertChargeItem", chargeItemBody(Long.toString(-(CEILING + 1))),
+        "priceMinor", aboveCeiling("priceMinor"));
+    verifyNoInteractions(service);
+
+    when(service.upsertChargeItem(anyString(), anyLong(), anyString()))
+        .thenThrow(ApiException.validation("priceMinor",
+            Messages.text("error.validation.price_negative", Map.of())));
+    expectMoneyRefusal("/v1/billing/UpsertChargeItem", chargeItemBody("-1"), "priceMinor",
+        Messages.text("error.validation.price_negative", Map.of()));
+    verify(service).upsertChargeItem(anyString(), eq(-1L), anyString());
+  }
+
+  @Test
+  void oneDeclaredCeilingBoundsEveryMoneyField() {
+    assertEquals(1_000_000_000_000L, BillingController.MONEY_CEILING_MINOR);
+    assertTrue(BillingController.MONEY_CEILING_MINOR < (1L << 53));
+  }
+
+  @Test
+  void ceilingBoundaryIsAcceptedAtTheCeilingAndRefusedOneUnitMore() throws Exception {
+    when(service.postCharge(anyString(), anyString(), anyString(), anyLong(), any(), anyString()))
+        .thenReturn(lineView(CEILING));
+    when(service.recordPayment(anyString(), anyString(), anyLong(), any(), anyString()))
+        .thenReturn(paymentView(CEILING));
+    when(service.upsertChargeItem(anyString(), anyLong(), anyString())).thenReturn(Map.of("name", "Breakfast"));
+
+    expectAccepted("/v1/billing/PostCharge", postChargeBody(Long.toString(CEILING), null));
+    expectAccepted("/v1/billing/RecordPayment", recordPaymentBody(Long.toString(CEILING)));
+    expectAccepted("/v1/billing/UpsertChargeItem", chargeItemBody(Long.toString(CEILING)));
+
+    expectMoneyRefusal("/v1/billing/PostCharge", postChargeBody(Long.toString(CEILING + 1), null),
+        "amountMinor", aboveCeiling("amountMinor"));
+    expectMoneyRefusal("/v1/billing/RecordPayment", recordPaymentBody(Long.toString(CEILING + 1)),
+        "amountMinor", aboveCeiling("amountMinor"));
+    expectMoneyRefusal("/v1/billing/UpsertChargeItem", chargeItemBody(Long.toString(CEILING + 1)),
+        "priceMinor", aboveCeiling("priceMinor"));
+
+    // 65 700 000 000 is one room charge at a 730-night stay at the
+    // standard rate, so a ceiling that is too small fails here.
+    expectAccepted("/v1/billing/PostCharge", postChargeBody("65700000000", null));
+    expectAccepted("/v1/billing/RecordPayment", recordPaymentBody("65700000000"));
+    expectAccepted("/v1/billing/UpsertChargeItem", chargeItemBody("65700000000"));
+
+    verify(service).postCharge(anyString(), anyString(), anyString(), eq(CEILING), any(), anyString());
+    verify(service).postCharge(anyString(), anyString(), anyString(), eq(65_700_000_000L), any(), anyString());
+    verify(service).recordPayment(anyString(), anyString(), eq(CEILING), any(), anyString());
+    verify(service).recordPayment(anyString(), anyString(), eq(65_700_000_000L), any(), anyString());
+    verify(service).upsertChargeItem(anyString(), eq(CEILING), anyString());
+    verify(service).upsertChargeItem(anyString(), eq(65_700_000_000L), anyString());
+  }
+
+  @Test
+  void wholeAmountsSpelledWithADecimalPointAreServedAsWhole() throws Exception {
+    when(service.postCharge(anyString(), anyString(), anyString(), anyLong(), any(), anyString()))
+        .thenReturn(lineView(12));
+    when(service.recordPayment(anyString(), anyString(), anyLong(), any(), anyString()))
+        .thenReturn(paymentView(12));
+    when(service.upsertChargeItem(anyString(), anyLong(), anyString())).thenReturn(Map.of("name", "Breakfast"));
+
+    expectAccepted("/v1/billing/PostCharge", postChargeBody("12", null));
+    expectAccepted("/v1/billing/PostCharge", postChargeBody("12.0", null));
+    expectAccepted("/v1/billing/RecordPayment", recordPaymentBody("12"));
+    expectAccepted("/v1/billing/RecordPayment", recordPaymentBody("12.0"));
+    expectAccepted("/v1/billing/UpsertChargeItem", chargeItemBody("12"));
+    expectAccepted("/v1/billing/UpsertChargeItem", chargeItemBody("12.0"));
+
+    verify(service, times(2)).postCharge(anyString(), anyString(), anyString(), eq(12L), any(), anyString());
+    verify(service, times(2)).recordPayment(anyString(), anyString(), eq(12L), any(), anyString());
+    verify(service, times(2)).upsertChargeItem(anyString(), eq(12L), anyString());
+  }
+
+  @Test
+  void inRangeAmountsReachTheServiceUnchanged() throws Exception {
+    when(service.postCharge(anyString(), anyString(), anyString(), anyLong(), any(), anyString()))
+        .thenReturn(lineView(0));
+    when(service.recordPayment(anyString(), anyString(), anyLong(), any(), anyString()))
+        .thenReturn(paymentView(6000));
+    when(service.upsertChargeItem(anyString(), anyLong(), anyString())).thenReturn(Map.of("name", "Breakfast"));
+
+    // 0 is a legitimate whole amount for a charge and a charge-item
+    // price; a payment keeps the service's positive rule.
+    expectAccepted("/v1/billing/PostCharge", postChargeBody("0", null));
+    expectAccepted("/v1/billing/RecordPayment", recordPaymentBody("6000"));
+    expectAccepted("/v1/billing/UpsertChargeItem", chargeItemBody("0"));
+    expectAccepted("/v1/billing/UpsertChargeItem", chargeItemBody("2500"));
+
+    verify(service).postCharge(anyString(), anyString(), anyString(), eq(0L), any(), anyString());
+    verify(service).recordPayment(anyString(), anyString(), eq(6000L), any(), anyString());
+    verify(service).upsertChargeItem(anyString(), eq(0L), anyString());
+    verify(service).upsertChargeItem(anyString(), eq(2500L), anyString());
+  }
+
+  @Test
+  void taxRulePercentRefusesAPresentValueThatIsNotANumberAndKeepsTheAbsentRefusal() throws Exception {
+    expectMoneyRefusal("/v1/billing/UpsertTaxFeeRule", taxRuleBody("\"eight\""), "percent",
+        fieldNumber("percent"));
+    expectMoneyRefusal("/v1/billing/UpsertTaxFeeRule", taxRuleBody("{\"value\":8}"), "percent",
+        fieldNumber("percent"));
+    expectMoneyRefusal("/v1/billing/UpsertTaxFeeRule", taxRuleBody(null), "percent",
+        Messages.text("error.validation.field_required", Map.of("field", "percent")));
+    verifyNoInteractions(service);
+  }
+
+  @Test
+  void fractionalTaxRulePercentStaysAccepted() throws Exception {
+    when(service.upsertTaxFeeRule(anyString(), any(BigDecimal.class), anyString()))
+        .thenReturn(Map.of("name", "VAT"));
+    expectAccepted("/v1/billing/UpsertTaxFeeRule", taxRuleBody("8.5"));
+    verify(service).upsertTaxFeeRule(eq("VAT"), eq(new BigDecimal("8.5")), eq("front-desk"));
+  }
+
+  @Test
+  void aRefusedRequestConsumesNoIdempotencyKey() throws Exception {
+    expectMoneyRefusal("/v1/billing/PostCharge", postChargeBody("12.99", "charge-635"), "amountMinor",
+        notInteger("amountMinor"));
+    verifyNoInteractions(service);
+
+    when(service.postCharge(anyString(), anyString(), anyString(), anyLong(), any(), anyString()))
+        .thenReturn(lineView(12));
+    expectAccepted("/v1/billing/PostCharge", postChargeBody("12", "charge-635"));
+    verify(service).postCharge(eq(STAY), eq("nightly-room-charge"), eq("Room 101"), eq(12L), eq("charge-635"),
+        eq("front-desk"));
   }
 }

@@ -39,6 +39,8 @@
     "error.validation.item_undefined": "Khoản phí {itemName} chưa được định nghĩa.",
     "error.validation.price_negative": "priceMinor không được âm.",
     "error.validation.percent_range": "percent phải từ {min} đến {max}.",
+    "error.validation.amount_not_integer": "{field} phải là số nguyên đơn vị nhỏ.",
+    "error.validation.amount_above_ceiling": "{field} phải tối đa {max} đơn vị nhỏ.",
     "error.validation.business_date": "businessDate phải là ngày dạng YYYY-MM-DD.",
     "error.validation.reservation_ref_required": "reservationRef là bắt buộc.",
     "error.validation.stay_id_required": "stayId là bắt buộc.",

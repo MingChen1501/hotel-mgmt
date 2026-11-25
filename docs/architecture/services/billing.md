@@ -14,7 +14,7 @@ Java 21 Spring Boot `web / service / repo (+ config)`, the only stack with a fra
 
 | Layer | Files | Responsibility |
 |---|---|---|
-| Transport + auth + body shaping | `src/main/java/com/hotel/billing/web/BillingController.java` | `@RestController` at `/v1/billing`; `requireToken` enforces Bearer presence (:67-72); `required`/`amountOf` extract and validate body fields (:29-55) |
+| Transport + auth + body shaping | `src/main/java/com/hotel/billing/web/BillingController.java` | `@RestController` at `/v1/billing`; `requireToken` enforces Bearer presence (:117-122); `required`/`amountOf` extract and validate body fields (:39-96) |
 | Envelope | `src/main/java/com/hotel/billing/web/ApiException.java`, `web/ApiExceptionHandler.java` | `ApiException` carries code/status/message/details (:8-42); `@RestControllerAdvice` renders every failure with the shared envelope plus `traceId` (:22-115): an unreadable body, an unreadable or unanswerable media type, an unknown path, and a wrong method as conformance refusals, any other exception as `INTERNAL_ERROR`, while an `ApiException` keeps its own code and status |
 | Validation + step order | `src/main/java/com/hotel/billing/service/BillingService.java` | UUID/actor checks, item-kind rules, amount rules, idempotency claims, folio/payment/invoice/receipt/approval flows |
 | Data access | `src/main/java/com/hotel/billing/repo/BillingRepository.java` | `JdbcTemplate` over the billing schema only: `ensureFolio`, charge/payment inserts, `addToBalance`, `recordApproval`, `claimOrWait`, charge-item catalog (:61-171) |
@@ -40,8 +40,8 @@ flowchart TD
 
 Edge trace (every edge cites code):
 
-- A: missing/blank Bearer → `UNAUTHENTICATED` 401 (`web/BillingController.java:67-72`).
-- B: `stayId`, `itemKind`, `itemName`, `amountMinor` extracted and required (:81-86 via `:29-55`).
+- A: missing/blank Bearer → `UNAUTHENTICATED` 401 (`web/BillingController.java:117-122`).
+- B: `stayId`, `itemKind`, `itemName`, `amountMinor` extracted and required (:131-136 via `:39-96`).
 - C: `stayId` must be a UUID, `itemKind` must be `nightly-room-charge` or `charge-item`, `itemName` required, `amountMinor` non-negative, and the charge item must be defined (`service/BillingService.java:126-140`).
 - D: folio ensured for the stay (`repo/BillingRepository.java:65`); a supplied idempotency key is claimed — the replay returns the original line (`service/BillingService.java:146` via `repo/BillingRepository.java:220`).
 - E: charge line inserted and folio balance updated (`repo/BillingRepository.java:99-135`); F: line view returned to the desk.
@@ -92,8 +92,8 @@ Envelope `{code, message, details, traceId}` (`web/ApiExceptionHandler.java:34-4
 
 | Code | Status | Raised when |
 |---|---|---|
-| `VALIDATION_FAILED` | 400 | missing/blank field, bad UUID/date, bad item kind or method, negative amount, out-of-range percent (`service/BillingService.java:126-193,255-325`); from #629 a body Spring cannot read — malformed JSON, a missing body, or a JSON value that is not an object (`web/ApiExceptionHandler.java:55-67`); from #629 a caller media type Billing cannot read (`Content-Type: text/plain`, a bare `curl -d` form post) or cannot answer (`Accept` naming no JSON) answers the same code because the contract status mapping has no 415/406 entry (`web/ApiExceptionHandler.java:78-82`); from #635, planned, a money value that is not a whole number of minor units or whose magnitude exceeds the ceiling (`web/BillingController.java:47-53`, section 10) |
-| `UNAUTHENTICATED` | 401 | missing session token (`web/BillingController.java:67-72`); a `401` forwarded from Stay is surfaced unchanged |
+| `VALIDATION_FAILED` | 400 | missing/blank field, bad UUID/date, bad item kind or method, negative amount, out-of-range percent (`service/BillingService.java:126-193,255-325`); from #629 a body Spring cannot read — malformed JSON, a missing body, or a JSON value that is not an object (`web/ApiExceptionHandler.java:55-67`); from #629 a caller media type Billing cannot read (`Content-Type: text/plain`, a bare `curl -d` form post) or cannot answer (`Accept` naming no JSON) answers the same code because the contract status mapping has no 415/406 entry (`web/ApiExceptionHandler.java:78-82`); from #635 a money value that is not a whole number of minor units or whose magnitude exceeds the ceiling (`web/BillingController.java:63-96`, section 10) |
+| `UNAUTHENTICATED` | 401 | missing session token (`web/BillingController.java:117-122`); a `401` forwarded from Stay is surfaced unchanged |
 | `NOT_FOUND` | 404 | unknown day-close, folio, payment, or charge line (`service/BillingService.java:206-243`); from #634 an unknown stay on a folio route; from #629 a path no route claims (`web/ApiExceptionHandler.java:86-89`) |
 | `METHOD_NOT_ALLOWED` | 405 | from #629 a known route reached with the wrong method, with the `Allow` header (`web/ApiExceptionHandler.java:94-102`) |
 | `SETTLEMENT_REQUIRED` | 409 | settlement refused without approval (`web/ApiException.java:41-42`) |
@@ -224,17 +224,18 @@ ensure-on-first-use behaviour returns and no data migration exists.
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1046
 
-## 10. Planned delta — money amounts are whole, bounded, and refused in the adapter (Refs #635)
+## 10. Delta — money amounts are whole, bounded, and refused in the adapter (Refs #635)
 
-Today `amountOf` takes any `Number` and returns `number.longValue()`
-(`src/main/java/com/hotel/billing/web/BillingController.java:47-53`, the
-conversion at `:50`), so `12.99` posts 12 and no magnitude is bounded; the
-one helper serves `PostCharge` (`:86`), `RecordPayment` (`:93`), and
-`UpsertChargeItem` (`:129`). The sign rules one layer below
-(`service/BillingService.java:134-136`, `:172-174`, `:321-323`) are
-correct and are not the gap.
+Before this change `amountOf` took any `Number` and returned
+`number.longValue()`
+(`src/main/java/com/hotel/billing/web/BillingController.java:47-53` at
+the spec head, the conversion at `:50`), so `12.99` posted 12 and no
+magnitude was bounded; the one helper serves `PostCharge` (`:136`),
+`RecordPayment` (`:143`), and `UpsertChargeItem` (`:179`). The sign rules
+one layer below (`service/BillingService.java:134-136`, `:172-174`,
+`:321-323`) are correct and are not the gap.
 
-Target, from #635 on:
+As implemented by #635:
 
 - `amountOf` refuses a value that is not a whole number of minor units
   with `VALIDATION_FAILED` (400), `details` naming the field, and the new
@@ -242,16 +243,17 @@ Target, from #635 on:
   and refuses a magnitude above **1 000 000 000 000** minor units with the
   new `error.validation.amount_above_ceiling` sentence, `{max}` rendered
   through `Messages.formatNumber`. The ceiling is one `static final`
-  constant in `BillingController`, not configuration.
+  constant in `BillingController` (`:33`), not configuration.
 - Whole-ness is read from the decimal spelling (`BigDecimal` from
-  `number.toString()`, the conversion `percentOf` already uses at `:59`),
-  so `12.0` stays the whole amount 12 and is accepted exactly as `12` is;
-  the bound is on the magnitude, so a huge negative refuses in the adapter
-  while an in-range negative keeps the service's sign refusal.
+  `number.toString()`, the conversion `percentOf` already uses at
+  `:111`), so `12.0` stays the whole amount 12 and is accepted exactly as
+  `12` is; the bound is on the magnitude, so a huge negative refuses in
+  the adapter while an in-range negative keeps the service's sign
+  refusal.
 - A present money field that is not a JSON number answers
   `error.validation.field_number` naming the field; an absent one keeps
-  `error.validation.field_required` (`:51-52`).
-- `percentOf` (`:55-64`) gets the same presence-versus-type split, so a
+  `error.validation.field_required` (`:65-67`).
+- `percentOf` (`:102-115`) gets the same presence-versus-type split, so a
   present non-numeric `percent` names `percent` with `field_number`
   instead of the missing-field sentence. Nothing else about the percent
   adapter moves: a fractional rate such as `8.5` stays accepted and the

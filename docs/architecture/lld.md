@@ -4937,7 +4937,7 @@ flowchart TD
 Edge trace:
 
 - A–B: Bearer presence at the transport
-  (`web/BillingController.java:67-72`); UUID, actor, item, method, and
+  (`web/BillingController.java:117-122`); UUID, actor, item, method, and
   amount checks in the service (`service/BillingService.java:86-92`, `:111-116`,
   `:126-140`, `:166-175`, `:255-262`).
 - B–C: an existing folio is served without a stay read, so a departed
@@ -5635,14 +5635,17 @@ trigger (30.7).
 
 ### 30.1 One ceiling, enforced in the one helper every money field already uses
 
-As-built at this head: `amountOf` takes any `Number` and returns
-`number.longValue()` (`services/billing/src/main/java/com/hotel/billing/web/BillingController.java:47-53`,
-the conversion at `:50`), so `12.99` posts 12 and a magnitude beyond
-anything the product can produce enters the stored `long` with no bound.
-One helper serves all three money fields — `PostCharge.amountMinor`
-(`:86`), `RecordPayment.amountMinor` (`:93`), and
-`UpsertChargeItem.priceMinor` (`:129`) — and no caller checks the
-magnitude.
+As found (audit B2, at the spec head): `amountOf` took any `Number` and
+returned `number.longValue()`
+(`services/billing/src/main/java/com/hotel/billing/web/BillingController.java:47-53`
+at that head, the conversion at `:50`), so `12.99` posted 12 and a
+magnitude beyond anything the product can produce entered the stored
+`long` with no bound. One helper serves all three money fields —
+`PostCharge.amountMinor` (`:136`), `RecordPayment.amountMinor` (`:143`),
+and `UpsertChargeItem.priceMinor` (`:179`) — and no caller checks the
+magnitude. This PR closes it in that one helper (`:63-96`, the ceiling
+at `:33`, the whole-number check at `:83-87`, the magnitude bound at
+`:91-94`, the exact conversion at `:95`).
 
 The decided mechanism:
 
@@ -5656,12 +5659,13 @@ The decided mechanism:
   `BillingControllerTest` reads the declared value instead of repeating
   the literal.
 - **Enforcement point: `amountOf`**
-  (`BillingController.java:47-53`), the single place every money field
+  (`BillingController.java:63-96`), the single place every money field
   already passes through before its service call. The presence check
-  already lives there (`:52`), so presence, type, whole-ness, and bound
-  stay in one helper and the rule has no second copy to drift from.
+  already lives there (`:65-67`), so presence, type, whole-ness, and
+  bound stay in one helper and the rule has no second copy to drift
+  from.
 - **Why not bean validation on a request DTO:** the routes bind
-  `@RequestBody Map<String, Object>` (`:76` and every sibling) and read
+  `@RequestBody Map<String, Object>` (`:126` and every sibling) and read
   fields by hand, so there is no typed request object to annotate.
   Introducing one DTO per money operation to reach `@Min`/`@Max` would
   be a wider refactor than the bound it would carry, and it would still
@@ -5671,7 +5675,7 @@ The decided mechanism:
   promise nothing enforces (30.5).
 - **Read shape and the whole-number test.** The value is read as a
   `BigDecimal` built from `number.toString()` — the same conversion
-  `percentOf` already uses (`:59`) — so a JSON integer arrives exact
+  `percentOf` already uses (`:111`) — so a JSON integer arrives exact
   (`Integer`/`Long` render as `"12000"`) and a JSON double's decimal
   spelling decides whole-ness. The test is on the value, not the Java
   type: strip the trailing zeros and require a scale of at most zero, so
@@ -5692,11 +5696,11 @@ The ladder a money request walks, with each step's owner and answer:
 | Step | Where | Answer | Spec |
 |---|---|---|---|
 | 1. body ceiling | `MaxBodySizeFilter` (`:38`, `:43`), ahead of Spring binding | `VALIDATION_FAILED` 400, `details.field` `body`, `error.transport.body_too_large` | section 29 |
-| 2. session | `requireToken` (`BillingController.java:67-72`), before any field is read (`:84`, `:92`, `:128`) | `UNAUTHENTICATED` 401 | unchanged |
-| 3. field absent | `amountOf` (`:51-52`) | `VALIDATION_FAILED` 400, `error.validation.field_required` | unchanged |
-| 4. present, not a JSON number | `amountOf` (new branch) | `VALIDATION_FAILED` 400, `error.validation.field_number` | new (30.8 shape note) |
-| 5. present, not a whole number of minor units | `amountOf` (new branch) | `VALIDATION_FAILED` 400, `details.field` the field, `error.validation.amount_not_integer` | new |
-| 6. magnitude above the ceiling | `amountOf` (new branch) | `VALIDATION_FAILED` 400, `details.field` the field, `error.validation.amount_above_ceiling` | new |
+| 2. session | `requireToken` (`BillingController.java:117-122`), before any field is read (`:134`, `:142`, `:179`) | `UNAUTHENTICATED` 401 | unchanged |
+| 3. field absent | `amountOf` (`:65-67`) | `VALIDATION_FAILED` 400, `error.validation.field_required` | unchanged |
+| 4. present, not a JSON number | `amountOf` (`:68-70`) | `VALIDATION_FAILED` 400, `error.validation.field_number` | new (30.8 shape note) |
+| 5. present, not a whole number of minor units | `amountOf` (`:83-87`) | `VALIDATION_FAILED` 400, `details.field` the field, `error.validation.amount_not_integer` | new |
+| 6. magnitude above the ceiling | `amountOf` (`:91-94`) | `VALIDATION_FAILED` 400, `details.field` the field, `error.validation.amount_above_ceiling` | new |
 | 7. service rules | `BillingService` (`:126-146`, `:168-190`, `:319-324`) | item kind, item defined, method, sign refusals — unchanged | unchanged |
 | 8. write | `ensureFolio`, idempotency claim, insert, balance, outbox (`:142-160`, `:176-190`, `:324`) | success payload | unchanged |
 
@@ -5712,7 +5716,7 @@ payment. D-35 records that as a named consequence, not a gap.
   what they serve today (ADR-0004 D1).
 - **Messages: two new plain catalogue sentences** in
   `services/billing/src/main/resources/messages/en.json`, beside the
-  existing `error.validation.*` family (`:22-53`):
+  existing `error.validation.*` family (`:23-62`):
   `error.validation.amount_not_integer` ("{field} must be a whole number
   of minor units.") and `error.validation.amount_above_ceiling` ("{field}
   must be at most {max} minor units."). `{max}` is rendered through
@@ -5744,23 +5748,24 @@ payment. D-35 records that as a named consequence, not a gap.
 
 ### 30.3 The percent adapter bounds the number, not the money
 
-A tax rate is not a money amount. `percentOf` already builds a
-`BigDecimal` from `number.toString()` (`BillingController.java:55-64`,
-the conversion at `:59`) and already maps an unreadable conversion to
-`error.validation.field_number` naming the field (`:60-62`); the 0–100
+A tax rate is not a money amount. `percentOf` builds a `BigDecimal` from
+`number.toString()` (`BillingController.java:102-115`, the conversion at
+`:111`) and maps an unreadable conversion to
+`error.validation.field_number` naming the field (`:112-113`); the 0–100
 range stays the service's (`BillingService.java:340-342`,
 `error.validation.percent_range`), and a fractional percent such as `8.5`
 stays accepted and drives the derivation exactly as today. No ceiling and
 no whole-number rule apply to `percent`.
 
-The one shape change: today the `value instanceof Number` test doubles as
-the presence test, so a *present* percent that is not a JSON number (a
-string, an object) falls through to `error.validation.field_required`
-(`:63-64`) — the missing-field sentence for a field the caller sent.
-After the change an absent percent keeps `field_required`, and a present
-value that is not a number answers `field_number` naming `percent`. No
-key is added: the sentence and its key already exist and are already
-pinned by the catalogue guard.
+The one shape change: before this PR the `value instanceof Number` test
+doubled as the presence test, so a *present* percent that is not a JSON
+number (a string, an object) fell through to
+`error.validation.field_required` — the missing-field sentence for a
+field the caller sent. After the change an absent percent keeps
+`field_required` (`:104-106`), and a present value that is not a number
+answers `field_number` naming `percent` (`:107-109`). No key is added:
+the sentence and its key already exist and are already pinned by the
+catalogue guard.
 
 Product rule 5 in `docs/product/acceptance-criteria.md` section 23 and
 `AC-AMT-1` name `error.validation.field_number` for a present non-number
@@ -5774,11 +5779,11 @@ states the adapter's shape; it adds no acceptance condition.
 
 ```mermaid
 flowchart TD
-    A[POST /v1/billing/PostCharge, RecordPayment, or UpsertChargeItem carrying a money field  BillingController.java:81 / :89 / :125] --> B{MaxBodySizeFilter: body within 65 536 bytes  MaxBodySizeFilter.java:38}
+    A[POST /v1/billing/PostCharge, RecordPayment, or UpsertChargeItem carrying a money field  BillingController.java:131 / :139 / :175] --> B{MaxBodySizeFilter: body within 65 536 bytes  MaxBodySizeFilter.java:38}
     B -->|over-limit body| X1[existing 400 VALIDATION_FAILED, details field body, error.transport.body_too_large]
-    B -->|within the ceiling| C{requireToken: Bearer session present  BillingController.java:67-72}
+    B -->|within the ceiling| C{requireToken: Bearer session present  BillingController.java:117-122}
     C -->|missing or blank| X2[401 UNAUTHENTICATED, no field read]
-    C -->|accepted| D{amountOf reads the money field  BillingController.java:47-53}
+    C -->|accepted| D{amountOf reads the money field  BillingController.java:63-96}
     D -->|absent| R1[existing 400 VALIDATION_FAILED field_required]
     D -->|present, not a JSON number| R2[new 400 VALIDATION_FAILED field_number, details field]
     D -->|present, not a whole number of minor units| R3[new 400 VALIDATION_FAILED amount_not_integer, details field]
@@ -5795,36 +5800,36 @@ flowchart TD
     E --> E2[rollback frame: a refusal is the whole outcome of its call, so nothing is compensated and no retry key was consumed]
 ```
 
-Edge trace (every edge cites code at this spec head; the two new refusal
-branches are the guards `AC-AMT-2` and `AC-AMT-5` require the
-implementation to add):
+Edge trace (every edge cites code as implemented at this head; the two
+new refusal branches are the guards `AC-AMT-2` and `AC-AMT-5` require,
+added by this PR):
 
 - A–B: Billing's body-bounding filter
   (`services/billing/src/main/java/com/hotel/billing/web/MaxBodySizeFilter.java:38`,
   `doFilterInternal` `:43`) runs ahead of Spring's `@RequestBody`
-  binding (`BillingController.java:76` and every sibling), so the
+  binding (`BillingController.java:126` and every sibling), so the
   transport refusal of section 29 answers first and keeps its answer.
 - B–X1: the existing `error.transport.body_too_large` envelope (LLD
   section 29.2), untouched by this change.
 - B–C: `requireToken`
-  (`services/billing/src/main/java/com/hotel/billing/web/BillingController.java:67-72`),
-  called before any field is read on the three money routes (`:84`,
-  `:92`, `:128`) and on the percent route (`:137`).
+  (`services/billing/src/main/java/com/hotel/billing/web/BillingController.java:117-122`),
+  called before any field is read on the three money routes (`:134`,
+  `:142`, `:179`) and on the percent route (`:187`).
 - C–X2: the existing `UNAUTHENTICATED` 401, unchanged — a money rule is
   never reached without a session (AC-AMT-5's no-change clause).
 - C–D: `amountOf`
-  (`BillingController.java:47-53`), called at `:86`, `:93`, and `:129`.
-- D–R1: the existing presence refusal (`:51-52`), unchanged.
+  (`BillingController.java:63-96`), called at `:136`, `:143`, and `:179`.
+- D–R1: the existing presence refusal (`:65-67`), unchanged.
 - D–R2: the new presence-versus-type split (30.3's rule, applied to the
   money fields too).
 - D–R3 and D–R4: the two checks the implementation adds inside
-  `amountOf`; both refuse before the service call, so nothing is written
-  (`AC-AMT-1`, `AC-AMT-2`).
+  `amountOf` (`:83-87`, `:91-94`); both refuse before the service call,
+  so nothing is written (`AC-AMT-1`, `AC-AMT-2`).
 - R1–R4–E: one `ApiException` answered by
   `ApiExceptionHandler`'s envelope
   (`services/billing/src/main/java/com/hotel/billing/web/ApiExceptionHandler.java:30-40`),
   carrying `details` and a fresh `traceId`; the service is mocked in
-  `BillingControllerTest` (`:41-42`), which is how the guards prove no
+  `BillingControllerTest` (`:47-48`), which is how the guards prove no
   call ran.
 - D–F: the service call itself (`BillingService.java:126-146`,
   `:168-190`, `:319-324`); the sign refusals at `:134-136`, `:172-174`,
@@ -5882,7 +5887,7 @@ have to be held equal to the adapter constant in the same change.
 section 23); this is the architecture-side check the implementation must
 satisfy. Every guard lives in
 `services/billing/src/test/java/com/hotel/billing/web/BillingControllerTest.java`
-(MockMvc, service mocked at `:41-42`) unless noted.
+(MockMvc, service mocked at `:47-48`) unless noted.
 
 - **Constant guard.** The declared `MONEY_CEILING_MINOR` equals
   1 000 000 000 000 and the same value bounds all three fields.
@@ -5901,13 +5906,13 @@ satisfy. Every guard lives in
 - **Whole value spelled with a decimal point.** `12.0` is served exactly
   as `12` is.
 - **In-range regression, per field.** The existing amounts
-  (`BillingControllerTest.java:48`, `:63`) keep their answer, and
+  (`BillingControllerTest.java:53`, `:68`) keep their answer, and
   `RecordPayment`/`UpsertChargeItem` gain an in-range success case
-  because no controller test drives them today.
+  because no controller test drove them before this PR.
 - **Percent guards.** A present non-numeric `percent` answers
   `field_number` naming `percent`; `8.5` is accepted and derives as
   today; the existing 0–100 and absent-field refusals
-  (`services/billing/src/test/java/com/hotel/billing/service/BillingServiceTest.java:103`)
+  (`services/billing/src/test/java/com/hotel/billing/service/BillingServiceTest.java:104`)
   stay unedited.
 - **Catalogue guards.** One assertion per new key pins its sentence with
   the placeholders rendered
@@ -5915,9 +5920,9 @@ satisfy. Every guard lives in
   carries the same sample-guard shape), and
   `script/catalogue-coverage-check.sh` stays green.
 - **Existing suites pass unedited** — no success or refusal assertion
-  moves for an in-ceiling amount (`BillingControllerTest.java:106`,
-  `:296`, `:326`, `:351`; `BillingServiceTest.java:54`, `:86`, `:103`,
-  `:120`) — and `script/contract-check.sh` stays green with no contract
+  moves for an in-ceiling amount (`BillingControllerTest.java:111`,
+  `:301`, `:331`, `:356`; `BillingServiceTest.java:55`, `:87`, `:104`,
+  `:154`) — and `script/contract-check.sh` stays green with no contract
   file change.
 - **Gate commands** (from `docs/architecture/services/billing.md`
   section 7): `mvn verify` in `services/billing`, plus
