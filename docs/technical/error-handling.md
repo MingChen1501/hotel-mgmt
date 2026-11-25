@@ -94,6 +94,42 @@ LLD [section 30](../architecture/lld.md#30-money-amount-bounds-on-the-billing-fo
 product conditions: `docs/product/acceptance-criteria.md` section 23
 (`AC-AMT-1`..`AC-AMT-5`); business rule BR-61.
 
+### 1.3 Report-window span cap (Refs #641)
+
+A report window is a **span at or under 730 nights** between `dateFrom`
+and `dateTo` — 731 inclusive dates. A wider window is the caller's
+mistake, so it uses the same caller-input code as every other field
+refusal, not a fault and not a new token: HTTP 400 `VALIDATION_FAILED`,
+`details` naming `dateTo`, a fresh `traceId`, and one plain catalogue
+sentence in Reporting's catalogue —
+`reporting.validation.date_range_span` ("dateTo must be at most {max}
+nights after dateFrom."), with `{max}` rendered from the store constant
+through the catalogue number formatter. It applies to exactly the two
+range reports, `OccupancyReport` and `RevenueSummary`; `DailySheet`
+carries one business date and `HousekeepingReport` carries no range, so
+neither gains a bound.
+
+The refusal is raised where the window is validated, after the session
+check and the presence checks and **before the store lock is taken and
+before any per-date walk runs**, so a refused window holds no mutex,
+walks no date, reads no projection, and never delays another report —
+the condition that makes the cap worth having.
+
+Rules that do not move: a missing `dateFrom`/`dateTo` keeps
+`error.validation.date_from_required` / `date_to_required`, a malformed
+end keeps `error.validation.date_from_format` / `date_to_format`
+naming the field, and `dateTo` before `dateFrom` keeps
+`error.validation.date_range_order` naming `dateTo` — the order check
+answers before the span comparison, so a reversed window never shows the
+span sentence. A window at exactly 730 nights is served with the rows,
+row order, zero-filled dates, and `asOf` it returns today. The cap is
+one store constant, never configuration. Enforcement point, the
+nights-versus-dates arithmetic, and the per-flow diagram: LLD
+[section 31](../architecture/lld.md#31-reporting-date-ranges-carry-a-declared-span-cap-refs-641);
+product conditions: `docs/product/acceptance-criteria.md` section 24
+(`AC-RPT-5`..`AC-RPT-7`); requirement `NFR-RPT-1` in
+`docs/requirements/mvp-requirements.md` section 32; business rule BR-62.
+
 ## 2. Conflict semantics (overbooking and double assignment)
 
 - A booking refused for lack of sellable availability returns
@@ -220,3 +256,6 @@ Role: architect · AO session hotel-mgmt-1046
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1117
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1130
