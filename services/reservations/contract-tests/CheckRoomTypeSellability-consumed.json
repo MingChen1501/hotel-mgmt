@@ -1,7 +1,7 @@
 {
   "operation": "CheckRoomTypeSellability",
   "case": "consumed-by-reservations",
-  "description": "Consumer fixture: Reservations calls Rooms CheckRoomTypeSellability inside the booking step (integration C2).",
+  "description": "Consumer fixture: Reservations calls Rooms CheckRoomTypeSellability inside the booking step (integration C2, ADR-0006). The guard consumes totalCount and blockedRooms only and derives the ceiling as totalCount - blockedRooms; the derived sellableCount is not consumed.",
   "request": { "roomType": "Deluxe", "dateFrom": "2026-11-01", "dateTo": "2026-11-03" },
-  "expect": { "status": 200, "sellableCount": 1 }
+  "expect": { "status": 200, "totalCount": 2, "blockedRooms": [], "derivedCeiling": 2 }
 }

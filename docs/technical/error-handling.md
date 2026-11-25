@@ -115,6 +115,13 @@ product conditions: `docs/product/acceptance-criteria.md` section 23
   `UPSTREAM_UNAVAILABLE` (503), never `SETTLEMENT_REQUIRED`: the gate
   fails closed on an unverified balance rather than reporting an
   unpaid folio it did not read (Refs #601).
+- A booking whose capacity source cannot be read returns
+  `UPSTREAM_UNAVAILABLE` (503), never `CONFLICT`: the guard fails
+  closed on an unverified ceiling rather than reporting a sold-out type
+  it did not read (Refs #631).
+- A booking refused because the recorded capacity is exhausted returns
+  `CONFLICT` naming the room type and dates, whether the request's
+  `sellableUnits` agreed with that capacity or not (Refs #631).
 - An out-of-role attempt returns `FORBIDDEN` (`NFR-SEC-1`).
 
 ## 3. Non-goals
