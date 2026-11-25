@@ -50,7 +50,7 @@ Reservations provider operation `CheckOutReservation` after its
 `in-house -> closed` flip commits, resolving the booking by the
 `stay_id` link set at check-in (`services/stay/src/store.ts:260-292`
 is the as-built close that completes nothing;
-`services/reservations/internal/store/store.go:194-196` is the active
+`services/reservations/internal/store/store.go:204-206` is the active
 set the booking now leaves). The `CheckOut` response gains the additive
 `bookingCompletion` object (`1.0 -> 1.1`), which tells the desk whether
 the completion was recorded. No lifecycle state is added: `closed`
@@ -319,7 +319,7 @@ merges, and the owner merges it personally. The guard registry
 `qa-lead` handoff (`../testing/price-authority-test-traceability.md`);
 every one of those guards is created by the implementation PR, which also
 rewires the two service pins that today assert the caller-supplied total
-(`services/reservations/internal/service/service_test.go:34-47`,
+(`services/reservations/internal/service/service_test.go:46-61`,
 `:121-135`) rather than deleting them. Verification at merge: the
 Reservations stack builds, vets, formats, and tests green; the Rates
 stack green as a re-run with no delta; `script/contract-check.sh` green
@@ -381,7 +381,7 @@ needs explicit owner approval and the owner merges manually.
 **Install/upgrade delta.** The reservations module gains one bundle-level
 variable, `ROOMS_BASE_URL` (bundle default `http://rooms:8085`, wired
 beside `RATES_BASE_URL` in `deploy/compose.yaml:46`; boot wiring
-`services/reservations/cmd/server/main.go:44-48`). It is a bundle default,
+`services/reservations/cmd/server/main.go:44-49`). It is a bundle default,
 not a per-hotel value: the standard upgrade carries it automatically, and
 only the small-cluster placement changes it when the Rooms module moves
 hosts (`../devops/deployment.md`, section 2). Restart order, pre-flight

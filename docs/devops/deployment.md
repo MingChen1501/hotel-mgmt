@@ -89,7 +89,7 @@ hotel. The reservations module reads two of them at boot: `RATES_BASE_URL`
 (`deploy/compose.yaml:46`) and — target state for the next bundle, Refs
 #631 — `ROOMS_BASE_URL` (default
 `http://rooms:8085`; wiring
-`services/reservations/cmd/server/main.go:44-48`). Both calls forward the
+`services/reservations/cmd/server/main.go:44-49`). Both calls forward the
 caller's session token and fail closed. `ROOMS_BASE_URL` is the ceiling
 source for the overbooking guard (Refs #631,
 `../architecture/lld.md` section 26): a booking whose capacity read fails
