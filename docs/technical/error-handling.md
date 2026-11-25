@@ -65,6 +65,35 @@ per-service enforcement points are LLD
 the product conditions are `docs/product/acceptance-criteria.md`
 section 22 (`AC-BND-1`..`AC-BND-5`).
 
+### 1.2 Money-amount bounds (Refs #635)
+
+A money field accepts a **whole number of minor units at or below
+1 000 000 000 000**. A value outside that shape is the caller's mistake,
+so it uses the same caller-input code as every other field refusal, not
+a fault and not a new token: HTTP 400 `VALIDATION_FAILED`, `details`
+naming the field (`amountMinor` or `priceMinor`), a fresh `traceId`, and
+one plain catalogue sentence in Billing's catalogue —
+`error.validation.amount_not_integer` ("{field} must be a whole number
+of minor units.") for a value that is not whole, or
+`error.validation.amount_above_ceiling` ("{field} must be at most {max}
+minor units.") for a magnitude above the ceiling, with `{max}` rendered
+through the existing number formatter. The refusals are raised in
+Billing's adapter before the service, store, provider, or folio call, so
+a refused request writes nothing and consumes no idempotency key.
+
+Rules that do not move: a whole value written with a decimal point
+(`12.0`) is served as the whole amount it is; an absent field keeps
+`error.validation.field_required`; a present value that is not a JSON
+number answers `error.validation.field_number`; the sign rules
+(`amount_negative`, `amount_positive`, `price_negative`) stay in the
+service layer; and a tax-rule percent is bounded as a number only — a
+fractional percent stays accepted and the 0–100 range stays the
+service's (`error.validation.percent_range`). The ceiling is one code
+constant, never configuration. Enforcement point and per-flow diagram:
+LLD [section 30](../architecture/lld.md#30-money-amount-bounds-on-the-billing-folio-write-adapter-refs-635);
+product conditions: `docs/product/acceptance-criteria.md` section 23
+(`AC-AMT-1`..`AC-AMT-5`); business rule BR-61.
+
 ## 2. Conflict semantics (overbooking and double assignment)
 
 - A booking refused for lack of sellable availability returns
@@ -188,3 +217,6 @@ than on the caller's id. The rule set, applied to `PostCharge`,
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1046
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1117

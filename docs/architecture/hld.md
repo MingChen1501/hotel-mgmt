@@ -709,3 +709,52 @@ loose; rollback is the single implementation PR.
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1078
+
+## 22. Money amounts are whole, bounded, and refused in the adapter (Refs #635)
+
+A money field that accepts any JSON number is not a money field. Billing's
+adapter took any `Number` and truncated it with `longValue()`
+(`services/billing/src/main/java/com/hotel/billing/web/BillingController.java:47-53`),
+so `amountMinor: 12.99` posted 12 with no refusal and a magnitude beyond
+anything the product can produce entered the stored `long`. From #635,
+every money amount Billing accepts is a **whole number of minor units at
+or below one declared ceiling of 1 000 000 000 000**, refused naming the
+field otherwise.
+
+Three properties define the change:
+
+- **Whole, never truncated.** A value that is not a whole number of minor
+  units refuses with the shared envelope (`VALIDATION_FAILED`, 400,
+  `details` naming the field) instead of being rounded or truncated; a
+  whole value written with a decimal point (`12.0`) stays accepted.
+- **One ceiling, in code.** 1 000 000 000 000 minor units for every money
+  field, a constant in the adapter, never configuration — the #630
+  pattern — so this change carries no deployment, environment, runbook,
+  or per-hotel delta. The magnitude is what is bounded, so a huge
+  negative refuses here while an in-range negative keeps the existing
+  service sign refusal.
+- **No new vocabulary at the transport edge.** `VALIDATION_FAILED` is
+  already in `contracts/errors/envelope.json`; no token, status, enum
+  edit, or contract file changes, and no desk branch is added — both desk
+  money inputs already send whole minor units
+  (`app/src/views/FolioView.vue:441-451`). A tax-rule percent stays a
+  number: fractional percents are still accepted and the 0–100 range
+  stays the service's.
+
+The change adds no subsystem, dependency edge, data model, lifecycle
+state, operation, or reader-visible surface: it is a bound on four
+existing operations (`PostCharge`, `RecordPayment`, `UpsertChargeItem`,
+and the tax-rule percent adapter), so the container and component views
+(sections 2 and 3) stand unchanged. Enforcement point, the refusal
+contents, the per-flow diagram with the folio-write refusal frame, the
+contract decision, and the verification plan:
+`docs/architecture/lld.md` [section 30](lld.md#30-money-amount-bounds-on-the-billing-folio-write-adapter-refs-635);
+per-service note: `docs/architecture/services/billing.md` section 10;
+the refusal in the taxonomy:
+`docs/technical/error-handling.md` section 1.2; the money convention with
+its ceiling: `docs/technical/api-spec.md` section 1. Risk R-16 records
+that the ceiling can be set too tight as well as too loose; rollback is
+the single implementation PR.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1117
