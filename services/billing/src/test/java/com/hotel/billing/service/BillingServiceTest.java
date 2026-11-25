@@ -9,6 +9,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.hotel.billing.repo.BillingRepository;
@@ -114,6 +115,39 @@ class BillingServiceTest {
         () -> service.upsertTaxFeeRule("VAT", new BigDecimal("101"), "front-desk"));
     assertEquals("VALIDATION_FAILED", overHundred.code());
     verify(repo, never()).upsertTaxFeeRule(anyString(), any(), anyString());
+  }
+
+  // AMT13 (Refs #635): the sign rules stay in the service; the money
+  // adapter only passes an in-range negative through to this layer.
+  @Test
+  void postChargeKeepsItsNegativeAmountRefusal() {
+    ApiException err = assertThrows(ApiException.class,
+        () -> service.postCharge(STAY.toString(), "nightly-room-charge", "Room 101", -1, null, "front-desk"));
+    assertEquals("VALIDATION_FAILED", err.code());
+    assertEquals("amountMinor", err.details().get("field"));
+    verifyNoInteractions(repo);
+  }
+
+  @Test
+  void recordPaymentKeepsItsPositiveAmountRefusal() {
+    ApiException zero = assertThrows(ApiException.class,
+        () -> service.recordPayment(STAY.toString(), "cash", 0, null, "front-desk"));
+    assertEquals("VALIDATION_FAILED", zero.code());
+    assertEquals("amountMinor", zero.details().get("field"));
+    ApiException negative = assertThrows(ApiException.class,
+        () -> service.recordPayment(STAY.toString(), "cash", -1, null, "front-desk"));
+    assertEquals("VALIDATION_FAILED", negative.code());
+    assertEquals("amountMinor", negative.details().get("field"));
+    verifyNoInteractions(repo);
+  }
+
+  @Test
+  void upsertChargeItemKeepsItsNegativePriceRefusal() {
+    ApiException err = assertThrows(ApiException.class,
+        () -> service.upsertChargeItem("Breakfast", -1, "front-desk"));
+    assertEquals("VALIDATION_FAILED", err.code());
+    assertEquals("priceMinor", err.details().get("field"));
+    verifyNoInteractions(repo);
   }
 
   @Test

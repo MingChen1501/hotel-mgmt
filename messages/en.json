@@ -39,6 +39,8 @@
     "error.validation.item_undefined": "Charge item {itemName} is not defined.",
     "error.validation.price_negative": "priceMinor cannot be negative.",
     "error.validation.percent_range": "percent must be between {min} and {max}.",
+    "error.validation.amount_not_integer": "{field} must be a whole number of minor units.",
+    "error.validation.amount_above_ceiling": "{field} must be at most {max} minor units.",
     "error.validation.business_date": "businessDate must be a YYYY-MM-DD date.",
     "error.validation.reservation_ref_required": "reservationRef is required.",
     "error.validation.stay_id_required": "stayId is required.",
