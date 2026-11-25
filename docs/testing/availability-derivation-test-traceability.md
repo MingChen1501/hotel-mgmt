@@ -79,55 +79,62 @@ catalogue key, and moves no MVP row.
   an unread capacity is never consulted at all. `OR-1` records the
   pair.
 
-## 2. Pins on disk at this spec head
+## 2. Pins on disk (re-pinned by the #631 implementation PR)
 
-Every `file:line` below was read on the restacked stack head
-(`091ff62`; the code tree is identical to `master` at `e1b5ca3`, the
-stack commits are docs-only). They pin today's request-trusting behaviour;
-the implementation PR rewrites the behaviour pins in place, with a
-`#631` note, and never deletes one.
+The behaviour pins below were re-read against the implementation tree
+that lands the seam (`#631`, `dev`), rewriting the pre-change pins in
+place as section 8's re-pin rule requires; none was deleted. The
+contract, desk, rooms, and script pins were unchanged by the
+implementation PR and are re-read as-is. Where a row names one of the
+guards `O1`–`O13`, the guard itself is listed in section 3.
 
-| Pin | What it proves today | Note for the implementation PR |
+| Pin | What it proves now | Note |
 |---|---|---|
-| `services/reservations/internal/handler/handler.go:168`, `:183` (`CreateReservation`) | `sellableUnits` is read from the request body and threaded into `service.CreateRequest`; nothing reads a capacity source | Replaced by the server-derived ceiling; the field stays accepted and ignored |
-| `services/reservations/internal/handler/handler.go:278`, `:290` (`ModifyReservation`) | The same read on the modify path | Same on modify; the ceiling is read for the effective type and dates |
-| `services/reservations/internal/handler/handler.go:409-414` (`sellUnits`) | An absent `sellableUnits` becomes `0`, which the store then refuses as `VALIDATION_FAILED` | Removed: absent must be accepted (`O3`); the body is shape-checked only when the field is present |
-| `services/reservations/internal/store/store.go:203`, `:377` | `input.SellableUnits < 1` is a hard validation on both paths, so the request's number is a decision input | Removed; the guard reads the derived capacity input instead |
-| `services/reservations/internal/store/store.go:195-197` (`activeState`) | The counted states are `confirmed` and `checked-in` | Kept as built (`O10`) |
-| `services/reservations/internal/store/store.go:206-226` (`Create`) | The mutex at `:206`, the replay lookup at `:209`, the overlap count, and `if booked >= input.SellableUnits` at `:222` inside one critical section | The same critical section compares against the derived ceiling; the request's number does not reach the store (`O8`) |
-| `services/reservations/internal/store/store.go:376-415` (`Modify`) | The twin guard at `:415`, excluding the reservation itself (`:408`) | Same, on the effective type and dates (`O4`, `O8`) |
-| `services/reservations/internal/store/postgres.go:146-147`, `:183`, `:483`, `:560` (transaction `:486-640`) | The Postgres twin validates and compares the request's number in its transaction | Both paths take the derived ceiling as input (`O11`) |
-| `services/reservations/internal/service/service.go:114-119`, `:219-224` | The Rates stay-restriction check runs first and refuses `STATE_ILLEGAL` before the guard | The capacity read is inserted after the restriction check and before the store call; the refusal order is unchanged |
-| `services/reservations/internal/service/service.go:207-218` | The effective room type and dates of a modification (request value, else the stored row) | The capacity read uses these effective values |
-| `services/reservations/internal/service/service.go:126`, `:232` | The request's `sellableUnits` is threaded into `store.CreateInput` / `store.ModifyInput` | Replaced by the derived ceiling; the request field is no longer threaded into the store |
-| `services/reservations/internal/pricing/client.go:33`, `:52-59`, `:88-96` | The wired Reservations -> Rates client: five-second timeout, Bearer token forwarded, fail-closed `UPSTREAM_UNAVAILABLE` 503 naming upstream and operation | The shape the availability client follows (`O6`, `O7`) |
-| `services/reservations/internal/store/store_test.go:32-70` (`TestPairedBookingExactlyOneWins`) | Paired create yields exactly one winner and one `CONFLICT` naming type+dates, one row — with the ceiling fed from the request today | Rewritten to the derived ceiling; the assertions stay (`O8`) |
-| `services/reservations/internal/store/store_test.go:87-105` (`TestIdempotentReplayReturnsOriginal`) | A repeated key returns the original record and writes one row | Kept with a derived ceiling (`O9`) |
-| `services/reservations/internal/store/store_test.go:253-316` (`TestPairedModifyExactlyOneWins`) | Paired modify onto the last unit yields one winner and one `CONFLICT` | Kept (`O8`) |
-| `services/reservations/internal/store/store_test.go:187-229`, `:318-344`, `:384-417` | Modify reprices and records the change; cancel and no-show release the held dates | Keep green; they are the release half of `O10` |
-| `services/reservations/internal/store/postgres_test.go:106-135` (`TestPostgresPairedBookingExactlyOneWins`) | The Postgres transaction yields one winner under the same pair | Extended for the derived ceiling (`O11`) |
-| `services/reservations/internal/handler/handler_test.go:59-91` (`TestDeskLoopBookThenOverbookingRefused`); request body at `:46-58` sets `sellableUnits: 1` | First booking accepted, second overlapping refused 409 `CONFLICT` — both decide on the request's number | Extended: the same two calls with an inflated number (`O2`) |
-| `services/reservations/internal/service/service_test.go:92-119` (`TestGuardRefusesSecondBookingForLastUnit`), `:80-90` (`TestCreateNilHookFailsClosed`) | The service-level pair and the wired-hook fail-closed precedent | Extended with the availability hook (`O5`, `O6`) |
-| `services/reservations/internal/pricing/client_test.go:61-84` | Fail-closed 503 on an unreachable and an unparseable upstream | The pattern `O6` copies for Rooms |
-| `services/rooms/src/store.ts:307-359` (`checkSellability`), `:343-356` (of-type rooms and blocked rooms) | The reply the ceiling derives from: `totalCount`, `blockedRooms`, and the derived `sellableCount` | Consumed fields are `totalCount` and `blockedRooms`; `sellableCount` is not consumed (ADR-0006 D2) |
-| `services/rooms/src/server.ts:190-191` | The `CheckRoomTypeSellability` route the consumer calls | Unchanged |
-| `contracts/http/CreateReservation.json` (version `1.1`; `request.required` includes `sellableUnits`, `minimum: 1`) | The caller's number is contract-required | `architect` bumps to `1.2`: optional and advisory, errors add `UPSTREAM_UNAVAILABLE` (503) |
-| `contracts/http/ModifyReservation.json` (version `1.0`; `request.required` includes `sellableUnits`) | The same on modify | `architect` bumps to `1.1` |
-| `contracts/http/CheckRoomTypeSellability.json` (version `1.0`; required `totalCount`, `sellableCount`, `blockedRooms`) | The shape the new consumer reads | Shape unchanged; the server-side consumer goes live |
-| `contracts/errors/envelope.json:9`, `:22` | The code enum lists `UPSTREAM_UNAVAILABLE` and `statusMapping` maps it to 503 (registered by #627), so only the two booking operations' error lists are still to gain it | `architect` adds the code to the two operations' errors; the enum and `statusMapping` already carry it, and `contract-check` must stay green (`O13`) |
-| `services/reservations/contract-tests/CreateReservation.json`, `CreateReservation-conflict.json`, `ModifyReservation.json`, `ModifyReservation-conflict.json`, `CheckRoomTypeSellability-consumed.json` | The compatibility fixtures, including the consumer fixture for the new seam | Kept as the compatibility half; the consumer fixture gains the derived-ceiling assertion (`O13`) |
-| `deploy/compose.yaml:46`, `:92-102` | `RATES_BASE_URL` on reservations; the `rooms` service block | `ROOMS_BASE_URL` is wired the way `RATES_BASE_URL` is; `O6` proves the unwired case |
-| `app/src/views/BookView.vue:893-929`, `:916-919`, `:477-482` | The Book panel pre-checks sellability, sends the searched count, and maps `CONFLICT` to `desk.book.refused_soldout` and an unreadable source to `desk.shell.request_failed` | Unchanged (desk-green row) |
-| `app/src/views/BookView.test.ts:556`, `:770`, `:919`, `:1093`, `:1158` | The desk unit pins: the confirm sends the searched count, a second overlapping booking sends it too, nothing sellable refuses without a create, the sold-out sentence, one create per double-click | Unchanged (desk-green row) |
-| `app/e2e/book.spec.ts:51`, `:102` | The browser booking flow and the second-overlapping-refused case | Unchanged (desk-green row) |
-| `script/e2e-desk-loop.sh:299`, `:332` | The API booking steps send `sellableUnits` | Unchanged, and it is the recipe the `AVD-*` owner cases reuse |
+| `services/reservations/internal/handler/handler.go:168`, `:187` (`CreateReservation`) | The body's `sellableUnits` is read only through `advisoryUnits` and threaded as an advisory pointer; the ceiling comes from the availability hook, not the body | `O2`, `O3` |
+| `services/reservations/internal/handler/handler.go:282`, `:298` (`ModifyReservation`) | The same advisory-only read on the modify path | `O2`, `O3` |
+| `services/reservations/internal/handler/handler.go:417-436` (`advisoryUnits`) | A present value must be an integer `>= 0` (malformed -> `VALIDATION_FAILED` naming `sellableUnits`); absent is valid | `O3` |
+| `services/reservations/internal/store/store.go:63-77`, `:93-107` (`CreateInput.Ceiling`, `ModifyInput.Ceiling`) | The store's only ceiling is the derived capacity input; no `sellableUnits` field exists on either input | `O1`, `O4` |
+| `services/reservations/internal/store/store.go:204-206` (`activeState`) | The counted states are `confirmed` and `checked-in` | `O10` |
+| `services/reservations/internal/store/store.go:211-233` (`Create`) | The mutex at `:212`, replay lookup at `:215`, overlap count, and `booked >= input.Ceiling` at `:228` in one critical section; the store holds no request number | `O1`, `O8` |
+| `services/reservations/internal/store/store.go:382-423` (`Modify`) | The twin guard at `:418`, excluding the reservation itself (`:411`) | `O4`, `O8` |
+| `services/reservations/internal/store/postgres.go:145-274`, `:479-640` (transactions), `:180`, `:554` (comparisons), `:174`, `:548` (state filters) | Both transactional guards compare the derived ceiling and count `confirmed` + `checked-in` | `O11` |
+| `services/reservations/internal/service/service.go:137-167` (validation), `:168-173` / `:283-288` (restriction check), `:175` / `:289` (capacity read), `:185` / `:300` (ceiling into the store) | The restriction check still runs first; the capacity read follows and precedes the store call; the request number is never threaded into the store | `O6`, `O8` |
+| `services/reservations/internal/service/service.go:271-282` | The effective room type and dates of a modification, used by the capacity read | `O6` |
+| `services/reservations/internal/service/service.go:103-132` (nil hooks, `validateAdvisoryUnits`) | An unwired capacity client refuses `UPSTREAM_UNAVAILABLE`; a negative advisory value is `VALIDATION_FAILED` | `O3`, `O6` |
+| `services/reservations/internal/availability/client.go:38`, `:56-95` | The wired Reservations -> Rooms client: five-second timeout, Bearer token forwarded, request `{roomType, dateFrom, dateTo}` | `O6`, `O7` |
+| `services/reservations/internal/availability/client.go:99-160` | Fail-closed parse: integer `totalCount`, string `blockedRooms`, no negative ceiling, refusal surfaced unchanged | `O6`, `O7` |
+| `services/reservations/internal/pricing/client.go:33`, `:52-59`, `:88-96` | The Reservations -> Rates precedent the availability client follows | unchanged |
+| `services/reservations/internal/store/store_test.go:32-70` (`TestPairedBookingExactlyOneWins`) | Paired create with the derived ceiling: exactly one winner, one `CONFLICT` naming type+dates, one row | `O8` |
+| `services/reservations/internal/store/store_test.go:87-105` (`TestIdempotentReplayReturnsOriginal`), `:768-` (`TestReplayWithDerivedCeilingConsumesNoSecondUnit`) | A repeated key returns the original record and stores one row, with the ceiling derived | `O9` |
+| `services/reservations/internal/store/store_test.go:253-315` (`TestPairedModifyExactlyOneWins`) | Paired modify onto the last derived unit: one winner, one `CONFLICT` | `O8` |
+| `services/reservations/internal/store/store_test.go:187-229`, `:318-344`, `:384-417` | Modify reprices and records the change; cancel and no-show release the held dates | `O10` |
+| `services/reservations/internal/store/store_test.go:671-` (`TestDerivedCeilingInflatedRequestBuysNoUnit`), `:702-` (`TestDerivedCeilingRefusesInflatedModifyIntoHeldCapacity`), `:751-` (`TestCountedStatesStayConfirmedAndCheckedIn`) | The inflated create and modify refuse `CONFLICT` and write nothing; the counted-state set is pinned directly | `O1`, `O4`, `O10` |
+| `services/reservations/internal/store/postgres_test.go:106-135` (`TestPostgresPairedBookingExactlyOneWins`), `:345-` (`TestPostgresDerivedCeilingParity`) | The Postgres transaction yields one winner under the same pair; the inflated create/modify, the replay, and the paired create all hold over Postgres | `O11` |
+| `services/reservations/internal/handler/handler_test.go:59-70` (body), `:72-104` (`TestDeskLoopBookThenOverbookingRefused`) | First booking accepted, second overlapping refused 409 `CONFLICT` on the derived ceiling | `O8` |
+| `services/reservations/internal/handler/handler_availability_test.go:72-` (`TestInflatedSellableUnitsCannotOverbook`), `:112-` (`TestAdvisorySellableUnitsCannotRefuseOrMalform`), `:145-` (`TestInflatedModifyRefusedKeepsReservation`), `:201-` (`TestZeroCapacityIsSoldOutNotAnOutage`), `:224-` (`TestUnwiredCapacityRefusesBooking`) | Request-level guards over the real availability client and a rooms stub | `O2`, `O3`, `O4`, `O5`, `O6` |
+| `services/reservations/internal/service/service_test.go:109-137` (`TestGuardRefusesSecondBookingForLastUnit`), `:293-` (`TestAdvisoryUnitsCannotRefuseABookableStay`), `:313-` (`TestNegativeAdvisoryUnitsRefused`), `:336-` (`TestZeroCapacityIsSoldOutConflict`), `:353-` (`TestCreateNilAvailabilityHookFailsClosed`), `:389-` (`TestUnreadableCapacityWritesNothing`), `:424-` (`TestCapacityReadUsesEffectiveModifyValues`) | Service-level guard cases with the availability hook | `O3`, `O5`, `O6` |
+| `services/reservations/internal/availability/client_test.go:47-` (`TestCeilingDerivesFromRecordedInventory`), `:71-` (`TestCeilingFailsClosedWhenRoomsUnreachable`), `:82-` (`TestCeilingFailsClosedOnTimeout`), `:98-` (`TestCeilingFailsClosedOnServerError`), `:111-` (`TestCeilingFailsClosedOnUnreadableReply`), `:139-` (`TestCeilingSurfacesProviderRefusalUnchanged`), `:165-` (`TestCeilingFailsClosedOnUnparseableRefusal`) | The capacity client: derived ceiling, one case per unreadable cause, 4xx pass-through | `O6`, `O7` |
+| `services/reservations/internal/pricing/client_test.go:61-84` | Fail-closed 503 on an unreachable and an unparseable upstream | unchanged pattern |
+| `services/rooms/src/store.ts:307-359` (`checkSellability`), `:343-356` (of-type rooms and blocked rooms) | The reply the ceiling derives from: `totalCount`, `blockedRooms`, and the derived `sellableCount` | consumed fields are `totalCount` and `blockedRooms` |
+| `services/rooms/src/server.ts:190-191` | The `CheckRoomTypeSellability` route the consumer calls | unchanged |
+| `contracts/http/CreateReservation.json` (version `1.2`; `sellableUnits` optional, `minimum: 0`, advisory; errors add `UPSTREAM_UNAVAILABLE` 503) | The contract the implementation writes | `O13` |
+| `contracts/http/ModifyReservation.json` (version `1.1`; the same delta) | The same on modify | `O13` |
+| `contracts/http/CheckRoomTypeSellability.json` (version `1.0`; required `totalCount`, `sellableCount`, `blockedRooms`) | The shape the consumer reads | shape unchanged |
+| `contracts/errors/envelope.json:9`, `:27` | The code enum lists `UPSTREAM_UNAVAILABLE` and `statusMapping` maps it to 503 | `O13` |
+| `services/reservations/contract-tests/CreateReservation.json`, `CreateReservation-conflict.json`, `CreateReservation-advisory-sellable-units.json`, `ModifyReservation.json`, `ModifyReservation-conflict.json`, `CheckRoomTypeSellability-consumed.json` | The compatibility fixtures plus the advisory-number refusal and the derived-ceiling consumer assertion | `O13` |
+| `deploy/compose.yaml:46`, `:50`, `:96-106` | `RATES_BASE_URL` and `ROOMS_BASE_URL` on reservations; the `rooms` service block | `O6` proves the unwired case |
+| `app/src/views/BookView.vue:893-929`, `:916-919`, `:477-482` | The Book panel pre-checks sellability, sends the searched count, and maps `CONFLICT` to `desk.book.refused_soldout` and an unreadable source to `desk.shell.request_failed` | unchanged (desk-green) |
+| `app/src/views/BookView.test.ts:556`, `:770`, `:919`, `:1093`, `:1158` | The desk unit pins: the confirm sends the searched count, a second overlapping booking sends it too, nothing sellable refuses without a create, the sold-out sentence, one create per double-click | unchanged (desk-green) |
+| `app/e2e/book.spec.ts:51`, `:102` | The browser booking flow and the second-overlapping-refused case | unchanged (desk-green) |
+| `script/e2e-desk-loop.sh:299`, `:332` | The API booking steps send `sellableUnits` | unchanged (desk-green) |
 
 ## 3. Guard registry O1–O13 and the evidence rule OR-1
 
 Naming: `O` ids name guards and `AVD-*` (section 6) names owner cases,
 so neither collides with the `FR-OVB-*` requirement ids. All twelve
-new guards (`O1`–`O11` and `O13`) are **missing at this spec head** and
-created by the implementation PR: `O1`, `O4`, `O8`–`O10` in
+new guards (`O1`–`O11` and `O13`) were missing at the spec head and are
+**created by the #631 implementation PR** (they exist at the pins in
+section 2 and pass): `O1`, `O4`, `O8`–`O10` in
 `services/reservations/internal/store/store_test.go`, `O2`, `O3` in
 `services/reservations/internal/handler/handler_test.go` (with `O3`'s
 service-level half in `internal/service/service_test.go`), `O5`, `O6`
@@ -154,17 +161,17 @@ record was stored.
 | `O10` | Counted states stay as built (`activeState` counts `confirmed` and `checked-in` only): a cancelled, a no-show, and a closed row stop counting (the released unit is sellable again) and a checked-in row keeps counting against the ceiling | `internal/store/store_test.go` |
 | `O11` | Postgres parity: the inflated create (`O1`), the inflated modify (`O4`), the paired last-unit create (`O8`), and the replay (`O9`) run over `PostgresStore` with the derived ceiling and write nothing on a refusal | `internal/store/postgres_test.go` |
 | `O12` | Desk green: every desk pin in section 2 passes **unchanged** after the implementation PR — the panel still pre-checks, still sends `sellableUnits`, still shows `desk.book.refused_soldout` and `desk.shell.request_failed`, and still creates once per double-click. Existing and passing today; the obligation is "unchanged", not "new" | `app/src/views/BookView.test.ts:556`, `:770`, `:919`, `:1093`, `:1158`, `app/e2e/book.spec.ts:51`, `:102`, `script/e2e-desk-loop.sh:299`, `:332` |
-| `O13` | Contract and LC: `CreateReservation` 1.2 and `ModifyReservation` 1.1 carry `sellableUnits` optional and advisory with the `UPSTREAM_UNAVAILABLE` (503) error row, the envelope registers the code and status, the existing fixtures stay valid, and the consumer fixture asserts the derived ceiling | `contracts/http/CreateReservation.json`, `contracts/http/ModifyReservation.json`, `contracts/errors/envelope.json:9`, `:22`, `services/reservations/contract-tests/*.json`, `script/contract-check.sh`, `script/openapi-route-check.sh`; the contract edit is `architect`'s (ADR-0006 D6) |
+| `O13` | Contract and LC: `CreateReservation` 1.2 and `ModifyReservation` 1.1 carry `sellableUnits` optional and advisory with the `UPSTREAM_UNAVAILABLE` (503) error row, the envelope registers the code and status, the existing fixtures stay valid, and the consumer fixture asserts the derived ceiling | `contracts/http/CreateReservation.json`, `contracts/http/ModifyReservation.json`, `contracts/errors/envelope.json:9`, `:27`, `services/reservations/contract-tests/*.json`, `script/contract-check.sh`, `script/openapi-route-check.sh`; the contract edit is `architect`'s (ADR-0006 D6) |
 | `OR-1` | Evidence rule: the implementation PR records the before/after pair for an inflated `sellableUnits` booking and for an unreadable capacity source in `docs/testing/evidence/631/README.md` and records the slice in `docs/testing/test-report.md` (section 3 exit criterion 6). Stays pending until both records exist | evidence record + `test-report.md` |
 
 ## 4. Traceability map
 
 Status is `pending` for every row except the desk-green row, which is
 covered today by pins that exist and pass and must keep passing
-untouched. For a pending row the guard does not exist at this spec
-head: the implementation PR creates it, and `qa-lead` re-pins the row
-with `file:line` at the merged head and flips it to covered only when
-the guard passes.
+untouched. The implementation PR created every pending row's guard
+(section 2 pins them at the implementation head and they pass); the
+rows stay `pending` until `qa-lead` re-pins the row with `file:line` at
+the merged head and flips it to covered, per the section 8 rule.
 
 | Item | Required guard | Guard |
 |---|---|---|
@@ -175,7 +182,7 @@ the guard passes.
 | `FR-OVB-2` — a modification is decided on the same ceiling and refuses without changing the reservation: previous dates, type, guest, and price kept, no change-history entry, the request's number changes nothing | L1 acceptance | **Pending** — `O4`, `O11`; existing pin `store_test.go:253-316` proves the pairing but feeds the ceiling from the request |
 | `FR-OVB-3` — an unreadable capacity source refuses fail-closed with `UPSTREAM_UNAVAILABLE` (503) naming upstream and operation and writes nothing; a 4xx envelope is surfaced unchanged; a readable zero capacity is a sold-out `CONFLICT`, never a 5xx | L1 acceptance + fail-closed | **Pending** — `O5` (zero is a conflict), `O6` (unreadable), `O7` (4xx); no guard on disk |
 | `FR-OVB-4` — the guard stays atomic and a replay consumes no second unit: capacity read on the attempt, the request's number never in the comparison, count-and-insert in one critical section | L1 + L3 paired concurrency | **Pending** — `O8`, `O9`, `O11`; existing pins `store_test.go:32-70`, `:87-105`, `:253-316`, `postgres_test.go:106-135` keep the one-winner and replay assertions and are rewritten |
-| `BR-47` — the overbooking ceiling is the recorded capacity for the type and dates; a request value neither raises nor lowers it; cancelled, no-show, and closed reservations release their hold, a checked-in one keeps it | L1 acceptance + counted-state check | **Pending** — `O1`–`O5`, `O10`; existing pins `store_test.go:238-263`, `:304-337` prove the releases today |
+| `BR-47` — the overbooking ceiling is the recorded capacity for the type and dates; a request value neither raises nor lowers it; cancelled, no-show, and closed reservations release their hold, a checked-in one keeps it | L1 acceptance + counted-state check | **Pending** — `O1`–`O5`, `O10`; existing pins `store_test.go:318-344` (`TestCancelKeepsReasonAndReleases`) and `:384-417` (`TestMarkNoShowReleasesAndKeepsHistory`) prove the releases |
 | `BR-48` — the capacity is read on every attempt and never cached or inferred; an unreadable source refuses fail-closed 503 and nothing is written; a 4xx envelope is surfaced unchanged; a zero capacity is a sold-out `CONFLICT` | L1 acceptance + fail-closed | **Pending** — `O5`, `O6`, `O7`; no guard on disk |
 | `BR-49` — the guard keeps its atomic shape, so two simultaneous last-unit requests yield one winner and one `CONFLICT`, and a replay takes no second unit | L1 + L3 paired concurrency | **Pending** — `O8`, `O9`, `O11` |
 | Desk flows stay green (`AC-DSK` Book slice, `FR-RES-1`, `FR-RES-2`, `AC-OVB-3`) | Behaviour check: the same request stops being trusted and the desk still shows the same lines | **Covered by re-run at this spec head** — `app/src/views/BookView.test.ts:556`, `:770`, `:919`, `:1093`, `:1158`, `app/e2e/book.spec.ts:51`, `:102`, `script/e2e-desk-loop.sh:299`, `:332`. These must pass unchanged after the implementation PR; a desk edit fails the row |
@@ -307,14 +314,15 @@ criterion 6 of the `test-strategy.md` [section 3](test-strategy.md)).
 
 ## 8. Slice status and re-pin rule
 
-At this spec head: 14 rows mapped — 1 covered by re-run only (the
+At the spec head: 14 rows mapped — 1 covered by re-run only (the
 desk-green row: its pins exist and pass today and must keep passing)
 and 13 **pending** rows whose guards are the registry `O1`–`O13` plus
-the contract/LC gate, the MVP no-change gate, and `OR-1`. The slice is
-**not complete**. It completes when the implementation PR merges with
-`O1`–`O11` and `O13` green, `O12` unchanged, `OR-1` recorded, and
-`qa-lead` re-pins every row in section 4 with `file:line` at the
-merged head.
+the contract/LC gate, the MVP no-change gate, and `OR-1`. At the #631
+implementation head the guards exist and pass (`O1`–`O11` and `O13`;
+section 2 re-pinned) and `OR-1` is recorded in
+`docs/testing/evidence/631/README.md`; the slice completes when that PR
+merges, `O12` passes unchanged, and `qa-lead` re-pins every row in
+section 4 with `file:line` at the merged head.
 
 No row in this document may be flipped to covered while its guard is
 absent from the tree or failing: a pending row is honest, a

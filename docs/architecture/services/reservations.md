@@ -15,13 +15,14 @@ Go `handler / service / store`, wired in `services/reservations/cmd/server/main.
 | Layer | Files | Responsibility |
 |---|---|---|
 | Transport + auth + body decoding | `internal/handler/handler.go` | `NewMux` routes `POST /v1/reservations/<Operation>`; every `/v1/*` call requires a Bearer session token (:140-151); JSON body decoding with `VALIDATION_FAILED` on malformed input (:62-104) |
-| Validation + step order | `internal/service/service.go` | field/date/price/guest validation, mandatory-guest-field check, server-side stay-restriction check, then the guarded store call |
+| Validation + step order | `internal/service/service.go` | field/date/price/guest validation, mandatory-guest-field check, server-side stay-restriction check, server-side capacity read, then the guarded store call |
 | Pricing restriction check | `internal/pricing/client.go` | `POST {RATES_BASE_URL}/v1/rates/CheckRestrictions` with the caller Bearer token; rates refusals pass through unchanged, unreachable rates fails closed |
+| Availability (capacity) read | `internal/availability/client.go` | `POST {ROOMS_BASE_URL}/v1/rooms/CheckRoomTypeSellability` with the caller Bearer token; the ceiling is `totalCount - len(blockedRooms)`, a rooms 4xx passes through unchanged, and an unreadable reply fails closed (ADR-0006, #631) |
 | Guarded state + storage | `internal/store/store.go` (`Repository`, `Store`), `internal/store/postgres.go` | mutex-guarded overbooking check, idempotency replay, state transitions, change history, domain events |
 | Health | `internal/health/` | `GET /healthz` with the module identity |
 | Boot | `cmd/server/main.go` | selects Postgres storage when `DATABASE_URL` is set, mounts health + booking routes |
 
-The routing table (`internal/handler/handler.go`): `CreateReservation` (:160), `GetReservation` (:200), `CheckInReservation` (:223), `CheckOutReservation` (:246), `ModifyReservation` (:268), `CancelReservation` (:307), `MarkNoShow` (:327), `QueryCalendar` (:346). Read-only `GetReservation`/`QueryCalendar` call the store directly; the four booking lifecycle writes go through `service.Service` first, and `CheckOutReservation` — the provider-to-provider completion called by Stay after a committed close (#646, `FR-DEP-1`) — writes through the store's conditional `checked-in -> closed` transition, resolved by the unique stay link.
+The routing table (`internal/handler/handler.go`): `CreateReservation` (:160), `GetReservation` (:204), `CheckInReservation` (:227), `CheckOutReservation` (:250), `ModifyReservation` (:272), `CancelReservation` (:315), `MarkNoShow` (:335), `QueryCalendar` (:354). The body's `sellableUnits` is optional and advisory: it is shape-checked (`advisoryUnits`, :417-436) and never decides the booking. Read-only `GetReservation`/`QueryCalendar` call the store directly; the four booking lifecycle writes go through `service.Service` first, and `CheckOutReservation` — the provider-to-provider completion called by Stay after a committed close (#646, `FR-DEP-1`) — writes through the store's conditional `checked-in -> closed` transition, resolved by the unique stay link.
 
 ## 3. Happy-path flowchart
 
@@ -30,21 +31,24 @@ CreateReservation (`POST /v1/reservations/CreateReservation`):
 ```mermaid
 flowchart TD
     A[Bearer token present] --> B[Decode JSON body]
-    B --> C[Service validates fields]
+    B --> C[Service validates fields, advisory sellableUnits shape only]
     C --> D[Restriction hook passes]
-    D --> E[Store guard: unit available]
-    E --> F[Persist confirmed + event]
-    F --> G[200 reservationRef]
+    D --> E[Capacity read: Rooms totalCount minus blockedRooms]
+    E -->|read ok| F[Store guard: held count below ceiling]
+    E -->|unreadable| U[503 UPSTREAM_UNAVAILABLE, nothing written]
+    F -->|room left| G[Persist confirmed + event]
+    F -->|held| X[409 CONFLICT, nothing written]
+    G --> H[200 reservationRef]
 ```
 
 Edge trace (every edge cites code):
 
 - A: missing/empty Bearer → `UNAUTHENTICATED` 401 (`internal/handler/handler.go:140-151`).
 - B: malformed JSON → `VALIDATION_FAILED` 400 (`internal/handler/handler.go:62-104`).
-- C: `roomTypeId` required (`internal/service/service.go:87-88`), dates must be `YYYY-MM-DD` with departure after arrival (:90-100), `priceBasis.totalMinor` required and non-negative (:101-102), `guest.guestId` required (:104-106), hotel-mandatory fields (default `fullName`) required (:108-113) — all in `internal/service/service.go`.
-- D: server-side `POST {RATES_BASE_URL}/v1/rates/CheckRestrictions` with the caller Bearer token forwarded (`internal/pricing/client.go:43-87`; POST at :52, Bearer forward at :57-59); an unwired hook fails closed with 503 `UPSTREAM_UNAVAILABLE` (`internal/service/service.go:114-116,219-221` via `restrictionsUnavailable` at :76-83); a rates refusal returns its `OpError` unchanged, so the violated restriction stays named in the 422 `STATE_ILLEGAL` envelope (`internal/service/service.go:117-119,222-224`).
-- E: overbooking count over same-type active overlapping stays under one mutex (:211-221), tripping at `booked >= SellableUnits` (:221); idempotency-key replay returns the original record (:208-210) — `internal/store/store.go`, with the key namespaced by operation and, for modify/cancel, by the reservation reference. A key reused across operations or reservations runs the new operation instead of replaying another call's result (issue #644).
-- F: record stored `confirmed` with a unique ref, `created` event queued (:228-259); G: `reservationId`, `reservationRef`, `state`, `quotedTotal` returned (`internal/handler/handler.go:195-197`).
+- C: `roomTypeId` required (`internal/service/service.go:141-143`), dates must be `YYYY-MM-DD` with departure after arrival (:144-154), `priceBasis.totalMinor` required and non-negative (:155-157), `guest.guestId` required (:158-161), hotel-mandatory fields (default `fullName`) required (:162-167); an optional `sellableUnits` is shape-checked only (:138-140, `:125-132`; handler :417-436) — all in `internal/service/service.go`.
+- D: server-side `POST {RATES_BASE_URL}/v1/rates/CheckRestrictions` with the caller Bearer token forwarded (`internal/pricing/client.go:43-87`; POST at :52, Bearer forward at :57-59); an unwired hook fails closed with 503 `UPSTREAM_UNAVAILABLE` (`internal/service/service.go:168-173,283-288` via `restrictionsUnavailable` at :90-101); a rates refusal returns its `OpError` unchanged, so the violated restriction stays named in the 422 `STATE_ILLEGAL` envelope.
+- E: the ceiling (`internal/service/service.go:175,289`) is read by `internal/availability/client.go:56-95` for the effective type and dates (`service.go:271-282` on Modify); an unreadable ceiling fails closed 503 `UPSTREAM_UNAVAILABLE` naming rooms and `CheckRoomTypeSellability` (`availability/client.go:99-160`; nil hook `service.go:103-123`), and a rooms 4xx envelope passes through unchanged. The store's overbooking count over same-type active overlapping stays runs under one mutex (`internal/store/store.go:211-233`, Modify `:382-423`), tripping at `booked >= input.Ceiling` (`:228`, `:418`); idempotency-key replay returns the original record (`:215`, `:386`) — the key is namespaced by operation and, for modify/cancel, by the reservation reference, so a key reused across operations or reservations runs the new operation instead of replaying another call's result (issue #644).
+- F: record stored `confirmed` with a unique ref, `created` event queued (`internal/store/store.go:234-265`); G: `reservationId`, `reservationRef`, `state`, `quotedTotal` returned (`internal/handler/handler.go:199-201`).
 
 ## 4. Failure/rollback flowchart
 
@@ -59,17 +63,19 @@ flowchart TD
 
 Edge trace:
 
-- V: any service/handler validation rejects before the store is touched (`internal/service/service.go:87-119`; handler required-field checks, e.g. `internal/handler/handler.go:201-203`).
-- O: `booked >= SellableUnits` → `CONFLICT` "No sellable unit left" (`internal/store/store.go:221`).
-- K: create/modify/cancel replays return the stored record, each keyed by its operation and — for modify/cancel — the reservation reference (`internal/store/store.go:209,383,466`; Create/Modify/Cancel thread the key through `internal/service/service.go:120-130,225-236,258`).
+- V: any service/handler validation rejects before the store is touched (`internal/service/service.go:137-167`; handler required-field checks, e.g. `internal/handler/handler.go:205-207`).
+- O: `booked >= input.Ceiling` → `CONFLICT` "No sellable unit left" (`internal/store/store.go:228`, `:418`); an unreadable capacity is the separate 503 `UPSTREAM_UNAVAILABLE` path, never this 409.
+- K: create/modify/cancel replays return the stored record, each keyed by its operation and — for modify/cancel — the reservation reference (`internal/store/store.go:215,386,469`; Create/Modify/Cancel thread the key through `internal/service/service.go:179-189,293-303,313`).
 - S: `CheckIn` requires `confirmed`; Modify/Cancel/MarkNoShow on a non-`confirmed` record go through `stateRefusal` → `STATE_ILLEGAL` 422 (`internal/store/store.go`). `CheckOutReservation` requires `checked-in`, returns the already `closed` booking idempotently, and writes one `state` change row with the actor and time (no event, LLD D5).
-- N: unknown ref → `NOT_FOUND` 404 (`internal/store/store.go:263-268`).
+- N: unknown ref → `NOT_FOUND` 404 (`internal/store/store.go:270-276`).
 
-Rollback: there is none to run — every write is a single mutex-guarded step (`internal/store/store.go:205`); a refusal happens before any mutation, so no compensation path exists in code.
+Rollback: there is none to run — every write is a single mutex-guarded step (`internal/store/store.go:212`); a refusal — including an unreadable capacity read, which precedes the store call — happens before any mutation, so no compensation path exists in code.
 
 ## 5. Outbound dependencies
 
-Rates stay-restriction check (`POST {RATES_BASE_URL}/v1/rates/CheckRestrictions`, `RATES_BASE_URL` default `http://rates:8082`, wired at boot in `cmd/server/main.go:44-49`): every `Create`/`Modify` consults Pricing `CheckRestrictions` with the caller Bearer token forwarded and fails closed (503 `UPSTREAM_UNAVAILABLE`) when rates is unreachable (`internal/pricing/client.go`). The Rooms `CheckRoomTypeSellability` outbound call remains a future slice; until then, the desk loop supplies `sellableUnits` and `priceBasis` search outputs in the request (`internal/service/service.go:7-12`). Hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (LLD [section 0](../lld.md)). Emits `reservation.created` / `reservation.checked-in` domain events (`internal/store/postgres.go:268,385,560,653,730` outbox INSERTs; in-memory `created` queued at `internal/store/store.go:251-259`, `checked-in` at :313-318).
+Rates stay-restriction check (`POST {RATES_BASE_URL}/v1/rates/CheckRestrictions`, `RATES_BASE_URL` default `http://rates:8082`, wired at boot in `cmd/server/main.go:45-49`): every `Create`/`Modify` consults Pricing `CheckRestrictions` with the caller Bearer token forwarded and fails closed (503 `UPSTREAM_UNAVAILABLE`) when rates is unreachable (`internal/pricing/client.go`).
+
+Rooms capacity read (`POST {ROOMS_BASE_URL}/v1/rooms/CheckRoomTypeSellability`, `ROOMS_BASE_URL` default `http://rooms:8085`, wired at boot beside the rates client in `cmd/server/main.go:50-54`, compose env `deploy/compose.yaml:50`): every `Create`/`Modify` reads the recorded inventory once per attempt, consumes `totalCount` and `blockedRooms`, and derives the guard's ceiling as `totalCount - len(blockedRooms)` (`internal/availability/client.go:56-95`). The reply's derived `sellableCount` is deliberately not consumed (ADR-0006 D2), and the request's `sellableUnits` is advisory only: a low or absent value refuses nothing and an inflated value buys nothing (`internal/service/service.go:125-140`). An unreadable capacity fails the booking closed with 503 `UPSTREAM_UNAVAILABLE` naming rooms and the operation; a rooms 4xx passes through unchanged; a readable zero capacity is the sold-out `CONFLICT`. Rooms has no outbound dependency, so the seam adds no runtime cycle. Consequence: a Rooms outage refuses new bookings and modifications (product risk R-14, residual risk R-OVB-1; runbook section 11). Hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (LLD [section 0](../lld.md)). Emits `reservation.created` / `reservation.checked-in` domain events (`internal/store/postgres.go:268,385,560,653,730` outbox INSERTs; in-memory `created` queued at `internal/store/store.go:258-266`, `checked-in` at :320-325).
 
 See also: [deployment](../system-architecture.md) (section 1), [C4 containers](../c4-containers.md), and [event flow](../event-flow.md) (this service's outbox emissions).
 
@@ -79,11 +85,12 @@ Envelope `{code, message, details, traceId}` (`internal/handler/handler.go:30-43
 
 | Code | Status | Raised when |
 |---|---|---|
-| `VALIDATION_FAILED` | 400 | missing/malformed fields, bad dates, negative total (`internal/store/store.go:31-33`; `internal/service/service.go:87-119`) |
-| `UNAUTHENTICATED` | 401 | missing session token (`internal/handler/handler.go:140-151`) |
-| `NOT_FOUND` | 404 | unknown reservation ref (`internal/store/store.go:38-40,263-268`) |
-| `CONFLICT` | 409 | overbooking guard trips (`internal/store/store.go:35-37,221`) |
-| `STATE_ILLEGAL` | 422 | step on a wrong-state reservation (`internal/store/store.go:303-311,322-329`) |
+| `VALIDATION_FAILED` | 400 | missing/malformed fields, bad dates, negative total, or a malformed advisory `sellableUnits` (`internal/store/store.go:32-34`; `internal/service/service.go:137-167`; `internal/handler/handler.go:417-436`) |
+| `UNAUTHENTICATED` | 401 | missing session token (`internal/handler/handler.go:141-152`) |
+| `NOT_FOUND` | 404 | unknown reservation ref (`internal/store/store.go:40-42,270-276`) |
+| `CONFLICT` | 409 | overbooking guard trips (`internal/store/store.go:36-38,228`); a readable zero capacity is the same sold-out answer |
+| `STATE_ILLEGAL` | 422 | step on a wrong-state reservation, or a stay restriction (`internal/store/store.go:310-318,329-336`; `internal/service/service.go:168-173`) |
+| `UPSTREAM_UNAVAILABLE` | 503 | rates stay-restriction check or rooms capacity read unreadable; nothing written (`internal/pricing/client.go:88-96`; `internal/availability/client.go:99-160`) |
 
 ## 7. Operations
 
@@ -113,7 +120,7 @@ Run:
 go run ./cmd/server
 ```
 
-Configuration via environment: `PORT` (default `8081`); hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (see LLD [section 0](../lld.md)) and land in later slices.
+Configuration via environment: `PORT` (default `8081`), `RATES_BASE_URL` (default `http://rates:8082`) for the stay-restriction check, and `ROOMS_BASE_URL` (default `http://rooms:8085`) for the capacity read the overbooking guard counts against (Refs #631). Hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (see LLD [section 0](../lld.md)) and land in later slices.
 
 Docker:
 
@@ -173,36 +180,20 @@ Design: `docs/architecture/lld.md` section 22; state diagram
 `docs/architecture/state-machine.md` section 1.1; contract delta LLD
 section 22.5.
 
-## 10. Planned delta — server-side availability derivation (Refs #631, ADR-0006 accepted)
+## 10. Server-side availability derivation (Refs #631, ADR-0006 accepted)
 
-Not as-built yet: this section records the target the implementation PR
-folds into sections 2, 3, 4, 5, 6, and 7 in the same change
-(maintain-with-code). Today section 5 says the Rooms
-`CheckRoomTypeSellability` outbound call "remains a future slice" and the
-desk supplies `sellableUnits`, which is the guard's only ceiling
-(`internal/store/store.go:222`, `:415`).
-
-- New outbound client beside `internal/pricing/`: one Rooms
-  `CheckRoomTypeSellability` read per booking attempt,
-  `ROOMS_BASE_URL` (default `http://rooms:8085`), caller Bearer token
-  forwarded, five-second timeout, fail closed with
-  `UPSTREAM_UNAVAILABLE` 503 `{upstream: "rooms", operation:
-  "CheckRoomTypeSellability"}` — the same shape as
-  `internal/pricing/client.go`.
-- `Create`/`Modify` derive the guard's ceiling from
-  `totalCount - len(blockedRooms)` for the effective room type and dates
-  and pass it to the store as a derived input; the request's
-  `sellableUnits` stops reaching the store, so the
-  `input.SellableUnits < 1` validation (`internal/store/store.go:203`,
-  `:377`) and the handler's absent-means-zero default
-  (`internal/handler/handler.go:409-414`) go with it.
-- The store keeps its one-critical-section count-and-insert shape; the
-  counted states stay `confirmed` + `checked-in`.
-- New `UPSTREAM_UNAVAILABLE` message branch in the catalogue for the
-  capacity read (the code itself is already in
-  `contracts/errors/envelope.json` since #627) plus the contract delta in
-  LLD section 26.5 and the fixture updates in `contract-tests/`
-  (advisory field, the new error on the two booking operations).
+As built by the #631 implementation PR: the target this section used to
+plan is folded into sections 2 (layers), 3 (happy path), 4 (failure and
+rollback), 5 (outbound dependencies), 6 (error mapping), and 7
+(operations, which now names `ROOMS_BASE_URL`). In short: one Rooms
+`CheckRoomTypeSellability` read per booking attempt derives the guard's
+ceiling from `totalCount - len(blockedRooms)`; the request's
+`sellableUnits` is optional and advisory and never reaches the store;
+an unreadable capacity fails the booking closed with 503
+`UPSTREAM_UNAVAILABLE` naming rooms and the operation; the store keeps
+its one-critical-section count-and-insert shape and the counted states
+stay `confirmed` + `checked-in` (`AC-OVB-1`..`AC-OVB-3`,
+`FR-OVB-1`..`FR-OVB-4`, `BR-47`..`BR-49`).
 
 Design: `docs/architecture/lld.md` section 26; threat-model B6 and
 residual risks R-OVB-1..R-OVB-6 in
