@@ -92,7 +92,7 @@ Envelope `{code, message, details, traceId}` (`web/ApiExceptionHandler.java:34-4
 
 | Code | Status | Raised when |
 |---|---|---|
-| `VALIDATION_FAILED` | 400 | missing/blank field, bad UUID/date, bad item kind or method, negative amount, out-of-range percent (`service/BillingService.java:126-193,255-325`); from #629 a body Spring cannot read — malformed JSON, a missing body, or a JSON value that is not an object (`web/ApiExceptionHandler.java:55-67`); from #629 a caller media type Billing cannot read (`Content-Type: text/plain`, a bare `curl -d` form post) or cannot answer (`Accept` naming no JSON) answers the same code because the contract status mapping has no 415/406 entry (`web/ApiExceptionHandler.java:78-82`) |
+| `VALIDATION_FAILED` | 400 | missing/blank field, bad UUID/date, bad item kind or method, negative amount, out-of-range percent (`service/BillingService.java:126-193,255-325`); from #629 a body Spring cannot read — malformed JSON, a missing body, or a JSON value that is not an object (`web/ApiExceptionHandler.java:55-67`); from #629 a caller media type Billing cannot read (`Content-Type: text/plain`, a bare `curl -d` form post) or cannot answer (`Accept` naming no JSON) answers the same code because the contract status mapping has no 415/406 entry (`web/ApiExceptionHandler.java:78-82`); from #635, planned, a money value that is not a whole number of minor units or whose magnitude exceeds the ceiling (`web/BillingController.java:47-53`, section 10) |
 | `UNAUTHENTICATED` | 401 | missing session token (`web/BillingController.java:67-72`); a `401` forwarded from Stay is surfaced unchanged |
 | `NOT_FOUND` | 404 | unknown day-close, folio, payment, or charge line (`service/BillingService.java:206-243`); from #634 an unknown stay on a folio route; from #629 a path no route claims (`web/ApiExceptionHandler.java:86-89`) |
 | `METHOD_NOT_ALLOWED` | 405 | from #629 a known route reached with the wrong method, with the `Allow` header (`web/ApiExceptionHandler.java:94-102`) |
@@ -223,3 +223,58 @@ ensure-on-first-use behaviour returns and no data migration exists.
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1046
+
+## 10. Planned delta — money amounts are whole, bounded, and refused in the adapter (Refs #635)
+
+Today `amountOf` takes any `Number` and returns `number.longValue()`
+(`src/main/java/com/hotel/billing/web/BillingController.java:47-53`, the
+conversion at `:50`), so `12.99` posts 12 and no magnitude is bounded; the
+one helper serves `PostCharge` (`:86`), `RecordPayment` (`:93`), and
+`UpsertChargeItem` (`:129`). The sign rules one layer below
+(`service/BillingService.java:134-136`, `:172-174`, `:321-323`) are
+correct and are not the gap.
+
+Target, from #635 on:
+
+- `amountOf` refuses a value that is not a whole number of minor units
+  with `VALIDATION_FAILED` (400), `details` naming the field, and the new
+  `error.validation.amount_not_integer` sentence — never a truncation —
+  and refuses a magnitude above **1 000 000 000 000** minor units with the
+  new `error.validation.amount_above_ceiling` sentence, `{max}` rendered
+  through `Messages.formatNumber`. The ceiling is one `static final`
+  constant in `BillingController`, not configuration.
+- Whole-ness is read from the decimal spelling (`BigDecimal` from
+  `number.toString()`, the conversion `percentOf` already uses at `:59`),
+  so `12.0` stays the whole amount 12 and is accepted exactly as `12` is;
+  the bound is on the magnitude, so a huge negative refuses in the adapter
+  while an in-range negative keeps the service's sign refusal.
+- A present money field that is not a JSON number answers
+  `error.validation.field_number` naming the field; an absent one keeps
+  `error.validation.field_required` (`:51-52`).
+- `percentOf` (`:55-64`) gets the same presence-versus-type split, so a
+  present non-numeric `percent` names `percent` with `field_number`
+  instead of the missing-field sentence. Nothing else about the percent
+  adapter moves: a fractional rate such as `8.5` stays accepted and the
+  0–100 range stays the service's (`:340-342`).
+- Both refusals are raised before the service call (`:142-160`,
+  `:176-190`, `:324`), so no folio row, idempotency claim, line, payment,
+  balance movement, or outbox event is written, and a refused request
+  consumes no idempotency key.
+- No schema, migration, operation, request or response field, event, or
+  contract file change: `VALIDATION_FAILED` is already the published
+  code, and the three request schemas keep their `integer` type and
+  `minimum` without a `maximum` (the contract decision is LLD
+  [section 30.5](../lld.md#305-contract-decision-the-three-request-schemas-declare-no-maximum)).
+  Two catalogue sentences are added to `messages/en.json`.
+
+Design: `docs/architecture/lld.md`
+[section 30](../lld.md#30-money-amount-bounds-on-the-billing-folio-write-adapter-refs-635);
+product conditions `AC-AMT-1`..`AC-AMT-5` in
+`docs/product/acceptance-criteria.md` section 23; business rule BR-61;
+the refusal in the taxonomy: `docs/technical/error-handling.md`
+section 1.2. Rollback: revert the single implementation PR — `amountOf`
+returns to truncating, the two sentences go with the code, and no
+migration or data repair exists in either direction.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1117
