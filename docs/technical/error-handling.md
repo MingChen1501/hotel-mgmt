@@ -141,12 +141,14 @@ caller-input code, not a fault and not a new token: HTTP 400
 `VALIDATION_FAILED` with `details` `{"field": "fullName", "fullName":
 <the searched name>, "matches": <the exact count>}`, a fresh `traceId`,
 and the plain catalogue sentence `guests.validation.ambiguous_name`
-("{fullName} matches {matches} guests, so no profile was opened."). The
-refusal replaces the whole answer: no profile, `contact`, `preferences`,
-`notes`, `returningFlag`, `pastStayCount`, or `stayLinks` are returned,
-the links read is never issued, and nothing is written. Every `guestId`
-read through `IdentifyGuest`, `GetGuest`, or `GetBookingContext` is
-untouched, including for two guests who share a name.
+("The name {fullName} matches more than one guest; identify the guest by
+id."), with the match count carried in `details.matches` and no second
+placeholder. The refusal replaces the whole answer: no profile, `contact`,
+`preferences`, `notes`, `returningFlag`, `pastStayCount`, or `stayLinks`
+are returned, the links read is never issued, and nothing is written.
+Every `guestId` read through `IdentifyGuest`, `GetGuest`, or
+`GetBookingContext` is untouched, including for two guests who share a
+name.
 
 A guest write is **inside one declared shape or refused**. On
 `UpsertGuest`:
@@ -170,9 +172,11 @@ A guest write is **inside one declared shape or refused**. On
   request answers exactly one envelope naming the first offending field,
   and they run **before the first store access**, so a refusal writes no
   row, no stay link, and no `guest-upserted` event and leaves a stored
-  profile exactly as it was. An absent field keeps today's defaults; an
-  explicit `null` `contact`/`preferences` keeps today's `{}` coercion;
-  an absent `notes` keeps the stored note on update.
+  profile exactly as it was. An absent field keeps today's per-store
+  behaviour: the in-memory store resets `contact` to `{}` while a
+  Postgres update keeps the stored `contact`, and both keep the stored
+  `preferences` and, on update, the stored `notes`; an explicit `null`
+  `contact`/`preferences` keeps today's `{}` coercion.
 - Reads are unbounded: no stored profile is re-validated, truncated, or
   dropped, and no migration, backfill, or repair exists. The four bounds
   are code constants, never configuration.

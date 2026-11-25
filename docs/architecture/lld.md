@@ -6377,7 +6377,7 @@ handoff; and implementation the `dev` handoff. This section records only
 the architect-owned delta: where each check sits and why (32.1), the
 ambiguity refusal shape (32.2), the payload bounds (32.3), the calendar
 date rule (32.4), the per-flow diagrams (32.5), the contract decision
-(32.6), the verification plan (32.7), the `NFR-GID` disposition (32.8),
+(32.6), the verification plan (32.7), the NFR disposition (32.8),
 the residual risks and re-tier triggers (32.9), and maintain-with-code
 (32.10).
 
@@ -6472,14 +6472,18 @@ head):
   `{"field": "fullName", "fullName": <the trimmed name searched>, "matches": <exact match count>}`.**
   The field name is what the desk branches on (below), the searched name
   is what staff typed, and the count is the real number of matching
-  guests — not "2 or more" — so the sentence and the details agree.
+  guests — not "2 or more" — carried in `details.matches`.
 - **Message: one new plain catalogue sentence `guests.validation.ambiguous_name`**
   beside today's guests keys (`services/guests/src/messages.en.json:196-200`),
-  pattern "{fullName} matches {matches} guests, so no profile was
-  opened.", with `{matches}` rendered through `formatNumber`
-  (`services/guests/src/messages.ts:77-79`) so digit grouping follows
-  the active locale. It names no envelope code, status, SQL, host, path,
-  or stack trace (`NFR-I18N-1`).
+  exactly "The name {fullName} matches more than one guest; identify the
+  guest by id." — the product and requirements copy
+  (`docs/product/acceptance-criteria.md` section 25 rule 2;
+  `docs/requirements/mvp-requirements.md` section 33.1 `FR-GID-1`) — with
+  `{fullName}` the searched name. The match count appears in
+  `details.matches` only: the sentence carries no second placeholder, so
+  the key keeps one exact string and one placeholder set in both
+  locales. It names no envelope code, status, SQL, host, path, or stack
+  trace (`NFR-I18N-1`).
 - **One shared constructor** (for example `ambiguousGuestName(fullName,
   matches)` in `store.ts`) builds the refusal for both stores, so the
   details shape and the sentence have exactly one home; counting the
@@ -6539,9 +6543,11 @@ both stores:
   entry, a string entry longer than 256 characters, or a number entry
   that is not finite; a present `notes` that is not a string (including
   an explicit `null`) or is longer than 2 000 code units.
-- **Sentences:** `guests.validation.contact_shape` — "{field} must be a
-  plain object with at most 16 fields whose values are text of at most
-  256 characters, a finite number, or true/false." — and
+- **Sentences:** `guests.validation.contact_shape` — "{field} must be an
+  object of at most 16 fields whose values are text up to 256 characters,
+  numbers, or true/false." — the exact product and requirements copy
+  (`docs/product/acceptance-criteria.md` section 25 rule 3;
+  `docs/requirements/mvp-requirements.md` section 33.1 `FR-GID-2`) — and
   `guests.validation.notes_length` — "{field} must be at most {max}
   characters." — with `{max}` rendered from `MAX_GUEST_NOTES_LENGTH`
   through `formatNumber`, so the sentence shows `2,000` in the `en`
@@ -6552,12 +6558,16 @@ both stores:
   stores, so a request with several offending fields answers exactly one
   envelope naming the first offender in declaration order.
 - **Present, absent, and explicit null.** An absent field
-  (`undefined`) keeps today's defaults: `contact` becomes `{}`,
-  `preferences` keeps the stored object on update, and `notes` keeps the
-  stored value on update and is `""` on create (`store.ts:231-233`;
-  the Postgres `COALESCE`/`CASE` at `pgstore.ts:74-81`). An explicit
-  `null` for `contact` or `preferences` keeps today's coercion (both
-  stores store `{}` through `asObject`, `store.ts:166-168`,
+  (`undefined`) keeps today's per-store behaviour: the in-memory store
+  resets `contact` to `{}` and keeps the stored `preferences`, while a
+  Postgres update keeps the stored `contact` as well as the stored
+  `preferences` (`COALESCE` on insert and `CASE ... IS NULL` on update,
+  `pgstore.ts:74-81`, the `contact` `CASE` at `:77`); `notes` keeps the
+  stored value on update and is `""` on create in both stores
+  (`store.ts:231-233`; `pgstore.ts:72`). Only a present value is
+  validated, so no absent field is refused and no store is changed. An
+  explicit `null` for `contact` or `preferences` keeps today's coercion
+  (both stores store `{}` through `asObject`, `store.ts:166-168`,
   `pgstore.ts:70-71`), so no validator runs on a null object field; an
   explicit `null` for `notes` is refused, because `AC-GID-4` and
   `FR-GID-2` refuse a present non-string `notes` and today's
@@ -6835,38 +6845,35 @@ architecture-side check the implementation must satisfy.
   `script/contract-check.sh` and `script/catalogue-coverage-check.sh`
   from the repo root.
 
-### 32.8 The `NFR-GID` disposition: the family does not exist, and no NFR belongs here
+### 32.8 The NFR disposition: no new NFR, and no existing NFR changes
 
-Decision recorded for the spec set, so the gate does not fail on a
-phantom citation: **there is no `NFR-GID-*` family, and this change adds
-no NFR.**
+Decision recorded for the spec set: **this change adds no NFR and changes
+no existing one; there is no guest-identity NFR family.**
 
 - The `business-analyst` handoff states it explicitly: "No new NFR is
   added and no existing NFR changes"
   (`docs/requirements/mvp-requirements.md` section 33.4), which is why
   the requirements tree carries `FR-GID-1`..`FR-GID-3` and no
-  `NFR-GID-*` id anywhere.
+  guest-identity NFR id.
 - The binding NFR citations for this change are the existing ones:
   `NFR-I18N-1` (the three catalogue sentences, both locales), `NFR-AUD-1`
   (a refusal records and emits nothing), `NFR-PERF-1` (the desk guest
   find keeps its budget), `NFR-CON-1`/`NFR-CON-2`, `NFR-SEC-1`/`NFR-SEC-2`,
   `NFR-AVL-1`, `NFR-TZ-1`, and `NFR-DSK-2` — all unchanged. `AC-GID-7`
   traces exactly to `NFR-I18N-1` and `NFR-AUD-1`.
-- A new `NFR-GID-*` would need a measurable target this change does not
+- A new NFR would need a measurable target this change does not
   introduce: the four bounds are fixed code constants, not a service
   level, latency, or ceiling that a test could measure against a budget.
   The refusals reuse `VALIDATION_FAILED` and existing NFR budgets, so
   writing an NFR would state a promise nothing distinct measures.
-- **Disposition:** the two product passages that name the family —
-  section 25's parenthetical ("the `FR-GID-*` / `NFR-GID-*` family") and
-  the section 25 addendum ("the requirements-side `FR-GID-*` /
-  `NFR-GID-*` family this spec set adds") — should say `FR-GID-*` only.
-  That is a `product-owner` edit and is flagged in the implementation
-  handoff, not made here (this session owns `docs/architecture/*` and
-  `docs/technical/*`). The `business-analyst` needs no change: section
-  33.4 and the `FR-GID` traces are already correct. Until the product
-  wording is corrected, this subsection is the record that the citation
-  is a phantom and that section 33.4 is authoritative.
+- **Disposition:** the product half dropped its earlier citation of a
+  guest-identity NFR family at its head `2045134` ("Cite only the
+  `FR-GID` family in the guest identity ACs"), so
+  `docs/product/acceptance-criteria.md` section 25 now cites
+  `FR-GID-1`..`FR-GID-3` only and states the no-change NFR disposition. No
+  product or requirements edit is outstanding: this subsection is the
+  architectural record that the change carries no NFR delta, and section
+  33.4 is the authoritative no-change statement.
 
 ### 32.9 Residual risks and re-tier triggers
 

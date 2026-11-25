@@ -863,7 +863,7 @@ operations plus one reader-visible refusal state on the existing Book
 screen, so the container and component views (sections 2 and 3) stand
 unchanged. Enforcement points, the refusal shapes, the exact bounds, the
 per-flow diagrams for the three touched flows, the contract decision, the
-verification plan, and the `NFR-GID` disposition: `docs/architecture/lld.md`
+verification plan, and the NFR disposition: `docs/architecture/lld.md`
 [section 32](lld.md#32-guest-identity-lookups-refuse-an-ambiguous-name-and-guest-payloads-carry-declared-bounds-refs-640);
 per-service note: `docs/architecture/services/guests.md` sections 4, 6,
 and 8; the refusals in the taxonomy:
