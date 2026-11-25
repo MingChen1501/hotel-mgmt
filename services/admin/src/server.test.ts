@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createServiceServer } from "./server.js";
+import { HttpError } from "./errors.js";
+import { msg } from "./messages.js";
 import { type AdminStoreAPI, AdminStore } from "./store.js";
 
 async function request(
@@ -719,6 +721,69 @@ describe("read-only audit log (NFR-AUD-1)", () => {
       const badLimit = await request(port, "POST", "/v1/admin/QueryAuditLog", { limit: 500 }, ownerToken);
       assert.equal(badLimit.status, 400);
       assert.equal((badLimit.body as { code: string }).code, "VALIDATION_FAILED");
+    });
+  });
+});
+
+// ERR4 (issue #627): the same fault contract as the other three Node
+// services — an unexpected exception answers INTERNAL_ERROR, not
+// VALIDATION_FAILED, and the session that was valid still works.
+class FaultAdminStore extends AdminStore {
+  override async getConfig(): Promise<never> {
+    throw new Error("connect ECONNREFUSED 127.0.0.1:5432 admin.hotel_config");
+  }
+}
+
+class RefusingAdminStore extends AdminStore {
+  override async getConfig(): Promise<never> {
+    throw new HttpError("FORBIDDEN", msg("error.forbidden.config_change", {}), { role: "front-desk" });
+  }
+}
+
+async function signInOwner(port: number): Promise<string> {
+  const signin = await request(port, "POST", "/v1/admin/SignIn", {
+    signinIdentity: "owner",
+    secret: "owner-secret",
+  });
+  return (signin.body as { token: string }).token;
+}
+
+describe("internal error envelope (#627)", () => {
+  it("answers an unexpected exception with INTERNAL_ERROR and keeps serving", async () => {
+    const faulty = new FaultAdminStore("test-key");
+    await faulty.ensureBootUser("owner", "owner-secret");
+    await withServer(faulty, async (port) => {
+      const token = await signInOwner(port);
+      const { status, body } = await request(port, "POST", "/v1/admin/GetHotelConfig", {}, token);
+      assert.equal(status, 500);
+      assert.deepEqual(Object.keys(body as Record<string, unknown>).sort(), [
+        "code",
+        "details",
+        "message",
+        "traceId",
+      ]);
+      const envelope = body as { code: string; message: string; details: unknown; traceId: string };
+      assert.equal(envelope.code, "INTERNAL_ERROR");
+      assert.notEqual(envelope.code, "VALIDATION_FAILED");
+      assert.equal(envelope.message, msg("error.transport.unexpected", {}));
+      assert.deepEqual(envelope.details, {});
+      assert.equal(typeof envelope.traceId, "string");
+      assert.ok(envelope.traceId.length > 0);
+
+      const next = await request(port, "GET", "/healthz");
+      assert.equal(next.status, 200);
+    });
+  });
+
+  it("keeps an HttpError refusal on the same route on its own code and status", async () => {
+    const refusing = new RefusingAdminStore("test-key");
+    await refusing.ensureBootUser("owner", "owner-secret");
+    await withServer(refusing, async (port) => {
+      const token = await signInOwner(port);
+      const { status, body } = await request(port, "POST", "/v1/admin/GetHotelConfig", {}, token);
+      assert.equal(status, 403);
+      assert.equal((body as { code: string }).code, "FORBIDDEN");
+      assert.deepEqual((body as { details: unknown }).details, { role: "front-desk" });
     });
   });
 });
