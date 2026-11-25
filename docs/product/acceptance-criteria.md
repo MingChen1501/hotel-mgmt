@@ -2524,6 +2524,289 @@ more is refused; `DailySheet` and `HousekeepingReport` are untouched;
 and the store carries the over-cap guard, the at-cap guard, and their
 boundary pair.
 
+## 25. Guest identity lookups refuse an ambiguous name and guest payloads carry declared bounds (Refs #640)
+
+Product-owner scope decision and acceptance conditions for audit
+findings G1, G2, and G3 (issue #640): a name lookup returns the first
+guest whose full name matches, so two guests sharing a name hand the
+desk the wrong profile (PII) instead of an ambiguity refusal; the guest
+`contact`/`preferences` objects and `notes` string are stored exactly
+as sent, with no per-field shape, length, or size bound; and the
+confirmation snapshot's date check is a regular expression, so
+`2026-13-45` is accepted where the Go services refuse it. One
+ambiguity refusal, one declared shape and two declared lengths on the
+guest write, one calendar-valid date check, and nothing else moves.
+
+Tier T2: caller-visible refusals on one read operation and one write
+operation, with no new subsystem, dependency edge, data model,
+lifecycle state, or code token, and one reader-visible desk state on
+the Book screen's guest find — so the UI contract delta is section 6.22
+in `docs/product/desk-ui-design-rollout.md` (one new plain refusal
+sentence, both locales; no layout, component, token, route, or print
+change). ADR-0004 D1 keeps the error envelope and its status mapping
+exactly as they are. The conditions below are the product half. FR
+wording is owned by `business-analyst`
+(`docs/requirements/mvp-requirements.md` section 33, the `FR-GID-1`..
+`FR-GID-3` family these conditions cite); no NFR is added and no
+existing NFR changes — section 33.4 is the no-change statement, so the
+conditions keep tracing to the existing `NFR-I18N-1` (the three
+catalogue sentences, both locales) and `NFR-AUD-1` (a refusal records
+and emits nothing). The LLD delta and the
+refusal edges on the Guests service design's flowcharts and error
+mapping by `architect` (LLD section 32,
+`docs/architecture/services/guests.md` sections 4 and 6, refreshed by
+the implementation PR per maintain-with-code), with the `IdentifyGuest`
+error-list line in `contracts/http/IdentifyGuest.json` and the
+`docs/technical/error-handling.md` section 1.4 note; guard mapping by
+`qa-lead` (`docs/testing/traceability-matrix.md` section 25); the gate
+verdict by `spec-reviewer`. The business rule that states the
+ambiguity and the two bounds is BR-63
+(`docs/requirements/business-rules.md`). The scope decision is D-37 in
+`docs/project/decision-log.md`.
+
+As-built validation (read-only trace at this spec head — the
+implementation lab reproduction belongs in the implementation PR body
+or an issue comment):
+
+- **A name lookup takes the first match in both stores.** The
+  in-memory `findGuest` walks the map and returns the first record whose
+  `fullName` equals the wanted name
+  (`services/guests/src/store.ts:308-326`, the loop and return at
+  `:318-322`), and the Postgres store runs
+  `SELECT … WHERE full_name = $1 LIMIT 1` with no `ORDER BY`
+  (`services/guests/src/pgstore.ts:181-190`), so with two guests named
+  alike the answer is whichever row the store reaches first — the wrong
+  profile, wrong stay links, and wrong preferences and notes, returned
+  as a success.
+- **`IdentifyGuest` is the only contract operation reachable by name.**
+  Its request accepts `guestId` or `fullName`
+  (`contracts/http/IdentifyGuest.json:11-16`, the `fullName` property at
+  `:15`); `GetGuest` requires `guestId`
+  (`contracts/http/GetGuest.json:11-13`) and `GetBookingContext` takes
+  only `guestId` (`contracts/http/GetBookingContext.json:11-13`).
+  `findGuest` is shared by `identifyGuest`, `getBookingContext`, and
+  `getGuest` (`services/guests/src/store.ts:243`, `:253`, `:258`), so
+  the rule lands once per store and the two `guestId` reads keep their
+  behaviour.
+- **`contact` and `preferences` accept anything object-shaped and
+  silently drop everything else.** `asObject` returns the value
+  unchanged when it is an object and `{}` otherwise
+  (`services/guests/src/store.ts:166-168`), and `upsertGuest` stores
+  `contact: asObject(input.contact)` and
+  `preferences: asObject(input.preferences)` (`:231-232`). An array is
+  an object for that test, so `contact: [1,2]` is stored as an array;
+  nested objects, null values, thousands of fields, and values of any
+  length pass; a string or a number is not refused either — it becomes
+  `{}`. The Postgres store follows the same helper
+  (`services/guests/src/pgstore.ts:25-27`, `:70-71`).
+- **`notes` is stored as any string, and a non-string is silently
+  ignored.** `notes` is `typeof input.notes === "string" ? input.notes
+  : (existing?.notes ?? "")` (`services/guests/src/store.ts:233`,
+  `services/guests/src/pgstore.ts:72`), so a ten-megabyte note is stored
+  as sent, while a number or an object is accepted and quietly replaced
+  by the stored value instead of refusing the field.
+- **`requireDate` checks the shape only.** The helper refuses only a
+  value that is not a string, or does not match `^\d{4}-\d{2}-\d{2}$`
+  (`services/guests/src/store.ts:170-175`), and it is applied to
+  `dates.checkIn` and `dates.checkOut` in the confirmation snapshot
+  (`:208`). `2026-13-45`, `2026-02-31`, and `2026-00-10` all match, so
+  they are attached and produced as confirmation dates; a real
+  February 29 (`2024-02-29`) is a valid date and must stay accepted.
+- **The Go services refuse a calendar-invalid date.** They parse every
+  date with `time.Parse("2006-01-02", …)`
+  (`services/reservations/internal/service/service.go:144`, `:148`;
+  `services/reservations/internal/handler/handler.go:365`, `:369`), so
+  the Node guest service is the outlier rather than being ahead.
+- **Nothing bounds either payload today.** The `UpsertGuest` request
+  lists `contact` and `preferences` as free-form objects and `notes` as
+  a plain string with no `maxLength`
+  (`contracts/http/UpsertGuest.json:17-19`), the schema stores all three
+  in unconstrained columns (`contact JSONB`, `preferences JSONB`,
+  `notes TEXT`; `services/guests/migrations/002_schema.sql:23-27`), and
+  no requirement, business rule, or service design states a shape or a
+  length, so this is a new rule rather than conformance to one.
+- **Every existing fixture is tiny.** The largest existing values are
+  `preferences: {"floor":"high"}`
+  (`services/guests/contract-tests/UpsertGuest.json:8`,
+  `services/guests/src/server.test.ts:67`), `contact:
+  {"phone":"+84-900-000-020"}` (`server.test.ts:173`), `contact:
+  {"idDocument":"E2E-0001"}` (`script/e2e-desk-loop.sh:263`), and
+  `notes: "Prefers a quiet high floor."` — 28 characters
+  (`server.test.ts:127`, `:175`) — so each bound below carries more
+  than nine times the headroom over the largest fixture in the tree.
+- **No desk flow sends `contact`, `preferences`, or `notes`.** The Book
+  screen's registration posts only `fullName` and `actor`
+  (`app/src/views/BookView.vue:748-762`, the body at `:761`); the
+  values are written only by the e2e and perf seeds
+  (`script/e2e-desk-loop.sh:263`, `script/e2e-perf-check.sh:143`), so
+  the new bounds cannot refuse a desk action.
+- **The desk reads a name miss and everything else differently.** The
+  guest find maps `NOT_FOUND` to `desk.book.guest_notfound`
+  (`app/src/views/BookView.vue:736-742`) and every other failure to the
+  generic `desk.shell.request_failed` sentence (`:744`, `:480-485`), so
+  an ambiguity refusal would today read as "That did not work. Try
+  again; if it keeps failing, tell the manager." — wrong on both counts:
+  the name is the problem, and a retry can never help.
+- **The refusal code is already in the vocabulary.**
+  `VALIDATION_FAILED` (400) is the caller-input code — "the caller's
+  body or a field is wrong"
+  (`docs/technical/error-handling.md:18-21`) — and it is already in the
+  contract enum (`contracts/errors/envelope.json:9`), so no enum edit
+  and no status-mapping change are needed. `CONFLICT` (409) is the
+  state-conflict code the booking and room guards use for a race, not a
+  caller's lookup key.
+
+Product rules (decided here):
+
+1. **An ambiguous name is refused, never resolved by first match.** A
+   name that matches no guest keeps `NOT_FOUND` as today; a name that
+   matches exactly one guest returns that profile exactly as today; a
+   name that matches two or more guests returns exactly one refusal
+   with no profile, no `contact`, `preferences`, `notes`, or
+   `stayLinks`, so two guests sharing a name can never hand the desk
+   another guest's details. The lookup must count the matches before it
+   answers — a `LIMIT 1` first row is not an answer.
+2. **The ambiguity is `VALIDATION_FAILED` (400) naming `fullName`.**
+   The envelope carries `details` `{"field": "fullName", "fullName":
+   <the searched name>, "matches": <number of matches>}`, a `traceId`,
+   and one plain sentence in the Guests catalogue —
+   `guests.validation.ambiguous_name`, "The name {fullName} matches more
+   than one guest; identify the guest by id." — raised by both stores
+   before any profile is assembled. No new code token, no contract enum
+   change, and no `CONFLICT` for a lookup: 409 stays the state-conflict
+   answer (a room just taken), not a caller's key.
+3. **`contact` and `preferences` carry one declared shape.** A present
+   value must be a plain JSON object — never an array, string, number,
+   or boolean — with at most 16 fields, each key a non-empty string of
+   at most 64 characters, and each value a string of at most 256
+   characters, a finite number, or a boolean; a nested object, an
+   array entry, or a null entry is refused, and a string, number, or
+   boolean sent in place of the object is refused instead of today's
+   silent `{}`. An absent field keeps today's behaviour exactly
+   (`contact` becomes `{}`, `preferences` keeps the stored object) and
+   an explicit `null` field keeps today's behaviour as well, because the
+   fields are optional and no caller sends `null`. Both bounds are
+   named constants in the service code, not configuration.
+4. **`notes` carries one declared length.** A present `notes` must be a
+   string of at most 2 000 characters (UTF-16 code units, the length
+   the stores already compute), and a present non-string value is
+   refused instead of today's silent fall-back to the stored note. An
+   absent `notes` keeps today's behaviour exactly (the stored note on
+   update, the empty string on create). The length is a named constant
+   in the service code, not configuration.
+5. **Writes are bounded; reads are not.** The two shapes and the length
+   apply to `UpsertGuest`, the only operation that writes these fields,
+   and to both stores, so the in-memory store and the Postgres store
+   refuse the same values. No migration, backfill, or data repair is
+   part of this change: a profile already holding a longer note or a
+   differently shaped object still reads exactly as today through
+   `GetGuest`, `IdentifyGuest`, and `GetBookingContext`, and nothing is
+   re-validated or dropped on read.
+6. **The confirmation snapshot takes real calendar dates.** In
+   `AttachReservation`, `dates.checkIn` and `dates.checkOut` must be
+   dates that exist on the calendar — `2024-02-29` is accepted,
+   `2026-02-31`, `2026-13-45`, and `2026-00-10` are refused with the
+   existing `VALIDATION_FAILED` sentence `guests.validation.date_format`
+   naming the field (`dates.checkIn` or `dates.checkOut`), so no new
+   catalogue key is added for this half. The date-order rule is not
+   added here: `checkIn` after `checkOut` stays as accepted as it is
+   today (named consequence below), and no other operation's date
+   handling changes.
+7. **A refused write writes nothing, and the desk says so plainly.**
+   Every refusal above is raised before the record, its stay links, and
+   its `guest-upserted` outbox event are written, in both stores, so a
+   refused `UpsertGuest` leaves no row, no link, and no event and the
+   stored profile is untouched. On the Book screen's guest find, an
+   ambiguity refusal reads as one new plain sentence
+   `desk.book.guest_ambiguous` in both locales — "That name matches more
+   than one guest, so no profile was opened. Ask the manager to check
+   the guest records." — resolves no guest, keeps the Find and Register
+   controls and the entered name in place, and never reads as the
+   `desk.book.guest_notfound` sentence or the generic request-failed
+   one; the desk switches on the envelope code and field, never on the
+   sentence.
+8. **The refusal set is pinned by guards before merge.** The
+   implementation carries a guard per refusal — two guests with one
+   name for the ambiguity, the at-bound and one-over cases for the two
+   lengths and the field, key, and value shapes, the leap-day and
+   calendar-invalid dates — plus the regression guards that a unique
+   name and a `guestId` lookup answer exactly as today, in both stores
+   (or through the one shared validator both call), with the existing
+   guest and Book-screen suites green.
+
+- AC-GID-1 — Given two guests whose `fullName` is the same string,
+  when `IdentifyGuest` is called with that name, then the answer is
+  exactly one HTTP 400 with the shared envelope: code
+  `VALIDATION_FAILED`, `details` naming `fullName` with the searched
+  name and the match count, the
+  `guests.validation.ambiguous_name` sentence, and a `traceId`; no
+  profile, `contact`, `preferences`, `notes`, or `stayLinks` come back,
+  and the same refusal is produced by both stores. Traces to:
+  FR-GID-1 (Refs #640); FR-GST-1, FR-GST-3; AC-GST-1.
+- AC-GID-2 — Given a name that matches exactly one guest, when
+  `IdentifyGuest` is called with that name, then the profile and its
+  stay links come back exactly as today; and given a name that matches
+  no guest, the answer stays `NOT_FOUND` with today's sentence. A
+  `guestId` lookup through `IdentifyGuest`, `GetGuest`, or
+  `GetBookingContext` answers exactly as today, including for two
+  guests who share a name. Traces to: FR-GID-1 (Refs #640); FR-GST-1,
+  FR-GST-3; AC-GST-1, AC-GST-3.
+- AC-GID-3 — Given `UpsertGuest`, when `contact` or `preferences` is
+  present and is an array, a string, a number, or a boolean, or holds
+  more than 16 fields, an empty or over-64-character key, a nested
+  object, an array entry, a null entry, a string entry longer than 256
+  characters, or a number entry that is not finite, then the whole
+  upsert is refused with HTTP 400 `VALIDATION_FAILED` naming `contact`
+  or `preferences`, one plain sentence stating the shape, and a
+  `traceId`; no record, stay link, or outbox event is written and the
+  stored profile is unchanged. Traces to: FR-GID-2 (Refs #640);
+  FR-GST-1, FR-GST-2; AC-GST-2.
+- AC-GID-4 — Given `UpsertGuest`, when `notes` is present and is not a
+  string, or is a string longer than 2 000 characters, then the whole
+  upsert is refused with HTTP 400 `VALIDATION_FAILED` naming `notes`,
+  one plain sentence carrying the length, and a `traceId`, writing
+  nothing; a note of exactly 2 000 characters is stored as sent, and an
+  absent `notes` keeps today's behaviour. Traces to: FR-GID-2 (Refs
+  #640); FR-GST-2; AC-GST-2.
+- AC-GID-5 — Given `AttachReservation`, when `dates.checkIn` or
+  `dates.checkOut` is a calendar-invalid date such as `2026-13-45` or
+  `2026-02-31`, then the snapshot is refused with HTTP 400
+  `VALIDATION_FAILED` naming that field and the existing
+  `guests.validation.date_format` sentence, and no confirmation is
+  stored; `2024-02-29` is accepted, and no other operation's date
+  handling changes. Traces to: FR-GID-3 (Refs #640); FR-GST-4;
+  AC-GST-4.
+- AC-GID-6 — Given an ambiguity refusal on the Book screen's guest
+  find, when it is shown, then it reads as the one new plain sentence
+  `desk.book.guest_ambiguous` in both locales, no guest is resolved and
+  no profile is shown, the entered name and the Find and Register
+  controls stay in place, and the generic request-failed sentence and
+  the not-found sentence are not used; the screen keeps its layout,
+  component mapping, design tokens, route, and print rules, and
+  `script/catalogue-coverage-check.sh` stays green. Traces to: FR-GID-1
+  (Refs #640); FR-DSP-3, NFR-I18N-1; AC-DSK-1, AC-DSK-2.
+- AC-GID-7 — Given the change ships, when it is verified, then each
+  bound is a named constant in the service code and no environment
+  variable, deployment setting, or per-hotel configuration carries it;
+  both stores refuse the same values; the ambiguity, shape, length, and
+  date guards and their at-bound and one-over boundary cases exist
+  beside the regression guards for the unique name, the unknown name,
+  and every `guestId` read; no schema migration, backfill, or data
+  repair exists; `contract-check` stays green with no code token added;
+  and no print document, announcement, or other desk surface changes.
+  Traces to: FR-GID-1, FR-GID-2, FR-GID-3 (Refs #640); NFR-I18N-1,
+  NFR-AUD-1 (evidence condition; no behaviour change).
+
+Done when: a name that matches two guests is refused with
+`VALIDATION_FAILED` naming `fullName` and returns no profile in both
+stores while a unique name and every `guestId` lookup answer exactly as
+today; an oversized or wrongly typed `contact`, `preferences`, or
+`notes` is refused naming the field and writes nothing; a
+calendar-invalid confirmation date such as `2026-13-45` is refused
+naming the field; the Book screen's guest find says the ambiguity in
+plain words in both locales; and the guards for every refusal and its
+boundary exist with the existing guest and Book suites green.
+
 ## Traceability summary
 
 43 done-conditions cover all 9 MVP slices from the roadmap
@@ -2808,3 +3091,38 @@ code for this family.
 
 <!-- ao-role: product-owner -->
 Role: product-owner · AO session hotel-mgmt-1128
+
+<!-- ao-role: product-owner -->
+Role: product-owner · AO session hotel-mgmt-1139
+
+Guest-identity addendum (Refs #640): seven further conditions
+(AC-GID-1..AC-GID-7, section 25) cover audit findings G1, G2, and G3 —
+a name that matches two guests is refused with the shared envelope and
+`VALIDATION_FAILED` naming `fullName` and returns no profile in both
+stores, while a unique name and every `guestId` read answer exactly as
+today; `contact` and `preferences` carry one declared shape (a plain
+object of at most 16 string-keyed fields whose values are short
+strings, finite numbers, or booleans) and `notes` one declared length
+(2 000 characters), refused naming the field and writing nothing, with
+reads unchanged so no stored profile is re-validated or dropped; a
+calendar-invalid confirmation date such as `2026-13-45` is refused
+naming the field; and the Book screen's guest find says the ambiguity
+in one new plain sentence in both locales instead of the generic
+request-failed one. The bounds are taken from the largest existing
+fixtures in the tree (a 28-character note, one-field objects) with more
+than nine times headroom, and both sit far under the 64 KiB body
+ceiling the #630 change declares, so no legitimate desk payload is
+near them. They trace to the existing `FR-GST-1`, `FR-GST-2`,
+`FR-GST-3`, `FR-GST-4`, `FR-DSP-3`, `NFR-I18N-1`, and `NFR-AUD-1`; the
+requirements-side `FR-GID-1`..`FR-GID-3` family this spec set adds is
+the `business-analyst` handoff (`docs/requirements/mvp-requirements.md`
+section 33), no NFR is added and no existing NFR changes (section 33.4
+is the no-change statement), the business rule that states the
+ambiguity and the two bounds is BR-63
+(`docs/requirements/business-rules.md`), and the LLD
+delta, the contract error-list line, and the service-design refusal
+edges are the `architect` handoff. The refusals reuse the existing
+vocabulary and the existing guest date sentence, so the conditions
+written earlier hold as written, the 43-condition MVP count above
+stands unchanged, and the sections 1–17 and 19–24 done-conditions keep
+their behaviour. `GID` is the domain code for this family.
