@@ -320,7 +320,7 @@ merges, and the owner merges it personally. The guard registry
 every one of those guards is created by the implementation PR, which also
 rewires the two service pins that today assert the caller-supplied total
 (`services/reservations/internal/service/service_test.go:46-61`,
-`:121-135`) rather than deleting them. Verification at merge: the
+`:139-155`) rather than deleting them. Verification at merge: the
 Reservations stack builds, vets, formats, and tests green; the Rates
 stack green as a re-run with no delta; `script/contract-check.sh` green
 over the one new envelope code (`PRICE_CHANGED`, 409) and the advisory
