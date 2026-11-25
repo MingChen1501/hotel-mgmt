@@ -7727,7 +7727,11 @@ The decided behaviour, in eight parts:
    `12.0` is 12 minor units and is accepted exactly as `12` is, so a
    caller whose serialiser writes whole numbers with a decimal point is
    not refused. An absent field keeps today's
-   `error.validation.field_required` refusal.
+   `error.validation.field_required` refusal, and a present value that
+   is not a JSON number at all (for example a string `"12"`) refuses
+   with the existing `error.validation.field_number` sentence naming the
+   field instead of the missing-field one, so "absent" and "wrong type"
+   read as the two different caller mistakes they are (`AC-AMT-1`).
 6. **The percent adapter bounds the number, not the money.** A tax rate
    is not a money amount: a fractional percent such as `8.5` stays
    accepted and drives the derivation exactly as today
@@ -7834,11 +7838,15 @@ the adapter before any service, store, provider, or folio call runs.
 Given a whole amount written with a decimal point (`12.0`); then it is
 read as the whole amount it is and served exactly as `12` is. Given an
 absent money field; then the existing `error.validation.field_required`
-refusal answers unchanged. Given the refusal is rendered; then it names
-the field and no internal detail beyond it.
+refusal answers unchanged. Given a present money field that is not a
+JSON number at all (for example a string `"12"`); then the existing
+`error.validation.field_number` sentence naming the field answers
+instead of the missing-field one, so "absent" and "wrong type" read as
+the two different caller mistakes they are. Given the refusal is
+rendered; then it names the field and no internal detail beyond it.
 Targets: 100% of fractional money values refused with the envelope; 0
 truncated values stored; a whole value spelled with a decimal point
-accepted.
+accepted; a present non-number value refused with `field_number`.
 Traces to: `AC-AMT-1`; `AC-AMT-3`; contracts/http/PostCharge.json;
 contracts/http/RecordPayment.json; contracts/http/UpsertChargeItem.json;
 FR-BIL-2; FR-BIL-3; NFR-I18N-1; `BR-61`.
@@ -7905,8 +7913,9 @@ and stored effect — including `0` for `PostCharge.amountMinor` and
 `UpsertChargeItem.priceMinor`, an idempotent replay, and the tax and
 fee derivation from the hotel rules (`BR-25`). Given the change ships;
 then `BillingControllerTest` carries, for each of the three money
-adapters, a fractional guard and an over-ceiling guard that also assert
-the service was never called, a guard for the percent adapter's
+adapters, a fractional guard, a present non-number guard, and an
+over-ceiling guard that also assert the service was never called, a
+guard for the percent adapter's
 unreadable value, the boundary pair (an amount at the ceiling accepted
 and one minor unit more refused), and an in-range regression case per
 field, and the Billing message-catalogue guard pins both new sentences;
@@ -7915,8 +7924,8 @@ condition of this section. Given any existing desk path; then no
 screen, route, print rule, or catalogue key beyond the two sentences
 changes.
 Targets: 100% of the existing Billing suites pass unedited; 3 of 3
-money adapters carry a fractional and an over-ceiling guard; 2 new
-catalogue sentences pinned.
+money adapters carry a fractional, a present non-number, and an
+over-ceiling guard; 2 new catalogue sentences pinned.
 Traces to: `AC-AMT-3`; `AC-AMT-5`; FR-BIL-2; FR-BIL-3; FR-BIL-5;
 NFR-I18N-1; `BR-61`.
 
@@ -7931,7 +7940,7 @@ untouched, which is the `NFR-AMT-4` boundary proof.
 
 | Item | Guard (on disk today; a row marked missing is created by the implementation PR) | Handoff note for `qa-lead` |
 |---|---|---|
-| NFR-AMT-1 fractional refusal, per money adapter | Billing's MockMvc harness `services/billing/src/test/java/com/hotel/billing/web/BillingControllerTest.java:35-37`; the PostCharge money paths it drives (`:48`, `:63`); the percent path (`:78`); the published schema types (`contracts/http/PostCharge.json:18`, `RecordPayment.json:17`, `UpsertChargeItem.json:16`). Missing today: no controller test drives `RecordPayment` or `UpsertChargeItem`, and none sends a fractional money value | Missing guards, one per money field: send `12.99` and assert HTTP 400, a JSON body with exactly the four envelope keys, `code: "VALIDATION_FAILED"`, `details.field` the field name, the `error.validation.amount_not_integer` sentence, and a non-empty `traceId`; assert the service was never called (`verifyNoInteractions`) so nothing was written; assert `12.0` answers exactly as `12` does; where a probe is both fractional and over-ceiling, assert the refusal and no writes without pinning which of the two sentences answered |
+| NFR-AMT-1 fractional and non-number refusal, per money adapter | Billing's MockMvc harness `services/billing/src/test/java/com/hotel/billing/web/BillingControllerTest.java:35-37`; the PostCharge money paths it drives (`:48`, `:63`); the percent path (`:78`); the published schema types (`contracts/http/PostCharge.json:18`, `RecordPayment.json:17`, `UpsertChargeItem.json:16`). Missing today: no controller test drives `RecordPayment` or `UpsertChargeItem`, none sends a fractional money value, and none sends a present non-number value (today `BillingController.java:52` answers `field_required` for it) | Missing guards, one per money field: send `12.99` and assert HTTP 400, a JSON body with exactly the four envelope keys, `code: "VALIDATION_FAILED"`, `details.field` the field name, the `error.validation.amount_not_integer` sentence, and a non-empty `traceId`; assert the service was never called (`verifyNoInteractions`) so nothing was written; send a present non-number value (a string `"12"`) and assert the same envelope with `details.field` the field name and the `error.validation.field_number` sentence, not `field_required`, and `verifyNoInteractions`; assert `12.0` answers exactly as `12` does; where a probe is both fractional and over-ceiling, assert the refusal and no writes without pinning which of the two sentences answered |
 | NFR-AMT-2 ceiling refusal and constant | The same harness and schemas; `script/contract-check.sh` reads the schemas. Missing today: no money-ceiling constant and no over-ceiling test | Missing guards: assert the declared constant equals 1 000 000 000 000 and is the same value for all three fields; send 1 000 000 000 001 and −1 000 000 000 001 and assert the same envelope with `details.field` and the `error.validation.amount_above_ceiling` sentence; assert the boundary pair (1 000 000 000 000 accepted, one more refused); assert an in-range negative still answers the service's sign refusal; a repo-level guard asserts no environment variable, deployment file, or runbook entry carries or overrides the ceiling |
 | NFR-AMT-3 percent adapter | `services/billing/src/test/java/com/hotel/billing/web/BillingControllerTest.java:78` (a whole percent accepted); `services/billing/src/test/java/com/hotel/billing/service/BillingServiceTest.java:103` (name, absent percent, negative and over-hundred percent refused). Missing today: no guard for a present percent the adapter cannot read, and none pins that `8.5` stays accepted | Missing guards: send a present, non-numeric `percent` and assert `VALIDATION_FAILED` with `details.field` `percent` and the `error.validation.field_number` sentence; send `8.5` and assert it is accepted and derives as today; keep the 0–100 refusal and the absent-field refusal asserted already, unedited |
 | NFR-AMT-1/NFR-AMT-2 catalogue sentences | `services/billing/src/test/java/com/hotel/billing/util/MessagesTest.java:24` (the byte-identical sample guard); `script/catalogue-coverage-check.sh`. Missing: the two keys | Missing guards: one assertion per key pins "{field} must be a whole number of minor units." and "{field} must be at most {max} minor units." with their placeholders rendered, and the catalogue-coverage gate stays green |
@@ -7999,12 +8008,16 @@ repair exists in either direction.
   sign rules (`BillingService.java:134-136`, `:172-174`, `:321-323`)
   and the percent 0–100 rule (`:340-342`); and any change to a contract
   file, desk surface, or catalogue key other than the two sentences.
-- Out of scope, and routed to `product-owner`: the exact refusal for a
-  present money value that is not a JSON number at all. Product rule 5
-  in `docs/product/acceptance-criteria.md` section 23 names
-  `error.validation.field_number` while `AC-AMT-1`..`AC-AMT-5` carry no
-  condition for it; this section words only the conditions those
-  criteria state and neither widens nor narrows that case.
+- Specified by `AC-AMT-1` and its guard `AC-AMT-5` (not routed
+  elsewhere): a present money value that is not a JSON number at all
+  (for example a string `"12"`)
+  is refused with the existing `error.validation.field_number` sentence
+  naming the field instead of today's missing-field sentence, so
+  "absent" and "wrong type" read as the two different caller mistakes
+  they are. The gating guard is required: each money adapter sends a
+  present non-number value and asserts the `VALIDATION_FAILED` envelope,
+  `details.field`, the `field_number` sentence, a `traceId`, and that
+  the service was never called (section 31.4, `NFR-AMT-1`).
 - The specified change is tier T2 (a caller-visible refusal on four
   Billing operations, with no new subsystem, dependency edge, data
   model, lifecycle state, endpoint, reader-visible surface, or code
