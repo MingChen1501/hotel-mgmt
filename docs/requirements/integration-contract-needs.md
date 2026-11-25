@@ -719,11 +719,11 @@ their own either: every pair keeps its payload and codes, the
 over-limit refusal reuses `VALIDATION_FAILED` with `details.field`
 `body`, and no contract file or version changes (`NFR-BND-1`..
 `NFR-BND-3`, `BR-60`). The #631 booking guard (section 1b
-amendment) adds no operation either: it consumes the existing
-`CheckRoomTypeSellability` read server-side, with three named error
-cases and no new request member. No operation, field, or error case
-introduces behaviour beyond the mapped FRs. Later capabilities from
-requirements section 6 carry no contract need here.
+amendment; requirements section 27) adds no operation either: it
+consumes the existing `CheckRoomTypeSellability` read server-side, with
+three named error cases and no new request member. No operation,
+field, or error case introduces behaviour beyond the mapped FRs. Later
+capabilities from requirements section 6 carry no contract need here.
 
 Counts: 8/8 HLD modules covered (7 consumer-facing pairs plus
 config/identity/reporting/export fans); 6 contract open questions
