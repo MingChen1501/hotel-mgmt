@@ -120,11 +120,15 @@ raising `PRICE_CHANGED` (409), and stops refusing the second
 `UPSTREAM_UNAVAILABLE` case — the one that names `QuotePrice` — while the
 `CheckRestrictions` read keeps its existing fail-closed branch and its
 own 503. `priceBasis` returns to being read from the request body after
-the presence and `>= 0` check. The two error codes stay registered in
-the error envelope and the contract version bump stays applied: a
-registered code nothing emits is harmless, `priceBasis` was relaxed
-rather than removed, and an older desk build therefore keeps working
-against the reverted service. No configuration value arrives with the
+the presence and `>= 0` check. The additive contract delta — the new
+`PRICE_CHANGED` (409) code in the error envelope and the advisory
+`priceBasis` wording — may stay applied across the revert: a registered
+code nothing emits is harmless, `UPSTREAM_UNAVAILABLE` (503) was already
+registered before this change, no contract version was bumped for it
+(`CreateReservation` stays `1.2` and `ModifyReservation` stays `1.1`,
+both from the availability delta), and `priceBasis` was relaxed rather
+than removed, so an older desk build keeps working against the reverted
+service either way. No configuration value arrives with the
 change — `RATES_BASE_URL` and its `http://rates:8082` default already
 exist in the bundle (`deploy/compose.yaml:46`) and are still read for the
 restriction check — so the hotel's per-hotel configuration set is

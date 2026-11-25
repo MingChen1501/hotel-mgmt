@@ -323,9 +323,12 @@ rewires the two service pins that today assert the caller-supplied total
 `:121-135`) rather than deleting them. Verification at merge: the
 Reservations stack builds, vets, formats, and tests green; the Rates
 stack green as a re-run with no delta; `script/contract-check.sh` green
-over the two new envelope codes and the two version bumps
-(`CreateReservation` `1.1 -> 1.2`, `ModifyReservation` `1.0 -> 1.1`);
-`script/openapi-route-check.sh` green over the mirrored operations;
+over the one new envelope code (`PRICE_CHANGED`, 409) and the advisory
+`priceBasis` delta, which add no second version bump: `CreateReservation`
+already carries `1.2` and `ModifyReservation` `1.1` from the availability
+delta, and `UPSTREAM_UNAVAILABLE` (503) was already registered by #627,
+so only its `when` sentence extends (`../architecture/lld.md`
+section 25.7); `script/openapi-route-check.sh` green over the mirrored operations;
 `script/catalogue-coverage-check.sh` green over the new refusal sentence
 in both locales; `script/markdown-link-check.sh` green; the desk suite
 and the browser desk loop green with the #588/#600/#601/#646/#647 pins
