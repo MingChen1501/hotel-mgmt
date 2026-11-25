@@ -17,10 +17,10 @@ Go `handler / service / store`, where the service is a thin validation-and-deleg
 | Transport + auth + body decoding | `internal/handler/handler.go` | `NewMux(svc)` routes `POST /v1/reporting/<Operation>`; Bearer presence check; date-window required-field checks before delegating |
 | Read step order | `internal/service/service.go` | validates nothing itself beyond delegating: `OccupancyReport` (:31), `RevenueSummary` (:37), `DailySheet` (:43), `HousekeepingReport` (:49) straight to the store; never reads other modules' stores |
 | Projections + storage | `internal/store/store.go` (`Store`), `internal/store/postgres.go` | `Apply` ingests one domain event (:191), `Rebuild` replays the log (:217), `project` routes by event type (:237); `Occupancy` (:460), `Revenue` (:515), `Sheet` (:542), `Housekeeping` (:618) serve reads with an as-of timestamp |
-| Health | `internal/health/` | `GET /healthz` with the module identity (`cmd/server/main.go:29`) |
-| Boot | `cmd/server/main.go` | store wiring exposed for the rebuild job (`service.Store()`), mounts health + read routes (:27-31) |
+| Health | `internal/health/` | `GET /healthz` with the module identity (`cmd/server/main.go:30`) |
+| Boot | `cmd/server/main.go` | store wiring exposed for the rebuild job (`service.Store()`), mounts health + read routes (:28-32) |
 
-The routing table (`internal/handler/handler.go`): `OccupancyReport` (:98), `RevenueSummary` (:124), `DailySheet` (:150), `HousekeepingReport` (:180). Every report carries `asOf` so staleness is visible.
+The routing table (`internal/handler/handler.go`): `OccupancyReport` (:136), `RevenueSummary` (:162), `DailySheet` (:188), `HousekeepingReport` (:218). Every report carries `asOf` so staleness is visible.
 
 ## 3. Happy-path flowchart
 
@@ -36,10 +36,10 @@ flowchart TD
 
 Edge trace (every edge cites code):
 
-- A–B: Bearer presence + JSON decode (`internal/handler/handler.go:76-97`).
-- C: `dateFrom`/`dateTo` required (:98-101); the store validates the window shape (`internal/store/store.go:460`).
+- A–B: Bearer presence + JSON decode (`internal/handler/handler.go:114-133`).
+- C: `dateFrom`/`dateTo` required (:136-139); the store validates the window shape (`internal/store/store.go:460`).
 - D: per-night, per-type occupied/available counts served from the rebuilt projection — the service never touches another module's rows (`internal/service/service.go:31-35`).
-- E: `nights` plus the read-model `asOf` timestamp returned so freshness is explicit (`internal/handler/handler.go:109-122`).
+- E: `nights` plus the read-model `asOf` timestamp returned so freshness is explicit (`internal/handler/handler.go:147-160`).
 
 ## 4. Failure/rollback flowchart
 
@@ -55,7 +55,7 @@ flowchart TD
 
 Edge trace:
 
-- W: missing `dateFrom`/`dateTo`/`businessDate` → `VALIDATION_FAILED` before any store call (`internal/handler/handler.go:98-191`); malformed windows refused in `Occupancy`/`Revenue`/`Sheet`/`Housekeeping` (`internal/store/store.go:460-618`).
+- W: missing `dateFrom`/`dateTo`/`businessDate` → `VALIDATION_FAILED` before any store call (`internal/handler/handler.go:136-229`); malformed windows refused in `Occupancy`/`Revenue`/`Sheet`/`Housekeeping` (`internal/store/store.go:460-618`).
 - V: `Sheet` on an unknown business date surfaces `NOT_FOUND` (`internal/store/store.go:542`).
 - J–K: `Apply` ingests one event at a time and `project` routes known types only — `reservation.created` (:243), `reservation.cancelled`/`no-show` (:267), `stay.checked-in` (:275), `stay.checked-out` (:299), `rate.availability-set` (:331), `folio.charge-posted` (:345), `folio.payment-recorded` (:373), `config.changed` (:383); `Rebuild` replays the whole log to replace the projection (:217-235).
 
@@ -73,8 +73,8 @@ Envelope `{code, message, details, traceId}` (same shape as reservations) to `do
 
 | Code | Status | Raised when |
 |---|---|---|
-| `VALIDATION_FAILED` | 400 | missing/malformed date window or business date (`internal/handler/handler.go:98-191`; `internal/store/store.go:460-618`) |
-| `UNAUTHENTICATED` | 401 | missing session token (`internal/handler/handler.go:78-88`) |
+| `VALIDATION_FAILED` | 400 | missing/malformed date window or business date (`internal/handler/handler.go:136-229`; `internal/store/store.go:460-618`) |
+| `UNAUTHENTICATED` | 401 | missing session token (`internal/handler/handler.go:118-128`) |
 | `NOT_FOUND` | 404 | unknown business date for the daily sheet (`internal/store/store.go:542`) |
 
 ## 7. Operations
