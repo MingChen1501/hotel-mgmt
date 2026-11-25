@@ -76,6 +76,7 @@ front-desk staff, manager, or owner account acting within its access
 | BR-46 | The check-out gate is decided on the folio the system holds, never on what a request asserts. The balance is the folio's stored balance, re-read when the close is attempted, and an approval counts only as the record stored against that folio — approver identity, a role from the hotel's fixed three, and the recorded time — while a balance or approval object supplied with the request is advisory input that decides nothing. The folio presented as the final invoice must be the folio the balance came from. A folio that cannot be read refuses the close instead of closing on an unverified balance, and every refusal leaves the stay in house with nothing released. Which role may approve, and whether approval is needed, stays the hotel's open-balance rule (`BR-17`). | FR-FDK-2; FR-BIL-7; FR-CKS-1..FR-CKS-5; BR-17; BR-21; requirements section 3.1; requirements section 3.2; `AC-CKO-1`; `AC-CKO-2`; Refs #601 |
 | BR-50 | A folio is created, and a charge, a payment, or an open-balance approval recorded, only for a stay the system confirms exists and is in house at that moment. A stay id selects which stay a write is about; it never proves one. The stay's existence and lifecycle state are Stay's facts, read through the registered stay-reference read with the caller's session, before every folio write whether or not the folio already exists, and before a folio is created on a balance read. A stay that already carries a folio stays readable in every stay state, so the departure invoice and its receipts never depend on the stay still being in house. | FR-BIL-1; FR-FWV-1; FR-FWV-5; BR-21; `AC-FWV-4`; Refs #634 |
 | BR-51 | A folio write for a stay that cannot be verified is refused and changes nothing: an unknown stay is refused as not found naming it, a stay outside in-house is refused naming it and its state — a charge, a payment, or an approval after departure is refused the same way, and the existing folio keeps every line and its balance — and a stay that cannot be read is refused as an upstream failure naming the upstream and the operation. No such refusal creates a folio row, a line, an approval, a balance movement, an idempotency record, or an outbox event, and a repeated request answers the same. An unreadable stay is never replaced by a cached or assumed state, and an approval recorded for an open balance does not permit a folio write after the stay leaves house. | FR-BIL-2; FR-BIL-3; FR-BIL-7; FR-FWV-1..FR-FWV-4; BR-24; BR-46; `AC-FWV-1`; `AC-FWV-2`; `AC-FWV-3`; Refs #634 |
+| BR-61 | A money amount is a whole number of minor units carried as an integer and bounded by one declared ceiling — 1 000 000 000 000 minor units on every Billing money field (`amountMinor` on `PostCharge` and `RecordPayment`, `priceMinor` on `UpsertChargeItem`). A value that is not a whole number, or whose magnitude exceeds the ceiling, is refused with the shared envelope and `VALIDATION_FAILED` (400), `details` naming the field, and one plain catalogue sentence, in the adapter before any service, store, provider, or folio call runs: it is never truncated, nothing is written, and no idempotency record or outbox event is left. A whole amount at or inside the ceiling is served exactly as today, a whole value written with a decimal point (`12.0`) counts as whole, an absent field keeps the existing required-field refusal, and the existing sign rules (`amount_negative`, `amount_positive`, `price_negative`) and the tax-rule percent's 0–100 range stay where they are: the percent is bounded as a number, not as money. The ceiling is one constant in code, never configuration, and sits below 2<sup>53</sup> so every accepted amount round-trips exactly through JSON and the stored integer. | FR-BIL-2; FR-BIL-3; FR-BIL-5; `AC-AMT-1`..`AC-AMT-5`; Refs #635 |
 
 ## 6. Rooms and housekeeping
 
@@ -189,14 +190,25 @@ ceiling refused as the caller's mistake before parsing or any store,
 provider, or folio call, one ceiling constant in code rather than
 configuration, and finite header-read, body-read, response-write, and
 idle bounds on every server — tracing `NFR-BND-1`..`NFR-BND-3` and
-`AC-BND-1`..`AC-BND-5`, without adding behaviour beyond those sources.
+`AC-BND-1`..`AC-BND-5`, without adding behaviour beyond those sources,
+and BR-61 states the money obligation every Billing money field owes
+its caller — a whole number of minor units bounded by one declared
+1 000 000 000 000-unit ceiling, a fractional or over-ceiling value
+refused naming the field before any service, store, provider, or folio
+call, one ceiling constant in code rather than configuration, and the
+percent bounded as a number while the sign rules stay where they are —
+tracing `FR-BIL-2`, `FR-BIL-3`, `FR-BIL-5`, and `AC-AMT-1`..`AC-AMT-5`,
+without adding behaviour beyond those sources.
 Policies with no decided source appear as open questions
 OQ-1..OQ-5. No rule introduces behaviour beyond the traced
 FRs/NFRs/stories. Later capabilities from requirements section 6
 (waitlist, split folios, integrated payments, automated workflow
 rules, multi-property operation, and the rest) carry no rule here.
 
-Counts: 50 business rules, 5 open questions.
+Counts: 51 business rules, 5 open questions.
 
 <!-- ao-role: business-analyst -->
 Role: business-analyst · AO session hotel-mgmt-1079
+
+<!-- ao-role: business-analyst -->
+Role: business-analyst · AO session hotel-mgmt-1116
