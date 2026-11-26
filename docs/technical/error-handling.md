@@ -200,6 +200,77 @@ product conditions: `docs/product/acceptance-criteria.md` section 25
 (`AC-GID-1`..`AC-GID-7`); requirements: `FR-GID-1`..`FR-GID-3` in
 `docs/requirements/mvp-requirements.md` section 33; business rule BR-63.
 
+### 1.5 Admin authenticates before parsing and refuses a malformed config write (Refs #639)
+
+A session-guarded Admin operation is answered **only after the session
+is checked**, and a config value is **inside its key's declared shape or
+the whole write is refused**.
+
+Request order. On `POST /v1/admin/<Operation>` other than `SignIn`,
+Admin checks the session before it reads the body: a missing token, or
+an invalid, expired, revoked, signed-out, or orphan session, answers
+exactly one HTTP 401 `UNAUTHENTICATED` with the matching existing
+`error.auth.*` sentence, `details` as today, and a fresh `traceId`.
+No `VALIDATION_FAILED`, and none of the `error.transport.bad_json`,
+`body_not_object`, or `body_too_large` sentences, comes back; the
+payload is never read, parsed, or measured, so its size, shape, and
+fields stay unobservable. A resolved session then reads the body and
+keeps today's 400 `VALIDATION_FAILED` with the existing transport
+sentence for a malformed body, and the front-desk `FORBIDDEN` 403 is
+reached only for a well-formed body — the order is **401, then 400,
+then 403**. `SignIn` keeps today's order in both directions (its body
+is read and its fields validated as today, with its 5-failure lockout),
+and `GET /healthz`, the route match, and the unknown-path 404 stay
+before the session check and read no body. This adds no code token and
+no status-mapping change: `UNAUTHENTICATED` (401) and
+`VALIDATION_FAILED` (400) already exist (ADR-0004 D1).
+
+Config write shapes. `UpdateHotelConfig` applies one per-key table
+before its first write; a key outside the table keeps today's behaviour
+exactly (written as sent):
+
+| Key | Declared shape |
+|---|---|
+| `name` | non-empty text after trimming (today's rule) |
+| `timezone` | non-empty text after trimming |
+| `standardCheckinTime`, `standardCheckoutTime` | 24-hour `HH:MM` (`00`-`23`:`00`-`59`) |
+| `requiredGuestFields` | an array with at least one entry; every entry non-empty after trimming; no two entries equal after trimming |
+| `cancellationReasons` | an array whose every entry is non-empty after trimming; `[]` allowed |
+| `retentionFloorDays` | a whole JSON number at or above 0 |
+| `cancellationWording`, `address`, `phone`, `email` | text; `""` allowed |
+
+The first offending key in the request's entry order refuses the whole
+write with HTTP 400 `VALIDATION_FAILED`, `details` `{"field": <key>}`,
+and that key's plain sentence — `error.validation.field_required`
+(existing, `name`), `config_text` ("{field} must be non-empty text."),
+`config_time` ("{field} must be a 24-hour HH:MM time."),
+`config_required_fields` ("{field} must list at least one guest field,
+each a non-empty entry, without duplicates."), `config_list` ("{field}
+must be a list of non-empty text entries."),
+`config_optional_text` ("{field} must be text."), and the existing
+`retention_floor` ("retentionFloorDays must be a non-negative
+integer."). Nothing is written for the refused request — not the
+offending key, and not a valid key sent beside it — and no
+`config.updated` audit entry is recorded. A `values` that is not an
+object and a missing or blank `updatedBy` keep their existing refusals
+and their place ahead of the per-key checks. The check runs in both
+stores before the first write (or in one helper both call), so the
+in-memory and Postgres stores refuse the same values; every conforming
+value is stored verbatim, read back, and audited exactly as today. The
+rules and sentences are fixed code constants, never configuration.
+
+No code, status, enum entry, envelope field, route, or operation is
+added: `contracts/errors/envelope.json` is untouched, and the
+`UpdateHotelConfig` error list gains only prose (the ordering and shape
+clauses). Enforcement points, the per-key table, the per-flow diagrams,
+the verification plan, and the contract decision: LLD
+[section 33](../architecture/lld.md#33-admin-authenticates-before-parsing-and-refuses-a-malformed-config-write-refs-639);
+per-service note: `docs/architecture/services/admin.md` sections 2, 4,
+and 6; product conditions: `docs/product/acceptance-criteria.md`
+section 26 (`AC-CFG-1`..`AC-CFG-5`); requirements: `FR-CFG-1`..`FR-CFG-3`
+in `docs/requirements/mvp-requirements.md` section 34; business rule
+BR-64.
+
 ## 2. Conflict semantics (overbooking and double assignment)
 
 - A booking refused for lack of sellable availability returns
@@ -332,3 +403,6 @@ Role: architect · AO session hotel-mgmt-1130
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1141
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1164

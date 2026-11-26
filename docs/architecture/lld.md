@@ -6960,3 +6960,572 @@ message text as review findings, the same as any drifted spec.
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1141
+
+## 33. Admin authenticates before parsing and refuses a malformed config write (Refs #639)
+
+Tier **T2 confirmed** (recorded by `product-owner` in
+`docs/product/acceptance-criteria.md` section 26): caller-visible
+refusals on one operation family — every session-guarded `POST
+/v1/admin/<Operation>`, plus the one config write — with no new
+subsystem, dependency edge, data model, lifecycle state, endpoint,
+token family, or error code, and no reader-visible desk change. ADR-0004
+D1 keeps the envelope and its status mapping byte-identical, so no ADR
+and no T3 record. Product done-conditions are `AC-CFG-1`..`AC-CFG-5`
+(`docs/product/acceptance-criteria.md` section 26) with D-38 in
+`docs/project/decision-log.md` and R-19 in
+`docs/project/risk-register.md`; FR wording is the `business-analyst`
+handoff (`docs/requirements/mvp-requirements.md` section 34,
+`FR-CFG-1`..`FR-CFG-3`, and business rule BR-64 with its per-key shape
+table); guard traceability is the `qa-lead` handoff
+(`docs/testing/traceability-matrix.md` section 26); the release note and
+rollback pointer are the `release-manager` handoff; and implementation
+is the `dev` handoff. This section records only the architect-owned
+delta: the request order (33.1), the bearer helper (33.2), the per-key
+config write rule (33.3), the per-flow diagrams (33.4), the contract
+decision (33.5), the verification plan (33.6), the NFR disposition
+(33.7), the residual risks and re-tier triggers (33.8), and
+maintain-with-code (33.9).
+
+As found at the pre-change head (audit findings A2, A3, and A5; the
+as-built pins follow this list):
+
+- **A2 — the body is read and parsed before the session is checked.**
+  `handleRequest` matches the route (`services/admin/src/server.ts:135`),
+  reads the body at `:144` (`const body = await readBody(req, res)`),
+  and only then branches on `SignIn` (`:146-150`) and on the bearer
+  token (`:151-155`). Every parse refusal therefore runs first: invalid
+  JSON answers `VALIDATION_FAILED` 400 with `error.transport.bad_json`
+  (`:68-70`), a non-object body `error.transport.body_not_object`
+  (`:63-66`), and an over-ceiling body `error.transport.body_too_large`
+  (`:15-17`, `:30-34`, `:38-50`) — all before the missing-token refusal
+  at `:151-155` can fire. An unauthenticated `UpdateHotelConfig` with a
+  malformed body learns that the body was malformed, and the parse work
+  is spent on a caller who is not signed in. The nearest auth guard
+  proves only the well-formed case: `services/admin/src/server.test.ts:105-111`
+  posts `{}` with no token and asserts 401; no guard sends a malformed
+  body while unauthenticated, and none proves the parse did not run.
+- **A3 — `UpdateHotelConfig` stores any key with any value.**
+  `AdminStore.updateConfig` requires `values` to be an object
+  (`services/admin/src/store.ts:478-480`), `updatedBy` to be a non-blank
+  string (`:481`), and a present `name` to be non-blank (`:483-487`,
+  through `requiredString` at `:106-111`), then stores every entry
+  exactly as sent (`:488-492`). The Postgres twin repeats those checks
+  and additionally refuses a `retentionFloorDays` that is not a
+  non-negative integer (`services/admin/src/pgstore.ts:500-535`, the
+  coercion at `:538-553`), so the two stores already disagree on one
+  key. A malformed `requiredGuestFields` write is stored silently: the
+  key is seeded as a one-entry array (`store.ts:166`, `pgstore.ts:50`),
+  the deployment schema declares it an array with at least one entry
+  (`deploy/config/schema.json:92-96`), and the deployment apply writes
+  it through this operation (`script/apply-hotel-config.sh:90-112`, the
+  call at `:115-116`). The Guests mandatory-field gate is specified to
+  read the hotel's list (`FR-CUS-1`) while the Guests store still
+  enforces a hard-coded `["fullName"]` baseline
+  (`services/guests/src/store.ts:26-28`, used by `mandatoryFieldStatus`
+  at `:35-38`), so the malformed write corrupts the configured value
+  with no refusal and no audit signal.
+- **A5 — Admin re-implements the bearer parse.** `bearerToken`
+  (`services/admin/src/server.ts:83-90`) duplicates the
+  `extractBearer` helper the three sibling Node services each carry in
+  their own `src/auth.ts` (`services/guests/src/auth.ts:1-14`,
+  byte-identical under `services/stay/src` and `services/rooms/src`).
+  Admin has no `src/auth.ts` today, and the monorepo has no shared
+  library package: every service is a private npm package with its own
+  `tsconfig.json` (`services/admin/package.json`), so "reuse the module
+  helper" means the same module-local file, not an import across service
+  boundaries (33.2).
+
+### 33.1 The request order: route, then `SignIn`, then session, then body
+
+The Admin transport is one `handleRequest` function, not a middleware
+chain (`services/admin/src/server.ts:125-201`); the order this section
+fixes is its statement order. From #639 it is:
+
+1. `GET /healthz` answers 200 (`:131-134`), unchanged.
+2. The `POST /v1/admin/<Operation>` match runs (`:135`); a path or
+   method the match does not accept answers today's 404 (`:136-143`)
+   without reading a body or a token.
+3. The `SignIn` branch keeps its own body read and sign-in call
+   (`:146-150`), unchanged in both directions: `SignIn` is the one
+   operation with no session to resolve, so its body is read, parsed,
+   and refused exactly as today (including the 65 536-byte ceiling).
+4. Every other operation resolves the session **before** the body is
+   read: the shared bearer helper yields the token (33.2), a missing
+   token answers `UNAUTHENTICATED` 401 with today's
+   `error.auth.missing_token` sentence (`:151-154`), and
+   `store.authenticate(token)` answers the existing invalid, expired,
+   revoked, idle, or orphan `UNAUTHENTICATED` sentence on refusal
+   (`:155`; `services/admin/src/store.ts:245-262`).
+5. Only a resolved session reaches `readBody` (`:144` moved below
+   `:155`), so the ceiling, the JSON parse, and the object check run in
+   today's order, with today's sentences, for an authenticated caller.
+6. The operation switch (`:156-193`) then dispatches with the resolved
+   caller and the parsed body exactly as today; the default branch
+   answers today's 404 (`:193-199`).
+
+Consequences, stated so the implementation cannot blur them:
+
+- **The order is 401, then 400, then 403.** A request that is both
+  unauthenticated and malformed answers one 401 `UNAUTHENTICATED`
+  envelope and never a parse refusal. A resolved session with a
+  malformed body still answers today's 400 `VALIDATION_FAILED` with
+  the existing transport sentence. The role checks stay inside the
+  stores, after the body read (`store.ts:475-477`; `requireUserManager`
+  in `pgstore.ts:26-30`), so a front-desk caller with a well-formed
+  body still answers `FORBIDDEN` 403 and 400 precedes 403.
+- **No new middleware layer, route table, or check order.** The only
+  moved statement is the body read; `extractBearer`, the
+  `authenticate` call, and the body read take the places of today's
+  inline `bearerToken` and single read. Route matching, the
+  unknown-path 404, and the default-branch 404 do not move. A
+  consequence worth naming: an unauthenticated `POST` whose label
+  matches the route but names no operation (for example
+  `/v1/admin/CheckIn`) now answers 401 before the parse instead of
+  today's 404/400, because BR-64 states the rule for every operation
+  except `SignIn`; no acceptance condition pins the label-404 case, and
+  the path-level 404 and `/healthz` are unchanged.
+- **The unread surplus is never buffered.** The 401 is answered
+  without consuming the stream, and — as the ceiling refusal already
+  does (`server.ts:26-29`) — the connection is closed rather than
+  reused when a body may be pending, so an unauthenticated caller's
+  payload is neither buffered whole nor measured. The caller therefore
+  cannot learn the body's size, shape, or fields.
+- **The session lookup is today's lookup.** `store.authenticate` is
+  the same call the post-parse path already made, so no desk action
+  gains a round trip, a scan, or a poll (`NFR-PERF-1`); an
+  unauthenticated request now skips the parse work it used to pay for.
+  `SignIn`'s 5-failure lockout and its `IDENTITY_LOCKED` refusal
+  (`services/admin/src/store.ts:216-221`, BR-42) are untouched, and the
+  ceiling guards that drive `SignIn`
+  (`services/admin/src/bodyBound.test.ts:13-18`, `:106-144`) keep
+  their behaviour.
+
+### 33.2 The bearer helper: one module-local `src/auth.ts`, no cross-service import
+
+- **Add `services/admin/src/auth.ts` carrying the same `extractBearer`
+  helper the three siblings carry** (`services/guests/src/auth.ts:1-14`,
+  byte-identical under `services/stay/src` and `services/rooms/src`),
+  and import it from `server.ts`; delete the inline `bearerToken`
+  (`server.ts:83-90`). This is the established per-module pattern: each
+  Node service owns a copy because each is a separate private package
+  with its own TypeScript build, and the repo has no shared library or
+  workspace package.
+- **Why not an import from a sibling service.** Importing
+  `services/guests/src/auth.ts` from Admin would cross a module
+  boundary ADR-0001/ADR-0002 keep separate and would make one service's
+  build depend on another service's source tree. Extracting a shared
+  package is a cross-cutting change of its own, out of this issue's
+  scope.
+- **No caller-visible effect.** The helper's rule is byte-for-byte
+  today's: a non-string or absent `authorization` header and a header
+  that is not `Bearer <token>` yield `null` (the missing-token 401); a
+  present token is trimmed and returned unchanged, then checked by
+  `store.authenticate` exactly as today. No response field, code,
+  sentence, or status moves because of A5, which is why the acceptance
+  conditions pin the ordering, never the helper's code shape.
+
+### 33.3 The config write: one per-key table checked before the first write
+
+- **One shared validator in `store.ts`, both stores call it.** Export a
+  per-key rule table and a `validateConfigValues` function from
+  `services/admin/src/store.ts` (the module the Postgres twin already
+  imports its shared helpers from, `pgstore.ts:5-26`), and call it at
+  the top of both `updateConfig` implementations — in `AdminStore`
+  after the existing `values`/`updatedBy` checks and before the first
+  `this.config.set` (`store.ts:478-492`); in `PostgresAdminStore` after
+  the same checks and **before** `this.withTx` opens the transaction
+  (`pgstore.ts:512`), so no `UPDATE`/`INSERT` (`:513-534`) can run for
+  a refused write. One
+  home means the in-memory and Postgres stores refuse the same values,
+  which `AC-CFG-4` and BR-64 require, and it stops the Postgres
+  `retentionFloorDays` rule (`pgstore.ts:545-551`) from being the odd
+  one out.
+- **The table is the one BR-64 publishes** (`docs/requirements/business-rules.md`
+  section 8, "Config write shapes (BR-64)"):
+
+| Key | Declared shape | Refusal (code 400, `details.field` = key) |
+|---|---|---|
+| `name` | non-empty text after trimming — today's rule | `error.validation.field_required` (existing) |
+| `timezone` | non-empty text after trimming | `error.validation.config_text` (new) |
+| `standardCheckinTime` | 24-hour `HH:MM`, `^([01][0-9]\|2[0-3]):[0-5][0-9]$` | `error.validation.config_time` (new) |
+| `standardCheckoutTime` | the same rule | `error.validation.config_time` (new) |
+| `requiredGuestFields` | an array with at least one entry; every entry non-empty text after trimming; no two entries equal after trimming | `error.validation.config_required_fields` (new) |
+| `cancellationReasons` | an array whose every entry is non-empty text after trimming; `[]` allowed | `error.validation.config_list` (new) |
+| `retentionFloorDays` | a whole JSON number at or above 0 | `error.validation.retention_floor` (existing) |
+| `cancellationWording` | text; `""` allowed | `error.validation.config_optional_text` (new) |
+| `address` | text; `""` allowed | `error.validation.config_optional_text` (new) |
+| `phone` | text; `""` allowed | `error.validation.config_optional_text` (new) |
+| `email` | text; `""` allowed | `error.validation.config_optional_text` (new) |
+
+- **The sentences are fixed product and requirements copy.** The five
+  new catalogue keys carry exactly the sentences the acceptance
+  conditions state — `config_text` "{field} must be non-empty text.",
+  `config_time` "{field} must be a 24-hour HH:MM time.",
+  `config_required_fields` "{field} must list at least one guest field,
+  each a non-empty entry, without duplicates.", `config_list` "{field}
+  must be a list of non-empty text entries.", and
+  `config_optional_text` "{field} must be text." — with `{field}`
+  rendered from the key, and the existing `retention_floor` sentence
+  ("retentionFloorDays must be a non-negative integer.") reused without
+  a placeholder. The implementation PR adds all five to the canonical
+  `messages/en.json` and `messages/vi.json` and to the runtime mirror
+  `services/admin/src/messages.en.json` with matching placeholders
+  (`NFR-I18N-1`); the desk never switches on the resolved wording.
+- **Whole-write atomicity, and no audit entry on a refusal.** The
+  validator inspects every present table key before the first write.
+  The first offending key in the request's own entry order answers
+  exactly one envelope (`VALIDATION_FAILED` 400, `details`
+  `{"field": <key>}`, that key's sentence, a fresh `traceId`). Nothing
+  is written: in the memory store no `config.set` has run, so the
+  offending key and a valid key sent beside it both keep their stored
+  values; in Postgres no statement has run because the check precedes
+  `withTx`. `config.updated` entries are derived from the stored rows
+  when the audit log is read (`store.ts:435-444`; `pgstore.ts:435`), so
+  a refused request leaves the audit trail unchanged as well
+  (`NFR-AUD-1`). The existing refusals keep their first place and their
+  sentences: `values` not an object (`error.validation.values_object`,
+  `store.ts:478-480`), a missing or blank `updatedBy`
+  (`error.validation.field_required`, `:481`), and a blank `name`
+  (`error.validation.field_required`, `:483-487`, now inside the table
+  with the same code, sentence, and `details`).
+- **A whole number means a JSON number.** The shared rule requires
+  `typeof value === "number"`, `Number.isInteger(value)`, and
+  `value >= 0`. Today's Postgres branch coerces with `Number(value)`
+  (`pgstore.ts:546`), so `"30"` would pass there while the memory store
+  would store the text; `FR-CFG-2` names "a text number" as a refusal,
+  so both stores now refuse it. No writer in the tree sends a text
+  number (`script/apply-hotel-config.sh:108` sends the JSON number).
+  This is the one deliberate narrowing of today's Postgres behaviour,
+  recorded with the other shape risks in 33.8 and R-19.
+- **No normalisation.** Trimming is used only to decide emptiness and
+  duplicate equality, never to rewrite a stored value: a value is
+  stored exactly as sent, list entries keep their order and their
+  surrounding whitespace, and a text key keeps its text. An absent key
+  is untouched; a present `null` is refused for every table key
+  (it is not text, not an array, not a number) — today it would be
+  stored. A key outside the table keeps today's behaviour exactly,
+  including the deployment-set keys the apply path sends
+  (`propertyCode`, `currency`, `noshowRule`, `openBalanceCheckoutRule`,
+  `chargeItems`, `taxAndFeeRules`, `restrictions`, `discounts`,
+  `ratePlans`, `roomTypes`; `script/apply-hotel-config.sh:90-110`).
+- **Reads are unchanged.** `GetHotelConfig` re-validates nothing
+  (`store.ts:463-469`, `pgstore.ts:476-497`), so a value stored before
+  this change — including a malformed `requiredGuestFields` — keeps
+  reading as stored; no migration, backfill, or repair exists, and the
+  `admin.hotel_profile` columns and `admin.hotel_config_values` rows
+  keep their shape (`docs/technical/schema.md` section 8).
+- **Rules are code, not configuration.** No environment variable,
+  deployment file, runbook step, or per-hotel entry carries a shape or
+  a sentence — the same rule the body ceiling and the money ceiling
+  follow (LLD sections 29.1 and 30.1), recorded as fixed in
+  `docs/requirements/business-rules.md` section 9.
+
+### 33.4 Per-flow implementation diagrams
+
+Four views of the touched flows. Each diagram is the specified shape;
+the implementation PR refreshes the code pins and keeps the edges.
+Dashed intent: the implementation replaces "planned" edges with the
+as-built `file:line`.
+
+**(a) Happy path — a resolved session, a well-formed body, a valid
+write.**
+
+```mermaid
+flowchart TD
+    A[POST /v1/admin/UpdateHotelConfig  server.ts:135] --> B[extractBearer  src/auth.ts, added by #639]
+    B --> C[store.authenticate token  server.ts:155]
+    C --> D[readBody: ceiling, JSON object, no refusal  server.ts:144]
+    D --> E[dispatch UpdateHotelConfig  server.ts:161]
+    E --> F{Caller role front-desk  store.ts:475-477}
+    F -->|no| G{values object, updatedBy non-blank  store.ts:478-481}
+    G -->|yes| H{Every present table key inside its shape  planned shared validator}
+    H -->|yes| I[Store every entry as sent  store.ts:488-492 / pgstore.ts:512-534]
+    I --> J[200 schemaVersion and values; config.updated entries with updatedBy  store.ts:435-444]
+```
+
+**(b) Unauthenticated — no token, or a refused session, before any
+parse.**
+
+```mermaid
+flowchart TD
+    A[POST /v1/admin/UpdateHotelConfig with a malformed or oversized body] --> B{Authorization header present  src/auth.ts}
+    B -->|no| N1[401 UNAUTHENTICATED, error.auth.missing_token  server.ts:151-154]
+    B -->|yes| C[store.authenticate  server.ts:155]
+    C -->|invalid, expired, revoked, idle, or orphan| N2[401 UNAUTHENTICATED, existing error.auth.* sentence  store.ts:245-262]
+    N1 --> R[no body read, no JSON parse, no ceiling check, no store mutation]
+    N2 --> R
+    R --> RF[rollback frame: nothing written, no config.updated entry; the whole change reverts with the single implementation PR]
+```
+
+**(c) Malformed body after authentication — today's 400 keeps its
+place, 400 precedes 403.**
+
+```mermaid
+flowchart TD
+    A[POST /v1/admin/UpdateHotelConfig with a resolved session] --> B[readBody  server.ts:144]
+    B -->|invalid JSON, non-object, or above 65 536 bytes| M1[400 VALIDATION_FAILED, existing transport sentence  server.ts:15-17, :61-70]
+    B -->|well formed| C{Caller role front-desk  store.ts:475-477}
+    C -->|yes| M2[403 FORBIDDEN, error.forbidden.config_change]
+    C -->|no| D[Per-key config validation  planned]
+    M1 --> RF[rollback frame: nothing written; no stored value or audit entry moves]
+    M2 --> RF
+```
+
+**(d) Invalid config value — the whole write is refused, nothing is
+written.**
+
+```mermaid
+flowchart TD
+    A[Authenticated UpdateHotelConfig  server.ts:161] --> B{values object, updatedBy non-blank  store.ts:478-481}
+    B -->|no| X1[existing 400 VALIDATION_FAILED, values_object or field_required  store.ts:478-481]
+    B -->|yes| C{Every present table key in request order  planned shared validator}
+    C -->|first offending key| X2[400 VALIDATION_FAILED, details.field is the key, the key's sentence  new]
+    X2 --> N[Nothing written: no key of that request, no config.updated entry  store.ts:435-444]
+    C -->|all inside their shape| D[Store every entry as sent  store.ts:488-492 / pgstore.ts:512-534]
+    D --> O[200 as today]
+    N --> RF[rollback frame: the refusal precedes the first write in both stores, so there is no partial row, value, or audit entry to unwind]
+```
+
+Edge traces:
+
+- **(a) A–B–C:** the route match (`server.ts:135`) into the shared
+  bearer helper (33.2) and `store.authenticate` (`:155`); the session
+  lookup is today's. **C–D:** the moved body read (`:144`) now follows
+  a resolved session. **D–E:** `UpdateHotelConfig` dispatch (`:161`)
+  into `store.updateConfig` (`store.ts:471`, `pgstore.ts:500`).
+  **E–F:** the front-desk refusal stays in the store (`store.ts:475-477`).
+  **F–G–H:** today's `values`/`updatedBy` checks, then the shared
+  table. **H–I:** the write loop (`store.ts:488-492`) or the
+  profile/values statements inside the transaction
+  (`pgstore.ts:512-534`), unchanged below the guard. **I–J:** the
+  `config.updated` entries derived at read time (`store.ts:435-444`).
+- **(b) A–B:** only the `authorization` header is inspected; no body
+  byte is read. **B–N1:** today's missing-token sentence
+  (`error.auth.missing_token`, `messages.en.json:13`). **B–C–N2:** the
+  five existing session refusals (`store.ts:245-262`, sentences at
+  `messages.en.json:16-19`). **N1/N2–R:** no parse, no ceiling, no
+  store call, so the payload stays unobservable. **R–RF:** nothing to
+  compensate; the change reverts with the single implementation PR.
+- **(c) A–B:** the body read runs only after `authenticate` resolved.
+  **B–M1:** today's three transport refusals keep their code, status,
+  and sentences (`server.ts:15-17`, `:61-70`), so an authenticated
+  caller sees no change. **B–C–M2:** the front-desk refusal follows a
+  well-formed body, preserving 400 before 403. **M1/M2–RF:** refusals
+  write nothing; the audit trail and stored values are untouched.
+- **(d) A–B:** today's `values`/`updatedBy` refusals keep their first
+  place. **B–C–X2:** the shared validator, with `details.field` the
+  offending key and the key's sentence. **X2–N:** no `config.set` has
+  run in memory and the Postgres check precedes `withTx`, so a valid
+  key sent beside the offending one is not stored and no
+  `config.updated` entry appears (`store.ts:435-444`). **C–D–O:**
+  every conforming value is stored and read back exactly as today.
+  **N–RF:** the refusal is decided before the first write in both
+  stores, so there is no partial state to compensate.
+
+### 33.5 Contract decision: no new token, one error-list line, no schema keyword
+
+- **Both tokens already exist.** `UNAUTHENTICATED` (401) and
+  `VALIDATION_FAILED` (400) are in the shared enum and the status
+  mapping (`contracts/errors/envelope.json:9`, `:16-28`), and Admin
+  already maps both (`services/admin/src/errors.ts:4-29`), so this
+  change adds no code, status, enum entry, envelope field, operation,
+  contract version, or route. `contracts/errors/envelope.json` is
+  untouched (ADR-0004 D1).
+- **One caller-facing line moves: the `UpdateHotelConfig` error list.**
+  The existing `UNAUTHENTICATED` entry gains the ordering clause — the
+  session is checked before the body is read, so a malformed body never
+  answers a parse error ahead of it — and the existing
+  `VALIDATION_FAILED` entry gains the config-shape and
+  authenticated-parse clauses, naming `details` as the key for a shape
+  refusal. Prose only: code, status, and operation are unchanged, and
+  the line is the one the acceptance conditions and requirements assign
+  to this handoff; this spec PR carries the edit.
+  `docs/technical/error-handling.md` section 1.5 stays the
+  authoritative enumeration.
+- **The request manifest keeps its bytes.** `values` stays an open
+  object (`contracts/http/UpdateHotelConfig.json:14-19`,
+  `additionalProperties: true`): the per-key shapes are a cross-field
+  rule applied in the store, and no validator runs on the Admin request
+  path, so a `properties`/`minItems`/`pattern` promise would be
+  documentation nothing reads — the same rule the money ceiling and the
+  guest payload bounds follow (`docs/technical/api-spec.md` section 1;
+  LLD sections 30.6 and 32.6). Publishing it later is a contract change
+  of its own and would not move the enforcement point.
+- **No generated surface moves.** The curated desk-loop
+  `contracts/openapi.yaml` carries no Admin operation, so
+  `script/openapi-route-check.sh` and `script/contract-check.sh` stay
+  green without an edit.
+- **Documented instead:** `docs/technical/error-handling.md` section
+  1.5 (the taxonomy entry), one `docs/technical/api-spec.md` section 1
+  bullet plus the `AdminService` row in section 2, and
+  `docs/architecture/services/admin.md` sections 2, 4, and 6, with this
+  section as the design source. (The Admin page is refreshed to the
+  as-built pins by the implementation PR per maintain-with-code; this
+  spec records the planned ordering and refusal edges, marked as such.)
+
+### 33.6 Verification plan
+
+`qa-lead` owns the traceability rows
+(`docs/testing/traceability-matrix.md` section 26); this is the
+architecture-side check the implementation must satisfy.
+
+- **Unauthenticated malformed body, one case per shape.** No
+  `Authorization` header on `UpdateHotelConfig` with invalid JSON, a
+  JSON non-object, and a 65 537-byte body → each answers exactly one
+  401 `UNAUTHENTICATED` with the `error.auth.missing_token` sentence, a
+  fresh `traceId`, and none of the `bad_json`, `body_not_object`, or
+  `body_too_large` sentences; an invalid-token variant answers the
+  matching existing session sentence; the store operation is never
+  called (the `countingStore` pattern,
+  `services/admin/src/bodyBound.test.ts:33-47`). The shared `request`
+  helper JSON-stringifies its body (`server.test.ts:8-24`), so the
+  guard needs a raw-string form.
+- **Authenticated malformed body keeps today's 400, and 400 precedes
+  403.** A resolved session with a malformed body answers today's 400
+  and the existing transport sentence with no config change; a
+  front-desk caller with a well-formed body answers 403; a front-desk
+  caller without a session answers 401 first; `SignIn` with a malformed
+  body still answers 400 and its lockout still answers
+  `IDENTITY_LOCKED`.
+- **One refusal per table rule, each naming the key.** `timezone`
+  blank; `standardCheckinTime`/`standardCheckoutTime` as `24:00`,
+  `8:00`, `0800`, or a number; `requiredGuestFields` as a string in
+  place of the array, an empty array, an empty or whitespace-only
+  entry, and a duplicate entry (the audit's A3 case first);
+  `cancellationReasons` with a number entry and with an empty entry;
+  `retentionFloorDays` fractional, negative, and as a text number; and
+  `cancellationWording`/`address`/`phone`/`email` non-text — each
+  asserting 400 `VALIDATION_FAILED`, `details.field` equal to the key,
+  the key's sentence, and a non-empty `traceId`.
+- **Whole-write refusal is proven, not assumed.** A request that sends
+  a valid key beside an offending key stores neither; `GetHotelConfig`
+  and `QueryAuditLog` are unchanged afterwards, with no
+  `config.updated` entry for that request; `values` not an object and a
+  blank `updatedBy` keep their existing refusals and their place ahead
+  of the per-key checks.
+- **Accepted boundaries and store parity.** A one-entry
+  `requiredGuestFields`, `00:00` and `23:59` times, `0` retention days,
+  an empty `cancellationReasons` array, and empty
+  `cancellationWording`/`address`/`phone`/`email` text are stored and
+  read back as sent; a key outside the table is written as sent; one
+  Postgres parity case (skipped unless `TEST_PG_URL`/`DATABASE_URL` is
+  set, as `services/admin/src/pgstore.test.ts:30` skips today) proves
+  both stores refuse the same value and store the same accepted value.
+- **Catalogue and unchanged suites.** One sample assertion per new key
+  beside `services/admin/src/messages.test.ts:16-50`; the five keys
+  exist in both canonical locales and the runtime mirror with matching
+  placeholders; `script/catalogue-coverage-check.sh` stays green; the
+  existing identity, audit, body-ceiling, and internal-error suites
+  stay green with no assertion edit.
+- **No contract token added.** `script/contract-check.sh` passes with
+  the amended `UpdateHotelConfig` error-list prose and no enum, status,
+  or schema edit; `script/markdown-link-check.sh` resolves every link
+  added here.
+- **Gate commands** (from `docs/architecture/services/admin.md`
+  section 7): `npm ci`, `npm run build`, `npm test`, and `npm run lint`
+  in `services/admin`; plus `script/contract-check.sh` and
+  `script/catalogue-coverage-check.sh` from the repo root.
+
+### 33.7 The NFR disposition: no new NFR, and no existing NFR changes
+
+The `business-analyst` handoff states it explicitly
+(`docs/requirements/mvp-requirements.md` section 34.4): this change
+adds no NFR and changes no existing one. The binding citations are the
+existing ones and all hold:
+
+- `NFR-SEC-1`/`NFR-SEC-2` — no role, reach, or session behaviour
+  changes; the session check simply precedes the parse, and the
+  missing-token, invalid, expired, revoked, idle, and orphan sentences
+  and the 5-failure lockout stay exactly as today.
+- `NFR-BND-1`..`NFR-BND-3` — the 65 536-byte ceiling, the parse and
+  ceiling sentences, the refusal while the body is read, and the four
+  finite server bounds are unchanged; the ceiling now applies to every
+  request that reaches the body read, and a session-guarded request
+  without a session is refused before the read.
+- `NFR-AUD-1` — a refused config write records nothing and leaves no
+  `config.updated` entry; a committed write keeps the acting
+  `updatedBy` and its time.
+- `NFR-PERF-1` — no desk action gains a round trip, a scan, or a poll;
+  the session lookup is the one the post-parse path already made.
+- `NFR-I18N-1` — the five new sentences resolve through the catalogue
+  in both locales with matching placeholders, and no sentence renders
+  an envelope code, status number, or stack trace.
+- `NFR-AVL-1`, `NFR-TZ-1`, `NFR-CON-1`, `NFR-CON-2`, and `NFR-DSK-2` —
+  every refusal is decided on-premise, no timestamp form changes, no
+  new concurrent write path appears, and no print document changes.
+
+The ordering, the shapes, and the sentences are fixed rules and code
+constants, never an owner setting, environment variable, deployment
+file, or per-hotel entry (`docs/requirements/business-rules.md`
+section 9). A new NFR would need a measurable target this change does
+not introduce; writing one would state a promise nothing distinct
+measures.
+
+### 33.8 Residual risks and re-tier triggers
+
+- **A wrong shape rule refuses a legitimate hotel setting** (R-19,
+  accepted by D-38). The mitigation is that every rule is derived from
+  the keys the service already serves and the payloads the tree already
+  sends (the onboarding wizard, `script/apply-hotel-config.sh` after
+  `deploy/config/schema.json`, and the existing config tests), every
+  boundary has an accepted guard, and a refusal writes nothing, so a
+  retry with a conforming value is lossless. Changing a rule is one
+  deliberate edit of the shared table, its sentence, and its guards in
+  the same PR.
+- **Two deliberate narrowings of today's behaviour.** A present `null`
+  for a table key is refused where it used to be stored, and a text
+  number for `retentionFloorDays` is refused by both stores where
+  Postgres alone used to coerce it (`pgstore.ts:546`). No writer in the
+  tree sends either (`script/apply-hotel-config.sh`, the onboarding
+  wizard, and the existing tests send a number and omit empty optional
+  text), and `FR-CFG-2` names both shapes as refusals.
+- **An empty `cancellationReasons` list is accepted by the API while
+  the deployment schema asks for one or more** (`deploy/config/schema.json:97-101`,
+  `script/validate-hotel-config.sh:144-150`). That split is deliberate:
+  the Admin seed already serves `[]` (`store.ts:167`), and the
+  installer's one-or-more floor stays the deployment check, so the API
+  cannot refuse the value it already serves.
+- **The unauthenticated ordering changes the answer for an unknown
+  operation label.** A `POST` whose label matches the route but names
+  no operation now answers 401 before the parse instead of today's
+  body-first 404/400; BR-64 states the rule for every operation except
+  `SignIn`, no acceptance condition pins the label-404 case, and the
+  path-level 404 and `/healthz` do not move. If a label-404-before-auth
+  answer is wanted later, it is a route-table change of its own.
+- **A5 adds a fourth copy of a fourteen-line helper.** Accepted: the
+  per-module copy is the existing pattern across Guests, Stay, and
+  Rooms, and no shared package exists. Extracting one is a cross-cutting
+  change, not part of this fix.
+- **An unread body is closed, not drained.** The 401 is answered
+  without consuming the stream, so the connection is closed rather than
+  reused when a body may be pending; this keeps an unauthenticated
+  surplus from being buffered at the cost of one connection per such
+  request, which is the safe direction for `NFR-BND-1`.
+- **Re-tier triggers.** Making any shape, sentence, or the ordering
+  configurable (environment, deployment, per-hotel) is T4. A new error
+  token, a published request schema, or an envelope/status change is a
+  contract change. A middleware framework, a route table, or moving the
+  role check ahead of the body read is T3. Surfacing a config refusal
+  on a desk screen is a T2 UI change and needs its UI-contract section.
+
+### 33.9 Maintain-with-code
+
+The implementation PR adds `services/admin/src/auth.ts` and removes the
+inline `bearerToken`, moves the body read below `store.authenticate`
+for every operation except `SignIn` (and above the `SignIn` call, as
+today), adds the shared per-key table and validator, adds the five
+catalogue keys to both canonical locales and the runtime mirror, and
+creates the guards of 33.6. It also refreshes this section's line pins
+and `docs/architecture/services/admin.md` sections 2, 4, and 6 to the
+as-built `file:line` at the merged head (the #639 rows in
+`docs/testing/traceability-matrix.md` section 26). `dev-peer-review`
+treats a stale pin, a body read still above the session check, a parse
+refusal reachable before the 401, a refusal that writes, a per-key rule
+enforced in only one store, a text number accepted for
+`retentionFloorDays`, a normalised or trimmed stored value, a new error
+token, a contract schema keyword, a moved role check, and an
+unauthenticated request whose payload is measured as review findings,
+the same as any drifted spec.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1164
