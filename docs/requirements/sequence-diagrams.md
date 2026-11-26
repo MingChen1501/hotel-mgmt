@@ -48,13 +48,14 @@ sequenceDiagram
 
 ## 2. New reservation creation
 
-Search, check stay restrictions, read the recorded capacity, run the
-atomic overbooking check, and record the reservation with its price
-basis. The restriction, capacity-refusal, and conflict refusals are
-drawn, not only described.
+Search, check stay restrictions, read the recorded capacity, read the
+Pricing quote, run the atomic overbooking check, and record the
+reservation at the quoted total. The restriction, capacity-refusal,
+price-changed, unreadable-Pricing, and conflict refusals are drawn, not
+only described (Refs #631, #632).
 
 - Preconditions: the guest is identified and the room type has been searched (diagram 1); the room inventory holds the type's rooms and blocks.
-- Postconditions: the reservation exists with a unique reference on the calendar, or it was refused with the cause named and nothing was created.
+- Postconditions: the reservation exists with a unique reference on the calendar at the Pricing quote, or it was refused with the cause named and nothing was created.
 
 ```mermaid
 sequenceDiagram
@@ -76,13 +77,20 @@ sequenceDiagram
             alt Capacity source cannot be read
                 Res-->>Staff: Reservation refused fail-closed, nothing created [FR-OVB-3, BR-48; upstream failure, timeout, 5xx, or no client]
             else Capacity read
-                Res->>Res: Atomic overbooking check: confirmed + in-house vs the recorded capacity; the request's sellableUnits is advisory [NFR-CON-1, FR-OVB-1, FR-OVB-4; states per state-machine]
-                alt No sellable unit left or simultaneous reservation won first
-                    Res-->>Staff: Reservation refused, room type and dates named as conflict [NFR-CON-1]
-                else Sellable unit available
-                    Res->>Res: Record reservation with price basis from rate plan in force [FR-RES-1, FR-RTE-5; CUS: FR-RTE-3 discount may adjust, FR-CUS-2 wording shown; FIXED section 3.2 order: reservation precedes check-in]
-                    Res-->>Staff: Reservation exists with unique reference, appears on calendar [FR-RES-1, FR-RES-5; state confirmed per state-machine]
-                    Staff->>GuestRec: Produce confirmation to share with guest [FR-GST-4; CUS: FR-CUS-2 hotel wording]
+                Res->>Res: Read the Pricing quote for the type, dates, and discount [FR-PRC-1, FR-RTE-5; CUS: FR-RTE-3 discount applies in the quote]
+                alt Request total disagrees with the quote
+                    Res-->>Staff: Reservation refused, requested and quoted totals named [FR-PRC-2; BR-52]
+                else Pricing cannot be read
+                    Res-->>Staff: Reservation refused, upstream and operation named [FR-PRC-3]
+                else Quote read
+                    Res->>Res: Atomic overbooking check: confirmed + in-house vs the recorded capacity; the request's sellableUnits is advisory [NFR-CON-1, FR-OVB-1, FR-OVB-4; states per state-machine]
+                    alt No sellable unit left or simultaneous reservation won first
+                        Res-->>Staff: Reservation refused, room type and dates named as conflict [NFR-CON-1]
+                    else Sellable unit available
+                        Res->>Res: Record reservation at the quote total and applied discount name [FR-PRC-1, FR-RES-1, FR-RTE-5; FIXED section 3.2 order: reservation precedes check-in]
+                        Res-->>Staff: Reservation exists with unique reference, appears on calendar [FR-RES-1, FR-RES-5; state confirmed per state-machine]
+                        Staff->>GuestRec: Produce confirmation to share with guest [FR-GST-4; CUS: FR-CUS-2 hotel wording]
+                    end
                 end
             end
         end
@@ -92,11 +100,13 @@ sequenceDiagram
 ## 3. Reservation modification
 
 Change dates, room type, or guest before check-in; the quoted price is
-recalculated from the rate plan in force and the change is recorded
-against the capacity the hotel records for the new values.
+recalculated from the Pricing quote for the effective values and the
+change is recorded against the capacity the hotel records for the new
+values (Refs #631, #632: a disagreement or an unreadable Pricing
+refuses the change and leaves the reservation as stored).
 
 - Preconditions: the reservation exists and has not been checked in.
-- Postconditions: the reservation shows the new values with recalculated price and the change record, or it stays unchanged if the new values fail availability or restrictions, or the capacity could not be read.
+- Postconditions: the reservation shows the new values with the recalculated quote and the change record, or it stays unchanged if the new values fail availability, restrictions, or the price comparison, or the capacity could not be read.
 
 ```mermaid
 sequenceDiagram
@@ -113,13 +123,19 @@ sequenceDiagram
         alt Capacity source cannot be read
             Res-->>Staff: Modification refused fail-closed, reservation unchanged [FR-OVB-3, BR-48]
         else Capacity read
-            Res->>Res: Atomic overbooking check for the new dates and type; the request's sellableUnits is advisory [NFR-CON-1, FR-OVB-2, FR-OVB-4]
-            alt No sellable unit left for the new values
-                Res-->>Staff: Modification refused, room type and dates named as conflict [NFR-CON-1]
-            else Sellable unit available
-                Res->>Res: Recalculate quoted price from the rate plan in force [FR-RES-2, FR-RTE-5; CUS: FR-RTE-3 discount may adjust]
-                Res->>Res: Record the change with who made it and when [FR-RES-2; NFR-AUD-1]
-                Res-->>Staff: Reservation shows new values, appears on calendar [FR-RES-2, FR-RES-5]
+            Res->>Res: Read the Pricing quote for the effective type, dates, and discount [FR-PRC-4, FR-RTE-5; CUS: FR-RTE-3 discount applies in the quote]
+            alt Request total disagrees with the quote
+                Res-->>Staff: Modification refused, requested and quoted totals named; reservation unchanged [FR-PRC-4; BR-52]
+            else Pricing cannot be read
+                Res-->>Staff: Modification refused, upstream and operation named; reservation unchanged [FR-PRC-4]
+            else Quote read
+                Res->>Res: Atomic overbooking check for the new dates and type; the request's sellableUnits is advisory [NFR-CON-1, FR-OVB-2, FR-OVB-4]
+                alt No sellable unit left for the new values
+                    Res-->>Staff: Modification refused, room type and dates named as conflict [NFR-CON-1]
+                else Sellable unit available
+                    Res->>Res: Record the new values at the quote total and discount, with the price-basis change row [FR-PRC-4, FR-RES-2, FR-RTE-5; NFR-AUD-1]
+                    Res-->>Staff: Reservation shows new values and recalculated total, appears on calendar [FR-RES-2, FR-RES-5]
+                end
             end
         end
     end

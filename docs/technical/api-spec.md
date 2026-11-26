@@ -101,7 +101,13 @@ section 4).
   that owns the fact is re-read at the decision point, and an unreadable
   provider fails the operation closed with `UPSTREAM_UNAVAILABLE`
   (`docs/architecture/lld.md` section 21; Refs #601; the folio write path
-  is the second instance, LLD section 27, Refs #634).
+  is one, LLD section 27, Refs #634). The booking
+  price basis follows the same rule from #632 on: `priceBasis` in
+  `CreateReservation`/`ModifyReservation` is compared with the Rates
+  quote and never stored, a disagreement is refused with
+  `PRICE_CHANGED` (409) naming both totals rather than swapped
+  silently, and a definitive Rates refusal is surfaced unchanged
+  (`docs/architecture/lld.md` section 25).
 
 ## 2. Contract outline (per HLD module)
 
