@@ -7552,80 +7552,82 @@ demotion rule (34.2), the recorded value (34.3), the per-flow diagrams
 NFR disposition (34.7), the residual risks and re-tier triggers (34.8),
 and maintain-with-code (34.9).
 
-As found at the pre-change head (audit finding C6; every pin below is the
-read-only trace this spec was written against, and the implementation PR
-refreshes it at the merged head):
+As built at this head (audit finding C6; every pin below is the read-only
+trace of the landed implementation PR, and `qa-lead` re-pins the
+traceability rows against it):
 
-- **The Node transports check the token and then discard it.**
-  `extractBearer` returns the trimmed token (`services/stay/src/auth.ts:8-15`,
+- **The Node transports keep the checked token and hand it to the store.**
+  `extractBearer` returns the trimmed token (`services/stay/src/auth.ts:7-14`,
   byte-identical under `services/guests/src/auth.ts` and
-  `services/rooms/src/auth.ts`), and the comment above it promises the
-  token "travels through as the audit actor fallback" (`:3-7`), but
-  Guests and Rooms use the helper only as a presence check
-  (`services/guests/src/server.ts:130`, `services/rooms/src/server.ts:130`),
-  and Stay keeps the value for `checkOut` only, to forward the completion
-  (`services/stay/src/server.ts:159`, `:184`). `checkIn`, `moveRoom`, and
-  `recordActualTimes` receive the raw body (`:167`, `:189`, `:197`).
-- **Every Node store records the body string.** Stay
-  `src/store.ts:216` (CheckIn), `:294` (CheckOut), `:335` (MoveRoom),
-  `:383` (RecordActualTimes), with the value in the outbox payload at
-  `:240`, `:318`, `:370`, `:401`; Guests `src/store.ts:319`, payload at
-  `:337`; Rooms `src/store.ts:219` (UpsertRoomType), `:239` (UpsertRoom),
-  `:268` (UpdateRoomState), `:375` (AssignRoom), `:413` (ReleaseRoom),
-  `:438` (BlockRoom), `:477` (ReleaseBlock), state history at
-  `:506-507`, outbox at `:510-516`. The Postgres twins repeat the value:
-  Stay `src/pgstore.ts:79`/`:112`, `:184`/`:221`, `:247`, `:341`, the
-  move row `:303-305`; Guests `src/pgstore.ts:68` (audit columns only —
-  the Postgres store writes no `guest-upserted` outbox row today, an
-  existing gap this change leaves as it is); Rooms `src/pgstore.ts:140`,
-  `:196`, `:269`, `:297-308`, `:416-445`, `:504-542`, with the outbox
-  helper at `:56-66`.
-- **Reservations holds the header and reads the body for every write.**
-  The authed wrapper has the caller's raw header in hand
-  (`services/reservations/internal/handler/handler.go:140-158`) and
-  forwards it to the read operations; each write reads `body["actor"]`
-  instead: `:176` (Create), `:238` (CheckIn), `:256` (CheckOut,
-  required), `:290` (Modify), `:323` (Cancel), `:342` (MarkNoShow). The
-  value becomes the change-row `created_by` and the outbox actor
-  (`services/reservations/internal/store/postgres.go:197`, `:210`,
-  `:255`, `:267`, `:342-384`, `:402-456`, `:571`, `:606`, `:622`, `:627`;
-  `internal/store/store.go:142-143`, `:245`, `:361`, `:427-451`,
-  `:484-536`).
-- **Billing drops the token and forwards the body actor.** `requireToken`
-  (`services/billing/src/main/java/com/hotel/billing/web/BillingController.java:117-121`)
-  answers the 401 and returns nothing; `actor` (`:39-42`) maps a
-  non-string to `""`; every adapter passes that value to the service
-  after the token check (`:128`, `:136`, `:144`, `:151`, `:165`, `:172`,
-  `:179`, `:188`, `:197`). `BillingService.actorOf`
-  (`service/BillingService.java:110-115`) refuses a blank request actor,
-  and the repository records that string (`repo/BillingRepository.java:65-71`,
-  `:100-111`, `:135-137`, `:143-145`, `:154-160`, `:176-191`, `:237-239`,
-  `:269-286`).
-- **Admin resolves the caller but its config write trusts the body.** The
-  session is resolved before the body is read
-  (`services/admin/src/server.ts:157-169`) and the caller is passed to
-  `updateConfig` (`:176`); every account write records
-  `caller.signinIdentity` (`src/store.ts:366-368`, `:403`, `:425`,
-  `:466`), while `updateConfig` records `input.updatedBy`
-  (`src/store.ts:556`, `:565-567`; `src/pgstore.ts:511`, `:524`, `:532`).
-  The boot seed records the server-side `boot` actor with no request
+  `services/rooms/src/auth.ts`), and each server keeps it after the
+  missing-token 401 (`services/stay/src/server.ts:159-163`,
+  `services/guests/src/server.ts:130-134`,
+  `services/rooms/src/server.ts:130-134`). Stay passes it to `CheckIn`,
+  `CheckOut`, `MoveRoom`, and `RecordActualTimes` (`:169`, `:186`,
+  `:191`, `:199`); Guests to `UpsertGuest` (`:140`); Rooms to all seven
+  writes (`:140`, `:151`, `:161`, `:198`, `:202`, `:206`, `:210`).
+- **Every Node store records the session and annotates a disagreement.**
+  Stay `src/store.ts:222-259` (CheckIn), `:306-346` (CheckOut),
+  `:361-406` (MoveRoom), `:418-445` (RecordActualTimes), with the shared
+  `requestActorAnnotation` helper at `:54-63`; the Postgres twin at
+  `src/pgstore.ts:71-119`, `:185-238`, `:263-337`, `:366-408`. Guests
+  `src/store.ts:307-353`, Postgres `src/pgstore.ts:62-90` (the Postgres
+  guest store writes no `guest-upserted` outbox row, an existing gap
+  this change leaves as it is). Rooms `src/store.ts:101-109` (helper),
+  `:228-249`, `:255-281`, `:287-316`, `:392-431`, `:441-468`,
+  `:474-505`, `:516-546`; Postgres `src/pgstore.ts:139-262`, `:269-315`,
+  `:413-453`, `:508-...` with the outbox helper at `:56-66`. The body
+  `actor` keeps its `requireString`/`actorOf` refusal and is only ever
+  the annotation.
+- **Reservations derives the token from the bearer it already holds.**
+  The authed wrapper keeps the raw header
+  (`services/reservations/internal/handler/handler.go:140-158`), the
+  module helper strips the prefix (`:104-111`), and each write passes
+  the session plus the body actor: Create `:200-201`, CheckIn `:248`,
+  CheckOutReservation `:271` (the required-actor refusal at `:256-269`
+  stands), Modify `:313-314`, Cancel `:336`, MarkNoShow `:357`. The
+  stores carry `RequestActor` beside `Actor`
+  (`internal/store/store.go:74-85`, `:104-118`) and add the annotation
+  through `actorPayload` (`:148-160`), used by the in-memory events
+  (`:292-296`, `:354`, `:479-484`, `:521`, `:565`) and the Postgres
+  outbox writes (`internal/store/postgres.go:259-263`, `:380`,
+  `:619-623`, `:712`, `:789`).
+- **Billing returns the token from the gate and passes it on.** The
+  controller helper keeps the exact 401 and returns the token
+  (`services/billing/src/main/java/com/hotel/billing/web/BillingController.java:120-131`);
+  every adapter passes it beside the body actor (`:141`, `:148`, `:155`,
+  `:161`, `:189`, `:198`, `:207`); the two presentation reads keep the
+  presence check (`:135`, `:167`, `:174`, `:181`). `BillingService`
+  validates the request actor and records the session
+  (`service/BillingService.java:148-149`, `:169-170`, `:204-205`,
+  `:227-228`, `:295-296`, `:357-358`, `:377-378`), and the four JSON
+  payloads pass through `payloadOf` (`:128-142`, sites `:190`, `:218`,
+  `:232`, `:309`). The repository records the session in
+  `created_by`/`updated_by` and the outbox `created_by`
+  (`repo/BillingRepository.java:65-71`, `:100-111`, `:135-137`,
+  `:143-145`, `:154-160`, `:176-191`, `:237-239`, `:269-286`).
+- **Admin records the resolved caller.** The session is resolved before
+  the body (`services/admin/src/server.ts:157-169`) and passed to
+  `updateConfig` (`:176`); the in-memory store records
+  `caller.signinIdentity` (`src/store.ts:560-570`) and the Postgres
+  store the same (`src/pgstore.ts:513-514`, `:524-532`), while the body
+  `updatedBy` keeps its `requiredString` refusal and is dropped (no JSON
+  payload). The boot seed records `boot` with no request
   (`src/store.ts:262-281`; `src/pgstore.ts:90-100`).
-- **Every write contract requires the field, and the audit columns are
-  text and JSON.** `actor` is required in the write requests
-  (`contracts/http/CheckIn.json:13`, `UpsertGuest.json:13`,
+- **The write contracts keep their bytes.** `actor` is required in the
+  write requests (`contracts/http/CheckIn.json:13`, `UpsertGuest.json:13`,
   `CheckOutReservation.json:19`) and `updatedBy` in
-  `UpdateHotelConfig.json:13`; audit columns are `TEXT` and outbox
-  payloads are JSONB (`services/stay/migrations/001_boot.sql:9-16`,
-  `002_schema.sql:31-33`), so no migration is needed. Two description
-  sentences still claim the body value is recorded
-  (`contracts/http/CheckOutReservation.json:22`,
-  `contracts/http/UpdateHotelConfig.json:20`).
+  `UpdateHotelConfig.json:13`; the two description sentences corrected by
+  the spec set (`CheckOutReservation.json:22`, `UpdateHotelConfig.json:20`)
+  now state that the session is recorded and the field is validated but
+  not authoritative. Audit columns are `TEXT` and outbox payloads are
+  JSONB (`services/stay/migrations/001_boot.sql:9-16`,
+  `002_schema.sql:31-33`), so no migration was added.
 - **Rates and Reporting are outside this rule.** Rates' write operations
-  take no request actor (no handler or contract carries one) and its
-  outbox writer falls back to `system`
+  take no request actor and its outbox writer falls back to `system`
   (`services/rates/internal/store/postgres.go:70-77`); Reporting is a
   read model over other modules' events. Neither is a caller-choosable
-  attribution, so neither changes here.
+  attribution, so neither changed.
 
 ### 34.1 The seam: the server that authenticates hands the session to the store
 
@@ -7915,11 +7917,11 @@ architecture-side check the implementation must satisfy.
   Rooms, `CheckOutReservation`, and Billing, and writes nothing; a
   missing token still answers 401 before the body on the Node, Go, and
   Admin paths; `SignIn`'s ordering and lockout are untouched.
-- **Two existing assertions re-pin, not drift.**
-  `services/reservations/internal/store/store_test.go:214` and `:491`
-  today assert the change actor is the request string (`"front-desk"`);
-  they re-pin to the session token, and the request string appears only
-  in the payload annotation where the write emits one.
+- **Two existing assertions re-pinned, not drifted.**
+  `services/reservations/internal/store/store_test.go` now asserts the
+  change actor is the session token (`sessionToken`, `:11-17`), and the
+  request string appears only in the payload annotation where the write
+  emits one.
 - **The forwarded completion agrees.** A Stay `CheckOut` records the
   desk token; the completion call carries the same Bearer token and the
   request actor as the body annotation, and the Reservations change row
@@ -8023,13 +8025,13 @@ a measurable target this change does not introduce.
 
 ### 34.9 Maintain-with-code
 
-The implementation PR adds the session parameter at each server seam
+As built, the change adds the session parameter at each server seam
 (34.1), the store/service/repository changes that record it, the
 `requestActor` annotation at the payload sites (34.2), the Billing token
 helper, and the Admin config-actor change; it also creates the guards of
-34.6 and re-pins the two Go assertions. It refreshes this section's line
-pins and the six service design pages' planned deltas to the as-built
-`file:line` at the merged head, and `docs/technical/error-handling.md`
+34.6 and re-pins the two Go assertions. This section's line pins and the
+six service design pages' deltas were refreshed to the as-built
+`file:line` at this head, and `docs/technical/error-handling.md`
 section 1.6 and `docs/technical/api-spec.md` section 1 keep their
 promises. `dev-peer-review` treats a store still reading the body actor
 for the recorded value, a payload missing `requestActor` when the value

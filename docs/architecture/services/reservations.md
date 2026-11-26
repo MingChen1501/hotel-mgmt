@@ -208,39 +208,29 @@ Role: dev · AO session hotel-mgmt-1075
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-941
 
-## 11. Planned delta — session-derived audit actor (Refs #643)
+## 11. As-built delta — session-derived audit actor (Refs #643)
 
-At this head the authed wrapper already has the caller's raw header
-(`internal/handler/handler.go:140-158`) but forwards it only to reads;
-every write reads `body["actor"]` instead (`:176` Create, `:238`
-CheckIn, `:256` CheckOut, `:290` Modify, `:323` Cancel, `:342`
-MarkNoShow), and the store records it as the change-row `created_by`
-and outbox actor (`internal/store/store.go:142-143`, `:245`, `:361`,
-`:427-451`, `:484-536`;
-`internal/store/postgres.go:197`, `:210`, `:255`, `:267`, `:402-456`,
-`:571`, `:606`, `:622`, `:627`).
-
-Planned (design: LLD
-[section 34](../lld.md#34-the-audit-actor-comes-from-the-session-never-from-the-request-refs-643)):
-
-- Each write handler derives the token from the bearer (prefix removed,
-  remainder trimmed), not the body actor, and passes it as the recorded
-  actor; the body value travels beside it as the annotation.
-  `CheckOutReservation` keeps its required-actor
-  `field_required` refusal (`handler.go:256-259`); the five writes that
-  accept `actor` optionally add no refusal.
-- The stores take `Actor` (session) and `RequestActor` (body). Change
-  rows and the reservation row's `created_by`/`updated_by` record the
-  session; a JSON outbox payload adds `requestActor` only when the body
-  value differs. `CheckOutReservation` writes no outbox row (LLD
-  section 22.5), so its request value is dropped and the change-row
-  shape is unchanged.
-- Stay's forwarded completion carries the desk bearer and the request
-  actor as the body annotation, so both rows record the same session
-  token. No response, status, refusal, column, or migration changes.
-- Guards: one spoofed-actor case per write; the in-memory assertions at
-  `internal/store/store_test.go:214` and `:491`, which pin the request
-  string today, re-pin to the session token (LLD section 34.6).
+The authed wrapper keeps the caller's raw header
+(`internal/handler/handler.go:140-158`), the module helper strips the
+`Bearer ` prefix and trims the remainder (`:104-111`), and every write
+passes the session actor with the body actor beside it: Create `:200-201`,
+CheckIn `:248`, CheckOutReservation `:271`, Modify `:313-314`, Cancel
+`:336`, MarkNoShow `:357`. `CheckOutReservation` keeps its required
+`actor` field and refusal (`:256-269`); the five writes that accept
+`actor` optionally add no refusal. The stores take `Actor` and
+`RequestActor` (`internal/store/store.go:74-85`, `:104-118`) and add the
+annotation through `actorPayload` (`:148-160`), used by the in-memory
+events (`:292-296`, `:354`, `:479-484`, `:521`, `:565`) and the Postgres
+outbox writes (`internal/store/postgres.go:259-263`, `:380`,
+`:619-623`, `:712`, `:789`); change rows and the reservation row's
+`created_by`/`updated_by` record the session. `CheckOutReservation`
+writes no outbox row, so its request value is dropped and its change-row
+shape is unchanged. Stay's forwarded completion carries the desk bearer
+and the request actor as the body annotation, so both rows record the
+same session token. Guards `SEC13`-`SEC18`, `SEC29`, `SEC32`, `SEC33`
+live in `internal/handler/handler_test.go` and
+`internal/store/store_test.go`, where the two request-string assertions
+re-pin to `sessionToken` (`:11-17`).
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1175

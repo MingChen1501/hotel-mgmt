@@ -281,40 +281,30 @@ migration or data repair exists in either direction.
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1117
 
-## 11. Planned delta — session-derived audit actor (Refs #643)
+## 11. As-built delta — session-derived audit actor (Refs #643)
 
-At this head `requireToken` answers the 401 and returns nothing
-(`web/BillingController.java:117-121`), `actor` maps a non-string body
-value to `""` (`:39-42`), and every adapter passes that value to the
-service after the token check (`:128`, `:136`, `:144`, `:151`, `:165`,
-`:172`, `:179`, `:188`, `:197`). `BillingService.actorOf`
-(`service/BillingService.java:110-115`) refuses a blank actor, and the
-repository records the string (`repo/BillingRepository.java:65-71`,
-`:100-111`, `:135-137`, `:143-145`, `:154-160`, `:176-191`, `:237-239`,
-`:269-286`).
-
-Planned (design: LLD
-[section 34](../lld.md#34-the-audit-actor-comes-from-the-session-never-from-the-request-refs-643)):
-
-- One module-local helper keeps the exact 401
-  (`error.auth.missing_token`) and returns the token after `Bearer `,
-  trimmed. Every adapter passes it as the recorded actor beside the
-  request actor; `actorOf` keeps its existing request-actor refusal, so
-  a missing, blank, or non-string body actor is still
-  `VALIDATION_FAILED` naming `actor` and writes nothing.
-- The repository records the token in `created_by`/`updated_by` and the
-  outbox `created_by`; the four JSON payloads (`charge-posted`,
-  `payment-recorded`, `day-close-completed`, `approval-recorded`) add
-  `requestActor` only when the body value differs. The two presentation
-  reads (`produceInvoice`, `produceReceipt`) record nothing and keep the
-  request rule; `GetFolioBalance` records the token on the folio it
-  creates.
-- The forwarded open-balance approval keeps its own `approvedBy`/`role`
-  fields verbatim (a different recorded claim); only the `actor` column
-  moves. No response, status, refusal, column, or migration changes.
-- Guards: a spoofed-actor case per adapter asserting the service receives
-  the token as the recorded actor and that the body value never reaches
-  the repository (LLD section 34.6).
+One module-local helper keeps the exact 401
+(`error.auth.missing_token`) and returns the token after `Bearer `,
+trimmed (`web/BillingController.java:120-131`); every adapter passes it
+beside the request actor (`:141`, `:148`, `:155`, `:161`, `:189`,
+`:198`, `:207`), and the two presentation reads record nothing and keep
+the presence check (`:135`, `:167`, `:174`, `:181`). The service
+validates the request actor with today's refusal and records the session
+(`service/BillingService.java:148-149`, `:169-170`, `:204-205`,
+`:227-228`, `:295-296`, `:357-358`, `:377-378`); the repository records
+the token in `created_by`/`updated_by` and the outbox `created_by`
+(`repo/BillingRepository.java:65-71`, `:100-111`, `:135-137`,
+`:143-145`, `:154-160`, `:176-191`, `:237-239`, `:269-286`). The four
+JSON payloads (`charge-posted`, `payment-recorded`,
+`day-close-completed`, `approval-recorded`) add `requestActor` only
+when the body value differs, through `payloadOf`
+(`service/BillingService.java:128-142`, sites `:190`, `:218`, `:232`,
+`:309`); an honest or absent value adds no key. `GetFolioBalance`
+records the token on the folio it creates. The forwarded open-balance
+approval keeps its own `approvedBy`/`role` fields verbatim; only the
+`actor` column moved. Guards `SEC19`-`SEC27`, `SEC29`-`SEC32` live in
+`web/BillingControllerTest.java` and `service/BillingServiceTest.java`;
+no response, status, refusal, column, or migration changed.
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1175
