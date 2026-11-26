@@ -57,13 +57,22 @@ func TestDeskLoopSetRateSearchQuote(t *testing.T) {
 		t.Fatalf("totalMinor = %v, want 24000", quoted["totalMinor"])
 	}
 
-	code, counts := post(t, mux, "/v1/rates/CheckSellableCount", map[string]any{"roomTypeId": roomTypeID, "dateFrom": "2026-11-01", "dateTo": "2026-11-03", "totalUnits": 1}, deskToken)
+	// Refs #633 (RTE6 re-seed): the request carries a count different
+	// from the plan default (9 vs 1) and the answer is the plan default,
+	// so an honoured field would fail this guard.
+	code, counts := post(t, mux, "/v1/rates/CheckSellableCount", map[string]any{"roomTypeId": roomTypeID, "dateFrom": "2026-11-01", "dateTo": "2026-11-03", "totalUnits": 9}, deskToken)
 	if code != http.StatusOK {
 		t.Fatalf("CheckSellableCount status = %d", code)
 	}
 	entries, _ := counts["counts"].([]any)
 	if len(entries) != 3 {
 		t.Fatalf("counts has %d entries, want 3", len(entries))
+	}
+	for _, entry := range entries {
+		day, _ := entry.(map[string]any)
+		if day["sellableCount"] != float64(1) {
+			t.Fatalf("sellableCount = %v, want the plan default 1 (totalUnits is inert)", day["sellableCount"])
+		}
 	}
 
 	code, allowed := post(t, mux, "/v1/rates/CheckRestrictions", map[string]any{"roomTypeId": roomTypeID, "arrivalDate": "2026-11-01", "departureDate": "2026-11-03"}, deskToken)

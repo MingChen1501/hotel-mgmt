@@ -9,9 +9,11 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"math"
 	"sort"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/MingChen1501/hotel-mgmt/services/rates/internal/messages"
 )
@@ -39,6 +41,108 @@ func stateIllegal(message string, details map[string]any) *OpError {
 }
 
 const dateLayout = "2006-01-02"
+
+// Rate-plan text bounds (FR-RTE-10, BR-68, Refs #633). One declared
+// bound per field, counted in Unicode code points on the value as
+// stored; code constants, never configuration, applied on write only.
+// Exported so the handler refuses at the read site with the same two
+// numbers the stores re-check.
+const (
+	MaxPlanNameRunes        = 64
+	MaxPlanDescriptionRunes = 2000
+)
+
+// uuidShape accepts the canonical 8-4-4-4-12 hexadecimal form the
+// Postgres column takes. The Postgres store surfaces the driver's
+// 22P02 answer for anything else; the in-memory store must refuse the
+// same requests instead of appending a row that matches nothing
+// (FR-RTE-7).
+func uuidShape(value string) bool {
+	if len(value) != 36 {
+		return false
+	}
+	for i := 0; i < len(value); i++ {
+		if i == 8 || i == 13 || i == 18 || i == 23 {
+			if value[i] != '-' {
+				return false
+			}
+			continue
+		}
+		c := value[i]
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F') {
+			return false
+		}
+	}
+	return true
+}
+
+// planTextBound refuses one rate-plan text field above its bound
+// (FR-RTE-10). The sentence carries the bound through {max}.
+func planTextBound(field, value string, max int) *OpError {
+	if utf8.RuneCountInString(value) <= max {
+		return nil
+	}
+	return validation(field, messages.Text("rates.validation.text_length", map[string]string{
+		"field": field,
+		"max":   messages.Num(int64(max)),
+	}))
+}
+
+// planText applies both declared bounds to one plan write.
+func planText(name, description string) *OpError {
+	if oerr := planTextBound("name", name, MaxPlanNameRunes); oerr != nil {
+		return oerr
+	}
+	return planTextBound("description", description, MaxPlanDescriptionRunes)
+}
+
+// totalOverflow is the unrepresentable-quote refusal (FR-RTE-9): the
+// request is well formed, so the answer is a state refusal naming the
+// type and the reason the desk already reads (#589 slot), and no total
+// or partial night list is returned.
+func totalOverflow(roomTypeID string) *OpError {
+	return stateIllegal(messages.Text("rates.state.total_overflow", nil), map[string]any{
+		"field":      "roomTypeId",
+		"roomTypeId": roomTypeID,
+		"reason":     "total_overflow",
+	})
+}
+
+// checkedAdd reports whether a+b stays inside the int64 range.
+func checkedAdd(a, b int64) (int64, bool) {
+	sum := a + b
+	if (b > 0 && sum < a) || (b < 0 && sum > a) {
+		return 0, false
+	}
+	return sum, true
+}
+
+// checkedMul reports whether a*b stays inside the int64 range. Both
+// quote operands are non-negative by construction (stored prices and
+// the 0..100 percent factor), but the guard covers the whole range so
+// a later sign change cannot reopen the hole (LLD section 37.3).
+func checkedMul(a, b int64) (int64, bool) {
+	if a == 0 || b == 0 {
+		return 0, true
+	}
+	if (a == math.MinInt64 && b == -1) || (b == math.MinInt64 && a == -1) {
+		return 0, false
+	}
+	product := a * b
+	if product/b != a {
+		return 0, false
+	}
+	return product, true
+}
+
+// checkedSub reports whether a-b stays inside the int64 range.
+func checkedSub(a, b int64) (int64, bool) {
+	diff := a - b
+	if (b < 0 && diff < a) || (b > 0 && diff > a) {
+		return 0, false
+	}
+	return diff, true
+}
 
 func newID() string {
 	var buf [16]byte
@@ -136,13 +240,15 @@ type Store struct {
 // NewPostgres (postgres.go) returns the Postgres-backed implementation
 // used when DATABASE_URL is set. Both keep the same pricing semantics.
 type Repository interface {
-	UpsertRatePlan(name, description string, defaultUnits *int) *RatePlan
+	UpsertRatePlan(name, description string, defaultUnits *int) (*RatePlan, *OpError)
 	UpsertRatePrice(planName, roomTypeID, night string, priceMinor int64) (*RatePrice, *OpError)
 	UpsertRestriction(roomTypeID, from, to string, minStay *int, closedToArrival bool) (*StayRestriction, *OpError)
 	UpsertDiscount(name, kind string, valueMinor int64) (*Discount, *OpError)
 	Quote(roomTypeID, arrival, departure string, planName, discountName *string) (*Quote, *OpError)
 	CheckRestrictions(roomTypeID, arrival, departure string) *OpError
-	CheckSellableCount(roomTypeID, from, to string, totalUnits *int) ([]DayCount, *OpError)
+	// CheckSellableCount takes no caller unit count: the answer is the
+	// server's plan default, else 0 (FR-RTE-8, BR-68, Refs #633).
+	CheckSellableCount(roomTypeID, from, to string) ([]DayCount, *OpError)
 }
 
 // New returns an empty Store.
@@ -158,8 +264,13 @@ func priceKey(plan, roomTypeID, night string) string {
 	return plan + "|" + roomTypeID + "|" + night
 }
 
-// UpsertRatePlan creates or updates a named plan.
-func (s *Store) UpsertRatePlan(name, description string, defaultUnits *int) *RatePlan {
+// UpsertRatePlan creates or updates a named plan. Both text fields are
+// bounded on write (FR-RTE-10, Refs #633); a refused write stores
+// nothing and emits no event.
+func (s *Store) UpsertRatePlan(name, description string, defaultUnits *int) (*RatePlan, *OpError) {
+	if oerr := planText(name, description); oerr != nil {
+		return nil, oerr
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if existing, ok := s.plans[name]; ok {
@@ -167,12 +278,12 @@ func (s *Store) UpsertRatePlan(name, description string, defaultUnits *int) *Rat
 		if defaultUnits != nil {
 			existing.DefaultUnits = defaultUnits
 		}
-		return existing
+		return existing, nil
 	}
 	plan := &RatePlan{ID: newID(), Name: name, Description: description, DefaultUnits: defaultUnits}
 	s.plans[name] = plan
 	s.emit("rate-plan", "rate-plan-changed", map[string]any{"ratePlanName": name})
-	return plan
+	return plan, nil
 }
 
 // UpsertRatePrice sets one nightly price.
@@ -194,7 +305,9 @@ func (s *Store) UpsertRatePrice(planName, roomTypeID, night string, priceMinor i
 	return record, nil
 }
 
-// UpsertRestriction records one stay-restriction window.
+// UpsertRestriction records one stay-restriction window. A typo'd or
+// unpriced room type is refused before the append, so no window can
+// exist that matches nothing (FR-RTE-7, Refs #633).
 func (s *Store) UpsertRestriction(roomTypeID, from, to string, minStay *int, closedToArrival bool) (*StayRestriction, *OpError) {
 	if _, err := parseDate(from, "dateFrom"); err != nil {
 		return nil, err
@@ -205,12 +318,29 @@ func (s *Store) UpsertRestriction(roomTypeID, from, to string, minStay *int, clo
 	if to < from {
 		return nil, validation("dateTo", messages.Text("error.validation.date_range_order", nil))
 	}
+	if !uuidShape(roomTypeID) {
+		return nil, validation("roomTypeId", messages.Text("error.validation.must_be_uuid", map[string]string{"field": "roomTypeId"}))
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if !s.pricedType(roomTypeID) {
+		return nil, notFound(messages.Text("rates.notfound.room_type", map[string]string{"roomTypeId": roomTypeID}), map[string]any{"roomTypeId": roomTypeID})
+	}
 	record := &StayRestriction{ID: newID(), RoomTypeID: roomTypeID, DateFrom: from, DateTo: to, MinStay: minStay, ClosedToArrival: closedToArrival}
 	s.restrictions = append(s.restrictions, record)
 	s.emit("restriction", "restriction-changed", map[string]any{"roomTypeId": roomTypeID, "dateFrom": from, "dateTo": to})
 	return record, nil
+}
+
+// pricedType reports whether any plan carries a rate price row for the
+// type. A plan defaultUnits is not a price (BR-44).
+func (s *Store) pricedType(roomTypeID string) bool {
+	for _, price := range s.prices {
+		if price.RoomTypeID == roomTypeID {
+			return true
+		}
+	}
+	return false
 }
 
 // UpsertDiscount records one named discount.
@@ -270,8 +400,12 @@ func (s *Store) Quote(roomTypeID, arrival, departure string, planName, discountN
 			// instead of showing a generic failure.
 			return nil, notFound(messages.Text("rates.notfound.priced_night", map[string]string{"nightDate": night.Format(dateLayout)}), map[string]any{"roomTypeId": roomTypeID, "nightDate": night.Format(dateLayout), "reason": "no_rate_price"})
 		}
+		total, ok := checkedAdd(quoted.TotalMinor, price.PriceMinor)
+		if !ok {
+			return nil, totalOverflow(roomTypeID)
+		}
 		quoted.Nights = append(quoted.Nights, NightQuote{NightDate: price.NightDate, PriceMinor: price.PriceMinor})
-		quoted.TotalMinor += price.PriceMinor
+		quoted.TotalMinor = total
 	}
 	if discountName != nil && *discountName != "" {
 		discount, ok := s.discounts[*discountName]
@@ -281,9 +415,17 @@ func (s *Store) Quote(roomTypeID, arrival, departure string, planName, discountN
 		quoted.Discount = discountName
 		switch discount.Kind {
 		case "percent":
-			quoted.TotalMinor = quoted.TotalMinor * (100 - discount.ValueMinor) / 100
+			product, ok := checkedMul(quoted.TotalMinor, 100-discount.ValueMinor)
+			if !ok {
+				return nil, totalOverflow(roomTypeID)
+			}
+			quoted.TotalMinor = product / 100
 		case "amount":
-			quoted.TotalMinor -= discount.ValueMinor
+			diff, ok := checkedSub(quoted.TotalMinor, discount.ValueMinor)
+			if !ok {
+				return nil, totalOverflow(roomTypeID)
+			}
+			quoted.TotalMinor = diff
 			if quoted.TotalMinor < 0 {
 				quoted.TotalMinor = 0
 			}
@@ -328,9 +470,11 @@ func (s *Store) CheckRestrictions(roomTypeID, arrival, departure string) *OpErro
 }
 
 // CheckSellableCount returns the per-date inventory input for the
-// type. The authoritative booking guard stays in the Reservations
-// store transaction; this call reports the cached input (FR-RTE-2).
-func (s *Store) CheckSellableCount(roomTypeID, from, to string, totalUnits *int) ([]DayCount, *OpError) {
+// type. The answer is the first plan in name order that prices the
+// type and carries a defaultUnits, else 0; the caller's totalUnits is
+// never consulted (FR-RTE-8, BR-68, Refs #633). The authoritative
+// booking guard stays in the Reservations store transaction.
+func (s *Store) CheckSellableCount(roomTypeID, from, to string) ([]DayCount, *OpError) {
 	fromDay, err := parseDate(from, "dateFrom")
 	if err != nil {
 		return nil, err
@@ -344,35 +488,19 @@ func (s *Store) CheckSellableCount(roomTypeID, from, to string, totalUnits *int)
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	units := totalUnits
-	if units == nil {
-		for _, plan := range s.sortedPlans() {
-			if plan.DefaultUnits != nil && s.planPricesType(plan.Name, roomTypeID) {
-				units = plan.DefaultUnits
-				break
-			}
-		}
+	if !s.pricedType(roomTypeID) {
+		return nil, notFound(messages.Text("rates.notfound.room_type", map[string]string{"roomTypeId": roomTypeID}), map[string]any{"roomTypeId": roomTypeID})
 	}
-	if units == nil {
-		known := false
-		for _, price := range s.prices {
-			if price.RoomTypeID == roomTypeID {
-				known = true
-				break
-			}
+	units := 0
+	for _, plan := range s.sortedPlans() {
+		if plan.DefaultUnits != nil && s.planPricesType(plan.Name, roomTypeID) {
+			units = *plan.DefaultUnits
+			break
 		}
-		if !known && totalUnits == nil {
-			return nil, notFound(messages.Text("rates.notfound.room_type", map[string]string{"roomTypeId": roomTypeID}), map[string]any{"roomTypeId": roomTypeID})
-		}
-		if !known {
-			return nil, validation("totalUnits", messages.Text("rates.validation.no_inventory", nil))
-		}
-		fallback := 0
-		units = &fallback
 	}
 	var counts []DayCount
 	for day := fromDay; !day.After(toDay); day = day.AddDate(0, 0, 1) {
-		counts = append(counts, DayCount{Date: day.Format(dateLayout), SellableCount: *units})
+		counts = append(counts, DayCount{Date: day.Format(dateLayout), SellableCount: units})
 	}
 	return counts, nil
 }

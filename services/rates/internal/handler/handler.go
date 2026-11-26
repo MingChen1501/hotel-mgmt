@@ -130,6 +130,27 @@ func intField(body map[string]any, field string) (int64, bool) {
 	return 0, false
 }
 
+// planTextRefusal refuses one rate-plan text field with the catalogue
+// sentence carrying its declared bound (FR-RTE-10, BR-68, Refs #633).
+func planTextRefusal(field string, max int) *store.OpError {
+	return &store.OpError{
+		Code:   "VALIDATION_FAILED",
+		Status: 400,
+		Message: messages.Text("rates.validation.text_length", map[string]string{
+			"field": field,
+			"max":   messages.Num(int64(max)),
+		}),
+		Details: map[string]any{"field": field},
+	}
+}
+
+func planTextLengthRefusal(field string, length, max int) *store.OpError {
+	if length <= max {
+		return nil
+	}
+	return planTextRefusal(field, max)
+}
+
 // NewMux routes the PricingService operations onto store.
 func NewMux(st store.Repository) *http.ServeMux {
 	mux := http.NewServeMux()
@@ -160,7 +181,25 @@ func NewMux(st store.Repository) *http.ServeMux {
 			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: messages.Text("error.validation.field_required", map[string]string{"field": "name"}), Details: map[string]any{"field": "name"}})
 			return
 		}
-		description, _ := body["description"].(string)
+		if oerr := planTextLengthRefusal("name", len([]rune(name)), store.MaxPlanNameRunes); oerr != nil {
+			writeOpError(w, oerr)
+			return
+		}
+		description := ""
+		if raw, present := body["description"]; present {
+			value, ok := raw.(string)
+			if !ok {
+				// A present non-string description used to become the
+				// empty string; it is refused instead (FR-RTE-10).
+				writeOpError(w, planTextRefusal("description", store.MaxPlanDescriptionRunes))
+				return
+			}
+			description = value
+		}
+		if oerr := planTextLengthRefusal("description", len([]rune(description)), store.MaxPlanDescriptionRunes); oerr != nil {
+			writeOpError(w, oerr)
+			return
+		}
 		var defaultUnits *int
 		if raw, present := body["defaultUnits"]; present {
 			parsed, ok := intField(body, "defaultUnits")
@@ -172,7 +211,11 @@ func NewMux(st store.Repository) *http.ServeMux {
 			value := int(parsed)
 			defaultUnits = &value
 		}
-		plan := st.UpsertRatePlan(name, description, defaultUnits)
+		plan, oerr := st.UpsertRatePlan(name, description, defaultUnits)
+		if oerr != nil {
+			writeOpError(w, oerr)
+			return
+		}
 		writeJSON(w, http.StatusOK, map[string]any{"id": plan.ID, "name": plan.Name, "description": plan.Description})
 	}))
 
@@ -231,7 +274,17 @@ func NewMux(st store.Repository) *http.ServeMux {
 			value := int(parsed)
 			minStay = &value
 		}
-		closed, _ := body["closedToArrival"].(bool)
+		closed := false
+		if raw, present := body["closedToArrival"]; present {
+			// A present flag must be a JSON boolean: "true", 1, "yes",
+			// and null are refused, never coerced to false (FR-RTE-6).
+			value, ok := raw.(bool)
+			if !ok {
+				writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: messages.Text("error.validation.must_be_boolean", map[string]string{"field": "closedToArrival"}), Details: map[string]any{"field": "closedToArrival"}})
+				return
+			}
+			closed = value
+		}
 		record, oerr := st.UpsertRestriction(roomTypeID, from, to, minStay, closed)
 		if oerr != nil {
 			writeOpError(w, oerr)
@@ -311,17 +364,16 @@ func NewMux(st store.Repository) *http.ServeMux {
 			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: messages.Text("error.validation.field_required", map[string]string{"field": "dateTo"}), Details: map[string]any{"field": "dateTo"}})
 			return
 		}
-		var units *int
 		if _, present := body["totalUnits"]; present {
+			// The field stays accepted and shape-checked for contract
+			// compatibility, but it never sets the count (FR-RTE-8).
 			parsed, ok := intField(body, "totalUnits")
 			if !ok || parsed < 0 {
 				writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: messages.Text("rates.validation.total_units", nil), Details: map[string]any{"field": "totalUnits"}})
 				return
 			}
-			value := int(parsed)
-			units = &value
 		}
-		counts, oerr := st.CheckSellableCount(roomTypeID, from, to, units)
+		counts, oerr := st.CheckSellableCount(roomTypeID, from, to)
 		if oerr != nil {
 			writeOpError(w, oerr)
 			return

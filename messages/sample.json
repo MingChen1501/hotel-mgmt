@@ -210,6 +210,16 @@
       }
     },
     {
+      "key": "error.validation.must_be_boolean",
+      "surface": "rates envelope",
+      "sources": [
+        "services/rates/internal/handler/handler.go"
+      ],
+      "params": {
+        "field": "string"
+      }
+    },
+    {
       "key": "error.validation.unknown_role",
       "surface": "admin envelope",
       "sources": [
@@ -845,6 +855,18 @@
       "params": {}
     },
     {
+      "key": "rates.validation.text_length",
+      "surface": "rates envelope",
+      "sources": [
+        "services/rates/internal/handler/handler.go",
+        "services/rates/internal/store/store.go"
+      ],
+      "params": {
+        "field": "string",
+        "max": "integer"
+      }
+    },
+    {
       "key": "rates.validation.total_units",
       "surface": "rates envelope",
       "sources": [
@@ -898,15 +920,6 @@
       "params": {
         "discountName": "string"
       }
-    },
-    {
-      "key": "rates.validation.no_inventory",
-      "surface": "rates envelope",
-      "sources": [
-        "services/rates/internal/store/store.go",
-        "services/rates/internal/store/postgres.go"
-      ],
-      "params": {}
     },
     {
       "key": "rates.validation.ambiguous_plan",
@@ -969,6 +982,14 @@
       "params": {
         "arrivalDate": "string"
       }
+    },
+    {
+      "key": "rates.state.total_overflow",
+      "surface": "rates envelope",
+      "sources": [
+        "services/rates/internal/store/store.go"
+      ],
+      "params": {}
     },
     {
       "key": "rates.state.min_stay",
