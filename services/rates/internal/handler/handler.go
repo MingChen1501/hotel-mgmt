@@ -176,8 +176,20 @@ func NewMux(st store.Repository) *http.ServeMux {
 	}
 
 	mux.HandleFunc("POST /v1/rates/UpsertRatePlan", authed("UpsertRatePlan", func(w http.ResponseWriter, body map[string]any) {
-		name, ok := strField(body, "name")
+		rawName, present := body["name"]
+		if !present {
+			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: messages.Text("error.validation.field_required", map[string]string{"field": "name"}), Details: map[string]any{"field": "name"}})
+			return
+		}
+		name, ok := rawName.(string)
 		if !ok {
+			// A present non-string name is refused the same way as an
+			// over-bound one, not with the required-field sentence
+			// (AC-RTE-10, LLD 37.1).
+			writeOpError(w, planTextRefusal("name", store.MaxPlanNameRunes))
+			return
+		}
+		if strings.TrimSpace(name) == "" {
 			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: messages.Text("error.validation.field_required", map[string]string{"field": "name"}), Details: map[string]any{"field": "name"}})
 			return
 		}

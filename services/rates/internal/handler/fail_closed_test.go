@@ -369,5 +369,10 @@ func TestRatePlanTextBounds(t *testing.T) {
 		assertRefusal(t, code, body, http.StatusBadRequest, "VALIDATION_FAILED", map[string]any{"field": "description"}, "")
 	}
 	code, body = post(t, mux, "/v1/rates/UpsertRatePlan", map[string]any{"name": 5}, deskToken)
-	assertRefusal(t, code, body, http.StatusBadRequest, "VALIDATION_FAILED", map[string]any{"field": "name"}, "")
+	assertRefusal(t, code, body, http.StatusBadRequest, "VALIDATION_FAILED", map[string]any{"field": "name"},
+		messages.Text("rates.validation.text_length", map[string]string{"field": "name", "max": messages.Num(64)}))
+
+	code, body = post(t, mux, "/v1/rates/UpsertRatePlan", map[string]any{"description": "no name"}, deskToken)
+	assertRefusal(t, code, body, http.StatusBadRequest, "VALIDATION_FAILED", map[string]any{"field": "name"},
+		messages.Text("error.validation.field_required", map[string]string{"field": "name"}))
 }
