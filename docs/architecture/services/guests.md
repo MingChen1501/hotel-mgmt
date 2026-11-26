@@ -64,9 +64,9 @@ Edge trace:
 - F: unknown `guestId` or `fullName` → `NOT_FOUND` (`src/store.ts:409-412`, `:429-430`; `src/pgstore.ts:180-181`, `:196-197`).
 - G: neither identifier supplied → `VALIDATION_FAILED` (`src/store.ts:437`; `src/pgstore.ts:205`).
 - A (from #640, as built): a name that matches two or more guests is refused by the counted branch in `findGuest` (`src/store.ts:415-435`, the count at `:421-428`; `src/pgstore.ts:185-203`, the count query at `:190-195`) before any profile is assembled, with `details` naming `fullName`, the searched name, and the exact match count, and the `guests.validation.ambiguous_name` sentence; a single match is served as today. Details: [section 8](#8-delta--guest-identity-ambiguity-and-payload-bounds-refs-640) and `docs/architecture/lld.md` [section 32](../lld.md#32-guest-identity-lookups-refuse-an-ambiguous-name-and-guest-payloads-carry-declared-bounds-refs-640).
-- P (from #640, as built): `contact`, `preferences`, and `notes` are checked in the shared validators (`src/store.ts:183-237`) before the first store access (`:320-322`) and before the Postgres serialisation/insert (`src/pgstore.ts:70-85`), so a shape or length refusal writes no row and no link; the bounds and sentences are in section 8.
+- P (from #640, as built): `contact`, `preferences`, and `notes` are checked in the shared validators (`src/store.ts:183-235`) before the first store access (`:323-325`) and before the Postgres serialisation/insert (`src/pgstore.ts:70-85`), so a shape or length refusal writes no row and no link; the bounds and sentences are in section 8.
 - D (from #640, as built): a shape-valid but calendar-invalid date is refused inside `requireDate` (`src/store.ts:248-268`), reached before the confirmation snapshot is stored (`attachReservation` `src/store.ts:386-390`, `src/pgstore.ts:143-147`), with the existing `guests.validation.date_format` sentence naming the field.
-- H: the stay link row is unique per (guest, stay): a duplicate delivery of the same stay is skipped, the count derives from linked stays, and the `stay-linked` outbox event carries the recomputed count (`src/store.ts:244-263`).
+- H: the stay link row is unique per (guest, stay): a duplicate delivery of the same stay is skipped, the count derives from linked stays, and the `stay-linked` outbox event carries the recomputed count (`src/store.ts:365-384`).
 
 Rollback: none — reads are pure; upserts and link appends are single guarded steps with refusals preceding mutation.
 
@@ -82,7 +82,7 @@ Same shared Node envelope as Stay (`src/errors.ts`; `docs/technical/error-handli
 
 | Code | Status | Raised when |
 |---|---|---|
-| `VALIDATION_FAILED` | 400 | bad UUID/field, neither identifier given (`src/store.ts:48, :55, :437`); from #640 an ambiguous name naming `fullName` with the match count (`:240-246`, raised at `:432-434` and `src/pgstore.ts:200-202`), a `contact`/`preferences` shape or a `notes` length outside the declared bound naming the field (`src/store.ts:183-237`), and a calendar-invalid confirmation date naming the field (`src/store.ts:248-268`) (section 8) |
+| `VALIDATION_FAILED` | 400 | bad UUID/field, neither identifier given (`src/store.ts:48, :55, :437`); from #640 an ambiguous name naming `fullName` with the match count (`:240-246`, raised at `:432-434` and `src/pgstore.ts:200-202`), a `contact`/`preferences` shape or a `notes` length outside the declared bound naming the field (`src/store.ts:183-235`), and a calendar-invalid confirmation date naming the field (`src/store.ts:248-268`) (section 8) |
 | `UNAUTHENTICATED` | 401 | missing session token (`src/server.ts:130-131`) |
 | `NOT_FOUND` | 404 | unknown guest by id or name, unknown reservation for confirmation (`src/store.ts:396-398`, `:410-411`, `:429-430`; `src/pgstore.ts:153-155`, `:180-181`, `:196-197`) |
 
@@ -167,9 +167,9 @@ As built (this change; pins refreshed to the merged-head `file:line`):
   the throw at `:199-202`); the one shared refusal constructor is
   `ambiguousGuestName` at `src/store.ts:240-246`.
 - **The declared bounds** are the four constants at
-  `src/store.ts:173-176` and the two shared validators at `:183-206`
-  (object shape) and `:224-237` (notes); the in-memory write calls them
-  before its first store access (`:320-322`, record write at `:334-335`)
+  `src/store.ts:173-176` and the two shared validators at `:183-218`
+  (object shape) and `:224-235` (notes); the in-memory write calls them
+  before its first store access (`:323-325`, record write at `:336-337`)
   and the Postgres write before serialisation and insert
   (`src/pgstore.ts:70-85`).
 - **The calendar round-trip** is in `requireDate` at

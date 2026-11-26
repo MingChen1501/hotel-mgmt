@@ -6421,8 +6421,8 @@ the merged-head `file:line`):
   (`count(*) OVER ()` query `:190-195`, refusal `:199-202`); the one
   shared constructor is `ambiguousGuestName` at `store.ts:240-246`.
 - The four bound constants are `store.ts:173-176`, the shared
-  validators `:183-206` (object shape) and `:224-237` (notes), called at
-  `:320-322` in memory and `pgstore.ts:71-76` in Postgres.
+  validators `:183-218` (object shape) and `:224-235` (notes), called at
+  `:323-325` in memory and `pgstore.ts:71-76` in Postgres.
 - The calendar round-trip is in `requireDate` `store.ts:248-268`
   (shape `:249-251`, UTC round-trip `:256-266`), reached from
   `toConfirmationRecord` `:301` and the snapshot writes `:386-390` /
@@ -6455,8 +6455,8 @@ the merged-head `file:line`):
   called at the top of both `upsertGuest` implementations** — after
   `guestId`/`fullName`/`actor` are validated and before the first store
   access: in the in-memory store before `this.guests.get(id)`
-  (`store.ts:325`) and therefore before the record write and the outbox
-  push (`:334-335`); in the Postgres store before either object is
+  (`store.ts:326`) and therefore before the record write and the outbox
+  push (`:336-337`); in the Postgres store before either object is
   serialised and before the `INSERT ... ON CONFLICT` (`pgstore.ts:70-85`).
   They validate the request fields, never the stored rows.
 - **The date check goes inside `requireDate`** (`store.ts:248-268`),
@@ -6587,7 +6587,7 @@ both stores:
   `preferences` (`COALESCE` on insert and `CASE ... IS NULL` on update,
   `pgstore.ts:77-83`, the `contact` `CASE` at `:81`); `notes` keeps the
   stored value on update and is `""` on create in both stores
-  (`store.ts:320-331`; `pgstore.ts:73-88`). Only a present value is
+  (`store.ts:320-332`; `pgstore.ts:73-88`). Only a present value is
   validated, so no absent field is refused and no store is changed. An
   explicit `null` for `contact` or `preferences` keeps today's coercion
   (both stores store `{}`; the shared validator returns `{}` at
@@ -6597,7 +6597,7 @@ both stores:
   `FR-GID-2` refuse a present non-string `notes` and today's
   invalid-value-means-keep path accepted it silently. No desk caller
   sends `notes` as null today: the Book screen's register sends
-  `fullName` and `actor` only (`app/src/views/BookView.vue:758-762`).
+  `fullName` and `actor` only (`app/src/views/BookView.vue:783-786`).
 - **Bound provenance.** The largest fixtures in the tree are a
   28-character note (`services/guests/src/server.test.ts:120-139`) and a
   one-field preference object
@@ -6704,8 +6704,8 @@ requires):
 ```mermaid
 flowchart TD
     A[POST /v1/guests/UpsertGuest  server.ts:136] --> B[Validate guestId, fullName, actor  store.ts:313-319 / pgstore.ts:62-68]
-    B --> C{contact, then preferences, then notes inside their declared bound  store.ts:320-322 / pgstore.ts:71-76}
-    C -->|yes| D[Write the row and, in the in-memory store, the guest-upserted event  store.ts:334-335 / pgstore.ts:77-88]
+    B --> C{contact, then preferences, then notes inside their declared bound  store.ts:323-325 / pgstore.ts:71-76}
+    C -->|yes| D[Write the row and, in the in-memory store, the guest-upserted event  store.ts:336-337 / pgstore.ts:77-88]
     C -->|no| R[new 400 VALIDATION_FAILED naming the field, guests.validation.contact_shape or guests.validation.notes_length]
     R --> N[no row, no stay link, no guest-upserted event; the stored profile is untouched]
     D --> O[200 profile as today]
@@ -6718,12 +6718,12 @@ Edge trace:
 - A–B: dispatch (`server.ts:136`) into `upsertGuest`
   (`store.ts:313`, `pgstore.ts:62`); the three existing field checks run
   exactly as today (`store.ts:314-319`, `pgstore.ts:63-68`).
-- B–C: the new validators, shared from `store.ts:183-237` (32.3), run in
-  the declared order before the first store access (`store.ts:320-322`),
+- B–C: the new validators, shared from `store.ts:183-235` (32.3), run in
+  the declared order before the first store access (`store.ts:323-325`),
   before either object is serialised (`pgstore.ts:71-76`), and before
   the insert (`pgstore.ts:77`).
 - C–D: the record write and the in-memory outbox push
-  (`store.ts:334-335`) or the `INSERT ... ON CONFLICT` with its
+  (`store.ts:336-337`) or the `INSERT ... ON CONFLICT` with its
   `RETURNING` (`pgstore.ts:77-88`), unchanged below the guard.
 - C–R: the two new sentences and the `details` field (32.3).
 - R–N: every write in both implementations sits below the guard, so a
@@ -6927,7 +6927,7 @@ no existing one; there is no guest-identity NFR family.**
 - **A caller that sent `notes: null` loses its silent keep.** Today that
   value fell through the non-string path and kept the stored note; after
   this change it is refused, per `AC-GID-4`. The desk does not send it
-  (`app/src/views/BookView.vue:758-762`), and omitting the field keeps
+  (`app/src/views/BookView.vue:783-786`), and omitting the field keeps
   today's update semantics exactly.
 - **The Postgres store writes no outbox event on guest upsert today.**
   That is an existing gap, not something this change introduces or
