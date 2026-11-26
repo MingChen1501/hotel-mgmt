@@ -1,5 +1,6 @@
 package com.hotel.billing.service;
 
+import com.hotel.billing.client.StayVerifier;
 import com.hotel.billing.repo.BillingRepository;
 import com.hotel.billing.repo.BillingRepository.ChargeLine;
 import com.hotel.billing.repo.BillingRepository.DayClose;
@@ -27,13 +28,22 @@ import org.springframework.transaction.annotation.Transactional;
 // lands folio lines, the balance update, and the outbox event in one
 // transaction. Charge and payment operations take an idempotencyKey
 // persisted UNIQUE; a repeat returns the original line.
+//
+// The four folio routes verify the stay through StayVerifier before
+// they touch the database and then delegate the writes to FolioWriter
+// (ADR-0008 D5, Refs #634): a refusal provably writes nothing, and
+// the Stay call never runs inside a database transaction.
 @Service
 public class BillingService {
 
   private final BillingRepository repo;
+  private final StayVerifier stayVerifier;
+  private final FolioWriter folioWriter;
 
-  public BillingService(BillingRepository repo) {
+  public BillingService(BillingRepository repo, StayVerifier stayVerifier, FolioWriter folioWriter) {
     this.repo = repo;
+    this.stayVerifier = stayVerifier;
+    this.folioWriter = folioWriter;
   }
 
   public record FolioView(UUID folioId, UUID stayId, long balanceMinor, Map<String, Object> openBalanceApproval,
@@ -60,7 +70,7 @@ public class BillingService {
 
   public record ApprovalView(UUID folioId, UUID stayId, long balanceMinor, Map<String, Object> openBalanceApproval) {}
 
-  private static Map<String, Object> chargeMap(ChargeLine line) {
+  static Map<String, Object> chargeMap(ChargeLine line) {
     Map<String, Object> body = new LinkedHashMap<>();
     body.put("lineId", line.id());
     body.put("folioId", line.folioId());
@@ -73,7 +83,7 @@ public class BillingService {
     return body;
   }
 
-  private static Map<String, Object> paymentMap(PaymentLine line) {
+  static Map<String, Object> paymentMap(PaymentLine line) {
     Map<String, Object> body = new LinkedHashMap<>();
     body.put("paymentId", line.id());
     body.put("folioId", line.folioId());
@@ -117,7 +127,7 @@ public class BillingService {
   private static final com.fasterxml.jackson.databind.ObjectMapper PAYLOAD_WRITER =
       new com.fasterxml.jackson.databind.ObjectMapper();
 
-  private static Map<String, Object> ordered(Object... keyValues) {
+  static Map<String, Object> ordered(Object... keyValues) {
     Map<String, Object> fields = new LinkedHashMap<>();
     for (int i = 0; i + 1 < keyValues.length; i += 2) {
       fields.put((String) keyValues[i], keyValues[i + 1]);
@@ -131,7 +141,7 @@ public class BillingService {
   // actor, so an honest caller's payload stays byte-identical. The
   // compact spelling (no separator spaces, field order as given) keeps
   // today's bytes for a payload that gains no key.
-  private static String payloadOf(Map<String, Object> fields, String requestActor, String sessionActor) {
+  static String payloadOf(Map<String, Object> fields, String requestActor, String sessionActor) {
     Map<String, Object> payload = new LinkedHashMap<>(fields);
     if (requestActor != null && !requestActor.isBlank() && !requestActor.equals(sessionActor)) {
       payload.put("requestActor", requestActor);
@@ -156,16 +166,23 @@ public class BillingService {
     }
   }
 
-  // Lazily creates the single folio for the stay (BR-21) so a
-  // balance read never fails on a fresh check-in.
-  @Transactional
+  // Serves the folio balance. A folio Billing already holds is served
+  // in every stay state, so a departed guest's invoice and receipts
+  // keep printing (AC-FWV-5). Only the folio-creating read verifies
+  // the stay first, so an unverifiable stay never gets an orphan folio
+  // (AC-FWV-3, AC-FWV-4; ADR-0008 D2, Refs #634).
   public FolioView getFolioBalance(String stayId, String actor, String sessionActor) {
     actorOf(actor);
-    Folio folio = repo.ensureFolio(stayUuid(stayId), actorOf(sessionActor));
-    return viewOf(folio);
+    String who = actorOf(sessionActor);
+    UUID id = stayUuid(stayId);
+    Folio existing = repo.findFolioByStayOrNull(id);
+    if (existing == null) {
+      stayVerifier.verify(id, who);
+      return folioWriter.folioView(folioWriter.openFolio(id, who));
+    }
+    return folioWriter.folioView(existing);
   }
 
-  @Transactional
   public LineView postCharge(String stayId, String itemKind, String itemName, long amountMinor,
       String idempotencyKey, String actor, String sessionActor) {
     if (!"nightly-room-charge".equals(itemKind) && !"charge-item".equals(itemKind)) {
@@ -183,31 +200,11 @@ public class BillingService {
     }
     actorOf(actor);
     String who = actorOf(sessionActor);
-    Folio folio = repo.ensureFolio(stayUuid(stayId), who);
-    String key = idempotencyKey == null ? "" : idempotencyKey.strip();
-    UUID lineId = UUID.randomUUID();
-    if (!key.isEmpty()) {
-      String winner = repo.claimOrWait(key, "PostCharge", lineId.toString());
-      if (winner != null) {
-        return lineViewOf(repo.findCharge(UUID.fromString(winner)), folio);
-      }
-    }
-    // Tax and fee derivation from the hotel rules (BR-25, FR-BIL-5,
-    // issue #190): every stored rule carries a percent; the line tax
-    // is the amount times the summed percent with exact decimal
-    // arithmetic, rounded half-up to the minor unit, and the balance
-    // moves by amount plus tax plus fee. The stored schema carries no
-    // fee driver, so fee lines stay zero until a fee-rule type lands.
-    long[] derived = deriveTaxAndFee(amountMinor, repo.listTaxFeeRules());
-    ChargeLine line = repo.insertCharge(lineId, folio.id(), itemKind, itemName.strip(), amountMinor, derived[0],
-        derived[1], who);
-    repo.addToBalance(folio.id(), amountMinor + derived[0] + derived[1], who);
-    String payload = payloadOf(ordered("folioId", folio.id().toString(), "lineId", line.id().toString()), actor, who);
-    repo.outbox("folio", "charge-posted", payload, who);
-    return lineViewOf(line, folio);
+    UUID id = stayUuid(stayId);
+    stayVerifier.verify(id, who);
+    return folioWriter.postCharge(id, itemKind, itemName.strip(), amountMinor, idempotencyKey, actor, who);
   }
 
-  @Transactional
   public PaymentView recordPayment(String stayId, String method, long amountMinor, String idempotencyKey,
       String actor, String sessionActor) {
     if (!"cash".equals(method) && !"card".equals(method)) {
@@ -218,22 +215,9 @@ public class BillingService {
     }
     actorOf(actor);
     String who = actorOf(sessionActor);
-    Folio folio = repo.ensureFolio(stayUuid(stayId), who);
-    String key = idempotencyKey == null ? "" : idempotencyKey.strip();
-    UUID paymentId = UUID.randomUUID();
-    if (!key.isEmpty()) {
-      String winner = repo.claimOrWait(key, "RecordPayment", paymentId.toString());
-      if (winner != null) {
-        return paymentViewOf(repo.findPayment(UUID.fromString(winner)), folio);
-      }
-    }
-    PaymentLine line = repo.insertPayment(paymentId, folio.id(), method, amountMinor, who);
-    repo.addToBalance(folio.id(), -amountMinor, who);
-    String payload =
-        payloadOf(ordered("folioId", folio.id().toString(), "paymentId", line.id().toString()), actor, who);
-    repo.outbox("folio", "payment-recorded", payload, who);
-    Folio settled = repo.findFolioByStay(folio.stayId());
-    return paymentViewOf(line, settled);
+    UUID id = stayUuid(stayId);
+    stayVerifier.verify(id, who);
+    return folioWriter.recordPayment(id, method, amountMinor, idempotencyKey, actor, who);
   }
 
   @Transactional
@@ -296,9 +280,9 @@ public class BillingService {
   // Which role may approve follows the hotel open-balance rule; the
   // approver identity and role at approval time are kept verbatim on
   // the record, and role-rule enforcement rides on the config fan-out
-  // slice that distributes the rule. Replay under the same
-  // idempotencyKey returns the original record.
-  @Transactional
+  // slice that distributes the rule. The stay is verified first, so an
+  // approval after departure is refused (AC-FWV-2, Refs #634). Replay
+  // under the same idempotencyKey returns the original record.
   public ApprovalView recordOpenBalanceApproval(String stayId, String approvedBy, String role, String reason,
       String idempotencyKey, String actor, String sessionActor) {
     if (approvedBy == null || approvedBy.isBlank()) {
@@ -309,23 +293,10 @@ public class BillingService {
     }
     actorOf(actor);
     String who = actorOf(sessionActor);
-    Folio folio = repo.ensureFolio(stayUuid(stayId), who);
-    String key = idempotencyKey == null ? "" : idempotencyKey.strip();
-    if (!key.isEmpty()) {
-      String winner = repo.claimOrWait(key, "RecordOpenBalanceApproval", folio.id().toString());
-      if (winner != null) {
-        Folio approved = repo.findFolioByStay(folio.stayId());
-        return new ApprovalView(approved.id(), approved.stayId(), approved.balanceMinor(),
-            approvalObject(approved.openBalanceApproval()));
-      }
-    }
-    String approval = approvalJson(approvedBy.strip(), role.strip(), reason == null ? "" : reason.strip());
-    repo.recordApproval(folio.id(), approval, who);
-    String payload = payloadOf(ordered("folioId", folio.id().toString()), actor, who);
-    repo.outbox("folio", "approval-recorded", payload, who);
-    Folio approved = repo.findFolioByStay(folio.stayId());
-    return new ApprovalView(approved.id(), approved.stayId(), approved.balanceMinor(),
-        approvalObject(approved.openBalanceApproval()));
+    UUID id = stayUuid(stayId);
+    stayVerifier.verify(id, who);
+    return folioWriter.recordOpenBalanceApproval(id, approvedBy.strip(), role.strip(),
+        reason == null ? "" : reason.strip(), idempotencyKey, actor, who);
   }
 
   // Parses the stored jsonb approval text into the contracted
@@ -334,7 +305,7 @@ public class BillingService {
   // back as a JSON object, and a folio with no approval stays null.
   // Stored rows are written by recordApproval above, so an
   // unparseable row is a defect, not a refusal.
-  private static Map<String, Object> approvalObject(String stored) {
+  static Map<String, Object> approvalObject(String stored) {
     if (stored == null || stored.isBlank()) {
       return null;
     }
@@ -347,7 +318,7 @@ public class BillingService {
       throw new IllegalStateException("Unparseable stored open-balance approval.", e);
     }
   }
-  private static String approvalJson(String approvedBy, String role, String reason) {
+  static String approvalJson(String approvedBy, String role, String reason) {
     try {
       com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
       Map<String, Object> record = new LinkedHashMap<>();
@@ -407,19 +378,6 @@ public class BillingService {
     return new long[] {taxMinor, 0};
   }
 
-  private FolioView viewOf(Folio folio) {
-    List<Map<String, Object>> charges = new ArrayList<>();
-    for (ChargeLine line : repo.chargeLines(folio.id())) {
-      charges.add(chargeMap(line));
-    }
-    List<Map<String, Object>> payments = new ArrayList<>();
-    for (PaymentLine line : repo.paymentLines(folio.id())) {
-      payments.add(paymentMap(line));
-    }
-    return new FolioView(folio.id(), folio.stayId(), folio.balanceMinor(), approvalObject(folio.openBalanceApproval()), charges,
-        payments);
-  }
-
   private InvoiceView invoiceViewOf(Folio folio) {
     List<Map<String, Object>> charges = new ArrayList<>();
     for (ChargeLine line : repo.chargeLines(folio.id())) {
@@ -433,12 +391,12 @@ public class BillingService {
         approvalObject(folio.openBalanceApproval()), charges, payments, OffsetDateTime.now(ZoneOffset.UTC).toString());
   }
 
-  private static LineView lineViewOf(ChargeLine line, Folio folio) {
+  static LineView lineViewOf(ChargeLine line, Folio folio) {
     return new LineView(line.id(), line.folioId(), folio.stayId(), line.itemKind(), line.itemName(),
         line.amountMinor(), line.taxMinor(), line.feeMinor(), line.postedAt().toString());
   }
 
-  private static PaymentView paymentViewOf(PaymentLine line, Folio folio) {
+  static PaymentView paymentViewOf(PaymentLine line, Folio folio) {
     return new PaymentView(line.id(), line.folioId(), folio.stayId(), line.method(), line.amountMinor(),
         line.paidAt().toString(), folio.balanceMinor());
   }

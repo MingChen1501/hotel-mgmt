@@ -2651,8 +2651,9 @@ Status: product-owner scope decision and UI contract delta for audit
 finding B1 (#634): Billing creates a folio for any stay id it is handed,
 so the desk can post a charge, a payment, or an open-balance approval
 against a stay that does not exist or is already checked out. Tier T3
-proposed — a new fail-closed Billing -> Stay read on the money path, the
-mirror of #601 — with `architect` confirming the tier and owning the ADR
+(confirmed) — a new fail-closed Billing -> Stay read on the money path, the
+mirror of #601 — with ADR-0008 accepted by the owner 2026-11-26 and
+`architect` owning the ADR
 plus the per-flow diagrams. The binding done-conditions are
 `AC-FWV-1`..`AC-FWV-7` in `docs/product/acceptance-criteria.md`
 [section 20](acceptance-criteria.md); the scope decision is D-32 in

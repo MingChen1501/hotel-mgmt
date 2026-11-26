@@ -1,7 +1,7 @@
 {
   "operation": "RecordPayment",
   "contract": "BillingService",
-  "version": "1.0",
+  "version": "1.1",
   "traces": ["docs/architecture/lld.md section 6", "docs/technical/integration.md section 4", "FR-BIL-3"],
   "transport": {
     "method": "POST",
@@ -34,6 +34,9 @@
   },
   "errors": [
     { "code": "UNAUTHENTICATED", "status": 401, "when": "Missing session token." },
-    { "code": "VALIDATION_FAILED", "status": 400, "when": "A method other than cash or card, or a non-positive amount." }
+    { "code": "VALIDATION_FAILED", "status": 400, "when": "A method other than cash or card, or a non-positive amount." },
+    { "code": "NOT_FOUND", "status": 404, "when": "Unknown stay; nothing is written." },
+    { "code": "STATE_ILLEGAL", "status": 422, "when": "Stay is not in house; nothing is written." },
+    { "code": "UPSTREAM_UNAVAILABLE", "status": 503, "when": "Stay could not be read; the write fails closed and nothing is written." }
   ]
 }
