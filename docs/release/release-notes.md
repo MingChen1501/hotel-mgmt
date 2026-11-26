@@ -50,7 +50,7 @@ Reservations provider operation `CheckOutReservation` after its
 `in-house -> closed` flip commits, resolving the booking by the
 `stay_id` link set at check-in (`services/stay/src/store.ts:260-292`
 is the as-built close that completes nothing;
-`services/reservations/internal/store/store.go:204-206` is the active
+`services/reservations/internal/store/store.go:236-238` is the active
 set the booking now leaves). The `CheckOut` response gains the additive
 `bookingCompletion` object (`1.0 -> 1.1`), which tells the desk whether
 the completion was recorded. No lifecycle state is added: `closed`
@@ -100,7 +100,7 @@ upgraded from an older bundle inherits the stranded bookings described
 in `../operations/runbook.md` section 8.2 — they are handled there,
 never by editing a booking at the desk.
 
-**Rollback pointer.** `rollback.md` [section 5.3](rollback.md): revert
+**Rollback pointer.** `rollback.md` [section 5.2](rollback.md): revert
 the single implementation PR. The revert restores the previous
 behaviour — a close stops completing the booking — and has no data
 effect: the `closed` state and the `stay_id` link already exist, so no
@@ -193,7 +193,7 @@ the desk back, per `../operations/runbook.md` sections 9.3 and 9.4
 (`../devops/deployment.md` section 4 carries the step), and no automatic
 repair or backfill ships with this release.
 
-**Rollback pointer.** `rollback.md` [section 5.2](rollback.md): revert the
+**Rollback pointer.** `rollback.md` [section 5.1](rollback.md): revert the
 single implementation PR. The revert restores the two-panel Stay screen
 and the previous behaviour — check-ins stop compensating and the desk
 stops calling `MoveRoom` — and has no data effect: the three operations,
@@ -300,7 +300,7 @@ inherits bookings frozen at a caller-supplied total; they are handled per
 `../operations/runbook.md` section 15.3, never by editing a booking at
 the desk and never by a bulk correction.
 
-**Rollback pointer.** `rollback.md` [section 5.1](rollback.md): revert
+**Rollback pointer.** `rollback.md` [section 5.3](rollback.md): revert
 the single implementation PR and redeploy the bundle. No data effect: no
 schema, column, migration, or stored shape changes in either direction,
 bookings already frozen at a quote keep their totals, and no
@@ -384,7 +384,7 @@ needs explicit owner approval and the owner merges manually.
 **Install/upgrade delta.** The reservations module gains one bundle-level
 variable, `ROOMS_BASE_URL` (bundle default `http://rooms:8085`, wired
 beside `RATES_BASE_URL` in `deploy/compose.yaml:46`; boot wiring
-`services/reservations/cmd/server/main.go:44-49`). It is a bundle default,
+`services/reservations/cmd/server/main.go:45-49`). It is a bundle default,
 not a per-hotel value: the standard upgrade carries it automatically, and
 only the small-cluster placement changes it when the Rooms module moves
 hosts (`../devops/deployment.md`, section 2). Restart order, pre-flight

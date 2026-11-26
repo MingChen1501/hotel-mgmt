@@ -391,8 +391,8 @@ team note.
 The desk's own comparison is the one at
 `app/src/views/RoomsView.vue:384-393` and
 `app/src/views/DeskView.vue:904-914`: an occupied room that no in-house
-stay names renders **Unknown guest** (`messages/en.json:368`,
-`messages/vi.json:368`).
+stay names renders **Unknown guest** (`messages/en.json:379`,
+`messages/vi.json:379`).
 
 1. `POST /v1/rooms/ListRoomsByState` with `{state: "occupied"}`. Each
    room carries `roomId`, `number`, and `state`; the list does not
