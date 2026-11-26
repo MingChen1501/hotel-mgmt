@@ -130,6 +130,13 @@ type Repository interface {
 	Modify(input ModifyInput, idempotencyKey string) (*Reservation, *OpError)
 	Cancel(ref, reason, actor, requestActor, idempotencyKey string) (*Reservation, *OpError)
 	MarkNoShow(ref, reason, actor, requestActor string) (*Reservation, *OpError)
+	// Replay resolves an idempotency key to the reservation already
+	// stored under it, so the service can return a repeat without
+	// asking Pricing for a second quote (ADR-0007 D5). A missing key,
+	// an empty key, or a key for another operation returns (nil, nil).
+	// It is a read-only pre-read; the guarded write keeps its own
+	// replay check and stays the exactly-once guard.
+	Replay(operation, ref, key string) (*Reservation, *OpError)
 }
 
 // ChangeEntry is one in-memory change-history row (BR-2, NFR-AUD-1):
@@ -305,6 +312,24 @@ func (s *Store) Get(ref string) (*Reservation, *OpError) {
 	record, ok := s.byRef[strings.TrimSpace(ref)]
 	if !ok {
 		return nil, notFound(messages.Text("error.notfound.reservation", map[string]string{"ref": ref}), map[string]any{"reservationRef": ref})
+	}
+	return record, nil
+}
+
+// Replay resolves an idempotency key to the reservation already stored
+// under it (ADR-0007 D5). A miss returns (nil, nil): the caller keeps
+// going and Pricing is asked. The key namespacing matches the guarded
+// writes' own replay lookups, so a key for another operation or
+// reservation never resolves here either.
+func (s *Store) Replay(operation, ref, key string) (*Reservation, *OpError) {
+	if key == "" {
+		return nil, nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	record, ok := s.idem[idemKey(operation, ref, key)]
+	if !ok {
+		return nil, nil
 	}
 	return record, nil
 }

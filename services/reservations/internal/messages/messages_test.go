@@ -72,6 +72,9 @@ func TestSampledMessagesRenderByteIdentical(t *testing.T) {
 			"Reservation RSV-ABCDEFGH arrives on 2026-10-26, which has not passed.",
 		},
 		{"error.store.unavailable", nil, "Reservation store unavailable."},
+		// PA14 (Refs #632): the price-authority refusal sentences.
+		{"error.upstream.price_unavailable", nil, "The price could not be read, so the booking was refused."},
+		{"error.price.changed", nil, "The total you sent differs from the price in force, so the booking was refused."},
 	}
 	for _, tc := range cases {
 		if got := Default().Text(tc.key, tc.params); got != tc.want {

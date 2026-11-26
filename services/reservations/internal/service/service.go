@@ -5,13 +5,15 @@
 // guard in the store.
 //
 // The restriction check is a server-side call to Pricing
-// CheckRestrictions (FR-RTE-4) and the capacity read is a server-side
-// call to Rooms CheckRoomTypeSellability (ADR-0006, issue #631): both
-// hooks below are wired at boot, both forward the caller Bearer token,
-// and both fail closed when their upstream is unreachable. The desk
-// still sends the sellableUnits and priceBasis search outputs, but
-// sellableUnits is advisory: the ceiling the guard counts against is
-// derived from the recorded room inventory.
+// CheckRestrictions (FR-RTE-4), the capacity read is a server-side
+// call to Rooms CheckRoomTypeSellability (ADR-0006, issue #631), and
+// the frozen price basis is a server-side Rates QuotePrice read
+// (ADR-0007, issue #632): the three hooks below are wired at boot, all
+// forward the caller Bearer token, and all fail closed when their
+// upstream is unreachable. The desk still sends the sellableUnits and
+// priceBasis search outputs, but both are advisory: sellableUnits never
+// decides the ceiling and priceBasis.totalMinor is compared with the
+// quote, never stored.
 package service
 
 import (
@@ -39,6 +41,16 @@ type RestrictionCheck func(roomTypeID, arrivalDate, departureDate, bearerToken s
 // reaches it.
 type AvailabilityCheck func(roomTypeID, arrivalDate, departureDate, bearerToken string) (int, *store.OpError)
 
+// PriceQuote re-derives what the stay costs from the module that owns
+// prices (Rates QuotePrice, ADR-0007). It returns the quoted total and
+// the discount name Pricing applied — the two values a booking freezes
+// — for the effective room type, dates, and discount, with the caller
+// Bearer token forwarded. A definitive Rates refusal is returned
+// unchanged; an unreadable source returns UPSTREAM_UNAVAILABLE so the
+// booking is refused rather than frozen at an unverified total. The
+// request's priceBasis.totalMinor never reaches it as an input.
+type PriceQuote func(roomTypeID, arrivalDate, departureDate string, discountName *string, bearerToken string) (int64, *string, *store.OpError)
+
 // Service validates booking attempts and runs the store guard.
 // CheckRestrictionsHook must be wired at boot (main.go wires the
 // pricing client). It is never optional: a nil hook fails closed
@@ -53,6 +65,11 @@ type Service struct {
 	// closed with UPSTREAM_UNAVAILABLE so unwired construction can
 	// never silently fall back to the request's number.
 	AvailabilityHook AvailabilityCheck
+	// QuotePriceHook must be wired at boot beside the other two hooks.
+	// It is never optional: a nil hook fails closed with
+	// UPSTREAM_UNAVAILABLE so an unwired service can never freeze a
+	// caller-supplied total (ADR-0007 D4).
+	QuotePriceHook PriceQuote
 }
 
 // New returns a Service over store.
@@ -62,10 +79,13 @@ func New(st store.Repository) *Service {
 
 // CreateRequest is one validated booking attempt. BearerToken is the
 // full caller "Bearer ..." Authorization header value, forwarded to
-// the stay-restriction and capacity checks. SellableUnits is the
+// the stay-restriction, capacity, and quote reads. SellableUnits is the
 // request's optional, advisory number (ADR-0006 D3): it is shape
 // validated only and never decides the booking — the ceiling comes
-// from AvailabilityHook.
+// from AvailabilityHook. TotalMinor is the request's asserted total,
+// also advisory (ADR-0007 D3): it is shape validated, compared with the
+// QuotePrice read, and never stored; the quote's total is what the
+// booking freezes.
 type CreateRequest struct {
 	RoomTypeID     string
 	ArrivalDate    string
@@ -125,6 +145,46 @@ func (s *Service) capacity(roomTypeID, arrivalDate, departureDate, bearerToken s
 	return s.AvailabilityHook(roomTypeID, arrivalDate, departureDate, bearerToken)
 }
 
+// priceUnavailable refuses a booking when the price itself cannot be
+// trusted — including an unwired (nil) QuotePriceHook — instead of
+// freezing an unverified total (ADR-0007 D4). Nothing is written
+// because the read precedes the store call.
+func priceUnavailable() *store.OpError {
+	return &store.OpError{
+		Code:    "UPSTREAM_UNAVAILABLE",
+		Status:  http.StatusServiceUnavailable,
+		Message: messages.Text("error.upstream.price_unavailable", nil),
+		Details: map[string]any{"upstream": "rates", "operation": "QuotePrice"},
+	}
+}
+
+// priceChanged refuses a booking whose asserted total disagrees with
+// the quote (ADR-0007 D3). Both totals, the room type, and the dates
+// travel in details so the caller can re-quote; nothing is stored.
+func priceChanged(roomTypeID, arrivalDate, departureDate string, requestedTotalMinor, quotedTotalMinor int64) *store.OpError {
+	return &store.OpError{
+		Code:    "PRICE_CHANGED",
+		Status:  http.StatusConflict,
+		Message: messages.Text("error.price.changed", nil),
+		Details: map[string]any{
+			"roomTypeId":          roomTypeID,
+			"arrivalDate":         arrivalDate,
+			"departureDate":       departureDate,
+			"requestedTotalMinor": requestedTotalMinor,
+			"quotedTotalMinor":    quotedTotalMinor,
+		},
+	}
+}
+
+// quote reads the effective stay price from Pricing, failing closed
+// when no hook is wired.
+func (s *Service) quote(roomTypeID, arrivalDate, departureDate string, discountName *string, bearerToken string) (int64, *string, *store.OpError) {
+	if s.QuotePriceHook == nil {
+		return 0, nil, priceUnavailable()
+	}
+	return s.QuotePriceHook(roomTypeID, arrivalDate, departureDate, discountName, bearerToken)
+}
+
 // validateAdvisoryUnits shape-checks the optional, advisory
 // sellableUnits field (ADR-0006 D3). A malformed value still fails
 // loudly naming the field; a valid value changes no decision.
@@ -175,9 +235,27 @@ func (s *Service) Create(req CreateRequest) (*store.Reservation, *store.OpError)
 		return nil, oerr
 	}
 	roomTypeID := strings.TrimSpace(req.RoomTypeID)
+	// A booking that already exists is returned at the total it was
+	// stored with: the replay pre-read only decides whether Pricing is
+	// asked (ADR-0007 D5). The store's own replay check inside the
+	// guarded step still makes a concurrent double submit book once.
+	if replay, oerr := s.store.Replay("CreateReservation", "", req.IdempotencyKey); oerr != nil {
+		return nil, oerr
+	} else if replay != nil {
+		return replay, nil
+	}
 	ceiling, oerr := s.capacity(roomTypeID, req.ArrivalDate, req.DepartureDate, req.BearerToken)
 	if oerr != nil {
 		return nil, oerr
+	}
+	// The quote is read outside the guarded store step: a 5-second
+	// Rates outage must never hold the booking mutex (ADR-0007 D2).
+	quotedTotal, quotedDiscount, oerr := s.quote(roomTypeID, req.ArrivalDate, req.DepartureDate, req.DiscountName, req.BearerToken)
+	if oerr != nil {
+		return nil, oerr
+	}
+	if quotedTotal != req.TotalMinor {
+		return nil, priceChanged(roomTypeID, req.ArrivalDate, req.DepartureDate, req.TotalMinor, quotedTotal)
 	}
 	return s.store.Create(store.CreateInput{
 		RoomTypeID:    roomTypeID,
@@ -186,8 +264,8 @@ func (s *Service) Create(req CreateRequest) (*store.Reservation, *store.OpError)
 		GuestID:       strings.TrimSpace(guestID),
 		Guest:         req.Guest,
 		Ceiling:       ceiling,
-		TotalMinor:    req.TotalMinor,
-		DiscountName:  req.DiscountName,
+		TotalMinor:    quotedTotal,
+		DiscountName:  quotedDiscount,
 		Actor:         req.Actor,
 		RequestActor:  req.RequestActor,
 	}, req.IdempotencyKey)
@@ -291,9 +369,25 @@ func (s *Service) Modify(req ModifyRequest) (*store.Reservation, *store.OpError)
 	if oerr := s.CheckRestrictionsHook(effectiveRoomType, effectiveArrival, effectiveDeparture, req.BearerToken); oerr != nil {
 		return nil, oerr
 	}
+	// A repeated change for a booking already stored returns the stored
+	// row instead of being re-quoted (ADR-0007 D5).
+	if replay, oerr := s.store.Replay("ModifyReservation", req.Ref, req.IdempotencyKey); oerr != nil {
+		return nil, oerr
+	} else if replay != nil {
+		return replay, nil
+	}
 	ceiling, oerr := s.capacity(effectiveRoomType, effectiveArrival, effectiveDeparture, req.BearerToken)
 	if oerr != nil {
 		return nil, oerr
+	}
+	// The price basis asserts the whole new quote: an omitted or null
+	// discountName means the new quote carries none (ADR-0007 D2).
+	quotedTotal, quotedDiscount, oerr := s.quote(effectiveRoomType, effectiveArrival, effectiveDeparture, req.DiscountName, req.BearerToken)
+	if oerr != nil {
+		return nil, oerr
+	}
+	if quotedTotal != req.TotalMinor {
+		return nil, priceChanged(effectiveRoomType, effectiveArrival, effectiveDeparture, req.TotalMinor, quotedTotal)
 	}
 	return s.store.Modify(store.ModifyInput{
 		Ref:           strings.TrimSpace(req.Ref),
@@ -303,8 +397,8 @@ func (s *Service) Modify(req ModifyRequest) (*store.Reservation, *store.OpError)
 		GuestID:       strings.TrimSpace(guestID),
 		Guest:         guest,
 		Ceiling:       ceiling,
-		TotalMinor:    req.TotalMinor,
-		DiscountName:  req.DiscountName,
+		TotalMinor:    quotedTotal,
+		DiscountName:  quotedDiscount,
 		Actor:         req.Actor,
 		RequestActor:  req.RequestActor,
 	}, req.IdempotencyKey)
