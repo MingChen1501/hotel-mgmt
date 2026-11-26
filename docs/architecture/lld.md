@@ -4826,8 +4826,8 @@ Stay and a new fail-closed dependency edge on the money path, with a new
 contract error set; no data-model change, no new operation, no schema,
 no migration, and no event change. ADR-0008
 (`docs/architecture/decisions/adr-0008-folio-write-stay-verification.md`,
-proposed) records the decision; the owner flips it `proposed` ->
-`accepted` before the implementation PR merges. Product done-conditions
+accepted 2026-11-26) records the decision; the implementation PR starts
+after the T3 `SPEC-GATE PASS` on #634. Product done-conditions
 are `docs/product/acceptance-criteria.md` section 20
 (`AC-FWV-1`..`AC-FWV-7`) with D-32 in
 `docs/project/decision-log.md`; FR/NFR wording is the

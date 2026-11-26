@@ -642,8 +642,8 @@ the close path cannot recurse. The contract change is error-code additive
 `UPSTREAM_UNAVAILABLE`; `contracts/errors/envelope.json` registers the
 503 code). Decision record:
 `docs/architecture/decisions/adr-0008-folio-write-stay-verification.md`
-(proposed); flow detail, the per-flow diagrams, the contract delta, and
-the verification plan: `docs/architecture/lld.md`
+(accepted 2026-11-26); flow detail, the per-flow diagrams, the contract
+delta, and the verification plan: `docs/architecture/lld.md`
 [section 27](lld.md#27-folio-writes-verify-the-stay-refs-634); seam and
 error contracts: `docs/technical/integration.md` C8 and
 `docs/technical/error-handling.md` section 5; the availability and
@@ -652,8 +652,8 @@ section 8 (R5, R8).
 
 Tier T3 (confirmed by `architect`): a new fail-closed dependency edge on
 the money path plus a new contract error set, with no data-model change.
-The owner accepts the ADR (`proposed` -> `accepted`) before the
-implementation PR merges.
+ADR-0008 is accepted (owner, 2026-11-26); the T3 `SPEC-GATE PASS` on
+#634 still gates the implementation PR.
 
 Rollback: revert the single implementation PR. The previous
 ensure-on-first-use behaviour returns, the new client and its

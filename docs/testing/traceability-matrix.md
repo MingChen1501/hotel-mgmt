@@ -957,7 +957,7 @@ state. No new operation, field, lifecycle state, event, schema,
 migration, or MVP capability is added. Tier T3 (LLD
 [section 27](../architecture/lld.md);
 [ADR-0008](../architecture/decisions/adr-0008-folio-write-stay-verification.md),
-`proposed`; `product-owner` scope in
+`accepted` 2026-11-26; `product-owner` scope in
 [acceptance-criteria.md section 20](../product/acceptance-criteria.md)
 and [desk-ui-design-rollout.md section 6.21](../product/desk-ui-design-rollout.md);
 `business-analyst` requirements in

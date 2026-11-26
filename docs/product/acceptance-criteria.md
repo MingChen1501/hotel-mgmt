@@ -1578,14 +1578,13 @@ can be written against a stay that does not exist or is already closed
 — an orphan folio Stay's check-out gate never reads, and money rows
 with no stay behind them.
 
-Tier T3 proposed: Billing gains its first runtime outbound read of Stay
-and a new fail-closed dependency edge on the money path — the mirror of
-#601 (section 14). `architect` confirms the tier and owns the decision
-record (a new ADR under `docs/architecture/decisions/`, `proposed` ->
-accepted by the owner before the implementation PR merges), the
-HLD/LLD delta, and the per-flow implementation diagram with the happy
-path and the failure/rollback path. The conditions below are the
-product half. FR/NFR wording is owned by `business-analyst`, guard
+Tier T3 (confirmed): Billing gains its first runtime outbound read of
+Stay and a new fail-closed dependency edge on the money path — the
+mirror of #601 (section 14). `architect` owns the decision record
+(ADR-0008, accepted by the owner 2026-11-26), the HLD/LLD delta, and the
+per-flow implementation diagram with the happy path and the
+failure/rollback path. The conditions below are the product half.
+FR/NFR wording is owned by `business-analyst`, guard
 mapping and traceability by `qa-lead`, the release note and the
 availability ops note by `release-manager`, and the gate verdict by
 `spec-reviewer`. The desk-visible delta and the EN+VI copy are in
