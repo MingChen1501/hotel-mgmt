@@ -6,7 +6,8 @@ Before/after reproduction record for
 `BR-66`, LLD
 [section 35](../../../architecture/lld.md#35-a-failed-reporting-rebuild-keeps-the-last-good-read-model-refs-642),
 guards `RB1`-`RB12` and evidence rule `RB-E1` in
-[the test traceability](../../failed-rebuild-consistency-test-traceability.md)).
+[the test traceability](../../failed-rebuild-consistency-test-traceability.md);
+the implementation PR is [#755](https://github.com/MingChen1501/hotel-mgmt/pull/755)).
 The left column is the pre-change build; the right column is this
 change. Every answer below was captured by running the store's rebuild
 on both builds, not from a summary assembled afterwards.
