@@ -37,11 +37,13 @@ Main flow:
 3. Staff enter dates, room type, guest, and price basis and confirm.
    Mandatory guest fields set by the hotel are enforced; the booking
    is guarded against the capacity the hotel records for that room
-   type and those dates. [FR-RES-1, FR-RTE-5, FR-CUS-1, FR-OVB-1]
-4. The reservation is recorded with a unique reference, the quoted
-   price from the rate plan in force, and the hotel's cancellation
-   wording; it appears on the reservation calendar. [FR-RES-1,
-   FR-RES-5, FR-CUS-2]
+   type and those dates. The service reads the Pricing quote for the
+   effective type, dates, and discount during that same confirmation.
+   [FR-RES-1, FR-RTE-5, FR-PRC-1, FR-CUS-1, FR-OVB-1]
+4. The reservation is recorded with a unique reference, the Pricing
+   quote as its frozen total with the applied discount name, and the
+   hotel's cancellation wording; it appears on the reservation
+   calendar. [FR-RES-1, FR-RES-5, FR-PRC-1, FR-CUS-2]
 5. Staff produce the booking confirmation record to share with the
    guest. [FR-GST-4]
 
@@ -57,7 +59,15 @@ Extensions/exceptions:
   wins the last room first: the booking is refused with the room type
   and dates named as conflict, whatever number the request carried
   for sellable units. [NFR-CON-1, FR-OVB-1]
-- 3d. The capacity the hotel records cannot be read: the booking is
+- 3d. The total the request asserts disagrees with the Pricing quote:
+  the booking is refused with the requested and quoted totals named
+  (`PRICE_CHANGED`) and nothing is created. [FR-PRC-2, BR-52]
+- 3e. The Pricing quote cannot be read: the booking is refused with
+  the upstream and operation named (`UPSTREAM_UNAVAILABLE`) and
+  nothing is created; a definitive Pricing refusal — no price for a
+  night, no plan pricing the type, an unknown discount — is surfaced
+  unchanged. [FR-PRC-3]
+- 3f. The capacity the hotel records cannot be read: the booking is
   refused fail-closed, nothing is created, and the desk shows its
   plain request-failed sentence. [FR-OVB-3, BR-48]
 - 4a. The manager applies a named discount or special price instead:
@@ -65,8 +75,8 @@ Extensions/exceptions:
   kept. [FR-RTE-3]
 
 Postconditions: the reservation exists in the confirmed state on the
-calendar with its price basis, or it was refused and nothing was
-created.
+calendar with its price basis frozen at the Pricing quote, or it was
+refused and nothing was created.
 
 ## UC-2 — Modify a reservation
 
@@ -82,9 +92,11 @@ Main flow:
    guest fields set by the hotel are enforced, and the change is
    guarded against the capacity the hotel records for the new values.
    [FR-RES-2, FR-CUS-1, FR-OVB-2]
-3. The quoted price is recalculated from the rate plan in force, and
-   the change is recorded with who made it and when. [FR-RES-2,
-   FR-RTE-5, NFR-AUD-1]
+3. The quoted price becomes the Pricing quote for the effective
+   post-change type, dates, and discount, and the change is recorded
+   with who made it and when; when the recomputed total differs from
+   the stored one, the price-basis change is recorded too. [FR-RES-2,
+   FR-RTE-5, FR-PRC-4, NFR-AUD-1]
 4. The reservation shows the new values on the calendar. [FR-RES-2,
    FR-RES-5]
 
@@ -97,12 +109,19 @@ Extensions/exceptions:
   number the request carried for sellable units: the modification is
   refused with the conflict named; the reservation is unchanged.
   [NFR-CON-1, FR-OVB-2]
-- 2c. The capacity the hotel records cannot be read: the modification
+- 2c. The total the request asserts disagrees with the new quote: the
+  modification is refused with both totals named (`PRICE_CHANGED`)
+  and the reservation keeps its stored values. [FR-PRC-4, BR-52]
+- 2d. The new quote cannot be read: the modification is refused with
+  the upstream and operation named (`UPSTREAM_UNAVAILABLE`) and the
+  reservation keeps its stored values; a definitive Pricing refusal
+  is surfaced unchanged. [FR-PRC-4]
+- 2e. The capacity the hotel records cannot be read: the modification
   is refused fail-closed and the reservation is unchanged.
   [FR-OVB-3, BR-48]
 
 Postconditions: the reservation shows the new values with the
-recalculated price and change record, or it stays unchanged.
+recalculated quote and change record, or it stays unchanged.
 
 ## UC-3 — Cancel a reservation
 
@@ -565,7 +584,7 @@ sections 7–9 are presentation/scaffold deltas outside this
 actor-goal count: they are traced in their own slice handoff
 tables, not in the table above, and the later slice ids (`FR-DSK-*`,
 `NFR-DSK-*`, `FR-RST-*`, `NFR-RST-*`, `FR-CIP-*`, `FR-CKO-*`,
-`FR-CKP-*`, `FR-CKS-*`, `FR-DEP-*`, `FR-REA-*`, `FR-BMV-*`,
+`FR-CKP-*`, `FR-CKS-*`, `FR-DEP-*`, `FR-REA-*`, `FR-BMV-*`, `FR-PRC-*`,
 `FR-OVB-*`) follow the same rule.
 
 Counts: 13 use cases; 43/43 FRs mapped.

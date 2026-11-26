@@ -43,10 +43,62 @@ func allowHook() RestrictionCheck {
 	}
 }
 
+// quoteRead records one QuotePrice call so a guard can assert the
+// effective values and how often Pricing was asked.
+type quoteRead struct {
+	total         int64
+	discount      *string
+	err           *store.OpError
+	calls         int
+	roomTypeID    string
+	arrivalDate   string
+	departureDate string
+	discountName  *string
+	bearerToken   string
+}
+
+// hook adapts the recorded read to the service seam.
+func (q *quoteRead) hook() PriceQuote {
+	return func(roomTypeID, arrivalDate, departureDate string, discountName *string, bearerToken string) (int64, *string, *store.OpError) {
+		q.calls++
+		q.roomTypeID, q.arrivalDate, q.departureDate = roomTypeID, arrivalDate, departureDate
+		q.discountName, q.bearerToken = discountName, bearerToken
+		return q.total, q.discount, q.err
+	}
+}
+
+// allowQuote answers every quote read with one fixed total and no
+// applied discount, so a test that is not about the money path can
+// book.
+func allowQuote(total int64) PriceQuote {
+	return (&quoteRead{total: total}).hook()
+}
+
+// forbidQuote fails a test whose path must never ask Pricing — a
+// restriction refusal, for example, means re-quoting cannot help.
+func forbidQuote(t *testing.T) PriceQuote {
+	t.Helper()
+	return func(roomTypeID, arrivalDate, departureDate string, discountName *string, bearerToken string) (int64, *string, *store.OpError) {
+		t.Fatalf("QuotePrice was called for %s %s..%s, want no quote read", roomTypeID, arrivalDate, departureDate)
+		return 0, nil, nil
+	}
+}
+
+// unreadableQuote sews the fail-closed upstream answer the client
+// returns when Pricing cannot be read.
+func unreadableQuote() *store.OpError {
+	return &store.OpError{
+		Code: "UPSTREAM_UNAVAILABLE", Status: http.StatusServiceUnavailable,
+		Message: "pricing unavailable",
+		Details: map[string]any{"upstream": "rates", "operation": "QuotePrice"},
+	}
+}
+
 func TestCreateHappyPath(t *testing.T) {
 	svc := New(store.New())
 	svc.CheckRestrictionsHook = allowHook()
 	svc.AvailabilityHook = allowCapacity(2)
+	svc.QuotePriceHook = allowQuote(24000)
 	record, oerr := svc.Create(loopRequest())
 	if oerr != nil {
 		t.Fatalf("Create refused: %v", oerr)
@@ -75,6 +127,8 @@ func TestMissingMandatoryGuestFieldNamesField(t *testing.T) {
 func TestRestrictionViolationRefusesWithCause(t *testing.T) {
 	st := store.New()
 	svc := New(st)
+	svc.AvailabilityHook = allowCapacity(2)
+	svc.QuotePriceHook = forbidQuote(t)
 	svc.CheckRestrictionsHook = func(roomTypeID, arrivalDate, departureDate, bearerToken string) *store.OpError {
 		return &store.OpError{Code: "STATE_ILLEGAL", Status: 422, Message: "Minimum stay of 2 nights applies.", Details: map[string]any{"roomTypeId": roomTypeID, "restriction": "min-stay"}}
 	}
@@ -110,6 +164,7 @@ func TestGuardRefusesSecondBookingForLastUnit(t *testing.T) {
 	svc := New(store.New())
 	svc.CheckRestrictionsHook = allowHook()
 	svc.AvailabilityHook = allowCapacity(1)
+	svc.QuotePriceHook = allowQuote(24000)
 	req := loopRequest()
 	req.SellableUnits = intPtr(1)
 	if _, oerr := svc.Create(req); oerr != nil {
@@ -140,10 +195,12 @@ func TestModifyHappyPathReprices(t *testing.T) {
 	svc := New(store.New())
 	svc.CheckRestrictionsHook = allowHook()
 	svc.AvailabilityHook = allowCapacity(2)
+	svc.QuotePriceHook = allowQuote(24000)
 	created, oerr := svc.Create(loopRequest())
 	if oerr != nil {
 		t.Fatalf("Create refused: %v", oerr)
 	}
+	svc.QuotePriceHook = allowQuote(26000)
 	modified, oerr := svc.Modify(loopModify(created.Ref))
 	if oerr != nil {
 		t.Fatalf("Modify refused: %v", oerr)
@@ -157,6 +214,7 @@ func TestModifyRequiresRepricedTotal(t *testing.T) {
 	svc := New(store.New())
 	svc.CheckRestrictionsHook = allowHook()
 	svc.AvailabilityHook = allowCapacity(2)
+	svc.QuotePriceHook = allowQuote(24000)
 	created, oerr := svc.Create(loopRequest())
 	if oerr != nil {
 		t.Fatalf("Create refused: %v", oerr)
@@ -172,6 +230,7 @@ func TestModifyRestrictionRefusesWithCause(t *testing.T) {
 	svc := New(store.New())
 	svc.CheckRestrictionsHook = allowHook()
 	svc.AvailabilityHook = allowCapacity(2)
+	svc.QuotePriceHook = allowQuote(24000)
 	created, oerr := svc.Create(loopRequest())
 	if oerr != nil {
 		t.Fatalf("Create refused: %v", oerr)
@@ -189,6 +248,7 @@ func TestModifyNilHookFailsClosed(t *testing.T) {
 	svc := New(st)
 	svc.CheckRestrictionsHook = allowHook()
 	svc.AvailabilityHook = allowCapacity(2)
+	svc.QuotePriceHook = allowQuote(24000)
 	created, oerr := svc.Create(loopRequest())
 	if oerr != nil {
 		t.Fatalf("Create refused: %v", oerr)
@@ -218,6 +278,7 @@ func TestCancelHappyPath(t *testing.T) {
 	svc := New(store.New())
 	svc.CheckRestrictionsHook = allowHook()
 	svc.AvailabilityHook = allowCapacity(2)
+	svc.QuotePriceHook = allowQuote(24000)
 	created, oerr := svc.Create(loopRequest())
 	if oerr != nil {
 		t.Fatalf("Create refused: %v", oerr)
@@ -235,6 +296,7 @@ func TestCancelMissingReasonRefused(t *testing.T) {
 	svc := New(store.New())
 	svc.CheckRestrictionsHook = allowHook()
 	svc.AvailabilityHook = allowCapacity(2)
+	svc.QuotePriceHook = allowQuote(24000)
 	created, oerr := svc.Create(loopRequest())
 	if oerr != nil {
 		t.Fatalf("Create refused: %v", oerr)
@@ -248,6 +310,7 @@ func TestMarkNoShowHappyPath(t *testing.T) {
 	svc := New(store.New())
 	svc.CheckRestrictionsHook = allowHook()
 	svc.AvailabilityHook = allowCapacity(2)
+	svc.QuotePriceHook = allowQuote(24000)
 	req := loopRequest()
 	req.ArrivalDate = "2020-01-01"
 	req.DepartureDate = "2020-01-03"
@@ -268,6 +331,7 @@ func TestMarkNoShowTooEarlyRefused(t *testing.T) {
 	svc := New(store.New())
 	svc.CheckRestrictionsHook = allowHook()
 	svc.AvailabilityHook = allowCapacity(2)
+	svc.QuotePriceHook = allowQuote(24000)
 	req := loopRequest()
 	// The refusal depends on the wall clock: arrive in the future so
 	// the stay still reads as not started. Dates derive from the
@@ -295,6 +359,7 @@ func TestAdvisoryUnitsCannotRefuseABookableStay(t *testing.T) {
 		svc := New(store.New())
 		svc.CheckRestrictionsHook = allowHook()
 		svc.AvailabilityHook = allowCapacity(3)
+		svc.QuotePriceHook = allowQuote(24000)
 		req := loopRequest()
 		req.SellableUnits = advisory
 		record, oerr := svc.Create(req)
@@ -314,6 +379,7 @@ func TestNegativeAdvisoryUnitsRefused(t *testing.T) {
 	svc := New(store.New())
 	svc.CheckRestrictionsHook = allowHook()
 	svc.AvailabilityHook = allowCapacity(3)
+	svc.QuotePriceHook = allowQuote(24000)
 	req := loopRequest()
 	req.SellableUnits = intPtr(-1)
 	_, oerr := svc.Create(req)
@@ -338,6 +404,7 @@ func TestZeroCapacityIsSoldOutConflict(t *testing.T) {
 	svc := New(st)
 	svc.CheckRestrictionsHook = allowHook()
 	svc.AvailabilityHook = allowCapacity(0)
+	svc.QuotePriceHook = allowQuote(24000)
 	_, oerr := svc.Create(loopRequest())
 	if oerr == nil || oerr.Code != "CONFLICT" || oerr.Status != http.StatusConflict {
 		t.Fatalf("error = %v, want 409 CONFLICT for zero capacity", oerr)
@@ -367,6 +434,7 @@ func TestModifyNilAvailabilityHookFailsClosed(t *testing.T) {
 	svc := New(st)
 	svc.CheckRestrictionsHook = allowHook()
 	svc.AvailabilityHook = allowCapacity(2)
+	svc.QuotePriceHook = allowQuote(24000)
 	created, oerr := svc.Create(loopRequest())
 	if oerr != nil {
 		t.Fatalf("Create refused: %v", oerr)
@@ -391,6 +459,7 @@ func TestUnreadableCapacityWritesNothing(t *testing.T) {
 	svc := New(st)
 	svc.CheckRestrictionsHook = allowHook()
 	svc.AvailabilityHook = allowCapacity(2)
+	svc.QuotePriceHook = allowQuote(24000)
 	created, oerr := svc.Create(loopRequest())
 	if oerr != nil {
 		t.Fatalf("Create refused: %v", oerr)
@@ -425,6 +494,7 @@ func TestCapacityReadUsesEffectiveModifyValues(t *testing.T) {
 	svc := New(store.New())
 	svc.CheckRestrictionsHook = allowHook()
 	svc.AvailabilityHook = allowCapacity(2)
+	svc.QuotePriceHook = allowQuote(24000)
 	created, oerr := svc.Create(loopRequest())
 	if oerr != nil {
 		t.Fatalf("Create refused: %v", oerr)
@@ -434,6 +504,7 @@ func TestCapacityReadUsesEffectiveModifyValues(t *testing.T) {
 		seenRoomType, seenArrival, seenDeparture = roomTypeID, arrivalDate, departureDate
 		return 2, nil
 	}
+	svc.QuotePriceHook = allowQuote(26000)
 	req := ModifyRequest{Ref: created.Ref, TotalMinor: 26000, HasTotal: true, Actor: "front-desk"}
 	if _, oerr := svc.Modify(req); oerr != nil {
 		t.Fatalf("Modify refused: %v", oerr)

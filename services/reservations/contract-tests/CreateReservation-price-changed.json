@@ -1,0 +1,25 @@
+{
+  "operation": "CreateReservation",
+  "case": "price-changed",
+  "description": "A caller asserts a total Rates does not quote for the stay; the booking is refused PRICE_CHANGED naming both totals and nothing is stored (ADR-0007 D3).",
+  "request": {
+    "roomTypeId": "<deluxe-type-id>",
+    "arrivalDate": "2026-11-01",
+    "departureDate": "2026-11-03",
+    "guest": { "guestId": "<guest-id>", "fullName": "An Nguyen", "contact": "+84-900-000-001" },
+    "sellableUnits": 1,
+    "priceBasis": { "totalMinor": 0, "discountName": null },
+    "idempotencyKey": "forged-low-1"
+  },
+  "expect": {
+    "status": 409,
+    "code": "PRICE_CHANGED",
+    "details": {
+      "roomTypeId": "<deluxe-type-id>",
+      "arrivalDate": "2026-11-01",
+      "departureDate": "2026-11-03",
+      "requestedTotalMinor": 0,
+      "quotedTotalMinor": 24000
+    }
+  }
+}
