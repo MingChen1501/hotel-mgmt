@@ -3906,6 +3906,263 @@ a room that is both blocked and non-sellable is subtracted once, and the
 merged #631 reservation ceiling, the response contract, the desk
 surfaces, and every existing guard keep their behaviour.
 
+## 30. Rates refuses malformed restriction and availability input (Refs #633)
+
+Product-owner scope decision and acceptance conditions for audit
+findings T1–T3 on the Rates side (the #625 class: an input, or an
+unchecked arithmetic step, silently decides an answer). The service owns
+stay restrictions, availability counts, and the quoted price basis, and
+it still coerces, trusts, and stores values it either cannot honour or
+cannot represent: a non-boolean `closedToArrival` is read as `false`, a
+restriction is stored for a room type Rates knows no price for, a
+caller-supplied `totalUnits` sets the availability answer, the quote
+total is summed with no overflow check, and rate-plan text has no
+length bound.
+
+What #631 and #632 already settled, and what this section does not
+reopen:
+
+- **#631 (merged) moved the booking ceiling off the request.** The
+  overbooking guard derives its ceiling from the Rooms inventory,
+  `totalCount - len(blockedRooms)`, and the request's `sellableUnits` is
+  optional and advisory (ADR-0006 D2; `AC-OVB-1`). No application calls
+  Rates' `CheckSellableCount` any more — Reservations and the desk both
+  read Rooms — so the operation's `totalUnits` field is a
+  caller-controlled inventory input with no consumer left that needs
+  it. This section closes that field; it does not move the #631 ceiling
+  in either direction.
+- **#632 (merged) made the Rates quote the frozen price basis.** On
+  Create and Modify the stored total is what `QuotePrice` returns for
+  the effective room type, dates, and discount
+  (`services/reservations/internal/service/service.go:253-267`,
+  `:385-400`), the request total is advisory and compared
+  (`AC-PRC-1`..`AC-PRC-2`), and the check-out review posts that frozen
+  total as the room charge (`app/src/views/StayView.vue:1849-1867`).
+  The consumer now refuses a wrapped *negative* total as unreadable
+  (`services/reservations/internal/pricing/client.go:157-169`,
+  `total < 0`), but a multiple wrap can land on a small positive total
+  that consumer cannot tell from a real one — so the guard belongs
+  where the arithmetic happens, in Rates. This section closes that, and
+  does not re-decide the price authority.
+
+As-built validation (read-only code trace at this spec head):
+
+- **`closedToArrival` is coerced, never checked.**
+  `closed, _ := body["closedToArrival"].(bool)`
+  (`services/rates/internal/handler/handler.go:234`) turns `"true"`, `1`,
+  `"yes"`, and `null` into `false`, and the store persists that `false`
+  (`services/rates/internal/store/store.go:210`); `CheckRestrictions`
+  refuses only when the stored flag is `true`
+  (`:320-322`), so a manager who wrote a closed-to-arrival window
+  through a JSON string gets a window that never applies and no message
+  says so.
+- **A restriction binds to any `roomTypeId` string.** The handler checks
+  presence only (`services/rates/internal/handler/handler.go:209-213`)
+  and both stores append the row verbatim
+  (`services/rates/internal/store/store.go:198-214`;
+  `services/rates/internal/store/postgres.go:149-188`). The schema keeps
+  `room_type_id UUID NOT NULL` as a logical reference to Rooms with no
+  cross-schema foreign key (`services/rates/migrations/000002_schema.up.sql:28-33`,
+  `:48`), so the Postgres store already refuses a non-UUID through the
+  driver's `22P02` answer (`services/rates/internal/store/postgres.go:170-172`)
+  while the in-memory store accepts any string — the two stores already
+  disagree — and a well-formed UUID for a type no plan prices is
+  accepted by both, creating a window that matches nothing.
+- **The availability count is whatever the caller sent.**
+  `CheckSellableCount` takes the request `totalUnits` as the answer when
+  it is present (`services/rates/internal/store/store.go:347-355`,
+  `services/rates/internal/store/postgres.go:380-388`) and only falls
+  back to the plan's `defaultUnits`, then `0`
+  (`services/rates/internal/store/store.go:356-372`), so a caller sets
+  the number the desk reads. The operation's only remaining exercisers
+  are its contract fixture
+  (`services/rates/contract-tests/CheckSellableCount.json`) and the e2e
+  scripts (`script/e2e-desk-loop.sh:290`,
+  `script/e2e-perf-check.sh:179`); neither asserts the returned count.
+- **The quote sum is unchecked.** `quoted.TotalMinor += price.PriceMinor`
+  (`services/rates/internal/store/store.go:274`) has no overflow guard,
+  and neither has the percent multiplication (`:284`) or the amount
+  subtraction (`:286`). Stored prices are any `int64` at or above zero
+  (`:180-182`; `services/rates/internal/store/postgres.go:116-119`), so
+  one absurd stored price plus a second night wraps the sum.
+- **Rate-plan text is unbounded.** `name` is required but has no length
+  (`services/rates/internal/handler/handler.go:158-162`), `description`
+  is coerced (`:163`), so a non-string silently becomes the empty
+  string, and neither store nor schema bounds either
+  (`services/rates/internal/store/store.go:161-176`;
+  `services/rates/migrations/000002_schema.up.sql:18-20` —
+  `name TEXT`, `description TEXT`). The 65 536-byte body ceiling (#630, `AC-BND-1`)
+  bounds one request, not a stored row, and the plan name is a map key
+  and a desk label (`app/src/views/ManageView.vue:449-458`, `:1824`,
+  `:1860`).
+
+Tier T2: four existing operations change a caller-visible answer — a
+refusal where a value was silently coerced, a refusal where a
+restriction was stored, a count the caller no longer sets, and a refusal
+where a total wrapped — while no operation, route, request or response
+field, status set, schema table, lifecycle state, desk screen, control,
+catalogue key, or print rule is added or removed. The one field that
+becomes inert (`totalUnits`) keeps its place in the request schema as
+advisory, the deprecation shape #631 gave `sellableUnits`, so no
+contract shape moves and no T3 escalation applies; every refusal uses a
+code already in the shared enum (`VALIDATION_FAILED`, `NOT_FOUND`,
+`STATE_ILLEGAL`), so no enum edit. No UI contract section applies: no
+screen, control, route, state, or copy changes, and no desk surface even
+sends `UpsertRestriction` or `CheckSellableCount` — the Manage screen
+creates plans and saves nightly prices only
+(`app/src/views/ManageView.vue:1824`, `:1860`).
+
+Decisions (five parts):
+
+1. **A boolean field is a boolean.** A present `closedToArrival` must be
+   JSON `true` or `false`; anything else — `"true"`, `1`, `"yes"`,
+   `null` — is refused with `VALIDATION_FAILED` (400) naming
+   `closedToArrival` and nothing is stored. Never coerced, because a
+   coerced `false` is indistinguishable from a manager's deliberate
+   open window. An omitted field keeps the contract default `false`
+   exactly as today.
+2. **A restriction binds only to a type Pricing can price.** A present
+   `roomTypeId` must be a UUID and must already carry at least one rate
+   price row; the first refusal is `VALIDATION_FAILED` naming
+   `roomTypeId` (the shape both stores already agree on in Postgres),
+   the second `NOT_FOUND` naming the type. In both cases nothing is
+   stored and no `restriction-changed` event is emitted. "Known" means
+   priced, not "configured with a `defaultUnits`": a plan default is not
+   a price (`BR-44`), and the rule is checked inside each store so the
+   in-memory and Postgres stores refuse the same requests.
+3. **The availability count is the server's, never the caller's.**
+   `totalUnits` is accepted for contract compatibility and shape-checked
+   only (an integer at or above zero when present, otherwise
+   `VALIDATION_FAILED` naming the field), and it never sets the answer:
+   the count is the first plan in name order that prices the type and
+   carries a `defaultUnits`, else `0` for a known type, and an unknown
+   type refuses `NOT_FOUND` whether or not the field is present. This
+   adopts the advisory-field shape #631 gave `sellableUnits` on the
+   booking contract rather than refusing the field outright, so no
+   request field is removed; removing it stays a later contract change.
+4. **A quote that cannot be represented refuses.** Every step that can
+   overflow is checked — the nightly sum, the percent multiplication,
+   and the amount subtraction — and an overflow refuses with
+   `STATE_ILLEGAL` (422) naming `roomTypeId` and carrying
+   `reason: "total_overflow"`, with no nights list and no total
+   returned. `STATE_ILLEGAL` is already registered and already means
+   "the recorded state makes this request impossible" in this service;
+   no wrapped total is ever served, because since #632 the served total
+   is the money the guest is charged.
+5. **Rate-plan text carries one bound each, and a type is text when it
+   says so.** `name` is at most 64 characters and `description` at most
+   2 000 characters, both counted in Unicode code points on the value as
+   stored, and both are code constants, never configuration. A present
+   `description` (and a present `name`) that is not a string is refused
+   with `VALIDATION_FAILED` naming the field instead of today's silent
+   empty string; an absent `description` keeps today's empty value. The
+   bounds apply on write only: no migration, backfill, truncation, or
+   re-validation on read, so a row already holding longer text reads
+   exactly as today.
+
+- AC-RTE-6 — Given a restriction write with `closedToArrival` present,
+  when the value is `true` or `false`, then the window is stored with
+  that flag and `CheckRestrictions` keeps today's behaviour — a
+  `true` window refuses an arrival inside its dates with `STATE_ILLEGAL`
+  naming `closed-to-arrival`, a `false` window never refuses on that
+  ground, and an omitted field stores `false` as the contract default;
+  when the value is any non-boolean (`"true"`, `1`, `"yes"`, `null`),
+  then the write is refused with `VALIDATION_FAILED` (400) naming
+  `closedToArrival` in `details.field`, nothing is stored, no
+  `restriction-changed` event is emitted, and the window never reaches
+  the store as a silent `false`. Traces to: US-RTE-4; FR-RTE-4;
+  BR-10.
+- AC-RTE-7 — Given a restriction write, when `roomTypeId` is not a UUID,
+  then the write is refused with `VALIDATION_FAILED` (400) naming
+  `roomTypeId`, the same answer the Postgres store already gives, so the
+  in-memory and Postgres stores refuse identically; when it is a UUID
+  for which no rate price row exists in any plan, then the write is
+  refused with `NOT_FOUND` (404) naming `roomTypeId` and nothing is
+  stored and no event is emitted; when it is a UUID that at least one
+  plan prices for at least one night, then the window is stored and
+  `CheckRestrictions` applies it exactly as today, whatever the plan's
+  `defaultUnits` is or is not. In every refusal the stored restriction
+  set is unchanged, so no window can exist that matches nothing.
+  Traces to: US-RTE-4; FR-RTE-4; BR-10, BR-44.
+- AC-RTE-8 — Given an availability read for a known room type, when the
+  request carries `totalUnits`, then the answer is the plan default the
+  server records for that type (the first plan in name order that prices
+  the type and carries a `defaultUnits`), else `0` — the field neither
+  raises nor lowers any count, a large value buys no extra availability
+  and a small or zero value hides none; when the field is absent, the
+  answer is the same plan default, else `0`; when the value is present
+  and not an integer at or above zero, then the read is refused with
+  `VALIDATION_FAILED` (400) naming `totalUnits`; when the room type has
+  no price row at all, then the read is refused `NOT_FOUND` (404)
+  naming the type whether or not the field is present, so an unknown
+  type never answers a count. The response shape, the per-date list,
+  the date-order refusal, and both stores stay as today, the
+  reservation ceiling #631 derives is untouched, and the operation's
+  contract fixture keeps passing (with its `totalUnits` now inert).
+  Traces to: US-RTE-2; FR-RTE-2; BR-9, BR-47 (Refs #631).
+- AC-RTE-9 — Given a quote whose nights, prices, and discount are
+  otherwise valid, when the nightly sum, the percent multiplication, or
+  the amount subtraction would leave the `int64` range, then the quote
+  is refused with `STATE_ILLEGAL` (422) naming `roomTypeId` and
+  `reason: "total_overflow"`, and no wrapped, negative, or truncated
+  `totalMinor` and no partial nights list is returned, so no unquotable
+  stay can freeze a price basis (#632) or become a room charge (D-24);
+  when every step stays inside the range, then the answer is
+  byte-identical to today — the same nightly breakdown, the same
+  truncated integer percentage result, and the same non-negative clamp
+  after an amount discount — and the 730-night range cap is unchanged.
+  The guard is a code rule, not a stored-price ceiling: no write-time
+  price bound, migration, or configuration is added.
+  Traces to: US-RTE-1, US-RTE-5; FR-RTE-1, FR-RTE-3, FR-RTE-5;
+  BR-13, BR-14, BR-52 (Refs #632).
+- AC-RTE-10 — Given a rate-plan write, when `name` is at most 64
+  characters and `description` at most 2 000 characters (or is absent),
+  then the plan is created or updated exactly as today and the response
+  carries the stored values; when `name` or a present `description`
+  exceeds its bound, then the write is refused with `VALIDATION_FAILED`
+  (400) naming the field in `details.field` with a plain catalogue
+  sentence carrying the bound, and nothing is stored, overwritten, or
+  truncated; when a present `name` or `description` is not a string,
+  then the write is refused the same way instead of the non-string
+  description becoming an empty one. The bounds are code constants
+  applied in both stores on write only, with no migration, backfill, or
+  read-time re-validation, the plan's identity and upsert semantics
+  (name as the key, an update keeping the stored `defaultUnits` when the
+  request omits it) are unchanged, and the desk keeps its existing
+  rendering: a plan name above the bound reads as the Manage panel's
+  existing plain failure sentence, and no control, route, label, state,
+  catalogue key, or print rule changes.
+  Traces to: US-RTE-1, US-ADM-4; FR-RTE-1, NFR-I18N-1.
+
+Pointers: `AC-RTE-2` gains the `AC-RTE-8` pointer (the availability
+count a caller reads is the server's plan default, never a request
+field); `AC-RTE-4` gains the `AC-RTE-6` and `AC-RTE-7` pointers (a
+restriction is stored only when the boolean and the room type are
+usable); `AC-MANAGE-7` gains the `AC-RTE-10` pointer (the plan the desk
+creates carries the declared name bound); each condition stands as
+written otherwise.
+
+Rollout and rollback: one service-side behaviour change across four
+existing operations, with no schema, migration, backfill, or stored-shape
+change. Restrictions already stored with a coerced `false` keep that
+value — they are not re-read, re-interpreted, or deleted — so a manager
+who wrote one must re-save it with a real boolean; a price row already
+stored above the quote guard's range is not rewritten, it refuses quotes
+for its type until corrected (R-23). Rollback is reverting the single
+implementation PR, which returns the coercion, the caller-set count, and
+the unchecked arithmetic. The desk needs no coordinated change because
+no desk surface sends these operations.
+
+Done when: `closedToArrival: "true"` and every other non-boolean value
+is refused naming the field instead of being stored as `false`, a
+restriction for an unpriced or malformed room type is refused and stores
+nothing, the availability count is the plan default (else `0`) with the
+request's `totalUnits` inert and never refused for its magnitude alone,
+a quote that would overflow refuses instead of wrapping, rate-plan
+`name` and `description` honour their declared bounds and types, and the
+#631 reservation ceiling, the #632 price basis, the existing Rates
+refusal vocabulary, and every existing guard keep their behaviour.
+
 ## Traceability summary
 
 43 done-conditions cover all 9 MVP slices from the roadmap
@@ -4398,3 +4655,47 @@ for this family.
 
 <!-- ao-role: product-owner -->
 Role: product-owner · AO session hotel-mgmt-1214
+
+Fail-closed Rates input addendum (Refs #633): five further conditions
+(AC-RTE-6..AC-RTE-10, section 30) cover audit findings T1–T3 on the
+Rates side — a non-boolean `closedToArrival` is coerced to `false` so a
+closed-to-arrival window never applies, a restriction is stored for any
+`roomTypeId` string (and for a UUID no plan prices), the availability
+read answers whatever `totalUnits` the caller sent, the quote total is
+summed (and discounted) with no overflow check, and rate-plan `name` and
+`description` carry no bound while a non-string description silently
+becomes empty. A present `closedToArrival` must be a boolean and is
+refused by name otherwise; a restriction binds only to a UUID room type
+that at least one plan already prices, refused `VALIDATION_FAILED` or
+`NOT_FOUND` otherwise with nothing stored and no event emitted;
+`totalUnits` becomes advisory-only, shape-checked and never honoured, so
+the count is the server's plan default (else `0`) and an unknown type
+refuses `NOT_FOUND` either way; a quote whose sum, percent
+multiplication, or amount subtraction would leave the `int64` range
+refuses with `STATE_ILLEGAL` naming `total_overflow` instead of serving
+a wrapped total that #632 would freeze as a price basis and the desk
+would post as a room charge; and `name`/`description` carry declared
+lengths (64 / 2 000 characters) with present non-strings refused. No
+operation, route, request or response field, status set, schema table,
+lifecycle state, desk screen, control, catalogue key, or print rule is
+added or removed — `totalUnits` keeps its request place as advisory,
+the deprecation shape #631 gave `sellableUnits` — so no contract shape
+moves and the tier stays T2; every refusal uses a code already in the
+shared enum. They trace to the existing `FR-RTE-1`, `FR-RTE-2`,
+`FR-RTE-4`, `FR-RTE-5`, `NFR-I18N-1`, `BR-9`, `BR-10`, `BR-13`,
+`BR-14`, `BR-44`, `BR-47`, `BR-52`, `AC-OVB-1`, `AC-OVB-2`,
+`AC-PRC-1`, and `AC-PRC-2`; no story, FR, or business rule is added or
+reworded here — the requirements-side FR/NFR delta and the business rule
+that states the fail-closed input rules are the `business-analyst`
+handoff (`docs/requirements/mvp-requirements.md` section 38, BR-68) — and
+the contract description/error-list lines, the LLD delta, the refreshed
+Rates flowcharts, and the per-flow happy and refusal diagrams are the
+`architect` handoff (LLD section 37, HLD section 29). `AC-RTE-2` and
+`AC-RTE-4` gain only the pointers above, `AC-MANAGE-7` gains the
+`AC-RTE-10` pointer, the conditions written earlier hold as written,
+the 43-condition MVP count above stands unchanged, and the sections
+1–17 and 19–29 done-conditions keep their behaviour. `RTE` stays the
+domain code for this family.
+
+<!-- ao-role: product-owner -->
+Role: product-owner · AO session hotel-mgmt-1246
