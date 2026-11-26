@@ -164,7 +164,7 @@ sentences (`error.validation.config_text`, `config_time`,
 `config_required_fields`, `config_list`, `config_optional_text`) reuse
 the existing `retention_floor` and `field_required` sentences for their
 keys; no enum entry or status mapping is added
-(`src/errors.ts:4-27`; `contracts/errors/envelope.json`). Design: LLD
+(`src/errors.ts:4-29`; `contracts/errors/envelope.json`). Design: LLD
 [section 33](../lld.md#33-admin-authenticates-before-parsing-and-refuses-a-malformed-config-write-refs-639)
 and `docs/technical/error-handling.md` section 1.5.
 

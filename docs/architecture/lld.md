@@ -7011,7 +7011,7 @@ as-built pins follow this list):
   through `requiredString` at `:106-111`), then stores every entry
   exactly as sent (`:488-492`). The Postgres twin repeats those checks
   and additionally refuses a `retentionFloorDays` that is not a
-  non-negative integer (`services/admin/src/pgstore.ts:500-537`, the
+  non-negative integer (`services/admin/src/pgstore.ts:500-535`, the
   coercion at `:538-553`), so the two stores already disagree on one
   key. A malformed `requiredGuestFields` write is stored silently: the
   key is seeded as a one-entry array (`store.ts:166`, `pgstore.ts:50`),
@@ -7209,7 +7209,7 @@ Consequences, stated so the implementation cannot blur them:
   `chargeItems`, `taxAndFeeRules`, `restrictions`, `discounts`,
   `ratePlans`, `roomTypes`; `script/apply-hotel-config.sh:90-110`).
 - **Reads are unchanged.** `GetHotelConfig` re-validates nothing
-  (`store.ts:463-470`, `pgstore.ts:475-499`), so a value stored before
+  (`store.ts:463-469`, `pgstore.ts:476-497`), so a value stored before
   this change — including a malformed `requiredGuestFields` — keeps
   reading as stored; no migration, backfill, or repair exists, and the
   `admin.hotel_profile` columns and `admin.hotel_config_values` rows
@@ -7327,7 +7327,7 @@ Edge traces:
 - **Both tokens already exist.** `UNAUTHENTICATED` (401) and
   `VALIDATION_FAILED` (400) are in the shared enum and the status
   mapping (`contracts/errors/envelope.json:9`, `:16-28`), and Admin
-  already maps both (`services/admin/src/errors.ts:4-27`), so this
+  already maps both (`services/admin/src/errors.ts:4-29`), so this
   change adds no code, status, enum entry, envelope field, operation,
   contract version, or route. `contracts/errors/envelope.json` is
   untouched (ADR-0004 D1).
