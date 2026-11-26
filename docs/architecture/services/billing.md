@@ -226,9 +226,11 @@ not exist or was already closed.
   `UPSTREAM_UNAVAILABLE` and its 503 mapping from #627.
 - Order: validate, verify, claim, write — so a refusal leaves no folio
   row, no line, no balance movement, no approval, and no outbox event.
-  Guards: `service/BillingServiceTest` `FW1`–`FW13`, client guards
-  `FW501`–`FW511`, and the lab record
-  `docs/testing/evidence/634/README.md`.
+  Guards (active registry, `docs/testing/folio-write-verification-test-traceability.md`
+  section 3): `service/BillingServiceTest` `FW1`–`FW4` and `FW6`–`FW8`,
+  `client/StayClientTest` and `client/StayClientWiringTest` `FW5`,
+  `web/BillingControllerTest` `FW9`, `script/e2e-desk-loop.sh` `FW13`;
+  the lab record is `docs/testing/evidence/634/README.md`.
 - No schema, migration, operation, request field, response field, or
   event change; `RunDayClose`, `GetDayClose`, `ProduceInvoice`, and
   `ProduceReceipt` are untouched.
