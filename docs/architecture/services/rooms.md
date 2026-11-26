@@ -294,3 +294,83 @@ refusal, column, or migration changed (LLD
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1175
+
+## 11. Planned delta — capacity is a whole number of at least 1 (Refs #637)
+
+Both inventory writes keep a `capacity` only when it is a `number`
+(`src/store.ts:248` in `upsertRoomType`, `:279` in `upsertRoom`; the
+Postgres twins at `src/pgstore.ts:146`, `:207`), so a negative or zero
+value is stored, `2.5` is rounded by the Postgres `INT` assignment cast,
+`1e999` — `Infinity` after `JSON.parse` (`src/server.ts:63`) — fails the
+driver and answers the catch-all `INTERNAL_ERROR` 500
+(`src/server.ts:95-101`), and a present non-number is silently dropped
+to the stored value. From #637 on, one exported `requireCapacity` helper
+beside `requireDate`/`requireString` (`src/store.ts:98-110`) decides the
+field for both stores, before any record is built in memory or any
+transaction opens in Postgres, and every other present value is refused
+`VALIDATION_FAILED` (400) naming `capacity` with nothing written and no
+`room-upserted` event. The rule, the value classes, the refusal
+contract, and the residual risks are the LLD delta
+([section 38](../lld.md#38-room-and-room-type-capacity-is-a-whole-number-of-at-least-1-refs-637));
+this section records only the two touched operation flows.
+
+```mermaid
+flowchart TD
+    A[Bearer token present  src/server.ts:130-134] --> B[Read and parse the JSON body  src/server.ts:135, readBody :25-73]
+    B --> C[store.upsertRoomType or store.upsertRoom  src/server.ts:139-160]
+    C --> D[Existing required-field checks: name or number, then actor  src/store.ts:240-241 or :267-268; src/pgstore.ts:142-143 or :200-201]
+    D --> E{capacity key omitted?}
+    E -->|yes| F[Today's meaning: create stores null, update keeps the stored value  src/store.ts:248 or :279; src/pgstore.ts:160 or :221]
+    E -->|no| G[requireCapacity, one shared exported check  new, src/store.ts beside :105-110]
+    G -->|not a number, fractional, non-finite, or below 1| R[400 VALIDATION_FAILED, details.field capacity, one plain sentence  src/errors.ts; src/server.ts:91-94]
+    G -->|integer at least 1| H[Build the record or open the transaction  src/store.ts:242-256 or :269-287; src/pgstore.ts:152 or :212]
+    H --> I[Write the row verbatim, then emit room-upserted  src/store.ts:255-263 or :288-295; src/pgstore.ts:170 or :195, :231 or :257]
+    I --> J[200 with today's response fields  src/server.ts:139-160]
+    R --> N[Nothing built, written, or emitted; the driver is never reached]
+```
+
+Edge trace (target shape; the implementation PR refreshes these pins at
+the merged head):
+
+- A–B–C: one route per operation, both `POST /v1/rooms/<Operation>`
+  behind the Bearer check (`src/server.ts:121-133`, operations at
+  `:139`, `:150`). `1e999` is already `Infinity` after `JSON.parse`
+  (`:63`), so the refusal below sees a non-finite number rather than a
+  syntax error.
+- D–E: the two existing `requireString` refusals keep today's order and
+  messages (`src/store.ts:240-241`, `:267-268`; Postgres
+  `src/pgstore.ts:142-143`, `:200-201`); `undefined` means omitted.
+  `upsertRoom` resolves the room type before the capacity read
+  (`src/store.ts:271`; `src/pgstore.ts:204`), so an unknown type keeps
+  answering `NOT_FOUND` exactly as today.
+- G–R: the new shared helper throws `HttpError("VALIDATION_FAILED", …)`
+  with `details.field: "capacity"` and the new
+  `rooms.validation.capacity` sentence, the same envelope shape as
+  `rooms.validation.date_format` (`src/store.ts:100`); the handler's
+  `HttpError` branch answers 400 (`src/server.ts:91-94`), never the
+  `INTERNAL_ERROR` catch-all (`:95-101`). The Postgres call site is
+  before `withTx` (`src/pgstore.ts:152`, `:212`), so no statement,
+  lock, or outbox row is created for a refused request.
+- G–H–I: an accepted capacity is written verbatim by the in-memory
+  record (`src/store.ts:248-256`, `:279-288`; Postgres parameter binding
+  `src/pgstore.ts:169`, `:185`, `:230`, `:255`), and the
+  `room-upserted` emit follows the write exactly as today. A create
+  with no capacity still writes `null`; an update with no capacity
+  keeps the stored one (`src/store.ts:248`, `:279`; Postgres merge
+  `src/pgstore.ts:160`, `COALESCE` `:221`).
+- Rollback: none needed — every refusal precedes the first mutation, so a
+  refused request writes nothing and emits nothing. The whole delta
+  reverts with the single implementation PR: removing the helper and its
+  two call sites returns the `typeof` assertion and the old behaviour,
+  and no migration, `CHECK`, backfill, or data repair exists in either
+  direction.
+
+The implementation PR also adds the capacity case to the
+`VALIDATION_FAILED` row of section 6's error map and to section 2's
+validation row, and keeps every other operation, guard, and response
+shape in this document untouched — in particular `ReleaseRoom`,
+`UpdateRoomState`, `ALLOWED_TRANSITIONS`, and the sellability flows of
+sections 3 and 4 (LLD section 38's rescope note).
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1262

@@ -2,7 +2,7 @@
   "operation": "UpsertRoom",
   "contract": "RoomInventoryService",
   "version": "1.0",
-  "traces": ["docs/architecture/lld.md section 3", "FR-RMS-1", "FR-RMS-4", "FR-ADM-3"],
+  "traces": ["docs/architecture/lld.md section 3", "docs/architecture/lld.md section 38", "FR-RMS-1", "FR-RMS-4", "FR-ADM-3", "FR-CAP-1", "FR-CAP-2", "FR-CAP-3", "FR-CAP-4", "BR-69"],
   "transport": {
     "method": "POST",
     "path": "/v1/rooms/UpsertRoom",
@@ -34,6 +34,6 @@
   "errors": [
     { "code": "UNAUTHENTICATED", "status": 401, "when": "Missing session token." },
     { "code": "NOT_FOUND", "status": 404, "when": "Unknown room type." },
-    { "code": "VALIDATION_FAILED", "status": 400, "when": "Missing number, roomType, or actor." }
+    { "code": "VALIDATION_FAILED", "status": 400, "when": "Missing number, roomType, or actor; or a capacity that is not a whole number of at least 1." }
   ]
 }

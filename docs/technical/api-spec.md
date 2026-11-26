@@ -115,7 +115,7 @@ section 4).
 |---|---|
 | `ReservationService` | Create, modify, cancel, mark no-show; calendar query; check-in reservation link; check-out completion (Refs #646). Emits `ReservationEvents`. |
 | `StayService` | Check in, check out, move room, record early/late times; stay reads, arrivals/departures queries. Emits `StayEvents`. |
-| `RoomInventoryService` | Room/room-type setup, status updates, out-of-order blocks, availability query. Emits `RoomStateEvents`. |
+| `RoomInventoryService` | Room/room-type setup, status updates, out-of-order blocks, availability query. Room/room-type setup refuses a present `capacity` that is not a whole number of at least 1 — no ceiling is added — with `VALIDATION_FAILED` naming `capacity`, nothing written and no `room-upserted` event, while an omitted value keeps today's create-none/update-keeps meaning and the store chosen at boot is not observable (Refs #637). Emits `RoomStateEvents`. |
 | `PricingService` | Rate-plan setup, price quote, discount application, restriction check. Emits `RateEvents`. |
 | `GuestService` | Profile CRUD, preference/notes update, repeat-guest flag, confirmation record. Emits `GuestEvents`. A name lookup that matches more than one guest is refused rather than resolved by first match, and guest payloads carry declared shape and length bounds (Refs #640). |
 | `BillingService` | Folio open, charge posting, payment recording, tax/fee derivation, day-close, settlement check; stay verification before every folio write (Refs #634); money amounts whole and bounded by one ceiling, refused in the adapter (Refs #635). Emits `FolioEvents`. |
