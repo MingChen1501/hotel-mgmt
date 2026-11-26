@@ -91,6 +91,7 @@ front-desk staff, manager, or owner account acting within its access
 | BR-28 | Room states advance dirty to clean to inspected as work completes; each change records who made it and when. Only a vacant, clean, inspected room is offered for check-in assignment. | FR-RMS-2; NFR-AUD-1; US-RMS-2 |
 | BR-29 | A manager-set block takes a room out of sale for a recorded reason and date range; the room shows out of order for that range. | FR-RMS-3; US-RMS-3 |
 | BR-30 | Floor, bed type, capacity, and features saved per room and room type appear in the room inventory and are available when assigning rooms at check-in. | FR-RMS-4; FR-ADM-3; US-RMS-4 |
+| BR-69 | A saved capacity is a whole number of guests of at least 1, or the write is refused by name. A present `capacity` on `UpsertRoom` or `UpsertRoomType` is a JSON number whose value is an integer at or above `1`; no upper bound is added, because the contract sets a minimum only and the manage form's `1..20` range stays a client sanity bound, so a value above `20` is stored as sent. An omitted `capacity` keeps today's meaning — a create stores none and an update keeps the stored one — while a present `null` is a caller's mistake, not an omission. A negative, zero, fractional, non-finite (`1e999` over HTTP, `Infinity` directly), `NaN`, or non-number (`"2"`, `null`, `true`, `[2]`) capacity is refused with the shared envelope and `VALIDATION_FAILED` (400), `details` naming `capacity`, and one plain catalogue sentence stating the whole-number-of-at-least-1 rule, in both operations and both stores, before any row is built or any transaction opens: nothing is created or overwritten, an existing room or type keeps every stored field and its state, no `room-upserted` event is emitted, the two stores answer identically, and a value the service can name never becomes an `INTERNAL_ERROR` 500. The rule is one shared check in code used by both stores, never a migration, `CHECK` constraint, backfill, truncation, or read-time re-validation, so a capacity already stored outside the rule keeps reading exactly as stored. The onboarding wizard refuses a capacity below `1` in plain words, before it sends anything, in English and Vietnamese, and the manage screen's own `1..20` rule and sentences are unchanged. The floor is one constant and one rule in code, never a per-hotel setting, an environment variable, or a deployment file. | FR-RMS-4; FR-MGMT-3; FR-ADM-3; NFR-I18N-1; BR-30; `AC-CAP-1`..`AC-CAP-4`; Refs #637 |
 
 ## 7. Guests
 
@@ -176,6 +177,7 @@ section 3.3). Fixed items no hotel may change in the MVP.
 | Rate plans | Sellable prices per room type, season, day (`BR-14`) | Quoted price basis unchanged unless recalculated (`BR-13`); the frozen total is the quote Pricing returns for the type, dates, and discount (`BR-52`) |
 | Rates input refusals | — (none) | `closedToArrival` must be a boolean; a restriction binds only to a room type Pricing prices; the availability read's `totalUnits` is advisory and the count is the plan default, else `0`; an overflowing quote refuses `details.reason` `total_overflow`; `name` is bounded at 64 and `description` at 2 000 characters on write (`BR-68`) |
 | Out-of-order blocks | Reason and date range per block (`BR-29`) | Blocked dates take no reservation or check-in |
+| Capacity write rule | — (none) | A present capacity is a whole number of at least 1 stored verbatim, every other present value refused naming `capacity` with nothing written and no `room-upserted` event, an omitted value keeping today's create-none/update-keeps meaning, and the onboarding wizard obeying the same floor while the manage form's `1..20` stays a client bound (`BR-69`) |
 | Payment methods | — (none) | Cash and card only (`BR-23`) |
 | Folio structure | — (none) | One folio per stay; no split across payers (`BR-21`) |
 | Room-charge posting | — (none) | One room charge per stay, at the stay's frozen quoted total, posted by the desk check-out review (`BR-45`) |
@@ -327,14 +329,27 @@ declared bound each with a non-string refused — tracing `FR-RTE-1`,
 `FR-RTE-2`, `FR-RTE-4`, `FR-RTE-5`, `FR-RTE-6`..`FR-RTE-10`,
 `NFR-I18N-1`, `NFR-BND-1`, and `AC-RTE-6`..`AC-RTE-10` plus the #631
 ceiling and the #632 price basis, without adding behaviour beyond those
-sources.
+sources, and BR-69 states the capacity obligation the two room inventory
+writes owe the desk — a present capacity is a whole number of at least 1
+stored verbatim with no upper bound, every other present value is
+refused `VALIDATION_FAILED` naming the field in both `UpsertRoom` and
+`UpsertRoomType` and in both stores with nothing written, no
+`room-upserted` event, and never an `INTERNAL_ERROR` 500, an omitted
+value keeps today's create-none/update-keeps meaning, the rule is one
+shared check in code with no migration, `CHECK`, backfill, truncation,
+or read-time re-validation so a stored value keeps reading as today, and
+the onboarding wizard refuses below `1` in both locales while the manage
+form's `1..20` stays a client bound — tracing `FR-RMS-4`, `FR-MGMT-3`,
+`FR-ADM-3`, `FR-CAP-1`..`FR-CAP-4`, `NFR-I18N-1`, and
+`AC-CAP-1`..`AC-CAP-4` plus `BR-30`, without adding behaviour beyond
+those sources.
 Policies with no decided source appear as open questions
 OQ-1..OQ-5. No rule introduces behaviour beyond the traced
 FRs/NFRs/stories. Later capabilities from requirements section 6
 (waitlist, split folios, integrated payments, automated workflow
 rules, multi-property operation, and the rest) carry no rule here.
 
-Counts: 62 business rules, 5 open questions.
+Counts: 63 business rules, 5 open questions.
 
 <!-- ao-role: business-analyst -->
 Role: business-analyst · AO session hotel-mgmt-1079
@@ -359,3 +374,6 @@ Role: business-analyst · AO session hotel-mgmt-1215
 
 <!-- ao-role: business-analyst -->
 Role: business-analyst · AO session hotel-mgmt-1247
+
+<!-- ao-role: business-analyst -->
+Role: business-analyst · AO session hotel-mgmt-1261
