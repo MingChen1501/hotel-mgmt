@@ -924,6 +924,45 @@ describe("room state counts in sellability (#636)", () => {
     }, store);
   });
 
+  // In-memory half of SL5: the same recorded-state fixture the Postgres half
+  // seeds in pgstore.test.ts, asserted to the same exact triple. This half
+  // runs in CI without TEST_PG_URL; the two halves still pin the stores to
+  // one set of numbers, so a drift in either fails.
+  it("counts the recorded-state fixture as 5 sellable 2 with 103 blocked (SL5)", async () => {
+    const store = new RoomStore();
+    await seedType(store);
+    for (const number of ["101", "102", "103", "104", "105"]) {
+      await addRoom(store, number);
+    }
+    // 101 out-of-order; 102 occupied through the public assign path;
+    // 103 out-of-order and block-covered; 104/105 remain vacant-inspected.
+    await store.updateRoomState({ roomNumber: "101", newState: "out-of-order", actor: "manager" }, TOKEN);
+    const assigned = await store.assignRoom(
+      { roomNumber: "102", businessDate: "2026-11-01", stayLink: "stay-1", actor: "front-desk" },
+      TOKEN,
+    );
+    assert.equal(assigned.state, "occupied");
+    await store.updateRoomState({ roomNumber: "103", newState: "out-of-order", actor: "manager" }, TOKEN);
+    await store.blockRoom(
+      { roomNumber: "103", dateFrom: "2026-11-01", dateTo: "2026-11-05", reason: "Plumbing repair", actor: "manager" },
+      TOKEN,
+    );
+    const aggregate = await store.checkSellability({ roomType: "Deluxe", ...SELL_RANGE });
+    assert.equal(aggregate.totalCount, 5);
+    assert.equal(aggregate.sellableCount, 2);
+    assert.deepEqual(aggregate.blockedRooms, ["103"]);
+
+    const roomTypeId = (await store.resolveRoomType("Deluxe")).id;
+    const single = await store.checkSellability({ roomType: "Deluxe", ...SELL_RANGE, roomNumber: "101" });
+    assert.deepEqual(single, {
+      roomTypeId,
+      ...SELL_RANGE,
+      totalCount: 1,
+      sellableCount: 0,
+      blockedRooms: [],
+    });
+  });
+
   it("reports sellableCount 0 for a block-free non-sellable single room (SL6)", async () => {
     const store = new RoomStore();
     await seedType(store);
