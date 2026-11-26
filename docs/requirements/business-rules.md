@@ -44,6 +44,7 @@ front-desk staff, manager, or owner account acting within its access
 | BR-47 | The overbooking ceiling is the capacity the hotel records for the room type and the stay dates: a reservation is accepted only while the overlapping reservations that hold a unit number below the rooms the inventory records as sellable for those dates — the rooms of the type less the rooms blocked for those dates. The request's `sellableUnits` never raises or lowers that ceiling: a large value buys no extra booking and a low or absent value refuses nothing. When the recorded capacity is reached, the booking is refused with `CONFLICT` naming the room type and dates and nothing is written; a modification into sold-out dates or a sold-out type is refused the same way with the reservation unchanged. Cancelled, no-show, and closed reservations release their hold; a checked-in reservation keeps holding its unit as today. | FR-RES-1; FR-RES-2; FR-RTE-2; FR-OVB-1; FR-OVB-2; NFR-CON-1; BR-8; BR-9; `AC-OVB-1`; Refs #631 |
 | BR-48 | The capacity the booking guard decides on is read from the room inventory on every attempt and is never taken from, cached for, or inferred from the request. An unreadable capacity source — transport failure, timeout, 5xx, unparseable reply, or an unwired client — refuses the booking fail-closed with `UPSTREAM_UNAVAILABLE` (503) naming the upstream and the operation, and nothing is written; no earlier read is reused for a later attempt. A provider 4xx envelope is surfaced unchanged. A recorded capacity of zero is a sold-out `CONFLICT`, never a 5xx: a sold-out type is not an outage. | FR-OVB-1..FR-OVB-3; NFR-CON-1; NFR-AVL-1; BR-46; `AC-OVB-2`; Refs #631 |
 | BR-49 | The overbooking guard stays atomic: the capacity is read on the attempt and the count-and-insert comparison stays in one critical section, so two simultaneous last-unit requests yield exactly one winner and one `CONFLICT`, and an idempotent replay returns the original reservation without consuming a second unit. | FR-OVB-4; NFR-CON-1; BR-8; `AC-OVB-3`; Refs #631 |
+| BR-67 | A room reads as sellable only when no block covers the range and its recorded state is neither `out-of-order` nor `occupied`. The aggregate sellability read counts, for a room type and date range, the rooms that are both block-free and in a sellable state, subtracting a room at most once so the count never goes below zero, while `totalCount` keeps every room of the type and `blockedRooms` keeps exactly the block-covered rooms in their order. The non-sellable state list is exactly those two names in code — every vacant state (`vacant-dirty`, `vacant-clean`, `vacant-inspected`) stays sellable, so a dirty room is still offered for a future stay — and both stores answer the same number. A single-room read on a block-free non-sellable room answers success with `totalCount: 1` and `sellableCount: 0` without claiming availability, while a block-covered room keeps today's `STATE_ILLEGAL` block refusal and its precedence over the state answer. Blocks, the state vocabulary, and every state-machine transition are unchanged: room state never adds a room to `blockedRooms`, and releasing a block returns a room to sale only when its state is sellable. The booking ceiling the #631 guard derives stays `totalCount - len(blockedRooms)` and reads neither the sellable count nor room state (ADR-0006 D2), and the state list is a fixed code rule, never a per-hotel setting. | FR-RTE-2; FR-RMS-1; FR-RMS-3; FR-SEL-1; FR-SEL-2; FR-SEL-3; FR-SEL-4; NFR-CON-1; BR-9; BR-12; BR-47; `AC-SEL-1`..`AC-SEL-4`; Refs #636 |
 
 ## 3. Price basis and rates
 
@@ -168,6 +169,7 @@ section 3.3). Fixed items no hotel may change in the MVP.
 | Taxes and fees | The hotel's tax and fee rules (`BR-25`) | — |
 | Stay restrictions | Minimum stay and closed-to-arrival days per date range (`BR-10`) | Violating reservations refused with the restriction named |
 | Reservation availability | — (none) | The ceiling is the capacity the hotel records for the room type and dates, never the request's `sellableUnits`; a large or absent value changes nothing, and an unreadable capacity source refuses the booking (`BR-47`, `BR-48`) |
+| Sellability state list | — (none) | The non-sellable room states are exactly `out-of-order` and `occupied`; every vacant state stays sellable, the state list is a fixed code rule, and the #631 ceiling reads `totalCount - blockedRooms`, never the sellable count or room state (`BR-67`) |
 | Discounts | Named discounts the manager may apply (`BR-15`) | Applied discounts kept by name |
 | Rate plans | Sellable prices per room type, season, day (`BR-14`) | Quoted price basis unchanged unless recalculated (`BR-13`) |
 | Out-of-order blocks | Reason and date range per block (`BR-29`) | Blocked dates take no reservation or check-in |
@@ -292,14 +294,26 @@ reports through the returned refusal rather than a read, a report read
 answers one complete set without a staleness refusal, and a successful
 rebuild stays exactly today's output — tracing `FR-RPT-1`..`FR-RPT-7`,
 `NFR-PERF-1`, `NFR-PERF-2`, `NFR-RPT-1`, and
-`AC-RPT-8`..`AC-RPT-10`, without adding behaviour beyond those sources.
+`AC-RPT-8`..`AC-RPT-10`, without adding behaviour beyond those sources,
+and BR-67 states the sellability-state obligation the availability read
+owes the desk — a room is sellable only when no block covers the range
+and its recorded state is neither `out-of-order` nor `occupied`, the
+aggregate count subtracts each room once while `totalCount` and
+`blockedRooms` keep their meaning, every vacant state stays sellable, a
+block-free non-sellable single room answers `sellableCount: 0` without
+claiming availability, a block-covered room keeps the `STATE_ILLEGAL`
+refusal and its precedence, blocks and the state vocabulary are
+unchanged, and the #631 ceiling keeps reading `totalCount` and
+`blockedRooms` only — tracing `FR-RTE-2`, `FR-RMS-1`, `FR-RMS-3`,
+`FR-SEL-1`..`FR-SEL-4`, `NFR-CON-1`, and
+`AC-SEL-1`..`AC-SEL-4`, without adding behaviour beyond those sources.
 Policies with no decided source appear as open questions
 OQ-1..OQ-5. No rule introduces behaviour beyond the traced
 FRs/NFRs/stories. Later capabilities from requirements section 6
 (waitlist, split folios, integrated payments, automated workflow
 rules, multi-property operation, and the rest) carry no rule here.
 
-Counts: 59 business rules, 5 open questions.
+Counts: 60 business rules, 5 open questions.
 
 <!-- ao-role: business-analyst -->
 Role: business-analyst · AO session hotel-mgmt-1079
@@ -318,3 +332,6 @@ Role: business-analyst · AO session hotel-mgmt-1174
 
 <!-- ao-role: business-analyst -->
 Role: business-analyst · AO session hotel-mgmt-1206
+
+<!-- ao-role: business-analyst -->
+Role: business-analyst · AO session hotel-mgmt-1215
