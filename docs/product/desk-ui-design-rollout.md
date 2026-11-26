@@ -2432,7 +2432,7 @@ Decision (three parts):
    click still books once. A failed re-read books nothing and says so
    in plain words, reusing the existing no-price wording when the type
    lost its price for those dates (`desk.book.refused_noprice`,
-   `messages/en.json:440`).
+   `messages/en.json:447`).
 2. **The refusal speaks catalogue words and switches on the code.**
    One new key, `desk.book.refused_price_changed`, ships in both
    locales with its `{total}` placeholder intact; the branch is on the
