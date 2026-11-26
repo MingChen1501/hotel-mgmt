@@ -6347,7 +6347,7 @@ As-built validation at this spec head, read-only:
 - **The recompute needs no stored rate plan.** `QuotePrice` resolves
   the plan when exactly one prices the type, refuses
   `details.reason: no_rate_plan` when none does
-  (`services/rates/internal/store/store.go:402`), refuses
+  (`services/rates/internal/store/store.go:400`), refuses
   `details.reason: no_rate_price` for a night with no price row
   (`:266-273`), refuses an unknown discount with `VALIDATION_FAILED`
   naming `discountName` (`:276-280`), and refuses an ambiguous plan set
