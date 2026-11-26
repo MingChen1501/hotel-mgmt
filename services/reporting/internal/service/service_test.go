@@ -1,6 +1,7 @@
 package service
 
 import (
+	"reflect"
 	"testing"
 	"time"
 
@@ -171,5 +172,74 @@ func TestReversedWindowKeepsTheOrderSentence(t *testing.T) {
 	}
 	if oerr.Message == spanSentence() {
 		t.Fatal("reversed window borrowed the span sentence")
+	}
+}
+
+// TestReportsCarryTheServedSetsAsOf is the service half of RB7
+// (AC-RPT-9, FR-RPT-6, FR-RPT-7): every report the desk calls carries
+// its set's as-of stamp, and a failed rebuild leaves all four answers
+// on the last-good set with the older stamp instead of refusing or
+// serving zeros.
+func TestReportsCarryTheServedSetsAsOf(t *testing.T) {
+	stamp := time.Date(2026, 11, 2, 10, 0, 0, 0, time.UTC)
+	events := []store.Event{
+		{ID: "evt-rate-1", Subscription: "rate", Type: "rate.availability-set", OccurredAt: stamp, Payload: map[string]any{"roomTypeId": "deluxe", "date": "2026-11-01", "sellableUnits": 2}},
+		{ID: "evt-res-1", Subscription: "reservation", Type: "reservation.created", OccurredAt: stamp, Payload: map[string]any{"reservationRef": "RSV-AAA", "roomTypeId": "deluxe", "arrivalDate": "2026-11-01", "departureDate": "2026-11-03", "guestId": "guest-1"}},
+	}
+	st := store.New()
+	if oerr := st.Rebuild(events); oerr != nil {
+		t.Fatalf("Rebuild: %v", oerr)
+	}
+	svc := New(st)
+
+	readAll := func() ([]store.NightRow, []store.RevenueRow, *store.DailySheet, []store.HousekeepingRoom, [4]time.Time) {
+		t.Helper()
+		occupancy, occupancyAsOf, oerr := svc.OccupancyReport("2026-11-01", "2026-11-02")
+		if oerr != nil {
+			t.Fatalf("OccupancyReport: %v", oerr)
+		}
+		revenue, revenueAsOf, oerr := svc.RevenueSummary("2026-11-01", "2026-11-02")
+		if oerr != nil {
+			t.Fatalf("RevenueSummary: %v", oerr)
+		}
+		sheet, oerr := svc.DailySheet("2026-11-01")
+		if oerr != nil {
+			t.Fatalf("DailySheet: %v", oerr)
+		}
+		rooms, housekeepingAsOf := svc.HousekeepingReport()
+		return occupancy, revenue, sheet, rooms, [4]time.Time{occupancyAsOf, revenueAsOf, sheet.AsOf, housekeepingAsOf}
+	}
+	requireStamp := func(stamps [4]time.Time, label string) {
+		t.Helper()
+		for i, got := range stamps {
+			if got.IsZero() || !got.Equal(stamp) {
+				t.Fatalf("%s report %d asOf = %s, want the served set's stamp %s", label, i, got, stamp)
+			}
+		}
+	}
+
+	occupancy, revenue, sheet, rooms, stamps := readAll()
+	requireStamp(stamps, "clean")
+
+	bad := store.Event{ID: "evt-bad-mid", Subscription: "reservation", Type: "reservation.created", OccurredAt: stamp, Payload: map[string]any{"roomTypeId": "deluxe"}}
+	slice := append([]store.Event{events[0]}, bad)
+	slice = append(slice, events[1])
+	if oerr := st.Rebuild(slice); oerr == nil {
+		t.Fatal("a rebuild over a malformed mid-stream event succeeded")
+	}
+
+	againOccupancy, againRevenue, againSheet, againRooms, againStamps := readAll()
+	requireStamp(againStamps, "post-abort")
+	if !reflect.DeepEqual(againOccupancy, occupancy) {
+		t.Fatalf("occupancy rows moved after a failed rebuild: %+v -> %+v", occupancy, againOccupancy)
+	}
+	if !reflect.DeepEqual(againRevenue, revenue) {
+		t.Fatalf("revenue rows moved after a failed rebuild: %+v -> %+v", revenue, againRevenue)
+	}
+	if !reflect.DeepEqual(againSheet, sheet) {
+		t.Fatalf("daily sheet moved after a failed rebuild: %+v -> %+v", sheet, againSheet)
+	}
+	if !reflect.DeepEqual(againRooms, rooms) {
+		t.Fatalf("housekeeping list moved after a failed rebuild: %+v -> %+v", rooms, againRooms)
 	}
 }

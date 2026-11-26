@@ -134,9 +134,13 @@ type DailySheet struct {
 	AsOf         time.Time
 }
 
-// Store holds the reporting read model behind a mutex.
-type Store struct {
-	mu           sync.Mutex
+// snapshot is one complete read-model set: the seen-id record, the
+// per-subscription consumer offsets, the as-of stamp, and the six
+// projections. A Store publishes exactly one snapshot at a time and
+// every read renders the current one under the store mutex, so a report
+// always answers one complete set with its own stamp (BR-66, issue
+// #642).
+type snapshot struct {
 	seen         map[string]bool
 	offsets      map[string]string
 	asOf         time.Time
@@ -148,9 +152,10 @@ type Store struct {
 	housekeeping map[string]*housekeepingProjection
 }
 
-// New returns an empty Store.
-func New() *Store {
-	return &Store{
+// newSnapshot returns an empty set, the shape every rebuild candidate
+// and the initial published set carry.
+func newSnapshot() *snapshot {
+	return &snapshot{
 		seen:         make(map[string]bool),
 		offsets:      make(map[string]string),
 		reservations: make(map[string]*reservationProjection),
@@ -160,6 +165,20 @@ func New() *Store {
 		folios:       make(map[string]int64),
 		housekeeping: make(map[string]*housekeepingProjection),
 	}
+}
+
+// Store holds the published reporting read model behind a mutex. The
+// current set is replaceable as a whole: a rebuild fills a private
+// candidate and installs it in one swap, so a read never observes a
+// half-built or emptied set (LLD section 35.1).
+type Store struct {
+	mu      sync.Mutex
+	current *snapshot
+}
+
+// New returns an empty Store.
+func New() *Store {
+	return &Store{current: newSnapshot()}
 }
 
 func occKey(date, roomType string) string { return date + "\x00" + roomType }
@@ -190,7 +209,7 @@ func validDate(value string) bool {
 	return err == nil
 }
 
-// Apply folds one event into the read model. Replays of an already
+// Apply folds one event into the published set. Replays of an already
 // applied event id are no-ops: the projections and the consumer
 // offset do not move, so duplicate delivery never double-counts.
 // Unknown future event types are recorded as seen (with their offset
@@ -199,50 +218,61 @@ func validDate(value string) bool {
 func (s *Store) Apply(event Event) *OpError {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.current.fold(event)
+}
+
+// fold applies one event to the set: a refused event changes nothing, a
+// duplicate id is a no-op, and a projected event advances the seen
+// record, its subscription offset, and the as-of stamp (LLD section
+// 35.4, edge D-C). It is the one per-event fold both the live ingest
+// path and a rebuild drive, so a rebuilt row is the row the live path
+// produces.
+func (set *snapshot) fold(event Event) *OpError {
 	if strings.TrimSpace(event.ID) == "" {
 		return validation("eventId", messages.Text("reporting.validation.event_required", nil))
 	}
-	if s.seen[event.ID] {
+	if set.seen[event.ID] {
 		return nil
 	}
-	if err := s.project(event); err != nil {
+	if err := set.project(event); err != nil {
 		return err
 	}
-	s.seen[event.ID] = true
+	set.seen[event.ID] = true
 	if strings.TrimSpace(event.Subscription) != "" {
-		s.offsets[event.Subscription] = event.ID
+		set.offsets[event.Subscription] = event.ID
 	}
-	if event.OccurredAt.After(s.asOf) {
-		s.asOf = event.OccurredAt
+	if event.OccurredAt.After(set.asOf) {
+		set.asOf = event.OccurredAt
 	}
 	return nil
 }
 
-// Rebuild replays a full outbox slice from scratch: it clears every
-// projection, offset, and seen id, then applies the events in the
-// given per-aggregate order. Reports queried afterwards match the
-// source rows the events describe.
+// Rebuild replays a full outbox slice into a private candidate set and
+// publishes it in one swap (BR-66, issue #642). The replay holds no
+// lock and the candidate is unreachable from every read, so a read
+// issued while the rebuild runs still answers the previously published
+// set; the candidate becomes the published set in one critical section
+// only after every event projects. On the first refused event the
+// candidate is discarded, nothing is published, and the refusal is
+// returned unchanged, so the served projections, the consumer-offset
+// record, and the as-of stamp keep their pre-rebuild values and a retry
+// replays from the same record. Reports queried after a successful
+// rebuild match the source rows the events describe, byte-identical to
+// a clear-and-replay of the same slice.
 func (s *Store) Rebuild(events []Event) *OpError {
-	s.mu.Lock()
-	s.seen = make(map[string]bool)
-	s.offsets = make(map[string]string)
-	s.asOf = time.Time{}
-	s.reservations = make(map[string]*reservationProjection)
-	s.stays = make(map[string]*stayProjection)
-	s.sellable = make(map[string]int)
-	s.revenue = make(map[string]*revenueTotal)
-	s.folios = make(map[string]int64)
-	s.housekeeping = make(map[string]*housekeepingProjection)
-	s.mu.Unlock()
+	candidate := newSnapshot()
 	for _, event := range events {
-		if oerr := s.Apply(event); oerr != nil {
+		if oerr := candidate.fold(event); oerr != nil {
 			return oerr
 		}
 	}
+	s.mu.Lock()
+	s.current = candidate
+	s.mu.Unlock()
 	return nil
 }
 
-func (s *Store) project(event Event) *OpError {
+func (set *snapshot) project(event Event) *OpError {
 	payload := event.Payload
 	if payload == nil {
 		payload = map[string]any{}
@@ -265,19 +295,19 @@ func (s *Store) project(event Event) *OpError {
 		if !ok || !validDate(departure) || departure <= arrival {
 			return validation("departureDate", messages.Text("reporting.validation.departure_after_arrival", nil))
 		}
-		s.reservations[ref] = &reservationProjection{
+		set.reservations[ref] = &reservationProjection{
 			Ref: ref, RoomTypeID: roomType, Arrival: arrival, Departure: departure, Active: true,
 		}
 		stayID, _ := strPayload(payload, "stayId")
 		if stayID != "" {
-			s.reservations[ref].StayID = stayID
+			set.reservations[ref].StayID = stayID
 		}
 	case "reservation.cancelled", "reservation.no-show":
 		ref, ok := strPayload(payload, "reservationRef")
 		if !ok {
 			return validation("reservationRef", messages.Text("error.validation.reservation_ref_required", nil))
 		}
-		if record, found := s.reservations[ref]; found {
+		if record, found := set.reservations[ref]; found {
 			record.Active = false
 		}
 	case "stay.checked-in":
@@ -289,15 +319,15 @@ func (s *Store) project(event Event) *OpError {
 		if !ok || !validDate(day) {
 			return validation("date", messages.Text("reporting.validation.date_format", map[string]string{"field": "date"}))
 		}
-		stay := s.stays[stayID]
+		stay := set.stays[stayID]
 		if stay == nil {
 			stay = &stayProjection{ID: stayID}
-			s.stays[stayID] = stay
+			set.stays[stayID] = stay
 		}
 		stay.CheckIn = day
 		if ref, ok := strPayload(payload, "reservationRef"); ok {
 			stay.ReservationRef = ref
-			if record, found := s.reservations[ref]; found {
+			if record, found := set.reservations[ref]; found {
 				record.StayID = stayID
 			}
 		}
@@ -313,20 +343,20 @@ func (s *Store) project(event Event) *OpError {
 		if !ok || !validDate(day) {
 			return validation("date", messages.Text("reporting.validation.date_format", map[string]string{"field": "date"}))
 		}
-		stay := s.stays[stayID]
+		stay := set.stays[stayID]
 		if stay == nil {
 			stay = &stayProjection{ID: stayID}
-			s.stays[stayID] = stay
+			set.stays[stayID] = stay
 		}
 		stay.CheckOut = day
 		if stay.ReservationRef != "" {
-			if record, found := s.reservations[stay.ReservationRef]; found {
+			if record, found := set.reservations[stay.ReservationRef]; found {
 				record.CheckedOut = true
 				record.CheckoutDay = day
 			}
 		}
 		if stay.RoomID != "" {
-			if row := s.housekeeping[stay.RoomID]; row != nil && row.State == "occupied" {
+			if row := set.housekeeping[stay.RoomID]; row != nil && row.State == "occupied" {
 				// Check-out turns an occupied room vacant and dirty
 				// (state-machine section 2). The rooms module's own
 				// state-changed event stays the source of truth and
@@ -349,7 +379,7 @@ func (s *Store) project(event Event) *OpError {
 		if !ok || units < 0 {
 			return validation("sellableUnits", messages.Text("reporting.validation.sellable_units", nil))
 		}
-		s.sellable[occKey(date, roomType)] = int(units)
+		set.sellable[occKey(date, roomType)] = int(units)
 	case "folio.charge-posted":
 		folio, ok := strPayload(payload, "folioId")
 		if !ok {
@@ -367,17 +397,17 @@ func (s *Store) project(event Event) *OpError {
 		if !ok || amount < 0 {
 			return validation("amountMinor", messages.Text("reporting.validation.amount", nil))
 		}
-		total := s.revenue[day]
+		total := set.revenue[day]
 		if total == nil {
 			total = &revenueTotal{}
-			s.revenue[day] = total
+			set.revenue[day] = total
 		}
 		if kind == "room" {
 			total.Room += amount
 		} else {
 			total.Extra += amount
 		}
-		s.folios[folio] += amount
+		set.folios[folio] += amount
 	case "folio.payment-recorded":
 		folio, ok := strPayload(payload, "folioId")
 		if !ok {
@@ -387,7 +417,7 @@ func (s *Store) project(event Event) *OpError {
 		if !ok || amount < 0 {
 			return validation("amountMinor", messages.Text("reporting.validation.amount", nil))
 		}
-		s.folios[folio] -= amount
+		set.folios[folio] -= amount
 	case "config.changed":
 		// Hotel identity and wording printed on reports are served
 		// from Admin at read time (per-hotel config delivery, issue
@@ -401,7 +431,7 @@ func (s *Store) project(event Event) *OpError {
 		if !ok {
 			return validation("state", messages.Text("reporting.validation.state_required", nil))
 		}
-		s.housekeeping[room] = &housekeepingProjection{Room: room, State: state}
+		set.housekeeping[room] = &housekeepingProjection{Room: room, State: state}
 	case "room.state-changed":
 		room, ok := strPayload(payload, "roomNumber")
 		if !ok {
@@ -411,10 +441,10 @@ func (s *Store) project(event Event) *OpError {
 		if !ok {
 			return validation("newState", messages.Text("reporting.validation.new_state_required", nil))
 		}
-		if row := s.housekeeping[room]; row != nil {
+		if row := set.housekeeping[room]; row != nil {
 			row.State = state
 		} else {
-			s.housekeeping[room] = &housekeepingProjection{Room: room, State: state}
+			set.housekeeping[room] = &housekeepingProjection{Room: room, State: state}
 		}
 	case "room.blocked":
 		room, ok := strPayload(payload, "roomNumber")
@@ -429,7 +459,7 @@ func (s *Store) project(event Event) *OpError {
 		if !ok || !validDate(to) || to < from {
 			return validation("dateTo", messages.Text("reporting.validation.date_to_order", nil))
 		}
-		s.housekeeping[room] = &housekeepingProjection{Room: room, State: "out-of-order"}
+		set.housekeeping[room] = &housekeepingProjection{Room: room, State: "out-of-order"}
 	case "room.block-released":
 		room, ok := strPayload(payload, "roomNumber")
 		if !ok {
@@ -437,7 +467,7 @@ func (s *Store) project(event Event) *OpError {
 		}
 		// Out-of-order rooms re-enter through dirty (rooms LLD
 		// section 3); a later state-changed event refines this.
-		s.housekeeping[room] = &housekeepingProjection{Room: room, State: "vacant-dirty"}
+		set.housekeeping[room] = &housekeepingProjection{Room: room, State: "vacant-dirty"}
 	default:
 		// Forward-compatible ignore: recorded as seen with offset
 		// and as-of advance by Apply.
@@ -478,13 +508,14 @@ func (s *Store) Occupancy(dateFrom, dateTo string) ([]NightRow, time.Time, *OpEr
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	set := s.current
 	types := map[string]bool{}
-	for _, record := range s.reservations {
+	for _, record := range set.reservations {
 		if record.Active {
 			types[record.RoomTypeID] = true
 		}
 	}
-	for key := range s.sellable {
+	for key := range set.sellable {
 		parts := strings.SplitN(key, "\x00", 2)
 		if len(parts) == 2 {
 			types[parts[1]] = true
@@ -495,7 +526,7 @@ func (s *Store) Occupancy(dateFrom, dateTo string) ([]NightRow, time.Time, *OpEr
 		name := day.Format(dateLayout)
 		for roomType := range types {
 			var occupied int
-			for _, record := range s.reservations {
+			for _, record := range set.reservations {
 				if !record.Active || record.RoomTypeID != roomType {
 					continue
 				}
@@ -503,7 +534,7 @@ func (s *Store) Occupancy(dateFrom, dateTo string) ([]NightRow, time.Time, *OpEr
 					occupied++
 				}
 			}
-			units, seeded := s.sellable[occKey(name, roomType)]
+			units, seeded := set.sellable[occKey(name, roomType)]
 			if occupied == 0 && !seeded {
 				continue
 			}
@@ -520,7 +551,7 @@ func (s *Store) Occupancy(dateFrom, dateTo string) ([]NightRow, time.Time, *OpEr
 		}
 		return rows[i].RoomType < rows[j].RoomType
 	})
-	return rows, s.asOf, nil
+	return rows, set.asOf, nil
 }
 
 // Revenue returns per-date room and extra revenue totals over
@@ -533,10 +564,11 @@ func (s *Store) Revenue(dateFrom, dateTo string) ([]RevenueRow, time.Time, *OpEr
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	set := s.current
 	var rows []RevenueRow
 	for day := from; !day.After(to); day = day.AddDate(0, 0, 1) {
 		name := day.Format(dateLayout)
-		total := s.revenue[name]
+		total := set.revenue[name]
 		row := RevenueRow{BusinessDate: name}
 		if total != nil {
 			row.RoomRevenue = total.Room
@@ -544,7 +576,7 @@ func (s *Store) Revenue(dateFrom, dateTo string) ([]RevenueRow, time.Time, *OpEr
 		}
 		rows = append(rows, row)
 	}
-	return rows, s.asOf, nil
+	return rows, set.asOf, nil
 }
 
 // Sheet returns the one-page daily view for businessDate (FR-RPT-3):
@@ -559,9 +591,10 @@ func (s *Store) Sheet(businessDate string) (*DailySheet, *OpError) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	sheet := &DailySheet{BusinessDate: businessDate, AsOf: s.asOf}
+	set := s.current
+	sheet := &DailySheet{BusinessDate: businessDate, AsOf: set.asOf}
 	departed := map[string]bool{}
-	for _, stay := range s.stays {
+	for _, stay := range set.stays {
 		if stay.CheckIn != "" && stay.CheckIn <= businessDate && (stay.CheckOut == "" || stay.CheckOut > businessDate) {
 			sheet.InHouse = append(sheet.InHouse, SheetEntry{Kind: "stay", Ref: stay.ID})
 		}
@@ -572,7 +605,7 @@ func (s *Store) Sheet(businessDate string) (*DailySheet, *OpError) {
 			}
 		}
 	}
-	for _, record := range s.reservations {
+	for _, record := range set.reservations {
 		if !record.Active {
 			continue
 		}
@@ -583,12 +616,12 @@ func (s *Store) Sheet(businessDate string) (*DailySheet, *OpError) {
 			sheet.Departures = append(sheet.Departures, SheetEntry{Kind: "reservation", Ref: record.Ref})
 		}
 	}
-	for _, stay := range s.stays {
+	for _, stay := range set.stays {
 		if stay.CheckIn == businessDate && stay.ReservationRef == "" {
 			sheet.Arrivals = append(sheet.Arrivals, SheetEntry{Kind: "stay", Ref: stay.ID})
 		}
 	}
-	for folio, balance := range s.folios {
+	for folio, balance := range set.folios {
 		if balance != 0 {
 			sheet.OpenBalances = append(sheet.OpenBalances, BalanceEntry{FolioID: folio, BalanceMinor: balance})
 		}
@@ -632,15 +665,16 @@ func needsHousekeepingWork(state string) bool {
 func (s *Store) Housekeeping() ([]HousekeepingRoom, time.Time) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	set := s.current
 	var rooms []HousekeepingRoom
-	for _, row := range s.housekeeping {
+	for _, row := range set.housekeeping {
 		if !needsHousekeepingWork(row.State) {
 			continue
 		}
 		rooms = append(rooms, HousekeepingRoom{Room: row.Room, State: row.State})
 	}
 	sort.Slice(rooms, func(i, j int) bool { return rooms[i].Room < rooms[j].Room })
-	return rooms, s.asOf
+	return rooms, set.asOf
 }
 
 // Offsets returns the consumer-offset record per subscription: the
@@ -649,8 +683,9 @@ func (s *Store) Housekeeping() ([]HousekeepingRoom, time.Time) {
 func (s *Store) Offsets() map[string]string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	out := make(map[string]string, len(s.offsets))
-	for subscription, last := range s.offsets {
+	set := s.current
+	out := make(map[string]string, len(set.offsets))
+	for subscription, last := range set.offsets {
 		out[subscription] = last
 	}
 	return out
@@ -661,5 +696,6 @@ func (s *Store) Offsets() map[string]string {
 func (s *Store) AsOf() time.Time {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.asOf
+	set := s.current
+	return set.asOf
 }
