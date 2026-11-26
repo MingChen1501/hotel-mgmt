@@ -1469,4 +1469,211 @@ describe('book view', () => {
       "[data-testid='book-booking'] > :not([data-testid='book-confirmation'])",
     );
   });
+
+  // PA13 (AC-DSK-20, Refs #632): a PRICE_CHANGED refusal is recovered
+  // on the Book screen — re-quote the held stay, show the new total,
+  // and book only on a second Confirm at that total. The fresh quote
+  // carries its own idempotency key, so a double click still books
+  // once, and a failed re-read books nothing.
+
+  it('recovers a price-changed refusal by re-quoting and booking on the second confirm', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountBook();
+    await signIn(wrapper, fetchMock);
+
+    const happy = stubHappyPath(fetchMock);
+    let quoteCalls = 0;
+    let createCalls = 0;
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/rates/QuotePrice') {
+        quoteCalls += 1;
+        // The desk holds the first quote; the re-read answers the new
+        // total the server will accept.
+        const totalMinor = quoteCalls === 1 ? 22000 : 26000;
+        return Promise.resolve(
+          jsonResponse({
+            roomTypeId: 'standard',
+            arrivalDate: '2026-11-01',
+            departureDate: '2026-11-03',
+            discountName: null,
+            nights: [
+              { nightDate: '2026-11-01', priceMinor: 12000 },
+              { nightDate: '2026-11-02', priceMinor: 14000 },
+            ],
+            totalMinor,
+          }),
+        );
+      }
+      if (url === '/v1/reservations/CreateReservation') {
+        createCalls += 1;
+        if (createCalls === 1) {
+          return Promise.resolve(
+            jsonResponse(
+              {
+                code: 'PRICE_CHANGED',
+                message: 'The total you sent differs from the price in force.',
+                details: {
+                  roomTypeId: 'standard',
+                  arrivalDate: '2026-11-01',
+                  departureDate: '2026-11-03',
+                  requestedTotalMinor: 22000,
+                  quotedTotalMinor: 26000,
+                },
+              },
+              409,
+            ),
+          );
+        }
+        return Promise.resolve(
+          jsonResponse({
+            reservationRef: 'RSV-2',
+            state: 'confirmed',
+            quotedTotal: 26000,
+            reservationId: 'r-2',
+            stayId: null,
+          }),
+        );
+      }
+      if (url === '/v1/reservations/GetReservation') {
+        return Promise.resolve(
+          jsonResponse({
+            reservationRef: 'RSV-2',
+            roomTypeId: 'standard',
+            arrivalDate: '2026-11-01',
+            departureDate: '2026-11-03',
+            guest: { guestId: 'g-1' },
+            priceBasis: { totalMinor: 26000, discountName: null },
+            state: 'confirmed',
+            reservationId: 'r-2',
+            stayId: null,
+          }),
+        );
+      }
+      return happy(url, init);
+    });
+
+    await quote(wrapper);
+    await wrapper.find('[data-testid="book-guest-name"]').setValue('Guest One');
+    await wrapper.find('[data-testid="book-find-guest"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="book-guest-status"]').text()).toContain('Guest found');
+    });
+
+    const firstCreate = () =>
+      fetchMock.mock.calls.filter((call) => call[0] === '/v1/reservations/CreateReservation');
+    await wrapper.find('[data-testid="book-confirm"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="book-confirm-error"]').text()).toContain(
+        'The rate changed while you were booking',
+      );
+    });
+    // The sentence names the refreshed total and nothing was booked.
+    expect(wrapper.find('[data-testid="book-confirm-error"]').text()).toContain('260 đ');
+    expect(wrapper.find('[data-testid="book-result"]').exists()).toBe(false);
+    expect(firstCreate()).toHaveLength(1);
+
+    // The screen shows the new quote total and a second Confirm books
+    // at it with a fresh key, never the earlier one.
+    expect(wrapper.find('[data-testid="book-quote-total"]').text()).toContain('260 đ');
+    const firstKey = parseBody(firstCreate()[0]?.[1] as RequestInit).idempotencyKey;
+    await wrapper.find('[data-testid="book-confirm"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="book-result"]').exists()).toBe(true);
+    });
+    expect(firstCreate()).toHaveLength(2);
+    const secondBody = parseBody(firstCreate()[1]?.[1] as RequestInit);
+    expect(secondBody.priceBasis).toEqual({ totalMinor: 26000, discountName: null });
+    expect(secondBody.idempotencyKey).not.toBe(firstKey);
+    expect(wrapper.find('[data-testid="book-booking-readback"]').text()).toContain('260.00');
+    expect(wrapper.find('[data-testid="book-booking-readback"]').text()).not.toContain('220.00');
+  });
+
+  it('books nothing and clears the stale quote when the price cannot be re-read', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountBook();
+    await signIn(wrapper, fetchMock);
+
+    const happy = stubHappyPath(fetchMock);
+    let quoteCalls = 0;
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/rates/QuotePrice') {
+        quoteCalls += 1;
+        if (quoteCalls === 1) {
+          return happy(url, init);
+        }
+        return Promise.resolve(jsonResponse({ code: 'NOT_FOUND', message: 'no price' }, 404));
+      }
+      if (url === '/v1/reservations/CreateReservation') {
+        return Promise.resolve(jsonResponse({ code: 'PRICE_CHANGED', message: 'moved' }, 409));
+      }
+      return happy(url, init);
+    });
+
+    await quote(wrapper);
+    await wrapper.find('[data-testid="book-guest-name"]').setValue('Guest One');
+    await wrapper.find('[data-testid="book-find-guest"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="book-guest-status"]').text()).toContain('Guest found');
+    });
+    await wrapper.find('[data-testid="book-confirm"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="book-confirm-error"]').text()).toContain(
+        'No rate price is set for this room type',
+      );
+    });
+    // No stale quote and no Confirm: nothing more can be sent.
+    expect(wrapper.find('[data-testid="book-quote-section"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="book-confirm"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="book-result"]').exists()).toBe(false);
+  });
+
+  it('keeps the displayed quote on an unreadable-pricing refusal and does not re-quote', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountBook();
+    await signIn(wrapper, fetchMock);
+
+    const happy = stubHappyPath(fetchMock);
+    let quoteCalls = 0;
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/rates/QuotePrice') {
+        quoteCalls += 1;
+        return happy(url, init);
+      }
+      if (url === '/v1/reservations/CreateReservation') {
+        return Promise.resolve(
+          jsonResponse(
+            {
+              code: 'UPSTREAM_UNAVAILABLE',
+              message: 'pricing down',
+              details: { upstream: 'rates', operation: 'QuotePrice' },
+            },
+            503,
+          ),
+        );
+      }
+      return happy(url, init);
+    });
+
+    await quote(wrapper);
+    await wrapper.find('[data-testid="book-guest-name"]').setValue('Guest One');
+    await wrapper.find('[data-testid="book-find-guest"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="book-guest-status"]').text()).toContain('Guest found');
+    });
+    await wrapper.find('[data-testid="book-confirm"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="book-confirm-error"]').text()).toContain(
+        'That did not work',
+      );
+    });
+    // The displayed quote is kept and Pricing is not asked again: the
+    // clerk may retry the same booking.
+    expect(wrapper.find('[data-testid="book-quote-section"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="book-quote-total"]').text()).toContain('220 đ');
+    expect(quoteCalls).toBe(1);
+    expect(wrapper.find('[data-testid="book-result"]').exists()).toBe(false);
+  });
 });

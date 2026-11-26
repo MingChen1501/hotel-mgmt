@@ -117,14 +117,6 @@
                 >
                   {{ t('desk.book.confirming', {}, 'Confirming the booking…') }}
                 </p>
-                <Message
-                  v-if="confirmError"
-                  severity="error"
-                  role="alert"
-                  data-testid="book-confirm-error"
-                >
-                  {{ confirmError }}
-                </Message>
               </div>
               <p
                 v-else
@@ -132,6 +124,18 @@
               >
                 {{ t('desk.book.no_quote', {}, 'Get a price first, then confirm.') }}
               </p>
+              <!-- The refusal sentence stays visible in both states: a
+                price-changed recovery that could not re-read clears the
+                stale quote, and the clerk must still read why nothing
+                was booked (AC-DSK-20, Refs #632). -->
+              <Message
+                v-if="confirmError"
+                severity="error"
+                role="alert"
+                data-testid="book-confirm-error"
+              >
+                {{ confirmError }}
+              </Message>
             </template>
           </Card>
         </div>
@@ -877,6 +881,62 @@ export default defineComponent({
         : [];
     }
 
+    // re-reads the quote for the stay the desk already holds after a
+    // PRICE_CHANGED refusal (AC-DSK-20, Refs #632). A successful read
+    // replaces the displayed quote and mints one fresh idempotency key
+    // for it, so the next Confirm books at the new total and still
+    // books once on a double click. A failed read books nothing: a
+    // lost rate price falls back to the existing no-price sentence, any
+    // other failure says the price could not be read, and the stale
+    // quote is cleared so Confirm cannot resend it.
+    async function recoverFromPriceChange(held: Quote): Promise<void> {
+      const body: Record<string, string> = {
+        roomTypeId: held.roomTypeId,
+        arrivalDate: held.arrivalDate,
+        departureDate: held.departureDate,
+      };
+      const discount = discountName.value.trim();
+      if (discount !== '') {
+        body.discountName = discount;
+      }
+      try {
+        const priced = await apiFetch<Quote>('/v1/rates/QuotePrice', {
+          method: 'POST',
+          body: JSON.stringify(body),
+        });
+        quote.value = priced;
+        quoteKey.value = newIdempotencyKey();
+        confirmError.value = t(
+          'desk.book.refused_price_changed',
+          { total: formatVnd(priced.totalMinor) },
+          'The rate changed while you were booking. The new total is {total}. Confirm again to book at this price.',
+        );
+      } catch (err) {
+        if (isSignedOut(err)) {
+          expireToGate();
+          return;
+        }
+        quote.value = null;
+        quoteKey.value = null;
+        if (errorCode(err) === 'NOT_FOUND') {
+          confirmError.value = t(
+            'desk.book.refused_noprice',
+            {},
+            'No rate price is set for this room type on the selected dates, so it is not open for booking yet.',
+          );
+          if (noRateReason(err)) {
+            notOperationalRoomTypeId.value = held.roomTypeId;
+          }
+          return;
+        }
+        confirmError.value = t(
+          'error.upstream.price_unavailable',
+          {},
+          'The price could not be read, so the booking was refused.',
+        );
+      }
+    }
+
     async function onConfirm(): Promise<void> {
       if (confirming.value) {
         return;
@@ -1033,6 +1093,14 @@ export default defineComponent({
       } catch (err) {
         if (isSignedOut(err)) {
           expireToGate();
+          return;
+        }
+        if (errorCode(err) === 'PRICE_CHANGED') {
+          // AC-DSK-20 (Refs #632): the server refused a total Pricing
+          // no longer quotes. Re-read the quote for the stay the desk
+          // already holds, show the new total, and require a second
+          // Confirm — the clerk never books a total they have not seen.
+          await recoverFromPriceChange(activeQuote);
           return;
         }
         if (errorCode(err) === 'CONFLICT') {
