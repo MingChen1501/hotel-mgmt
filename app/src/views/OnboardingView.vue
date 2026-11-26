@@ -854,11 +854,14 @@ export default defineComponent({
             'Enter a room type name to continue.',
           );
         }
-        if (row.capacity.trim() !== '' && !isWholeNumber(row.capacity.trim())) {
+        if (
+          row.capacity.trim() !== '' &&
+          (!isWholeNumber(row.capacity.trim()) || Number(row.capacity.trim()) < 1)
+        ) {
           return t(
             'desk.onboarding.capacity_invalid',
             {},
-            'Capacity must be a whole number of 0 or more.',
+            'Enter a whole number of guests of 1 or more, or leave it empty.',
           );
         }
       }

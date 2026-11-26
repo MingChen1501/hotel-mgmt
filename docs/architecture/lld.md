@@ -8916,17 +8916,17 @@ a future stay and the under-counting risk is bounded by exactly those two
 names rather than by an open-ended "any non-vacant" rule.
 
 - **In-memory aggregate.** The room set is the same `ofType`
-  (`src/store.ts:384`) and `blockedRooms` is built exactly as today
-  (`:385-394`). `sellableCount` becomes one predicate over that same set
+  (`src/store.ts:404`) and `blockedRooms` is built exactly as today
+  (`:405-414`). `sellableCount` becomes one predicate over that same set
   — a room counts when it is block-free and its state is not in the
-  non-sellable set (`:399-402` new) — so `totalCount` stays
-  `ofType.length` (`:399`) and `blockedRooms` keeps its membership and
-  order (`:403`).
+  non-sellable set (`:420-422` new) — so `totalCount` stays
+  `ofType.length` (`:419`) and `blockedRooms` keeps its membership and
+  order (`:423`).
 - **Postgres aggregate.** The existing `count(*)` / `count(*) FILTER
   (WHERE NOT EXISTS …)` query grows one conjunct in the filter: the
-  room's state is not in the two-name list (`src/pgstore.ts:386-397`
-  new). The `blockedRooms` query is untouched (`:398-407`), and
-  `sellableCount` still comes from the same `counted` row (`:412-413`),
+  room's state is not in the two-name list (`src/pgstore.ts:387-398`
+  new). The `blockedRooms` query is untouched (`:399-408`), and
+  `sellableCount` still comes from the same `counted` row (`:413-414`),
   so neither branch adds a round trip.
 - **Both stores agree.** The predicate is the same two names in both
   files — a status set in TypeScript and a `state NOT IN (...)`
@@ -8943,8 +8943,8 @@ names rather than by an open-ended "any non-vacant" rule.
 For a named `roomNumber`, after the block check (36.3), the branch
 answers success with today's six fields and `totalCount: 1`; only
 `sellableCount` moves to `0` — and `blockedRooms` stays `[]` — when the
-room's state is in the non-sellable set (`src/store.ts:375-382` new;
-`src/pgstore.ts:375-384` new). A block-free vacant room still answers
+room's state is in the non-sellable set (`src/store.ts:395-402` new;
+`src/pgstore.ts:376-385` new). A block-free vacant room still answers
 `sellableCount: 1` exactly as today.
 
 Decided over a refusal because it reuses today's status (200), envelope,
@@ -8957,8 +8957,8 @@ does not carry and would have moved `RoomsView`'s read (36.3).
 ### 36.3 Block refusal outranks the state answer, and a room is subtracted once
 
 - **`STATE_ILLEGAL` keeps priority.** Both stores test the covering
-  block before they look at state (`src/store.ts:361-371`,
-  `src/pgstore.ts:359-373`), so a block-covered `out-of-order` room still
+  block before they look at state (`src/store.ts:381-391`,
+  `src/pgstore.ts:360-374`), so a block-covered `out-of-order` room still
   refuses 422 `STATE_ILLEGAL` naming the room and carrying the block's
   dates and reason (`rooms.state.room_blocked`) — never a 200 with
   `sellableCount: 0`. The ordering is a desk-visible contract:
@@ -8978,7 +8978,7 @@ does not carry and would have moved `RoomsView`'s read (36.3).
 - **`blockedRooms` is block-only.** Room state never adds a room to
   `blockedRooms`: its membership, order, and the `BlockRoom` /
   `ReleaseBlock` codes, statuses, details, and stored effect stay as they
-  are (`src/store.ts:493-569`; `src/pgstore.ts:564-667` same semantics),
+  are (`src/store.ts:513-589`; `src/pgstore.ts:565-668` same semantics),
   and releasing a block returns a room to sale only when its state is
   sellable.
 
@@ -9008,17 +9008,17 @@ the sold-out single-room path, and the block refusal:
 ```mermaid
 flowchart TD
     A[POST /v1/rooms/CheckRoomTypeSellability  server.ts:193-196] --> B{roomNumber supplied}
-    B -- no, aggregate --> C[Rooms of the type and block-covered numbers for the range  store.ts:384-394, pgstore.ts:386-407]
-    C --> D[sellableCount counts the rooms that are block-free and whose state is neither out-of-order nor occupied, once each  store.ts:399-402 new, pgstore.ts:386-397 new]
-    D --> E[200 totalCount N, sellableCount, blockedRooms unchanged  store.ts:395-404, pgstore.ts:408-415]
+    B -- no, aggregate --> C[Rooms of the type and block-covered numbers for the range  store.ts:404-414, pgstore.ts:387-408]
+    C --> D[sellableCount counts the rooms that are block-free and whose state is neither out-of-order nor occupied, once each  store.ts:420-422 new, pgstore.ts:387-398 new]
+    D --> E[200 totalCount N, sellableCount, blockedRooms unchanged  store.ts:415-424, pgstore.ts:409-416]
     E --> K[Desk availability figure, the booking ceiling stays totalCount minus len blockedRooms  ADR-0006 D2, availability client.go:44-53]
     B -- yes, single room --> F{Room covered by a block for the range?}
-    F -- yes --> G[422 STATE_ILLEGAL naming the room, block dates and reason  store.ts:361-371, pgstore.ts:359-373]
+    F -- yes --> G[422 STATE_ILLEGAL naming the room, block dates and reason  store.ts:381-391, pgstore.ts:360-374]
     G --> G1[RoomsView renders the covering-block note  RoomsView.vue:549-593]
     F -- no --> H{Room state in the non-sellable set?}
-    H -- out-of-order or occupied --> I[200 totalCount 1, sellableCount 0, blockedRooms empty  store.ts:375-382 new, pgstore.ts:375-384 new]
+    H -- out-of-order or occupied --> I[200 totalCount 1, sellableCount 0, blockedRooms empty  store.ts:395-402 new, pgstore.ts:376-385 new]
     I --> I1[Book confirm refuses with desk.book.refused_soldout, no reservation created  BookView.vue:1004-1011]
-    H -- vacant-dirty, vacant-clean, or vacant-inspected --> J[200 totalCount 1, sellableCount 1, as today  store.ts:375-382, pgstore.ts:375-384]
+    H -- vacant-dirty, vacant-clean, or vacant-inspected --> J[200 totalCount 1, sellableCount 1, as today  store.ts:395-402, pgstore.ts:376-385]
 ```
 
 Edge trace:
@@ -9026,21 +9026,21 @@ Edge trace:
 - A–B: one route answers both branches
   (`services/rooms/src/server.ts:193-196`); the type and both dates
   resolve first, and a reversed range refuses `VALIDATION_FAILED`
-  (`src/store.ts:356-358`; `src/pgstore.ts:354-356`).
+  (`src/store.ts:376-378`; `src/pgstore.ts:355-357`).
 - B–C–D–E: the aggregate branch keeps `ofType` and `blockedRooms`
-  (`src/store.ts:384-394`; `src/pgstore.ts:386-407`) and replaces the
+  (`src/store.ts:404-414`; `src/pgstore.ts:387-408`) and replaces the
   subtraction with one block-free-and-sellable-state predicate
-  (`:399-402` new; `:386-397` new), so `totalCount` and `blockedRooms`
+  (`:420-422` new; `:387-398` new), so `totalCount` and `blockedRooms`
   are byte-identical to today while `sellableCount` can only fall
-  (`src/store.ts:395-404`; `src/pgstore.ts:408-415`).
+  (`src/store.ts:415-424`; `src/pgstore.ts:409-416`).
 - E–K: the number the desk reads; the guard reads the other two fields,
   so the ceiling does not move (36.4).
 - B–F–G: the block test runs first in both stores
-  (`src/store.ts:361-371`; `src/pgstore.ts:359-373`) and keeps its
+  (`src/store.ts:381-391`; `src/pgstore.ts:360-374`) and keeps its
   `STATE_ILLEGAL` shape and its `RoomsView` consumer
   (`app/src/views/RoomsView.vue:549-593`).
 - F–H–I: after a block-free check, a non-sellable state answers 200 with
-  `sellableCount: 0` (`src/store.ts:375-382` new; `src/pgstore.ts:375-384`
+  `sellableCount: 0` (`src/store.ts:395-402` new; `src/pgstore.ts:376-385`
   new), and the Book confirm's existing sold-out refusal is what refuses
   the booking (`app/src/views/BookView.vue:977-1011`); a booking that
   loses the last-room race is refused through the same sentence on
@@ -9052,7 +9052,7 @@ Edge trace:
 Failure/rollback path: a covering block still refuses before any state
 test, so a blocked room's answer and the desk block note do not change.
 An unknown type or room still refuses `NOT_FOUND`
-(`src/store.ts:221-234`), a reversed range `VALIDATION_FAILED` before
+(`src/store.ts:239-252`), a reversed range `VALIDATION_FAILED` before
 either branch runs, and a type with no rooms answers `0`/`0`. The read
 mutates no row, emits no event, and holds no lock across another module,
 so a refusal writes nothing. Rollback is the single implementation PR:
@@ -9683,45 +9683,49 @@ As found (at this spec head, read-only):
 
 ### 38.1 Where the rule sits: one exported check beside `requireString`, called by both stores before any write
 
+As built by the implementation PR (the "as found" list above keeps the
+pre-change head it cited; every pin below is the landed `file:line`).
+
 - **One module-level helper in `store.ts`, exported, used by both
   stores.** `requireCapacity(value: unknown): number | null` joins
-  `requireDate` and `requireString` (`store.ts:98-110`), throwing one
+  `requireDate` and `requireString` (`store.ts:98-128`), throwing one
   `HttpError` and returning the accepted value; `pgstore.ts` imports it
   from `./store.js` exactly as it already imports `requireString`
-  (`pgstore.ts:5-26`). Because the two stores call the same function,
+  (`pgstore.ts:5-27`). Because the two stores call the same function,
   they refuse the same value classes with the same code, field, and
   sentence by construction (AC-CAP-3, FR-CAP-3), and no second copy of
   the rule can drift.
 - **Absent and present are distinguished before the helper's value
   test.** `undefined` — the field omitted — returns `null`, which keeps
   today's fallback meaning: the in-memory record takes the existing
-  value (`store.ts:248`, `:279`), the Postgres type merge keeps
-  `capacity ?? current.capacity` (`pgstore.ts:160`), and the room update
-  keeps `COALESCE($5, capacity)` (`:221`). A JSON `null` is *present*
+  value (`store.ts:267`, `:299`), the Postgres type merge keeps
+  `capacity ?? current.capacity` (`pgstore.ts:161`), and the room update
+  keeps `COALESCE($5, capacity)` (`:222`). A JSON `null` is *present*
   and is refused: a caller that sends the key with `null` has made a
   mistake, not asked to leave the field alone (requirements 39.1 part
   2).
 - **The call sites are the two capacity reads, and nothing else moves.**
   `upsertRoomType` calls it immediately after the existing `name` and
   `actor` checks and before the record is built
-  (`store.ts:240-242`; `pgstore.ts:142-144`), and `upsertRoom` calls it
+  (`store.ts:258-260`; `pgstore.ts:143-145`), and `upsertRoom` calls it
   at its capacity read after the room type resolves
-  (`store.ts:271-280`; `pgstore.ts:204-208`), so today's
+  (`store.ts:286-291`; `pgstore.ts:201-206`), so today's
   `NOT_FOUND` for an unknown room type keeps its precedence and the
   check sits exactly where its field is read — the cross-field
   precedence the requirements leave undecided (section 39.6) does not
   move.
 - **In Postgres the check runs before any transaction opens.** Both
-  helpers are computed before `this.withTx` (`pgstore.ts:152`, `:212`),
+  helpers are computed before `this.withTx` (`pgstore.ts:153`, `:213`),
   so a refused request opens no transaction, takes no lock, issues no
-  statement, and reaches neither the `INSERT`/`UPDATE` nor the outbox
-  insert (`:170`, `:195`, `:231`, `:257`). A non-finite value therefore
-  stops at the shared check instead of reaching the `INT` parameter
-  binding that answers today's 500 (AC-CAP-2, AC-CAP-3).
+  write statement, and reaches neither the `UPDATE`/`INSERT`
+  (`:166`, `:183`, `:221`, `:246`) nor the outbox insert
+  (`:172-178`, `:188-194`, `:236-242`, `:261-267`). A non-finite value
+  therefore stops at the shared check instead of reaching the `INT`
+  parameter binding that answers today's 500 (AC-CAP-2, AC-CAP-3).
 - **In the in-memory store the check runs before the record is
   built.** The refusal precedes `rooms`/`roomTypes` mutation
-  (`store.ts:255-256`, `:288`) and the `emit` call (`:257-263`,
-  `:289-295`), so no row object is created, no map entry is replaced,
+  (`store.ts:274-275`, `:308`) and the `emit` call (`:276-282`,
+  `:309-315`), so no row object is created, no map entry is replaced,
   and no `room-upserted` event is appended (AC-CAP-2, AC-CAP-3).
 
 ### 38.2 The field rule: one accepted value class, five refusal classes
@@ -9756,13 +9760,13 @@ never rounded into the column, because it no longer reaches the column.
   `INTERNAL_ERROR`, so a value the service can name is never a 500.
 - **The sentence.** One new catalogue key `rooms.validation.capacity`
   in the existing `{field} must be …` family
-  (`messages/en.json:180`, the `rooms.validation.date_format` shape):
+  (`messages/en.json:181`, the `rooms.validation.date_format` shape):
   `"{field} must be a whole number of guests of at least 1."`, called
   with `field: "capacity"`. It is added to the canonical catalogue, to
   all eight byte-identical runtime mirrors, and at parity in
   `messages/vi.json` (`NFR-I18N-1`; `script/catalogue-coverage-check.sh`
   asserts mirrors and parity). The wizard's own sentence reuses the
-  existing `desk.onboarding.capacity_invalid` key (`messages/en.json:700`)
+  existing `desk.onboarding.capacity_invalid` key (`messages/en.json:701`)
   rather than a second key.
 - **Nothing written, no event.** Refusal precedes every mutation on both
   paths (38.1), so no row is created, an existing room or type keeps
@@ -9787,19 +9791,19 @@ Server write path — `UpsertRoomType` and `UpsertRoom`, both stores:
 
 ```mermaid
 flowchart TD
-    A[POST UpsertRoomType or UpsertRoom  server.ts:139-160] --> B[Token present and JSON body parsed  server.ts:130-165]
-    B --> C[Store method  store.ts:239 or :266, pgstore.ts:141 or :199]
-    C --> D[Existing required-field checks: name or number, then actor  store.ts:240-241 or :267-268, pgstore.ts:142-143 or :200-201]
+    A[POST UpsertRoomType or UpsertRoom  server.ts:139-159] --> B[Token present and JSON body parsed  server.ts:130-159]
+    B --> C[Store method  store.ts:257 or :285, pgstore.ts:142 or :200]
+    C --> D[Existing required-field checks: name or number, then actor  store.ts:258-259 or :286-287, pgstore.ts:143-144 or :201-202]
     D --> E{capacity key omitted?}
-    E -->|yes| F[Today's meaning: create stores none, update keeps the stored one  store.ts:248 or :279, pgstore.ts:160 or :221]
-    E -->|no| G[requireCapacity, one shared exported check  new, store.ts beside :105-110]
+    E -->|yes| F[Today's meaning: create stores none, update keeps the stored one  store.ts:267 or :299, pgstore.ts:161 or :222]
+    E -->|no| G[requireCapacity, one shared exported check  store.ts:118-128]
     G -->|not a number: text, null, true, array, object| R1[400 VALIDATION_FAILED naming capacity  server.ts:91-94]
     G -->|fractional: 2.5| R1
     G -->|non-finite: 1e999 to Infinity, Infinity, NaN| R1
     G -->|integer below 1: 0 or negative| R1
-    G -->|integer at least 1: 1, 2, 21| H[Build the record or open the transaction  store.ts:242-256 or :269-287, pgstore.ts:152 or :212]
-    H --> I[Write the row verbatim, then emit room-upserted  store.ts:255-263 or :288-295, pgstore.ts:170 or :195, :231 or :257]
-    I --> J[200 with today's response fields  server.ts:139-160]
+    G -->|integer at least 1: 1, 2, 21| H[Build the record or open the transaction  store.ts:264-275 or :293-308, pgstore.ts:153 or :213]
+    H --> I[Write the row verbatim, then emit room-upserted  store.ts:274-282 or :308-315, pgstore.ts:166 or :183, :221 or :246]
+    I --> J[200 with today's response fields  server.ts:139-159]
     R1 --> N[Nothing built, written, or emitted; no driver call, so a non-finite value can no longer become a 500]
 ```
 
@@ -9807,11 +9811,11 @@ Onboarding wizard — the reader-visible move:
 
 ```mermaid
 flowchart TD
-    A[Step 3 capacity input  OnboardingView.vue:857-864] --> B{Empty, or digits and value at least 1}
-    B -->|empty| C[Send no capacity member  OnboardingView.vue:915-917]
-    B -->|0, fractional, negative, or non-digits| R[Plain desk.onboarding.capacity_invalid sentence, nothing sent  messages/en.json:700, messages/vi.json:700]
+    A[Step 3 capacity input  OnboardingView.vue:857-867] --> B{Empty, or digits and value at least 1}
+    B -->|empty| C[Send no capacity member  OnboardingView.vue:917-920]
+    B -->|0, fractional, negative, or non-digits| R[Plain desk.onboarding.capacity_invalid sentence, nothing sent  messages/en.json:701, messages/vi.json:701]
     R --> S[Manager corrects the field on step 3; no UpsertRoomType or UpsertRoom call is made]
-    B -->|whole number of at least 1| D[Post the types, then the rooms  OnboardingView.vue:915-917]
+    B -->|whole number of at least 1| D[Post the types, then the rooms  OnboardingView.vue:917-920]
     D --> E{Server requireCapacity refuses}
     E -->|no| F[200; the saved capacity reads back unchanged]
     E -->|yes| G[The existing plain failure sentence; no technical code shown]

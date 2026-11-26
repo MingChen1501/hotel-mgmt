@@ -109,6 +109,24 @@ export function requireString(value: unknown, field: string): string {
   return value.trim();
 }
 
+// Capacity is a whole number of at least 1 (BR-69, #637; LLD section
+// 38). Both stores call this one helper before any record build or
+// transaction, so the in-memory and Postgres answers cannot drift.
+// An omitted key (undefined) keeps today's meaning and returns null;
+// every other present value — a JSON null included — is refused by
+// name, never coerced, rounded, or dropped. No upper bound is added.
+export function requireCapacity(value: unknown): number | null {
+  if (value === undefined) {
+    return null;
+  }
+  if (typeof value !== "number" || !Number.isFinite(value) || !Number.isInteger(value) || value < 1) {
+    throw new HttpError("VALIDATION_FAILED", msg("rooms.validation.capacity", { field: "capacity" }), {
+      field: "capacity",
+    });
+  }
+  return value;
+}
+
 // requestActorAnnotation returns the additive requestActor value for a
 // JSON outbox payload (BR-65, #643): the request's actor is preserved
 // only when it is a present, non-blank string that differs exactly from
@@ -239,13 +257,14 @@ export class RoomStore implements RoomStoreAPI {
   async upsertRoomType(input: UpsertRoomTypeInput, sessionActor: string): Promise<RoomTypeRecord> {
     const name = requireString(input.name, "name");
     requireString(input.actor, "actor");
+    const capacity = requireCapacity(input.capacity);
     const actor = sessionActor;
     const requestActor = requestActorAnnotation(sessionActor, input.actor);
     const existing = this.roomTypesByName.get(name);
     const record: RoomTypeRecord = {
       id: existing?.id ?? randomUUID(),
       name,
-      capacity: typeof input.capacity === "number" ? input.capacity : (existing?.capacity ?? null),
+      capacity: capacity ?? (existing?.capacity ?? null),
       bedType: typeof input.bedType === "string" ? input.bedType : (existing?.bedType ?? null),
       features:
         typeof input.features === "object" && input.features !== null
@@ -269,6 +288,7 @@ export class RoomStore implements RoomStoreAPI {
     const actor = sessionActor;
     const requestActor = requestActorAnnotation(sessionActor, input.actor);
     const roomType = await this.resolveRoomType(input.roomType);
+    const capacity = requireCapacity(input.capacity);
     const existing = this.rooms.get(number);
     const record: RoomRecord = {
       id: existing?.id ?? randomUUID(),
@@ -276,7 +296,7 @@ export class RoomStore implements RoomStoreAPI {
       roomTypeId: roomType.id,
       floor: typeof input.floor === "string" ? input.floor : (existing?.floor ?? null),
       bedType: typeof input.bedType === "string" ? input.bedType : (existing?.bedType ?? null),
-      capacity: typeof input.capacity === "number" ? input.capacity : (existing?.capacity ?? null),
+      capacity: capacity ?? (existing?.capacity ?? null),
       features:
         typeof input.features === "object" && input.features !== null
           ? (input.features as Record<string, unknown>)

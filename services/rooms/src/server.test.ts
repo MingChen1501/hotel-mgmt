@@ -1096,3 +1096,338 @@ describe("internal error envelope (#627)", () => {
     }, new RefusingRoomStore());
   });
 });
+
+// Contract guards for the #637 capacity rule (BR-69): a present
+// capacity is a whole number of at least 1 stored verbatim, every
+// other present value is refused VALIDATION_FAILED naming capacity
+// with nothing written and no room-upserted event. Both operations,
+// in-memory store, request level; the Postgres twins live in
+// pgstore.test.ts and skip without TEST_PG_URL.
+type CapacityErrorEnvelope = {
+  code: string;
+  message: string;
+  details: { field?: string };
+  traceId: string;
+};
+
+const CAPACITY_MESSAGE = msg("rooms.validation.capacity", { field: "capacity" });
+
+async function requestRawBody(
+  port: number,
+  path: string,
+  body: string,
+): Promise<{ status: number; body: unknown }> {
+  const res = await fetch(`http://127.0.0.1:${port}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${TOKEN}` },
+    body,
+  });
+  return { status: res.status, body: await res.json() };
+}
+
+function assertCapacityRefusal(result: { status: number; body: unknown }): void {
+  assert.equal(result.status, 400);
+  const envelope = result.body as CapacityErrorEnvelope;
+  assert.equal(envelope.code, "VALIDATION_FAILED");
+  assert.equal(envelope.details.field, "capacity");
+  assert.equal(envelope.message, CAPACITY_MESSAGE);
+  assert.equal(typeof envelope.traceId, "string");
+  assert.ok(envelope.traceId.length > 0);
+}
+
+const REFUSED_CAPACITIES: unknown[] = [
+  -1,
+  0,
+  -2147483648,
+  2.5,
+  0.5,
+  1e-1,
+  "2",
+  null,
+  true,
+  [2],
+  {},
+];
+
+describe("room capacity validation (#637, CAP1-CAP5, CAP10)", () => {
+  it("stores an accepted capacity verbatim and reads it back (CAP1, AC-CAP-1)", async () => {
+    const store = new RoomStore();
+    await withServer(async (port) => {
+      for (const capacity of [1, 21]) {
+        const created = await request(port, "POST", "/v1/rooms/UpsertRoomType", {
+          name: `Type${capacity}`,
+          capacity,
+          bedType: "queen",
+          features: { balcony: true },
+          actor: "manager",
+        });
+        assert.equal(created.status, 200);
+        assert.equal((created.body as { capacity: number }).capacity, capacity);
+      }
+      // 21 sits above the manage form's client-side 20 bound: no
+      // server ceiling is applied.
+      const listed = await request(port, "POST", "/v1/rooms/ListRoomTypes", {});
+      const byName = new Map(
+        (listed.body as { roomTypes: Array<{ name: string; capacity: number | null }> }).roomTypes.map((type) => [
+          type.name,
+          type.capacity,
+        ]),
+      );
+      assert.equal(byName.get("Type1"), 1);
+      assert.equal(byName.get("Type21"), 21);
+
+      // A later accepted update overwrites the stored value, so the
+      // value is stored, not merely echoed.
+      const updated = await request(port, "POST", "/v1/rooms/UpsertRoomType", {
+        name: "Type21",
+        capacity: 7,
+        actor: "manager",
+      });
+      assert.equal(updated.status, 200);
+      assert.equal((updated.body as { capacity: number }).capacity, 7);
+
+      // 2.0 in raw JSON arrives as 2 and is whole.
+      const decimal = await requestRawBody(
+        port,
+        "/v1/rooms/UpsertRoomType",
+        `{"name":"Decimal","capacity":2.0,"actor":"manager"}`,
+      );
+      assert.equal(decimal.status, 200);
+      assert.equal((decimal.body as { capacity: number }).capacity, 2);
+
+      const roomOne = await request(port, "POST", "/v1/rooms/UpsertRoom", {
+        number: "101",
+        roomType: "Type1",
+        capacity: 1,
+        floor: "1",
+        actor: "manager",
+      });
+      assert.equal(roomOne.status, 200);
+      assert.equal((await store.findRoom("101")).capacity, 1);
+      await request(port, "POST", "/v1/rooms/UpsertRoom", {
+        number: "101",
+        roomType: "Type1",
+        capacity: 21,
+        actor: "manager",
+      });
+      assert.equal((await store.findRoom("101")).capacity, 21);
+    }, store);
+  });
+
+  it("keeps an omitted capacity as create-none and update-keeps (CAP2, AC-CAP-1)", async () => {
+    const store = new RoomStore();
+    await withServer(async (port) => {
+      const created = await request(port, "POST", "/v1/rooms/UpsertRoomType", {
+        name: "Sparse",
+        actor: "manager",
+      });
+      assert.equal(created.status, 200);
+      assert.equal((created.body as { capacity: number | null }).capacity, null);
+
+      const updated = await request(port, "POST", "/v1/rooms/UpsertRoomType", {
+        name: "Sparse",
+        capacity: 3,
+        actor: "manager",
+      });
+      assert.equal((updated.body as { capacity: number }).capacity, 3);
+      const kept = await request(port, "POST", "/v1/rooms/UpsertRoomType", {
+        name: "Sparse",
+        actor: "manager",
+      });
+      assert.equal((kept.body as { capacity: number }).capacity, 3);
+
+      await request(port, "POST", "/v1/rooms/UpsertRoom", {
+        number: "201",
+        roomType: "Sparse",
+        actor: "manager",
+      });
+      assert.equal((await store.findRoom("201")).capacity, null);
+      await request(port, "POST", "/v1/rooms/UpsertRoom", {
+        number: "201",
+        roomType: "Sparse",
+        capacity: 4,
+        actor: "manager",
+      });
+      assert.equal((await store.findRoom("201")).capacity, 4);
+      await request(port, "POST", "/v1/rooms/UpsertRoom", {
+        number: "201",
+        roomType: "Sparse",
+        actor: "manager",
+      });
+      assert.equal((await store.findRoom("201")).capacity, 4);
+    }, store);
+  });
+
+  it("refuses every unusable capacity on both operations and never answers a 500 (CAP3, AC-CAP-2)", async () => {
+    const store = new RoomStore();
+    await store.upsertRoomType({ name: "Deluxe", capacity: 2, actor: "manager" }, TOKEN);
+    await withServer(async (port) => {
+      for (const capacity of REFUSED_CAPACITIES) {
+        const type = await request(port, "POST", "/v1/rooms/UpsertRoomType", {
+          name: "Deluxe",
+          capacity,
+          actor: "manager",
+        });
+        assertCapacityRefusal(type);
+
+        const room = await request(port, "POST", "/v1/rooms/UpsertRoom", {
+          number: "101",
+          roomType: "Deluxe",
+          capacity,
+          actor: "manager",
+        });
+        assertCapacityRefusal(room);
+      }
+
+      // 1e999 must travel as raw JSON so JSON.parse yields Infinity.
+      const nonFinite = await requestRawBody(
+        port,
+        "/v1/rooms/UpsertRoomType",
+        `{"name":"Deluxe","capacity":1e999,"actor":"manager"}`,
+      );
+      assertCapacityRefusal(nonFinite);
+      const nonFiniteRoom = await requestRawBody(
+        port,
+        "/v1/rooms/UpsertRoom",
+        `{"number":"101","roomType":"Deluxe","capacity":1e999,"actor":"manager"}`,
+      );
+      assertCapacityRefusal(nonFiniteRoom);
+    }, store);
+
+    // Infinity, -Infinity, and NaN never arrive over JSON, so they
+    // are driven through direct store calls on both operations.
+    for (const capacity of [Infinity, -Infinity, NaN]) {
+      await assert.rejects(
+        () => store.upsertRoomType({ name: "Deluxe", capacity, actor: "manager" }, TOKEN),
+        (err: unknown) => {
+          const http = err as HttpError;
+          assert.equal(http.code, "VALIDATION_FAILED");
+          assert.equal(http.message, CAPACITY_MESSAGE);
+          assert.deepEqual(http.details, { field: "capacity" });
+          return true;
+        },
+      );
+      await assert.rejects(
+        () => store.upsertRoom({ number: "101", roomType: "Deluxe", capacity, actor: "manager" }, TOKEN),
+        (err: unknown) => {
+          const http = err as HttpError;
+          assert.equal(http.code, "VALIDATION_FAILED");
+          assert.equal(http.message, CAPACITY_MESSAGE);
+          assert.deepEqual(http.details, { field: "capacity" });
+          return true;
+        },
+      );
+    }
+  });
+
+  it("writes nothing and emits no room-upserted event on a refusal (CAP4, AC-CAP-2)", async () => {
+    const store = new RoomStore();
+    await store.upsertRoomType({ name: "Deluxe", capacity: 2, bedType: "king", actor: "manager" }, TOKEN);
+    await store.upsertRoom({ number: "101", roomType: "Deluxe", capacity: 2, floor: "1", actor: "manager" }, TOKEN);
+    const eventCount = roomsInternals(store).outbox.length;
+    const typeBefore = (await store.listRoomTypes()).find((type) => type.name === "Deluxe");
+    const roomBefore = await store.findRoom("101");
+
+    await withServer(async (port) => {
+      for (const capacity of REFUSED_CAPACITIES) {
+        await request(port, "POST", "/v1/rooms/UpsertRoomType", {
+          name: "Deluxe",
+          capacity,
+          actor: "manager",
+        });
+        await request(port, "POST", "/v1/rooms/UpsertRoom", {
+          number: "101",
+          roomType: "Deluxe",
+          capacity,
+          actor: "manager",
+        });
+      }
+      await requestRawBody(
+        port,
+        "/v1/rooms/UpsertRoomType",
+        `{"name":"Deluxe","capacity":1e999,"actor":"manager"}`,
+      );
+      // A refused create leaves no row at all.
+      await request(port, "POST", "/v1/rooms/UpsertRoomType", {
+        name: "Rejected",
+        capacity: 0,
+        actor: "manager",
+      });
+      const list = await request(port, "POST", "/v1/rooms/ListRoomTypes", {});
+      assert.equal(
+        (list.body as { roomTypes: Array<{ name: string }> }).roomTypes.some((type) => type.name === "Rejected"),
+        false,
+      );
+    }, store);
+
+    assert.deepEqual(roomsInternals(store).outbox.length, eventCount);
+    const typeAfter = (await store.listRoomTypes()).find((type) => type.name === "Deluxe");
+    assert.deepEqual(typeAfter, typeBefore);
+    assert.deepEqual(await store.findRoom("101"), roomBefore);
+  });
+
+  it("refuses identically from the one shared check and never re-validates a stored value (CAP5, AC-CAP-3)", async () => {
+    const store = new RoomStore();
+    // A capacity written before the change (a zero) stays readable
+    // exactly as stored: no read-time rule, no repair.
+    const internals = store as unknown as {
+      roomTypes: Map<string, { id: string; name: string; capacity: number | null; bedType: string | null; features: Record<string, unknown> }>;
+      roomTypesByName: Map<string, { id: string; name: string; capacity: number | null; bedType: string | null; features: Record<string, unknown> }>;
+    };
+    const legacyRecord = {
+      id: "legacy-id",
+      name: "Legacy",
+      capacity: 0,
+      bedType: null,
+      features: {},
+    };
+    internals.roomTypes.set("legacy", legacyRecord);
+    internals.roomTypesByName.set("Legacy", legacyRecord);
+    const legacy = await store.resolveRoomType("Legacy");
+    assert.equal(legacy.capacity, 0);
+    assert.equal((await store.listRoomTypes()).find((type) => type.name === "Legacy")?.capacity, 0);
+
+    // Every refusal and every accepted value answers the same way on
+    // the type and room paths because both call requireCapacity.
+    await store.upsertRoomType({ name: "Deluxe", capacity: 2, actor: "manager" }, TOKEN);
+    await assert.rejects(
+      () => store.upsertRoomType({ name: "Deluxe", capacity: 0, actor: "manager" }, TOKEN),
+      (err: unknown) => (err as HttpError).code === "VALIDATION_FAILED",
+    );
+    await assert.rejects(
+      () => store.upsertRoom({ number: "101", roomType: "Deluxe", capacity: 0, actor: "manager" }, TOKEN),
+      (err: unknown) => (err as HttpError).code === "VALIDATION_FAILED",
+    );
+  });
+
+  it("keeps the existing refusal order and the capacity placement (CAP10)", async () => {
+    await withServer(async (port) => {
+      const missingName = await request(port, "POST", "/v1/rooms/UpsertRoomType", { actor: "manager" });
+      assert.equal(missingName.status, 400);
+      assert.equal((missingName.body as CapacityErrorEnvelope).details.field, "name");
+
+      const missingTypeActor = await request(port, "POST", "/v1/rooms/UpsertRoomType", {
+        name: "Deluxe",
+        capacity: 2,
+      });
+      assert.equal(missingTypeActor.status, 400);
+      assert.equal((missingTypeActor.body as CapacityErrorEnvelope).details.field, "actor");
+
+      const missingNumber = await request(port, "POST", "/v1/rooms/UpsertRoom", {
+        roomType: "Deluxe",
+        actor: "manager",
+      });
+      assert.equal(missingNumber.status, 400);
+      assert.equal((missingNumber.body as CapacityErrorEnvelope).details.field, "number");
+
+      const unknownType = await request(port, "POST", "/v1/rooms/UpsertRoom", {
+        number: "101",
+        roomType: "NoSuchType",
+        capacity: 2,
+        actor: "manager",
+      });
+      assert.equal(unknownType.status, 404);
+      assert.equal((unknownType.body as CapacityErrorEnvelope).code, "NOT_FOUND");
+    }, new RoomStore());
+  });
+});

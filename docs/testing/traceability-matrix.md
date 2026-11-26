@@ -1767,7 +1767,7 @@ and the verification plan are LLD
 [section 38](../architecture/lld.md#38-room-and-room-type-capacity-is-a-whole-number-of-at-least-1-refs-637)
 (with HLD [section 30](../architecture/hld.md#30-room-and-room-type-capacity-is-a-whole-number-of-at-least-1-refs-637)
 and the refreshed Rooms flowcharts,
-[section 11](../architecture/services/rooms.md#11-planned-delta--capacity-is-a-whole-number-of-at-least-1-refs-637)),
+[section 11](../architecture/services/rooms.md#11-as-built-delta--capacity-is-a-whole-number-of-at-least-1-refs-637)),
 and the guard registry `CAP1`-`CAP10`, the residual-risk record
 `CAP-R1`, and the evidence rule `CAP-E1` are
 `capacity-validation-test-traceability.md`

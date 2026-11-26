@@ -16,12 +16,12 @@ Node.js/TypeScript flat `src/` files over raw `node:http`, wired in `services/ro
 |---|---|---|
 | Transport + routing | `src/server.ts` | `createServiceServer` answers `GET /healthz` (:117), enforces Bearer presence (:130), routes `POST /v1/rooms/<Operation>` by case label |
 | Identity | `src/auth.ts` | `extractBearer`: Bearer presence check, same skeleton contract as Stay |
-| Validation + step order | `src/store.ts` (`RoomStore`, `RoomStoreAPI` at :167) | per-operation checks, sellability math, guarded assign/release/block transitions |
-| Row storage | `src/store.ts` (in-memory), `src/pgstore.ts` (`PostgresRoomStore implements RoomStoreAPI` at :39) | identical semantics; Postgres selected at boot when `DATABASE_URL` is set |
+| Validation + step order | `src/store.ts` (`RoomStore`, `RoomStoreAPI` at :207) | per-operation checks (including the shared `requireCapacity` rule at :118-128), sellability math, guarded assign/release/block transitions |
+| Row storage | `src/store.ts` (in-memory), `src/pgstore.ts` (`PostgresRoomStore implements RoomStoreAPI` at :40) | identical semantics; Postgres selected at boot when `DATABASE_URL` is set |
 | Errors | `src/errors.ts` | shared `HttpError` envelope (same code set as Stay) |
 | Boot | `src/index.ts` | store selection by `DATABASE_URL`, `listen(PORT)` (default `8085`) |
 
-The operation table (`src/server.ts:136-206`): `UpsertRoomType` (:136), `UpsertRoom` (:147), `UpdateRoomState` (:157), `ListRoomsByState` (:161), `ListRoomTypes` (:178), `CheckRoomTypeSellability` (:190), `AssignRoom` (:194), `ReleaseRoom` (:198), `BlockRoom` (:202), `ReleaseBlock` (:206).
+The operation table (`src/server.ts:136-212`): `UpsertRoomType` (:139), `UpsertRoom` (:150), `UpdateRoomState` (:160), `ListRoomsByState` (:164), `ListRoomTypes` (:181), `CheckRoomTypeSellability` (:193), `AssignRoom` (:197), `ReleaseRoom` (:201), `BlockRoom` (:205), `ReleaseBlock` (:209).
 
 ## 3. Happy-path flowchart
 
@@ -61,13 +61,13 @@ Edge trace (pins refreshed to the as-built head per maintain-with-code, LLD
 
 - A–B–C: one route answers both branches (`src/server.ts:193-196`); the
   type and dates resolve, and a reversed range refuses
-  `VALIDATION_FAILED` (`src/store.ts:356-358`; Postgres
-  `src/pgstore.ts:354-356`).
-- D: `ofType` and `blockedRooms` as today (`src/store.ts:384-394`;
-  Postgres `src/pgstore.ts:386-407`).
+  `VALIDATION_FAILED` (`src/store.ts:376-378`; Postgres
+  `src/pgstore.ts:355-357`).
+- D: `ofType` and `blockedRooms` as today (`src/store.ts:404-414`;
+  Postgres `src/pgstore.ts:387-408`).
 - E: `sellableCount` counts only the rooms that are block-free **and**
   whose state is neither `out-of-order` nor `occupied`
-  (`src/store.ts:399-402` new; Postgres `src/pgstore.ts:386-397` new),
+  (`src/store.ts:420-422` new; Postgres `src/pgstore.ts:387-398` new),
   subtracting each room once, while `totalCount` and `blockedRooms` do
   not move. The value is the desk's availability figure only — the
   booking ceiling stays `totalCount - len(blockedRooms)` (section 9,
@@ -112,7 +112,7 @@ flowchart TD
 Edge trace:
 
 - Q–R422: the block test runs before any state test
-  (`src/store.ts:361-371`; Postgres `src/pgstore.ts:359-373`), keeping
+  (`src/store.ts:381-391`; Postgres `src/pgstore.ts:360-374`), keeping
   `STATE_ILLEGAL` with the block's dates and reason. `RoomsView` renders
   its covering-block note only from that refusal
   (`app/src/views/RoomsView.vue:549-593`) and `DeskView`'s room cards read
@@ -121,8 +121,8 @@ Edge trace:
   contract: a block-covered `out-of-order` room still refuses this way
   and a block-free non-sellable room still answers 200 with no note.
 - S–T200: a block-free non-sellable room answers success with today's
-  fields and `sellableCount: 0` (`src/store.ts:375-382` new; Postgres
-  `src/pgstore.ts:375-384` new) — not a refusal. The Book confirm refuses
+  fields and `sellableCount: 0` (`src/store.ts:395-402` new; Postgres
+  `src/pgstore.ts:376-385` new) — not a refusal. The Book confirm refuses
   the zero count with `desk.book.refused_soldout`
   (`app/src/views/BookView.vue:1004-1011`) and creates no reservation.
 - S–U200: a block-free vacant room of any vacant state still answers
@@ -147,7 +147,7 @@ Same shared Node envelope as Stay (`src/errors.ts`; `docs/technical/error-handli
 
 | Code | Status | Raised when |
 |---|---|---|
-| `VALIDATION_FAILED` | 400 | bad/unknown field, state, date range, duplicate block (:89, :96, :270, :297, :319, :440, :479, :452) |
+| `VALIDATION_FAILED` | 400 | bad/unknown field, state, date range, duplicate block, or a capacity that is not a whole number of at least 1 (:100, :107, :123, :328, :355, :377, :500, :522, :534, :568) |
 | `NOT_FOUND` | 404 | unknown room type or room (:203, :212) |
 | `CONFLICT` | 409 | room just taken in a race (:389) |
 | `STATE_ILLEGAL` | 422 | blocked dates, wrong room state, occupied block target (:327, :381, :392, :415, :425, :443) |
@@ -295,19 +295,20 @@ refusal, column, or migration changed (LLD
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1175
 
-## 11. Planned delta — capacity is a whole number of at least 1 (Refs #637)
+## 11. As-built delta — capacity is a whole number of at least 1 (Refs #637)
 
-Both inventory writes keep a `capacity` only when it is a `number`
-(`src/store.ts:248` in `upsertRoomType`, `:279` in `upsertRoom`; the
-Postgres twins at `src/pgstore.ts:146`, `:207`), so a negative or zero
-value is stored, `2.5` is rounded by the Postgres `INT` assignment cast,
-`1e999` — `Infinity` after `JSON.parse` (`src/server.ts:63`) — fails the
-driver and answers the catch-all `INTERNAL_ERROR` 500
-(`src/server.ts:95-101`), and a present non-number is silently dropped
-to the stored value. From #637 on, one exported `requireCapacity` helper
-beside `requireDate`/`requireString` (`src/store.ts:98-110`) decides the
-field for both stores, before any record is built in memory or any
-transaction opens in Postgres, and every other present value is refused
+As built by the #637 implementation PR. The two inventory writes used to
+keep a `capacity` only when it was a `number` (`src/store.ts` before this
+change in `upsertRoomType` and `upsertRoom`, with the Postgres twins at
+`src/pgstore.ts`), so a negative or zero value was stored, `2.5` was
+rounded by the Postgres `INT` assignment cast, `1e999` — `Infinity` after
+`JSON.parse` (`src/server.ts:63`) — reached the driver and answered the
+catch-all `INTERNAL_ERROR` 500 (`src/server.ts:95-101`), and a present
+non-number was silently dropped to the stored value. Now one exported
+`requireCapacity` helper beside `requireDate`/`requireString`
+(`src/store.ts:118-128`) decides the field for both stores, before any
+record is built in memory or any transaction opens in Postgres, and every
+present value that is not a whole number of at least 1 is refused
 `VALIDATION_FAILED` (400) naming `capacity` with nothing written and no
 `room-upserted` event. The rule, the value classes, the refusal
 contract, and the residual risks are the LLD delta
@@ -316,48 +317,48 @@ this section records only the two touched operation flows.
 
 ```mermaid
 flowchart TD
-    A[Bearer token present  src/server.ts:130-134] --> B[Read and parse the JSON body  src/server.ts:135, readBody :25-73]
+    A[Bearer token present  src/server.ts:130-135] --> B[Read and parse the JSON body  src/server.ts:136, readBody :25-73]
     B --> C[store.upsertRoomType or store.upsertRoom  src/server.ts:139-160]
-    C --> D[Existing required-field checks: name or number, then actor  src/store.ts:240-241 or :267-268; src/pgstore.ts:142-143 or :200-201]
+    C --> D[Existing required-field checks: name or number, then actor  src/store.ts:258-259 or :286-287; src/pgstore.ts:143-144 or :201-202]
     D --> E{capacity key omitted?}
-    E -->|yes| F[Today's meaning: create stores null, update keeps the stored value  src/store.ts:248 or :279; src/pgstore.ts:160 or :221]
-    E -->|no| G[requireCapacity, one shared exported check  new, src/store.ts beside :105-110]
-    G -->|not a number, fractional, non-finite, or below 1| R[400 VALIDATION_FAILED, details.field capacity, one plain sentence  src/errors.ts; src/server.ts:91-94]
-    G -->|integer at least 1| H[Build the record or open the transaction  src/store.ts:242-256 or :269-287; src/pgstore.ts:152 or :212]
-    H --> I[Write the row verbatim, then emit room-upserted  src/store.ts:255-263 or :288-295; src/pgstore.ts:170 or :195, :231 or :257]
+    E -->|yes| F[Today's meaning: create stores null, update keeps the stored value  src/store.ts:267 or :299; src/pgstore.ts:161 or :222]
+    E -->|no| G[requireCapacity, one shared exported check  src/store.ts:118-128]
+    G -->|not a number, fractional, non-finite, or below 1| R[400 VALIDATION_FAILED, details.field capacity, one plain sentence  src/store.ts:123; src/server.ts:91-94]
+    G -->|integer at least 1| H[Build the record or open the transaction  src/store.ts:264-275 or :293-308; src/pgstore.ts:153 or :213]
+    H --> I[Write the row verbatim, then emit room-upserted  src/store.ts:276-282 or :309-315; src/pgstore.ts:165-178 or :179-195, :220-242 or :245-267]
     I --> J[200 with today's response fields  src/server.ts:139-160]
     R --> N[Nothing built, written, or emitted; the driver is never reached]
 ```
 
-Edge trace (target shape; the implementation PR refreshes these pins at
-the merged head):
+Edge trace (as-built pins at the #637 implementation head):
 
 - A–B–C: one route per operation, both `POST /v1/rooms/<Operation>`
-  behind the Bearer check (`src/server.ts:121-133`, operations at
+  behind the Bearer check (`src/server.ts:130-135`, operations at
   `:139`, `:150`). `1e999` is already `Infinity` after `JSON.parse`
   (`:63`), so the refusal below sees a non-finite number rather than a
   syntax error.
 - D–E: the two existing `requireString` refusals keep today's order and
-  messages (`src/store.ts:240-241`, `:267-268`; Postgres
-  `src/pgstore.ts:142-143`, `:200-201`); `undefined` means omitted.
+  messages (`src/store.ts:258-259`, `:286-287`; Postgres
+  `src/pgstore.ts:143-144`, `:201-202`); `undefined` means omitted.
   `upsertRoom` resolves the room type before the capacity read
-  (`src/store.ts:271`; `src/pgstore.ts:204`), so an unknown type keeps
+  (`src/store.ts:290`; `src/pgstore.ts:205`), so an unknown type keeps
   answering `NOT_FOUND` exactly as today.
-- G–R: the new shared helper throws `HttpError("VALIDATION_FAILED", …)`
-  with `details.field: "capacity"` and the new
-  `rooms.validation.capacity` sentence, the same envelope shape as
-  `rooms.validation.date_format` (`src/store.ts:100`); the handler's
-  `HttpError` branch answers 400 (`src/server.ts:91-94`), never the
-  `INTERNAL_ERROR` catch-all (`:95-101`). The Postgres call site is
-  before `withTx` (`src/pgstore.ts:152`, `:212`), so no statement,
-  lock, or outbox row is created for a refused request.
+- G–R: the shared helper throws `HttpError("VALIDATION_FAILED", …)`
+  with `details.field: "capacity"` and the
+  `rooms.validation.capacity` sentence (`src/store.ts:123-127`), the
+  same envelope shape as `rooms.validation.date_format` (`:100`); the
+  handler's `HttpError` branch answers 400 (`src/server.ts:91-94`), never
+  the `INTERNAL_ERROR` catch-all (`:95-101`). The Postgres call sites are
+  before `withTx` (`src/pgstore.ts:153`, `:213`), so a refused request
+  opens no transaction, takes no lock, issues no write statement, and
+  creates no outbox row.
 - G–H–I: an accepted capacity is written verbatim by the in-memory
-  record (`src/store.ts:248-256`, `:279-288`; Postgres parameter binding
-  `src/pgstore.ts:169`, `:185`, `:230`, `:255`), and the
+  record (`src/store.ts:267-275`, `:299-308`; Postgres parameter binding
+  `src/pgstore.ts:170`, `:186`, `:231`, `:256`), and the
   `room-upserted` emit follows the write exactly as today. A create
   with no capacity still writes `null`; an update with no capacity
-  keeps the stored one (`src/store.ts:248`, `:279`; Postgres merge
-  `src/pgstore.ts:160`, `COALESCE` `:221`).
+  keeps the stored one (`src/store.ts:267`, `:299`; Postgres merge
+  `src/pgstore.ts:161`, `COALESCE` `:222`).
 - Rollback: none needed — every refusal precedes the first mutation, so a
   refused request writes nothing and emits nothing. The whole delta
   reverts with the single implementation PR: removing the helper and its
@@ -365,12 +366,11 @@ the merged head):
   and no migration, `CHECK`, backfill, or data repair exists in either
   direction.
 
-The implementation PR also adds the capacity case to the
-`VALIDATION_FAILED` row of section 6's error map and to section 2's
-validation row, and keeps every other operation, guard, and response
-shape in this document untouched — in particular `ReleaseRoom`,
-`UpdateRoomState`, `ALLOWED_TRANSITIONS`, and the sellability flows of
-sections 3 and 4 (LLD section 38's rescope note).
+The `VALIDATION_FAILED` row of section 6's error map and section 2's
+validation row carry the capacity case, and every other operation,
+guard, and response shape in this document is untouched — in particular
+`ReleaseRoom`, `UpdateRoomState`, `ALLOWED_TRANSITIONS`, and the
+sellability flows of sections 3 and 4 (LLD section 38's rescope note).
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1262
