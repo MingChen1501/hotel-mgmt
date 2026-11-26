@@ -181,7 +181,7 @@ three may approve, and whether approval is needed — stays the section
 shape and becomes the gate read Stay calls at the close (integration
 C7). Design: `docs/architecture/lld.md` section 21.
 
-## 9. Planned delta — folio writes verify the stay (Refs #634, ADR-0008 proposed)
+## 9. Planned delta — folio writes verify the stay (Refs #634, ADR-0008 accepted)
 
 Today `ensureFolio` creates a folio for any UUID `stayId` with no Stay
 read (`repo/BillingRepository.java:65-71`), reached from `GetFolioBalance`
@@ -218,8 +218,9 @@ Target, from #634 on:
 
 Design: `docs/architecture/lld.md` section 27; decision record
 `docs/architecture/decisions/adr-0008-folio-write-stay-verification.md`
-(proposed). Rollback: revert the single implementation PR; the previous
-ensure-on-first-use behaviour returns and no data migration exists.
+(accepted 2026-11-26). Rollback: revert the single implementation PR;
+the previous ensure-on-first-use behaviour returns and no data
+migration exists.
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1046

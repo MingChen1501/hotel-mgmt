@@ -1,8 +1,10 @@
 # ADR-0008: Folio write verification — Billing verifies the stay before any folio write
 
-Status: proposed (Refs #634). Owned by `architect`.
+Status: accepted 2026-11-26 (Refs #634). Owned by `architect`; accepted by
+the owner:
+<https://github.com/MingChen1501/hotel-mgmt/issues/634#issuecomment-7184204719>.
 
-Date: 2026-11-25 (proposed).
+Date: 2026-11-25 (proposed); accepted 2026-11-26.
 
 ## Context
 
@@ -215,9 +217,8 @@ unchanged: the provider side already answers correctly.
   (`AC-FWV-7`); the verification plan is
   `docs/architecture/lld.md` section 27.8 and the qa-lead traceability
   row is a sibling handoff.
-- This ADR starts at `proposed`; only the owner flips it to `accepted`.
-  The implementation PR starts only after owner acceptance plus a T3
-  `SPEC-GATE PASS` on #634.
+- This ADR is `accepted` (owner, 2026-11-26). The implementation PR
+  starts only after a T3 `SPEC-GATE PASS` on #634.
 - Rollback: revert the single implementation PR. The previous
   ensure-on-first-use behaviour returns, the new client and its
   configuration go with the code, and no schema, migration, backfill, or
@@ -228,7 +229,8 @@ unchanged: the provider side already answers correctly.
 - The approval-role rule (#625): whether approval is required and which
   of the fixed three may approve.
 - A late-settlement flow for an approved open balance paid after
-  departure (the named consequence above).
+  departure (the named consequence above; recorded as a follow-up at
+  acceptance — it needs its own issue and decision).
 - Read-only invoice and receipt lookups by folio id (listed in the audit,
   no issue filed).
 - Deleting or migrating the orphan folios a live install may already
@@ -239,6 +241,15 @@ unchanged: the provider side already answers correctly.
   Billing.
 - Desk panel, copy, and print changes: the refusal sentences are product
   section 6.21 and land with the implementation PR.
+
+## Follow-ups recorded at acceptance
+
+- **Post-departure settlement.** When the owner accepted this ADR on
+  2026-11-26 the agreed scope included the consequence that an open
+  balance approved at check-out can no longer be settled by a folio
+  write after the guest leaves. A late-settlement path is a follow-up
+  that needs its own issue and decision; this change files no such issue
+  and adds no route, operation, or event.
 
 ## Options considered
 

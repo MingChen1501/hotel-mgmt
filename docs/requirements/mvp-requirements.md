@@ -6947,8 +6947,9 @@ ones included, stay as they are.
   (`contracts/http/*.json`, `contracts/errors/envelope.json`);
   this section states only the requirements-side need (28.3 and
   `integration-contract-needs.md` sections 3b and 9).
-- ADR-0008 must move `proposed` to `accepted` with the owner before the
-  implementation PR merges; the `AC-FWV` conditions and the desk copy
+- ADR-0008 is `accepted` (owner, 2026-11-26); the implementation PR
+  still needs the T3 `SPEC-GATE PASS` on #634 before it merges. The
+  `AC-FWV` conditions and the desk copy
   are `product-owner` work; the guard mapping above is `qa-lead` work;
   the release note, the availability note, and the rollback pointer are
   `release-manager` work.
