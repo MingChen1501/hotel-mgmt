@@ -1278,3 +1278,75 @@ or data repair in either direction.
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1248
+
+## 30. Room and room-type capacity is a whole number of at least 1 (Refs #637)
+
+Rooms was accepting a capacity it could not honour. Both inventory
+writes kept `capacity` only when it was a `number`
+(`services/rooms/src/store.ts:248` for `UpsertRoomType`, `:279` for
+`UpsertRoom`; the Postgres twins at `services/rooms/src/pgstore.ts:146`,
+`:207`), while the service's own contracts already declared the field
+`{"type": "integer", "minimum": 1}`
+(`contracts/http/UpsertRoom.json:19`,
+`contracts/http/UpsertRoomType.json:16`) and this LLD already listed
+`VALIDATION_FAILED` for both operations. So a negative or zero capacity
+was stored, `2.5` was kept in memory and rounded by the Postgres `INT`
+assignment cast, `1e999` — which `JSON.parse` turns into `Infinity` —
+fails the driver and answers `INTERNAL_ERROR` 500 instead of a refusal,
+`NaN` passes a direct store call, and a present non-number (`"2"`,
+`null`, `true`, `[2]`) is silently dropped to the stored value and
+reported as success. The two stores then disagree about the effect, and
+neither refuses a value the declared contract forbids.
+
+From #637 on, a present capacity must be a whole number of at least 1 or
+the write is refused. Three properties define the change:
+
+- **The rule is one shared check inside the module, before any write.**
+  A single exported helper beside `requireDate`/`requireString`
+  (`services/rooms/src/store.ts:98-110`) decides the capacity for both
+  `RoomStore` and `PostgresRoomStore`, called at each store's capacity
+  read before a record is built or a transaction opened, so both stores
+  answer the same status, code, field, and sentence by construction and
+  a value the service can name never becomes an `INTERNAL_ERROR` 500.
+  It is module logic, not schema: no migration, `CHECK`, backfill,
+  truncation, or read-time re-validation, so a capacity already stored
+  outside the rule keeps reading exactly as stored.
+- **An unusable value is refused by name and nothing is written.**
+  A negative, zero, fractional, non-finite, `NaN`, or non-number value
+  is refused `VALIDATION_FAILED` (400) with `details.field: "capacity"`
+  and one plain catalogue sentence, in both operations and both stores;
+  no row is created or overwritten, an existing room or type keeps every
+  field and its state, and no `room-upserted` event is emitted, so a
+  refused save can never be read as a successful one.
+- **Nothing else moves.** No operation, route, request or response
+  field, status, envelope token, schema table, lifecycle state, desk
+  control, or print rule is added or removed; the contract's existing
+  integer type and minimum stay the declaration, no upper bound is
+  added (the manage form's `1..20` remains a client sanity bound), and
+  an omitted capacity keeps today's create-none / update-keeps meaning.
+  `features` stays unbounded (its own decision, #774), and the
+  `ReleaseRoom` path with its explicit `toState` and
+  `ALLOWED_TRANSITIONS` is untouched (#647, state-machine section 2.1;
+  `FR-REA-1`, `FR-REA-3`). The only reader-visible move is the
+  onboarding wizard's capacity sentence, aligned with the same floor in
+  both locales so the desk cannot reach the server refusal from its own
+  screen.
+
+The change adds no module, dependency edge, data model, lifecycle state,
+or endpoint: it is one field rule inside two existing writes, so the
+container and component views (sections 2 and 3) stand unchanged. Where
+the check sits, the value classes it refuses, the refusal contract, the
+per-flow diagrams, the contract edits, and the verification plan:
+`docs/architecture/lld.md`
+[section 38](lld.md#38-room-and-room-type-capacity-is-a-whole-number-of-at-least-1-refs-637);
+per-service note: `docs/architecture/services/rooms.md` section 11;
+product conditions `AC-CAP-1`..`AC-CAP-4` in
+`docs/product/acceptance-criteria.md` section 31; FRs `FR-CAP-1`..`FR-CAP-4`
+in `docs/requirements/mvp-requirements.md` section 39; business rule
+BR-69. Risk R-24 records the over-refusal and stored-value directions,
+including the pre-existing Postgres `INT` ceiling for a contract-admitted
+value above 2147483647; rollback is the single implementation PR, with
+no migration or data repair in either direction.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1262
