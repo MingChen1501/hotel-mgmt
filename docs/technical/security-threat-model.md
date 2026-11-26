@@ -286,7 +286,7 @@ the same seam (R-20). Design: `docs/architecture/lld.md` section 34.
   (`services/rates/internal/store/store.go:402`) and a reservation
   cannot carry a plan name, so the booking is refused. Not a new
   failure mode — the desk's own quote omits `ratePlanName`
-  (`app/src/views/BookView.vue:784-793`) — and it re-opens when a
+  (`app/src/views/BookView.vue:807-820`) — and it re-opens when a
   reservation records a plan.
 - R11 — The quote and the booking write are one request apart
   (Refs #632): a rate edit landing between the `QuotePrice` read and

@@ -15,23 +15,23 @@ the module that owns prices. Traced read-only at this spec head:
 - The handler reads the total out of the body on both write routes —
   `priceBasis.totalMinor` (with a top-level `discountName` fallback) for
   `CreateReservation`
-  (`services/reservations/internal/handler/handler.go:173-174`, helpers
-  `nestedPrice`/`nestedDiscount` at `:397-413`) and the same pair for
-  `ModifyReservation` (`:287-288`).
+  (`services/reservations/internal/handler/handler.go:181-182`, helpers
+  `nestedPrice`/`nestedDiscount` at `:412-430`) and the same pair for
+  `ModifyReservation` (`:297-298`).
 - The service's only checks are presence and `>= 0`
-  (`services/reservations/internal/service/service.go:155` on Create,
-  `:245` on Modify), after which the value is handed straight to the
-  store (`:186`, `:301`).
-- The store persists it verbatim (`internal/store/store.go:242`, the
+  (`services/reservations/internal/service/service.go:158` on Create,
+  `:250` on Modify), after which the value is handed straight to the
+  store (`:189`, `:306`).
+- The store persists it verbatim (`internal/store/store.go:274-275`, the
   Postgres insert/update at `internal/store/postgres.go:203`, `:600-605`)
   and re-freezes it on Modify under an unchanged-total comparison,
   writing the `priceBasis` change-history row with the actor
-  (`internal/store/store.go:440-443`; `internal/store/postgres.go:594-598`).
+  (`internal/store/store.go:472-476`; `internal/store/postgres.go:594-598`).
 - No quote call exists on the booking path. The wired Rates client has
   one operation, `Check`
   (`POST {RATES_BASE_URL}/v1/rates/CheckRestrictions`,
   `internal/pricing/client.go:43-85`, 5-second timeout at `:33`), and
-  boot wires exactly that one hook (`cmd/server/main.go:44-49`).
+  boot wires exactly that one hook (`cmd/server/main.go:45-49`).
 - Downstream money reads the frozen total: the #600 check-out review
   posts one `nightly-room-charge` line at `priceBasis.totalMinor`
   (D-24), so the number a caller invents becomes the money the guest is
@@ -40,8 +40,8 @@ the module that owns prices. Traced read-only at this spec head:
 A caller that never touches the desk therefore freezes any total it
 likes. The desk itself already quotes the way the server would — the
 Book screen reads `QuotePrice` for the type, dates, and typed discount
-with no rate plan named (`app/src/views/BookView.vue:784-793`) and
-sends that total back as `priceBasis` (`:926-937`) — so a server-side
+with no rate plan named (`app/src/views/BookView.vue:807-820`) and
+sends that total back as `priceBasis` (`:948-958`) — so a server-side
 recompute over the same inputs reproduces the number the clerk saw and
 adds no new failure mode the desk does not already handle.
 
@@ -91,23 +91,23 @@ during the request that writes the booking:
   the effective values: on Create the validated body; on Modify the
   post-change type and dates, where an omitted field keeps the stored
   value (already computed for the restriction check,
-  `internal/service/service.go:271-282`), and the discount carried by
+  `internal/service/service.go:276-287`), and the discount carried by
   the request's `priceBasis`, where an omitted or null `discountName`
   means no discount — the price basis is a full assertion of the new
   quote, and the desk's own send already uses `discountName ?? null`
-  (`app/src/views/BookView.vue:926-937`). `ratePlanName` is not sent,
+  (`app/src/views/BookView.vue:948-958`). `ratePlanName` is not sent,
   exactly as the desk's own quote does not send it
-  (`app/src/views/BookView.vue:784-793`): `QuotePrice` resolves the plan
+  (`app/src/views/BookView.vue:807-820`): `QuotePrice` resolves the plan
   when exactly one prices the type.
 - the caller's Bearer token forwarded, `RATES_BASE_URL`, 5-second
   timeout — the existing client and its existing configuration, not a
-  new dependency knob (`internal/pricing/client.go:26-34`;
-  `cmd/server/main.go:44-49`).
+  new dependency knob (`internal/pricing/client.go:26-35`;
+  `cmd/server/main.go:45-49`).
 - response `totalMinor` and `discountName` are the values the booking
   freezes: the store receives the quote's total and the quote's applied
   discount name, and the price the response reports (`quotedTotal` on
-  Create, `recalculatedTotal` on Modify, `internal/handler/handler.go:200`,
-  `:311`) is that same number.
+  Create, `recalculatedTotal` on Modify, `internal/handler/handler.go:209`,
+  `:322`) is that same number.
 
 Order inside the write step, and why:
 
@@ -123,7 +123,7 @@ Order inside the write step, and why:
 
 The quote is deliberately **outside** the store mutex. The guarded store
 step is one mutex- or transaction-held critical section
-(`internal/store/store.go:212`); performing a 5-second-bounded network
+(`internal/store/store.go:243-245`); performing a 5-second-bounded network
 call inside it would block every other booking for the duration of a
 Rates outage.
 
@@ -167,7 +167,7 @@ type no plan prices is `NOT_FOUND` with `details.reason: no_rate_plan`,
 an unknown discount is `VALIDATION_FAILED` naming `discountName`, and an
 ambiguous plan set (several plans price the type and the request named
 none) is `VALIDATION_FAILED` naming `ratePlanName`
-(`services/rates/internal/store/store.go:271-278`, `:384-401`). The
+(`services/rates/internal/store/store.go:271-279`, `:397-402`). The
 definitive-versus-unreadable split is the one
 `docs/technical/error-handling.md` section 4 records for multi-call desk
 actions.
@@ -179,8 +179,8 @@ booking at the total it was stored with — never a second quote and never
 a `PRICE_CHANGED` refusal for a booking that exists. The write step
 gains a replay pre-read ahead of the quote (a `Replay(key)` repository
 read resolving the key to its stored reservation, the same key-only
-lookup both stores already perform at `internal/store/store.go:214-218`
-and `internal/store/postgres.go:156-170`, `:490-504`). The store's own
+lookup both stores already perform at `internal/store/store.go:246-250`
+and `internal/store/postgres.go:156-170`, `:490-503`). The store's own
 replay check inside the guarded step stays exactly as it is, so a
 concurrent double submit still books once; the pre-read only decides
 whether Pricing needs to be asked.
@@ -223,7 +223,7 @@ schema, table, migration, column, or event changes: the stored
   window is one request on a single-desk installation and `BR-13`
   freezes whatever was quoted either way.
 - The Modify change history already records a price-basis change with
-  the actor and time (`internal/store/store.go:440-443`;
+  the actor and time (`internal/store/store.go:472-476`;
   `internal/store/postgres.go:594-598`); after this change the recorded
   values are the server's. A discount-name change that leaves the total
   identical still records no row — the history stays keyed on the total,

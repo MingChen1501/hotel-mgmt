@@ -4568,22 +4568,22 @@ As-built at this spec head (read-only trace):
 
 - The two write routes read the total out of the body:
   `priceBasis.totalMinor` plus a top-level `discountName` fallback on
-  Create (`internal/handler/handler.go:173-174`), the same pair on
-  Modify (`:287-288`), decoded by `nestedPrice`/`nestedDiscount`
-  (`:397-413`).
+  Create (`internal/handler/handler.go:181-182`), the same pair on
+  Modify (`:297-298`), decoded by `nestedPrice`/`nestedDiscount`
+  (`:412-430`).
 - Presence and `>= 0` are the only checks
-  (`internal/service/service.go:155` on Create, `:245` on Modify); the
-  validated value is handed to the store (`:179-190`, `:293-305`).
-- The store persists it verbatim (`internal/store/store.go:242`;
+  (`internal/service/service.go:158` on Create, `:250` on Modify); the
+  validated value is handed to the store (`:182-193`, `:298-310`).
+- The store persists it verbatim (`internal/store/store.go:274-275`;
   `internal/store/postgres.go:203`, `:600-605`) and re-freezes it on Modify
   under an unchanged-total comparison, writing the `priceBasis`
-  change-history row with the actor (`internal/store/store.go:440-443`;
+  change-history row with the actor (`internal/store/store.go:472-476`;
   `internal/store/postgres.go:594-598`).
 - Nothing on the booking path quotes: the wired Rates client has one
   operation, `Check` for `CheckRestrictions`
   (`internal/pricing/client.go:43-85`, 5-second timeout at `:33`), and
   boot wires only `svc.CheckRestrictionsHook`
-  (`cmd/server/main.go:44-49`, hook field
+  (`cmd/server/main.go:45-49`, hook field
   `internal/service/service.go:50`).
 - `docs/architecture/lld.md` section 1 already listed
   `PricingService.QuotePrice` among Reservations' outbound calls and
@@ -4608,7 +4608,7 @@ become advisory); the stored `priceBasis` shape (no per-night
 breakdown, no plan name, no currency); the reservation schema and
 migrations; the overbooking guard and `sellableUnits`; the desk's
 matching path, which already quotes before it books
-(`app/src/views/BookView.vue:784-793`, `:926-937`); and the #600
+(`app/src/views/BookView.vue:807-820`, `:948-958`); and the #600
 room-charge posting, which keeps posting the now-verified frozen total.
 
 ### 25.2 Write-step algorithm (target)
@@ -4618,28 +4618,28 @@ pre-read, and one comparison. Order, and why each step sits where it
 does:
 
 1. **Field/date/price-shape validation** — unchanged
-   (`internal/service/service.go:141-167` on Create, `:221-266` on
+   (`internal/service/service.go:141-170` on Create, `:223-271` on
    Modify). A missing or negative total is still `VALIDATION_FAILED`
    naming `priceBasis`, so `PRICE_CHANGED` is only ever about an
    asserted total that disagreed.
 2. **Effective inputs** (Modify only) — the post-change type and dates,
    an omitted field keeping the stored value, come from the existing
-   computation (`internal/service/service.go:271-282`, reading the row
-   at `:267`); the discount is the request's
+   computation (`internal/service/service.go:276-287`, reading the row
+   at `:272`); the discount is the request's
    `priceBasis.discountName`, where omitted or null means no discount
    (the price basis is a full assertion of the new quote, and the desk
    already sends `discountName ?? null`,
-   `app/src/views/BookView.vue:926-937`).
+   `app/src/views/BookView.vue:948-958`).
 3. **`CheckRestrictions`** — unchanged, with the effective values
-   (`:168-174`, `:283-289`). It keeps its place because a restriction
+   (`:171-176`, `:288-293`). It keeps its place because a restriction
    refusal means re-quoting cannot help, and it keeps its
    `STATE_ILLEGAL` terms.
 4. **Replay pre-read** — a new `Replay(key)` repository read
-   (`internal/store/store.go:118-126` interface) resolving a
+   (`internal/store/store.go:120-133` interface) resolving a
    non-empty `idempotencyKey` to its stored reservation with the same
    key-only lookup both stores already perform
-   (`internal/store/store.go:214-217`,
-   `internal/store/postgres.go:156-170`, `:496-508`). A hit returns the
+   (`internal/store/store.go:246-250`,
+   `internal/store/postgres.go:156-170`, `:490-503`). A hit returns the
    stored booking unchanged — no quote, no comparison, no
    `PRICE_CHANGED` for a booking that exists. The store's own replay
    check inside the guarded step stays exactly as it is, so a
@@ -4649,10 +4649,10 @@ does:
    `ratePlanName`, matching the desk's own quote) and the caller's
    Bearer token forwarded, 5-second timeout, reusing the existing
    client and its configuration (`internal/pricing/client.go:26-85`;
-   `cmd/server/main.go:44-49` — one client instance wired for two
+   `cmd/server/main.go:45-49` — one client instance wired for two
    operations). The read stays outside the guarded store write: the
    store step is one mutex- or transaction-held critical section
-   (`internal/store/store.go:212`), and holding it across a
+   (`internal/store/store.go:243-245`), and holding it across a
    network call would stall every booking during a Rates outage.
 6. **Compare** — `requestedTotalMinor` (the request's
    `priceBasis.totalMinor`, which presence validation has already
@@ -4665,16 +4665,16 @@ does:
    A definitive 4xx envelope is surfaced unchanged (25.5).
 8. **Guarded store write** — unchanged: the overbooking count over
    active overlapping bookings under one mutex
-   (`internal/store/store.go:212-232`), insert or update with the
+   (`internal/store/store.go:243-265`), insert or update with the
    server total and discount name, the `priceBasis` change row on
    Modify, and the outbox event. The response reports the stored total
    (`quotedTotal` on Create, `recalculatedTotal` on Modify,
-   `internal/handler/handler.go:200`, `:311`).
+   `internal/handler/handler.go:209`, `:322`).
 
 Service-side shape: the `Service` struct gains a `QuotePriceHook` next
 to `CheckRestrictionsHook`
-(`internal/service/service.go:32-51`), wired from the same client at
-boot (`cmd/server/main.go:44-49`); a nil hook takes the fail-closed
+(`internal/service/service.go:32-56`), wired from the same client at
+boot (`cmd/server/main.go:45-49`); a nil hook takes the fail-closed
 branch like the restriction hook does today.
 
 ### 25.3 Create — happy path
@@ -4693,10 +4693,10 @@ flowchart TD
 
 Edge trace:
 
-- A–B: Bearer presence and JSON decode (`internal/handler/handler.go:143-156`,
-  `:42-53`); the same validation list as today
-  (`internal/service/service.go:141-167`).
-- B–C: the restriction call (`internal/service/service.go:168-174`;
+- A–B: Bearer presence and JSON decode (`internal/handler/handler.go:148-165`,
+  `:62-110`); the same validation list as today
+  (`internal/service/service.go:141-170`).
+- B–C: the restriction call (`internal/service/service.go:171-176`;
   `internal/pricing/client.go:43-85`).
 - C–D: the new replay pre-read (25.2 step 4) sits after the restriction
   check so a replay is gated like any other request, exactly as today,
@@ -4707,13 +4707,13 @@ Edge trace:
 - E–F: the comparison this section adds.
 - F–G: `store.Create` receives the quote's `totalMinor` and
   `discountName` instead of `req.TotalMinor`/`req.DiscountName`
-  (`internal/service/service.go:179-190`;
-  `internal/store/store.go:242`).
+  (`internal/service/service.go:182-193`;
+  `internal/store/store.go:274-275`).
 - G–H: unchanged insert, `created` event, and response
-  (`internal/store/store.go:234-265`;
-  `internal/handler/handler.go:199-201`).
+  (`internal/store/store.go:266-298`;
+  `internal/handler/handler.go:208-210`).
 - D–R: a replayed key returns the stored record with its stored total
-  (`internal/store/store.go:214-218`; the new pre-read narrows the same
+  (`internal/store/store.go:246-250`; the new pre-read narrows the same
   result to "Pricing is not consulted").
 
 ### 25.4 Create — refusal and failure path
@@ -4735,7 +4735,7 @@ flowchart TD
 
 Edge trace:
 
-- B: unchanged restriction refusals (`internal/service/service.go:168-174`).
+- B: unchanged restriction refusals (`internal/service/service.go:171-176`).
 - C–U2: the fail-closed branch uses the existing
   `UPSTREAM_UNAVAILABLE` shape and the same 5-second-bounded transport
   (`internal/pricing/client.go:89-96` is the precedent; the new branch
@@ -4748,7 +4748,7 @@ Edge trace:
   availability consumed, no `created` event, no idempotency record, so
   the key can be reused for the re-quoted attempt.
 - G–O: the unchanged overbooking guard
-  (`internal/store/store.go:219-232`).
+  (`internal/store/store.go:251-265`).
 - Rollback: none to run inside the service — every refusal happens
   before the store step, so there is no compensation path and no
   partial write (the same property section 4 records for today's
@@ -4776,23 +4776,23 @@ flowchart TD
 Edge trace:
 
 - A–B: handler decode plus validation
-  (`internal/handler/handler.go:287-297`;
-  `internal/service/service.go:221-266`), then the existing
-  `store.Get` (`internal/service/service.go:267`).
+  (`internal/handler/handler.go:288-298`;
+  `internal/service/service.go:223-271`), then the existing
+  `store.Get` (`internal/service/service.go:272`).
 - B–C: the existing effective-value computation
-  (`internal/service/service.go:271-282`).
+  (`internal/service/service.go:276-287`).
 - C–D: the existing restriction call with those values
-  (`internal/service/service.go:283-289`).
+  (`internal/service/service.go:288-293`).
 - E–F: the new pre-read plus quote (25.2 steps 4–5), with the effective
   discount: the request's `priceBasis.discountName` when the object
   carries one, otherwise no discount — the price basis is a full
   assertion of the new quote, and the desk's own send already uses
-  `discountName ?? null` (`app/src/views/BookView.vue:926-937`).
+  `discountName ?? null` (`app/src/views/BookView.vue:948-958`).
 - G–H: the comparison, then `store.Modify` with the quote's total and
   the quote's applied discount name instead of the request's
-  (`internal/service/service.go:293-305`).
+  (`internal/service/service.go:298-310`).
 - H–I–J: the existing change-history write, now fed by the server
-  values (`internal/store/store.go:440-443`;
+  values (`internal/store/store.go:472-476`;
   `internal/store/postgres.go:594-598`), with the request actor.
 - I–K: a total that does not move writes no price row, as today; a
   discount-name change that leaves the total identical also writes no
@@ -4907,7 +4907,7 @@ cite the guards above by `file:line` at the merged head.
   (`services/rates/internal/store/store.go:402`), and a reservation
   cannot carry a plan name, so the booking is refused. This is not a
   new failure mode: the desk's own quote omits `ratePlanName` too
-  (`app/src/views/BookView.vue:784-793`), so such a hotel already
+  (`app/src/views/BookView.vue:807-820`), so such a hotel already
   cannot quote on the desk; re-open when a reservation records a plan.
 - **R11 — the quote and the write are one request apart.** A rate edit
   landing between the quote and the store write is not seen by that

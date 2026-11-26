@@ -206,11 +206,11 @@ Role: architect · AO session hotel-mgmt-946
 
 Not as-built yet: `priceBasis.totalMinor` still reaches the store from
 the request body after only a presence and `>= 0` check
-(`internal/service/service.go:155` on Create, `:245` on Modify), the
-store persists it verbatim (`internal/store/store.go:242`) and
-re-freezes it on Modify (`:440-443`), and the wired Rates client runs
+(`internal/service/service.go:158` on Create, `:250` on Modify), the
+store persists it verbatim (`internal/store/store.go:274-275`) and
+re-freezes it on Modify (`:472-476`), and the wired Rates client runs
 `CheckRestrictions` only (`internal/pricing/client.go:43-85`, wired at
-`cmd/server/main.go:44-49`). This section records the target the
+`cmd/server/main.go:45-49`). This section records the target the
 implementation PR folds into sections 2, 3, 4, 5, and 6 in the same
 change (maintain-with-code).
 
