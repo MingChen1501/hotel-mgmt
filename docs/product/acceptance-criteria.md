@@ -5222,7 +5222,7 @@ section 31, LLD section 39), guard mapping and matrix section 32 are
 and rollback deltas are `release-manager`'s. `AC-ADM-1` and `AC-ADM-2`
 gain only the pointers; the conditions written earlier hold as
 written, the 43-condition MVP count above stands unchanged, and the
-sections 1–17 and 19–31 done-conditions keep their behaviour. `BOOT`
+sections 1–31 done-conditions keep their behaviour. `BOOT`
 is the domain code for this family.
 
 <!-- ao-role: product-owner -->
