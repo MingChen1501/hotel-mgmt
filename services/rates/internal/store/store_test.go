@@ -9,7 +9,12 @@
 // quote path).
 package store
 
-import "testing"
+import (
+	"testing"
+	"time"
+
+	"github.com/MingChen1501/hotel-mgmt/services/rates/internal/messages"
+)
 
 func storeTypeID() string { return "11111111-1111-4111-8111-111111111111" }
 
@@ -80,5 +85,46 @@ func TestQuoteWithRatePricesStillPricesEveryNight(t *testing.T) {
 	}
 	if len(quote.Nights) != 2 || quote.TotalMinor != 24000 {
 		t.Fatalf("quote = %+v, want two nights totalling 24000", quote)
+	}
+}
+
+// TestQuoteRangeBoundaryMatchesReportingCap is the cross-backend
+// consistency guard (RPT11): the 730-night bound Reporting adopts is
+// the one Rates already enforces — 730 nights quote, 731 are refused
+// naming departureDate. Test-only: the Rates bound's behaviour is
+// unchanged.
+func TestQuoteRangeBoundaryMatchesReportingCap(t *testing.T) {
+	s := New()
+	if plan := s.UpsertRatePlan("RACK", "Rack rate", nil); plan == nil {
+		t.Fatal("UpsertRatePlan returned nil")
+	}
+	base := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	for i := 0; i < 730; i++ {
+		night := base.AddDate(0, 0, i).Format("2006-01-02")
+		if _, oerr := s.UpsertRatePrice("RACK", storeTypeID(), night, 12000); oerr != nil {
+			t.Fatalf("UpsertRatePrice %s refused: %v", night, oerr)
+		}
+	}
+
+	quote, oerr := s.Quote(storeTypeID(), "2024-01-01", "2025-12-31", nil, nil)
+	if oerr != nil {
+		t.Fatalf("730-night quote refused: %v", oerr)
+	}
+	if len(quote.Nights) != 730 {
+		t.Fatalf("730-night quote carries %d nights, want 730", len(quote.Nights))
+	}
+
+	quote, oerr = s.Quote(storeTypeID(), "2024-01-01", "2026-01-01", nil, nil)
+	if quote != nil {
+		t.Fatalf("731-night quote = %+v, want nil", quote)
+	}
+	if oerr == nil || oerr.Code != "VALIDATION_FAILED" || oerr.Status != 400 {
+		t.Fatalf("731-night quote = %+v, want VALIDATION_FAILED 400", oerr)
+	}
+	if got := oerr.Details["field"]; got != "departureDate" {
+		t.Fatalf("details.field = %v, want departureDate", got)
+	}
+	if want := messages.Text("rates.validation.quote_range", nil); oerr.Message != want {
+		t.Fatalf("message = %q, want %q", oerr.Message, want)
 	}
 }

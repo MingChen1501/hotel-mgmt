@@ -78,6 +78,10 @@ type CreateInput struct {
 	TotalMinor    int64
 	DiscountName  *string
 	Actor         string
+	// RequestActor is the body actor exactly as the request supplied it;
+	// it is never the recorded actor, only the additive annotation
+	// (BR-65, #643).
+	RequestActor string
 }
 
 // CalendarEntry is one QueryCalendar row.
@@ -109,6 +113,8 @@ type ModifyInput struct {
 	TotalMinor    int64
 	DiscountName  *string
 	Actor         string
+	// RequestActor is the body actor as supplied; annotation only.
+	RequestActor string
 }
 
 // Repository is the store contract the service and handler program
@@ -119,11 +125,11 @@ type Repository interface {
 	Create(input CreateInput, idempotencyKey string) (*Reservation, *OpError)
 	Get(ref string) (*Reservation, *OpError)
 	Query(dateFrom, dateTo, roomTypeID string) []*CalendarEntry
-	CheckIn(ref, stayID, actor string) (*Reservation, *OpError)
+	CheckIn(ref, stayID, actor, requestActor string) (*Reservation, *OpError)
 	CheckOutReservation(stayID, actor string) (*Reservation, *OpError)
 	Modify(input ModifyInput, idempotencyKey string) (*Reservation, *OpError)
-	Cancel(ref, reason, actor, idempotencyKey string) (*Reservation, *OpError)
-	MarkNoShow(ref, reason, actor string) (*Reservation, *OpError)
+	Cancel(ref, reason, actor, requestActor, idempotencyKey string) (*Reservation, *OpError)
+	MarkNoShow(ref, reason, actor, requestActor string) (*Reservation, *OpError)
 }
 
 // ChangeEntry is one in-memory change-history row (BR-2, NFR-AUD-1):
@@ -139,6 +145,20 @@ type ChangeEntry struct {
 	CreatedAt time.Time
 }
 
+// actorPayload adds the additive requestActor annotation to a JSON
+// outbox payload (BR-65, #643): the request's actor survives only when
+// it is non-blank and differs exactly from the recorded session actor,
+// so an honest caller's payload is byte-identical. The recorded actor
+// itself is carried by the caller under the payload's existing key,
+// where one exists.
+func actorPayload(payload map[string]any, recordedActor, requestActor string) map[string]any {
+	if requestActor == "" || requestActor == recordedActor {
+		return payload
+	}
+	payload["requestActor"] = requestActor
+	return payload
+}
+
 func changeEntry(ref, field string, oldValue, newValue any, actor string) ChangeEntry {
 	return ChangeEntry{Ref: ref, Field: field, OldValue: oldValue, NewValue: newValue, Actor: actor, CreatedAt: time.Now().UTC()}
 }
@@ -150,6 +170,18 @@ type Store struct {
 	idem    map[string]*Reservation
 	events  []map[string]any
 	changes []ChangeEntry
+}
+
+// Events returns the outbox events the store recorded, in insertion
+// order. It exists for the audit-actor guards (#643), which read the
+// payload annotation without a database; the events are also written
+// to the outbox table by the Postgres store.
+func (s *Store) Events() []map[string]any {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]map[string]any, len(s.events))
+	copy(out, s.events)
+	return out
 }
 
 // Changes returns the recorded change history in insertion order.
@@ -257,11 +289,11 @@ func (s *Store) Create(input CreateInput, idempotencyKey string) (*Reservation, 
 	}
 	s.events = append(s.events, map[string]any{
 		"aggregate": "reservation", "eventType": "created",
-		"payload": map[string]any{
+		"payload": actorPayload(map[string]any{
 			"reservationRef": record.Ref, "roomTypeId": record.RoomTypeID,
 			"arrivalDate": record.ArrivalDate, "departureDate": record.DepartureDate,
 			"guestId": record.GuestID, "priceBasisTotal": record.TotalMinor,
-		},
+		}, input.Actor, input.RequestActor),
 	})
 	return record, nil
 }
@@ -301,7 +333,7 @@ func (s *Store) Query(dateFrom, dateTo, roomTypeID string) []*CalendarEntry {
 // CheckIn flips a confirmed reservation to checked-in and links the
 // stay created by the Stay module (the desk loop calls Stay CheckIn
 // first and passes its stay id here). Re-check-in is refused.
-func (s *Store) CheckIn(ref, stayID string, actor string) (*Reservation, *OpError) {
+func (s *Store) CheckIn(ref, stayID, actor, requestActor string) (*Reservation, *OpError) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	record, ok := s.byRef[strings.TrimSpace(ref)]
@@ -319,7 +351,7 @@ func (s *Store) CheckIn(ref, stayID string, actor string) (*Reservation, *OpErro
 	record.StayID = stayID
 	s.events = append(s.events, map[string]any{
 		"aggregate": "reservation", "eventType": "checked-in",
-		"payload": map[string]any{"reservationRef": record.Ref, "stayId": stayID},
+		"payload": actorPayload(map[string]any{"reservationRef": record.Ref, "stayId": stayID}, actor, requestActor),
 	})
 	return record, nil
 }
@@ -444,12 +476,12 @@ func (s *Store) Modify(input ModifyInput, idempotencyKey string) (*Reservation, 
 	}
 	s.events = append(s.events, map[string]any{
 		"aggregate": "reservation", "eventType": "modified",
-		"payload": map[string]any{
+		"payload": actorPayload(map[string]any{
 			"reservationRef": record.Ref, "roomTypeId": record.RoomTypeID,
 			"arrivalDate": record.ArrivalDate, "departureDate": record.DepartureDate,
 			"guestId": record.GuestID, "priceBasisTotal": record.TotalMinor,
 			"actor": input.Actor,
-		},
+		}, input.Actor, input.RequestActor),
 	})
 	if idempotencyKey != "" {
 		s.idem[idemKey("ModifyReservation", input.Ref, idempotencyKey)] = record
@@ -462,7 +494,7 @@ func (s *Store) Modify(input ModifyInput, idempotencyKey string) (*Reservation, 
 // automatically: the overbooking guard counts only confirmed and
 // checked-in rows, so the cancelled row no longer blocks the freed
 // dates. A cancelled event is queued for the read model.
-func (s *Store) Cancel(ref, reason, actor, idempotencyKey string) (*Reservation, *OpError) {
+func (s *Store) Cancel(ref, reason, actor, requestActor, idempotencyKey string) (*Reservation, *OpError) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if idempotencyKey != "" {
@@ -486,11 +518,11 @@ func (s *Store) Cancel(ref, reason, actor, idempotencyKey string) (*Reservation,
 	record.CancelReason = &kept
 	s.events = append(s.events, map[string]any{
 		"aggregate": "reservation", "eventType": "cancelled",
-		"payload": map[string]any{
+		"payload": actorPayload(map[string]any{
 			"reservationRef": record.Ref, "roomTypeId": record.RoomTypeID,
 			"arrivalDate": record.ArrivalDate, "departureDate": record.DepartureDate,
 			"guestId": record.GuestID, "reason": kept, "actor": actor,
-		},
+		}, actor, requestActor),
 	})
 	if idempotencyKey != "" {
 		s.idem[idemKey("CancelReservation", ref, idempotencyKey)] = record
@@ -503,7 +535,7 @@ func (s *Store) Cancel(ref, reason, actor, idempotencyKey string) (*Reservation,
 // releases the same way a cancellation releases it, and the no-show
 // stays in the reservation history with its reason. No folio charge
 // is posted here: the no-show charge decision is deferred per LLD D1.
-func (s *Store) MarkNoShow(ref, reason, actor string) (*Reservation, *OpError) {
+func (s *Store) MarkNoShow(ref, reason, actor, requestActor string) (*Reservation, *OpError) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	record, ok := s.byRef[strings.TrimSpace(ref)]
@@ -530,11 +562,11 @@ func (s *Store) MarkNoShow(ref, reason, actor string) (*Reservation, *OpError) {
 	record.NoShowReason = &kept
 	s.events = append(s.events, map[string]any{
 		"aggregate": "reservation", "eventType": "no-show",
-		"payload": map[string]any{
+		"payload": actorPayload(map[string]any{
 			"reservationRef": record.Ref, "roomTypeId": record.RoomTypeID,
 			"arrivalDate": record.ArrivalDate, "departureDate": record.DepartureDate,
 			"guestId": record.GuestID, "reason": kept, "actor": actor,
-		},
+		}, actor, requestActor),
 	})
 	return record, nil
 }

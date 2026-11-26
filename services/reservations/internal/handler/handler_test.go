@@ -14,6 +14,10 @@ import (
 
 const deskToken = "Bearer skeleton-test-token"
 
+// sessionActorValue is what the handler records from deskToken: the
+// header with the Bearer prefix removed (BR-65, #643).
+const sessionActorValue = "skeleton-test-token"
+
 // newMuxWithAvailability builds the mux over one stubbed capacity
 // answer. The shared desk-loop paths below book without a stubbed rooms
 // server, so wire the pass-through explicitly: a nil hook fails closed
@@ -359,6 +363,123 @@ func TestDeskCheckOutReservationCompletesBooking(t *testing.T) {
 	code, unauth := post(t, mux, "/v1/reservations/CheckOutReservation", map[string]any{"stayId": "stay-1", "actor": "front-desk"}, "")
 	if code != http.StatusUnauthorized || unauth["code"] != "UNAUTHENTICATED" {
 		t.Fatalf("completion without token = %d %v, want 401 UNAUTHENTICATED", code, unauth)
+	}
+}
+
+// TestWritesRecordTheSessionNotTheBodyActor is the #643 guard for all
+// six reservation writes (SEC13-SEC18, BR-65): a body actor naming
+// another person changes nothing but the additive requestActor
+// annotation, and every change row records the session token.
+func TestWritesRecordTheSessionNotTheBodyActor(t *testing.T) {
+	mux, st := newMuxWithAvailability(capacityHook(1))
+
+	created := loopBody("sec-13")
+	created["actor"] = "mallory"
+	code, reply := post(t, mux, "/v1/reservations/CreateReservation", created, deskToken)
+	if code != http.StatusOK {
+		t.Fatalf("CreateReservation = %d %v, want 200", code, reply)
+	}
+	ref, _ := reply["reservationRef"].(string)
+
+	code, reply = post(t, mux, "/v1/reservations/ModifyReservation",
+		map[string]any{"reservationRef": ref, "arrivalDate": "2026-11-02", "departureDate": "2026-11-04",
+			"priceBasis": map[string]any{"totalMinor": 26000}, "actor": "mallory"}, deskToken)
+	if code != http.StatusOK {
+		t.Fatalf("ModifyReservation = %d %v, want 200", code, reply)
+	}
+	code, reply = post(t, mux, "/v1/reservations/CheckInReservation",
+		map[string]any{"reservationRef": ref, "stayId": "stay-sec", "actor": "mallory"}, deskToken)
+	if code != http.StatusOK || reply["state"] != "checked-in" {
+		t.Fatalf("CheckInReservation = %d %v, want checked-in", code, reply)
+	}
+	code, reply = post(t, mux, "/v1/reservations/CheckOutReservation",
+		map[string]any{"stayId": "stay-sec", "actor": "mallory"}, deskToken)
+	if code != http.StatusOK || reply["state"] != "closed" {
+		t.Fatalf("CheckOutReservation = %d %v, want closed", code, reply)
+	}
+
+	cancelled := loopBody("sec-17")
+	cancelled["actor"] = "mallory"
+	code, reply = post(t, mux, "/v1/reservations/CreateReservation", cancelled, deskToken)
+	if code != http.StatusOK {
+		t.Fatalf("CreateReservation (cancel) = %d %v, want 200", code, reply)
+	}
+	cancelRef, _ := reply["reservationRef"].(string)
+	code, reply = post(t, mux, "/v1/reservations/CancelReservation",
+		map[string]any{"reservationRef": cancelRef, "reason": "guest-request", "actor": "mallory"}, deskToken)
+	if code != http.StatusOK || reply["state"] != "cancelled" {
+		t.Fatalf("CancelReservation = %d %v, want cancelled", code, reply)
+	}
+
+	noShow := loopBody("sec-18")
+	noShow["actor"] = "mallory"
+	noShow["arrivalDate"] = "2020-01-01"
+	noShow["departureDate"] = "2020-01-03"
+	code, reply = post(t, mux, "/v1/reservations/CreateReservation", noShow, deskToken)
+	if code != http.StatusOK {
+		t.Fatalf("CreateReservation (no-show) = %d %v, want 200", code, reply)
+	}
+	noShowRef, _ := reply["reservationRef"].(string)
+	code, reply = post(t, mux, "/v1/reservations/MarkNoShow",
+		map[string]any{"reservationRef": noShowRef, "reason": "no-arrival", "actor": "mallory"}, deskToken)
+	if code != http.StatusOK || reply["state"] != "no-show" {
+		t.Fatalf("MarkNoShow = %d %v, want no-show", code, reply)
+	}
+
+	for _, change := range st.Changes() {
+		if change.Actor != sessionActorValue {
+			t.Fatalf("change %+v recorded actor %q, want the session %q", change, change.Actor, sessionActorValue)
+		}
+	}
+	events := st.Events()
+	if len(events) < 6 {
+		t.Fatalf("events = %d, want the six write events", len(events))
+	}
+	sawCreated, sawCheckedIn, sawModified, sawCancelled, sawNoShow := false, false, false, false, false
+	for _, event := range events {
+		payload, _ := event["payload"].(map[string]any)
+		if payload == nil {
+			t.Fatalf("event %v has no payload", event)
+		}
+		if payload["requestActor"] != "mallory" {
+			t.Fatalf("event %v requestActor = %v, want mallory", event["eventType"], payload["requestActor"])
+		}
+		if actor, present := payload["actor"]; present && actor != sessionActorValue {
+			t.Fatalf("event %v actor = %v, want the session", event["eventType"], actor)
+		}
+		switch event["eventType"] {
+		case "created":
+			sawCreated = true
+		case "checked-in":
+			sawCheckedIn = true
+		case "modified":
+			sawModified = true
+		case "cancelled":
+			sawCancelled = true
+		case "no-show":
+			sawNoShow = true
+		}
+	}
+	if !sawCreated || !sawCheckedIn || !sawModified || !sawCancelled || !sawNoShow {
+		t.Fatalf("events = %v, want created, checked-in, modified, cancelled, and no-show", events)
+	}
+}
+
+// TestHonestActorAddsNoAnnotation is the SEC29 handler half: a body
+// actor equal to the session adds no requestActor key and the payload
+// keeps today's shape.
+func TestHonestActorAddsNoAnnotation(t *testing.T) {
+	mux, st := newMuxWithAvailability(capacityHook(1))
+	body := loopBody("sec-29")
+	body["actor"] = sessionActorValue
+	code, reply := post(t, mux, "/v1/reservations/CreateReservation", body, deskToken)
+	if code != http.StatusOK {
+		t.Fatalf("CreateReservation = %d %v, want 200", code, reply)
+	}
+	events := st.Events()
+	payload, _ := events[len(events)-1]["payload"].(map[string]any)
+	if _, present := payload["requestActor"]; present {
+		t.Fatalf("honest payload = %v, want no requestActor key", payload)
 	}
 }
 

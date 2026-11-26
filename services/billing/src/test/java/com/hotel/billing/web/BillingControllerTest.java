@@ -4,9 +4,13 @@ import static org.hamcrest.Matchers.aMapWithSize;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -18,6 +22,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.hotel.billing.service.BillingService;
 import com.hotel.billing.util.Messages;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.List;
@@ -48,7 +53,7 @@ class BillingControllerTest {
   void postChargeReturnsTheLine() throws Exception {
     UUID folio = UUID.randomUUID();
     UUID line = UUID.randomUUID();
-    when(service.postCharge(anyString(), anyString(), anyString(), anyLong(), any(), anyString())).thenReturn(
+    when(service.postCharge(anyString(), anyString(), anyString(), anyLong(), any(), anyString(), anyString())).thenReturn(
         new BillingService.LineView(line, folio, UUID.fromString(STAY), "nightly-room-charge", "Room 101", 12000, 0,
             0, "2026-10-26T00:00:00Z"));
     mvc.perform(post("/v1/billing/PostCharge").header("Authorization", "Bearer test-token")
@@ -63,7 +68,7 @@ class BillingControllerTest {
   void postChargeTaxedRouteShowsDerivedAmounts() throws Exception {
     UUID folio = UUID.randomUUID();
     UUID line = UUID.randomUUID();
-    when(service.postCharge(anyString(), anyString(), anyString(), anyLong(), any(), anyString())).thenReturn(
+    when(service.postCharge(anyString(), anyString(), anyString(), anyLong(), any(), anyString(), anyString())).thenReturn(
         new BillingService.LineView(line, folio, UUID.fromString(STAY), "nightly-room-charge", "Room 101", 100000,
             8000, 0, "2026-10-26T00:00:00Z"));
     mvc.perform(post("/v1/billing/PostCharge").header("Authorization", "Bearer test-token")
@@ -76,7 +81,7 @@ class BillingControllerTest {
 
   @Test
   void upsertTaxFeeRuleRouteStoresTheRule() throws Exception {
-    when(service.upsertTaxFeeRule(anyString(), any(java.math.BigDecimal.class), anyString()))
+    when(service.upsertTaxFeeRule(anyString(), any(java.math.BigDecimal.class), anyString(), anyString()))
         .thenReturn(Map.of("name", "VAT"));
     mvc.perform(post("/v1/billing/UpsertTaxFeeRule").header("Authorization", "Bearer test-token")
         .contentType(MediaType.APPLICATION_JSON)
@@ -93,7 +98,7 @@ class BillingControllerTest {
 
   @Test
   void envelopeMapsValidationFailures() throws Exception {
-    when(service.postCharge(anyString(), anyString(), anyString(), anyLong(), any(), anyString()))
+    when(service.postCharge(anyString(), anyString(), anyString(), anyLong(), any(), anyString(), anyString()))
         .thenThrow(ApiException.validation("method", "method must be cash or card."));
     mvc.perform(post("/v1/billing/PostCharge").header("Authorization", "Bearer test-token")
         .contentType(MediaType.APPLICATION_JSON)
@@ -105,7 +110,7 @@ class BillingControllerTest {
   @Test
   void dayCloseRoundTripShape() throws Exception {
     LocalDate date = LocalDate.parse("2026-10-26");
-    when(service.runDayClose(anyString(), anyString()))
+    when(service.runDayClose(anyString(), anyString(), anyString()))
         .thenReturn(new BillingService.DayCloseView(date, 12000, Map.of("cash", 6000L), "2026-10-26T00:00:00Z"));
     when(service.getDayClose(anyString()))
         .thenReturn(new BillingService.DayCloseView(date, 12000, Map.of("cash", 6000L), "2026-10-26T00:00:00Z"));
@@ -120,7 +125,7 @@ class BillingControllerTest {
   @Test
   void folioBalanceListsLines() throws Exception {
     UUID folio = UUID.randomUUID();
-    when(service.getFolioBalance(anyString(), anyString())).thenReturn(new BillingService.FolioView(folio,
+    when(service.getFolioBalance(anyString(), anyString(), anyString())).thenReturn(new BillingService.FolioView(folio,
         UUID.fromString(STAY), 6000, null, List.of(), List.of()));
     mvc.perform(post("/v1/billing/GetFolioBalance").header("Authorization", "Bearer test-token")
         .contentType(MediaType.APPLICATION_JSON)
@@ -131,7 +136,7 @@ class BillingControllerTest {
   @Test
   void approvalRecordsAgainstTheFolio() throws Exception {
     UUID folio = UUID.randomUUID();
-    when(service.recordOpenBalanceApproval(anyString(), anyString(), anyString(), any(), any(), anyString()))
+    when(service.recordOpenBalanceApproval(anyString(), anyString(), anyString(), any(), any(), anyString(), anyString()))
         .thenReturn(new BillingService.ApprovalView(folio, UUID.fromString(STAY), 6000,
             Map.of("approvedBy", "manager", "role", "manager")));
     mvc.perform(post("/v1/billing/RecordOpenBalanceApproval").header("Authorization", "Bearer test-token")
@@ -147,7 +152,7 @@ class BillingControllerTest {
   @Test
   void folioBalanceReturnsTheApprovalAsAnObject() throws Exception {
     UUID folio = UUID.randomUUID();
-    when(service.getFolioBalance(anyString(), anyString())).thenReturn(new BillingService.FolioView(folio,
+    when(service.getFolioBalance(anyString(), anyString(), anyString())).thenReturn(new BillingService.FolioView(folio,
         UUID.fromString(STAY), 6000, Map.of("approvedBy", "manager", "role", "manager"), List.of(), List.of()));
     mvc.perform(post("/v1/billing/GetFolioBalance").header("Authorization", "Bearer test-token")
         .contentType(MediaType.APPLICATION_JSON)
@@ -273,7 +278,7 @@ class BillingControllerTest {
         .andExpect(content().string(not(containsString("folio line has no stay"))));
 
     UUID folio = UUID.randomUUID();
-    when(service.getFolioBalance(anyString(), anyString())).thenReturn(new BillingService.FolioView(folio,
+    when(service.getFolioBalance(anyString(), anyString(), anyString())).thenReturn(new BillingService.FolioView(folio,
         UUID.fromString(STAY), 6000, null, List.of(), List.of()));
     mvc.perform(post("/v1/billing/GetFolioBalance").header("Authorization", "Bearer test-token")
         .contentType(MediaType.APPLICATION_JSON)
@@ -354,5 +359,321 @@ class BillingControllerTest {
     byte[] at = paddedBody("{\"stayId\":\"" + STAY + "\",\"actor\":\"front-desk\"}", 65536);
     mvc.perform(post("/v1/billing/GetFolioBalance").contentType(MediaType.APPLICATION_JSON).content(at))
         .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
+  }
+
+  // AMT1-AMT20 (Refs #635, BR-61): every money field is a whole number
+  // of minor units bounded by one declared ceiling. Each refusal case
+  // asserts the full four-key envelope, the catalogue sentence,
+  // details.field, a non-empty traceId, and that the service was never
+  // called, so an adapter that truncates or refuses late cannot pass.
+
+  private static final long CEILING = BillingController.MONEY_CEILING_MINOR;
+
+  private static String notInteger(String field) {
+    return Messages.text("error.validation.amount_not_integer", Map.of("field", field));
+  }
+
+  private static String aboveCeiling(String field) {
+    return Messages.text("error.validation.amount_above_ceiling",
+        Map.of("field", field, "max", Messages.formatNumber(BillingController.MONEY_CEILING_MINOR)));
+  }
+
+  private static String fieldNumber(String field) {
+    return Messages.text("error.validation.field_number", Map.of("field", field));
+  }
+
+  private static String postChargeBody(String amountMinor, String idempotencyKey) {
+    return "{\"stayId\":\"" + STAY + "\",\"itemKind\":\"nightly-room-charge\","
+        + "\"itemName\":\"Room 101\",\"amountMinor\":" + amountMinor
+        + (idempotencyKey == null ? "" : ",\"idempotencyKey\":\"" + idempotencyKey + "\"")
+        + ",\"actor\":\"front-desk\"}";
+  }
+
+  private static String recordPaymentBody(String amountMinor) {
+    return "{\"stayId\":\"" + STAY + "\",\"method\":\"cash\",\"amountMinor\":" + amountMinor
+        + ",\"actor\":\"front-desk\"}";
+  }
+
+  private static String chargeItemBody(String priceMinor) {
+    return "{\"name\":\"Breakfast\",\"priceMinor\":" + priceMinor + ",\"actor\":\"front-desk\"}";
+  }
+
+  private static String taxRuleBody(String percent) {
+    return "{\"name\":\"VAT\"" + (percent == null ? "" : ",\"percent\":" + percent)
+        + ",\"actor\":\"front-desk\"}";
+  }
+
+  private void expectMoneyRefusal(String path, String body, String field, String sentence) throws Exception {
+    mvc.perform(post(path).header("Authorization", "Bearer test-token")
+        .contentType(MediaType.APPLICATION_JSON).content(body))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$", aMapWithSize(4)))
+        .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+        .andExpect(jsonPath("$.message").value(sentence))
+        .andExpect(jsonPath("$.details", aMapWithSize(1)))
+        .andExpect(jsonPath("$.details.field").value(field))
+        .andExpect(jsonPath("$.traceId").isNotEmpty());
+  }
+
+  private void expectAccepted(String path, String body) throws Exception {
+    mvc.perform(post(path).header("Authorization", "Bearer test-token")
+        .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isOk());
+  }
+
+  private BillingService.LineView lineView(long amountMinor) {
+    return new BillingService.LineView(UUID.randomUUID(), UUID.randomUUID(), UUID.fromString(STAY),
+        "nightly-room-charge", "Room 101", amountMinor, 0, 0, "2026-10-26T00:00:00Z");
+  }
+
+  private BillingService.PaymentView paymentView(long amountMinor) {
+    return new BillingService.PaymentView(UUID.randomUUID(), UUID.randomUUID(), UUID.fromString(STAY), "cash",
+        amountMinor, "2026-10-26T00:00:00Z", 0);
+  }
+
+  @Test
+  void postChargeRefusesAFractionalAmount() throws Exception {
+    expectMoneyRefusal("/v1/billing/PostCharge", postChargeBody("12.99", null), "amountMinor",
+        notInteger("amountMinor"));
+    verifyNoInteractions(service);
+  }
+
+  @Test
+  void recordPaymentRefusesAFractionalAmount() throws Exception {
+    expectMoneyRefusal("/v1/billing/RecordPayment", recordPaymentBody("12.99"), "amountMinor",
+        notInteger("amountMinor"));
+    verifyNoInteractions(service);
+  }
+
+  @Test
+  void upsertChargeItemRefusesAFractionalPrice() throws Exception {
+    expectMoneyRefusal("/v1/billing/UpsertChargeItem", chargeItemBody("12.99"), "priceMinor",
+        notInteger("priceMinor"));
+    verifyNoInteractions(service);
+  }
+
+  @Test
+  void moneyAdaptersRefuseAPresentValueThatIsNotANumber() throws Exception {
+    expectMoneyRefusal("/v1/billing/PostCharge", postChargeBody("\"12\"", null), "amountMinor",
+        fieldNumber("amountMinor"));
+    expectMoneyRefusal("/v1/billing/RecordPayment", recordPaymentBody("\"12\""), "amountMinor",
+        fieldNumber("amountMinor"));
+    expectMoneyRefusal("/v1/billing/UpsertChargeItem", chargeItemBody("\"12\""), "priceMinor",
+        fieldNumber("priceMinor"));
+    verifyNoInteractions(service);
+  }
+
+  @Test
+  void postChargeRefusesAmountsAboveTheCeilingAndLetsTheSignRuleStayInTheService() throws Exception {
+    expectMoneyRefusal("/v1/billing/PostCharge", postChargeBody(Long.toString(CEILING + 1), null),
+        "amountMinor", aboveCeiling("amountMinor"));
+    expectMoneyRefusal("/v1/billing/PostCharge", postChargeBody(Long.toString(-(CEILING + 1)), null),
+        "amountMinor", aboveCeiling("amountMinor"));
+    verifyNoInteractions(service);
+
+    // An in-range negative passes the adapter and keeps the service's
+    // own sign refusal, so there is no duplicate rule in the adapter.
+    when(service.postCharge(anyString(), anyString(), anyString(), eq(-1L), any(), anyString(), anyString()))
+        .thenThrow(ApiException.validation("amountMinor",
+            Messages.text("error.validation.amount_negative", Map.of())));
+    mvc.perform(post("/v1/billing/PostCharge").header("Authorization", "Bearer test-token")
+        .contentType(MediaType.APPLICATION_JSON).content(postChargeBody("-1", null)))
+        .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+        .andExpect(jsonPath("$.details.field").value("amountMinor"))
+        .andExpect(jsonPath("$.message").value(
+            Messages.text("error.validation.amount_negative", Map.of())));
+    verify(service).postCharge(anyString(), anyString(), anyString(), eq(-1L), any(), anyString(), anyString());
+  }
+
+  @Test
+  void recordPaymentRefusesAmountsAboveTheCeilingAndLetsTheSignRuleStayInTheService() throws Exception {
+    expectMoneyRefusal("/v1/billing/RecordPayment", recordPaymentBody(Long.toString(CEILING + 1)),
+        "amountMinor", aboveCeiling("amountMinor"));
+    expectMoneyRefusal("/v1/billing/RecordPayment", recordPaymentBody(Long.toString(-(CEILING + 1))),
+        "amountMinor", aboveCeiling("amountMinor"));
+    verifyNoInteractions(service);
+
+    when(service.recordPayment(anyString(), anyString(), anyLong(), any(), anyString(), anyString()))
+        .thenThrow(ApiException.validation("amountMinor",
+            Messages.text("error.validation.amount_positive", Map.of())));
+    expectMoneyRefusal("/v1/billing/RecordPayment", recordPaymentBody("0"), "amountMinor",
+        Messages.text("error.validation.amount_positive", Map.of()));
+    expectMoneyRefusal("/v1/billing/RecordPayment", recordPaymentBody("-1"), "amountMinor",
+        Messages.text("error.validation.amount_positive", Map.of()));
+    verify(service).recordPayment(anyString(), anyString(), eq(0L), any(), anyString(), anyString());
+    verify(service).recordPayment(anyString(), anyString(), eq(-1L), any(), anyString(), anyString());
+  }
+
+  @Test
+  void upsertChargeItemRefusesPricesAboveTheCeilingAndLetsTheSignRuleStayInTheService() throws Exception {
+    expectMoneyRefusal("/v1/billing/UpsertChargeItem", chargeItemBody(Long.toString(CEILING + 1)),
+        "priceMinor", aboveCeiling("priceMinor"));
+    expectMoneyRefusal("/v1/billing/UpsertChargeItem", chargeItemBody(Long.toString(-(CEILING + 1))),
+        "priceMinor", aboveCeiling("priceMinor"));
+    verifyNoInteractions(service);
+
+    when(service.upsertChargeItem(anyString(), anyLong(), anyString(), anyString()))
+        .thenThrow(ApiException.validation("priceMinor",
+            Messages.text("error.validation.price_negative", Map.of())));
+    expectMoneyRefusal("/v1/billing/UpsertChargeItem", chargeItemBody("-1"), "priceMinor",
+        Messages.text("error.validation.price_negative", Map.of()));
+    verify(service).upsertChargeItem(anyString(), eq(-1L), anyString(), anyString());
+  }
+
+  @Test
+  void oneDeclaredCeilingBoundsEveryMoneyField() {
+    assertEquals(1_000_000_000_000L, BillingController.MONEY_CEILING_MINOR);
+    assertTrue(BillingController.MONEY_CEILING_MINOR < (1L << 53));
+  }
+
+  @Test
+  void ceilingBoundaryIsAcceptedAtTheCeilingAndRefusedOneUnitMore() throws Exception {
+    when(service.postCharge(anyString(), anyString(), anyString(), anyLong(), any(), anyString(), anyString()))
+        .thenReturn(lineView(CEILING));
+    when(service.recordPayment(anyString(), anyString(), anyLong(), any(), anyString(), anyString()))
+        .thenReturn(paymentView(CEILING));
+    when(service.upsertChargeItem(anyString(), anyLong(), anyString(), anyString())).thenReturn(Map.of("name", "Breakfast"));
+
+    expectAccepted("/v1/billing/PostCharge", postChargeBody(Long.toString(CEILING), null));
+    expectAccepted("/v1/billing/RecordPayment", recordPaymentBody(Long.toString(CEILING)));
+    expectAccepted("/v1/billing/UpsertChargeItem", chargeItemBody(Long.toString(CEILING)));
+
+    expectMoneyRefusal("/v1/billing/PostCharge", postChargeBody(Long.toString(CEILING + 1), null),
+        "amountMinor", aboveCeiling("amountMinor"));
+    expectMoneyRefusal("/v1/billing/RecordPayment", recordPaymentBody(Long.toString(CEILING + 1)),
+        "amountMinor", aboveCeiling("amountMinor"));
+    expectMoneyRefusal("/v1/billing/UpsertChargeItem", chargeItemBody(Long.toString(CEILING + 1)),
+        "priceMinor", aboveCeiling("priceMinor"));
+
+    // 65 700 000 000 is one room charge at a 730-night stay at the
+    // standard rate, so a ceiling that is too small fails here.
+    expectAccepted("/v1/billing/PostCharge", postChargeBody("65700000000", null));
+    expectAccepted("/v1/billing/RecordPayment", recordPaymentBody("65700000000"));
+    expectAccepted("/v1/billing/UpsertChargeItem", chargeItemBody("65700000000"));
+
+    verify(service).postCharge(anyString(), anyString(), anyString(), eq(CEILING), any(), anyString(), anyString());
+    verify(service).postCharge(anyString(), anyString(), anyString(), eq(65_700_000_000L), any(), anyString(), anyString());
+    verify(service).recordPayment(anyString(), anyString(), eq(CEILING), any(), anyString(), anyString());
+    verify(service).recordPayment(anyString(), anyString(), eq(65_700_000_000L), any(), anyString(), anyString());
+    verify(service).upsertChargeItem(anyString(), eq(CEILING), anyString(), anyString());
+    verify(service).upsertChargeItem(anyString(), eq(65_700_000_000L), anyString(), anyString());
+  }
+
+  @Test
+  void wholeAmountsSpelledWithADecimalPointAreServedAsWhole() throws Exception {
+    when(service.postCharge(anyString(), anyString(), anyString(), anyLong(), any(), anyString(), anyString()))
+        .thenReturn(lineView(12));
+    when(service.recordPayment(anyString(), anyString(), anyLong(), any(), anyString(), anyString()))
+        .thenReturn(paymentView(12));
+    when(service.upsertChargeItem(anyString(), anyLong(), anyString(), anyString())).thenReturn(Map.of("name", "Breakfast"));
+
+    expectAccepted("/v1/billing/PostCharge", postChargeBody("12", null));
+    expectAccepted("/v1/billing/PostCharge", postChargeBody("12.0", null));
+    expectAccepted("/v1/billing/RecordPayment", recordPaymentBody("12"));
+    expectAccepted("/v1/billing/RecordPayment", recordPaymentBody("12.0"));
+    expectAccepted("/v1/billing/UpsertChargeItem", chargeItemBody("12"));
+    expectAccepted("/v1/billing/UpsertChargeItem", chargeItemBody("12.0"));
+
+    verify(service, times(2)).postCharge(anyString(), anyString(), anyString(), eq(12L), any(), anyString(), anyString());
+    verify(service, times(2)).recordPayment(anyString(), anyString(), eq(12L), any(), anyString(), anyString());
+    verify(service, times(2)).upsertChargeItem(anyString(), eq(12L), anyString(), anyString());
+  }
+
+  @Test
+  void inRangeAmountsReachTheServiceUnchanged() throws Exception {
+    when(service.postCharge(anyString(), anyString(), anyString(), anyLong(), any(), anyString(), anyString()))
+        .thenReturn(lineView(0));
+    when(service.recordPayment(anyString(), anyString(), anyLong(), any(), anyString(), anyString()))
+        .thenReturn(paymentView(6000));
+    when(service.upsertChargeItem(anyString(), anyLong(), anyString(), anyString())).thenReturn(Map.of("name", "Breakfast"));
+
+    // 0 is a legitimate whole amount for a charge and a charge-item
+    // price; a payment keeps the service's positive rule.
+    expectAccepted("/v1/billing/PostCharge", postChargeBody("0", null));
+    expectAccepted("/v1/billing/RecordPayment", recordPaymentBody("6000"));
+    expectAccepted("/v1/billing/UpsertChargeItem", chargeItemBody("0"));
+    expectAccepted("/v1/billing/UpsertChargeItem", chargeItemBody("2500"));
+
+    verify(service).postCharge(anyString(), anyString(), anyString(), eq(0L), any(), anyString(), anyString());
+    verify(service).recordPayment(anyString(), anyString(), eq(6000L), any(), anyString(), anyString());
+    verify(service).upsertChargeItem(anyString(), eq(0L), anyString(), anyString());
+    verify(service).upsertChargeItem(anyString(), eq(2500L), anyString(), anyString());
+  }
+
+  @Test
+  void taxRulePercentRefusesAPresentValueThatIsNotANumberAndKeepsTheAbsentRefusal() throws Exception {
+    expectMoneyRefusal("/v1/billing/UpsertTaxFeeRule", taxRuleBody("\"eight\""), "percent",
+        fieldNumber("percent"));
+    expectMoneyRefusal("/v1/billing/UpsertTaxFeeRule", taxRuleBody("{\"value\":8}"), "percent",
+        fieldNumber("percent"));
+    expectMoneyRefusal("/v1/billing/UpsertTaxFeeRule", taxRuleBody(null), "percent",
+        Messages.text("error.validation.field_required", Map.of("field", "percent")));
+    verifyNoInteractions(service);
+  }
+
+  @Test
+  void fractionalTaxRulePercentStaysAccepted() throws Exception {
+    when(service.upsertTaxFeeRule(anyString(), any(BigDecimal.class), anyString(), anyString()))
+        .thenReturn(Map.of("name", "VAT"));
+    expectAccepted("/v1/billing/UpsertTaxFeeRule", taxRuleBody("8.5"));
+    verify(service).upsertTaxFeeRule(eq("VAT"), eq(new BigDecimal("8.5")), eq("front-desk"), eq("test-token"));
+  }
+
+  @Test
+  void aRefusedRequestConsumesNoIdempotencyKey() throws Exception {
+    expectMoneyRefusal("/v1/billing/PostCharge", postChargeBody("12.99", "charge-635"), "amountMinor",
+        notInteger("amountMinor"));
+    verifyNoInteractions(service);
+
+    when(service.postCharge(anyString(), anyString(), anyString(), anyLong(), any(), anyString(), anyString()))
+        .thenReturn(lineView(12));
+    expectAccepted("/v1/billing/PostCharge", postChargeBody("12", "charge-635"));
+    verify(service).postCharge(eq(STAY), eq("nightly-room-charge"), eq("Room 101"), eq(12L), eq("charge-635"),
+        eq("front-desk"), eq("test-token"));
+  }
+
+  // #643 / BR-65: the adapter hands the header token to the service as
+  // the recorded session actor and the body actor beside it as the
+  // demoted annotation.
+  @Test
+  void postChargePassesTheHeaderTokenAsTheSessionActor() throws Exception {
+    UUID folio = UUID.randomUUID();
+    UUID line = UUID.randomUUID();
+    when(service.postCharge(anyString(), anyString(), anyString(), anyLong(), any(), anyString(), anyString()))
+        .thenReturn(new BillingService.LineView(line, folio, UUID.fromString(STAY), "nightly-room-charge", "Room 101",
+            12000, 0, 0, "2026-10-26T00:00:00Z"));
+    mvc.perform(post("/v1/billing/PostCharge").header("Authorization", "Bearer session-token")
+        .contentType(MediaType.APPLICATION_JSON)
+        .content("{\"stayId\":\"" + STAY + "\",\"itemKind\":\"nightly-room-charge\","
+            + "\"itemName\":\"Room 101\",\"amountMinor\":12000,\"actor\":\"mallory\"}"))
+        .andExpect(status().isOk());
+    verify(service).postCharge(eq(STAY), eq("nightly-room-charge"), eq("Room 101"), eq(12000L), any(),
+        eq("mallory"), eq("session-token"));
+  }
+
+  @Test
+  void getFolioBalancePassesTheHeaderTokenAsTheSessionActor() throws Exception {
+    UUID folio = UUID.randomUUID();
+    when(service.getFolioBalance(anyString(), anyString(), anyString())).thenReturn(new BillingService.FolioView(folio,
+        UUID.fromString(STAY), 6000, null, List.of(), List.of()));
+    mvc.perform(post("/v1/billing/GetFolioBalance").header("Authorization", "Bearer session-token")
+        .contentType(MediaType.APPLICATION_JSON)
+        .content("{\"stayId\":\"" + STAY + "\",\"actor\":\"mallory\"}")).andExpect(status().isOk());
+    verify(service).getFolioBalance(eq(STAY), eq("mallory"), eq("session-token"));
+  }
+
+  @Test
+  void noTokenWinsOverBodyValidationOnEveryWrite() throws Exception {
+    // BR-64 / AC-SEC-4: the session check runs before body parsing, so a
+    // missing token answers 401 even when the body would fail a field
+    // rule. Without the early bind, Java's left-to-right argument
+    // evaluation would answer 400 VALIDATION_FAILED first (B1). Every
+    // write adapter is exercised so a future one cannot regress the
+    // ordering silently.
+    for (String operation : List.of("GetFolioBalance", "PostCharge", "RecordPayment", "RunDayClose",
+        "UpsertChargeItem", "UpsertTaxFeeRule", "RecordOpenBalanceApproval")) {
+      mvc.perform(post("/v1/billing/" + operation).contentType(MediaType.APPLICATION_JSON).content("{}"))
+          .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
+    }
+    verifyNoInteractions(service);
   }
 }
