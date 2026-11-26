@@ -9616,8 +9616,10 @@ requirement was written against and are refreshed at the merged head by
   `contracts/http/CheckOutReservation.json:19`) and `updatedBy` in
   `contracts/http/UpdateHotelConfig.json:13`, so the field keeps its
   shape, its required flag, and its existing refusals and no caller
-  breaks. One description sentence claims the body value is what gets
-  recorded (`contracts/http/CheckOutReservation.json:22`).
+  breaks. Two description strings claim the body value is what gets
+  recorded (`contracts/http/CheckOutReservation.json:22`,
+  `contracts/http/UpdateHotelConfig.json:20`); both are corrected to
+  describe the session actor, with no shape change.
 - **The audit columns and outbox payloads are text and JSON, so no
   migration is needed.** The outbox tables carry `created_by TEXT` and
   a JSONB `payload` (`services/stay/migrations/001_boot.sql:9-16`,
@@ -9729,10 +9731,12 @@ identity-hardening slice and a later contract cleanup.
   `contracts/http/CheckOutReservation.json:19`,
   `contracts/http/UpdateHotelConfig.json:13`) are unchanged, and
   `script/contract-check.sh` stays green with no new code token. The
-  one description sentence that says the body value is recorded
-  (`CheckOutReservation.json:22`) describes the annotation after this
-  change; correcting that prose is `architect` work in the change set
-  and changes no shape, refusal, or schema.
+  two description strings that say the body value is recorded
+  (`CheckOutReservation.json:22`, `UpdateHotelConfig.json:20`) are
+  corrected to describe the session actor — the annotation in
+  CheckOut and the drop in the config write; correcting that prose is
+  `architect` work in the change set and changes no shape, refusal, or
+  schema.
 - Outbox payloads, change rows, state-history rows, and Admin audit
   rows keep their keys and columns; `requestActor` is the only
   addition, and no consumer read needs to change.
@@ -9956,8 +9960,9 @@ no historic row is rewritten.
 - Acceptance criteria, the scope decision, and the recorded risk are
   `product-owner` work (`AC-SEC-1`..`AC-SEC-5`, D-39, R-20); the LLD
   section 34 actor-resolution diagram, the refreshed audit lines of each
-  service design, and the one stale contract description
-  (`contracts/http/CheckOutReservation.json:22`) are `architect` work;
+  service design, and the two stale contract descriptions
+  (`contracts/http/CheckOutReservation.json:22`,
+  `contracts/http/UpdateHotelConfig.json:20`) are `architect` work;
   the guard mapping above is `qa-lead` work (traceability matrix section
   27); the rollback note is `release-manager` work. `spec-reviewer`
   gates the set.
