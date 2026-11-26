@@ -157,8 +157,9 @@ assignment.
 - AC-RTE-2 — Given rooms, reservations, and out-of-order blocks
   exist, when staff open the availability view for a date range, then
   each room type and date shows the count of rooms still sellable,
-  excluding occupied, blocked, and already-reserved rooms. Traces to:
-  US-RTE-2; FR-RTE-2.
+  excluding occupied, blocked, and already-reserved rooms (the
+  server-side sellability read's state arithmetic is
+  `AC-SEL-1`..`AC-SEL-4`, section 29). Traces to: US-RTE-2; FR-RTE-2.
 - AC-RTE-3 — Given a reservation with a quoted price, when the manager
   applies a named discount or special price, then the reservation shows
   the adjusted price with the discount name kept, and the folio charges
@@ -3542,6 +3543,139 @@ exactly today's rows, order, zero-filled dates, offsets, and `asOf`; and
 the store carries the mid-stream bad-event guard beside the existing
 rebuild guards.
 
+## 29. Room state counts in sellability (Refs #636)
+
+Product-owner scope decision and acceptance conditions for audit
+finding M1: the sellability answer counts date-ranged blocks but never
+room state, so a room out of order for maintenance — or a room with a
+guest in it — is advertised as sellable. As built at this spec head,
+`checkSellability` subtracts only block-covered rooms: the aggregate
+branch takes every room of the type (`services/rooms/src/store.ts:370`,
+`totalCount` at `:382`) and reports
+`ofType.length - blockedRooms.length` (`:383`, `blockedRooms` built at
+`:371-377`); the single-room branch returns `totalCount: 1` and
+`sellableCount: 1` for any room that no block covers
+(`:348-368`, the reply at `:361-368`). The room states are `occupied`,
+`vacant-dirty`, `vacant-clean`, `vacant-inspected`, and `out-of-order`
+(`:17-30`), and the Postgres twin answers the same way
+(`services/rooms/src/pgstore.ts:341-380` single room,
+`:382-392`'s count query for the aggregate). Because the aggregate count
+is the desk's availability figure and the single-room answer is what the
+Book confirm re-reads before it creates a reservation
+(`app/src/views/BookView.vue:919-940`), a room taken out of service is
+offered to the desk and can be sold.
+
+Tier T2: the arithmetic behind one existing read operation changes, so
+its caller-visible answer moves while the operation, its request and
+response fields, its statuses, its refusal vocabulary, every desk
+layout, token, component, state, and copy, and every print rule stay as
+they are — no new subsystem, dependency edge, data model, lifecycle
+state, or code token, so no T3 escalation applies; not T1 either, since
+availability the desk depends on changes for the reader. The change
+moves `sellableCount` and the single-room reply only: #631 already
+merged the reservation ceiling as `totalCount - len(blockedRooms)` and
+deliberately does not consume `sellableCount` (ADR-0006 D2;
+`docs/architecture/services/rooms.md` section 9), and this issue puts
+Reservations' own availability decision out of scope, so the ceiling is
+untouched here in either direction. The conditions below are the
+product half. FR/NFR wording and the business rule that states the
+sellable state list are the `business-analyst` handoff
+(`docs/requirements/mvp-requirements.md` section 37, BR-67); the
+contract description line for `sellableCount`
+(`contracts/http/CheckRoomTypeSellability.json`), the LLD delta, and the
+refreshed sellability edges on the rooms service-design flowcharts
+(including the failure/rollback path) are the `architect` handoff
+(`docs/architecture/lld.md` section 36,
+`docs/architecture/services/rooms.md` sections 3 and 4, refreshed by the
+implementation PR per maintain-with-code); guard mapping is `qa-lead`'s
+(`docs/testing/traceability-matrix.md` section 29); the release and
+rollback note is `release-manager`'s; the gate verdict is
+`spec-reviewer`'s. No UI contract section: no screen, control, route,
+catalogue key, state, or copy is added or changed — the Book confirm
+already refuses a zero count with `desk.book.refused_soldout`
+(`app/src/views/BookView.vue:940-946`) and keeps that sentence. The scope
+decision is D-41 in `docs/project/decision-log.md`, and the
+under-counting risk the issue names is R-22 in
+`docs/project/risk-register.md`. `SEL` is the domain code for this
+family.
+
+- AC-SEL-1 — Given a room type holding N rooms, some of them
+  `out-of-order` or `occupied`, some `vacant-dirty`, `vacant-clean`, or
+  `vacant-inspected`, and some covered by a date-ranged block, when the
+  aggregate sellability read for that type and range is answered, then
+  `sellableCount` counts only rooms that are both block-free and in a
+  sellable state, so an `out-of-order` room and an `occupied` room are
+  not counted as sellable for their type; the non-sellable state list is
+  exactly `out-of-order` and `occupied`, and every vacant state stays
+  sellable, so a dirty room is still offered for a future stay — the
+  list is explicit, not "any state but the sellable ones", so under-counting
+  is bounded by those two names; `totalCount` stays N and keeps
+  today's meaning (every room of the type, whatever its state);
+  `blockedRooms` keeps today's content and order (exactly the rooms a
+  block covers for the range, and only those); a room that is both
+  block-covered and in a non-sellable state is subtracted once, so
+  `sellableCount` never goes below `0` and never subtracts the same
+  room twice; a type with no rooms answers `totalCount: 0` and
+  `sellableCount: 0`; and both stores (in-memory and Postgres) answer
+  the same number for the same recorded state. Traces to: US-RTE-2,
+  US-RMS-1; FR-RTE-2, FR-RMS-1, FR-RMS-3, BR-12, BR-67 (Refs #636).
+- AC-SEL-2 — Given one named `roomNumber` and a date range, when that
+  room is `out-of-order` or `occupied` and no block covers the range,
+  then the read answers success with `totalCount: 1`,
+  `sellableCount: 0`, and `blockedRooms: []`, and never claims
+  availability — the reply reuses today's envelope, status, and fields,
+  with no new error code and no new sentence, so the desk Book confirm
+  refuses the booking with the existing sold-out sentence
+  (`desk.book.refused_soldout`) and creates no reservation; when the
+  named room is `vacant-dirty`, `vacant-clean`, or `vacant-inspected`
+  and block-free, then `sellableCount: 1` exactly as today; and when a
+  block covers the range, then the existing block refusal stands
+  unchanged in both stores — `STATE_ILLEGAL` naming the room and
+  carrying the block's dates and reason (`rooms.state.room_blocked`) —
+  and is never replaced by the state answer, so a block-covered
+  out-of-order room still refuses through the block path. Traces to:
+  US-RTE-2, US-RMS-3; FR-RTE-2, FR-RMS-3, BR-12, BR-67 (Refs #636).
+- AC-SEL-3 — Given the block behaviour the desk depends on, when this
+  change lands, then it is unchanged: a room is named in `blockedRooms`
+  for exactly the ranges a block covers and for no other reason
+  (room state never adds a room to that list), `BlockRoom` and
+  `ReleaseBlock` keep today's codes, statuses, details, and stored
+  effect, releasing a block returns the room to sale exactly as today
+  when its state is sellable and leaves it unsellable when it is
+  `out-of-order` or `occupied`, and no room state is added, removed, or
+  re-named and no state-machine transition moves. Traces to: US-RMS-3;
+  FR-RMS-3, BR-12 (Refs #636).
+- AC-SEL-4 — Given the merged server-side availability derivation
+  (#631, ADR-0006 D2), when this change lands, then the reservation
+  ceiling is neither raised nor lowered: Reservations still derives
+  `totalCount - len(blockedRooms)` and reads neither `sellableCount`
+  nor room state, so an out-of-order room remains inside that ceiling
+  until the separate Reservations availability decision owns it — this
+  issue neither widens nor narrows the booking guard; the response
+  shape, required fields, operation name, route, statuses, and error
+  list of `CheckRoomTypeSellability` stay as today, with only the
+  `sellableCount` description line updated to name room state, and
+  `contract-check` stays green; no catalogue key, desk screen, control,
+  layout, token, state, or print rule changes; and the implementation
+  carries guards for the out-of-order aggregate case, the occupied
+  aggregate case, the single-room out-of-order and occupied cases, the
+  blocked-and-out-of-order single-subtraction case, and the sellable
+  vacant-state control, in both stores, with the existing sellability
+  and block guards (`services/rooms/src/server.test.ts:268-303`,
+  `:502-527`, `:645-692`) green. Traces to: US-RTE-2, US-RES-1;
+  FR-RTE-2, FR-RTE-5, FR-RMS-3, NFR-CON-1 (Refs #636, Refs #631).
+
+Done when: an `out-of-order` or `occupied` room is not counted as
+sellable in the aggregate reply for its type, the single-room path
+answers `sellableCount: 0` for such a room without claiming availability
+and the Book confirm refuses it with the existing sold-out sentence, a
+blocked room keeps its exact `blockedRooms` membership and its
+`STATE_ILLEGAL` refusal, the explicit non-sellable state list is
+`out-of-order` and `occupied` while every vacant state stays sellable,
+a room that is both blocked and non-sellable is subtracted once, and the
+merged #631 reservation ceiling, the response contract, the desk
+surfaces, and every existing guard keep their behaviour.
+
 ## Traceability summary
 
 43 done-conditions cover all 9 MVP slices from the roadmap
@@ -3971,3 +4105,37 @@ keep their behaviour. `RPT` stays the domain code for this family.
 
 <!-- ao-role: product-owner -->
 Role: product-owner · AO session hotel-mgmt-1205
+
+Sellability-state addendum (Refs #636): four further conditions
+(AC-SEL-1..AC-SEL-4, section 29) cover audit finding M1 — the
+sellability read subtracts only date-ranged blocks, so an
+`out-of-order` room (and an `occupied` one) is advertised as sellable in
+the aggregate count for its type and in the single-room reply. The
+aggregate `sellableCount` now counts only rooms that are both block-free
+and in a sellable state, with the non-sellable state list stated
+explicitly as `out-of-order` and `occupied` and every vacant state still
+sellable, while `totalCount` and `blockedRooms` keep their content and a
+room that is both blocked and non-sellable is subtracted once; the
+single-room path answers `sellableCount: 0` instead of claiming
+availability, so the desk Book confirm refuses with its existing
+sold-out sentence, and the existing block refusal keeps its place; the
+block behaviour, the room-state vocabulary, and the state machine do not
+move; and the merged #631 reservation ceiling
+(`totalCount - len(blockedRooms)`, ADR-0006 D2) is neither raised nor
+lowered. They trace to the existing `AC-RTE-2` (which already promises
+an availability count that excludes occupied, blocked, and reserved
+rooms), `AC-RMS-3`, and the existing stories and FRs (US-RTE-2,
+US-RMS-1, US-RMS-3, US-RES-1; FR-RTE-2, FR-RTE-5, FR-RMS-1, FR-RMS-3,
+NFR-CON-1) plus the existing `BR-12`; no story, FR, or business rule is
+added or reworded here — the requirements-side delta and the sellable
+state-list rule are the `business-analyst` handoff
+(`docs/requirements/mvp-requirements.md` section 37, BR-67) — and the
+contract description line, the LLD delta, and the refreshed rooms
+flowcharts are the `architect` handoff. `AC-RTE-2` gains only the
+pointer; the conditions written earlier hold as written, the
+43-condition MVP count above stands unchanged, and the sections 1–17,
+19–28 done-conditions keep their behaviour. `SEL` is the domain code
+for this family.
+
+<!-- ao-role: product-owner -->
+Role: product-owner · AO session hotel-mgmt-1214
