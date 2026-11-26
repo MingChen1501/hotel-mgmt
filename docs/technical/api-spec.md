@@ -77,6 +77,19 @@ section 4).
   Admin path (LLD
   [section 33](../architecture/lld.md#33-admin-authenticates-before-parsing-and-refuses-a-malformed-config-write-refs-639);
   Refs #639).
+- Audit actor provenance: a write records the authenticated session as
+  its actor, never the request's `actor`/`updatedBy` string — Admin
+  records the resolved `signinIdentity`, and Stay, Guests, Rooms,
+  Reservations, and Billing record the presented session token (the text
+  after `Bearer `, trimmed) until the identity-hardening slice resolves
+  it. The request field keeps its type, required flag, and existing
+  refusals and is demoted to an annotation: where the write emits a JSON
+  outbox payload, a disagreeing value is preserved additively as
+  `requestActor`; column-only rows drop it and keep their shape. A
+  disagreement is never refused, no new token appears, and no request
+  schema publishes a bound (LLD
+  [section 34](../architecture/lld.md#34-the-audit-actor-comes-from-the-session-never-from-the-request-refs-643);
+  Refs #643).
 - Localisation readiness: every user-visible string comes from a
   message catalogue; no behaviour depends on English wording
   (`NFR-I18N-1`).

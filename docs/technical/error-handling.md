@@ -271,6 +271,35 @@ section 26 (`AC-CFG-1`..`AC-CFG-5`); requirements: `FR-CFG-1`..`FR-CFG-3`
 in `docs/requirements/mvp-requirements.md` section 34; business rule
 BR-64.
 
+### 1.6 Audit-actor provenance changes no refusal (Refs #643)
+
+The recorded audit actor comes from the authenticated session, never
+from the request's `actor`/`updatedBy` string (LLD
+[section 34](../architecture/lld.md#34-the-audit-actor-comes-from-the-session-never-from-the-request-refs-643)).
+This changes no error answer:
+
+- **No new code, status, `details` key, or sentence.** The envelope
+  enum and status mapping are untouched (`contracts/errors/envelope.json`),
+  and no message-catalogue key is added or reworded.
+- **The existing refusals keep their place.** A missing, blank, or
+  wrongly typed `actor` keeps today's `VALIDATION_FAILED` (400) naming
+  `actor` where the service already requires or validates it (Stay,
+  Guests, Rooms `requireString`; `CheckOutReservation`'s
+  `field_required`; Billing's `actorOf`), and writes nothing. A missing
+  or refused session keeps today's `UNAUTHENTICATED` (401) with the same
+  `error.auth.*` sentence and the same order relative to the body read
+  on each path; the Admin order (401, then 400, then 403) does not move.
+- **A disagreement is never refused.** A request whose `actor` differs
+  from the session is answered exactly like an honest one — same status,
+  same body, same stored business effect — because the request value is
+  demoted, not rejected. The only trace is the additive `requestActor`
+  key in a JSON outbox payload when the write emits one; a column-only
+  write drops the value and records the session actor. A refusal for a
+  disagreement would be a contract change of its own.
+- **Nothing is written on a refusal.** A refused write still records no
+  row, no outbox event, no change row, and no history row, so
+  `NFR-AUD-1` is unaffected on the refusal path.
+
 ## 2. Conflict semantics (overbooking and double assignment)
 
 - A booking refused for lack of sellable availability returns
