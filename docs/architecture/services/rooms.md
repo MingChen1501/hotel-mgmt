@@ -17,7 +17,7 @@ Node.js/TypeScript flat `src/` files over raw `node:http`, wired in `services/ro
 | Transport + routing | `src/server.ts` | `createServiceServer` answers `GET /healthz` (:117), enforces Bearer presence (:130), routes `POST /v1/rooms/<Operation>` by case label |
 | Identity | `src/auth.ts` | `extractBearer`: Bearer presence check, same skeleton contract as Stay |
 | Validation + step order | `src/store.ts` (`RoomStore`, `RoomStoreAPI` at :167) | per-operation checks, sellability math, guarded assign/release/block transitions |
-| Row storage | `src/store.ts` (in-memory), `src/pgstore.ts` (`PostgresRoomStore implements RoomStoreAPI` at :36) | identical semantics; Postgres selected at boot when `DATABASE_URL` is set |
+| Row storage | `src/store.ts` (in-memory), `src/pgstore.ts` (`PostgresRoomStore implements RoomStoreAPI` at :39) | identical semantics; Postgres selected at boot when `DATABASE_URL` is set |
 | Errors | `src/errors.ts` | shared `HttpError` envelope (same code set as Stay) |
 | Boot | `src/index.ts` | store selection by `DATABASE_URL`, `listen(PORT)` (default `8085`) |
 
@@ -56,18 +56,18 @@ flowchart TD
     D --> E[200 totalCount N, sellableCount = block-free rooms in a sellable state, blockedRooms unchanged]
 ```
 
-Edge trace (pins at this spec head; the implementation PR refreshes them
-per maintain-with-code, LLD [section 36](../lld.md#36-room-state-counts-in-sellability-refs-636)):
+Edge trace (pins refreshed to the as-built head per maintain-with-code, LLD
+[section 36](../lld.md#36-room-state-counts-in-sellability-refs-636)):
 
 - A–B–C: one route answers both branches (`src/server.ts:193-196`); the
   type and dates resolve, and a reversed range refuses
-  `VALIDATION_FAILED` (`src/store.ts:342-347`; Postgres
-  `src/pgstore.ts:349-354`).
-- D: `ofType` and `blockedRooms` as today (`src/store.ts:370-377`;
-  Postgres `src/pgstore.ts:382-402`).
+  `VALIDATION_FAILED` (`src/store.ts:356-358`; Postgres
+  `src/pgstore.ts:354-356`).
+- D: `ofType` and `blockedRooms` as today (`src/store.ts:384-394`;
+  Postgres `src/pgstore.ts:386-407`).
 - E: `sellableCount` counts only the rooms that are block-free **and**
   whose state is neither `out-of-order` nor `occupied`
-  (`src/store.ts:382-383` new; Postgres `src/pgstore.ts:383-390` new),
+  (`src/store.ts:399-402` new; Postgres `src/pgstore.ts:386-397` new),
   subtracting each room once, while `totalCount` and `blockedRooms` do
   not move. The value is the desk's availability figure only — the
   booking ceiling stays `totalCount - len(blockedRooms)` (section 9,
@@ -112,7 +112,7 @@ flowchart TD
 Edge trace:
 
 - Q–R422: the block test runs before any state test
-  (`src/store.ts:349-360`; Postgres `src/pgstore.ts:355-372`), keeping
+  (`src/store.ts:361-371`; Postgres `src/pgstore.ts:359-373`), keeping
   `STATE_ILLEGAL` with the block's dates and reason. `RoomsView` renders
   its covering-block note only from that refusal
   (`app/src/views/RoomsView.vue:549-593`) and `DeskView`'s room cards read
@@ -121,8 +121,8 @@ Edge trace:
   contract: a block-covered `out-of-order` room still refuses this way
   and a block-free non-sellable room still answers 200 with no note.
 - S–T200: a block-free non-sellable room answers success with today's
-  fields and `sellableCount: 0` (`src/store.ts:361-368` new; Postgres
-  `src/pgstore.ts:373-380` new) — not a refusal. The Book confirm refuses
+  fields and `sellableCount: 0` (`src/store.ts:375-382` new; Postgres
+  `src/pgstore.ts:375-384` new) — not a refusal. The Book confirm refuses
   the zero count with `desk.book.refused_soldout`
   (`app/src/views/BookView.vue:1004-1011`) and creates no reservation.
 - S–U200: a block-free vacant room of any vacant state still answers
@@ -137,7 +137,7 @@ or data repair exists in either direction.
 
 ## 5. Outbound dependencies
 
-None at runtime. Consumed by the desk loop (Stay `MoveRoom` pairs Rooms `AssignRoom`/`ReleaseRoom`) and by the Reservations booking path, which reads `CheckRoomTypeSellability` (`src/server.ts:190-191`, `src/store.ts:307-359`) once per booking attempt as the overbooking guard's capacity source (ADR-0006, #631). That consumer takes `totalCount` and `blockedRooms` and derives the ceiling as `totalCount - len(blockedRooms)`; it deliberately does not consume the derived `sellableCount`, so #636's room-state accounting changes the desk-facing figure without moving the guard's ceiling, and `blockedRooms` content stays as it is. The edge is fail-closed for booking: while Rooms is unreachable, Reservations refuses creates and modifies with `UPSTREAM_UNAVAILABLE` (product risk R-14; runbook section 11). No new operation, response field, or state was added for the seam. Hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (LLD [section 0](../lld.md)).
+None at runtime. Consumed by the desk loop (Stay `MoveRoom` pairs Rooms `AssignRoom`/`ReleaseRoom`) and by the Reservations booking path, which reads `CheckRoomTypeSellability` (`src/server.ts:193-196`, `src/store.ts:345-405`) once per booking attempt as the overbooking guard's capacity source (ADR-0006, #631). That consumer takes `totalCount` and `blockedRooms` and derives the ceiling as `totalCount - len(blockedRooms)`; it deliberately does not consume the derived `sellableCount`, so #636's room-state accounting changes the desk-facing figure without moving the guard's ceiling, and `blockedRooms` content stays as it is. The edge is fail-closed for booking: while Rooms is unreachable, Reservations refuses creates and modifies with `UPSTREAM_UNAVAILABLE` (product risk R-14; runbook section 11). No new operation, response field, or state was added for the seam. Hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (LLD [section 0](../lld.md)).
 
 See also: [deployment](../system-architecture.md) (section 1), [C4 containers](../c4-containers.md), and [event flow](../event-flow.md) (this service's outbox emissions).
 
