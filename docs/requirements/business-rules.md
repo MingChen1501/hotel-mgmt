@@ -55,6 +55,7 @@ front-desk staff, manager, or owner account acting within its access
 | BR-15 | A named discount or special price applied by the manager is kept by name on the reservation, and folio charges follow the adjusted price. | FR-RTE-3; US-RTE-3 |
 | BR-44 | A nightly price covers exactly one night. A room type is open for booking on a night only when a price exists for that room type, rate plan, and night; a missing night is never priced by inference from a neighbouring night, a plan or season default, or zero, and the desk states the type as not open for booking for that date until a manager sets the night's price. | FR-RTE-1; FR-RTE-5; FR-RES-1; US-RTE-1; `AC-MANAGE-9`; #589 |
 | BR-52 | The total and applied discount name a reservation freezes are the ones Pricing quotes for its effective room type, dates, and named discount when the booking is created or changed — never a total the caller supplies. A request's price basis is advisory input: a total that disagrees with that quote is refused and nothing is stored or repaired in place, and a quote that cannot be read refuses the booking rather than freezing an unverified total. A later rate change still does not alter a frozen total except by an explicit recalculation under `BR-2`/`BR-13`. | FR-RES-1; FR-RES-2; FR-RTE-5; FR-PRC-1..FR-PRC-5; `AC-PRC-1`..`AC-PRC-5`; #632 |
+| BR-68 | Rates refuses an input it cannot honour instead of coercing, trusting, or storing it. A present `closedToArrival` must be JSON `true` or `false`; any other value is refused `VALIDATION_FAILED` naming the field, never coerced to `false`, while an omitted field keeps the contract default `false` and a stored `true` window still refuses an arrival inside its dates. A restriction binds only to a room type Pricing can price: a malformed `roomTypeId` is refused `VALIDATION_FAILED`, a well-formed one no rate price row mentions is refused `NOT_FOUND`, and neither stores a row nor emits a `restriction-changed` event, in both stores, because a window that matches nothing is worse than a refusal and a plan `defaultUnits` is not a price. The availability read's `totalUnits` is advisory only: it is shape-checked when present and never sets the count, which is the first plan in name order that prices the type and carries a `defaultUnits`, else `0` for a priced type, while a type no price row mentions refuses `NOT_FOUND` whether or not the field is present — the booking ceiling stays the one `BR-47` derives from the room inventory. A quote whose nightly sum, percent multiplication, or amount subtraction would leave the `int64` range refuses `STATE_ILLEGAL` naming `roomTypeId` with `reason: "total_overflow"` and serves no total and no partial night list, because the served total is the money the guest is charged; every non-overflowing quote stays byte-identical and no stored-price ceiling is added. Rate-plan `name` is bounded at 64 characters and `description` at 2 000 on write, and a present value of either that is not a string is refused naming the field; the bounds are code constants with no migration, backfill, truncation, or read-time re-validation. All five rules are fixed code rules, never per-hotel settings. | FR-RTE-1; FR-RTE-2; FR-RTE-4; FR-RTE-5; FR-RTE-6..FR-RTE-10; NFR-I18N-1; NFR-BND-1; BR-9; BR-10; BR-44; BR-47; BR-52; `AC-RTE-6`..`AC-RTE-10`; Refs #631, #632, #633 |
 
 ## 4. Check-in, stay, and check-out
 
@@ -173,6 +174,7 @@ section 3.3). Fixed items no hotel may change in the MVP.
 | Sellability state list | — (none) | The non-sellable room states are exactly `out-of-order` and `occupied`; every vacant state stays sellable, the state list is a fixed code rule, and the #631 ceiling reads `totalCount - blockedRooms`, never the sellable count or room state (`BR-67`) |
 | Discounts | Named discounts the manager may apply (`BR-15`) | Applied discounts kept by name |
 | Rate plans | Sellable prices per room type, season, day (`BR-14`) | Quoted price basis unchanged unless recalculated (`BR-13`); the frozen total is the quote Pricing returns for the type, dates, and discount (`BR-52`) |
+| Rates input refusals | — (none) | `closedToArrival` must be a boolean; a restriction binds only to a room type Pricing prices; the availability read's `totalUnits` is advisory and the count is the plan default, else `0`; an overflowing quote refuses `details.reason` `total_overflow`; `name` is bounded at 64 and `description` at 2 000 characters on write (`BR-68`) |
 | Out-of-order blocks | Reason and date range per block (`BR-29`) | Blocked dates take no reservation or check-in |
 | Payment methods | — (none) | Cash and card only (`BR-23`) |
 | Folio structure | — (none) | One folio per stay; no split across payers (`BR-21`) |
@@ -312,14 +314,27 @@ refusal and its precedence, blocks and the state vocabulary are
 unchanged, and the #631 ceiling keeps reading `totalCount` and
 `blockedRooms` only — tracing `FR-RTE-2`, `FR-RMS-1`, `FR-RMS-3`,
 `FR-SEL-1`..`FR-SEL-4`, `NFR-CON-1`, and
-`AC-SEL-1`..`AC-SEL-4`, without adding behaviour beyond those sources.
+`AC-SEL-1`..`AC-SEL-4`, without adding behaviour beyond those sources,
+and BR-68 states the fail-closed input obligation the four Rates
+operations owe their callers — a present `closedToArrival` is a boolean
+or the write is refused naming the field, a restriction binds only to a
+room type Pricing prices with nothing stored otherwise, the availability
+read's `totalUnits` is advisory and never sets a count while an unpriced
+type refuses `NOT_FOUND`, a quote that would overflow refuses
+`STATE_ILLEGAL` naming `roomTypeId` with `details.reason` `total_overflow`
+and serves no total, and rate-plan `name` and `description` carry one
+declared bound each with a non-string refused — tracing `FR-RTE-1`,
+`FR-RTE-2`, `FR-RTE-4`, `FR-RTE-5`, `FR-RTE-6`..`FR-RTE-10`,
+`NFR-I18N-1`, `NFR-BND-1`, and `AC-RTE-6`..`AC-RTE-10` plus the #631
+ceiling and the #632 price basis, without adding behaviour beyond those
+sources.
 Policies with no decided source appear as open questions
 OQ-1..OQ-5. No rule introduces behaviour beyond the traced
 FRs/NFRs/stories. Later capabilities from requirements section 6
 (waitlist, split folios, integrated payments, automated workflow
 rules, multi-property operation, and the rest) carry no rule here.
 
-Counts: 61 business rules, 5 open questions.
+Counts: 62 business rules, 5 open questions.
 
 <!-- ao-role: business-analyst -->
 Role: business-analyst · AO session hotel-mgmt-1079
@@ -341,3 +356,6 @@ Role: business-analyst · AO session hotel-mgmt-1206
 
 <!-- ao-role: business-analyst -->
 Role: business-analyst · AO session hotel-mgmt-1215
+
+<!-- ao-role: business-analyst -->
+Role: business-analyst · AO session hotel-mgmt-1247
