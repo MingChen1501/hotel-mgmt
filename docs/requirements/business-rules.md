@@ -118,6 +118,8 @@ front-desk staff, manager, or owner account acting within its access
 | BR-64 | A session-guarded Admin request is answered only after the session is checked, and one config write is checked against one per-key shape table. On `POST /v1/admin/<Operation>` other than `SignIn`, a missing token, or an invalid, expired, revoked, or signed-out token, or a session whose user no longer exists, is refused with the shared envelope and `UNAUTHENTICATED` (401) and the existing sentence before the body is read, so a malformed or oversized body never produces a parse error and its size, shape, and fields stay unobservable; a resolved session then reads the body, today's body refusals keep their sentences, and the front-desk `FORBIDDEN` (403) is reached only for a well-formed body, so the order is 401, then 400, then 403. `SignIn` keeps today's order in both directions, together with its lockout. In `UpdateHotelConfig`, a value for a table key must carry the declared shape, and the first offending key refuses the whole write with `VALIDATION_FAILED` (400), `details` naming that key, and one plain catalogue sentence, with nothing written — no key of that request and no `config.updated` entry — while a key outside the table is written as sent, a value at a boundary is stored and read back exactly as today, and both stores refuse the same values. The ordering, the shapes, and the sentences are rules and constants in code, never an owner setting, an environment variable, a deployment file, or a per-hotel entry. | FR-CFG-1; FR-CFG-2; FR-CFG-3; FR-ADM-1; FR-ADM-2; FR-ADM-4; FR-CUS-1; FR-CUS-2; NFR-SEC-2; NFR-BND-1; NFR-AUD-1; `AC-CFG-1`..`AC-CFG-5`; Refs #639 |
 | BR-65 | The actor recorded on every audit trail is the authenticated session, never a value the request supplied. Every write that records an actor with its timestamp — Stay's `CheckIn`, `CheckOut`, `MoveRoom`, and `RecordActualTimes`; Guests' `UpsertGuest`; Rooms' `UpsertRoomType`, `UpsertRoom`, `UpdateRoomState`, `AssignRoom`, `ReleaseRoom`, `BlockRoom`, and `ReleaseBlock`; Reservations' `CreateReservation`, `CheckInReservation`, `CheckOutReservation`, `ModifyReservation`, `CancelReservation`, and `MarkNoShow`; Billing's `GetFolioBalance`, `PostCharge`, `RecordPayment`, `RecordOpenBalanceApproval`, `RunDayClose`, `ProduceInvoice`, `ProduceReceipt`, `UpsertChargeItem`, and `UpsertTaxFeeRule`; and Admin's `UpdateHotelConfig` — records the session the request authenticated: the resolved caller's `signinIdentity` where the service resolves a caller (Admin, including its config write), and otherwise the session token the request presented without the `Bearer ` prefix and trimmed, so one session records one identical string and a Stay close and the Reservations completion it forwards agree. The request's `actor` and `updatedBy` keep their contract shape, their required flag, and their existing refusals, and their value is never the recorded actor: where the write emits a JSON outbox payload a value that differs from the session actor is preserved additively as `requestActor`, a value that equals it or is absent where the service accepts its absence adds no key, and where the write records only a column the value is dropped with the row shape unchanged, so a disagreement is demoted rather than refused and every desk call keeps its status, stored effect, and answer. A missing, invalid, expired, revoked, or signed-out session is still refused 401 before any write, so the actor never falls back to the body; the Admin boot seed keeps its server-side `boot` actor; and a provider-to-provider call carries the caller's own session, so the forwarded `actor` is an annotation only. No error code, catalogue key, contract shape, schema, table, migration, backfill, or reader-visible desk change is added, historic rows keep the value they recorded, and token verification, HMAC, expiry, revocation, and role authorization are unchanged and out of scope; the rule is a fixed rule in code, never a per-hotel setting. | FR-SEC-1; FR-SEC-2; FR-SEC-3; FR-SEC-4; FR-ADM-1; FR-ADM-4; FR-DEP-1; FR-DEP-5; NFR-AUD-1; NFR-SEC-2; `AC-SEC-1`..`AC-SEC-5`; Refs #643 |
 
+| BR-66 | A Reporting rebuild publishes only a fully replayed read model, and an aborted rebuild changes nothing the desk can read. A rebuild builds its candidate projection set — its own applied-event record, per-subscription offsets, as-of stamp, and projection maps — apart from the published one and installs it in one swap only after every event in the slice projects, so the published set changes exactly once, from one complete state to another. On the first event it cannot project, the rebuild discards the candidate and returns the same refusal it returns today — `VALIDATION_FAILED` naming the field with today's sentence — while the published projections, offsets, and as-of stamp keep their pre-rebuild values, so every report keeps serving the rows it served and a retry replays from the same offset record. A report read answers one complete set — the pre-rebuild set until the swap, the post-rebuild set after it — with the as-of stamp belonging to that same set, and is never refused for staleness or blocked for longer than the swap; a successful rebuild produces exactly today's rows, row order, zero-filled dates, revenue totals, daily-sheet groups, housekeeping list, and as-of stamp, and re-applying a replayed event stays a no-op. The failure is observable through the rebuild call's returned error, never through a read endpoint or a status field, and the rule is a fixed code rule, never an environment variable, deployment file, or per-hotel setting. | FR-RPT-1; FR-RPT-2; FR-RPT-3; FR-RPT-4; FR-RPT-5; FR-RPT-6; FR-RPT-7; NFR-PERF-1; NFR-PERF-2; NFR-RPT-1; `AC-RPT-8`..`AC-RPT-10`; Refs #642 |
+
 ### Config write shapes (BR-64)
 
 The per-key table `UpdateHotelConfig` applies before its first write.
@@ -177,6 +179,7 @@ section 3.3). Fixed items no hotel may change in the MVP.
 | Admin request ordering | — (none) | The session check precedes the body read on every operation except `SignIn`; an unauthenticated request is refused 401 before any parse refusal, and the role 403 follows a well-formed body (`BR-64`) |
 | Config write shapes | The values of the configurable parts above (`FR-ADM-1`, `FR-ADM-4`, `FR-CUS-1`, `FR-CUS-2`) | One per-key shape table applied before the first write; a value outside its key's shape is refused naming the key with nothing written, and a key outside the table is written as sent (`BR-64`) |
 | Audit actor provenance | — (none) | The recorded actor is the authenticated session — the resolved caller's `signinIdentity` where the service resolves one, otherwise the session token without the `Bearer ` prefix; the request's `actor`/`updatedBy` keeps its shape and refusals but is never the recorded value, appearing only as the additive `requestActor` annotation in a JSON outbox payload (`BR-65`) |
+| Rebuild publication | — (none) | A Reporting rebuild publishes only a fully replayed read model in one swap; an aborted rebuild leaves the previously served projections, offsets, and as-of stamp intact and reports the failure through the rebuild call, never through a read, while a successful rebuild stays exactly today's output (`BR-66`) |
 | Roles and access | — (none) | Three fixed roles with fixed reach (`BR-35`) |
 | Automation | — (none) | No automatic status changes, reminders, or messages from lifecycle events |
 
@@ -281,14 +284,22 @@ write recording the resolved caller's identity, and every recorded shape
 additive with no migration, backfill, or reader-visible desk change —
 tracing `FR-SEC-1`..`FR-SEC-4`, `FR-ADM-1`, `FR-ADM-4`, `FR-DEP-1`,
 `FR-DEP-5`, `NFR-AUD-1`, `NFR-SEC-2`, and `AC-SEC-1`..`AC-SEC-5`,
-without adding behaviour beyond those sources.
+without adding behaviour beyond those sources, and BR-66 states the
+reporting read-model obligation a rebuild owes the desk — only a fully
+replayed projection set is published, in one swap, an aborted rebuild
+leaves the last good set with its offsets and as-of stamp in place and
+reports through the returned refusal rather than a read, a report read
+answers one complete set without a staleness refusal, and a successful
+rebuild stays exactly today's output — tracing `FR-RPT-1`..`FR-RPT-7`,
+`NFR-PERF-1`, `NFR-PERF-2`, `NFR-RPT-1`, and
+`AC-RPT-8`..`AC-RPT-10`, without adding behaviour beyond those sources.
 Policies with no decided source appear as open questions
 OQ-1..OQ-5. No rule introduces behaviour beyond the traced
 FRs/NFRs/stories. Later capabilities from requirements section 6
 (waitlist, split folios, integrated payments, automated workflow
 rules, multi-property operation, and the rest) carry no rule here.
 
-Counts: 57 business rules, 5 open questions.
+Counts: 59 business rules, 5 open questions.
 
 <!-- ao-role: business-analyst -->
 Role: business-analyst · AO session hotel-mgmt-1079
@@ -304,3 +315,6 @@ Role: business-analyst · AO session hotel-mgmt-1129
 
 <!-- ao-role: business-analyst -->
 Role: business-analyst · AO session hotel-mgmt-1174
+
+<!-- ao-role: business-analyst -->
+Role: business-analyst · AO session hotel-mgmt-1206
