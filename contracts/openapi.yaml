@@ -308,16 +308,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '503':
-          description: 'UPSTREAM_UNAVAILABLE: The room inventory or the price could not be read, so the booking was
-            refused rather than frozen at an unverified total; details name the upstream and the operation (ADR-0006 D4,
-            ADR-0007 D4).'
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
-        '503':
-          description: 'UPSTREAM_UNAVAILABLE: The room inventory could not be read, so the booking was refused; details
-            name upstream rooms and CheckRoomTypeSellability (ADR-0006 D4).'
+          description: 'UPSTREAM_UNAVAILABLE: The room inventory could not be read (details name upstream rooms and
+            CheckRoomTypeSellability, ADR-0006 D4), or the price could not be read (details name upstream rates and
+            QuotePrice, ADR-0007 D4); either way the booking was refused rather than frozen at an unverified total.'
           content:
             application/json:
               schema:
