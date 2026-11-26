@@ -89,7 +89,7 @@ hotel. The reservations module reads two of them at boot: `RATES_BASE_URL`
 (`deploy/compose.yaml:46`) and — target state for the next bundle, Refs
 #631 — `ROOMS_BASE_URL` (default
 `http://rooms:8085`; wiring
-`services/reservations/cmd/server/main.go:44-48`). Both calls forward the
+`services/reservations/cmd/server/main.go:45-49`). Both calls forward the
 caller's session token and fail closed. `ROOMS_BASE_URL` is the ceiling
 source for the overbooking guard (Refs #631,
 `../architecture/lld.md` section 26): a booking whose capacity read fails
@@ -111,6 +111,31 @@ an image. Section 3 step 5, section 4 step 6, and section 5 carry the
 matching pre-flight and health-check checks; the health check only fails
 on them once the change ships.
 
+**The booking path now reads Rates (Refs #632).** `RATES_BASE_URL` is
+unchanged — same address, same `http://rates:8082` default, same
+configuration file (`deploy/compose.yaml:46`) — but the reservations
+module makes a second read of the rates module on it: every booking
+create and every booking modify now calls
+`POST {RATES_BASE_URL}/v1/rates/QuotePrice` for the effective room type,
+dates, and discount, forwards the caller's session token, caps the call
+at five seconds, and freezes the total the quote returns. This read is
+fail-closed, like the restriction read that already runs on the same
+address and not like the fail-soft stay-to-reservations completion: a
+rates module that cannot be read refuses the booking
+(`UPSTREAM_UNAVAILABLE`, 503) rather than freezing an unverified price,
+so an unreachable rates module stops the desk booking and modifying for
+as long as it lasts (`../architecture/lld.md`, section 25; the
+desk-facing procedure is `../operations/runbook.md`, section 15).
+Reading bookings, cancellations, check-in, and check-out do not call
+rates on this path and keep working. No hotel input and no new
+configuration value arrive with it; only the reachability requirement
+the pre-flight and health check already apply to this address becomes
+load-bearing for the booking action, which is why both checks now name
+it (section 3 step 5 and section 5). No new container, no restart-order
+change, and no monitoring exporter ships with this bundle: until the
+first exporter lands, the alert obligation recorded for R9 in
+`../release/release-notes.md` section 2.3 is carried by the desk
+escalation in `../operations/runbook.md` section 7.
 **Billing's stay read (Refs #634).** Target state for this bundle: the
 billing module reads `STAY_BASE_URL` (default `http://stay:8084`, the
 port the stay module already publishes, `deploy/compose.yaml:81`) and
@@ -156,6 +181,10 @@ health check.
    module reaching the reservations module on the hotel LAN (a
    close still commits when that call fails, but the booking is
    then left active — `../operations/runbook.md`, section 8.2),
+   and the reservations module reaching the rates module on the
+   hotel LAN (a booking or a booking change is refused when that
+   read fails, so the desk cannot book at an unverified price —
+   `../operations/runbook.md`, section 15.2).
    and the billing module reaching the stay module on the hotel
    LAN (a folio write refuses while it cannot, so new charges and
    payments are blocked until it answers — section 5,
@@ -187,7 +216,12 @@ every inter-host endpoint over the hotel LAN before step 6.
    `ROOMS_BASE_URL` for the reservations module (Refs #631),
    `RESERVATIONS_BASE_URL` for the stay module (Refs #646), and
    `STAY_BASE_URL` for the billing module (Refs #634), are already
-   set in it and need no hotel input.
+   set in it and need no hotel input. The reservations module's
+   `RATES_BASE_URL` is unchanged by this bundle (Refs #632) but now
+   also carries the booking quote read, so confirm the rates module
+   answers on it (section 3 step 5) before the desk resumes: an
+   unreachable rates module refuses every booking create and modify
+   (`../operations/runbook.md`, section 15.2).
 5. Start the database host first, then the module containers, then
    the reverse proxy.
 6. Run the health check from section 3 step 5, sign in, and repeat
@@ -204,6 +238,20 @@ data — there is no migration and no backfill. Before resuming desk
 work, clear every such room per `../operations/runbook.md` section 9.3
 and record the cleared rooms, their times, and the actor in the upgrade
 record; the same section 9 procedure is the support step afterwards.
+
+**Booking totals frozen by an older bundle (upgrade only, Refs #632).**
+An installation upgraded from a bundle that predates the server-side
+price basis inherits bookings frozen at whatever total the caller sent;
+nothing at this head compared that total with a rate. This bundle
+verifies new bookings and booking changes — it does not rewrite stored
+ones: there is no migration, no backfill, and no automatic re-derivation
+of an existing booking's total. Do not correct them in bulk and do not
+edit a booking at the desk. A booking that staff change is repriced
+against the rates in one change that records the actor and the time
+(`../operations/runbook.md`, section 15.3), and a total that has to be
+corrected without changing the booking goes to support. Record the
+booking references found, their stored totals, and the times in the
+upgrade record.
 
 For the small-cluster variant, stop and start hosts in the same
 relative order and verify inter-host endpoints after step 5.
@@ -232,6 +280,14 @@ Run before every install and every upgrade; stop on any failure:
   behind the stay is then left active and has to be completed by hand
   (`../operations/runbook.md`, section 8.2), so an unreachable
   reservations module leaves a booking to repair after every close.
+- The reservations module reaches the rates module over the hotel LAN
+  and answers its quote read within the five-second cap: a booking
+  create or booking modify is refused fail-closed with
+  `UPSTREAM_UNAVAILABLE` when that read fails, so an unreachable rates
+  module leaves the desk unable to book or change bookings while
+  reading, cancelling, checking in, and checking out keep working
+  (`../operations/runbook.md`, section 15.2; `../architecture/lld.md`,
+  section 25.2).
 - The billing module reaches the stay module over the hotel LAN: every
   folio write reads the stay first, so while that address does not
   answer, charge posting, payment recording, open-balance approval, and
@@ -270,7 +326,16 @@ fixed within the working day, roll back:
    restore-and-redeploy procedure) and file an issue for the failure.
 
 <!-- ao-role: release-manager -->
+Role: release-manager · AO session hotel-mgmt-1041
+
+<!-- ao-role: release-manager -->
+Role: release-manager · AO session hotel-mgmt-948
+
+<!-- ao-role: release-manager -->
 Role: release-manager · AO session hotel-mgmt-963
 
 <!-- ao-role: release-manager -->
 Role: release-manager · AO session hotel-mgmt-1049
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1057
