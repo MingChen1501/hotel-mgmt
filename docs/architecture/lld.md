@@ -9683,45 +9683,49 @@ As found (at this spec head, read-only):
 
 ### 38.1 Where the rule sits: one exported check beside `requireString`, called by both stores before any write
 
+As built by the implementation PR (the "as found" list above keeps the
+pre-change head it cited; every pin below is the landed `file:line`).
+
 - **One module-level helper in `store.ts`, exported, used by both
   stores.** `requireCapacity(value: unknown): number | null` joins
-  `requireDate` and `requireString` (`store.ts:98-110`), throwing one
+  `requireDate` and `requireString` (`store.ts:98-128`), throwing one
   `HttpError` and returning the accepted value; `pgstore.ts` imports it
   from `./store.js` exactly as it already imports `requireString`
-  (`pgstore.ts:5-26`). Because the two stores call the same function,
+  (`pgstore.ts:5-27`). Because the two stores call the same function,
   they refuse the same value classes with the same code, field, and
   sentence by construction (AC-CAP-3, FR-CAP-3), and no second copy of
   the rule can drift.
 - **Absent and present are distinguished before the helper's value
   test.** `undefined` — the field omitted — returns `null`, which keeps
   today's fallback meaning: the in-memory record takes the existing
-  value (`store.ts:248`, `:279`), the Postgres type merge keeps
-  `capacity ?? current.capacity` (`pgstore.ts:160`), and the room update
-  keeps `COALESCE($5, capacity)` (`:221`). A JSON `null` is *present*
+  value (`store.ts:267`, `:299`), the Postgres type merge keeps
+  `capacity ?? current.capacity` (`pgstore.ts:161`), and the room update
+  keeps `COALESCE($5, capacity)` (`:222`). A JSON `null` is *present*
   and is refused: a caller that sends the key with `null` has made a
   mistake, not asked to leave the field alone (requirements 39.1 part
   2).
 - **The call sites are the two capacity reads, and nothing else moves.**
   `upsertRoomType` calls it immediately after the existing `name` and
   `actor` checks and before the record is built
-  (`store.ts:240-242`; `pgstore.ts:142-144`), and `upsertRoom` calls it
+  (`store.ts:258-260`; `pgstore.ts:143-145`), and `upsertRoom` calls it
   at its capacity read after the room type resolves
-  (`store.ts:271-280`; `pgstore.ts:204-208`), so today's
+  (`store.ts:286-291`; `pgstore.ts:201-206`), so today's
   `NOT_FOUND` for an unknown room type keeps its precedence and the
   check sits exactly where its field is read — the cross-field
   precedence the requirements leave undecided (section 39.6) does not
   move.
 - **In Postgres the check runs before any transaction opens.** Both
-  helpers are computed before `this.withTx` (`pgstore.ts:152`, `:212`),
+  helpers are computed before `this.withTx` (`pgstore.ts:153`, `:213`),
   so a refused request opens no transaction, takes no lock, issues no
-  statement, and reaches neither the `INSERT`/`UPDATE` nor the outbox
-  insert (`:170`, `:195`, `:231`, `:257`). A non-finite value therefore
-  stops at the shared check instead of reaching the `INT` parameter
-  binding that answers today's 500 (AC-CAP-2, AC-CAP-3).
+  statement, and reaches neither the `UPDATE`/`INSERT`
+  (`:166`, `:183`, `:221`, `:246`) nor the outbox insert
+  (`:172-178`, `:188-194`, `:236-242`, `:261-267`). A non-finite value
+  therefore stops at the shared check instead of reaching the `INT`
+  parameter binding that answers today's 500 (AC-CAP-2, AC-CAP-3).
 - **In the in-memory store the check runs before the record is
   built.** The refusal precedes `rooms`/`roomTypes` mutation
-  (`store.ts:255-256`, `:288`) and the `emit` call (`:257-263`,
-  `:289-295`), so no row object is created, no map entry is replaced,
+  (`store.ts:274-275`, `:308`) and the `emit` call (`:276-282`,
+  `:309-315`), so no row object is created, no map entry is replaced,
   and no `room-upserted` event is appended (AC-CAP-2, AC-CAP-3).
 
 ### 38.2 The field rule: one accepted value class, five refusal classes
@@ -9756,13 +9760,13 @@ never rounded into the column, because it no longer reaches the column.
   `INTERNAL_ERROR`, so a value the service can name is never a 500.
 - **The sentence.** One new catalogue key `rooms.validation.capacity`
   in the existing `{field} must be …` family
-  (`messages/en.json:180`, the `rooms.validation.date_format` shape):
+  (`messages/en.json:181`, the `rooms.validation.date_format` shape):
   `"{field} must be a whole number of guests of at least 1."`, called
   with `field: "capacity"`. It is added to the canonical catalogue, to
   all eight byte-identical runtime mirrors, and at parity in
   `messages/vi.json` (`NFR-I18N-1`; `script/catalogue-coverage-check.sh`
   asserts mirrors and parity). The wizard's own sentence reuses the
-  existing `desk.onboarding.capacity_invalid` key (`messages/en.json:700`)
+  existing `desk.onboarding.capacity_invalid` key (`messages/en.json:701`)
   rather than a second key.
 - **Nothing written, no event.** Refusal precedes every mutation on both
   paths (38.1), so no row is created, an existing room or type keeps
@@ -9787,19 +9791,19 @@ Server write path — `UpsertRoomType` and `UpsertRoom`, both stores:
 
 ```mermaid
 flowchart TD
-    A[POST UpsertRoomType or UpsertRoom  server.ts:139-160] --> B[Token present and JSON body parsed  server.ts:130-165]
-    B --> C[Store method  store.ts:239 or :266, pgstore.ts:141 or :199]
-    C --> D[Existing required-field checks: name or number, then actor  store.ts:240-241 or :267-268, pgstore.ts:142-143 or :200-201]
+    A[POST UpsertRoomType or UpsertRoom  server.ts:139-159] --> B[Token present and JSON body parsed  server.ts:130-159]
+    B --> C[Store method  store.ts:257 or :285, pgstore.ts:142 or :200]
+    C --> D[Existing required-field checks: name or number, then actor  store.ts:258-259 or :286-287, pgstore.ts:143-144 or :201-202]
     D --> E{capacity key omitted?}
-    E -->|yes| F[Today's meaning: create stores none, update keeps the stored one  store.ts:248 or :279, pgstore.ts:160 or :221]
-    E -->|no| G[requireCapacity, one shared exported check  new, store.ts beside :105-110]
+    E -->|yes| F[Today's meaning: create stores none, update keeps the stored one  store.ts:267 or :299, pgstore.ts:161 or :222]
+    E -->|no| G[requireCapacity, one shared exported check  store.ts:118-128]
     G -->|not a number: text, null, true, array, object| R1[400 VALIDATION_FAILED naming capacity  server.ts:91-94]
     G -->|fractional: 2.5| R1
     G -->|non-finite: 1e999 to Infinity, Infinity, NaN| R1
     G -->|integer below 1: 0 or negative| R1
-    G -->|integer at least 1: 1, 2, 21| H[Build the record or open the transaction  store.ts:242-256 or :269-287, pgstore.ts:152 or :212]
-    H --> I[Write the row verbatim, then emit room-upserted  store.ts:255-263 or :288-295, pgstore.ts:170 or :195, :231 or :257]
-    I --> J[200 with today's response fields  server.ts:139-160]
+    G -->|integer at least 1: 1, 2, 21| H[Build the record or open the transaction  store.ts:264-275 or :293-308, pgstore.ts:153 or :213]
+    H --> I[Write the row verbatim, then emit room-upserted  store.ts:274-282 or :308-315, pgstore.ts:166 or :183, :221 or :246]
+    I --> J[200 with today's response fields  server.ts:139-159]
     R1 --> N[Nothing built, written, or emitted; no driver call, so a non-finite value can no longer become a 500]
 ```
 
@@ -9807,11 +9811,11 @@ Onboarding wizard — the reader-visible move:
 
 ```mermaid
 flowchart TD
-    A[Step 3 capacity input  OnboardingView.vue:857-864] --> B{Empty, or digits and value at least 1}
-    B -->|empty| C[Send no capacity member  OnboardingView.vue:915-917]
-    B -->|0, fractional, negative, or non-digits| R[Plain desk.onboarding.capacity_invalid sentence, nothing sent  messages/en.json:700, messages/vi.json:700]
+    A[Step 3 capacity input  OnboardingView.vue:857-867] --> B{Empty, or digits and value at least 1}
+    B -->|empty| C[Send no capacity member  OnboardingView.vue:917-920]
+    B -->|0, fractional, negative, or non-digits| R[Plain desk.onboarding.capacity_invalid sentence, nothing sent  messages/en.json:701, messages/vi.json:701]
     R --> S[Manager corrects the field on step 3; no UpsertRoomType or UpsertRoom call is made]
-    B -->|whole number of at least 1| D[Post the types, then the rooms  OnboardingView.vue:915-917]
+    B -->|whole number of at least 1| D[Post the types, then the rooms  OnboardingView.vue:917-920]
     D --> E{Server requireCapacity refuses}
     E -->|no| F[200; the saved capacity reads back unchanged]
     E -->|yes| G[The existing plain failure sentence; no technical code shown]

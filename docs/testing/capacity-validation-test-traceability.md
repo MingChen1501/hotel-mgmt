@@ -33,7 +33,7 @@ refusal contract, the per-flow diagrams, and the verification plan this
 plan aligns with), HLD
 [section 30](../architecture/hld.md#30-room-and-room-type-capacity-is-a-whole-number-of-at-least-1-refs-637),
 the refreshed Rooms flowcharts
-([section 11](../architecture/services/rooms.md#11-planned-delta--capacity-is-a-whole-number-of-at-least-1-refs-637)),
+([section 11](../architecture/services/rooms.md#11-as-built-delta--capacity-is-a-whole-number-of-at-least-1-refs-637)),
 the `errors[].when` lines in
 `contracts/http/UpsertRoom.json` and `UpsertRoomType.json`, the
 `RoomInventoryService` note in `docs/technical/api-spec.md` section 2,
