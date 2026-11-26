@@ -904,9 +904,11 @@ capability: the 57-row MVP coverage count stands unchanged and no MVP
 row may cite this slice as its guard.
 
 Every `file:line` in the existing pins was re-read on this merged stack
-head: the requirements branch now merges `master` `90678ea`, the #631
-availability implementation (#716), which added the availability client
-and its tests beside these pins and three catalogue keys. Those pins prove today's
+head: the requirements branch now merges `master` `0d1979c`, which
+carries the #643 audit-actor change (it shifted the handler and store
+test lines cited below) on top of the #631 availability implementation
+(#716) that added the availability client and its tests beside these
+pins and three catalogue keys. Those pins prove today's
 behaviour — the frozen total is only checked
 for presence and `>= 0`
 (`services/reservations/internal/service/service.go:158-160`,
