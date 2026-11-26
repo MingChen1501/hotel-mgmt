@@ -61,13 +61,13 @@ Edge trace (pins refreshed to the as-built head per maintain-with-code, LLD
 
 - A–B–C: one route answers both branches (`src/server.ts:193-196`); the
   type and dates resolve, and a reversed range refuses
-  `VALIDATION_FAILED` (`src/store.ts:356-358`; Postgres
-  `src/pgstore.ts:354-356`).
-- D: `ofType` and `blockedRooms` as today (`src/store.ts:384-394`;
+  `VALIDATION_FAILED` (`src/store.ts:376-378`; Postgres
+  `src/pgstore.ts:355-357`).
+- D: `ofType` and `blockedRooms` as today (`src/store.ts:404-414`;
   Postgres `src/pgstore.ts:387-408`).
 - E: `sellableCount` counts only the rooms that are block-free **and**
   whose state is neither `out-of-order` nor `occupied`
-  (`src/store.ts:399-402` new; Postgres `src/pgstore.ts:387-398` new),
+  (`src/store.ts:420-422` new; Postgres `src/pgstore.ts:387-398` new),
   subtracting each room once, while `totalCount` and `blockedRooms` do
   not move. The value is the desk's availability figure only — the
   booking ceiling stays `totalCount - len(blockedRooms)` (section 9,
@@ -112,7 +112,7 @@ flowchart TD
 Edge trace:
 
 - Q–R422: the block test runs before any state test
-  (`src/store.ts:361-371`; Postgres `src/pgstore.ts:360-374`), keeping
+  (`src/store.ts:381-391`; Postgres `src/pgstore.ts:360-374`), keeping
   `STATE_ILLEGAL` with the block's dates and reason. `RoomsView` renders
   its covering-block note only from that refusal
   (`app/src/views/RoomsView.vue:549-593`) and `DeskView`'s room cards read
@@ -121,7 +121,7 @@ Edge trace:
   contract: a block-covered `out-of-order` room still refuses this way
   and a block-free non-sellable room still answers 200 with no note.
 - S–T200: a block-free non-sellable room answers success with today's
-  fields and `sellableCount: 0` (`src/store.ts:375-382` new; Postgres
+  fields and `sellableCount: 0` (`src/store.ts:395-402` new; Postgres
   `src/pgstore.ts:376-385` new) — not a refusal. The Book confirm refuses
   the zero count with `desk.book.refused_soldout`
   (`app/src/views/BookView.vue:1004-1011`) and creates no reservation.
@@ -349,8 +349,9 @@ Edge trace (as-built pins at the #637 implementation head):
   same envelope shape as `rooms.validation.date_format` (`:100`); the
   handler's `HttpError` branch answers 400 (`src/server.ts:91-94`), never
   the `INTERNAL_ERROR` catch-all (`:95-101`). The Postgres call sites are
-  before `withTx` (`src/pgstore.ts:153`, `:213`), so no statement, lock,
-  or outbox row is created for a refused request.
+  before `withTx` (`src/pgstore.ts:153`, `:213`), so a refused request
+  opens no transaction, takes no lock, issues no write statement, and
+  creates no outbox row.
 - G–H–I: an accepted capacity is written verbatim by the in-memory
   record (`src/store.ts:267-275`, `:299-308`; Postgres parameter binding
   `src/pgstore.ts:170`, `:186`, `:231`, `:256`), and the

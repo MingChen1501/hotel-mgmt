@@ -8916,17 +8916,17 @@ a future stay and the under-counting risk is bounded by exactly those two
 names rather than by an open-ended "any non-vacant" rule.
 
 - **In-memory aggregate.** The room set is the same `ofType`
-  (`src/store.ts:384`) and `blockedRooms` is built exactly as today
-  (`:385-394`). `sellableCount` becomes one predicate over that same set
+  (`src/store.ts:404`) and `blockedRooms` is built exactly as today
+  (`:405-414`). `sellableCount` becomes one predicate over that same set
   — a room counts when it is block-free and its state is not in the
-  non-sellable set (`:399-402` new) — so `totalCount` stays
-  `ofType.length` (`:399`) and `blockedRooms` keeps its membership and
-  order (`:403`).
+  non-sellable set (`:420-422` new) — so `totalCount` stays
+  `ofType.length` (`:419`) and `blockedRooms` keeps its membership and
+  order (`:423`).
 - **Postgres aggregate.** The existing `count(*)` / `count(*) FILTER
   (WHERE NOT EXISTS …)` query grows one conjunct in the filter: the
-  room's state is not in the two-name list (`src/pgstore.ts:386-397`
-  new). The `blockedRooms` query is untouched (`:398-407`), and
-  `sellableCount` still comes from the same `counted` row (`:412-413`),
+  room's state is not in the two-name list (`src/pgstore.ts:387-398`
+  new). The `blockedRooms` query is untouched (`:399-408`), and
+  `sellableCount` still comes from the same `counted` row (`:413-414`),
   so neither branch adds a round trip.
 - **Both stores agree.** The predicate is the same two names in both
   files — a status set in TypeScript and a `state NOT IN (...)`
@@ -8943,8 +8943,8 @@ names rather than by an open-ended "any non-vacant" rule.
 For a named `roomNumber`, after the block check (36.3), the branch
 answers success with today's six fields and `totalCount: 1`; only
 `sellableCount` moves to `0` — and `blockedRooms` stays `[]` — when the
-room's state is in the non-sellable set (`src/store.ts:375-382` new;
-`src/pgstore.ts:375-384` new). A block-free vacant room still answers
+room's state is in the non-sellable set (`src/store.ts:395-402` new;
+`src/pgstore.ts:376-385` new). A block-free vacant room still answers
 `sellableCount: 1` exactly as today.
 
 Decided over a refusal because it reuses today's status (200), envelope,
@@ -8957,8 +8957,8 @@ does not carry and would have moved `RoomsView`'s read (36.3).
 ### 36.3 Block refusal outranks the state answer, and a room is subtracted once
 
 - **`STATE_ILLEGAL` keeps priority.** Both stores test the covering
-  block before they look at state (`src/store.ts:361-371`,
-  `src/pgstore.ts:359-373`), so a block-covered `out-of-order` room still
+  block before they look at state (`src/store.ts:381-391`,
+  `src/pgstore.ts:360-374`), so a block-covered `out-of-order` room still
   refuses 422 `STATE_ILLEGAL` naming the room and carrying the block's
   dates and reason (`rooms.state.room_blocked`) — never a 200 with
   `sellableCount: 0`. The ordering is a desk-visible contract:
@@ -8978,7 +8978,7 @@ does not carry and would have moved `RoomsView`'s read (36.3).
 - **`blockedRooms` is block-only.** Room state never adds a room to
   `blockedRooms`: its membership, order, and the `BlockRoom` /
   `ReleaseBlock` codes, statuses, details, and stored effect stay as they
-  are (`src/store.ts:493-569`; `src/pgstore.ts:564-667` same semantics),
+  are (`src/store.ts:513-589`; `src/pgstore.ts:565-668` same semantics),
   and releasing a block returns a room to sale only when its state is
   sellable.
 
@@ -9008,17 +9008,17 @@ the sold-out single-room path, and the block refusal:
 ```mermaid
 flowchart TD
     A[POST /v1/rooms/CheckRoomTypeSellability  server.ts:193-196] --> B{roomNumber supplied}
-    B -- no, aggregate --> C[Rooms of the type and block-covered numbers for the range  store.ts:384-394, pgstore.ts:386-407]
-    C --> D[sellableCount counts the rooms that are block-free and whose state is neither out-of-order nor occupied, once each  store.ts:399-402 new, pgstore.ts:386-397 new]
-    D --> E[200 totalCount N, sellableCount, blockedRooms unchanged  store.ts:395-404, pgstore.ts:408-415]
+    B -- no, aggregate --> C[Rooms of the type and block-covered numbers for the range  store.ts:404-414, pgstore.ts:387-408]
+    C --> D[sellableCount counts the rooms that are block-free and whose state is neither out-of-order nor occupied, once each  store.ts:420-422 new, pgstore.ts:387-398 new]
+    D --> E[200 totalCount N, sellableCount, blockedRooms unchanged  store.ts:415-424, pgstore.ts:409-416]
     E --> K[Desk availability figure, the booking ceiling stays totalCount minus len blockedRooms  ADR-0006 D2, availability client.go:44-53]
     B -- yes, single room --> F{Room covered by a block for the range?}
-    F -- yes --> G[422 STATE_ILLEGAL naming the room, block dates and reason  store.ts:361-371, pgstore.ts:359-373]
+    F -- yes --> G[422 STATE_ILLEGAL naming the room, block dates and reason  store.ts:381-391, pgstore.ts:360-374]
     G --> G1[RoomsView renders the covering-block note  RoomsView.vue:549-593]
     F -- no --> H{Room state in the non-sellable set?}
-    H -- out-of-order or occupied --> I[200 totalCount 1, sellableCount 0, blockedRooms empty  store.ts:375-382 new, pgstore.ts:375-384 new]
+    H -- out-of-order or occupied --> I[200 totalCount 1, sellableCount 0, blockedRooms empty  store.ts:395-402 new, pgstore.ts:376-385 new]
     I --> I1[Book confirm refuses with desk.book.refused_soldout, no reservation created  BookView.vue:1004-1011]
-    H -- vacant-dirty, vacant-clean, or vacant-inspected --> J[200 totalCount 1, sellableCount 1, as today  store.ts:375-382, pgstore.ts:375-384]
+    H -- vacant-dirty, vacant-clean, or vacant-inspected --> J[200 totalCount 1, sellableCount 1, as today  store.ts:395-402, pgstore.ts:376-385]
 ```
 
 Edge trace:
@@ -9026,21 +9026,21 @@ Edge trace:
 - A–B: one route answers both branches
   (`services/rooms/src/server.ts:193-196`); the type and both dates
   resolve first, and a reversed range refuses `VALIDATION_FAILED`
-  (`src/store.ts:356-358`; `src/pgstore.ts:354-356`).
+  (`src/store.ts:376-378`; `src/pgstore.ts:355-357`).
 - B–C–D–E: the aggregate branch keeps `ofType` and `blockedRooms`
-  (`src/store.ts:384-394`; `src/pgstore.ts:386-407`) and replaces the
+  (`src/store.ts:404-414`; `src/pgstore.ts:387-408`) and replaces the
   subtraction with one block-free-and-sellable-state predicate
-  (`:399-402` new; `:386-397` new), so `totalCount` and `blockedRooms`
+  (`:420-422` new; `:387-398` new), so `totalCount` and `blockedRooms`
   are byte-identical to today while `sellableCount` can only fall
-  (`src/store.ts:395-404`; `src/pgstore.ts:408-415`).
+  (`src/store.ts:415-424`; `src/pgstore.ts:409-416`).
 - E–K: the number the desk reads; the guard reads the other two fields,
   so the ceiling does not move (36.4).
 - B–F–G: the block test runs first in both stores
-  (`src/store.ts:361-371`; `src/pgstore.ts:359-373`) and keeps its
+  (`src/store.ts:381-391`; `src/pgstore.ts:360-374`) and keeps its
   `STATE_ILLEGAL` shape and its `RoomsView` consumer
   (`app/src/views/RoomsView.vue:549-593`).
 - F–H–I: after a block-free check, a non-sellable state answers 200 with
-  `sellableCount: 0` (`src/store.ts:375-382` new; `src/pgstore.ts:375-384`
+  `sellableCount: 0` (`src/store.ts:395-402` new; `src/pgstore.ts:376-385`
   new), and the Book confirm's existing sold-out refusal is what refuses
   the booking (`app/src/views/BookView.vue:977-1011`); a booking that
   loses the last-room race is refused through the same sentence on
@@ -9052,7 +9052,7 @@ Edge trace:
 Failure/rollback path: a covering block still refuses before any state
 test, so a blocked room's answer and the desk block note do not change.
 An unknown type or room still refuses `NOT_FOUND`
-(`src/store.ts:221-234`), a reversed range `VALIDATION_FAILED` before
+(`src/store.ts:239-252`), a reversed range `VALIDATION_FAILED` before
 either branch runs, and a type with no rooms answers `0`/`0`. The read
 mutates no row, emits no event, and holds no lock across another module,
 so a refusal writes nothing. Rollback is the single implementation PR:
@@ -9717,7 +9717,7 @@ pre-change head it cited; every pin below is the landed `file:line`).
 - **In Postgres the check runs before any transaction opens.** Both
   helpers are computed before `this.withTx` (`pgstore.ts:153`, `:213`),
   so a refused request opens no transaction, takes no lock, issues no
-  statement, and reaches neither the `UPDATE`/`INSERT`
+  write statement, and reaches neither the `UPDATE`/`INSERT`
   (`:166`, `:183`, `:221`, `:246`) nor the outbox insert
   (`:172-178`, `:188-194`, `:236-242`, `:261-267`). A non-finite value
   therefore stops at the shared check instead of reaching the `INT`

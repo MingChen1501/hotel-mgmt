@@ -1303,7 +1303,7 @@ the write is refused. Three properties define the change:
 
 - **The rule is one shared check inside the module, before any write.**
   A single exported helper beside `requireDate`/`requireString`
-  (`services/rooms/src/store.ts:98-110`) decides the capacity for both
+  (`services/rooms/src/store.ts:118-128`) decides the capacity for both
   `RoomStore` and `PostgresRoomStore`, called at each store's capacity
   read before a record is built or a transaction opened, so both stores
   answer the same status, code, field, and sentence by construction and
