@@ -6444,7 +6444,7 @@ the merged-head `file:line`):
   status, details, and sentence cannot drift between the twin
   implementations — the precedent is `requireUuid`, `requireString`, and
   `toConfirmationRecord`, all exported from `store.ts` and imported by
-  `pgstore.ts:4-24`. It counts every match before it answers, which is
+  `pgstore.ts:5-26`. It counts every match before it answers, which is
   the whole finding: a `LIMIT 1` or a `return` on the first hit is
   exactly the regression the guard must catch. The `guestId` branch stays
   first and untouched (`store.ts:408-414`, `pgstore.ts:174-184`), so a
@@ -6599,7 +6599,7 @@ both stores:
   sends `notes` as null today: the Book screen's register sends
   `fullName` and `actor` only (`app/src/views/BookView.vue:783-786`).
 - **Bound provenance.** The largest fixtures in the tree are a
-  28-character note (`services/guests/src/server.test.ts:120-139`) and a
+  28-character note (`services/guests/src/server.test.ts:128-147`) and a
   one-field preference object
   (`services/guests/contract-tests/UpsertGuest.json:5-9`), so 2 000 code
   units is more than seventy times the only note fixture, and 16 fields,
@@ -6608,7 +6608,7 @@ both stores:
   section 29), so these bounds shape one field rather than police body
   size.
 - **Reads are unchanged, and no migration exists.** No re-validation
-  happens in `toGuest` (`pgstore.ts:43-61`) or on an in-memory record,
+  happens in `toGuest` (`pgstore.ts:42-60`) or on an in-memory record,
   so a stored longer note or differently shaped object keeps reading
   through `GetGuest`, `IdentifyGuest`, and `GetBookingContext` exactly as
   stored; no truncation, backfill, or repair is attempted
@@ -6825,11 +6825,12 @@ architecture-side check the implementation must satisfy.
   are unchanged by the refusal — the check runs on the read path and
   writes nothing.
 - **Unchanged outcomes.** The unique-name guard
-  (`services/guests/src/server.test.ts:86-118`), the unknown-guest and
-  missing-name guard (`:141-164`), the full-profile-by-id guard
-  (`:166-206`), and the Postgres round-trips (`:419-475`) stay green
-  without an assertion change; a `guestId` read of each of two
-  same-named guests returns its own profile.
+  (`services/guests/src/server.test.ts:94-126`), the unknown-guest and
+  missing-name guard (`:149-172`), the full-profile-by-id guard
+  (`:174-214`), and the Postgres round-trips (the describe at `:947`,
+  round-trips `:948-963` and `:965-984`) stay green without an assertion
+  change; a `guestId` read of each of two same-named guests returns its
+  own profile.
 - **Payload refusals, one case per refused shape**, each asserting 400
   `VALIDATION_FAILED`, `details.field` `contact` or `preferences`, the
   shape sentence, a `traceId`, and nothing written: array, string,
@@ -6846,7 +6847,7 @@ architecture-side check the implementation must satisfy.
   refused naming `dates.checkIn`/`dates.checkOut` with the existing
   `guests.validation.date_format` sentence and no stored confirmation
   (`ProduceConfirmation` still `NOT_FOUND`); `2024-02-29` is accepted;
-  the existing confirmation guards (`:251-280`, `:282-311`, `:342-365`)
+  the existing confirmation guards (`:259-288`, `:290-319`, `:350-373`)
   keep passing unchanged.
 - **Catalogue and desk.** One sample assertion per new key
   (`guests.validation.ambiguous_name`, `guests.validation.contact_shape`,

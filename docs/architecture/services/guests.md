@@ -16,8 +16,8 @@ Node.js/TypeScript flat `src/` files over raw `node:http`, wired in `services/gu
 |---|---|---|
 | Transport + routing | `src/server.ts` | `createServiceServer` answers `GET /healthz` (:117), enforces Bearer presence (:130), routes `POST /v1/guests/<Operation>` by case label |
 | Identity | `src/auth.ts` | `extractBearer`: Bearer presence check, same skeleton contract as Stay |
-| Validation + step order | `src/store.ts` (`GuestStoreAPI` at :138, `GuestStore` at :214) | upsert/identify/context reads, idempotent stay-link ingestion |
-| Row storage | `src/store.ts` (in-memory), `src/pgstore.ts` (`PostgresGuestStore implements GuestStoreAPI` at :35) | identical semantics; Postgres selected at boot when `DATABASE_URL` is set |
+| Validation + step order | `src/store.ts` (`GuestStoreAPI` at :138, `GuestStore` at :307) | upsert/identify/context reads, idempotent stay-link ingestion |
+| Row storage | `src/store.ts` (in-memory), `src/pgstore.ts` (`PostgresGuestStore implements GuestStoreAPI` at :34) | identical semantics; Postgres selected at boot when `DATABASE_URL` is set |
 | Errors | `src/errors.ts` | shared `HttpError` envelope (same code set as Stay) |
 | Boot | `src/index.ts` | store selection by `DATABASE_URL`, `listen(PORT)` (default `8086`) |
 
