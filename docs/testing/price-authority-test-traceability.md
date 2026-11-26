@@ -109,12 +109,15 @@ catalogue key, and moves no MVP row.
 ## 2. Pins on disk at this spec head
 
 Every `file:line` below was re-read on this merged stack head: the
-requirements branch now merges `master` `0d1979c`, which carries the #643
-audit-actor change (it shifted the handler and store test lines cited
-below) on top of the #631 availability implementation (#716) that added
-the availability client, the tests beside these pins, and three catalogue
-keys. Every line below is quoted at that merged tree, so the pins, the
-handler/service/store anchors, and the catalogue keys all resolve.
+requirements branch now merges `master` `a7c5214`, which carries the folio
+write verification slice (#634, ADR-0008 — its catalogue keys land ahead
+of `error.validation.price_basis` in the reservation messages file, which
+is why that pin reads `:62`) on top of the #643 audit-actor change (it
+shifted the handler and store test lines cited below) and the #631
+availability implementation (#716) that added the availability client,
+the tests beside these pins, and three catalogue keys. Every line below
+is quoted at that merged tree, so the pins, the handler/service/store
+anchors, and the catalogue keys all resolve.
 They prove today's behaviour: the frozen total is whatever the caller
 sent and nothing on the booking path quotes. "Rewired" means the pin
 exists, must keep its coverage, and its expectation moves to the quote's
@@ -153,7 +156,7 @@ values; "stays green" means it must pass untouched.
 | `services/reservations/internal/handler/handler_restrictions_test.go:65-85`, `:87-99` | An unreachable Rates and an unwired hook each refuse 503 end to end and store nothing | Stays green; `PA7` adds the quote-specific end-to-end pair and the `details.operation` assertion |
 | `services/reservations/internal/pricing/client.go:43-85` (`Check`) | The refusal-unchanged / fail-closed shape the new `QuotePrice` call must copy: 5-second timeout, caller Bearer forwarded, a parsed envelope returned unchanged, everything else 503 | Extended with a sibling `QuotePrice` operation in the same shape; `PA7`/`PA8` pin the copy |
 | `services/reservations/internal/pricing/client_test.go:61-72`, `:74-84` | Unreachable Rates and an unparseable 5xx both map to 503 `UPSTREAM_UNAVAILABLE` with the upstream named | Stays green; the new call is pinned the same way, with the timeout and non-envelope cases added (`PA7`) |
-| `services/reservations/internal/messages/en.json:61` | `error.validation.price_basis` exists | Unchanged; `PA14` adds `error.price.changed` |
+| `services/reservations/internal/messages/en.json:62` | `error.validation.price_basis` exists | Unchanged; `PA14` adds `error.price.changed` |
 | `app/src/views/BookView.vue:807-825` | The Book screen quotes with the type, dates, and typed discount and mints one key per quote | Unchanged on the happy path; `PA13` pins the recovery's re-read with the same held values and a fresh key per fresh quote |
 | `app/src/views/BookView.vue:948-958` | The confirm sends `priceBasis` from the active quote plus its key | Unchanged; `PA3`/`PA13` assert the sent total is the displayed quote |
 | `app/src/views/BookView.test.ts:576-624` | The quote request body carries the quoted type and both ISO dates | Stays green |
