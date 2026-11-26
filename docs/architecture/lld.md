@@ -763,7 +763,7 @@ is a styling input. Money and dates render exactly as today
 | Lists (reservations, stays, folios, rooms, guests) | `DataTable` with `Column`, paginator on long lists | Arrivals table `desk-arrivals-table` (`DeskView.vue:57-59` and siblings per screen) |
 | Confirmations and destructive actions (cancel, check-out, day-close) | `Dialog` with explicit confirm/cancel buttons | Existing confirm buttons (e.g. `book-confirm` at `BookView.vue:104-112`) keep their hooks and call order |
 | Feedback (success, validation, refusal, error) | `Message`/`Toast` for page-level notes, inline field errors under the field | Existing alert hooks (`book-quote-error`, `book-confirm-error`, `desk-dashboard-error`) keep their hooks; sign-in errors render only in the shell gate (`shell-signin-*` in `App.vue:67-109`); wording becomes plain sentences per `FR-DSP-3` |
-| Print (receipt/invoice/confirmation) | existing print CSS preserved; screen shows a print preview card with one Print button | `.print-document` markup (`PrintView.vue:105,219,300`) under `@media print` (`PrintView.vue:1239` within the `:1233-1257` style block, `BookView.vue:1259` within `:1249-1270`) |
+| Print (receipt/invoice/confirmation) | existing print CSS preserved; screen shows a print preview card with one Print button | `.print-document` markup (`PrintView.vue:137,251,332`) under `@media print` (`PrintView.vue:1345` within the `:1334-1366` style block, `BookView.vue:1259` within `:1249-1270`) |
 
 ### 12.3 Shell navigation flowchart
 
@@ -992,9 +992,9 @@ item names its guard so drift is reviewable:
   unchanged server-side `FORBIDDEN` refusals (Refs #355).
 - Print: receipt, invoice, and confirmation output match folio
   lines and balance exactly (`FR-BIL-4` holds); print
-  isolation CSS preserved (`PrintView.vue:1233-1257`,
-  `BookView.vue:1162-1183` source-pinned by
-  `PrintView.test.ts:724-739` and `BookView.test.ts:1322-1332`);
+  isolation CSS preserved (`PrintView.vue:1334-1366`,
+  `BookView.vue:1249-1270` source-pinned by
+  `PrintView.test.ts:724-751` and `BookView.test.ts:1452-1471`);
   screen styling must not leak into print.
 - Tests: `data-testid` hooks kept; characterization suites
   extended where markup changed; no test deleted without
@@ -1617,14 +1617,14 @@ D1–D9):
   sign-out, 5-strike lockout) are untouched.
 - Catalogue: every new string ships in `messages/en.json`
   beside `messages/vi.json` (both on disk; `desk.stay.
-  need_room` precedent at `en.json:453`) and stays covered
+  need_room` precedent at `messages/en.json:468`) and stays covered
   by `script/catalogue-coverage-check.sh`
   (`NFR-I18N-1`, `NFR-DSK-1` hold); the hotel name shown is
   the configured value, never the design example content.
 - Print: receipt, invoice, and confirmation output match
   folio lines and balance exactly (`FR-BIL-4` holds);
   print isolation CSS preserved
-  (`PrintView.vue:1233-1257`, `BookView.vue:1162-1183`);
+  (`PrintView.vue:1334-1366`, `BookView.vue:1249-1270`);
   screen styling must not leak into print (`NFR-DSK-2`).
 - Tests: `data-testid` hooks kept; the D1–D9 guards (PR
   #428) are created by the screen PRs named there
@@ -1716,7 +1716,7 @@ Edge trace (every edge cites code):
   `month: '2-digit'`, `year: 'numeric'` — not catalogue
   strings, so no new catalogue keys land and
   `script/catalogue-coverage-check.sh` stays green;
-  `desk.today.business_date` at `messages/en.json:349`
+  `desk.today.business_date` at `messages/en.json:371`
   keeps its label wording in both locales).
 - E–F–G: normative examples for business date
   `2026-10-28` (a Wednesday): VI
@@ -1753,7 +1753,7 @@ Edge trace:
   on any formatting failure the header renders the
   canonical ISO value (today's rendering), which is
   always a valid date because validation refuses
-  anything else (`messages/en.json:40` —
+  anything else (`messages/en.json:51` —
   `error.validation.business_date` pins `YYYY-MM-DD`).
 - R–S: refusal semantics stand (`FR-RTE-4`,
   `FR-CUS-1`, `FR-BIL-7` fire on exactly the same
@@ -1976,7 +1976,7 @@ flowchart TD
 Edge trace (every edge cites code):
 
 - A–B: the canonical values are already on screen refs — the
-  quote response binds to `quote` (`BookView.vue:748`) and the
+  quote response binds to `quote` (`BookView.vue:825`) and the
   folio response to `folio` (`FolioView.vue:781`). Minor units
   are contract-validated integers (`contracts/http/QuotePrice.json:36`
   `priceMinor`, `:41` `totalMinor`;
@@ -2000,9 +2000,9 @@ Edge trace (every edge cites code):
 - C–F / D–G / E–H: only the placeholder *values* change; the
   catalogue labels and keys are untouched
   (`desk.book.quote_night` / `desk.book.quote_total` at
-  `messages/en.json:401-402` with `messages/vi.json` parity;
+  `messages/en.json:434-435` with `messages/vi.json` parity;
   `desk.folio.folio_line` / `desk.folio.folio_balance` at
-  `messages/en.json:470-471` with VI parity), so
+  `messages/en.json:536-537` with VI parity), so
   `script/catalogue-coverage-check.sh` and `NFR-DSK-1` stay
   green.
 - F–I / G–I / H–I: the active locale is the single reactive
@@ -2159,8 +2159,8 @@ app/src/views/FolioView.vue  open path and title composition:
                              title hook :81, typed stay-ID input :33,
                              reference disclosure :783-786 (rendered :109),
                              clear on typed change :821-828, 401 gate :773-778
-messages/en.json             one new key desk.folio.charges_context :467
-messages/vi.json             the same key in VI :467
+messages/en.json             one new key desk.folio.charges_context :535
+messages/vi.json             the same key in VI :535
 ```
 
 ### 17.1 Open-folio context read flowchart
@@ -2223,8 +2223,8 @@ Edge trace (every edge cites code):
   `desk.today.unknown_guest`, the room through
   `desk.today.room_short`, and the whole title through the one new
   key `desk.folio.charges_context` (`FolioView.vue:752-768`;
-  `messages/en.json:356-359`, `:466-467` with VI parity at
-  `messages/vi.json:469-470`).
+  `messages/en.json:534-535`, `:388-390` with VI parity at
+  `messages/vi.json:534-535`, `:388-390`).
 - J–L: a superseded request never assigns
   (`FolioView.vue:801-803`), so a slow read for an earlier stay
   cannot name the wrong guest (pinned at
@@ -2266,7 +2266,7 @@ Edge trace:
 - T–U: `readRoomNumber` returns `''` when no lane lists the room
   (`FolioView.vue:580-590`), which renders the existing
   `desk.today.room_unknown` wording (`:760-762`;
-  `messages/en.json:356`) while the guest half still names
+  `messages/en.json:387`) while the guest half still names
   (`:758-759`).
 - V–W: the title and the balance line receive only resolved text
   (`FolioView.vue:752-768`, `:650-663`, bound at `:216`); raw identifiers exist
@@ -2326,7 +2326,7 @@ the acceptance side lives with `product-owner` (`AC-DSK-14`):
   section 11.2 flow.
 - Catalogue: one new key (`desk.folio.charges_context`) lands in
   both locales; the fallback halves are reused, not reworded
-  (`messages/en.json:356-359`, `messages/vi.json:354-357`);
+  (`messages/en.json:388-390`, `messages/vi.json:388-390`);
   `script/catalogue-coverage-check.sh` and `NFR-I18N-1` /
   `NFR-DSK-1` stay green, and the runtime mirrors stay
   byte-identical.
@@ -2540,7 +2540,7 @@ Edge trace (every edge cites code):
   decision in section 19.8.2.
 - F–G: each `QuotePrice` reply carries the night's `priceMinor` in its
   `nights` array, which the grid renders in the desk money shape
-  (`app/src/views/BookView.vue:613` is the existing formatter call
+  (`app/src/views/BookView.vue:626` is the existing formatter call
   site).
 
 ### 19.2 Flow A, failure and rollback: partial save, resume, plan creation
@@ -2799,7 +2799,7 @@ follow-up, keeping the change at T2.** The screen ships with:
   named explicitly, `arrivalDate` = the night and `departureDate` =
   the night plus one day (`contracts/http/QuotePrice.json`), one call
   per visible night and none for nights off the paged window. The
-  existing `noRateReason` classifier (`app/src/views/BookView.vue:502-510`)
+  existing `noRateReason` classifier (`app/src/views/BookView.vue:518-524`)
   is the precedent for reading `details.reason`.
 
 Why per night and not one multi-night quote: `QuotePrice` does return
@@ -2895,7 +2895,7 @@ delta, threat-model delta, and per-operation policy on the
   adds only its own keys in both locales and keeps
   `script/catalogue-coverage-check.sh` green. The one shared phrase,
   "not open for booking", is reused, not re-worded
-  (`messages/en.json:426-427`, `messages/vi.json:424-425`).
+  (`messages/en.json:451-452`, `messages/vi.json:451-452`).
 - **Performance and offline.** Entry reads at most one `ListRoomTypes`
   plus five `ListRoomsByState`; a price grid page reads at most seven
   single-night quotes; one save writes at most 31 rows sequentially.
@@ -4047,7 +4047,7 @@ Stack and repo gates: `cd app && npm ci && npm run build && npm run lint
   No copy work is outstanding for the implementation, which must still
   not invent wording. The move path needs no new key for "the old room
   is already free": `desk.stay.room_already_free` already exists
-  (`messages/en.json:475`, `messages/vi.json:472`).
+  (`messages/en.json:497`, `messages/vi.json:497`).
 - **R16 — the owner board gains one card.** The additive `Move room`
   card is a decided UI fact beyond `docs/design/Stay.dc.html`; the
   design-facts and dom-diff records must carry it as a decision, not as
@@ -4079,7 +4079,7 @@ room (`contracts/http/ListRoomTypes.json`,
 `contracts/http/ListRoomsByState.json`). Every one of those reads is
 already made from another desk screen
 (`app/src/views/DeskView.vue:996`, `:1025`, `:1112`, `:1125`;
-`app/src/views/BookView.vue:680`, `:1030-1039`;
+`app/src/views/BookView.vue:693`, `:1026-1039`;
 `app/src/views/PrintView.vue:788`, `:1208`;
 `app/src/stay-options.ts:88`, `:125`), so no integration edge is new.
 
@@ -4299,7 +4299,7 @@ flowchart TD
     C -->|entries| D[Sort by arrival then reference; slice 50  product spec section 5]
     D --> E[ListRoomTypes once  DeskView.vue:996]
     D --> F[ListArrivalsDepartures businessDate, then ListRoomsByState occupied  stay-options.ts:85-153]
-    D --> G[One GetReservation per capped row  BookView.vue:1030-1040]
+    D --> G[One GetReservation per capped row  BookView.vue:1026-1039]
     E --> H[One row per booking; cells resolved by 24.3]
     F --> H
     G --> H
@@ -5574,7 +5574,7 @@ change, so the enum and the served maps cannot drift.
 | Code | Status | Raised when | Emitting change |
 |---|---|---|---|
 | `INTERNAL_ERROR` | 500 | an unexpected exception reaches a Node service's catch-all: a store or driver failure, a wiring fault, or a crash — never the caller's input | #627 (Stay, Guests, Rooms, Admin) |
-| `UPSTREAM_UNAVAILABLE` | 503 | a provider that must be read to decide the operation cannot be read, so the operation fails closed | already emitted: Reservations -> Rates (`services/reservations/internal/service/service.go:96-103`, Refs #601); Billing -> Stay (LLD [section 27](#27-folio-writes-verify-the-stay-refs-634), Refs #634) |
+| `UPSTREAM_UNAVAILABLE` | 503 | a provider that must be read to decide the operation cannot be read, so the operation fails closed | already emitted: Reservations -> Rates (`services/reservations/internal/service/service.go:117-124`, Refs #601); Billing -> Stay (LLD [section 27](#27-folio-writes-verify-the-stay-refs-634), Refs #634) |
 | `METHOD_NOT_ALLOWED` | 405 | a wrong method on a known route: a caller-conformance answer, not a product refusal | #628 (Go) and #629 (Billing) conformance changes; no desk action sends or can receive it |
 
 Why one edit and not three: the Admin contract-sync guard walks every
@@ -5811,8 +5811,8 @@ Where each server sets them:
   `ReadTimeout`, `WriteTimeout`, and `IdleTimeout`, then call its
   `ListenAndServe`, instead of the bare
   `http.ListenAndServe(addr, newHandler(mux))` at
-  `services/reservations/cmd/server/main.go:55` (constructor at
-  `:62`), `services/rates/cmd/server/main.go:43` (constructor at
+  `services/reservations/cmd/server/main.go:61` (constructor at
+  `:70`), `services/rates/cmd/server/main.go:43` (constructor at
   `:52`), and `services/reporting/cmd/server/main.go:35` (constructor at
   `:44`).
 - Node: `createServiceServer` sets `headersTimeout`, `requestTimeout`,
@@ -5881,7 +5881,7 @@ add):
   check `:159-162`; the Go equivalent is the `authed` wrapper
   `services/reservations/internal/handler/handler.go:140-158`, reached
   through the envelope chain in
-  `services/reservations/cmd/server/main.go:79-81`.
+  `services/reservations/cmd/server/main.go:85-87`.
 - B–X1–X2: the existing `NOT_FOUND` and `UNAUTHENTICATED` answers, and
   every other existing refusal, are untouched (AC-BND-4); none of them
   reads a body.
@@ -6529,7 +6529,7 @@ duration assumption:
   `reporting.validation.date_range_span`, pattern "dateTo must be at
   most {max} nights after dateFrom.", sitting beside the existing
   window sentence `reporting.validation.date_to_order`
-  (`services/reporting/internal/messages/en.json:167`). `{max}` is
+  (`services/reporting/internal/messages/en.json:175`). `{max}` is
   rendered from the constant — `messages.Num(int64(maxReportRangeNights))`
   (`services/reporting/internal/messages/messages.go:129-131`) — so the
   sentence shows `730` with the active locale's digit grouping instead
@@ -6833,10 +6833,10 @@ the merged-head `file:line`):
   `pgstore.ts:143-147`.
 - The catalogue keys are `guests.validation.ambiguous_name`,
   `guests.validation.contact_shape`, and `guests.validation.notes_length`
-  (`messages/en.json:203-205`, mirrored to
+  (`messages/en.json:211-213`, mirrored to
   `services/guests/src/messages.en.json` and `messages/vi.json`), and the
   desk branch is `isAmbiguousGuestName` at
-  `app/src/views/BookView.vue:476-487`, used in `onFindGuest`
+  `app/src/views/BookView.vue:484-490`, used in `onFindGuest`
   (`:757-767`).
 
 ### 32.1 Where each check sits: in the shared store helpers, before any profile read or write
@@ -6900,7 +6900,7 @@ the merged-head `file:line`):
   is what staff typed, and the count is the real number of matching
   guests — not "2 or more" — carried in `details.matches`.
 - **Message: one new plain catalogue sentence `guests.validation.ambiguous_name`**
-  beside today's guests keys (`messages/en.json:203`, mirrored in
+  beside today's guests keys (`messages/en.json:211`, mirrored in
   `services/guests/src/messages.en.json`),
   exactly "The name {fullName} matches more than one guest; identify the
   guest by id." — the product and requirements copy
@@ -6932,7 +6932,7 @@ the merged-head `file:line`):
   wording.** `code === "VALIDATION_FAILED"` together with
   `details.field === "fullName"` selects the Book screen's
   `desk.book.guest_ambiguous` sentence (`isAmbiguousGuestName`,
-  `app/src/views/BookView.vue:476-487`, used in `onFindGuest`
+  `app/src/views/BookView.vue:484-490`, used in `onFindGuest`
   `:757-767`); every other failure keeps the generic fallback
   (`errorMessage` `:493-499`). `details` is already read this way at
   `:501-508`). `IdentifyGuest` has exactly one other
@@ -7036,7 +7036,7 @@ both stores:
 - **The refusal keeps today's kind and sentence.** `VALIDATION_FAILED`,
   400, `details` naming `dates.checkIn` or `dates.checkOut`, and the
   existing `guests.validation.date_format` sentence
-  (`store.ts:249-251`, catalogue `messages/en.json:198`) — no new
+  (`store.ts:249-251`, catalogue `messages/en.json:206`) — no new
   catalogue key for the date rule, per `AC-GID-5`.
 - **One home, before the snapshot is stored.** `requireDate` is called
   only by `toConfirmationRecord` (`store.ts:301`), which both
@@ -7704,9 +7704,9 @@ Edge traces:
   `config.updated` entries derived at read time (`store.ts:510-519`).
 - **(b) A–B:** only the `authorization` header is inspected; no body
   byte is read. **B–N1:** today's missing-token sentence
-  (`error.auth.missing_token`, `messages.en.json:14`). **B–C–N2:** the
+  (`error.auth.missing_token`, `services/guests/src/messages.en.json:15`). **B–C–N2:** the
   five existing session refusals (`store.ts:320-339`, sentences at
-  `messages.en.json:17-20`). **N1/N2–R:** no parse, no ceiling, no
+  `services/guests/src/messages.en.json:17-21`). **N1/N2–R:** no parse, no ceiling, no
   store call, so the payload stays unobservable. **R–RF:** nothing to
   compensate; the change reverts with the single implementation PR.
 - **(c) A–B:** the body read runs only after `authenticate` resolved.
