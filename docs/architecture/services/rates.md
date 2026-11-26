@@ -46,6 +46,47 @@ Edge trace (every edge cites code):
 
 The two `details.reason` values are the desk's machine-readable basis for the #589 not-operational marking: a room type with no rate price for the selected dates is refused and shown as not open for booking (never silently sold).
 
+### Restriction write and availability read — the accepted answers (Refs #633)
+
+`UpsertRestriction` with a well-formed boolean and a priced type, and
+`CheckSellableCount` for a priced type — the two writes and reads this
+change constrains, on their accepted path:
+
+```mermaid
+flowchart TD
+    A[POST /v1/rates/UpsertRestriction  handler.go:208-241] --> B[closedToArrival true, false, or omitted]
+    B --> C[roomTypeId a UUID and priced by at least one plan]
+    C --> D[Store the window, emit restriction-changed  store.go:211-212, postgres.go:164-175]
+    D --> E[CheckRestrictions applies it unchanged: STATE_ILLEGAL closed-to-arrival or min-stay  store.go:320-325]
+    F[POST /v1/rates/CheckSellableCount  handler.go:298-332] --> G[totalUnits present and shape-checked, then dropped  handler.go:315-324]
+    G --> H[Priced type: the count is the first plan in name order carrying defaultUnits, else 0  store.go:349-354, postgres.go:386-393]
+    H --> I[200 with today's per-date counts  handler.go:324-331]
+```
+
+Edge trace (pins at this spec head; the implementation PR refreshes them
+per maintain-with-code, LLD
+[section 37](../lld.md#37-rates-refuses-malformed-restriction-and-availability-input-refs-633)):
+
+- A–B: the boolean is read at the field's own position
+  (`services/rates/internal/handler/handler.go:234`), so a valid `true`
+  still means "closed to arrival" and a valid `false` still means open;
+  an omitted key keeps the contract default `false`.
+- B–C: the shape and priced-type checks run in the store, after the
+  existing date and range refusals (`services/rates/internal/store/store.go:199-207`;
+  `internal/store/postgres.go:150-158`) and before the append or insert.
+  "Priced" is a rate-price row for the type (`store.go:357-363` loop,
+  reused; `postgres.go:396` query, reused), never a plan `defaultUnits`.
+- C–D–E: an accepted window is stored and applied exactly as today
+  (`store.go:211-212`, `:320-325`; `postgres.go:164-175`, `:331-355`).
+- F–G: the handler keeps its `totalUnits` shape check
+  (`handler.go:315-322`) and does not pass the value on, so the count can
+  only come from the store.
+- G–H–I: the plan scan that answers today's absent-field read
+  (`store.go:349-354`; `postgres.go:386-393`) becomes the only path; the
+  response shape and the per-date list do not move
+  (`handler.go:324-331`). The booking ceiling #631 derives is untouched
+  (section 9, ADR-0006 D2).
+
 ## 4. Failure/rollback flowchart
 
 Restriction and count guards — the stay-refusal side:
@@ -69,6 +110,105 @@ Edge trace:
 - U: unknown plan (:384), unknown room type (:365), missing inventory input (:367) → `NOT_FOUND` 404 / `VALIDATION_FAILED` 400 respectively. A quote with no rate price refuses `NOT_FOUND` with `details.reason` = `no_rate_plan` (:400, no plan prices the type) or `no_rate_price` (:271, a night has no price row), so the desk marks the type not operational instead of selling an unpriced stay (Refs #589).
 
 Rollback: none — quotes and checks are pure reads; upserts are single guarded writes.
+
+### Restriction and availability refusals — malformed flag, malformed id, unpriced type, unknown type (Refs #633)
+
+The four inputs this change stops coercing or trusting, and the one
+answer each gets:
+
+```mermaid
+flowchart TD
+    A[UpsertRestriction  handler.go:208-241] --> B{closedToArrival present and a JSON boolean}
+    B -- string, number, null --> R1[400 VALIDATION_FAILED, details.field closedToArrival, must_be_boolean  handler.go:234 new]
+    B -- true, false, or omitted --> C{roomTypeId a UUID}
+    C -- no --> R2[400 VALIDATION_FAILED, details.field roomTypeId, must_be_uuid  store.go new, postgres.go:170-172 already]
+    C -- yes --> D{Any rate price row for the type}
+    D -- no --> R3[404 NOT_FOUND, details.roomTypeId, rates.notfound.room_type  store.go new, postgres.go:396 reused]
+    D -- yes --> E[Stored; CheckRestrictions applies it  store.go:211-212, :320-325]
+    R1 --> N[Nothing stored, no restriction-changed event]
+    R2 --> N
+    R3 --> N
+    F[CheckSellableCount  handler.go:298-332] --> G{totalUnits present and an integer at or above zero}
+    G -- no --> R4[400 VALIDATION_FAILED, details.field totalUnits, rates.validation.total_units  handler.go:315-322]
+    G -- yes or absent --> H{Any rate price row for the type}
+    H -- no --> R5[404 NOT_FOUND naming the type, with or without the field  store.go and postgres.go new]
+    H -- yes --> I[200 plan default, else 0; totalUnits never read]
+```
+
+Edge trace:
+
+- B–R1: the coercion at `handler.go:234` is replaced in place by a
+  two-value present test plus a type test, so `"true"`, `1`, `"yes"`, and
+  `null` each answer one envelope naming `closedToArrival` instead of
+  storing `false`; the stored set is unchanged, so a following
+  `CheckRestrictions` for those dates still allows
+  (`store.go:320-325`).
+- C–R2: the in-memory store gains the shape refusal the Postgres store
+  already produces from the driver's `22P02` mapping
+  (`postgres.go:170-172`), so the two stores stop disagreeing.
+- D–R3: a UUID no price row mentions is refused `NOT_FOUND` with the
+  existing `rates.notfound.room_type` sentence, so no window can exist
+  that matches nothing (audit finding T3).
+- G–R4: the existing shape check and sentence are unchanged
+  (`handler.go:315-322`; `rates.validation.total_units`).
+- H–R5: the unknown-type answer collapses to `NOT_FOUND` for both ways of
+  sending the field, replacing today's field-presence split
+  (`store.go:364-369`; `postgres.go:402-407`).
+
+### Quote overflow and the plan text bounds (Refs #633)
+
+The money path and the two plan fields:
+
+```mermaid
+flowchart TD
+    A[QuotePrice  handler.go:267-297] --> B{Nightly sum inside int64  store.go:274 new, postgres.go:289 new}
+    B -- no --> R1[422 STATE_ILLEGAL, details roomTypeId and reason total_overflow, no total, no nights]
+    B -- yes --> C{Percent multiplication inside int64  store.go:284 new, postgres.go:303 new}
+    C -- no --> R1
+    C -- yes --> D{Amount subtraction inside int64, zero clamp unchanged  store.go:286-289, postgres.go:305-308}
+    D -- no --> R1
+    D -- yes --> E[200 nights and totalMinor byte-identical  handler.go:283-296]
+    F[UpsertRatePlan  handler.go:157-177] --> G{name a string of at most 64 code points}
+    G -- no --> R2[400 VALIDATION_FAILED, details.field name, bound sentence through max  handler.go:158-163 new]
+    G -- yes --> H{description absent or a string of at most 2000 code points}
+    H -- no --> R2
+    H -- yes --> I[Stored and rate-plan-changed emitted  store.go:165-174, postgres.go:91-104]
+    R2 --> N[Nothing stored, overwritten, or truncated]
+```
+
+Edge trace:
+
+- A–B/C/D–R1: the three arithmetic steps share one checked helper set in
+  the package, so the two quote bodies cannot drift (`store.go:274-289`;
+  `postgres.go:289-308`). The sum and the percent multiplication are
+  reachable overflows; the subtraction guard is defensive because both
+  operands are non-negative. The refusal is returned before the quote
+  value leaves the method, so no wrapped or partial total is served and
+  #632 can never freeze one as a price basis.
+- D–E: every non-overflowing quote stays byte-identical, including the
+  truncated integer percent result and the clamp at zero.
+- F–G–R2: the two plan fields are type- and length-checked where they are
+  read (`handler.go:158-163`) and re-checked inside both stores with the
+  same code constants, which is why `UpsertRatePlan` gains an error
+  return; a refused write stores, overwrites, and truncates nothing. The
+  bounds are write-time code rules: no migration, no read-time
+  re-validation, and no schema keyword.
+
+Error-mapping rows the implementation adds when the code lands (section 6
+above is as-built and is refreshed with it): `NOT_FOUND` for
+`UpsertRestriction` (an unpriced room type) and `STATE_ILLEGAL` for
+`QuotePrice` with `details.reason` `total_overflow` beside the existing
+`no_rate_price` / `no_rate_plan` values.
+
+Rollback for both subsections: every refusal is decided before any write,
+so a refused restriction, plan, or quote leaves no row, no event, and no
+served total. The whole delta reverts with the single implementation PR —
+the boolean check, the two store checks, the inert `totalUnits`, the
+overflow helpers, the two bounds, the catalogue sentences, and the guards
+disappear together, with no migration, backfill, or data repair in either
+direction; a restriction already stored with a coerced `false` and a
+price already stored above the guard's range stay exactly as stored
+(R-23).
 
 ## 5. Outbound dependencies
 
