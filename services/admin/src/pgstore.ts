@@ -10,6 +10,7 @@ import {
   requiredString,
   signSessionToken,
   toPublic,
+  validateConfigValues,
   verifySessionToken,
   type AdminStoreAPI,
   type AuditEntry,
@@ -508,7 +509,12 @@ export class PostgresAdminStore implements AdminStoreAPI {
       throw new HttpError("VALIDATION_FAILED", msg("error.validation.values_object", {}), { field: "values" });
     }
     const updatedBy = requiredString(input.updatedBy, "updatedBy");
-    const entries = Object.entries(input.values as Record<string, unknown>);
+    const values = input.values as Record<string, unknown>;
+    // BR-64 (#639): the shared per-key table runs here, before
+    // withTx opens, so a refused write runs no UPDATE/INSERT and
+    // leaves no row behind.
+    validateConfigValues(values);
+    const entries = Object.entries(values);
     await this.withTx(async (client) => {
       for (const [key, value] of entries) {
         const column = PROFILE_COLUMNS[key];

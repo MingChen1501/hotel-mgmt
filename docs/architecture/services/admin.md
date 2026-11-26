@@ -14,33 +14,34 @@ Node.js/TypeScript flat `src/` files over raw `node:http`, wired in `services/ad
 
 | Layer | Files | Responsibility |
 |---|---|---|
-| Transport + routing | `src/server.ts` | `createServiceServer` answers `GET /healthz` (:131); `SignIn` is the one unauthenticated operation (:146); every other `/v1/*` call requires a Bearer token |
-| Identity + sessions | `src/store.ts` (`AdminStore`, `AdminStoreAPI` at :114), `src/auth.ts` | `signIn` with failure counting and lockout, `authenticate` with 15-minute idle expiry and revocation checks, role enforcement |
+| Transport + routing | `src/server.ts` | `createServiceServer` answers `GET /healthz` (:131); `SignIn` is the one unauthenticated operation (:145); every other `/v1/*` call resolves the Bearer session before the body is read (:157-168) |
+| Identity + sessions | `src/store.ts` (`AdminStore`, `AdminStoreAPI` at :114), `src/auth.ts` | `signIn` with failure counting and lockout, `authenticate` with 15-minute idle expiry and revocation checks, role enforcement; `extractBearer` (:1-14) is the module-local header parse (#639) |
 | Hotel config + users | `src/store.ts` | `GetHotelConfig`/`UpdateHotelConfig`, `CreateUser`/`UpdateUserRole`/`UnlockIdentity`/`ChangeSecret`/`ListUsers`, `QueryAuditLog` |
 | Row storage | `src/store.ts` (in-memory; lockout counters memory-only by design at :10-16), `src/pgstore.ts` (`PostgresAdminStore implements AdminStoreAPI` at :61) | identical semantics; Postgres selected at boot when `DATABASE_URL` is set |
 | Startup migrations | `src/migrate.ts` | `applyAdminMigrations` runs the `migrations/*.sql` chain in name order at startup (:10-17); idempotent (`IF NOT EXISTS` / `ON CONFLICT DO NOTHING`) so the E2E loop can re-apply |
 | Errors | `src/errors.ts` | shared `HttpError` envelope (same code set as Stay, plus `FORBIDDEN` for role refusals) |
 | Boot | `src/index.ts`, `src/migrate.ts` | migration chain first (schema must exist before sign-in traffic), then store selection, `listen(PORT)` (default `8088`) |
 
-The operation table (`src/server.ts:157-193`): `GetHotelConfig` (:157), `UpdateHotelConfig` (:161), `CreateUser` (:165), `UpdateUserRole` (:169), `UnlockIdentity` (:173), `SignOut` (:177), `ChangeSecret` (self-service rotation, issue #284), `ListUsers`, `QueryAuditLog`; `SignIn` precedes auth at :146.
+The operation table (`src/server.ts:171-214`): `GetHotelConfig` (:171), `UpdateHotelConfig` (:175), `CreateUser` (:179), `UpdateUserRole` (:183), `UnlockIdentity` (:187), `SignOut` (:191), `ChangeSecret` (self-service rotation, issue #284), `ListUsers`, `QueryAuditLog`; `SignIn` precedes the session check at :145.
 
-Request order (planned delta, #639 — the implementation PR refreshes
-these pins per maintain-with-code). As built at this head the body is
-read at `src/server.ts:144` before the token is checked at `:151-155`.
-From #639 the order is the statement order in `handleRequest`:
-`GET /healthz` (`:131-134`), the `POST /v1/admin/<Operation>` match
-(`:135`) and its unknown-path 404 (`:136-143`), the `SignIn` branch
-with its own body read (`:146-150`), the shared bearer helper
-(`src/auth.ts`, added by this change, replacing the inline
-`bearerToken` at `:83-90`), `store.authenticate` (`:155`), the body
-read (`:144` moved below `:155`), then the operation switch
-(`:156-193`). An unauthenticated session-guarded request therefore
-answers one 401 `UNAUTHENTICATED` before any parse; a resolved session
-with a malformed body still gets today's 400; and the front-desk 403
-follows a well-formed body, so the observed order is 401, then 400,
-then 403. `SignIn` keeps today's 400-first order and its lockout, and
-route matching, the unknown-path 404, and the four finite server bounds
-do not move. Design: LLD
+Request order (as built, #639). The body is read at
+`src/server.ts:169`, after the session is resolved, and the inline
+Bearer parse is gone (it lives in `src/auth.ts:1-14`, imported at
+`src/server.ts:3`, called at :157). The statement order in
+`handleRequest` is: `GET /healthz` (:131-134), the
+`POST /v1/admin/<Operation>` match (:135) and its unknown-path 404
+(:136-143), the `SignIn` branch with its own body read (:145-151), the
+shared bearer helper (:157), the missing-token 401 (:158-161),
+`store.authenticate` (:164) with the refused-session 401 (:165-168),
+the body read (:169), then the operation switch (:170-214). An
+unauthenticated session-guarded request therefore answers one 401
+`UNAUTHENTICATED` before any parse, and the connection is told to
+close without reading or measuring the pending body (:84-90, :159,
+:166); a resolved session with a malformed body still gets today's
+400; and the front-desk 403 follows a well-formed body, so the
+observed order is 401, then 400, then 403. `SignIn` keeps today's
+400-first order and its lockout, and route matching, the unknown-path
+404, and the four finite server bounds do not move. Design: LLD
 [section 33](../lld.md#33-admin-authenticates-before-parsing-and-refuses-a-malformed-config-write-refs-639).
 
 ## 3. Happy-path flowchart
@@ -78,56 +79,59 @@ flowchart TD
 
 Edge trace:
 
-- S: invalid/expired token, revoked/signed-out session, 15-minute idle expiry, or deleted user → `UNAUTHENTICATED` (`src/store.ts:245-262`); `SignOut` revokes (`src/server.ts:177`).
+- S: invalid/expired token, revoked/signed-out session, 15-minute idle expiry, or deleted user → `UNAUTHENTICATED` (`src/store.ts:320-343`); `SignOut` revokes (`src/server.ts:191`).
 - P: front-desk accounts are refused admin operations with `FORBIDDEN` (`src/store.ts:177`); unknown roles refused (`:272, :307`); duplicate identities refused (`:276`).
 - Self-role change and last-owner demotion are refused (`:315-319`); unlocking a non-locked identity is refused (`:338-341`).
 
 Rollback: none — each admin write is a single guarded step with refusals preceding mutation; sessions carry no compensating state.
 
-Planned delta (#639) — request order and config-write refusal. The
-implementation PR moves the body read below the session check for every
-operation except `SignIn` and refreshes the pins above; this is the
-specified shape:
+Delta (#639) — request order and config-write refusal, as built at
+this head. The body read sits below the session check for every
+operation except `SignIn`; the pins are the as-built `file:line`:
 
 ```mermaid
 flowchart TD
     R[POST /v1/admin/Operation  src/server.ts:135] --> M{Path and method match}
     M -->|no| Z[404 NOT_FOUND, unknown path  :136-143]
     M -->|yes| S{Operation is SignIn}
-    S -->|yes| SB[readBody, then store.signIn  :146-150]
+    S -->|yes| SB[readBody, then store.signIn  :145-151]
     SB -->|refused| S4[400 VALIDATION_FAILED or 401, today's order]
-    S -->|no| T{Bearer token present  src/auth.ts}
-    T -->|no| N1[401 UNAUTHENTICATED, error.auth.missing_token  :151-154]
-    T -->|yes| A[store.authenticate  :155]
-    A -->|refused| N2[401 UNAUTHENTICATED, existing error.auth.* sentence  store.ts:245-262]
-    A -->|resolved| B[readBody now runs  :144 moved below :155]
+    S -->|no| T{Bearer token present  src/auth.ts:1-14, server.ts:157}
+    T -->|no| N1[401 UNAUTHENTICATED, error.auth.missing_token  :158-161]
+    T -->|yes| A[store.authenticate  :164]
+    A -->|refused| N2[401 UNAUTHENTICATED, existing error.auth.* sentence  :165-168, store.ts:320-343]
+    A -->|resolved| B[readBody now runs  :169]
     B -->|refused| B4[400 VALIDATION_FAILED, existing transport sentence]
     B -->|well formed| D{Operation}
-    D -->|UpdateHotelConfig| F{Role and values/updatedBy checks  store.ts:475-481}
+    D -->|UpdateHotelConfig| F{Role and values/updatedBy checks  store.ts:550-556}
     F -->|front-desk| F3[403 FORBIDDEN]
     F -->|invalid values or updatedBy| F4[400 VALIDATION_FAILED]
-    F -->|ok| K{Every present table key inside its shape  planned}
-    K -->|no| K4[400 VALIDATION_FAILED, details.field the key, the key's sentence]
-    K4 --> K5[Nothing written: no key of that request, no config.updated entry  store.ts:435-444]
+    F -->|ok| K{Every present table key inside its shape  store.ts:178}
+    K -->|no| K4[400 VALIDATION_FAILED, details.field the key, the key's sentence  store.ts:113-172]
+    K4 --> K5[Nothing written: no key of that request, no config.updated entry  store.ts:510-519]
     K -->|yes| W[200 result + config.updated entries]
-    D -->|other guarded operation| O[unchanged dispatch  :157-193]
+    D -->|other guarded operation| O[unchanged dispatch  :171-214]
 ```
 
-Edge trace for the planned edges:
+Edge trace for the #639 edges:
 
-- `T`/`A`: the shared bearer helper (`src/auth.ts`) and
-  `store.authenticate` (`src/server.ts:155`); no body byte is read
-  before a resolved session.
-- `A–B`: the moved body read; today's ceiling, JSON parse, and object
-  check, with today's sentences (`:15-17`, `:61-70`).
+- `T`/`A`: the shared bearer helper (`src/auth.ts:1-14`) and
+  `store.authenticate` (`src/server.ts:164`); no body byte is read
+  before a resolved session, and both the missing-token and the
+  refused-session answer set `Connection: close` (`:84-90`) so the
+  pending payload is never buffered or measured.
+- `A–B`: the moved body read (`:169`); today's ceiling, JSON parse, and
+  object check, with today's sentences (`:15-17`, `:61-70`).
 - `F–F3/F4`: today's checks keep their code, status, details, and
   sentence; the role check stays after the body read, so 400 precedes
   403.
-- `F–K–K4–K5`: the per-key table and validator shared from
-  `src/store.ts`, called by both `updateConfig` implementations before
-  the first write (in memory before the first `config.set`; in Postgres
-  before `withTx`), so the first offending key refuses the whole write
-  and no `config.updated` entry appears (`store.ts:435-444`).
+- `F–K–K4–K5`: the per-key table (`store.ts:113-172`) and validator
+  (`:178-186`) shared from `src/store.ts`, called by both
+  `updateConfig` implementations before the first write (in memory at
+  `:562` before the first `config.set` at `:566`; in Postgres at
+  `pgstore.ts:516` before `withTx` opens at `:518`), so the first
+  offending key refuses the whole write and no `config.updated` entry
+  appears (`store.ts:510-519`).
 - Rollback for the new edges: every refusal is decided before the first
   write, so there is no partial row, value, or audit entry to unwind;
   reverting the single implementation PR restores today's order and
@@ -145,12 +149,12 @@ Same shared Node envelope as Stay (`src/errors.ts`; `docs/technical/error-handli
 
 | Code | Status | Raised when |
 |---|---|---|
-| `VALIDATION_FAILED` | 400 | missing field, unknown role, duplicate identity, self-role change, last-owner demote, unlock of non-locked identity (:108, :270-341) |
-| `UNAUTHENTICATED` | 401 | unknown identity / wrong secret, bad or expired session (:212-257) |
-| `IDENTITY_LOCKED` | 401 | identity locked after repeated failures (:216-221) |
-| `FORBIDDEN` | 403 | front-desk account on an admin-only operation (:177) |
+| `VALIDATION_FAILED` | 400 | missing field, unknown role, duplicate identity, self-role change, last-owner demote, unlock of non-locked identity (:108, :352-423), and a config value outside its key's shape (:178-186, #639) |
+| `UNAUTHENTICATED` | 401 | unknown identity / wrong secret, bad or expired session (:306, :320-343, :463) |
+| `IDENTITY_LOCKED` | 401 | identity locked after repeated failures (:293-298) |
+| `FORBIDDEN` | 403 | front-desk account on an admin-only operation (:256, :550-552) |
 
-Planned delta (#639), same envelope and codes, no new row: a
+Delta (#639), as built — same envelope and codes, no new row: a
 session-guarded request with no token or a refused session answers
 `UNAUTHENTICATED` (401) before the body is read, so a malformed body no
 longer answers a transport `VALIDATION_FAILED` first; an authenticated
