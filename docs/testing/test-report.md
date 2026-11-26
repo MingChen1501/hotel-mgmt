@@ -346,6 +346,7 @@ consolidation of record for their own slices):
 | #631 server-side reservation availability (Reservations -> Rooms capacity read) | implementation PR (merge pending) | `traceability-matrix.md` section 18 — guards `O1`–`O13` plus evidence rule `OR-1` (`docs/testing/evidence/631/README.md`); MVP count stands at 57/57 |
 | #635 money amount bounds (whole-number and ceiling refusals on Billing's money adapters) | implementation PR (merge pending) | `traceability-matrix.md` section 23 — guards `AMT1`–`AMT20` plus evidence rule `AMT-E1` (`docs/testing/evidence/635/README.md`); MVP count stands at 57/57 |
 | #641 report date-range cap (730-night span refusal on Reporting's occupancy and revenue reads) | PR #727 | `traceability-matrix.md` section 24 — guards `RPT1`–`RPT14` plus evidence rule `RPT-E1` (`docs/testing/evidence/641/README.md`); MVP count stands at 57/57 |
+| #640 guest identity ambiguity and payload bounds (counted name lookup, declared `contact`/`preferences` shape and `notes` length, calendar-valid confirmation dates) | implementation PR (merge pending) | `guest-identity-test-traceability.md` — guards `GID1`–`GID14` plus evidence rule `GID-E1` (`docs/testing/evidence/640/README.md`); MVP count stands at 57/57 |
 
 ## 9. Open gaps and reproduce pointers
 

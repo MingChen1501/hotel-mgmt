@@ -473,6 +473,19 @@ function errorCode(err: unknown): string {
     : '';
 }
 
+// A name that matches two or more guests is a caller-input refusal
+// (VALIDATION_FAILED naming fullName), so it reads as its own plain
+// sentence instead of the generic fallback (AC-GID-6). The branch
+// switches on the envelope code and field, never on resolved wording.
+function isAmbiguousGuestName(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null) {
+    return false;
+  }
+  const refused = err as ApiError;
+  const details = refused.details as { field?: unknown } | null | undefined;
+  return refused.code === 'VALIDATION_FAILED' && details?.field === 'fullName';
+}
+
 // Unexpected failures read as one plain sentence (FR-DSP-3,
 // desk.shell.request_failed): call sites map known envelope codes
 // to specific catalogue wordings, so this fallback never surfaces
@@ -738,6 +751,17 @@ export default defineComponent({
             'desk.book.guest_notfound',
             {},
             'No guest with that name. Check the name or register a new guest.',
+          );
+          return;
+        }
+        if (isAmbiguousGuestName(err)) {
+          // No guest is resolved and no profile is shown; the entered
+          // name and the Find/Register controls stay in place.
+          resolvedGuest.value = null;
+          guestStatus.value = t(
+            'desk.book.guest_ambiguous',
+            {},
+            'That name matches more than one guest, so no profile was opened. Ask the manager to check the guest records.',
           );
           return;
         }
