@@ -94,7 +94,7 @@ catalogue key, and moves no MVP row.
   the service message `error.price.changed` do not exist at this head.
   The implementation PR adds the desk key in both locales with its
   `{total}` placeholder intact, and the recovery-failed case reuses the
-  existing `desk.book.refused_noprice` (`messages/en.json:440`);
+  existing `desk.book.refused_noprice` (`messages/en.json:447`);
   `PA14` fails an invented string rather than accepting one.
 - Contract and LC: this slice **has** a contract delta (LLD 25.7), so
   the LC stage is not a bare re-run — the one new code (`PRICE_CHANGED`
@@ -160,7 +160,7 @@ values; "stays green" means it must pass untouched.
 | `app/src/views/BookView.test.ts:626-673` | The confirm sends the frozen price basis, the searched sellable count, and one idempotency key | Stays green; `PA13` adds the price-changed branch beside it |
 | `app/src/views/BookView.test.ts:1069-1227` | The no-price, sold-out, and restriction refusals map to their catalogue sentences | Stays green; `PA13` follows the same mapping pattern for the new sentence |
 | `app/src/views/BookView.test.ts:1228-1338` | A double-clicked confirm books once on one quote key | Stays green; `PA13` asserts the same for the second confirm after a re-quote |
-| `messages/en.json:440`, `messages/vi.json:440` (`desk.book.refused_noprice`) | The no-price sentence exists in both locales | Unchanged; reused by the recovery-failed case, and `PA14` adds `desk.book.refused_price_changed` beside it |
+| `messages/en.json:447`, `messages/vi.json:447` (`desk.book.refused_noprice`) | The no-price sentence exists in both locales | Unchanged; reused by the recovery-failed case, and `PA14` adds `desk.book.refused_price_changed` beside it |
 | `app/src/views/StayView.test.ts:1308`, `:1391`, `:1458`, `:1528`, `:1582` | The #600 room charge posts `priceBasis.totalMinor` on the check-out review and gates the close on it | Stays green: this is the downstream money the change protects; `PA3` reads the same field |
 | `app/src/views/StayView.test.ts:1750`, `:1949`, `:2040` | The #601 settlement gate: a provenanced approval, an unpaid close refused, `SETTLEMENT_REQUIRED` mapped plainly | Stays green unchanged |
 | `app/src/stay-restyle.test.ts`, `app/e2e/stay.spec.ts`, `app/e2e/design-facts.spec.ts` | The #647 desk pins that landed with #673 | Stay green; this slice touches none of the desk stay surfaces |
