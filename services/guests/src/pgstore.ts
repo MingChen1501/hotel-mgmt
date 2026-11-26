@@ -59,13 +59,14 @@ export class PostgresGuestStore implements GuestStoreAPI {
     };
   }
 
-  async upsertGuest(input: UpsertGuestInput): Promise<GuestRecord> {
+  async upsertGuest(input: UpsertGuestInput, sessionActor: string): Promise<GuestRecord> {
     const id =
       input.guestId === undefined || input.guestId === null || input.guestId === ""
         ? randomUUID()
         : requireUuid(input.guestId, "guestId");
     const fullName = requireString(input.fullName, "fullName");
-    const actor = requireString(input.actor, "actor");
+    requireString(input.actor, "actor");
+    const actor = sessionActor;
     // Same shared validators as the in-memory store, before either
     // object is serialised or the row is written (LLD section 32.3).
     const contactValue = validGuestPayloadObject(input.contact, "contact");

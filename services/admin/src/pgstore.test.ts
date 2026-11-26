@@ -57,6 +57,33 @@ describe("admin postgres store", { skip: DATABASE_URL === undefined || DATABASE_
     }
   });
 
+  it("records the caller's signinIdentity on the config rows when updatedBy spoofs (#643, SEC28)", async () => {
+    const pool = new Pool({ connectionString: DATABASE_URL });
+    try {
+      await wipe(pool);
+      const store = new PostgresAdminStore(pool, "test-key");
+      await store.ensureBootUser("owner", "owner-secret");
+      const { token } = await store.signIn("owner", "owner-secret");
+      const caller = await store.authenticate(token);
+      await store.updateConfig(caller, {
+        values: { timezone: "Asia/Ho_Chi_Minh", cancellationWording: "Please cancel early" },
+        updatedBy: "mallory",
+      });
+      const profile = await pool.query(`SELECT updated_by FROM admin.hotel_profile LIMIT 1`);
+      assert.equal(profile.rows[0]?.updated_by, "owner");
+      const stored = await pool.query(
+        `SELECT updated_by FROM admin.hotel_config_values WHERE config_key = 'cancellationWording'`,
+      );
+      assert.equal(stored.rows[0]?.updated_by, "owner");
+      await assert.rejects(
+        store.updateConfig(caller, { values: { timezone: "UTC" } }),
+        (err: unknown) => (err as { code?: string }).code === "VALIDATION_FAILED",
+      );
+    } finally {
+      await pool.end();
+    }
+  });
+
   it("locks the identity after five failures", async () => {
     const pool = new Pool({ connectionString: DATABASE_URL });
     try {

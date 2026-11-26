@@ -80,14 +80,14 @@ func TestPostgresCreateGetQueryCheckIn(t *testing.T) {
 		t.Fatalf("query entries = %+v, want one unlinked row", entries)
 	}
 
-	checked, oerr := pg.CheckIn(created.Ref, "11111111-1111-4111-8111-111111111111", "front-desk")
+	checked, oerr := pg.CheckIn(created.Ref, "11111111-1111-4111-8111-111111111111", "front-desk", "")
 	if oerr != nil {
 		t.Fatalf("check-in refused: %v", oerr)
 	}
 	if checked.State != "checked-in" || checked.StayID == "" {
 		t.Fatalf("unexpected checked-in record: %+v", checked)
 	}
-	if _, oerr := pg.CheckIn(created.Ref, "22222222-2222-4222-8222-222222222222", "front-desk"); oerr == nil || oerr.Code != "STATE_ILLEGAL" {
+	if _, oerr := pg.CheckIn(created.Ref, "22222222-2222-4222-8222-222222222222", "front-desk", ""); oerr == nil || oerr.Code != "STATE_ILLEGAL" {
 		t.Fatalf("re-check-in error = %v, want STATE_ILLEGAL", oerr)
 	}
 
@@ -155,7 +155,7 @@ func TestPostgresLifecycleModifyCancelNoShow(t *testing.T) {
 	if modified.TotalMinor != 26000 || modified.ArrivalDate != "2026-11-02" {
 		t.Fatalf("modified = %+v, want repriced total and new dates", modified)
 	}
-	cancelled, oerr := pg.Cancel(created.Ref, "guest-request", "front-desk", "pg-cancel-1")
+	cancelled, oerr := pg.Cancel(created.Ref, "guest-request", "front-desk", "", "pg-cancel-1")
 	if oerr != nil {
 		t.Fatalf("cancel refused: %v", oerr)
 	}
@@ -172,7 +172,7 @@ func TestPostgresLifecycleModifyCancelNoShow(t *testing.T) {
 	if oerr != nil {
 		t.Fatalf("past create refused: %v", oerr)
 	}
-	marked, oerr := pg.MarkNoShow(pastCreated.Ref, "no-arrival", "night-audit")
+	marked, oerr := pg.MarkNoShow(pastCreated.Ref, "no-arrival", "night-audit", "")
 	if oerr != nil {
 		t.Fatalf("mark no-show refused: %v", oerr)
 	}
@@ -207,7 +207,7 @@ func TestPostgresCheckOutReservationParity(t *testing.T) {
 		t.Fatalf("create refused: %v", oerr)
 	}
 	stayID := "44444444-4444-4444-8444-444444444444"
-	checked, oerr := pg.CheckIn(created.Ref, stayID, "front-desk")
+	checked, oerr := pg.CheckIn(created.Ref, stayID, "front-desk", "")
 	if oerr != nil {
 		t.Fatalf("check-in refused: %v", oerr)
 	}
@@ -277,7 +277,7 @@ func TestPostgresIdempotencyKeyScopedPerOperationAndResource(t *testing.T) {
 	if oerr != nil {
 		t.Fatalf("create refused: %v", oerr)
 	}
-	cancelled, oerr := pg.Cancel(created.Ref, "guest-request", "front-desk", shared)
+	cancelled, oerr := pg.Cancel(created.Ref, "guest-request", "front-desk", "", shared)
 	if oerr != nil {
 		t.Fatalf("cancel with a create key refused: %v", oerr)
 	}
@@ -292,7 +292,7 @@ func TestPostgresIdempotencyKeyScopedPerOperationAndResource(t *testing.T) {
 	if oerr != nil {
 		t.Fatalf("second create refused: %v", oerr)
 	}
-	otherCancelled, oerr := pg.Cancel(other.Ref, "guest-request", "front-desk", shared)
+	otherCancelled, oerr := pg.Cancel(other.Ref, "guest-request", "front-desk", "", shared)
 	if oerr != nil {
 		t.Fatalf("second cancel with the reused key refused: %v", oerr)
 	}
@@ -300,7 +300,7 @@ func TestPostgresIdempotencyKeyScopedPerOperationAndResource(t *testing.T) {
 		t.Fatalf("second cancel = %s/%s, want %s cancelled", otherCancelled.Ref, otherCancelled.State, other.Ref)
 	}
 
-	replay, oerr := pg.Cancel(other.Ref, "guest-request", "front-desk", shared)
+	replay, oerr := pg.Cancel(other.Ref, "guest-request", "front-desk", "", shared)
 	if oerr != nil {
 		t.Fatalf("replayed cancel refused: %v", oerr)
 	}

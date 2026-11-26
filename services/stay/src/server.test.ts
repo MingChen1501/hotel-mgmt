@@ -328,6 +328,149 @@ describe("actual times", () => {
   });
 });
 
+// #643 / BR-65: the recorded audit actor is the authenticated session,
+// never the request's actor; a disagreeing value is preserved only as
+// the additive requestActor annotation on a JSON outbox payload.
+type OutboxEntry = { eventType: string; payload: Record<string, unknown> };
+
+function outboxOf(store: StayStore): OutboxEntry[] {
+  return (store as unknown as { outbox: OutboxEntry[] }).outbox;
+}
+
+function eventOf(store: StayStore, eventType: string): OutboxEntry {
+  const event = outboxOf(store).find((entry) => entry.eventType === eventType);
+  assert.ok(event, `missing ${eventType} outbox event`);
+  return event;
+}
+
+describe("session-derived audit actor (#643)", () => {
+  it("records the session token on CheckIn and demotes the body actor (SEC1)", async () => {
+    const store = new StayStore();
+    await withStayServer(async (port) => {
+      const spoofed = await request(port, "POST", "/v1/stay/CheckIn", {
+        reservationId: RESERVATION_ID,
+        guestId: GUEST_ID,
+        roomId: ROOM_ID,
+        actor: "mallory",
+      });
+      assert.equal(spoofed.status, 200);
+      assert.equal((spoofed.body as { state: string }).state, "in-house");
+      const event = eventOf(store, "checked-in");
+      assert.equal(event.payload["actor"], TOKEN);
+      assert.equal(event.payload["requestActor"], "mallory");
+      assert.notEqual(event.payload["actor"], "mallory");
+    }, store);
+  });
+
+  it("keeps an honest payload byte-identical with no requestActor key (SEC29)", async () => {
+    const store = new StayStore();
+    await withStayServer(async (port) => {
+      const honest = await request(port, "POST", "/v1/stay/CheckIn", {
+        reservationId: RESERVATION_ID,
+        guestId: GUEST_ID,
+        roomId: ROOM_ID,
+        actor: TOKEN,
+      });
+      assert.equal(honest.status, 200);
+      const event = eventOf(store, "checked-in");
+      assert.equal(event.payload["actor"], TOKEN);
+      assert.deepEqual(Object.keys(event.payload).sort(), [
+        "actor",
+        "reservationId",
+        "roomId",
+        "stayId",
+      ]);
+    }, store);
+  });
+
+  it("records the session token on CheckOut and forwards the body actor as an annotation (SEC2, SEC33)", async () => {
+    const calls: { stayId: string; actor: string; bearerToken: string }[] = [];
+    const store = new StayStore({
+      async complete(input) {
+        calls.push(input);
+        return { state: "completed" as const, reservationRef: "RSV-SEC2" };
+      },
+    });
+    await withStayServer(async (port) => {
+      const { stayId } = await checkInStay(port);
+      const checked = await request(port, "POST", "/v1/stay/CheckOut", {
+        stayId,
+        folioId: FOLIO_ID,
+        folioBalanceMinor: 0,
+        actor: "mallory",
+      });
+      assert.equal(checked.status, 200);
+      assert.equal((checked.body as { state: string }).state, "closed");
+      const event = eventOf(store, "checked-out");
+      assert.equal(event.payload["actor"], TOKEN);
+      assert.equal(event.payload["requestActor"], "mallory");
+      assert.deepEqual(calls, [{ stayId, actor: "mallory", bearerToken: TOKEN }]);
+    }, store);
+  });
+
+  it("records the session token on MoveRoom (SEC3)", async () => {
+    const store = new StayStore();
+    await withStayServer(async (port) => {
+      const { stayId } = await checkInStay(port);
+      const moved = await request(port, "POST", "/v1/stay/MoveRoom", {
+        stayId,
+        toRoomId: ROOM2_ID,
+        actor: "mallory",
+      });
+      assert.equal(moved.status, 200);
+      assert.equal((moved.body as { roomId: string }).roomId, ROOM2_ID);
+      const event = eventOf(store, "moved");
+      assert.equal(event.payload["actor"], TOKEN);
+      assert.equal(event.payload["requestActor"], "mallory");
+    }, store);
+  });
+
+  it("records the session token on RecordActualTimes (SEC4)", async () => {
+    const store = new StayStore();
+    await withStayServer(async (port) => {
+      const { stayId } = await checkInStay(port, { actualArrival: "2026-10-24T05:30:00.000Z" });
+      const kept = await request(port, "POST", "/v1/stay/RecordActualTimes", {
+        stayId,
+        actualDeparture: "2026-10-26T15:30:00.000Z",
+        actor: "mallory",
+      });
+      assert.equal(kept.status, 200);
+      const event = eventOf(store, "actual-times-recorded");
+      assert.equal(event.payload["actor"], TOKEN);
+      assert.equal(event.payload["requestActor"], "mallory");
+    }, store);
+  });
+
+  it("refuses a write with no session before it writes (SEC32)", async () => {
+    const store = new StayStore();
+    await withStayServer(async (port) => {
+      const refused = await request(
+        port,
+        "POST",
+        "/v1/stay/CheckIn",
+        { reservationId: RESERVATION_ID, guestId: GUEST_ID, roomId: ROOM_ID, actor: "mallory" },
+        null,
+      );
+      assert.equal(refused.status, 401);
+      assert.equal((refused.body as { code: string }).code, "UNAUTHENTICATED");
+      assert.equal(outboxOf(store).length, 0);
+    }, store);
+  });
+
+  it("keeps the missing-actor refusal and adds no disagreement refusal (SEC31)", async () => {
+    await withStayServer(async (port) => {
+      const missing = await request(port, "POST", "/v1/stay/CheckIn", {
+        reservationId: RESERVATION_ID,
+        guestId: GUEST_ID,
+        roomId: ROOM_ID,
+      });
+      assert.equal(missing.status, 400);
+      assert.equal((missing.body as { code: string }).code, "VALIDATION_FAILED");
+      assert.equal((missing.body as { details: { field: string } }).details.field, "actor");
+    });
+  });
+});
+
 describe("stay reference and daily lists", () => {
   it("reads the in-house stay link and refuses closed stays", async () => {
     await withStayServer(async (port) => {
@@ -386,20 +529,69 @@ describe("stay postgres store", { skip: DATABASE_URL === undefined || DATABASE_U
       await pool.query("DELETE FROM stay.idempotency_keys");
       await pool.query("DELETE FROM stay.stays");
       const store = new PostgresStayStore(pool);
-      const stay = await store.checkIn({
-        reservationId: RESERVATION_ID,
-        guestId: GUEST_ID,
-        roomId: ROOM_ID,
-        actor: "front-desk",
-      });
+      const stay = await store.checkIn(
+        {
+          reservationId: RESERVATION_ID,
+          guestId: GUEST_ID,
+          roomId: ROOM_ID,
+          actor: "front-desk",
+        },
+        TOKEN,
+      );
       assert.equal(stay.state, "in-house");
       const inHouse = await store.queryStays({ state: "in-house" });
       assert.equal(inHouse.length, 1);
       assert.equal(inHouse[0]?.id, stay.id);
       await assert.rejects(
-        store.checkIn({ reservationId: RESERVATION_ID, guestId: GUEST_ID, roomId: ROOM_ID, actor: "front-desk" }),
+        store.checkIn({ reservationId: RESERVATION_ID, guestId: GUEST_ID, roomId: ROOM_ID, actor: "front-desk" }, TOKEN),
         /already checked in/,
       );
+    } finally {
+      await pool.end();
+    }
+  });
+
+  it("records the session token and demotes the body actor on every write (#643, SEC1-SEC4)", async () => {
+    const pool = new Pool({ connectionString: DATABASE_URL });
+    try {
+      await pool.query("DELETE FROM stay.outbox");
+      await pool.query("DELETE FROM stay.stay_moves");
+      await pool.query("DELETE FROM stay.idempotency_keys");
+      await pool.query("DELETE FROM stay.stays");
+      const store = new PostgresStayStore(pool);
+      const stay = await store.checkIn(
+        {
+          reservationId: RESERVATION_ID,
+          guestId: GUEST_ID,
+          roomId: ROOM_ID,
+          actor: "mallory",
+        },
+        TOKEN,
+      );
+      await store.moveRoom({ stayId: stay.id, toRoomId: ROOM2_ID, actor: "mallory" }, TOKEN);
+      await store.recordActualTimes({ stayId: stay.id, actor: "mallory" }, TOKEN);
+      await store.checkOut(
+        { stayId: stay.id, folioId: FOLIO_ID, folioBalanceMinor: 0, actor: "mallory" },
+        TOKEN,
+      );
+      const row = await pool.query(
+        `SELECT created_by, updated_by FROM stay.stays WHERE id = $1`,
+        [stay.id],
+      );
+      assert.equal(row.rows[0]?.created_by, TOKEN);
+      assert.equal(row.rows[0]?.updated_by, TOKEN);
+      const move = await pool.query(`SELECT created_by FROM stay.stay_moves WHERE stay_id = $1`, [stay.id]);
+      assert.equal(move.rows[0]?.created_by, TOKEN);
+      const events = await pool.query(
+        `SELECT event_type, payload, created_by FROM stay.outbox ORDER BY occurred_at`,
+      );
+      assert.equal(events.rows.length, 4);
+      for (const event of events.rows as { event_type: string; payload: Record<string, unknown>; created_by: string }[]) {
+        assert.equal(event.created_by, TOKEN, event.event_type);
+        assert.equal(event.payload["actor"], TOKEN, event.event_type);
+        assert.equal(event.payload["requestActor"], "mallory", event.event_type);
+        assert.notEqual(event.payload["actor"], "mallory", event.event_type);
+      }
     } finally {
       await pool.end();
     }
@@ -419,49 +611,61 @@ describe("stay postgres store", { skip: DATABASE_URL === undefined || DATABASE_U
       // departure-order validation.
       const actualArrival = "2026-10-24T10:00:00.000Z";
       const actualDeparture = "2026-10-26T15:30:00.000Z";
-      const stay = await store.checkIn({
-        reservationId: RESERVATION_ID,
-        guestId: GUEST_ID,
-        roomId: ROOM_ID,
-        actualArrival,
-        actor: "front-desk",
-      });
+      const stay = await store.checkIn(
+        {
+          reservationId: RESERVATION_ID,
+          guestId: GUEST_ID,
+          roomId: ROOM_ID,
+          actualArrival,
+          actor: "front-desk",
+        },
+        TOKEN,
+      );
       assert.equal(stay.actualArrival, actualArrival);
-      const moved = await store.moveRoom({ stayId: stay.id, toRoomId: ROOM2_ID, actor: "front-desk" });
+      const moved = await store.moveRoom({ stayId: stay.id, toRoomId: ROOM2_ID, actor: "front-desk" }, TOKEN);
       assert.equal(moved.stay.currentRoomId, ROOM2_ID);
       assert.equal(moved.move.fromRoomId, ROOM_ID);
-      const timed = await store.recordActualTimes({
-        stayId: stay.id,
-        actualDeparture,
-        actor: "front-desk",
-      });
+      const timed = await store.recordActualTimes(
+        {
+          stayId: stay.id,
+          actualDeparture,
+          actor: "front-desk",
+        },
+        TOKEN,
+      );
       assert.equal(timed.actualArrival, actualArrival);
       assert.equal(timed.actualDeparture, actualDeparture);
       await assert.rejects(
-        store.checkOut({ stayId: stay.id, folioId: FOLIO_ID, folioBalanceMinor: 6000, actor: "front-desk" }),
+        store.checkOut({ stayId: stay.id, folioId: FOLIO_ID, folioBalanceMinor: 6000, actor: "front-desk" }, TOKEN),
         /open balance/,
       );
-      const closed = await store.checkOut({
-        stayId: stay.id,
-        folioId: FOLIO_ID,
-        folioBalanceMinor: 6000,
-        openBalanceApproval: { approvedBy: "manager" },
-        idempotencyKey: "pg-checkout-1",
-        actor: "front-desk",
-      });
+      const closed = await store.checkOut(
+        {
+          stayId: stay.id,
+          folioId: FOLIO_ID,
+          folioBalanceMinor: 6000,
+          openBalanceApproval: { approvedBy: "manager" },
+          idempotencyKey: "pg-checkout-1",
+          actor: "front-desk",
+        },
+        TOKEN,
+      );
       assert.equal(closed.stay.state, "closed");
       assert.equal(closed.invoiceRef, FOLIO_ID);
-      const replayed = await store.checkOut({
-        stayId: stay.id,
-        folioId: FOLIO_ID,
-        folioBalanceMinor: 6000,
-        openBalanceApproval: { approvedBy: "manager" },
-        idempotencyKey: "pg-checkout-1",
-        actor: "front-desk",
-      });
+      const replayed = await store.checkOut(
+        {
+          stayId: stay.id,
+          folioId: FOLIO_ID,
+          folioBalanceMinor: 6000,
+          openBalanceApproval: { approvedBy: "manager" },
+          idempotencyKey: "pg-checkout-1",
+          actor: "front-desk",
+        },
+        TOKEN,
+      );
       assert.equal(replayed.stay.state, "closed");
       await assert.rejects(
-        store.checkOut({ stayId: stay.id, folioId: FOLIO_ID, folioBalanceMinor: 0, actor: "front-desk" }),
+        store.checkOut({ stayId: stay.id, folioId: FOLIO_ID, folioBalanceMinor: 0, actor: "front-desk" }, TOKEN),
         /not in house/,
       );
     } finally {
@@ -642,12 +846,15 @@ describe("stay postgres completion", { skip: DATABASE_URL === undefined || DATAB
           return { state: "completed" as const, reservationRef: "RSV-PG" };
         },
       });
-      const stay = await store.checkIn({
-        reservationId: RESERVATION_ID,
-        guestId: GUEST_ID,
-        roomId: ROOM_ID,
-        actor: "front-desk",
-      });
+      const stay = await store.checkIn(
+        {
+          reservationId: RESERVATION_ID,
+          guestId: GUEST_ID,
+          roomId: ROOM_ID,
+          actor: "front-desk",
+        },
+        TOKEN,
+      );
       const closed = await store.checkOut(
         {
           stayId: stay.id,
@@ -675,12 +882,15 @@ describe("stay postgres completion", { skip: DATABASE_URL === undefined || DATAB
             throw new Error("reservations unreachable");
           },
         });
-        const splitStay = await splitStore.checkIn({
-          reservationId: RESERVATION_ID,
-          guestId: GUEST_ID,
-          roomId: ROOM_ID,
-          actor: "front-desk",
-        });
+        const splitStay = await splitStore.checkIn(
+          {
+            reservationId: RESERVATION_ID,
+            guestId: GUEST_ID,
+            roomId: ROOM_ID,
+            actor: "front-desk",
+          },
+          TOKEN,
+        );
         const split = await splitStore.checkOut(
           { stayId: splitStay.id, folioId: FOLIO_ID, folioBalanceMinor: 0, actor: "front-desk" },
           TOKEN,

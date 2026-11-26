@@ -236,32 +236,25 @@ Role: architect · AO session hotel-mgmt-249
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1164
 
-## 8. Planned delta — session-derived audit actor (Refs #643)
+## 8. As-built delta — session-derived audit actor (Refs #643)
 
-At this head the transport resolves the caller before reading the body
-(`src/server.ts:157-169`) and passes it to every write (`:176`), and the
-account writes already record `caller.signinIdentity` (`src/store.ts:366-368`,
-`:403`, `:425`, `:466`); only `UpdateHotelConfig` records the body's
-`updatedBy` (`src/store.ts:556`, `:565-567`; `src/pgstore.ts:511`,
-`:524`, `:532`). The boot seed records `boot` with no request
-(`src/store.ts:262-281`; `src/pgstore.ts:90-100`).
-
-Planned (design: LLD
-[section 34](../lld.md#34-the-audit-actor-comes-from-the-session-never-from-the-request-refs-643)):
-
-- Both config stores record `caller.signinIdentity` on the stored row
-  and stop using `input.updatedBy` as the value; the `config.updated`
-  audit entries derive from those rows (`src/store.ts:510-519`), so the
-  audit view follows without a second write. `updatedBy` stays required
-  with today's refusal and is dropped, not annotated: the config write
-  emits no JSON payload.
-- The boot seed keeps its server-side `boot` actor, and the account
-  writes are unchanged. No response, status, refusal, column, or
-  migration changes.
-- Guards: an owner save whose body `updatedBy` names another person
-  asserts the stored rows and the `config.updated` actor equal the
-  caller's `signinIdentity`, the body field is still required, and both
-  stores agree (LLD section 34.6).
+The transport resolves the caller before reading the body
+(`src/server.ts:157-169`) and passes it to every write (`:176`); the
+account writes already record `caller.signinIdentity`
+(`src/store.ts:366-368`, `:403`, `:425`, `:466`). `UpdateHotelConfig`
+now records it too: the in-memory store at `src/store.ts:569-571` and
+the Postgres store at `src/pgstore.ts:513-514`, `:525-535`. The body
+`updatedBy` stays required with today's refusal
+(`src/store.ts:560`, `src/pgstore.ts:513`) and is dropped, not
+annotated — the config write emits no JSON payload. The
+`config.updated` audit entries derive from those rows
+(`src/store.ts:510-519`), so the audit view follows without a second
+write. The boot seed keeps its server-side `boot` actor
+(`src/store.ts:262-281`; `src/pgstore.ts:90-100`), and the account
+writes are unchanged. Guards `SEC28`, `SEC31`, `SEC34` live in
+`src/server.test.ts` and `src/pgstore.test.ts`; no response, status,
+refusal, column, or migration changed (LLD
+[section 34](../lld.md#34-the-audit-actor-comes-from-the-session-never-from-the-request-refs-643)).
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1175

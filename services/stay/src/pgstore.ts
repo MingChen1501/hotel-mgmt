@@ -6,6 +6,7 @@ import {
   STAY_STATES,
   checkFolioGate,
   optionalTimestamp,
+  requestActorAnnotation,
   requireDate,
   requireString,
   requireUuid,
@@ -67,7 +68,7 @@ export class PostgresStayStore implements StayStoreAPI {
     };
   }
 
-  async checkIn(input: CheckInInput): Promise<StayRecord> {
+  async checkIn(input: CheckInInput, sessionActor: string): Promise<StayRecord> {
     const id =
       input.stayId === undefined || input.stayId === null || input.stayId === ""
         ? randomUUID()
@@ -76,7 +77,9 @@ export class PostgresStayStore implements StayStoreAPI {
     const guestId = requireUuid(input.guestId, "guestId");
     const currentRoomId = requireUuid(input.roomId, "roomId");
     const actualArrival = optionalTimestamp(input.actualArrival, "actualArrival");
-    const actor = requireString(input.actor, "actor");
+    requireString(input.actor, "actor");
+    const actor = sessionActor;
+    const requestActor = requestActorAnnotation(sessionActor, input.actor);
     const existing = await this.pool.query(
       `SELECT id, reservation_id, guest_id, current_room_id, state, actual_arrival, actual_departure
        FROM stay.stays WHERE reservation_id = $1`,
@@ -109,7 +112,13 @@ export class PostgresStayStore implements StayStoreAPI {
         await client.query("ROLLBACK");
         return PostgresStayStore.toStay(replay.rows[0]);
       }
-      await this.outbox(client, "stay", "checked-in", { stayId: id, reservationId, roomId: currentRoomId, actor }, actor);
+      await this.outbox(
+        client,
+        "stay",
+        "checked-in",
+        { stayId: id, reservationId, roomId: currentRoomId, actor, ...(requestActor === null ? {} : { requestActor }) },
+        actor,
+      );
       await client.query("COMMIT");
       return PostgresStayStore.toStay(created.rows[0]);
     } catch (err) {
@@ -173,7 +182,7 @@ export class PostgresStayStore implements StayStoreAPI {
   // (NFR-CON-2) and a replayed idempotencyKey returns the original
   // close. The folio gate runs first; a refusal leaves the stay in
   // house (BR-17).
-  async checkOut(input: CheckOutInput, callerToken = ""): Promise<{
+  async checkOut(input: CheckOutInput, callerToken: string): Promise<{
     stay: StayRecord;
     invoiceRef: string;
     bookingCompletion: BookingCompletion;
@@ -181,7 +190,11 @@ export class PostgresStayStore implements StayStoreAPI {
     const id = requireUuid(input.stayId, "stayId");
     const invoiceRef = requireUuid(input.folioId, "folioId");
     checkFolioGate(input.folioBalanceMinor, input.openBalanceApproval);
-    const actor = requireString(input.actor, "actor");
+    // The request's actor keeps its validation and is forwarded to the
+    // completion as the annotation; the recorded actor is the session.
+    const requestActorValue = requireString(input.actor, "actor");
+    const actor = callerToken;
+    const requestActor = requestActorAnnotation(callerToken, input.actor);
     const departure = optionalTimestamp(input.actualDeparture, "actualDeparture");
     const key = typeof input.idempotencyKey === "string" ? input.idempotencyKey.trim() : "";
     const client = await this.pool.connect();
@@ -191,7 +204,7 @@ export class PostgresStayStore implements StayStoreAPI {
         const replayed = await this.claimOrFind(client, `CheckOut:${key}`, id);
         if (replayed !== null) {
           await client.query("ROLLBACK");
-          const bookingCompletion = await this.completeBooking(id, actor, callerToken);
+          const bookingCompletion = await this.completeBooking(id, requestActorValue, callerToken);
           return { stay: replayed, invoiceRef, bookingCompletion };
         }
       }
@@ -218,7 +231,13 @@ export class PostgresStayStore implements StayStoreAPI {
           state: record.state,
         });
       }
-      await this.outbox(client, "stay", "checked-out", { stayId: id, folioId: invoiceRef, actor }, actor);
+      await this.outbox(
+        client,
+        "stay",
+        "checked-out",
+        { stayId: id, folioId: invoiceRef, actor, ...(requestActor === null ? {} : { requestActor }) },
+        actor,
+      );
       await client.query("COMMIT");
       const stay = PostgresStayStore.toStay(closed.rows[0]);
       if (key !== "") {
@@ -227,7 +246,7 @@ export class PostgresStayStore implements StayStoreAPI {
           [`CheckOut:${key}`, id],
         );
       }
-      const bookingCompletion = await this.completeBooking(id, actor, callerToken);
+      const bookingCompletion = await this.completeBooking(id, requestActorValue, callerToken);
       return { stay, invoiceRef, bookingCompletion };
     } catch (err) {
       await client.query("ROLLBACK");
@@ -241,10 +260,12 @@ export class PostgresStayStore implements StayStoreAPI {
   // row (FR-FDK-3). The room-side AssignRoom/ReleaseRoom calls are
   // desk-orchestrated around this write; the stay-side UPDATE is
   // conditional on the in-house state for the paired-move race.
-  async moveRoom(input: MoveRoomInput): Promise<{ stay: StayRecord; move: MoveRecord }> {
+  async moveRoom(input: MoveRoomInput, sessionActor: string): Promise<{ stay: StayRecord; move: MoveRecord }> {
     const id = requireUuid(input.stayId, "stayId");
     const toRoomId = requireUuid(input.toRoomId, "toRoomId");
-    const actor = requireString(input.actor, "actor");
+    requireString(input.actor, "actor");
+    const actor = sessionActor;
+    const requestActor = requestActorAnnotation(sessionActor, input.actor);
     const key = typeof input.idempotencyKey === "string" ? input.idempotencyKey.trim() : "";
     const client = await this.pool.connect();
     try {
@@ -308,7 +329,13 @@ export class PostgresStayStore implements StayStoreAPI {
         client,
         "stay",
         "moved",
-        { stayId: id, fromRoomId: record.currentRoomId, toRoomId, actor },
+        {
+          stayId: id,
+          fromRoomId: record.currentRoomId,
+          toRoomId,
+          actor,
+          ...(requestActor === null ? {} : { requestActor }),
+        },
         actor,
       );
       await client.query("COMMIT");
@@ -336,9 +363,11 @@ export class PostgresStayStore implements StayStoreAPI {
 
   // RecordActualTimes keeps off-hours times on the stay row with the
   // outbox event in one transaction (FR-FDK-4).
-  async recordActualTimes(input: RecordActualTimesInput): Promise<StayRecord> {
+  async recordActualTimes(input: RecordActualTimesInput, sessionActor: string): Promise<StayRecord> {
     const id = requireUuid(input.stayId, "stayId");
-    const actor = requireString(input.actor, "actor");
+    requireString(input.actor, "actor");
+    const actor = sessionActor;
+    const requestActor = requestActorAnnotation(sessionActor, input.actor);
     const arrival = optionalTimestamp(input.actualArrival, "actualArrival");
     const departure = optionalTimestamp(input.actualDeparture, "actualDeparture");
     const client = await this.pool.connect();
@@ -371,7 +400,13 @@ export class PostgresStayStore implements StayStoreAPI {
         client,
         "stay",
         "actual-times-recorded",
-        { stayId: id, actualArrival, actualDeparture, actor },
+        {
+          stayId: id,
+          actualArrival,
+          actualDeparture,
+          actor,
+          ...(requestActor === null ? {} : { requestActor }),
+        },
         actor,
       );
       await client.query("COMMIT");
