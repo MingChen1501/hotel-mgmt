@@ -10427,7 +10427,7 @@ Postgres twin answers the same block-only way — single room
 (`services/rooms/src/server.ts:193-196`). Because the aggregate count
 is the desk's availability figure and the single-room answer is
 re-read by the Book confirm before it creates a reservation
-(`app/src/views/BookView.vue:919-931`, refusal `:940-947`), a room
+(`app/src/views/BookView.vue:982-993`, refusal `:1004-1011`), a room
 taken out of service is offered to the desk and can be sold. One rule:
 a room reads as sellable only when no block covers the range and its
 recorded state is neither `out-of-order` nor `occupied`, and it is
@@ -10510,7 +10510,7 @@ refreshed at the merged head by `qa-lead`.
   (`contracts/http/CheckRoomTypeSellability.json`).
 - **The aggregate count is what the desk sells from.** The Book
   confirm re-reads sellability for the quoted type and dates
-  (`app/src/views/BookView.vue:919-931`) and refuses below one with
+  (`app/src/views/BookView.vue:982-993`) and refuses below one with
   `desk.book.refused_soldout` (`:940-947`) before it calls
   `CreateReservation`, so a zero count already refuses there and no
   desk file needs to change.
@@ -10755,7 +10755,7 @@ creates it, for `qa-lead` to re-pin at the merged head.
 | FR-SEL-1 subtracts a blocked-and-non-sellable room once | `services/rooms/src/server.test.ts:645-692` (block subtracts one; release restores one); `:693-717` (release with no covering block refused) | Missing guard `S3`: an `out-of-order` room also block-covered → `totalCount: N`, `sellableCount: N - 1` (never `N - 2`, never negative), and `blockedRooms` still names that room exactly once; a type holding only non-sellable rooms → `0` |
 | FR-SEL-1 vacant states stay sellable | `services/rooms/src/server.test.ts:268-303` (`vacant-inspected` answers 1), `:471-501` (the dirty → clean → inspected walk), `:349-403` (inventory shows the current state) | Missing guard `S4`: one room in each of `vacant-dirty`, `vacant-clean`, and `vacant-inspected` → each counts as sellable in both the aggregate and the single-room read, so the explicit list is not "vacant-inspected only" |
 | FR-SEL-1 both stores agree | `services/rooms/src/pgstore.test.ts:22-33` (Postgres aggregate answers 1), `:59-93` (Postgres block subtracts, release restores); skipped without `TEST_PG_URL` | Missing guard `S5`: the same recorded-state fixture — one `out-of-order`, one `occupied`, one blocked, two vacant — through both stores → identical `totalCount`, `sellableCount`, and `blockedRooms` (`services/rooms/src/pgstore.ts:382-410`) |
-| FR-SEL-2 single-room non-sellable answer | `services/rooms/src/server.test.ts:268-303` (single-room reply envelope), `:502-527` (single-room block refusal) | Missing guard `S6`: a block-free `out-of-order` room and a block-free `occupied` room → both answer 200 with `totalCount: 1`, `sellableCount: 0`, `blockedRooms: []` and no reservation is created by the desk flow (`app/src/views/BookView.vue:940-947`) |
+| FR-SEL-2 single-room non-sellable answer | `services/rooms/src/server.test.ts:268-303` (single-room reply envelope), `:502-527` (single-room block refusal) | Missing guard `S6`: a block-free `out-of-order` room and a block-free `occupied` room → both answer 200 with `totalCount: 1`, `sellableCount: 0`, `blockedRooms: []` and no reservation is created by the desk flow (`app/src/views/BookView.vue:1004-1011`) |
 | FR-SEL-2 block refusal keeps precedence | `services/rooms/src/server.test.ts:502-527` (blocked single room → 422 `STATE_ILLEGAL` with the block's reason); `app/src/views/RoomsView.vue:549-593` (the desk block note reads that refusal) | Missing guard `S7`: an `out-of-order` room also block-covered, single-room read → 422 `STATE_ILLEGAL` with the block's dates and reason, never a 200 with `sellableCount: 0`, in both stores (`store.ts:350-360`; `pgstore.ts:357-372`) |
 | FR-SEL-3 blocks and `blockedRooms` unchanged | `services/rooms/src/server.test.ts:645-692`, `:693-717`, `:502-527`; Postgres twin `services/rooms/src/pgstore.test.ts:59-93` | Covered by re-run: `blockedRooms` membership and order, `BlockRoom`/`ReleaseBlock` answers, and the stored block rows stay exactly as they are; no state enters `ROOM_STATES` (`store.ts:17-30`) and no transition moves (`:34-40`) |
 | FR-SEL-3 release returns a room to sale only when sellable | `services/rooms/src/server.test.ts:645-692` proves release restores a vacant room | Missing guard `S8`: block an `out-of-order` room, release the block → the room is no longer in `blockedRooms` but `sellableCount` stays 0 until the state returns to a vacant one |
@@ -10770,7 +10770,7 @@ section was written against:
 
 ```mermaid
 flowchart TD
-    A[Desk availability search, Book confirm re-read, or Rooms block note: POST /v1/rooms/CheckRoomTypeSellability  server.ts:193-196, BookView.vue:919-931, RoomsView.vue:549-593] --> B{roomNumber supplied}
+    A[Desk availability search, Book confirm re-read, or Rooms block note: POST /v1/rooms/CheckRoomTypeSellability  server.ts:193-196, BookView.vue:982-993, RoomsView.vue:549-593] --> B{roomNumber supplied}
     B -- no, aggregate --> C[Rooms of the type plus the block-covered numbers for the range  store.ts:370-377, pgstore.ts:382-402]
     C --> D[sellableCount = rooms that are block-free AND in a sellable state, each room subtracted once  store.ts:378-385 new, pgstore.ts:403-410 new]
     D --> E[200 totalCount N, sellableCount, blockedRooms unchanged  store.ts:382-384]
@@ -10780,7 +10780,7 @@ flowchart TD
     G --> G1[RoomsView renders its covering-block note  RoomsView.vue:549-593]
     F -- no --> H{Room state sellable?}
     H -- out-of-order or occupied --> I[200 totalCount 1, sellableCount 0, blockedRooms empty  store.ts:361-368 new, pgstore.ts:373-380 new]
-    I --> I1[Book confirm refuses with desk.book.refused_soldout and creates no reservation  BookView.vue:940-947]
+    I --> I1[Book confirm refuses with desk.book.refused_soldout and creates no reservation  BookView.vue:1004-1011]
     H -- vacant-dirty, vacant-clean, or vacant-inspected --> J[200 totalCount 1, sellableCount 1, exactly as today  store.ts:361-368, pgstore.ts:373-380]
 ```
 
