@@ -219,4 +219,81 @@ describe("rooms postgres store", { skip: DATABASE_URL === undefined || DATABASE_
       await pool.end();
     }
   });
+
+  // Postgres half of SL5. The in-memory twin of this shared fixture lives
+  // in server.test.ts so `npm test` exercises it without TEST_PG_URL; both
+  // halves assert the same 5/2/["103"] triple and the same single-room
+  // answer, so a drift in either store fails a CI-run case.
+  it("counts the recorded-state fixture as 5 sellable 2 with 103 blocked (SL5, Postgres half)", async () => {
+    const pool = new Pool({ connectionString: DATABASE_URL });
+    try {
+      await wipe(pool);
+      const store = new PostgresRoomStore(pool);
+      await store.upsertRoomType({ name: "Deluxe", capacity: 2, actor: "manager" }, TOKEN);
+      for (const number of ["101", "102", "103", "104", "105"]) {
+        await store.upsertRoom({ number, roomType: "Deluxe", actor: "manager" }, TOKEN);
+      }
+      // 101 out-of-order; 102 occupied through the public assign path;
+      // 103 out-of-order and block-covered; 104/105 remain vacant-inspected.
+      await store.updateRoomState({ roomNumber: "101", newState: "out-of-order", actor: "manager" }, TOKEN);
+      await store.assignRoom(
+        { roomNumber: "102", businessDate: "2026-11-01", stayLink: "stay-1", actor: "front-desk" },
+        TOKEN,
+      );
+      await store.updateRoomState({ roomNumber: "103", newState: "out-of-order", actor: "manager" }, TOKEN);
+      await store.blockRoom(
+        { roomNumber: "103", dateFrom: "2026-11-01", dateTo: "2026-11-05", reason: "Plumbing repair", actor: "manager" },
+        TOKEN,
+      );
+      const range = { roomType: "Deluxe", dateFrom: "2026-11-01", dateTo: "2026-11-03" };
+      const sell = await store.checkSellability(range);
+      assert.equal(sell.totalCount, 5);
+      assert.equal(sell.sellableCount, 2);
+      assert.deepEqual(sell.blockedRooms, ["103"]);
+
+      const single = await store.checkSellability({ ...range, roomNumber: "101" });
+      assert.equal(single.totalCount, 1);
+      assert.equal(single.sellableCount, 0);
+      assert.deepEqual(single.blockedRooms, []);
+    } finally {
+      await pool.end();
+    }
+  });
+
+  it("refuses a block-covered out-of-order room before the state answer (SL7)", async () => {
+    const pool = new Pool({ connectionString: DATABASE_URL });
+    try {
+      await wipe(pool);
+      const store = new PostgresRoomStore(pool);
+      await store.upsertRoomType({ name: "Deluxe", actor: "manager" }, TOKEN);
+      await store.upsertRoom({ number: "101", roomType: "Deluxe", actor: "manager" }, TOKEN);
+      await store.updateRoomState({ roomNumber: "101", newState: "out-of-order", actor: "manager" }, TOKEN);
+      await store.blockRoom(
+        { roomNumber: "101", dateFrom: "2026-11-01", dateTo: "2026-11-05", reason: "Plumbing repair", actor: "manager" },
+        TOKEN,
+      );
+      await assert.rejects(
+        () =>
+          store.checkSellability({
+            roomType: "Deluxe",
+            dateFrom: "2026-11-01",
+            dateTo: "2026-11-03",
+            roomNumber: "101",
+          }),
+        (err: unknown) => {
+          const refusal = err as { code?: string; details?: unknown };
+          assert.equal(refusal.code, "STATE_ILLEGAL");
+          assert.deepEqual(refusal.details, {
+            roomNumber: "101",
+            dateFrom: "2026-11-01",
+            dateTo: "2026-11-05",
+            reason: "Plumbing repair",
+          });
+          return true;
+        },
+      );
+    } finally {
+      await pool.end();
+    }
+  });
 });

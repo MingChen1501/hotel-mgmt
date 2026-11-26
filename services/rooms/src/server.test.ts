@@ -803,6 +803,258 @@ class RefusingRoomStore extends RoomStore {
   }
 }
 
+describe("room state counts in sellability (#636)", () => {
+  const SELL_RANGE = { dateFrom: "2026-11-01", dateTo: "2026-11-03" };
+
+  async function seedType(store: RoomStore, name = "Deluxe"): Promise<void> {
+    await store.upsertRoomType({ name, actor: "manager" }, TOKEN);
+  }
+
+  async function addRoom(store: RoomStore, number: string, roomType = "Deluxe"): Promise<void> {
+    await store.upsertRoom({ number, roomType, actor: "manager" }, TOKEN);
+  }
+
+  async function sell(port: number, roomType = "Deluxe", roomNumber?: string) {
+    return request(port, "POST", "/v1/rooms/CheckRoomTypeSellability", {
+      roomType,
+      ...SELL_RANGE,
+      ...(roomNumber === undefined ? {} : { roomNumber }),
+    });
+  }
+
+  it("does not count an out-of-order room as sellable (SL1)", async () => {
+    const store = new RoomStore();
+    await seedType(store);
+    for (const number of ["101", "102", "103"]) {
+      await addRoom(store, number);
+    }
+    await store.updateRoomState({ roomNumber: "103", newState: "out-of-order", actor: "manager" }, TOKEN);
+    await withServer(async (port) => {
+      const before = await sell(port);
+      assert.equal(before.status, 200);
+      assert.equal((before.body as { totalCount: number }).totalCount, 3);
+      assert.equal((before.body as { sellableCount: number }).sellableCount, 2);
+      assert.deepEqual((before.body as { blockedRooms: string[] }).blockedRooms, []);
+
+      await store.updateRoomState({ roomNumber: "103", newState: "vacant-dirty", actor: "housekeeping" }, TOKEN);
+      const after = await sell(port);
+      assert.equal((after.body as { sellableCount: number }).sellableCount, 3);
+    }, store);
+  });
+
+  it("does not count an occupied room as sellable (SL2)", async () => {
+    const store = new RoomStore();
+    await seedType(store);
+    await addRoom(store, "101");
+    await addRoom(store, "102");
+    const assigned = await store.assignRoom(
+      { roomNumber: "102", businessDate: "2026-11-01", stayLink: "stay-1", actor: "front-desk" },
+      TOKEN,
+    );
+    assert.equal(assigned.state, "occupied");
+    await withServer(async (port) => {
+      const before = await sell(port);
+      assert.equal(before.status, 200);
+      assert.equal((before.body as { totalCount: number }).totalCount, 2);
+      assert.equal((before.body as { sellableCount: number }).sellableCount, 1);
+      assert.deepEqual((before.body as { blockedRooms: string[] }).blockedRooms, []);
+
+      await store.releaseRoom({ roomNumber: "102", actor: "front-desk" }, TOKEN);
+      const after = await sell(port);
+      assert.equal((after.body as { sellableCount: number }).sellableCount, 2);
+    }, store);
+  });
+
+  it("subtracts a block-covered non-sellable room once, never below zero (SL3)", async () => {
+    const store = new RoomStore();
+    await seedType(store);
+    for (const number of ["201", "202", "203"]) {
+      await addRoom(store, number);
+    }
+    await store.updateRoomState({ roomNumber: "201", newState: "out-of-order", actor: "manager" }, TOKEN);
+    await store.blockRoom(
+      { roomNumber: "201", dateFrom: "2026-11-01", dateTo: "2026-11-05", reason: "Plumbing repair", actor: "manager" },
+      TOKEN,
+    );
+    await withServer(async (port) => {
+      const covered = await sell(port);
+      assert.equal(covered.status, 200);
+      assert.equal((covered.body as { totalCount: number }).totalCount, 3);
+      assert.equal((covered.body as { sellableCount: number }).sellableCount, 2);
+      assert.deepEqual((covered.body as { blockedRooms: string[] }).blockedRooms, ["201"]);
+    }, store);
+
+    const allNonSellable = new RoomStore();
+    await seedType(allNonSellable);
+    for (const number of ["301", "302"]) {
+      await addRoom(allNonSellable, number);
+      await allNonSellable.updateRoomState({ roomNumber: number, newState: "out-of-order", actor: "manager" }, TOKEN);
+    }
+    await withServer(async (port) => {
+      const none = await sell(port);
+      assert.equal((none.body as { totalCount: number }).totalCount, 2);
+      assert.equal((none.body as { sellableCount: number }).sellableCount, 0);
+    }, allNonSellable);
+  });
+
+  it("keeps every vacant state sellable and an empty type at zero (SL4)", async () => {
+    const store = new RoomStore();
+    await seedType(store);
+    await addRoom(store, "401");
+    await addRoom(store, "402");
+    await store.updateRoomState({ roomNumber: "402", newState: "vacant-dirty", actor: "housekeeping" }, TOKEN);
+    await addRoom(store, "403");
+    await store.updateRoomState({ roomNumber: "403", newState: "vacant-dirty", actor: "housekeeping" }, TOKEN);
+    await store.updateRoomState({ roomNumber: "403", newState: "vacant-clean", actor: "housekeeping" }, TOKEN);
+    await seedType(store, "Suite");
+    await withServer(async (port) => {
+      const all = await sell(port);
+      assert.equal((all.body as { totalCount: number }).totalCount, 3);
+      assert.equal((all.body as { sellableCount: number }).sellableCount, 3);
+      for (const number of ["401", "402", "403"]) {
+        const one = await sell(port, "Deluxe", number);
+        assert.equal(one.status, 200);
+        assert.equal((one.body as { sellableCount: number }).sellableCount, 1);
+      }
+
+      const empty = await sell(port, "Suite");
+      assert.equal(empty.status, 200);
+      assert.equal((empty.body as { totalCount: number }).totalCount, 0);
+      assert.equal((empty.body as { sellableCount: number }).sellableCount, 0);
+    }, store);
+  });
+
+  // In-memory half of SL5: the same recorded-state fixture the Postgres half
+  // seeds in pgstore.test.ts, asserted to the same exact triple. This half
+  // runs in CI without TEST_PG_URL; the two halves still pin the stores to
+  // one set of numbers, so a drift in either fails.
+  it("counts the recorded-state fixture as 5 sellable 2 with 103 blocked (SL5)", async () => {
+    const store = new RoomStore();
+    await seedType(store);
+    for (const number of ["101", "102", "103", "104", "105"]) {
+      await addRoom(store, number);
+    }
+    // 101 out-of-order; 102 occupied through the public assign path;
+    // 103 out-of-order and block-covered; 104/105 remain vacant-inspected.
+    await store.updateRoomState({ roomNumber: "101", newState: "out-of-order", actor: "manager" }, TOKEN);
+    const assigned = await store.assignRoom(
+      { roomNumber: "102", businessDate: "2026-11-01", stayLink: "stay-1", actor: "front-desk" },
+      TOKEN,
+    );
+    assert.equal(assigned.state, "occupied");
+    await store.updateRoomState({ roomNumber: "103", newState: "out-of-order", actor: "manager" }, TOKEN);
+    await store.blockRoom(
+      { roomNumber: "103", dateFrom: "2026-11-01", dateTo: "2026-11-05", reason: "Plumbing repair", actor: "manager" },
+      TOKEN,
+    );
+    const aggregate = await store.checkSellability({ roomType: "Deluxe", ...SELL_RANGE });
+    assert.equal(aggregate.totalCount, 5);
+    assert.equal(aggregate.sellableCount, 2);
+    assert.deepEqual(aggregate.blockedRooms, ["103"]);
+
+    const roomTypeId = (await store.resolveRoomType("Deluxe")).id;
+    const single = await store.checkSellability({ roomType: "Deluxe", ...SELL_RANGE, roomNumber: "101" });
+    assert.deepEqual(single, {
+      roomTypeId,
+      ...SELL_RANGE,
+      totalCount: 1,
+      sellableCount: 0,
+      blockedRooms: [],
+    });
+  });
+
+  it("reports sellableCount 0 for a block-free non-sellable single room (SL6)", async () => {
+    const store = new RoomStore();
+    await seedType(store);
+    await addRoom(store, "501");
+    await addRoom(store, "502");
+    await store.updateRoomState({ roomNumber: "502", newState: "out-of-order", actor: "manager" }, TOKEN);
+    const roomTypeId = (await store.resolveRoomType("Deluxe")).id;
+    await withServer(async (port) => {
+      const outOfOrder = await sell(port, "Deluxe", "502");
+      assert.equal(outOfOrder.status, 200);
+      assert.deepEqual(outOfOrder.body, {
+        roomTypeId,
+        ...SELL_RANGE,
+        totalCount: 1,
+        sellableCount: 0,
+        blockedRooms: [],
+      });
+
+      await store.assignRoom(
+        { roomNumber: "501", businessDate: "2026-11-01", stayLink: "stay-1", actor: "front-desk" },
+        TOKEN,
+      );
+      const occupied = await sell(port, "Deluxe", "501");
+      assert.equal(occupied.status, 200);
+      assert.deepEqual(occupied.body, {
+        roomTypeId,
+        ...SELL_RANGE,
+        totalCount: 1,
+        sellableCount: 0,
+        blockedRooms: [],
+      });
+
+      await store.releaseRoom({ roomNumber: "501", actor: "front-desk" }, TOKEN);
+      const vacant = await sell(port, "Deluxe", "501");
+      assert.equal((vacant.body as { sellableCount: number }).sellableCount, 1);
+    }, store);
+  });
+
+  it("keeps the block refusal ahead of the state answer (SL7)", async () => {
+    const store = new RoomStore();
+    await seedType(store);
+    await addRoom(store, "601");
+    await store.updateRoomState({ roomNumber: "601", newState: "out-of-order", actor: "manager" }, TOKEN);
+    await store.blockRoom(
+      { roomNumber: "601", dateFrom: "2026-11-01", dateTo: "2026-11-05", reason: "Plumbing repair", actor: "manager" },
+      TOKEN,
+    );
+    await withServer(async (port) => {
+      const refused = await sell(port, "Deluxe", "601");
+      assert.equal(refused.status, 422);
+      assert.equal((refused.body as { code: string }).code, "STATE_ILLEGAL");
+      assert.deepEqual((refused.body as { details: unknown }).details, {
+        roomNumber: "601",
+        dateFrom: "2026-11-01",
+        dateTo: "2026-11-05",
+        reason: "Plumbing repair",
+      });
+    }, store);
+  });
+
+  it("returns a released room to sale only when its state is sellable (SL8)", async () => {
+    const store = new RoomStore();
+    await seedType(store);
+    await addRoom(store, "701");
+    await store.updateRoomState({ roomNumber: "701", newState: "out-of-order", actor: "manager" }, TOKEN);
+    await store.blockRoom(
+      { roomNumber: "701", dateFrom: "2026-11-01", dateTo: "2026-11-05", reason: "Plumbing repair", actor: "manager" },
+      TOKEN,
+    );
+    await withServer(async (port) => {
+      const blocked = await sell(port);
+      assert.deepEqual((blocked.body as { blockedRooms: string[] }).blockedRooms, ["701"]);
+      assert.equal((blocked.body as { sellableCount: number }).sellableCount, 0);
+
+      const released = await request(port, "POST", "/v1/rooms/ReleaseBlock", {
+        roomNumber: "701",
+        dateFrom: "2026-11-01",
+        dateTo: "2026-11-05",
+        actor: "manager",
+      });
+      assert.equal(released.status, 200);
+      const afterRelease = await sell(port);
+      assert.deepEqual((afterRelease.body as { blockedRooms: string[] }).blockedRooms, []);
+      assert.equal((afterRelease.body as { sellableCount: number }).sellableCount, 0);
+
+      await store.updateRoomState({ roomNumber: "701", newState: "vacant-dirty", actor: "housekeeping" }, TOKEN);
+      const sellable = await sell(port);
+      assert.equal((sellable.body as { sellableCount: number }).sellableCount, 1);
+    }, store);
+  });
+});
+
 describe("internal error envelope (#627)", () => {
   it("answers an unexpected exception with INTERNAL_ERROR and keeps serving", async () => {
     await withServer(async (port) => {

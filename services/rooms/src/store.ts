@@ -29,6 +29,17 @@ export const ROOM_STATES: RoomState[] = [
   "out-of-order",
 ];
 
+// Sellability (issue #636, BR-67): a room is offered for sale only when
+// no block covers the range and its recorded state is not one of these.
+// The list is explicit and fixed — every vacant state stays sellable,
+// so a dirty room is still offered for a future stay. Reservations'
+// overbooking ceiling is separate and unchanged (ADR-0006 D2).
+export const NON_SELLABLE_STATES: readonly RoomState[] = ["out-of-order", "occupied"];
+
+export function isSellableState(state: RoomState): boolean {
+  return !NON_SELLABLE_STATES.includes(state);
+}
+
 // Housekeeping order (BR-28): dirty -> clean -> inspected. Occupied
 // rooms only release to dirty; out-of-order rooms re-enter via dirty.
 export const ALLOWED_TRANSITIONS: Record<RoomState, RoomState[]> = {
@@ -358,29 +369,37 @@ export class RoomStore implements RoomStoreAPI {
           reason: block.reason,
         });
       }
+      // Block refusal keeps priority (above); only then does room state
+      // answer, so a block-free non-sellable room reports zero and never
+      // claims availability (issue #636).
       return {
         roomTypeId: roomType.id,
         dateFrom,
         dateTo,
         totalCount: 1,
-        sellableCount: 1,
+        sellableCount: isSellableState(room.state) ? 1 : 0,
         blockedRooms: [],
       };
     }
     const ofType = [...this.rooms.values()].filter((room) => room.roomTypeId === roomType.id);
-    const blockedRooms = ofType
-      .filter((room) =>
-        this.blocks.some(
-          (entry) => entry.roomId === room.id && rangesOverlap(entry.dateFrom, entry.dateTo, dateFrom, dateTo),
-        ),
-      )
-      .map((room) => room.number);
+    const blockedRoomIds = new Set(
+      ofType
+        .filter((room) =>
+          this.blocks.some(
+            (entry) => entry.roomId === room.id && rangesOverlap(entry.dateFrom, entry.dateTo, dateFrom, dateTo),
+          ),
+        )
+        .map((room) => room.id),
+    );
+    const blockedRooms = ofType.filter((room) => blockedRoomIds.has(room.id)).map((room) => room.number);
     return {
       roomTypeId: roomType.id,
       dateFrom,
       dateTo,
       totalCount: ofType.length,
-      sellableCount: ofType.length - blockedRooms.length,
+      // One combined predicate subtracts a room at most once even when it
+      // is both block-covered and non-sellable (issue #636).
+      sellableCount: ofType.filter((room) => !blockedRoomIds.has(room.id) && isSellableState(room.state)).length,
       blockedRooms,
     };
   }
