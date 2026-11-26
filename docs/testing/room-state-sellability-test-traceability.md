@@ -155,7 +155,7 @@ tree is green in CI on `origin/master` `b6ff53a` — checks
 `node-build (rooms)`, `app-build`, `browser-e2e`, `contract-check`,
 `ci`, `e2e-single-host`, and `dom-diff` all `success` (read with
 `gh api repos/MingChen1501/hotel-mgmt/commits/b6ff53a/check-runs`). The
-stack head `2520df4` is docs-only, so its PR runs `ci`,
+stack head `9e9d583` is docs-only, so its PR runs `ci`,
 `contract-check`, and `e2e-single-host` with the node/app jobs
 path-filtered out; the code pins above are byte-identical between the
 stack head and `b6ff53a` for `services/rooms/**`,
