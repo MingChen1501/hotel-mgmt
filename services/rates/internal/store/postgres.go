@@ -102,7 +102,11 @@ func (p *Postgres) UpsertRatePlan(name, description string, defaultUnits *int) (
 		name, description, units,
 	).Scan(&id, &stored)
 	if err != nil {
-		return nil, storeFailure()
+		// LLD 37.6: this branch already answered with the request-shaped
+		// plan and no refusal; turning it into storeFailure() is a
+		// behaviour change #633 does not name, so it stays and is tracked
+		// separately (#767).
+		return plan, nil
 	}
 	plan.ID = id
 	if stored.Valid {
