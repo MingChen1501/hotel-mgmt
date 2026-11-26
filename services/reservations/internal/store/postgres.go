@@ -304,6 +304,31 @@ func (p *Postgres) Get(ref string) (*Reservation, *OpError) {
 	return record, nil
 }
 
+// Replay resolves an idempotency key to the reservation already stored
+// under it (ADR-0007 D5). The lookup is key-only and matches the
+// guarded writes' own replay check, so a key for another operation or
+// reservation never resolves. A miss returns (nil, nil).
+func (p *Postgres) Replay(operation, ref, key string) (*Reservation, *OpError) {
+	if key == "" {
+		return nil, nil
+	}
+	var existingRef string
+	err := p.db.QueryRow(
+		`SELECT result_ref FROM reservations.idempotency_keys WHERE key = $1`,
+		idemKey(operation, ref, key),
+	).Scan(&existingRef)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, storeUnavailable()
+	}
+	if strings.TrimSpace(existingRef) == "" {
+		return nil, nil
+	}
+	return p.Get(existingRef)
+}
+
 // Query lists reservations overlapping the range, optionally filtered.
 func (p *Postgres) Query(dateFrom, dateTo, roomTypeID string) []*CalendarEntry {
 	query := `SELECT reference, room_type_id, arrival_date::text, departure_date::text, state, stay_id

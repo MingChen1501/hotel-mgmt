@@ -1,0 +1,19 @@
+{
+  "operation": "CreateReservation",
+  "case": "unreadable-pricing",
+  "description": "Rates cannot be read for the quote, so the booking is refused 503 UPSTREAM_UNAVAILABLE naming rates/QuotePrice instead of freezing an unverified total (ADR-0007 D4).",
+  "request": {
+    "roomTypeId": "<deluxe-type-id>",
+    "arrivalDate": "2026-11-01",
+    "departureDate": "2026-11-03",
+    "guest": { "guestId": "<guest-id>", "fullName": "An Nguyen", "contact": "+84-900-000-001" },
+    "sellableUnits": 1,
+    "priceBasis": { "totalMinor": 24000, "discountName": null },
+    "idempotencyKey": "pricing-down-1"
+  },
+  "expect": {
+    "status": 503,
+    "code": "UPSTREAM_UNAVAILABLE",
+    "details": { "upstream": "rates", "operation": "QuotePrice" }
+  }
+}

@@ -19,13 +19,16 @@ list:
   - `VALIDATION_FAILED` (400 — the caller's body or a field is wrong),
     `NOT_FOUND` (404), `FORBIDDEN` (403), `CONFLICT` (409),
     `STATE_ILLEGAL` (422), `SETTLEMENT_REQUIRED` (409).
+  - `PRICE_CHANGED` (409) — the booking request asserted a total that
+    disagrees with the Rates quote; the refusal names both totals
+    (Refs #632, LLD [section 25](../architecture/lld.md)).
   - `UNAUTHENTICATED` (401) and `IDENTITY_LOCKED` (401) —
     session-expiry/lockout refusals, assigned in
     `docs/architecture/lld.md` [section 0](../architecture/lld.md) and
     `docs/technical/integration.md` [section 6](integration.md) C10.
   - `UPSTREAM_UNAVAILABLE` (503) — a provider that must be read to
     decide the operation could not be read, so the operation fails
-    closed (`docs/architecture/lld.md` section 0; Refs #601).
+    closed (`docs/architecture/lld.md` section 0; Refs #601, #632).
   - `INTERNAL_ERROR` (500) — an unexpected exception: a store or
     driver failure, a wiring fault, or a crash. Never the caller's
     input and never `VALIDATION_FAILED`; the message is the existing
@@ -309,6 +312,12 @@ This changes no error answer:
   `CONFLICT` naming the room (`NFR-CON-2`); the stay is not created.
 - A reservation violating a stay restriction returns
   `STATE_ILLEGAL` naming the violated restriction (`FR-RTE-4`).
+- A booking or modify request whose asserted `priceBasis.totalMinor`
+  disagrees with the Rates quote for the effective room type, dates,
+  and discount returns `PRICE_CHANGED` (409) naming both totals
+  (`requestedTotalMinor`, `quotedTotalMinor`) plus the type and the
+  dates (`BR-13`; Refs #632). The request total is never stored, and
+  nothing is created or changed.
 - A booking or check-in missing a hotel-mandatory guest field
   returns `VALIDATION_FAILED` naming the missing field
   (`FR-CUS-1`).
@@ -423,6 +432,45 @@ than on the caller's id. The rule set, applied to `PostCharge`,
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1046
+
+## 6. Price-change refusals on the booking write (Refs #632)
+
+A booking write reads its money fact from the module that owns it, so
+two different outcomes must not be conflated:
+
+- **Disagreement — `PRICE_CHANGED` (409).** The caller asserted a
+  `priceBasis.totalMinor` that the Rates `QuotePrice` read does not
+  return for the effective room type, dates, and discount. `details`
+  carries `roomTypeId`, `arrivalDate`, `departureDate`,
+  `requestedTotalMinor`, and `quotedTotalMinor`. Nothing is created,
+  changed, or reserved. It is not `CONFLICT`: `CONFLICT` means two
+  callers competed for one unit, `PRICE_CHANGED` means one caller's
+  claim about the price is stale, and the desk recovers by re-quoting
+  and asking for a second confirmation rather than by retrying the same
+  request. It is not `VALIDATION_FAILED` either: the field was present
+  and well-formed, it just disagreed with the price in force.
+- **Unreadable Pricing — `UPSTREAM_UNAVAILABLE` (503).** Transport
+  failure, timeout, 5xx, a non-envelope reply, or an unwired client.
+  The booking fails closed instead of freezing an unverified total, the
+  same rule the check-out gate applies to an unreadable folio
+  (section 2). The desk keeps the quote it displayed and may retry.
+- **Definitive Rates refusal — surfaced unchanged.** A 4xx envelope
+  from `QuotePrice` keeps its code, message, and details: `NOT_FOUND`
+  with `details.reason` `no_rate_price` (a night has no price row) or
+  `no_rate_plan` (no plan prices the type), and `VALIDATION_FAILED` for
+  an unknown discount or an ambiguous plan set naming `ratePlanName`.
+  The type is not open for booking in the terms the desk's quote step
+  already reports, and nothing is stored.
+
+The split follows section 4's definitive-versus-unreadable rule: a 4xx
+answer proves the call wrote nothing, so it is reported as the provider
+named it; everything else is an unknown outcome and fails the write
+closed. No new envelope field is added by this section; `PRICE_CHANGED`
+joins the code enum in section 1 and the flow detail is
+`docs/architecture/lld.md` [section 25](../architecture/lld.md#25-server-side-reservation-price-authority-refs-632).
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-990
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1117

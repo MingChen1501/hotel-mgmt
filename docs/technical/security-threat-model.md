@@ -25,7 +25,7 @@ departed employee reusing a stale session; a device left unattended
 at the desk; a compromised LAN device sniffing or injecting
 traffic; a caller that bypasses the desk UI and calls the contract
 directly with a valid session token, asserting money facts of its
-own (the #601 case); a lost/stolen backup medium; a remote attacker reaching
+own (the #601 and #632 cases); a lost/stolen backup medium; a remote attacker reaching
 for an internet-exposed surface (there is none by design);
 vendor-support access over Tailscale.
 
@@ -75,7 +75,8 @@ beyond session hygiene.
   nothing readable.
 - B5 — Module-to-module synchronous calls inside a desk step (for
   example Stay -> Billing `GetFolioBalance` at the check-out gate,
-  Refs #601, and Billing -> Stay `GetStayRef` before every folio write,
+  Refs #601, Reservations -> Rates `QuotePrice` at the booking write,
+  Refs #632, and Billing -> Stay `GetStayRef` before every folio write,
   Refs #634). The originating desk session token travels on the call
   and the provider enforces identity/role before answering. The
   caller trusts only the provider's response, never the browser's
@@ -114,12 +115,16 @@ actor and timestamp. Co-edited inventory (owner + manager) shares
 one operation set with no primary editor (LLD [section 0](../architecture/lld.md)).
 
 Money and state facts are provider-derived, never caller-asserted
-(B5; Refs #601, #634). At check-out the client may name the stay, the
+(B5; Refs #601, #632, #634). At check-out the client may name the stay, the
 folio it presents as invoice, the actual departure, and an
 idempotency key; the balance and the open-balance approval are read
 back from Billing, which owns them, and an approval counts only with
 an approver identity, a role from the fixed three, and a recorded
-time (`BR-17`; ADR-0005). On a folio write the client may name the stay;
+time (`BR-17`; ADR-0005). On a booking write the client may name the
+room type, dates, and discount; the total and the stored discount name
+are read back from Rates `QuotePrice`, and a request total that
+disagrees is refused with `PRICE_CHANGED` rather than adopted
+(`BR-13`; ADR-0007). On a folio write the client may name the stay;
 whether that stay exists and is in house is read back from Stay, which
 owns it (ADR-0008). An unreadable provider fails the operation closed
 with `UPSTREAM_UNAVAILABLE` rather than proceeding on an unverified
@@ -269,6 +274,25 @@ the same seam (R-20). Design: `docs/architecture/lld.md` section 34.
   A named consequence, out of scope here: an approved open balance cannot
   be settled by a folio write after the departure, so a late-settlement
   path needs its own decision and issue.
+- R9 — Fail-closed booking availability (Refs #632): Rates unreachable
+  means every create and modify refuses with `UPSTREAM_UNAVAILABLE`,
+  while bookings already stored stay readable, cancellable, and
+  checkable-in. Accepted for a money path on the same terms as R7: the
+  alternative is freezing an unverified price, and an availability
+  alert is the mitigation.
+- R10 — Ambiguous plan set refuses booking (Refs #632): when several
+  rate plans price a type and no `ratePlanName` is named, `QuotePrice`
+  refuses `VALIDATION_FAILED` naming `ratePlanName`
+  (`services/rates/internal/store/store.go:402`) and a reservation
+  cannot carry a plan name, so the booking is refused. Not a new
+  failure mode — the desk's own quote omits `ratePlanName`
+  (`app/src/views/BookView.vue:807-820`) — and it re-opens when a
+  reservation records a plan.
+- R11 — The quote and the booking write are one request apart
+  (Refs #632): a rate edit landing between the `QuotePrice` read and
+  the store write is not seen by that booking. Bounded by reading
+  immediately before the write on a single-desk installation, and
+  `BR-13` freezes whatever was quoted either way.
 - R-OVB-1 — Fail-closed booking availability (Refs #631): the
   overbooking ceiling is read live from Rooms, so a Rooms outage refuses
   new bookings and modifications with `UPSTREAM_UNAVAILABLE`. Accepted
