@@ -305,9 +305,10 @@ This changes no error answer:
 
 ### 1.7 Rates refuses malformed restriction and availability input (Refs #633)
 
-Rates stops coercing four caller inputs and starts refusing the ones it
-cannot honour. Every refusal uses a code section 1 already registers, and
-no envelope field, status mapping, or sentence family is added:
+Rates stops coercing the caller's restriction, availability, quote, and
+plan inputs, and starts refusing the ones it cannot honour. Every refusal
+uses a code section 1 already registers, and no envelope field, status
+mapping, or sentence family is added:
 
 - **A non-boolean restriction flag is the caller's mistake.**
   `closedToArrival` present as `"true"`, `1`, `"yes"`, or `null` answers
@@ -328,11 +329,10 @@ no envelope field, status mapping, or sentence family is added:
 - **An overflowing quote is a state refusal, not a caller error.**
   `STATE_ILLEGAL` (422) gains the additive `details.reason`
   `total_overflow` beside the #589 values `no_rate_price` and
-  `no_rate_plan` (section 6 above), names
-  `roomTypeId`, and serves no total and no nights. It is not
-  `VALIDATION_FAILED` (the request is well formed), not `INTERNAL_ERROR`
-  (stored data, not a fault), and never `UPSTREAM_UNAVAILABLE` (no
-  provider is read).
+  `no_rate_plan` (section 6 above), names `roomTypeId`, and serves no
+  total and no nights. It is not `VALIDATION_FAILED` (the request is well
+  formed), not `INTERNAL_ERROR` (stored data, not a fault), and never
+  `UPSTREAM_UNAVAILABLE` (no provider is read).
 - **The plan bounds are field refusals.** A `name` above 64 or a
   `description` above 2 000 code points, or either sent as a non-string,
   answers `VALIDATION_FAILED` (400) naming the field with the bound
