@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { Pool } from "pg";
+import { msg } from "./messages.js";
 import { PostgresRoomStore } from "./pgstore.js";
 
 // Postgres round-trip for the rooms schema (issue #149). Skipped
@@ -292,6 +293,170 @@ describe("rooms postgres store", { skip: DATABASE_URL === undefined || DATABASE_
           return true;
         },
       );
+    } finally {
+      await pool.end();
+    }
+  });
+});
+
+// Contract guards for the #637 capacity rule on the Postgres store
+// (BR-69, AC-CAP-1..AC-CAP-3). Skipped without TEST_PG_URL like the
+// rest of this suite; the in-memory twins are in server.test.ts.
+const CAPACITY_MESSAGE = msg("rooms.validation.capacity", { field: "capacity" });
+
+function assertCapacityRefusal(err: unknown): boolean {
+  const refusal = err as { code?: string; message?: string; details?: { field?: string } };
+  assert.equal(refusal.code, "VALIDATION_FAILED");
+  assert.equal(refusal.message, CAPACITY_MESSAGE);
+  assert.deepEqual(refusal.details, { field: "capacity" });
+  return true;
+}
+
+const REFUSED_CAPACITIES: unknown[] = [
+  -1,
+  0,
+  -2147483648,
+  2.5,
+  0.5,
+  1e-1,
+  "2",
+  null,
+  true,
+  [2],
+  {},
+  Infinity,
+  -Infinity,
+  NaN,
+];
+
+describe("rooms postgres capacity validation (#637, CAP1-CAP5)", {
+  skip: DATABASE_URL === undefined || DATABASE_URL === "",
+}, () => {
+  it("stores accepted capacities verbatim, above the form bound too, and keeps omitted values (CAP1, CAP2)", async () => {
+    const pool = new Pool({ connectionString: DATABASE_URL });
+    try {
+      await wipe(pool);
+      const store = new PostgresRoomStore(pool);
+      for (const capacity of [1, 21]) {
+        const type = await store.upsertRoomType({ name: `Type${capacity}`, capacity, actor: "manager" }, TOKEN);
+        assert.equal(type.capacity, capacity);
+      }
+      const decimal = await store.upsertRoomType({ name: "Decimal", capacity: 2.0, actor: "manager" }, TOKEN);
+      assert.equal(decimal.capacity, 2);
+
+      const listed = await store.listRoomTypes();
+      assert.equal(listed.find((type) => type.name === "Type1")?.capacity, 1);
+      assert.equal(listed.find((type) => type.name === "Type21")?.capacity, 21);
+
+      const created = await store.upsertRoomType({ name: "Sparse", actor: "manager" }, TOKEN);
+      assert.equal(created.capacity, null);
+      await store.upsertRoomType({ name: "Sparse", capacity: 3, actor: "manager" }, TOKEN);
+      const kept = await store.upsertRoomType({ name: "Sparse", actor: "manager" }, TOKEN);
+      assert.equal(kept.capacity, 3);
+
+      await store.upsertRoom({ number: "101", roomType: "Type1", capacity: 1, actor: "manager" }, TOKEN);
+      await store.upsertRoom({ number: "102", roomType: "Type21", capacity: 21, actor: "manager" }, TOKEN);
+      const rows = await pool.query(
+        `SELECT number, capacity FROM rooms.rooms WHERE number IN ('101', '102') ORDER BY number`,
+      );
+      assert.deepEqual(rows.rows, [
+        { number: "101", capacity: 1 },
+        { number: "102", capacity: 21 },
+      ]);
+      await store.upsertRoom({ number: "103", roomType: "Type1", actor: "manager" }, TOKEN);
+      const omitted = await pool.query(`SELECT capacity FROM rooms.rooms WHERE number = '103'`);
+      assert.equal((omitted.rows[0] as { capacity: number | null }).capacity, null);
+      await store.upsertRoom({ number: "103", roomType: "Type1", capacity: 4, actor: "manager" }, TOKEN);
+      await store.upsertRoom({ number: "103", roomType: "Type1", actor: "manager" }, TOKEN);
+      const stillFour = await pool.query(`SELECT capacity FROM rooms.rooms WHERE number = '103'`);
+      assert.equal((stillFour.rows[0] as { capacity: number }).capacity, 4);
+    } finally {
+      await pool.end();
+    }
+  });
+
+  it("refuses every unusable capacity on both operations and never reaches the INT cast (CAP3, AC-CAP-2)", async () => {
+    const pool = new Pool({ connectionString: DATABASE_URL });
+    try {
+      await wipe(pool);
+      const store = new PostgresRoomStore(pool);
+      await store.upsertRoomType({ name: "Deluxe", capacity: 2, actor: "manager" }, TOKEN);
+      for (const capacity of REFUSED_CAPACITIES) {
+        await assert.rejects(
+          () => store.upsertRoomType({ name: "Deluxe", capacity, actor: "manager" }, TOKEN),
+          assertCapacityRefusal,
+        );
+        await assert.rejects(
+          () => store.upsertRoom({ number: "101", roomType: "Deluxe", capacity, actor: "manager" }, TOKEN),
+          assertCapacityRefusal,
+        );
+      }
+      const stored = await store.listRoomTypes();
+      assert.equal(stored.find((type) => type.name === "Deluxe")?.capacity, 2);
+    } finally {
+      await pool.end();
+    }
+  });
+
+  it("writes nothing and emits no room-upserted event on a refusal (CAP4, AC-CAP-2)", async () => {
+    const pool = new Pool({ connectionString: DATABASE_URL });
+    try {
+      await wipe(pool);
+      const store = new PostgresRoomStore(pool);
+      await store.upsertRoomType({ name: "Deluxe", capacity: 2, bedType: "king", actor: "manager" }, TOKEN);
+      await store.upsertRoom({ number: "101", roomType: "Deluxe", capacity: 2, floor: "1", actor: "manager" }, TOKEN);
+      const typeBefore = await pool.query(
+        `SELECT id, name, capacity, bed_type, features FROM rooms.room_types WHERE name = 'Deluxe'`,
+      );
+      const roomBefore = await pool.query(
+        `SELECT id, number, room_type_id, floor, bed_type, capacity, features, state FROM rooms.rooms WHERE number = '101'`,
+      );
+      const eventsBefore = await pool.query(`SELECT count(*)::int AS n FROM rooms.outbox`);
+
+      for (const capacity of REFUSED_CAPACITIES) {
+        await assert.rejects(
+          () => store.upsertRoomType({ name: "Deluxe", capacity, actor: "manager" }, TOKEN),
+          assertCapacityRefusal,
+        );
+        await assert.rejects(
+          () => store.upsertRoom({ number: "101", roomType: "Deluxe", capacity, actor: "manager" }, TOKEN),
+          assertCapacityRefusal,
+        );
+      }
+      await assert.rejects(
+        () => store.upsertRoomType({ name: "Rejected", capacity: 0, actor: "manager" }, TOKEN),
+        assertCapacityRefusal,
+      );
+
+      const typeAfter = await pool.query(
+        `SELECT id, name, capacity, bed_type, features FROM rooms.room_types WHERE name = 'Deluxe'`,
+      );
+      const roomAfter = await pool.query(
+        `SELECT id, number, room_type_id, floor, bed_type, capacity, features, state FROM rooms.rooms WHERE number = '101'`,
+      );
+      assert.deepEqual(typeAfter.rows, typeBefore.rows);
+      assert.deepEqual(roomAfter.rows, roomBefore.rows);
+      const eventsAfter = await pool.query(`SELECT count(*)::int AS n FROM rooms.outbox`);
+      assert.equal((eventsAfter.rows[0] as { n: number }).n, (eventsBefore.rows[0] as { n: number }).n);
+      const rejected = await pool.query(`SELECT 1 FROM rooms.room_types WHERE name = 'Rejected'`);
+      assert.equal(rejected.rows.length, 0);
+    } finally {
+      await pool.end();
+    }
+  });
+
+  it("never re-validates a capacity stored before the change (CAP5, AC-CAP-3)", async () => {
+    const pool = new Pool({ connectionString: DATABASE_URL });
+    try {
+      await wipe(pool);
+      const store = new PostgresRoomStore(pool);
+      await pool.query(
+        `INSERT INTO rooms.room_types (id, name, capacity, bed_type, features, created_by, updated_by)
+         VALUES ('00000000-0000-4000-8000-000000000637', 'Legacy', 0, NULL, '{}'::jsonb, 'legacy', 'legacy')`,
+      );
+      const legacy = await store.resolveRoomType("Legacy");
+      assert.equal(legacy.capacity, 0);
+      assert.equal((await store.listRoomTypes()).find((type) => type.name === "Legacy")?.capacity, 0);
     } finally {
       await pool.end();
     }

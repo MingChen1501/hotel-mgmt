@@ -8,6 +8,7 @@ import {
   ROOM_STATES,
   isSellableState,
   requestActorAnnotation,
+  requireCapacity,
   requireDate,
   requireString,
   type AssignRoomInput,
@@ -141,9 +142,9 @@ export class PostgresRoomStore implements RoomStoreAPI {
   async upsertRoomType(input: UpsertRoomTypeInput, sessionActor: string): Promise<RoomTypeRecord> {
     const name = requireString(input.name, "name");
     requireString(input.actor, "actor");
+    const capacity = requireCapacity(input.capacity);
     const actor = sessionActor;
     const requestActor = requestActorAnnotation(sessionActor, input.actor);
-    const capacity = typeof input.capacity === "number" ? input.capacity : null;
     const bedType = typeof input.bedType === "string" ? input.bedType : null;
     const features =
       typeof input.features === "object" && input.features !== null
@@ -202,9 +203,9 @@ export class PostgresRoomStore implements RoomStoreAPI {
     const actor = sessionActor;
     const requestActor = requestActorAnnotation(sessionActor, input.actor);
     const roomType = await this.resolveRoomType(input.roomType);
+    const capacity = requireCapacity(input.capacity);
     const floor = typeof input.floor === "string" ? input.floor : null;
     const bedType = typeof input.bedType === "string" ? input.bedType : null;
-    const capacity = typeof input.capacity === "number" ? input.capacity : null;
     const features =
       typeof input.features === "object" && input.features !== null
         ? (input.features as Record<string, unknown>)

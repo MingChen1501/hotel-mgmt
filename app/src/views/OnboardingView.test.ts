@@ -918,3 +918,101 @@ describe('onboarding wizard step 4', () => {
     }
   });
 });
+
+// CAP6 / AC-CAP-4 (#637): the wizard's capacity rule matches the
+// server floor — a whole number of 1 or more, or empty — and refuses
+// anything else in plain words before sending, in both locales.
+describe('onboarding wizard step 3 capacity floor (#637, CAP6)', () => {
+  const EN_SENTENCE = 'Enter a whole number of guests of 1 or more, or leave it empty.';
+  const VI_SENTENCE = 'Hãy nhập số khách tròn từ 1 trở lên, hoặc để trống.';
+
+  beforeEach(() => {
+    sessionStorage.clear();
+    resetConnectivityForTests();
+    setLocale('en');
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+  });
+
+  async function step3WithCapacity(
+    fetchMock: ReturnType<typeof vi.fn>,
+    capacity: string,
+  ): Promise<Awaited<ReturnType<typeof mountWizard>>> {
+    stubFullFlow(fetchMock);
+    vi.stubGlobal('fetch', fetchMock);
+    const mounted = await mountWizard();
+    await completeStep1(mounted.wrapper);
+    await completeStep2(mounted.wrapper);
+    await mounted.wrapper.find('[data-testid="onboarding-type-name-0"]').setValue('Standard');
+    await mounted.wrapper.find('[data-testid="onboarding-type-capacity-0"]').setValue(capacity);
+    await mounted.wrapper.find('[data-testid="onboarding-room-number-0"]').setValue('101');
+    await mounted.wrapper.vm.$nextTick();
+    await mounted.wrapper.find('[data-testid="onboarding-room-type-0"]').setValue('Standard');
+    await mounted.wrapper.find('[data-testid="onboarding-step3-form"]').trigger('submit');
+    return mounted;
+  }
+
+  function roomWrites(fetchMock: ReturnType<typeof vi.fn>): unknown[] {
+    return fetchMock.mock.calls.filter(
+      (call) => call[0] === '/v1/rooms/UpsertRoomType' || call[0] === '/v1/rooms/UpsertRoom',
+    );
+  }
+
+  for (const capacity of ['0', '2.5', '-1', 'abc']) {
+    it(`refuses capacity ${capacity} in plain words and sends nothing`, async () => {
+      const fetchMock = vi.fn();
+      try {
+        const { wrapper } = await step3WithCapacity(fetchMock, capacity);
+        expect(wrapper.find('[data-testid="onboarding-error"]').text()).toBe(EN_SENTENCE);
+        expect(roomWrites(fetchMock)).toHaveLength(0);
+        expect(wrapper.find('[data-testid="onboarding-step-3"]').exists()).toBe(true);
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+  }
+
+  it('renders the Vietnamese capacity sentence and sends nothing', async () => {
+    setLocale('vi');
+    const fetchMock = vi.fn();
+    try {
+      const { wrapper } = await step3WithCapacity(fetchMock, '0');
+      expect(wrapper.find('[data-testid="onboarding-error"]').text()).toBe(VI_SENTENCE);
+      expect(roomWrites(fetchMock)).toHaveLength(0);
+    } finally {
+      setLocale('en');
+      vi.unstubAllGlobals();
+    }
+  });
+
+  for (const capacity of ['1', '21']) {
+    it(`accepts capacity ${capacity} and posts it as a number`, async () => {
+      const fetchMock = vi.fn();
+      try {
+        const { wrapper } = await step3WithCapacity(fetchMock, capacity);
+        await vi.waitFor(() => {
+          expect(wrapper.find('[data-testid="onboarding-step-4"]').exists()).toBe(true);
+        });
+        const typeCall = fetchMock.mock.calls.find((call) => call[0] === '/v1/rooms/UpsertRoomType');
+        expect(JSON.parse(typeCall?.[1]?.body as string).capacity).toBe(Number(capacity));
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+  }
+
+  it('posts no capacity member when the field is empty', async () => {
+    const fetchMock = vi.fn();
+    try {
+      const { wrapper } = await step3WithCapacity(fetchMock, '');
+      await vi.waitFor(() => {
+        expect(wrapper.find('[data-testid="onboarding-step-4"]').exists()).toBe(true);
+      });
+      const typeCall = fetchMock.mock.calls.find((call) => call[0] === '/v1/rooms/UpsertRoomType');
+      const payload = JSON.parse(typeCall?.[1]?.body as string) as Record<string, unknown>;
+      expect('capacity' in payload).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
