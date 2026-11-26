@@ -115,6 +115,37 @@ front-desk staff, manager, or owner account acting within its access
 | BR-59 | A failure the system did not plan for is reported as an internal fault, never as bad input from the person at the desk. `VALIDATION_FAILED` states that the caller's request or a field of it was wrong and keeps that meaning only; an unexpected exception — a store or driver failure, a wiring fault, or a crash — is answered with `INTERNAL_ERROR` (500) in the shared envelope, so the same meaning always carries the same token in every service that serves the desk. The answer keeps the envelope's four fields, reads as one plain catalogue sentence carrying no driver, SQL, host, path, or stack-trace text, and carries a correlation id, so no internal detail reaches the desk and support can trace the answer. The code vocabulary is the shared contract's single enum: a service answers no code the enum does not list, and every refusal the hotel already decided keeps its own code and status. | FR-ERR-1; FR-ERR-2; FR-ERR-3; `AC-ERR-1`; `AC-ERR-2`; `AC-ERR-3`; NFR-I18N-1; Refs #627 |
 | BR-60 | Every backend service reads a request body under one declared ceiling, and every server bounds a stalled peer. A body above 65 536 bytes (64 KiB) is the caller's mistake, not a fault: it is refused with the shared envelope and `VALIDATION_FAILED` (400), `details` naming the field `body`, the plain `error.transport.body_too_large` sentence, and a fresh correlation id, while the body is read — before JSON parsing and before any store, provider, or folio call — so nothing is written, the surplus is never buffered in full, and one complete answer is sent instead of a partial one. The ceiling is one number declared in code in all eight services, never an environment variable, deployment file, or per-hotel setting, and it sits far above the largest request schema the contracts hold; a body at the ceiling is served and one byte more is refused. Every server also declares finite header-read, body-read, response-write, and idle bounds sized above the longest legitimate provider wait, so a peer that stalls cannot hold a worker, and a timeout frees the connection without promising a refusal. | NFR-BND-1; NFR-BND-2; NFR-BND-3; `AC-BND-1`..`AC-BND-5`; Refs #630 |
 | BR-62 | A report window over `OccupancyReport` or `RevenueSummary` is bounded by one declared span cap of 730 nights between `dateFrom` and `dateTo` — 731 inclusive dates, the two-year window `NFR-PERF-2` documents and the same bound Rates already applies to a stay range. A window whose `dateTo` is more than 730 nights after `dateFrom` is refused with the shared envelope and `VALIDATION_FAILED` (400), `details` naming `dateTo`, and one plain catalogue sentence naming the bound, raised in `parseRange` before the store lock is taken and before any per-date loop runs, so the refused request walks no date and holds no mutex every other report read needs. A window at the cap returns exactly today's rows, a shorter window is served unchanged, a window with no data in range still returns its zero-filled dates, the cap is a span and not a data window, `DailySheet` (one business date) and `HousekeepingReport` (no range in its read) are untouched, and the cap is one constant in code, never an environment variable, deployment file, or per-hotel setting. | NFR-RPT-1; FR-RPT-1; FR-RPT-2; `AC-RPT-5`..`AC-RPT-7`; Refs #641 |
+| BR-64 | A session-guarded Admin request is answered only after the session is checked, and one config write is checked against one per-key shape table. On `POST /v1/admin/<Operation>` other than `SignIn`, a missing token, or an invalid, expired, revoked, or signed-out token, or a session whose user no longer exists, is refused with the shared envelope and `UNAUTHENTICATED` (401) and the existing sentence before the body is read, so a malformed or oversized body never produces a parse error and its size, shape, and fields stay unobservable; a resolved session then reads the body, today's body refusals keep their sentences, and the front-desk `FORBIDDEN` (403) is reached only for a well-formed body, so the order is 401, then 400, then 403. `SignIn` keeps today's order in both directions, together with its lockout. In `UpdateHotelConfig`, a value for a table key must carry the declared shape, and the first offending key refuses the whole write with `VALIDATION_FAILED` (400), `details` naming that key, and one plain catalogue sentence, with nothing written — no key of that request and no `config.updated` entry — while a key outside the table is written as sent, a value at a boundary is stored and read back exactly as today, and both stores refuse the same values. The ordering, the shapes, and the sentences are rules and constants in code, never an owner setting, an environment variable, a deployment file, or a per-hotel entry. | FR-CFG-1; FR-CFG-2; FR-CFG-3; FR-ADM-1; FR-ADM-2; FR-ADM-4; FR-CUS-1; FR-CUS-2; NFR-SEC-2; NFR-BND-1; NFR-AUD-1; `AC-CFG-1`..`AC-CFG-5`; Refs #639 |
+
+### Config write shapes (BR-64)
+
+The per-key table `UpdateHotelConfig` applies before its first write.
+The rules are derived from the keys the Admin service already serves and
+the payloads the tree already sends (the onboarding wizard, the
+deployment apply after the config schema, and the existing config
+tests), so no legitimate hotel setting is refused.
+
+| Key | Declared shape | Refusal sentence |
+|---|---|---|
+| `name` | Non-empty text after trimming — today's rule, unchanged | `error.validation.field_required` (existing) |
+| `timezone` | Non-empty text after trimming | `error.validation.config_text` (new) |
+| `standardCheckinTime` | 24-hour `HH:MM` text — hours `00`-`23`, minutes `00`-`59` | `error.validation.config_time` (new) |
+| `standardCheckoutTime` | The same 24-hour `HH:MM` rule | `error.validation.config_time` (new) |
+| `requiredGuestFields` | An array with at least one entry; every entry is non-blank text after trimming; no two entries are equal after trimming | `error.validation.config_required_fields` (new) |
+| `cancellationReasons` | An array whose every entry is non-blank text after trimming; the empty array is allowed because the seed already serves `[]` and a hotel may keep no reason list | `error.validation.config_list` (new) |
+| `retentionFloorDays` | A whole number at or above 0 (the rule the Postgres store already applies, now both stores) | `error.validation.retention_floor` (existing) |
+| `cancellationWording` | Text; the empty string is allowed | `error.validation.config_optional_text` (new) |
+| `address` | Text; the empty string is allowed | `error.validation.config_optional_text` (new) |
+| `phone` | Text; the empty string is allowed | `error.validation.config_optional_text` (new) |
+| `email` | Text; the empty string is allowed | `error.validation.config_optional_text` (new) |
+
+A key outside this table — for example `propertyCode`, `currency`,
+`noshowRule`, `openBalanceCheckoutRule`, `chargeItems`,
+`taxAndFeeRules`, `restrictions`, `discounts`, `ratePlans`, or
+`roomTypes` — is written as sent exactly as today, because a full
+config schema engine is out of scope. A refused write answers one
+envelope with `details` `{"field": <key>}`, and the whole request is
+refused: a valid key sent beside the offending one is not stored either.
 
 ## 9. Per-hotel configurable vs fixed split
 
@@ -142,6 +173,8 @@ section 3.3). Fixed items no hotel may change in the MVP.
 | Room-charge posting | — (none) | One room charge per stay, at the stay's frozen quoted total, posted by the desk check-out review (`BR-45`) |
 | Report window span | — (none) | 730 nights between `dateFrom` and `dateTo` (731 inclusive dates), refused above it (`BR-62`) |
 | Guest payload bounds | — (none) | One declared `contact`/`preferences` shape and one 2 000-code-unit `notes` bound, refused naming the field on write, and one calendar-valid check on the confirmation dates (`BR-63`) |
+| Admin request ordering | — (none) | The session check precedes the body read on every operation except `SignIn`; an unauthenticated request is refused 401 before any parse refusal, and the role 403 follows a well-formed body (`BR-64`) |
+| Config write shapes | The values of the configurable parts above (`FR-ADM-1`, `FR-ADM-4`, `FR-CUS-1`, `FR-CUS-2`) | One per-key shape table applied before the first write; a value outside its key's shape is refused naming the key with nothing written, and a key outside the table is written as sent (`BR-64`) |
 | Roles and access | — (none) | Three fixed roles with fixed reach (`BR-35`) |
 | Automation | — (none) | No automatic status changes, reminders, or messages from lifecycle events |
 
@@ -227,14 +260,24 @@ with a refusal that writes nothing, a read never re-validated or
 migrated, and the confirmation snapshot's two dates required to exist
 on the calendar — tracing `FR-GID-1`..`FR-GID-3`, `FR-GST-1`,
 `FR-GST-2`, `FR-GST-4`, `NFR-I18N-1`, and `AC-GID-1`..`AC-GID-6` plus
-`AC-GID-7`, without adding behaviour beyond those sources.
+`AC-GID-7`, without adding behaviour beyond those sources, and BR-64
+states the administration obligation the existing settings operations
+owe their caller — the session check before the body read on every
+operation except `SignIn`, so an unauthenticated request answers 401
+ahead of every body or field refusal and the role 403 follows a
+well-formed body, and one per-key shape table on the config write that
+refuses the whole request naming the key with nothing written while a
+key outside the table is written as sent — tracing `FR-CFG-1`..
+`FR-CFG-3`, `FR-ADM-1`, `FR-ADM-2`, `FR-ADM-4`, `FR-CUS-1`,
+`FR-CUS-2`, `NFR-SEC-2`, `NFR-BND-1`, `NFR-AUD-1`, and
+`AC-CFG-1`..`AC-CFG-5`, without adding behaviour beyond those sources.
 Policies with no decided source appear as open questions
 OQ-1..OQ-5. No rule introduces behaviour beyond the traced
 FRs/NFRs/stories. Later capabilities from requirements section 6
 (waitlist, split folios, integrated payments, automated workflow
 rules, multi-property operation, and the rest) carry no rule here.
 
-Counts: 56 business rules, 5 open questions.
+Counts: 57 business rules, 5 open questions.
 
 <!-- ao-role: business-analyst -->
 Role: business-analyst · AO session hotel-mgmt-1079
