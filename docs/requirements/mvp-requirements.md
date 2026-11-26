@@ -10976,7 +10976,7 @@ refreshed at the merged head by `qa-lead`.
 - **The aggregate count is what the desk sells from.** The Book
   confirm re-reads sellability for the quoted type and dates
   (`app/src/views/BookView.vue:982-993`) and refuses below one with
-  `desk.book.refused_soldout` (`:940-947`) before it calls
+  `desk.book.refused_soldout` (`:1004-1011`) before it calls
   `CreateReservation`, so a zero count already refuses there and no
   desk file needs to change.
 - **The single-room answer also carries the desk's block note.**
