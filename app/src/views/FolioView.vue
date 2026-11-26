@@ -563,6 +563,37 @@ function refusedField(err: unknown): string {
   return typeof details?.field === 'string' ? details.field : '';
 }
 
+// A stay Billing cannot verify refuses the folio route in its own
+// plain words (Refs #634, AC-FWV-1..AC-FWV-3): an unknown stay and a
+// stay already checked out cannot be fixed by retrying, so neither
+// sentence invites one; an unreadable Stay names the failure and keeps
+// the retry that can help. The three sentences are catalogue keys, so
+// no resolved wording is branched on here.
+function stayRefusal(err: unknown): string {
+  switch (errorCode(err)) {
+    case 'NOT_FOUND':
+      return t(
+        'desk.folio.refused_unknown_stay',
+        {},
+        'No stay matches that ID, so nothing was recorded. Check the stay ID and try again.',
+      );
+    case 'STATE_ILLEGAL':
+      return t(
+        'desk.folio.refused_closed_stay',
+        {},
+        'That stay is already checked out, so nothing was recorded. Charges and payments cannot be added after check-out.',
+      );
+    case 'UPSTREAM_UNAVAILABLE':
+      return t(
+        'desk.folio.refused_unreadable_stay',
+        {},
+        'The stay could not be checked, so nothing was recorded. Try again.',
+      );
+    default:
+      return '';
+  }
+}
+
 // Unexpected failures read as one plain sentence (FR-DSP-3,
 // desk.shell.request_failed): call sites map known envelope codes
 // to specific catalogue wordings, so this fallback never surfaces
@@ -959,6 +990,13 @@ export default defineComponent({
           );
           return;
         }
+        // A closed stay or an unreadable Stay keeps the open form's
+        // existing inline error slot (Refs #634).
+        const refusal = stayRefusal(err);
+        if (refusal) {
+          openError.value = refusal;
+          return;
+        }
         openError.value = errorMessage();
       } finally {
         opening.value = false;
@@ -1023,6 +1061,13 @@ export default defineComponent({
           );
           return;
         }
+        // A stay Billing cannot verify refuses the write and records
+        // nothing (Refs #634); the entered values stay in place.
+        const refusal = stayRefusal(err);
+        if (refusal) {
+          chargeError.value = refusal;
+          return;
+        }
         chargeError.value = errorMessage();
       } finally {
         charging.value = false;
@@ -1085,6 +1130,13 @@ export default defineComponent({
             {},
             'That payment method is not accepted. Use cash or card.',
           );
+          return;
+        }
+        // The same three stay refusals apply to recording a payment
+        // (Refs #634).
+        const refusal = stayRefusal(err);
+        if (refusal) {
+          paymentError.value = refusal;
           return;
         }
         paymentError.value = errorMessage();

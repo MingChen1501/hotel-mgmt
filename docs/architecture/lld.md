@@ -4854,10 +4854,10 @@ claim, then the writes:
 
 | Route | Shape checks first (unchanged) | Stay read | Writes that follow |
 |---|---|---|---|
-| `GetFolioBalance` (`web/BillingController.java:74`) | `stayId` UUID, `actor` (`service/BillingService.java:121`) | only when the stay carries no folio (`findFolioByStay` miss, `repo/BillingRepository.java:73-77`) | `ensureFolio` for a verified in-house stay |
-| `PostCharge` (`web/BillingController.java:81`) | `itemKind`, `itemName`, `amountMinor`, defined charge item (`service/BillingService.java:126-140`) | every request | key claim (`:146`), charge insert, balance movement, `folio.charge-posted` (`:158-162`) |
-| `RecordPayment` (`web/BillingController.java:89`) | `method`, positive `amountMinor` (`service/BillingService.java:166-175`) | every request | key claim (`:180`), payment insert, balance movement, `folio.payment-recorded` (`:185-188`) |
-| `RecordOpenBalanceApproval` (`web/BillingController.java:141`) | `approvedBy`, `role` (`service/BillingService.java:255-262`) | every request | key claim (`:267`), `recordApproval`, `folio.approval-recorded` (`:275-277`) |
+| `GetFolioBalance` (`web/BillingController.java:74`) | `stayId` UUID, `actor` (`service/BillingService.java:174-184`) | only when the stay carries no folio (`findFolioByStayOrNull` miss, `repo/BillingRepository.java:81-84`) | `ensureFolio` for a verified in-house stay |
+| `PostCharge` (`web/BillingController.java:81`) | `itemKind`, `itemName`, `amountMinor`, defined charge item (`service/BillingService.java:186-205`) | every request | key claim (`service/FolioWriter.java:64-70`), charge insert, balance movement, `folio.charge-posted` (`:71-83`) |
+| `RecordPayment` (`web/BillingController.java:89`) | `method`, positive `amountMinor` (`service/BillingService.java:208-219`) | every request | key claim (`service/FolioWriter.java:93-98`), payment insert, balance movement, `folio.payment-recorded` (`:99-104`) |
+| `RecordOpenBalanceApproval` (`web/BillingController.java:141`) | `approvedBy`, `role` (`service/BillingService.java:286-295`) | every request | key claim (`service/FolioWriter.java:118-125`), `recordApproval`, `folio.approval-recorded` (`:126-131`) |
 
 The verification call:
 
@@ -4939,25 +4939,25 @@ Edge trace:
 
 - A–B: Bearer presence at the transport
   (`web/BillingController.java:117-122`); UUID, actor, item, method, and
-  amount checks in the service (`service/BillingService.java:86-92`, `:111-116`,
-  `:126-140`, `:166-175`, `:255-262`).
+  amount checks in the service (`service/BillingService.java:86-92`, `:186-205`,
+  `:208-219`, `:286-295`).
 - B–C: an existing folio is served without a stay read, so a departed
   stay's invoice and receipts keep reading and printing (product
   `AC-FWV-5`; the print path is `app/src/views/PrintView.vue:1028`,
   `:1120`, `:1157`).
-- C–D: the verification read (target `client/StayClient.java`, patterned
+- C–D: the verification read (as built `client/StayClient.java`, patterned
   on `services/reservations/internal/pricing/client.go:43-75` — POST,
   Bearer forward, 2-second timeout).
 - D–E–G–S2: a verified in-house stay with no folio still gets its folio on
   the first balance read, exactly as today (product `AC-FWV-4`; the desk
   check-out review and the Folio screen both depend on it).
 - E–F–H: the claim precedes the insert today
-  (`service/BillingService.java:146-151`); the verification now precedes
+  (`service/FolioWriter.java:64-70`); the verification now precedes
   the claim, so a replay on a closed stay refuses instead of returning a
   line (27.9).
 - F–I–J: unchanged writes — insert, `addToBalance`, `outbox`, response
-  (`repo/BillingRepository.java:99-135`;
-  `service/BillingService.java:158-162`).
+  (`repo/BillingRepository.java:108-115`;
+  `service/FolioWriter.java:71-83`).
 
 Rollback: revert the single implementation PR. The previous
 ensure-on-first-use behaviour returns with the client that made the read,
