@@ -17,7 +17,7 @@ Node.js/TypeScript flat `src/` files over raw `node:http`, wired in `services/ro
 | Transport + routing | `src/server.ts` | `createServiceServer` answers `GET /healthz` (:117), enforces Bearer presence (:130), routes `POST /v1/rooms/<Operation>` by case label |
 | Identity | `src/auth.ts` | `extractBearer`: Bearer presence check, same skeleton contract as Stay |
 | Validation + step order | `src/store.ts` (`RoomStore`, `RoomStoreAPI` at :207) | per-operation checks (including the shared `requireCapacity` rule at :118-128), sellability math, guarded assign/release/block transitions |
-| Row storage | `src/store.ts` (in-memory), `src/pgstore.ts` (`PostgresRoomStore implements RoomStoreAPI` at :39) | identical semantics; Postgres selected at boot when `DATABASE_URL` is set |
+| Row storage | `src/store.ts` (in-memory), `src/pgstore.ts` (`PostgresRoomStore implements RoomStoreAPI` at :40) | identical semantics; Postgres selected at boot when `DATABASE_URL` is set |
 | Errors | `src/errors.ts` | shared `HttpError` envelope (same code set as Stay) |
 | Boot | `src/index.ts` | store selection by `DATABASE_URL`, `listen(PORT)` (default `8085`) |
 
@@ -64,10 +64,10 @@ Edge trace (pins refreshed to the as-built head per maintain-with-code, LLD
   `VALIDATION_FAILED` (`src/store.ts:356-358`; Postgres
   `src/pgstore.ts:354-356`).
 - D: `ofType` and `blockedRooms` as today (`src/store.ts:384-394`;
-  Postgres `src/pgstore.ts:386-407`).
+  Postgres `src/pgstore.ts:387-408`).
 - E: `sellableCount` counts only the rooms that are block-free **and**
   whose state is neither `out-of-order` nor `occupied`
-  (`src/store.ts:399-402` new; Postgres `src/pgstore.ts:386-397` new),
+  (`src/store.ts:399-402` new; Postgres `src/pgstore.ts:387-398` new),
   subtracting each room once, while `totalCount` and `blockedRooms` do
   not move. The value is the desk's availability figure only — the
   booking ceiling stays `totalCount - len(blockedRooms)` (section 9,
@@ -112,7 +112,7 @@ flowchart TD
 Edge trace:
 
 - Q–R422: the block test runs before any state test
-  (`src/store.ts:361-371`; Postgres `src/pgstore.ts:359-373`), keeping
+  (`src/store.ts:361-371`; Postgres `src/pgstore.ts:360-374`), keeping
   `STATE_ILLEGAL` with the block's dates and reason. `RoomsView` renders
   its covering-block note only from that refusal
   (`app/src/views/RoomsView.vue:549-593`) and `DeskView`'s room cards read
@@ -122,7 +122,7 @@ Edge trace:
   and a block-free non-sellable room still answers 200 with no note.
 - S–T200: a block-free non-sellable room answers success with today's
   fields and `sellableCount: 0` (`src/store.ts:375-382` new; Postgres
-  `src/pgstore.ts:375-384` new) — not a refusal. The Book confirm refuses
+  `src/pgstore.ts:376-385` new) — not a refusal. The Book confirm refuses
   the zero count with `desk.book.refused_soldout`
   (`app/src/views/BookView.vue:1004-1011`) and creates no reservation.
 - S–U200: a block-free vacant room of any vacant state still answers
@@ -319,13 +319,13 @@ this section records only the two touched operation flows.
 flowchart TD
     A[Bearer token present  src/server.ts:130-135] --> B[Read and parse the JSON body  src/server.ts:136, readBody :25-73]
     B --> C[store.upsertRoomType or store.upsertRoom  src/server.ts:139-160]
-    C --> D[Existing required-field checks: name or number, then actor  src/store.ts:258-259 or :286-287; src/pgstore.ts:142-143 or :200-201]
+    C --> D[Existing required-field checks: name or number, then actor  src/store.ts:258-259 or :286-287; src/pgstore.ts:143-144 or :201-202]
     D --> E{capacity key omitted?}
     E -->|yes| F[Today's meaning: create stores null, update keeps the stored value  src/store.ts:267 or :299; src/pgstore.ts:161 or :222]
     E -->|no| G[requireCapacity, one shared exported check  src/store.ts:118-128]
     G -->|not a number, fractional, non-finite, or below 1| R[400 VALIDATION_FAILED, details.field capacity, one plain sentence  src/store.ts:123; src/server.ts:91-94]
-    G -->|integer at least 1| H[Build the record or open the transaction  src/store.ts:264-275 or :293-308; src/pgstore.ts:152 or :212]
-    H --> I[Write the row verbatim, then emit room-upserted  src/store.ts:276-282 or :309-315; src/pgstore.ts:164-177 or :178-194, :219-241 or :244-266]
+    G -->|integer at least 1| H[Build the record or open the transaction  src/store.ts:264-275 or :293-308; src/pgstore.ts:153 or :213]
+    H --> I[Write the row verbatim, then emit room-upserted  src/store.ts:276-282 or :309-315; src/pgstore.ts:165-178 or :179-195, :220-242 or :245-267]
     I --> J[200 with today's response fields  src/server.ts:139-160]
     R --> N[Nothing built, written, or emitted; the driver is never reached]
 ```
@@ -339,7 +339,7 @@ Edge trace (as-built pins at the #637 implementation head):
   syntax error.
 - D–E: the two existing `requireString` refusals keep today's order and
   messages (`src/store.ts:258-259`, `:286-287`; Postgres
-  `src/pgstore.ts:142-143`, `:200-201`); `undefined` means omitted.
+  `src/pgstore.ts:143-144`, `:201-202`); `undefined` means omitted.
   `upsertRoom` resolves the room type before the capacity read
   (`src/store.ts:290`; `src/pgstore.ts:205`), so an unknown type keeps
   answering `NOT_FOUND` exactly as today.
@@ -349,7 +349,7 @@ Edge trace (as-built pins at the #637 implementation head):
   same envelope shape as `rooms.validation.date_format` (`:100`); the
   handler's `HttpError` branch answers 400 (`src/server.ts:91-94`), never
   the `INTERNAL_ERROR` catch-all (`:95-101`). The Postgres call sites are
-  before `withTx` (`src/pgstore.ts:152`, `:212`), so no statement, lock,
+  before `withTx` (`src/pgstore.ts:153`, `:213`), so no statement, lock,
   or outbox row is created for a refused request.
 - G–H–I: an accepted capacity is written verbatim by the in-memory
   record (`src/store.ts:267-275`, `:299-308`; Postgres parameter binding
