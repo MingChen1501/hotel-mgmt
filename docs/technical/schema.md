@@ -21,6 +21,13 @@ Conventions (all schemas):
   `created_at`, `updated_by`, `updated_at` (all `NOT NULL`);
   history tables additionally keep the superseded values. No desk,
   manager, or owner operation updates or deletes audit entries.
+  The actor value is the authenticated session, not the request
+  string: Admin stores the resolved `signinIdentity`, and Stay,
+  Guests, Rooms, Reservations, and Billing store the presented session
+  token until the identity-hardening slice resolves it (LLD
+  [section 34](../architecture/lld.md#34-the-audit-actor-comes-from-the-session-never-from-the-request-refs-643);
+  Refs #643). Columns keep their `TEXT` type and no migration, backfill,
+  or repair exists.
 - Idempotency: provider operations that take an `idempotencyKey`
   (LLD [section 1](../architecture/lld.md), section 2, section 6) persist it with a UNIQUE constraint and return
   the original result on repeat.
