@@ -986,9 +986,9 @@ Three properties define the change:
   No error code, status mapping, envelope field, operation, route,
   header, contract shape, column, table, or migration changes; audit
   columns are already `TEXT` and outbox payloads JSONB. No desk surface
-  renders an actor, so no UI-contract section applies. One
-  `CheckOutReservation` description sentence is corrected to describe
-  the annotation, prose only.
+  renders an actor, so no UI-contract section applies. Two description
+  sentences (`CheckOutReservation` and `UpdateHotelConfig`) are corrected
+  to describe the demotion, prose only.
 
 The change adds no subsystem, dependency edge, data model, lifecycle
 state, operation, or new surface: it is one value source per service on

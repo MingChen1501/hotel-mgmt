@@ -17,7 +17,7 @@
         "description": "Section 3.1 keys to upsert; fixed section 3.2 items are rejected here.",
         "additionalProperties": true
       },
-      "updatedBy": { "type": "string", "description": "Actor recorded on the config audit trail." }
+      "updatedBy": { "type": "string", "description": "Required request field kept for compatibility and validated as today. It is not the recorded actor: the authenticated caller's sign-in identity is recorded on the config audit trail, and this body value is dropped rather than annotated, because the config write emits no JSON payload." }
     }
   },
   "response": {
