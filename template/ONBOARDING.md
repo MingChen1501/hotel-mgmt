@@ -51,8 +51,8 @@ config template), `cues/` (18 project-scoped rule cues),
 `.opencode/` (12 role files, 8 skills, 2 commands, permission config,
 guard plugin), `.github/` (issue form, PR template), `docs/` (index,
 role rules, conventions, starter group), `script/` (footer, spawn,
-merge, review wrappers, contract-check stub, harness self-check,
-markdown link gate, cue installer).
+merge, review, merge-readiness wrappers, contract-check stub, harness
+self-check, markdown link gate, cue installer).
 
 Harness ownership: the `ai-engineer` role owns in-repo harness
 engineering (agent/skill/command/plugin/config files, cues, wrapper
@@ -233,6 +233,13 @@ Markdown states intent; config + scripts enforce it:
   owner approval, and then the owner merges manually.
 - `script/orchestrator-review.sh`: the sanctioned native-review
   trigger (only when the orchestrator uses native review mode).
+- `script/merge-readiness.sh`: read-only merge-readiness preflight —
+  one plain-text block per PR (state, head, base,
+  mergeable/mergeStateStatus, risk label, head-quoting verdict, CI
+  worst conclusion, stack order) that exits non-zero on
+  CONFLICTING/DIRTY or a missing head-quoting verdict. Every
+  owner-facing "ready to merge" report pastes a fresh run's output (see
+  `docs/ao-rules.md` "Reporting contract").
 
 These are guardrails, not a security boundary: they stop mistakes
 and casual misuse. The real enforcement is GitHub-side branch

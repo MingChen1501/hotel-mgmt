@@ -1,6 +1,8 @@
 package store
 
 import (
+	"fmt"
+	"reflect"
 	"testing"
 	"time"
 
@@ -505,5 +507,443 @@ func TestReportRangeCapBoundary(t *testing.T) {
 		t.Fatal("one night over the cap was served, want refusal")
 	} else {
 		requireSpanRefusal(t, oerr)
+	}
+}
+
+// servedSet is everything a report caller can read from a store: the
+// four reports with their own as-of stamps, the consumer-offset
+// record, and the store stamp. The failed-rebuild guards compare a
+// whole captured set against the set served after an aborted rebuild
+// (RB1, RB7, RB9), so a rebuild that publishes anything at all fails
+// them.
+type servedSet struct {
+	occupancy        []NightRow
+	occupancyAsOf    time.Time
+	revenue          []RevenueRow
+	revenueAsOf      time.Time
+	sheet            *DailySheet
+	housekeeping     []HousekeepingRoom
+	housekeepingAsOf time.Time
+	offsets          map[string]string
+	asOf             time.Time
+}
+
+func captureServed(t *testing.T, st *Store) servedSet {
+	t.Helper()
+	occupancy, occupancyAsOf, oerr := st.Occupancy("2026-11-01", "2026-11-03")
+	if oerr != nil {
+		t.Fatalf("Occupancy: %v", oerr)
+	}
+	revenue, revenueAsOf, oerr := st.Revenue("2026-11-02", "2026-11-04")
+	if oerr != nil {
+		t.Fatalf("Revenue: %v", oerr)
+	}
+	sheet, oerr := st.Sheet("2026-11-02")
+	if oerr != nil {
+		t.Fatalf("Sheet: %v", oerr)
+	}
+	housekeeping, housekeepingAsOf := st.Housekeeping()
+	return servedSet{
+		occupancy:        occupancy,
+		occupancyAsOf:    occupancyAsOf,
+		revenue:          revenue,
+		revenueAsOf:      revenueAsOf,
+		sheet:            sheet,
+		housekeeping:     housekeeping,
+		housekeepingAsOf: housekeepingAsOf,
+		offsets:          st.Offsets(),
+		asOf:             st.AsOf(),
+	}
+}
+
+func requireSameServed(t *testing.T, st *Store, want servedSet) {
+	t.Helper()
+	got := captureServed(t, st)
+	if !reflect.DeepEqual(got.occupancy, want.occupancy) {
+		t.Fatalf("occupancy rows moved on a failed rebuild: %+v -> %+v", want.occupancy, got.occupancy)
+	}
+	if !got.occupancyAsOf.Equal(want.occupancyAsOf) {
+		t.Fatalf("occupancy asOf moved on a failed rebuild: %s -> %s", want.occupancyAsOf, got.occupancyAsOf)
+	}
+	if !reflect.DeepEqual(got.revenue, want.revenue) {
+		t.Fatalf("revenue rows moved on a failed rebuild: %+v -> %+v", want.revenue, got.revenue)
+	}
+	if !got.revenueAsOf.Equal(want.revenueAsOf) {
+		t.Fatalf("revenue asOf moved on a failed rebuild: %s -> %s", want.revenueAsOf, got.revenueAsOf)
+	}
+	if !reflect.DeepEqual(got.sheet, want.sheet) {
+		t.Fatalf("daily sheet moved on a failed rebuild: %+v -> %+v", want.sheet, got.sheet)
+	}
+	if !reflect.DeepEqual(got.housekeeping, want.housekeeping) {
+		t.Fatalf("housekeeping list moved on a failed rebuild: %+v -> %+v", want.housekeeping, got.housekeeping)
+	}
+	if !got.housekeepingAsOf.Equal(want.housekeepingAsOf) {
+		t.Fatalf("housekeeping asOf moved on a failed rebuild: %s -> %s", want.housekeepingAsOf, got.housekeepingAsOf)
+	}
+	if !reflect.DeepEqual(got.offsets, want.offsets) {
+		t.Fatalf("consumer offsets moved on a failed rebuild: %v -> %v", want.offsets, got.offsets)
+	}
+	if !got.asOf.Equal(want.asOf) {
+		t.Fatalf("store asOf moved on a failed rebuild: %s -> %s", want.asOf, got.asOf)
+	}
+}
+
+// malformedMidStream is the TestMalformedEventsAreRefused recipe
+// (`reservation.created` without `reservationRef`) placed in the middle
+// of seedEvents(), so good events precede and follow the refusal (RB1).
+func malformedMidStream() ([]Event, Event) {
+	bad := Event{
+		ID: "evt-bad-mid", Subscription: "reservation", Type: "reservation.created",
+		OccurredAt: at("2026-11-03"), Payload: map[string]any{"roomTypeId": "deluxe"},
+	}
+	seed := seedEvents()
+	slice := make([]Event, 0, len(seed)+1)
+	slice = append(slice, seed[:6]...)
+	slice = append(slice, bad)
+	slice = append(slice, seed[6:]...)
+	return slice, bad
+}
+
+func requireSameRefusal(t *testing.T, got, want *OpError) {
+	t.Helper()
+	if want == nil {
+		t.Fatal("the malformed event did not produce a refusal through Apply")
+	}
+	if got == nil {
+		t.Fatal("a rebuild that refuses an event returned no error")
+	}
+	if got.Code != want.Code || got.Status != want.Status {
+		t.Fatalf("refusal = %s %d, want %s %d", got.Code, got.Status, want.Code, want.Status)
+	}
+	if got.Message != want.Message {
+		t.Fatalf("refusal message = %q, want %q", got.Message, want.Message)
+	}
+	if !reflect.DeepEqual(got.Details, want.Details) {
+		t.Fatalf("refusal details = %v, want %v", got.Details, want.Details)
+	}
+}
+
+// TestAbortedRebuildKeepsServedRows is the issue's own acceptance test
+// (RB1, AC-RPT-8, FR-RPT-5, BR-66): a store already serving rows meets
+// a malformed event mid-stream, the rebuild returns today's refusal,
+// and all four reports plus the consumer record still answer the
+// captured pre-rebuild values.
+func TestAbortedRebuildKeepsServedRows(t *testing.T) {
+	st := New()
+	if oerr := st.Rebuild(seedEvents()); oerr != nil {
+		t.Fatalf("Rebuild: %v", oerr)
+	}
+	before := captureServed(t, st)
+
+	slice, bad := malformedMidStream()
+	oerr := st.Rebuild(slice)
+	requireSameRefusal(t, oerr, New().Apply(bad))
+
+	requireSameServed(t, st, before)
+}
+
+// TestAbortedRebuildKeepsOffsetsAndStamp proves the resume record and
+// the last-good stamp survive a failed rebuild (RB2, AC-RPT-8,
+// FR-RPT-5): the offsets and AsOf() are the pre-rebuild values, and a
+// retry replays from the same record the failed store holds.
+func TestAbortedRebuildKeepsOffsetsAndStamp(t *testing.T) {
+	st := New()
+	if oerr := st.Rebuild(seedEvents()); oerr != nil {
+		t.Fatalf("Rebuild: %v", oerr)
+	}
+	beforeOffsets := st.Offsets()
+	beforeAsOf := st.AsOf()
+
+	slice, _ := malformedMidStream()
+	if oerr := st.Rebuild(slice); oerr == nil {
+		t.Fatal("a rebuild over a malformed mid-stream event succeeded")
+	}
+	if !reflect.DeepEqual(st.Offsets(), beforeOffsets) {
+		t.Fatalf("consumer offsets moved on a failed rebuild: %v -> %v", beforeOffsets, st.Offsets())
+	}
+	if !st.AsOf().Equal(beforeAsOf) {
+		t.Fatalf("asOf moved on a failed rebuild: %s -> %s", beforeAsOf, st.AsOf())
+	}
+
+	// A retry replays from the same record: a never-failed store holds
+	// the same last-applied ids, and a clean rebuild of the valid slice
+	// on the failed store names them again.
+	neverFailed := New()
+	if oerr := neverFailed.Rebuild(seedEvents()); oerr != nil {
+		t.Fatalf("Rebuild: %v", oerr)
+	}
+	if !reflect.DeepEqual(neverFailed.Offsets(), beforeOffsets) {
+		t.Fatalf("retry baseline offsets = %v, want the pre-rebuild record %v", neverFailed.Offsets(), beforeOffsets)
+	}
+	if oerr := st.Rebuild(seedEvents()); oerr != nil {
+		t.Fatalf("retry Rebuild: %v", oerr)
+	}
+	if !reflect.DeepEqual(st.Offsets(), beforeOffsets) {
+		t.Fatalf("retry offsets = %v, want the pre-rebuild record %v", st.Offsets(), beforeOffsets)
+	}
+}
+
+// TestAbortedRebuildOnNeverRebuiltStoreKeepsEmptyState covers the
+// never-applied store (RB3, AC-RPT-8, FR-RPT-5): a failed rebuild
+// leaves the empty pre-rebuild state and never invents a fresher stamp
+// over an empty set.
+func TestAbortedRebuildOnNeverRebuiltStoreKeepsEmptyState(t *testing.T) {
+	st := New()
+	slice, _ := malformedMidStream()
+	if oerr := st.Rebuild(slice); oerr == nil {
+		t.Fatal("a rebuild over a malformed mid-stream event succeeded on an empty store")
+	}
+
+	occupancy, occupancyAsOf, oerr := st.Occupancy("2026-11-01", "2026-11-03")
+	if oerr != nil {
+		t.Fatalf("Occupancy: %v", oerr)
+	}
+	if len(occupancy) != 0 || !occupancyAsOf.IsZero() {
+		t.Fatalf("occupancy after a failed first rebuild = %+v, asOf %s; want no rows and a zero stamp", occupancy, occupancyAsOf)
+	}
+	revenue, revenueAsOf, oerr := st.Revenue("2026-11-01", "2026-11-03")
+	if oerr != nil {
+		t.Fatalf("Revenue: %v", oerr)
+	}
+	for _, row := range revenue {
+		if row.RoomRevenue != 0 || row.ExtraRevenue != 0 {
+			t.Fatalf("revenue after a failed first rebuild holds totals: %+v", row)
+		}
+	}
+	if !revenueAsOf.IsZero() {
+		t.Fatalf("revenue asOf after a failed first rebuild = %s, want zero", revenueAsOf)
+	}
+	sheet, oerr := st.Sheet("2026-11-02")
+	if oerr != nil {
+		t.Fatalf("Sheet: %v", oerr)
+	}
+	if len(sheet.Arrivals)+len(sheet.InHouse)+len(sheet.Departures)+len(sheet.OpenBalances) != 0 || !sheet.AsOf.IsZero() {
+		t.Fatalf("daily sheet after a failed first rebuild = %+v, want empty groups and a zero stamp", sheet)
+	}
+	rooms, housekeepingAsOf := st.Housekeeping()
+	if len(rooms) != 0 || !housekeepingAsOf.IsZero() {
+		t.Fatalf("housekeeping after a failed first rebuild = %+v, asOf %s; want no rooms and a zero stamp", rooms, housekeepingAsOf)
+	}
+	if offsets := st.Offsets(); len(offsets) != 0 {
+		t.Fatalf("offsets after a failed first rebuild = %v, want an empty record", offsets)
+	}
+	if !st.AsOf().IsZero() {
+		t.Fatalf("asOf after a failed first rebuild = %s, want zero", st.AsOf())
+	}
+}
+
+// postingEvents projects one change into each report family plus a
+// long tail of charges, so the post-rebuild set differs from the
+// pre-rebuild set in all four reports and the replay lasts long enough
+// for a reader loop to observe it (RB4).
+func postingEvents() []Event {
+	events := []Event{
+		{ID: "evt-post-res", Subscription: "reservation", Type: "reservation.created", OccurredAt: at("2026-11-04"), Payload: map[string]any{"reservationRef": "RSV-POST", "roomTypeId": "deluxe", "arrivalDate": "2026-11-01", "departureDate": "2026-11-03", "guestId": "guest-post"}},
+		{ID: "evt-post-stay", Subscription: "stay", Type: "stay.checked-in", OccurredAt: at("2026-11-04"), Payload: map[string]any{"stayId": "stay-post", "roomId": "room-post", "date": "2026-11-02"}},
+		{ID: "evt-post-room", Subscription: "room", Type: "room.room-upserted", OccurredAt: at("2026-11-04"), Payload: map[string]any{"roomNumber": "201", "roomTypeId": "standard", "state": "vacant-dirty", "actor": "setup"}},
+	}
+	for i := 0; i < 2000; i++ {
+		events = append(events, Event{
+			ID: fmt.Sprintf("evt-post-charge-%d", i), Subscription: "folio", Type: "folio.charge-posted",
+			OccurredAt: at("2026-11-04"),
+			Payload:    map[string]any{"folioId": "folio-post", "businessDate": "2026-11-04", "kind": "room", "amountMinor": 100},
+		})
+	}
+	return events
+}
+
+// TestReadDuringRebuildAnswersOneCompleteSet proves the never-partial
+// rule (RB4, AC-RPT-9, FR-RPT-6, BR-66): a read issued while a rebuild
+// replays answers either the complete pre-rebuild set or the complete
+// post-rebuild set, each with its own asOf — never an empty set, a
+// mid-replay subset, or one set's rows behind the other set's stamp.
+// Run with -race locally to exercise the swap's critical section.
+func TestReadDuringRebuildAnswersOneCompleteSet(t *testing.T) {
+	st := New()
+	if oerr := st.Rebuild(seedEvents()); oerr != nil {
+		t.Fatalf("Rebuild: %v", oerr)
+	}
+	before := captureServed(t, st)
+
+	postSlice := append(seedEvents(), postingEvents()...)
+	reference := New()
+	if oerr := reference.Rebuild(postSlice); oerr != nil {
+		t.Fatalf("Rebuild: %v", oerr)
+	}
+	after := captureServed(t, reference)
+	if reflect.DeepEqual(before, after) {
+		t.Fatal("the pre-rebuild and post-rebuild sets are equal; the guard would pass vacuously")
+	}
+
+	// One read — not a group of reads — is the unit the never-partial
+	// rule protects, so each read below is matched against its own
+	// pre-rebuild and post-rebuild value and stamp.
+	matchesSet := func(observed, pre, post any, observedStamp, preStamp, postStamp time.Time) bool {
+		return (reflect.DeepEqual(observed, pre) && observedStamp.Equal(preStamp)) ||
+			(reflect.DeepEqual(observed, post) && observedStamp.Equal(postStamp))
+	}
+
+	errc := make(chan *OpError, 1)
+	go func() { errc <- st.Rebuild(postSlice) }()
+
+	reads := 0
+	for running := true; running; {
+		select {
+		case oerr := <-errc:
+			if oerr != nil {
+				t.Fatalf("Rebuild: %v", oerr)
+			}
+			running = false
+		default:
+			reads++
+			occupancy, occupancyAsOf, oerr := st.Occupancy("2026-11-01", "2026-11-03")
+			if oerr != nil {
+				t.Fatalf("Occupancy during the rebuild: %v", oerr)
+			}
+			if !matchesSet(occupancy, before.occupancy, after.occupancy, occupancyAsOf, before.occupancyAsOf, after.occupancyAsOf) {
+				t.Fatalf("an occupancy read during the rebuild returned neither the pre-rebuild nor the post-rebuild rows with their own stamp (asOf %s); a partial set reached the desk", occupancyAsOf)
+			}
+			revenue, revenueAsOf, oerr := st.Revenue("2026-11-02", "2026-11-04")
+			if oerr != nil {
+				t.Fatalf("Revenue during the rebuild: %v", oerr)
+			}
+			if !matchesSet(revenue, before.revenue, after.revenue, revenueAsOf, before.revenueAsOf, after.revenueAsOf) {
+				t.Fatalf("a revenue read during the rebuild returned neither the pre-rebuild nor the post-rebuild rows with their own stamp (asOf %s); a partial set reached the desk", revenueAsOf)
+			}
+			sheet, oerr := st.Sheet("2026-11-02")
+			if oerr != nil {
+				t.Fatalf("Sheet during the rebuild: %v", oerr)
+			}
+			if !matchesSet(sheet, before.sheet, after.sheet, sheet.AsOf, before.sheet.AsOf, after.sheet.AsOf) {
+				t.Fatalf("a daily-sheet read during the rebuild returned neither the pre-rebuild nor the post-rebuild sheet with its own stamp (asOf %s); a partial set reached the desk", sheet.AsOf)
+			}
+			housekeeping, housekeepingAsOf := st.Housekeeping()
+			if !matchesSet(housekeeping, before.housekeeping, after.housekeeping, housekeepingAsOf, before.housekeepingAsOf, after.housekeepingAsOf) {
+				t.Fatalf("a housekeeping read during the rebuild returned neither the pre-rebuild nor the post-rebuild list with its own stamp (asOf %s); a partial set reached the desk", housekeepingAsOf)
+			}
+			if offsets := st.Offsets(); !reflect.DeepEqual(offsets, before.offsets) && !reflect.DeepEqual(offsets, after.offsets) {
+				t.Fatalf("an offsets read during the rebuild returned neither the pre-rebuild nor the post-rebuild record: %v", offsets)
+			}
+			if stamp := st.AsOf(); !stamp.Equal(before.asOf) && !stamp.Equal(after.asOf) {
+				t.Fatalf("an asOf read during the rebuild returned neither the pre-rebuild nor the post-rebuild stamp: %s", stamp)
+			}
+		}
+	}
+	if reads == 0 {
+		t.Fatal("no read happened while the rebuild ran; the guard observed nothing")
+	}
+	requireSameServed(t, st, after)
+}
+
+// TestSuccessfulRebuildMatchesLiveIngest is the success comparator
+// (RB5, AC-RPT-10, FR-RPT-7, BR-66): a rebuilt set is exactly the set
+// the live ingest path Apply builds from the same slice — rows, row
+// order, zero-filled dates, totals, sheet groups, housekeeping list,
+// asOf, and the consumer-offset record.
+func TestSuccessfulRebuildMatchesLiveIngest(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		events []Event
+	}{
+		{"seed", seedEvents()},
+		{"housekeeping", housekeepingEvents()},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			live := New()
+			for _, event := range tc.events {
+				if oerr := live.Apply(event); oerr != nil {
+					t.Fatalf("Apply %s: %v", event.ID, oerr)
+				}
+			}
+			rebuilt := New()
+			if oerr := rebuilt.Rebuild(tc.events); oerr != nil {
+				t.Fatalf("Rebuild: %v", oerr)
+			}
+			want := captureServed(t, live)
+			got := captureServed(t, rebuilt)
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("rebuilt set differs from the live-ingest set for the same slice:\n rebuilt %+v\n live    %+v", got, want)
+			}
+		})
+	}
+}
+
+// TestReportsCarryTheirSetsAsOf pins the per-set stamp (RB7,
+// AC-RPT-9, FR-RPT-6, FR-RPT-7): after a clean rebuild the four reports
+// carry the same non-zero stamp AsOf() returns, equal to the slice's
+// newest OccurredAt; after an aborted rebuild they all carry the older
+// pre-rebuild stamp.
+func TestReportsCarryTheirSetsAsOf(t *testing.T) {
+	st := New()
+	if oerr := st.Rebuild(seedEvents()); oerr != nil {
+		t.Fatalf("Rebuild: %v", oerr)
+	}
+	want := at("2026-11-03") // newest OccurredAt in seedEvents
+	if got := st.AsOf(); !got.Equal(want) {
+		t.Fatalf("AsOf = %s, want the newest slice event %s", got, want)
+	}
+	requireSameAsOf := func(stamp time.Time, label string) {
+		t.Helper()
+		if stamp.IsZero() || !stamp.Equal(want) {
+			t.Fatalf("%s asOf = %s, want the served set's stamp %s", label, stamp, want)
+		}
+	}
+	served := captureServed(t, st)
+	requireSameAsOf(served.occupancyAsOf, "occupancy")
+	requireSameAsOf(served.revenueAsOf, "revenue")
+	requireSameAsOf(served.sheet.AsOf, "daily sheet")
+	requireSameAsOf(served.housekeepingAsOf, "housekeeping")
+	// The seed slice carries no room events, so the housekeeping list is
+	// empty while its stamp still belongs to the served set.
+	if !served.asOf.Equal(want) {
+		t.Fatalf("store asOf = %s, want %s", served.asOf, want)
+	}
+
+	slice, _ := malformedMidStream()
+	if oerr := st.Rebuild(slice); oerr == nil {
+		t.Fatal("a rebuild over a malformed mid-stream event succeeded")
+	}
+	after := captureServed(t, st)
+	requireSameAsOf(after.occupancyAsOf, "occupancy after the abort")
+	requireSameAsOf(after.revenueAsOf, "revenue after the abort")
+	requireSameAsOf(after.sheet.AsOf, "daily sheet after the abort")
+	requireSameAsOf(after.housekeepingAsOf, "housekeeping after the abort")
+	if !after.asOf.Equal(want) {
+		t.Fatalf("store asOf after the abort = %s, want the last-good stamp %s", after.asOf, want)
+	}
+}
+
+// TestFailedRebuildStaysObservableThroughTheCall pins the operator's
+// observation channel (RB9, AC-RPT-8, AC-RPT-10, FR-RPT-7): the failing
+// rebuild returns the same VALIDATION_FAILED refusal the bad event
+// answers through Apply, never nil, and the stamp stays at the
+// pre-rebuild value even though the refused slice carries a good event
+// with a later OccurredAt after the bad one.
+func TestFailedRebuildStaysObservableThroughTheCall(t *testing.T) {
+	st := New()
+	if oerr := st.Rebuild(seedEvents()); oerr != nil {
+		t.Fatalf("Rebuild: %v", oerr)
+	}
+	beforeStamp := st.AsOf()
+
+	bad := Event{
+		ID: "evt-bad-observable", Subscription: "reservation", Type: "reservation.created",
+		OccurredAt: at("2026-11-03"), Payload: map[string]any{"roomTypeId": "deluxe"},
+	}
+	later := Event{
+		ID: "evt-later-good", Subscription: "rate", Type: "rate.availability-set",
+		OccurredAt: at("2026-11-10"),
+		Payload:    map[string]any{"roomTypeId": "deluxe", "date": "2026-11-10", "sellableUnits": 3},
+	}
+	seed := seedEvents()
+	slice := make([]Event, 0, len(seed)+2)
+	slice = append(slice, seed[:6]...)
+	slice = append(slice, bad, later)
+	slice = append(slice, seed[6:]...)
+
+	oerr := st.Rebuild(slice)
+	requireSameRefusal(t, oerr, New().Apply(bad))
+	if !st.AsOf().Equal(beforeStamp) {
+		t.Fatalf("a failed rebuild advanced the as-of stamp to %s, want the last-good stamp %s", st.AsOf(), beforeStamp)
 	}
 }

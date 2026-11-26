@@ -22,9 +22,9 @@ flowchart LR
     end
     DISP[Dispatcher — event dispatcher<br/>relays outbox rows per-aggregate order<br/>reporting store.go:37<br/>system-architecture.md section 1: no Kafka]
     subgraph RPT[Reporting read model — services/reporting]
-        APPLY[Apply — folds one event,<br/>idempotent by event id,<br/>advances per-subscription offset<br/>store.go:191-215]
-        REBUILD[Rebuild — full outbox replay<br/>clears projections + offsets<br/>store.go:217-235]
-        PROJ[(Projections<br/>known types only:<br/>reservation.created / cancelled / no-show :243,267<br/>stay.checked-in / checked-out :275,299<br/>rate.availability-set :331<br/>folio.charge-posted :345<br/>folio.payment-recorded :373<br/>config.changed :383<br/>main.go:4-7 in-memory, Postgres later)]
+        APPLY[Apply — folds one event,<br/>idempotent by event id,<br/>advances per-subscription offset<br/>store.go:218-248]
+        REBUILD[Rebuild — full outbox replay<br/>into a private candidate,<br/>swapped in only when every event projects<br/>store.go:262-273]
+        PROJ[(Projections<br/>known types only:<br/>reservation.created / cancelled / no-show :281,305<br/>stay.checked-in / checked-out :313,337<br/>rate.availability-set :369<br/>folio.charge-posted :383<br/>folio.payment-recorded :411<br/>config.changed :421<br/>main.go:4-7 in-memory, Postgres later)]
     end
     EMIT -->|at-least-once, per-aggregate order<br/>integration.md section 7| DISP
     DISP --> APPLY
@@ -34,8 +34,9 @@ flowchart LR
 ```
 
 Unknown future event types are recorded as seen (offset advances,
-payload otherwise ignored) — `store.go:186-190` — so new emitters
-cannot break the consumer.
+payload otherwise ignored) — the seen/offset/`asOf` advance at
+`store.go:240-246` and the default ignore at `:470-472` — so new
+emitters cannot break the consumer.
 
 ## 2. Flagged gaps (resolved in favour of code, Phase 2 note)
 

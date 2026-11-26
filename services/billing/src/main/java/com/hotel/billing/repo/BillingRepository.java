@@ -75,6 +75,15 @@ public class BillingRepository {
         + " FROM billing.folios WHERE stay_id = ?", BillingRepository::toFolio, stayId);
   }
 
+  // Nullable lookup for the folio-creating read (ADR-0008 D2, Refs
+  // #634): a miss means the stay has no folio yet, so the stay must
+  // be verified before one is created.
+  public Folio findFolioByStayOrNull(UUID stayId) {
+    List<Folio> rows = jdbc.query("SELECT id, stay_id, balance_minor, open_balance_approval"
+        + " FROM billing.folios WHERE stay_id = ?", BillingRepository::toFolio, stayId);
+    return rows.isEmpty() ? null : rows.get(0);
+  }
+
   // Nullable folio lookup for the invoice presentation (FR-BIL-4,
   // issue #151): the service maps a miss to NOT_FOUND naming the
   // folio instead of leaking the driver exception.
