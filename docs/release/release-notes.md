@@ -345,15 +345,16 @@ folio contracts gain the three codes additively (`1.0 -> 1.1`) and
 `contracts/errors/envelope.json` registers `UPSTREAM_UNAVAILABLE` with
 its `503` mapping — the drift ADR-0005 already named. Design:
 `../architecture/decisions/adr-0008-folio-write-stay-verification.md`
-(proposed), `../architecture/lld.md` section 27, `../architecture/hld.md`
+(accepted 2026-11-26), `../architecture/lld.md` section 27,
+`../architecture/hld.md`
 section 20, seam `../technical/integration.md` C8, refusals
 `../technical/error-handling.md` section 5; product conditions
 `AC-FWV-1`..`AC-FWV-7` (`../product/acceptance-criteria.md` section 20),
 desk delta and copy `../product/desk-ui-design-rollout.md` section 6.21,
 decision D-32 in `../project/decision-log.md`; requirements
 `FR-FWV-1`..`FR-FWV-5` (`../requirements/mvp-requirements.md` section
-28). Risk label: `risk-medium`, tier T3 — the owner accepts ADR-0008
-(`proposed -> accepted`) and #634 carries a `SPEC-GATE PASS` before the
+28). Risk label: `risk-medium`, tier T3 — ADR-0008 is accepted
+(owner, 2026-11-26) and #634 carries a `SPEC-GATE PASS` before the
 implementation PR merges.
 
 **What staff see.** A folio write no longer depends on the id the desk
@@ -420,9 +421,9 @@ release, the #600 room charge, the #601 settlement gate, the changes of
 stops being read.
 
 **Evidence state and follow-ups.** The change is T3 and needs the
-`spec-reviewer` `SPEC-GATE PASS` on #634 plus the owner's
-`proposed -> accepted` flip of ADR-0008 before the implementation PR
-merges. The guard registry `FW1`–`FW13` and the evidence rule `FW-E1`
+`spec-reviewer` `SPEC-GATE PASS` on #634 before the implementation PR
+merges; ADR-0008 is accepted (owner, 2026-11-26). The guard registry
+`FW1`–`FW13` and the evidence rule `FW-E1`
 (`../testing/folio-write-verification-test-traceability.md`) are the
 `qa-lead` handoff, and every one of those guards is an obligation the
 implementation PR creates; the `AC-BIL-*`, `AC-DSK-*`, `AC-CKO-*`,

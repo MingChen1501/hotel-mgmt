@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/MingChen1501/hotel-mgmt/services/reporting/internal/messages"
 	"github.com/MingChen1501/hotel-mgmt/services/reporting/internal/service"
@@ -254,6 +255,76 @@ func TestReportRangeAtCapIsServed(t *testing.T) {
 		}
 		if _, ok := body["asOf"].(string); !ok {
 			t.Fatalf("%s at-cap response carries no asOf: %v", route.path, body)
+		}
+	}
+}
+
+// TestFailedRebuildIsNotSurfacedThroughARead is RB8 (AC-RPT-10,
+// FR-RPT-7, BR-66): after a rebuild aborts mid-stream, the four read
+// routes still answer 200 with the pre-rebuild rows and asOf, the
+// response key sets are byte-identical to the pre-rebuild answers, and
+// no route or field reports rebuild state.
+func TestFailedRebuildIsNotSurfacedThroughARead(t *testing.T) {
+	stamp := time.Date(2026, 11, 2, 10, 0, 0, 0, time.UTC)
+	events := []store.Event{
+		{ID: "evt-rate-1", Subscription: "rate", Type: "rate.availability-set", OccurredAt: stamp, Payload: map[string]any{"roomTypeId": "deluxe", "date": "2026-11-01", "sellableUnits": 2}},
+		{ID: "evt-res-1", Subscription: "reservation", Type: "reservation.created", OccurredAt: stamp, Payload: map[string]any{"reservationRef": "RSV-AAA", "roomTypeId": "deluxe", "arrivalDate": "2026-11-01", "departureDate": "2026-11-03", "guestId": "guest-1"}},
+		{ID: "evt-folio-1", Subscription: "folio", Type: "folio.charge-posted", OccurredAt: stamp, Payload: map[string]any{"folioId": "folio-1", "businessDate": "2026-11-01", "kind": "room", "amountMinor": 18000}},
+		{ID: "evt-room-1", Subscription: "room", Type: "room.room-upserted", OccurredAt: stamp, Payload: map[string]any{"roomNumber": "101", "roomTypeId": "standard", "state": "vacant-dirty", "actor": "setup"}},
+	}
+	st := store.New()
+	if oerr := st.Rebuild(events); oerr != nil {
+		t.Fatalf("Rebuild: %v", oerr)
+	}
+	mux := NewMux(service.New(st))
+
+	routes := []struct {
+		path string
+		body map[string]any
+		keys []string
+	}{
+		{"/v1/reporting/OccupancyReport", map[string]any{"dateFrom": "2026-11-01", "dateTo": "2026-11-02"}, []string{"dateFrom", "dateTo", "nights", "asOf"}},
+		{"/v1/reporting/RevenueSummary", map[string]any{"dateFrom": "2026-11-01", "dateTo": "2026-11-02"}, []string{"dateFrom", "dateTo", "days", "asOf"}},
+		{"/v1/reporting/DailySheet", map[string]any{"businessDate": "2026-11-01"}, []string{"businessDate", "arrivals", "inHouse", "departures", "openBalances", "asOf"}},
+		{"/v1/reporting/HousekeepingReport", map[string]any{}, []string{"rooms", "asOf"}},
+	}
+	requireKeys := func(label string, body map[string]any, keys []string) {
+		t.Helper()
+		if len(body) != len(keys) {
+			t.Fatalf("%s response keys = %v, want exactly %v", label, body, keys)
+		}
+		for _, key := range keys {
+			if _, ok := body[key]; !ok {
+				t.Fatalf("%s response lost the %q field: %v", label, key, body)
+			}
+		}
+	}
+
+	pre := make([]map[string]any, len(routes))
+	for i, route := range routes {
+		code, body := post(t, mux, route.path, route.body, deskToken)
+		if code != http.StatusOK {
+			t.Fatalf("%s status = %d (%v), want 200", route.path, code, body)
+		}
+		requireKeys(route.path, body, route.keys)
+		pre[i] = body
+	}
+
+	bad := store.Event{ID: "evt-bad-mid", Subscription: "reservation", Type: "reservation.created", OccurredAt: stamp, Payload: map[string]any{"roomTypeId": "deluxe"}}
+	slice := append([]store.Event{events[0]}, bad)
+	slice = append(slice, events[1:]...)
+	if oerr := st.Rebuild(slice); oerr == nil {
+		t.Fatal("a rebuild over a malformed mid-stream event succeeded")
+	}
+
+	for i, route := range routes {
+		code, body := post(t, mux, route.path, route.body, deskToken)
+		if code != http.StatusOK {
+			t.Fatalf("%s after the failed rebuild status = %d (%v), want 200", route.path, code, body)
+		}
+		requireKeys(route.path, body, route.keys)
+		if !reflect.DeepEqual(body, pre[i]) {
+			t.Fatalf("%s answer moved after a failed rebuild: %v -> %v", route.path, pre[i], body)
 		}
 	}
 }

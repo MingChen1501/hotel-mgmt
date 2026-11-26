@@ -392,6 +392,74 @@ describe('folio view', () => {
     );
   });
 
+  // #634 / AC-FWV-1..AC-FWV-3: a stay Billing cannot verify refuses the
+  // write in its own plain words, and the entered line stays in place.
+  it.each([
+    ['NOT_FOUND', 404, 'No stay matches that ID, so nothing was recorded.'],
+    ['STATE_ILLEGAL', 422, 'That stay is already checked out, so nothing was recorded.'],
+    ['UPSTREAM_UNAVAILABLE', 503, 'The stay could not be checked, so nothing was recorded.'],
+  ])('names a %s stay refusal on a charge in plain words', async (code, statusValue, sentence) => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountFolio();
+    await signIn(wrapper, fetchMock);
+    const happy = stubHappyPath(fetchMock);
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/billing/PostCharge') {
+        return Promise.resolve(
+          jsonResponse(
+            { code, message: 'refused', details: { upstream: 'stay', stayId: 's-1' } },
+            statusValue as number,
+          ),
+        );
+      }
+      return happy(url, init);
+    });
+    await openFolio(wrapper, 's-1');
+
+    await wrapper.find('[data-testid="folio-charge-name"]').setValue('Minibar');
+    await wrapper.find('[data-testid="folio-charge-amount"]').setValue('12');
+    await wrapper.find('[data-testid="folio-charge"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="folio-charge-error"]').exists()).toBe(true);
+    });
+    expect(wrapper.find('[data-testid="folio-charge-error"]').text()).toContain(sentence);
+    // A refusal leaves the entered line in place so staff retry or
+    // correct the stay id instead of retyping it.
+    expect((wrapper.find('[data-testid="folio-charge-name"]').element as HTMLInputElement).value).toBe(
+      'Minibar',
+    );
+  });
+
+  it.each([
+    ['STATE_ILLEGAL', 422, 'That stay is already checked out, so nothing was recorded.'],
+    ['UPSTREAM_UNAVAILABLE', 503, 'The stay could not be checked, so nothing was recorded.'],
+  ])('names a %s stay refusal when opening a folio', async (code, statusValue, sentence) => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountFolio();
+    await signIn(wrapper, fetchMock);
+    const happy = stubHappyPath(fetchMock);
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/billing/GetFolioBalance') {
+        return Promise.resolve(
+          jsonResponse(
+            { code, message: 'refused', details: { upstream: 'stay', stayId: 's-1', state: 'closed' } },
+            statusValue as number,
+          ),
+        );
+      }
+      return happy(url, init);
+    });
+
+    await wrapper.find('[data-testid="folio-stay-id"]').setValue('s-1');
+    await wrapper.find('[data-testid="folio-open"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="folio-open-error"]').exists()).toBe(true);
+    });
+    expect(wrapper.find('[data-testid="folio-open-error"]').text()).toContain(sentence);
+  });
+
   it('names an unknown folio on open in plain words', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
@@ -618,7 +686,8 @@ describe('folio view source', () => {
     expect(folioViewSource).toContain('desk.folio.charges_context');
   });
 
-  it.each(['need_stay', 'need_charge', 'need_payment', 'refused_bad_method', 'refused_unknown_folio', 'idempotencyKey'])(
+  it.each(['need_stay', 'need_charge', 'need_payment', 'refused_bad_method', 'refused_unknown_folio',
+    'refused_unknown_stay', 'refused_closed_stay', 'refused_unreadable_stay', 'idempotencyKey'])(
     'keeps the folio vocabulary %s',
     (token) => {
       expect(folioViewSource).toContain(token);

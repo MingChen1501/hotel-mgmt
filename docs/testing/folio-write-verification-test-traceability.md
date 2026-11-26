@@ -27,8 +27,8 @@ stay's folio still opens and still prints).
 
 Companion specs: the decision record
 [ADR-0008](../architecture/decisions/adr-0008-folio-write-stay-verification.md)
-(`proposed`; the owner flips it `accepted` before the implementation PR
-merges), the layer ownership and answer classification in
+(`accepted` 2026-11-26; the T3 `SPEC-GATE PASS` still gates the
+implementation PR), the layer ownership and answer classification in
 `docs/architecture/lld.md` [section 27](../architecture/lld.md) (27.1
 ownership, 27.2 the per-route target algorithm and the complete Stay
 answer table, 27.3–27.6 the four per-flow diagrams, 27.7 the contract
@@ -247,9 +247,9 @@ coverage and link checks).
    requirements section 28, ADR-0008, LLD section 27, HLD section 20,
    error-handling section 5, integration C8, and this document) carries
    a `SPEC-GATE PASS` on #634 / the spec stack.
-2. ADR-0008 is `accepted` (the owner's flip) before the implementation
-   PR merges; the implementation PR may open while it is `proposed`,
-   following the established order.
+2. ADR-0008 is `accepted` (owner, 2026-11-26), so this criterion is met;
+   the remaining gate is the #634 `SPEC-GATE PASS` before the
+   implementation PR merges.
 3. The #588/#600/#601/#646/#647/#648 slices are merged (all on `master`
    at this spec head), so the desk pins in section 2 are the real
    baseline.
