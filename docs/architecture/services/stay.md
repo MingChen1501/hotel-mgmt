@@ -243,3 +243,38 @@ Design: `docs/architecture/lld.md` section 23; product UI contract
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-961
+
+## 11. Planned delta — session-derived audit actor (Refs #643)
+
+At this head the transport extracts the session token and keeps it for
+`CheckOut` only, to forward the completion (`src/server.ts:159`,
+`:184`); `CheckIn`, `MoveRoom`, and `RecordActualTimes` receive the raw
+body (`:167`, `:189`, `:197`), and each store records the body `actor`
+as the audit value (`src/store.ts:216`, `:294`, `:335`, `:383`, with the
+outbox payload at `:240`, `:318`, `:370`, `:401`; Postgres
+`src/pgstore.ts:79`/`:112`, `:184`/`:221`, `:247`, `:341`, and the move
+row `:303-305`).
+
+Planned (design: LLD
+[section 34](../lld.md#34-the-audit-actor-comes-from-the-session-never-from-the-request-refs-643)):
+
+- The server keeps the extracted token and hands it beside the body on
+  every write; the store keeps today's `requireString(input.actor)`
+  refusal and records the token as the actor in every audit column and
+  outbox payload. Reads are unchanged; a missing token is still the
+  `UNAUTHENTICATED` 401 before the body (`src/server.ts:159-162`).
+- `checkOut`'s existing `callerToken` parameter becomes the recorded
+  actor as well as the forwarded bearer; `completeBooking` keeps
+  forwarding the request's actor as the body `actor`, so the forwarded
+  value is an annotation only and Reservations records its own session
+  token (`src/store.ts:199-205`; `src/reservationsClient.ts:31-44`).
+- Where a write emits a JSON outbox payload, a disagreeing request
+  actor is preserved additively as `requestActor`; when it equals the
+  session actor the payload is unchanged. No response, status, refusal,
+  column, or migration changes.
+- Guards: a spoofed-actor case per write asserting the outbox payload
+  and the Postgres `created_by`/`updated_by` equal the token, in both
+  stores (LLD section 34.6).
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1175

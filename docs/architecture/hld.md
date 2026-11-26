@@ -950,3 +950,61 @@ implementation PR.
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1164
+
+## 26. The audit actor is the authenticated session, not the request (Refs #643)
+
+Every write in Stay, Guests, Rooms, Reservations, and Billing persisted
+the `actor` string the request body carried
+(`services/stay/src/store.ts:216` and its siblings;
+`services/reservations/internal/handler/handler.go:176-342`;
+`services/billing/src/main/java/com/hotel/billing/web/BillingController.java:39-42`),
+and Admin's config write persisted the body's `updatedBy`
+(`services/admin/src/store.ts:565`), so every outbox event, change row,
+and state-history row attributed the change to a name the caller chose —
+audit finding C6 against `NFR-AUD-1`. From #643, the recorded actor is
+the authenticated session: Admin's resolved `signinIdentity`, and the
+presented session token in the five services that authenticate presence
+only, until the identity-hardening slice resolves it.
+
+Three properties define the change:
+
+- **One seam per service, at the server that authenticates.** The
+  transport that already checks the token keeps it and hands it to the
+  store beside the body; no store reads the body actor for the recorded
+  value. Where the service resolves a caller (Admin), the resolved
+  identity is used. No new lookup, round trip, verification step, or
+  check order appears.
+- **The request value is demoted, never refused.** `actor` and
+  `updatedBy` keep their contract shape, required flag, and existing
+  refusals, and their value is never the recorded actor. Where the write
+  emits a JSON outbox payload, a disagreeing value is preserved
+  additively as `requestActor`; column-only rows drop it and keep their
+  shape. Refusing was rejected because the desk still sends its display
+  name and the desk UI's actor field is out of scope, so a refusal would
+  break every desk write.
+- **No new vocabulary, no reader-visible change, no data-model change.**
+  No error code, status mapping, envelope field, operation, route,
+  header, contract shape, column, table, or migration changes; audit
+  columns are already `TEXT` and outbox payloads JSONB. No desk surface
+  renders an actor, so no UI-contract section applies. One
+  `CheckOutReservation` description sentence is corrected to describe
+  the annotation, prose only.
+
+The change adds no subsystem, dependency edge, data model, lifecycle
+state, operation, or new surface: it is one value source per service on
+existing writes. The container and component views (sections 2 and 3)
+stand unchanged. Enforcement points, the seam per service, the demotion
+rule, the per-flow diagrams, the contract decision, the verification
+plan, and the NFR disposition: `docs/architecture/lld.md`
+[section 34](lld.md#34-the-audit-actor-comes-from-the-session-never-from-the-request-refs-643);
+per-service notes: `docs/architecture/services/stay.md`,
+`guests.md`, `rooms.md`, `reservations.md`, `billing.md`, and `admin.md`
+planned deltas; the no-new-refusal rule:
+`docs/technical/error-handling.md` section 1.6; the convention:
+`docs/technical/api-spec.md` section 1; the audit-coverage note:
+`docs/technical/security-threat-model.md` section 6. Risk R-20 records
+the mis-attribution and interim-token risk; rollback is the single
+implementation PR.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1175
