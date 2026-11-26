@@ -4608,10 +4608,10 @@ become advisory); the stored `priceBasis` shape (no per-night
 breakdown, no plan name, no currency); the reservation schema and
 migrations; the overbooking guard and `sellableUnits`; the desk's
 matching path, which already quotes before it books
-(`app/src/views/BookView.vue:807-820`, `:948-958`); and the #600
+(`app/src/views/BookView.vue:807-820`, `:1012-1025`); and the #600
 room-charge posting, which keeps posting the now-verified frozen total.
 
-### 25.2 Write-step algorithm (target)
+### 25.2 Write-step algorithm (as built)
 
 Both write routes gain the same three pieces: a quote hook, a replay
 pre-read, and one comparison. The capacity read landed with the sibling
@@ -4620,28 +4620,28 @@ replay pre-read and the quote. Order, and why each step sits where it
 does:
 
 1. **Field/date/price-shape validation** — unchanged
-   (`internal/service/service.go:141-170` on Create, `:223-271` on
+   (`internal/service/service.go:200-230` on Create, `:300-349` on
    Modify). A missing or negative total is still `VALIDATION_FAILED`
    naming `priceBasis`, so `PRICE_CHANGED` is only ever about an
    asserted total that disagreed.
 2. **Effective inputs** (Modify only) — the post-change type and dates,
    an omitted field keeping the stored value, come from the existing
-   computation (`internal/service/service.go:276-287`, reading the row
-   at `:272`); the discount is the request's
+   computation (`internal/service/service.go:354-365`, reading the row
+   at `:350`); the discount is the request's
    `priceBasis.discountName`, where omitted or null means no discount
    (the price basis is a full assertion of the new quote, and the desk
    already sends `discountName ?? null`,
-   `app/src/views/BookView.vue:948-958`).
+   `app/src/views/BookView.vue:1012-1025`).
 3. **`CheckRestrictions`** — unchanged, with the effective values
-   (`internal/service/service.go:171-176`, `:288-293`). It keeps its place because a restriction
+   (`internal/service/service.go:231-236`, `:366-371`). It keeps its place because a restriction
    refusal means re-quoting cannot help, and it keeps its
    `STATE_ILLEGAL` terms.
 4. **Replay pre-read** — a new `Replay(key)` repository read
-   (`internal/store/store.go:120-133` interface) resolving a
+   (`internal/store/store.go:124-140` interface) resolving a
    non-empty `idempotencyKey` to its stored reservation with the same
    key-only lookup both stores already perform
-   (`internal/store/store.go:246-250`,
-   `internal/store/postgres.go:156-170`, `:490-503`). A hit returns the
+   (`internal/store/store.go:250-257`,
+   `internal/store/postgres.go:156-170`, `:515-528`). A hit returns the
    stored booking unchanged — no quote, no comparison, no
    `PRICE_CHANGED` for a booking that exists. The store's own replay
    check inside the guarded step stays exactly as it is, so a
@@ -4813,7 +4813,7 @@ Edge trace:
   discount: the request's `priceBasis.discountName` when the object
   carries one, otherwise no discount — the price basis is a full
   assertion of the new quote, and the desk's own send already uses
-  `discountName ?? null` (`app/src/views/BookView.vue:948-958`).
+  `discountName ?? null` (`app/src/views/BookView.vue:1012-1025`).
 - G–H: the comparison, then `store.Modify` with the quote's total and
   the quote's applied discount name instead of the request's
   (`internal/service/service.go:298-310`).

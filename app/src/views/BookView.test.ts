@@ -1676,4 +1676,161 @@ describe('book view', () => {
     expect(quoteCalls).toBe(1);
     expect(wrapper.find('[data-testid="book-result"]').exists()).toBe(false);
   });
+
+  it('re-quotes with the held discount, not the live input, after a price-changed refusal', async () => {
+    // PA13 (AC-DSK-20, Refs #632): the PRICE_CHANGED re-read reproduces
+    // the refused request. The held quote applied and echoed a canonical
+    // discount name while the live input still holds the typed form, so
+    // the re-quote must send the held name; sourcing it from the input
+    // would price a different stay.
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountBook();
+    await signIn(wrapper, fetchMock);
+
+    const happy = stubHappyPath(fetchMock);
+    let quoteCalls = 0;
+    let createCalls = 0;
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/rates/QuotePrice') {
+        quoteCalls += 1;
+        return Promise.resolve(
+          jsonResponse({
+            roomTypeId: 'standard',
+            arrivalDate: '2026-11-01',
+            departureDate: '2026-11-03',
+            discountName: 'SPRING',
+            nights: [
+              { nightDate: '2026-11-01', priceMinor: 10000 },
+              { nightDate: '2026-11-02', priceMinor: 12000 },
+            ],
+            totalMinor: quoteCalls === 1 ? 22000 : 26000,
+          }),
+        );
+      }
+      if (url === '/v1/reservations/CreateReservation') {
+        createCalls += 1;
+        if (createCalls === 1) {
+          return Promise.resolve(
+            jsonResponse(
+              {
+                code: 'PRICE_CHANGED',
+                message: 'The total you sent differs from the price in force.',
+                details: {
+                  roomTypeId: 'standard',
+                  arrivalDate: '2026-11-01',
+                  departureDate: '2026-11-03',
+                  requestedTotalMinor: 22000,
+                  quotedTotalMinor: 26000,
+                },
+              },
+              409,
+            ),
+          );
+        }
+        return Promise.resolve(
+          jsonResponse({
+            reservationRef: 'RSV-3',
+            state: 'confirmed',
+            quotedTotal: 26000,
+            reservationId: 'r-3',
+            stayId: null,
+          }),
+        );
+      }
+      return happy(url, init);
+    });
+
+    // The clerk types the discount in lower case; Rates applies and
+    // echoes its canonical name. Only the held applied name may reach
+    // the re-read, never the still-typed one.
+    await fillStay(wrapper);
+    await wrapper.find('[data-testid="book-discount-name"]').setValue('spring');
+    await wrapper.find('[data-testid="book-quote"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="book-quote-section"]').exists()).toBe(true);
+    });
+    await wrapper.find('[data-testid="book-guest-name"]').setValue('Guest One');
+    await wrapper.find('[data-testid="book-find-guest"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="book-guest-status"]').text()).toContain('Guest found');
+    });
+
+    await wrapper.find('[data-testid="book-confirm"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="book-confirm-error"]').text()).toContain(
+        'The rate changed while you were booking',
+      );
+    });
+
+    const quoteRequests = fetchMock.mock.calls.filter(
+      (call) => call[0] === '/v1/rates/QuotePrice',
+    );
+    expect(quoteCalls).toBe(2);
+    expect(quoteRequests).toHaveLength(2);
+    expect(parseBody(quoteRequests[0]?.[1] as RequestInit).discountName).toBe('spring');
+    const recoveryBody = parseBody(quoteRequests[1]?.[1] as RequestInit);
+    expect(recoveryBody.discountName).toBe('SPRING');
+    expect(recoveryBody.roomTypeId).toBe('standard');
+    expect(wrapper.find('[data-testid="book-result"]').exists()).toBe(false);
+  });
+
+  it('books nothing and clears the quote when the recovery re-read fails upstream', async () => {
+    // PA13 (AC-DSK-20, Refs #632): the PRICE_CHANGED re-read itself hit
+    // an unreadable Pricing. The stale quote is cleared so Confirm
+    // cannot resend it, the screen says the price could not be read,
+    // and no second booking attempt is made.
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountBook();
+    await signIn(wrapper, fetchMock);
+
+    const happy = stubHappyPath(fetchMock);
+    let quoteCalls = 0;
+    let createCalls = 0;
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/v1/rates/QuotePrice') {
+        quoteCalls += 1;
+        if (quoteCalls === 1) {
+          return happy(url, init);
+        }
+        return Promise.resolve(
+          jsonResponse(
+            {
+              code: 'UPSTREAM_UNAVAILABLE',
+              message: 'pricing down',
+              details: { upstream: 'rates', operation: 'QuotePrice' },
+            },
+            503,
+          ),
+        );
+      }
+      if (url === '/v1/reservations/CreateReservation') {
+        createCalls += 1;
+        return Promise.resolve(jsonResponse({ code: 'PRICE_CHANGED', message: 'moved' }, 409));
+      }
+      return happy(url, init);
+    });
+
+    await quote(wrapper);
+    await wrapper.find('[data-testid="book-guest-name"]').setValue('Guest One');
+    await wrapper.find('[data-testid="book-find-guest"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="book-guest-status"]').text()).toContain('Guest found');
+    });
+    await wrapper.find('[data-testid="book-confirm"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="book-confirm-error"]').text()).toContain(
+        'The price could not be read',
+      );
+    });
+
+    expect(quoteCalls).toBe(2);
+    expect(createCalls).toBe(1);
+    // Nothing booked, and the stale quote is gone so Confirm cannot
+    // resend the total Pricing could not verify.
+    expect(wrapper.find('[data-testid="book-quote-section"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="book-confirm"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="book-result"]').exists()).toBe(false);
+  });
 });
