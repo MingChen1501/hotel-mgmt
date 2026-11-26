@@ -4614,7 +4614,9 @@ room-charge posting, which keeps posting the now-verified frozen total.
 ### 25.2 Write-step algorithm (target)
 
 Both write routes gain the same three pieces: a quote hook, a replay
-pre-read, and one comparison. Order, and why each step sits where it
+pre-read, and one comparison. The capacity read landed with the sibling
+availability change (#631, section 26) and keeps its place between the
+replay pre-read and the quote. Order, and why each step sits where it
 does:
 
 1. **Field/date/price-shape validation** — unchanged
@@ -4644,7 +4646,19 @@ does:
    `PRICE_CHANGED` for a booking that exists. The store's own replay
    check inside the guarded step stays exactly as it is, so a
    concurrent double submit still books once.
-5. **`QuotePrice`** — `POST {RATES_BASE_URL}/v1/rates/QuotePrice`
+5. **`CheckRoomTypeSellability`** — the capacity read landed with #631
+   (`docs/architecture/services/reservations.md` section 2) and keeps
+   its place here, between the replay pre-read and the quote: the
+   ceiling is `totalCount - len(blockedRooms)` for the effective type
+   and dates (`internal/availability/client.go:56-86`), an unreadable
+   answer refuses `UPSTREAM_UNAVAILABLE` (503) naming
+   rooms/`CheckRoomTypeSellability` and writes nothing
+   (`internal/availability/client.go:154-167`, nil hook
+   `internal/service/service.go:141-146`), and a rooms 4xx passes
+   through unchanged. A sold-out stay therefore never spends a Rates
+   quote, and the quote step below costs nothing when the guard will
+   refuse anyway.
+6. **`QuotePrice`** — `POST {RATES_BASE_URL}/v1/rates/QuotePrice`
    with `{roomTypeId, arrivalDate, departureDate, discountName}` (no
    `ratePlanName`, matching the desk's own quote) and the caller's
    Bearer token forwarded, 5-second timeout, reusing the existing
@@ -4652,20 +4666,20 @@ does:
    `cmd/server/main.go:45-49` — one client instance wired for two
    operations). The read stays outside the guarded store write: the
    store step is one mutex- or transaction-held critical section
-   (`internal/store/store.go:243-245`), and holding it across a
+   (`internal/store/store.go:250-252`), and holding it across a
    network call would stall every booking during a Rates outage.
-6. **Compare** — `requestedTotalMinor` (the request's
+7. **Compare** — `requestedTotalMinor` (the request's
    `priceBasis.totalMinor`, which presence validation has already
    required) against `quotedTotalMinor`. Equal: continue, storing the
    quote's `totalMinor` and `discountName`. Different: refuse
    `PRICE_CHANGED` (25.5) and write nothing.
-7. **Unreadable Prices** — transport failure, timeout, 5xx, non-envelope
+8. **Unreadable Prices** — transport failure, timeout, 5xx, non-envelope
    reply, or an unwired hook refuses `UPSTREAM_UNAVAILABLE` (503)
    `{upstream: "rates", operation: "QuotePrice"}` and writes nothing.
    A definitive 4xx envelope is surfaced unchanged (25.5).
-8. **Guarded store write** — unchanged: the overbooking count over
+9. **Guarded store write** — unchanged: the overbooking count over
    active overlapping bookings under one mutex
-   (`internal/store/store.go:243-265`), insert or update with the
+   (`internal/store/store.go:258-267`), insert or update with the
    server total and discount name, the `priceBasis` change row on
    Modify, and the outbox event. The response reports the stored total
    (`quotedTotal` on Create, `recalculatedTotal` on Modify,
@@ -4684,7 +4698,9 @@ flowchart TD
     A[Bearer token present, body decoded] --> B[Validate fields, dates, price shape]
     B --> C[CheckRestrictions with type and dates]
     C -->|pass| D{Idempotency key already stored?}
-    D -->|no| E[QuotePrice type, dates, discount, caller token]
+    D -->|no| N[CheckRoomTypeSellability: totalCount minus blockedRooms]
+    N -->|read ok| E[QuotePrice type, dates, discount, caller token]
+    N -->|unreadable| U3[503 UPSTREAM_UNAVAILABLE rooms/CheckRoomTypeSellability, nothing written]
     E -->|read ok| F{Request total equals quoted total?}
     F -->|yes| G[Store the quoted total and discount name]
     G --> H[200 reservationRef, quotedTotal]
@@ -4701,7 +4717,10 @@ Edge trace:
 - C–D: the new replay pre-read (25.2 step 4) sits after the restriction
   check so a replay is gated like any other request, exactly as today,
   but is never re-priced.
-- D–E: the quote read with the caller's token forwarded
+- D–N: the capacity read landed with #631 (25.2 step 5); a replay
+  returns before it, and an unreadable ceiling refuses 503 naming
+  rooms/`CheckRoomTypeSellability` before any Rates quote is spent.
+- N–E: the quote read with the caller's token forwarded
   (`internal/pricing/client.go:43-85` is the transport to mirror;
   `contracts/http/QuotePrice.json` is the shape).
 - E–F: the comparison this section adds.
@@ -4723,7 +4742,9 @@ flowchart TD
     A[Create attempt] --> B{Restriction check}
     B -->|refused| S[422 STATE_ILLEGAL, nothing written]
     B -->|unreadable| U[503 UPSTREAM_UNAVAILABLE, nothing written]
-    B -->|pass| C{QuotePrice}
+    B -->|pass| V{CheckRoomTypeSellability}
+    V -->|unreadable| U3[503 UPSTREAM_UNAVAILABLE rooms/CheckRoomTypeSellability, nothing written]
+    V -->|read ok| C{QuotePrice}
     C -->|unreadable, timeout, 5xx, unwired| U2[503 UPSTREAM_UNAVAILABLE rates/QuotePrice, nothing written]
     C -->|definitive refusal| P[Surface NOT_FOUND no_rate_price/no_rate_plan or VALIDATION_FAILED unchanged, nothing written]
     C -->|ok| D{Request total equals quoted total?}
@@ -4735,7 +4756,10 @@ flowchart TD
 
 Edge trace:
 
-- B: unchanged restriction refusals (`internal/service/service.go:171-176`).
+- B: unchanged restriction refusals (`internal/service/service.go:231-236`).
+- V–U3: the capacity read (25.2 step 5, #631) keeps its fail-closed
+  503 `UPSTREAM_UNAVAILABLE` naming rooms/`CheckRoomTypeSellability`
+  (`internal/availability/client.go:56-86`, `:154-167`).
 - C–U2: the fail-closed branch uses the existing
   `UPSTREAM_UNAVAILABLE` shape and the same 5-second-bounded transport
   (`internal/pricing/client.go:89-96` is the precedent; the new branch
@@ -4762,7 +4786,8 @@ flowchart TD
     B --> C[Effective type, dates, discount]
     C --> D[CheckRestrictions for the effective stay]
     D -->|pass| E{Idempotency key already stored?}
-    E -->|no| F[QuotePrice effective type, dates, discount]
+    E -->|no| N[CheckRoomTypeSellability for the effective stay]
+    N -->|read ok| F[QuotePrice effective type, dates, discount]
     F -->|ok| G{Request total equals quoted total?}
     G -->|yes| H[Conditional store write with the quoted total]
     H --> I{Frozen total differs from the stored one?}
@@ -4783,7 +4808,8 @@ Edge trace:
   (`internal/service/service.go:276-287`).
 - C–D: the existing restriction call with those values
   (`internal/service/service.go:288-293`).
-- E–F: the new pre-read plus quote (25.2 steps 4–5), with the effective
+- E–F: the new pre-read plus the capacity read and quote (25.2 steps
+  4–6), with the effective
   discount: the request's `priceBasis.discountName` when the object
   carries one, otherwise no discount — the price basis is a full
   assertion of the new quote, and the desk's own send already uses
@@ -4811,7 +4837,9 @@ flowchart TD
     B -->|no| N[404 NOT_FOUND or 422 STATE_ILLEGAL, nothing written]
     B -->|yes| C{Restriction check}
     C -->|refused or unreadable| S[422 STATE_ILLEGAL or 503, nothing written]
-    C -->|pass| Q{QuotePrice for the effective stay}
+    C -->|pass| V{CheckRoomTypeSellability for the effective stay}
+    V -->|unreadable| U3[503 UPSTREAM_UNAVAILABLE rooms/CheckRoomTypeSellability, nothing written]
+    V -->|read ok| Q{QuotePrice for the effective stay}
     Q -->|unreadable| U[503 UPSTREAM_UNAVAILABLE rates/QuotePrice, nothing written]
     Q -->|definitive refusal| P[Surface the Rates refusal unchanged, nothing written]
     Q -->|ok| D{Request total equals quoted total?}
