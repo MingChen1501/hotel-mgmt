@@ -327,10 +327,9 @@ unknown or already closed (the finding returns in the other direction);
 or if the desk reports the "could not be checked" sentence while the
 stay module answers its reads for the same guest. The change is
 `risk-medium` (issue #634 labels `security`, `risk-medium`); it rolls
-back on the normal merge gate, without owner approval. The owner's
-`proposed -> accepted` flip of ADR-0008 and the `SPEC-GATE PASS` are
-merge conditions of the forward change; they are not conditions of the
-revert.
+back on the normal merge gate, without owner approval. ADR-0008 is
+accepted (owner, 2026-11-26), and the `SPEC-GATE PASS` is a merge
+condition of the forward change; neither is a condition of the revert.
 
 **Mechanics.** Revert the single implementation PR and redeploy the
 bundle per `../devops/deployment.md` section 4. No schema migration and

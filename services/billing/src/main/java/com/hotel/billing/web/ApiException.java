@@ -41,4 +41,16 @@ public class ApiException extends RuntimeException {
   public static ApiException settlementRequired(String message) {
     return new ApiException("SETTLEMENT_REQUIRED", 409, message, Map.of());
   }
+
+  // A stay outside in-house on a folio route (ADR-0008 D3, Refs
+  // #634): the write is refused before anything is written.
+  public static ApiException stateIllegal(String message, Map<String, Object> details) {
+    return new ApiException("STATE_ILLEGAL", 422, message, details);
+  }
+
+  // A provider that must be read to decide money could not be read
+  // (ADR-0008 D4, Refs #634). Fail closed: nothing is written.
+  public static ApiException upstreamUnavailable(String message, Map<String, Object> details) {
+    return new ApiException("UPSTREAM_UNAVAILABLE", 503, message, details);
+  }
 }
