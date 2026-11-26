@@ -8095,37 +8095,43 @@ longer holds.
 
 ### 35.1 One publication seam: build the candidate aside, swap it in
 
+As built (Refs #642 implementation): the pins below were refreshed to the
+landed `file:line`, and the "as found" paragraph above keeps the
+pre-change head it cited.
+
 The published read model becomes one replaceable value: the seen record,
 the per-subscription offsets, the as-of stamp, and the six projection
-maps move into a private set that `Store` holds behind its mutex
-(`services/reporting/internal/store/store.go:138-149`, the same shape
-`New` builds at `:152-163`), and `Store` keeps only `mu` plus the current
-set. That is the whole shape of the change:
+maps move into a private set (`snapshot`) that `Store` holds behind its
+mutex (`services/reporting/internal/store/store.go:143-153`, the shape
+`newSnapshot` builds at `:157-168`), and `Store` keeps only `mu` plus the
+current set (`:174-177`, published by `New` at `:180-182`). That is the
+whole shape of the change:
 
 - **The rebuild builds a fresh set, never the published one.**
   `Rebuild` constructs an empty candidate and projects every event of the
-  slice into it. The candidate is unreachable from every read while it is
-  being built, so the per-event work holds no lock and no read can observe
-  a half-built state; the projection code stays the existing per-event
-  `project` (`:245-446`), so a row the rebuild produces is the row it
-  produced before.
+  slice into it (`:262-273`). The candidate is unreachable from every read
+  while it is being built, so the per-event work holds no lock and no read
+  can observe a half-built state; the projection code stays the existing
+  per-event `project` (`:275-472`), so a row the rebuild produces is the
+  row it produced before.
 - **One assignment publishes it.** After the last event projects, the
-  candidate is installed as the current set inside one critical section.
-  The published set therefore changes exactly once per rebuild, from one
-  complete state to another, and no read can see the new set's maps beside
-  the old set's stamp.
+  candidate is installed as the current set inside one critical section
+  (`:269-271`). The published set therefore changes exactly once per
+  rebuild, from one complete state to another, and no read can see the new
+  set's maps beside the old set's stamp.
 - **`Apply` keeps its in-place semantics.** `Apply` is the live ingest
   path and its guards drive it directly; it keeps taking the mutex and
-  folding one event into the published set (`:199-219`). The rebuild does
-  not call `Apply` — that would either re-enter the mutex or need a second
-  unlocked copy of the fold — it runs the same projection helper against
-  the candidate, so there is one projection implementation, not two.
+  folding one event into the published set (`:218-222`, the one per-event
+  fold `fold` at `:230-248`). The rebuild drives that same fold against the
+  candidate rather than calling `Apply` — which would either re-enter the
+  mutex or need a second unlocked copy of the fold — so there is one
+  projection implementation, not two.
 - **A refused event leaves a discarded candidate, not state.** Every
   `project` branch validates its fields before its first write (for
-  example `reservation.created` at `:251-273` and
-  `rate.availability-set` at `:339-352`), so a refusal cannot leave the
+  example `reservation.created` at `:281` and
+  `rate.availability-set` at `:369`), so a refusal cannot leave the
   published set changed; the candidate is dropped whole and the refusal is
-  returned to the caller unchanged (`validation(field, message)`, `:28-32`).
+  returned to the caller unchanged (`validation(field, message)`, `:30-32`).
 
 Rejected alternatives, and why the single seam is the answer:
 
@@ -8172,8 +8178,8 @@ it today plus one persisted shape it must keep when persistence lands.
   maps, the offsets, and the stamp exactly as they were and the candidate
   becomes unreachable garbage. Nothing is written to a file, a table, a
   queue, or a header, so there is no residual artefact to clean up and no
-  compensating action to take. `Offsets()` (`:649-658`) and `AsOf()`
-  (`:661-666`) answer the pre-rebuild values for the same reason: they
+  compensating action to take. `Offsets()` (`:683-692`) and `AsOf()`
+  (`:696-701`) answer the pre-rebuild values for the same reason: they
   take the mutex and read the current set.
 - **The migrated read-model schema is not yet the store.** The read-model
   tables and the consumer-offset table exist in
@@ -8208,7 +8214,7 @@ The last good set is what the desk keeps reading, and its freshness stamp
 is the point of the change:
 
 - **The stamp belongs to the set.** `asOf` advances only when an event
-  projects (`:215-217`), and it moves with the set it belongs to, so a
+  projects (`:243-246`), and it moves with the set it belongs to, so a
   failed rebuild leaves the desk reading the pre-rebuild rows with the
   pre-rebuild `asOf` — an older stamp over rows that are internally
   consistent, instead of a fresh-looking stamp over rows that are not.
@@ -8234,30 +8240,30 @@ is the point of the change:
   filled by the same `project` code in the same slice order, so `seen`,
   the per-subscription offsets, and `asOf` match the clear-and-replay
   result; and every report's row order comes from its own sort, not from
-  map iteration (`Occupancy` `:517-523`, `Sheet` `:597-609`,
-  `Housekeeping` `:642`), with `Revenue` walking the requested dates in
-  order (`:534-547`). The rows, row order, zero-filled dates, revenue
+  map iteration (`Occupancy` `:548-553`, `Sheet` `:629-640`,
+  `Housekeeping` `:676`), with `Revenue` walking the requested dates in
+  order (`:560-579`). The rows, row order, zero-filled dates, revenue
   totals, daily-sheet groups, housekeeping list, and stamp are therefore
   the values today's path produces for the same slice.
 - **Idempotency survives the swap.** Duplicate ids are still skipped
-  before projection (`:205-207`), so re-applying an event from the
+  before projection (`:234-236`), so re-applying an event from the
   replayed slice stays a no-op against the published set.
 
 ### 35.4 Per-flow diagram — rebuild: happy path, mid-stream refusal, rollback
 
 ```mermaid
 flowchart TD
-    A[Rebuild called by the rebuild job wiring, no HTTP route  main.go:30-32, service.go:25] --> B[Build a private candidate set with its own seen, offsets, asOf, and six projection maps  Store :138-149, New :152-163]
+    A[Rebuild called by the rebuild job wiring, no HTTP route  main.go:30-32, service.go:25] --> B[Build a private candidate set with its own seen, offsets, asOf, and six projection maps  snapshot :143-153, newSnapshot :157-168]
     B --> C{Event left in the slice}
-    C -->|yes| D[Project the event into the candidate  project :245-446]
-    D -->|refused| X[Return today's VALIDATION_FAILED naming the field and drop the candidate  validation :28-32]
+    C -->|yes| D[Project the event into the candidate  project :275-472]
+    D -->|refused| X[Return today's VALIDATION_FAILED naming the field and drop the candidate  validation :30-32]
     D -->|projected| C
-    C -->|no| S[Swap the candidate in as the published set inside one critical section]
-    X --> X1[Published maps, seen, offsets, and asOf keep their pre-rebuild values  Rebuild :225-243]
-    X1 --> X2[All four reports answer the pre-rebuild rows with the older asOf, never a refusal  locks :479 / :534 / :560 / :633]
-    X2 --> X3[Rollback frame: nothing was published, so nothing is compensated; a retry replays from the same offsets  Offsets :649-658]
+    C -->|no| S[Swap the candidate in as the published set inside one critical section  Rebuild :269-271]
+    X --> X1[Published maps, seen, offsets, and asOf keep their pre-rebuild values  Rebuild :262-273]
+    X1 --> X2[All four reports answer the pre-rebuild rows with the older asOf, never a refusal  locks :509 / :565 / :592 / :666]
+    X2 --> X3[Rollback frame: nothing was published, so nothing is compensated; a retry replays from the same offsets  Offsets :683-692]
     S --> G[Reports answer the complete new set with its own asOf  responses handler.go:160 / :185 / :210-214 / :228-231]
-    S --> H[Offsets and AsOf name the new last-applied ids and stamp  :649-666]
+    S --> H[Offsets and AsOf name the new last-applied ids and stamp  :683-701]
     G --> G1[Rollback frame: the event log is the source, so the next successful rebuild replaces the set again; no migration or backfill exists in either direction]
 ```
 
@@ -8270,35 +8276,34 @@ at the `Rebuild` seam):
   rebuild job through `service.Store()`
   (`services/reporting/internal/service/service.go:25-27`). The candidate
   carries the same nine members the published set carries
-  (`services/reporting/internal/store/store.go:138-149`, built by `New`
-  at `:152-163`), so a swap can install it without changing any read's
-  field set.
-- B–C–D: the per-event fold is `project` (`:245-446`), which `Apply`
-  drives today at `:208-210`; the rebuild drives the same function against
-  the candidate.
-- D–X: a refusal is built by `validation(field, message)` (`:28-32`) and
+  (`services/reporting/internal/store/store.go:143-153`, built by
+  `newSnapshot` at `:157-168`), so a swap can install it without changing
+  any read's field set.
+- B–C–D: the per-event fold is `project` (`:275-472`), which `Apply`
+  drives through `fold` at `:237`; the rebuild drives the same function
+  against the candidate.
+- D–X: a refusal is built by `validation(field, message)` (`:30-32`) and
   names the field that stopped the replay, one branch per event family
-  (`:251-273`, `:283-291`, `:307-315`, `:339-352`, `:353-370`, `:381-389`,
-  `:395-403`, `:405-417`, `:419-431`, `:433-437`). The code, status,
-  message, and `details` are today's, so the operator's error channel does
-  not change.
+  (`:281`, `:313`, `:337`, `:369`, `:383`, `:411`, `:425`, `:435`, `:449`,
+  `:463`). The code, status, message, and `details` are today's, so the
+  operator's error channel does not change.
 - D–C: a projected event advances only the candidate — the seen record,
-  its subscription offset, and the stamp (`:211-217`) applied to the
+  its subscription offset, and the stamp (`:240-246`) applied to the
   candidate rather than to the published set.
-- C–S: the swap is one assignment of the current set under `s.mu`, after
-  the loop ends. Because the build never held the mutex, no read was
-  blocked while it ran.
+- C–S: the swap is one assignment of the current set under `s.mu`
+  (`:269-271`), after the loop ends. Because the build never held the
+  mutex, no read was blocked while it ran.
 - X–X1: the candidate is unreachable, so the published maps, seen record,
   offsets, and stamp keep their values; nothing is restored because
   nothing was changed.
-- X1–X2: the reads take the same mutex (`:479`, `:534`, `:560`, `:633`)
+- X1–X2: the reads take the same mutex (`:509`, `:565`, `:592`, `:666`)
   and render 200 with their rows and `asOf` (`handler.go:160`, `:185`,
   `:210-214`, `:228-231`), which is the never-refuse rule the handler
   package states at `:1-8`.
-- X2–X3: the resume record is untouched, so `Offsets()` (`:649-658`)
+- X2–X3: the resume record is untouched, so `Offsets()` (`:683-692`)
   hands the retry the position it held before the failed rebuild.
 - S–G–H: after the swap the same read paths serve the new complete set,
-  and `Offsets()`/`AsOf()` (`:649-666`) name the new last-applied ids and
+  and `Offsets()`/`AsOf()` (`:683-701`) name the new last-applied ids and
   stamp.
 - G–G1 and X3: the rollback frame. The read model is rebuilt from the
   event log, so neither path leaves a stored row, offset row, or stamp to
@@ -8311,7 +8316,7 @@ at the `Rebuild` seam):
 
 - **The refusal is today's, so no error vocabulary moves.**
   `VALIDATION_FAILED` is already the code a bad event answers
-  (`:28-32`), and `contracts/errors/envelope.json` is untouched, so the
+  (`:30-32`), and `contracts/errors/envelope.json` is untouched, so the
   shared enum, the status mapping, and the handler's rendering
   (`writeOpError`, `services/reporting/internal/handler/handler.go:38-45`)
   keep what they serve today. `docs/technical/error-handling.md` is

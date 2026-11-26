@@ -16,7 +16,7 @@ Go `handler / service / store`, where the service is a thin validation-and-deleg
 |---|---|---|
 | Transport + auth + body decoding | `internal/handler/handler.go` | `NewMux(svc)` routes `POST /v1/reporting/<Operation>`; Bearer presence check; date-window required-field checks before delegating |
 | Read step order | `internal/service/service.go` | validates nothing itself beyond delegating: `OccupancyReport` (:31), `RevenueSummary` (:37), `DailySheet` (:43), `HousekeepingReport` (:49) straight to the store; never reads other modules' stores |
-| Projections + storage | `internal/store/store.go` (`Store`, the in-memory read model) | `Apply` ingests one domain event (:199), `Rebuild` replays the log (:225), `project` routes by event type (:245); `Occupancy` (:474), `Revenue` (:529), `Sheet` (:556), `Housekeeping` (:632) serve reads with an as-of timestamp. The migrated read-model tables (`services/reporting/migrations/000002_schema.up.sql`) are not yet read or written by the process — persistence hardens in a later slice (section 9) |
+| Projections + storage | `internal/store/store.go` (`Store`, the in-memory read model) | `Apply` ingests one domain event into the published set (:218, fold :230), `Rebuild` replays the log into a private candidate and swaps it in (:262), `project` routes by event type (:275); `Occupancy` (:504), `Revenue` (:560), `Sheet` (:588), `Housekeeping` (:665) serve the current set with its as-of timestamp. The migrated read-model tables (`services/reporting/migrations/000002_schema.up.sql`) are not yet read or written by the process — persistence hardens in a later slice (section 9) |
 | Health | `internal/health/` | `GET /healthz` with the module identity (`cmd/server/main.go:30`) |
 | Boot | `cmd/server/main.go` | store wiring exposed for the rebuild job (`service.Store()`), mounts health + read routes (:28-32) |
 
@@ -37,7 +37,7 @@ flowchart TD
 Edge trace (every edge cites code):
 
 - A–B: Bearer presence + JSON decode (`internal/handler/handler.go:114-133`).
-- C: `dateFrom`/`dateTo` required (:136-139); the store validates the window shape and span (`internal/store/store.go:448`).
+- C: `dateFrom`/`dateTo` required (:136-139); the store validates the window shape and span (`internal/store/store.go:478`).
 - D: per-night, per-type occupied/available counts served from the rebuilt projection — the service never touches another module's rows (`internal/service/service.go:31-35`) — and the set served is one complete set, the one the last successful rebuild installed (section 9), never a partially built candidate.
 - E: `nights` plus the read-model `asOf` timestamp returned so freshness is explicit (`internal/handler/handler.go:147-160`).
 
@@ -58,10 +58,10 @@ flowchart TD
 
 Edge trace:
 
-- W: missing `dateFrom`/`dateTo`/`businessDate` → `VALIDATION_FAILED` before any store call (`internal/handler/handler.go:136-229`); malformed or over-wide windows refused in `Occupancy`/`Revenue`/`Sheet`/`Housekeeping` (`internal/store/store.go:474-632`).
-- C (from #641): a window whose `dateTo` is more than 730 nights after `dateFrom` is refused in `parseRange` (`internal/store/store.go:448-467`) before `Occupancy` takes the lock (`:479`) and before either loop runs (`:494`, `:537`), so the refused read holds no mutex and walks no date; details: [section 8](#8-delta--report-date-ranges-carry-a-declared-span-cap-refs-641) and `docs/architecture/lld.md` [section 31](../lld.md#31-reporting-date-ranges-carry-a-declared-span-cap-refs-641).
-- V: `Sheet` on an unknown business date surfaces `NOT_FOUND` (`internal/store/store.go:556`).
-- J–K–M–L/N: `Apply` ingests one event at a time and `project` routes known types only — `reservation.created` (:251), `reservation.cancelled`/`no-show` (:275), `stay.checked-in` (:283), `stay.checked-out` (:307), `rate.availability-set` (:339), `folio.charge-posted` (:353), `folio.payment-recorded` (:381), `config.changed` (:391), and the four room events (:395, :405, :419, :433). `Rebuild` projects the whole slice into a candidate set built aside (`:225-243` as it stands) and publishes it in one swap after the last event projects; an event it cannot project discards the candidate and returns today's refusal, so the published rows, offsets, and `asOf` keep their pre-rebuild values (section 9).
+- W: missing `dateFrom`/`dateTo`/`businessDate` → `VALIDATION_FAILED` before any store call (`internal/handler/handler.go:136-229`); malformed or over-wide windows refused in `Occupancy`/`Revenue`/`Sheet`/`Housekeeping` (`internal/store/store.go:504-665`).
+- C (from #641): a window whose `dateTo` is more than 730 nights after `dateFrom` is refused in `parseRange` (`internal/store/store.go:478-495`) before `Occupancy` takes the lock (`:509`) and before either loop runs (`:525`, `:569`), so the refused read holds no mutex and walks no date; details: [section 8](#8-delta--report-date-ranges-carry-a-declared-span-cap-refs-641) and `docs/architecture/lld.md` [section 31](../lld.md#31-reporting-date-ranges-carry-a-declared-span-cap-refs-641).
+- V: `Sheet` on an unknown business date surfaces `NOT_FOUND` (`internal/store/store.go:588`).
+- J–K–M–L/N: `Apply` ingests one event at a time and `project` routes known types only — `reservation.created` (:281), `reservation.cancelled`/`no-show` (:305), `stay.checked-in` (:313), `stay.checked-out` (:337), `rate.availability-set` (:369), `folio.charge-posted` (:383), `folio.payment-recorded` (:411), `config.changed` (:421), and the four room events (:425, :435, :449, :463). `Rebuild` projects the whole slice into a candidate set built aside (`:262-273`) and publishes it in one swap after the last event projects; an event it cannot project discards the candidate and returns today's refusal, so the published rows, offsets, and `asOf` keep their pre-rebuild values (section 9).
 
 Rollback: none needed for a read — reads never mutate; a failed rebuild replaces nothing and publishes nothing, and the whole change reverts with the single implementation PR (section 9).
 
@@ -73,13 +73,13 @@ See also: [deployment](../system-architecture.md) (section 1), [C4 containers](.
 
 ## 6. Error mapping
 
-Envelope `{code, message, details, traceId}` (same shape as reservations) to `docs/technical/error-handling.md` [section 1](../../technical/error-handling.md). Constructor (`internal/store/store.go:28`):
+Envelope `{code, message, details, traceId}` (same shape as reservations) to `docs/technical/error-handling.md` [section 1](../../technical/error-handling.md). Constructor (`internal/store/store.go:30`):
 
 | Code | Status | Raised when |
 |---|---|---|
-| `VALIDATION_FAILED` | 400 | missing/malformed date window or business date (`internal/handler/handler.go:136-229`; `internal/store/store.go:474-632`); from #641 a window wider than 730 nights, naming `dateTo` (`internal/store/store.go:448-467`, section 8) |
+| `VALIDATION_FAILED` | 400 | missing/malformed date window or business date (`internal/handler/handler.go:136-229`; `internal/store/store.go:504-665`); from #641 a window wider than 730 nights, naming `dateTo` (`internal/store/store.go:478-495`, section 8) |
 | `UNAUTHENTICATED` | 401 | missing session token (`internal/handler/handler.go:118-128`) |
-| `NOT_FOUND` | 404 | unknown business date for the daily sheet (`internal/store/store.go:556`) |
+| `NOT_FOUND` | 404 | unknown business date for the daily sheet (`internal/store/store.go:588`) |
 
 A failed rebuild answers its caller — the rebuild job wiring, not a read
 route — with the same `VALIDATION_FAILED` refusal it returns today (same
@@ -207,25 +207,29 @@ reading an empty or partial set whose `asOf` was the newest event that
 did apply (`:215-217`) — occupancy and revenue reading as zero or short
 behind a plausible freshness stamp.
 
-As specified by #642 (the implementation PR lands the seam and then
-refreshes these line pins per maintain-with-code):
+As built by #642 (this branch; the pins below are the landed
+`file:line`, and the "before this change" paragraph above keeps the
+pre-change head it cited):
 
 - **One publication seam.** The seen record, the per-subscription
-  offsets, the as-of stamp, and the six projection maps become one
-  replaceable set behind the store mutex (`internal/store/store.go:138-149`,
-  the shape `New` builds at `:152-163`). `Rebuild` fills a private
-  candidate — no lock held, unreachable from any read — and installs it
-  in one critical-section assignment after the last event projects. The
-  slice is folded by the same per-event `project` (`:245-446`) `Apply`
-  drives today (`:208-210`), so a rebuilt row is the row it produced
+  offsets, the as-of stamp, and the six projection maps became one
+  replaceable set, `snapshot`, behind the store mutex
+  (`internal/store/store.go:143-153`, built by `newSnapshot` at
+  `:157-168`; `Store` holds only `mu` plus the current set at `:174-177`,
+  published by `New` at `:180-182`). `Rebuild` fills a private candidate
+  — no lock held, unreachable from any read — and installs it in one
+  critical-section assignment after the last event projects (`:262-273`,
+  the swap at `:269-271`). The slice is folded by the same per-event
+  `project` (`:275-472`) through `fold` (`:230-248`), the fold `Apply`
+  also drives (`:218-222`), so a rebuilt row is the row it produced
   before.
 - **An aborted rebuild publishes nothing.** On the first refused event
   the candidate is dropped and the refusal is returned unchanged — same
   `VALIDATION_FAILED`, status 400, message, and `details.field`, through
-  `validation(field, message)` (`:28-32`) — while the published
+  `validation(field, message)` (`:30-32`) — while the published
   projections, seen record, offsets, and `asOf` keep their pre-rebuild
   values. A retry replays from the same record because `Offsets()`
-  (`:649-658`) reads the untouched published set. There is one store in
+  (`:683-692`) reads the untouched published set. There is one store in
   this module today (the in-memory `Store`); the migrated read-model
   tables (`services/reporting/migrations/000002_schema.up.sql:19-56`) are
   not yet read or written by the process, and the persisted store must
@@ -242,12 +246,12 @@ refreshes these line pins per maintain-with-code):
   last-good `asOf`.
 - **A successful rebuild stays byte-identical.** The candidate is filled
   by the same `project` code in the same slice order, and row order comes
-  from the reads' own sorts (`Occupancy` `:517-523`, `Sheet` `:597-609`,
-  `Housekeeping` `:642`) with `Revenue` walking the requested dates in
-  order (`:534-547`), so rows, row order, zero-filled dates, revenue
+  from the reads' own sorts (`Occupancy` `:548-553`, `Sheet` `:629-640`,
+  `Housekeeping` `:676`) with `Revenue` walking the requested dates in
+  order (`:560-579`), so rows, row order, zero-filled dates, revenue
   totals, daily-sheet groups, housekeeping list, `asOf`, and the
   per-subscription offsets are today's clear-and-replay output; duplicate
-  ids stay no-ops (`:205-207`).
+  ids stay no-ops (`:234-236`).
 
 Design: `docs/architecture/lld.md`
 [section 35](../../architecture/lld.md#35-a-failed-reporting-rebuild-keeps-the-last-good-read-model-refs-642)
