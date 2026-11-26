@@ -1504,12 +1504,12 @@ finding R2 (the #625 class, filed as #632): the reservation's frozen
 price basis is client-supplied. `CreateReservation` reads
 `priceBasis.totalMinor` from the request body and only checks that it
 is present and non-negative
-(`services/reservations/internal/service/service.go:155-157`), the
+(`services/reservations/internal/service/service.go:158-160`), the
 handler reads the same value from the body — Create at
-`services/reservations/internal/handler/handler.go:173`, Modify at
-`:287` — the store persists it verbatim
-(`services/reservations/internal/store/store.go:242`) and re-freezes
-it on Modify (`:440-444`), and no `QuotePrice` call exists on the
+`services/reservations/internal/handler/handler.go:181`, Modify at
+`:297` — the store persists it verbatim
+(`services/reservations/internal/store/store.go:274-275`) and re-freezes
+it on Modify (`:472-476`), and no `QuotePrice` call exists on the
 booking path — the rates client the service wires today runs only
 `CheckRestrictions`
 (`services/reservations/internal/pricing/client.go:43-85`). A caller
@@ -1535,11 +1535,11 @@ As-built validation (read-only code trace at this spec head):
 
 - **The frozen total is whatever the caller sent.** The only checks on
   it are presence and `>= 0`
-  (`services/reservations/internal/service/service.go:155-157` on
-  Create, `:245-247` on Modify), and the validated value is handed
-  straight to the store (`:186`, `:301`) which persists it
-  (`services/reservations/internal/store/store.go:242`) and re-freezes
-  it on Modify (`:440-444`). Nothing compares it to a rate.
+  (`services/reservations/internal/service/service.go:158-160` on
+  Create, `:250-252` on Modify), and the validated value is handed
+  straight to the store (`:189`, `:306`) which persists it
+  (`services/reservations/internal/store/store.go:274-275`) and re-freezes
+  it on Modify (`:472-476`). Nothing compares it to a rate.
 - **Nothing on the booking path quotes.** The wired rates client has
   one operation, `CheckRestrictions`
   (`services/reservations/internal/pricing/client.go:43-85`); the
@@ -1548,8 +1548,8 @@ As-built validation (read-only code trace at this spec head):
 - **The desk already quotes the way the server would.** The Book
   screen reads `QuotePrice` with the room type, arrival date,
   departure date, and the typed discount
-  (`app/src/views/BookView.vue:793`) and sends that total back as
-  `priceBasis` (`:930-937`), so a recompute over the same inputs
+  (`app/src/views/BookView.vue:807-820`) and sends that total back as
+  `priceBasis` (`:948-958`), so a recompute over the same inputs
   reproduces the number the clerk saw.
 - **The recompute needs no stored rate plan.** `QuotePrice` resolves
   the plan when exactly one prices the type and refuses with
@@ -1557,7 +1557,7 @@ As-built validation (read-only code trace at this spec head):
   (`contracts/http/QuotePrice.json`, its `ratePlanName` note) — the
   same call shape the desk already makes. A booking row records the
   total and the discount name only
-  (`services/reservations/internal/store/store.go:47-62`), while
+  (`services/reservations/internal/store/store.go:47-63`), while
   `FR-RTE-5` names the rate plan and the nightly breakdown; widening
   what a reservation stores is out of scope here (#632 Out), so the
   recompute uses the effective room type, dates, and discount the

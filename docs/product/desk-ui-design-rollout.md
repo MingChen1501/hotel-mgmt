@@ -2415,8 +2415,8 @@ request whose total disagrees with `PRICE_CHANGED`, and refuses
 fail-closed with `UPSTREAM_UNAVAILABLE` when Pricing cannot be read.
 The Book screen already quotes before it books — it reads `QuotePrice`
 for the type, dates, and typed discount
-(`app/src/views/BookView.vue:793`) and sends that total back as
-`priceBasis` (`:930-937`) — so the matching path needs no desk change.
+(`app/src/views/BookView.vue:807-820`) and sends that total back as
+`priceBasis` (`:948-958`) — so the matching path needs no desk change.
 What the desk must not do is leave the clerk holding a total the
 service will never accept.
 
@@ -2432,7 +2432,7 @@ Decision (three parts):
    click still books once. A failed re-read books nothing and says so
    in plain words, reusing the existing no-price wording when the type
    lost its price for those dates (`desk.book.refused_noprice`,
-   `messages/en.json:428`).
+   `messages/en.json:440`).
 2. **The refusal speaks catalogue words and switches on the code.**
    One new key, `desk.book.refused_price_changed`, ships in both
    locales with its `{total}` placeholder intact; the branch is on the
