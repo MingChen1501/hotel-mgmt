@@ -115,13 +115,13 @@ the guard itself is listed in section 3 (it does not exist yet).
 confirm's sellability re-read and its zero-count refusal span
 `:977-1011` (the read at `:982-993`, the sold-out refusal at
 `:1004-1011`) and the `CONFLICT`-to-sold-out mapping is
-`:1110-1117`. The stack head predates `#759`, so at the stack head the
-same code sits at `:912-947` (refusal `:940-947`) and `:1038-1045`. Use
-the `origin/master` pins in the matrix; the stack-head offsets are
-recorded here so the two trees can be checked side by side. The sibling
-spec PRs #756 and #757 still cite the older `:919-946` / `:940-947`
-offsets, which is the same pre-`#759` numbering; this document does not
-edit their files (see the report note).
+`:1110-1117`. The spec branches were then cascaded onto the same master
+commit, so the stack now carries `#759` as well and these are the only
+offsets in play: the pre-`#759` numbering this note used to record
+(`:912-947` with the refusal at `:940-947`, and `:1038-1045`) no longer
+exists in any branch of the stack. The sibling spec PRs #756 and #757
+were retargeted to the same pins, so every document in the set cites one
+numbering.
 
 | Pin | What it proves today |
 |---|---|
@@ -138,8 +138,8 @@ edit their files (see the report note).
 | `services/rooms/src/server.test.ts:693-717` | Releasing a range with no covering block refuses `STATE_ILLEGAL` (unknown room `NOT_FOUND`): the block-effect control beside `SL8` |
 | `services/rooms/src/pgstore.test.ts:22-57` | The Postgres aggregate answers `sellableCount: 1` (`:32`) for a `vacant-inspected` room — the parity fixture's starting point. Skipped unless `TEST_PG_URL` is set (`:7-10`, `:21`) |
 | `services/rooms/src/pgstore.test.ts:59-111` | The Postgres block subtract/release pair (`:78` zero, `:92` one) and the no-block release refusal (`:94-103`). Same skip rule |
-| `app/src/views/BookView.vue:977-1011` (`origin/master` `b6ff53a`; stack head `:912-947`) | The confirm re-reads the aggregate sellability for the quoted type and dates and refuses below one with `desk.book.refused_soldout` before it calls `CreateReservation` — the desk path `AC-SEL-2` relies on, needing no edit |
-| `app/src/views/BookView.vue:1110-1117` (`origin/master` `b6ff53a`; stack head `:1038-1045`) | A `CONFLICT` from `CreateReservation` maps to the same sold-out sentence — the second refusal path, unchanged |
+| `app/src/views/BookView.vue:977-1011` (`origin/master` `b6ff53a`; the stack carries `#759`, so the same range) | The confirm re-reads the aggregate sellability for the quoted type and dates and refuses below one with `desk.book.refused_soldout` before it calls `CreateReservation` — the desk path `AC-SEL-2` relies on, needing no edit |
+| `app/src/views/BookView.vue:1110-1117` (`origin/master` `b6ff53a`; the stack carries `#759`, so the same range) | A `CONFLICT` from `CreateReservation` maps to the same sold-out sentence — the second refusal path, unchanged |
 | `app/src/views/BookView.test.ts:626-987` | The confirm sends the freshly read count as `sellableUnits` (the read is asserted at `:633-643`, the value at `:985`): the wiring `SL10` re-runs |
 | `app/src/views/BookView.test.ts:989-1030` | A zero aggregate count refuses the booking with the sold-out string and never calls `CreateReservation` — the guard that turns `sellableCount: 0` into "not sold" with no desk change |
 | `app/src/views/BookView.test.ts:1163-1189` | A `CONFLICT` maps to the same sold-out string (`SL10`'s second half) |
