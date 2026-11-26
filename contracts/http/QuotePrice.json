@@ -2,7 +2,7 @@
   "operation": "QuotePrice",
   "contract": "PricingService",
   "version": "1.0",
-  "traces": ["docs/architecture/lld.md sections 1 and 4", "docs/technical/integration.md section 1 C1", "FR-RTE-5", "FR-RTE-1", "FR-RTE-3", "BR-13"],
+  "traces": ["docs/architecture/lld.md sections 1, 4, and 37", "docs/technical/integration.md section 1 C1", "FR-RTE-5", "FR-RTE-1", "FR-RTE-3", "FR-RTE-9", "BR-13", "BR-68"],
   "transport": {
     "method": "POST",
     "path": "/v1/rates/QuotePrice",
@@ -38,11 +38,12 @@
         }
       },
       "discountName": { "type": ["string", "null"] },
-      "totalMinor": { "type": "integer", "description": "Stored as the reservation price basis; later rate changes never alter it unless recalculated (BR-13)." }
+      "totalMinor": { "type": "integer", "description": "Stored as the reservation price basis; later rate changes never alter it unless recalculated (BR-13). A total that would leave the int64 range is refused rather than served wrapped." }
     }
   },
   "errors": [
     { "code": "UNAUTHENTICATED", "status": 401, "when": "Missing session token." },
+    { "code": "STATE_ILLEGAL", "status": 422, "when": "The quote arithmetic would leave the int64 range; details name roomTypeId with reason total_overflow, and no total and no nights are served." },
     { "code": "NOT_FOUND", "status": 404, "when": "No rate price for the type and dates; details.reason names no_rate_price (a night has no price row) or no_rate_plan (no plan prices the type), so the type is not yet operational." },
     { "code": "VALIDATION_FAILED", "status": 400, "when": "Missing field, bad date order, or unknown discount." }
   ]

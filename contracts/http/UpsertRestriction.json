@@ -2,7 +2,7 @@
   "operation": "UpsertRestriction",
   "contract": "PricingService",
   "version": "1.0",
-  "traces": ["docs/architecture/lld.md section 4", "FR-RTE-4", "BR-10"],
+  "traces": ["docs/architecture/lld.md sections 4 and 37", "FR-RTE-4", "FR-RTE-6", "FR-RTE-7", "BR-10", "BR-68"],
   "transport": {
     "method": "POST",
     "path": "/v1/rates/UpsertRestriction",
@@ -16,7 +16,7 @@
       "dateFrom": { "type": "string", "format": "date" },
       "dateTo": { "type": "string", "format": "date" },
       "minStay": { "type": ["integer", "null"], "minimum": 1 },
-      "closedToArrival": { "type": "boolean", "default": false }
+      "closedToArrival": { "type": "boolean", "default": false, "description": "When present it must be a JSON boolean; any other value is refused rather than coerced to false." }
     }
   },
   "response": {
@@ -33,6 +33,7 @@
   },
   "errors": [
     { "code": "UNAUTHENTICATED", "status": 401, "when": "Missing session token." },
-    { "code": "VALIDATION_FAILED", "status": 400, "when": "Missing field or dateTo before dateFrom." }
+    { "code": "NOT_FOUND", "status": 404, "when": "Unknown room type: no rate price row names it, so the window would match nothing." },
+    { "code": "VALIDATION_FAILED", "status": 400, "when": "Missing field, dateTo before dateFrom, a roomTypeId that is not a UUID, or a closedToArrival that is not a JSON boolean." }
   ]
 }
