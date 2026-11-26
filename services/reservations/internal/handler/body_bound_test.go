@@ -91,6 +91,7 @@ func TestBodyCeilingRefusesOversizedBody(t *testing.T) {
 	svc := service.New(st)
 	svc.CheckRestrictionsHook = func(_, _, _, _ string) *store.OpError { return nil }
 	svc.AvailabilityHook = func(_, _, _, _ string) (int, *store.OpError) { return 1, nil }
+	svc.QuotePriceHook = fixtureQuote
 	mux := NewMux(svc, st)
 
 	over := loopBody("bnd-over")

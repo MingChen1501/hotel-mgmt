@@ -182,7 +182,8 @@ paths:
       - Reservations
       summary: Book one reservation, confirmed state (desk loop step 3).
       description: 'ReservationService: Reservations (Reservations module). Contract version 1.2. Traces: docs/architecture/lld.md
-        section 1 and 26, docs/technical/integration.md section 1, FR-RES-1, FR-RTE-5, NFR-CON-1, FR-OVB-1, FR-OVB-3, ADR-0006.'
+        section 1 and 26, docs/technical/integration.md section 1, FR-RES-1, FR-RTE-5, NFR-CON-1, FR-OVB-1, FR-OVB-3, ADR-0006,
+        ADR-0007.'
       requestBody:
         required: true
         content:
@@ -225,15 +226,20 @@ paths:
                     the ceiling from the room inventory Rooms records, and a malformed value is still VALIDATION_FAILED.
                 priceBasis:
                   type: object
+                  description: Advisory (ADR-0007). The server re-derives the frozen total and the applied discount
+                    name from Rates QuotePrice for this room type, dates, and discount; a disagreeing total is refused
+                    PRICE_CHANGED (409). Required for the deprecation window.
                   required:
                   - totalMinor
                   properties:
                     totalMinor:
                       type: integer
                       minimum: 0
+                      description: The total the caller shows; compared with the Rates quote, never stored (ADR-0007 D3).
                     discountName:
                       type: string
                       nullable: true
+                      description: Discount to quote with; the stored name is the one the quote applied (ADR-0007 D1).
                 discountName:
                   type: string
                 idempotencyKey:
@@ -273,14 +279,16 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '404':
-          description: 'NOT_FOUND: Unknown room type: Rooms refused the capacity read and the refusal is surfaced unchanged
-            (ADR-0006 D4).'
+          description: 'NOT_FOUND: Unknown room type, or no rate price/plan for the dates; either refusal is surfaced
+            unchanged and nothing is booked (ADR-0006 D4, ADR-0007 D4).'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '409':
-          description: 'CONFLICT: No sellable unit left for the type and dates; details name type+dates (NFR-CON-1).'
+          description: 'CONFLICT: No sellable unit left for the type and dates; details name type+dates (NFR-CON-1).
+            PRICE_CHANGED: priceBasis.totalMinor differs from the Rates QuotePrice total, so nothing was booked; details
+            name roomTypeId, arrivalDate, departureDate, requestedTotalMinor, and quotedTotalMinor (ADR-0007 D3).'
           content:
             application/json:
               schema:
@@ -292,8 +300,17 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
         '400':
-          description: 'VALIDATION_FAILED: Missing field, bad date order, a malformed sellableUnits, or a hotel-mandatory
-            guest field is missing (FR-CUS-1).'
+          description: 'VALIDATION_FAILED: Missing field, bad date order, a malformed sellableUnits, a hotel-mandatory
+            guest field is missing (FR-CUS-1), or the Rates quote refused an unknown discount or an ambiguous plan set,
+            surfaced unchanged (ADR-0007 D4).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '503':
+          description: 'UPSTREAM_UNAVAILABLE: The room inventory or the price could not be read, so the booking was
+            refused rather than frozen at an unverified total; details name the upstream and the operation (ADR-0006 D4,
+            ADR-0007 D4).'
           content:
             application/json:
               schema:

@@ -430,3 +430,30 @@ func TestPostgresDerivedCeilingParity(t *testing.T) {
 			reservations, changes, events, keys)
 	}
 }
+
+// TestPostgresReplayResolvesStoredKey is the Postgres half of the
+// ADR-0007 D5 read: the key-only lookup resolves the stored row, and a
+// miss returns (nil, nil) so the caller asks Pricing.
+func TestPostgresReplayResolvesStoredKey(t *testing.T) {
+	db := pgTestDB(t)
+	pgWipe(t, db)
+	pg := NewPostgres(db)
+
+	created, oerr := pg.Create(pgLoopInput(), "replay-key")
+	if oerr != nil {
+		t.Fatalf("create refused: %v", oerr)
+	}
+	got, oerr := pg.Replay("CreateReservation", "", "replay-key")
+	if oerr != nil {
+		t.Fatalf("replay refused: %v", oerr)
+	}
+	if got == nil || got.Ref != created.Ref || got.TotalMinor != created.TotalMinor {
+		t.Fatalf("replay = %+v, want the stored booking %s", got, created.Ref)
+	}
+	if none, oerr := pg.Replay("CreateReservation", "", "other-key"); oerr != nil || none != nil {
+		t.Fatalf("miss = %+v, %v; want (nil, nil)", none, oerr)
+	}
+	if none, oerr := pg.Replay("ModifyReservation", created.Ref, "replay-key"); oerr != nil || none != nil {
+		t.Fatalf("other-operation miss = %+v, %v; want (nil, nil)", none, oerr)
+	}
+}
