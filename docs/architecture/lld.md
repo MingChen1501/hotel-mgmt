@@ -2425,7 +2425,7 @@ Edge trace (every edge cites code):
   `app/src/stay-options.ts:121`).
 - C–D: the helper sends `localBusinessDate()` to the existing
   `ListArrivalsDepartures` (`app/src/stay-options.ts:44`, `:121-129`;
-  `contracts/http/ListArrivalsDepartures.json:19-33`).
+  `contracts/http/ListArrivalsDepartures.json:19-32`).
 - D–E / D–H: a successful list read moves on to room numbers; a
   failed read returns `{ options: [], failed: true }`
   (`app/src/stay-options.ts:130-136`), which the view maps to
