@@ -226,7 +226,7 @@ Interfaces (provider: `RoomInventoryService`):
 
 | Operation | Request | Response | Errors |
 |---|---|---|---|
-| `CheckRoomTypeSellability` | roomType, dateFrom, dateTo | `totalCount`, `blockedRooms`, derived `sellableCount` | `NOT_FOUND` (unknown type), `VALIDATION_FAILED` (missing field, reversed range) |
+| `CheckRoomTypeSellability` | roomType, dateFrom, dateTo | `totalCount`, `blockedRooms`, derived `sellableCount` (block-free rooms in a sellable state; section 36) | `NOT_FOUND` (unknown type), `VALIDATION_FAILED` (missing field, reversed range) |
 | `FindReadyRoom` | roomType, date | room candidates (number, floor, bed, capacity, features) | `NOT_FOUND` (no ready room) |
 | `AssignRoom` | roomNumber, stayLink, idempotencyKey | assignment receipt | `CONFLICT` (just taken), `STATE_ILLEGAL` (not ready / blocked) |
 | `ReleaseRoom` | roomNumber, toState, actor | new state | `STATE_ILLEGAL` (illegal transition) |
@@ -8453,3 +8453,277 @@ findings, the same as any drifted spec.
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1207
+
+## 36. Room state counts in sellability (Refs #636)
+
+Tier **T2 confirmed**: the arithmetic behind one existing read changes,
+so its caller-visible answer moves, while the operation, its request and
+response fields, its statuses, its refusal vocabulary, every desk layout,
+token, component, state, and copy, and every print rule stay as they are.
+No new subsystem, dependency edge, data model, lifecycle state, or code
+token appears, so no ADR and no T3 record. Product done-conditions are
+`docs/product/acceptance-criteria.md` section 29 (`AC-SEL-1`..`AC-SEL-4`)
+with D-41 in `docs/project/decision-log.md` and R-22 in
+`docs/project/risk-register.md`; FR/NFR wording and business rule BR-67
+are the `business-analyst` handoff (`docs/requirements/mvp-requirements.md`
+section 37, `docs/requirements/business-rules.md`); guard traceability is
+the `qa-lead` handoff (`docs/testing/traceability-matrix.md` section 29);
+the release note and rollback pointer are the `release-manager` handoff,
+and implementation is the `dev` handoff. This section records only the
+architect-owned delta: where the non-sellable set is computed in each
+store (36.1), the single-room reply shape (36.2), the block-refusal
+priority and the subtract-once rule (36.3), the unchanged #631 ceiling
+(36.4), the per-flow diagram (36.5), the contract edit and verification
+plan (36.6), the residual risks with the re-tier trigger (36.7), and the
+maintain-with-code rule (36.8).
+
+As found (audit finding M1, at this spec head): `checkSellability`
+resolves the type and both dates and refuses a reversed range
+(`services/rooms/src/store.ts:334-347`), then branches. The single-room
+branch answers any block-free room with `totalCount: 1` and
+`sellableCount: 1` (`:348-368`, reply `:361-368`), refusing only a
+covering block with `STATE_ILLEGAL` (`:350-360`). The aggregate branch
+takes every room of the type (`:370`), builds `blockedRooms` from the
+covering blocks (`:371-377`), and reports
+`ofType.length - blockedRooms.length` (`:382-383`). No branch reads
+`room.state`, though the five states and their transitions are in the
+same file (`:17-30`, `:34-40`). The Postgres twin answers the same
+block-only way: single room (`services/rooms/src/pgstore.ts:355-381`),
+aggregate `count(*)` / `count(*) FILTER (WHERE NOT EXISTS …)` over
+`rooms.rooms` (`:382-392`, reply `:403-410`), `blockedRooms` query
+(`:393-402`). One route serves both branches
+(`services/rooms/src/server.ts:193-196`), and the aggregate number is the
+desk's availability figure the Book confirm re-reads before it creates a
+reservation (`app/src/views/BookView.vue:977-1011`), so a room out of
+order for maintenance, or one with a guest in it, is offered for sale.
+
+### 36.1 One explicit non-sellable set, applied inside each store's existing read
+
+The change adds one named constant — the non-sellable states,
+`out-of-order` and `occupied` — beside the state vocabulary
+(`src/store.ts:17-30`) and uses it in both branches of both stores. It is
+a fixed rule in code, not per-hotel configuration:
+`docs/requirements/business-rules.md` section 9 records the list as
+fixed, so no owner setting, deployment file, or environment variable
+carries it. Every vacant state (`vacant-dirty`, `vacant-clean`,
+`vacant-inspected`) stays sellable, so a dirty room is still offered for
+a future stay and the under-counting risk is bounded by exactly those two
+names rather than by an open-ended "any non-vacant" rule.
+
+- **In-memory aggregate.** The room set is the same `ofType`
+  (`src/store.ts:370`) and `blockedRooms` is built exactly as today
+  (`:371-377`). `sellableCount` becomes one predicate over that same set
+  — a room counts when it is block-free and its state is not in the
+  non-sellable set (`:382-383` new) — so `totalCount` stays
+  `ofType.length` (`:382`) and `blockedRooms` keeps its membership and
+  order (`:384`).
+- **Postgres aggregate.** The existing `count(*)` / `count(*) FILTER
+  (WHERE NOT EXISTS …)` query grows one conjunct in the filter: the
+  room's state is not in the two-name list (`src/pgstore.ts:383-390`
+  new). The `blockedRooms` query is untouched (`:393-402`), and
+  `sellableCount` still comes from the same `counted` row (`:407-408`),
+  so neither branch adds a round trip.
+- **Both stores agree.** The predicate is the same two names in both
+  files — a status set in TypeScript and a `state NOT IN (...)`
+  predicate in SQL. The requirements guard `S5`
+  (`docs/requirements/mvp-requirements.md` section 37.5) drives the same
+  recorded-state fixture through both stores and asserts identical
+  `totalCount`, `sellableCount`, and `blockedRooms`.
+- **Empty type.** A type with no rooms keeps answering
+  `totalCount: 0` and `sellableCount: 0`; counting the same empty set
+  with the new predicate changes nothing.
+
+### 36.2 The single-room reply keeps its envelope and answers `sellableCount: 0`
+
+For a named `roomNumber`, after the block check (36.3), the branch
+answers success with today's six fields and `totalCount: 1`; only
+`sellableCount` moves to `0` — and `blockedRooms` stays `[]` — when the
+room's state is in the non-sellable set (`src/store.ts:361-368` new;
+`src/pgstore.ts:373-380` new). A block-free vacant room still answers
+`sellableCount: 1` exactly as today.
+
+Decided over a refusal because it reuses today's status (200), envelope,
+fields, and copy: no error code joins the contract enum, no sentence is
+added, and the Book confirm's existing sold-out path already refuses a
+zero count (`app/src/views/BookView.vue:1004-1011`), so no desk file
+changes. A refusal would have added a caller-visible answer the contract
+does not carry and would have moved `RoomsView`'s read (36.3).
+
+### 36.3 Block refusal outranks the state answer, and a room is subtracted once
+
+- **`STATE_ILLEGAL` keeps priority.** Both stores test the covering
+  block before they look at state (`src/store.ts:349-360`,
+  `src/pgstore.ts:355-372`), so a block-covered `out-of-order` room still
+  refuses 422 `STATE_ILLEGAL` naming the room and carrying the block's
+  dates and reason (`rooms.state.room_blocked`) — never a 200 with
+  `sellableCount: 0`. The ordering is a desk-visible contract:
+  `RoomsView` renders its covering-block note only from that refusal
+  (`app/src/views/RoomsView.vue:549-593`), and `DeskView`'s room cards
+  read it the same way (`app/src/views/DeskView.vue:1056-1100`); both
+  treat any 200 as "no covering block", so the new state-aware 200 for a
+  block-free non-sellable room leaves their note behaviour unchanged.
+  The implementation must not hoist the state test above the block test.
+- **Subtract once, never twice.** The aggregate `sellableCount` is a
+  count of the rooms that pass one combined predicate, not the arithmetic
+  `ofType.length - blockedRooms.length - nonSellable.length`. A room that
+  is both block-covered and `out-of-order` fails the one predicate and is
+  counted zero times, so it is subtracted exactly once, `sellableCount`
+  never goes below `0`, and `blockedRooms` still names that room exactly
+  once. `totalCount` never moves with state.
+- **`blockedRooms` is block-only.** Room state never adds a room to
+  `blockedRooms`: its membership, order, and the `BlockRoom` /
+  `ReleaseBlock` codes, statuses, details, and stored effect stay as they
+  are (`src/store.ts:474-550`; `src/pgstore.ts:559-662` same semantics),
+  and releasing a block returns a room to sale only when its state is
+  sellable.
+
+### 36.4 The merged #631 ceiling is unchanged in both directions
+
+Reservations derives the overbooking guard's ceiling as
+`totalCount - len(blockedRooms)` from this same read and consumes neither
+`sellableCount` nor room state
+(`services/reservations/internal/availability/client.go:44-53`;
+ADR-0006 D2; `docs/architecture/services/rooms.md` section 9). This
+change therefore neither raises nor lowers that ceiling: an
+`out-of-order` room stays inside it until the separate Reservations
+availability decision owns the question, and a blocked room leaves it
+exactly as it does today. The desk figure and the ceiling may therefore
+differ after this change — the display excludes room state, the guard
+does not — which LLD section 26 already records as residual risk
+R-OVB-3; it is a recorded split, not one introduced silently, and the
+implementation edits no Reservations client, fixture, or guard. The
+`CheckRoomTypeSellability` operation, route, response shape, required
+fields, statuses, and error list also stay as today (36.6).
+
+### 36.5 Per-flow diagram
+
+One read operation, one route, two branches — the happy aggregate path,
+the sold-out single-room path, and the block refusal:
+
+```mermaid
+flowchart TD
+    A[POST /v1/rooms/CheckRoomTypeSellability  server.ts:193-196] --> B{roomNumber supplied}
+    B -- no, aggregate --> C[Rooms of the type and block-covered numbers for the range  store.ts:370-377, pgstore.ts:382-402]
+    C --> D[sellableCount counts the rooms that are block-free and whose state is neither out-of-order nor occupied, once each  store.ts:382-383 new, pgstore.ts:383-390 new]
+    D --> E[200 totalCount N, sellableCount, blockedRooms unchanged  store.ts:378-385, pgstore.ts:403-410]
+    E --> K[Desk availability figure, the booking ceiling stays totalCount minus len blockedRooms  ADR-0006 D2, availability client.go:44-53]
+    B -- yes, single room --> F{Room covered by a block for the range?}
+    F -- yes --> G[422 STATE_ILLEGAL naming the room, block dates and reason  store.ts:350-360, pgstore.ts:355-372]
+    G --> G1[RoomsView renders the covering-block note  RoomsView.vue:549-593]
+    F -- no --> H{Room state in the non-sellable set?}
+    H -- out-of-order or occupied --> I[200 totalCount 1, sellableCount 0, blockedRooms empty  store.ts:361-368 new, pgstore.ts:373-380 new]
+    I --> I1[Book confirm refuses with desk.book.refused_soldout, no reservation created  BookView.vue:1004-1011]
+    H -- vacant-dirty, vacant-clean, or vacant-inspected --> J[200 totalCount 1, sellableCount 1, as today  store.ts:361-368, pgstore.ts:373-380]
+```
+
+Edge trace:
+
+- A–B: one route answers both branches
+  (`services/rooms/src/server.ts:193-196`); the type and both dates
+  resolve first, and a reversed range refuses `VALIDATION_FAILED`
+  (`src/store.ts:342-347`; `src/pgstore.ts:349-354`).
+- B–C–D–E: the aggregate branch keeps `ofType` and `blockedRooms`
+  (`src/store.ts:370-377`; `src/pgstore.ts:382-402`) and replaces the
+  subtraction with one block-free-and-sellable-state predicate
+  (`:382-383` new; `:383-390` new), so `totalCount` and `blockedRooms`
+  are byte-identical to today while `sellableCount` can only fall
+  (`src/store.ts:378-385`; `src/pgstore.ts:403-410`).
+- E–K: the number the desk reads; the guard reads the other two fields,
+  so the ceiling does not move (36.4).
+- B–F–G: the block test runs first in both stores
+  (`src/store.ts:349-360`; `src/pgstore.ts:355-372`) and keeps its
+  `STATE_ILLEGAL` shape and its `RoomsView` consumer
+  (`app/src/views/RoomsView.vue:549-593`).
+- F–H–I: after a block-free check, a non-sellable state answers 200 with
+  `sellableCount: 0` (`src/store.ts:361-368` new; `src/pgstore.ts:373-380`
+  new), and the Book confirm's existing sold-out refusal is what refuses
+  the booking (`app/src/views/BookView.vue:977-1011`); a booking that
+  loses the last-room race is refused through the same sentence on
+  `CONFLICT` (`:1110-1117`).
+- H–J: a block-free vacant room of any vacant state answers
+  `sellableCount: 1` exactly as today, so the dirty-room control (`S4`)
+  stays green.
+
+Failure/rollback path: a covering block still refuses before any state
+test, so a blocked room's answer and the desk block note do not change.
+An unknown type or room still refuses `NOT_FOUND`
+(`src/store.ts:210-226`), a reversed range `VALIDATION_FAILED` before
+either branch runs, and a type with no rooms answers `0`/`0`. The read
+mutates no row, emits no event, and holds no lock across another module,
+so a refusal writes nothing. Rollback is the single implementation PR:
+removing the predicate and the single-room state test returns the
+block-only arithmetic with no migration, backfill, or data repair in
+either direction, because no stored row changes shape.
+
+### 36.6 Contract edit and verification plan
+
+One prose line moves: `sellableCount`'s description in
+`contracts/http/CheckRoomTypeSellability.json` becomes "Rooms of the
+type with no overlapping out-of-order block and a sellable recorded
+state (not `out-of-order` or `occupied`)." The `traces` list gains this
+section and BR-67 beside the existing LLD pointers. The operation name,
+route, auth, request properties, response properties and their types,
+required lists, statuses, and error list are unchanged, so the contract
+stays backward-compatible, every fixture keeps naming a known operation,
+and no catalogue key, UI contract section, schema, or migration is
+involved.
+
+Verification (commands from `docs/architecture/services/rooms.md`
+section 7 and the repo root):
+
+- `services/rooms`: `npm run build`, `npm test`, `npm run lint` — the new
+  state guards (`S1`..`S8` in requirements section 37.5) plus the existing
+  sellability and block guards. The Postgres guards run when `TEST_PG_URL`
+  is set and skip otherwise; the in-memory twin carries the same
+  assertions.
+- Repo root: `script/contract-check.sh` (every JSON file parses and every
+  fixture resolves to a known operation), `script/markdown-link-check.sh`,
+  and `script/catalogue-coverage-check.sh` (no key moved).
+- Diff gate (`S9`): no change under `services/reservations/`, and no new
+  field, status, error token, migration, or desk assertion.
+
+### 36.7 Residual risks and re-tier trigger
+
+- **Under-counting if the state list is wrong.** Excluding a state the
+  hotel can sell refuses real availability; R-22 records the direction.
+  The mitigation is structural: exactly two names, every vacant state
+  sellable, and the `S4` control guard that asserts each vacant state
+  counts.
+- **`occupied` is not date-aware.** A room whose guest departs before the
+  stay's arrival date still reads unsellable for that later range. This
+  is deliberately the conservative side of the trade and is a named
+  follow-up (date-aware treatment needs a departure read from
+  Stay/Reservations), not decided here.
+- **The desk figure and the guard ceiling can differ.** After this change
+  `sellableCount` can be lower than `totalCount - len(blockedRooms)`
+  (R-OVB-3). The guard's number is the ceiling on held units and the
+  desk's is a pointer for staff; making the guard consume `sellableCount`
+  is a separate decision, not this change.
+- **The two stores can drift.** The in-memory predicate and the SQL
+  predicate name the same two states; the `S5` guard is what keeps them
+  equal for the same recorded state.
+- **Re-tier trigger.** Changing the non-sellable list beyond those two
+  names, making the state treatment date-aware, using `sellableCount` as
+  the booking ceiling (a T3 change with an ADR like ADR-0006), or adding
+  a field, status, or error token to the read is a new decision, not this
+  delta. Adding, removing, or renaming a room state is already T3 work
+  outside this issue.
+
+### 36.8 Maintain-with-code
+
+The implementation adds the two-name set beside `ROOM_STATES`, applies
+the predicate in both branches of both stores, answers
+`sellableCount: 0` on the single-room branch after the block check,
+creates the guards of 36.6, and refreshes this section's line pins plus
+the sellability edges of `docs/architecture/services/rooms.md` sections 3
+and 4 to the as-built `file:line` at the merged head (`qa-lead` re-pins
+its traceability rows). `dev-peer-review` treats these as findings the
+same as any drifted spec: a state test placed before the block test, a
+subtraction over two lists instead of one predicate, a state-derived
+entry in `blockedRooms`, a moving `totalCount`, a single-room refusal
+instead of the 200 envelope, an open-ended non-sellable rule, the state
+list becoming configuration, Reservations consuming `sellableCount`, or
+a stale pin.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1234

@@ -43,6 +43,36 @@ Edge trace (every edge cites code):
 - D: block overlap for the dates → `STATE_ILLEGAL` (:327, :381); non-ready room → `STATE_ILLEGAL` (:392); a simultaneous last-room race refuses the loser with `CONFLICT` "was just taken" (:389).
 - E: state flips to `occupied` with the stay link kept (`src/store.ts:397-400`); F: `roomNumber`, `stayLink`, `state` returned to the desk, which pairs it with Stay `MoveRoom`.
 
+### Sellability read — aggregate happy path (Refs #636)
+
+`CheckRoomTypeSellability` without `roomNumber`, the desk's availability
+figure:
+
+```mermaid
+flowchart TD
+    A[Bearer token present] --> B[Read JSON body: roomType, dateFrom, dateTo]
+    B --> C[Resolve the room type and both dates]
+    C --> D[Rooms of the type plus the block-covered numbers for the range]
+    D --> E[200 totalCount N, sellableCount = block-free rooms in a sellable state, blockedRooms unchanged]
+```
+
+Edge trace (pins at this spec head; the implementation PR refreshes them
+per maintain-with-code, LLD [section 36](../lld.md#36-room-state-counts-in-sellability-refs-636)):
+
+- A–B–C: one route answers both branches (`src/server.ts:193-196`); the
+  type and dates resolve, and a reversed range refuses
+  `VALIDATION_FAILED` (`src/store.ts:342-347`; Postgres
+  `src/pgstore.ts:349-354`).
+- D: `ofType` and `blockedRooms` as today (`src/store.ts:370-377`;
+  Postgres `src/pgstore.ts:382-402`).
+- E: `sellableCount` counts only the rooms that are block-free **and**
+  whose state is neither `out-of-order` nor `occupied`
+  (`src/store.ts:382-383` new; Postgres `src/pgstore.ts:383-390` new),
+  subtracting each room once, while `totalCount` and `blockedRooms` do
+  not move. The value is the desk's availability figure only — the
+  booking ceiling stays `totalCount - len(blockedRooms)` (section 9,
+  ADR-0006 D2).
+
 ## 4. Failure/rollback flowchart
 
 Release and block guards — the desk's turnover and out-of-order paths:
@@ -65,6 +95,45 @@ Edge trace:
 - Reversed ranges are refused up front: `dateTo` before `dateFrom` → `VALIDATION_FAILED` (`src/store.ts:319,440,479`); unknown state values → `VALIDATION_FAILED` (:270, :297).
 
 Rollback: none — each transition is a single guarded in-memory step; refusals precede mutation, and the desk drives multi-step moves (assign/release pairs) rather than the module compensating.
+
+### Sellability read — single room, block refusal, and the unsellable answer (Refs #636)
+
+`CheckRoomTypeSellability` with `roomNumber`:
+
+```mermaid
+flowchart TD
+    P[roomNumber supplied] --> Q{Room covered by a block for the range?}
+    Q -->|yes| R422[422 STATE_ILLEGAL: room, block dates, reason]
+    Q -->|no| S{Room state sellable?}
+    S -->|out-of-order or occupied| T200[200 totalCount 1, sellableCount 0, blockedRooms empty]
+    S -->|vacant-dirty, vacant-clean, vacant-inspected| U200[200 totalCount 1, sellableCount 1]
+```
+
+Edge trace:
+
+- Q–R422: the block test runs before any state test
+  (`src/store.ts:349-360`; Postgres `src/pgstore.ts:355-372`), keeping
+  `STATE_ILLEGAL` with the block's dates and reason. `RoomsView` renders
+  its covering-block note only from that refusal
+  (`app/src/views/RoomsView.vue:549-593`) and `DeskView`'s room cards read
+  it the same way (`app/src/views/DeskView.vue:1056-1100`), both treating
+  any 200 as "no covering block", so the order is a desk-visible
+  contract: a block-covered `out-of-order` room still refuses this way
+  and a block-free non-sellable room still answers 200 with no note.
+- S–T200: a block-free non-sellable room answers success with today's
+  fields and `sellableCount: 0` (`src/store.ts:361-368` new; Postgres
+  `src/pgstore.ts:373-380` new) — not a refusal. The Book confirm refuses
+  the zero count with `desk.book.refused_soldout`
+  (`app/src/views/BookView.vue:1004-1011`) and creates no reservation.
+- S–U200: a block-free vacant room of any vacant state still answers
+  `sellableCount: 1`, exactly as today.
+
+Rollback: none needed — the read mutates no row, emits no event, and
+holds no lock across another module, so every refusal and every answer
+above writes nothing. The whole change reverts with the single
+implementation PR: removing the state predicate and the single-room
+state test returns the block-only arithmetic, and no migration, backfill,
+or data repair exists in either direction.
 
 ## 5. Outbound dependencies
 
