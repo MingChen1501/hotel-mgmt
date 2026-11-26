@@ -59,6 +59,24 @@ section 4).
   the money ceiling publishes no `maximum`: no validator reads it.
   Confirmation dates are hotel-local calendar days that must exist on the
   calendar, not only match the `YYYY-MM-DD` shape.
+- Admin request ordering and config shapes: a `POST /v1/admin/<Operation>`
+  other than `SignIn` checks the session before it reads the body, so an
+  unauthenticated request with a malformed or oversized body answers
+  `UNAUTHENTICATED` (401) with the existing `error.auth.*` sentence and
+  never a parse refusal, while a resolved session keeps today's 400 and
+  the front-desk 403 follows a well-formed body (the order is 401, then
+  400, then 403; `SignIn` keeps today's order). `UpdateHotelConfig`
+  checks one per-key shape table before its first write — `name`,
+  `timezone`, the two standard `HH:MM` times, `requiredGuestFields`,
+  `cancellationReasons`, `retentionFloorDays`, and the optional profile
+  text — and refuses the whole write with `VALIDATION_FAILED` (400),
+  `details` naming the offending key, and one plain sentence, writing
+  nothing and recording no `config.updated` entry; a key outside the
+  table is written as sent. No new token and no schema keyword: both
+  statuses already exist and no validator reads a request schema on the
+  Admin path (LLD
+  [section 33](../architecture/lld.md#33-admin-authenticates-before-parsing-and-refuses-a-malformed-config-write-refs-639);
+  Refs #639).
 - Localisation readiness: every user-visible string comes from a
   message catalogue; no behaviour depends on English wording
   (`NFR-I18N-1`).
@@ -83,7 +101,7 @@ section 4).
 | `GuestService` | Profile CRUD, preference/notes update, repeat-guest flag, confirmation record. Emits `GuestEvents`. A name lookup that matches more than one guest is refused rather than resolved by first match, and guest payloads carry declared shape and length bounds (Refs #640). |
 | `BillingService` | Folio open, charge posting, payment recording, tax/fee derivation, day-close, settlement check; stay verification before every folio write (Refs #634); money amounts whole and bounded by one ceiling, refused in the adapter (Refs #635). Emits `FolioEvents`. |
 | `ReportingService` | Occupancy, revenue, daily sheet, housekeeping reports (read API over the reporting read model); the two range reports cap a window at 730 nights and refuse a wider one before any read (Refs #641). |
-| `AdminService` | Hotel profile, users/roles, configuration values, export/backup runs. Emits `ConfigChangedEvents`. |
+| `AdminService` | Hotel profile, users/roles, configuration values, export/backup runs. A session-guarded operation authenticates before it parses the body, and a config value outside its key's declared shape is refused naming the key before anything is written (Refs #639). Emits `ConfigChangedEvents`. |
 
 ## 3. Open points (superseded — decided or deferred elsewhere; kept as history)
 
@@ -126,3 +144,6 @@ Role: architect · AO session hotel-mgmt-1130
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1141
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1164
