@@ -4631,7 +4631,7 @@ does:
    already sends `discountName ?? null`,
    `app/src/views/BookView.vue:948-958`).
 3. **`CheckRestrictions`** — unchanged, with the effective values
-   (`:171-176`, `:288-293`). It keeps its place because a restriction
+   (`internal/service/service.go:171-176`, `:288-293`). It keeps its place because a restriction
    refusal means re-quoting cannot help, and it keeps its
    `STATE_ILLEGAL` terms.
 4. **Replay pre-read** — a new `Replay(key)` repository read
@@ -4800,8 +4800,8 @@ Edge trace:
 - L: `recalculatedTotal` reports the stored total
   (`internal/handler/handler.go:311`).
 - E–R: a replayed key returns the stored booking unchanged
-  (`internal/store/store.go:385-388` in-memory replay;
-  `internal/store/postgres.go:490-504` Postgres replay).
+  (`internal/store/store.go:417-421` in-memory replay;
+  `internal/store/postgres.go:490-503` Postgres replay).
 
 ### 25.6 Modify — refusal and failure path
 
