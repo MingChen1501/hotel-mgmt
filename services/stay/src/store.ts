@@ -51,6 +51,18 @@ export function requireString(value: unknown, field: string): string {
   return value.trim();
 }
 
+// requestActorAnnotation returns the additive requestActor value for a
+// JSON outbox payload (BR-65, #643): the request's actor is preserved
+// only when it is a present, non-blank string that differs exactly from
+// the recorded session actor. An equal or absent value adds no key, so
+// an honest caller's payload stays byte-identical.
+export function requestActorAnnotation(sessionActor: string, requestActor: unknown): string | null {
+  if (typeof requestActor !== "string" || requestActor.trim() === "" || requestActor === sessionActor) {
+    return null;
+  }
+  return requestActor;
+}
+
 export function optionalTimestamp(value: unknown, field: string): string | null {
   if (value === undefined || value === null || value === "") {
     return null;
@@ -128,16 +140,16 @@ export interface StayRef {
 // StayStoreAPI is the contract both the in-memory store and the
 // Postgres store implement (issue #149, extended by issue #150).
 export interface StayStoreAPI {
-  checkIn(input: CheckInInput): Promise<StayRecord>;
+  checkIn(input: CheckInInput, sessionActor: string): Promise<StayRecord>;
   getStay(input: GetStayInput): Promise<StayRecord>;
   queryStays(input: QueryStaysInput): Promise<StayRecord[]>;
-  checkOut(input: CheckOutInput, callerToken?: string): Promise<{
+  checkOut(input: CheckOutInput, sessionActor: string): Promise<{
     stay: StayRecord;
     invoiceRef: string;
     bookingCompletion: BookingCompletion;
   }>;
-  moveRoom(input: MoveRoomInput): Promise<{ stay: StayRecord; move: MoveRecord }>;
-  recordActualTimes(input: RecordActualTimesInput): Promise<StayRecord>;
+  moveRoom(input: MoveRoomInput, sessionActor: string): Promise<{ stay: StayRecord; move: MoveRecord }>;
+  recordActualTimes(input: RecordActualTimesInput, sessionActor: string): Promise<StayRecord>;
   getStayRef(input: GetStayRefInput): Promise<StayRef>;
   listArrivalsDepartures(input: ListArrivalsDeparturesInput): Promise<{
     arrivals: StayRecord[];
@@ -207,13 +219,15 @@ export class StayStore implements StayStoreAPI {
     }
   }
 
-  async checkIn(input: CheckInInput): Promise<StayRecord> {
+  async checkIn(input: CheckInInput, sessionActor: string): Promise<StayRecord> {
     const id = input.stayId === undefined || input.stayId === null || input.stayId === "" ? randomUUID() : requireUuid(input.stayId, "stayId");
     const reservationId = requireUuid(input.reservationId, "reservationId");
     const guestId = requireUuid(input.guestId, "guestId");
     const currentRoomId = requireUuid(input.roomId, "roomId");
     const actualArrival = optionalTimestamp(input.actualArrival, "actualArrival") ?? new Date().toISOString();
-    const actor = requireString(input.actor, "actor");
+    requireString(input.actor, "actor");
+    const actor = sessionActor;
+    const requestActor = requestActorAnnotation(sessionActor, input.actor);
     if (this.staysByReservation.has(reservationId)) {
       throw new HttpError("CONFLICT", msg("stay.conflict.already_checked_in", {}), {
         reservationId,
@@ -237,7 +251,13 @@ export class StayStore implements StayStoreAPI {
     this.outbox.push({
       aggregate: "stay",
       eventType: "checked-in",
-      payload: { stayId: id, reservationId, roomId: currentRoomId, actor },
+      payload: {
+        stayId: id,
+        reservationId,
+        roomId: currentRoomId,
+        actor,
+        ...(requestActor === null ? {} : { requestActor }),
+      },
     });
     return record;
   }
@@ -283,7 +303,7 @@ export class StayStore implements StayStoreAPI {
   // stay through Reservations (FR-DEP-1, #646): a replay re-attempts
   // the idempotent completion so a split is repaired, and the outcome
   // rides back to the desk as bookingCompletion (FR-DEP-5).
-  async checkOut(input: CheckOutInput, callerToken = ""): Promise<{
+  async checkOut(input: CheckOutInput, callerToken: string): Promise<{
     stay: StayRecord;
     invoiceRef: string;
     bookingCompletion: BookingCompletion;
@@ -291,12 +311,16 @@ export class StayStore implements StayStoreAPI {
     const id = requireUuid(input.stayId, "stayId");
     const invoiceRef = requireUuid(input.folioId, "folioId");
     checkFolioGate(input.folioBalanceMinor, input.openBalanceApproval);
-    const actor = requireString(input.actor, "actor");
+    // The request's actor keeps its validation and is forwarded to the
+    // completion as the annotation; the recorded actor is the session.
+    const requestActorValue = requireString(input.actor, "actor");
+    const actor = callerToken;
+    const requestActor = requestActorAnnotation(callerToken, input.actor);
     const key = typeof input.idempotencyKey === "string" ? input.idempotencyKey.trim() : "";
     if (key !== "") {
       const replay = this.idempotency.get(`CheckOut:${key}`);
       if (replay !== undefined) {
-        const bookingCompletion = await this.completeBooking(id, actor, callerToken);
+        const bookingCompletion = await this.completeBooking(id, requestActorValue, callerToken);
         return { stay: replay, invoiceRef, bookingCompletion };
       }
     }
@@ -315,12 +339,17 @@ export class StayStore implements StayStoreAPI {
     this.outbox.push({
       aggregate: "stay",
       eventType: "checked-out",
-      payload: { stayId: id, folioId: invoiceRef, actor },
+      payload: {
+        stayId: id,
+        folioId: invoiceRef,
+        actor,
+        ...(requestActor === null ? {} : { requestActor }),
+      },
     });
     if (key !== "") {
       this.idempotency.set(`CheckOut:${key}`, record);
     }
-    const bookingCompletion = await this.completeBooking(id, actor, callerToken);
+    const bookingCompletion = await this.completeBooking(id, requestActorValue, callerToken);
     return { stay: record, invoiceRef, bookingCompletion };
   }
 
@@ -329,10 +358,12 @@ export class StayStore implements StayStoreAPI {
   // BR-19). The desk assigns the new room through AssignRoom and
   // releases the old room through ReleaseRoom around this call; the
   // stay-side write is conditional on the in-house state.
-  async moveRoom(input: MoveRoomInput): Promise<{ stay: StayRecord; move: MoveRecord }> {
+  async moveRoom(input: MoveRoomInput, sessionActor: string): Promise<{ stay: StayRecord; move: MoveRecord }> {
     const id = requireUuid(input.stayId, "stayId");
     const toRoomId = requireUuid(input.toRoomId, "toRoomId");
-    const actor = requireString(input.actor, "actor");
+    requireString(input.actor, "actor");
+    const actor = sessionActor;
+    const requestActor = requestActorAnnotation(sessionActor, input.actor);
     const key = typeof input.idempotencyKey === "string" ? input.idempotencyKey.trim() : "";
     if (key !== "") {
       const replay = this.idempotency.get(`MoveRoom:${key}`);
@@ -367,7 +398,13 @@ export class StayStore implements StayStoreAPI {
     this.outbox.push({
       aggregate: "stay",
       eventType: "moved",
-      payload: { stayId: id, fromRoomId: move.fromRoomId, toRoomId, actor },
+      payload: {
+        stayId: id,
+        fromRoomId: move.fromRoomId,
+        toRoomId,
+        actor,
+        ...(requestActor === null ? {} : { requestActor }),
+      },
     });
     if (key !== "") {
       this.idempotency.set(`MoveRoom:${key}`, record);
@@ -378,9 +415,11 @@ export class StayStore implements StayStoreAPI {
   // RecordActualTimes keeps off-hours arrival/departure times on the
   // stay (FR-FDK-4, BR-20). Implausible values — unparseable
   // timestamps or a departure before the arrival — are refused.
-  async recordActualTimes(input: RecordActualTimesInput): Promise<StayRecord> {
+  async recordActualTimes(input: RecordActualTimesInput, sessionActor: string): Promise<StayRecord> {
     const id = requireUuid(input.stayId, "stayId");
-    const actor = requireString(input.actor, "actor");
+    requireString(input.actor, "actor");
+    const actor = sessionActor;
+    const requestActor = requestActorAnnotation(sessionActor, input.actor);
     const record = this.stays.get(id);
     if (!record) {
       throw new HttpError("NOT_FOUND", msg("stay.notfound.stay", { stayId: id }), { stayId: id });
@@ -398,7 +437,13 @@ export class StayStore implements StayStoreAPI {
     this.outbox.push({
       aggregate: "stay",
       eventType: "actual-times-recorded",
-      payload: { stayId: id, actualArrival, actualDeparture, actor },
+      payload: {
+        stayId: id,
+        actualArrival,
+        actualDeparture,
+        actor,
+        ...(requestActor === null ? {} : { requestActor }),
+      },
     });
     return record;
   }

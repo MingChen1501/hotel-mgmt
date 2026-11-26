@@ -103,6 +103,14 @@ func decodeBody(w http.ResponseWriter, r *http.Request) (map[string]any, bool) {
 	return body, true
 }
 
+// sessionActor is the recorded audit actor on every write (BR-65,
+// #643): the caller's Bearer header with the prefix removed and the
+// remainder trimmed — the value the write already authenticated with,
+// never the request body's actor.
+func sessionActor(bearer string) string {
+	return strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(bearer), "Bearer "))
+}
+
 func strField(body map[string]any, field string) (string, bool) {
 	value, ok := body[field].(string)
 	return value, ok && strings.TrimSpace(value) != ""
@@ -189,7 +197,8 @@ func NewMux(svc *service.Service, st store.Repository) *http.ServeMux {
 			HasTotal:       hasPrice,
 			DiscountName:   discount,
 			IdempotencyKey: key,
-			Actor:          actor,
+			Actor:          sessionActor(bearer),
+			RequestActor:   actor,
 			BearerToken:    bearer,
 		})
 		if oerr != nil {
@@ -224,7 +233,7 @@ func NewMux(svc *service.Service, st store.Repository) *http.ServeMux {
 		})
 	}))
 
-	mux.HandleFunc("POST /v1/reservations/CheckInReservation", authed(func(w http.ResponseWriter, body map[string]any, _ string) {
+	mux.HandleFunc("POST /v1/reservations/CheckInReservation", authed(func(w http.ResponseWriter, body map[string]any, bearer string) {
 		ref, ok := strField(body, "reservationRef")
 		if !ok {
 			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: messages.Text("error.validation.reservation_ref_required", nil), Details: map[string]any{"field": "reservationRef"}})
@@ -236,7 +245,7 @@ func NewMux(svc *service.Service, st store.Repository) *http.ServeMux {
 			return
 		}
 		actor, _ := strField(body, "actor")
-		record, oerr := st.CheckIn(ref, stayID, actor)
+		record, oerr := st.CheckIn(ref, stayID, sessionActor(bearer), actor)
 		if oerr != nil {
 			writeOpError(w, oerr)
 			return
@@ -247,18 +256,19 @@ func NewMux(svc *service.Service, st store.Repository) *http.ServeMux {
 		})
 	}))
 
-	mux.HandleFunc("POST /v1/reservations/CheckOutReservation", authed(func(w http.ResponseWriter, body map[string]any, _ string) {
+	mux.HandleFunc("POST /v1/reservations/CheckOutReservation", authed(func(w http.ResponseWriter, body map[string]any, bearer string) {
 		stayID, ok := strField(body, "stayId")
 		if !ok {
 			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: messages.Text("error.validation.field_required", map[string]string{"field": "stayId"}), Details: map[string]any{"field": "stayId"}})
 			return
 		}
-		actor, ok := strField(body, "actor")
-		if !ok {
+		// The body actor stays required with its existing refusal; it is
+		// never the recorded actor (BR-65, #643).
+		if _, ok := strField(body, "actor"); !ok {
 			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: messages.Text("error.validation.field_required", map[string]string{"field": "actor"}), Details: map[string]any{"field": "actor"}})
 			return
 		}
-		record, oerr := st.CheckOutReservation(stayID, actor)
+		record, oerr := st.CheckOutReservation(stayID, sessionActor(bearer))
 		if oerr != nil {
 			writeOpError(w, oerr)
 			return
@@ -300,7 +310,8 @@ func NewMux(svc *service.Service, st store.Repository) *http.ServeMux {
 			HasTotal:       hasPrice,
 			DiscountName:   discount,
 			IdempotencyKey: key,
-			Actor:          actor,
+			Actor:          sessionActor(bearer),
+			RequestActor:   actor,
 			BearerToken:    bearer,
 		})
 		if oerr != nil {
@@ -312,7 +323,7 @@ func NewMux(svc *service.Service, st store.Repository) *http.ServeMux {
 		})
 	}))
 
-	mux.HandleFunc("POST /v1/reservations/CancelReservation", authed(func(w http.ResponseWriter, body map[string]any, _ string) {
+	mux.HandleFunc("POST /v1/reservations/CancelReservation", authed(func(w http.ResponseWriter, body map[string]any, bearer string) {
 		ref, ok := strField(body, "reservationRef")
 		if !ok {
 			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: messages.Text("error.validation.reservation_ref_required", nil), Details: map[string]any{"field": "reservationRef"}})
@@ -321,7 +332,9 @@ func NewMux(svc *service.Service, st store.Repository) *http.ServeMux {
 		reason, _ := strField(body, "reason")
 		key, _ := strField(body, "idempotencyKey")
 		actor, _ := strField(body, "actor")
-		record, oerr := svc.Cancel(service.CancelRequest{Ref: ref, Reason: reason, Actor: actor, IdempotencyKey: key})
+		record, oerr := svc.Cancel(service.CancelRequest{
+			Ref: ref, Reason: reason, Actor: sessionActor(bearer), RequestActor: actor, IdempotencyKey: key,
+		})
 		if oerr != nil {
 			writeOpError(w, oerr)
 			return
@@ -332,7 +345,7 @@ func NewMux(svc *service.Service, st store.Repository) *http.ServeMux {
 		})
 	}))
 
-	mux.HandleFunc("POST /v1/reservations/MarkNoShow", authed(func(w http.ResponseWriter, body map[string]any, _ string) {
+	mux.HandleFunc("POST /v1/reservations/MarkNoShow", authed(func(w http.ResponseWriter, body map[string]any, bearer string) {
 		ref, ok := strField(body, "reservationRef")
 		if !ok {
 			writeOpError(w, &store.OpError{Code: "VALIDATION_FAILED", Status: 400, Message: messages.Text("error.validation.reservation_ref_required", nil), Details: map[string]any{"field": "reservationRef"}})
@@ -340,7 +353,9 @@ func NewMux(svc *service.Service, st store.Repository) *http.ServeMux {
 		}
 		reason, _ := strField(body, "reason")
 		actor, _ := strField(body, "actor")
-		record, oerr := svc.MarkNoShow(service.MarkNoShowRequest{Ref: ref, Reason: reason, Actor: actor})
+		record, oerr := svc.MarkNoShow(service.MarkNoShowRequest{
+			Ref: ref, Reason: reason, Actor: sessionActor(bearer), RequestActor: actor,
+		})
 		if oerr != nil {
 			writeOpError(w, oerr)
 			return

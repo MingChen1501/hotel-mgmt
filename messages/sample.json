@@ -1096,6 +1096,16 @@
       "params": {}
     },
     {
+      "key": "reporting.validation.date_range_span",
+      "surface": "reporting envelope",
+      "sources": [
+        "services/reporting/internal/store/store.go"
+      ],
+      "params": {
+        "max": "integer"
+      }
+    },
+    {
       "key": "rooms.validation.date_format",
       "surface": "rooms envelope",
       "sources": [

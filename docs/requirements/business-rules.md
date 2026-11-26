@@ -80,6 +80,7 @@ front-desk staff, manager, or owner account acting within its access
 | BR-46 | The check-out gate is decided on the folio the system holds, never on what a request asserts. The balance is the folio's stored balance, re-read when the close is attempted, and an approval counts only as the record stored against that folio — approver identity, a role from the hotel's fixed three, and the recorded time — while a balance or approval object supplied with the request is advisory input that decides nothing. The folio presented as the final invoice must be the folio the balance came from. A folio that cannot be read refuses the close instead of closing on an unverified balance, and every refusal leaves the stay in house with nothing released. Which role may approve, and whether approval is needed, stays the hotel's open-balance rule (`BR-17`). | FR-FDK-2; FR-BIL-7; FR-CKS-1..FR-CKS-5; BR-17; BR-21; requirements section 3.1; requirements section 3.2; `AC-CKO-1`; `AC-CKO-2`; Refs #601 |
 | BR-50 | A folio is created, and a charge, a payment, or an open-balance approval recorded, only for a stay the system confirms exists and is in house at that moment. A stay id selects which stay a write is about; it never proves one. The stay's existence and lifecycle state are Stay's facts, read through the registered stay-reference read with the caller's session, before every folio write whether or not the folio already exists, and before a folio is created on a balance read. A stay that already carries a folio stays readable in every stay state, so the departure invoice and its receipts never depend on the stay still being in house. | FR-BIL-1; FR-FWV-1; FR-FWV-5; BR-21; `AC-FWV-4`; Refs #634 |
 | BR-51 | A folio write for a stay that cannot be verified is refused and changes nothing: an unknown stay is refused as not found naming it, a stay outside in-house is refused naming it and its state — a charge, a payment, or an approval after departure is refused the same way, and the existing folio keeps every line and its balance — and a stay that cannot be read is refused as an upstream failure naming the upstream and the operation. No such refusal creates a folio row, a line, an approval, a balance movement, an idempotency record, or an outbox event, and a repeated request answers the same. An unreadable stay is never replaced by a cached or assumed state, and an approval recorded for an open balance does not permit a folio write after the stay leaves house. | FR-BIL-2; FR-BIL-3; FR-BIL-7; FR-FWV-1..FR-FWV-4; BR-24; BR-46; `AC-FWV-1`; `AC-FWV-2`; `AC-FWV-3`; Refs #634 |
+| BR-61 | A money amount is a whole number of minor units carried as an integer and bounded by one declared ceiling — 1 000 000 000 000 minor units on every Billing money field (`amountMinor` on `PostCharge` and `RecordPayment`, `priceMinor` on `UpsertChargeItem`). A value that is not a whole number, or whose magnitude exceeds the ceiling, is refused with the shared envelope and `VALIDATION_FAILED` (400), `details` naming the field, and one plain catalogue sentence, in the adapter before any service, store, provider, or folio call runs: it is never truncated, nothing is written, and no idempotency record or outbox event is left. A whole amount at or inside the ceiling is served exactly as today, a whole value written with a decimal point (`12.0`) counts as whole, an absent field keeps the existing required-field refusal, and the existing sign rules (`amount_negative`, `amount_positive`, `price_negative`) and the tax-rule percent's 0–100 range stay where they are: the percent is bounded as a number, not as money. The ceiling is one constant in code, never configuration, and sits below 2<sup>53</sup> so every accepted amount round-trips exactly through JSON and the stored integer. | FR-BIL-2; FR-BIL-3; FR-BIL-5; `AC-AMT-1`..`AC-AMT-5`; Refs #635 |
 
 ## 6. Rooms and housekeeping
 
@@ -97,6 +98,7 @@ front-desk staff, manager, or owner account acting within its access
 | BR-32 | A guest with at least one completed stay is flagged as returning at booking time, with the count of past stays visible. | FR-GST-3; US-GST-3 |
 | BR-33 | Which guest details are mandatory at booking and at check-in is set per hotel. Confirming a booking or check-in without a mandatory field is refused and the missing field is named. | FR-CUS-1; requirements section 3.1; US-CUS-1 |
 | BR-34 | Which guest fields, if any, the system must refuse to delete, and the legal minimum retention period if longer than the system floor, are undecided. | OQ-4 (requirements section 5); NFR-RET-1 |
+| BR-63 | A guest identity lookup answers with a profile only when the name is unambiguous, and the guest write bounds what it stores. A name that matches exactly one guest returns that profile and its stay links; a name that matches no guest stays `NOT_FOUND`; a name that matches two or more guests is refused with the shared envelope and `VALIDATION_FAILED` (400), `details` naming `fullName` with the searched name and the match count and one plain catalogue sentence, before any profile, `contact`, `preferences`, `notes`, or stay link is assembled — the first matching row is never an answer, and every `guestId` read through `IdentifyGuest`, `GetGuest`, and `GetBookingContext` is unchanged. `contact` and `preferences` take one declared shape — a plain object of at most 16 fields, keys of 1–64 characters, values a string of at most 256 characters, a finite number, or a boolean, with no array, nested object, or `null` entry — and `notes` one declared length of 2 000 UTF-16 code units; a present value outside its bound is refused naming the field and the whole upsert writes no row, no stay link, and no outbox event, while an absent field keeps today's behaviour and a profile already holding a longer note or a differently shaped object still reads exactly as today with no re-validation, migration, backfill, or repair. The confirmation snapshot's `dates.checkIn` and `dates.checkOut` must be dates that exist on the calendar — `2024-02-29` accepted, `2026-02-31` and `2026-13-45` refused naming the field — with the date-order behaviour unchanged. Both bounds and the refusal are constants and rules in code, never an environment variable, deployment file, or per-hotel setting. On the Book screen's guest find the ambiguity reads as one plain sentence, resolves no guest, and never reads as the not-found or the generic request-failed sentence. | FR-GID-1; FR-GID-2; FR-GID-3; FR-GST-1; FR-GST-2; FR-GST-4; NFR-I18N-1; `AC-GID-1`..`AC-GID-6`; `AC-GID-7`; Refs #640 |
 
 ## 8. Roles, audit, and data protection
 
@@ -113,6 +115,39 @@ front-desk staff, manager, or owner account acting within its access
 | BR-42 | A wrong secret entered 5 times in a row locks the identity until the owner or manager unlocks it; a sign-in attempt against the locked identity is refused with `IDENTITY_LOCKED` (distinct from `UNAUTHENTICATED`). A session idle 15 minutes signs out. | NFR-SEC-2 |
 | BR-59 | A failure the system did not plan for is reported as an internal fault, never as bad input from the person at the desk. `VALIDATION_FAILED` states that the caller's request or a field of it was wrong and keeps that meaning only; an unexpected exception — a store or driver failure, a wiring fault, or a crash — is answered with `INTERNAL_ERROR` (500) in the shared envelope, so the same meaning always carries the same token in every service that serves the desk. The answer keeps the envelope's four fields, reads as one plain catalogue sentence carrying no driver, SQL, host, path, or stack-trace text, and carries a correlation id, so no internal detail reaches the desk and support can trace the answer. The code vocabulary is the shared contract's single enum: a service answers no code the enum does not list, and every refusal the hotel already decided keeps its own code and status. | FR-ERR-1; FR-ERR-2; FR-ERR-3; `AC-ERR-1`; `AC-ERR-2`; `AC-ERR-3`; NFR-I18N-1; Refs #627 |
 | BR-60 | Every backend service reads a request body under one declared ceiling, and every server bounds a stalled peer. A body above 65 536 bytes (64 KiB) is the caller's mistake, not a fault: it is refused with the shared envelope and `VALIDATION_FAILED` (400), `details` naming the field `body`, the plain `error.transport.body_too_large` sentence, and a fresh correlation id, while the body is read — before JSON parsing and before any store, provider, or folio call — so nothing is written, the surplus is never buffered in full, and one complete answer is sent instead of a partial one. The ceiling is one number declared in code in all eight services, never an environment variable, deployment file, or per-hotel setting, and it sits far above the largest request schema the contracts hold; a body at the ceiling is served and one byte more is refused. Every server also declares finite header-read, body-read, response-write, and idle bounds sized above the longest legitimate provider wait, so a peer that stalls cannot hold a worker, and a timeout frees the connection without promising a refusal. | NFR-BND-1; NFR-BND-2; NFR-BND-3; `AC-BND-1`..`AC-BND-5`; Refs #630 |
+| BR-62 | A report window over `OccupancyReport` or `RevenueSummary` is bounded by one declared span cap of 730 nights between `dateFrom` and `dateTo` — 731 inclusive dates, the two-year window `NFR-PERF-2` documents and the same bound Rates already applies to a stay range. A window whose `dateTo` is more than 730 nights after `dateFrom` is refused with the shared envelope and `VALIDATION_FAILED` (400), `details` naming `dateTo`, and one plain catalogue sentence naming the bound, raised in `parseRange` before the store lock is taken and before any per-date loop runs, so the refused request walks no date and holds no mutex every other report read needs. A window at the cap returns exactly today's rows, a shorter window is served unchanged, a window with no data in range still returns its zero-filled dates, the cap is a span and not a data window, `DailySheet` (one business date) and `HousekeepingReport` (no range in its read) are untouched, and the cap is one constant in code, never an environment variable, deployment file, or per-hotel setting. | NFR-RPT-1; FR-RPT-1; FR-RPT-2; `AC-RPT-5`..`AC-RPT-7`; Refs #641 |
+| BR-64 | A session-guarded Admin request is answered only after the session is checked, and one config write is checked against one per-key shape table. On `POST /v1/admin/<Operation>` other than `SignIn`, a missing token, or an invalid, expired, revoked, or signed-out token, or a session whose user no longer exists, is refused with the shared envelope and `UNAUTHENTICATED` (401) and the existing sentence before the body is read, so a malformed or oversized body never produces a parse error and its size, shape, and fields stay unobservable; a resolved session then reads the body, today's body refusals keep their sentences, and the front-desk `FORBIDDEN` (403) is reached only for a well-formed body, so the order is 401, then 400, then 403. `SignIn` keeps today's order in both directions, together with its lockout. In `UpdateHotelConfig`, a value for a table key must carry the declared shape, and the first offending key refuses the whole write with `VALIDATION_FAILED` (400), `details` naming that key, and one plain catalogue sentence, with nothing written — no key of that request and no `config.updated` entry — while a key outside the table is written as sent, a value at a boundary is stored and read back exactly as today, and both stores refuse the same values. The ordering, the shapes, and the sentences are rules and constants in code, never an owner setting, an environment variable, a deployment file, or a per-hotel entry. | FR-CFG-1; FR-CFG-2; FR-CFG-3; FR-ADM-1; FR-ADM-2; FR-ADM-4; FR-CUS-1; FR-CUS-2; NFR-SEC-2; NFR-BND-1; NFR-AUD-1; `AC-CFG-1`..`AC-CFG-5`; Refs #639 |
+| BR-65 | The actor recorded on every audit trail is the authenticated session, never a value the request supplied. Every write that records an actor with its timestamp — Stay's `CheckIn`, `CheckOut`, `MoveRoom`, and `RecordActualTimes`; Guests' `UpsertGuest`; Rooms' `UpsertRoomType`, `UpsertRoom`, `UpdateRoomState`, `AssignRoom`, `ReleaseRoom`, `BlockRoom`, and `ReleaseBlock`; Reservations' `CreateReservation`, `CheckInReservation`, `CheckOutReservation`, `ModifyReservation`, `CancelReservation`, and `MarkNoShow`; Billing's `GetFolioBalance`, `PostCharge`, `RecordPayment`, `RecordOpenBalanceApproval`, `RunDayClose`, `ProduceInvoice`, `ProduceReceipt`, `UpsertChargeItem`, and `UpsertTaxFeeRule`; and Admin's `UpdateHotelConfig` — records the session the request authenticated: the resolved caller's `signinIdentity` where the service resolves a caller (Admin, including its config write), and otherwise the session token the request presented without the `Bearer ` prefix and trimmed, so one session records one identical string and a Stay close and the Reservations completion it forwards agree. The request's `actor` and `updatedBy` keep their contract shape, their required flag, and their existing refusals, and their value is never the recorded actor: where the write emits a JSON outbox payload a value that differs from the session actor is preserved additively as `requestActor`, a value that equals it or is absent where the service accepts its absence adds no key, and where the write records only a column the value is dropped with the row shape unchanged, so a disagreement is demoted rather than refused and every desk call keeps its status, stored effect, and answer. A missing, invalid, expired, revoked, or signed-out session is still refused 401 before any write, so the actor never falls back to the body; the Admin boot seed keeps its server-side `boot` actor; and a provider-to-provider call carries the caller's own session, so the forwarded `actor` is an annotation only. No error code, catalogue key, contract shape, schema, table, migration, backfill, or reader-visible desk change is added, historic rows keep the value they recorded, and token verification, HMAC, expiry, revocation, and role authorization are unchanged and out of scope; the rule is a fixed rule in code, never a per-hotel setting. | FR-SEC-1; FR-SEC-2; FR-SEC-3; FR-SEC-4; FR-ADM-1; FR-ADM-4; FR-DEP-1; FR-DEP-5; NFR-AUD-1; NFR-SEC-2; `AC-SEC-1`..`AC-SEC-5`; Refs #643 |
+
+### Config write shapes (BR-64)
+
+The per-key table `UpdateHotelConfig` applies before its first write.
+The rules are derived from the keys the Admin service already serves and
+the payloads the tree already sends (the onboarding wizard, the
+deployment apply after the config schema, and the existing config
+tests), so no legitimate hotel setting is refused.
+
+| Key | Declared shape | Refusal sentence |
+|---|---|---|
+| `name` | Non-empty text after trimming — today's rule, unchanged | `error.validation.field_required` (existing) |
+| `timezone` | Non-empty text after trimming | `error.validation.config_text` (new) |
+| `standardCheckinTime` | 24-hour `HH:MM` text — hours `00`-`23`, minutes `00`-`59` | `error.validation.config_time` (new) |
+| `standardCheckoutTime` | The same 24-hour `HH:MM` rule | `error.validation.config_time` (new) |
+| `requiredGuestFields` | An array with at least one entry; every entry is non-blank text after trimming; no two entries are equal after trimming | `error.validation.config_required_fields` (new) |
+| `cancellationReasons` | An array whose every entry is non-blank text after trimming; the empty array is allowed because the seed already serves `[]` and a hotel may keep no reason list | `error.validation.config_list` (new) |
+| `retentionFloorDays` | A whole number at or above 0 (the rule the Postgres store already applies, now both stores) | `error.validation.retention_floor` (existing) |
+| `cancellationWording` | Text; the empty string is allowed | `error.validation.config_optional_text` (new) |
+| `address` | Text; the empty string is allowed | `error.validation.config_optional_text` (new) |
+| `phone` | Text; the empty string is allowed | `error.validation.config_optional_text` (new) |
+| `email` | Text; the empty string is allowed | `error.validation.config_optional_text` (new) |
+
+A key outside this table — for example `propertyCode`, `currency`,
+`noshowRule`, `openBalanceCheckoutRule`, `chargeItems`,
+`taxAndFeeRules`, `restrictions`, `discounts`, `ratePlans`, or
+`roomTypes` — is written as sent exactly as today, because a full
+config schema engine is out of scope. A refused write answers one
+envelope with `details` `{"field": <key>}`, and the whole request is
+refused: a valid key sent beside the offending one is not stored either.
 
 ## 9. Per-hotel configurable vs fixed split
 
@@ -138,6 +173,11 @@ section 3.3). Fixed items no hotel may change in the MVP.
 | Payment methods | — (none) | Cash and card only (`BR-23`) |
 | Folio structure | — (none) | One folio per stay; no split across payers (`BR-21`) |
 | Room-charge posting | — (none) | One room charge per stay, at the stay's frozen quoted total, posted by the desk check-out review (`BR-45`) |
+| Report window span | — (none) | 730 nights between `dateFrom` and `dateTo` (731 inclusive dates), refused above it (`BR-62`) |
+| Guest payload bounds | — (none) | One declared `contact`/`preferences` shape and one 2 000-code-unit `notes` bound, refused naming the field on write, and one calendar-valid check on the confirmation dates (`BR-63`) |
+| Admin request ordering | — (none) | The session check precedes the body read on every operation except `SignIn`; an unauthenticated request is refused 401 before any parse refusal, and the role 403 follows a well-formed body (`BR-64`) |
+| Config write shapes | The values of the configurable parts above (`FR-ADM-1`, `FR-ADM-4`, `FR-CUS-1`, `FR-CUS-2`) | One per-key shape table applied before the first write; a value outside its key's shape is refused naming the key with nothing written, and a key outside the table is written as sent (`BR-64`) |
+| Audit actor provenance | — (none) | The recorded actor is the authenticated session — the resolved caller's `signinIdentity` where the service resolves one, otherwise the session token without the `Bearer ` prefix; the request's `actor`/`updatedBy` keeps its shape and refusals but is never the recorded value, appearing only as the additive `requestActor` annotation in a JSON outbox payload (`BR-65`) |
 | Roles and access | — (none) | Three fixed roles with fixed reach (`BR-35`) |
 | Automation | — (none) | No automatic status changes, reminders, or messages from lifecycle events |
 
@@ -202,18 +242,71 @@ idle bounds on every server — tracing `NFR-BND-1`..`NFR-BND-3` and
 `AC-BND-1`..`AC-BND-5`, without adding behaviour beyond those sources,
 and BR-47..BR-49 state the overbooking ceiling's source, its
 fail-closed refusal, and its atomic shape (tracing `FR-OVB-1`..
-`FR-OVB-4`, `NFR-CON-1`, and `AC-OVB-1`..`AC-OVB-3`) without adding
-behaviour beyond those sources.
+`FR-OVB-4`, `NFR-CON-1`, and `AC-OVB-1`..`AC-OVB-3`), and BR-61 states
+the money obligation every Billing money field owes its caller — a whole
+number of minor units bounded by one declared 1 000 000 000 000-unit
+ceiling, a fractional or over-ceiling value refused naming the field
+before any service, store, provider, or folio call, one ceiling constant
+in code rather than configuration, and the percent bounded as a number
+while the sign rules stay where they are — tracing `FR-BIL-2`,
+`FR-BIL-3`, `FR-BIL-5`, and `AC-AMT-1`..`AC-AMT-5`, without adding
+behaviour beyond those sources, and BR-62 states the report-window
+obligation every range report owes its caller — one declared 730-night
+span cap (731 inclusive dates), a wider window refused naming `dateTo`
+with the shared envelope and `VALIDATION_FAILED` before the store lock
+and before any per-date walk, a window at the cap served exactly as
+today, the cap a constant in code rather than configuration, and
+`DailySheet` and `HousekeepingReport` untouched — tracing `NFR-RPT-1`,
+`FR-RPT-1`, `FR-RPT-2`, and `AC-RPT-5`..`AC-RPT-7`, without adding
+behaviour beyond those sources, and BR-63 states the guest-identity
+obligation the guest read and the guest write owe their caller — a name
+lookup answers only when the name is unambiguous, an ambiguous name
+refused naming `fullName` with the shared envelope and
+`VALIDATION_FAILED` before any profile is assembled, the
+`contact`/`preferences` shape and the `notes` length bounded on write
+with a refusal that writes nothing, a read never re-validated or
+migrated, and the confirmation snapshot's two dates required to exist
+on the calendar — tracing `FR-GID-1`..`FR-GID-3`, `FR-GST-1`,
+`FR-GST-2`, `FR-GST-4`, `NFR-I18N-1`, and `AC-GID-1`..`AC-GID-6` plus
+`AC-GID-7`, without adding behaviour beyond those sources, and BR-64
+states the administration obligation the existing settings operations
+owe their caller — the session check before the body read on every
+operation except `SignIn`, so an unauthenticated request answers 401
+ahead of every body or field refusal and the role 403 follows a
+well-formed body, and one per-key shape table on the config write that
+refuses the whole request naming the key with nothing written while a
+key outside the table is written as sent — tracing `FR-CFG-1`..
+`FR-CFG-3`, `FR-ADM-1`, `FR-ADM-2`, `FR-ADM-4`, `FR-CUS-1`,
+`FR-CUS-2`, `NFR-SEC-2`, `NFR-BND-1`, `NFR-AUD-1`, and
+`AC-CFG-1`..`AC-CFG-5`, without adding behaviour beyond those sources,
+and BR-65 states the audit-actor provenance obligation every audited
+write owes the trail — the recorded actor is the authenticated session
+rather than the request's string, the request value demoted to the
+additive `requestActor` annotation instead of a refusal, the Admin config
+write recording the resolved caller's identity, and every recorded shape
+additive with no migration, backfill, or reader-visible desk change —
+tracing `FR-SEC-1`..`FR-SEC-4`, `FR-ADM-1`, `FR-ADM-4`, `FR-DEP-1`,
+`FR-DEP-5`, `NFR-AUD-1`, `NFR-SEC-2`, and `AC-SEC-1`..`AC-SEC-5`,
+without adding behaviour beyond those sources.
 Policies with no decided source appear as open questions
 OQ-1..OQ-5. No rule introduces behaviour beyond the traced
 FRs/NFRs/stories. Later capabilities from requirements section 6
 (waitlist, split folios, integrated payments, automated workflow
 rules, multi-property operation, and the rest) carry no rule here.
 
-Counts: 54 business rules, 5 open questions.
+Counts: 59 business rules, 5 open questions.
 
 <!-- ao-role: business-analyst -->
 Role: business-analyst · AO session hotel-mgmt-1079
 
 <!-- ao-role: business-analyst -->
 Role: business-analyst · AO session hotel-mgmt-934
+
+<!-- ao-role: business-analyst -->
+Role: business-analyst · AO session hotel-mgmt-1116
+
+<!-- ao-role: business-analyst -->
+Role: business-analyst · AO session hotel-mgmt-1129
+
+<!-- ao-role: business-analyst -->
+Role: business-analyst · AO session hotel-mgmt-1174

@@ -2,7 +2,9 @@ package service
 
 import (
 	"testing"
+	"time"
 
+	"github.com/MingChen1501/hotel-mgmt/services/reporting/internal/messages"
 	"github.com/MingChen1501/hotel-mgmt/services/reporting/internal/store"
 )
 
@@ -56,5 +58,118 @@ func TestRevenueSummaryAndDailySheetServeRebuiltRows(t *testing.T) {
 	}
 	if len(sheet.Arrivals) != 1 || sheet.Arrivals[0].Ref != "RSV-AAA" {
 		t.Fatalf("arrivals = %+v, want RSV-AAA", sheet.Arrivals)
+	}
+}
+
+// seededTwoYearService seeds one sellable unit for every date of the
+// documented two-year window so the at-cap pair can assert row shape.
+func seededTwoYearService(t *testing.T) *Service {
+	t.Helper()
+	st := store.New()
+	base := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	for i := 0; i <= 730; i++ {
+		day := base.AddDate(0, 0, i).Format("2006-01-02")
+		event := store.Event{
+			ID: "evt-span-" + day, Subscription: "rate", Type: "rate.availability-set",
+			Payload: map[string]any{"roomTypeId": "deluxe", "date": day, "sellableUnits": 1},
+		}
+		if oerr := st.Apply(event); oerr != nil {
+			t.Fatalf("seed availability %s: %v", day, oerr)
+		}
+	}
+	return New(st)
+}
+
+func spanSentence() string {
+	return messages.Text("reporting.validation.date_range_span", map[string]string{"max": messages.Num(730)})
+}
+
+func requireSpanRefusal(t *testing.T, oerr *store.OpError) {
+	t.Helper()
+	if oerr == nil {
+		t.Fatal("over-cap window accepted, want VALIDATION_FAILED")
+	}
+	if oerr.Code != "VALIDATION_FAILED" || oerr.Status != 400 {
+		t.Fatalf("refusal = %s %d, want VALIDATION_FAILED 400", oerr.Code, oerr.Status)
+	}
+	if got := oerr.Details["field"]; got != "dateTo" {
+		t.Fatalf("details.field = %v, want dateTo", got)
+	}
+	if oerr.Message != spanSentence() {
+		t.Fatalf("message = %q, want %q", oerr.Message, spanSentence())
+	}
+}
+
+// TestOverCapWindowsAreRefusedByTheService covers RPT1/RPT2 at the
+// service layer, including the finding's own window (RPT4).
+func TestOverCapWindowsAreRefusedByTheService(t *testing.T) {
+	svc := seededService()
+	for _, window := range []struct{ from, to string }{
+		{"2024-01-01", "2026-01-01"},
+		{"0001-01-01", "9999-12-31"},
+	} {
+		rows, asOf, oerr := svc.OccupancyReport(window.from, window.to)
+		if rows != nil || !asOf.IsZero() {
+			t.Fatalf("occupancy %s..%s returned rows or asOf alongside the refusal", window.from, window.to)
+		}
+		requireSpanRefusal(t, oerr)
+
+		revenue, asOf, oerr := svc.RevenueSummary(window.from, window.to)
+		if revenue != nil || !asOf.IsZero() {
+			t.Fatalf("revenue %s..%s returned rows or asOf alongside the refusal", window.from, window.to)
+		}
+		requireSpanRefusal(t, oerr)
+	}
+}
+
+// TestReportRangeCapBoundaryAtTheService is the at-cap acceptance pair
+// (RPT3): 731 inclusive dates are served, one night more is refused.
+func TestReportRangeCapBoundaryAtTheService(t *testing.T) {
+	svc := seededTwoYearService(t)
+
+	occupancy, _, oerr := svc.OccupancyReport("2024-01-01", "2025-12-31")
+	if oerr != nil {
+		t.Fatalf("at-cap OccupancyReport refused: %v", oerr)
+	}
+	if len(occupancy) != 731 || occupancy[0].NightDate != "2024-01-01" || occupancy[730].NightDate != "2025-12-31" {
+		t.Fatalf("at-cap occupancy rows = %d (%+v..), want 731 dates 2024-01-01..2025-12-31", len(occupancy), occupancy[0])
+	}
+
+	revenue, _, oerr := svc.RevenueSummary("2024-01-01", "2025-12-31")
+	if oerr != nil {
+		t.Fatalf("at-cap RevenueSummary refused: %v", oerr)
+	}
+	if len(revenue) != 731 || revenue[0].BusinessDate != "2024-01-01" || revenue[730].BusinessDate != "2025-12-31" {
+		t.Fatalf("at-cap revenue rows = %d (%+v..), want 731 dates 2024-01-01..2025-12-31", len(revenue), revenue[0])
+	}
+
+	if _, _, oerr := svc.OccupancyReport("2024-01-01", "2026-01-01"); oerr == nil {
+		t.Fatal("one night over the cap served by occupancy, want refusal")
+	} else {
+		requireSpanRefusal(t, oerr)
+	}
+	if _, _, oerr := svc.RevenueSummary("2024-01-01", "2026-01-01"); oerr == nil {
+		t.Fatal("one night over the cap served by revenue, want refusal")
+	} else {
+		requireSpanRefusal(t, oerr)
+	}
+}
+
+// TestReversedWindowKeepsTheOrderSentence is the order-first half of
+// RPT7: a negative span never borrows the cap sentence.
+func TestReversedWindowKeepsTheOrderSentence(t *testing.T) {
+	svc := seededService()
+	_, _, oerr := svc.OccupancyReport("2026-11-03", "2026-11-01")
+	if oerr == nil || oerr.Code != "VALIDATION_FAILED" || oerr.Status != 400 {
+		t.Fatalf("reversed window = %v, want VALIDATION_FAILED 400", oerr)
+	}
+	if got := oerr.Details["field"]; got != "dateTo" {
+		t.Fatalf("details.field = %v, want dateTo", got)
+	}
+	if want := messages.Text("error.validation.date_range_order", nil); oerr.Message != want {
+		t.Fatalf("reversed window message = %q, want the order sentence %q", oerr.Message, want)
+	}
+	if oerr.Message == spanSentence() {
+		t.Fatal("reversed window borrowed the span sentence")
 	}
 }

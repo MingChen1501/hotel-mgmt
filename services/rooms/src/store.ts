@@ -98,6 +98,17 @@ export function requireString(value: unknown, field: string): string {
   return value.trim();
 }
 
+// requestActorAnnotation returns the additive requestActor value for a
+// JSON outbox payload (BR-65, #643): the request's actor is preserved
+// only when it is a present, non-blank string that differs exactly from
+// the recorded session actor. An equal or absent value adds no key.
+export function requestActorAnnotation(sessionActor: string, requestActor: unknown): string | null {
+  if (typeof requestActor !== "string" || requestActor.trim() === "" || requestActor === sessionActor) {
+    return null;
+  }
+  return requestActor;
+}
+
 export function rangesOverlap(fromA: string, toA: string, fromB: string, toB: string): boolean {
   return fromA <= toB && toA >= fromB;
 }
@@ -167,9 +178,9 @@ export interface ReleaseBlockInput {
 export interface RoomStoreAPI {
   resolveRoomType(ref: unknown): Promise<RoomTypeRecord>;
   findRoom(number: unknown): Promise<RoomRecord>;
-  upsertRoomType(input: UpsertRoomTypeInput): Promise<RoomTypeRecord>;
-  upsertRoom(input: UpsertRoomInput): Promise<RoomRecord>;
-  updateRoomState(input: UpdateRoomStateInput): Promise<{ roomNumber: string; oldState: RoomState; newState: RoomState }>;
+  upsertRoomType(input: UpsertRoomTypeInput, sessionActor: string): Promise<RoomTypeRecord>;
+  upsertRoom(input: UpsertRoomInput, sessionActor: string): Promise<RoomRecord>;
+  updateRoomState(input: UpdateRoomStateInput, sessionActor: string): Promise<{ roomNumber: string; oldState: RoomState; newState: RoomState }>;
   listRoomsByState(state: unknown): Promise<RoomRecord[]>;
   listRoomTypes(): Promise<RoomTypeRecord[]>;
   checkSellability(input: CheckSellabilityInput): Promise<{
@@ -180,10 +191,10 @@ export interface RoomStoreAPI {
     sellableCount: number;
     blockedRooms: string[];
   }>;
-  assignRoom(input: AssignRoomInput): Promise<{ roomId: string; roomNumber: string; stayLink: string; state: RoomState }>;
-  releaseRoom(input: ReleaseRoomInput): Promise<{ roomNumber: string; oldState: RoomState; newState: RoomState }>;
-  blockRoom(input: BlockRoomInput): Promise<{ roomNumber: string; dateFrom: string; dateTo: string; reason: string }>;
-  releaseBlock(input: ReleaseBlockInput): Promise<{ roomNumber: string; dateFrom: string; dateTo: string; reason: string }>;
+  assignRoom(input: AssignRoomInput, sessionActor: string): Promise<{ roomId: string; roomNumber: string; stayLink: string; state: RoomState }>;
+  releaseRoom(input: ReleaseRoomInput, sessionActor: string): Promise<{ roomNumber: string; oldState: RoomState; newState: RoomState }>;
+  blockRoom(input: BlockRoomInput, sessionActor: string): Promise<{ roomNumber: string; dateFrom: string; dateTo: string; reason: string }>;
+  releaseBlock(input: ReleaseBlockInput, sessionActor: string): Promise<{ roomNumber: string; dateFrom: string; dateTo: string; reason: string }>;
   historyForRoomId(roomId: string): Promise<StateHistoryEntry[]>;
 }
 
@@ -214,9 +225,11 @@ export class RoomStore implements RoomStoreAPI {
     return room;
   }
 
-  async upsertRoomType(input: UpsertRoomTypeInput): Promise<RoomTypeRecord> {
+  async upsertRoomType(input: UpsertRoomTypeInput, sessionActor: string): Promise<RoomTypeRecord> {
     const name = requireString(input.name, "name");
-    const actor = requireString(input.actor, "actor");
+    requireString(input.actor, "actor");
+    const actor = sessionActor;
+    const requestActor = requestActorAnnotation(sessionActor, input.actor);
     const existing = this.roomTypesByName.get(name);
     const record: RoomTypeRecord = {
       id: existing?.id ?? randomUUID(),
@@ -230,13 +243,20 @@ export class RoomStore implements RoomStoreAPI {
     };
     this.roomTypes.set(record.id, record);
     this.roomTypesByName.set(name, record);
-    this.emit("room-type", "room-upserted", { roomTypeId: record.id, name, actor }, actor);
+    this.emit(
+      "room-type",
+      "room-upserted",
+      { roomTypeId: record.id, name, actor, ...(requestActor === null ? {} : { requestActor }) },
+      actor,
+    );
     return record;
   }
 
-  async upsertRoom(input: UpsertRoomInput): Promise<RoomRecord> {
+  async upsertRoom(input: UpsertRoomInput, sessionActor: string): Promise<RoomRecord> {
     const number = requireString(input.number, "number");
-    const actor = requireString(input.actor, "actor");
+    requireString(input.actor, "actor");
+    const actor = sessionActor;
+    const requestActor = requestActorAnnotation(sessionActor, input.actor);
     const roomType = await this.resolveRoomType(input.roomType);
     const existing = this.rooms.get(number);
     const record: RoomRecord = {
@@ -255,17 +275,24 @@ export class RoomStore implements RoomStoreAPI {
       state: existing?.state ?? "vacant-inspected",
     };
     this.rooms.set(number, record);
-    this.emit("room", "room-upserted", { roomNumber: number, roomTypeId: roomType.id }, actor);
+    this.emit(
+      "room",
+      "room-upserted",
+      { roomNumber: number, roomTypeId: roomType.id, ...(requestActor === null ? {} : { requestActor }) },
+      actor,
+    );
     return record;
   }
 
-  async updateRoomState(input: UpdateRoomStateInput): Promise<{
+  async updateRoomState(input: UpdateRoomStateInput, sessionActor: string): Promise<{
     roomNumber: string;
     oldState: RoomState;
     newState: RoomState;
   }> {
     const room = await this.findRoom(input.roomNumber);
-    const actor = requireString(input.actor, "actor");
+    requireString(input.actor, "actor");
+    const actor = sessionActor;
+    const requestActor = requestActorAnnotation(sessionActor, input.actor);
     if (typeof input.newState !== "string" || !ROOM_STATES.includes(input.newState as RoomState)) {
       throw new HttpError("VALIDATION_FAILED", msg("rooms.validation.unknown_state", {}), { newState: input.newState });
     }
@@ -286,7 +313,7 @@ export class RoomStore implements RoomStoreAPI {
     this.emit(
       "room",
       "state-changed",
-      { roomNumber: room.number, oldState, newState, actor },
+      { roomNumber: room.number, oldState, newState, actor, ...(requestActor === null ? {} : { requestActor }) },
       actor,
     );
     return { roomNumber: room.number, oldState, newState };
@@ -362,7 +389,7 @@ export class RoomStore implements RoomStoreAPI {
   // only when it is currently vacant-inspected with no covering block;
   // the read and write share one synchronous section, so paired calls
   // cannot both win and a reused key is scoped per room (issue #644).
-  async assignRoom(input: AssignRoomInput): Promise<{ roomId: string; roomNumber: string; stayLink: string; state: RoomState }> {
+  async assignRoom(input: AssignRoomInput, sessionActor: string): Promise<{ roomId: string; roomNumber: string; stayLink: string; state: RoomState }> {
     const roomNumber = requireString(input.roomNumber, "roomNumber");
     const idempotencyKey = typeof input.idempotencyKey === "string" ? input.idempotencyKey : "";
     const replay = idempotencyKey === "" ? undefined : this.idempotency.get(`AssignRoom:${roomNumber}:${idempotencyKey}`);
@@ -372,7 +399,9 @@ export class RoomStore implements RoomStoreAPI {
     const room = await this.findRoom(roomNumber);
     const businessDate = requireDate(input.businessDate, "businessDate");
     const stayLink = requireString(input.stayLink, "stayLink");
-    const actor = requireString(input.actor, "actor");
+    requireString(input.actor, "actor");
+    const actor = sessionActor;
+    const requestActor = requestActorAnnotation(sessionActor, input.actor);
     const block = this.blocks.find(
       (entry) =>
         entry.roomId === room.id && entry.dateFrom <= businessDate && entry.dateTo >= businessDate,
@@ -396,7 +425,12 @@ export class RoomStore implements RoomStoreAPI {
     }
     room.state = "occupied";
     this.recordHistory(room.id, "vacant-inspected", "occupied", actor);
-    this.emit("room", "state-changed", { roomNumber: room.number, stayLink, actor }, actor);
+    this.emit(
+      "room",
+      "state-changed",
+      { roomNumber: room.number, stayLink, actor, ...(requestActor === null ? {} : { requestActor }) },
+      actor,
+    );
     const receipt = { roomId: room.id, roomNumber: room.number, stayLink, state: room.state };
     if (idempotencyKey !== "") {
       this.idempotency.set(`AssignRoom:${roomNumber}:${idempotencyKey}`, receipt);
@@ -404,13 +438,15 @@ export class RoomStore implements RoomStoreAPI {
     return receipt;
   }
 
-  async releaseRoom(input: ReleaseRoomInput): Promise<{
+  async releaseRoom(input: ReleaseRoomInput, sessionActor: string): Promise<{
     roomNumber: string;
     oldState: RoomState;
     newState: RoomState;
   }> {
     const room = await this.findRoom(input.roomNumber);
-    const actor = requireString(input.actor, "actor");
+    requireString(input.actor, "actor");
+    const actor = sessionActor;
+    const requestActor = requestActorAnnotation(sessionActor, input.actor);
     if (room.state !== "occupied") {
       throw new HttpError("STATE_ILLEGAL", msg("rooms.state.room_not_occupied", { roomNumber: room.number, state: room.state }), {
         roomNumber: room.number,
@@ -426,16 +462,23 @@ export class RoomStore implements RoomStoreAPI {
     }
     room.state = toState;
     this.recordHistory(room.id, "occupied", toState, actor);
-    this.emit("room", "state-changed", { roomNumber: room.number, newState: toState, actor }, actor);
+    this.emit(
+      "room",
+      "state-changed",
+      { roomNumber: room.number, newState: toState, actor, ...(requestActor === null ? {} : { requestActor }) },
+      actor,
+    );
     return { roomNumber: room.number, oldState: "occupied", newState: toState };
   }
 
-  async blockRoom(input: BlockRoomInput): Promise<{ roomNumber: string; dateFrom: string; dateTo: string; reason: string }> {
+  async blockRoom(input: BlockRoomInput, sessionActor: string): Promise<{ roomNumber: string; dateFrom: string; dateTo: string; reason: string }> {
     const room = await this.findRoom(input.roomNumber);
     const dateFrom = requireDate(input.dateFrom, "dateFrom");
     const dateTo = requireDate(input.dateTo, "dateTo");
     const reason = requireString(input.reason, "reason");
-    const actor = requireString(input.actor, "actor");
+    requireString(input.actor, "actor");
+    const actor = sessionActor;
+    const requestActor = requestActorAnnotation(sessionActor, input.actor);
     if (dateTo < dateFrom) {
       throw new HttpError("VALIDATION_FAILED", msg("error.validation.date_range_order", {}), { dateFrom, dateTo });
     }
@@ -456,7 +499,12 @@ export class RoomStore implements RoomStoreAPI {
       });
     }
     this.blocks.push({ roomId: room.id, dateFrom, dateTo, reason, createdBy: actor });
-    this.emit("room", "blocked", { roomNumber: room.number, dateFrom, dateTo, reason, actor }, actor);
+    this.emit(
+      "room",
+      "blocked",
+      { roomNumber: room.number, dateFrom, dateTo, reason, actor, ...(requestActor === null ? {} : { requestActor }) },
+      actor,
+    );
     return { roomNumber: room.number, dateFrom, dateTo, reason };
   }
 
@@ -465,7 +513,7 @@ export class RoomStore implements RoomStoreAPI {
   // never silently lifts a wider block; releasing part of a range is
   // release-then-re-block of the remainder. Releasing a range with
   // no covering block is refused without changing anything.
-  async releaseBlock(input: ReleaseBlockInput): Promise<{
+  async releaseBlock(input: ReleaseBlockInput, sessionActor: string): Promise<{
     roomNumber: string;
     dateFrom: string;
     dateTo: string;
@@ -474,7 +522,9 @@ export class RoomStore implements RoomStoreAPI {
     const room = await this.findRoom(input.roomNumber);
     const dateFrom = requireDate(input.dateFrom, "dateFrom");
     const dateTo = requireDate(input.dateTo, "dateTo");
-    const actor = requireString(input.actor, "actor");
+    requireString(input.actor, "actor");
+    const actor = sessionActor;
+    const requestActor = requestActorAnnotation(sessionActor, input.actor);
     if (dateTo < dateFrom) {
       throw new HttpError("VALIDATION_FAILED", msg("error.validation.date_range_order", {}), { dateFrom, dateTo });
     }
@@ -493,7 +543,7 @@ export class RoomStore implements RoomStoreAPI {
     this.emit(
       "room",
       "block-released",
-      { roomNumber: room.number, dateFrom, dateTo, reason, actor },
+      { roomNumber: room.number, dateFrom, dateTo, reason, actor, ...(requestActor === null ? {} : { requestActor }) },
       actor,
     );
     return { roomNumber: room.number, dateFrom, dateTo, reason };

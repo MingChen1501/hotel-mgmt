@@ -76,8 +76,11 @@ type CreateRequest struct {
 	HasTotal       bool
 	DiscountName   *string
 	IdempotencyKey string
-	Actor          string
-	BearerToken    string
+	// Actor is the recorded session actor; RequestActor is the body
+	// actor as supplied, annotation only (BR-65, #643).
+	Actor        string
+	RequestActor string
+	BearerToken  string
 }
 
 func validation(field, message string, details map[string]any) *store.OpError {
@@ -186,6 +189,7 @@ func (s *Service) Create(req CreateRequest) (*store.Reservation, *store.OpError)
 		TotalMinor:    req.TotalMinor,
 		DiscountName:  req.DiscountName,
 		Actor:         req.Actor,
+		RequestActor:  req.RequestActor,
 	}, req.IdempotencyKey)
 }
 
@@ -210,6 +214,7 @@ type ModifyRequest struct {
 	DiscountName   *string
 	IdempotencyKey string
 	Actor          string
+	RequestActor   string
 	BearerToken    string
 }
 
@@ -301,6 +306,7 @@ func (s *Service) Modify(req ModifyRequest) (*store.Reservation, *store.OpError)
 		TotalMinor:    req.TotalMinor,
 		DiscountName:  req.DiscountName,
 		Actor:         req.Actor,
+		RequestActor:  req.RequestActor,
 	}, req.IdempotencyKey)
 }
 
@@ -309,6 +315,7 @@ type CancelRequest struct {
 	Ref            string
 	Reason         string
 	Actor          string
+	RequestActor   string
 	IdempotencyKey string
 }
 
@@ -323,14 +330,15 @@ func (s *Service) Cancel(req CancelRequest) (*store.Reservation, *store.OpError)
 	if strings.TrimSpace(req.Reason) == "" {
 		return nil, validation("reason", messages.Text("error.validation.cancel_reason_required", nil), map[string]any{"field": "reason"})
 	}
-	return s.store.Cancel(strings.TrimSpace(req.Ref), strings.TrimSpace(req.Reason), req.Actor, req.IdempotencyKey)
+	return s.store.Cancel(strings.TrimSpace(req.Ref), strings.TrimSpace(req.Reason), req.Actor, req.RequestActor, req.IdempotencyKey)
 }
 
 // MarkNoShowRequest marks an unarrived past-arrival reservation no-show.
 type MarkNoShowRequest struct {
-	Ref    string
-	Reason string
-	Actor  string
+	Ref          string
+	Reason       string
+	Actor        string
+	RequestActor string
 }
 
 // MarkNoShow validates the reason and runs the guarded store step,
@@ -342,5 +350,5 @@ func (s *Service) MarkNoShow(req MarkNoShowRequest) (*store.Reservation, *store.
 	if strings.TrimSpace(req.Reason) == "" {
 		return nil, validation("reason", messages.Text("error.validation.noshow_reason_required", nil), map[string]any{"field": "reason"})
 	}
-	return s.store.MarkNoShow(strings.TrimSpace(req.Ref), strings.TrimSpace(req.Reason), req.Actor)
+	return s.store.MarkNoShow(strings.TrimSpace(req.Ref), strings.TrimSpace(req.Reason), req.Actor, req.RequestActor)
 }

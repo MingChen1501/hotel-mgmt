@@ -19,7 +19,7 @@
     "required": ["stayId", "actor"],
     "properties": {
       "stayId": { "type": "string", "format": "uuid", "description": "Stay the close committed; the booking is resolved by its unique stay link, never by guest or dates." },
-      "actor": { "type": "string", "description": "Operator performing the close; recorded on the change history with the time." }
+      "actor": { "type": "string", "description": "Required request field kept for compatibility and validated as today. It is not the recorded actor: the authenticated session is recorded on the change history with the time, and this value is an annotation only (the change row keeps no annotation column)." }
     }
   },
   "response": {
