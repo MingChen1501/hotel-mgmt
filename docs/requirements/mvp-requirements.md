@@ -196,7 +196,13 @@ floor, bed type, capacity, and features; then the values appear in
 the room inventory and are available when assigning rooms at
 check-in. Desk surface (Refs #590): section 20 specifies the screen
 that performs this save and its floor move, with the capability
-statement unchanged.
+statement unchanged. Server-side field rule (Refs #637): a present
+`capacity` is a whole number of at least 1 — no upper bound is
+invented — and every other present value is refused
+`VALIDATION_FAILED` naming the field with nothing written, while an
+omitted capacity keeps today's create-none/update-keeps meaning; the
+capability statement above is unchanged (section 39; `BR-69`,
+`AC-CAP-1`..`AC-CAP-3`).
 
 ### 1.4 Rates and availability (`FR-RTE-*`)
 
@@ -771,7 +777,7 @@ product scope have no FR and are listed in section 6.
 | Room inventory with live status | FR-RMS-1 | Guard sets every state and checks each room appears once with the right state |
 | Housekeeping status updates | FR-RMS-2 | Guard walks dirty to inspected and checks check-in offer and change record |
 | Out-of-order and maintenance blocks | FR-RMS-3 | Guard blocks a range and checks display plus refused booking and check-in on blocked dates |
-| Room setup and attributes | FR-RMS-4 | Guard defines floor/bed/features and checks inventory and assignment visibility |
+| Room setup and attributes | FR-RMS-4 | Guard defines floor/bed/features and checks inventory and assignment visibility; guard saves a whole capacity of `1` and `21` and checks each reads back unchanged, and saves a negative, zero, fractional, non-finite, and non-number capacity and checks each is refused `VALIDATION_FAILED` naming `capacity` with nothing written, no `room-upserted` event, and never a 500, in both stores (Refs #637) |
 | Rate plans per room type | FR-RTE-1 | Guard sets seasonal/day prices and checks new quotes follow them |
 | Availability overview | FR-RTE-2 | Guard seeds occupancy, blocks, and bookings and checks per-type per-date counts; a completed (closed), cancelled, or no-show booking subtracts nothing from the count while a confirmed or checked-in one does (Refs #646); guard seeds `out-of-order`, `occupied`, and vacant rooms and checks the count excludes the two non-sellable states once per room while every vacant state stays sellable (Refs #636) |
 | Manual discounts and special rates | FR-RTE-3 | Guard applies a named discount and checks kept name and folio effect |
@@ -792,7 +798,7 @@ product scope have no FR and are listed in section 6.
 | Housekeeping status report | FR-RPT-4 | Guard checks only rooms needing work appear |
 | Hotel profile setup | FR-ADM-1 | Guard saves identity and local settings and checks prints and date behaviour |
 | User accounts and roles | FR-ADM-2 | Guard creates each role and checks sign-in plus exact function reach |
-| Room and room-type setup | FR-ADM-3 | Guard defines rooms and checks inventory, availability, and calendar uptake |
+| Room and room-type setup | FR-ADM-3 | Guard defines rooms and checks inventory, availability, and calendar uptake; guard saves a whole capacity of `1` and `21` through both inventory writes and checks each reads back unchanged, and saves a negative, zero, fractional, non-finite, and non-number capacity and checks each is refused `VALIDATION_FAILED` naming `capacity` with nothing written and no `room-upserted` event (Refs #637) |
 | Rate-plan and policy setup | FR-ADM-4 | Guard saves plans, times, and policies and checks pricing and list behaviour |
 | Data export and backup | FR-ADM-5 | Guard runs export/backup and checks completeness plus success/failure report |
 | Customisable required guest fields | FR-CUS-1 | Guard marks fields mandatory and checks refusal names the field |
@@ -892,6 +898,20 @@ exactly as they are, and leave the merged #631 booking ceiling as
 40-capability count stands, and the handoff for those four requirements
 is section 37.5. The `Availability overview` row above carries the
 matching pointer; its capability wording and its guard are unchanged.
+
+Amendment (Refs #637): the capacity rule is a requirement on two
+existing inventory writes, not a capability — `FR-CAP-1`..`FR-CAP-4`
+(section 39) make a present `capacity` an integer of at least 1 stored
+verbatim, refuse every other present value `VALIDATION_FAILED` naming
+the field in both `UpsertRoom` and `UpsertRoomType` and in both stores
+with nothing written and no `room-upserted` event, refuse identically
+from one shared check inside the store, and align the onboarding
+wizard's capacity sentence with the same floor in both locales — so
+this table gains no row, the 40-capability count stands, and the
+handoff for those four requirements is section 39.5. The `Room setup
+and attributes` and `Room and room-type setup` rows above carry the
+matching pointers; their capability wording and their guards are
+unchanged.
 
 ## 5. Open questions (decided by `product-owner`, impact worded by `business-analyst`)
 
@@ -4161,7 +4181,13 @@ adding a second one. Given a save succeeds; then the form returns to
 the create state, the list re-reads, the saved row shows the new
 values, and a success line names the type. Given the name is blank or
 the guest count falls outside `1..20`; then the screen names the field
-and the correction in plain words and sends nothing.
+and the correction in plain words and sends nothing. Server-side rule
+(Refs #637): the `1..20` range above is the form's client sanity bound
+only — the service refuses a present capacity that is not a whole
+number of at least 1, and accepts any larger whole number the contract
+admits (the manage form's `20` is not a server limit), naming
+`capacity` and writing nothing on a refusal (section 39; `BR-69`,
+`AC-CAP-1`, `AC-CAP-2`).
 
 FR-MGMT-4 — The manager can add a room, or update an existing room's
 type and floor, keyed by room number.
@@ -11818,8 +11844,438 @@ the guard's range stay exactly as stored (R-23).
   the two operations whose refusals move.
 - No implementation PR opens until `SPEC-GATE PASS` on #633.
 
+## 39. Room and room-type capacity is a whole number of at least 1 (Refs #637)
+
+Requirements delta for the #637 change (audit finding M3, capacity
+half): both room inventory writes carry a declared capacity rule the
+service never enforces. `UpsertRoomType` and `UpsertRoom` keep a
+`capacity` only when `typeof input.capacity === "number"`
+(`services/rooms/src/store.ts:248`, `:279`; the same two lines in the
+Postgres store at `services/rooms/src/pgstore.ts:146`, `:207`), so a
+negative, zero, fractional, or non-finite value passes the check, and a
+present non-number (`"2"`, `null`, `true`, `[2]`) fails it and is
+silently dropped to the stored value and reported as success. The two
+stores then do something different with an unusable value: the
+in-memory store keeps it verbatim; Postgres writes it into an `INT`
+column with no `CHECK` (`services/rooms/migrations/002_schema.sql:20`,
+`:38`), so `2.5` is rounded by the assignment cast and `1e999` — which
+`JSON.parse` turns into `Infinity` — fails the driver and surfaces as
+the service's `INTERNAL_ERROR` 500 (`services/rooms/src/server.ts:91-100`)
+instead of a refusal. Meanwhile the service's own contract already
+declares the rule — `capacity` is `{"type": "integer", "minimum": 1}`
+(`contracts/http/UpsertRoom.json:19`,
+`contracts/http/UpsertRoomType.json:16`) — and the LLD already lists
+`VALIDATION_FAILED` as the answer of both operations
+(`docs/architecture/lld.md:236`). The desk is aligned except one
+sentence: `ManageView` refuses anything outside its `1..20` form range
+before it sends (`app/src/views/ManageView.vue:1071-1085`,
+`:1300-1309`), while the onboarding wizard's capacity rule accepts a
+whole number "of 0 or more" (`app/src/views/OnboardingView.vue:857-864`,
+the sentence at `messages/en.json:700` and `messages/vi.json:700`). One
+rule: a present capacity is a whole number of at least 1, or the write
+is refused by name.
+
+The scope decision, the accepted done-conditions, the UI contract, and
+the recorded risk are `product-owner` work:
+`docs/product/acceptance-criteria.md`
+[section 31](../product/acceptance-criteria.md) (`AC-CAP-1`..`AC-CAP-4`,
+with the `AC-RMS-4`, `AC-MANAGE-3`, `AC-MANAGE-4`, and `AC-DSK-10`
+pointers), D-43 in `docs/project/decision-log.md`
+[the decision log](../project/decision-log.md), and R-24 in
+`docs/project/risk-register.md` [the risk register](../project/risk-register.md).
+The architecture half is the HLD delta (`docs/architecture/hld.md`
+[section 30](../architecture/hld.md)), the LLD delta
+(`docs/architecture/lld.md` [section 38](../architecture/lld.md)), the
+`errors[].when` lines in `contracts/http/UpsertRoom.json` and
+`UpsertRoomType.json`, and the note in `docs/technical/api-spec.md`
+[section 2](../technical/api-spec.md) — the sibling sections this change
+set adds. Guard traceability is the `qa-lead` handoff
+(`docs/testing/traceability-matrix.md`
+[section 31](../testing/traceability-matrix.md), the sibling section
+this change set adds); the release note and the rollback pointer are
+the `release-manager` handoff. This section words the requirements
+half: the decision (39.1), the explicit no-change statements (39.2),
+the behaviour-scoped FRs (39.3), the NFR no-change statement (39.4),
+the traceability handoff with its per-flow diagram (39.5), and the gate
+dependencies plus the out-of-scope list (39.6). No `docs/README.md` row
+flips: all three requirements files this change touches are already
+`active`, and the index rows gain the section and rule references only.
+
+The change is tier T2 as `product-owner` recorded: two existing
+operations gain a caller-visible refusal for a value they used to store
+or silently drop, and one reader-visible onboarding sentence changes;
+no operation, route, request or response field, status set, schema
+table, lifecycle state, migration, desk control, or print rule is added
+or removed, and every refusal uses `VALIDATION_FAILED`, already in the
+shared enum. The single reader-visible move carries a UI contract in
+the product section 31, so no UI-contract gap applies.
+
+### 39.1 Decision: one shared whole-number-of-at-least-1 check inside the store, before any write
+
+As-built trace at this spec head (pre-change), read-only. The pins
+below are the state this requirement was written against and are
+refreshed at the merged head by `qa-lead`.
+
+- **The check is a type assertion, not a rule.** `upsertRoomType`
+  reads the name and actor through `requireString` and then keeps the
+  capacity only when it is a `number`
+  (`services/rooms/src/store.ts:239-248`); `upsertRoom` does the same
+  (`:266-279`). The Postgres twins repeat the assertion
+  (`services/rooms/src/pgstore.ts:146`, `:207`), so `-1`, `0`, `2.5`,
+  `Infinity`, and `NaN` all pass the check in both stores. `NaN` only
+  arrives through a direct store call (JSON cannot carry it), but
+  `1e999` parses to `Infinity` in `JSON.parse`, so the HTTP surface
+  reaches a non-finite value too.
+- **Each store then does something different with an unusable value.**
+  The in-memory store saves it verbatim in its `room_types` and `rooms`
+  records (`store.ts:248`, `:279`); the Postgres store writes it into
+  an `INT` column with no `CHECK`
+  (`services/rooms/migrations/002_schema.sql:20`, `:38`), so a negative
+  or zero is stored, `2.5` is rounded by the assignment cast
+  (`pgstore.ts:164-178`, `:219-248`), and `Infinity` fails the driver
+  and surfaces through the catch-all in `server.ts:91-100` as
+  `INTERNAL_ERROR` 500. Two stores, two effects, and neither refuses a
+  value the service's own contract forbids.
+- **A present non-number is silently accepted as "no change".** A
+  `capacity` of `"2"`, `null`, `true`, or `[2]` fails the `typeof`
+  test and falls through to the stored value
+  (`store.ts:248`, `:279`; the Postgres type update merges with
+  `capacity ?? current.capacity` at `pgstore.ts:160`, the room update
+  uses `COALESCE($5, capacity)` at `:221`, and a create writes `null`
+  at `:245-248`), so the caller's unusable value is answered as success
+  with the old or null capacity — the same fail-closed defect class
+  #633, #639, and #640 closed elsewhere.
+- **Omitting the field is how the desk says "leave it alone".** The
+  same fallbacks are today's specified meaning: a create stores no
+  capacity (`null`), and an update keeps the stored one
+  (`store.ts:248`, `:279`; `pgstore.ts:160`, `:221`).
+- **Both contracts and the LLD already promise the rule.**
+  `UpsertRoom.json:19` and `UpsertRoomType.json:16` type `capacity` as
+  an integer with a minimum of 1, and `lld.md:236` lists
+  `VALIDATION_FAILED` as the answer of both operations; what the
+  service actually answers today is the type assertion's outcome, and
+  each contract's `VALIDATION_FAILED` line names only the
+  missing-required-field case (`UpsertRoom.json:37`,
+  `UpsertRoomType.json:35`).
+- **No desk surface offers an unusable value, except one.** `ManageView`
+  refuses anything outside `1..20` before it sends
+  (`app/src/views/ManageView.vue:1071-1085` for a room type,
+  `:1300-1309` for a room), and the contract fixtures, the e2e scripts,
+  and the deployment set all send whole numbers
+  (`services/rooms/contract-tests/UpsertRoom.json`,
+  `UpsertRoomType.json`; `script/e2e-desk-loop.sh:271`;
+  `deploy/config/hotel.example.json:23-25`). The exception is the
+  onboarding wizard, whose capacity rule accepts any run of digits —
+  `0` included (`app/src/views/OnboardingView.vue:579-581`,
+  `:857-864`) — and posts `Number(...)` of it (`:915-917`), so a
+  manager who types `0` there would newly meet a server refusal.
+- **No guard drives an unusable capacity.** The Rooms suites on disk
+  send whole capacities only — `services/rooms/src/server.test.ts:268-303`
+  (capacity `2` stored and re-read), `:355-368` (capacity `4` answered
+  by `UpsertRoomType` and read by `ListRoomTypes`),
+  `services/rooms/src/pgstore.test.ts:25-31` and `:232` (capacity `2`
+  through the Postgres store) — so today's suite cannot tell a refusal
+  from a value silently kept or dropped.
+
+The decided behaviour, in five parts:
+
+1. **A present capacity is a whole number of at least 1.** It must be a
+   JSON number whose value is an integer (`Number.isInteger`) and at or
+   above `1`; no upper bound is added, so `1`, `2`, and `21` are all
+   stored verbatim and read back unchanged, because the contract sets
+   only a minimum and the manage form's `1..20` stays a client sanity
+   bound (`FR-MGMT-3`, `AC-MANAGE-3`), never a server rule. A whole
+   value written with a decimal point (`2.0`) counts as whole, exactly
+   as it already would after JSON parsing.
+2. **An omitted capacity keeps today's meaning.** A create stores no
+   capacity (`null`), and an update keeps the stored one, because
+   omitting the field is how the desk says "leave this alone"; a
+   present `null` is a caller's mistake, not an omission, and is
+   refused under part 3.
+3. **An unusable capacity is refused by name, never coerced or
+   dropped.** A negative (`-1`), zero (`0`), fractional (`2.5`),
+   non-finite (`1e999` over HTTP, `Infinity` directly), `NaN` (a direct
+   store call), or non-number (`"2"`, `null`, `true`, `[2]`) value is
+   refused with `VALIDATION_FAILED` (400), `details.field` `capacity`,
+   and one plain catalogue sentence stating the whole-number-of-at-least-1
+   rule, in both `UpsertRoom` and `UpsertRoomType` and in both stores.
+   Nothing is written: no row is created, an existing row keeps every
+   one of its fields and its state, and no `room-upserted` event is
+   emitted, so a refused write can never be read as a successful save.
+   The same request gets the same answer from both stores, and a value
+   this service can name never becomes an `INTERNAL_ERROR` 500.
+4. **One shared check inside the store, before any write.** The rule is
+   a single module-level check beside the existing `requireString` and
+   `requireDate` helpers (`services/rooms/src/store.ts:98-110`), used
+   by `RoomStore` and `PostgresRoomStore` before they build a record or
+   open a transaction, so the two answers agree by construction and the
+   store chosen at boot is not observable in the capacity. It is module
+   logic, not schema: no migration, `CHECK` constraint, backfill,
+   truncation, or read-time re-validation is added, and a value already
+   stored outside the rule keeps reading exactly as today (R-24).
+5. **The onboarding wizard's sentence matches the floor.** Its capacity
+   rule accepts a whole number of at least 1, or empty for "no
+   capacity", and refuses anything else in plain words before it sends
+   anything, in English and Vietnamese; the refusal resolves through the
+   existing `desk.onboarding.capacity_invalid` key, whose sentence is
+   updated in the canonical catalogue and, byte-identically, in every
+   runtime mirror, with the Vietnamese sentence at parity. The manage
+   screen's own `1..20` rule, its sentences, and every other wizard
+   field keep working exactly as today.
+
+Named consequences, not decided here: values already stored outside the
+rule — a negative, zero, rounded fraction, or `Infinity` accepted by an
+earlier release — are neither rewritten nor repaired and keep reading
+exactly as today, so a manager who wants one corrected re-saves the
+room or type; `features` stays unbounded, its 65 536-byte body ceiling
+(#630) being its only bound; and the `ReleaseRoom` path, its targets,
+and `ALLOWED_TRANSITIONS` are untouched by this change (section 24;
+`FR-REA-1`, `FR-REA-3`).
+
+### 39.2 Explicit no-change statements
+
+- `FR-RMS-4` and `FR-MGMT-3` keep their capability wording. They already
+  promise that a saved capacity appears in the inventory and that the
+  type form sends only the filled fields; this change makes the service
+  honour the contract those FRs sit on rather than widening them, so the
+  new obligations live in `FR-CAP-1`..`FR-CAP-4` (`BR-69`), and both
+  capability statements gain an amendment pointer only.
+- `BR-30` stands as written ("capacity … saved per room and room type
+  appear[s] in the room inventory"); the new rule is `BR-69`
+  (`docs/requirements/business-rules.md` section 6), and section 9
+  records it as a fixed code rule rather than a per-hotel setting.
+- `FR-RMS-1`, `FR-RMS-2`, `FR-RMS-3`, and the state vocabulary stand: no
+  room state is added, removed, or renamed and no state-machine
+  transition moves.
+- `NFR-CON-1` holds: no booking, availability, or room-assignment
+  decision is touched, the #631 ceiling is derived exactly as today, and
+  the new check is one comparison before a write the service already
+  makes.
+- `NFR-PERF-1` and `NFR-PERF-2` hold: one integer test per write on the
+  request the service already serves — no round trip, no poll, no extra
+  screen read, and no new blocking.
+- `NFR-AVL-1` holds: the refusal is decided inside the service
+  on-premise, so no caller gains a dependency outside the host.
+- `NFR-I18N-1` holds: the server refusal resolves through the message
+  catalogue and renders no envelope code, status number, or stack text;
+  the wizard sentence is updated in the canonical catalogue, all eight
+  byte-identical runtime mirrors, and the Vietnamese catalogue at
+  parity, so `script/catalogue-coverage-check.sh` stays green.
+- `NFR-BND-1`..`NFR-BND-3` hold: no route, body ceiling, parse refusal,
+  or server bound moves; the capacity rule is a field rule inside an
+  already-bounded body.
+- `NFR-AUD-1` and `NFR-TZ-1` hold: a refused write stores nothing and
+  emits no event, a committed write records its actor exactly as today,
+  and no date or display form changes.
+- Response shapes and statuses are unchanged. `UpsertRoomType` still
+  answers `id`, `name`, `capacity`, `bedType`, `features`;
+  `UpsertRoom` still answers `id`, `number`, `roomTypeId`, `state`; no
+  response field is added, lost, or renamed, and no accepted request
+  changes status or body.
+- The error vocabulary is unchanged. No code token is added to the
+  shared contract enum, and `VALIDATION_FAILED` keeps its meaning; the
+  two contracts' `errors[].when` lines gain the capacity case, which is
+  `architect` work.
+- No data model change: no table, column, migration, `CHECK`, backfill,
+  truncation, stored value, or data-dictionary entry is added or
+  changed by the implementation, and no stored row is rewritten.
+- No upper bound is added. The contract sets a minimum only, and the
+  `1..20` range the manage form enforces stays a client sanity bound.
+- `features` stays unbounded: both contracts say
+  `additionalProperties: true`, and the body ceiling is its only bound.
+- The release path and the transition table are untouched:
+  `ReleaseRoom`'s explicit `toState`, `vacant-inspected` as a release
+  target, and `ALLOWED_TRANSITIONS` keep their meaning, and the
+  release-target enum is not narrowed here.
+- The FR capability rows are unchanged: this constrains two existing
+  writes, not a new capability, so the 40-capability count in section 4
+  stands; the two handoff rows gain only the capacity clause.
+
+### 39.3 Behaviour-scoped functional requirements
+
+Ids use the `CAP` (capacity) namespace, continuing the slice-scoped
+pattern of sections 10–38; `RMS` stays the room-inventory namespace,
+`MGMT` the desk management screen, and `OVB` the booking guard. Each of
+the four behaviour-scoped requirements maps to an accepted done-condition
+in `AC-CAP-1`..`AC-CAP-4`.
+
+FR-CAP-1 — A whole capacity of at least 1 is stored verbatim.
+Given an `UpsertRoomType` or `UpsertRoom` write with `capacity` present
+as an integer at or above `1`; when the write is accepted; then the
+value is stored verbatim and comes back unchanged — the
+`UpsertRoomType` response carries it and the next `ListRoomTypes` read
+returns it for a room type, and a room's stored value is readable from
+its row exactly as today — including a value above the manage form's
+`20` sanity bound such as `21`, and every other field is written exactly
+as today. Given `capacity` is omitted; then a create stores no capacity
+and an update keeps the stored one, and no state, number, floor, bed
+type, or features value moves. Traces to: `AC-CAP-1`; FR-RMS-4,
+FR-MGMT-3, FR-ADM-3; `BR-69`.
+
+FR-CAP-2 — An unusable capacity is refused by name in both operations
+and both stores, with nothing written.
+Given an `UpsertRoomType` or `UpsertRoom` write with `capacity` present;
+when the value is negative (`-1`), zero (`0`), fractional (`2.5`),
+non-finite (`1e999` over HTTP, `Infinity` directly), `NaN` (a direct
+store call), or any non-number (`"2"`, `null`, `true`, `[2]`); then the
+write is refused with `VALIDATION_FAILED` (400), `details.field`
+`capacity`, and one plain catalogue sentence stating the rule; nothing
+is created or overwritten, an existing room or type keeps every stored
+field and its state, no `room-upserted` event is emitted, and the same
+request gets the same answer from the in-memory and the Postgres store —
+never a success carrying the old value, and never an `INTERNAL_ERROR`
+500. Traces to: `AC-CAP-2`; FR-RMS-4, FR-MGMT-3, FR-ADM-3;
+NFR-I18N-1; `BR-69`.
+
+FR-CAP-3 — The rule is one shared check inside the store, and the
+stored rows do not move.
+Given either store; when a write is refused under FR-CAP-2; then it is
+refused by the same module-level check that `RoomStore` and
+`PostgresRoomStore` both run before they build a record or open a
+transaction, so the store chosen at boot is not observable in the
+capacity answer or in the stored value; the stored rows are byte-identical
+to before the request, and a capacity stored before this change —
+whatever value it carries — keeps reading exactly as today, because no
+migration, `CHECK` constraint, backfill, truncation, or read-time
+re-validation exists. Given an accepted request runs against both
+stores; then both answer the same status and store the same value.
+Traces to: `AC-CAP-3`, `AC-CAP-1`; FR-RMS-4; NFR-CON-1; `BR-69`.
+
+FR-CAP-4 — The onboarding wizard refuses a capacity below the server
+floor before sending, in both locales.
+Given the onboarding wizard's step 3; when a manager enters a capacity;
+then the field's rule matches the server floor — a whole number of `1`
+or more, or empty for "no capacity" — and a value outside it (`0`, a
+fraction, a negative number, or non-digits) is refused in plain words
+before anything is sent, in English and Vietnamese, naming the capacity
+field; the manage screen's own `1..20` rule, its sentences, and every
+other wizard field keep working exactly as today. Traces to:
+`AC-CAP-4`; FR-ADM-3, FR-MGMT-3; NFR-I18N-1; `BR-69`.
+
+### 39.4 Non-functional requirements delta: no-change statement
+
+No new NFR is added and no existing NFR changes. The NFRs above hold as
+written for this change:
+
+- Response performance (`NFR-PERF-1`, `NFR-PERF-2` hold): the rule is
+  one integer test per write inside the request the service already
+  serves — no round trip, no scan, no poll, and no new screen read — so
+  neither the desk target nor the report target moves.
+- Concurrency and safety (`NFR-CON-1` hold): no new concurrent write
+  path appears, the #631 count-and-insert comparison is untouched, and
+  the check runs before any write, so nothing is claimed, locked, or
+  serialised that is not today.
+- Availability (`NFR-AVL-1` holds): every refusal is decided inside the
+  service on-premise, so no caller gains a dependency outside the host.
+- Internationalisation (`NFR-I18N-1` holds): the new server refusal and
+  the updated wizard sentence resolve through the message catalogue, no
+  sentence renders an envelope code, status number, or stack text, and
+  the English and Vietnamese key sets stay at parity with matching
+  placeholders, so `script/catalogue-coverage-check.sh` stays green.
+- Transport bounds (`NFR-BND-1`..`NFR-BND-3` hold): no route, body
+  ceiling, parse refusal, header, body-read, response-write, or idle
+  bound moves; the capacity rule is a field rule inside the existing
+  65 536-byte body ceiling.
+- Audit and time (`NFR-AUD-1`, `NFR-TZ-1` hold): a refused write records
+  nothing and emits no event, a committed write keeps its actor exactly
+  as today, and no date or display form changes.
+
+The capacity floor is a fixed code rule, not per-hotel configuration:
+the fixed/configurable split in `docs/requirements/business-rules.md`
+section 9 records it as fixed, so no owner setting, deployment file, or
+environment variable carries it.
+
+### 39.5 Traceability handoff for `qa-lead`
+
+Each row traces to `AC-CAP-1`..`AC-CAP-4`, to this section's four FRs,
+and to `BR-69`. Guards that exist are cited `file:line` against the tree
+this requirement was written on; where no guard exists yet, the row
+names the missing guard explicitly and the implementation PR creates it,
+for `qa-lead` to re-pin at the merged head.
+
+| Item | Guard (on disk today; a row marked missing is created by the implementation PR) | Handoff note for `qa-lead` |
+|---|---|---|
+| FR-CAP-1 a whole capacity round-trips | `services/rooms/src/server.test.ts:268-303` (capacity `2` sent to `UpsertRoomType` and carried by the sellability reply), `:355-368` (capacity `4` answered by `UpsertRoomType` and read back by `ListRoomTypes`); `services/rooms/src/pgstore.test.ts:25-31` (capacity `2` persisted), `:232` (capacity `2` seeded on the Postgres store); `app/src/views/OnboardingView.test.ts:674-711` (the wizard posts `capacity: 2`) | Missing guard `C1`: `1` and `21` accepted on both `UpsertRoomType` and `UpsertRoom`, stored verbatim and read back unchanged above the form's `20` bound; an omitted capacity on a create stores none and on an update keeps the stored one. The existing round-trip guards must pass without an assertion change |
+| FR-CAP-2 every unusable value refused | `services/rooms/src/server.test.ts:227-238` (the 400 envelope with `details.field` for a missing `actor`), `:789-800` and the fault-store cases after it (an unexpected exception answers `INTERNAL_ERROR`, not `VALIDATION_FAILED`) | Missing guard `C2`: `-1`, `0`, `2.5`, `1e999` (raw JSON so `JSON.parse` yields `Infinity`), `Infinity` and `NaN` through a direct store call, `"2"`, `null`, `true`, and `[2]` each answer 400 `VALIDATION_FAILED`, `details.field` `capacity`, the plain sentence, and a fresh `traceId`, on both operations and both stores; never a 5xx, and never a success carrying the old value |
+| FR-CAP-2 nothing written and no event | `services/rooms/src/server.test.ts:227-238` (the refusal is answered before any store call), `services/rooms/src/pgstore.test.ts:25-31` (a write's stored row and its outbox event are asserted) | Missing guard `C3`: an existing room or type is written, then a refused update for each value in `C2` leaves the row's every field and state byte-identical, the outbox holds no new `room-upserted`, and a refused create leaves no row at all; both stores |
+| FR-CAP-3 one shared check; stored values unchanged | `services/rooms/src/store.ts:98-110` (the shared `requireDate`/`requireString` helper shape the check joins); `services/rooms/src/pgstore.test.ts:25-31` (the Postgres store reads back what it wrote) | Missing guard `C4`: the same accepted request against both stores answers the same status and value, and each refusal is the same code, field, and sentence; a value stored before the change (for example `0`) still reads back unchanged, proving no read-time re-validation. No migration file is added under `services/rooms/migrations/` for this change |
+| FR-CAP-4 the wizard refuses below 1 | `app/src/views/OnboardingView.test.ts:579-598` (a refused step renders its plain sentence and sends no `UpsertRoomType`/`UpsertRoom`), `:601-620`, `:622-649`, `:651-670` (the same zero-request pattern for other fields), `:674-711` (the accepted payload) | Missing guard `C5`: a capacity of `0`, `2.5`, `-1`, and `abc` each renders the plain capacity sentence, keeps the wizard on step 3, and sends no request; an empty capacity sends no `capacity` member; the Vietnamese locale renders its own sentence; the manage screen's `1..20` guards (`app/src/views/ManageView.test.ts:414-433`) pass unchanged |
+| The catalogue sentence and locale parity | `script/catalogue-coverage-check.sh`; `messages/en.json:700` (the `desk.onboarding.capacity_invalid` sentence, byte-identical in the eight runtime mirrors), `messages/vi.json:700` (its Vietnamese twin) | Missing: the wizard sentence updated in the canonical catalogue and all eight byte-identical mirrors, at parity in `messages/vi.json`; one new plain server sentence key for the capacity refusal, added the same way; the check stays green and no sentence renders an envelope code |
+| Contract lines and no new code token | `script/contract-check.sh` over `contracts/http/UpsertRoom.json` and `UpsertRoomType.json`; fixtures `services/rooms/contract-tests/UpsertRoom.json`, `UpsertRoomType.json` | `architect` adds the capacity case to each `errors[].when` line; the fixtures keep their whole-number capacities and pass unchanged. No new enum token, and no request or response field moves |
+| No-change gates (data model, state machine, release path, desk, e2e) | no migration file under `services/rooms/migrations/` for this change; `services/rooms/src/server.test.ts` state-transition and release suites; `app/src/views/ManageView.test.ts:414-433`; `app/e2e/manage.spec.ts:78-89`; `script/e2e-desk-loop.sh:271` | Covered by re-run: no schema, migration, state, release target, desk control, route, label, state, or copy changes; the manage form's `1..20` refusal and the e2e write of capacity `2` stay as they are. A new field, status, catalogue key outside the two named, schema, or desk assertion is a re-tier finding (section 39.6) |
+
+Per-flow implementation diagram (T2). The architecture-side view is the
+LLD section 38 delta and the refreshed inventory-write edges on
+`docs/architecture/services/rooms.md`; the reader-visible view is the
+UI contract in the product section 31. This is the requirements-side
+view of the same flows, citing the code edges this section was written
+against:
+
+```mermaid
+flowchart TD
+    A[Desk or wizard posts UpsertRoomType or UpsertRoom  server.ts:139-160, ManageView.vue:1071-1085, :1300-1309, OnboardingView.vue:915-917] --> B{capacity present}
+    B -- omitted --> C[Store as today: create stores null, update keeps the stored value  store.ts:248, :279, pgstore.ts:160, :221, :245-248]
+    B -- present --> D{An integer at or above 1  new shared check in store.ts}
+    D -- no: negative, zero, fractional, non-finite, NaN, non-number --> R1[400 VALIDATION_FAILED naming capacity, one plain sentence  new]
+    R1 --> N1[Nothing written, existing row keeps every field and state, no room-upserted event  store.ts:257-263, :289-295, pgstore.ts:152-201, :213-267]
+    D -- yes --> E[Store the value verbatim, then emit room-upserted  store.ts:248-263, :279-295, pgstore.ts:146-201, :207-267]
+    E --> F[200 with today's response fields; the next read returns the stored value  server.ts:139-160]
+    G[Onboarding wizard step 3  OnboardingView.vue:857-864] --> H{A whole number of at least 1, or empty}
+    H -- no --> R2[Plain capacity sentence, nothing sent  messages/en.json:700, messages/vi.json:700]
+    H -- yes --> I[Continue the step and post the types, then the rooms  OnboardingView.vue:915-917]
+    R2 --> J[Manager corrects the field on step 3; no UpsertRoomType or UpsertRoom call is made]
+```
+
+Failure/rollback path: every refusal is decided before any write, so a
+refused upsert creates no row, overwrites no field, and emits no
+`room-upserted` event; a non-finite value that used to reach the driver
+now stops at the shared check instead of answering an
+`INTERNAL_ERROR` 500. The wizard refuses below `1` in plain words and
+sends nothing, so the desk cannot reach the server refusal from its own
+screens. The whole change reverts with the single implementation PR —
+the shared check and the guards disappear together, the type assertion
+(`typeof input.capacity === "number"`) and the wizard's `0`-accepting
+sentence return, and every request the service accepted before is
+accepted again. No migration, `CHECK`, backfill, or data repair exists
+in either direction, so a capacity already stored outside the rule keeps
+reading exactly as stored (R-24).
+
+### 39.6 Explicitly not specified here (plus gate dependencies)
+
+- Implementation — the shared check, the two call sites, the catalogue
+  sentence, the wizard rule, and the guards — is the downstream `dev`
+  PR for #637, not this section.
+- Acceptance criteria, the scope decision, the UI contract, and the
+  recorded risk are `product-owner` work
+  (`AC-CAP-1`..`AC-CAP-4`, D-43, R-24); the HLD section 30 and LLD
+  section 38 deltas, the contract `errors[].when` lines, and the
+  `docs/technical/api-spec.md` section 2 note are `architect` work; the
+  guard mapping above is `qa-lead` work (traceability matrix section
+  31); the release and rollback note is `release-manager` work.
+  `spec-reviewer` gates the set.
+- Refusal precedence between two invalid fields at once is not decided
+  here: the existing `requireString` refusals for `name`, `number`,
+  `roomType`, and `actor` keep their order, and the capacity check sits
+  where its field is read; no guard may depend on one refusal
+  outranking another across fields.
+- Out of scope: routing `releaseRoom` through `ALLOWED_TRANSITIONS` and
+  every other change to the transition table or release targets; the
+  release-target enum narrowing (`vacant-clean`, `out-of-order`); a
+  bound on `features`; an upper capacity bound; a migration, `CHECK`,
+  backfill, truncation, or read-time re-validation; repairing values
+  already stored outside the rule; the sellability fix (#636, landed);
+  and the other audit findings.
+- No UI contract gap applies: the one reader-visible move — the
+  onboarding capacity sentence — carries a UI contract in the product
+  section 31, and no route, shell, layout, component, token, or print
+  surface changes.
+- No implementation PR opens until `SPEC-GATE PASS` on #637.
+
 <!-- ao-role: business-analyst -->
 Role: business-analyst · AO session hotel-mgmt-1215
 
 <!-- ao-role: business-analyst -->
 Role: business-analyst · AO session hotel-mgmt-1247
+
+<!-- ao-role: business-analyst -->
+Role: business-analyst · AO session hotel-mgmt-1261
