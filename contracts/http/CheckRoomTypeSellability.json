@@ -2,7 +2,7 @@
   "operation": "CheckRoomTypeSellability",
   "contract": "RoomInventoryService",
   "version": "1.0",
-  "traces": ["docs/architecture/lld.md sections 1 and 3", "docs/technical/integration.md section 1 C2", "FR-RMS-3", "BR-12"],
+  "traces": ["docs/architecture/lld.md sections 1, 3, and 36", "docs/technical/integration.md section 1 C2", "FR-RMS-3", "BR-12", "BR-67"],
   "transport": {
     "method": "POST",
     "path": "/v1/rooms/CheckRoomTypeSellability",
@@ -26,7 +26,7 @@
       "dateFrom": { "type": "string", "format": "date" },
       "dateTo": { "type": "string", "format": "date" },
       "totalCount": { "type": "integer" },
-      "sellableCount": { "type": "integer", "description": "Rooms of the type with no overlapping out-of-order block." },
+      "sellableCount": { "type": "integer", "description": "Rooms of the type with no overlapping out-of-order block and a sellable recorded state (not `out-of-order` or `occupied`)." },
       "blockedRooms": { "type": "array", "items": { "type": "string" } }
     }
   },
