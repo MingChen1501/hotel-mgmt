@@ -1008,3 +1008,66 @@ implementation PR.
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1175
+
+## 27. A failed Reporting rebuild keeps the last good read model (Refs #642)
+
+Reporting's `Rebuild` emptied every projection, consumer offset, and
+as-of stamp before it replayed the outbox slice
+(`services/reporting/internal/store/store.go:225-241`), and its reads
+never refuse by design
+(`services/reporting/internal/handler/handler.go:1-8`), so a rebuild that
+met an event it could not project part-way left the desk reading an empty
+or partial read model whose `asOf` was the newest event that did apply —
+occupancy and revenue reading as zero or short behind a freshness stamp
+as plausible as a healthy rebuild's. From #642, a rebuild publishes only
+a fully replayed projection set: it builds a candidate set aside and
+installs it in one swap, and an aborted rebuild changes nothing the desk
+can read.
+
+Three properties define the change:
+
+- **One publication seam, so a failure publishes nothing.** The seen
+  record, the per-subscription offsets, the as-of stamp, and the six
+  projection maps become one replaceable set behind the store mutex; a
+  rebuild fills a private candidate — no lock held, unreachable from any
+  read — and installs it in one critical-section assignment only after
+  every event in the slice projects. On the first refused event the
+  candidate is discarded and the published projections, offsets, and
+  stamp keep their pre-rebuild values, so every report keeps answering
+  the rows it answered before and a retry replays from the same offset
+  record.
+- **A read answers one complete set and is never refused.** A read issued
+  during or after a failed rebuild answers the pre-rebuild set with its
+  older `asOf`, and a read issued after the swap answers the post-rebuild
+  set with its own `asOf`; no read observes a partial set, is refused for
+  staleness, or waits for the replay. The failure stays observable to the
+  operator through the rebuild call's returned `VALIDATION_FAILED`
+  refusal and the unchanged last-good `asOf` — never through a read, so
+  no status field joins a read contract.
+- **Nothing else moves.** No new subsystem, dependency edge, data model,
+  endpoint, route, error code, catalogue key, migration, desk surface, or
+  print rule; the 730-night range cap and every existing refusal keep
+  their behaviour, and a successful rebuild stays byte-identical to
+  today's clear-and-replay output — same rows, row order, zero-filled
+  dates, revenue totals, daily-sheet groups, housekeeping list, `asOf`,
+  and per-subscription offsets — so the existing rebuild, range-cap, and
+  report guards keep their expectations.
+
+The change adds no subsystem, dependency edge, data model, lifecycle
+state, operation, or reader-visible surface: it is one lifecycle change
+inside an existing operation, so the container and component views
+(sections 2 and 3) stand unchanged. The build-aside and swap mechanics,
+what "publishes nothing" means per store, the as-of retention rule, the
+per-flow diagram with the happy, mid-stream-refusal, and rollback edges,
+the contract decision, and the verification plan:
+`docs/architecture/lld.md`
+[section 35](lld.md#35-a-failed-reporting-rebuild-keeps-the-last-good-read-model-refs-642);
+per-service note: `docs/architecture/services/reporting.md` sections 3,
+4, and 9; product conditions `AC-RPT-8`..`AC-RPT-10` in
+`docs/product/acceptance-criteria.md` section 28; FR `FR-RPT-5`..`FR-RPT-7`
+in `docs/requirements/mvp-requirements.md` section 36; business rule
+BR-66. Risk R-21 records both the serving-stale and the wrong-swap
+direction; rollback is the single implementation PR.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1207
