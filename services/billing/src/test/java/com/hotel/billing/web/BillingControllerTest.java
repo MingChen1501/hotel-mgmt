@@ -660,4 +660,20 @@ class BillingControllerTest {
         .content("{\"stayId\":\"" + STAY + "\",\"actor\":\"mallory\"}")).andExpect(status().isOk());
     verify(service).getFolioBalance(eq(STAY), eq("mallory"), eq("session-token"));
   }
+
+  @Test
+  void noTokenWinsOverBodyValidationOnEveryWrite() throws Exception {
+    // BR-64 / AC-SEC-4: the session check runs before body parsing, so a
+    // missing token answers 401 even when the body would fail a field
+    // rule. Without the early bind, Java's left-to-right argument
+    // evaluation would answer 400 VALIDATION_FAILED first (B1). Every
+    // write adapter is exercised so a future one cannot regress the
+    // ordering silently.
+    for (String operation : List.of("GetFolioBalance", "PostCharge", "RecordPayment", "RunDayClose",
+        "UpsertChargeItem", "UpsertTaxFeeRule", "RecordOpenBalanceApproval")) {
+      mvc.perform(post("/v1/billing/" + operation).contentType(MediaType.APPLICATION_JSON).content("{}"))
+          .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
+    }
+    verifyNoInteractions(service);
+  }
 }

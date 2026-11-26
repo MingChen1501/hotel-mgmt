@@ -138,27 +138,33 @@ public class BillingController {
   @PostMapping("/GetFolioBalance")
   public BillingService.FolioView getFolioBalance(@RequestHeader(value = "Authorization", required = false)
   String authorization, @RequestBody Map<String, Object> body) {
-    return service.getFolioBalance(required(body, "stayId"), actor(body), sessionActor(authorization));
+    // Resolve the session first: the 401 must win over every body rule,
+    // so an unauthenticated caller cannot probe body shape (BR-64).
+    String session = sessionActor(authorization);
+    return service.getFolioBalance(required(body, "stayId"), actor(body), session);
   }
 
   @PostMapping("/PostCharge")
   public BillingService.LineView postCharge(@RequestHeader(value = "Authorization", required = false)
   String authorization, @RequestBody Map<String, Object> body) {
+    String session = sessionActor(authorization);
     return service.postCharge(required(body, "stayId"), required(body, "itemKind"), required(body, "itemName"),
-        amountOf(body, "amountMinor"), optional(body, "idempotencyKey"), actor(body), sessionActor(authorization));
+        amountOf(body, "amountMinor"), optional(body, "idempotencyKey"), actor(body), session);
   }
 
   @PostMapping("/RecordPayment")
   public BillingService.PaymentView recordPayment(@RequestHeader(value = "Authorization", required = false)
   String authorization, @RequestBody Map<String, Object> body) {
+    String session = sessionActor(authorization);
     return service.recordPayment(required(body, "stayId"), required(body, "method"), amountOf(body, "amountMinor"),
-        optional(body, "idempotencyKey"), actor(body), sessionActor(authorization));
+        optional(body, "idempotencyKey"), actor(body), session);
   }
 
   @PostMapping("/RunDayClose")
   public BillingService.DayCloseView runDayClose(@RequestHeader(value = "Authorization", required = false)
   String authorization, @RequestBody Map<String, Object> body) {
-    return service.runDayClose(required(body, "businessDate"), actor(body), sessionActor(authorization));
+    String session = sessionActor(authorization);
+    return service.runDayClose(required(body, "businessDate"), actor(body), session);
   }
 
   @PostMapping("/GetDayClose")
@@ -185,8 +191,8 @@ public class BillingController {
   @PostMapping("/UpsertChargeItem")
   public Map<String, Object> upsertChargeItem(@RequestHeader(value = "Authorization", required = false)
   String authorization, @RequestBody Map<String, Object> body) {
-    return service.upsertChargeItem(required(body, "name"), amountOf(body, "priceMinor"), actor(body),
-        sessionActor(authorization));
+    String session = sessionActor(authorization);
+    return service.upsertChargeItem(required(body, "name"), amountOf(body, "priceMinor"), actor(body), session);
   }
 
   // Stores one hotel tax rule driving the PostCharge derivation
@@ -194,16 +200,16 @@ public class BillingController {
   @PostMapping("/UpsertTaxFeeRule")
   public Map<String, Object> upsertTaxFeeRule(@RequestHeader(value = "Authorization", required = false)
   String authorization, @RequestBody Map<String, Object> body) {
-    return service.upsertTaxFeeRule(required(body, "name"), percentOf(body, "percent"), actor(body),
-        sessionActor(authorization));
+    String session = sessionActor(authorization);
+    return service.upsertTaxFeeRule(required(body, "name"), percentOf(body, "percent"), actor(body), session);
   }
 
   @PostMapping("/RecordOpenBalanceApproval")
   public BillingService.ApprovalView recordOpenBalanceApproval(
       @RequestHeader(value = "Authorization", required = false)
       String authorization, @RequestBody Map<String, Object> body) {
+    String session = sessionActor(authorization);
     return service.recordOpenBalanceApproval(required(body, "stayId"), required(body, "approvedBy"),
-        required(body, "role"), optional(body, "reason"), optional(body, "idempotencyKey"), actor(body),
-        sessionActor(authorization));
+        required(body, "role"), optional(body, "reason"), optional(body, "idempotencyKey"), actor(body), session);
   }
 }

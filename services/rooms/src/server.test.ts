@@ -93,6 +93,7 @@ describe("session-derived audit actor (#643)", () => {
       const event = roomsInternals(store).outbox.at(-1);
       assert.ok(event);
       assert.equal(event.eventType, "room-upserted");
+      assert.deepEqual(Object.keys(event.payload).sort(), ["requestActor", "roomNumber", "roomTypeId"]);
       assert.equal(event.payload["requestActor"], "mallory");
       assert.equal(event.createdBy, TOKEN);
     }, store);
@@ -211,6 +212,19 @@ describe("session-derived audit actor (#643)", () => {
       const event = roomsInternals(store).outbox.at(-1);
       assert.ok(event);
       assert.deepEqual(Object.keys(event.payload).sort(), ["actor", "name", "roomTypeId"]);
+      // UpsertRoom's own payload never carries an `actor` key: the
+      // session lives on the outbox `created_by`, so both twins keep
+      // the same key set (AC-SEC-2/AC-SEC-5, B2).
+      const room = await request(port, "POST", "/v1/rooms/UpsertRoom", {
+        number: "101",
+        roomType: "Deluxe",
+        actor: TOKEN,
+      });
+      assert.equal(room.status, 200);
+      const roomEvent = roomsInternals(store).outbox.at(-1);
+      assert.ok(roomEvent);
+      assert.deepEqual(Object.keys(roomEvent.payload).sort(), ["roomNumber", "roomTypeId"]);
+      assert.equal(roomEvent.createdBy, TOKEN);
     }, store);
   });
 

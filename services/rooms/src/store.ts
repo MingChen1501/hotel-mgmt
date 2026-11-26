@@ -278,7 +278,7 @@ export class RoomStore implements RoomStoreAPI {
     this.emit(
       "room",
       "room-upserted",
-      { roomNumber: number, roomTypeId: roomType.id, actor, ...(requestActor === null ? {} : { requestActor }) },
+      { roomNumber: number, roomTypeId: roomType.id, ...(requestActor === null ? {} : { requestActor }) },
       actor,
     );
     return record;
