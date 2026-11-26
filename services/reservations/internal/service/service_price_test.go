@@ -50,6 +50,21 @@ func assertPriceUnavailable(t *testing.T, oerr *store.OpError) {
 	}
 }
 
+// assertSameDetails compares every key the upstream envelope carried, so
+// a refusal that drops a `field` detail fails instead of passing on the
+// status code alone.
+func assertSameDetails(t *testing.T, name string, got, want map[string]any) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("%s: details = %v, want exactly %v", name, got, want)
+	}
+	for key, wantValue := range want {
+		if got[key] != wantValue {
+			t.Fatalf("%s: details[%s] = %v, want %v", name, key, got[key], wantValue)
+		}
+	}
+}
+
 // assertNothingWritten is the no-write set every refusal must keep.
 func assertNothingWritten(t *testing.T, st *store.Store, idempotencyKey string) {
 	t.Helper()
@@ -311,7 +326,8 @@ func TestModifyUnreadableQuoteChangesNothing(t *testing.T) {
 
 // PA8 — definitive Rates refusals pass through unchanged and store
 // nothing: no rate price, no rate plan, unknown discount, ambiguous
-// plan set.
+// plan set. Every key of the Rates envelope survives, so a dropped
+// `field: discountName` / `field: ratePlanName` detail fails here.
 func TestDefinitiveQuoteRefusalsPassThrough(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -346,9 +362,10 @@ func TestDefinitiveQuoteRefusalsPassThrough(t *testing.T) {
 			return 0, nil, tc.oerr
 		}
 		_, oerr := svc.Create(loopRequest())
-		if oerr == nil || oerr.Code != tc.oerr.Code || oerr.Status != tc.status || oerr.Details["reason"] != tc.oerr.Details["reason"] {
-			t.Fatalf("%s error = %v, want %s %d surfaced unchanged", tc.name, oerr, tc.oerr.Code, tc.status)
+		if oerr == nil || oerr.Code != tc.oerr.Code || oerr.Status != tc.status || oerr.Message != tc.oerr.Message {
+			t.Fatalf("%s error = %v, want %s %d %q surfaced unchanged", tc.name, oerr, tc.oerr.Code, tc.status, tc.oerr.Message)
 		}
+		assertSameDetails(t, tc.name, oerr.Details, tc.oerr.Details)
 		assertNothingWritten(t, st, "")
 	}
 }
@@ -472,6 +489,23 @@ func TestModifyRefusalsChangeNothing(t *testing.T) {
 			},
 			check: assertPriceUnavailable,
 		},
+		{
+			name:  "definitive refusal",
+			total: 26000,
+			quote: func(_, _, _ string, _ *string, _ string) (int64, *string, *store.OpError) {
+				return 0, nil, &store.OpError{
+					Code: "VALIDATION_FAILED", Status: http.StatusBadRequest, Message: "Unknown discount.",
+					Details: map[string]any{"field": "discountName"},
+				}
+			},
+			check: func(t *testing.T, oerr *store.OpError) {
+				t.Helper()
+				if oerr == nil || oerr.Code != "VALIDATION_FAILED" || oerr.Status != http.StatusBadRequest {
+					t.Fatalf("error = %v, want the 400 VALIDATION_FAILED surfaced unchanged", oerr)
+				}
+				assertSameDetails(t, "modify definitive refusal", oerr.Details, map[string]any{"field": "discountName"})
+			},
+		},
 	}
 	for _, tc := range cases {
 		st := store.New()
@@ -537,22 +571,77 @@ func TestModifyQuotesEffectiveValues(t *testing.T) {
 	if quote.bearerToken != "Bearer caller" {
 		t.Fatalf("quote token = %q, want the caller token forwarded", quote.bearerToken)
 	}
-
-	// A booking that left confirmed refuses before Pricing is asked.
-	svc.CheckRestrictionsHook = allowHook()
-	svc.QuotePriceHook = allowQuote(26000)
-	if _, oerr := svc.Cancel(CancelRequest{Ref: created.Ref, Reason: "guest-request", Actor: "front-desk"}); oerr != nil {
-		t.Fatalf("Cancel refused: %v", oerr)
-	}
-	svc.QuotePriceHook = allowQuote(26000)
-	if _, oerr := svc.Modify(loopModify(created.Ref)); oerr == nil || oerr.Code != "STATE_ILLEGAL" {
-		t.Fatalf("error = %v, want 422 STATE_ILLEGAL for a cancelled booking", oerr)
-	}
 	kept, oerr := st.Get(created.Ref)
 	if oerr != nil {
 		t.Fatalf("Get refused: %v", oerr)
 	}
-	if kept.State != "cancelled" || kept.TotalMinor != 26000 {
-		t.Fatalf("record = %+v, want the cancelled booking kept at the first reprice", kept)
+	if kept.TotalMinor != 26000 || kept.RoomTypeID != "suite-type" {
+		t.Fatalf("record = %+v, want the reprice stored", kept)
+	}
+}
+
+// PA12 — a booking that left confirmed (checked in, cancelled, or
+// no-show) still refuses a Modify with STATE_ILLEGAL, and the row keeps
+// the state and total it had. The state check lives in the guarded
+// store step, so this pins the refusal terms rather than an ordering
+// claim.
+func TestModifyRefusesBookingsThatLeftConfirmed(t *testing.T) {
+	cases := []struct {
+		name    string
+		advance func(*testing.T, *Service, *store.Store, string)
+		state   string
+	}{
+		{
+			name: "checked-in",
+			advance: func(t *testing.T, _ *Service, st *store.Store, ref string) {
+				t.Helper()
+				if _, oerr := st.CheckIn(ref, "stay-1", "front-desk", "front-desk"); oerr != nil {
+					t.Fatalf("CheckIn refused: %v", oerr)
+				}
+			},
+			state: "checked-in",
+		},
+		{
+			name: "cancelled",
+			advance: func(t *testing.T, svc *Service, _ *store.Store, ref string) {
+				t.Helper()
+				if _, oerr := svc.Cancel(CancelRequest{Ref: ref, Reason: "guest-request", Actor: "front-desk"}); oerr != nil {
+					t.Fatalf("Cancel refused: %v", oerr)
+				}
+			},
+			state: "cancelled",
+		},
+		{
+			name: "no-show",
+			advance: func(t *testing.T, svc *Service, _ *store.Store, ref string) {
+				t.Helper()
+				if _, oerr := svc.MarkNoShow(MarkNoShowRequest{Ref: ref, Reason: "no-arrival", Actor: "front-desk"}); oerr != nil {
+					t.Fatalf("MarkNoShow refused: %v", oerr)
+				}
+			},
+			state: "no-show",
+		},
+	}
+	for _, tc := range cases {
+		st := store.New()
+		svc := priceService(st)
+		svc.QuotePriceHook = allowQuote(24000)
+		created, oerr := svc.Create(loopRequest())
+		if oerr != nil {
+			t.Fatalf("%s: Create refused: %v", tc.name, oerr)
+		}
+		tc.advance(t, svc, st, created.Ref)
+
+		svc.QuotePriceHook = allowQuote(26000)
+		if _, oerr := svc.Modify(loopModify(created.Ref)); oerr == nil || oerr.Code != "STATE_ILLEGAL" || oerr.Status != http.StatusUnprocessableEntity {
+			t.Fatalf("%s: error = %v, want 422 STATE_ILLEGAL", tc.name, oerr)
+		}
+		kept, oerr := st.Get(created.Ref)
+		if oerr != nil {
+			t.Fatalf("%s: Get refused: %v", tc.name, oerr)
+		}
+		if kept.State != tc.state || kept.TotalMinor != 24000 || kept.ArrivalDate != "2026-11-01" || kept.DepartureDate != "2026-11-03" {
+			t.Fatalf("%s: record = %+v, want the %s booking unchanged", tc.name, kept, tc.state)
+		}
 	}
 }

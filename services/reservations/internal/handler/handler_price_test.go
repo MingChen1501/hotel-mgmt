@@ -42,13 +42,14 @@ func (s *ratesStub) server(t *testing.T) *httptest.Server {
 			s.mu.Lock()
 			s.quoteAuth = r.Header.Get("Authorization")
 			_ = json.NewDecoder(r.Body).Decode(&s.quoteSeen)
-			s.mu.Unlock()
 			status := s.quoteCode
+			reply := s.quoteBody
+			s.mu.Unlock()
 			if status == 0 {
 				status = http.StatusOK
 			}
 			w.WriteHeader(status)
-			_ = json.NewEncoder(w).Encode(s.quoteBody)
+			_ = json.NewEncoder(w).Encode(reply)
 		default:
 			t.Errorf("unexpected rates path %s", r.URL.Path)
 			w.WriteHeader(http.StatusNotFound)
@@ -152,11 +153,15 @@ func TestBookPathRefusesAbsentTotalWithoutQuoting(t *testing.T) {
 // 5xx from the quote read refuses 503 UPSTREAM_UNAVAILABLE naming
 // rates/QuotePrice and stores nothing, on create and on modify.
 func TestBookPathFailsClosedWhenQuoteUnreadable(t *testing.T) {
-	rates := &ratesStub{quoteCode: http.StatusInternalServerError, quoteBody: map[string]any{}}
+	rates := &ratesStub{quoteBody: map[string]any{"totalMinor": 6000}}
 	srv := rates.server(t)
 	defer srv.Close()
 	mux, st := muxOverRates(srv.URL)
 
+	rates.mu.Lock()
+	rates.quoteCode = http.StatusInternalServerError
+	rates.quoteBody = map[string]any{}
+	rates.mu.Unlock()
 	code, body := post(t, mux, "/v1/reservations/CreateReservation", loopBody("quote-down"), deskToken)
 	if code != http.StatusServiceUnavailable || body["code"] != "UPSTREAM_UNAVAILABLE" {
 		t.Fatalf("create = %d %v, want 503 UPSTREAM_UNAVAILABLE", code, body)
@@ -167,6 +172,47 @@ func TestBookPathFailsClosedWhenQuoteUnreadable(t *testing.T) {
 	}
 	if got := len(st.Query("2026-11-01", "2026-11-03", "deluxe-type")); got != 0 {
 		t.Fatalf("store holds %d reservations after the refusal, want 0", got)
+	}
+
+	// The same unreadable answer on the Modify route refuses 503 and
+	// leaves the stored booking untouched.
+	rates.mu.Lock()
+	rates.quoteCode = 0
+	rates.quoteBody = map[string]any{"totalMinor": 6000}
+	rates.mu.Unlock()
+	createBody := loopBody("modify-quote-down")
+	createBody["priceBasis"] = map[string]any{"totalMinor": 6000}
+	code, created := post(t, mux, "/v1/reservations/CreateReservation", createBody, deskToken)
+	if code != http.StatusOK {
+		t.Fatalf("create = %d %v, want 200", code, created)
+	}
+	ref, _ := created["reservationRef"].(string)
+	before, oerr := st.Get(ref)
+	if oerr != nil {
+		t.Fatalf("Get refused: %v", oerr)
+	}
+
+	rates.mu.Lock()
+	rates.quoteCode = http.StatusInternalServerError
+	rates.quoteBody = map[string]any{}
+	rates.mu.Unlock()
+	modify := modifyBody(ref, "modify-quote-down")
+	modify["priceBasis"] = map[string]any{"totalMinor": 6000}
+	code, body = post(t, mux, "/v1/reservations/ModifyReservation", modify, deskToken)
+	if code != http.StatusServiceUnavailable || body["code"] != "UPSTREAM_UNAVAILABLE" {
+		t.Fatalf("modify = %d %v, want 503 UPSTREAM_UNAVAILABLE", code, body)
+	}
+	details, _ = body["details"].(map[string]any)
+	if details["upstream"] != "rates" || details["operation"] != "QuotePrice" {
+		t.Fatalf("modify details = %v, want rates/QuotePrice named", details)
+	}
+	after, oerr := st.Get(ref)
+	if oerr != nil {
+		t.Fatalf("Get refused: %v", oerr)
+	}
+	if after.ArrivalDate != before.ArrivalDate || after.DepartureDate != before.DepartureDate ||
+		after.RoomTypeID != before.RoomTypeID || after.TotalMinor != before.TotalMinor {
+		t.Fatalf("row after the modify refusal = %+v, want it unchanged from %+v", after, before)
 	}
 }
 
