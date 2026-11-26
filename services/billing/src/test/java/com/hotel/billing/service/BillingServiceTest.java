@@ -1,8 +1,10 @@
 package com.hotel.billing.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -27,6 +29,7 @@ import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -54,7 +57,7 @@ class BillingServiceTest {
   @Test
   void postChargeRefusesUnknownPaymentMethodShapes() {
     ApiException err = assertThrows(ApiException.class,
-        () -> service.recordPayment(STAY.toString(), "transfer", 100, null, "front-desk"));
+        () -> service.recordPayment(STAY.toString(), "transfer", 100, null, "front-desk", "front-desk"));
     assertEquals("VALIDATION_FAILED", err.code());
   }
 
@@ -62,7 +65,7 @@ class BillingServiceTest {
   void postChargeRequiresDefinedChargeItems() {
     when(repo.chargeItemExists("Mini Bar")).thenReturn(false);
     ApiException err = assertThrows(ApiException.class,
-        () -> service.postCharge(STAY.toString(), "charge-item", "Mini Bar", 500, null, "front-desk"));
+        () -> service.postCharge(STAY.toString(), "charge-item", "Mini Bar", 500, null, "front-desk", "front-desk"));
     assertEquals("VALIDATION_FAILED", err.code());
     verify(repo, never()).insertCharge(any(), any(), anyString(), anyString(), anyLong(), anyLong(), anyLong(),
         anyString());
@@ -77,7 +80,7 @@ class BillingServiceTest {
     when(repo.claimOrWait(eq("charge-1"), eq("PostCharge"), anyString())).thenReturn(lineId.toString());
     when(repo.findCharge(lineId)).thenReturn(line);
     BillingService.LineView view = service.postCharge(STAY.toString(), "nightly-room-charge", "Room 101", 12000,
-        "charge-1", "front-desk");
+        "charge-1", "front-desk", "front-desk");
     assertEquals(lineId, view.lineId());
     verify(repo, never()).insertCharge(any(), any(), anyString(), anyString(), anyLong(), anyLong(), anyLong(),
         anyString());
@@ -93,7 +96,7 @@ class BillingServiceTest {
         .thenAnswer(invocation -> new ChargeLine(invocation.getArgument(0), FOLIO, "nightly-room-charge",
             "Room 101", 100000L, 8000L, 0L, NOW, "front-desk"));
     BillingService.LineView view = service.postCharge(STAY.toString(), "nightly-room-charge", "Room 101", 100000L,
-        "charge-taxed", "front-desk");
+        "charge-taxed", "front-desk", "front-desk");
     assertEquals(100000L, view.amountMinor());
     assertEquals(8000L, view.taxMinor());
     assertEquals(0L, view.feeMinor());
@@ -103,16 +106,16 @@ class BillingServiceTest {
   @Test
   void upsertTaxFeeRuleRefusesBadInput() {
     ApiException noName = assertThrows(ApiException.class,
-        () -> service.upsertTaxFeeRule(" ", new BigDecimal("8"), "front-desk"));
+        () -> service.upsertTaxFeeRule(" ", new BigDecimal("8"), "front-desk", "front-desk"));
     assertEquals("VALIDATION_FAILED", noName.code());
     ApiException noPercent = assertThrows(ApiException.class,
-        () -> service.upsertTaxFeeRule("VAT", null, "front-desk"));
+        () -> service.upsertTaxFeeRule("VAT", null, "front-desk", "front-desk"));
     assertEquals("VALIDATION_FAILED", noPercent.code());
     ApiException negative = assertThrows(ApiException.class,
-        () -> service.upsertTaxFeeRule("VAT", new BigDecimal("-1"), "front-desk"));
+        () -> service.upsertTaxFeeRule("VAT", new BigDecimal("-1"), "front-desk", "front-desk"));
     assertEquals("VALIDATION_FAILED", negative.code());
     ApiException overHundred = assertThrows(ApiException.class,
-        () -> service.upsertTaxFeeRule("VAT", new BigDecimal("101"), "front-desk"));
+        () -> service.upsertTaxFeeRule("VAT", new BigDecimal("101"), "front-desk", "front-desk"));
     assertEquals("VALIDATION_FAILED", overHundred.code());
     verify(repo, never()).upsertTaxFeeRule(anyString(), any(), anyString());
   }
@@ -122,7 +125,7 @@ class BillingServiceTest {
   @Test
   void postChargeKeepsItsNegativeAmountRefusal() {
     ApiException err = assertThrows(ApiException.class,
-        () -> service.postCharge(STAY.toString(), "nightly-room-charge", "Room 101", -1, null, "front-desk"));
+        () -> service.postCharge(STAY.toString(), "nightly-room-charge", "Room 101", -1, null, "front-desk", "front-desk"));
     assertEquals("VALIDATION_FAILED", err.code());
     assertEquals("amountMinor", err.details().get("field"));
     verifyNoInteractions(repo);
@@ -131,11 +134,11 @@ class BillingServiceTest {
   @Test
   void recordPaymentKeepsItsPositiveAmountRefusal() {
     ApiException zero = assertThrows(ApiException.class,
-        () -> service.recordPayment(STAY.toString(), "cash", 0, null, "front-desk"));
+        () -> service.recordPayment(STAY.toString(), "cash", 0, null, "front-desk", "front-desk"));
     assertEquals("VALIDATION_FAILED", zero.code());
     assertEquals("amountMinor", zero.details().get("field"));
     ApiException negative = assertThrows(ApiException.class,
-        () -> service.recordPayment(STAY.toString(), "cash", -1, null, "front-desk"));
+        () -> service.recordPayment(STAY.toString(), "cash", -1, null, "front-desk", "front-desk"));
     assertEquals("VALIDATION_FAILED", negative.code());
     assertEquals("amountMinor", negative.details().get("field"));
     verifyNoInteractions(repo);
@@ -144,7 +147,7 @@ class BillingServiceTest {
   @Test
   void upsertChargeItemKeepsItsNegativePriceRefusal() {
     ApiException err = assertThrows(ApiException.class,
-        () -> service.upsertChargeItem("Breakfast", -1, "front-desk"));
+        () -> service.upsertChargeItem("Breakfast", -1, "front-desk", "front-desk"));
     assertEquals("VALIDATION_FAILED", err.code());
     assertEquals("priceMinor", err.details().get("field"));
     verifyNoInteractions(repo);
@@ -156,7 +159,7 @@ class BillingServiceTest {
     when(repo.paymentsByMethodFor(LocalDate.parse("2026-10-26"))).thenReturn(Map.of("cash", 6000L, "card", 0L));
     DayClose run = new DayClose(LocalDate.parse("2026-10-26"), 12000L, Map.of("cash", 6000L, "card", 0L), NOW);
     when(repo.upsertDayClose(eq(LocalDate.parse("2026-10-26")), eq(12000L), any(), eq("manager"))).thenReturn(run);
-    BillingService.DayCloseView view = service.runDayClose("2026-10-26", "manager");
+    BillingService.DayCloseView view = service.runDayClose("2026-10-26", "manager", "manager");
     assertEquals(12000L, view.chargesTotalMinor());
     assertEquals(6000L, view.paymentsByMethod().get("cash"));
   }
@@ -171,10 +174,10 @@ class BillingServiceTest {
   @Test
   void recordApprovalRequiresApproverAndRole() {
     ApiException noApprover = assertThrows(ApiException.class,
-        () -> service.recordOpenBalanceApproval(STAY.toString(), " ", "manager", null, null, "front-desk"));
+        () -> service.recordOpenBalanceApproval(STAY.toString(), " ", "manager", null, null, "front-desk", "front-desk"));
     assertEquals("VALIDATION_FAILED", noApprover.code());
     ApiException noRole = assertThrows(ApiException.class,
-        () -> service.recordOpenBalanceApproval(STAY.toString(), "manager", " ", null, null, "front-desk"));
+        () -> service.recordOpenBalanceApproval(STAY.toString(), "manager", " ", null, null, "front-desk", "front-desk"));
     assertEquals("VALIDATION_FAILED", noRole.code());
     verify(repo, never()).recordApproval(any(), anyString(), anyString());
   }
@@ -186,7 +189,7 @@ class BillingServiceTest {
         "{\"approvedBy\":\"manager\",\"role\":\"manager\",\"reason\":\"Guest pays next visit\"}");
     when(repo.findFolioByStay(STAY)).thenReturn(approved);
     BillingService.ApprovalView view = service.recordOpenBalanceApproval(STAY.toString(), "manager", "manager",
-        "Guest pays next visit", null, "front-desk");
+        "Guest pays next visit", null, "front-desk", "front-desk");
     assertEquals(FOLIO, view.folioId());
     assertEquals(6000L, view.balanceMinor());
     assertEquals("manager", view.openBalanceApproval().get("approvedBy"));
@@ -204,7 +207,7 @@ class BillingServiceTest {
     Folio approved = new Folio(FOLIO, STAY, 6000, "{\"approvedBy\":\"manager\",\"role\":\"manager\"}");
     when(repo.findFolioByStay(STAY)).thenReturn(approved);
     BillingService.ApprovalView view = service.recordOpenBalanceApproval(STAY.toString(), "manager", "manager",
-        null, "approval-1", "front-desk");
+        null, "approval-1", "front-desk", "front-desk");
     assertEquals("manager", view.openBalanceApproval().get("approvedBy"));
     assertEquals("manager", view.openBalanceApproval().get("role"));
     verify(repo, never()).recordApproval(any(), anyString(), anyString());
@@ -216,7 +219,7 @@ class BillingServiceTest {
         new Folio(FOLIO, STAY, 6000, "{\"approvedBy\":\"manager\",\"role\":\"manager\"}"));
     when(repo.chargeLines(FOLIO)).thenReturn(java.util.List.of());
     when(repo.paymentLines(FOLIO)).thenReturn(java.util.List.of());
-    BillingService.FolioView view = service.getFolioBalance(STAY.toString(), "front-desk");
+    BillingService.FolioView view = service.getFolioBalance(STAY.toString(), "front-desk", "front-desk");
     assertEquals("manager", view.openBalanceApproval().get("approvedBy"));
     assertEquals("manager", view.openBalanceApproval().get("role"));
   }
@@ -226,7 +229,7 @@ class BillingServiceTest {
     when(repo.ensureFolio(eq(STAY), eq("front-desk"))).thenReturn(folio(6000));
     when(repo.chargeLines(FOLIO)).thenReturn(java.util.List.of());
     when(repo.paymentLines(FOLIO)).thenReturn(java.util.List.of());
-    BillingService.FolioView view = service.getFolioBalance(STAY.toString(), "front-desk");
+    BillingService.FolioView view = service.getFolioBalance(STAY.toString(), "front-desk", "front-desk");
     assertNull(view.openBalanceApproval());
   }
 
@@ -291,5 +294,115 @@ class BillingServiceTest {
     ApiException err = assertThrows(ApiException.class,
         () -> service.produceReceipt(UUID.randomUUID().toString(), "front-desk"));
     assertEquals("NOT_FOUND", err.code());
+  }
+
+  // #643 / BR-65: the recorded audit actor is the session token; the
+  // body actor is demoted to the additive requestActor annotation on
+  // the JSON outbox payloads.
+  private String payloadOf(String eventType, String requestActor, String sessionActor) {
+    ArgumentCaptor<String> payload = ArgumentCaptor.forClass(String.class);
+    switch (eventType) {
+      case "charge-posted" -> verify(repo).outbox(eq("folio"), eq("charge-posted"), payload.capture(), eq(sessionActor));
+      case "payment-recorded" ->
+          verify(repo).outbox(eq("folio"), eq("payment-recorded"), payload.capture(), eq(sessionActor));
+      case "day-close-completed" ->
+          verify(repo).outbox(eq("day-close"), eq("day-close-completed"), payload.capture(), eq(sessionActor));
+      case "approval-recorded" ->
+          verify(repo).outbox(eq("folio"), eq("approval-recorded"), payload.capture(), eq(sessionActor));
+      default -> throw new IllegalArgumentException(eventType);
+    }
+    String json = payload.getValue();
+    if (requestActor == null || requestActor.isBlank() || requestActor.equals(sessionActor)) {
+      assertFalse(json.contains("requestActor"), json);
+    } else {
+      assertTrue(json.contains("\"requestActor\":\"" + requestActor + "\""), json);
+    }
+    return json;
+  }
+
+  @Test
+  void postChargeRecordsTheSessionAndDemotesTheBodyActor() {
+    UUID lineId = UUID.randomUUID();
+    when(repo.ensureFolio(eq(STAY), eq("session-token"))).thenReturn(folio(0));
+    when(repo.claimOrWait(eq("sec-20"), eq("PostCharge"), anyString())).thenReturn(null);
+    when(repo.listTaxFeeRules()).thenReturn(java.util.List.of());
+    when(repo.insertCharge(any(), eq(FOLIO), eq("nightly-room-charge"), eq("Room 101"), eq(12000L), eq(0L),
+        eq(0L), eq("session-token")))
+        .thenAnswer(invocation -> new ChargeLine(lineId, FOLIO, "nightly-room-charge", "Room 101", 12000L, 0L, 0L,
+            NOW, "session-token"));
+    service.postCharge(STAY.toString(), "nightly-room-charge", "Room 101", 12000, "sec-20", "mallory",
+        "session-token");
+    verify(repo).ensureFolio(eq(STAY), eq("session-token"));
+    verify(repo).addToBalance(eq(FOLIO), eq(12000L), eq("session-token"));
+    payloadOf("charge-posted", "mallory", "session-token");
+  }
+
+  @Test
+  void recordPaymentRecordsTheSessionAndDemotesTheBodyActor() {
+    UUID paymentId = UUID.randomUUID();
+    when(repo.ensureFolio(eq(STAY), eq("session-token"))).thenReturn(folio(6000));
+    when(repo.claimOrWait(eq("sec-21"), eq("RecordPayment"), anyString())).thenReturn(null);
+    when(repo.insertPayment(any(), eq(FOLIO), eq("cash"), eq(6000L), eq("session-token")))
+        .thenAnswer(invocation -> new PaymentLine(paymentId, FOLIO, "cash", 6000L, NOW, "session-token"));
+    when(repo.findFolioByStay(STAY)).thenReturn(folio(6000));
+    service.recordPayment(STAY.toString(), "cash", 6000, "sec-21", "mallory", "session-token");
+    verify(repo).addToBalance(eq(FOLIO), eq(-6000L), eq("session-token"));
+    payloadOf("payment-recorded", "mallory", "session-token");
+  }
+
+  @Test
+  void runDayCloseRecordsTheSessionAndDemotesTheBodyActor() {
+    LocalDate date = LocalDate.parse("2026-10-26");
+    when(repo.chargesTotalFor(date)).thenReturn(12000L);
+    when(repo.paymentsByMethodFor(date)).thenReturn(Map.of("cash", 6000L, "card", 0L));
+    when(repo.upsertDayClose(eq(date), eq(12000L), any(), eq("session-token")))
+        .thenReturn(new DayClose(date, 12000L, Map.of("cash", 6000L, "card", 0L), NOW));
+    service.runDayClose("2026-10-26", "mallory", "session-token");
+    payloadOf("day-close-completed", "mallory", "session-token");
+  }
+
+  @Test
+  void recordApprovalRecordsTheSessionAndDemotesTheBodyActor() {
+    when(repo.ensureFolio(eq(STAY), eq("session-token"))).thenReturn(folio(6000));
+    when(repo.claimOrWait(eq("sec-22"), eq("RecordOpenBalanceApproval"), anyString())).thenReturn(null);
+    when(repo.findFolioByStay(STAY)).thenReturn(folio(6000));
+    service.recordOpenBalanceApproval(STAY.toString(), "manager", "manager", null, "sec-22", "mallory",
+        "session-token");
+    verify(repo).recordApproval(eq(FOLIO), anyString(), eq("session-token"));
+    payloadOf("approval-recorded", "mallory", "session-token");
+  }
+
+  @Test
+  void folioBalanceAndRulesRecordTheSession() {
+    when(repo.ensureFolio(eq(STAY), eq("session-token"))).thenReturn(folio(0));
+    when(repo.chargeLines(FOLIO)).thenReturn(java.util.List.of());
+    when(repo.paymentLines(FOLIO)).thenReturn(java.util.List.of());
+    service.getFolioBalance(STAY.toString(), "mallory", "session-token");
+    verify(repo).ensureFolio(eq(STAY), eq("session-token"));
+
+    when(repo.upsertChargeItem(eq("Breakfast"), eq(500L), eq("session-token"))).thenReturn(Map.of("name", "Breakfast"));
+    service.upsertChargeItem("Breakfast", 500, "mallory", "session-token");
+    verify(repo).upsertChargeItem(eq("Breakfast"), eq(500L), eq("session-token"));
+
+    when(repo.upsertTaxFeeRule(eq("VAT"), any(), eq("session-token"))).thenReturn(Map.of("name", "VAT"));
+    service.upsertTaxFeeRule("VAT", new BigDecimal("8"), "mallory", "session-token");
+    verify(repo).upsertTaxFeeRule(eq("VAT"), any(), eq("session-token"));
+  }
+
+  @Test
+  void honestActorPayloadsCarryNoAnnotation() {
+    when(repo.ensureFolio(eq(STAY), eq("session-token"))).thenReturn(folio(0));
+    when(repo.claimOrWait(eq("sec-honest"), eq("PostCharge"), anyString())).thenReturn(null);
+    when(repo.listTaxFeeRules()).thenReturn(java.util.List.of());
+    when(repo.insertCharge(any(), eq(FOLIO), eq("nightly-room-charge"), eq("Room 101"), eq(12000L), eq(0L),
+        eq(0L), eq("session-token")))
+        .thenAnswer(invocation -> new ChargeLine(UUID.randomUUID(), FOLIO, "nightly-room-charge", "Room 101", 12000L,
+            0L, 0L, NOW, "session-token"));
+    service.postCharge(STAY.toString(), "nightly-room-charge", "Room 101", 12000, "sec-honest", "session-token",
+        "session-token");
+    String json = payloadOf("charge-posted", "session-token", "session-token");
+    assertTrue(json.startsWith("{\"folioId\":\"" + FOLIO + "\",\"lineId\":\""), json);
+    assertTrue(json.endsWith("\"}"), json);
+    assertFalse(json.contains("requestActor"), json);
   }
 }

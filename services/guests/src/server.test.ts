@@ -940,11 +940,97 @@ describe("guest identity ambiguity and payload bounds (#640)", () => {
   });
 });
 
+// #643 / BR-65: the recorded audit actor is the authenticated session,
+// never the request's actor; a disagreeing value is preserved only as
+// the additive requestActor annotation on the JSON outbox payload.
+type OutboxEntry = { eventType: string; payload: Record<string, unknown> };
+
+describe("session-derived audit actor (#643)", () => {
+  it("records the session token on UpsertGuest and demotes the body actor (SEC5)", async () => {
+    const store = new GuestStore();
+    await withGuestServer(store, async (port) => {
+      const upserted = await request(port, "POST", "/v1/guests/UpsertGuest", {
+        fullName: "Spoofed Guest",
+        actor: "mallory",
+      });
+      assert.equal(upserted.status, 200);
+      const outbox = (store as unknown as { outbox: OutboxEntry[] }).outbox;
+      const event = outbox.find((entry) => entry.eventType === "guest-upserted");
+      assert.ok(event);
+      assert.equal(event.payload["actor"], TOKEN);
+      assert.equal(event.payload["requestActor"], "mallory");
+      assert.notEqual(event.payload["actor"], "mallory");
+    });
+  });
+
+  it("keeps an honest payload byte-identical with no requestActor key (SEC29)", async () => {
+    const store = new GuestStore();
+    await withGuestServer(store, async (port) => {
+      const upserted = await request(port, "POST", "/v1/guests/UpsertGuest", {
+        fullName: "Honest Guest",
+        actor: TOKEN,
+      });
+      assert.equal(upserted.status, 200);
+      const outbox = (store as unknown as { outbox: OutboxEntry[] }).outbox;
+      const event = outbox.find((entry) => entry.eventType === "guest-upserted");
+      assert.ok(event);
+      assert.equal(event.payload["actor"], TOKEN);
+      assert.deepEqual(Object.keys(event.payload).sort(), ["actor", "fullName", "guestId"]);
+    });
+  });
+
+  it("refuses a write with no session before it writes (SEC32)", async () => {
+    const store = new GuestStore();
+    await withGuestServer(store, async (port) => {
+      const refused = await request(
+        port,
+        "POST",
+        "/v1/guests/UpsertGuest",
+        { fullName: "No Session Guest", actor: "mallory" },
+        null,
+      );
+      assert.equal(refused.status, 401);
+      assert.equal((refused.body as { code: string }).code, "UNAUTHENTICATED");
+      const outbox = (store as unknown as { outbox: OutboxEntry[] }).outbox;
+      assert.equal(outbox.length, 0);
+    });
+  });
+
+  it("keeps the missing-actor refusal and adds no disagreement refusal (SEC31)", async () => {
+    await withGuestServer(new GuestStore(), async (port) => {
+      const missing = await request(port, "POST", "/v1/guests/UpsertGuest", { fullName: "No Actor Guest" });
+      assert.equal(missing.status, 400);
+      assert.equal((missing.body as { code: string }).code, "VALIDATION_FAILED");
+      assert.equal((missing.body as { details: { field: string } }).details.field, "actor");
+    });
+  });
+});
+
 // Postgres round-trip for the guests schema (issue #149). Skipped
 // without TEST_PG_URL so `npm test` stays green without a database.
 const DATABASE_URL = process.env["TEST_PG_URL"];
 
 describe("guests postgres store", { skip: DATABASE_URL === undefined || DATABASE_URL === "" }, () => {
+  it("records the session token and demotes the body actor (#643, SEC5)", async () => {
+    const pool = new Pool({ connectionString: DATABASE_URL });
+    try {
+      await pool.query("DELETE FROM guests.outbox");
+      await pool.query("DELETE FROM guests.guest_stay_links");
+      await pool.query("DELETE FROM guests.guests");
+      const store = new PostgresGuestStore(pool);
+      const guest = await store.upsertGuest({ fullName: "Spoofed Guest", actor: "mallory" }, TOKEN);
+      const { rows } = await pool.query(
+        `SELECT created_by, updated_by FROM guests.guests WHERE id = $1`,
+        [guest.id],
+      );
+      assert.equal(rows[0].created_by, TOKEN);
+      assert.equal(rows[0].updated_by, TOKEN);
+      assert.notEqual(rows[0].updated_by, "mallory");
+    } finally {
+      await pool.end();
+    }
+  });
+
   it("persists the guest profile row", async () => {
     const pool = new Pool({ connectionString: DATABASE_URL });
     try {
@@ -952,7 +1038,7 @@ describe("guests postgres store", { skip: DATABASE_URL === undefined || DATABASE
       await pool.query("DELETE FROM guests.guest_stay_links");
       await pool.query("DELETE FROM guests.guests");
       const store = new PostgresGuestStore(pool);
-      const guest = await store.upsertGuest({ fullName: "E2E Guest", preferences: { floor: "high" }, actor: "front-desk" });
+      const guest = await store.upsertGuest({ fullName: "E2E Guest", preferences: { floor: "high" }, actor: "front-desk" }, TOKEN);
       assert.ok(guest.id);
       const identified = await store.identifyGuest({ guestId: guest.id });
       assert.equal(identified.fullName, "E2E Guest");
@@ -969,7 +1055,7 @@ describe("guests postgres store", { skip: DATABASE_URL === undefined || DATABASE
       await pool.query("DELETE FROM guests.guest_stay_links");
       await pool.query("DELETE FROM guests.guests");
       const store = new PostgresGuestStore(pool);
-      const guest = await store.upsertGuest({ fullName: "E2E Guest", actor: "front-desk" });
+      const guest = await store.upsertGuest({ fullName: "E2E Guest", actor: "front-desk" }, TOKEN);
       const stayId = "44444444-4444-4444-8444-444444444444";
       await store.linkStay({ guestId: guest.id, stayId });
       await store.linkStay({ guestId: guest.id, stayId });
@@ -990,9 +1076,9 @@ describe("guests postgres store", { skip: DATABASE_URL === undefined || DATABASE
       await pool.query("DELETE FROM guests.guest_stay_links");
       await pool.query("DELETE FROM guests.guests");
       const store = new PostgresGuestStore(pool);
-      await store.upsertGuest({ fullName: sameName, actor: "front-desk" });
-      await store.upsertGuest({ fullName: sameName, actor: "front-desk" });
-      await store.upsertGuest({ fullName: "Unique Guest", actor: "front-desk" });
+      await store.upsertGuest({ fullName: sameName, actor: "front-desk" }, TOKEN);
+      await store.upsertGuest({ fullName: sameName, actor: "front-desk" }, TOKEN);
+      await store.upsertGuest({ fullName: "Unique Guest", actor: "front-desk" }, TOKEN);
 
       await assert.rejects(
         store.identifyGuest({ fullName: sameName }),
@@ -1008,24 +1094,30 @@ describe("guests postgres store", { skip: DATABASE_URL === undefined || DATABASE
       assert.equal(unique.fullName, "Unique Guest");
 
       await assert.rejects(
-        store.upsertGuest({ fullName: "Bounds Guest", contact: [1, 2], actor: "front-desk" }),
+        store.upsertGuest({ fullName: "Bounds Guest", contact: [1, 2], actor: "front-desk" }, TOKEN),
         (err) => err instanceof HttpError && err.code === "VALIDATION_FAILED" && err.details.field === "contact",
       );
       await assert.rejects(
-        store.upsertGuest({
-          fullName: "Bounds Guest",
-          preferences: { note: "v".repeat(257) },
-          actor: "front-desk",
-        }),
+        store.upsertGuest(
+          {
+            fullName: "Bounds Guest",
+            preferences: { note: "v".repeat(257) },
+            actor: "front-desk",
+          },
+          TOKEN,
+        ),
         (err) =>
           err instanceof HttpError && err.code === "VALIDATION_FAILED" && err.details.field === "preferences",
       );
       await assert.rejects(
-        store.upsertGuest({
-          fullName: "Bounds Guest",
-          notes: "n".repeat(MAX_GUEST_NOTES_LENGTH + 1),
-          actor: "front-desk",
-        }),
+        store.upsertGuest(
+          {
+            fullName: "Bounds Guest",
+            notes: "n".repeat(MAX_GUEST_NOTES_LENGTH + 1),
+            actor: "front-desk",
+          },
+          TOKEN,
+        ),
         (err) => err instanceof HttpError && err.code === "VALIDATION_FAILED" && err.details.field === "notes",
       );
 

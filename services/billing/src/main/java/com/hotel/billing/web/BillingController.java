@@ -36,6 +36,9 @@ public class BillingController {
     this.service = service;
   }
 
+  // actor is the request's own value: validated by the service exactly
+  // as today, then demoted to the additive requestActor annotation. It
+  // is never the recorded audit actor (BR-65, #643).
   private static String actor(Map<String, Object> body) {
     Object actor = body.get("actor");
     return actor instanceof String text ? text : "";
@@ -114,41 +117,48 @@ public class BillingController {
     }
   }
 
-  private void requireToken(String authorization) {
+  // sessionActor is the recorded audit actor on every write (BR-65,
+  // #643): the caller's Bearer token with the prefix removed and the
+  // remainder trimmed. It keeps today's exact 401 for a missing token
+  // and grants nothing beyond the presence check that already ran.
+  private static String sessionActor(String authorization) {
     if (authorization == null || !authorization.startsWith("Bearer ")
         || authorization.substring("Bearer ".length()).isBlank()) {
       throw new ApiException("UNAUTHENTICATED", 401, Messages.text("error.auth.missing_token", Map.of()), Map.of());
     }
+    return authorization.substring("Bearer ".length()).strip();
+  }
+
+  // The presentation reads record nothing, so they keep the presence
+  // check and the request actor rule without recording the session.
+  private static void requireToken(String authorization) {
+    sessionActor(authorization);
   }
 
   @PostMapping("/GetFolioBalance")
   public BillingService.FolioView getFolioBalance(@RequestHeader(value = "Authorization", required = false)
   String authorization, @RequestBody Map<String, Object> body) {
-    requireToken(authorization);
-    return service.getFolioBalance(required(body, "stayId"), actor(body));
+    return service.getFolioBalance(required(body, "stayId"), actor(body), sessionActor(authorization));
   }
 
   @PostMapping("/PostCharge")
   public BillingService.LineView postCharge(@RequestHeader(value = "Authorization", required = false)
   String authorization, @RequestBody Map<String, Object> body) {
-    requireToken(authorization);
     return service.postCharge(required(body, "stayId"), required(body, "itemKind"), required(body, "itemName"),
-        amountOf(body, "amountMinor"), optional(body, "idempotencyKey"), actor(body));
+        amountOf(body, "amountMinor"), optional(body, "idempotencyKey"), actor(body), sessionActor(authorization));
   }
 
   @PostMapping("/RecordPayment")
   public BillingService.PaymentView recordPayment(@RequestHeader(value = "Authorization", required = false)
   String authorization, @RequestBody Map<String, Object> body) {
-    requireToken(authorization);
     return service.recordPayment(required(body, "stayId"), required(body, "method"), amountOf(body, "amountMinor"),
-        optional(body, "idempotencyKey"), actor(body));
+        optional(body, "idempotencyKey"), actor(body), sessionActor(authorization));
   }
 
   @PostMapping("/RunDayClose")
   public BillingService.DayCloseView runDayClose(@RequestHeader(value = "Authorization", required = false)
   String authorization, @RequestBody Map<String, Object> body) {
-    requireToken(authorization);
-    return service.runDayClose(required(body, "businessDate"), actor(body));
+    return service.runDayClose(required(body, "businessDate"), actor(body), sessionActor(authorization));
   }
 
   @PostMapping("/GetDayClose")
@@ -175,8 +185,8 @@ public class BillingController {
   @PostMapping("/UpsertChargeItem")
   public Map<String, Object> upsertChargeItem(@RequestHeader(value = "Authorization", required = false)
   String authorization, @RequestBody Map<String, Object> body) {
-    requireToken(authorization);
-    return service.upsertChargeItem(required(body, "name"), amountOf(body, "priceMinor"), actor(body));
+    return service.upsertChargeItem(required(body, "name"), amountOf(body, "priceMinor"), actor(body),
+        sessionActor(authorization));
   }
 
   // Stores one hotel tax rule driving the PostCharge derivation
@@ -184,16 +194,16 @@ public class BillingController {
   @PostMapping("/UpsertTaxFeeRule")
   public Map<String, Object> upsertTaxFeeRule(@RequestHeader(value = "Authorization", required = false)
   String authorization, @RequestBody Map<String, Object> body) {
-    requireToken(authorization);
-    return service.upsertTaxFeeRule(required(body, "name"), percentOf(body, "percent"), actor(body));
+    return service.upsertTaxFeeRule(required(body, "name"), percentOf(body, "percent"), actor(body),
+        sessionActor(authorization));
   }
 
   @PostMapping("/RecordOpenBalanceApproval")
   public BillingService.ApprovalView recordOpenBalanceApproval(
       @RequestHeader(value = "Authorization", required = false)
       String authorization, @RequestBody Map<String, Object> body) {
-    requireToken(authorization);
     return service.recordOpenBalanceApproval(required(body, "stayId"), required(body, "approvedBy"),
-        required(body, "role"), optional(body, "reason"), optional(body, "idempotencyKey"), actor(body));
+        required(body, "role"), optional(body, "reason"), optional(body, "idempotencyKey"), actor(body),
+        sessionActor(authorization));
   }
 }

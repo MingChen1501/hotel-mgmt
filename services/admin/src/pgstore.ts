@@ -508,7 +508,10 @@ export class PostgresAdminStore implements AdminStoreAPI {
     if (typeof input.values !== "object" || input.values === null || Array.isArray(input.values)) {
       throw new HttpError("VALIDATION_FAILED", msg("error.validation.values_object", {}), { field: "values" });
     }
-    const updatedBy = requiredString(input.updatedBy, "updatedBy");
+    // `updatedBy` keeps today's refusal; the recorded actor is the
+    // resolved caller (BR-65, #643), dropped rather than annotated.
+    requiredString(input.updatedBy, "updatedBy");
+    const updatedBy = caller.signinIdentity;
     const values = input.values as Record<string, unknown>;
     // BR-64 (#639): the shared per-key table runs here, before
     // withTx opens, so a refused write runs no UPDATE/INSERT and

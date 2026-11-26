@@ -136,7 +136,7 @@ export interface GuestProfile extends GuestRecord {
 // GuestStoreAPI is the contract both the in-memory store and the
 // Postgres store implement (issue #149).
 export interface GuestStoreAPI {
-  upsertGuest(input: UpsertGuestInput): Promise<GuestRecord>;
+  upsertGuest(input: UpsertGuestInput, sessionActor: string): Promise<GuestRecord>;
   identifyGuest(input: IdentifyGuestInput): Promise<GuestRecord & { stayLinks: GuestStayLink[] }>;
   getBookingContext(input: GetBookingContextInput): Promise<{
     guestId: string;
@@ -304,19 +304,32 @@ export function toConfirmationRecord(input: AttachReservationInput): Confirmatio
   };
 }
 
+// requestActorAnnotation returns the additive requestActor value for a
+// JSON outbox payload (BR-65, #643): the request's actor is preserved
+// only when it is a present, non-blank string that differs exactly from
+// the recorded session actor. An equal or absent value adds no key.
+export function requestActorAnnotation(sessionActor: string, requestActor: unknown): string | null {
+  if (typeof requestActor !== "string" || requestActor.trim() === "" || requestActor === sessionActor) {
+    return null;
+  }
+  return requestActor;
+}
+
 export class GuestStore implements GuestStoreAPI {
   private readonly guests = new Map<string, GuestRecord>();
   private readonly links: GuestStayLink[] = [];
   private readonly confirmations = new Map<string, ConfirmationRecord>();
   private readonly outbox: { aggregate: string; eventType: string; payload: Record<string, unknown> }[] = [];
 
-  async upsertGuest(input: UpsertGuestInput): Promise<GuestRecord> {
+  async upsertGuest(input: UpsertGuestInput, sessionActor: string): Promise<GuestRecord> {
     const id =
       input.guestId === undefined || input.guestId === null || input.guestId === ""
         ? randomUUID()
         : requireUuid(input.guestId, "guestId");
     const fullName = requireString(input.fullName, "fullName");
-    const actor = requireString(input.actor, "actor");
+    requireString(input.actor, "actor");
+    const actor = sessionActor;
+    const requestActor = requestActorAnnotation(sessionActor, input.actor);
     // The declared payload bounds run after the identifier checks and
     // before the first store access, so a refusal writes no row and
     // (below) no guest-upserted event (LLD sections 32.1 and 32.3).
@@ -334,7 +347,11 @@ export class GuestStore implements GuestStoreAPI {
       pastStayCount: existing?.pastStayCount ?? 0,
     };
     this.guests.set(id, record);
-    this.outbox.push({ aggregate: "guest", eventType: "guest-upserted", payload: { guestId: id, fullName, actor } });
+    this.outbox.push({
+      aggregate: "guest",
+      eventType: "guest-upserted",
+      payload: { guestId: id, fullName, actor, ...(requestActor === null ? {} : { requestActor }) },
+    });
     return record;
   }
 

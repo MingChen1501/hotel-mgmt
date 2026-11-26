@@ -553,6 +553,10 @@ export class AdminStore implements AdminStoreAPI {
     if (typeof input.values !== "object" || input.values === null || Array.isArray(input.values)) {
       throw new HttpError("VALIDATION_FAILED", msg("error.validation.values_object", {}), { field: "values" });
     }
+    // `updatedBy` stays required with today's refusal, but the recorded
+    // actor is the resolved caller (BR-65, #643): the request value is
+    // dropped, never authoritative. The config write emits no JSON
+    // payload, so there is no requestActor annotation.
     requiredString(input.updatedBy, "updatedBy");
     const values = input.values as Record<string, unknown>;
     // BR-64 (#639): the shared per-key table runs after today's
@@ -562,7 +566,7 @@ export class AdminStore implements AdminStoreAPI {
     validateConfigValues(values);
     const entries = Object.entries(values);
     const now = Date.now();
-    const actor = input.updatedBy as string;
+    const actor = caller.signinIdentity;
     for (const [key, value] of entries) {
       this.config.set(key, { value, updatedBy: actor, updatedAt: now });
     }

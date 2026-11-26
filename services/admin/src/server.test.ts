@@ -779,6 +779,78 @@ describe("secret rotation (issue #284)", () => {
   });
 });
 
+// #643 / BR-65: the Admin config write records the resolved caller's
+// signinIdentity, never the body's updatedBy; the field keeps its
+// existing refusal and the request value is dropped (no JSON payload).
+describe("session-derived config actor (#643)", () => {
+  it("records the caller's signinIdentity when updatedBy names another person (SEC28, SEC30)", async () => {
+    const store = await bootStore();
+    await withServer(store, async (port) => {
+      const signin = await request(port, "POST", "/v1/admin/SignIn", {
+        signinIdentity: "owner",
+        secret: "owner-secret",
+      });
+      const ownerToken = (signin.body as { token: string }).token;
+
+      const saved = await request(
+        port,
+        "POST",
+        "/v1/admin/UpdateHotelConfig",
+        { values: { timezone: "Asia/Ho_Chi_Minh" }, updatedBy: "mallory" },
+        ownerToken,
+      );
+      assert.equal(saved.status, 200);
+      assert.equal((saved.body as { values: { timezone: string } }).values.timezone, "Asia/Ho_Chi_Minh");
+
+      const caller = await store.authenticate(ownerToken);
+      assert.equal(caller.signinIdentity, "owner");
+      const record = (store as unknown as { config: Map<string, { updatedBy: string }> }).config.get("timezone");
+      assert.equal(record?.updatedBy, "owner");
+
+      const log = await request(port, "POST", "/v1/admin/QueryAuditLog", { limit: 50 }, ownerToken);
+      assert.equal(log.status, 200);
+      const entries = (log.body as { entries: Record<string, unknown>[] }).entries;
+      const configEntries = entries.filter((entry) => entry["action"] === "config.updated");
+      assert.ok(configEntries.length >= 1);
+      for (const entry of configEntries) {
+        assert.equal(entry["actor"], "owner");
+        assert.notEqual(entry["actor"], "mallory");
+        assert.deepEqual(Object.keys(entry).sort(), ["action", "actor", "at", "entity"]);
+      }
+    });
+  });
+
+  it("keeps the updatedBy refusal and the front-desk 403 (SEC31)", async () => {
+    await withServer(await bootStore(), async (port) => {
+      const signin = await request(port, "POST", "/v1/admin/SignIn", {
+        signinIdentity: "owner",
+        secret: "owner-secret",
+      });
+      const ownerToken = (signin.body as { token: string }).token;
+      const missing = await request(
+        port,
+        "POST",
+        "/v1/admin/UpdateHotelConfig",
+        { values: { timezone: "UTC" } },
+        ownerToken,
+      );
+      assert.equal(missing.status, 400);
+      assert.equal((missing.body as { code: string }).code, "VALIDATION_FAILED");
+      assert.equal((missing.body as { details: { field: string } }).details.field, "updatedBy");
+    });
+  });
+
+  it("keeps the server-side boot actor with no request (SEC34)", async () => {
+    const store = await bootStore();
+    const boot = await store.signIn("owner", "owner-secret");
+    const caller = await store.authenticate(boot.token);
+    const log = await store.queryAuditLog(caller, { limit: 50 });
+    const created = log.entries.filter((entry) => entry.action === "user.created");
+    assert.ok(created.length >= 1);
+    assert.equal(created[0]?.actor, "boot");
+  });
+});
+
 describe("read-only audit log (NFR-AUD-1)", () => {
   it("shows account and config changes with actor and time, newest first", async () => {
     await withServer(await bootStore(), async (port) => {
