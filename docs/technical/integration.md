@@ -16,7 +16,14 @@ Final transport rule (all sync pairs): HTTP/JSON POST behind Nginx,
 `/v1/<contract>/<Operation>`, opaque session token in the
 `Authorization` header, shared error envelope. Async events travel
 the transactional outbox + dispatcher (LLD [section 0](../architecture/lld.md)); event payloads are
-the JSON Schemas in `contracts/events/`.
+the JSON Schemas in `contracts/events/`. Every recorded audit actor is
+the authenticated session of the call that writes — the resolved
+`signinIdentity` in Admin and the presented session token elsewhere —
+never the request's `actor`/`updatedBy`; a disagreeing request value is
+an annotation only and may appear as the additive `requestActor` key in
+a JSON outbox payload (LLD
+[section 34](../architecture/lld.md#34-the-audit-actor-comes-from-the-session-never-from-the-request-refs-643);
+Refs #643).
 
 ## 1. Desk-booking path (BA section 1)
 
@@ -75,7 +82,12 @@ priceBasis (FR-RES-1, FR-RTE-5, FR-FDK-5). Errors: `NOT_FOUND` /
 the stay link it carries, flipped `checked-in -> closed` (FR-DEP-1;
 LLD [section 22](../architecture/lld.md#22-departure-completes-the-booking-and-releases-availability-refs-646)).
 Stay calls it synchronously after its own close commits, forwards the
-caller's Bearer token, and times out at 2 seconds. Errors: `NOT_FOUND`
+caller's Bearer token, and times out at 2 seconds. Both sides record
+their own authenticated session as the actor, so the close and the
+completion carry the same session string; the body `actor` is an
+annotation only (LLD
+[section 34](../architecture/lld.md#34-the-audit-actor-comes-from-the-session-never-from-the-request-refs-643);
+Refs #643). Errors: `NOT_FOUND`
 (no booking carries the stay link), `STATE_ILLEGAL` (the booking behind
 the stay is not checked in), `VALIDATION_FAILED`. A completion the call
 cannot record is reported by the close (`bookingCompletion`), never

@@ -69,14 +69,14 @@ Development table, which use a `../` prefix.
 
 | Type | Path | Status | Owner | Purpose |
 |---|---|---|---|---|
-| MVP requirements | `requirements/mvp-requirements.md` | active | `business-analyst` | numbered FRs, measurable NFRs, per-hotel workflow customisation, traceability (Closes #10; section 8 Refs #338; section 23 Refs #646; section 24 Refs #647; section 25 Refs #648; section 27 Refs #631; section 28 Refs #634; section 29 Refs #627; section 30 Refs #630; section 31 Refs #635; section 32 Refs #641; section 33 Refs #640; section 34 Refs #639) |
+| MVP requirements | `requirements/mvp-requirements.md` | active | `business-analyst` | numbered FRs, measurable NFRs, per-hotel workflow customisation, traceability (Closes #10; section 8 Refs #338; section 23 Refs #646; section 24 Refs #647; section 25 Refs #648; section 27 Refs #631; section 28 Refs #634; section 29 Refs #627; section 30 Refs #630; section 31 Refs #635; section 32 Refs #641; section 33 Refs #640; section 34 Refs #639; section 35 Refs #643) |
 | Domain consistency audit | `requirements/domain-consistency-audit.md` | active | `business-analyst` | cross-doc audit: scope↔PRD↔stories↔FRs/NFRs, gaps, contradictions, deduped questions, terminology (Closes #41) |
 | Behaviour sequence diagrams | `requirements/sequence-diagrams.md` | active | `business-analyst` | time-ordered booking, check-in/out, folio and housekeeping flows with FR and FR-CUS mapping (Closes #43; Seq-9 Refs #646; Seq-8 Refs #647; Seq-15 Refs #648; Seq-10/Seq-11 Refs #634) |
 | Functional requirements | `requirements/functional-requirements.md` | stub (not needed yet) | `business-analyst` | numbered functional requirements with one guard each |
 | Non-functional requirements | `requirements/non-functional-requirements.md` | stub (not needed yet) | `business-analyst` | measurable NFRs (performance, reliability, usability) |
 | SRD | `requirements/srd.md` | stub (not needed yet) | `business-analyst` | stakeholder requirements definition |
 | SRS | `requirements/srs.md` | stub (not needed yet) | `business-analyst` | software requirements specification |
-| Business rules | `requirements/business-rules.md` | active | `business-analyst` | domain policies constraining behaviour (Closes #58; BR-50/BR-51 Refs #634; BR-59 Refs #627; BR-60 Refs #630; BR-61 Refs #635; BR-62 Refs #641; BR-63 Refs #640; BR-64 Refs #639) |
+| Business rules | `requirements/business-rules.md` | active | `business-analyst` | domain policies constraining behaviour (Closes #58; BR-50/BR-51 Refs #634; BR-59 Refs #627; BR-60 Refs #630; BR-61 Refs #635; BR-62 Refs #641; BR-63 Refs #640; BR-64 Refs #639; BR-65 Refs #643) |
 | Use cases | `requirements/use-cases.md` | active | `business-analyst` | actor-goal flows through the system (Closes #58; UC-8 Refs #646; UC-6/UC-7 Refs #647; UC-13 Refs #648) |
 | Data dictionary | `requirements/data-dictionary.md` | active | `business-analyst` | shared definitions of data entities and fields (Closes #58; sections 1-2 Refs #646; sections 2/8 Refs #647; section 1 Refs #648; section 16 Refs #630) |
 | Integration contract needs | `requirements/integration-contract-needs.md` | active | `business-analyst` | requirements-side input to module contracts: operations, payloads, sync/async, errors, config (Closes #96; section 3b Refs #634; section 9 Refs #627; sections 8/9 Refs #630) |
@@ -85,8 +85,8 @@ Development table, which use a `../` prefix.
 
 | Type | Path | Status | Owner | Purpose |
 |---|---|---|---|---|
-| HLD | `architecture/hld.md` | active | `architect` | high-level design: subsystems and their responsibilities (Closes #11; section 15 Refs #601; section 16 Refs #646; section 17 Refs #647; section 19 Refs #631; section 20 Refs #634; section 21 Refs #630; section 22 Refs #635; section 23 Refs #641; section 24 Refs #640; section 25 Refs #639) |
-| LLD | `architecture/lld.md` | active | `architect` | low-level design: modules, interfaces, data flow (Closes #97; section 21 Refs #601; section 22 Refs #646; section 23 Refs #647; section 24 Refs #648; section 26 Refs #631; section 27 Refs #634; section 28 Refs #627; section 29 Refs #630; section 30 Refs #635; section 31 Refs #641; section 32 Refs #640; section 33 Refs #639) |
+| HLD | `architecture/hld.md` | active | `architect` | high-level design: subsystems and their responsibilities (Closes #11; section 15 Refs #601; section 16 Refs #646; section 17 Refs #647; section 19 Refs #631; section 20 Refs #634; section 21 Refs #630; section 22 Refs #635; section 23 Refs #641; section 24 Refs #640; section 25 Refs #639; section 26 Refs #643) |
+| LLD | `architecture/lld.md` | active | `architect` | low-level design: modules, interfaces, data flow (Closes #97; section 21 Refs #601; section 22 Refs #646; section 23 Refs #647; section 24 Refs #648; section 26 Refs #631; section 27 Refs #634; section 28 Refs #627; section 29 Refs #630; section 30 Refs #635; section 31 Refs #641; section 32 Refs #640; section 33 Refs #639; section 34 Refs #643) |
 | System architecture | `architecture/system-architecture.md` | active | `architect` | overall system structure and deployment view (Closes #11) |
 | ERD | `architecture/erd.md` | active | `architect` | entity-relationship model of the domain data (Closes #11) |
 | Sequence diagrams | `requirements/sequence-diagrams.md` (see Requirements) | stub (not needed yet) | `architect` | behaviour depiction lives with requirements per #43; no separate architecture diagram |
@@ -110,25 +110,25 @@ Development table, which use a `../` prefix.
 
 | Type | Path | Status | Owner | Purpose |
 |---|---|---|---|---|
-| Reservations design | `architecture/services/reservations.md` | active | `architect` | as-built pattern/layers, verified flowcharts, deps, error mapping, operations (Closes #181; section 8 planned delta Refs #646; section 10 planned delta Refs #631; section 7 bounds Refs #630) |
-| Stay design | `architecture/services/stay.md` | active | `architect` | as-built pattern/layers, verified flowcharts, deps, error mapping, operations (Closes #181; section 8 planned delta Refs #601; section 9 planned delta Refs #646; section 10 Refs #647; section 7 bounds Refs #630) |
-| Rooms design | `architecture/services/rooms.md` | active | `architect` | as-built pattern/layers, verified flowcharts, deps, error mapping, operations (Closes #181; section 8 Refs #647; section 9 planned delta Refs #631; section 7 bounds Refs #630) |
+| Reservations design | `architecture/services/reservations.md` | active | `architect` | as-built pattern/layers, verified flowcharts, deps, error mapping, operations (Closes #181; section 8 planned delta Refs #646; section 10 planned delta Refs #631; section 7 bounds Refs #630; section 11 planned delta Refs #643) |
+| Stay design | `architecture/services/stay.md` | active | `architect` | as-built pattern/layers, verified flowcharts, deps, error mapping, operations (Closes #181; section 8 planned delta Refs #601; section 9 planned delta Refs #646; section 10 Refs #647; section 7 bounds Refs #630; section 11 planned delta Refs #643) |
+| Rooms design | `architecture/services/rooms.md` | active | `architect` | as-built pattern/layers, verified flowcharts, deps, error mapping, operations (Closes #181; section 8 Refs #647; section 9 planned delta Refs #631; section 7 bounds Refs #630; section 10 planned delta Refs #643) |
 | Rates design | `architecture/services/rates.md` | active | `architect` | as-built pattern/layers, verified flowcharts, deps, error mapping, operations (Closes #181; section 7 bounds Refs #630) |
-| Guests design | `architecture/services/guests.md` | active | `architect` | as-built pattern/layers, verified flowcharts, deps, error mapping, operations (Closes #181; section 7 bounds Refs #630; sections 4/6/8 identity ambiguity and payload bounds Refs #640) |
-| Billing design | `architecture/services/billing.md` | active | `architect` | as-built pattern/layers, verified flowcharts, deps, error mapping, operations (Closes #181; section 8 planned delta Refs #601; section 9 planned delta Refs #634; section 7 bounds Refs #630; section 10 planned delta Refs #635) |
+| Guests design | `architecture/services/guests.md` | active | `architect` | as-built pattern/layers, verified flowcharts, deps, error mapping, operations (Closes #181; section 7 bounds Refs #630; sections 4/6/8 identity ambiguity and payload bounds Refs #640; section 9 planned delta Refs #643) |
+| Billing design | `architecture/services/billing.md` | active | `architect` | as-built pattern/layers, verified flowcharts, deps, error mapping, operations (Closes #181; section 8 planned delta Refs #601; section 9 planned delta Refs #634; section 7 bounds Refs #630; section 10 planned delta Refs #635; section 11 planned delta Refs #643) |
 | Reporting design | `architecture/services/reporting.md` | active | `architect` | as-built pattern/layers, verified flowcharts, deps, error mapping, operations (Closes #181; section 7 bounds Refs #630; sections 4/6/8 range-cap refusal Refs #641) |
-| Admin design | `architecture/services/admin.md` | active | `architect` | as-built pattern/layers, verified flowcharts, deps, error mapping, operations (Closes #181; section 7 bounds Refs #630; sections 2/4/6 auth-before-parse and config shape refusal Refs #639) |
+| Admin design | `architecture/services/admin.md` | active | `architect` | as-built pattern/layers, verified flowcharts, deps, error mapping, operations (Closes #181; section 7 bounds Refs #630; sections 2/4/6 auth-before-parse and config shape refusal Refs #639; section 8 planned delta Refs #643) |
 
 ## Technical
 
 | Type | Path | Status | Owner | Purpose |
 |---|---|---|---|---|
-| API spec | `technical/api-spec.md` | active | `architect` | contracts for service interfaces and endpoints (outline, Closes #11; section 1 money ceiling Refs #635; section 1 date-window span Refs #641; section 1 guest payload bounds Refs #640; section 1 Admin ordering and config shapes Refs #639) |
-| Schema | `technical/schema.md` | active | `architect` | data schemas and validation rules (Closes #97; section 5 write-time guest bounds Refs #640) |
+| API spec | `technical/api-spec.md` | active | `architect` | contracts for service interfaces and endpoints (outline, Closes #11; section 1 money ceiling Refs #635; section 1 date-window span Refs #641; section 1 guest payload bounds Refs #640; section 1 Admin ordering and config shapes Refs #639; section 1 audit actor Refs #643) |
+| Schema | `technical/schema.md` | active | `architect` | data schemas and validation rules (Closes #97; section 5 write-time guest bounds Refs #640; section 0 audit actor Refs #643) |
 | Desk UI fact schema | `technical/desk-ui-fact-schema.md` | active | `architect` | DOM-vs-design UI fact schema contract for the six desk screens: fields, record shape, provenance convention, determinism and zero-binary requirements (Closes #465); app-only nav tab allowances for the eighth and ninth desk tabs (Refs #590; bookings Refs #648) |
-| Integration | `technical/integration.md` | active | `architect` | third-party and cross-system integration contracts (Closes #97; C7 Refs #601; C4 Refs #646; C8 Refs #634; C2 Refs #631; section 10 Refs #630) |
-| Error handling | `technical/error-handling.md` | active | `architect` | error taxonomy and handling conventions (outline, Closes #11; section 1 Refs #627; section 1.1 Refs #630; section 1.2 Refs #635; section 1.3 Refs #641; section 1.4 Refs #640; section 1.5 Refs #639; section 2 Refs #631; section 4 Refs #647; section 5 Refs #634) |
-| Security threat model | `technical/security-threat-model.md` | active | `architect` | threats, mitigations, and trust boundaries (Closes #97; B5 + R5–R7 Refs #601; B6 + R-OVB-1/R-OVB-6 Refs #631; R5 narrowed + R8 Refs #634) |
+| Integration | `technical/integration.md` | active | `architect` | third-party and cross-system integration contracts (Closes #97; C7 Refs #601; C4 Refs #646; C8 Refs #634; C2 Refs #631; section 10 Refs #630; section 0 audit actor Refs #643) |
+| Error handling | `technical/error-handling.md` | active | `architect` | error taxonomy and handling conventions (outline, Closes #11; section 1 Refs #627; section 1.1 Refs #630; section 1.2 Refs #635; section 1.3 Refs #641; section 1.4 Refs #640; section 1.5 Refs #639; section 2 Refs #631; section 4 Refs #647; section 5 Refs #634; section 1.6 Refs #643) |
+| Security threat model | `technical/security-threat-model.md` | active | `architect` | threats, mitigations, and trust boundaries (Closes #97; B5 + R5–R7 Refs #601; B6 + R-OVB-1/R-OVB-6 Refs #631; R5 narrowed + R8 Refs #634; section 6 audit actor Refs #643) |
 
 ## Development
 

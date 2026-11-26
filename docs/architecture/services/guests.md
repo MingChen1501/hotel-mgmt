@@ -231,3 +231,31 @@ backfill, or stored-row repair exists in either direction.
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1141
+
+## 9. Planned delta — session-derived audit actor (Refs #643)
+
+At this head the transport discards the extracted token after the
+presence check (`src/server.ts:130`), and `upsertGuest` records the body
+`actor` in the outbox payload (`src/store.ts:319`, `:337`) and in the
+Postgres audit columns (`src/pgstore.ts:68`).
+
+Planned (design: LLD
+[section 34](../lld.md#34-the-audit-actor-comes-from-the-session-never-from-the-request-refs-643)):
+
+- The server keeps the token and passes it beside the body on
+  `UpsertGuest`; the store keeps today's `requireString(input.actor)`
+  refusal and records the token as the actor. A missing token is still
+  the `UNAUTHENTICATED` 401 before the body (`src/server.ts:130-132`),
+  and every read operation is unchanged.
+- The in-memory outbox payload keeps `actor` as the session and adds
+  `requestActor` only when the body value differs; the Postgres store
+  writes no `guest-upserted` outbox row today, so there it records the
+  session actor in `created_by`/`updated_by` and the request value is
+  dropped — an existing store-parity gap this change does not widen or
+  fix.
+- No response, status, refusal, column, or migration changes; the guard
+  is one spoofed-actor case asserting the payload and the Postgres
+  columns (LLD section 34.6).
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1175
