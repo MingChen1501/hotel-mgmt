@@ -127,14 +127,17 @@ async function handleRequest(
     );
     return;
   }
-  if (!extractBearer(req)) {
+  // The authenticated session is the audit actor on every write
+  // (BR-65, #643); the extracted token is kept beside the body.
+  const sessionActor = extractBearer(req);
+  if (sessionActor === null) {
     throw new HttpError("UNAUTHENTICATED", msg("error.auth.missing_token", {}), {});
   }
   const body = await readBody(req, res);
   const operation = route[1];
   switch (operation) {
     case "UpsertRoomType": {
-      const record = await store.upsertRoomType(body);
+      const record = await store.upsertRoomType(body, sessionActor);
       writeJson(res, 200, {
         id: record.id,
         name: record.name,
@@ -145,7 +148,7 @@ async function handleRequest(
       return;
     }
     case "UpsertRoom": {
-      const record = await store.upsertRoom(body);
+      const record = await store.upsertRoom(body, sessionActor);
       writeJson(res, 200, {
         id: record.id,
         number: record.number,
@@ -155,7 +158,7 @@ async function handleRequest(
       return;
     }
     case "UpdateRoomState": {
-      writeJson(res, 200, await store.updateRoomState(body));
+      writeJson(res, 200, await store.updateRoomState(body, sessionActor));
       return;
     }
     case "ListRoomsByState": {
@@ -192,19 +195,19 @@ async function handleRequest(
       return;
     }
     case "AssignRoom": {
-      writeJson(res, 200, await store.assignRoom(body));
+      writeJson(res, 200, await store.assignRoom(body, sessionActor));
       return;
     }
     case "ReleaseRoom": {
-      writeJson(res, 200, await store.releaseRoom(body));
+      writeJson(res, 200, await store.releaseRoom(body, sessionActor));
       return;
     }
     case "BlockRoom": {
-      writeJson(res, 200, await store.blockRoom(body));
+      writeJson(res, 200, await store.blockRoom(body, sessionActor));
       return;
     }
     case "ReleaseBlock": {
-      writeJson(res, 200, await store.releaseBlock(body));
+      writeJson(res, 200, await store.releaseBlock(body, sessionActor));
       return;
     }
     default: {

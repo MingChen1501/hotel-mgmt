@@ -40,6 +40,204 @@ async function withServer(
   }
 }
 
+// #643 / BR-65: the recorded audit actor is the authenticated session,
+// never the request's actor; a disagreeing value survives only as the
+// additive requestActor annotation on a JSON outbox payload.
+type RoomOutboxEntry = { eventType: string; payload: Record<string, unknown>; createdBy: string };
+type RoomHistoryEntry = { createdBy: string; oldState: string; newState: string };
+
+function roomsInternals(store: RoomStore): {
+  outbox: RoomOutboxEntry[];
+  history: RoomHistoryEntry[];
+  blocks: { createdBy: string }[];
+} {
+  return store as unknown as {
+    outbox: RoomOutboxEntry[];
+    history: RoomHistoryEntry[];
+    blocks: { createdBy: string }[];
+  };
+}
+
+async function seedVacantRoom(store: RoomStore): Promise<void> {
+  await store.upsertRoomType({ name: "Deluxe", actor: "manager" }, TOKEN);
+  await store.upsertRoom({ number: "101", roomType: "Deluxe", actor: "manager" }, TOKEN);
+}
+
+describe("session-derived audit actor (#643)", () => {
+  it("records the session token on UpsertRoomType (SEC6)", async () => {
+    const store = new RoomStore();
+    await withServer(async (port) => {
+      const created = await request(port, "POST", "/v1/rooms/UpsertRoomType", {
+        name: "Deluxe",
+        actor: "mallory",
+      });
+      assert.equal(created.status, 200);
+      const event = roomsInternals(store).outbox.find((entry) => entry.eventType === "room-upserted");
+      assert.ok(event);
+      assert.equal(event.payload["actor"], TOKEN);
+      assert.equal(event.payload["requestActor"], "mallory");
+      assert.equal(event.createdBy, TOKEN);
+    }, store);
+  });
+
+  it("records the session token on UpsertRoom (SEC7)", async () => {
+    const store = new RoomStore();
+    await store.upsertRoomType({ name: "Deluxe", actor: "manager" }, TOKEN);
+    await withServer(async (port) => {
+      const created = await request(port, "POST", "/v1/rooms/UpsertRoom", {
+        number: "101",
+        roomType: "Deluxe",
+        actor: "mallory",
+      });
+      assert.equal(created.status, 200);
+      const event = roomsInternals(store).outbox.at(-1);
+      assert.ok(event);
+      assert.equal(event.eventType, "room-upserted");
+      assert.deepEqual(Object.keys(event.payload).sort(), ["requestActor", "roomNumber", "roomTypeId"]);
+      assert.equal(event.payload["requestActor"], "mallory");
+      assert.equal(event.createdBy, TOKEN);
+    }, store);
+  });
+
+  it("records the session token in state history and the outbox on UpdateRoomState (SEC8, SEC30)", async () => {
+    const store = new RoomStore();
+    await seedVacantRoom(store);
+    await withServer(async (port) => {
+      const changed = await request(port, "POST", "/v1/rooms/UpdateRoomState", {
+        roomNumber: "101",
+        newState: "occupied",
+        actor: "mallory",
+      });
+      assert.equal(changed.status, 200);
+      const state = roomsInternals(store);
+      const history = state.history.at(-1);
+      assert.ok(history);
+      assert.equal(history.createdBy, TOKEN);
+      assert.deepEqual(Object.keys(history).sort(), ["createdAt", "createdBy", "newState", "oldState", "roomId"]);
+      const event = state.outbox.at(-1);
+      assert.ok(event);
+      assert.equal(event.payload["actor"], TOKEN);
+      assert.equal(event.payload["requestActor"], "mallory");
+      assert.equal(event.createdBy, TOKEN);
+    }, store);
+  });
+
+  it("records the session token on AssignRoom (SEC9)", async () => {
+    const store = new RoomStore();
+    await seedVacantRoom(store);
+    await withServer(async (port) => {
+      const assigned = await request(port, "POST", "/v1/rooms/AssignRoom", {
+        roomNumber: "101",
+        businessDate: "2026-11-01",
+        stayLink: "stay-1",
+        actor: "mallory",
+      });
+      assert.equal(assigned.status, 200);
+      const state = roomsInternals(store);
+      assert.equal(state.history.at(-1)?.createdBy, TOKEN);
+      assert.equal(state.outbox.at(-1)?.payload["actor"], TOKEN);
+      assert.equal(state.outbox.at(-1)?.payload["requestActor"], "mallory");
+    }, store);
+  });
+
+  it("records the session token on ReleaseRoom (SEC10)", async () => {
+    const store = new RoomStore();
+    await seedVacantRoom(store);
+    await store.assignRoom(
+      { roomNumber: "101", businessDate: "2026-11-01", stayLink: "stay-1", actor: "front-desk" },
+      TOKEN,
+    );
+    await withServer(async (port) => {
+      const released = await request(port, "POST", "/v1/rooms/ReleaseRoom", {
+        roomNumber: "101",
+        actor: "mallory",
+      });
+      assert.equal(released.status, 200);
+      const state = roomsInternals(store);
+      assert.equal(state.history.at(-1)?.createdBy, TOKEN);
+      assert.equal(state.outbox.at(-1)?.payload["actor"], TOKEN);
+      assert.equal(state.outbox.at(-1)?.payload["requestActor"], "mallory");
+    }, store);
+  });
+
+  it("records the session token on the block row and outbox on BlockRoom (SEC11)", async () => {
+    const store = new RoomStore();
+    await seedVacantRoom(store);
+    await withServer(async (port) => {
+      const blocked = await request(port, "POST", "/v1/rooms/BlockRoom", {
+        roomNumber: "101",
+        dateFrom: "2026-11-01",
+        dateTo: "2026-11-05",
+        reason: "Plumbing repair",
+        actor: "mallory",
+      });
+      assert.equal(blocked.status, 200);
+      const state = roomsInternals(store);
+      assert.equal(state.blocks[0]?.createdBy, TOKEN);
+      assert.equal(state.outbox.at(-1)?.payload["actor"], TOKEN);
+      assert.equal(state.outbox.at(-1)?.payload["requestActor"], "mallory");
+    }, store);
+  });
+
+  it("records the session token on ReleaseBlock (SEC12)", async () => {
+    const store = new RoomStore();
+    await seedVacantRoom(store);
+    await store.blockRoom(
+      { roomNumber: "101", dateFrom: "2026-11-01", dateTo: "2026-11-05", reason: "Plumbing repair", actor: "manager" },
+      TOKEN,
+    );
+    await withServer(async (port) => {
+      const released = await request(port, "POST", "/v1/rooms/ReleaseBlock", {
+        roomNumber: "101",
+        dateFrom: "2026-11-01",
+        dateTo: "2026-11-05",
+        actor: "mallory",
+      });
+      assert.equal(released.status, 200);
+      const event = roomsInternals(store).outbox.at(-1);
+      assert.ok(event);
+      assert.equal(event.payload["actor"], TOKEN);
+      assert.equal(event.payload["requestActor"], "mallory");
+    }, store);
+  });
+
+  it("keeps an honest payload byte-identical with no requestActor key (SEC29)", async () => {
+    const store = new RoomStore();
+    await withServer(async (port) => {
+      const created = await request(port, "POST", "/v1/rooms/UpsertRoomType", {
+        name: "Deluxe",
+        actor: TOKEN,
+      });
+      assert.equal(created.status, 200);
+      const event = roomsInternals(store).outbox.at(-1);
+      assert.ok(event);
+      assert.deepEqual(Object.keys(event.payload).sort(), ["actor", "name", "roomTypeId"]);
+      // UpsertRoom's own payload never carries an `actor` key: the
+      // session lives on the outbox `created_by`, so both twins keep
+      // the same key set (AC-SEC-2/AC-SEC-5, B2).
+      const room = await request(port, "POST", "/v1/rooms/UpsertRoom", {
+        number: "101",
+        roomType: "Deluxe",
+        actor: TOKEN,
+      });
+      assert.equal(room.status, 200);
+      const roomEvent = roomsInternals(store).outbox.at(-1);
+      assert.ok(roomEvent);
+      assert.deepEqual(Object.keys(roomEvent.payload).sort(), ["roomNumber", "roomTypeId"]);
+      assert.equal(roomEvent.createdBy, TOKEN);
+    }, store);
+  });
+
+  it("keeps the missing-actor refusal and adds no disagreement refusal (SEC31)", async () => {
+    await withServer(async (port) => {
+      const missing = await request(port, "POST", "/v1/rooms/UpsertRoomType", { name: "Deluxe" });
+      assert.equal(missing.status, 400);
+      assert.equal((missing.body as { code: string }).code, "VALIDATION_FAILED");
+      assert.equal((missing.body as { details: { field: string } }).details.field, "actor");
+    }, new RoomStore());
+  });
+});
+
 describe("health", () => {
   it("answers /healthz with the service identity", async () => {
     await withServer(async (port) => {
@@ -272,10 +470,10 @@ describe("desk loop", () => {
 
   it("walks dirty to inspected and refuses dirty straight to inspected", async () => {
     const store = new RoomStore();
-    await store.upsertRoomType({ name: "Standard", actor: "owner" });
-    const created = await store.upsertRoom({ number: "201", roomType: "Standard", actor: "owner" });
-    await store.updateRoomState({ roomNumber: created.number, newState: "occupied", actor: "front-desk" });
-    await store.releaseRoom({ roomNumber: created.number, actor: "front-desk" });
+    await store.upsertRoomType({ name: "Standard", actor: "owner" }, TOKEN);
+    const created = await store.upsertRoom({ number: "201", roomType: "Standard", actor: "owner" }, TOKEN);
+    await store.updateRoomState({ roomNumber: created.number, newState: "occupied", actor: "front-desk" }, TOKEN);
+    await store.releaseRoom({ roomNumber: created.number, actor: "front-desk" }, TOKEN);
     await withServer(async (port) => {
       const illegal = await request(port, "POST", "/v1/rooms/UpdateRoomState", {
         roomNumber: "201",
@@ -303,8 +501,8 @@ describe("desk loop", () => {
 
   it("names the block when a blocked room is checked", async () => {
     const store = new RoomStore();
-    await store.upsertRoomType({ name: "Deluxe", actor: "manager" });
-    await store.upsertRoom({ number: "101", roomType: "Deluxe", actor: "manager" });
+    await store.upsertRoomType({ name: "Deluxe", actor: "manager" }, TOKEN);
+    await store.upsertRoom({ number: "101", roomType: "Deluxe", actor: "manager" }, TOKEN);
     await withServer(async (port) => {
       const blocked = await request(port, "POST", "/v1/rooms/BlockRoom", {
         roomNumber: "101",
@@ -329,8 +527,8 @@ describe("desk loop", () => {
 
   it("grants exactly one winner for paired simultaneous assignments (NFR-CON-2)", async () => {
     const store = new RoomStore();
-    await store.upsertRoomType({ name: "Deluxe", actor: "manager" });
-    await store.upsertRoom({ number: "101", roomType: "Deluxe", actor: "manager" });
+    await store.upsertRoomType({ name: "Deluxe", actor: "manager" }, TOKEN);
+    await store.upsertRoom({ number: "101", roomType: "Deluxe", actor: "manager" }, TOKEN);
     await withServer(async (port) => {
       const attempts = await Promise.all([
         request(port, "POST", "/v1/rooms/AssignRoom", {
@@ -383,9 +581,9 @@ describe("desk loop", () => {
 
   it("scopes an assignment key per room so the same key assigns another room", async () => {
     const store = new RoomStore();
-    await store.upsertRoomType({ name: "Deluxe", actor: "manager" });
-    await store.upsertRoom({ number: "101", roomType: "Deluxe", actor: "manager" });
-    await store.upsertRoom({ number: "102", roomType: "Deluxe", actor: "manager" });
+    await store.upsertRoomType({ name: "Deluxe", actor: "manager" }, TOKEN);
+    await store.upsertRoom({ number: "101", roomType: "Deluxe", actor: "manager" }, TOKEN);
+    await store.upsertRoom({ number: "102", roomType: "Deluxe", actor: "manager" }, TOKEN);
     await withServer(async (port) => {
       const first = await request(port, "POST", "/v1/rooms/AssignRoom", {
         roomNumber: "101",
@@ -418,10 +616,10 @@ describe("desk loop", () => {
 
   it("runs the target room's check for an assignment key reused from another room", async () => {
     const store = new RoomStore();
-    await store.upsertRoomType({ name: "Deluxe", actor: "manager" });
-    await store.upsertRoom({ number: "101", roomType: "Deluxe", actor: "manager" });
-    await store.upsertRoom({ number: "102", roomType: "Deluxe", actor: "manager" });
-    await store.updateRoomState({ roomNumber: "102", newState: "vacant-dirty", actor: "housekeeping" });
+    await store.upsertRoomType({ name: "Deluxe", actor: "manager" }, TOKEN);
+    await store.upsertRoom({ number: "101", roomType: "Deluxe", actor: "manager" }, TOKEN);
+    await store.upsertRoom({ number: "102", roomType: "Deluxe", actor: "manager" }, TOKEN);
+    await store.updateRoomState({ roomNumber: "102", newState: "vacant-dirty", actor: "housekeeping" }, TOKEN);
     await withServer(async (port) => {
       const first = await request(port, "POST", "/v1/rooms/AssignRoom", {
         roomNumber: "101",
@@ -446,8 +644,8 @@ describe("desk loop", () => {
 
   it("blocks a range, releases it, and returns the room to sale", async () => {
     const store = new RoomStore();
-    await store.upsertRoomType({ name: "Deluxe", actor: "manager" });
-    await store.upsertRoom({ number: "101", roomType: "Deluxe", actor: "manager" });
+    await store.upsertRoomType({ name: "Deluxe", actor: "manager" }, TOKEN);
+    await store.upsertRoom({ number: "101", roomType: "Deluxe", actor: "manager" }, TOKEN);
     await withServer(async (port) => {
       const blocked = await request(port, "POST", "/v1/rooms/BlockRoom", {
         roomNumber: "101",
@@ -494,8 +692,8 @@ describe("desk loop", () => {
 
   it("refuses to release a range with no covering block", async () => {
     const store = new RoomStore();
-    await store.upsertRoomType({ name: "Deluxe", actor: "manager" });
-    await store.upsertRoom({ number: "101", roomType: "Deluxe", actor: "manager" });
+    await store.upsertRoomType({ name: "Deluxe", actor: "manager" }, TOKEN);
+    await store.upsertRoom({ number: "101", roomType: "Deluxe", actor: "manager" }, TOKEN);
     await withServer(async (port) => {
       const release = await request(port, "POST", "/v1/rooms/ReleaseBlock", {
         roomNumber: "101",
@@ -519,9 +717,9 @@ describe("desk loop", () => {
 
   it("coordinates a room move end to end on the rooms side (FR-FDK-3)", async () => {
     const store = new RoomStore();
-    await store.upsertRoomType({ name: "Deluxe", actor: "manager" });
-    await store.upsertRoom({ number: "101", roomType: "Deluxe", actor: "manager" });
-    await store.upsertRoom({ number: "102", roomType: "Deluxe", actor: "manager" });
+    await store.upsertRoomType({ name: "Deluxe", actor: "manager" }, TOKEN);
+    await store.upsertRoom({ number: "101", roomType: "Deluxe", actor: "manager" }, TOKEN);
+    await store.upsertRoom({ number: "102", roomType: "Deluxe", actor: "manager" }, TOKEN);
     await withServer(async (port) => {
       const firstStay = await request(port, "POST", "/v1/rooms/AssignRoom", {
         roomNumber: "101",

@@ -201,3 +201,27 @@ Design: `docs/architecture/lld.md` sections 3 and 26; ADR-0006.
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-941
+
+## 10. As-built delta — session-derived audit actor (Refs #643)
+
+The transport keeps the extracted token after the presence check
+(`src/server.ts:130-134`) and hands it beside the body on every write
+(`:140`, `:151`, `:161`, `:198`, `:202`, `:206`, `:210`). Each store
+keeps today's `requireString(input.actor)` refusal and records the
+session: in-memory `src/store.ts:228-249` (UpsertRoomType), `:255-281`
+(UpsertRoom), `:287-316` (UpdateRoomState), `:392-431` (AssignRoom),
+`:441-468` (ReleaseRoom), `:474-505` (BlockRoom), `:516-546`
+(ReleaseBlock), with the state-history `createdBy`, the block row's
+`createdBy`, and every outbox `created_by`/payload equal to the token;
+the Postgres twin repeats it (`src/pgstore.ts:139-262`, `:269-315`,
+`:413-453`, `:508-552`, `:559-609`, `:616-657`, outbox helper
+`:57-69`). A differing request actor appears only as `requestActor` via
+`requestActorAnnotation`
+(`src/store.ts:101-109`); an equal value adds no key and a history-only
+row drops it. Guards `SEC6`-`SEC12`, `SEC29`-`SEC31` live in
+`src/server.test.ts` and `src/pgstore.test.ts`; no response, status,
+refusal, column, or migration changed (LLD
+[section 34](../lld.md#34-the-audit-actor-comes-from-the-session-never-from-the-request-refs-643)).
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1175

@@ -72,6 +72,13 @@ class MessagesTest {
     // BND24: the too-large refusal sentence (Refs #630).
     assertEquals("Request body is too large.",
         Messages.text("error.transport.body_too_large", Map.of()));
+    // AMT14: the money whole-number and ceiling sentences (Refs #635),
+    // with the placeholders rendered through formatNumber.
+    assertEquals("amountMinor must be a whole number of minor units.",
+        Messages.text("error.validation.amount_not_integer", Map.of("field", "amountMinor")));
+    assertEquals("priceMinor must be at most 1,000,000,000,000 minor units.",
+        Messages.text("error.validation.amount_above_ceiling",
+            Map.of("field", "priceMinor", "max", Messages.formatNumber(1_000_000_000_000L))));
   }
 
   @Test

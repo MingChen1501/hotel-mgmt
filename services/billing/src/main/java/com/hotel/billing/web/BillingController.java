@@ -22,10 +22,23 @@ public class BillingController {
 
   private final BillingService service;
 
+  // BR-61 (Refs #635): one declared ceiling for every money field, in
+  // minor units. A code constant, never configuration (D-35). It sits
+  // below 2^53 so every accepted amount round-trips exactly through
+  // JSON and the stored long, and it keeps more than 15 times of
+  // headroom over the largest legitimate single charge (65 700 000 000
+  // minor units: 730 nights at the standard rate). Package visibility
+  // lets the guard read the declaration instead of repeating the
+  // literal.
+  static final long MONEY_CEILING_MINOR = 1_000_000_000_000L;
+
   public BillingController(BillingService service) {
     this.service = service;
   }
 
+  // actor is the request's own value: validated by the service exactly
+  // as today, then demoted to the additive requestActor annotation. It
+  // is never the recorded audit actor (BR-65, #643).
   private static String actor(Map<String, Object> body) {
     Object actor = body.get("actor");
     return actor instanceof String text ? text : "";
@@ -44,61 +57,114 @@ public class BillingController {
     return value.strip();
   }
 
+  // Money is a whole number of minor units bounded by one declared
+  // ceiling (BR-61, Refs #635). Presence, type, whole-ness, and bound
+  // stay in this one helper, the single place every money field passes
+  // through before its service call, so the rule has no second copy to
+  // drift from. A refusal is raised here, so no service, store, or
+  // folio call runs and nothing is written.
   private static long amountOf(Map<String, Object> body, String field) {
     Object value = body.get(field);
-    if (value instanceof Number number) {
-      return number.longValue();
+    if (value == null) {
+      throw ApiException.validation(field, Messages.text("error.validation.field_required", Map.of("field", field)));
     }
-    throw ApiException.validation(field, Messages.text("error.validation.field_required", Map.of("field", field)));
+    if (!(value instanceof Number number)) {
+      throw ApiException.validation(field, Messages.text("error.validation.field_number", Map.of("field", field)));
+    }
+    // Whole-ness is read from the decimal spelling (the conversion
+    // percentOf already uses), so 12.0 is the whole amount 12 and is
+    // accepted exactly as 12 is, while 12.99 is refused instead of
+    // truncated. A value that cannot be read as a decimal number (NaN,
+    // Infinity) is not a whole number of minor units either.
+    BigDecimal amount;
+    try {
+      amount = new BigDecimal(number.toString());
+    } catch (NumberFormatException e) {
+      throw ApiException.validation(field,
+          Messages.text("error.validation.amount_not_integer", Map.of("field", field)));
+    }
+    BigDecimal whole = amount.stripTrailingZeros();
+    if (whole.scale() > 0) {
+      throw ApiException.validation(field,
+          Messages.text("error.validation.amount_not_integer", Map.of("field", field)));
+    }
+    // The bound is on the magnitude, so a huge negative refuses here
+    // while an in-range negative passes and keeps the service's sign
+    // refusal (BillingService, owner of that rule).
+    if (whole.abs().compareTo(BigDecimal.valueOf(MONEY_CEILING_MINOR)) > 0) {
+      throw ApiException.validation(field, Messages.text("error.validation.amount_above_ceiling",
+          Map.of("field", field, "max", Messages.formatNumber(MONEY_CEILING_MINOR))));
+    }
+    return whole.longValueExact();
   }
 
+  // The tax-rule percent is bounded as a number, not as money: a
+  // fractional rate such as 8.5 stays accepted and the 0-100 range
+  // stays the service's. A present value that is not a number names the
+  // field with field_number instead of the missing-field sentence.
   private static BigDecimal percentOf(Map<String, Object> body, String field) {
     Object value = body.get(field);
-    if (value instanceof Number number) {
-      try {
-        return new BigDecimal(number.toString());
-      } catch (NumberFormatException e) {
-        throw ApiException.validation(field, Messages.text("error.validation.field_number", Map.of("field", field)));
-      }
+    if (value == null) {
+      throw ApiException.validation(field, Messages.text("error.validation.field_required", Map.of("field", field)));
     }
-    throw ApiException.validation(field, Messages.text("error.validation.field_required", Map.of("field", field)));
+    if (!(value instanceof Number number)) {
+      throw ApiException.validation(field, Messages.text("error.validation.field_number", Map.of("field", field)));
+    }
+    try {
+      return new BigDecimal(number.toString());
+    } catch (NumberFormatException e) {
+      throw ApiException.validation(field, Messages.text("error.validation.field_number", Map.of("field", field)));
+    }
   }
 
-  private void requireToken(String authorization) {
+  // sessionActor is the recorded audit actor on every write (BR-65,
+  // #643): the caller's Bearer token with the prefix removed and the
+  // remainder trimmed. It keeps today's exact 401 for a missing token
+  // and grants nothing beyond the presence check that already ran.
+  private static String sessionActor(String authorization) {
     if (authorization == null || !authorization.startsWith("Bearer ")
         || authorization.substring("Bearer ".length()).isBlank()) {
       throw new ApiException("UNAUTHENTICATED", 401, Messages.text("error.auth.missing_token", Map.of()), Map.of());
     }
+    return authorization.substring("Bearer ".length()).strip();
+  }
+
+  // The presentation reads record nothing, so they keep the presence
+  // check and the request actor rule without recording the session.
+  private static void requireToken(String authorization) {
+    sessionActor(authorization);
   }
 
   @PostMapping("/GetFolioBalance")
   public BillingService.FolioView getFolioBalance(@RequestHeader(value = "Authorization", required = false)
   String authorization, @RequestBody Map<String, Object> body) {
-    requireToken(authorization);
-    return service.getFolioBalance(required(body, "stayId"), actor(body));
+    // Resolve the session first: the 401 must win over every body rule,
+    // so an unauthenticated caller cannot probe body shape (BR-64).
+    String session = sessionActor(authorization);
+    return service.getFolioBalance(required(body, "stayId"), actor(body), session);
   }
 
   @PostMapping("/PostCharge")
   public BillingService.LineView postCharge(@RequestHeader(value = "Authorization", required = false)
   String authorization, @RequestBody Map<String, Object> body) {
-    requireToken(authorization);
+    String session = sessionActor(authorization);
     return service.postCharge(required(body, "stayId"), required(body, "itemKind"), required(body, "itemName"),
-        amountOf(body, "amountMinor"), optional(body, "idempotencyKey"), actor(body));
+        amountOf(body, "amountMinor"), optional(body, "idempotencyKey"), actor(body), session);
   }
 
   @PostMapping("/RecordPayment")
   public BillingService.PaymentView recordPayment(@RequestHeader(value = "Authorization", required = false)
   String authorization, @RequestBody Map<String, Object> body) {
-    requireToken(authorization);
+    String session = sessionActor(authorization);
     return service.recordPayment(required(body, "stayId"), required(body, "method"), amountOf(body, "amountMinor"),
-        optional(body, "idempotencyKey"), actor(body));
+        optional(body, "idempotencyKey"), actor(body), session);
   }
 
   @PostMapping("/RunDayClose")
   public BillingService.DayCloseView runDayClose(@RequestHeader(value = "Authorization", required = false)
   String authorization, @RequestBody Map<String, Object> body) {
-    requireToken(authorization);
-    return service.runDayClose(required(body, "businessDate"), actor(body));
+    String session = sessionActor(authorization);
+    return service.runDayClose(required(body, "businessDate"), actor(body), session);
   }
 
   @PostMapping("/GetDayClose")
@@ -125,8 +191,8 @@ public class BillingController {
   @PostMapping("/UpsertChargeItem")
   public Map<String, Object> upsertChargeItem(@RequestHeader(value = "Authorization", required = false)
   String authorization, @RequestBody Map<String, Object> body) {
-    requireToken(authorization);
-    return service.upsertChargeItem(required(body, "name"), amountOf(body, "priceMinor"), actor(body));
+    String session = sessionActor(authorization);
+    return service.upsertChargeItem(required(body, "name"), amountOf(body, "priceMinor"), actor(body), session);
   }
 
   // Stores one hotel tax rule driving the PostCharge derivation
@@ -134,16 +200,16 @@ public class BillingController {
   @PostMapping("/UpsertTaxFeeRule")
   public Map<String, Object> upsertTaxFeeRule(@RequestHeader(value = "Authorization", required = false)
   String authorization, @RequestBody Map<String, Object> body) {
-    requireToken(authorization);
-    return service.upsertTaxFeeRule(required(body, "name"), percentOf(body, "percent"), actor(body));
+    String session = sessionActor(authorization);
+    return service.upsertTaxFeeRule(required(body, "name"), percentOf(body, "percent"), actor(body), session);
   }
 
   @PostMapping("/RecordOpenBalanceApproval")
   public BillingService.ApprovalView recordOpenBalanceApproval(
       @RequestHeader(value = "Authorization", required = false)
       String authorization, @RequestBody Map<String, Object> body) {
-    requireToken(authorization);
+    String session = sessionActor(authorization);
     return service.recordOpenBalanceApproval(required(body, "stayId"), required(body, "approvedBy"),
-        required(body, "role"), optional(body, "reason"), optional(body, "idempotencyKey"), actor(body));
+        required(body, "role"), optional(body, "reason"), optional(body, "idempotencyKey"), actor(body), session);
   }
 }

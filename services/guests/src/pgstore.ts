@@ -3,11 +3,14 @@ import { randomUUID } from "node:crypto";
 import { HttpError } from "./errors.js";
 import { msg } from "./messages.js";
 import {
+  ambiguousGuestName,
+  mandatoryFieldStatus,
   requireReservationRef,
   requireString,
   requireUuid,
-  mandatoryFieldStatus,
   toConfirmationRecord,
+  validGuestNotes,
+  validGuestPayloadObject,
   type AttachReservationInput,
   type ConfirmationRecord,
   type GetBookingContextInput,
@@ -21,10 +24,6 @@ import {
   type ProduceConfirmationInput,
   type UpsertGuestInput,
 } from "./store.js";
-
-function asObject(value: unknown): Record<string, unknown> {
-  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
-}
 
 // Postgres-backed GuestService store (issue #149). Implements
 // GuestStoreAPI against the guests schema
@@ -60,16 +59,22 @@ export class PostgresGuestStore implements GuestStoreAPI {
     };
   }
 
-  async upsertGuest(input: UpsertGuestInput): Promise<GuestRecord> {
+  async upsertGuest(input: UpsertGuestInput, sessionActor: string): Promise<GuestRecord> {
     const id =
       input.guestId === undefined || input.guestId === null || input.guestId === ""
         ? randomUUID()
         : requireUuid(input.guestId, "guestId");
     const fullName = requireString(input.fullName, "fullName");
-    const actor = requireString(input.actor, "actor");
-    const contact = input.contact === undefined ? null : JSON.stringify(asObject(input.contact));
-    const preferences = input.preferences === undefined ? null : JSON.stringify(asObject(input.preferences));
-    const notes = typeof input.notes === "string" ? input.notes : null;
+    requireString(input.actor, "actor");
+    const actor = sessionActor;
+    // Same shared validators as the in-memory store, before either
+    // object is serialised or the row is written (LLD section 32.3).
+    const contactValue = validGuestPayloadObject(input.contact, "contact");
+    const preferencesValue = validGuestPayloadObject(input.preferences, "preferences");
+    const notesValue = validGuestNotes(input.notes);
+    const contact = contactValue === undefined ? null : JSON.stringify(contactValue);
+    const preferences = preferencesValue === undefined ? null : JSON.stringify(preferencesValue);
+    const notes = notesValue === undefined ? null : notesValue;
     const { rows } = await this.pool.query(
       `INSERT INTO guests.guests (id, full_name, contact, preferences, notes, created_by, updated_by)
        VALUES ($1, $2, COALESCE($3::jsonb, '{}'), COALESCE($4::jsonb, '{}'), COALESCE($5, ''), $6, $6)
@@ -180,13 +185,21 @@ export class PostgresGuestStore implements GuestStoreAPI {
     }
     if (typeof input.fullName === "string" && input.fullName.trim() !== "") {
       const wanted = input.fullName.trim();
+      // The count is exact and comes from the same statement: a bare
+      // LIMIT 1 can answer neither the zero case nor the ambiguity
+      // (BR-63; FR-GID-1). At most two profile rows are materialised.
       const found = await this.pool.query(
-        `SELECT id, full_name, contact, preferences, notes, returning_flag, past_stay_count
-         FROM guests.guests WHERE full_name = $1 LIMIT 1`,
+        `SELECT id, full_name, contact, preferences, notes, returning_flag, past_stay_count,
+                (count(*) OVER ())::int AS match_count
+         FROM guests.guests WHERE full_name = $1 LIMIT 2`,
         [wanted],
       );
       if (found.rows.length === 0) {
         throw new HttpError("NOT_FOUND", msg("guests.notfound.guest_by_name", { fullName: wanted }), { fullName: wanted });
+      }
+      const matches = Number(found.rows[0].match_count);
+      if (matches > 1) {
+        throw ambiguousGuestName(wanted, matches);
       }
       return PostgresGuestStore.toGuest(found.rows[0]);
     }
