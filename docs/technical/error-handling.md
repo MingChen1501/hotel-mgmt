@@ -303,6 +303,46 @@ This changes no error answer:
   row, no outbox event, no change row, and no history row, so
   `NFR-AUD-1` is unaffected on the refusal path.
 
+### 1.7 Rates refuses malformed restriction and availability input (Refs #633)
+
+Rates stops coercing the caller's restriction, availability, quote, and
+plan inputs, and starts refusing the ones it cannot honour. Every refusal
+uses a code section 1 already registers, and no envelope field, status
+mapping, or sentence family is added:
+
+- **A non-boolean restriction flag is the caller's mistake.**
+  `closedToArrival` present as `"true"`, `1`, `"yes"`, or `null` answers
+  `VALIDATION_FAILED` (400) with `details.field` `closedToArrival` and
+  one plain sentence, where it used to store `false` silently. An omitted
+  field keeps the contract default `false`.
+- **A restriction needs a room type Pricing prices.** A malformed
+  `roomTypeId` answers `VALIDATION_FAILED` (400) and a well-formed UUID no
+  rate-price row mentions answers `NOT_FOUND` (404), both naming the
+  field, with nothing stored and no event emitted. The second answer is
+  new for this operation, so its contract error list grows by a code the
+  enum already carries.
+- **The availability count refuses an unknown type the same way whatever
+  the request carries.** `NOT_FOUND` (404) naming the type replaces the
+  old `VALIDATION_FAILED` `rates.validation.no_inventory` answer that
+  appeared only when `totalUnits` was present; a malformed `totalUnits`
+  keeps its `VALIDATION_FAILED` (400).
+- **An overflowing quote is a state refusal, not a caller error.**
+  `STATE_ILLEGAL` (422) gains the additive `details.reason`
+  `total_overflow` beside the #589 values `no_rate_price` and
+  `no_rate_plan` (section 6 above), names `roomTypeId`, and serves no
+  total and no nights. It is not `VALIDATION_FAILED` (the request is well
+  formed), not `INTERNAL_ERROR` (stored data, not a fault), and never
+  `UPSTREAM_UNAVAILABLE` (no provider is read).
+- **The plan bounds are field refusals.** A `name` above 64 or a
+  `description` above 2 000 code points, or either sent as a non-string,
+  answers `VALIDATION_FAILED` (400) naming the field with the bound
+  rendered through `{max}`; nothing is stored, overwritten, or truncated.
+
+Every refusal is decided before the write, so a refused request leaves no
+restriction row, plan row, outbox event, or served total. Flow detail and
+the per-flow diagrams are `docs/architecture/lld.md`
+[section 37](../architecture/lld.md#37-rates-refuses-malformed-restriction-and-availability-input-refs-633).
+
 ## 2. Conflict semantics (overbooking and double assignment)
 
 - A booking refused for lack of sellable availability returns

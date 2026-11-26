@@ -1205,3 +1205,76 @@ rollback is the single implementation PR.
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1234
+
+## 29. Rates refuses malformed restriction and availability input (Refs #633)
+
+Rates was answering four questions it could not honour. A restriction's
+`closedToArrival` was read with a type assertion whose failure silently
+meant `false` (`services/rates/internal/handler/handler.go:234`), so a
+manager's closed-to-arrival window sent as `"true"`, `1`, `"yes"`, or
+`null` stored an open window and never applied. `UpsertRestriction`
+stored any `roomTypeId` string (`services/rates/internal/store/store.go:198-214`;
+`services/rates/internal/store/postgres.go:149-176`), so a typo created a
+window that matched nothing. `CheckSellableCount` echoed the caller's
+`totalUnits` as the sellable count and consulted the plan only when the
+field was absent (`store.go:347-355`; `postgres.go:380-393`), so a caller
+set the number the desk read. `QuotePrice` summed, multiplied, and
+subtracted `int64` without an overflow check (`store.go:274-289`;
+`postgres.go:289-308`), so an absurd stored price could wrap a total that
+#632 then froze as the money the guest is charged and the check-out
+review posted as a room charge. Rate-plan `name` and `description`
+carried no bound, and a non-string description silently became empty
+(`handler.go:158-163`).
+
+From #633 on, the service refuses an input it cannot honour and never
+answers a number the caller sets. Three properties define the change:
+
+- **The refusal is decided before the write, and nothing is stored.** A
+  present `closedToArrival` must be JSON `true` or `false`; anything else
+  is refused `VALIDATION_FAILED` naming the field, never coerced, while an
+  omitted field keeps the contract default `false`. A restriction binds
+  only to a room type at least one plan already prices: a malformed id is
+  refused `VALIDATION_FAILED` and an unpriced one `NOT_FOUND`, with no
+  row stored and no `restriction-changed` event. A quote whose nightly
+  sum, percent multiplication, or amount subtraction would leave the
+  `int64` range is refused `STATE_ILLEGAL` with `details.reason`
+  `total_overflow` and serves no total and no partial night list. Plan
+  `name` is bounded at 64 characters and `description` at 2 000, counted
+  in code points on write, and a present non-string is refused instead of
+  becoming empty.
+- **The availability count is the server's, and both stores answer the
+  same way.** `totalUnits` is advisory: shape-checked when present and
+  never honoured, so the count is the first plan in name order that
+  prices the type and carries a `defaultUnits`, else `0`, and a type no
+  price row mentions refuses `NOT_FOUND` whether or not the field is
+  present. The value cannot even reach the store — the parameter leaves
+  the `Repository` contract — so the field cannot come back by a later
+  edit. The two stores share one rule, one set of refusal codes, and one
+  set of sentences, where today they disagree on an unknown type and on a
+  malformed identifier.
+- **Nothing else moves.** No module, dependency edge, endpoint, request
+  or response field, status, envelope token, schema table, lifecycle
+  state, desk surface, or print rule is added or removed; every refusal
+  uses a code already in the shared enum, and the new value joins the
+  existing `details.reason` slot. Above all, the two merged decisions
+  stand: the reservation ceiling is still the Rooms inventory derivation
+  `totalCount - len(blockedRooms)` (ADR-0006 D2, `AC-OVB-1`), which
+  `totalUnits` neither raises nor lowers, and the frozen price basis is
+  still the Rates quote (`AC-PRC-1`/`AC-PRC-2`, ADR-0007), which the
+  overflow guard protects rather than re-decides. The change narrows an
+  input surface; it adds no trust boundary and no cross-service edge.
+
+Where each check sits, the precedence rule for the availability count,
+the overflow guard, the per-flow diagrams, the contract edits, and the
+verification plan: `docs/architecture/lld.md`
+[section 37](lld.md#37-rates-refuses-malformed-restriction-and-availability-input-refs-633);
+per-service notes: `docs/architecture/services/rates.md` sections 3, 4,
+and 6; product conditions `AC-RTE-6`..`AC-RTE-10` in
+`docs/product/acceptance-criteria.md` section 30; FRs `FR-RTE-6`..`FR-RTE-10`
+in `docs/requirements/mvp-requirements.md` section 38; business rule
+BR-68. Risk R-23 records the over-refusal and the stored-value
+directions; rollback is the single implementation PR, with no migration
+or data repair in either direction.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1248
