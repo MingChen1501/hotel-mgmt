@@ -280,8 +280,10 @@ Internal data flow (`QuotePrice`): load plan prices for type+dates
 -> return breakdown; the quoted basis is stored by Reservations, so
 later rate changes never alter it unless explicitly recalculated
 (BR-13). Availability counts report the pricing store's cached
-inventory input per date (the plan `defaultUnits`, else the caller's
-`totalUnits`, else `0`) — a desk-facing overview, not the booking
+inventory input per date (the first plan in name order that prices the
+type and carries a `defaultUnits`, else `0`; the request's
+`totalUnits` is advisory only and never sets the count since #633,
+section 37) — a desk-facing overview, not the booking
 guard's ceiling: the guard derives its ceiling from the Rooms room
 inventory since #631 (section 26; ADR-0006), because this operation's
 `totalUnits` input is itself a request value and its plan-default
