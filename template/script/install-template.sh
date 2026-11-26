@@ -131,6 +131,7 @@ PAYLOAD=(
   "script/ao-spawn-worker.sh"
   "script/orchestrator-merge.sh"
   "script/orchestrator-review.sh"
+  "script/merge-readiness.sh"
   "script/install-cues.sh"
 )
 
