@@ -45,6 +45,10 @@ func TestSampledMessagesRenderByteIdentical(t *testing.T) {
 		{"rates.validation.ambiguous_plan", nil, "Several plans price the type; name the rate plan."},
 		{"rates.validation.default_units", nil, "defaultUnits must be a non-negative integer."},
 		{"rates.validation.min_stay", nil, "minStay must be a positive integer."},
+		// #633: the fail-closed Rates input sentences.
+		{"error.validation.must_be_boolean", map[string]string{"field": "closedToArrival"}, "closedToArrival must be true or false."},
+		{"rates.validation.text_length", map[string]string{"field": "name", "max": Num(64)}, "name must be at most 64 characters."},
+		{"rates.state.total_overflow", nil, "The quote total is outside the supported range."},
 		{"rates.validation.total_units", nil, "totalUnits must be a non-negative integer."},
 		{"error.validation.date_range_order", nil, "dateTo is before dateFrom."},
 		{"error.validation.departure_order", nil, "departureDate must be after arrivalDate."},

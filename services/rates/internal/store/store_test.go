@@ -20,8 +20,8 @@ func storeTypeID() string { return "11111111-1111-4111-8111-111111111111" }
 
 func TestQuoteWithoutRatePriceNamesTheReason(t *testing.T) {
 	s := New()
-	if plan := s.UpsertRatePlan("RACK", "Rack rate", nil); plan == nil {
-		t.Fatal("UpsertRatePlan returned nil")
+	if plan, oerr := s.UpsertRatePlan("RACK", "Rack rate", nil); oerr != nil || plan == nil {
+		t.Fatalf("UpsertRatePlan returned %v, %v", plan, oerr)
 	}
 	if _, oerr := s.UpsertRatePrice("RACK", storeTypeID(), "2026-11-01", 12000); oerr != nil {
 		t.Fatalf("UpsertRatePrice refused: %v", oerr)
@@ -51,8 +51,8 @@ func TestQuoteWithoutAnyPlanNamesTheReason(t *testing.T) {
 	s := New()
 	// A plan exists but prices a different type: no plan prices the
 	// requested type, so the type is not yet operational.
-	if plan := s.UpsertRatePlan("RACK", "Rack rate", nil); plan == nil {
-		t.Fatal("UpsertRatePlan returned nil")
+	if plan, oerr := s.UpsertRatePlan("RACK", "Rack rate", nil); oerr != nil || plan == nil {
+		t.Fatalf("UpsertRatePlan returned %v, %v", plan, oerr)
 	}
 	otherType := "22222222-2222-4222-8222-222222222222"
 	if _, oerr := s.UpsertRatePrice("RACK", otherType, "2026-11-01", 12000); oerr != nil {
@@ -70,8 +70,8 @@ func TestQuoteWithoutAnyPlanNamesTheReason(t *testing.T) {
 
 func TestQuoteWithRatePricesStillPricesEveryNight(t *testing.T) {
 	s := New()
-	if plan := s.UpsertRatePlan("RACK", "Rack rate", nil); plan == nil {
-		t.Fatal("UpsertRatePlan returned nil")
+	if plan, oerr := s.UpsertRatePlan("RACK", "Rack rate", nil); oerr != nil || plan == nil {
+		t.Fatalf("UpsertRatePlan returned %v, %v", plan, oerr)
 	}
 	for _, night := range []string{"2026-11-01", "2026-11-02"} {
 		if _, oerr := s.UpsertRatePrice("RACK", storeTypeID(), night, 12000); oerr != nil {
@@ -95,8 +95,8 @@ func TestQuoteWithRatePricesStillPricesEveryNight(t *testing.T) {
 // unchanged.
 func TestQuoteRangeBoundaryMatchesReportingCap(t *testing.T) {
 	s := New()
-	if plan := s.UpsertRatePlan("RACK", "Rack rate", nil); plan == nil {
-		t.Fatal("UpsertRatePlan returned nil")
+	if plan, oerr := s.UpsertRatePlan("RACK", "Rack rate", nil); oerr != nil || plan == nil {
+		t.Fatalf("UpsertRatePlan returned %v, %v", plan, oerr)
 	}
 	base := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	for i := 0; i < 730; i++ {

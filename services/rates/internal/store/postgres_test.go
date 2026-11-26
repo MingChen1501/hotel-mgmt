@@ -41,6 +41,18 @@ func pgWipe(t *testing.T, db *sql.DB) {
 
 func pgTypeID() string { return "11111111-1111-4111-8111-111111111111" }
 
+// pgSeedPrice prices pgTypeID() for one night so the priced-type
+// refusals (FR-RTE-7, Refs #633) accept a restriction write.
+func pgSeedPrice(t *testing.T, pg *Postgres) {
+	t.Helper()
+	if _, oerr := pg.UpsertRatePlan("REST-RACK", "Restriction rack rate", nil); oerr != nil {
+		t.Fatalf("plan refused: %v", oerr)
+	}
+	if _, oerr := pg.UpsertRatePrice("REST-RACK", pgTypeID(), "2026-11-01", 12000); oerr != nil {
+		t.Fatalf("price refused: %v", oerr)
+	}
+}
+
 // TestPostgresDeskLoop mirrors the desk-loop pricing path against the
 // real schema: plan, nightly prices, restriction check, and quote.
 func TestPostgresDeskLoop(t *testing.T) {
@@ -49,9 +61,9 @@ func TestPostgresDeskLoop(t *testing.T) {
 	pg := NewPostgres(db)
 
 	units := 2
-	plan := pg.UpsertRatePlan("E2E-RACK", "E2E rack rate", &units)
-	if plan.ID == "" || plan.Name != "E2E-RACK" {
-		t.Fatalf("unexpected plan: %+v", plan)
+	plan, oerr := pg.UpsertRatePlan("E2E-RACK", "E2E rack rate", &units)
+	if oerr != nil || plan.ID == "" || plan.Name != "E2E-RACK" {
+		t.Fatalf("unexpected plan: %+v, %v", plan, oerr)
 	}
 	for _, night := range []string{"2026-11-01", "2026-11-02"} {
 		if _, oerr := pg.UpsertRatePrice("E2E-RACK", pgTypeID(), night, 12000); oerr != nil {
@@ -69,7 +81,7 @@ func TestPostgresDeskLoop(t *testing.T) {
 	if quote.TotalMinor != 24000 || len(quote.Nights) != 2 {
 		t.Fatalf("unexpected quote: %+v", quote)
 	}
-	counts, oerr := pg.CheckSellableCount(pgTypeID(), "2026-11-01", "2026-11-03", &units)
+	counts, oerr := pg.CheckSellableCount(pgTypeID(), "2026-11-01", "2026-11-03")
 	if oerr != nil {
 		t.Fatalf("count refused: %v", oerr)
 	}
@@ -93,6 +105,10 @@ func TestPostgresRestrictionRefusalNamesRestriction(t *testing.T) {
 	pgWipe(t, db)
 	pg := NewPostgres(db)
 
+	// Refs #633 (RTE5 re-seed): a restriction binds only to a room
+	// type Pricing can price, so the fixture seeds a price row first
+	// (the assertion below is unchanged).
+	pgSeedPrice(t, pg)
 	minStay := 3
 	if _, oerr := pg.UpsertRestriction(pgTypeID(), "2026-11-01", "2026-11-10", &minStay, false); oerr != nil {
 		t.Fatalf("restriction refused: %v", oerr)
@@ -114,6 +130,8 @@ func TestPostgresClosedToArrivalRefusal(t *testing.T) {
 	pgWipe(t, db)
 	pg := NewPostgres(db)
 
+	// Refs #633 (RTE5 re-seed): price the type before the window.
+	pgSeedPrice(t, pg)
 	if _, oerr := pg.UpsertRestriction(pgTypeID(), "2026-12-20", "2026-12-31", nil, true); oerr != nil {
 		t.Fatalf("restriction refused: %v", oerr)
 	}
@@ -137,9 +155,9 @@ func TestPostgresQuoteDiscounts(t *testing.T) {
 	pgWipe(t, db)
 	pg := NewPostgres(db)
 
-	plan := pg.UpsertRatePlan("DISC-RACK", "Discount rack rate", nil)
-	if plan.ID == "" {
-		t.Fatalf("plan not saved: %+v", plan)
+	plan, planErr := pg.UpsertRatePlan("DISC-RACK", "Discount rack rate", nil)
+	if planErr != nil || plan.ID == "" {
+		t.Fatalf("plan not saved: %+v, %v", plan, planErr)
 	}
 	for _, night := range []string{"2026-11-01", "2026-11-02"} {
 		if _, oerr := pg.UpsertRatePrice("DISC-RACK", pgTypeID(), night, 12000); oerr != nil {
@@ -195,7 +213,9 @@ func TestPostgresQuoteBreakdown(t *testing.T) {
 	pgWipe(t, db)
 	pg := NewPostgres(db)
 
-	pg.UpsertRatePlan("BRK-RACK", "Breakdown rack rate", nil)
+	if _, oerr := pg.UpsertRatePlan("BRK-RACK", "Breakdown rack rate", nil); oerr != nil {
+		t.Fatalf("plan refused: %v", oerr)
+	}
 	for _, night := range []string{"2026-11-01", "2026-11-02"} {
 		if _, oerr := pg.UpsertRatePrice("BRK-RACK", pgTypeID(), night, 12000); oerr != nil {
 			t.Fatalf("price refused: %v", oerr)

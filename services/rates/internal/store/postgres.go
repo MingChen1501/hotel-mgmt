@@ -80,7 +80,11 @@ func (p *Postgres) outbox(aggregate, eventType string, payload map[string]any, a
 
 // UpsertRatePlan creates or updates a named plan. An update without
 // defaultUnits keeps the stored value, matching the in-memory store.
-func (p *Postgres) UpsertRatePlan(name, description string, defaultUnits *int) *RatePlan {
+// Both text fields are bounded on write (FR-RTE-10, Refs #633).
+func (p *Postgres) UpsertRatePlan(name, description string, defaultUnits *int) (*RatePlan, *OpError) {
+	if oerr := planText(name, description); oerr != nil {
+		return nil, oerr
+	}
 	plan := &RatePlan{Name: name, Description: description, DefaultUnits: defaultUnits}
 	var units sql.NullInt64
 	if defaultUnits != nil {
@@ -98,7 +102,11 @@ func (p *Postgres) UpsertRatePlan(name, description string, defaultUnits *int) *
 		name, description, units,
 	).Scan(&id, &stored)
 	if err != nil {
-		return plan
+		// LLD 37.6: this branch already answered with the request-shaped
+		// plan and no refusal; turning it into storeFailure() is a
+		// behaviour change #633 does not name, so it stays and is tracked
+		// separately (#767).
+		return plan, nil
 	}
 	plan.ID = id
 	if stored.Valid {
@@ -108,7 +116,7 @@ func (p *Postgres) UpsertRatePlan(name, description string, defaultUnits *int) *
 		plan.DefaultUnits = nil
 	}
 	p.outbox("rate-plan", "rate-plan-changed", map[string]any{"ratePlanName": name}, "system")
-	return plan
+	return plan, nil
 }
 
 // UpsertRatePrice sets one nightly price.
@@ -145,7 +153,9 @@ func (p *Postgres) UpsertRatePrice(planName, roomTypeID, night string, priceMino
 	return &RatePrice{RatePlanName: planName, RoomTypeID: roomTypeID, NightDate: night, PriceMinor: priceMinor}, nil
 }
 
-// UpsertRestriction records one stay-restriction window.
+// UpsertRestriction records one stay-restriction window. A typo'd or
+// unpriced room type is refused before the insert, so no window can
+// exist that matches nothing (FR-RTE-7, Refs #633).
 func (p *Postgres) UpsertRestriction(roomTypeID, from, to string, minStay *int, closedToArrival bool) (*StayRestriction, *OpError) {
 	if _, err := parseDate(from, "dateFrom"); err != nil {
 		return nil, err
@@ -159,6 +169,19 @@ func (p *Postgres) UpsertRestriction(roomTypeID, from, to string, minStay *int, 
 	var minStayValue sql.NullInt64
 	if minStay != nil {
 		minStayValue = sql.NullInt64{Int64: int64(*minStay), Valid: true}
+	}
+	// The shape check travels through the same count query: a value
+	// the uuid column cannot take answers the driver's 22P02, which
+	// the in-memory store now refuses identically.
+	var priced int
+	if err := p.db.QueryRow(`SELECT count(*) FROM rates.rate_prices WHERE room_type_id = $1`, roomTypeID).Scan(&priced); err != nil {
+		if strings.Contains(err.Error(), "22P02") {
+			return nil, validation("roomTypeId", messages.Text("error.validation.must_be_uuid", map[string]string{"field": "roomTypeId"}))
+		}
+		return nil, storeFailure()
+	}
+	if priced == 0 {
+		return nil, notFound(messages.Text("rates.notfound.room_type", map[string]string{"roomTypeId": roomTypeID}), map[string]any{"roomTypeId": roomTypeID})
 	}
 	var id string
 	if err := p.db.QueryRow(
@@ -286,7 +309,11 @@ func (p *Postgres) Quote(roomTypeID, arrival, departure string, planName, discou
 			return nil, storeFailure()
 		}
 		quoted.Nights = append(quoted.Nights, NightQuote{NightDate: night.Format(dateLayout), PriceMinor: priceMinor})
-		quoted.TotalMinor += priceMinor
+		total, ok := checkedAdd(quoted.TotalMinor, priceMinor)
+		if !ok {
+			return nil, totalOverflow(roomTypeID)
+		}
+		quoted.TotalMinor = total
 	}
 	if discountName != nil && *discountName != "" {
 		var kind string
@@ -300,9 +327,17 @@ func (p *Postgres) Quote(roomTypeID, arrival, departure string, planName, discou
 		quoted.Discount = discountName
 		switch kind {
 		case "percent":
-			quoted.TotalMinor = quoted.TotalMinor * (100 - valueMinor) / 100
+			product, ok := checkedMul(quoted.TotalMinor, 100-valueMinor)
+			if !ok {
+				return nil, totalOverflow(roomTypeID)
+			}
+			quoted.TotalMinor = product / 100
 		case "amount":
-			quoted.TotalMinor -= valueMinor
+			diff, ok := checkedSub(quoted.TotalMinor, valueMinor)
+			if !ok {
+				return nil, totalOverflow(roomTypeID)
+			}
+			quoted.TotalMinor = diff
 			if quoted.TotalMinor < 0 {
 				quoted.TotalMinor = 0
 			}
@@ -363,9 +398,11 @@ func (p *Postgres) CheckRestrictions(roomTypeID, arrival, departure string) *OpE
 }
 
 // CheckSellableCount returns the per-date inventory input for the
-// type. The authoritative booking guard stays in the Reservations
-// store transaction; this call reports the cached input (FR-RTE-2).
-func (p *Postgres) CheckSellableCount(roomTypeID, from, to string, totalUnits *int) ([]DayCount, *OpError) {
+// type. The answer is the first plan in name order that prices the
+// type and carries a defaultUnits, else 0; the caller's totalUnits is
+// never consulted (FR-RTE-8, BR-68, Refs #633). The authoritative
+// booking guard stays in the Reservations store transaction.
+func (p *Postgres) CheckSellableCount(roomTypeID, from, to string) ([]DayCount, *OpError) {
 	fromDay, err := parseDate(from, "dateFrom")
 	if err != nil {
 		return nil, err
@@ -377,40 +414,31 @@ func (p *Postgres) CheckSellableCount(roomTypeID, from, to string, totalUnits *i
 	if toDay.Before(fromDay) {
 		return nil, validation("dateTo", "dateTo is before dateFrom.")
 	}
-	units := totalUnits
-	if units == nil {
-		plans, lerr := p.loadPlans()
-		if lerr != nil {
-			return nil, storeFailure()
+	var known int
+	if qerr := p.db.QueryRow(`SELECT count(*) FROM rates.rate_prices WHERE room_type_id = $1`, roomTypeID).Scan(&known); qerr != nil {
+		if strings.Contains(qerr.Error(), "22P02") {
+			return nil, validation("roomTypeId", messages.Text("error.validation.must_be_uuid", map[string]string{"field": "roomTypeId"}))
 		}
-		sort.Slice(plans, func(i, j int) bool { return plans[i].Name < plans[j].Name })
-		for _, plan := range plans {
-			if plan.DefaultUnits != nil && p.planPricesType(plan.Name, roomTypeID) {
-				units = plan.DefaultUnits
-				break
-			}
-		}
+		return nil, storeFailure()
 	}
-	if units == nil {
-		var known int
-		if qerr := p.db.QueryRow(`SELECT count(*) FROM rates.rate_prices WHERE room_type_id = $1`, roomTypeID).Scan(&known); qerr != nil {
-			if strings.Contains(qerr.Error(), "22P02") {
-				return nil, validation("roomTypeId", messages.Text("error.validation.must_be_uuid", map[string]string{"field": "roomTypeId"}))
-			}
-			return nil, storeFailure()
+	if known == 0 {
+		return nil, notFound(messages.Text("rates.notfound.room_type", map[string]string{"roomTypeId": roomTypeID}), map[string]any{"roomTypeId": roomTypeID})
+	}
+	units := 0
+	plans, lerr := p.loadPlans()
+	if lerr != nil {
+		return nil, storeFailure()
+	}
+	sort.Slice(plans, func(i, j int) bool { return plans[i].Name < plans[j].Name })
+	for _, plan := range plans {
+		if plan.DefaultUnits != nil && p.planPricesType(plan.Name, roomTypeID) {
+			units = *plan.DefaultUnits
+			break
 		}
-		if known == 0 && totalUnits == nil {
-			return nil, notFound(messages.Text("rates.notfound.room_type", map[string]string{"roomTypeId": roomTypeID}), map[string]any{"roomTypeId": roomTypeID})
-		}
-		if known == 0 {
-			return nil, validation("totalUnits", messages.Text("rates.validation.no_inventory", nil))
-		}
-		fallback := 0
-		units = &fallback
 	}
 	var counts []DayCount
 	for day := fromDay; !day.After(toDay); day = day.AddDate(0, 0, 1) {
-		counts = append(counts, DayCount{Date: day.Format(dateLayout), SellableCount: *units})
+		counts = append(counts, DayCount{Date: day.Format(dateLayout), SellableCount: units})
 	}
 	return counts, nil
 }
