@@ -4,7 +4,9 @@ import { HttpError } from "./errors.js";
 import { msg } from "./messages.js";
 import {
   ALLOWED_TRANSITIONS,
+  NON_SELLABLE_STATES,
   ROOM_STATES,
+  isSellableState,
   requestActorAnnotation,
   requireDate,
   requireString,
@@ -375,7 +377,9 @@ export class PostgresRoomStore implements RoomStoreAPI {
         dateFrom,
         dateTo,
         totalCount: 1,
-        sellableCount: 1,
+        // Block refusal keeps priority (above); only then does room state
+        // answer, so a block-free non-sellable room reports zero (issue #636).
+        sellableCount: isSellableState(room.state) ? 1 : 0,
         blockedRooms: [],
       };
     }
@@ -386,9 +390,10 @@ export class PostgresRoomStore implements RoomStoreAPI {
              SELECT 1 FROM rooms.room_blocks b
              WHERE b.room_id = r.id AND b.date_from <= $3 AND b.date_to >= $2
            )
+             AND r.state <> ALL($4::text[])
          )::int AS sellable
        FROM rooms.rooms r WHERE r.room_type_id = $1`,
-      [roomType.id, dateFrom, dateTo],
+      [roomType.id, dateFrom, dateTo, [...NON_SELLABLE_STATES]],
     );
     const blocked = await this.pool.query(
       `SELECT r.number FROM rooms.rooms r

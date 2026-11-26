@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { Pool } from "pg";
 import { PostgresRoomStore } from "./pgstore.js";
+import { RoomStore, type RoomStoreAPI } from "./store.js";
 
 // Postgres round-trip for the rooms schema (issue #149). Skipped
 // without TEST_PG_URL so `npm test` stays green without a database;
@@ -215,6 +216,89 @@ describe("rooms postgres store", { skip: DATABASE_URL === undefined || DATABASE_
         assert.equal(event.payload["requestActor"], "mallory", event.event_type);
         assert.notEqual(event.payload["actor"], "mallory", event.event_type);
       }
+    } finally {
+      await pool.end();
+    }
+  });
+
+  it("agrees with the in-memory store on room state sellability (SL5, SL6)", async () => {
+    const pool = new Pool({ connectionString: DATABASE_URL });
+    try {
+      await wipe(pool);
+      const pg = new PostgresRoomStore(pool);
+      const mem = new RoomStore();
+      for (const store of [pg, mem] as RoomStoreAPI[]) {
+        await store.upsertRoomType({ name: "Deluxe", capacity: 2, actor: "manager" }, TOKEN);
+        for (const number of ["101", "102", "103", "104", "105"]) {
+          await store.upsertRoom({ number, roomType: "Deluxe", actor: "manager" }, TOKEN);
+        }
+        // 101 out-of-order; 102 occupied through the public assign path;
+        // 103 out-of-order and block-covered; 104/105 remain vacant-inspected.
+        await store.updateRoomState({ roomNumber: "101", newState: "out-of-order", actor: "manager" }, TOKEN);
+        await store.assignRoom(
+          { roomNumber: "102", businessDate: "2026-11-01", stayLink: "stay-1", actor: "front-desk" },
+          TOKEN,
+        );
+        await store.updateRoomState({ roomNumber: "103", newState: "out-of-order", actor: "manager" }, TOKEN);
+        await store.blockRoom(
+          { roomNumber: "103", dateFrom: "2026-11-01", dateTo: "2026-11-05", reason: "Plumbing repair", actor: "manager" },
+          TOKEN,
+        );
+      }
+      const range = { roomType: "Deluxe", dateFrom: "2026-11-01", dateTo: "2026-11-03" };
+      const pgSell = await pg.checkSellability(range);
+      const memSell = await mem.checkSellability(range);
+      assert.equal(pgSell.totalCount, memSell.totalCount);
+      assert.equal(pgSell.sellableCount, memSell.sellableCount);
+      assert.deepEqual(pgSell.blockedRooms, memSell.blockedRooms);
+      assert.equal(pgSell.totalCount, 5);
+      assert.equal(pgSell.sellableCount, 2);
+      assert.deepEqual(pgSell.blockedRooms, ["103"]);
+
+      const single = { ...range, roomNumber: "101" };
+      const pgSingle = await pg.checkSellability(single);
+      const memSingle = await mem.checkSellability(single);
+      assert.equal(pgSingle.totalCount, memSingle.totalCount);
+      assert.equal(pgSingle.sellableCount, memSingle.sellableCount);
+      assert.deepEqual(pgSingle.blockedRooms, memSingle.blockedRooms);
+      assert.equal(pgSingle.sellableCount, 0);
+    } finally {
+      await pool.end();
+    }
+  });
+
+  it("refuses a block-covered out-of-order room before the state answer (SL7)", async () => {
+    const pool = new Pool({ connectionString: DATABASE_URL });
+    try {
+      await wipe(pool);
+      const store = new PostgresRoomStore(pool);
+      await store.upsertRoomType({ name: "Deluxe", actor: "manager" }, TOKEN);
+      await store.upsertRoom({ number: "101", roomType: "Deluxe", actor: "manager" }, TOKEN);
+      await store.updateRoomState({ roomNumber: "101", newState: "out-of-order", actor: "manager" }, TOKEN);
+      await store.blockRoom(
+        { roomNumber: "101", dateFrom: "2026-11-01", dateTo: "2026-11-05", reason: "Plumbing repair", actor: "manager" },
+        TOKEN,
+      );
+      await assert.rejects(
+        () =>
+          store.checkSellability({
+            roomType: "Deluxe",
+            dateFrom: "2026-11-01",
+            dateTo: "2026-11-03",
+            roomNumber: "101",
+          }),
+        (err: unknown) => {
+          const refusal = err as { code?: string; details?: unknown };
+          assert.equal(refusal.code, "STATE_ILLEGAL");
+          assert.deepEqual(refusal.details, {
+            roomNumber: "101",
+            dateFrom: "2026-11-01",
+            dateTo: "2026-11-05",
+            reason: "Plumbing repair",
+          });
+          return true;
+        },
+      );
     } finally {
       await pool.end();
     }
