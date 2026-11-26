@@ -24,6 +24,25 @@ Node.js/TypeScript flat `src/` files over raw `node:http`, wired in `services/ad
 
 The operation table (`src/server.ts:157-193`): `GetHotelConfig` (:157), `UpdateHotelConfig` (:161), `CreateUser` (:165), `UpdateUserRole` (:169), `UnlockIdentity` (:173), `SignOut` (:177), `ChangeSecret` (self-service rotation, issue #284), `ListUsers`, `QueryAuditLog`; `SignIn` precedes auth at :146.
 
+Request order (planned delta, #639 — the implementation PR refreshes
+these pins per maintain-with-code). As built at this head the body is
+read at `src/server.ts:144` before the token is checked at `:151-155`.
+From #639 the order is the statement order in `handleRequest`:
+`GET /healthz` (`:131-134`), the `POST /v1/admin/<Operation>` match
+(`:135`) and its unknown-path 404 (`:136-143`), the `SignIn` branch
+with its own body read (`:146-150`), the shared bearer helper
+(`src/auth.ts`, added by this change, replacing the inline
+`bearerToken` at `:83-90`), `store.authenticate` (`:155`), the body
+read (`:144` moved below `:155`), then the operation switch
+(`:156-193`). An unauthenticated session-guarded request therefore
+answers one 401 `UNAUTHENTICATED` before any parse; a resolved session
+with a malformed body still gets today's 400; and the front-desk 403
+follows a well-formed body, so the observed order is 401, then 400,
+then 403. `SignIn` keeps today's 400-first order and its lockout, and
+route matching, the unknown-path 404, and the four finite server bounds
+do not move. Design: LLD
+[section 33](../lld.md#33-admin-authenticates-before-parsing-and-refuses-a-malformed-config-write-refs-639).
+
 ## 3. Happy-path flowchart
 
 SignIn (`POST /v1/admin/SignIn`) — the token issuer:
@@ -59,11 +78,60 @@ flowchart TD
 
 Edge trace:
 
-- S: invalid/expired token, revoked/signed-out session, 15-minute idle expiry, or deleted user → `UNAUTHENTICATED` (`src/store.ts:241-257`); `SignOut` revokes (`src/server.ts:177`).
+- S: invalid/expired token, revoked/signed-out session, 15-minute idle expiry, or deleted user → `UNAUTHENTICATED` (`src/store.ts:245-262`); `SignOut` revokes (`src/server.ts:177`).
 - P: front-desk accounts are refused admin operations with `FORBIDDEN` (`src/store.ts:177`); unknown roles refused (`:272, :307`); duplicate identities refused (`:276`).
 - Self-role change and last-owner demotion are refused (`:315-319`); unlocking a non-locked identity is refused (`:338-341`).
 
 Rollback: none — each admin write is a single guarded step with refusals preceding mutation; sessions carry no compensating state.
+
+Planned delta (#639) — request order and config-write refusal. The
+implementation PR moves the body read below the session check for every
+operation except `SignIn` and refreshes the pins above; this is the
+specified shape:
+
+```mermaid
+flowchart TD
+    R[POST /v1/admin/Operation  src/server.ts:135] --> M{Path and method match}
+    M -->|no| Z[404 NOT_FOUND, unknown path  :136-143]
+    M -->|yes| S{Operation is SignIn}
+    S -->|yes| SB[readBody, then store.signIn  :146-150]
+    SB -->|refused| S4[400 VALIDATION_FAILED or 401, today's order]
+    S -->|no| T{Bearer token present  src/auth.ts}
+    T -->|no| N1[401 UNAUTHENTICATED, error.auth.missing_token  :151-154]
+    T -->|yes| A[store.authenticate  :155]
+    A -->|refused| N2[401 UNAUTHENTICATED, existing error.auth.* sentence  store.ts:245-262]
+    A -->|resolved| B[readBody now runs  :144 moved below :155]
+    B -->|refused| B4[400 VALIDATION_FAILED, existing transport sentence]
+    B -->|well formed| D{Operation}
+    D -->|UpdateHotelConfig| F{Role and values/updatedBy checks  store.ts:475-481}
+    F -->|front-desk| F3[403 FORBIDDEN]
+    F -->|invalid values or updatedBy| F4[400 VALIDATION_FAILED]
+    F -->|ok| K{Every present table key inside its shape  planned}
+    K -->|no| K4[400 VALIDATION_FAILED, details.field the key, the key's sentence]
+    K4 --> K5[Nothing written: no key of that request, no config.updated entry  store.ts:435-444]
+    K -->|yes| W[200 result + config.updated entries]
+    D -->|other guarded operation| O[unchanged dispatch  :157-193]
+```
+
+Edge trace for the planned edges:
+
+- `T`/`A`: the shared bearer helper (`src/auth.ts`) and
+  `store.authenticate` (`src/server.ts:155`); no body byte is read
+  before a resolved session.
+- `A–B`: the moved body read; today's ceiling, JSON parse, and object
+  check, with today's sentences (`:15-17`, `:61-70`).
+- `F–F3/F4`: today's checks keep their code, status, details, and
+  sentence; the role check stays after the body read, so 400 precedes
+  403.
+- `F–K–K4–K5`: the per-key table and validator shared from
+  `src/store.ts`, called by both `updateConfig` implementations before
+  the first write (in memory before the first `config.set`; in Postgres
+  before `withTx`), so the first offending key refuses the whole write
+  and no `config.updated` entry appears (`store.ts:435-444`).
+- Rollback for the new edges: every refusal is decided before the first
+  write, so there is no partial row, value, or audit entry to unwind;
+  reverting the single implementation PR restores today's order and
+  behaviour with no migration.
 
 ## 5. Outbound dependencies
 
@@ -81,6 +149,24 @@ Same shared Node envelope as Stay (`src/errors.ts`; `docs/technical/error-handli
 | `UNAUTHENTICATED` | 401 | unknown identity / wrong secret, bad or expired session (:212-257) |
 | `IDENTITY_LOCKED` | 401 | identity locked after repeated failures (:216-221) |
 | `FORBIDDEN` | 403 | front-desk account on an admin-only operation (:177) |
+
+Planned delta (#639), same envelope and codes, no new row: a
+session-guarded request with no token or a refused session answers
+`UNAUTHENTICATED` (401) before the body is read, so a malformed body no
+longer answers a transport `VALIDATION_FAILED` first; an authenticated
+malformed body keeps today's `VALIDATION_FAILED` 400 and its transport
+sentence; `FORBIDDEN` (403) follows a well-formed body; and an
+`UpdateHotelConfig` value outside its key's declared shape answers
+`VALIDATION_FAILED` 400 with `details.field` equal to the offending key
+and that key's plain sentence, writing nothing and recording no
+`config.updated` entry. `SignIn` keeps today's order. The five new
+sentences (`error.validation.config_text`, `config_time`,
+`config_required_fields`, `config_list`, `config_optional_text`) reuse
+the existing `retention_floor` and `field_required` sentences for their
+keys; no enum entry or status mapping is added
+(`src/errors.ts:4-27`; `contracts/errors/envelope.json`). Design: LLD
+[section 33](../lld.md#33-admin-authenticates-before-parsing-and-refuses-a-malformed-config-write-refs-639)
+and `docs/technical/error-handling.md` section 1.5.
 
 ## 7. Operations
 
@@ -142,3 +228,6 @@ environment variable overrides either value. Details: LLD
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-249
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1164

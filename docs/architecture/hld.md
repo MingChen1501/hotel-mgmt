@@ -874,3 +874,79 @@ implementation PR.
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1141
+
+## 25. Admin authenticates before parsing and config writes carry per-key shapes (Refs #639)
+
+Admin parsed every request body before it checked the session
+(`services/admin/src/server.ts:144` read the body, `:151-155` checked
+the token only afterwards), so an unauthenticated caller got the parse
+error — and the parse work — ahead of the auth answer; and
+`UpdateHotelConfig` stored any key with any value, shape-checking only
+`name` (`services/admin/src/store.ts:471-494`), so a malformed
+`requiredGuestFields` write silently replaced the list the Guests
+mandatory-field gate is specified to read. From #639, every
+session-guarded operation resolves the session before it reads the
+body, and the one config write is checked against one per-key shape
+table before anything is stored. The service also stops re-implementing
+the bearer parse and uses the same module-local helper the three other
+Node services carry (`services/admin/src/auth.ts`, added by this
+change; no caller-visible effect).
+
+Three properties define the change:
+
+- **One order, one place: session, then body, then role.** The order is
+  the statement order in the one `handleRequest` function, not a
+  middleware chain: route match, the `SignIn` branch (which keeps its
+  own body read, because it is the one operation with no session),
+  the bearer check and `store.authenticate`, then the body read, then
+  the operation switch. An unauthenticated malformed or oversized body
+  therefore answers exactly one 401 `UNAUTHENTICATED` with today's
+  sentence and never a parse refusal, and its payload is never read,
+  parsed, or measured; a resolved session still gets today's 400 for a
+  malformed body, and the front-desk 403 follows a well-formed body, so
+  the observed order is 401, then 400, then 403. `SignIn` keeps today's
+  order in both directions, with its lockout.
+- **One per-key table, one home, both stores, and nothing written on a
+  refusal.** The table `name`, `timezone`, the two standard times,
+  `requiredGuestFields`, `cancellationReasons`, `retentionFloorDays`,
+  and the optional profile text is declared and applied once in
+  `store.ts`, the module the Postgres twin already imports its shared
+  helpers from, and both `updateConfig` implementations call it before
+  their first write — in memory before the first `config.set`, in
+  Postgres before the transaction opens. The first offending key
+  refuses the whole write with `VALIDATION_FAILED` 400, `details`
+  naming the key, and one plain catalogue sentence, so a valid key sent
+  beside it is not stored either and no `config.updated` entry appears;
+  a key outside the table is written as sent, and every conforming
+  value is stored, read back, and audited exactly as today. The rules
+  are fixed code constants derived from the keys the service already
+  serves and the payloads the tree already sends, never configuration.
+- **No new vocabulary, no reader-visible change, no data-model
+  change.** Both statuses already exist (`UNAUTHENTICATED` 401 and
+  `VALIDATION_FAILED` 400 in `contracts/errors/envelope.json`), so no
+  error code, status mapping, envelope field, operation, route, header,
+  migration, column, or stored-row shape changes; the request manifest
+  publishes no schema keyword because no validator on the Admin request
+  path would read one. Five new Admin sentences are the only user-visible
+  strings, and the desk changes nowhere: the shared client already
+  routes a 401 to the sign-in gate and an unexpected config refusal
+  reads as the existing plain request-failed sentence, so no UI-contract
+  section applies. One caller-facing `UpdateHotelConfig` error-list line
+  gains the ordering and shape clauses, prose only.
+
+The change adds no subsystem, dependency edge, data model, lifecycle
+state, operation, or new surface: it is one moved statement on existing
+operations plus two guards and one helper reuse. The container and
+component views (sections 2 and 3) stand unchanged. Enforcement points,
+the per-key table, the per-flow diagrams, the contract decision, the
+verification plan, and the NFR disposition: `docs/architecture/lld.md`
+[section 33](lld.md#33-admin-authenticates-before-parsing-and-refuses-a-malformed-config-write-refs-639);
+per-service note: `docs/architecture/services/admin.md` sections 2, 4,
+and 6; the refusals in the taxonomy:
+`docs/technical/error-handling.md` section 1.5; the convention:
+`docs/technical/api-spec.md` section 1. Risk R-19 records the
+over-strict-shape and ordering risk; rollback is the single
+implementation PR.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1164

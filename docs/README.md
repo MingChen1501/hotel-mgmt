@@ -85,8 +85,8 @@ Development table, which use a `../` prefix.
 
 | Type | Path | Status | Owner | Purpose |
 |---|---|---|---|---|
-| HLD | `architecture/hld.md` | active | `architect` | high-level design: subsystems and their responsibilities (Closes #11; section 15 Refs #601; section 16 Refs #646; section 17 Refs #647; section 19 Refs #631; section 20 Refs #634; section 21 Refs #630; section 22 Refs #635; section 23 Refs #641; section 24 Refs #640) |
-| LLD | `architecture/lld.md` | active | `architect` | low-level design: modules, interfaces, data flow (Closes #97; section 21 Refs #601; section 22 Refs #646; section 23 Refs #647; section 24 Refs #648; section 26 Refs #631; section 27 Refs #634; section 28 Refs #627; section 29 Refs #630; section 30 Refs #635; section 31 Refs #641; section 32 Refs #640) |
+| HLD | `architecture/hld.md` | active | `architect` | high-level design: subsystems and their responsibilities (Closes #11; section 15 Refs #601; section 16 Refs #646; section 17 Refs #647; section 19 Refs #631; section 20 Refs #634; section 21 Refs #630; section 22 Refs #635; section 23 Refs #641; section 24 Refs #640; section 25 Refs #639) |
+| LLD | `architecture/lld.md` | active | `architect` | low-level design: modules, interfaces, data flow (Closes #97; section 21 Refs #601; section 22 Refs #646; section 23 Refs #647; section 24 Refs #648; section 26 Refs #631; section 27 Refs #634; section 28 Refs #627; section 29 Refs #630; section 30 Refs #635; section 31 Refs #641; section 32 Refs #640; section 33 Refs #639) |
 | System architecture | `architecture/system-architecture.md` | active | `architect` | overall system structure and deployment view (Closes #11) |
 | ERD | `architecture/erd.md` | active | `architect` | entity-relationship model of the domain data (Closes #11) |
 | Sequence diagrams | `requirements/sequence-diagrams.md` (see Requirements) | stub (not needed yet) | `architect` | behaviour depiction lives with requirements per #43; no separate architecture diagram |
@@ -117,17 +117,17 @@ Development table, which use a `../` prefix.
 | Guests design | `architecture/services/guests.md` | active | `architect` | as-built pattern/layers, verified flowcharts, deps, error mapping, operations (Closes #181; section 7 bounds Refs #630; sections 4/6/8 identity ambiguity and payload bounds Refs #640) |
 | Billing design | `architecture/services/billing.md` | active | `architect` | as-built pattern/layers, verified flowcharts, deps, error mapping, operations (Closes #181; section 8 planned delta Refs #601; section 9 planned delta Refs #634; section 7 bounds Refs #630; section 10 planned delta Refs #635) |
 | Reporting design | `architecture/services/reporting.md` | active | `architect` | as-built pattern/layers, verified flowcharts, deps, error mapping, operations (Closes #181; section 7 bounds Refs #630; sections 4/6/8 range-cap refusal Refs #641) |
-| Admin design | `architecture/services/admin.md` | active | `architect` | as-built pattern/layers, verified flowcharts, deps, error mapping, operations (Closes #181; section 7 bounds Refs #630) |
+| Admin design | `architecture/services/admin.md` | active | `architect` | as-built pattern/layers, verified flowcharts, deps, error mapping, operations (Closes #181; section 7 bounds Refs #630; sections 2/4/6 auth-before-parse and config shape refusal Refs #639) |
 
 ## Technical
 
 | Type | Path | Status | Owner | Purpose |
 |---|---|---|---|---|
-| API spec | `technical/api-spec.md` | active | `architect` | contracts for service interfaces and endpoints (outline, Closes #11; section 1 money ceiling Refs #635; section 1 date-window span Refs #641; section 1 guest payload bounds Refs #640) |
+| API spec | `technical/api-spec.md` | active | `architect` | contracts for service interfaces and endpoints (outline, Closes #11; section 1 money ceiling Refs #635; section 1 date-window span Refs #641; section 1 guest payload bounds Refs #640; section 1 Admin ordering and config shapes Refs #639) |
 | Schema | `technical/schema.md` | active | `architect` | data schemas and validation rules (Closes #97; section 5 write-time guest bounds Refs #640) |
 | Desk UI fact schema | `technical/desk-ui-fact-schema.md` | active | `architect` | DOM-vs-design UI fact schema contract for the six desk screens: fields, record shape, provenance convention, determinism and zero-binary requirements (Closes #465); app-only nav tab allowances for the eighth and ninth desk tabs (Refs #590; bookings Refs #648) |
 | Integration | `technical/integration.md` | active | `architect` | third-party and cross-system integration contracts (Closes #97; C7 Refs #601; C4 Refs #646; C8 Refs #634; C2 Refs #631; section 10 Refs #630) |
-| Error handling | `technical/error-handling.md` | active | `architect` | error taxonomy and handling conventions (outline, Closes #11; section 1 Refs #627; section 1.1 Refs #630; section 1.2 Refs #635; section 1.3 Refs #641; section 1.4 Refs #640; section 2 Refs #631; section 4 Refs #647; section 5 Refs #634) |
+| Error handling | `technical/error-handling.md` | active | `architect` | error taxonomy and handling conventions (outline, Closes #11; section 1 Refs #627; section 1.1 Refs #630; section 1.2 Refs #635; section 1.3 Refs #641; section 1.4 Refs #640; section 1.5 Refs #639; section 2 Refs #631; section 4 Refs #647; section 5 Refs #634) |
 | Security threat model | `technical/security-threat-model.md` | active | `architect` | threats, mitigations, and trust boundaries (Closes #97; B5 + R5–R7 Refs #601; B6 + R-OVB-1/R-OVB-6 Refs #631; R5 narrowed + R8 Refs #634) |
 
 ## Development
