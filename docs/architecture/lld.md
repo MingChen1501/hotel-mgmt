@@ -7055,7 +7055,7 @@ fixes is its statement order. As built by #639 it is:
    `error.auth.missing_token` sentence (`:158-161`), and
    `store.authenticate(token)` answers the existing invalid, expired,
    revoked, idle, or orphan `UNAUTHENTICATED` sentence on refusal
-   (`:164`; `services/admin/src/store.ts:327-344`).
+   (`:164`; `services/admin/src/store.ts:320-339`).
 5. Only a resolved session reaches `readBody` (`:169`, after `:164`),
    so the ceiling, the JSON parse, and the object check run in today's
    order, with today's sentences, for an authenticated caller.
@@ -7071,7 +7071,7 @@ Consequences, stated so the implementation cannot blur them:
   malformed body still answers today's 400 `VALIDATION_FAILED` with
   the existing transport sentence. The role checks stay inside the
   stores, after the body read (`store.ts:550-552`; `requireUserManager`
-  in `pgstore.ts:26-30`), so a front-desk caller with a well-formed
+  in `pgstore.ts:27-31`), so a front-desk caller with a well-formed
   body still answers `FORBIDDEN` 403 and 400 precedes 403.
 - **No new middleware layer, route table, or check order.** The only
   moved statement is the body read; `extractBearer`, the
@@ -7095,7 +7095,7 @@ Consequences, stated so the implementation cannot blur them:
   gains a round trip, a scan, or a poll (`NFR-PERF-1`); an
   unauthenticated request now skips the parse work it used to pay for.
   `SignIn`'s 5-failure lockout and its `IDENTITY_LOCKED` refusal
-  (`services/admin/src/store.ts:293-298`, BR-42) are untouched, and the
+  (`services/admin/src/store.ts:291-296`, BR-42) are untouched, and the
   ceiling guards that drive `SignIn`
   (`services/admin/src/bodyBound.test.ts:13-18`, `:106-144`) keep
   their behaviour.
@@ -7129,13 +7129,13 @@ Consequences, stated so the implementation cannot blur them:
 - **One shared validator in `store.ts`, both stores call it.** Export a
   per-key rule table and a `validateConfigValues` function from
   `services/admin/src/store.ts` (the module the Postgres twin already
-  imports its shared helpers from, `pgstore.ts:5-28`), and call it at
+  imports its shared helpers from, `pgstore.ts:4-21`), and call it at
   the top of both `updateConfig` implementations — in `AdminStore`
   after the existing `values`/`updatedBy` checks and before the first
   `this.config.set` (`store.ts:562` before `:566-568`; the table and
   validator live at `store.ts:113-186`); in `PostgresAdminStore` after
   the same checks and **before** `this.withTx` opens the transaction
-  (`pgstore.ts:516` before `:518`), so no `UPDATE`/`INSERT` (`:519-540`)
+  (`pgstore.ts:516` before `:518`), so no `UPDATE`/`INSERT` (`:519-535`)
   can run for a refused write. One
   home means the in-memory and Postgres stores refuse the same values,
   which `AC-CFG-4` and BR-64 require, and it stops the Postgres
@@ -7181,7 +7181,7 @@ Consequences, stated so the implementation cannot blur them:
   offending key and a valid key sent beside it both keep their stored
   values; in Postgres no statement has run because the check precedes
   `withTx`. `config.updated` entries are derived from the stored rows
-  when the audit log is read (`store.ts:435-444`; `pgstore.ts:435`), so
+  when the audit log is read (`store.ts:510-519`; `pgstore.ts:436`), so
   a refused request leaves the audit trail unchanged as well
   (`NFR-AUD-1`). The existing refusals keep their first place and their
   sentences: `values` not an object (`error.validation.values_object`,
@@ -7192,7 +7192,7 @@ Consequences, stated so the implementation cannot blur them:
 - **A whole number means a JSON number.** The shared rule requires
   `typeof value === "number"`, `Number.isInteger(value)`, and
   `value >= 0`. Today's Postgres branch coerces with `Number(value)`
-  (`pgstore.ts:546`), so `"30"` would pass there while the memory store
+  (`pgstore.ts:552`), so `"30"` would pass there while the memory store
   would store the text; `FR-CFG-2` names "a text number" as a refusal,
   so both stores now refuse it. No writer in the tree sends a text
   number (`script/apply-hotel-config.sh:108` sends the JSON number).
@@ -7210,7 +7210,7 @@ Consequences, stated so the implementation cannot blur them:
   `chargeItems`, `taxAndFeeRules`, `restrictions`, `discounts`,
   `ratePlans`, `roomTypes`; `script/apply-hotel-config.sh:90-110`).
 - **Reads are unchanged.** `GetHotelConfig` re-validates nothing
-  (`store.ts:463-469`, `pgstore.ts:476-497`), so a value stored before
+  (`store.ts:538-544`, `pgstore.ts:477-499`), so a value stored before
   this change — including a malformed `requiredGuestFields` — keeps
   reading as stored; no migration, backfill, or repair exists, and the
   `admin.hotel_profile` columns and `admin.hotel_config_values` rows
@@ -7238,7 +7238,7 @@ flowchart TD
     E --> F{Caller role front-desk  store.ts:550-552}
     F -->|no| G{values object, updatedBy non-blank  store.ts:553-556}
     G -->|yes| H{Every present table key inside its shape  store.ts:178}
-    H -->|yes| I[Store every entry as sent  store.ts:566-568 / pgstore.ts:518-540]
+    H -->|yes| I[Store every entry as sent  store.ts:566-568 / pgstore.ts:518-535]
     I --> J[200 schemaVersion and values; config.updated entries with updatedBy  store.ts:510-519]
 ```
 
@@ -7250,7 +7250,7 @@ flowchart TD
     A[POST /v1/admin/UpdateHotelConfig with a malformed or oversized body] --> B{Authorization header present  src/auth.ts}
     B -->|no| N1[401 UNAUTHENTICATED, error.auth.missing_token  server.ts:158-161]
     B -->|yes| C[store.authenticate  server.ts:164]
-    C -->|invalid, expired, revoked, idle, or orphan| N2[401 UNAUTHENTICATED, existing error.auth.* sentence  server.ts:165-168, store.ts:327-344]
+    C -->|invalid, expired, revoked, idle, or orphan| N2[401 UNAUTHENTICATED, existing error.auth.* sentence  server.ts:165-168, store.ts:320-339]
     N1 --> R[no body read, no JSON parse, no ceiling check, no store mutation]
     N2 --> R
     R --> RF[rollback frame: nothing written, no config.updated entry; the whole change reverts with the single implementation PR]
@@ -7280,7 +7280,7 @@ flowchart TD
     B -->|yes| C{Every present table key in request order  store.ts:178}
     C -->|first offending key| X2[400 VALIDATION_FAILED, details.field is the key, the key's sentence  store.ts:113-172]
     X2 --> N[Nothing written: no key of that request, no config.updated entry  store.ts:510-519]
-    C -->|all inside their shape| D[Store every entry as sent  store.ts:566-568 / pgstore.ts:518-540]
+    C -->|all inside their shape| D[Store every entry as sent  store.ts:566-568 / pgstore.ts:518-535]
     D --> O[200 as today]
     N --> RF[rollback frame: the refusal precedes the first write in both stores, so there is no partial row, value, or audit entry to unwind]
 ```
@@ -7296,12 +7296,12 @@ Edge traces:
   **F–G–H:** today's `values`/`updatedBy` checks, then the shared
   table. **H–I:** the write loop (`store.ts:566-568`) or the
   profile/values statements inside the transaction
-  (`pgstore.ts:518-540`), unchanged below the guard. **I–J:** the
+  (`pgstore.ts:518-535`), unchanged below the guard. **I–J:** the
   `config.updated` entries derived at read time (`store.ts:510-519`).
 - **(b) A–B:** only the `authorization` header is inspected; no body
   byte is read. **B–N1:** today's missing-token sentence
   (`error.auth.missing_token`, `messages.en.json:13`). **B–C–N2:** the
-  five existing session refusals (`store.ts:327-344`, sentences at
+  five existing session refusals (`store.ts:320-339`, sentences at
   `messages.en.json:16-19`). **N1/N2–R:** no parse, no ceiling, no
   store call, so the payload stays unobservable. **R–RF:** nothing to
   compensate; the change reverts with the single implementation PR.
@@ -7377,8 +7377,8 @@ architecture-side check the implementation must satisfy.
   `body_too_large` sentences; an invalid-token variant answers the
   matching existing session sentence; the store operation is never
   called (the `countingStore` pattern,
-  `services/admin/src/bodyBound.test.ts:33-47`). The shared `request`
-  helper JSON-stringifies its body (`server.test.ts:8-24`), so the
+  `services/admin/src/bodyBound.test.ts:36-51`). The shared `request`
+  helper JSON-stringifies its body (`server.test.ts:9-26`), so the
   guard needs a raw-string form.
 - **Authenticated malformed body keeps today's 400, and 400 precedes
   403.** A resolved session with a malformed body answers today's 400
@@ -7409,7 +7409,7 @@ architecture-side check the implementation must satisfy.
   `cancellationWording`/`address`/`phone`/`email` text are stored and
   read back as sent; a key outside the table is written as sent; one
   Postgres parity case (skipped unless `TEST_PG_URL`/`DATABASE_URL` is
-  set, as `services/admin/src/pgstore.test.ts:30` skips today) proves
+  set, as `services/admin/src/pgstore.test.ts:32` skips today) proves
   both stores refuse the same value and store the same accepted value.
 - **Catalogue and unchanged suites.** One sample assertion per new key
   beside `services/admin/src/messages.test.ts:16-50`; the five keys
@@ -7475,14 +7475,14 @@ measures.
 - **Two deliberate narrowings of today's behaviour.** A present `null`
   for a table key is refused where it used to be stored, and a text
   number for `retentionFloorDays` is refused by both stores where
-  Postgres alone used to coerce it (`pgstore.ts:546`). No writer in the
+  Postgres alone used to coerce it (`pgstore.ts:552`). No writer in the
   tree sends either (`script/apply-hotel-config.sh`, the onboarding
   wizard, and the existing tests send a number and omit empty optional
   text), and `FR-CFG-2` names both shapes as refusals.
 - **An empty `cancellationReasons` list is accepted by the API while
   the deployment schema asks for one or more** (`deploy/config/schema.json:97-101`,
   `script/validate-hotel-config.sh:144-150`). That split is deliberate:
-  the Admin seed already serves `[]` (`store.ts:167`), and the
+  the Admin seed already serves `[]` (`store.ts:242`), and the
   installer's one-or-more floor stays the deployment check, so the API
   cannot refuse the value it already serves.
 - **The unauthenticated ordering changes the answer for an unknown

@@ -15,9 +15,9 @@ Node.js/TypeScript flat `src/` files over raw `node:http`, wired in `services/ad
 | Layer | Files | Responsibility |
 |---|---|---|
 | Transport + routing | `src/server.ts` | `createServiceServer` answers `GET /healthz` (:131); `SignIn` is the one unauthenticated operation (:145); every other `/v1/*` call resolves the Bearer session before the body is read (:157-168) |
-| Identity + sessions | `src/store.ts` (`AdminStore`, `AdminStoreAPI` at :114), `src/auth.ts` | `signIn` with failure counting and lockout, `authenticate` with 15-minute idle expiry and revocation checks, role enforcement; `extractBearer` (:1-14) is the module-local header parse (#639) |
+| Identity + sessions | `src/store.ts` (`AdminStore`, `AdminStoreAPI` at :188-190), `src/auth.ts` | `signIn` with failure counting and lockout, `authenticate` with 15-minute idle expiry and revocation checks, role enforcement; `extractBearer` (:1-14) is the module-local header parse (#639) |
 | Hotel config + users | `src/store.ts` | `GetHotelConfig`/`UpdateHotelConfig`, `CreateUser`/`UpdateUserRole`/`UnlockIdentity`/`ChangeSecret`/`ListUsers`, `QueryAuditLog` |
-| Row storage | `src/store.ts` (in-memory; lockout counters memory-only by design at :10-16), `src/pgstore.ts` (`PostgresAdminStore implements AdminStoreAPI` at :61) | identical semantics; Postgres selected at boot when `DATABASE_URL` is set |
+| Row storage | `src/store.ts` (in-memory; lockout counters memory-only by design at :10-16), `src/pgstore.ts` (`PostgresAdminStore implements AdminStoreAPI` at :63) | identical semantics; Postgres selected at boot when `DATABASE_URL` is set |
 | Startup migrations | `src/migrate.ts` | `applyAdminMigrations` runs the `migrations/*.sql` chain in name order at startup (:10-17); idempotent (`IF NOT EXISTS` / `ON CONFLICT DO NOTHING`) so the E2E loop can re-apply |
 | Errors | `src/errors.ts` | shared `HttpError` envelope (same code set as Stay, plus `FORBIDDEN` for role refusals) |
 | Boot | `src/index.ts`, `src/migrate.ts` | migration chain first (schema must exist before sign-in traffic), then store selection, `listen(PORT)` (default `8088`) |
@@ -58,10 +58,10 @@ flowchart TD
 
 Edge trace (every edge cites code):
 
-- A: both fields required (`src/store.ts:204-209`).
-- B: unknown identity or wrong secret → `UNAUTHENTICATED` without distinguishing which (:227); an identity locked after repeated failures is refused with `IDENTITY_LOCKED` (401) while the lock holds (:212-214, 5-strike counting via `MAX_FAILURES` at :23).
-- C: match path issues the token; D: sign-in audited; E: `{token, user}` returned (`src/store.ts:117,204-238`).
-- Boot seed: `ensureBootUser` guarantees the first owner exists before traffic (`src/store.ts:116,183-202`).
+- A: both fields required (`src/store.ts:284-289`).
+- B: unknown identity or wrong secret → `UNAUTHENTICATED` without distinguishing which (:306); an identity locked after repeated failures is refused with `IDENTITY_LOCKED` (401) while the lock holds (:291-296, 5-strike counting via `MAX_FAILURES` at :23).
+- C: match path issues the token; D: sign-in audited; E: `{token, user}` returned (`src/store.ts:192,283-318`).
+- Boot seed: `ensureBootUser` guarantees the first owner exists before traffic (`src/store.ts:191,262-281`).
 
 ## 4. Failure/rollback flowchart
 
@@ -79,9 +79,9 @@ flowchart TD
 
 Edge trace:
 
-- S: invalid/expired token, revoked/signed-out session, 15-minute idle expiry, or deleted user → `UNAUTHENTICATED` (`src/store.ts:320-343`); `SignOut` revokes (`src/server.ts:191`).
-- P: front-desk accounts are refused admin operations with `FORBIDDEN` (`src/store.ts:177`); unknown roles refused (`:272, :307`); duplicate identities refused (`:276`).
-- Self-role change and last-owner demotion are refused (`:315-319`); unlocking a non-locked identity is refused (`:338-341`).
+- S: invalid/expired token, revoked/signed-out session, 15-minute idle expiry, or deleted user → `UNAUTHENTICATED` (`src/store.ts:320-339`); `SignOut` revokes (`src/server.ts:191`).
+- P: front-desk accounts are refused admin operations with `FORBIDDEN` (`src/store.ts:256`); unknown roles refused (`:352, :387`); duplicate identities refused (`:354-357`).
+- Self-role change and last-owner demotion are refused (`:393-401`); unlocking a non-locked identity is refused (`:419-423`).
 
 Rollback: none — each admin write is a single guarded step with refusals preceding mutation; sessions carry no compensating state.
 
@@ -99,7 +99,7 @@ flowchart TD
     S -->|no| T{Bearer token present  src/auth.ts:1-14, server.ts:157}
     T -->|no| N1[401 UNAUTHENTICATED, error.auth.missing_token  :158-161]
     T -->|yes| A[store.authenticate  :164]
-    A -->|refused| N2[401 UNAUTHENTICATED, existing error.auth.* sentence  :165-168, store.ts:320-343]
+    A -->|refused| N2[401 UNAUTHENTICATED, existing error.auth.* sentence  :165-168, store.ts:320-339]
     A -->|resolved| B[readBody now runs  :169]
     B -->|refused| B4[400 VALIDATION_FAILED, existing transport sentence]
     B -->|well formed| D{Operation}
@@ -150,8 +150,8 @@ Same shared Node envelope as Stay (`src/errors.ts`; `docs/technical/error-handli
 | Code | Status | Raised when |
 |---|---|---|
 | `VALIDATION_FAILED` | 400 | missing field, unknown role, duplicate identity, self-role change, last-owner demote, unlock of non-locked identity (:108, :352-423), and a config value outside its key's shape (:178-186, #639) |
-| `UNAUTHENTICATED` | 401 | unknown identity / wrong secret, bad or expired session (:306, :320-343, :463) |
-| `IDENTITY_LOCKED` | 401 | identity locked after repeated failures (:293-298) |
+| `UNAUTHENTICATED` | 401 | unknown identity / wrong secret, bad or expired session (:306, :320-339, :463) |
+| `IDENTITY_LOCKED` | 401 | identity locked after repeated failures (:291-296) |
 | `FORBIDDEN` | 403 | front-desk account on an admin-only operation (:256, :550-552) |
 
 Delta (#639), as built — same envelope and codes, no new row: a
