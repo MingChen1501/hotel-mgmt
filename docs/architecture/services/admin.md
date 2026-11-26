@@ -242,8 +242,8 @@ The transport resolves the caller before reading the body
 (`src/server.ts:157-169`) and passes it to every write (`:176`); the
 account writes already record `caller.signinIdentity`
 (`src/store.ts:366-368`, `:403`, `:425`, `:466`). `UpdateHotelConfig`
-now records it too: the in-memory store at `src/store.ts:560-570` and
-the Postgres store at `src/pgstore.ts:513-514`, `:524-532`. The body
+now records it too: the in-memory store at `src/store.ts:569-571` and
+the Postgres store at `src/pgstore.ts:513-514`, `:525-535`. The body
 `updatedBy` stays required with today's refusal
 (`src/store.ts:560`, `src/pgstore.ts:513`) and is dropped, not
 annotated — the config write emits no JSON payload. The

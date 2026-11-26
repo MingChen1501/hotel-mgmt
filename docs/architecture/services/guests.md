@@ -237,7 +237,7 @@ Role: architect · AO session hotel-mgmt-1141
 The transport keeps the extracted token after the presence check
 (`src/server.ts:130-134`) and hands it beside the body on `UpsertGuest`
 (`:140`). The store keeps today's `requireString(input.actor)` refusal
-and records the session: in-memory `src/store.ts:307-353` writes the
+and records the session: in-memory `src/store.ts:324-353` writes the
 token as the outbox `actor` and adds `requestActor` only when the body
 value differs, while the Postgres store (`src/pgstore.ts:62-90`) writes
 it into `created_by`/`updated_by` and drops the request value — the

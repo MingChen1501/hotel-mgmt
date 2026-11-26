@@ -211,15 +211,15 @@ Role: architect · AO session hotel-mgmt-941
 ## 11. As-built delta — session-derived audit actor (Refs #643)
 
 The authed wrapper keeps the caller's raw header
-(`internal/handler/handler.go:140-158`), the module helper strips the
-`Bearer ` prefix and trims the remainder (`:104-111`), and every write
+(`internal/handler/handler.go:148-166`), the module helper strips the
+`Bearer ` prefix and trims the remainder (`:110-112`), and every write
 passes the session actor with the body actor beside it: Create `:200-201`,
 CheckIn `:248`, CheckOutReservation `:271`, Modify `:313-314`, Cancel
 `:336`, MarkNoShow `:357`. `CheckOutReservation` keeps its required
-`actor` field and refusal (`:256-269`); the five writes that accept
+`actor` field and refusal (`:267-270`); the five writes that accept
 `actor` optionally add no refusal. The stores take `Actor` and
-`RequestActor` (`internal/store/store.go:74-85`, `:104-118`) and add the
-annotation through `actorPayload` (`:148-160`), used by the in-memory
+`RequestActor` (`internal/store/store.go:80-84`, `:115-117`) and add the
+annotation through `actorPayload` (`:154-160`), used by the in-memory
 events (`:292-296`, `:354`, `:479-484`, `:521`, `:565`) and the Postgres
 outbox writes (`internal/store/postgres.go:259-263`, `:380`,
 `:619-623`, `:712`, `:789`); change rows and the reservation row's

@@ -214,8 +214,9 @@ session: in-memory `src/store.ts:228-249` (UpsertRoomType), `:255-281`
 (ReleaseBlock), with the state-history `createdBy`, the block row's
 `createdBy`, and every outbox `created_by`/payload equal to the token;
 the Postgres twin repeats it (`src/pgstore.ts:139-262`, `:269-315`,
-`:413-453`, `:508-...`, outbox helper `:56-66`). A differing request
-actor appears only as `requestActor` via `requestActorAnnotation`
+`:413-453`, `:508-552`, `:559-609`, `:616-657`, outbox helper
+`:57-69`). A differing request actor appears only as `requestActor` via
+`requestActorAnnotation`
 (`src/store.ts:101-109`); an equal value adds no key and a history-only
 row drops it. Guards `SEC6`-`SEC12`, `SEC29`-`SEC31` live in
 `src/server.test.ts` and `src/pgstore.test.ts`; no response, status,

@@ -7571,20 +7571,20 @@ traceability rows against it):
   `:361-406` (MoveRoom), `:418-445` (RecordActualTimes), with the shared
   `requestActorAnnotation` helper at `:59-64`; the Postgres twin at
   `src/pgstore.ts:71-119`, `:185-238`, `:263-337`, `:366-408`. Guests
-  `src/store.ts:307-353`, Postgres `src/pgstore.ts:62-90` (the Postgres
+  `src/store.ts:324-353`, Postgres `src/pgstore.ts:62-90` (the Postgres
   guest store writes no `guest-upserted` outbox row, an existing gap
   this change leaves as it is). Rooms `src/store.ts:101-109` (helper),
   `:228-249`, `:255-281`, `:287-316`, `:392-431`, `:441-468`,
   `:474-505`, `:516-546`; Postgres `src/pgstore.ts:139-262`, `:269-315`,
-  `:413-453`, `:508-...` with the outbox helper at `:56-66`. The body
-  `actor` keeps its `requireString`/`actorOf` refusal and is only ever
-  the annotation.
+  `:413-453`, `:508-552`, `:559-609`, `:616-657` with the outbox helper
+  at `:57-69`. The body `actor` keeps its `requireString`/`actorOf`
+  refusal and is only ever the annotation.
 - **Reservations derives the token from the bearer it already holds.**
   The authed wrapper keeps the raw header
   (`services/reservations/internal/handler/handler.go:148-166`), the
   module helper strips the prefix (`:110-112`), and each write passes
   the session plus the body actor: Create `:200-201`, CheckIn `:248`,
-  CheckOutReservation `:271` (the required-actor refusal at `:263-270`
+  CheckOutReservation `:271` (the required-actor refusal at `:267-270`
   stands), Modify `:313-314`, Cancel `:336`, MarkNoShow `:357`. The
   stores carry `RequestActor` beside `Actor`
   (`internal/store/store.go:80-84`, `:115-117`) and add the annotation
@@ -7663,7 +7663,7 @@ pricing and capacity clients already forward. Each write handler passes
 that token, not `body["actor"]`, as the recorded actor, and the body
 value travels beside it for the annotation (34.2).
 `CheckOutReservation` keeps its required-actor `field_required` refusal
-(`:263-270`); the five writes that accept `actor` optionally (Create
+(`:267-270`); the five writes that accept `actor` optionally (Create
 `:184`, CheckIn `:247`, Modify `:300`, Cancel `:334`, MarkNoShow `:355`)
 add no new refusal. The in-memory and Postgres stores take the session
 actor in `Actor` and the request value in `RequestActor`
@@ -7747,9 +7747,9 @@ audit view changes with the row. The boot seed keeps `boot`
   session token**, the text after the `Bearer ` prefix trimmed — the
   value `extractBearer` already returns
   (`services/stay/src/auth.ts:8-15`), the header the Go wrapper holds
-  with the prefix removed and trimmed (`handler.go:142-156`), and the
-  value Billing's new helper returns. One session therefore records one
-  identical string in every service, and a Stay close and the
+  (`handler.go:148-166`) with the prefix removed and trimmed (`:110-112`),
+  and the value Billing's new helper returns. One session therefore
+  records one identical string in every service, and a Stay close and the
   Reservations completion it forwards agree.
 - **No token resolution, no second check.** The recorded value is a
   by-product of the presence check that already runs; it is not verified
@@ -7758,7 +7758,7 @@ audit view changes with the row. The boot seed keeps `boot`
   identity-hardening slice (section 0), which replaces the value at this
   same seam; it is explicitly out of scope for this change.
 - **The forwarded completion carries both values.** Stay's
-  `completeBooking` (`services/stay/src/store.ts:211-219`) keeps sending
+  `completeBooking` (`services/stay/src/store.ts:211-220`) keeps sending
   the caller Bearer token (`src/reservationsClient.ts:31-44`) and
   forwards the request's actor as the body `actor`, so the response
   shape and the required field hold; Reservations records its own
@@ -7776,7 +7776,7 @@ PR. Edge traces follow each diagram.
 flowchart TD
     A[POST /v1/... write  stay server.ts:150, guests/rooms server.ts:121] --> B{Authorization header present}
     B -->|no| N1[401 UNAUTHENTICATED, error.auth.missing_token, no body read  stay server.ts:159-163; guests/rooms server.ts:130-134; handler.go:148-161; BillingController.java:124-130]
-    B -->|yes| C[Body read and today's field rules  requireString store.ts:47-52, actorOf BillingService.java:110-115, handler.go:263-270]
+    B -->|yes| C[Body read and today's field rules  requireString store.ts:47-52, actorOf BillingService.java:110-115, handler.go:267-270]
     C -->|refused| N2[400 VALIDATION_FAILED, existing sentence, nothing written]
     C -->|accepted| D{Service family}
     D -->|Stay, Guests, Rooms| E[Server keeps the extracted token and hands it beside the body  stay server.ts:169-199; guests server.ts:140; rooms server.ts:140-210]
@@ -7804,7 +7804,7 @@ flowchart TD
     D -->|no| F[No key added: change row, history row, or column only  store.go:162-164; pgstore.ts:307-308; BillingRepository.java:101-102]
     E --> G[200: identical status, answer, and business effect, no refusal]
     F --> G
-    B -->|blank, wrong type, or absent where required| R[400 VALIDATION_FAILED, existing actor sentence, nothing written  requireString store.ts:47-52; actorOf BillingService.java:110-115; handler.go:263-270]
+    B -->|blank, wrong type, or absent where required| R[400 VALIDATION_FAILED, existing actor sentence, nothing written  requireString store.ts:47-52; actorOf BillingService.java:110-115; handler.go:267-270]
     R --> RF[rollback frame: no row, no outbox event, no history row]
     G --> RF2[rollback frame: the single implementation PR reverts the seam and the annotation; the request-supplied actor returns; no migration or backfill]
 ```
@@ -7817,7 +7817,7 @@ flowchart TD
     B --> C[No body read on the Node, Go, and Admin paths; no store, provider, or write call]
     C --> RF[rollback frame: nothing written; the actor never falls back to the body]
     D[Stay CheckOut with desk token T] --> E[Close row and stay.checked-out payload record T  store.ts:306-354; pgstore.ts:185-238]
-    E --> F[completeBooking forwards the request actor and the same Bearer T  store.ts:211-219; reservationsClient.ts:31-44]
+    E --> F[completeBooking forwards the request actor and the same Bearer T  store.ts:211-220; reservationsClient.ts:31-44]
     F --> G[Reservations records T on its change row; the forwarded actor is an annotation only  handler.go:259-275; postgres.go:373-380]
     G --> H[Both rows carry one session string; no refusal, no shape change]
     I[Admin boot seed, no request] --> J[Records boot  store.ts:262-281; pgstore.ts:90-100]

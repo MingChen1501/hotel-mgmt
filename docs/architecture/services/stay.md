@@ -257,11 +257,11 @@ and the transport keeps it after the missing-token 401
 `src/pgstore.ts:71-119`, `:185-238`, `:263-337`, `:366-408` writes the
 token into the stay audit columns, the move row, and the outbox
 `created_by`. `checkOut`'s existing `callerToken` is the recorded actor
-and still feeds `completeBooking` (`src/store.ts:211-219`), which
+and still feeds `completeBooking` (`src/store.ts:211-220`), which
 forwards the request actor as the body annotation
 (`src/reservationsClient.ts:31-44`). A differing request actor appears
 only as `requestActor` via `requestActorAnnotation`
-(`src/store.ts:54-63`); an equal or absent value adds no key. Guards
+(`src/store.ts:59-64`); an equal or absent value adds no key. Guards
 `SEC1`-`SEC4`, `SEC29`, `SEC31`-`SEC33` live in `src/server.test.ts`
 with Postgres halves; no response, status, refusal, column, or migration
 changed (LLD
