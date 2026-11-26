@@ -3083,8 +3083,11 @@ Product rules (decided here):
   back unchanged, the `config.updated` audit entries appear with the
   caller's `updatedBy` and time, and the in-memory and the Postgres
   store answer the same. A key outside the table, and an absent key,
-  keep today's behaviour exactly. Traces to: FR-ADM-1, FR-ADM-4;
-  NFR-AUD-1; AC-ADM-1, AC-ADM-4.
+  keep today's behaviour exactly. (The recorded-actor half of this
+  condition is superseded by section 27 (`AC-SEC-3`, Refs #643): the
+  audit entry records the caller's `signinIdentity`, not the request's
+  `updatedBy`; every other clause here holds.) Traces to: FR-ADM-1,
+  FR-ADM-4; NFR-AUD-1; AC-ADM-1, AC-ADM-4.
 - AC-CFG-5 — Given the change ships, when it is verified, then
   `server.test.ts` carries the guards AC-CFG-1, AC-CFG-2, and AC-CFG-3
   name, including the `requiredGuestFields` refusal and the accepted
@@ -3107,6 +3110,246 @@ stores; every value that satisfies the table is stored, read back, and
 audited exactly as today; and `server.test.ts` carries the guards for
 both refusals and their boundaries with the existing Admin suites
 green.
+
+## 27. The audit actor comes from the session, never from the request (Refs #643)
+
+Product-owner scope decision and acceptance conditions for audit
+finding C6 (issue #643): every write path in Stay, Guests, Rooms,
+Reservations, and Billing records the `actor` string the request
+supplied, so each outbox event, change row, and state-history row
+attributes the change to a name the caller chose — the attribution
+`NFR-AUD-1` promises (`docs/requirements/mvp-requirements.md:507-513`)
+is decided by the caller. Admin resolves a caller from the token
+(`services/admin/src/server.ts:157-166`) and records that identity on
+account writes, but its config write still records the request's
+`updatedBy`. One rule — the recorded actor is the authenticated
+session, and the request string is never authoritative — applies to
+every write across Node, Go, and Billing. Token verification, HMAC,
+expiry and revocation checks, and role-based authorization stay out of
+scope: they are the planned identity-hardening slice (LLD section 0;
+`services/stay/src/auth.ts:3-7` and the same file under
+`services/guests/src` and `services/rooms/src`), and this change is
+deliberately narrower — where the recorded actor value comes from.
+
+Tier T2: the response and the stored business effect of every write
+stay as today and only the recorded actor value moves, with no new
+subsystem, dependency edge, data model, lifecycle state, or code
+token, and no reader-visible desk change — so no UI-contract section
+is required and none is added. The conditions below are the product
+half. FR/NFR wording is owned by `business-analyst`
+(`docs/requirements/mvp-requirements.md` section 35) and the business
+rule that states the provenance rule is BR-65
+(`docs/requirements/business-rules.md`); the LLD delta with the actor
+resolution on the write path for Node, Go, and Billing is by
+`architect` (LLD section 34, and the audit lines of the service
+designs under `docs/architecture/services/`, refreshed by the
+implementation PR per maintain-with-code); guard mapping by `qa-lead`
+(`docs/testing/traceability-matrix.md` section 27); the gate verdict
+by `spec-reviewer`. The scope decision is D-39 in
+`docs/project/decision-log.md` and the mis-attribution and
+interim-token risk is R-20 in `docs/project/risk-register.md`.
+
+As-built validation (read-only trace at this spec head — the
+implementation lab reproduction belongs in the implementation PR body
+or an issue comment):
+
+- **The Node identity helper checks presence only, and the token never
+  reaches a store.** `extractBearer` returns the token and nothing
+  else (`services/stay/src/auth.ts:8-15`, copied in
+  `services/guests/src/auth.ts:8-15` and
+  `services/rooms/src/auth.ts:8-15`); the comment at `:3-7` says the
+  token "travels through as the audit actor fallback", but Stay passes
+  it only to `checkOut` for the Reservations forward
+  (`services/stay/src/server.ts:159`, `:184`) while `checkIn` (`:167`),
+  `moveRoom` (`:189`), and `recordActualTimes` (`:197`) receive the raw
+  body; Guests and Rooms check presence and pass no token on
+  (`services/guests/src/server.ts:130`,
+  `services/rooms/src/server.ts:130`).
+- **Every Node store requires the body actor and persists it as the
+  audit actor.** Stay `services/stay/src/store.ts:216` (CheckIn),
+  `:294` (CheckOut), `:335` (MoveRoom), `:383` (RecordActualTimes),
+  with the value written into the outbox payload at `:237`, `:315`,
+  `:367`, `:398`. Guests `services/guests/src/store.ts:319`, payload
+  `:337`. Rooms `services/rooms/src/store.ts:219`, `:239`, `:268`,
+  `:375`, `:413`, `:438`, `:477`, state history at `:506` and outbox
+  at `:510-515`.
+- **Reservations takes the actor from the body on every write.** The
+  raw `Authorization` header is already in hand in the authed wrapper
+  (`services/reservations/internal/handler/handler.go:141-158`) but is
+  forwarded only to the pricing and stay-restriction reads; each write
+  reads `body["actor"]` instead: `:176` (Create), `:238` (CheckIn),
+  `:256` (CheckOut, required), `:290` (Modify), `:323` (Cancel), `:342`
+  (MarkNoShow). That value becomes the change row's `created_by` and
+  the outbox actor (`internal/store/postgres.go:368`, `:376`, `:384`,
+  `:444`, `:456`, `:691`, `:699`, `:715`, `:720`, `:777`, `:785`,
+  `:792`, `:797`).
+- **Billing turns a non-string actor into the empty string and refuses
+  the blank.** `services/billing/src/main/java/com/hotel/billing/web/BillingController.java:39-42`
+  maps anything that is not a string to `""`; every adapter passes it
+  as the service actor after `requireToken` (`:117-121`), at `:128`,
+  `:136`, `:144`, `:151`, `:165`, `:172`, `:179`, `:188`, `:196-198`,
+  and `BillingService.actorOf`
+  (`service/BillingService.java:110-115`) refuses a blank value naming
+  `actor`. The stored values are that string
+  (`repo/BillingRepository.java:65-71`, `:100-105`, `:109-111`,
+  `:135-137`, `:143-145`, `:154-160`, `:176-191`, `:237-239`).
+- **Admin resolves the caller, but its config write still trusts the
+  body.** `handleRequest` extracts the token
+  (`services/admin/src/server.ts:157`), authenticates it (`:164`), and
+  passes the resolved caller to every write; account writes record
+  `caller.signinIdentity` (`src/store.ts:368`, `:403`, `:425`, `:466`).
+  `UpdateHotelConfig` alone still records `input.updatedBy`
+  (`src/store.ts:556`, `:565`; `src/pgstore.ts:511`, `:524`, `:532`)
+  and refuses a missing one (BR-64). The boot seed writes the
+  server-side `boot` actor with no request (`src/store.ts:262-275`).
+- **Every write contract requires the field today.** `actor` is
+  required in the write requests (e.g. `contracts/http/CheckIn.json:13`,
+  `contracts/http/UpsertGuest.json:13`,
+  `contracts/http/CheckOutReservation.json:19`) and `updatedBy` in
+  `contracts/http/UpdateHotelConfig.json:13`, so the field keeps its
+  shape and no caller breaks (rule 3).
+- **The audit columns and outbox payloads are text and JSON, so no
+  migration is needed.** `services/stay/migrations/002_schema.sql:31-33`,
+  `services/billing/src/main/resources/db/migration/V2__schema.sql:23-25`,
+  and the outbox tables' `created_by TEXT` with a JSONB `payload`
+  (`services/stay/migrations/001_boot.sql:9-16`,
+  `services/billing/src/main/resources/db/migration/V1__boot.sql:9-16`);
+  a signed session token is about 125 characters
+  (`services/admin/src/store.ts:79-83`) and every audit column is
+  `TEXT`. No consumer reads the payload `actor` as a display value:
+  Reporting exposes no raw payload
+  (`services/reporting/internal/handler/handler.go:136-232`) and no
+  desk surface renders a Stay/Guests/Rooms/Reservations/Billing actor
+  (`app/src/views/PrintView.vue:1030`, `:1122`, `:1159` send one and
+  display none), while Admin's audit view reads only Admin's own
+  tables (`services/admin/src/store.ts:484-522`).
+
+Product rules (decided here):
+
+1. **The recorded actor is the session, never the request.** Every
+   write that persists an actor with its timestamp records the session
+   the request authenticated, and no write path reads `actor` (or
+   Admin's `updatedBy`) from the body for the recorded value. The
+   request-supplied name may appear only as the annotation rule 3
+   allows.
+2. **The value is the resolved identity where the service resolves
+   one, otherwise the session token.** Admin verifies the token into a
+   caller, so its writes record that caller's `signinIdentity`. Stay,
+   Guests, Rooms, Reservations, and Billing authenticate presence only,
+   so they record the session token the request presented — the value
+   without the `Bearer ` prefix, so one session records one identical
+   string in every service and a Stay close and the Reservations
+   completion it forwards agree. Resolving that token to a human
+   identity on those five services is the identity-hardening slice, not
+   this change: here the source is fixed, and the resolved value
+   replaces the token at the same seam when that slice lands.
+3. **The request field is demoted, never refused.** The `actor` and
+   `updatedBy` fields keep their contract shape, their required flag,
+   and their existing validation refusals, and their value is never the
+   recorded actor. Where the write emits a JSON outbox payload, a
+   request value that differs from the session actor is preserved
+   additively as `requestActor` in that payload; when it equals the
+   session actor or is blank, no key is added, so an honest caller's
+   payloads stay exactly as today. Where the write
+   records only a column — change rows, state history, Admin audit rows
+   — the request value is dropped and the row shape is unchanged, with
+   no migration and no backfill. A disagreement never refuses: every
+   desk call the tree makes today keeps its status, its stored effect,
+   and its response, because the desk still sends its display name and
+   the desk UI's actor field is out of scope.
+4. **No session, no request actor.** Every `/v1/*` write already
+   refuses a missing token with `UNAUTHENTICATED` (401) before it
+   writes, so the actor never falls back to the body. The one write
+   path with no request session is the Admin boot seed, which keeps its
+   server-side `boot` actor. A provider-to-provider call carries the
+   caller's own session: Stay's `CheckOut` forwards the desk token to
+   `CheckOutReservation` (`services/stay/src/reservationsClient.ts:34-44`),
+   so both the Stay rows and the Reservations rows record the same
+   session token and the forwarded `actor` is an annotation only.
+5. **Nothing else moves.** No new error code, catalogue key, desk
+   state, control, route, print rule, contract file, schema, table, or
+   migration, and no reader-visible desk change. Token verification,
+   HMAC, expiry, revocation, and role authorization are unchanged and
+   are the named out-of-scope slice. The interim token value is bounded
+   by the session's 15-minute idle lifetime and is never written to a
+   log line.
+
+Named consequences, not decided here: the open-balance approval
+provenance (`approvedBy` and `role` in `RecordOpenBalanceApproval`) is
+a different recorded claim and keeps its own, already decided handling
+(`AC-CKO-1` re-derives the approval server-side), so this change
+touches only the actor column and payload field; making the request
+`actor`/`updatedBy` optional or removing it once the desk stops sending
+it, and the single cross-service actor value, arrive with the
+identity-hardening slice and a later contract cleanup.
+
+- AC-SEC-1 — Given a valid session, when a write through Stay
+  (`CheckIn`, `CheckOut`, `MoveRoom`, `RecordActualTimes`), Guests
+  (`UpsertGuest`), Rooms (`UpsertRoomType`, `UpsertRoom`,
+  `UpdateRoomState`, `AssignRoom`, `ReleaseRoom`, `BlockRoom`,
+  `ReleaseBlock`), Reservations (`CreateReservation`,
+  `CheckInReservation`, `CheckOutReservation`, `ModifyReservation`,
+  `CancelReservation`, `MarkNoShow`), or Billing (`GetFolioBalance`,
+  `PostCharge`, `RecordPayment`, `RecordOpenBalanceApproval`,
+  `RunDayClose`, `ProduceInvoice`, `ProduceReceipt`,
+  `UpsertChargeItem`, `UpsertTaxFeeRule`) commits, then every outbox
+  event, change row, and state-history row it writes records the
+  session token the request presented as the actor, not the request's
+  `actor` string; an operation that persists no audit row is unchanged.
+  Traces to: FR-RES-1, FR-RES-2, FR-FDK-2, FR-FDK-3, FR-FDK-4,
+  FR-RMS-1, FR-RMS-2, FR-RMS-3, FR-BIL-1, FR-BIL-2, FR-BIL-3,
+  FR-BIL-5, FR-ADM-1; NFR-AUD-1, NFR-SEC-2; AC-RES-1, AC-FDK-2,
+  AC-BIL-1, AC-BIL-2, AC-BIL-3.
+- AC-SEC-2 — Given a valid session for one staff member, when a write
+  sends an `actor` naming another person (or any other text), then the
+  answer and the stored business effect are exactly those of the same
+  write carrying the honest value, the recorded actor is the session
+  token, the supplied value never appears as the actor, and where the
+  write emits a JSON outbox payload it appears only as `requestActor`.
+  A write whose `actor` equals the session actor adds no `requestActor`
+  key, so its payload is byte-for-byte today's. Traces to:
+  NFR-AUD-1, NFR-SEC-2; AC-SEC-1.
+- AC-SEC-3 — Given an authenticated `UpdateHotelConfig` by an owner or
+  manager, when the write succeeds, then the `config.updated` audit
+  rows and the stored profile rows record the caller's
+  `signinIdentity`, never the body's `updatedBy`, while the body field
+  stays required with its existing refusals and every value that
+  satisfies the per-key table is stored, read back, and timed exactly
+  as today. A body `updatedBy` naming another person changes nothing
+  but the dropped annotation. The recorded-actor half of `AC-CFG-4` is
+  superseded by this condition; every other clause of `AC-CFG-4`
+  holds. Traces to: FR-ADM-1, FR-ADM-4; NFR-AUD-1, NFR-SEC-2;
+  AC-CFG-4.
+- AC-SEC-4 — Given no `Authorization` header, when any write is
+  called, then the answer is today's HTTP 401 `UNAUTHENTICATED` and
+  nothing is written, so the actor never comes from the body. Given the
+  Stay `CheckOut` that completes its booking, then Stay's own rows and
+  the forwarded Reservations `CheckOutReservation` rows record the same
+  desk session token, and the forwarded `actor` never overrides it.
+  The Admin boot seed keeps the server-side `boot` actor. Traces to:
+  FR-DEP-1, FR-DEP-5, FR-ADM-1; NFR-AUD-1, NFR-SEC-2.
+- AC-SEC-5 — Given the change ships, when it is verified, then outbox
+  payloads and change/history rows keep their existing keys and
+  columns with `requestActor` the only addition; every write contract
+  file is unchanged; no error code, catalogue key, desk screen,
+  control, route, label, desk state, print rule, schema, table,
+  migration, or backfill is added; token verification, HMAC, expiry,
+  revocation, and role checks are unchanged; and the tree carries one
+  spoofed-actor guard per write operation per stack — Node store tests
+  for Stay, Guests, and Rooms, Go handler or store tests for the six
+  reservation writes, Billing controller or service tests for its
+  adapters, and the Admin config test — each asserting that the
+  recorded actor is the session and the spoofed value is demoted, with
+  the existing suites green. Traces to: NFR-AUD-1, NFR-SEC-2
+  (evidence condition; no additional behaviour).
+
+Done when: every write through Stay, Guests, Rooms, Reservations, and
+Billing records the session token instead of the request string; a
+spoofed actor changes nothing but an additive `requestActor`
+annotation; Admin's config write records the resolved caller; provider
+calls and the no-session boot path keep their actor source; payloads,
+rows, and contracts are unchanged or extended additively; and the
+spoofed-actor guards pass with the existing suites green.
 
 ## Traceability summary
 
@@ -3465,5 +3708,42 @@ an unauthenticated one), the 43-condition MVP count above stands
 unchanged, and the sections 1–17 and 19–25 done-conditions keep their
 behaviour. `CFG` is the domain code for this family.
 
+Audit-actor addendum (Refs #643): five further conditions
+(AC-SEC-1..AC-SEC-5, section 27) cover audit finding C6 — every write
+path records the `actor` string the request supplied, so the audit
+trail `NFR-AUD-1` promises attributes a change to a name the caller
+chose. The recorded actor becomes the session: the caller's
+`signinIdentity` in Admin (whose config write still trusts the body
+`updatedBy` today) and the session token — without the `Bearer `
+prefix — in Stay, Guests, Rooms, Reservations, and Billing, which
+authenticate presence only until the identity-hardening slice resolves
+the same seam to a human identity. The request field keeps its contract
+shape, its required flag, and its existing refusals; a disagreeing
+value is demoted to an additive `requestActor` annotation in JSON
+outbox payloads only, is dropped where a row records only a column, and
+never refuses a write, because the desk still sends its display name
+and the desk UI's actor field is out of scope. Stay's forwarded
+`CheckOutReservation` carries the caller's own token, so both rows
+agree, and the Admin boot seed keeps its server-side `boot` actor. No
+new error code, catalogue key, desk screen, control, route, label,
+desk state, print rule, contract file, schema, table, migration, or
+backfill is added, and token verification, HMAC, expiry, revocation,
+and role authorization stay out of scope. They trace to the existing
+`FR-RES-1`, `FR-RES-2`, `FR-FDK-2`, `FR-FDK-3`, `FR-FDK-4`,
+`FR-RMS-1`, `FR-RMS-2`, `FR-RMS-3`, `FR-BIL-1`, `FR-BIL-2`,
+`FR-BIL-3`, `FR-BIL-5`, `FR-ADM-1`, `FR-ADM-4`, `FR-DEP-1`,
+`FR-DEP-5`, `NFR-AUD-1`, and `NFR-SEC-2`; no story, FR, or business
+rule is added or reworded here — the requirements-side FR/NFR delta and
+the provenance rule BR-65 are the `business-analyst` handoff
+(`docs/requirements/mvp-requirements.md` section 35), and the LLD delta
+with the actor-resolution diagram on the write path for Node, Go, and
+Billing, plus the refreshed audit lines of the service designs, are the
+`architect` handoff (LLD section 34). `AC-CFG-4` loses only the
+recorded-actor half to `AC-SEC-3`, the conditions written earlier hold
+as written, the 43-condition MVP count above stands unchanged, and the
+sections 1–17 and 19–25 done-conditions keep their behaviour (section
+26 keeps every condition except that one half). `SEC` is the domain
+code for this family.
+
 <!-- ao-role: product-owner -->
-Role: product-owner · AO session hotel-mgmt-1162
+Role: product-owner · AO session hotel-mgmt-1173
