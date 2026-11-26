@@ -6,7 +6,7 @@
     "properties": {
       "code": {
         "type": "string",
-        "enum": ["VALIDATION_FAILED", "NOT_FOUND", "FORBIDDEN", "CONFLICT", "STATE_ILLEGAL", "SETTLEMENT_REQUIRED", "UNAUTHENTICATED", "IDENTITY_LOCKED", "INTERNAL_ERROR", "UPSTREAM_UNAVAILABLE", "METHOD_NOT_ALLOWED"]
+        "enum": ["VALIDATION_FAILED", "NOT_FOUND", "FORBIDDEN", "CONFLICT", "STATE_ILLEGAL", "SETTLEMENT_REQUIRED", "PRICE_CHANGED", "UNAUTHENTICATED", "IDENTITY_LOCKED", "INTERNAL_ERROR", "UPSTREAM_UNAVAILABLE", "METHOD_NOT_ALLOWED"]
       },
       "message": { "type": "string", "description": "Human-readable sentence naming what was refused and why." },
       "details": { "type": "object", "description": "Named field, restriction, room, or conflicting entity.", "additionalProperties": true },
@@ -22,6 +22,7 @@
     "CONFLICT": 409,
     "STATE_ILLEGAL": 422,
     "SETTLEMENT_REQUIRED": 409,
+    "PRICE_CHANGED": 409,
     "METHOD_NOT_ALLOWED": 405,
     "INTERNAL_ERROR": 500,
     "UPSTREAM_UNAVAILABLE": 503

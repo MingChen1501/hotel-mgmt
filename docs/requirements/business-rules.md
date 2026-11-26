@@ -54,6 +54,7 @@ front-desk staff, manager, or owner account acting within its access
 | BR-14 | New reservations quote the nightly price the manager saved for that room type, season, and day. | FR-RTE-1; US-RTE-1 |
 | BR-15 | A named discount or special price applied by the manager is kept by name on the reservation, and folio charges follow the adjusted price. | FR-RTE-3; US-RTE-3 |
 | BR-44 | A nightly price covers exactly one night. A room type is open for booking on a night only when a price exists for that room type, rate plan, and night; a missing night is never priced by inference from a neighbouring night, a plan or season default, or zero, and the desk states the type as not open for booking for that date until a manager sets the night's price. | FR-RTE-1; FR-RTE-5; FR-RES-1; US-RTE-1; `AC-MANAGE-9`; #589 |
+| BR-52 | The total and applied discount name a reservation freezes are the ones Pricing quotes for its effective room type, dates, and named discount when the booking is created or changed — never a total the caller supplies. A request's price basis is advisory input: a total that disagrees with that quote is refused and nothing is stored or repaired in place, and a quote that cannot be read refuses the booking rather than freezing an unverified total. A later rate change still does not alter a frozen total except by an explicit recalculation under `BR-2`/`BR-13`. | FR-RES-1; FR-RES-2; FR-RTE-5; FR-PRC-1..FR-PRC-5; `AC-PRC-1`..`AC-PRC-5`; #632 |
 
 ## 4. Check-in, stay, and check-out
 
@@ -171,7 +172,7 @@ section 3.3). Fixed items no hotel may change in the MVP.
 | Reservation availability | — (none) | The ceiling is the capacity the hotel records for the room type and dates, never the request's `sellableUnits`; a large or absent value changes nothing, and an unreadable capacity source refuses the booking (`BR-47`, `BR-48`) |
 | Sellability state list | — (none) | The non-sellable room states are exactly `out-of-order` and `occupied`; every vacant state stays sellable, the state list is a fixed code rule, and the #631 ceiling reads `totalCount - blockedRooms`, never the sellable count or room state (`BR-67`) |
 | Discounts | Named discounts the manager may apply (`BR-15`) | Applied discounts kept by name |
-| Rate plans | Sellable prices per room type, season, day (`BR-14`) | Quoted price basis unchanged unless recalculated (`BR-13`) |
+| Rate plans | Sellable prices per room type, season, day (`BR-14`) | Quoted price basis unchanged unless recalculated (`BR-13`); the frozen total is the quote Pricing returns for the type, dates, and discount (`BR-52`) |
 | Out-of-order blocks | Reason and date range per block (`BR-29`) | Blocked dates take no reservation or check-in |
 | Payment methods | — (none) | Cash and card only (`BR-23`) |
 | Folio structure | — (none) | One folio per stay; no split across payers (`BR-21`) |
@@ -226,7 +227,12 @@ already held stays readable in every stay state — tracing `FR-BIL-1`,
 `FR-FWV-1`, `FR-FWV-5`, and `AC-FWV-4`, and BR-51 states that an
 unverifiable stay refuses the write and changes nothing, tracing
 `FR-BIL-2`, `FR-BIL-3`, `FR-BIL-7`, `FR-FWV-1`..`FR-FWV-4`, and
-`AC-FWV-1`..`AC-FWV-3`, neither adding behaviour beyond those sources, and BR-59 states that a
+`AC-FWV-1`..`AC-FWV-3`, neither adding behaviour beyond those sources,
+and BR-52 states where the frozen price basis comes from — the Pricing
+quote for the effective room type, dates, and discount, never the
+request's total — tracing `FR-RES-1`, `FR-RES-2`, `FR-RTE-5`,
+`FR-PRC-1`..`FR-PRC-5`, and `AC-PRC-1`..`AC-PRC-5` without adding
+behaviour beyond those sources, and BR-59 states that a
 failure the system did not plan for is reported as an internal fault and
 never as bad input — `VALIDATION_FAILED` keeps meaning the caller's
 request was wrong, the answer carries no internal descriptor, and the
@@ -313,7 +319,7 @@ FRs/NFRs/stories. Later capabilities from requirements section 6
 (waitlist, split folios, integrated payments, automated workflow
 rules, multi-property operation, and the rest) carry no rule here.
 
-Counts: 60 business rules, 5 open questions.
+Counts: 61 business rules, 5 open questions.
 
 <!-- ao-role: business-analyst -->
 Role: business-analyst · AO session hotel-mgmt-1079

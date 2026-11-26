@@ -65,6 +65,12 @@ departed guest held, so a `closed` row shows none either; a register
 cell a read could not fill states that it could not be read rather than
 guessing (`FR-BMV-2`, `FR-BMV-5`, `FR-BMV-6`, `BR-19`).
 
+The quoted total a reservation carries is the Pricing quote taken when
+the booking or change committed, never a value the request supplied,
+and a later rate change does not alter it (`FR-PRC-1`, `FR-PRC-4`,
+`BR-13`, `BR-52`). A booking whose request total disagreed with that
+quote was never stored (`FR-PRC-2`).
+
 ## 2. Stay
 
 An in-house record created at check-in from a confirmed reservation,
@@ -230,6 +236,16 @@ time with the nightly breakdown. The price basis is recorded on the
 reservation so a later rate change does not alter the quoted price
 unless staff explicitly recalculate it by modifying the reservation.
 
+The quoted total and the applied discount name are the ones Pricing
+quotes for the reservation's effective room type, dates, and named
+discount at the moment the booking or change was committed, not a
+total the caller supplies (`FR-PRC-1`, `FR-PRC-4`, `BR-52`). A
+request's `priceBasis.totalMinor` is advisory input: it is compared
+with that quote and never stored, and a total that disagrees is
+refused with `PRICE_CHANGED` while nothing is written (`FR-PRC-2`); a
+quote that cannot be read refuses the booking rather than freezing an
+unverified total (`FR-PRC-3`).
+
 Key fields: rate plan reference; nightly breakdown; quoted total;
 applied named discount or special price where applicable.
 
@@ -329,12 +345,17 @@ register** the #648 desk view renders — a read-only list of reservations
 staying in a chosen night range, with no field of its own — and states
 which read supplies each cell, including why a `confirmed` or `closed`
 row shows no assigned room (`FR-BMV-2`, `FR-BMV-5`, `FR-BMV-6`); it
-adds no entry, field, or behaviour beyond those sources. The #630
-request-body ceiling adds no entry or field either: it is a transport
-bound, and the refusal's `details` field `body` names the whole request
-body in the shared envelope (`docs/technical/error-handling.md`
-section 1.1), not a domain field of any entity, so the 15 entries stand
-unchanged (`NFR-BND-1`, `BR-60`).
+adds no entry, field, or behaviour beyond those sources. The Price
+basis entry (section 11) and the Reservation entry (section 1) state
+the price-authority obligation the #632 recompute relies on — the
+frozen total and applied discount name are the Pricing quote, a request
+total is advisory, and a reprice is recorded — and add no entry, field,
+or behaviour beyond those sources (`FR-PRC-1`..`FR-PRC-5`, `BR-52`).
+The #630 request-body ceiling adds no entry or field either: it is a
+transport bound, and the refusal's `details` field `body` names the
+whole request body in the shared envelope
+(`docs/technical/error-handling.md` section 1.1), not a domain field of
+any entity, so the 15 entries stand unchanged (`NFR-BND-1`, `BR-60`).
 Reservation entry (section 1) and the Room type entry (section 9)
 state where a booking's capacity ceiling comes from — the recorded
 room inventory, never the request's `sellableUnits` (`BR-47`,
@@ -342,6 +363,9 @@ room inventory, never the request's `sellableUnits` (`BR-47`,
 behaviour beyond those sources.
 
 Counts: 15 dictionary entries covering the 7 entity terminology concepts (T-1..T-7); T-8 is a spelling convention with no entry.
+
+<!-- ao-role: business-analyst -->
+Role: business-analyst · AO session hotel-mgmt-991
 
 <!-- ao-role: business-analyst -->
 Role: business-analyst · AO session hotel-mgmt-1079

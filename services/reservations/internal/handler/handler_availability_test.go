@@ -172,11 +172,14 @@ func TestInflatedModifyRefusedKeepsReservation(t *testing.T) {
 		"held-dates": {
 			"reservationRef": ref, "roomTypeId": "deluxe-type",
 			"arrivalDate": "2026-11-01", "departureDate": "2026-11-03",
-			"sellableUnits": 999, "priceBasis": map[string]any{"totalMinor": 26000},
+			// The price basis is advisory and agrees with the quote the
+			// fixture hook answers, so this guard stays about the
+			// capacity refusal (ADR-0007 D3).
+			"sellableUnits": 999, "priceBasis": map[string]any{"totalMinor": 24000},
 		},
 		"sold-out-type": {
 			"reservationRef": ref, "roomTypeId": "soldout-type",
-			"sellableUnits": 999, "priceBasis": map[string]any{"totalMinor": 26000},
+			"sellableUnits": 999, "priceBasis": map[string]any{"totalMinor": 24000},
 		},
 	} {
 		code, conflict := post(t, mux, "/v1/reservations/ModifyReservation", target, deskToken)

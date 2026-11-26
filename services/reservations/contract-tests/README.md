@@ -4,8 +4,10 @@ Provider and consumer fixtures for `ReservationService` (issues #112
 and #159), generated from `contracts/` per
 `docs/technical/integration.md` [section 9](../../../docs/technical/integration.md): `CreateReservation` (plus
 the overbooking `CONFLICT` branch, the missing-guest-field
-`VALIDATION_FAILED` branch, and the advisory `sellableUnits` branch
-where an inflated request number buys no unit), `ModifyReservation` (plus the
+`VALIDATION_FAILED` branch, the advisory `sellableUnits` branch
+where an inflated request number buys no unit, and the two #632
+price-authority branches: `PRICE_CHANGED` for a forged total and
+`UPSTREAM_UNAVAILABLE` for an unreadable Pricing), `ModifyReservation` (plus the
 checked-in `STATE_ILLEGAL` and guard-lost `CONFLICT` branches),
 `CancelReservation` (plus the missing-reason `VALIDATION_FAILED`
 and checked-in `STATE_ILLEGAL` branches), `MarkNoShow` (plus the

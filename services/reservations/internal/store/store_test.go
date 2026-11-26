@@ -794,3 +794,38 @@ func TestReplayWithDerivedCeilingConsumesNoSecondUnit(t *testing.T) {
 		t.Fatalf("store holds %d overlapping reservations, want 1", got)
 	}
 }
+
+// TestReplayResolvesStoredKeyOnly is the ADR-0007 D5 read: an
+// idempotency key resolves to the reservation already stored under it,
+// and a miss (another operation, another reservation, an empty key)
+// returns (nil, nil) so the caller keeps going.
+func TestReplayResolvesStoredKeyOnly(t *testing.T) {
+	st := New()
+	created, oerr := st.Create(loopInput("deluxe-type"), "replay-key")
+	if oerr != nil {
+		t.Fatalf("create refused: %v", oerr)
+	}
+
+	got, oerr := st.Replay("CreateReservation", "", "replay-key")
+	if oerr != nil {
+		t.Fatalf("replay refused: %v", oerr)
+	}
+	if got == nil || got.Ref != created.Ref || got.TotalMinor != created.TotalMinor {
+		t.Fatalf("replay = %+v, want the stored booking %s", got, created.Ref)
+	}
+
+	for _, miss := range []struct {
+		name           string
+		operation, ref string
+		key            string
+	}{
+		{"empty key", "CreateReservation", "", ""},
+		{"other operation", "ModifyReservation", created.Ref, "replay-key"},
+		{"other reservation", "ModifyReservation", "RSV-OTHER", "replay-key"},
+	} {
+		none, oerr := st.Replay(miss.operation, miss.ref, miss.key)
+		if oerr != nil || none != nil {
+			t.Fatalf("%s: replay = %+v, %v; want (nil, nil)", miss.name, none, oerr)
+		}
+	}
+}
