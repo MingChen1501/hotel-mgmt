@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { Pool } from "pg";
+import { HttpError } from "./errors.js";
+import { msg } from "./messages.js";
 import { PostgresAdminStore } from "./pgstore.js";
 
 // Postgres round-trip for the admin schema (issue #149). Skipped
@@ -50,6 +52,33 @@ describe("admin postgres store", { skip: DATABASE_URL === undefined || DATABASE_
       assert.equal(updated.values["timezone"], "Asia/Ho_Chi_Minh");
       const reread = await store.getConfig();
       assert.equal(reread.values["timezone"], "Asia/Ho_Chi_Minh");
+    } finally {
+      await pool.end();
+    }
+  });
+
+  it("records the caller's signinIdentity on the config rows when updatedBy spoofs (#643, SEC28)", async () => {
+    const pool = new Pool({ connectionString: DATABASE_URL });
+    try {
+      await wipe(pool);
+      const store = new PostgresAdminStore(pool, "test-key");
+      await store.ensureBootUser("owner", "owner-secret");
+      const { token } = await store.signIn("owner", "owner-secret");
+      const caller = await store.authenticate(token);
+      await store.updateConfig(caller, {
+        values: { timezone: "Asia/Ho_Chi_Minh", cancellationWording: "Please cancel early" },
+        updatedBy: "mallory",
+      });
+      const profile = await pool.query(`SELECT updated_by FROM admin.hotel_profile LIMIT 1`);
+      assert.equal(profile.rows[0]?.updated_by, "owner");
+      const stored = await pool.query(
+        `SELECT updated_by FROM admin.hotel_config_values WHERE config_key = 'cancellationWording'`,
+      );
+      assert.equal(stored.rows[0]?.updated_by, "owner");
+      await assert.rejects(
+        store.updateConfig(caller, { values: { timezone: "UTC" } }),
+        (err: unknown) => (err as { code?: string }).code === "VALIDATION_FAILED",
+      );
     } finally {
       await pool.end();
     }
@@ -151,6 +180,85 @@ describe("admin postgres store", { skip: DATABASE_URL === undefined || DATABASE_
         store.changeSecret(owner, { currentSecret: "not-the-secret", newSecret: "x" }),
         /Unknown identity or wrong secret/,
       );
+    } finally {
+      await pool.end();
+    }
+  });
+
+  // CFG11/CFG14/CFG16/CFG18 (#639): the shared BR-64 per-key table
+  // gives both stores the same refusals, so the Postgres retention
+  // rule stops being the odd one out. The text-number narrowing
+  // ("365") is the deliberate one; the whole write is refused before
+  // withTx opens, so no row and no config.updated entry appears.
+  it("refuses the same config shapes and stores the same accepted boundary (CFG18)", async () => {
+    const pool = new Pool({ connectionString: DATABASE_URL });
+    try {
+      await wipe(pool);
+      const store = new PostgresAdminStore(pool, "test-key");
+      await store.ensureBootUser("owner", "owner-secret");
+      const session = await store.signIn("owner", "owner-secret");
+      const owner = await store.authenticate(session.token);
+
+      const refusals: Array<{ values: Record<string, unknown>; key: string; sentence: string }> = [
+        { values: { timezone: "  " }, key: "timezone", sentence: "error.validation.config_text" },
+        { values: { standardCheckinTime: "24:00" }, key: "standardCheckinTime", sentence: "error.validation.config_time" },
+        {
+          values: { requiredGuestFields: "fullName" },
+          key: "requiredGuestFields",
+          sentence: "error.validation.config_required_fields",
+        },
+        { values: { cancellationReasons: [""] }, key: "cancellationReasons", sentence: "error.validation.config_list" },
+        { values: { retentionFloorDays: "365" }, key: "retentionFloorDays", sentence: "error.validation.retention_floor" },
+        { values: { address: 7 }, key: "address", sentence: "error.validation.config_optional_text" },
+      ];
+      for (const { values, key, sentence } of refusals) {
+        await assert.rejects(
+          store.updateConfig(owner, { values, updatedBy: "owner" }),
+          (err: unknown) => {
+            assert.ok(err instanceof HttpError, `${key} answers an HttpError`);
+            assert.equal(err.code, "VALIDATION_FAILED");
+            assert.deepEqual(err.details, { field: key });
+            assert.equal(err.message, msg(sentence, { field: key }));
+            return true;
+          },
+          key,
+        );
+      }
+
+      // The whole write is refused: the valid sibling is not stored
+      // and the audit trail keeps no config.updated entry.
+      const before = await store.getConfig();
+      const auditBefore = await store.queryAuditLog(owner, { limit: 50 });
+      await assert.rejects(
+        store.updateConfig(owner, {
+          values: { timezone: "Europe/Paris", requiredGuestFields: "fullName" },
+          updatedBy: "owner",
+        }),
+        /must list at least one guest field/,
+      );
+      assert.deepEqual(await store.getConfig(), before, "no key of the refused request is stored");
+      assert.deepEqual(await store.queryAuditLog(owner, { limit: 50 }), auditBefore, "no config.updated entry appears");
+
+      // The accepted boundary is stored and read back as sent.
+      const boundary = {
+        requiredGuestFields: ["fullName"],
+        standardCheckinTime: "00:00",
+        standardCheckoutTime: "23:59",
+        retentionFloorDays: 0,
+        cancellationReasons: [],
+        cancellationWording: "",
+        address: "",
+        phone: "",
+        email: "",
+      };
+      const saved = await store.updateConfig(owner, { values: boundary, updatedBy: "owner" });
+      for (const [key, value] of Object.entries(boundary)) {
+        assert.deepEqual(saved.values[key], value, `${key} is stored as sent`);
+      }
+      const reread = await store.getConfig();
+      for (const [key, value] of Object.entries(boundary)) {
+        assert.deepEqual(reread.values[key], value, `${key} reads back unchanged`);
+      }
     } finally {
       await pool.end();
     }

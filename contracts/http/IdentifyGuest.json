@@ -32,6 +32,6 @@
   "errors": [
     { "code": "UNAUTHENTICATED", "status": 401, "when": "Missing session token." },
     { "code": "NOT_FOUND", "status": 404, "when": "Unknown guest." },
-    { "code": "VALIDATION_FAILED", "status": 400, "when": "Neither guestId nor fullName is given." }
+    { "code": "VALIDATION_FAILED", "status": 400, "when": "Neither guestId nor fullName is given, or fullName matches more than one guest (details name fullName and the match count; no profile is returned)." }
   ]
 }

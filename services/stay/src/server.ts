@@ -156,6 +156,8 @@ async function handleRequest(
     );
     return;
   }
+  // The authenticated session is the audit actor on every write
+  // (BR-65, #643); the extracted token is kept beside the body.
   const bearer = extractBearer(req);
   if (bearer === null) {
     throw new HttpError("UNAUTHENTICATED", msg("error.auth.missing_token", {}), {});
@@ -164,7 +166,7 @@ async function handleRequest(
   const operation = route[1];
   switch (operation) {
     case "CheckIn": {
-      const stay = await store.checkIn(body);
+      const stay = await store.checkIn(body, bearer);
       writeJson(res, 200, stayPayload(stay));
       return;
     }
@@ -186,7 +188,7 @@ async function handleRequest(
       return;
     }
     case "MoveRoom": {
-      const { stay, move } = await store.moveRoom(body);
+      const { stay, move } = await store.moveRoom(body, bearer);
       writeJson(res, 200, {
         ...stayPayload(stay),
         move: { fromRoomId: move.fromRoomId, toRoomId: move.toRoomId, movedAt: move.movedAt },
@@ -194,7 +196,7 @@ async function handleRequest(
       return;
     }
     case "RecordActualTimes": {
-      const stay = await store.recordActualTimes(body);
+      const stay = await store.recordActualTimes(body, bearer);
       writeJson(res, 200, stayPayload(stay));
       return;
     }

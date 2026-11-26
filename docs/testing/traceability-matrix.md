@@ -1211,9 +1211,327 @@ green, the pins unchanged, `BND-E1` recorded, and `qa-lead` re-pins the
 rows at the merged head. The MVP Coverage line below stands unchanged at
 57/57.
 
+## 23. Money-amount bounds slice (Refs #635)
+
+Traceability for the #635 money-amount change (audit finding B2):
+Billing's `amountOf` helper accepted any JSON number and truncated it
+with `longValue()`, so `amountMinor: 12.99` posted 12 with no refusal,
+and no money adapter bounded the magnitude. The done-conditions are
+`docs/product/acceptance-criteria.md`
+[section 23](../product/acceptance-criteria.md) (`AC-AMT-1`..`AC-AMT-5`),
+the requirements `NFR-AMT-1`..`NFR-AMT-4` are
+`docs/requirements/mvp-requirements.md`
+[section 31](../requirements/mvp-requirements.md), the business rule is
+`BR-61` in `docs/requirements/business-rules.md`
+[the business rules](../requirements/business-rules.md), the ceiling,
+enforcement point, refusal shape, and per-flow diagram are LLD
+[section 30](../architecture/lld.md), and the guard registry
+`AMT1`-`AMT20` plus the evidence rule `AMT-E1` are
+`money-amount-bounds-test-traceability.md`
+[the testing spec](money-amount-bounds-test-traceability.md).
+
+Status is `pending` where the guard does not exist at this spec head:
+the implementation PR creates it, and `qa-lead` re-pins the row with
+`file:line` at the merged head. Rows marked covered by re-run rest on
+pins that exist and pass today and must keep passing untouched. The
+slice adds no MVP capability, so the 57-row MVP count stands unchanged.
+
+| Item | Required guard type | Guard |
+|---|---|---|
+| `AC-AMT-1` — a fractional or present non-number money value on `PostCharge`, `RecordPayment`, or `UpsertChargeItem` answers exactly one HTTP 400 shared envelope (`VALIDATION_FAILED`, `details` naming that field, the `error.validation.amount_not_integer` sentence for a fractional number and the `error.validation.field_number` sentence for a present non-number value, a `traceId`), is never truncated, and writes nothing (traces to `NFR-AMT-1`, `BR-61`) | L1 acceptance: one fractional case and one present non-number case per money field plus the no-service-call evidence | **Pending** — `AMT1`-`AMT3`, `AMT15`, `AMT20`; today's opposite is `services/billing/src/main/java/com/hotel/billing/web/BillingController.java:47-53` (the truncation at `:50`, the missing-field answer at `:52`) reached from `:86`, `:93`, `:129` |
+| `AC-AMT-2` — a magnitude above 1 000 000 000 000 minor units on the same three fields answers the same envelope with `error.validation.amount_above_ceiling` carrying the ceiling and writes nothing; a huge negative is refused by this rule while an in-range negative keeps the service's sign refusal (traces to `NFR-AMT-2`, `BR-61`) | L1 acceptance: the over-ceiling pair per field, the boundary pair, and the sign pass-through | **Pending** — `AMT4`-`AMT8`, `AMT13`, `AMT19`; no bound exists at `BillingController.java:47-53` |
+| `AC-AMT-3` — a whole amount inside the ceiling behaves exactly as today (same status, code, message, `details`, stored effect), including `0`, an idempotent replay, the tax/fee derivation, and `12.0` accepted as `12`; an amount at exactly the ceiling is accepted and one minor unit more is refused; `contract-check` stays green with no contract file changed (traces to `NFR-AMT-1`, `NFR-AMT-4`, `BR-61`) | L1: the boundary pair, the decimal-point case, and the in-range regression; re-run: existing suites and contract gate | **Covered by re-run today for the existing in-ceiling answers (`AMT17`), and pending for the boundary pair, the decimal-point case, and the explicit regression (`AMT8`-`AMT10`, `AMT16`)** — the existing answers are pinned at `BillingControllerTest.java:48`, `:63`, `:296` and `BillingServiceTest.java:71`, `:86` |
+| `AC-AMT-4` — the percent adapter answers `field_number` naming `percent` for a present value it cannot read as a finite number, keeps a fractional percent such as `8.5` accepted, keeps the service's 0-100 `percent_range` refusal, and keeps `field_required` for an absent `percent` (traces to `NFR-AMT-3`, `BR-61`) | L1 acceptance: the four percent cases | **Covered by re-run today for the 0-100 and absent-field halves (`AMT12`, `BillingServiceTest.java:103`), and pending for the type split and the `8.5` acceptance (`AMT11`)** — today's type fall-through is `BillingController.java:63-64` |
+| `AC-AMT-5` — each of the three money adapters carries a fractional guard, a present non-number guard, and an over-ceiling guard with "the service was never called" evidence, the percent adapter has its unreadable-value guard, the boundary pair exists, an in-range regression case exists per field, and the catalogue guard pins both new sentences (evidence condition; no behaviour change) | L1 + evidence: `AMT1`-`AMT7`, `AMT8`, `AMT10`, `AMT11`, `AMT14`, `AMT20`, and the record | **Pending** — `AMT1`-`AMT7`, `AMT10`, `AMT11`, `AMT14`, `AMT20`, `AMT-E1` |
+| `NFR-AMT-1` — a money amount is a whole number of minor units refused before any work when it is not: one 400 envelope naming the field, never truncated, nothing written, an absent field still `field_required`, a present non-number value refused with `field_number`, and a whole value written with a decimal point accepted (requirements 31.3) | L1 acceptance: the three fractional cases, the three present non-number cases, the decimal-point case, and the catalogue sentence | **Pending** — `AMT1`-`AMT3`, `AMT9`, `AMT14`, `AMT15`, `AMT20` |
+| `NFR-AMT-2` — every money amount is bounded by one declared ceiling of 1 000 000 000 000 minor units, the same for all three fields, below 2<sup>53</sup>, carried by no configuration source; an amount at the ceiling is accepted and one more refused, and a 730-night charge at the standard rate (65 700 000 000) is accepted (requirements 31.3) | L1: the constant assertion and the boundary pair; LC: contract gate; diff gate: no configuration source | **Pending** — `AMT4`-`AMT8`, `AMT7`, `AMT16`, `AMT19`; the shape to copy is `MaxBodySizeFilter.java:38` |
+| `NFR-AMT-3` — the tax-rule percent is bounded as a number, never as money: an unreadable present value answers `field_number` naming `percent`, `8.5` stays accepted, the 0-100 range and the absent-field refusal keep their layer, and no money rule applies to a percent (requirements 31.3) | L1 acceptance: the percent cases plus the unedited service range case | **Pending** — `AMT11`, `AMT12` (the range half covered by re-run today) |
+| `NFR-AMT-4` — every whole amount inside the ceiling behaves exactly as today, each money adapter carries its fractional, present non-number, and over-ceiling guards, the boundary pair and an in-range regression exist, the two catalogue sentences are pinned, `contract-check` stays green, and no desk surface changes (requirements 31.3) | L1 acceptance + re-run: the regression set, the catalogue guard, the contract gate, the desk suites | **Covered by re-run today for the existing answers and the desk (`AMT17`, `AMT18`, `AMT16`), and pending for the new guards and sentences (`AMT1`-`AMT14`, `AMT20`)** |
+| `BR-61` — a money amount is a whole number of minor units bounded by one declared ceiling of 1 000 000 000 000 on every Billing money field; a fractional or over-ceiling value is refused with the shared envelope naming the field before any service, store, provider, or folio call, writes nothing, and leaves no idempotency record or outbox event; in-ceiling amounts behave as today; the ceiling is one code constant and the percent is bounded as a number (business rules) | L1 acceptance + evidence: the three fractional cases, the three over-ceiling cases, the boundary pair, and the lab record | **Pending** — `AMT1`-`AMT15`, `AMT19`, `AMT-E1`; today's breach is `BillingController.java:50` |
+| Desk flows stay green (`AC-DSK-18`, `AC-DSK-19`, `AC-CKO-1`, `AC-CKO-2`, `AC-DEP-1`..`AC-DEP-5`, and the #647/#648 pins) | Behaviour check: the check-out review, the settlement refusals, the departure completion, the reassignment path, and the booking register keep their words and calls | **Covered by re-run** — `AMT18`; `app/src/views/StayView.test.ts:1113-1233`, `:1308-1457`, `:1528-1629`, `:1630-1750`, `:1884-2040`, `app/src/views/PrintView.test.ts:273-342`, `:724-756`, `app/src/views/desk-edge-guards.test.ts:621`, `:687`, `app/e2e/stay.spec.ts`, `script/e2e-desk-loop.sh`; a flow edit fails the row |
+| Contract and LC | Real delta: no contract file changes, no code token added, the envelope keeps its four fields, and both check scripts stay green; no `contracts/http/` operation changes | **Covered by re-run today** — `AMT16`; the files are `contracts/errors/envelope.json`, `contracts/http/PostCharge.json`, `RecordPayment.json`, `UpsertChargeItem.json`, `services/billing/src/main/java/com/hotel/billing/web/ApiExceptionHandler.java`, `script/contract-check.sh`, `script/openapi-route-check.sh`; a schema, operation, envelope-field, or event change here is a re-tier finding (LLD 30.5, 30.7) |
+| MVP no-change statement | No new MVP row, story, or FR; no `FR-*` wording moves; the four `NFR-AMT-*` are the only requirement additions | **Pending gate** — the 57-row MVP coverage count stands unchanged and no MVP row cites this slice as its guard (requirements 31.2) |
+| Evidence cross-reference (`AMT-E1`) | The finding is reproduced from an isolated lab, the before/after pair is recorded, and the slice is in the test report | **Pending** — `docs/testing/evidence/635/README.md` and the `test-report.md` row are created by the implementation PR |
+
+Slice coverage (Refs #635): 14 rows mapped to `AC-AMT-1`..`AC-AMT-5`,
+`NFR-AMT-1`..`NFR-AMT-4`, `BR-61`, the desk-green row, and the gate
+boxes. Three rows are covered by re-run today (the desk-green row, the
+contract/LC gate, and the existing in-ceiling answers named inside
+`AC-AMT-3`, `AC-AMT-4`, and `NFR-AMT-4` — their pins exist and pass and
+must keep passing untouched), and the rest are **pending** the
+implementation PR — the rows whose guards are the registry
+`AMT1`-`AMT20`, the `BR-61` evidence row, the MVP no-change gate, and
+`AMT-E1`. The slice is **not complete** at this spec head; it completes
+when the implementation PR merges with `AMT1`-`AMT20` green, the pins
+refreshed where the implementation moved a line, `AMT-E1` recorded, and
+`qa-lead` re-pins the rows at the merged head. The MVP Coverage line
+below stands unchanged at 57/57.
+
+## 24. Report-range span-cap slice (Refs #641)
+
+Traceability for the #641 report-window span cap (audit finding P1):
+`parseRange` validated a window's shape and order but never its span, and
+`Occupancy` and `Revenue` then walk every date in the window inclusively
+under the store mutex, so one request such as
+`0001-01-01`..`9999-12-31` loops over millions of dates while every other
+report waits behind the same lock. The done-conditions are
+`docs/product/acceptance-criteria.md`
+[section 24](../product/acceptance-criteria.md#24-reporting-date-ranges-carry-a-declared-span-cap-refs-641)
+(`AC-RPT-5`..`AC-RPT-7`), the requirement `NFR-RPT-1` is
+`docs/requirements/mvp-requirements.md`
+[section 32](../requirements/mvp-requirements.md#32-reporting-date-ranges-carry-a-declared-span-cap-refs-641),
+the business rule is `BR-62` in `docs/requirements/business-rules.md`
+[the business rules](../requirements/business-rules.md), the cap,
+enforcement point, arithmetic, refusal shape, and per-flow diagram are
+LLD [section 31](../architecture/lld.md#31-reporting-date-ranges-carry-a-declared-span-cap-refs-641),
+and the guard registry `RPT1`-`RPT14` plus the evidence rule `RPT-E1`
+are `report-range-cap-test-traceability.md`
+[the testing spec](report-range-cap-test-traceability.md).
+
+Status is `pending` where the guard does not exist at this spec head:
+the implementation PR creates it, and `qa-lead` re-pins the row with
+`file:line` at the merged head. Rows marked covered by re-run rest on
+pins that exist and pass today and must keep passing untouched. The
+slice adds no MVP capability, so the 57-row MVP count stands unchanged.
+
+| Item | Required guard type | Guard |
+|---|---|---|
+| `AC-RPT-5` — a window whose `dateTo` is more than 730 nights after `dateFrom` (including `0001-01-01`..`9999-12-31`) answers exactly one HTTP 400 shared envelope (`VALIDATION_FAILED`, `details` naming `dateTo`, the `reporting.validation.date_range_span` sentence carrying the bound, a `traceId`), returns no `nights` or `days` rows, and is refused before the store lock and before any per-date loop; missing, malformed, and out-of-order windows keep their existing sentence and field (traces to `FR-RPT-1`, `FR-RPT-2`, `NFR-PERF-2`, `AC-RPT-1`, `AC-RPT-2`) | L1 acceptance: the over-cap refusal per operation at store and HTTP level, the huge window, the before-the-lock proof, and the unchanged shape/order refusals | **Pending** — `RPT1`, `RPT2`, `RPT4`, `RPT5`, `RPT7`, `RPT9`; today's opposite is `services/reporting/internal/store/store.go:440-453` (no span check) with the walks at `:480` and `:523` |
+| `AC-RPT-6` — a window at exactly 730 nights (731 inclusive dates, the 2024-01-01..2025-12-31 shape) returns exactly today's rows — same dates and order, counts, totals, zero rows, and `asOf` — one more night is refused, and `DailySheet` and `HousekeepingReport` answer exactly as before (traces to `FR-RPT-1`, `FR-RPT-2`, `NFR-PERF-2`, `AC-RPT-1`, `AC-RPT-2`) | L1: the at-cap boundary pair compared against the same seeded fixture; re-run: the one-date, no-range, and two-year perf reads | **Covered by re-run today for the existing in-cap answers and the perf window (`RPT12`, `services/reporting/internal/service/service_test.go:16-29`, `perf_test.go:97-101`), and pending for the explicit at-cap/one-night-past pair (`RPT3`)** |
+| `AC-RPT-7` — one named constant states the 730-night cap and both range reports read it, no environment variable, deployment setting, or per-hotel configuration carries it, the store's guards pin the over-cap refusal for both operations, the at-cap acceptance, and the boundary pair beside the existing malformed and order guards; no desk, catalogue-key-beyond-the-sentence, route, print-rule, or contract-operation change, and `contract-check` stays green (traces to `FR-RPT-1`, `FR-RPT-2`, `NFR-PERF-2`, `NFR-I18N-1`) | L1: the constant and the guard set; LC: the contract gate; diff gate: no configuration source and no desk surface | **Covered by re-run today for the contract gate (`RPT13`), and pending for the constant and the full guard set (`RPT6`, `RPT1`-`RPT5`, `RPT9`, `RPT10`, `RPT14`)** |
+| `NFR-RPT-1` — a report window is bounded by one declared 730-night span and refused before any store work when wider: one 400 envelope with `VALIDATION_FAILED` naming `dateTo`, the sentence with the bound rendered from the constant, a fresh `traceId`, no rows, and no lock taken or date walked; a 730-night window served exactly as today and one night more refused; the cap one constant equal to the Rates bound, carried by no configuration source; existing refusals and the one-date/no-range reads unchanged (requirements 32.3) | L1 acceptance: both operations, both ends of the boundary, the huge window, and the placement proof; re-run: contract and catalogue gates; diff gate: no configuration source | **Pending** — `RPT1`-`RPT11`, `RPT13`, `RPT14`; the constant is missing from `store.go:440-453`, and the shape to copy is `dateLayout` at `:34` |
+| `BR-62` — a report window over `OccupancyReport` or `RevenueSummary` is bounded by one declared 730-night span (731 inclusive dates); a wider window is refused with the shared envelope and `VALIDATION_FAILED` naming `dateTo` and one plain sentence, in `parseRange` before the lock and before any per-date walk; an at-cap window returns today's rows, a shorter one is served unchanged, zero-filled dates stay, `DailySheet` and `HousekeepingReport` are untouched, and the cap is one code constant (business rules) | L1 acceptance + evidence: the refusal, the boundary pair, the untouched reads, and the lab record | **Pending** — `RPT1`-`RPT11`, `RPT14`, `RPT-E1`; today's breach is the missing span check at `store.go:440-453` |
+| `FR-RPT-1` — occupancy report (MVP row, unchanged) | L1 acceptance: per-date counts against seeded bookings, plus the cap refusals on the same operation | **Covered by re-run today for the row itself (`RPT12`, `service_test.go:16-29`, `handler_test.go:57-104`, `store_test.go:61-88`) and pending the new refusals (`RPT1`, `RPT3`, `RPT4`, `RPT9`)** — the MVP guard slot in section 1 stands unchanged and may not cite this slice |
+| `FR-RPT-2` — revenue summary (MVP row, unchanged) | L1 acceptance: room/extra totals against seeded folios, plus the cap refusals on the same operation | **Covered by re-run today for the row itself (`service_test.go:44-56`, `store_test.go:88-101`) and pending the new refusals (`RPT2`, `RPT3`, `RPT4`, `RPT9`)** |
+| Existing shape and order refusals stay unchanged | Behaviour check: missing, malformed, and reversed windows keep their code, status, field, and sentence; a reversed window never answers the span sentence | **Covered by re-run today** — `RPT8` and `RPT7`'s order half; pins `service_test.go:31-42`, `handler_test.go:106-123`, `messages_test.go:20-51` — an assertion rewrite fails the row |
+| `DailySheet` and `HousekeepingReport` untouched | Behaviour check: the one-date and no-range reads answer exactly as before and never call `parseRange` | **Covered by re-run today** — `RPT12`; `store.go:542-545`, `:618`, `service_test.go:44-66`, `handler_test.go:129-180`, `perf_test.go:264-290`; a cap branch in either read fails the row |
+| Rates bound consistency | Real delta: no Rates code or bound change; a test-only guard proves 730 accepted and 731 refused naming `departureDate` with `rates.validation.quote_range`, the same number Reporting adopts | **Pending** — `RPT11`; today's bound is `services/rates/internal/store/store.go:254-255` and `postgres.go:258-259`, with no boundary test (`messages_test.go:37` only samples the sentence) |
+| Contract and LC | Real delta: no contract file changes, no code token or operation added, the envelope keeps its four fields, and both check scripts stay green | **Covered by re-run today** — `RPT13`; the files are `contracts/http/OccupancyReport.json`, `RevenueSummary.json`, `contracts/errors/envelope.json`, `script/contract-check.sh`, `script/openapi-route-check.sh`; a schema, operation, or envelope-field change here is a re-tier finding (LLD 31.5, 31.7) |
+| No-configuration gate | Real delta: the cap is one code constant, carried by no environment variable, `deploy/` file, compose file, `docs/devops/`, `docs/operations/`, or per-hotel setting; no write path or stored state changes | **Pending diff gate** — `RPT14`; the fixed side is recorded in `docs/requirements/business-rules.md` section 9 (BR-62) |
+| MVP no-change statement | No new MVP row, story, or FR; no `FR-*` wording moves; `NFR-RPT-1` is the only requirement addition | **Pending gate** — the 57-row MVP coverage count stands unchanged and no MVP row cites this slice as its guard (requirements 32.2) |
+| Evidence cross-reference (`RPT-E1`) | The finding is reproduced, the before/after pair is recorded, and the slice is in the test report | **Pending** — `docs/testing/evidence/641/README.md` and the `test-report.md` row are created by the implementation PR |
+
+Slice coverage (Refs #641): 14 rows mapped to `AC-RPT-5`..`AC-RPT-7`,
+`NFR-RPT-1`, `BR-62`, the existing FR-RPT-1/FR-RPT-2 regression rows,
+the untouched-read row, the Rates consistency row, the contract/LC gate,
+the configuration gate, the MVP no-change gate, and `RPT-E1`. Four rows
+are covered by re-run today (the existing shape/order refusals, the
+one-date and no-range reads, the contract/LC gate, and the in-cap
+answers named inside `AC-RPT-6` — their pins exist and pass and must
+keep passing untouched), and the rest are **pending** the implementation
+PR — the rows whose guards are the registry `RPT1`-`RPT14`, the `BR-62`
+evidence row, the MVP no-change gate, and `RPT-E1`. The slice is **not
+complete** at this spec head; it completes when the implementation PR
+merges with `RPT1`-`RPT14` green, the pins refreshed where the
+implementation moved a line, `RPT-E1` recorded, and `qa-lead` re-pins
+the rows at the merged head. The MVP Coverage line below stands
+unchanged at 57/57.
+
+## 25. Guest identity ambiguity and payload bounds slice (Refs #640)
+
+Traceability for the #640 guest-identity hardening (audit findings G1,
+G2, G3): the in-memory `findGuest` returned the first record whose
+`fullName` matched and the Postgres twin asked for `LIMIT 1`, so two
+guests sharing a name handed the desk another guest's profile (PII)
+instead of an ambiguity refusal; `contact`, `preferences`, and `notes`
+were stored exactly as sent with no per-field shape, length, or size
+bound; and `requireDate` tested the shape of a date, not the calendar,
+so `2026-13-45` was accepted where the Go services refuse it. The
+done-conditions are `docs/product/acceptance-criteria.md`
+[section 25](../product/acceptance-criteria.md#25-guest-identity-lookups-refuse-an-ambiguous-name-and-guest-payloads-carry-declared-bounds-refs-640)
+(`AC-GID-1`..`AC-GID-7`), the requirements `FR-GID-1`..`FR-GID-3` are
+`docs/requirements/mvp-requirements.md`
+[section 33](../requirements/mvp-requirements.md#33-guest-identity-lookups-refuse-an-ambiguous-name-and-guest-payloads-carry-declared-bounds-refs-640),
+the business rule is `BR-63` in `docs/requirements/business-rules.md`
+[the business rules](../requirements/business-rules.md), the ambiguity
+branch, the four bound constants, the calendar round-trip, the refusal
+shape, and the per-flow diagrams are LLD
+[section 32](../architecture/lld.md#32-guest-identity-lookups-refuse-an-ambiguous-name-and-guest-payloads-carry-declared-bounds-refs-640),
+and the guard registry `GID1`-`GID14` plus the evidence rule `GID-E1`
+are
+`guest-identity-test-traceability.md`
+[the testing spec](guest-identity-test-traceability.md).
+
+Status is `pending` where the guard does not exist at this spec head:
+the implementation PR creates it, and `qa-lead` re-pins the row with
+`file:line` at the merged head. Rows marked covered by re-run rest on
+pins that exist and pass today and must keep passing untouched. The
+slice adds no MVP capability, so the 57-row MVP count stands unchanged.
+
+| Item | Required guard type | Guard |
+|---|---|---|
+| `AC-GID-1` — two guests with one `fullName`, `IdentifyGuest` by that name answers exactly one HTTP 400 shared envelope (`VALIDATION_FAILED`, `details` naming `fullName` with the searched name and the match count, the `guests.validation.ambiguous_name` sentence, a `traceId`), no profile, `contact`, `preferences`, `notes`, or `stayLinks` come back, and both stores refuse identically (traces to `FR-GID-1`, `FR-GST-1`, `FR-GST-3`, `AC-GST-1`) | L1 acceptance: the two-guest refusal at HTTP and store level in both stores, with the four-key envelope and the no-profile assertion | **Pending** — `GID1`, `GID2`, `GID3`, `GID10`; today's opposite is `services/guests/src/store.ts:316-322` (first match returned) and `services/guests/src/pgstore.ts:183-187` (`LIMIT 1`) |
+| `AC-GID-2` — a unique name returns the profile and its stay links exactly as today, an unknown name stays `NOT_FOUND` with today's sentence, and every `guestId` read answers as today including for two guests sharing a name | L1 acceptance: the unique-name regression (unedited), the unknown-name sentence, and the per-id reads of two same-named guests | **Covered by re-run today for the unique-name and per-id halves (`services/guests/src/server.test.ts:86-118`, `:166-206`) and pending for the explicit unknown-name and two-same-named-guests cases (`GID4`, `GID5`)** |
+| `AC-GID-3` — a present `contact`/`preferences` that is an array, string, number, or boolean, or holds more than 16 fields, an empty or over-64-character key, a nested object, an array entry, a `null` entry, a 257-character string entry, or a non-finite number is refused with HTTP 400 `VALIDATION_FAILED` naming the field and the shape sentence, writing no record, stay link, or outbox event (traces to `FR-GID-2`, `FR-GST-1`, `FR-GST-2`, `AC-GST-2`) | L1 acceptance: one case per refused shape, the at-bound acceptance, and the nothing-written assertion | **Pending** — `GID6`, `GID7`; today's opposite is the silent coercion at `services/guests/src/store.ts:166-168`, `:231-232` and `services/guests/src/pgstore.ts:70-71` |
+| `AC-GID-4` — a present `notes` that is not a string or is longer than 2 000 characters is refused with HTTP 400 `VALIDATION_FAILED` naming `notes` and the length sentence, writing nothing; 2 000 characters is stored as sent and an absent `notes` keeps today's behaviour (traces to `FR-GID-2`, `FR-GST-2`, `AC-GST-2`) | L1 acceptance: the 2 000/2 001 boundary pair, the non-string refusal (number and explicit `null`), and the unchanged stored note | **Pending** — `GID8`; today's opposite is `services/guests/src/store.ts:233` and `services/guests/src/pgstore.ts:72`, `:79` |
+| `AC-GID-5` — `AttachReservation` with a calendar-invalid `dates.checkIn`/`dates.checkOut` such as `2026-13-45` or `2026-02-31` is refused naming that field with the existing `guests.validation.date_format` sentence, no confirmation is stored, `2024-02-29` is accepted, and no other operation's date handling changes (traces to `FR-GID-3`, `FR-GST-4`, `AC-GST-4`) | L1 acceptance: the three invalid dates per field, the leap-day acceptance, the shape-only refusal re-run, and the still-`NOT_FOUND` read after a refusal | **Pending** — `GID9`; today's opposite is the regex-only `requireDate` at `services/guests/src/store.ts:170-175` |
+| `AC-GID-6` — an ambiguity refusal on the Book screen's guest find reads as `desk.book.guest_ambiguous` in both locales, resolves no guest, keeps the name and the Find/Register controls, and never reads as the not-found or request-failed sentence, with layout, tokens, route, and print rules unchanged and the catalogue gate green (traces to `FR-GID-1`, `FR-DSP-3`, `NFR-I18N-1`, `AC-DSK-1`, `AC-DSK-2`) | L1 acceptance: the EN and VI ambiguity states, the no-profile and controls-stay assertions, the two unchanged sentences, and the catalogue gate | **Covered by re-run today for the found, not-found, and blank-name states (`app/src/views/BookView.test.ts:331-394`, `app/src/views/desk-edge-guards.test.ts:639-654`) and pending the ambiguity state and its VI copy (`GID11`, `GID10`)** |
+| `AC-GID-7` — each bound is a named constant carried by no configuration, both stores refuse the same values, the ambiguity, shape, length, and date guards with their boundary pairs exist beside the regression guards, no migration exists, `contract-check` stays green with no code token added, and no other desk surface changes (traces to `FR-GID-1`..`FR-GID-3`, `NFR-I18N-1`, `NFR-AUD-1`) | L1: the constants and the full guard set; LC: the contract gate; diff gate: no configuration source, no migration, no other desk surface | **Covered by re-run today for the contract gate (`GID13`) and the existing regression set (`GID14`), and pending for the constants and the new guard set (`GID1`-`GID12`)** |
+| `FR-GID-1` — a name that matches more than one guest is refused, never resolved by first match; a unique name, an unknown name, and every `guestId` read answer as before; the Book find says the ambiguity plainly (requirements 33.3) | L1 acceptance: `GID1`-`GID5`, `GID11`, plus the catalogue sentence | **Pending** — `GID1`, `GID2`, `GID3`, `GID4`, `GID5`, `GID10`, `GID11`; today's breach is `store.ts:316-322` and `pgstore.ts:183-187` |
+| `FR-GID-2` — `contact`/`preferences` carry one declared shape and `notes` one declared length, refused naming the field with nothing written, at-bound values stored as sent, absent and explicit-`null` object fields as today, and stored longer notes or other shapes still read as stored (requirements 33.3) | L1 acceptance: `GID6`-`GID8`, `GID12`, plus the two catalogue sentences | **Pending** — `GID6`, `GID7`, `GID8`, `GID10`, `GID12`; today's breach is `asObject` at `store.ts:166-168` and the unbounded fields at `:231-233` |
+| `FR-GID-3` — the confirmation snapshot's two dates must exist on the calendar, refused naming the field with the existing sentence and no stored confirmation, the leap day accepted, shape-only refusals and the date order unchanged (requirements 33.3) | L1 acceptance: `GID9` plus the existing confirmation cases re-run | **Pending** — `GID9`; today's breach is `store.ts:170-175` |
+| `BR-63` — a guest identity lookup answers only when the name is unambiguous, the guest write bounds what it stores, and the confirmation dates must exist; the refusals name the field, the bounds are code constants, reads are never re-validated, and the Book find says the ambiguity plainly (business rules section 7) | L1 acceptance + evidence: every refusal, both boundary pairs, the unchanged reads, the desk state, and the lab record | **Pending** — `GID1`-`GID14`, `GID-E1` |
+| `NFR-I18N-1` (unchanged) — the three new service sentences and the one desk sentence resolve through the catalogue in both locales with matching placeholders and no technical code or status in the wording | L1 catalogue: `GID10`, `GID11`; gate: `script/catalogue-coverage-check.sh` | **Covered by re-run today for the existing guests and Book sentences (`messages.test.ts:16-38`, `messages/en.json:400-403`) and pending the four new sentences** |
+| `NFR-AUD-1` (unchanged) — a refused upsert or attach records nothing and emits no event; a committed write keeps its acting staff member | L1: `GID3`, `GID6`, `GID8` (nothing written, no `guest-upserted` entry) and `GID14`'s existing write cases | **Covered by re-run today for the committed-write half (`server.test.ts:420-435`) and pending the refusal half (`GID3`, `GID6`, `GID8`)** |
+| Existing guests and Book suites stay unchanged | Behaviour check: the unique-name, not-found, full-profile, stay-link, confirmation, body-bound, and internal-error cases and the Book found/not-found/register/blank-name cases keep their assertions byte-identical; a rewritten assertion fails the row | **Covered by re-run today** — `GID14`; pins `services/guests/src/server.test.ts:60-476`, `bodyBound.test.ts:102-153`, `errors.test.ts`, `app/src/views/BookView.test.ts:331-394`, `app/src/views/desk-edge-guards.test.ts:639-654` |
+| Contract and LC | Real delta: no contract operation, response field, request keyword, token, or fixture changes beyond the `IdentifyGuest` error-prose clause; the envelope keeps its four fields; both contract gates and the catalogue gate stay green | **Covered by re-run today** — `GID13`; the files are `contracts/http/IdentifyGuest.json`, `UpsertGuest.json`, `contracts/errors/envelope.json`, `services/guests/contract-tests/*`, `script/contract-check.sh`, `script/openapi-route-check.sh`, `script/catalogue-coverage-check.sh`; a shape or token change here is a re-tier finding (LLD 32.6) |
+| No-configuration and no-migration gate | Real delta: the four bounds are code constants, carried by no environment variable, `deploy/` file, compose file, `docs/devops/`, `docs/operations/`, or per-hotel setting; no migration file is added and no stored row is rewritten | **Pending diff gate** — `GID12`, `GID14`; the fixed side is recorded in `docs/requirements/business-rules.md` section 9 (BR-63) and LLD 32.3 |
+| MVP no-change statement | No new MVP row, story, or FR; no `FR-*` wording moves; `FR-GID-1`..`FR-GID-3` are requirement additions outside the counted set and no NFR is added (requirements 33.4) | **Pending gate** — the 57-row MVP coverage count stands unchanged and no MVP row cites this slice as its guard |
+| Evidence cross-reference (`GID-E1`) | The finding is reproduced, the before/after pair is recorded, and the slice is in the test report | **Pending** — `docs/testing/evidence/640/README.md` and the `test-report.md` row are created by the implementation PR |
+
+Slice coverage (Refs #640): 18 rows mapped to `AC-GID-1`..`AC-GID-7`,
+`FR-GID-1`..`FR-GID-3`, `BR-63`, the two unchanged NFR rows, the
+existing-suite row, the contract/LC row, the configuration/migration
+gate, the MVP no-change gate, and `GID-E1`. Seven rows carry re-run
+evidence today (the existing guests and Book suites, the contract/LC
+gate, the two unchanged NFR rows, and the re-run halves named inside
+`AC-GID-2`, `AC-GID-6`, and `AC-GID-7` — their pins exist and pass and
+must keep passing untouched), and the rest are
+**pending** the implementation PR — the rows whose guards are the
+registry `GID1`-`GID12`, the `BR-63` evidence row, the MVP no-change
+gate, and `GID-E1`. The slice is **not complete** at this spec head; it
+completes when the implementation PR merges with `GID1`-`GID14` green,
+the pins refreshed where the implementation moved a line, `GID-E1`
+recorded, and `qa-lead` re-pins the rows at the merged head. The MVP
+Coverage line below stands unchanged at 57/57.
+
+## 26. Admin authenticate-before-parse and config-shape slice (Refs #639)
+
+Traceability for the #639 Admin hardening (audit findings A2, A3, A5):
+`handleRequest` read and parsed every request body before it checked the
+session, so an unauthenticated caller got the parse error — and the parse
+work — ahead of the auth answer, and `UpdateHotelConfig` shape-checked
+only `name`, so a malformed `requiredGuestFields` write silently replaced
+the mandatory-field list the Guests gate is specified to read. The
+done-conditions are `docs/product/acceptance-criteria.md`
+[section 26](../product/acceptance-criteria.md#26-admin-authenticates-before-parsing-and-refuses-a-malformed-config-write-refs-639)
+(`AC-CFG-1`..`AC-CFG-5`), the requirements `FR-CFG-1`..`FR-CFG-3` are
+`docs/requirements/mvp-requirements.md`
+[section 34](../requirements/mvp-requirements.md#34-admin-authenticates-before-parsing-and-refuses-a-malformed-config-write-refs-639),
+the business rule is `BR-64` with its per-key table in
+`docs/requirements/business-rules.md`
+[the business rules](../requirements/business-rules.md#config-write-shapes-br-64),
+the request order, the module-local bearer helper, the per-key table, the
+four per-flow diagrams, the contract decision, and the verification plan
+are LLD [section 33](../architecture/lld.md#33-admin-authenticates-before-parsing-and-refuses-a-malformed-config-write-refs-639),
+and the guard registry `CFG1`-`CFG24` plus the evidence rule `CFG-E1`
+are `admin-auth-config-test-traceability.md`
+[the testing spec](admin-auth-config-test-traceability.md).
+
+Status is `pending` where the guard does not exist at this spec head:
+the implementation PR creates it, and `qa-lead` re-pins the row with
+`file:line` at the merged head. Rows marked covered by re-run rest on
+pins that exist and pass today and must keep passing untouched. The
+slice adds no MVP capability, so the 57-row MVP count stands unchanged.
+
+| Item | Required guard type | Guard |
+|---|---|---|
+| `AC-CFG-1` — no `Authorization` header, or an invalid, expired, or revoked session, with a malformed body (invalid JSON, a non-object, or above 65 536 bytes) on `UpdateHotelConfig` answers exactly one HTTP 401 `UNAUTHENTICATED` with the matching existing `error.auth.*` sentence, `details` as today, and a `traceId`; no `VALIDATION_FAILED` and none of the `bad_json` / `body_not_object` / `body_too_large` sentences, and no config change (traces to `FR-ADM-1`, `FR-DSP-3`, `NFR-SEC-2`, `AC-BND-1`) | L1 acceptance: one malformed case per shape at HTTP level, the invalid-token variant, and the no-store-call evidence | **Pending** — `CFG1`-`CFG4`; today's opposite is the body read at `services/admin/src/server.ts:144` firing before the token check at `:151-155` |
+| `AC-CFG-2` — a well-formed body with no session answers today's 401; a valid session with a malformed body answers today's 400 with the existing transport sentence; `SignIn` keeps today's order in both directions; a front-desk caller with a well-formed body answers 403, so the observed order is 401 before 400 and 400 before 403 (traces to `FR-ADM-1`, `FR-ADM-2`, `NFR-SEC-2`, `AC-BND-1`, `AC-BND-2`) | L1 acceptance: the five ordering pairs, the `SignIn` pair, and the unchanged well-formed 401 | **Covered by re-run today for the well-formed no-token 401 (`services/admin/src/server.test.ts:105-111`), the `SignIn` lockout (`:84-103`), the authenticated blank-name 400 (`:169-177`), and the front-desk 403 (`:179-187`, `:262-270`); pending the explicit ordering pairs (`CFG6`) and the authenticated malformed-body regression (`CFG5`)** |
+| `AC-CFG-3` — an authenticated `UpdateHotelConfig` whose value breaks its key's rule (a blank `timezone`, a non-`HH:MM` standard time, a wrong-shape or empty or duplicate `requiredGuestFields`, a wrong-shape `cancellationReasons`, a fractional or negative `retentionFloorDays`, non-text profile text) is refused with exactly one HTTP 400 `VALIDATION_FAILED`, `details` naming that key, the key's plain sentence, and a `traceId`; nothing is written, no `config.updated` entry appears, and a valid key sent in the same request is not stored (traces to `FR-ADM-1`, `FR-ADM-4`, `FR-CUS-1`, `FR-CUS-2`, `FR-RES-3`, `AC-ADM-1`, `AC-ADM-4`, `AC-CUS-1`, `AC-CUS-2`) | L1 acceptance: one refusal per rule with the envelope and sentence assertions, the A3 case first, and the whole-write proof | **Pending** — `CFG7`-`CFG14`; today's opposite is the name-only check at `services/admin/src/store.ts:483-487` followed by the unconditional write at `:488-492` |
+| `AC-CFG-4` — an authenticated `UpdateHotelConfig` whose present values all satisfy the table behaves exactly as today: values stored verbatim, `GetHotelConfig` reads them back unchanged, `config.updated` entries carry the caller's `updatedBy` and time, both stores agree, and an outside-table key and an absent key keep today's behaviour (traces to `FR-ADM-1`, `FR-ADM-4`, `NFR-AUD-1`, `AC-ADM-1`, `AC-ADM-4`) | L1 acceptance: the accepted boundary set, the audit entries, the outside-table keys, and store parity | **Covered by re-run today for the existing in-table answers (`server.test.ts:147-167`, `:206-247`, `services/admin/src/pgstore.test.ts:31-56`) and pending the explicit boundary set, the audit assertion, the outside-table keys, and parity (`CFG16`-`CFG18`)** |
+| `AC-CFG-5` — `server.test.ts` carries the guards `AC-CFG-1`..`AC-CFG-3` name, including the `requiredGuestFields` refusal and the accepted boundaries; no contract token, status mapping, or schema file is edited; the five new sentences exist in both locales and the mirror with matching placeholders and the catalogue gate is green; no desk screen, control, route, label, state, or print rule changes; the existing identity, audit, body-ceiling, and internal-error suites stay green (traces to `FR-ADM-1`, `FR-DSP-3`, `NFR-I18N-1`, `NFR-SEC-2`, `NFR-AUD-1`; evidence condition) | L1 + evidence: the full guard set, the catalogue gate, the contract gates, the untouched suites, and the record | **Pending** — `CFG1`-`CFG20`, `CFG-E1`; the re-run halves are `CFG21`-`CFG23` |
+| `FR-CFG-1` — a session-guarded Admin operation checks the session before it reads the body; unauthorized malformed and oversized bodies answer 401, a resolved session keeps today's 400, the front-desk 403 follows a well-formed body, `SignIn` keeps today's order, and route matching reads no body (requirements 34.3) | L1 acceptance: `CFG1`-`CFG6`, plus the unchanged route and transport cases | **Pending** — `CFG1`-`CFG6`; today's breach is `server.ts:144` |
+| `FR-CFG-2` — a present value that breaks its key's table shape refuses the whole write naming the key with `VALIDATION_FAILED`, nothing written and no `config.updated` entry, the existing `values`/`updatedBy` refusals first, and an outside-table key written as sent (requirements 34.3) | L1 acceptance: `CFG7`-`CFG15`, `CFG17`, plus the sentence table | **Pending** — `CFG7`-`CFG15`, `CFG17`; today's breach is `store.ts:471-494` |
+| `FR-CFG-3` — a write that satisfies the table is stored, read back, and audited exactly as today in both stores, boundaries included, the shared bearer helper changes no answer, and an absent key is untouched (requirements 34.3) | L1 acceptance: `CFG16`, `CFG18`, `CFG20`, plus the unedited round-trip cases | **Covered by re-run today for the existing round trips (`server.test.ts:191-272`, `pgstore.test.ts:31-56`) and pending the boundary, parity, and helper-parity cases (`CFG16`, `CFG18`, `CFG20`)** |
+| `BR-64` — a session-guarded Admin request is answered only after the session is checked, one config write is checked against one per-key table before the first write, a refusal names the key with nothing written, both stores agree, and the ordering, shapes, and sentences are code rules, never configuration (business rules) | L1 acceptance + evidence: every refusal, the whole-write proof, the boundary set, the diff gate, and the lab record | **Pending** — `CFG1`-`CFG20`, `CFG24`, `CFG-E1` |
+| `NFR-SEC-2` (unchanged) — a missing, invalid, expired, revoked, signed-out, or orphan session is refused 401 with its existing sentence before any parse work, the 5-strike lockout stands, and the 15-minute idle expiry is unchanged | L1: `CFG1`-`CFG4`, `CFG6`; re-run: the lockout and sign-out cases | **Covered by re-run today for the lockout and the well-formed 401 (`server.test.ts:84-103`, `:105-111`, `:490-527`) and pending the malformed-body ordering (`CFG1`-`CFG4`)** |
+| `NFR-BND-1`..`NFR-BND-3` (unchanged) — the 65 536-byte ceiling, the parse and ceiling sentences, the four finite server bounds, and `MAX_BODY_BYTES` are unchanged; the ceiling applies to every request that reaches the body read, and `SignIn` keeps it exactly as today | L1: `CFG3` (the 401 outranks the ceiling), `CFG21`'s ceiling pair and bounds | **Covered by re-run today for `SignIn`'s ceiling pair, the declared-length refusal, the constant, and the bounds (`services/admin/src/bodyBound.test.ts:106-158`) and pending the unauthenticated-over-limit case (`CFG3`)** |
+| `NFR-AUD-1` (unchanged) — a refused config write records nothing and leaves no `config.updated` entry; a committed write keeps the acting `updatedBy` and its time | L1: `CFG14` (nothing written, no entry) and `CFG16`'s audit assertion | **Covered by re-run today for the committed-write half (`server.test.ts:653-695`) and pending the refusal half (`CFG14`)** |
+| `NFR-I18N-1` (unchanged) — the five new Admin sentences resolve through the catalogue in both locales with matching placeholders, no sentence renders a code, status, or stack trace, and the catalogue gate is green | L1 catalogue: `CFG19`, `CFG13`; gate: `script/catalogue-coverage-check.sh` | **Covered by re-run today for the existing sentences (`services/admin/src/messages.test.ts:16-53`) and pending the five new keys** |
+| `FR-ADM-1` / `FR-ADM-4` (MVP rows, unchanged) — the hotel profile and policy values still save, read back, and reach the desk exactly as today, now through the shape table | L1 acceptance: the accepted boundary and outside-table cases on the same operation | **Covered by re-run today for the row itself (`server.test.ts:113-189`, `:191-272`) and pending the new refusals (`CFG7`-`CFG17`)** — the MVP guard slots in section 1 stand unchanged and may not cite this slice |
+| `FR-CUS-1` / `FR-CUS-2` (MVP rows, unchanged) — the required-guest-field list and the stay times and wording still save and read back verbatim, so the Guests mandatory-field gate keeps reading a conforming value | L1 acceptance: the `requiredGuestFields` refusal set and the boundary acceptance on the same operation | **Covered by re-run today for the row itself (`server.test.ts:191-272`) and pending the `requiredGuestFields` guards (`CFG9`, `CFG10`, `CFG16`)** — the MVP guard slots in section 1 stand unchanged and may not cite this slice |
+| Desk flows and client stay green | Behaviour check: a 401 still routes to sign-in, the onboarding step still maps `FORBIDDEN` and otherwise the plain sentence, and the admin console reads config and audit as before | **Covered by re-run** — `CFG22`; `app/src/api/client.test.ts:55-81`, `app/src/views/AdminView.test.ts:229-465`, `app/src/views/OnboardingView.test.ts`; a screen, route, label, or print-rule edit fails the row |
+| Contract and LC | Real delta: no contract token, status mapping, enum entry, operation, request/response field, or fixture changes beyond the `UpdateHotelConfig` error-list prose, the envelope keeps its four fields, and both check scripts stay green | **Covered by re-run today** — `CFG23`; the files are `contracts/http/UpdateHotelConfig.json`, `contracts/errors/envelope.json`, `services/admin/contract-tests/*`, `services/admin/src/errors.ts`, `script/contract-check.sh`, `script/openapi-route-check.sh`; a token, enum, mapping, or schema change here is a re-tier finding (LLD 33.5, 33.8) |
+| No-configuration and no-migration gate | Real delta: the ordering, the per-key table, and the five sentences are code rules and constants, carried by no environment variable, `deploy/` file, compose file, `docs/devops/`, `docs/operations/`, or per-hotel setting; no migration file is added and no stored row is rewritten; the Bearer parse exists once, module-locally | **Pending diff gate** — `CFG24`; the fixed side is recorded in `docs/requirements/business-rules.md` section 9 (BR-64) and LLD 33.2/33.3 |
+| MVP no-change statement | No new MVP row, story, or FR; no `FR-*` wording moves; `FR-CFG-1`..`FR-CFG-3` are requirement additions outside the counted set and no NFR is added (requirements 34.4) | **Pending gate** — the 57-row MVP coverage count stands unchanged and no MVP row cites this slice as its guard |
+| Evidence cross-reference (`CFG-E1`) | The finding is reproduced, the before/after pair is recorded, and the slice is in the test report | **Pending** — `docs/testing/evidence/639/README.md` and the `test-report.md` row are created by the implementation PR |
+
+Slice coverage (Refs #639): 20 rows mapped to `AC-CFG-1`..`AC-CFG-5`,
+`FR-CFG-1`..`FR-CFG-3`, `BR-64`, the four unchanged NFR rows, the two
+unchanged MVP row pairs, the desk-green row, the contract/LC gate, the
+configuration/migration gate, the MVP no-change gate, and `CFG-E1`. The
+four unchanged NFR rows, the two MVP row pairs, the desk-green row, and
+the contract/LC gate are covered by re-run today (their pins exist and
+pass and must keep passing untouched), plus the re-run halves named
+inside `AC-CFG-2`, `AC-CFG-4`, and `FR-CFG-3`; the rest are **pending**
+the implementation PR — the rows whose guards are the registry
+`CFG1`-`CFG20`, the `BR-64` evidence row, the MVP no-change gate, and
+`CFG-E1`. The slice is **not complete** at this spec head; it completes
+when the implementation PR merges with `CFG1`-`CFG24` green, the pins
+refreshed where the implementation moved a line, `CFG-E1` recorded, and
+`qa-lead` re-pins the rows at the merged head. The MVP Coverage line
+below stands unchanged at 57/57.
+
+## 27. Audit actor provenance slice (Refs #643)
+
+Traceability for the #643 session-derived audit actor change (audit
+finding C6): every audited write in Stay, Guests, Rooms, Reservations,
+and Billing recorded an `actor` string the request supplied, and Admin's
+config write recorded the body `updatedBy`, so each outbox event, change
+row, and state-history row attributed the change to a name the caller
+chose — the attribution `NFR-AUD-1` promises was decided by the caller.
+The done-conditions are `docs/product/acceptance-criteria.md`
+[section 27](../product/acceptance-criteria.md#27-the-audit-actor-comes-from-the-session-never-from-the-request-refs-643)
+(`AC-SEC-1`..`AC-SEC-5`), the requirements `FR-SEC-1`..`FR-SEC-4` are
+`docs/requirements/mvp-requirements.md`
+[section 35](../requirements/mvp-requirements.md#35-the-audit-actor-comes-from-the-session-never-from-the-request-refs-643),
+the business rule is `BR-65` in `docs/requirements/business-rules.md`
+[the business rules](../requirements/business-rules.md#8-roles-audit-and-data-protection),
+the per-service actor-resolution seam, the three per-flow diagrams, the
+contract decision, and the verification plan are LLD
+[section 34](../architecture/lld.md#34-the-audit-actor-comes-from-the-session-never-from-the-request-refs-643),
+and the guard registry `SEC1`-`SEC36` plus the evidence rule `SEC-E1`
+are `audit-actor-test-traceability.md`
+[the testing spec](audit-actor-test-traceability.md).
+
+Status is `pending` where the guard does not exist at this spec head:
+the implementation PR creates it, and `qa-lead` re-pins the row with
+`file:line` at the merged head. Rows marked covered by re-run rest on
+pins that exist and pass today and must keep passing untouched — except
+the two Go assertions that re-pin to the session token by design
+(`services/reservations/internal/store/store_test.go:214`, `:491`). The
+slice adds no MVP capability, so the 57-row MVP count stands unchanged.
+
+| Item | Required guard type | Guard |
+|---|---|---|
+| `AC-SEC-1` — a write through Stay (4), Guests (1), Rooms (7), Reservations (6), or Billing (9) records the session token as the actor on every outbox event, change row, and state-history row, not the request's `actor`; the Stay close and its forwarded completion record the same token; an operation with no audit row is unchanged (traces to `FR-SEC-1`, `NFR-AUD-1`, `NFR-SEC-2`) | L1 acceptance + L2 audit: one spoofed-actor case per write operation per stack, asserting the exact session value | **Pending** — `SEC1`-`SEC28`, `SEC33`; today's opposite is the body read at `services/stay/src/store.ts:216`, `:294`, `:335`, `:383`, `services/guests/src/store.ts:319`, `services/rooms/src/store.ts:219`-`:477`, `services/reservations/internal/handler/handler.go:176`-`:342`, `services/billing/src/main/java/com/hotel/billing/web/BillingController.java:39-42` |
+| `AC-SEC-2` — a write sending an `actor` naming another person answers and stores exactly the honest write, records the session as the actor, never the supplied value, and shows it only as `requestActor` in a JSON payload; an equal or absent value adds no key; a column-only write drops it; an existing body-value refusal keeps its code, field, and sentence; no refusal is added for the disagreement (traces to `NFR-AUD-1`, `NFR-SEC-2`, `AC-SEC-1`) | L1 acceptance: the annotation key-set matrix, the honest-value response equality, and the no-extra-refusal assertion | **Pending** — `SEC29`-`SEC31` |
+| `AC-SEC-3` — an authenticated `UpdateHotelConfig` by an owner or manager records the caller's `signinIdentity` on the stored rows and the `config.updated` audit entry, never the body's `updatedBy`, while the field stays required with its existing refusal and every table-valid value is stored, read back, and timed as today; the recorded-actor half of `AC-CFG-4` is superseded (traces to `FR-ADM-1`, `FR-ADM-4`, `NFR-AUD-1`, `NFR-SEC-2`, `AC-CFG-4`) | L1 acceptance: the spoofed-`updatedBy` owner and manager saves, both stores, and the audit assertion | **Pending** — `SEC28`; covered by re-run for the honest round trip (`services/admin/src/server.test.ts:242-318`, `services/admin/src/pgstore.test.ts:33-58`) |
+| `AC-SEC-4` — with no `Authorization` header any write answers today's HTTP 401 `UNAUTHENTICATED` and nothing is written; the Stay close and its forwarded completion record the same desk token and the forwarded `actor` never overrides it; the Admin boot seed keeps `boot` (traces to `FR-DEP-1`, `FR-DEP-5`, `FR-ADM-1`, `NFR-AUD-1`, `NFR-SEC-2`) | L1 acceptance: the six per-service no-session cases with a stored-value read, the forwarded agreement pair, and the boot-seed case | **Covered by re-run today for Rooms (`services/rooms/src/server.test.ts:60-68`), Reservations (`services/reservations/internal/handler/handler_test.go:351-359`), Billing (`BillingControllerTest.java:94-95`), and Admin (`services/admin/src/server.test.ts:234-240`); pending the Stay and Guests no-session guards (`SEC32`), the forwarded agreement (`SEC33`), and the boot seed (`SEC34`)** |
+| `AC-SEC-5` — outbox payloads and rows keep their keys and columns with `requestActor` the only addition; every write contract is unchanged; no error code, catalogue key, desk surface, route, schema, table, migration, or backfill is added; token verification, HMAC, expiry, revocation, and role checks are unchanged; the tree carries one spoofed-actor guard per write per stack with the existing suites green (traces to `NFR-AUD-1`, `NFR-SEC-2`; evidence condition) | L1 + evidence: the shape/key-set gate, the contract and catalogue gates, the untouched suites, and the record | **Pending** — `SEC1`-`SEC30`, `SEC35`, `SEC36`, `SEC-E1`; the re-run halves are the existing suites in the testing spec's section 2 |
+| `FR-SEC-1` — every audited write records the session read from the `Authorization` header the server already authenticates with, never from the body; the forwarded completion records the same token; an operation with no audit row is unchanged (requirements 35.3) | L1 acceptance: `SEC1`-`SEC28`, `SEC33` | **Pending** — `SEC1`-`SEC28`, `SEC33` |
+| `FR-SEC-2` — a disagreeing request actor is demoted, never refused and never authoritative: the response and effect match the honest write, the value appears only as `requestActor`, an equal/absent/blank value adds no key, a column-only write drops it, and an existing refusal keeps its code, field, and sentence with nothing written (requirements 35.3) | L1 acceptance: `SEC29`-`SEC31` | **Pending** — `SEC29`-`SEC31` |
+| `FR-SEC-3` — the Admin config write records the resolved caller, never the body's `updatedBy`, with the field still required, the front-desk 403 standing, and the boot seed keeping `boot` (requirements 35.3) | L1 acceptance: `SEC28`, `SEC34`; re-run: the front-desk 403 and the `updatedBy` refusal | **Covered by re-run today for the 403 and the shape table (`services/admin/src/server.test.ts:1051-1103`, `:1104-1436`) and pending the spoofed-`updatedBy` and boot-seed cases (`SEC28`, `SEC34`)** |
+| `FR-SEC-4` — no session means no request actor; the session is the only actor source and a forwarded call carries the caller's own session; existing payloads, rows, and contracts keep their keys and columns with `requestActor` the only addition; no error code, catalogue key, desk state, route, schema, migration, or backfill is added and token verification and role checks are unchanged (requirements 35.3) | L1 acceptance + diff gate: `SEC32`, `SEC33`, `SEC35`, `SEC36` | **Pending** — `SEC32` (Stay, Guests), `SEC33`, `SEC35`, `SEC36`; covered by re-run for the four existing no-session guards |
+| `BR-65` — the actor recorded on every audit trail is the authenticated session, never a request value; the request field keeps its shape, refusals, and demotion; no session, the boot seed, and the forwarded call keep their actor source; shapes stay additive; the rule is fixed code, never per-hotel configuration (business rules section 8) | L1 acceptance + evidence: every spoofed-write guard, the annotation matrix, the no-session set, the shape gate, the diff gate, and the record | **Pending** — `SEC1`-`SEC36`, `SEC-E1` |
+| `NFR-AUD-1` (unchanged, now with a decided source) — every creation, change, cancellation, state transition, charge, and payment keeps an unaltered actor and timestamp at 100 %; a refused write records nothing; a committed write records the session and its time | L2 audit sampling: `SEC1`-`SEC28` value assertions plus `SEC29`'s payload key set | **Pending** — `SEC1`-`SEC30`; covered by re-run for the horizon-1 commit half (`services/admin/src/server.test.ts:783-825`) |
+| `NFR-SEC-1` / `NFR-SEC-2` (unchanged) — no role, reach, session, token-validation, lockout, or idle-sign-out rule changes; a missing, invalid, expired, revoked, signed-out, or orphan session is refused 401 with its existing sentence before any write | L1: `SEC31`, `SEC32`; re-run: the lockout, sign-out, and role-refusal cases | **Covered by re-run today for the role and session cases (`services/admin/src/server.test.ts:213-240`, `services/rooms/src/server.test.ts:60-68`, `handler_test.go:351-359`, `BillingControllerTest.java:94-95`) and pending the Stay and Guests no-session guards (`SEC32`)** |
+| Desk payloads and surfaces stay green | Behaviour check: every desk call still sends its `session.displayName` `actor`, no surface renders an actor, and the screens, routes, labels, states, and print rules are unchanged | **Covered by re-run** — `SEC35`; `app/src/views/PrintView.test.ts:78`, `:102`, `:303`, `:339` plus the desk suites; a payload or label edit fails the row |
+| Contract and LC | Real delta: no contract token, status mapping, enum entry, operation, field, required flag, or fixture changes (the two `description` sentences are prose and both corrected in this change set: `CheckOutReservation.json:22` and `UpdateHotelConfig.json:20`), the payload key set changes only by `requestActor`, and both contract gates stay green | **Covered by re-run today** — `SEC35`; `contracts/http/{CheckIn,UpsertGuest,CheckOutReservation,UpdateHotelConfig}.json`, `contracts/errors/envelope.json`, `script/contract-check.sh`, `script/openapi-route-check.sh`; a token, enum, mapping, or schema change is a re-tier finding (LLD 34.5, 34.8) |
+| No-configuration and no-migration gate | Real delta: the provenance rule is a code rule carried by no environment variable, `deploy/` file, compose file, `docs/devops/`, `docs/operations/`, or per-hotel setting; no migration file is added and no stored row is rewritten; every audit column stays `TEXT` | **Pending diff gate** — `SEC36`; the fixed side is `docs/requirements/business-rules.md` section 9 (BR-65) and `docs/technical/schema.md` section 0 |
+| MVP no-change statement | No new MVP row, story, or FR; no `FR-*` wording moves; `FR-SEC-1`..`FR-SEC-4` are requirement additions outside the counted set and no NFR is added (requirements 35.4) | **Pending gate** — the 57-row MVP coverage count stands unchanged and no MVP row cites this slice as its guard |
+| Evidence cross-reference (`SEC-E1`) | The finding is reproduced, the before/after pair is recorded, and the slice is in the test report | **Pending** — `docs/testing/evidence/643/README.md` and the `test-report.md` row are created by the implementation PR |
+
+Slice coverage (Refs #643): 17 rows mapped to `AC-SEC-1`..`AC-SEC-5`,
+`FR-SEC-1`..`FR-SEC-4`, `BR-65`, the two unchanged NFR rows, the
+desk-payload row, the contract/LC gate, the configuration/migration
+gate, the MVP no-change gate, and `SEC-E1`. Three rows are covered by
+re-run today (the unchanged `NFR-SEC-1`/`NFR-SEC-2` row, the
+desk-payload row, and the contract/LC gate), plus the re-run halves
+named inside `AC-SEC-3`, `AC-SEC-4`, and `FR-SEC-3`; `NFR-AUD-1` stays
+pending because its actor-source half is the change itself. The rest are
+**pending** the implementation PR — the rows whose guards are the
+registry `SEC1`-`SEC30`, `SEC33`-`SEC36`, the `BR-65` evidence row, the
+MVP no-change gate, and `SEC-E1`. The slice is **not complete** at this
+spec head; it completes when the implementation PR merges with
+`SEC1`-`SEC36` green, the pins refreshed where the implementation moved
+a line (the two Go assertions re-pin by design), `SEC-E1` recorded, and
+`qa-lead` re-pins the rows at the merged head. The MVP Coverage line
+below stands unchanged at 57/57.
+
 Coverage: 43 FRs mapped, 14 NFRs mapped, 57 rows total, 57 guards
-filled (PR #112 slice: FR-RES-1, FR-RMS-1..4, FR-RTE-1/2/4/5, FR-ADM-1/2, FR-CUS-1, NFR-CON-1/2; PR #149 slice: FR-FDK-1, FR-FDK-5, FR-BIL-1/2/3/6, FR-ADM-5, NFR-BKP-1/2, NFR-AUD-1, NFR-TZ-1, plus FR-RES-1 persistence; PR #150 slice: FR-FDK-2, FR-FDK-3, FR-FDK-4, FR-BIL-7, plus the NFR-CON-2 stay-side checkout guard; PR #151 slice: FR-BIL-4, FR-CUS-3; PR #156 slice: FR-RPT-1..3; PR #157 slice: FR-GST-1..3; PR #158 slice: NFR-DEP-1, FR-ADM-4 config level, plus the FR-ADM-1 deployment extension; PR #159 slice: FR-RES-2/3/5/6 plus the NFR-CON-1 modify-path extension; PR #160 slice: ReleaseBlock plus rooms-side move coordination (FR-RMS-3, FR-FDK-3); PR #161 slice: full rates handling (FR-RTE-3 filled, FR-RTE-4/5 extended — remaining TBD cells fill in later slices); count corrected to the live total 48 (later slices filled cells without updating this line); PR #153 slice: NFR-RET-1, NFR-AVL-1; PR #182 slice: FR-RES-4, FR-ADM-3, FR-CUS-2, NFR-PERF-1/2 filled (5 guards — count corrected to the live total 53); FR-GST-4, FR-BIL-5, FR-RPT-4 point at follow-ups #189, #190, #191 and fill with those issues; NFR-I18N-1 filled by the #192 slice (count corrected to the live total 54); #189/#190/#191/#192/#201 slices filled FR-GST-4, FR-BIL-5, FR-RPT-4, NFR-I18N-1 (plus the #201 extension) — count corrected to the live total 57 (Closes #214)). Section 10 (Refs #588) adds 10 slice rows mapped to the #588 acceptance and `FR-CKO-1`..`FR-CKO-5`; the MVP row count stands unchanged at 57/57 because the slice adds no MVP capability. Section 11 (Refs #590) adds 15 slice rows mapped to `AC-MANAGE-1..11` and `FR-MGMT-1..12`; the MVP row count stands unchanged at 57/57 for the same reason. Section 12 (Refs #600) adds 10 slice rows mapped to `AC-DSK-19` and `FR-CKP-1`..`FR-CKP-5`; the MVP row count stands unchanged at 57/57 for the same reason. Section 13 (Refs #601) adds 11 slice rows mapped to `AC-CKO-1`, `AC-CKO-2`, and `FR-CKS-1`..`FR-CKS-5`; the MVP row count stands unchanged at 57/57 for the same reason. Section 14 (Refs #646) adds 16 slice rows mapped to `AC-DEP-1`..`AC-DEP-5`, `FR-DEP-1`..`FR-DEP-5`, and the lifecycle `D5`/`D6` notes; the MVP row count stands unchanged at 57/57 for the same reason. Section 15 (Refs #647) adds 15 slice rows mapped to `AC-REA-1`..`AC-REA-5`, `FR-REA-1`..`FR-REA-5`, the `AC-REA-1` / `FR-REA-1` disposition (LLD 23.9 R14), and the gate boxes; the MVP row count stands unchanged at 57/57 for the same reason. Section 16 (Refs #648) adds 18 slice rows mapped to `AC-BMV-1`..`AC-BMV-7` and `FR-BMV-1`..`FR-BMV-7`; the MVP row count stands unchanged at 57/57 for the same reason. Section 17 (Refs #632) adds 15 slice rows mapped to `AC-PRC-1`. Section 18 (Refs #631) adds 14 slice rows mapped to `AC-OVB-1`..`AC-OVB-3`, `FR-OVB-1`..`FR-OVB-4`, and `BR-47..49`; the MVP row count stands unchanged at 57/57 for the same reason..`AC-PRC-5`, the desk condition `AC-DSK-20`, `FR-PRC-1`..`FR-PRC-5`, and the gate boxes; the MVP row count stands unchanged at 57/57 for the same reason.
-Section 20 (Refs #634) adds 17 slice rows mapped to `AC-FWV-1`..`AC-FWV-7` and `FR-FWV-1`..`FR-FWV-5`, the `AC-FWV-3` / `AC-FWV-5` disposition, and the gate boxes; the MVP row count stands unchanged at 57/57 for the same reason. Section 21 (Refs #627) adds 13 slice rows mapped to `AC-ERR-1`..`AC-ERR-5`, `FR-ERR-1`..`FR-ERR-3`, and `BR-59`; the MVP row count stands unchanged at 57/57 for the same reason. Section 22 (Refs #630) adds 13 slice rows mapped to `AC-BND-1`..`AC-BND-5`, `NFR-BND-1`..`NFR-BND-3`, and `BR-60`; the MVP row count stands unchanged at 57/57 for the same reason.
+filled (PR #112 slice: FR-RES-1, FR-RMS-1..4, FR-RTE-1/2/4/5, FR-ADM-1/2, FR-CUS-1, NFR-CON-1/2; PR #149 slice: FR-FDK-1, FR-FDK-5, FR-BIL-1/2/3/6, FR-ADM-5, NFR-BKP-1/2, NFR-AUD-1, NFR-TZ-1, plus FR-RES-1 persistence; PR #150 slice: FR-FDK-2, FR-FDK-3, FR-FDK-4, FR-BIL-7, plus the NFR-CON-2 stay-side checkout guard; PR #151 slice: FR-BIL-4, FR-CUS-3; PR #156 slice: FR-RPT-1..3; PR #157 slice: FR-GST-1..3; PR #158 slice: NFR-DEP-1, FR-ADM-4 config level, plus the FR-ADM-1 deployment extension; PR #159 slice: FR-RES-2/3/5/6 plus the NFR-CON-1 modify-path extension; PR #160 slice: ReleaseBlock plus rooms-side move coordination (FR-RMS-3, FR-FDK-3); PR #161 slice: full rates handling (FR-RTE-3 filled, FR-RTE-4/5 extended — remaining TBD cells fill in later slices); count corrected to the live total 48 (later slices filled cells without updating this line); PR #153 slice: NFR-RET-1, NFR-AVL-1; PR #182 slice: FR-RES-4, FR-ADM-3, FR-CUS-2, NFR-PERF-1/2 filled (5 guards — count corrected to the live total 53); FR-GST-4, FR-BIL-5, FR-RPT-4 point at follow-ups #189, #190, #191 and fill with those issues; NFR-I18N-1 filled by the #192 slice (count corrected to the live total 54); #189/#190/#191/#192/#201 slices filled FR-GST-4, FR-BIL-5, FR-RPT-4, NFR-I18N-1 (plus the #201 extension) — count corrected to the live total 57 (Closes #214)). Section 10 (Refs #588) adds 10 slice rows mapped to the #588 acceptance and `FR-CKO-1`..`FR-CKO-5`; the MVP row count stands unchanged at 57/57 because the slice adds no MVP capability. Section 11 (Refs #590) adds 15 slice rows mapped to `AC-MANAGE-1..11` and `FR-MGMT-1..12`; the MVP row count stands unchanged at 57/57 for the same reason. Section 12 (Refs #600) adds 10 slice rows mapped to `AC-DSK-19` and `FR-CKP-1`..`FR-CKP-5`; the MVP row count stands unchanged at 57/57 for the same reason. Section 13 (Refs #601) adds 11 slice rows mapped to `AC-CKO-1`, `AC-CKO-2`, and `FR-CKS-1`..`FR-CKS-5`; the MVP row count stands unchanged at 57/57 for the same reason. Section 14 (Refs #646) adds 16 slice rows mapped to `AC-DEP-1`..`AC-DEP-5`, `FR-DEP-1`..`FR-DEP-5`, and the lifecycle `D5`/`D6` notes; the MVP row count stands unchanged at 57/57 for the same reason. Section 15 (Refs #647) adds 15 slice rows mapped to `AC-REA-1`..`AC-REA-5`, `FR-REA-1`..`FR-REA-5`, the `AC-REA-1` / `FR-REA-1` disposition (LLD 23.9 R14), and the gate boxes; the MVP row count stands unchanged at 57/57 for the same reason. Section 16 (Refs #648) adds 18 slice rows mapped to `AC-BMV-1`..`AC-BMV-7` and `FR-BMV-1`..`FR-BMV-7`; the MVP row count stands unchanged at 57/57 for the same reason. Section 17 (Refs #632) adds 15 slice rows mapped to `AC-PRC-1`..`AC-PRC-5`, the desk condition `AC-DSK-20`, `FR-PRC-1`..`FR-PRC-5`, and the gate boxes; the MVP row count stands unchanged at 57/57 for the same reason. Section 18 (Refs #631) adds 14 slice rows mapped to `AC-OVB-1..3`, `FR-OVB-1..4`, and `BR-47..49`; the MVP row count stands unchanged at 57/57 for the same reason. Section 20 (Refs #634) adds 17 slice rows mapped to `AC-FWV-1`..`AC-FWV-7` and `FR-FWV-1`..`FR-FWV-5`, the `AC-FWV-3` / `AC-FWV-5` disposition, and the gate boxes; the MVP row count stands unchanged at 57/57 for the same reason. Section 21 (Refs #627) adds 13 slice rows mapped to `AC-ERR-1`..`AC-ERR-5`, `FR-ERR-1`..`FR-ERR-3`, and `BR-59`; the MVP row count stands unchanged at 57/57 for the same reason. Section 22 (Refs #630) adds 13 slice rows mapped to `AC-BND-1`..`AC-BND-5`, `NFR-BND-1`..`NFR-BND-3`, and `BR-60`; the MVP row count stands unchanged at 57/57 for the same reason. Section 23 (Refs #635) adds 14 slice rows mapped to `AC-AMT-1`..`AC-AMT-5`, `NFR-AMT-1`..`NFR-AMT-4`, and `BR-61`; the MVP row count stands unchanged at 57/57 for the same reason. Section 24 (Refs #641) adds 14 slice rows mapped to `AC-RPT-5`..`AC-RPT-7`, `NFR-RPT-1`, and `BR-62`; the MVP row count stands unchanged at 57/57 for the same reason. Section 25 (Refs #640) adds 18 slice rows mapped to `AC-GID-1`..`AC-GID-7`, `FR-GID-1`..`FR-GID-3`, and `BR-63`; the MVP row count stands unchanged at 57/57 for the same reason. Section 26 (Refs #639) adds 20 slice rows mapped to `AC-CFG-1`..`AC-CFG-5`, `FR-CFG-1`..`FR-CFG-3`, and `BR-64`; the MVP row count stands unchanged at 57/57 for the same reason. Section 27 (Refs #643) adds 17 slice rows mapped to `AC-SEC-1`..`AC-SEC-5`, `FR-SEC-1`..`FR-SEC-4`, and `BR-65`; the MVP row count stands unchanged at 57/57 for the same reason.
 
 <!-- ao-role: qa-lead -->
 Role: qa-lead · AO session hotel-mgmt-1048
@@ -1223,3 +1541,14 @@ Role: qa-lead · AO session hotel-mgmt-992
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1057
+
+Role: qa-lead · AO session hotel-mgmt-922
+
+<!-- ao-role: qa-lead -->
+Role: qa-lead · AO session hotel-mgmt-1118
+
+<!-- ao-role: qa-lead -->
+Role: qa-lead · AO session hotel-mgmt-1131
+
+<!-- ao-role: qa-lead -->
+Role: qa-lead · AO session hotel-mgmt-1165

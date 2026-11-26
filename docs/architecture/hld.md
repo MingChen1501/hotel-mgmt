@@ -777,3 +777,302 @@ loose; rollback is the single implementation PR.
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1078
+
+## 22. Money amounts are whole, bounded, and refused in the adapter (Refs #635)
+
+A money field that accepts any JSON number is not a money field. Billing's
+adapter took any `Number` and truncated it with `longValue()`
+(`services/billing/src/main/java/com/hotel/billing/web/BillingController.java:47-53`),
+so `amountMinor: 12.99` posted 12 with no refusal and a magnitude beyond
+anything the product can produce entered the stored `long`. From #635,
+every money amount Billing accepts is a **whole number of minor units at
+or below one declared ceiling of 1 000 000 000 000**, refused naming the
+field otherwise.
+
+Three properties define the change:
+
+- **Whole, never truncated.** A value that is not a whole number of minor
+  units refuses with the shared envelope (`VALIDATION_FAILED`, 400,
+  `details` naming the field) instead of being rounded or truncated; a
+  whole value written with a decimal point (`12.0`) stays accepted.
+- **One ceiling, in code.** 1 000 000 000 000 minor units for every money
+  field, a constant in the adapter, never configuration — the #630
+  pattern — so this change carries no deployment, environment, runbook,
+  or per-hotel delta. The magnitude is what is bounded, so a huge
+  negative refuses here while an in-range negative keeps the existing
+  service sign refusal.
+- **No new vocabulary at the transport edge.** `VALIDATION_FAILED` is
+  already in `contracts/errors/envelope.json`; no token, status, enum
+  edit, or contract file changes, and no desk branch is added — both desk
+  money inputs already send whole minor units
+  (`app/src/views/FolioView.vue:441-451`). A tax-rule percent stays a
+  number: fractional percents are still accepted and the 0–100 range
+  stays the service's.
+
+The change adds no subsystem, dependency edge, data model, lifecycle
+state, operation, or reader-visible surface: it is a bound on four
+existing operations (`PostCharge`, `RecordPayment`, `UpsertChargeItem`,
+and the tax-rule percent adapter), so the container and component views
+(sections 2 and 3) stand unchanged. Enforcement point, the refusal
+contents, the per-flow diagram with the folio-write refusal frame, the
+contract decision, and the verification plan:
+`docs/architecture/lld.md` [section 30](lld.md#30-money-amount-bounds-on-the-billing-folio-write-adapter-refs-635);
+per-service note: `docs/architecture/services/billing.md` section 10;
+the refusal in the taxonomy:
+`docs/technical/error-handling.md` section 1.2; the money convention with
+its ceiling: `docs/technical/api-spec.md` section 1. Risk R-16 records
+that the ceiling can be set too tight as well as too loose; rollback is
+the single implementation PR.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1117
+
+## 23. Report date ranges are bounded by one declared span (Refs #641)
+
+Reporting checked a report window's shape and order but never its span,
+and both range reads then walk every date in the window under the store
+mutex (`services/reporting/internal/store/store.go:440-453` for the
+validation, the loops at `:460-534`), so a request such as
+`0001-01-01`..`9999-12-31` looped over millions of dates while every
+other report waited behind the same lock — a self-inflicted denial of
+service on the single on-premise host. From #641, `OccupancyReport` and
+`RevenueSummary` accept a window of **at most 730 nights between
+`dateFrom` and `dateTo`** (731 inclusive dates), refused naming `dateTo`
+otherwise.
+
+Three properties define the change:
+
+- **Refuse before work.** The span is checked where the window is
+  already validated — the one `parseRange` helper both range reads call
+  — so it runs after the session check and the presence checks and
+  strictly before the store lock and before any per-date walk. A refused
+  window takes no mutex, reads no projection, and changes nothing.
+- **One number, in code, agreed across backends.** 730 nights is the
+  two-year window `NFR-PERF-2` documents and the existing perf guard
+  drives, and the same bound Rates already applies to a stay range
+  (`services/rates/internal/store/store.go:254-256`), so the two
+  backends stop disagreeing on the longest range they accept. It is a
+  store constant, never configuration (D-36), so this change carries no
+  deployment, environment, runbook, or per-hotel delta.
+- **No new vocabulary and nothing moved inside the cap.** A wider window
+  answers the existing caller-input code — `VALIDATION_FAILED`, 400,
+  `details` naming `dateTo`, one new plain catalogue sentence
+  `reporting.validation.date_range_span` — so no token, status, enum
+  edit, or contract file changes (ADR-0004 D1), no desk screen calls
+  either operation, and every window at or under the cap returns
+  exactly today's rows, row order, zero-filled dates, and `asOf`.
+  `DailySheet` and `HousekeepingReport` are not on this path.
+
+The change adds no subsystem, dependency edge, data model, lifecycle
+state, operation, or reader-visible surface: it is one guard on two
+existing read operations, so the container and component views
+(sections 2 and 3) stand unchanged. Enforcement point and the
+nights-versus-dates arithmetic, the refusal contents, the per-flow
+diagram with the happy and refusal edges, the contract decision, and the
+verification plan: `docs/architecture/lld.md`
+[section 31](lld.md#31-reporting-date-ranges-carry-a-declared-span-cap-refs-641);
+per-service note: `docs/architecture/services/reporting.md` sections 4,
+6, and 8; the refusal in the taxonomy:
+`docs/technical/error-handling.md` section 1.3; the date-window
+convention: `docs/technical/api-spec.md` section 1. Risk R-17 records
+that the cap can be set too tight as well as too loose; rollback is the
+single implementation PR.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1130
+
+## 24. Guest identity is disambiguated and guest payloads are bounded (Refs #640)
+
+Guests answered a full-name lookup with the first matching profile, in
+both stores (`services/guests/src/store.ts:308-326` walks the map and
+returns the first hit; `services/guests/src/pgstore.ts:181-191` asks for
+`LIMIT 1`), so two guests sharing a name handed the desk one guest's
+profile, contact, preferences, notes, and stay links with no sign that a
+choice was made. The same write accepted any `contact`/`preferences`
+object and any `notes` string with no per-field bound, and the
+confirmation snapshot's date check tested the shape of a date, not the
+calendar, so `2026-13-45` was accepted where the Go services refuse it.
+From #640, a name that matches more than one guest is refused, guest
+payloads carry one declared shape and one declared length, and both
+confirmation dates must exist on the calendar.
+
+Three properties define the change:
+
+- **Refuse before a profile is served or a row is written.** The
+  ambiguity is decided in the one lookup helper both stores implement,
+  and it counts every match before it answers, so no first row is ever
+  assembled; the payload bounds and the calendar check run before the
+  guest write and before the confirmation snapshot is stored. A refusal
+  therefore returns one envelope, writes nothing, and leaves every stored
+  profile readable exactly as it is.
+- **One rule, one home, both stores.** Each rule lives once — the
+  ambiguity constructor and the two validators in `store.ts` (which the
+  Postgres twin already imports its shared helpers from), the calendar
+  check inside the existing `requireDate` — so the in-memory and
+  Postgres stores cannot answer the same request differently, which the
+  done-conditions require. The bounds are fixed code constants, never
+  configuration, so this change carries no deployment, environment,
+  runbook, or per-hotel delta.
+- **No new vocabulary and no data-model change.** Every refusal answers
+  the existing caller-input code — `VALIDATION_FAILED`, 400 — with the
+  offending field in `details` and one new plain catalogue sentence per
+  rule (the date rule reuses the existing guests date sentence). No error
+  code, envelope field, status mapping, endpoint, event, index, column,
+  migration, or stored-row shape changes; reads stay unbounded, so no
+  stored note is truncated and no profile is dropped. One caller-facing
+  error-list line in `contracts/http/IdentifyGuest.json` gains the
+  ambiguity clause, prose only; the request manifests publish no schema
+  keyword for the bounds because no validator on the request path would
+  read one (ADR-0004 D1).
+
+The change adds no subsystem, dependency edge, data model, lifecycle
+state, operation, or new surface: it is three guards on existing
+operations plus one reader-visible refusal state on the existing Book
+screen, so the container and component views (sections 2 and 3) stand
+unchanged. Enforcement points, the refusal shapes, the exact bounds, the
+per-flow diagrams for the three touched flows, the contract decision, the
+verification plan, and the NFR disposition: `docs/architecture/lld.md`
+[section 32](lld.md#32-guest-identity-lookups-refuse-an-ambiguous-name-and-guest-payloads-carry-declared-bounds-refs-640);
+per-service note: `docs/architecture/services/guests.md` sections 4, 6,
+and 8; the refusals in the taxonomy:
+`docs/technical/error-handling.md` section 1.4; the payload convention:
+`docs/technical/api-spec.md` section 1. Risk R-18 records both the
+first-match refusal and an over-strict bound; rollback is the single
+implementation PR.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1141
+
+## 25. Admin authenticates before parsing and config writes carry per-key shapes (Refs #639)
+
+Admin parsed every request body before it checked the session
+(`services/admin/src/server.ts:144` read the body, `:151-155` checked
+the token only afterwards), so an unauthenticated caller got the parse
+error — and the parse work — ahead of the auth answer; and
+`UpdateHotelConfig` stored any key with any value, shape-checking only
+`name` (`services/admin/src/store.ts:471-494`), so a malformed
+`requiredGuestFields` write silently replaced the list the Guests
+mandatory-field gate is specified to read. From #639, every
+session-guarded operation resolves the session before it reads the
+body, and the one config write is checked against one per-key shape
+table before anything is stored. The service also stops re-implementing
+the bearer parse and uses the same module-local helper the three other
+Node services carry (`services/admin/src/auth.ts`, added by this
+change; no caller-visible effect).
+
+Three properties define the change:
+
+- **One order, one place: session, then body, then role.** The order is
+  the statement order in the one `handleRequest` function, not a
+  middleware chain: route match, the `SignIn` branch (which keeps its
+  own body read, because it is the one operation with no session),
+  the bearer check and `store.authenticate`, then the body read, then
+  the operation switch. An unauthenticated malformed or oversized body
+  therefore answers exactly one 401 `UNAUTHENTICATED` with today's
+  sentence and never a parse refusal, and its payload is never read,
+  parsed, or measured; a resolved session still gets today's 400 for a
+  malformed body, and the front-desk 403 follows a well-formed body, so
+  the observed order is 401, then 400, then 403. `SignIn` keeps today's
+  order in both directions, with its lockout.
+- **One per-key table, one home, both stores, and nothing written on a
+  refusal.** The table `name`, `timezone`, the two standard times,
+  `requiredGuestFields`, `cancellationReasons`, `retentionFloorDays`,
+  and the optional profile text is declared and applied once in
+  `store.ts`, the module the Postgres twin already imports its shared
+  helpers from, and both `updateConfig` implementations call it before
+  their first write — in memory before the first `config.set`, in
+  Postgres before the transaction opens. The first offending key
+  refuses the whole write with `VALIDATION_FAILED` 400, `details`
+  naming the key, and one plain catalogue sentence, so a valid key sent
+  beside it is not stored either and no `config.updated` entry appears;
+  a key outside the table is written as sent, and every conforming
+  value is stored, read back, and audited exactly as today. The rules
+  are fixed code constants derived from the keys the service already
+  serves and the payloads the tree already sends, never configuration.
+- **No new vocabulary, no reader-visible change, no data-model
+  change.** Both statuses already exist (`UNAUTHENTICATED` 401 and
+  `VALIDATION_FAILED` 400 in `contracts/errors/envelope.json`), so no
+  error code, status mapping, envelope field, operation, route, header,
+  migration, column, or stored-row shape changes; the request manifest
+  publishes no schema keyword because no validator on the Admin request
+  path would read one. Five new Admin sentences are the only user-visible
+  strings, and the desk changes nowhere: the shared client already
+  routes a 401 to the sign-in gate and an unexpected config refusal
+  reads as the existing plain request-failed sentence, so no UI-contract
+  section applies. One caller-facing `UpdateHotelConfig` error-list line
+  gains the ordering and shape clauses, prose only.
+
+The change adds no subsystem, dependency edge, data model, lifecycle
+state, operation, or new surface: it is one moved statement on existing
+operations plus two guards and one helper reuse. The container and
+component views (sections 2 and 3) stand unchanged. Enforcement points,
+the per-key table, the per-flow diagrams, the contract decision, the
+verification plan, and the NFR disposition: `docs/architecture/lld.md`
+[section 33](lld.md#33-admin-authenticates-before-parsing-and-refuses-a-malformed-config-write-refs-639);
+per-service note: `docs/architecture/services/admin.md` sections 2, 4,
+and 6; the refusals in the taxonomy:
+`docs/technical/error-handling.md` section 1.5; the convention:
+`docs/technical/api-spec.md` section 1. Risk R-19 records the
+over-strict-shape and ordering risk; rollback is the single
+implementation PR.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1164
+
+## 26. The audit actor is the authenticated session, not the request (Refs #643)
+
+Every write in Stay, Guests, Rooms, Reservations, and Billing persisted
+the `actor` string the request body carried
+(`services/stay/src/store.ts:216` and its siblings;
+`services/reservations/internal/handler/handler.go:176-342`;
+`services/billing/src/main/java/com/hotel/billing/web/BillingController.java:39-42`),
+and Admin's config write persisted the body's `updatedBy`
+(`services/admin/src/store.ts:565`), so every outbox event, change row,
+and state-history row attributed the change to a name the caller chose —
+audit finding C6 against `NFR-AUD-1`. From #643, the recorded actor is
+the authenticated session: Admin's resolved `signinIdentity`, and the
+presented session token in the five services that authenticate presence
+only, until the identity-hardening slice resolves it.
+
+Three properties define the change:
+
+- **One seam per service, at the server that authenticates.** The
+  transport that already checks the token keeps it and hands it to the
+  store beside the body; no store reads the body actor for the recorded
+  value. Where the service resolves a caller (Admin), the resolved
+  identity is used. No new lookup, round trip, verification step, or
+  check order appears.
+- **The request value is demoted, never refused.** `actor` and
+  `updatedBy` keep their contract shape, required flag, and existing
+  refusals, and their value is never the recorded actor. Where the write
+  emits a JSON outbox payload, a disagreeing value is preserved
+  additively as `requestActor`; column-only rows drop it and keep their
+  shape. Refusing was rejected because the desk still sends its display
+  name and the desk UI's actor field is out of scope, so a refusal would
+  break every desk write.
+- **No new vocabulary, no reader-visible change, no data-model change.**
+  No error code, status mapping, envelope field, operation, route,
+  header, contract shape, column, table, or migration changes; audit
+  columns are already `TEXT` and outbox payloads JSONB. No desk surface
+  renders an actor, so no UI-contract section applies. Two description
+  sentences (`CheckOutReservation` and `UpdateHotelConfig`) are corrected
+  to describe the demotion, prose only.
+
+The change adds no subsystem, dependency edge, data model, lifecycle
+state, operation, or new surface: it is one value source per service on
+existing writes. The container and component views (sections 2 and 3)
+stand unchanged. Enforcement points, the seam per service, the demotion
+rule, the per-flow diagrams, the contract decision, the verification
+plan, and the NFR disposition: `docs/architecture/lld.md`
+[section 34](lld.md#34-the-audit-actor-comes-from-the-session-never-from-the-request-refs-643);
+per-service notes: `docs/architecture/services/stay.md`,
+`guests.md`, `rooms.md`, `reservations.md`, `billing.md`, and `admin.md`
+planned deltas; the no-new-refusal rule:
+`docs/technical/error-handling.md` section 1.6; the convention:
+`docs/technical/api-spec.md` section 1; the audit-coverage note:
+`docs/technical/security-threat-model.md` section 6. Risk R-20 records
+the mis-attribution and interim-token risk; rollback is the single
+implementation PR.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1175

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { HttpError } from "./errors.js";
-import { msg } from "./messages.js";
+import { formatNumber, msg } from "./messages.js";
 
 // In-memory GuestService store (LLD section 5). One record per
 // guest with stay history links, preferences visible at booking time,
@@ -136,7 +136,7 @@ export interface GuestProfile extends GuestRecord {
 // GuestStoreAPI is the contract both the in-memory store and the
 // Postgres store implement (issue #149).
 export interface GuestStoreAPI {
-  upsertGuest(input: UpsertGuestInput): Promise<GuestRecord>;
+  upsertGuest(input: UpsertGuestInput, sessionActor: string): Promise<GuestRecord>;
   identifyGuest(input: IdentifyGuestInput): Promise<GuestRecord & { stayLinks: GuestStayLink[] }>;
   getBookingContext(input: GetBookingContextInput): Promise<{
     guestId: string;
@@ -167,11 +167,104 @@ function asObject(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
 }
 
+// Guest payload bounds (BR-63; LLD section 32.3). Four fixed code
+// constants shared by both stores, never an environment variable, a
+// deployment file, or a per-hotel setting (AC-GID-7).
+export const MAX_GUEST_PAYLOAD_FIELDS = 16;
+export const MAX_GUEST_PAYLOAD_KEY_LENGTH = 64;
+export const MAX_GUEST_PAYLOAD_STRING_LENGTH = 256;
+export const MAX_GUEST_NOTES_LENGTH = 2000;
+
+// The declared contact/preferences shape: one plain object with at
+// most 16 own fields, keys of 1-64 code units, and values that are a
+// string of at most 256 code units, a finite number, or a boolean.
+// An absent field stays undefined (today's per-store behaviour); an
+// explicit null keeps today's coercion to {} (LLD section 32.3).
+export function validGuestPayloadObject(value: unknown, field: string): Record<string, unknown> | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === null) {
+    return {};
+  }
+  const refuse = (): never => {
+    throw new HttpError("VALIDATION_FAILED", msg("guests.validation.contact_shape", { field }), { field });
+  };
+  if (typeof value !== "object" || Array.isArray(value)) {
+    return refuse();
+  }
+  const entries = Object.entries(value as Record<string, unknown>);
+  if (entries.length > MAX_GUEST_PAYLOAD_FIELDS) {
+    return refuse();
+  }
+  for (const [key, entry] of entries) {
+    if (key.length === 0 || key.length > MAX_GUEST_PAYLOAD_KEY_LENGTH) {
+      return refuse();
+    }
+    if (typeof entry === "string") {
+      if (entry.length > MAX_GUEST_PAYLOAD_STRING_LENGTH) {
+        return refuse();
+      }
+    } else if (typeof entry === "number") {
+      if (!Number.isFinite(entry)) {
+        return refuse();
+      }
+    } else if (typeof entry !== "boolean") {
+      // A nested object, an array entry, or a null entry lands here.
+      return refuse();
+    }
+  }
+  return value as Record<string, unknown>;
+}
+
+// The declared notes length: at most 2 000 UTF-16 code units. An
+// absent field stays undefined so the caller keeps today's behaviour
+// (the stored note on update, "" on create); a present non-string,
+// including an explicit null, is refused (LLD section 32.3).
+export function validGuestNotes(value: unknown): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== "string" || value.length > MAX_GUEST_NOTES_LENGTH) {
+    throw new HttpError("VALIDATION_FAILED", msg("guests.validation.notes_length", {
+      field: "notes",
+      max: formatNumber(MAX_GUEST_NOTES_LENGTH),
+    }), { field: "notes" });
+  }
+  return value;
+}
+
+// One shared ambiguity refusal for both stores (LLD section 32.2), so
+// the code, details, and sentence cannot drift between the in-memory
+// and Postgres twins.
+export function ambiguousGuestName(fullName: string, matches: number): HttpError {
+  return new HttpError("VALIDATION_FAILED", msg("guests.validation.ambiguous_name", { fullName }), {
+    field: "fullName",
+    fullName,
+    matches,
+  });
+}
+
 function requireDate(value: unknown, field: string): string {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value.trim())) {
     throw new HttpError("VALIDATION_FAILED", msg("guests.validation.date_format", { field }), { field });
   }
-  return value.trim();
+  const trimmed = value.trim();
+  // Shape first, then the calendar: the three components must
+  // round-trip through a UTC date, so 2024-02-29 passes while
+  // 2026-13-45, 2026-02-31, and 2026-00-10 fail (LLD section 32.4).
+  const [year, month, day] = trimmed.split("-").map((part) => Number(part));
+  const calendar = new Date(0);
+  calendar.setUTCHours(0, 0, 0, 0);
+  calendar.setUTCFullYear(year, month - 1, day);
+  if (
+    calendar.getUTCFullYear() !== year ||
+    calendar.getUTCMonth() !== month - 1 ||
+    calendar.getUTCDate() !== day
+  ) {
+    throw new HttpError("VALIDATION_FAILED", msg("guests.validation.date_format", { field }), { field });
+  }
+  return trimmed;
 }
 
 function requirePriceMinor(value: unknown): number {
@@ -211,31 +304,54 @@ export function toConfirmationRecord(input: AttachReservationInput): Confirmatio
   };
 }
 
+// requestActorAnnotation returns the additive requestActor value for a
+// JSON outbox payload (BR-65, #643): the request's actor is preserved
+// only when it is a present, non-blank string that differs exactly from
+// the recorded session actor. An equal or absent value adds no key.
+export function requestActorAnnotation(sessionActor: string, requestActor: unknown): string | null {
+  if (typeof requestActor !== "string" || requestActor.trim() === "" || requestActor === sessionActor) {
+    return null;
+  }
+  return requestActor;
+}
+
 export class GuestStore implements GuestStoreAPI {
   private readonly guests = new Map<string, GuestRecord>();
   private readonly links: GuestStayLink[] = [];
   private readonly confirmations = new Map<string, ConfirmationRecord>();
   private readonly outbox: { aggregate: string; eventType: string; payload: Record<string, unknown> }[] = [];
 
-  async upsertGuest(input: UpsertGuestInput): Promise<GuestRecord> {
+  async upsertGuest(input: UpsertGuestInput, sessionActor: string): Promise<GuestRecord> {
     const id =
       input.guestId === undefined || input.guestId === null || input.guestId === ""
         ? randomUUID()
         : requireUuid(input.guestId, "guestId");
     const fullName = requireString(input.fullName, "fullName");
-    const actor = requireString(input.actor, "actor");
+    requireString(input.actor, "actor");
+    const actor = sessionActor;
+    const requestActor = requestActorAnnotation(sessionActor, input.actor);
+    // The declared payload bounds run after the identifier checks and
+    // before the first store access, so a refusal writes no row and
+    // (below) no guest-upserted event (LLD sections 32.1 and 32.3).
+    const contact = validGuestPayloadObject(input.contact, "contact");
+    const preferences = validGuestPayloadObject(input.preferences, "preferences");
+    const notes = validGuestNotes(input.notes);
     const existing = this.guests.get(id);
     const record: GuestRecord = {
       id,
       fullName,
-      contact: asObject(input.contact),
-      preferences: input.preferences === undefined ? (existing?.preferences ?? {}) : asObject(input.preferences),
-      notes: typeof input.notes === "string" ? input.notes : (existing?.notes ?? ""),
+      contact: contact ?? {},
+      preferences: preferences ?? (existing?.preferences ?? {}),
+      notes: notes ?? (existing?.notes ?? ""),
       returningFlag: existing?.returningFlag ?? false,
       pastStayCount: existing?.pastStayCount ?? 0,
     };
     this.guests.set(id, record);
-    this.outbox.push({ aggregate: "guest", eventType: "guest-upserted", payload: { guestId: id, fullName, actor } });
+    this.outbox.push({
+      aggregate: "guest",
+      eventType: "guest-upserted",
+      payload: { guestId: id, fullName, actor, ...(requestActor === null ? {} : { requestActor }) },
+    });
     return record;
   }
 
@@ -315,12 +431,25 @@ export class GuestStore implements GuestStoreAPI {
     }
     if (typeof input.fullName === "string" && input.fullName.trim() !== "") {
       const wanted = input.fullName.trim();
+      // Count every match before answering: the first matching row is
+      // never served, because two guests sharing a name would hand the
+      // desk one guest's profile (PII) instead of an ambiguity
+      // refusal (BR-63; FR-GID-1).
+      let matches = 0;
+      let first: GuestRecord | undefined;
       for (const record of this.guests.values()) {
         if (record.fullName === wanted) {
-          return record;
+          matches += 1;
+          first = first ?? record;
         }
       }
-      throw new HttpError("NOT_FOUND", msg("guests.notfound.guest_by_name", { fullName: wanted }), { fullName: wanted });
+      if (matches === 0) {
+        throw new HttpError("NOT_FOUND", msg("guests.notfound.guest_by_name", { fullName: wanted }), { fullName: wanted });
+      }
+      if (matches > 1 || first === undefined) {
+        throw ambiguousGuestName(wanted, matches);
+      }
+      return first;
     }
     throw new HttpError("VALIDATION_FAILED", msg("guests.validation.guest_or_name", {}), { field: "guestId" });
   }

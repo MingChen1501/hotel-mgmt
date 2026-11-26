@@ -1,7 +1,8 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
+import { extractBearer } from "./auth.js";
 import { HttpError, errorEnvelope } from "./errors.js";
-import { type AdminStoreAPI, AdminStore } from "./store.js";
+import { type AdminStoreAPI, type AuthenticatedUser, AdminStore } from "./store.js";
 import { msg } from "./messages.js";
 
 type Body = Record<string, unknown>;
@@ -80,13 +81,12 @@ function writeJson(res: ServerResponse, status: number, payload: unknown): void 
   res.end(JSON.stringify(payload));
 }
 
-function bearerToken(req: IncomingMessage): string | null {
-  const header = req.headers["authorization"];
-  if (typeof header !== "string") {
-    return null;
-  }
-  const match = /^Bearer (.+)$/.exec(header.trim());
-  return match?.[1]?.trim() ? match[1].trim() : null;
+// closeWithoutBody tells the connection to close when the answer is
+// decided before the request body is read (LLD section 33.1, BR-64):
+// the payload is never buffered whole, never measured, and the socket
+// is not reused with an unread body pending.
+function closeWithoutBody(res: ServerResponse): void {
+  res.setHeader("Connection", "close");
 }
 
 // createServiceServer answers GET /healthz with the module identity,
@@ -141,18 +141,32 @@ async function handleRequest(
     );
     return;
   }
-  const body = await readBody(req, res);
   const operation = route[1];
   if (operation === "SignIn") {
+    // SignIn is the one operation with no session to check, so it
+    // keeps its own body read and its 400-first order (BR-64).
+    const body = await readBody(req, res);
     const { token, user } = await store.signIn(body["signinIdentity"], body["secret"]);
     writeJson(res, 200, { token, ...user });
     return;
   }
-  const token = bearerToken(req);
+  // Every other operation resolves the session before the body is
+  // read (BR-64): an unauthenticated request is answered 401 and its
+  // payload is never read or parsed, so its size, shape, and fields
+  // stay unobservable. The order is 401, then 400, then 403.
+  const token = extractBearer(req);
   if (!token) {
+    closeWithoutBody(res);
     throw new HttpError("UNAUTHENTICATED", msg("error.auth.missing_token", {}), {});
   }
-  const caller = await store.authenticate(token);
+  let caller: AuthenticatedUser;
+  try {
+    caller = await store.authenticate(token);
+  } catch (err: unknown) {
+    closeWithoutBody(res);
+    throw err;
+  }
+  const body = await readBody(req, res);
   switch (operation) {
     case "GetHotelConfig": {
       writeJson(res, 200, await store.getConfig());

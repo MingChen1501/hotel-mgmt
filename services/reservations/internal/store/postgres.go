@@ -256,11 +256,11 @@ func (p *Postgres) Create(input CreateInput, idempotencyKey string) (*Reservatio
 	); err != nil {
 		return nil, &OpError{Code: "VALIDATION_FAILED", Status: 500, Message: messages.Text("error.store.unavailable", nil), Details: map[string]any{}}
 	}
-	payload := marshalJSON(map[string]any{
+	payload := marshalJSON(actorPayload(map[string]any{
 		"reservationRef": record.Ref, "roomTypeId": record.RoomTypeID,
 		"arrivalDate": record.ArrivalDate, "departureDate": record.DepartureDate,
 		"guestId": record.GuestID, "priceBasisTotal": record.TotalMinor,
-	})
+	}, input.Actor, input.RequestActor))
 	if _, err := tx.Exec(
 		`INSERT INTO reservations.outbox (aggregate, event_type, payload, occurred_at, created_by)
 		 VALUES ('reservation','created',$1::jsonb,now(),$2)`,
@@ -339,7 +339,7 @@ func (p *Postgres) Query(dateFrom, dateTo, roomTypeID string) []*CalendarEntry {
 
 // CheckIn flips a confirmed reservation to checked-in and links the
 // stay created by the Stay module. Re-check-in is refused.
-func (p *Postgres) CheckIn(ref, stayID, actor string) (*Reservation, *OpError) {
+func (p *Postgres) CheckIn(ref, stayID, actor, requestActor string) (*Reservation, *OpError) {
 	tx, err := p.db.Begin()
 	if err != nil {
 		return nil, &OpError{Code: "VALIDATION_FAILED", Status: 500, Message: messages.Text("error.store.unavailable", nil), Details: map[string]any{}}
@@ -377,7 +377,7 @@ func (p *Postgres) CheckIn(ref, stayID, actor string) (*Reservation, *OpError) {
 	); err != nil {
 		return nil, &OpError{Code: "VALIDATION_FAILED", Status: 500, Message: messages.Text("error.store.unavailable", nil), Details: map[string]any{}}
 	}
-	payload := marshalJSON(map[string]any{"reservationRef": record.Ref, "stayId": stayID})
+	payload := marshalJSON(actorPayload(map[string]any{"reservationRef": record.Ref, "stayId": stayID}, actor, requestActor))
 	if _, err := tx.Exec(
 		`INSERT INTO reservations.outbox (aggregate, event_type, payload, occurred_at, created_by)
 		 VALUES ('reservation','checked-in',$1::jsonb,now(),$2)`,
@@ -616,11 +616,11 @@ func (p *Postgres) Modify(input ModifyInput, idempotencyKey string) (*Reservatio
 			return nil, storeUnavailable()
 		}
 	}
-	payload := marshalJSON(map[string]any{
+	payload := marshalJSON(actorPayload(map[string]any{
 		"reservationRef": record.Ref, "roomTypeId": newRoomType,
 		"arrivalDate": newArrival, "departureDate": newDeparture,
 		"guestId": newGuestID, "priceBasisTotal": input.TotalMinor, "actor": input.Actor,
-	})
+	}, input.Actor, input.RequestActor))
 	if _, err := tx.Exec(
 		`INSERT INTO reservations.outbox (aggregate, event_type, payload, occurred_at, created_by)
 		 VALUES ('reservation','modified',$1::jsonb,now(),$2)`,
@@ -644,7 +644,7 @@ func (p *Postgres) Modify(input ModifyInput, idempotencyKey string) (*Reservatio
 // history, idempotency key, and cancelled outbox event. Availability
 // releases automatically: the guard counts only confirmed and
 // checked-in rows.
-func (p *Postgres) Cancel(ref, reason, actor, idempotencyKey string) (*Reservation, *OpError) {
+func (p *Postgres) Cancel(ref, reason, actor, requestActor, idempotencyKey string) (*Reservation, *OpError) {
 	tx, err := p.db.Begin()
 	if err != nil {
 		return nil, storeUnavailable()
@@ -709,11 +709,11 @@ func (p *Postgres) Cancel(ref, reason, actor, idempotencyKey string) (*Reservati
 			return nil, storeUnavailable()
 		}
 	}
-	payload := marshalJSON(map[string]any{
+	payload := marshalJSON(actorPayload(map[string]any{
 		"reservationRef": record.Ref, "roomTypeId": record.RoomTypeID,
 		"arrivalDate": record.ArrivalDate, "departureDate": record.DepartureDate,
 		"guestId": record.GuestID, "reason": kept, "actor": actor,
-	})
+	}, actor, requestActor))
 	if _, err := tx.Exec(
 		`INSERT INTO reservations.outbox (aggregate, event_type, payload, occurred_at, created_by)
 		 VALUES ('reservation','cancelled',$1::jsonb,now(),$2)`,
@@ -736,7 +736,7 @@ func (p *Postgres) Cancel(ref, reason, actor, idempotencyKey string) (*Reservati
 // passed without check-in to no-show (FR-RES-6, BR-5) with its change
 // history and no-show outbox event in one transaction. No folio
 // charge is posted: the no-show charge decision is deferred per LLD D1.
-func (p *Postgres) MarkNoShow(ref, reason, actor string) (*Reservation, *OpError) {
+func (p *Postgres) MarkNoShow(ref, reason, actor, requestActor string) (*Reservation, *OpError) {
 	tx, err := p.db.Begin()
 	if err != nil {
 		return nil, storeUnavailable()
@@ -786,11 +786,11 @@ func (p *Postgres) MarkNoShow(ref, reason, actor string) (*Reservation, *OpError
 	); err != nil {
 		return nil, storeUnavailable()
 	}
-	payload := marshalJSON(map[string]any{
+	payload := marshalJSON(actorPayload(map[string]any{
 		"reservationRef": record.Ref, "roomTypeId": record.RoomTypeID,
 		"arrivalDate": record.ArrivalDate, "departureDate": record.DepartureDate,
 		"guestId": record.GuestID, "reason": kept, "actor": actor,
-	})
+	}, actor, requestActor))
 	if _, err := tx.Exec(
 		`INSERT INTO reservations.outbox (aggregate, event_type, payload, occurred_at, created_by)
 		 VALUES ('reservation','no-show',$1::jsonb,now(),$2)`,

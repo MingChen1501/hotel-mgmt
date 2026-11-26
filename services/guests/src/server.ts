@@ -127,14 +127,17 @@ async function handleRequest(
     );
     return;
   }
-  if (!extractBearer(req)) {
+  // The authenticated session is the audit actor on every write
+  // (BR-65, #643); the extracted token is kept beside the body.
+  const sessionActor = extractBearer(req);
+  if (sessionActor === null) {
     throw new HttpError("UNAUTHENTICATED", msg("error.auth.missing_token", {}), {});
   }
   const body = await readBody(req, res);
   const operation = route[1];
   switch (operation) {
     case "UpsertGuest": {
-      const guest = await store.upsertGuest(body);
+      const guest = await store.upsertGuest(body, sessionActor);
       writeJson(res, 200, {
         guestId: guest.id,
         fullName: guest.fullName,

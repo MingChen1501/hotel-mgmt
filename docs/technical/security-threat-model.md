@@ -194,6 +194,22 @@ delete path exists). There is deliberately no on-screen audit log
 view in the MVP (Later capability); coverage here means complete
 recording with 24-month retrievability (`NFR-RET-1`), not display.
 
+Actor provenance (audit finding C6, Refs #643): the recorded actor is
+the authenticated session, never the request's `actor`/`updatedBy`
+string. Admin stores the resolved `signinIdentity`; Stay, Guests, Rooms,
+Reservations, and Billing store the presented session token (the text
+after `Bearer `, trimmed) until the identity-hardening slice resolves
+it. A disagreeing request value is demoted, never refused: it survives
+only as the additive `requestActor` key in a JSON outbox payload where
+the write emits one, and column-only rows drop it. The interim token is
+a bearer value at rest in the audit columns, and the five services
+check presence only, so it is replayable until the identity slice
+lands. It is never rendered on a desk surface or written to a log line,
+it sits behind the per-module database credentials on the on-premise
+host, its normal desk lifetime is the 15-minute idle window, and the
+identity slice replaces it with a resolved, non-replayable identity at
+the same seam (R-20). Design: `docs/architecture/lld.md` section 34.
+
 ## 7. No-internet assumptions (stated, with consequences)
 
 - The desk works fully offline (`NFR-AVL-1`): no operation calls
@@ -270,7 +286,7 @@ recording with 24-month retrievability (`NFR-RET-1`), not display.
   (`services/rates/internal/store/store.go:402`) and a reservation
   cannot carry a plan name, so the booking is refused. Not a new
   failure mode — the desk's own quote omits `ratePlanName`
-  (`app/src/views/BookView.vue:784-793`) — and it re-opens when a
+  (`app/src/views/BookView.vue:807-820`) — and it re-opens when a
   reservation records a plan.
 - R11 — The quote and the booking write are one request apart
   (Refs #632): a rate edit landing between the `QuotePrice` read and

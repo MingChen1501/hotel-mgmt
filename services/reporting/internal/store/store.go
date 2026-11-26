@@ -33,6 +33,14 @@ func validation(field, message string) *OpError {
 
 const dateLayout = "2006-01-02"
 
+// maxReportRangeNights bounds the span of a report window (BR-62,
+// NFR-RPT-1): dateTo may be at most 730 nights after dateFrom, which
+// is 731 inclusive dates — the two-year window NFR-PERF-2 documents
+// and the same bound Rates applies to a stay range. The cap is one
+// code constant, never an environment variable or per-hotel setting
+// (LLD section 31.1, D-36).
+const maxReportRangeNights = 730
+
 // Event is one normalized domain event fed to the rebuild job. The
 // dispatcher relays owning-module outbox rows in per-aggregate
 // order; Type names the originating contract event (for example
@@ -448,6 +456,12 @@ func parseRange(dateFrom, dateTo string) (time.Time, time.Time, *OpError) {
 	}
 	if to.Before(from) {
 		return time.Time{}, time.Time{}, validation("dateTo", messages.Text("error.validation.date_range_order", nil))
+	}
+	// The span cap is the last window check (BR-62): it runs after the
+	// format and order refusals and before every caller takes the store
+	// lock, so a refused window walks no date and holds no mutex.
+	if to.After(from.AddDate(0, 0, maxReportRangeNights)) {
+		return time.Time{}, time.Time{}, validation("dateTo", messages.Text("reporting.validation.date_range_span", map[string]string{"max": messages.Num(maxReportRangeNights)}))
 	}
 	return from, to, nil
 }

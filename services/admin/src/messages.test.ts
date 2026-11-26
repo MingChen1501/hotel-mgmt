@@ -47,6 +47,25 @@ describe("message catalogue", () => {
       ],
       ["error.validation.values_object", {}, "values must be an object."],
       ["error.validation.retention_floor", {}, "retentionFloorDays must be a non-negative integer."],
+      // CFG19 (#639): the five config-shape sentences, each with the
+      // offending key rendered from the request (BR-64).
+      ["error.validation.config_text", { field: "timezone" }, "timezone must be non-empty text."],
+      [
+        "error.validation.config_time",
+        { field: "standardCheckinTime" },
+        "standardCheckinTime must be a 24-hour HH:MM time.",
+      ],
+      [
+        "error.validation.config_required_fields",
+        { field: "requiredGuestFields" },
+        "requiredGuestFields must list at least one guest field, each a non-empty entry, without duplicates.",
+      ],
+      [
+        "error.validation.config_list",
+        { field: "cancellationReasons" },
+        "cancellationReasons must be a list of non-empty text entries.",
+      ],
+      ["error.validation.config_optional_text", { field: "email" }, "email must be text."],
     ];
     for (const [key, params, want] of cases) {
       assert.equal(msg(key, params), want, key);
