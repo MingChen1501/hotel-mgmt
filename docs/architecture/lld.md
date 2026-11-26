@@ -7616,9 +7616,10 @@ refreshes it at the merged head):
   `CheckOutReservation.json:19`) and `updatedBy` in
   `UpdateHotelConfig.json:13`; audit columns are `TEXT` and outbox
   payloads are JSONB (`services/stay/migrations/001_boot.sql:9-16`,
-  `002_schema.sql:31-33`), so no migration is needed. One description
-  sentence still claims the body value is recorded
-  (`contracts/http/CheckOutReservation.json:22`).
+  `002_schema.sql:31-33`), so no migration is needed. Two description
+  sentences still claim the body value is recorded
+  (`contracts/http/CheckOutReservation.json:22`,
+  `contracts/http/UpdateHotelConfig.json:20`).
 - **Rates and Reporting are outside this rule.** Rates' write operations
   take no request actor (no handler or contract carries one) and its
   outbox writer falls back to `system`
@@ -7839,7 +7840,7 @@ Edge traces:
   annotation only. **I–J:** the one writer with no request session keeps
   its server-side `boot` actor.
 
-### 34.5 Contract decision: no new token, no shape change, one description sentence
+### 34.5 Contract decision: no new token, no shape change, two description sentences
 
 - **No token, status, enum entry, envelope field, route, or operation.**
   `UNAUTHENTICATED` (401) and `VALIDATION_FAILED` (400) already exist and
@@ -7854,13 +7855,18 @@ Edge traces:
   validator runs on these paths, so a keyword would be a promise
   nothing reads (the rule the money and guest bounds follow, LLD
   sections 30.5 and 32.6).
-- **One description sentence is corrected.**
+- **Two description sentences are corrected.**
   `contracts/http/CheckOutReservation.json:22` says the body actor is
-  recorded on the change history; after this change the field stays
-  required but is an annotation, and the recorded actor is the
-  authenticated session. Prose only: no type, required list, error list,
-  or version moves. The other `actor` properties carry no description
-  and need none.
+  recorded on the change history, and
+  `contracts/http/UpdateHotelConfig.json:20` says `updatedBy` is the
+  actor recorded on the config audit trail; after this change both
+  fields stay required but are not the recorded actor, and the recorded
+  actor is the authenticated session (the resolved caller's sign-in
+  identity in Admin). The CheckOut value is an annotation only (the
+  change row keeps no annotation column); the config write emits no JSON
+  payload, so `updatedBy` is dropped rather than annotated. Prose only:
+  no type, required list, error list, or version moves. The other
+  `actor` properties carry no description and need none.
 - **Outbox payloads stay additive.** `requestActor` is the only key any
   payload gains, and only when the request value disagrees; outbox
   tables and payload schemas are not contract files, so no manifest
