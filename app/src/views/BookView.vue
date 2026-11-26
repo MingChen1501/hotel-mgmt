@@ -882,20 +882,24 @@ export default defineComponent({
     }
 
     // re-reads the quote for the stay the desk already holds after a
-    // PRICE_CHANGED refusal (AC-DSK-20, Refs #632). A successful read
-    // replaces the displayed quote and mints one fresh idempotency key
-    // for it, so the next Confirm books at the new total and still
-    // books once on a double click. A failed read books nothing: a
-    // lost rate price falls back to the existing no-price sentence, any
-    // other failure says the price could not be read, and the stale
-    // quote is cleared so Confirm cannot resend it.
+    // PRICE_CHANGED refusal (AC-DSK-20, Refs #632). The re-read
+    // reproduces the refused request — the type, dates, and discount
+    // the held quote carries — rather than the live inputs, so an
+    // applied name that differs from the typed one cannot silently
+    // re-price a different stay. A successful read replaces the
+    // displayed quote and mints one fresh idempotency key for it, so
+    // the next Confirm books at the new total and still books once on a
+    // double click. A failed read books nothing: a lost rate price
+    // falls back to the existing no-price sentence, any other failure
+    // says the price could not be read, and the stale quote is cleared
+    // so Confirm cannot resend it.
     async function recoverFromPriceChange(held: Quote): Promise<void> {
       const body: Record<string, string> = {
         roomTypeId: held.roomTypeId,
         arrivalDate: held.arrivalDate,
         departureDate: held.departureDate,
       };
-      const discount = discountName.value.trim();
+      const discount = (held.discountName ?? '').trim();
       if (discount !== '') {
         body.discountName = discount;
       }
