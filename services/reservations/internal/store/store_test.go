@@ -7,6 +7,14 @@ import (
 	"time"
 )
 
+// sessionToken stands in for the authenticated session the handler
+// records as the audit actor (BR-65, #643); the body actor travels as
+// the requestActor annotation only.
+const (
+	sessionToken      = "session-token-abc"
+	requestActorClaim = "front-desk"
+)
+
 func loopInput(roomTypeID string) CreateInput {
 	return CreateInput{
 		RoomTypeID:    roomTypeID,
@@ -113,7 +121,7 @@ func TestIdempotencyKeyScopedPerOperation(t *testing.T) {
 	if oerr != nil {
 		t.Fatalf("booking refused: %v", oerr)
 	}
-	cancelled, oerr := st.Cancel(created.Ref, "guest-request", "front-desk", shared)
+	cancelled, oerr := st.Cancel(created.Ref, "guest-request", "front-desk", "", shared)
 	if oerr != nil {
 		t.Fatalf("cancel with a create key refused: %v", oerr)
 	}
@@ -121,7 +129,7 @@ func TestIdempotencyKeyScopedPerOperation(t *testing.T) {
 		t.Fatalf("cancelled state = %s, want cancelled (not the create replay)", cancelled.State)
 	}
 	changesAfterCancel := len(st.Changes())
-	replay, oerr := st.Cancel(created.Ref, "guest-request", "front-desk", shared)
+	replay, oerr := st.Cancel(created.Ref, "guest-request", "front-desk", "", shared)
 	if oerr != nil {
 		t.Fatalf("replayed cancel refused: %v", oerr)
 	}
@@ -147,10 +155,10 @@ func TestIdempotencyKeyScopedPerReservation(t *testing.T) {
 		t.Fatalf("second booking refused: %v", oerr)
 	}
 	shared := "cancel-shared"
-	if _, oerr := st.Cancel(first.Ref, "guest-request", "front-desk", shared); oerr != nil {
+	if _, oerr := st.Cancel(first.Ref, "guest-request", "front-desk", "", shared); oerr != nil {
 		t.Fatalf("first cancel refused: %v", oerr)
 	}
-	cancelled, oerr := st.Cancel(second.Ref, "guest-request", "front-desk", shared)
+	cancelled, oerr := st.Cancel(second.Ref, "guest-request", "front-desk", "", shared)
 	if oerr != nil {
 		t.Fatalf("second cancel with the reused key refused: %v", oerr)
 	}
@@ -192,7 +200,8 @@ func TestModifyRepricesAndRecordsChange(t *testing.T) {
 	}
 	modified, oerr := st.Modify(ModifyInput{
 		Ref: created.Ref, ArrivalDate: "2026-11-02", DepartureDate: "2026-11-04",
-		RoomTypeID: "suite-type", Ceiling: 2, TotalMinor: 26000, Actor: "front-desk",
+		RoomTypeID: "suite-type", Ceiling: 2, TotalMinor: 26000,
+		Actor: sessionToken, RequestActor: requestActorClaim,
 	}, "modify-1")
 	if oerr != nil {
 		t.Fatalf("modify refused: %v", oerr)
@@ -211,8 +220,10 @@ func TestModifyRepricesAndRecordsChange(t *testing.T) {
 		if change.Ref != created.Ref {
 			t.Fatalf("change recorded against %s, want %s", change.Ref, created.Ref)
 		}
-		if change.Actor != "front-desk" || change.CreatedAt.IsZero() {
-			t.Fatalf("change = %+v, want actor and timestamp", change)
+		// #643 re-pin: the recorded actor is the session, never the
+		// request's actor string (BR-65).
+		if change.Actor != sessionToken || change.CreatedAt.IsZero() {
+			t.Fatalf("change = %+v, want session actor and timestamp", change)
 		}
 		switch change.Field {
 		case "dates":
@@ -234,7 +245,7 @@ func TestModifyCheckedInRefused(t *testing.T) {
 	if oerr != nil {
 		t.Fatalf("booking refused: %v", oerr)
 	}
-	if _, oerr := st.CheckIn(created.Ref, "stay-1", "front-desk"); oerr != nil {
+	if _, oerr := st.CheckIn(created.Ref, "stay-1", "front-desk", ""); oerr != nil {
 		t.Fatalf("check-in refused: %v", oerr)
 	}
 	_, oerr = st.Modify(ModifyInput{
@@ -321,7 +332,7 @@ func TestCancelKeepsReasonAndReleases(t *testing.T) {
 	if oerr != nil {
 		t.Fatalf("booking refused: %v", oerr)
 	}
-	cancelled, oerr := st.Cancel(created.Ref, "guest-request", "front-desk", "cancel-1")
+	cancelled, oerr := st.Cancel(created.Ref, "guest-request", "front-desk", "", "cancel-1")
 	if oerr != nil {
 		t.Fatalf("cancel refused: %v", oerr)
 	}
@@ -348,13 +359,13 @@ func TestCancelRefusals(t *testing.T) {
 	if oerr != nil {
 		t.Fatalf("booking refused: %v", oerr)
 	}
-	if _, oerr := st.Cancel(created.Ref, "", "front-desk", ""); oerr == nil || oerr.Code != "VALIDATION_FAILED" {
+	if _, oerr := st.Cancel(created.Ref, "", "front-desk", "", ""); oerr == nil || oerr.Code != "VALIDATION_FAILED" {
 		t.Fatalf("cancel without reason = %v, want VALIDATION_FAILED", oerr)
 	}
-	if _, oerr := st.CheckIn(created.Ref, "stay-1", "front-desk"); oerr != nil {
+	if _, oerr := st.CheckIn(created.Ref, "stay-1", "front-desk", ""); oerr != nil {
 		t.Fatalf("check-in refused: %v", oerr)
 	}
-	if _, oerr := st.Cancel(created.Ref, "guest-request", "front-desk", ""); oerr == nil || oerr.Code != "STATE_ILLEGAL" {
+	if _, oerr := st.Cancel(created.Ref, "guest-request", "front-desk", "", ""); oerr == nil || oerr.Code != "STATE_ILLEGAL" {
 		t.Fatalf("cancel checked-in = %v, want STATE_ILLEGAL", oerr)
 	}
 }
@@ -387,7 +398,7 @@ func TestMarkNoShowReleasesAndKeepsHistory(t *testing.T) {
 	if oerr != nil {
 		t.Fatalf("booking refused: %v", oerr)
 	}
-	marked, oerr := st.MarkNoShow(created.Ref, "no-arrival", "night-audit")
+	marked, oerr := st.MarkNoShow(created.Ref, "no-arrival", "night-audit", "")
 	if oerr != nil {
 		t.Fatalf("mark no-show refused: %v", oerr)
 	}
@@ -421,20 +432,20 @@ func TestMarkNoShowRefusals(t *testing.T) {
 	if oerr != nil {
 		t.Fatalf("booking refused: %v", oerr)
 	}
-	if _, oerr := st.MarkNoShow(future.Ref, "no-arrival", "night-audit"); oerr == nil || oerr.Code != "STATE_ILLEGAL" {
+	if _, oerr := st.MarkNoShow(future.Ref, "no-arrival", "night-audit", ""); oerr == nil || oerr.Code != "STATE_ILLEGAL" {
 		t.Fatalf("mark no-show too early = %v, want STATE_ILLEGAL", oerr)
 	}
-	if _, oerr := st.MarkNoShow(future.Ref, "", "night-audit"); oerr == nil || oerr.Code != "VALIDATION_FAILED" {
+	if _, oerr := st.MarkNoShow(future.Ref, "", "night-audit", ""); oerr == nil || oerr.Code != "VALIDATION_FAILED" {
 		t.Fatalf("mark no-show without reason = %v, want VALIDATION_FAILED", oerr)
 	}
 	past, oerr := st.Create(pastInput("deluxe-type"), "")
 	if oerr != nil {
 		t.Fatalf("past booking refused: %v", oerr)
 	}
-	if _, oerr := st.CheckIn(past.Ref, "stay-9", "front-desk"); oerr != nil {
+	if _, oerr := st.CheckIn(past.Ref, "stay-9", "front-desk", ""); oerr != nil {
 		t.Fatalf("check-in refused: %v", oerr)
 	}
-	if _, oerr := st.MarkNoShow(past.Ref, "no-arrival", "night-audit"); oerr == nil || oerr.Code != "STATE_ILLEGAL" {
+	if _, oerr := st.MarkNoShow(past.Ref, "no-arrival", "night-audit", ""); oerr == nil || oerr.Code != "STATE_ILLEGAL" {
 		t.Fatalf("mark no-show in-house = %v, want STATE_ILLEGAL", oerr)
 	}
 }
@@ -447,7 +458,7 @@ func checkedInForStay(t *testing.T, st *Store, roomTypeID, stayID string) *Reser
 	if oerr != nil {
 		t.Fatalf("booking refused: %v", oerr)
 	}
-	checked, oerr := st.CheckIn(created.Ref, stayID, "front-desk")
+	checked, oerr := st.CheckIn(created.Ref, stayID, "front-desk", "")
 	if oerr != nil {
 		t.Fatalf("check-in refused: %v", oerr)
 	}
@@ -464,7 +475,7 @@ func TestCheckOutReservationCompletesBooking(t *testing.T) {
 	record := checkedInForStay(t, st, "deluxe-type", "stay-1")
 	eventsBefore := len(st.events)
 
-	completed, oerr := st.CheckOutReservation("stay-1", "front-desk")
+	completed, oerr := st.CheckOutReservation("stay-1", sessionToken)
 	if oerr != nil {
 		t.Fatalf("completion refused: %v", oerr)
 	}
@@ -491,8 +502,9 @@ func TestCheckOutReservationCompletesBooking(t *testing.T) {
 			actor = change.Actor
 		}
 	}
-	if stateChanges != 1 || actor != "front-desk" {
-		t.Fatalf("state changes = %d (actor %q), want one front-desk completion", stateChanges, actor)
+	// #643 re-pin: the completion records the session, not the request.
+	if stateChanges != 1 || actor != sessionToken {
+		t.Fatalf("state changes = %d (actor %q), want one session completion", stateChanges, actor)
 	}
 }
 
@@ -606,7 +618,7 @@ func TestEarlyDepartureReleasesBookedNights(t *testing.T) {
 	if oerr != nil {
 		t.Fatalf("booking refused: %v", oerr)
 	}
-	if _, oerr := st.CheckIn(first.Ref, "stay-a", "front-desk"); oerr != nil {
+	if _, oerr := st.CheckIn(first.Ref, "stay-a", "front-desk", ""); oerr != nil {
 		t.Fatalf("check-in refused: %v", oerr)
 	}
 	next := loopInput("deluxe-type")
@@ -641,16 +653,16 @@ func TestCompletedBookingReadsTerminal(t *testing.T) {
 	if len(entries) != 1 || entries[0].State != "closed" {
 		t.Fatalf("calendar entries = %+v, want the closed booking in history", entries)
 	}
-	if _, oerr := st.CheckIn(record.Ref, "stay-b", "front-desk"); oerr == nil || oerr.Code != "STATE_ILLEGAL" {
+	if _, oerr := st.CheckIn(record.Ref, "stay-b", "front-desk", ""); oerr == nil || oerr.Code != "STATE_ILLEGAL" {
 		t.Fatalf("check-in completed = %v, want STATE_ILLEGAL", oerr)
 	}
 	if _, oerr := st.Modify(ModifyInput{Ref: record.Ref, ArrivalDate: "2026-11-02", DepartureDate: "2026-11-04", Ceiling: 2, TotalMinor: 24000, Actor: "front-desk"}, ""); oerr == nil || oerr.Code != "STATE_ILLEGAL" {
 		t.Fatalf("modify completed = %v, want STATE_ILLEGAL", oerr)
 	}
-	if _, oerr := st.Cancel(record.Ref, "guest-request", "front-desk", ""); oerr == nil || oerr.Code != "STATE_ILLEGAL" {
+	if _, oerr := st.Cancel(record.Ref, "guest-request", "front-desk", "", ""); oerr == nil || oerr.Code != "STATE_ILLEGAL" {
 		t.Fatalf("cancel completed = %v, want STATE_ILLEGAL", oerr)
 	}
-	if _, oerr := st.MarkNoShow(record.Ref, "no-arrival", "night-audit"); oerr == nil || oerr.Code != "STATE_ILLEGAL" {
+	if _, oerr := st.MarkNoShow(record.Ref, "no-arrival", "night-audit", ""); oerr == nil || oerr.Code != "STATE_ILLEGAL" {
 		t.Fatalf("no-show completed = %v, want STATE_ILLEGAL", oerr)
 	}
 	if record.State != "closed" {

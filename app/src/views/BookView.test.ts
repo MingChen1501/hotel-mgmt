@@ -374,6 +374,76 @@ describe('book view', () => {
     });
   });
 
+  it('shows the ambiguity sentence and resolves no guest (GID11, Refs #640)', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mountBook();
+    await signIn(wrapper, fetchMock);
+    // Get a quote first so the Confirm control exists: the refusal
+    // must resolve no guest, so Confirm still hits the guest_need gate.
+    await quote(wrapper);
+
+    const happy = (url: string, init?: RequestInit): Promise<Response> => {
+      const body = parseBody(init);
+      if (url === '/v1/guests/IdentifyGuest') {
+        return Promise.resolve(
+          jsonResponse(
+            {
+              code: 'VALIDATION_FAILED',
+              message: 'more than one guest',
+              details: { field: 'fullName', fullName: body.fullName, matches: 2 },
+            },
+            400,
+          ),
+        );
+      }
+      throw new Error(`unexpected call ${url}`);
+    };
+    fetchMock.mockImplementation(happy);
+
+    await wrapper.find('[data-testid="book-guest-name"]').setValue('Same Name Guest');
+    await wrapper.find('[data-testid="book-find-guest"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="book-guest-status"]').text()).toContain(
+        'matches more than one guest',
+      );
+    });
+    const status = wrapper.find('[data-testid="book-guest-status"]').text();
+    expect(status).not.toContain('No guest with that name');
+    expect(status).not.toContain('That did not work');
+    expect(status).not.toContain('VALIDATION_FAILED');
+    // The entered name and the Find/Register controls stay in place,
+    // and no guest snapshot is resolved before confirm.
+    expect((wrapper.find('[data-testid="book-guest-name"]').element as HTMLInputElement).value).toBe(
+      'Same Name Guest',
+    );
+    expect(wrapper.find('[data-testid="book-find-guest"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="book-register-guest"]').exists()).toBe(true);
+    await wrapper.find('[data-testid="book-confirm"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="book-confirm-error"]').text()).toContain(
+        'Find or register the guest first',
+      );
+    });
+
+    // The same refusal reads in Vietnamese (AC-GID-6: both locales).
+    try {
+      setLocale('vi');
+      await wrapper.vm.$nextTick();
+      await wrapper.find('[data-testid="book-find-guest"]').trigger('click');
+      await vi.waitFor(() => {
+        expect(wrapper.find('[data-testid="book-guest-status"]').text()).toContain(
+          'không có hồ sơ nào được mở',
+        );
+      });
+      expect(wrapper.find('[data-testid="book-guest-status"]').text()).not.toContain(
+        'Không có khách nào tên như vậy',
+      );
+    } finally {
+      setLocale('en');
+    }
+  });
+
   it('registers a walk-in guest under the sign-in name', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);

@@ -114,17 +114,60 @@ public class BillingService {
     return actor.strip();
   }
 
+  private static final com.fasterxml.jackson.databind.ObjectMapper PAYLOAD_WRITER =
+      new com.fasterxml.jackson.databind.ObjectMapper();
+
+  private static Map<String, Object> ordered(Object... keyValues) {
+    Map<String, Object> fields = new LinkedHashMap<>();
+    for (int i = 0; i + 1 < keyValues.length; i += 2) {
+      fields.put((String) keyValues[i], keyValues[i + 1]);
+    }
+    return fields;
+  }
+
+  // payloadOf adds the additive requestActor annotation to a JSON outbox
+  // payload (BR-65, #643): the request's actor survives only when it is
+  // present, non-blank, and differs exactly from the recorded session
+  // actor, so an honest caller's payload stays byte-identical. The
+  // compact spelling (no separator spaces, field order as given) keeps
+  // today's bytes for a payload that gains no key.
+  private static String payloadOf(Map<String, Object> fields, String requestActor, String sessionActor) {
+    Map<String, Object> payload = new LinkedHashMap<>(fields);
+    if (requestActor != null && !requestActor.isBlank() && !requestActor.equals(sessionActor)) {
+      payload.put("requestActor", requestActor);
+    }
+    StringBuilder out = new StringBuilder("{");
+    boolean first = true;
+    for (Map.Entry<String, Object> entry : payload.entrySet()) {
+      if (!first) {
+        out.append(',');
+      }
+      first = false;
+      out.append(jsonText(entry.getKey())).append(':').append(jsonText(entry.getValue()));
+    }
+    return out.append('}').toString();
+  }
+
+  private static String jsonText(Object value) {
+    try {
+      return PAYLOAD_WRITER.writeValueAsString(value);
+    } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+      throw new IllegalStateException("Unserialisable outbox payload value.", e);
+    }
+  }
+
   // Lazily creates the single folio for the stay (BR-21) so a
   // balance read never fails on a fresh check-in.
   @Transactional
-  public FolioView getFolioBalance(String stayId, String actor) {
-    Folio folio = repo.ensureFolio(stayUuid(stayId), actorOf(actor));
+  public FolioView getFolioBalance(String stayId, String actor, String sessionActor) {
+    actorOf(actor);
+    Folio folio = repo.ensureFolio(stayUuid(stayId), actorOf(sessionActor));
     return viewOf(folio);
   }
 
   @Transactional
   public LineView postCharge(String stayId, String itemKind, String itemName, long amountMinor,
-      String idempotencyKey, String actor) {
+      String idempotencyKey, String actor, String sessionActor) {
     if (!"nightly-room-charge".equals(itemKind) && !"charge-item".equals(itemKind)) {
       throw ApiException.validation("itemKind", Messages.text("error.validation.item_kind", Map.of()));
     }
@@ -138,7 +181,8 @@ public class BillingService {
       throw new ApiException("VALIDATION_FAILED", 400, Messages.text("error.validation.item_undefined", Map.of("itemName", itemName.strip())),
           Map.of("itemName", itemName.strip()));
     }
-    String who = actorOf(actor);
+    actorOf(actor);
+    String who = actorOf(sessionActor);
     Folio folio = repo.ensureFolio(stayUuid(stayId), who);
     String key = idempotencyKey == null ? "" : idempotencyKey.strip();
     UUID lineId = UUID.randomUUID();
@@ -158,21 +202,22 @@ public class BillingService {
     ChargeLine line = repo.insertCharge(lineId, folio.id(), itemKind, itemName.strip(), amountMinor, derived[0],
         derived[1], who);
     repo.addToBalance(folio.id(), amountMinor + derived[0] + derived[1], who);
-    String payload = "{\"folioId\":\"" + folio.id() + "\",\"lineId\":\"" + line.id() + "\"}";
+    String payload = payloadOf(ordered("folioId", folio.id().toString(), "lineId", line.id().toString()), actor, who);
     repo.outbox("folio", "charge-posted", payload, who);
     return lineViewOf(line, folio);
   }
 
   @Transactional
   public PaymentView recordPayment(String stayId, String method, long amountMinor, String idempotencyKey,
-      String actor) {
+      String actor, String sessionActor) {
     if (!"cash".equals(method) && !"card".equals(method)) {
       throw ApiException.validation("method", Messages.text("error.validation.method", Map.of()));
     }
     if (amountMinor <= 0) {
       throw ApiException.validation("amountMinor", Messages.text("error.validation.amount_positive", Map.of()));
     }
-    String who = actorOf(actor);
+    actorOf(actor);
+    String who = actorOf(sessionActor);
     Folio folio = repo.ensureFolio(stayUuid(stayId), who);
     String key = idempotencyKey == null ? "" : idempotencyKey.strip();
     UUID paymentId = UUID.randomUUID();
@@ -184,20 +229,22 @@ public class BillingService {
     }
     PaymentLine line = repo.insertPayment(paymentId, folio.id(), method, amountMinor, who);
     repo.addToBalance(folio.id(), -amountMinor, who);
-    String payload = "{\"folioId\":\"" + folio.id() + "\",\"paymentId\":\"" + line.id() + "\"}";
+    String payload =
+        payloadOf(ordered("folioId", folio.id().toString(), "paymentId", line.id().toString()), actor, who);
     repo.outbox("folio", "payment-recorded", payload, who);
     Folio settled = repo.findFolioByStay(folio.stayId());
     return paymentViewOf(line, settled);
   }
 
   @Transactional
-  public DayCloseView runDayClose(String businessDate, String actor) {
+  public DayCloseView runDayClose(String businessDate, String actor, String sessionActor) {
     LocalDate date = dayOf(businessDate);
-    String who = actorOf(actor);
+    actorOf(actor);
+    String who = actorOf(sessionActor);
     long charges = repo.chargesTotalFor(date);
     Map<String, Long> byMethod = repo.paymentsByMethodFor(date);
     DayClose run = repo.upsertDayClose(date, charges, byMethod, who);
-    String payload = "{\"businessDate\":\"" + date + "\"}";
+    String payload = payloadOf(ordered("businessDate", date.toString()), actor, who);
     repo.outbox("day-close", "day-close-completed", payload, who);
     return dayCloseViewOf(run);
   }
@@ -253,14 +300,15 @@ public class BillingService {
   // idempotencyKey returns the original record.
   @Transactional
   public ApprovalView recordOpenBalanceApproval(String stayId, String approvedBy, String role, String reason,
-      String idempotencyKey, String actor) {
+      String idempotencyKey, String actor, String sessionActor) {
     if (approvedBy == null || approvedBy.isBlank()) {
       throw ApiException.validation("approvedBy", Messages.text("error.validation.field_required", Map.of("field", "approvedBy")));
     }
     if (role == null || role.isBlank()) {
       throw ApiException.validation("role", Messages.text("error.validation.field_required", Map.of("field", "role")));
     }
-    String who = actorOf(actor);
+    actorOf(actor);
+    String who = actorOf(sessionActor);
     Folio folio = repo.ensureFolio(stayUuid(stayId), who);
     String key = idempotencyKey == null ? "" : idempotencyKey.strip();
     if (!key.isEmpty()) {
@@ -273,7 +321,7 @@ public class BillingService {
     }
     String approval = approvalJson(approvedBy.strip(), role.strip(), reason == null ? "" : reason.strip());
     repo.recordApproval(folio.id(), approval, who);
-    String payload = "{\"folioId\":\"" + folio.id() + "\"}";
+    String payload = payloadOf(ordered("folioId", folio.id().toString()), actor, who);
     repo.outbox("folio", "approval-recorded", payload, who);
     Folio approved = repo.findFolioByStay(folio.stayId());
     return new ApprovalView(approved.id(), approved.stayId(), approved.balanceMinor(),
@@ -314,14 +362,15 @@ public class BillingService {
   }
 
   @Transactional
-  public Map<String, Object> upsertChargeItem(String name, long priceMinor, String actor) {
+  public Map<String, Object> upsertChargeItem(String name, long priceMinor, String actor, String sessionActor) {
     if (name == null || name.isBlank()) {
       throw ApiException.validation("name", Messages.text("error.validation.field_required", Map.of("field", "name")));
     }
     if (priceMinor < 0) {
       throw ApiException.validation("priceMinor", Messages.text("error.validation.price_negative", Map.of()));
     }
-    return repo.upsertChargeItem(name.strip(), priceMinor, actorOf(actor));
+    actorOf(actor);
+    return repo.upsertChargeItem(name.strip(), priceMinor, actorOf(sessionActor));
   }
 
   // Stores one hotel tax rule (FR-BIL-5, issue #190): the rule name
@@ -330,7 +379,7 @@ public class BillingService {
   // validation refusal naming the field. Mirrors UpsertChargeItem so
   // the hotel set lands through the same write pattern.
   @Transactional
-  public Map<String, Object> upsertTaxFeeRule(String name, BigDecimal percent, String actor) {
+  public Map<String, Object> upsertTaxFeeRule(String name, BigDecimal percent, String actor, String sessionActor) {
     if (name == null || name.isBlank()) {
       throw ApiException.validation("name", Messages.text("error.validation.field_required", Map.of("field", "name")));
     }
@@ -340,7 +389,8 @@ public class BillingService {
     if (percent.compareTo(BigDecimal.ZERO) < 0 || percent.compareTo(BigDecimal.valueOf(100)) > 0) {
       throw ApiException.validation("percent", Messages.text("error.validation.percent_range", Map.of("min", Messages.formatNumber(0), "max", Messages.formatNumber(100))));
     }
-    return repo.upsertTaxFeeRule(name.strip(), percent, actorOf(actor));
+    actorOf(actor);
+    return repo.upsertTaxFeeRule(name.strip(), percent, actorOf(sessionActor));
   }
 
   // Derives the line tax and fee from the stored hotel rules (BR-25,

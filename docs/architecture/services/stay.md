@@ -243,3 +243,29 @@ Design: `docs/architecture/lld.md` section 23; product UI contract
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-961
+
+## 11. As-built delta — session-derived audit actor (Refs #643)
+
+`extractBearer` returns the trimmed session token (`src/auth.ts:7-14`),
+and the transport keeps it after the missing-token 401
+(`src/server.ts:159-163`), handing it beside the body to every write:
+`CheckIn` `:169`, `CheckOut` `:186`, `MoveRoom` `:191`,
+`RecordActualTimes` `:199`. Both stores keep today's
+`requireString(input.actor)` refusal and record the session instead —
+`src/store.ts:222-259` (CheckIn), `:306-346` (CheckOut), `:361-406`
+(MoveRoom), `:418-445` (RecordActualTimes); the Postgres twin
+`src/pgstore.ts:71-119`, `:185-238`, `:263-337`, `:366-408` writes the
+token into the stay audit columns, the move row, and the outbox
+`created_by`. `checkOut`'s existing `callerToken` is the recorded actor
+and still feeds `completeBooking` (`src/store.ts:211-220`), which
+forwards the request actor as the body annotation
+(`src/reservationsClient.ts:31-44`). A differing request actor appears
+only as `requestActor` via `requestActorAnnotation`
+(`src/store.ts:59-64`); an equal or absent value adds no key. Guards
+`SEC1`-`SEC4`, `SEC29`, `SEC31`-`SEC33` live in `src/server.test.ts`
+with Postgres halves; no response, status, refusal, column, or migration
+changed (LLD
+[section 34](../lld.md#34-the-audit-actor-comes-from-the-session-never-from-the-request-refs-643)).
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1175

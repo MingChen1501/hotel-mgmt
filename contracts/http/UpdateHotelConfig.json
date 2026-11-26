@@ -17,7 +17,7 @@
         "description": "Section 3.1 keys to upsert; fixed section 3.2 items are rejected here.",
         "additionalProperties": true
       },
-      "updatedBy": { "type": "string", "description": "Actor recorded on the config audit trail." }
+      "updatedBy": { "type": "string", "description": "Required request field kept for compatibility and validated as today. It is not the recorded actor: the authenticated caller's sign-in identity is recorded on the config audit trail, and this body value is dropped rather than annotated, because the config write emits no JSON payload." }
     }
   },
   "response": {
@@ -29,8 +29,8 @@
     }
   },
   "errors": [
-    { "code": "UNAUTHENTICATED", "status": 401, "when": "Missing, expired, or revoked session token." },
-    { "code": "FORBIDDEN", "status": 403, "when": "Caller role is front-desk." },
-    { "code": "VALIDATION_FAILED", "status": 400, "when": "Values missing, or a fixed section 3.2 item submitted as config." }
+    { "code": "UNAUTHENTICATED", "status": 401, "when": "Missing, expired, revoked, signed-out, or orphan session token, checked before the body is read so a malformed body never answers a parse error ahead of it." },
+    { "code": "FORBIDDEN", "status": 403, "when": "Caller role is front-desk; reached only after a resolved session and a well-formed body." },
+    { "code": "VALIDATION_FAILED", "status": 400, "when": "Values missing, a fixed section 3.2 item submitted as config, a malformed body from a resolved session, or a value outside its key's declared shape (details names the key)." }
   ]
 }

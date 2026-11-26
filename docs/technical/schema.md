@@ -21,6 +21,13 @@ Conventions (all schemas):
   `created_at`, `updated_by`, `updated_at` (all `NOT NULL`);
   history tables additionally keep the superseded values. No desk,
   manager, or owner operation updates or deletes audit entries.
+  The actor value is the authenticated session, not the request
+  string: Admin stores the resolved `signinIdentity`, and Stay,
+  Guests, Rooms, Reservations, and Billing store the presented session
+  token until the identity-hardening slice resolves it (LLD
+  [section 34](../architecture/lld.md#34-the-audit-actor-comes-from-the-session-never-from-the-request-refs-643);
+  Refs #643). Columns keep their `TEXT` type and no migration, backfill,
+  or repair exists.
 - Idempotency: provider operations that take an `idempotencyKey`
   (LLD [section 1](../architecture/lld.md), section 2, section 6) persist it with a UNIQUE constraint and return
   the original result on repeat.
@@ -153,6 +160,19 @@ UNIQUE (`guest_id`, `stay_id`).
 Confirmations (FR-GST-4) are produced from reservation + hotel data
 at request time and are not stored rows.
 
+Write-time bounds on the guest payload (Refs #640). `contact` and
+`preferences` accept a plain object of at most 16 fields, keys of 1-64
+characters, and values of text at most 256 characters, a finite number,
+or a boolean; `notes` accepts at most 2 000 characters. These are
+write-time checks in the Guests service — four code constants, not
+configuration and not column constraints — so the `JSONB` and `TEXT`
+columns above stay as declared, a row that already holds a longer note or
+another object shape keeps reading exactly as stored, and no migration,
+truncation, backfill, or repair exists. The confirmation snapshot's two
+dates must be real calendar dates. Enforcement points and exact bounds:
+`docs/architecture/lld.md`
+[section 32](../architecture/lld.md#32-guest-identity-lookups-refuse-an-ambiguous-name-and-guest-payloads-carry-declared-bounds-refs-640).
+
 ## 6. `billing` schema (FR-BIL-1..7; dictionary sections 3–7)
 
 `folios` — exactly one per stay (BR-21): `id` UUID PK, `stay_id`
@@ -269,3 +289,6 @@ config.
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-946
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1141

@@ -53,7 +53,8 @@ the FRs leave undecided is marked deferred with a reason.
 - Audit: every creation, change, state transition, charge, and
   payment persists actor + timestamp on the owning row
   (`NFR-AUD-1`, recording only); each module writes only its own
-  audit columns.
+  audit columns. The actor is the authenticated session, never the
+  request-supplied string (section 34; Refs #643).
 - Config: each module reads its section 3.1 values at startup via
   `AdminService.GetHotelConfig` and applies `ConfigChangedEvents`
   afterwards; if Admin is unreachable a module serves from its last
@@ -4937,7 +4938,7 @@ flowchart TD
 Edge trace:
 
 - A–B: Bearer presence at the transport
-  (`web/BillingController.java:67-72`); UUID, actor, item, method, and
+  (`web/BillingController.java:117-122`); UUID, actor, item, method, and
   amount checks in the service (`service/BillingService.java:86-92`, `:111-116`,
   `:126-140`, `:166-175`, `:255-262`).
 - B–C: an existing folio is served without a stay read, so a departed
@@ -5610,3 +5611,2444 @@ same as any drifted spec.
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1078
+
+## 30. Money amount bounds on the Billing folio-write adapter (Refs #635)
+
+Tier **T2 confirmed**: a caller-visible refusal on four Billing
+operations, with no new subsystem, dependency edge, data model,
+lifecycle state, endpoint, reader-visible surface, or error-code token.
+ADR-0004 D1 keeps the envelope and its status mapping byte-identical, so
+no ADR and no T3 record. Product done-conditions are
+`docs/product/acceptance-criteria.md` section 23 (`AC-AMT-1`..`AC-AMT-5`)
+with D-35 in `docs/project/decision-log.md` and R-16 in
+`docs/project/risk-register.md`; FR/NFR wording is the `business-analyst`
+handoff (`docs/requirements/mvp-requirements.md` section 31, the
+`NFR-AMT-1`..`NFR-AMT-4` family, and business rule BR-61), guard
+traceability the `qa-lead` handoff (`docs/testing/traceability-matrix.md`
+section 23), the release note and rollback pointer the `release-manager`
+handoff, and implementation the `dev` handoff. This section records only
+the architect-owned delta: the ceiling and its enforcement point in the
+adapter (30.1), what the refusal carries (30.2), the percent adapter's
+actual delta (30.3), the per-flow diagram with the folio-write refusal
+frame (30.4), the contract decision on the request schemas (30.5), the
+verification plan (30.6), and the residual risks with the re-tier
+trigger (30.7).
+
+### 30.1 One ceiling, enforced in the one helper every money field already uses
+
+As found (audit B2, at the spec head): `amountOf` took any `Number` and
+returned `number.longValue()`
+(`services/billing/src/main/java/com/hotel/billing/web/BillingController.java:47-53`
+at that head, the conversion at `:50`), so `12.99` posted 12 and a
+magnitude beyond anything the product can produce entered the stored
+`long` with no bound. One helper serves all three money fields —
+`PostCharge.amountMinor` (`:136`), `RecordPayment.amountMinor` (`:143`),
+and `UpsertChargeItem.priceMinor` (`:179`) — and no caller checks the
+magnitude. This PR closes it in that one helper (`:63-96`, the ceiling
+at `:33`, the whole-number check at `:83-87`, the magnitude bound at
+`:91-94`, the exact conversion at `:95`).
+
+The decided mechanism:
+
+- **One constant: `MONEY_CEILING_MINOR = 1_000_000_000_000L`,** declared
+  once in `BillingController`, the same value for all three fields. It is
+  a code constant, never configuration — no environment variable,
+  deployment file, runbook step, or per-hotel entry carries or overrides
+  it (D-35), exactly the `MAX_BODY_BYTES` pattern of section 29
+  (`services/billing/src/main/java/com/hotel/billing/web/MaxBodySizeFilter.java:38`).
+  It is declared `static final` with package visibility, so the guard in
+  `BillingControllerTest` reads the declared value instead of repeating
+  the literal.
+- **Enforcement point: `amountOf`**
+  (`BillingController.java:63-96`), the single place every money field
+  already passes through before its service call. The presence check
+  already lives there (`:65-67`), so presence, type, whole-ness, and
+  bound stay in one helper and the rule has no second copy to drift
+  from.
+- **Why not bean validation on a request DTO:** the routes bind
+  `@RequestBody Map<String, Object>` (`:126` and every sibling) and read
+  fields by hand, so there is no typed request object to annotate.
+  Introducing one DTO per money operation to reach `@Min`/`@Max` would
+  be a wider refactor than the bound it would carry, and it would still
+  need a custom constraint for "whole number of minor units".
+- **Why not rely on the published schema:** the service runs no OpenAPI
+  validator on the request path, so a `maximum` in the schema would be a
+  promise nothing enforces (30.5).
+- **Read shape and the whole-number test.** The value is read as a
+  `BigDecimal` built from `number.toString()` — the same conversion
+  `percentOf` already uses (`:111`) — so a JSON integer arrives exact
+  (`Integer`/`Long` render as `"12000"`) and a JSON double's decimal
+  spelling decides whole-ness. The test is on the value, not the Java
+  type: strip the trailing zeros and require a scale of at most zero, so
+  `12.0` is the whole amount 12 and is accepted exactly as `12` is,
+  while `12.99` is refused instead of truncated (AC-AMT-3).
+- **The bound is on the magnitude.** The absolute value is compared with
+  `BigDecimal.valueOf(MONEY_CEILING_MINOR)`, so a huge negative amount is
+  refused by the ceiling rule while an in-range negative amount passes
+  the adapter and keeps the service's existing sign refusal. After the
+  two checks the conversion is `longValueExact()`, so no residual value
+  can wrap or truncate.
+- **A value that cannot be read as a decimal number** (`NaN`, `Infinity`
+  if a caller's serialiser writes them) is not a whole number of minor
+  units and refuses with the whole-number sentence, not a fault.
+
+The ladder a money request walks, with each step's owner and answer:
+
+| Step | Where | Answer | Spec |
+|---|---|---|---|
+| 1. body ceiling | `MaxBodySizeFilter` (`:38`, `:43`), ahead of Spring binding | `VALIDATION_FAILED` 400, `details.field` `body`, `error.transport.body_too_large` | section 29 |
+| 2. session | `requireToken` (`BillingController.java:117-122`), before any field is read (`:134`, `:142`, `:179`) | `UNAUTHENTICATED` 401 | unchanged |
+| 3. field absent | `amountOf` (`:65-67`) | `VALIDATION_FAILED` 400, `error.validation.field_required` | unchanged |
+| 4. present, not a JSON number | `amountOf` (`:68-70`) | `VALIDATION_FAILED` 400, `error.validation.field_number` | new (30.8 shape note) |
+| 5. present, not a whole number of minor units | `amountOf` (`:83-87`) | `VALIDATION_FAILED` 400, `details.field` the field, `error.validation.amount_not_integer` | new |
+| 6. magnitude above the ceiling | `amountOf` (`:91-94`) | `VALIDATION_FAILED` 400, `details.field` the field, `error.validation.amount_above_ceiling` | new |
+| 7. service rules | `BillingService` (`:126-146`, `:168-190`, `:319-324`) | item kind, item defined, method, sign refusals — unchanged | unchanged |
+| 8. write | `ensureFolio`, idempotency claim, insert, balance, outbox (`:142-160`, `:176-190`, `:324`) | success payload | unchanged |
+
+The ceiling is a per-request-field bound, not a folio-balance bound: a
+folio's running total may exceed it and is settled by more than one
+payment. D-35 records that as a named consequence, not a gap.
+
+### 30.2 What the refusal carries
+
+- **Code and status: `VALIDATION_FAILED`, 400** — the existing caller-input
+  code and its existing status mapping. `contracts/errors/envelope.json`
+  is untouched, so the enum and `ApiExceptionHandler`'s rendering keep
+  what they serve today (ADR-0004 D1).
+- **Messages: two new plain catalogue sentences** in
+  `services/billing/src/main/resources/messages/en.json`, beside the
+  existing `error.validation.*` family (`:23-62`):
+  `error.validation.amount_not_integer` ("{field} must be a whole number
+  of minor units.") and `error.validation.amount_above_ceiling` ("{field}
+  must be at most {max} minor units."). `{max}` is rendered through
+  `Messages.formatNumber(MONEY_CEILING_MINOR)` — the same formatter call
+  the percent-range sentence already makes
+  (`services/billing/src/main/java/com/hotel/billing/service/BillingService.java:341`),
+  so the sentence shows the ceiling with the active locale's digit
+  grouping instead of a pasted literal. Neither sentence names a stack
+  trace, SQL, host, or internal class.
+- **Details: `{"field": "amountMinor"}` or `{"field": "priceMinor"}`** —
+  the established `ApiException.validation(field, message)` shape the
+  service's sign refusals already use (`BillingService.java:134-136`,
+  `:172-174`, `:321-323`). Neither name matches a field a desk refusal
+  branches on (`stayId`, `folioId`, `paymentId`).
+- **Trace: a fresh `traceId`**, as every envelope carries
+  (`services/billing/src/main/java/com/hotel/billing/web/ApiExceptionHandler.java:37`).
+- **One complete answer, nothing written.** The refusal is thrown in the
+  adapter, so the service is never invoked: no folio row is ensured
+  (`BillingService.java:121`, `:142`), no idempotency key is claimed
+  (`:146`, `:180`), no charge line, payment, or charge item is inserted,
+  no balance moves, and no outbox event is written. A refused request
+  therefore consumes no idempotency key, and the caller's retry with a
+  corrected amount is a first attempt, not a replay.
+- **Nothing inside the ceiling changes:** same status, code, message,
+  `details`, and stored effect for every whole amount at or below
+  1 000 000 000 000 minor units — including `0` for
+  `PostCharge.amountMinor` and `UpsertChargeItem.priceMinor`, an
+  idempotent replay, and the tax/fee derivation (AC-AMT-3).
+
+### 30.3 The percent adapter bounds the number, not the money
+
+A tax rate is not a money amount. `percentOf` builds a `BigDecimal` from
+`number.toString()` (`BillingController.java:102-115`, the conversion at
+`:111`) and maps an unreadable conversion to
+`error.validation.field_number` naming the field (`:112-113`); the 0–100
+range stays the service's (`BillingService.java:340-342`,
+`error.validation.percent_range`), and a fractional percent such as `8.5`
+stays accepted and drives the derivation exactly as today. No ceiling and
+no whole-number rule apply to `percent`.
+
+The one shape change: before this PR the `value instanceof Number` test
+doubled as the presence test, so a *present* percent that is not a JSON
+number (a string, an object) fell through to
+`error.validation.field_required` — the missing-field sentence for a
+field the caller sent. After the change an absent percent keeps
+`field_required` (`:104-106`), and a present value that is not a number
+answers `field_number` naming `percent` (`:107-109`). No key is added:
+the sentence and its key already exist and are already pinned by the
+catalogue guard.
+
+Product rule 5 in `docs/product/acceptance-criteria.md` section 23 and
+`AC-AMT-1` name `error.validation.field_number` for a present non-number
+money value, and `AC-AMT-5` requires its gating guard: the adapter
+answers that sentence naming the field instead of the missing-field one
+and writes nothing, and `BillingControllerTest` drives a present
+non-number value on each of the three money adapters. This section
+states the adapter's shape; it adds no acceptance condition.
+
+### 30.4 Per-flow diagram — folio-write refusal frame (amount served, refused, rolled back)
+
+```mermaid
+flowchart TD
+    A[POST /v1/billing/PostCharge, RecordPayment, or UpsertChargeItem carrying a money field  BillingController.java:131 / :139 / :175] --> B{MaxBodySizeFilter: body within 65 536 bytes  MaxBodySizeFilter.java:38}
+    B -->|over-limit body| X1[existing 400 VALIDATION_FAILED, details field body, error.transport.body_too_large]
+    B -->|within the ceiling| C{requireToken: Bearer session present  BillingController.java:117-122}
+    C -->|missing or blank| X2[401 UNAUTHENTICATED, no field read]
+    C -->|accepted| D{amountOf reads the money field  BillingController.java:63-96}
+    D -->|absent| R1[existing 400 VALIDATION_FAILED field_required]
+    D -->|present, not a JSON number| R2[new 400 VALIDATION_FAILED field_number, details field]
+    D -->|present, not a whole number of minor units| R3[new 400 VALIDATION_FAILED amount_not_integer, details field]
+    D -->|present, magnitude above 1 000 000 000 000| R4[new 400 VALIDATION_FAILED amount_above_ceiling, details field]
+    R1 --> E[nothing written: no folio ensure, no idempotency claim, no line, no payment, no balance move, no outbox event]
+    R2 --> E
+    R3 --> E
+    R4 --> E
+    D -->|whole amount at or inside the ceiling| F[service rules unchanged: item kind and item defined, payment method, sign  BillingService.java:126-146 / :168-190 / :319-324]
+    F -->|sign or kind refused| V[existing 400 VALIDATION_FAILED amount_negative, amount_positive, price_negative, item_kind, item_undefined, or method]
+    V --> E
+    F -->|accepted| G[ensure folio, claim idempotency key, insert line or payment or charge item, move the balance, write the outbox event  BillingService.java:142-160 / :176-190 / :324]
+    G --> H[200 operation payload]
+    E --> E2[rollback frame: a refusal is the whole outcome of its call, so nothing is compensated and no retry key was consumed]
+```
+
+Edge trace (every edge cites code as implemented at this head; the two
+new refusal branches are the guards `AC-AMT-2` and `AC-AMT-5` require,
+added by this PR):
+
+- A–B: Billing's body-bounding filter
+  (`services/billing/src/main/java/com/hotel/billing/web/MaxBodySizeFilter.java:38`,
+  `doFilterInternal` `:43`) runs ahead of Spring's `@RequestBody`
+  binding (`BillingController.java:126` and every sibling), so the
+  transport refusal of section 29 answers first and keeps its answer.
+- B–X1: the existing `error.transport.body_too_large` envelope (LLD
+  section 29.2), untouched by this change.
+- B–C: `requireToken`
+  (`services/billing/src/main/java/com/hotel/billing/web/BillingController.java:117-122`),
+  called before any field is read on the three money routes (`:134`,
+  `:142`, `:179`) and on the percent route (`:187`).
+- C–X2: the existing `UNAUTHENTICATED` 401, unchanged — a money rule is
+  never reached without a session (AC-AMT-5's no-change clause).
+- C–D: `amountOf`
+  (`BillingController.java:63-96`), called at `:136`, `:143`, and `:179`.
+- D–R1: the existing presence refusal (`:65-67`), unchanged.
+- D–R2: the new presence-versus-type split (30.3's rule, applied to the
+  money fields too).
+- D–R3 and D–R4: the two checks the implementation adds inside
+  `amountOf` (`:83-87`, `:91-94`); both refuse before the service call,
+  so nothing is written (`AC-AMT-1`, `AC-AMT-2`).
+- R1–R4–E: one `ApiException` answered by
+  `ApiExceptionHandler`'s envelope
+  (`services/billing/src/main/java/com/hotel/billing/web/ApiExceptionHandler.java:30-40`),
+  carrying `details` and a fresh `traceId`; the service is mocked in
+  `BillingControllerTest` (`:47-48`), which is how the guards prove no
+  call ran.
+- D–F: the service call itself (`BillingService.java:126-146`,
+  `:168-190`, `:319-324`); the sign refusals at `:134-136`, `:172-174`,
+  and `:321-323` stay in this layer by decision (30.1).
+- F–V: the existing refusal set, unchanged.
+- F–G: `ensureFolio` and the idempotency claim, then the insert, the
+  balance movement, and the outbox event (`:142-160`, `:176-190`,
+  `:324`).
+- G–H: the operation payload the controller returns.
+- E–E2: the rollback frame. A refusal raised in the adapter has no
+  earlier write of its own to take back — no folio row, no claimed
+  idempotency key, no line, no balance delta, no outbox event — so there
+  is nothing to release and no compensating call exists or is needed.
+  The whole change reverts with the single implementation PR: the two
+  checks and the two catalogue sentences fall back to today's truncating
+  `amountOf`, and no stored amount, migration, or backfill exists in
+  either direction.
+
+### 30.5 Contract decision: the three request schemas declare no `maximum`
+
+The three money request schemas already declare the field as an integer
+with a `minimum` only
+(`contracts/http/PostCharge.json:18`, `RecordPayment.json:17`,
+`UpsertChargeItem.json:16`), so a fractional value already violates the
+contract the service publishes and the adapter's whole-number rule is
+conformance to it, not a new constraint. The **ceiling stays out of the
+schemas**:
+
+- **Nothing would enforce it.** No validator runs on Billing's request
+  path; the refusal is the adapter's. A `maximum` in the schema would
+  state a bound the service does not read, which is exactly the drift
+  `script/contract-check.sh` cannot detect.
+- **One number, one home.** A schema `maximum` plus the adapter constant
+  is two copies of the ceiling that must be kept equal by hand. The
+  constant is the authoritative one, and the refusal sentence carries
+  the value to the caller (`30.2`), so the caller learns the ceiling from
+  the answer rather than from a schema it may never read.
+- **No contract file, fixture, or `openapi.yaml` change.** The desk-loop
+  OpenAPI subset and every `contracts/` fixture keep their bytes, so
+  `script/contract-check.sh` and `script/openapi-route-check.sh` stay
+  green without an edit, which is the `AC-AMT-5` condition.
+
+What documents the bound instead: the money convention in
+`docs/technical/api-spec.md` section 1 (a whole number of minor units,
+bounded by one declared ceiling wherever a service accepts one), the
+refusal in `docs/technical/error-handling.md` section 1.2, BR-61 in the
+requirements set, and this section. Deciding later to add a `maximum` to
+a schema is a contract change with its own fixture and gate work; it
+would not move the enforcement point, and the ceiling value would then
+have to be held equal to the adapter constant in the same change.
+
+### 30.6 Verification plan
+
+`qa-lead` owns the traceability rows (`docs/testing/traceability-matrix.md`
+section 23); this is the architecture-side check the implementation must
+satisfy. Every guard lives in
+`services/billing/src/test/java/com/hotel/billing/web/BillingControllerTest.java`
+(MockMvc, service mocked at `:47-48`) unless noted.
+
+- **Constant guard.** The declared `MONEY_CEILING_MINOR` equals
+  1 000 000 000 000 and the same value bounds all three fields.
+- **Fractional guard, per money field (three).** `amountMinor` on
+  `PostCharge`, `amountMinor` on `RecordPayment`, `priceMinor` on
+  `UpsertChargeItem`: send `12.99`, assert HTTP 400, the four-key
+  envelope, `code: "VALIDATION_FAILED"`, `details.field` the field, the
+  `error.validation.amount_not_integer` sentence, a non-empty `traceId`,
+  and `verifyNoInteractions(service)` so nothing was written.
+- **Over-ceiling guard, per money field (three) plus the negative case.**
+  Send 1 000 000 000 001 and −1 000 000 000 001; assert the same
+  envelope with `error.validation.amount_above_ceiling`. An in-range
+  negative still reaches the service and keeps the sign refusal.
+- **Boundary pair.** 1 000 000 000 000 is accepted (the service is
+  called) and one minor unit more is refused.
+- **Whole value spelled with a decimal point.** `12.0` is served exactly
+  as `12` is.
+- **In-range regression, per field.** The existing amounts
+  (`BillingControllerTest.java:53`, `:68`) keep their answer, and
+  `RecordPayment`/`UpsertChargeItem` gain an in-range success case
+  because no controller test drove them before this PR.
+- **Percent guards.** A present non-numeric `percent` answers
+  `field_number` naming `percent`; `8.5` is accepted and derives as
+  today; the existing 0–100 and absent-field refusals
+  (`services/billing/src/test/java/com/hotel/billing/service/BillingServiceTest.java:104`)
+  stay unedited.
+- **Catalogue guards.** One assertion per new key pins its sentence with
+  the placeholders rendered
+  (`services/billing/src/test/java/com/hotel/billing/util/MessagesTest.java:24`
+  carries the same sample-guard shape), and
+  `script/catalogue-coverage-check.sh` stays green.
+- **Existing suites pass unedited** — no success or refusal assertion
+  moves for an in-ceiling amount (`BillingControllerTest.java:111`,
+  `:301`, `:331`, `:356`; `BillingServiceTest.java:55`, `:87`, `:104`,
+  `:154`) — and `script/contract-check.sh` stays green with no contract
+  file change.
+- **Gate commands** (from `docs/architecture/services/billing.md`
+  section 7): `mvn verify` in `services/billing`, plus
+  `script/contract-check.sh` and `script/catalogue-coverage-check.sh`
+  from the repo root.
+
+### 30.7 Residual risks and re-tier trigger
+
+- **The ceiling can be wrong in either direction.** Too small refuses a
+  legitimate 730-night charge; too large admits a value the folio cannot
+  meaningfully hold. R-16 records both. The 15×-plus headroom over the
+  largest legitimate charge and the boundary guard are the mitigation,
+  and a future ceiling change is a deliberate, guarded edit.
+- **Value semantics follow the JSON spelling.** Because whole-ness is
+  read from the decimal spelling, a caller that writes an amount as a
+  rounded float can only be admitted when its spelling is whole
+  (`12.0`); a caller that writes `12.000000000000001` is refused, which
+  is the honest answer for an amount that is not a whole minor unit.
+- **Per field, not per folio.** A folio's running total may exceed the
+  ceiling and is settled by more than one payment (D-35's named
+  consequence). Bounding a total is a separate decision.
+- **The published schema is silent about the ceiling** (30.5). A
+  contract reader learns it from the docs and from the refusal sentence,
+  not from the schema.
+- **Re-tier trigger.** Moving the ceiling into configuration (an
+  environment variable, deployment setting, or per-hotel override) is a
+  T4 change with its own release, deployment, and runbook delta. Adding
+  a `maximum` to a request schema is a contract change with its own
+  fixture and gate work. Changing a money field's wire type (to a string
+  or a decimal) is a contract change across every caller.
+
+### 30.8 Maintain-with-code
+
+The implementation change adds the ceiling constant, the two checks and
+the presence/type split in `amountOf`, the presence/type split in
+`percentOf`, and the two catalogue sentences; it also refreshes this
+section's line pins, `docs/architecture/services/billing.md` section 10,
+and the `VALIDATION_FAILED` row of that page's section 6 if any cited
+line moves (AC-AMT-5, `qa-lead`'s traceability section 23).
+`dev-peer-review` treats a stale pin, a missing guard, or a refusal whose
+`details.field` is absent as a review finding, the same as any drifted
+spec.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1117
+
+## 31. Reporting date ranges carry a declared span cap (Refs #641)
+
+Tier **T2 confirmed**: a caller-visible refusal on two Reporting read
+operations, with no new subsystem, dependency edge, data model,
+lifecycle state, endpoint, reader-visible surface, or error-code token.
+ADR-0004 D1 keeps the envelope and its status mapping byte-identical, so
+no ADR and no T3 record. Product done-conditions are
+`docs/product/acceptance-criteria.md` section 24 (`AC-RPT-5`..`AC-RPT-7`)
+with D-36 in `docs/project/decision-log.md` and R-17 in
+`docs/project/risk-register.md`; FR/NFR wording is the `business-analyst`
+handoff (`docs/requirements/mvp-requirements.md` section 32, NFR
+`NFR-RPT-1`, and business rule BR-62), guard traceability the `qa-lead`
+handoff (`docs/testing/traceability-matrix.md` section 24), the release
+note and rollback pointer the `release-manager` handoff, and
+implementation the `dev` handoff. This section records only the
+architect-owned delta: where the check sits and why (31.1), the
+night-versus-date arithmetic and its boundary (31.2), what the refusal
+carries (31.3), the per-flow diagram with the happy and refusal edges
+(31.4), the contract decision (31.5), the verification plan (31.6), and
+the residual risks with the re-tier trigger (31.7).
+
+As found (audit finding P1, at this spec head): `parseRange` parses both
+ends, refuses a malformed one naming the field, and refuses `dateTo`
+before `dateFrom` (`services/reporting/internal/store/store.go:440-453`,
+the format refusals at `:441-449`, the order refusal at `:450-452`), but
+nothing compares the distance between the two ends. Both range reports
+then take the store mutex and walk every date in the window inclusively:
+`Occupancy` locks at `:465` and loops at `:480`, scanning every active
+reservation for every room type on every date; `Revenue` locks at `:520`
+and walks the same loop at `:523`. One `0001-01-01`..`9999-12-31` window
+is millions of iterations holding a mutex every other report read needs,
+so a single caller stalls all reporting on the single on-premise host.
+Rates already refuses a stay range longer than 730 nights
+(`services/rates/internal/store/store.go:254-256`), so the two backends
+currently disagree on the longest range they accept.
+
+### 31.1 Where the check sits: in `parseRange`, before the lock, after auth
+
+The refusal is added inside `parseRange`
+(`services/reporting/internal/store/store.go:448-467`), as the fourth
+and last of its window checks, after both format refusals and after the
+order refusal. That position is the whole design:
+
+- **It is the one helper both range reports already share.**
+  `Occupancy` calls it at `:475` and `Revenue` at `:530`, and no other
+  read does, so the span rule has exactly one home and no second copy to
+  drift from — the same "one helper, one rule" reasoning as the Billing
+  money adapter (section 30.1). `Sheet` (`:556`) and `Housekeeping`
+  (`:632`) never call it, which keeps the one-date read and the
+  no-range read untouched by construction rather than by a second
+  condition.
+- **It runs after authentication and after the presence checks.** The
+  handler's `authed` wrapper answers `UNAUTHENTICATED` before any field
+  is read (`services/reporting/internal/handler/handler.go:116-134`),
+  and the route bodies refuse a missing `dateFrom`/`dateTo` before the
+  service call (`:137-145`, `:163-170`). A span rule is therefore never
+  reached without a session, and a missing field keeps its existing
+  sentence instead of being reinterpreted as an over-wide window.
+- **It runs before the store mutex.** Both call sites take `s.mu.Lock()`
+  only after `parseRange` returns (`Occupancy` `:475` then `:479`,
+  `Revenue` `:530` then `:534`), and the per-date loops start after the
+  lock (`:494`, `:537`). A refused window therefore takes no lock, walks
+  no date, reads no projection, and never holds up another report — the
+  property `AC-RPT-5` states and the only reason the cap is worth having.
+- **Why not the handler.** The handler is transport: it tests presence
+  with `strField` and never parses a window date, so a span check there
+  would either parse both dates a second time per route (two copies,
+  two calendars) or need a new shared date helper above the store. It
+  would also put a cross-field calendar rule in the layer that answers
+  before the service exists, where the `DailySheet` and
+  `HousekeepingReport` routes sit beside it with no window to bound.
+- **Why not the service.** `service.Service` is a declared pass-through
+  that "validates nothing itself beyond delegating"
+  (`services/reporting/internal/service/service.go:31-41`, the package
+  doc at `:1-5`), and every window rule the service has today lives in
+  the store. Moving one rule up would split the window contract across
+  two layers while the other three stay put.
+- **Why not the request schema.** The cap is a cross-field constraint —
+  `dateTo` bounded relative to `dateFrom` — and the two request
+  manifests declare two independent `string`/`date` properties
+  (`contracts/http/OccupancyReport.json:13-16`,
+  `contracts/http/RevenueSummary.json:13-16`). No JSON Schema keyword in
+  those hand-written manifests can express "at most 730 days after the
+  other field", and no validator runs on Reporting's request path, so a
+  published bound would be a promise nothing reads (31.5).
+
+The constant: **`maxReportRangeNights = 730`**, one unexported integer
+constant in the store package, declared beside `dateLayout` (`:34`) and
+read by both operations through `parseRange`. It is a code constant, not
+configuration — no environment variable, deployment file, runbook step,
+or per-hotel entry carries or overrides it (D-36), the same rule the
+body ceiling and the money ceiling follow (sections 29.1, 30.1). It is
+named, not inlined, so the guard that proves the boundary reads the same
+value the refusal renders.
+
+`730` is not chosen here: `NFR-PERF-2` documents two years of a 50-room
+hotel's data as the reporting need (`docs/requirements/mvp-requirements.md`
+section 2), the guard that measures it drives exactly that window — 731
+dates, 2024-01-01..2025-12-31
+(`services/reporting/internal/service/perf_test.go:96-101`) — and Rates
+already applies the same 730-night bound to a stay range
+(`services/rates/internal/store/store.go:254-256`, documented in
+`docs/architecture/services/rates.md` section 3). Adopting that number
+keeps the backends in agreement and cuts no documented look-back.
+
+### 31.2 The arithmetic: 730 nights is 731 inclusive dates
+
+Both reports treat their window as inclusive at both ends — the loops
+advance one calendar day at a time and stop only when the day is after
+`dateTo` (`store.go:494`, `:537`) — so the cap is stated in **nights
+between the ends** and the accepted row count is one more than that:
+
+| `dateFrom` | `dateTo` | nights | inclusive dates | answer |
+|---|---|---|---|---|
+| 2024-01-01 | 2025-12-31 | 730 | 731 | served — today's rows (the perf guard's window) |
+| 2024-01-01 | 2026-01-01 | 731 | 732 | refused, naming `dateTo` |
+| 2024-06-01 | 2024-06-01 | 0 | 1 | served |
+| 0001-01-01 | 9999-12-31 | ≈3.65 M | ≈3.65 M | refused without walking a date |
+
+The comparison is calendar arithmetic on the two parsed values, not a
+duration assumption:
+
+- Both ends come from `time.Parse(dateLayout, …)` (`store.go:449`,
+  `:453`), so both are UTC midnights and neither carries an offset or a
+  DST transition.
+- The check refuses when `to.After(from.AddDate(0, 0,
+  maxReportRangeNights))`, i.e. when the far end is more than 730
+  calendar days after the near end. Using the same `AddDate(0, 0, n)`
+  form the loops advance by (`:494`, `:537`) means the bound and the
+  walk count dates the same way: month lengths and the leap day are the
+  calendar's problem in both places, so 2024-02-28..2024-03-01 (two
+  nights in a leap year) and 2023-02-28..2023-03-01 (one night) are each
+  counted correctly without a special case.
+- Order still answers first. A reversed window has a negative span; the
+  existing order refusal (`:457-459`) fires before the span comparison,
+  so it keeps `error.validation.date_range_order` naming `dateTo` and
+  never borrows the span sentence.
+
+### 31.3 What the refusal carries
+
+- **Code and status: `VALIDATION_FAILED`, 400** — the code a bad window
+  already answers, through the existing constructor
+  `validation(field, message)` (`store.go:30-32`), which sets
+  `Code`, `Status: 400`, and `Details: {"field": field}`.
+  `contracts/errors/envelope.json` is untouched, so the enum and the
+  handler's rendering keep what they serve today (`writeOpError`,
+  `services/reporting/internal/handler/handler.go:38-45`).
+- **Details: `{"field": "dateTo"}`.** The far end is the offending one,
+  which matches the existing order refusal (`:457-459`) and the field
+  Rates names for its own bound (`departureDate`,
+  `services/rates/internal/store/store.go:254-256`), so a caller reads
+  one field name for every "your window is too long" answer.
+- **Message: one new plain catalogue sentence.** Key
+  `reporting.validation.date_range_span`, pattern "dateTo must be at
+  most {max} nights after dateFrom.", sitting beside the existing
+  window sentence `reporting.validation.date_to_order`
+  (`services/reporting/internal/messages/en.json:165`). `{max}` is
+  rendered from the constant — `messages.Num(int64(maxReportRangeNights))`
+  (`services/reporting/internal/messages/messages.go:129-131`) — so the
+  sentence shows `730` with the active locale's digit grouping instead
+  of a pasted literal, exactly the `{max}` pattern the money-ceiling
+  sentence uses (section 30.2). One key, one sentence, English source
+  unchanged elsewhere (`NFR-I18N-1`), and
+  `script/catalogue-coverage-check.sh` stays green because the key
+  exists in the catalogue and its sample assertion pins the rendered
+  sentence.
+- **Trace: a fresh `traceId`**, as every envelope carries
+  (`handler.go:38-45`).
+- **One complete answer, no work done.** The refusal returns from
+  `parseRange`, so the caller's read is over: no mutex is taken
+  (`:479`, `:534`), no date is walked (`:494`, `:537`), no projection is
+  read, no `asOf` is sampled, and no other report waits. Nothing is
+  written — the reports are read-only projections — so there is no
+  partial state to unwind.
+- **Nothing inside the cap changes.** Every accepted window keeps its
+  rows, row order, zero rows for dates without data, and `asOf`; the
+  missing, malformed, and out-of-order refusals keep their code, status,
+  field, and sentence; `DailySheet` (`:556`) and `HousekeepingReport`
+  (`:632`) are not on this path and answer exactly as before
+  (`AC-RPT-6`).
+
+### 31.4 Per-flow diagram — range read: served, refused, and why nothing waits
+
+```mermaid
+flowchart TD
+    A[POST /v1/reporting/OccupancyReport or RevenueSummary  handler.go:136 / :162] --> B{Bearer session present  handler.go:116-134}
+    B -->|missing or blank| X1[401 UNAUTHENTICATED, no field read]
+    B -->|present| C{dateFrom and dateTo present  handler.go:137-145 / :163-170}
+    C -->|absent| X2[existing 400 VALIDATION_FAILED, field dateFrom or dateTo, error.validation.date_from_required / date_to_required]
+    C -->|present| D[parseRange  store.go:448]
+    D -->|malformed end| X3[existing 400 VALIDATION_FAILED naming the field, error.validation.date_from_format / date_to_format  store.go:449-456]
+    D -->|dateTo before dateFrom| X4[existing 400 VALIDATION_FAILED naming dateTo, error.validation.date_range_order  store.go:457-459]
+    D -->|dateTo more than 730 nights after dateFrom| R[new 400 VALIDATION_FAILED, details field dateTo, reporting.validation.date_range_span with 730  new check]
+    D -->|span at or under 730 nights| E[Take the store lock  Occupancy store.go:479 / Revenue store.go:534]
+    E --> F[Walk each inclusive date  Occupancy store.go:494 / Revenue store.go:537]
+    F --> G[200 rows, asOf]
+    R --> N[no lock taken, no date walked, no projection read, no state written]
+    X1 --> N2[nothing read, nothing written]
+    X3 --> N2
+    X4 --> N2
+    N2 --> N3[rollback frame: read-only path, nothing to compensate; the whole change reverts with the single implementation PR]
+```
+
+Edge trace (every edge cites code as implemented at this head; the one
+new branch is the guard `AC-RPT-5` requires and the implementation PR
+adds):
+
+- A–B: `authed` (`services/reporting/internal/handler/handler.go:116-134`)
+  wraps both range routes (`:136`, `:162`).
+- B–X1: the existing `UNAUTHENTICATED` 401 (`:118-127`), unchanged — a
+  span rule is never reached without a session.
+- B–C: the presence checks that read `dateFrom` and `dateTo` with
+  `strField` (`:137-145`, `:163-170`), unchanged.
+- C–D: `svc.OccupancyReport` / `svc.RevenueSummary`
+  (`services/reporting/internal/service/service.go:31-41`), which
+  delegate straight to `store.Occupancy` (`store.go:474`) and
+  `store.Revenue` (`:529`); each calls `parseRange` first (`:475`,
+  `:530`).
+- D–X3 and D–X4: the existing format and order refusals (`:449-456`,
+  `:457-459`), unchanged — order answers before span, so a reversed
+  window keeps the order sentence.
+- D–R: the new span comparison against `from.AddDate(0, 0,
+  maxReportRangeNights)` (31.2), raised through `validation("dateTo",
+  messages.Text("reporting.validation.date_range_span", …))`
+  (`store.go:30-32`).
+- D–E: the lock is taken only after `parseRange` returns (`:479`,
+  `:534`); a refusal never reaches it, which is the difference between
+  this change and the finding.
+- E–F–G: the per-date walk (`:494`, `:537`) and the handler's response
+  rendering (`handler.go:147-159`, `:173-185`), unchanged.
+- R–N and X1/X3/X4–N2: `writeOpError` renders one envelope with
+  `code`, `message`, `details`, and a fresh `traceId` (`handler.go:38-45`);
+  no lock, no walk, no projection read (`Occupancy` `:479-494`,
+  `Revenue` `:534-537` are all below the refusal).
+- N2–N3: the rollback frame. The reports are reads over the rebuilt
+  projection, so a refusal has no earlier write of its own to take back
+  and no compensating call exists or is needed. The whole change reverts
+  with the single implementation PR — the constant, the comparison, the
+  catalogue key, and the guards disappear together, and every window the
+  service accepted before is accepted again. No migration, backfill, or
+  stored row exists in either direction.
+
+### 31.5 Contract decision: no token, no schema, no fixture, no version change
+
+The two request manifests keep their bytes:
+
+- **The bound is cross-field, so the schema cannot carry it.**
+  `dateFrom` and `dateTo` are independent `string`/`date` properties
+  (`contracts/http/OccupancyReport.json:13-16`,
+  `contracts/http/RevenueSummary.json:13-16`). A `maximum` bounds a
+  value, not a distance to a sibling field, so no keyword in these
+  manifests expresses "at most 730 nights after `dateFrom`"; adding one
+  would need a schema expression the format does not have.
+- **Nothing would enforce a published bound.** No validator runs on
+  Reporting's request path; the refusal is `parseRange`'s. A bound in
+  the manifest would state a rule the service does not read, which is
+  the drift `script/contract-check.sh` cannot detect (the same reasoning
+  as section 30.5).
+- **`VALIDATION_FAILED` is already published.** Both manifests already
+  enumerate it for a bad window (`contracts/http/OccupancyReport.json:43`,
+  `contracts/http/RevenueSummary.json:42`), so the refusal adds no code,
+  no status, no operation, and no error enum entry.
+- **The `when` prose stays as written.** Each manifest's
+  `errors[].when` sentence enumerates the window refusals it had at
+  authorship. Two precedents leave that prose alone when a new refusal
+  joins the same code: `contracts/http/PostCharge.json:40` still lists
+  only the item-kind, undefined-item, and negative-amount cases although
+  the adapter now also refuses fractional and over-ceiling amounts
+  (section 30), and the #630 body ceiling likewise added no `when`
+  clause anywhere. The authoritative enumeration of what
+  `VALIDATION_FAILED` covers for a report window is
+  `docs/technical/error-handling.md` section 1.3 plus this section, so a
+  manifest edit would be a third copy to keep in step. Address the
+  caller-facing prose separately if the owner wants every refusal listed
+  there; it is not part of this change and changes none of its
+  conditions.
+
+What documents the bound instead: the new error-handling subsection
+(1.3), the date-window convention in `docs/technical/api-spec.md`
+section 1, BR-62 in the requirements set, the `ReportingService` row in
+that spec's section 2, and this section. Because no contract file,
+fixture, or `openapi.yaml` copy moves, `script/contract-check.sh` and
+`script/openapi-route-check.sh` stay green without an edit — the
+condition `AC-RPT-7` states. Deciding later to publish the span in a
+schema is a contract change with its own fixture and gate work; it would
+not move the enforcement point.
+
+### 31.6 Verification plan
+
+`qa-lead` owns the traceability rows (`docs/testing/traceability-matrix.md`
+section 24); this is the architecture-side check the implementation must
+satisfy.
+
+- **Constant guard.** The declared `maxReportRangeNights` is 730 and both
+  range reports reach it through `parseRange` — one value, not two.
+- **Over-cap refusal, per operation.** `OccupancyReport` and
+  `RevenueSummary` with a 731-night window and with
+  `0001-01-01`..`9999-12-31` each answer `VALIDATION_FAILED`, status
+  400, `details.field` `dateTo`, the `reporting.validation.date_range_span`
+  sentence carrying `730`, and no rows — at store level beside
+  `TestReportWindowsAreValidated`
+  (`services/reporting/internal/service/service_test.go:33-44`) and at
+  HTTP level beside `TestReportingAuthAndValidation`
+  (`services/reporting/internal/handler/handler_test.go:108-125`), which
+  asserts the four envelope keys and a non-empty `traceId`.
+- **Boundary pair, per operation.** The at-cap window
+  (2024-01-01..2025-12-31, 731 inclusive dates) is served and returns
+  today's rows, and one night more is refused. The existing
+  `TestPerfTwoYearReportsRecordTimings`
+  (`services/reporting/internal/service/perf_test.go:96`) keeps running
+  unedited: it is the acceptance evidence that the documented two-year
+  window is inside the cap.
+- **The finding's own window.** A `0001-01-01`..`9999-12-31` request
+  returns the refusal with no rows. The position rule is guarded
+  directly: `TestSpanCheckRunsBeforeTheStoreLock`
+  (`services/reporting/internal/store/store_test.go:413`) holds `s.mu`
+  and requires both over-cap reads to answer within the failure-path
+  timeout, so a check placed below the lock fails the guard rather than
+  passing on status. The guard asserts placement, not latency; the
+  unchanged perf guard remains the latency evidence.
+- **Existing window guards unchanged.** The missing, malformed, and
+  out-of-order refusals keep their code, status, field, and sentence
+  with no assertion edit (`service_test.go:33-44`,
+  `handler_test.go:108-125`, `messages_test.go:28-51`); a reversed window
+  still answers the order sentence, not the span sentence.
+- **One-date and no-range reads unchanged.** `DailySheet` and
+  `HousekeepingReport` guards stay green with no edit
+  (`service_test.go:46`, `handler_test.go:131`, the perf reads at
+  `perf_test.go:226-291`).
+- **Catalogue guards.** One sample assertion pins the new sentence with
+  `{max}` rendered through `messages.Num`
+  (`services/reporting/internal/messages/messages_test.go:28-51`), and
+  `script/catalogue-coverage-check.sh` stays green.
+- **Gate commands** (from `docs/architecture/services/reporting.md`
+  section 7): `go build ./...`, `go test ./...`, `go vet ./...`, and
+  `gofmt -l .` in `services/reporting`, plus `script/contract-check.sh`
+  and `script/catalogue-coverage-check.sh` from the repo root.
+
+### 31.7 Residual risks and re-tier trigger
+
+- **The cap can be wrong in either direction.** Too tight refuses a
+  legitimate long look-back; too loose leaves a window whose per-date
+  walk still stalls every other report. R-17 records both. The
+  mitigation is that 730 is the documented two-year need and the
+  existing perf window, plus the boundary pair that fails if the number
+  drifts.
+- **The cap bounds the date walk, not the per-night scan.** Inside the
+  cap, `Occupancy` still scans every active reservation per room type per
+  date (`store.go:494-516`), so the measured 505 ms over 731 dates
+  (`docs/testing/test-report.md:297-298`) grows with booking volume
+  regardless of this change. `NFR-PERF-2` keeps that target; bounding
+  the scan is a separate change.
+- **A refusal answers 400, not 422 or 403.** A window the caller asked
+  for and the product cannot serve is a caller-input refusal in this
+  codebase's vocabulary (a bad window already answers
+  `VALIDATION_FAILED`), and `AC-RPT-5` names that code. A distinct token
+  would be a contract change.
+- **Reads only.** No write path, stored row, event, or idempotency
+  record is touched, so there is no partial-failure story beyond "the
+  read did not run".
+- **Re-tier trigger.** Making the cap configurable (environment
+  variable, deployment setting, per-hotel override) is a T4 change with
+  its own release, deployment, and runbook delta. Changing the number
+  itself is a deliberate, guarded edit of the constant plus the
+  sentence's rendered value, with the boundary pair updated in the same
+  change. Publishing the span in a request schema is a contract change
+  with fixture and gate work. Bounding `HousekeepingReport`,
+  `DailySheet`, or adding pagination is a separate feature, not this
+  guard.
+
+### 31.8 Maintain-with-code
+
+The implementation change adds the constant, the comparison in
+`parseRange`, and the catalogue key, and it creates the guards of 31.6.
+It also refreshes this section's line pins and
+`docs/architecture/services/reporting.md` sections 4, 6, and 8 to the
+as-built `file:line` at the merged head (`AC-RPT-7`, `qa-lead`'s
+traceability section 24). `dev-peer-review` treats a stale pin, a missing
+over-cap or at-cap guard, a refusal whose `details.field` is not
+`dateTo`, and a span check placed below the store lock as review
+findings, the same as any drifted spec.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1130
+
+## 32. Guest identity lookups refuse an ambiguous name and guest payloads carry declared bounds (Refs #640)
+
+Tier **T2 confirmed** (recorded by `product-owner` in
+`docs/product/acceptance-criteria.md` section 25): caller-visible
+refusals on one read operation (`IdentifyGuest`), one write operation
+(`UpsertGuest`), and one snapshot ingestion (`AttachReservation`), plus
+one reader-visible desk state on the existing Book screen — no new
+subsystem, dependency edge, data model, lifecycle state, endpoint, token
+family, or error code. ADR-0004 D1 keeps the envelope and its status
+mapping byte-identical, so no ADR and no T3 record. Product
+done-conditions are `AC-GID-1`..`AC-GID-7`
+(`docs/product/acceptance-criteria.md` section 25) with D-37 in
+`docs/project/decision-log.md` and R-18 in
+`docs/project/risk-register.md`, plus the Book-screen UI contract delta
+in `docs/product/desk-ui-design-rollout.md` section 6.22; FR wording is
+the `business-analyst` handoff (`docs/requirements/mvp-requirements.md`
+section 33, `FR-GID-1`..`FR-GID-3`, and business rule BR-63); guard
+traceability the `qa-lead` handoff (`docs/testing/traceability-matrix.md`
+section 25); the release note and rollback pointer the `release-manager`
+handoff; and implementation the `dev` handoff. This section records only
+the architect-owned delta: where each check sits and why (32.1), the
+ambiguity refusal shape (32.2), the payload bounds (32.3), the calendar
+date rule (32.4), the per-flow diagrams (32.5), the contract decision
+(32.6), the verification plan (32.7), the NFR disposition (32.8),
+the residual risks and re-tier triggers (32.9), and maintain-with-code
+(32.10).
+
+As found at the pre-change head (audit findings G1, G2, G3; the
+as-built pins follow this list):
+
+- **G1 — a name lookup serves the first match.** The in-memory
+  `findGuest` walks the map and returns the first record whose
+  `fullName` equals the wanted name
+  (`services/guests/src/store.ts:308-326`, the loop and return at
+  `:318-322`), and the Postgres twin asks for one row
+  (`services/guests/src/pgstore.ts:169-194`, the `LIMIT 1` query at
+  `:183-187`). Two guests sharing a name therefore hand the desk one
+  guest's profile, contact, preferences, notes, and stay links with no
+  sign that a choice was made — the wrong-profile (PII) read the finding
+  names. The name branch is reachable only through `IdentifyGuest`
+  (`store.ts:242-245`, `pgstore.ts:87-90`); `GetGuest` and
+  `GetBookingContext` pass `guestId` only (`store.ts:247-264`,
+  `pgstore.ts:92-109`) and never reach it.
+- **G2 — the guest write stores any object and any note.** `asObject`
+  turns any non-object into `{}` and passes any object through
+  (`store.ts:166-168`); `upsertGuest` uses it for `contact` and
+  `preferences` with no shape, field-count, key, or value check, and
+  accepts `notes` as any string with no bound (`store.ts:220-240`, the
+  three fields at `:231-233`; the Postgres twin at `pgstore.ts:63-85`,
+  the fields at `:70-72`). The 64 KiB body ceiling (LLD
+  [section 29](#29-bounded-request-bodies-and-finite-server-timeouts-refs-630))
+  bounds the request, not one guest field.
+- **G3 — a confirmation date is shape-checked, not calendar-checked.**
+  `requireDate` tests `^\d{4}-\d{2}-\d{2}$` only (`store.ts:170-175`); it
+  is reached from `toConfirmationRecord` for `dates.checkIn` and
+  `dates.checkOut` (`store.ts:191-212`, the dates at `:208`), so
+  `2026-13-45` and `2026-02-31` are accepted where the Go services'
+  `time.Parse` refuses them.
+
+As built by the #640 implementation PR (this section's pins below are
+the merged-head `file:line`):
+
+- The counted name branch is `findGuest` at `store.ts:407-438` (count
+  loop `:421-428`, shared refusal at `:432-434`) and `pgstore.ts:173-206`
+  (`count(*) OVER ()` query `:190-195`, refusal `:199-202`); the one
+  shared constructor is `ambiguousGuestName` at `store.ts:240-246`.
+- The four bound constants are `store.ts:173-176`, the shared
+  validators `:183-218` (object shape) and `:224-235` (notes), called at
+  `:323-325` in memory and `pgstore.ts:71-76` in Postgres.
+- The calendar round-trip is in `requireDate` `store.ts:248-268`
+  (shape `:249-251`, UTC round-trip `:256-266`), reached from
+  `toConfirmationRecord` `:301` and the snapshot writes `:386-390` /
+  `pgstore.ts:143-147`.
+- The catalogue keys are `guests.validation.ambiguous_name`,
+  `guests.validation.contact_shape`, and `guests.validation.notes_length`
+  (`messages/en.json:201-203`, mirrored to
+  `services/guests/src/messages.en.json` and `messages/vi.json`), and the
+  desk branch is `isAmbiguousGuestName` at
+  `app/src/views/BookView.vue:476-487`, used in `onFindGuest`
+  (`:757-767`).
+
+### 32.1 Where each check sits: in the shared store helpers, before any profile read or write
+
+- **The ambiguity check goes in `findGuest`, in both stores, on the name
+  branch only.** The match set is store-specific (a map scan against a
+  SQL read), so each store counts its own matches, but the refusal itself
+  is built by one shared constructor in `store.ts` (32.2), so code,
+  status, details, and sentence cannot drift between the twin
+  implementations — the precedent is `requireUuid`, `requireString`, and
+  `toConfirmationRecord`, all exported from `store.ts` and imported by
+  `pgstore.ts:5-26`. It counts every match before it answers, which is
+  the whole finding: a `LIMIT 1` or a `return` on the first hit is
+  exactly the regression the guard must catch. The `guestId` branch stays
+  first and untouched (`store.ts:408-414`, `pgstore.ts:174-184`), so a
+  caller holding an id always reads the profile it asked for — including
+  one of two same-named guests — and the blank/absent-identifier refusal
+  stays where it is (`store.ts:437`, `pgstore.ts:205`).
+- **The payload checks go in a shared validator pair in `store.ts`,
+  called at the top of both `upsertGuest` implementations** — after
+  `guestId`/`fullName`/`actor` are validated and before the first store
+  access: in the in-memory store before `this.guests.get(id)`
+  (`store.ts:326`) and therefore before the record write and the outbox
+  push (`:336-337`); in the Postgres store before either object is
+  serialised and before the `INSERT ... ON CONFLICT` (`pgstore.ts:70-85`).
+  They validate the request fields, never the stored rows.
+- **The date check goes inside `requireDate`** (`store.ts:248-268`),
+  which both stores already reach through `toConfirmationRecord`
+  (`store.ts:284`, called from `attachReservation` at `:386-390` and
+  `pgstore.ts:143-147`) — one home, one calendar, no second parser.
+- **Why not the handler.** `server.ts` reads the body and dispatches by
+  operation label (`server.ts:121-198`; `UpsertGuest` `:136`,
+  `IdentifyGuest` `:149`, `AttachReservation` `:182`) and performs no
+  field validation; the store layer is where `requireUuid`,
+  `requireString`, `requireDate`, and `requirePriceMinor` already live.
+  A handler rule would sit above the `GuestStoreAPI` interface both
+  stores implement and leave the other store free to disagree — the
+  drift `AC-GID-1` and `AC-GID-7` forbid ("both stores refuse the same
+  values").
+- **Why not the request schema.** No validator runs on the Guests request
+  path, and the manifests declare open objects
+  (`contracts/http/UpsertGuest.json:14-21`, `additionalProperties: true`).
+  A `maxLength`/`maxProperties` published there would be a promise
+  nothing reads (32.6), the same decision the money ceiling records in
+  `docs/technical/api-spec.md` section 1.
+- **Why not the Postgres schema.** The bounds are write-time guards on
+  one request, not column constraints: stored rows may already hold a
+  longer note or another object shape, and `AC-GID-7` forbids a
+  migration, backfill, or repair. `guests.guests` keeps its columns
+  (`services/guests/migrations/002_schema.sql:22-34`).
+
+### 32.2 The ambiguity refusal: count, refuse, serve nothing
+
+- **Code and status: `VALIDATION_FAILED`, 400**, raised through the
+  existing `HttpError` (`services/guests/src/errors.ts:29-40`) — the code
+  a bad lookup field already answers. No enum entry, status mapping, or
+  envelope field changes (`contracts/errors/envelope.json` untouched).
+- **Details:
+  `{"field": "fullName", "fullName": <the trimmed name searched>, "matches": <exact match count>}`.**
+  The field name is what the desk branches on (below), the searched name
+  is what staff typed, and the count is the real number of matching
+  guests — not "2 or more" — carried in `details.matches`.
+- **Message: one new plain catalogue sentence `guests.validation.ambiguous_name`**
+  beside today's guests keys (`messages/en.json:201`, mirrored in
+  `services/guests/src/messages.en.json`),
+  exactly "The name {fullName} matches more than one guest; identify the
+  guest by id." — the product and requirements copy
+  (`docs/product/acceptance-criteria.md` section 25 rule 2;
+  `docs/requirements/mvp-requirements.md` section 33.1 `FR-GID-1`) — with
+  `{fullName}` the searched name. The match count appears in
+  `details.matches` only: the sentence carries no second placeholder, so
+  the key keeps one exact string and one placeholder set in both
+  locales. It names no envelope code, status, SQL, host, path, or stack
+  trace (`NFR-I18N-1`).
+- **One shared constructor** (for example `ambiguousGuestName(fullName,
+  matches)` in `store.ts`) builds the refusal for both stores, so the
+  details shape and the sentence have exactly one home; counting the
+  matches is the only store-specific part.
+- **Nothing is served.** The refusal returns from `findGuest`, so
+  `identifyGuest` never assembles the profile-with-links object
+  (`store.ts:341-344`, `pgstore.ts:91-94`): no `guestId`, `fullName`,
+  `contact`, `preferences`, `notes`, `returningFlag`, `pastStayCount`,
+  or `stayLinks` appears in the body, the links read is never issued
+  (`pgstore.ts:92-93`), and nothing is written on this path.
+- **Precedence inside the name branch.** Exact equality on the trimmed
+  name (today's rule, unchanged) resolves the set: zero matches keep
+  `NOT_FOUND` with `guests.notfound.guest_by_name` (`store.ts:429-430`,
+  `pgstore.ts:196-197`); one match serves exactly as today; two or more
+  refuse. An absent or blank name keeps `guests.validation.guest_or_name`
+  naming `guestId` (`store.ts:437`, `pgstore.ts:205`) before the branch
+  runs.
+- **The desk distinguishes the refusal by code and field, never by
+  wording.** `code === "VALIDATION_FAILED"` together with
+  `details.field === "fullName"` selects the Book screen's
+  `desk.book.guest_ambiguous` sentence (`isAmbiguousGuestName`,
+  `app/src/views/BookView.vue:476-487`, used in `onFindGuest`
+  `:757-767`); every other failure keeps the generic fallback
+  (`errorMessage` `:493-499`). `details` is already read this way at
+  `:501-508`). `IdentifyGuest` has exactly one other
+  `VALIDATION_FAILED` today and it names `guestId` (`store.ts:437`), so the pair is unambiguous for this
+  operation; switching on resolved wording is forbidden by the catalogue rule
+  (`docs/product/desk-ui-design-rollout.md` section 7).
+- **Postgres read shape.** The count must be exact, so the statement
+  returns the total beside at most the rows needed — for example
+  `count(*) OVER ()` beside `LIMIT 2` in one statement — because a bare
+  `LIMIT 1` can answer neither the zero case nor the count without a
+  second query. Reading at most two profile rows keeps the refused case
+  from materialising every matching profile; the count scan itself is a
+  residual cost recorded in 32.9.
+
+### 32.3 The payload bounds: one declared shape, one declared length
+
+Four named code constants in `services/guests/src/store.ts`, shared by
+both stores:
+
+| Constant | Value | Field(s) | Rule |
+|---|---|---|---|
+| `MAX_GUEST_PAYLOAD_FIELDS` | 16 | `contact`, `preferences` | at most 16 own fields |
+| `MAX_GUEST_PAYLOAD_KEY_LENGTH` | 64 | `contact`, `preferences` | every key non-empty and at most 64 UTF-16 code units |
+| `MAX_GUEST_PAYLOAD_STRING_LENGTH` | 256 | `contact`, `preferences` | a string value at most 256 UTF-16 code units |
+| `MAX_GUEST_NOTES_LENGTH` | 2000 | `notes` | at most 2 000 UTF-16 code units |
+
+- **Accepted:** `contact` and `preferences` are plain JSON objects with
+  at most 16 own fields; every key is non-empty and at most 64 code
+  units; every value is a string of at most 256 code units, a finite
+  number, or a boolean. `notes` is a string of at most 2 000 code units.
+- **Refused, naming the field, one envelope, nothing written:** a
+  present `contact`/`preferences` that is an array, a string, a number,
+  or a boolean; an object with more than 16 fields, an empty or
+  over-64-character key, a nested object, an array entry, a `null`
+  entry, a string entry longer than 256 characters, or a number entry
+  that is not finite; a present `notes` that is not a string (including
+  an explicit `null`) or is longer than 2 000 code units.
+- **Sentences:** `guests.validation.contact_shape` — "{field} must be an
+  object of at most 16 fields whose values are text up to 256 characters,
+  numbers, or true/false." — the exact product and requirements copy
+  (`docs/product/acceptance-criteria.md` section 25 rule 3;
+  `docs/requirements/mvp-requirements.md` section 33.1 `FR-GID-2`) — and
+  `guests.validation.notes_length` — "{field} must be at most {max}
+  characters." — with `{max}` rendered from `MAX_GUEST_NOTES_LENGTH`
+  through `formatNumber`, so the sentence shows `2,000` in the `en`
+  locale instead of a pasted literal. Both carry the field name, and
+  neither names a code, status, or stack trace (`NFR-I18N-1`).
+  **Details:** `{"field": "contact" | "preferences" | "notes"}`.
+- **Order:** `contact`, then `preferences`, then `notes`, in both
+  stores, so a request with several offending fields answers exactly one
+  envelope naming the first offender in declaration order.
+- **Present, absent, and explicit null.** An absent field
+  (`undefined`) keeps today's per-store behaviour: the in-memory store
+  resets `contact` to `{}` and keeps the stored `preferences`, while a
+  Postgres update keeps the stored `contact` as well as the stored
+  `preferences` (`COALESCE` on insert and `CASE ... IS NULL` on update,
+  `pgstore.ts:77-83`, the `contact` `CASE` at `:81`); `notes` keeps the
+  stored value on update and is `""` on create in both stores
+  (`store.ts:320-332`; `pgstore.ts:73-88`). Only a present value is
+  validated, so no absent field is refused and no store is changed. An
+  explicit `null` for `contact` or `preferences` keeps today's coercion
+  (both stores store `{}`; the shared validator returns `{}` at
+  `store.ts:183-190`, consumed at `:330-331` and `pgstore.ts:74-75`), so
+  no validator runs on a null object field; an
+  explicit `null` for `notes` is refused, because `AC-GID-4` and
+  `FR-GID-2` refuse a present non-string `notes` and today's
+  invalid-value-means-keep path accepted it silently. No desk caller
+  sends `notes` as null today: the Book screen's register sends
+  `fullName` and `actor` only (`app/src/views/BookView.vue:783-786`).
+- **Bound provenance.** The largest fixtures in the tree are a
+  28-character note (`services/guests/src/server.test.ts:128-147`) and a
+  one-field preference object
+  (`services/guests/contract-tests/UpsertGuest.json:5-9`), so 2 000 code
+  units is more than seventy times the only note fixture, and 16 fields,
+  64-character keys, and 256-character values sit far above one field.
+  The whole request also stays under the 64 KiB body ceiling (LLD
+  section 29), so these bounds shape one field rather than police body
+  size.
+- **Reads are unchanged, and no migration exists.** No re-validation
+  happens in `toGuest` (`pgstore.ts:42-60`) or on an in-memory record,
+  so a stored longer note or differently shaped object keeps reading
+  through `GetGuest`, `IdentifyGuest`, and `GetBookingContext` exactly as
+  stored; no truncation, backfill, or repair is attempted
+  (`AC-GID-7`).
+- **Constants, not configuration.** No environment variable, deployment
+  file, runbook step, or per-hotel entry carries or overrides any of the
+  four values — the same rule the body ceiling and the money ceiling
+  follow (LLD sections 29.1 and 30.1).
+
+### 32.4 The confirmation date rule: the date must exist on the calendar
+
+- **Shape first, then the calendar.** `requireDate` keeps its
+  `YYYY-MM-DD` shape test and trim (`store.ts:248-251`), then parses the
+  three components and requires them to round-trip through a UTC date:
+  build the date with `setUTCFullYear(y, m - 1, d)` (which treats a year
+  such as `0099` literally, unlike `Date.UTC`, whose 0-99 mapping is
+  1900+n) and require `getUTCFullYear() === y`,
+  `getUTCMonth() === m - 1`, and `getUTCDate() === d` (`:256-266`). An
+  overflowing day or month fails the round-trip; the real leap day
+  `2024-02-29` passes; `2026-13-45`, `2026-02-31`, and `2026-00-10` fail.
+- **The refusal keeps today's kind and sentence.** `VALIDATION_FAILED`,
+  400, `details` naming `dates.checkIn` or `dates.checkOut`, and the
+  existing `guests.validation.date_format` sentence
+  (`store.ts:249-251`, catalogue `messages/en.json:196`) — no new
+  catalogue key for the date rule, per `AC-GID-5`.
+- **One home, before the snapshot is stored.** `requireDate` is called
+  only by `toConfirmationRecord` (`store.ts:301`), which both
+  `attachReservation` implementations call before the confirmation write
+  (`store.ts:387-388`, `pgstore.ts:144-145`), so an invalid date refuses
+  before the map write and a later `produceConfirmation` still answers
+  `NOT_FOUND` (`store.ts:392-400`, `pgstore.ts:149-157`).
+- **Nothing else moves.** No other operation calls `requireDate`; a
+  `checkIn` after `checkOut` stays as accepted as it is today (no
+  ordering rule is added, per `AC-GID-5`); and the value stays a
+  hotel-local calendar-day string (`NFR-TZ-1`, BR-43), with no timestamp
+  form or display rule touched.
+
+### 32.5 Per-flow implementation diagrams
+
+Three touched flows. Each diagram is the specified shape; the
+implementation PR refreshes the code pins and keeps the edges.
+
+**(a) `IdentifyGuest` — served, ambiguous, and not found.**
+
+```mermaid
+flowchart TD
+    A[POST /v1/guests/IdentifyGuest  server.ts:149] --> B{Bearer session present  server.ts:130-132}
+    B -->|missing| X1[401 UNAUTHENTICATED, no field read]
+    B -->|present| C{guestId given  store.ts:408 / pgstore.ts:174}
+    C -->|yes| D[Read the one record by id  store.ts:409-414 / pgstore.ts:175-184]
+    C -->|no, fullName given| E[Count every record whose fullName equals the trimmed name  store.ts:415-428 / pgstore.ts:185-195]
+    C -->|neither| X2[existing 400 VALIDATION_FAILED naming guestId, guests.validation.guest_or_name  store.ts:437 / pgstore.ts:205]
+    E -->|0 matches| X3[existing 404 NOT_FOUND, guests.notfound.guest_by_name  store.ts:429-430 / pgstore.ts:196-197]
+    E -->|1 match| F[Serve the profile with its stay links  store.ts:341-344 / pgstore.ts:91-94]
+    E -->|2 or more matches| R[new 400 VALIDATION_FAILED, details field fullName, fullName, matches, guests.validation.ambiguous_name  store.ts:432-434 / pgstore.ts:199-202]
+    D --> F
+    F --> O[200 profile exactly as today]
+    R --> N[no profile, contact, preferences, notes, returningFlag, pastStayCount, or stayLinks returned; no links read; nothing written]
+    X1 --> N2[rollback frame: read-only path, nothing to compensate; the whole change reverts with the single implementation PR]
+    X2 --> N2
+    X3 --> N2
+    N --> N2
+```
+
+Edge trace (as built; the one new branch is the refusal `AC-GID-1`
+requires):
+
+- A–B: the shared Bearer check (`services/guests/src/server.ts:130-132`),
+  unchanged.
+- B–C: `IdentifyGuest` dispatch (`server.ts:149`) into
+  `identifyGuest` (`store.ts:341`, `pgstore.ts:91`), which calls
+  `findGuest` first (`store.ts:342`, `pgstore.ts:92`).
+- C–D: the `guestId` branch (`store.ts:409-414`,
+  `pgstore.ts:175-184`), unchanged; an unknown id keeps `NOT_FOUND`
+  naming `guestId`.
+- C–E: the name branch (`store.ts:415-428`, `pgstore.ts:185-195`);
+  the first-match loop and `LIMIT 1` are replaced by the count.
+- E–X3 and E–F: the existing not-found and served outcomes
+  (`store.ts:429-430` vs `:341-344`; `pgstore.ts:196-197` vs `:91-94`),
+  with the profile assembled only after the branch returns.
+- E–R: the new refusal, built by the shared constructor at
+  `store.ts:240-246` (32.2) and raised before any profile is assembled.
+- R–N: no read of `contact`, `preferences`, `notes`, or `stayLinks`
+  happens below the refusal in either store; `stayLinksFor` is only
+  called after a record is returned (`pgstore.ts:92-93`).
+- X1/X2/X3–N2 and N–N2: the rollback frame. The operation is a read, so
+  a refusal has no earlier write of its own and no compensating call
+  exists or is needed; the change reverts with the single implementation
+  PR.
+
+**(b) `UpsertGuest` — inside the declared shape, or nothing written.**
+
+```mermaid
+flowchart TD
+    A[POST /v1/guests/UpsertGuest  server.ts:136] --> B[Validate guestId, fullName, actor  store.ts:313-319 / pgstore.ts:62-68]
+    B --> C{contact, then preferences, then notes inside their declared bound  store.ts:323-325 / pgstore.ts:71-76}
+    C -->|yes| D[Write the row and, in the in-memory store, the guest-upserted event  store.ts:336-337 / pgstore.ts:77-88]
+    C -->|no| R[new 400 VALIDATION_FAILED naming the field, guests.validation.contact_shape or guests.validation.notes_length]
+    R --> N[no row, no stay link, no guest-upserted event; the stored profile is untouched]
+    D --> O[200 profile as today]
+    R --> N2[rollback frame: refusal precedes the write, so there is no partial row or event to unwind]
+    N --> N2
+```
+
+Edge trace:
+
+- A–B: dispatch (`server.ts:136`) into `upsertGuest`
+  (`store.ts:313`, `pgstore.ts:62`); the three existing field checks run
+  exactly as today (`store.ts:314-319`, `pgstore.ts:63-68`).
+- B–C: the new validators, shared from `store.ts:183-235` (32.3), run in
+  the declared order before the first store access (`store.ts:323-325`),
+  before either object is serialised (`pgstore.ts:71-76`), and before
+  the insert (`pgstore.ts:77`).
+- C–D: the record write and the in-memory outbox push
+  (`store.ts:336-337`) or the `INSERT ... ON CONFLICT` with its
+  `RETURNING` (`pgstore.ts:77-88`), unchanged below the guard.
+- C–R: the two new sentences and the `details` field (32.3).
+- R–N: every write in both implementations sits below the guard, so a
+  refusal leaves the previous row — including its previously stored
+  note and objects — exactly as it was.
+- R–N2: the rollback frame; the refusal is decided before any write, so
+  there is no partial state to compensate.
+
+**(c) `AttachReservation` — a real calendar date, or nothing stored.**
+
+```mermaid
+flowchart TD
+    A[POST /v1/guests/AttachReservation  server.ts:182] --> B[toConfirmationRecord  store.ts:284]
+    B --> C{dates.checkIn and dates.checkOut shape and calendar  store.ts:248-268}
+    C -->|valid| D[Store the confirmation snapshot  store.ts:386-390 / pgstore.ts:143-147]
+    C -->|invalid or non-existent| R[existing 400 VALIDATION_FAILED naming the field, guests.validation.date_format]
+    R --> N[no confirmation stored; ProduceConfirmation still answers NOT_FOUND  store.ts:392-400 / pgstore.ts:149-157]
+    D --> O[200 confirmation record as today]
+    R --> N2[rollback frame: nothing written, nothing to compensate]
+    N --> N2
+```
+
+Edge trace:
+
+- A–B: dispatch (`server.ts:182`) into `attachReservation`
+  (`store.ts:386`, `pgstore.ts:143`), which validates the whole snapshot
+  through `toConfirmationRecord` (`store.ts:387`, `pgstore.ts:144`).
+- B–C: the existing shape test plus the new calendar round-trip in
+  `requireDate` (`store.ts:248-268`), reached from the dates line
+  (`store.ts:301`).
+- C–D: the confirmation write (`store.ts:388`, `pgstore.ts:145`),
+  unchanged.
+- C–R: the existing sentence and `details` naming the offending field
+  (`store.ts:249-251`), reused without a new key.
+- R–N: the store write is below the validator, so a refused snapshot is
+  never cached and the later read still misses.
+- R–N2: the rollback frame; confirmations are ephemeral local copies
+  (schema.md section 5), so a refusal has no stored row to undo.
+
+### 32.6 Contract decision: no new token, one error-list line, no schema keyword
+
+- **`VALIDATION_FAILED` is already published for both operations**
+  (`contracts/http/IdentifyGuest.json:32-36`,
+  `contracts/http/UpsertGuest.json:36-39`), so no code, status, enum
+  entry, operation, request or response field, or contract version
+  changes; `contracts/errors/envelope.json` is untouched (ADR-0004 D1).
+- **One caller-facing line moves: the `IdentifyGuest` error list.** The
+  existing `VALIDATION_FAILED` entry gains the ambiguity clause —
+  "Neither guestId nor fullName is given, or fullName matches more than
+  one guest." Prose only: the code, status, and operation are unchanged,
+  and this is the line `product-owner` assigned to the architect handoff
+  (`docs/product/acceptance-criteria.md` section 25); this spec PR
+  carries the edit. #641 left every `when` sentence as written because no
+  owner had assigned an edit (section 31.5); here the assignment is
+  explicit, so the sentence moves and
+  `docs/technical/error-handling.md` section 1.4 stays the authoritative
+  enumeration. The `UpsertGuest` error list keeps its `when` prose
+  ("Missing fullName or actor."), the PostCharge precedent section 31.5
+  records: the bounds are documented in section 1.4 of the taxonomy and
+  in this section, and a third copy is not kept in step.
+- **The `UpsertGuest` request manifest keeps its bytes.** `contact`,
+  `preferences`, and `notes` stay unconstrained
+  (`contracts/http/UpsertGuest.json:14-21`). JSON Schema could express
+  these bounds (`maxProperties`, `propertyNames`, an
+  `additionalProperties` union, `maxLength`) — unlike the cross-field
+  report span — but no validator runs on the Guests request path, so a
+  published bound would be documentation the service never reads; the
+  money ceiling follows the same rule (`docs/technical/api-spec.md`
+  section 1). Publishing them later is a contract change with fixture
+  and gate work of its own and would not move the enforcement point.
+- **No route or generated surface moves.** The desk-loop
+  `contracts/openapi.yaml` carries no Guests operation (its paths are
+  SignIn, QuotePrice, the reservation reads, AssignRoom, the billing
+  writes, and the stay transitions), so `script/openapi-route-check.sh`
+  and `script/contract-check.sh` stay green without an edit.
+- **Documented instead:** `docs/technical/error-handling.md` section 1.4
+  (the taxonomy entry), one `docs/technical/api-spec.md` section 1 bullet
+  for guest payloads and the `GuestService` row in section 2, one
+  `docs/technical/schema.md` section 5 note that the columns stay
+  unbounded and the bounds are write-time, `docs/architecture/services/guests.md`
+  sections 4 and 6 plus its section 8 delta, and this section.
+
+### 32.7 Verification plan
+
+`qa-lead` owns the traceability rows
+(`docs/testing/traceability-matrix.md` section 25); this is the
+architecture-side check the implementation must satisfy.
+
+- **Ambiguity refusal, both stores, with the count proven.** Two guests
+  with one `fullName`, `IdentifyGuest` by that name → 400
+  `VALIDATION_FAILED`, `details.field` `fullName`, the searched name,
+  the exact match count, the `guests.validation.ambiguous_name`
+  sentence, a non-empty `traceId`, and no profile keys in the body. The
+  guard must hold a store that contains both guests, so an early
+  `return` or a `LIMIT 1` regression fails it rather than passing on
+  status.
+- **Placement.** A refused name lookup leaves both profiles readable by
+  `guestId` afterwards, and the in-memory store's outbox and row count
+  are unchanged by the refusal — the check runs on the read path and
+  writes nothing.
+- **Unchanged outcomes.** The unique-name guard
+  (`services/guests/src/server.test.ts:94-126`), the unknown-guest and
+  missing-name guard (`:149-172`), the full-profile-by-id guard
+  (`:174-214`), and the Postgres round-trips (the describe at `:947`,
+  round-trips `:948-963` and `:965-984`) stay green without an assertion
+  change; a `guestId` read of each of two same-named guests returns its
+  own profile.
+- **Payload refusals, one case per refused shape**, each asserting 400
+  `VALIDATION_FAILED`, `details.field` `contact` or `preferences`, the
+  shape sentence, a `traceId`, and nothing written: array, string,
+  number, and boolean in place of the object; 17 fields; an empty key; a
+  65-character key; a nested object; an array entry; a `null` entry; a
+  257-character string entry; a non-finite number. The at-bound case
+  (16 fields, a 64-character key, a 256-character string) is stored as
+  sent.
+- **`notes` refusals and the boundary pair.** A 2 000-code-unit note is
+  stored as sent; 2 001 is refused naming `notes` with the length
+  sentence; a number and an explicit `null` are refused; each refusal
+  leaves a previously stored note intact on update.
+- **Calendar dates.** `2026-13-45`, `2026-02-31`, and `2026-00-10` are
+  refused naming `dates.checkIn`/`dates.checkOut` with the existing
+  `guests.validation.date_format` sentence and no stored confirmation
+  (`ProduceConfirmation` still `NOT_FOUND`); `2024-02-29` is accepted;
+  the existing confirmation guards (`:259-288`, `:290-319`, `:350-373`)
+  keep passing unchanged.
+- **Catalogue and desk.** One sample assertion per new key
+  (`guests.validation.ambiguous_name`, `guests.validation.contact_shape`,
+  `guests.validation.notes_length`) beside
+  `services/guests/src/messages.test.ts:28-38`, with `{max}` rendered
+  from the constant; the Book-screen ambiguity state renders
+  `desk.book.guest_ambiguous` in both locales, resolves no guest, keeps
+  the name and the Find/Register controls, and never renders the
+  not-found or request-failed sentence; the unique-name and not-found
+  states keep today's wording.
+- **No migration and no read-side rule.** A profile already holding a
+  longer note or a differently shaped object still reads through all
+  three reads exactly as stored, and no migration file is added
+  (`services/guests/migrations/002_schema.sql:22-34`).
+- **Gate commands** (from `docs/architecture/services/guests.md`
+  section 7): `npm ci`, `npm run build`, `npm test`, and `npm run lint`
+  in `services/guests`; `npm test` in `app` for the desk row; plus
+  `script/contract-check.sh` and `script/catalogue-coverage-check.sh`
+  from the repo root.
+
+### 32.8 The NFR disposition: no new NFR, and no existing NFR changes
+
+Decision recorded for the spec set: **this change adds no NFR and changes
+no existing one; there is no guest-identity NFR family.**
+
+- The `business-analyst` handoff states it explicitly: "No new NFR is
+  added and no existing NFR changes"
+  (`docs/requirements/mvp-requirements.md` section 33.4), which is why
+  the requirements tree carries `FR-GID-1`..`FR-GID-3` and no
+  guest-identity NFR id.
+- The binding NFR citations for this change are the existing ones:
+  `NFR-I18N-1` (the three catalogue sentences, both locales), `NFR-AUD-1`
+  (a refusal records and emits nothing), `NFR-PERF-1` (the desk guest
+  find keeps its budget), `NFR-CON-1`/`NFR-CON-2`, `NFR-SEC-1`/`NFR-SEC-2`,
+  `NFR-AVL-1`, `NFR-TZ-1`, and `NFR-DSK-2` — all unchanged. `AC-GID-7`
+  traces exactly to `NFR-I18N-1` and `NFR-AUD-1`.
+- A new NFR would need a measurable target this change does not
+  introduce: the four bounds are fixed code constants, not a service
+  level, latency, or ceiling that a test could measure against a budget.
+  The refusals reuse `VALIDATION_FAILED` and existing NFR budgets, so
+  writing an NFR would state a promise nothing distinct measures.
+- **Disposition:** the product half dropped its earlier citation of a
+  guest-identity NFR family at its head `2045134` ("Cite only the
+  `FR-GID` family in the guest identity ACs"), so
+  `docs/product/acceptance-criteria.md` section 25 now cites
+  `FR-GID-1`..`FR-GID-3` only and states the no-change NFR disposition. No
+  product or requirements edit is outstanding: this subsection is the
+  architectural record that the change carries no NFR delta, and section
+  33.4 is the authoritative no-change statement.
+
+### 32.9 Residual risks and re-tier triggers
+
+- **A stricter identity read refuses a flow that relied on first match**
+  (R-18, accepted by D-37). A name shared by two guests can no longer be
+  resolved on the Book screen at all: staff must hold a `guestId` (which
+  the Stay, Folio, and Print flows already carry) or the manager must
+  distinguish the records. There is no desk search by id today; that
+  consequence is the accepted product decision, not an architecture
+  gap. A merge or distinguish flow is a separate T2/T3 change.
+- **The count is a fuller read than the lookup it replaces.**
+  `guests.guests` has no index on `full_name`
+  (`services/guests/migrations/002_schema.sql:22-34`), and today's
+  `LIMIT 1` stops at the first match, so an exact count scans the
+  matching rows and, without an index, the table. At the pilot's
+  guest-table size this stays inside `NFR-PERF-1`; adding an index is a
+  separate change that carries a migration, which `AC-GID-7` forbids
+  here. Re-tier if the guest table outgrows the desk budget.
+- **A wrong bound can refuse a legitimate note or object** (R-18). The
+  mitigation is that the constants sit far above the largest fixtures,
+  every bound has an at-bound and a one-over guard, and a refusal writes
+  nothing, so a retry with a shorter value is lossless. Changing a bound
+  is one deliberate edit of the constant, the catalogue's `{max}`, and
+  the boundary guards in the same PR.
+- **Stored rows stay unbounded and are never re-validated.** A profile
+  written before this change with a longer note or another object shape
+  keeps reading as stored; no truncation, backfill, or repair is
+  attempted.
+- **A caller that sent `notes: null` loses its silent keep.** Today that
+  value fell through the non-string path and kept the stored note; after
+  this change it is refused, per `AC-GID-4`. The desk does not send it
+  (`app/src/views/BookView.vue:783-786`), and omitting the field keeps
+  today's update semantics exactly.
+- **The Postgres store writes no outbox event on guest upsert today.**
+  That is an existing gap, not something this change introduces or
+  closes; the Postgres guard can therefore assert no row and no link,
+  while the in-memory guard asserts the outbox too. Closing the gap is a
+  separate change.
+- **Re-tier triggers.** Making any bound configurable (environment,
+  deployment, per-hotel) is T4. A uniqueness constraint, a merge or
+  distinguish flow, or enforcing the bounds on stored rows with a
+  backfill is T3. Publishing the bounds in the request manifest or
+  adding a distinct error code is a contract change. An index on
+  `full_name` is a migration.
+
+### 32.10 Maintain-with-code
+
+The implementation PR adds the four constants, the two shared
+validators, the counted name branch with its shared refusal constructor,
+the calendar round-trip in `requireDate`, the three catalogue keys, the
+desk branch on code and field, and the guards of 32.7. It also refreshes
+this section's line pins and
+`docs/architecture/services/guests.md` sections 3, 4, 6, and 8 to the
+as-built `file:line` at the merged head (`AC-GID-7`, `qa-lead`'s
+traceability section 25). `dev-peer-review` treats a stale pin, a name
+branch that still returns a first row, a bound without its at-bound and
+one-over pair, a refusal whose `details.field` is not the offending
+field or whose match count is not exact, a refusal that writes, a
+re-validation on the read path, and a desk branch that switches on
+message text as review findings, the same as any drifted spec.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1141
+
+## 33. Admin authenticates before parsing and refuses a malformed config write (Refs #639)
+
+Tier **T2 confirmed** (recorded by `product-owner` in
+`docs/product/acceptance-criteria.md` section 26): caller-visible
+refusals on one operation family — every session-guarded `POST
+/v1/admin/<Operation>`, plus the one config write — with no new
+subsystem, dependency edge, data model, lifecycle state, endpoint,
+token family, or error code, and no reader-visible desk change. ADR-0004
+D1 keeps the envelope and its status mapping byte-identical, so no ADR
+and no T3 record. Product done-conditions are `AC-CFG-1`..`AC-CFG-5`
+(`docs/product/acceptance-criteria.md` section 26) with D-38 in
+`docs/project/decision-log.md` and R-19 in
+`docs/project/risk-register.md`; FR wording is the `business-analyst`
+handoff (`docs/requirements/mvp-requirements.md` section 34,
+`FR-CFG-1`..`FR-CFG-3`, and business rule BR-64 with its per-key shape
+table); guard traceability is the `qa-lead` handoff
+(`docs/testing/traceability-matrix.md` section 26); the release note and
+rollback pointer are the `release-manager` handoff; and implementation
+is the `dev` handoff. This section records only the architect-owned
+delta: the request order (33.1), the bearer helper (33.2), the per-key
+config write rule (33.3), the per-flow diagrams (33.4), the contract
+decision (33.5), the verification plan (33.6), the NFR disposition
+(33.7), the residual risks and re-tier triggers (33.8), and
+maintain-with-code (33.9).
+
+As found at the pre-change head (audit findings A2, A3, and A5; the
+as-built pins follow this list):
+
+- **A2 — the body is read and parsed before the session is checked.**
+  `handleRequest` matches the route (`services/admin/src/server.ts:135`),
+  reads the body at `:144` (`const body = await readBody(req, res)`),
+  and only then branches on `SignIn` (`:146-150`) and on the bearer
+  token (`:151-155`). Every parse refusal therefore runs first: invalid
+  JSON answers `VALIDATION_FAILED` 400 with `error.transport.bad_json`
+  (`:68-70`), a non-object body `error.transport.body_not_object`
+  (`:63-66`), and an over-ceiling body `error.transport.body_too_large`
+  (`:15-17`, `:30-34`, `:38-50`) — all before the missing-token refusal
+  at `:151-155` can fire. An unauthenticated `UpdateHotelConfig` with a
+  malformed body learns that the body was malformed, and the parse work
+  is spent on a caller who is not signed in. The nearest auth guard
+  proves only the well-formed case: `services/admin/src/server.test.ts:105-111`
+  posts `{}` with no token and asserts 401; no guard sends a malformed
+  body while unauthenticated, and none proves the parse did not run.
+- **A3 — `UpdateHotelConfig` stores any key with any value.**
+  `AdminStore.updateConfig` requires `values` to be an object
+  (`services/admin/src/store.ts:478-480`), `updatedBy` to be a non-blank
+  string (`:481`), and a present `name` to be non-blank (`:483-487`,
+  through `requiredString` at `:106-111`), then stores every entry
+  exactly as sent (`:488-492`). The Postgres twin repeats those checks
+  and additionally refuses a `retentionFloorDays` that is not a
+  non-negative integer (`services/admin/src/pgstore.ts:500-535`, the
+  coercion at `:538-553`), so the two stores already disagree on one
+  key. A malformed `requiredGuestFields` write is stored silently: the
+  key is seeded as a one-entry array (`store.ts:166`, `pgstore.ts:50`),
+  the deployment schema declares it an array with at least one entry
+  (`deploy/config/schema.json:92-96`), and the deployment apply writes
+  it through this operation (`script/apply-hotel-config.sh:90-112`, the
+  call at `:115-116`). The Guests mandatory-field gate is specified to
+  read the hotel's list (`FR-CUS-1`) while the Guests store still
+  enforces a hard-coded `["fullName"]` baseline
+  (`services/guests/src/store.ts:26-28`, used by `mandatoryFieldStatus`
+  at `:35-38`), so the malformed write corrupts the configured value
+  with no refusal and no audit signal.
+- **A5 — Admin re-implements the bearer parse.** `bearerToken`
+  (`services/admin/src/server.ts:83-90`) duplicates the
+  `extractBearer` helper the three sibling Node services each carry in
+  their own `src/auth.ts` (`services/guests/src/auth.ts:1-14`,
+  byte-identical under `services/stay/src` and `services/rooms/src`).
+  Admin has no `src/auth.ts` today, and the monorepo has no shared
+  library package: every service is a private npm package with its own
+  `tsconfig.json` (`services/admin/package.json`), so "reuse the module
+  helper" means the same module-local file, not an import across service
+  boundaries (33.2).
+
+### 33.1 The request order: route, then `SignIn`, then session, then body
+
+The Admin transport is one `handleRequest` function, not a middleware
+chain (`services/admin/src/server.ts:125-215`); the order this section
+fixes is its statement order. As built by #639 it is:
+
+1. `GET /healthz` answers 200 (`:131-134`), unchanged.
+2. The `POST /v1/admin/<Operation>` match runs (`:135`); a path or
+   method the match does not accept answers today's 404 (`:136-143`)
+   without reading a body or a token.
+3. The `SignIn` branch keeps its own body read and sign-in call
+   (`:145-151`), unchanged in both directions: `SignIn` is the one
+   operation with no session to resolve, so its body is read, parsed,
+   and refused exactly as today (including the 65 536-byte ceiling).
+4. Every other operation resolves the session **before** the body is
+   read: the shared bearer helper yields the token (33.2), a missing
+   token answers `UNAUTHENTICATED` 401 with today's
+   `error.auth.missing_token` sentence (`:158-161`), and
+   `store.authenticate(token)` answers the existing invalid, expired,
+   revoked, idle, or orphan `UNAUTHENTICATED` sentence on refusal
+   (`:164`; `services/admin/src/store.ts:320-339`).
+5. Only a resolved session reaches `readBody` (`:169`, after `:164`),
+   so the ceiling, the JSON parse, and the object check run in today's
+   order, with today's sentences, for an authenticated caller.
+6. The operation switch (`:170-214`) then dispatches with the resolved
+   caller and the parsed body exactly as today; the default branch
+   answers today's 404 (`:207-213`).
+
+Consequences, stated so the implementation cannot blur them:
+
+- **The order is 401, then 400, then 403.** A request that is both
+  unauthenticated and malformed answers one 401 `UNAUTHENTICATED`
+  envelope and never a parse refusal. A resolved session with a
+  malformed body still answers today's 400 `VALIDATION_FAILED` with
+  the existing transport sentence. The role checks stay inside the
+  stores, after the body read (`store.ts:550-552`; `requireUserManager`
+  in `pgstore.ts:27-31`), so a front-desk caller with a well-formed
+  body still answers `FORBIDDEN` 403 and 400 precedes 403.
+- **No new middleware layer, route table, or check order.** The only
+  moved statement is the body read; `extractBearer`, the
+  `authenticate` call, and the body read take the places of today's
+  inline `bearerToken` and single read. Route matching, the
+  unknown-path 404, and the default-branch 404 do not move. A
+  consequence worth naming: an unauthenticated `POST` whose label
+  matches the route but names no operation (for example
+  `/v1/admin/CheckIn`) now answers 401 before the parse instead of
+  today's 404/400, because BR-64 states the rule for every operation
+  except `SignIn`; no acceptance condition pins the label-404 case, and
+  the path-level 404 and `/healthz` are unchanged.
+- **The unread surplus is never buffered.** The 401 is answered
+  without consuming the stream, and — as the ceiling refusal already
+  does (`server.ts:84-90`) — the connection is closed rather than
+  reused when a body may be pending, so an unauthenticated caller's
+  payload is neither buffered whole nor measured. The caller therefore
+  cannot learn the body's size, shape, or fields.
+- **The session lookup is today's lookup.** `store.authenticate` is
+  the same call the post-parse path already made, so no desk action
+  gains a round trip, a scan, or a poll (`NFR-PERF-1`); an
+  unauthenticated request now skips the parse work it used to pay for.
+  `SignIn`'s 5-failure lockout and its `IDENTITY_LOCKED` refusal
+  (`services/admin/src/store.ts:291-296`, BR-42) are untouched, and the
+  ceiling guards that drive `SignIn`
+  (`services/admin/src/bodyBound.test.ts:13-18`, `:106-144`) keep
+  their behaviour.
+
+### 33.2 The bearer helper: one module-local `src/auth.ts`, no cross-service import
+
+- **Add `services/admin/src/auth.ts` carrying the same `extractBearer`
+  helper the three siblings carry** (`services/guests/src/auth.ts:1-14`,
+  byte-identical under `services/stay/src` and `services/rooms/src`),
+  and import it from `server.ts`; delete the inline `bearerToken`
+  (`server.ts:83-90`). This is the established per-module pattern: each
+  Node service owns a copy because each is a separate private package
+  with its own TypeScript build, and the repo has no shared library or
+  workspace package.
+- **Why not an import from a sibling service.** Importing
+  `services/guests/src/auth.ts` from Admin would cross a module
+  boundary ADR-0001/ADR-0002 keep separate and would make one service's
+  build depend on another service's source tree. Extracting a shared
+  package is a cross-cutting change of its own, out of this issue's
+  scope.
+- **No caller-visible effect.** The helper's rule is byte-for-byte
+  today's: a non-string or absent `authorization` header and a header
+  that is not `Bearer <token>` yield `null` (the missing-token 401); a
+  present token is trimmed and returned unchanged, then checked by
+  `store.authenticate` exactly as today. No response field, code,
+  sentence, or status moves because of A5, which is why the acceptance
+  conditions pin the ordering, never the helper's code shape.
+
+### 33.3 The config write: one per-key table checked before the first write
+
+- **One shared validator in `store.ts`, both stores call it.** Export a
+  per-key rule table and a `validateConfigValues` function from
+  `services/admin/src/store.ts` (the module the Postgres twin already
+  imports its shared helpers from, `pgstore.ts:4-21`), and call it at
+  the top of both `updateConfig` implementations — in `AdminStore`
+  after the existing `values`/`updatedBy` checks and before the first
+  `this.config.set` (`store.ts:562` before `:566-568`; the table and
+  validator live at `store.ts:113-186`); in `PostgresAdminStore` after
+  the same checks and **before** `this.withTx` opens the transaction
+  (`pgstore.ts:516` before `:518`), so no `UPDATE`/`INSERT` (`:519-535`)
+  can run for a refused write. One
+  home means the in-memory and Postgres stores refuse the same values,
+  which `AC-CFG-4` and BR-64 require, and it stops the Postgres
+  `retentionFloorDays` rule (`pgstore.ts:551-558`) from being the odd
+  one out.
+- **The table is the one BR-64 publishes** (`docs/requirements/business-rules.md`
+  section 8, "Config write shapes (BR-64)"):
+
+| Key | Declared shape | Refusal (code 400, `details.field` = key) |
+|---|---|---|
+| `name` | non-empty text after trimming — today's rule | `error.validation.field_required` (existing) |
+| `timezone` | non-empty text after trimming | `error.validation.config_text` (new) |
+| `standardCheckinTime` | 24-hour `HH:MM`, `^([01][0-9]\|2[0-3]):[0-5][0-9]$` | `error.validation.config_time` (new) |
+| `standardCheckoutTime` | the same rule | `error.validation.config_time` (new) |
+| `requiredGuestFields` | an array with at least one entry; every entry non-empty text after trimming; no two entries equal after trimming | `error.validation.config_required_fields` (new) |
+| `cancellationReasons` | an array whose every entry is non-empty text after trimming; `[]` allowed | `error.validation.config_list` (new) |
+| `retentionFloorDays` | a whole JSON number at or above 0 | `error.validation.retention_floor` (existing) |
+| `cancellationWording` | text; `""` allowed | `error.validation.config_optional_text` (new) |
+| `address` | text; `""` allowed | `error.validation.config_optional_text` (new) |
+| `phone` | text; `""` allowed | `error.validation.config_optional_text` (new) |
+| `email` | text; `""` allowed | `error.validation.config_optional_text` (new) |
+
+- **The sentences are fixed product and requirements copy.** The five
+  new catalogue keys carry exactly the sentences the acceptance
+  conditions state — `config_text` "{field} must be non-empty text.",
+  `config_time` "{field} must be a 24-hour HH:MM time.",
+  `config_required_fields` "{field} must list at least one guest field,
+  each a non-empty entry, without duplicates.", `config_list` "{field}
+  must be a list of non-empty text entries.", and
+  `config_optional_text` "{field} must be text." — with `{field}`
+  rendered from the key, and the existing `retention_floor` sentence
+  ("retentionFloorDays must be a non-negative integer.") reused without
+  a placeholder. The implementation PR adds all five to the canonical
+  `messages/en.json` and `messages/vi.json` and to the runtime mirror
+  `services/admin/src/messages.en.json` with matching placeholders
+  (`NFR-I18N-1`); the desk never switches on the resolved wording.
+- **Whole-write atomicity, and no audit entry on a refusal.** The
+  validator inspects every present table key before the first write.
+  The first offending key in the request's own entry order answers
+  exactly one envelope (`VALIDATION_FAILED` 400, `details`
+  `{"field": <key>}`, that key's sentence, a fresh `traceId`). Nothing
+  is written: in the memory store no `config.set` has run, so the
+  offending key and a valid key sent beside it both keep their stored
+  values; in Postgres no statement has run because the check precedes
+  `withTx`. `config.updated` entries are derived from the stored rows
+  when the audit log is read (`store.ts:510-519`; `pgstore.ts:436`), so
+  a refused request leaves the audit trail unchanged as well
+  (`NFR-AUD-1`). The existing refusals keep their first place and their
+  sentences: `values` not an object (`error.validation.values_object`,
+  `store.ts:553-555`), a missing or blank `updatedBy`
+  (`error.validation.field_required`, `:556`), and a blank `name`
+  (`error.validation.field_required`, now inside the table at
+  `store.ts:161` with the same code, sentence, and `details`).
+- **A whole number means a JSON number.** The shared rule requires
+  `typeof value === "number"`, `Number.isInteger(value)`, and
+  `value >= 0`. Today's Postgres branch coerces with `Number(value)`
+  (`pgstore.ts:552`), so `"30"` would pass there while the memory store
+  would store the text; `FR-CFG-2` names "a text number" as a refusal,
+  so both stores now refuse it. No writer in the tree sends a text
+  number (`script/apply-hotel-config.sh:108` sends the JSON number).
+  This is the one deliberate narrowing of today's Postgres behaviour,
+  recorded with the other shape risks in 33.8 and R-19.
+- **No normalisation.** Trimming is used only to decide emptiness and
+  duplicate equality, never to rewrite a stored value: a value is
+  stored exactly as sent, list entries keep their order and their
+  surrounding whitespace, and a text key keeps its text. An absent key
+  is untouched; a present `null` is refused for every table key
+  (it is not text, not an array, not a number) — today it would be
+  stored. A key outside the table keeps today's behaviour exactly,
+  including the deployment-set keys the apply path sends
+  (`propertyCode`, `currency`, `noshowRule`, `openBalanceCheckoutRule`,
+  `chargeItems`, `taxAndFeeRules`, `restrictions`, `discounts`,
+  `ratePlans`, `roomTypes`; `script/apply-hotel-config.sh:90-110`).
+- **Reads are unchanged.** `GetHotelConfig` re-validates nothing
+  (`store.ts:538-544`, `pgstore.ts:477-499`), so a value stored before
+  this change — including a malformed `requiredGuestFields` — keeps
+  reading as stored; no migration, backfill, or repair exists, and the
+  `admin.hotel_profile` columns and `admin.hotel_config_values` rows
+  keep their shape (`docs/technical/schema.md` section 8).
+- **Rules are code, not configuration.** No environment variable,
+  deployment file, runbook step, or per-hotel entry carries a shape or
+  a sentence — the same rule the body ceiling and the money ceiling
+  follow (LLD sections 29.1 and 30.1), recorded as fixed in
+  `docs/requirements/business-rules.md` section 9.
+
+### 33.4 Per-flow implementation diagrams
+
+Four views of the touched flows as built by #639. Each diagram keeps
+the specified edges and carries the as-built `file:line` pins.
+
+**(a) Happy path — a resolved session, a well-formed body, a valid
+write.**
+
+```mermaid
+flowchart TD
+    A[POST /v1/admin/UpdateHotelConfig  server.ts:135] --> B[extractBearer  src/auth.ts:1-14, server.ts:157]
+    B --> C[store.authenticate token  server.ts:164]
+    C --> D[readBody: ceiling, JSON object, no refusal  server.ts:169]
+    D --> E[dispatch UpdateHotelConfig  server.ts:175]
+    E --> F{Caller role front-desk  store.ts:550-552}
+    F -->|no| G{values object, updatedBy non-blank  store.ts:553-556}
+    G -->|yes| H{Every present table key inside its shape  store.ts:178}
+    H -->|yes| I[Store every entry as sent  store.ts:566-568 / pgstore.ts:518-535]
+    I --> J[200 schemaVersion and values; config.updated entries with updatedBy  store.ts:510-519]
+```
+
+**(b) Unauthenticated — no token, or a refused session, before any
+parse.**
+
+```mermaid
+flowchart TD
+    A[POST /v1/admin/UpdateHotelConfig with a malformed or oversized body] --> B{Authorization header present  src/auth.ts}
+    B -->|no| N1[401 UNAUTHENTICATED, error.auth.missing_token  server.ts:158-161]
+    B -->|yes| C[store.authenticate  server.ts:164]
+    C -->|invalid, expired, revoked, idle, or orphan| N2[401 UNAUTHENTICATED, existing error.auth.* sentence  server.ts:165-168, store.ts:320-339]
+    N1 --> R[no body read, no JSON parse, no ceiling check, no store mutation]
+    N2 --> R
+    R --> RF[rollback frame: nothing written, no config.updated entry; the whole change reverts with the single implementation PR]
+```
+
+**(c) Malformed body after authentication — today's 400 keeps its
+place, 400 precedes 403.**
+
+```mermaid
+flowchart TD
+    A[POST /v1/admin/UpdateHotelConfig with a resolved session] --> B[readBody  server.ts:169]
+    B -->|invalid JSON, non-object, or above 65 536 bytes| M1[400 VALIDATION_FAILED, existing transport sentence  server.ts:15-17, :61-70]
+    B -->|well formed| C{Caller role front-desk  store.ts:550-552}
+    C -->|yes| M2[403 FORBIDDEN, error.forbidden.config_change]
+    C -->|no| D[Per-key config validation  store.ts:178]
+    M1 --> RF[rollback frame: nothing written; no stored value or audit entry moves]
+    M2 --> RF
+```
+
+**(d) Invalid config value — the whole write is refused, nothing is
+written.**
+
+```mermaid
+flowchart TD
+    A[Authenticated UpdateHotelConfig  server.ts:175] --> B{values object, updatedBy non-blank  store.ts:553-556}
+    B -->|no| X1[existing 400 VALIDATION_FAILED, values_object or field_required  store.ts:553-556]
+    B -->|yes| C{Every present table key in request order  store.ts:178}
+    C -->|first offending key| X2[400 VALIDATION_FAILED, details.field is the key, the key's sentence  store.ts:113-172]
+    X2 --> N[Nothing written: no key of that request, no config.updated entry  store.ts:510-519]
+    C -->|all inside their shape| D[Store every entry as sent  store.ts:566-568 / pgstore.ts:518-535]
+    D --> O[200 as today]
+    N --> RF[rollback frame: the refusal precedes the first write in both stores, so there is no partial row, value, or audit entry to unwind]
+```
+
+Edge traces:
+
+- **(a) A–B–C:** the route match (`server.ts:135`) into the shared
+  bearer helper (33.2) and `store.authenticate` (`:164`); the session
+  lookup is today's. **C–D:** the moved body read (`:169`) now follows
+  a resolved session. **D–E:** `UpdateHotelConfig` dispatch (`:175`)
+  into `store.updateConfig` (`store.ts:546`, `pgstore.ts:501`).
+  **E–F:** the front-desk refusal stays in the store (`store.ts:550-552`).
+  **F–G–H:** today's `values`/`updatedBy` checks, then the shared
+  table. **H–I:** the write loop (`store.ts:566-568`) or the
+  profile/values statements inside the transaction
+  (`pgstore.ts:518-535`), unchanged below the guard. **I–J:** the
+  `config.updated` entries derived at read time (`store.ts:510-519`).
+- **(b) A–B:** only the `authorization` header is inspected; no body
+  byte is read. **B–N1:** today's missing-token sentence
+  (`error.auth.missing_token`, `messages.en.json:13`). **B–C–N2:** the
+  five existing session refusals (`store.ts:320-339`, sentences at
+  `messages.en.json:16-19`). **N1/N2–R:** no parse, no ceiling, no
+  store call, so the payload stays unobservable. **R–RF:** nothing to
+  compensate; the change reverts with the single implementation PR.
+- **(c) A–B:** the body read runs only after `authenticate` resolved.
+  **B–M1:** today's three transport refusals keep their code, status,
+  and sentences (`server.ts:15-17`, `:61-70`), so an authenticated
+  caller sees no change. **B–C–M2:** the front-desk refusal follows a
+  well-formed body, preserving 400 before 403. **M1/M2–RF:** refusals
+  write nothing; the audit trail and stored values are untouched.
+- **(d) A–B:** today's `values`/`updatedBy` refusals keep their first
+  place (`store.ts:553-556`). **B–C–X2:** the shared validator
+  (`store.ts:178`), with `details.field` the offending key and the
+  key's sentence. **X2–N:** no `config.set` has run in memory and the
+  Postgres check precedes `withTx` (`pgstore.ts:516`), so a valid key
+  sent beside the offending one is not stored and no `config.updated`
+  entry appears (`store.ts:510-519`). **C–D–O:**
+  every conforming value is stored and read back exactly as today.
+  **N–RF:** the refusal is decided before the first write in both
+  stores, so there is no partial state to compensate.
+
+### 33.5 Contract decision: no new token, one error-list line, no schema keyword
+
+- **Both tokens already exist.** `UNAUTHENTICATED` (401) and
+  `VALIDATION_FAILED` (400) are in the shared enum and the status
+  mapping (`contracts/errors/envelope.json:9`, `:16-28`), and Admin
+  already maps both (`services/admin/src/errors.ts:4-29`), so this
+  change adds no code, status, enum entry, envelope field, operation,
+  contract version, or route. `contracts/errors/envelope.json` is
+  untouched (ADR-0004 D1).
+- **One caller-facing line moves: the `UpdateHotelConfig` error list.**
+  The existing `UNAUTHENTICATED` entry gains the ordering clause — the
+  session is checked before the body is read, so a malformed body never
+  answers a parse error ahead of it — and the existing
+  `VALIDATION_FAILED` entry gains the config-shape and
+  authenticated-parse clauses, naming `details` as the key for a shape
+  refusal. Prose only: code, status, and operation are unchanged, and
+  the line is the one the acceptance conditions and requirements assign
+  to this handoff; this spec PR carries the edit.
+  `docs/technical/error-handling.md` section 1.5 stays the
+  authoritative enumeration.
+- **The request manifest keeps its bytes.** `values` stays an open
+  object (`contracts/http/UpdateHotelConfig.json:14-19`,
+  `additionalProperties: true`): the per-key shapes are a cross-field
+  rule applied in the store, and no validator runs on the Admin request
+  path, so a `properties`/`minItems`/`pattern` promise would be
+  documentation nothing reads — the same rule the money ceiling and the
+  guest payload bounds follow (`docs/technical/api-spec.md` section 1;
+  LLD sections 30.6 and 32.6). Publishing it later is a contract change
+  of its own and would not move the enforcement point.
+- **No generated surface moves.** The curated desk-loop
+  `contracts/openapi.yaml` carries no Admin operation, so
+  `script/openapi-route-check.sh` and `script/contract-check.sh` stay
+  green without an edit.
+- **Documented instead:** `docs/technical/error-handling.md` section
+  1.5 (the taxonomy entry), one `docs/technical/api-spec.md` section 1
+  bullet plus the `AdminService` row in section 2, and
+  `docs/architecture/services/admin.md` sections 2, 4, and 6, with this
+  section as the design source. The Admin page and this section's
+  diagrams carry the as-built pins from the implementation PR
+  (maintain-with-code).
+
+### 33.6 Verification plan
+
+`qa-lead` owns the traceability rows
+(`docs/testing/traceability-matrix.md` section 26); this is the
+architecture-side check the implementation must satisfy.
+
+- **Unauthenticated malformed body, one case per shape.** No
+  `Authorization` header on `UpdateHotelConfig` with invalid JSON, a
+  JSON non-object, and a 65 537-byte body → each answers exactly one
+  401 `UNAUTHENTICATED` with the `error.auth.missing_token` sentence, a
+  fresh `traceId`, and none of the `bad_json`, `body_not_object`, or
+  `body_too_large` sentences; an invalid-token variant answers the
+  matching existing session sentence; the store operation is never
+  called (the `countingStore` pattern,
+  `services/admin/src/bodyBound.test.ts:36-51`). The shared `request`
+  helper JSON-stringifies its body (`server.test.ts:9-26`), so the
+  guard needs a raw-string form.
+- **Authenticated malformed body keeps today's 400, and 400 precedes
+  403.** A resolved session with a malformed body answers today's 400
+  and the existing transport sentence with no config change; a
+  front-desk caller with a well-formed body answers 403; a front-desk
+  caller without a session answers 401 first; `SignIn` with a malformed
+  body still answers 400 and its lockout still answers
+  `IDENTITY_LOCKED`.
+- **One refusal per table rule, each naming the key.** `timezone`
+  blank; `standardCheckinTime`/`standardCheckoutTime` as `24:00`,
+  `8:00`, `0800`, or a number; `requiredGuestFields` as a string in
+  place of the array, an empty array, an empty or whitespace-only
+  entry, and a duplicate entry (the audit's A3 case first);
+  `cancellationReasons` with a number entry and with an empty entry;
+  `retentionFloorDays` fractional, negative, and as a text number; and
+  `cancellationWording`/`address`/`phone`/`email` non-text — each
+  asserting 400 `VALIDATION_FAILED`, `details.field` equal to the key,
+  the key's sentence, and a non-empty `traceId`.
+- **Whole-write refusal is proven, not assumed.** A request that sends
+  a valid key beside an offending key stores neither; `GetHotelConfig`
+  and `QueryAuditLog` are unchanged afterwards, with no
+  `config.updated` entry for that request; `values` not an object and a
+  blank `updatedBy` keep their existing refusals and their place ahead
+  of the per-key checks.
+- **Accepted boundaries and store parity.** A one-entry
+  `requiredGuestFields`, `00:00` and `23:59` times, `0` retention days,
+  an empty `cancellationReasons` array, and empty
+  `cancellationWording`/`address`/`phone`/`email` text are stored and
+  read back as sent; a key outside the table is written as sent; one
+  Postgres parity case (skipped unless `TEST_PG_URL`/`DATABASE_URL` is
+  set, as `services/admin/src/pgstore.test.ts:32` skips today) proves
+  both stores refuse the same value and store the same accepted value.
+- **Catalogue and unchanged suites.** One sample assertion per new key
+  beside `services/admin/src/messages.test.ts:16-50`; the five keys
+  exist in both canonical locales and the runtime mirror with matching
+  placeholders; `script/catalogue-coverage-check.sh` stays green; the
+  existing identity, audit, body-ceiling, and internal-error suites
+  stay green with no assertion edit.
+- **No contract token added.** `script/contract-check.sh` passes with
+  the amended `UpdateHotelConfig` error-list prose and no enum, status,
+  or schema edit; `script/markdown-link-check.sh` resolves every link
+  added here.
+- **Gate commands** (from `docs/architecture/services/admin.md`
+  section 7): `npm ci`, `npm run build`, `npm test`, and `npm run lint`
+  in `services/admin`; plus `script/contract-check.sh` and
+  `script/catalogue-coverage-check.sh` from the repo root.
+
+### 33.7 The NFR disposition: no new NFR, and no existing NFR changes
+
+The `business-analyst` handoff states it explicitly
+(`docs/requirements/mvp-requirements.md` section 34.4): this change
+adds no NFR and changes no existing one. The binding citations are the
+existing ones and all hold:
+
+- `NFR-SEC-1`/`NFR-SEC-2` — no role, reach, or session behaviour
+  changes; the session check simply precedes the parse, and the
+  missing-token, invalid, expired, revoked, idle, and orphan sentences
+  and the 5-failure lockout stay exactly as today.
+- `NFR-BND-1`..`NFR-BND-3` — the 65 536-byte ceiling, the parse and
+  ceiling sentences, the refusal while the body is read, and the four
+  finite server bounds are unchanged; the ceiling now applies to every
+  request that reaches the body read, and a session-guarded request
+  without a session is refused before the read.
+- `NFR-AUD-1` — a refused config write records nothing and leaves no
+  `config.updated` entry; a committed write keeps the acting
+  `updatedBy` and its time.
+- `NFR-PERF-1` — no desk action gains a round trip, a scan, or a poll;
+  the session lookup is the one the post-parse path already made.
+- `NFR-I18N-1` — the five new sentences resolve through the catalogue
+  in both locales with matching placeholders, and no sentence renders
+  an envelope code, status number, or stack trace.
+- `NFR-AVL-1`, `NFR-TZ-1`, `NFR-CON-1`, `NFR-CON-2`, and `NFR-DSK-2` —
+  every refusal is decided on-premise, no timestamp form changes, no
+  new concurrent write path appears, and no print document changes.
+
+The ordering, the shapes, and the sentences are fixed rules and code
+constants, never an owner setting, environment variable, deployment
+file, or per-hotel entry (`docs/requirements/business-rules.md`
+section 9). A new NFR would need a measurable target this change does
+not introduce; writing one would state a promise nothing distinct
+measures.
+
+### 33.8 Residual risks and re-tier triggers
+
+- **A wrong shape rule refuses a legitimate hotel setting** (R-19,
+  accepted by D-38). The mitigation is that every rule is derived from
+  the keys the service already serves and the payloads the tree already
+  sends (the onboarding wizard, `script/apply-hotel-config.sh` after
+  `deploy/config/schema.json`, and the existing config tests), every
+  boundary has an accepted guard, and a refusal writes nothing, so a
+  retry with a conforming value is lossless. Changing a rule is one
+  deliberate edit of the shared table, its sentence, and its guards in
+  the same PR.
+- **Two deliberate narrowings of today's behaviour.** A present `null`
+  for a table key is refused where it used to be stored, and a text
+  number for `retentionFloorDays` is refused by both stores where
+  Postgres alone used to coerce it (`pgstore.ts:552`). No writer in the
+  tree sends either (`script/apply-hotel-config.sh`, the onboarding
+  wizard, and the existing tests send a number and omit empty optional
+  text), and `FR-CFG-2` names both shapes as refusals.
+- **An empty `cancellationReasons` list is accepted by the API while
+  the deployment schema asks for one or more** (`deploy/config/schema.json:97-101`,
+  `script/validate-hotel-config.sh:144-150`). That split is deliberate:
+  the Admin seed already serves `[]` (`store.ts:242`), and the
+  installer's one-or-more floor stays the deployment check, so the API
+  cannot refuse the value it already serves.
+- **The unauthenticated ordering changes the answer for an unknown
+  operation label.** A `POST` whose label matches the route but names
+  no operation now answers 401 before the parse instead of today's
+  body-first 404/400; BR-64 states the rule for every operation except
+  `SignIn`, no acceptance condition pins the label-404 case, and the
+  path-level 404 and `/healthz` do not move. If a label-404-before-auth
+  answer is wanted later, it is a route-table change of its own.
+- **A5 adds a fourth copy of a fourteen-line helper.** Accepted: the
+  per-module copy is the existing pattern across Guests, Stay, and
+  Rooms, and no shared package exists. Extracting one is a cross-cutting
+  change, not part of this fix.
+- **An unread body is closed, not drained.** The 401 is answered
+  without consuming the stream, so the connection is closed rather than
+  reused when a body may be pending; this keeps an unauthenticated
+  surplus from being buffered at the cost of one connection per such
+  request, which is the safe direction for `NFR-BND-1`.
+- **Re-tier triggers.** Making any shape, sentence, or the ordering
+  configurable (environment, deployment, per-hotel) is T4. A new error
+  token, a published request schema, or an envelope/status change is a
+  contract change. A middleware framework, a route table, or moving the
+  role check ahead of the body read is T3. Surfacing a config refusal
+  on a desk screen is a T2 UI change and needs its UI-contract section.
+
+### 33.9 Maintain-with-code
+
+The implementation PR adds `services/admin/src/auth.ts` and removes the
+inline `bearerToken`, moves the body read below `store.authenticate`
+for every operation except `SignIn` (and above the `SignIn` call, as
+today), adds the shared per-key table and validator, adds the five
+catalogue keys to both canonical locales and the runtime mirror, and
+creates the guards of 33.6. It also refreshes this section's line pins
+and `docs/architecture/services/admin.md` sections 2, 4, and 6 to the
+as-built `file:line` at the merged head (the #639 rows in
+`docs/testing/traceability-matrix.md` section 26). `dev-peer-review`
+treats a stale pin, a body read still above the session check, a parse
+refusal reachable before the 401, a refusal that writes, a per-key rule
+enforced in only one store, a text number accepted for
+`retentionFloorDays`, a normalised or trimmed stored value, a new error
+token, a contract schema keyword, a moved role check, and an
+unauthenticated request whose payload is measured as review findings,
+the same as any drifted spec.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1164
+
+## 34. The audit actor comes from the session, never from the request (Refs #643)
+
+Tier **T2 confirmed** (recorded by `product-owner` in
+`docs/product/acceptance-criteria.md` section 27): only the value recorded
+as the audit actor moves, on writes that already exist, with no new
+subsystem, dependency edge, data model, lifecycle state, endpoint, token
+family, or error code, and no reader-visible desk change. Product
+done-conditions are `AC-SEC-1`..`AC-SEC-5` with D-39 in
+`docs/project/decision-log.md` and R-20 in
+`docs/project/risk-register.md`; FR wording is the `business-analyst`
+handoff (`docs/requirements/mvp-requirements.md` section 35,
+`FR-SEC-1`..`FR-SEC-4`, business rule BR-65); guard traceability is the
+`qa-lead` handoff (`docs/testing/traceability-matrix.md` section 27); the
+release note and rollback pointer are the `release-manager` handoff; and
+implementation is the `dev` handoff. This section records only the
+architect-owned delta: the actor-resolution seam per service (34.1), the
+demotion rule (34.2), the recorded value (34.3), the per-flow diagrams
+(34.4), the contract decision (34.5), the verification plan (34.6), the
+NFR disposition (34.7), the residual risks and re-tier triggers (34.8),
+and maintain-with-code (34.9).
+
+As built at this head (audit finding C6; every pin below is the read-only
+trace of the landed implementation PR, and `qa-lead` re-pins the
+traceability rows against it):
+
+- **The Node transports keep the checked token and hand it to the store.**
+  `extractBearer` returns the trimmed token (`services/stay/src/auth.ts:7-14`,
+  byte-identical under `services/guests/src/auth.ts` and
+  `services/rooms/src/auth.ts`), and each server keeps it after the
+  missing-token 401 (`services/stay/src/server.ts:159-163`,
+  `services/guests/src/server.ts:130-134`,
+  `services/rooms/src/server.ts:130-134`). Stay passes it to `CheckIn`,
+  `CheckOut`, `MoveRoom`, and `RecordActualTimes` (`:169`, `:186`,
+  `:191`, `:199`); Guests to `UpsertGuest` (`:140`); Rooms to all seven
+  writes (`:140`, `:151`, `:161`, `:198`, `:202`, `:206`, `:210`).
+- **Every Node store records the session and annotates a disagreement.**
+  Stay `src/store.ts:222-259` (CheckIn), `:306-354` (CheckOut),
+  `:361-406` (MoveRoom), `:418-445` (RecordActualTimes), with the shared
+  `requestActorAnnotation` helper at `:59-64`; the Postgres twin at
+  `src/pgstore.ts:71-119`, `:185-238`, `:263-337`, `:366-408`. Guests
+  `src/store.ts:324-353`, Postgres `src/pgstore.ts:62-90` (the Postgres
+  guest store writes no `guest-upserted` outbox row, an existing gap
+  this change leaves as it is). Rooms `src/store.ts:101-109` (helper),
+  `:228-249`, `:255-281`, `:287-316`, `:392-431`, `:441-468`,
+  `:474-505`, `:516-546`; Postgres `src/pgstore.ts:139-262`, `:269-315`,
+  `:413-453`, `:508-552`, `:559-609`, `:616-657` with the outbox helper
+  at `:57-69`. The body `actor` keeps its `requireString`/`actorOf`
+  refusal and is only ever the annotation.
+- **Reservations derives the token from the bearer it already holds.**
+  The authed wrapper keeps the raw header
+  (`services/reservations/internal/handler/handler.go:148-166`), the
+  module helper strips the prefix (`:110-112`), and each write passes
+  the session plus the body actor: Create `:200-201`, CheckIn `:248`,
+  CheckOutReservation `:271` (the required-actor refusal at `:267-270`
+  stands), Modify `:313-314`, Cancel `:336`, MarkNoShow `:357`. The
+  stores carry `RequestActor` beside `Actor`
+  (`internal/store/store.go:80-84`, `:115-117`) and add the annotation
+  through `actorPayload` (`:154-160`), used by the in-memory events
+  (`:292-296`, `:354`, `:479-484`, `:521`, `:565`) and the Postgres
+  outbox writes (`internal/store/postgres.go:259-263`, `:380`,
+  `:619-623`, `:712`, `:789`).
+- **Billing returns the token from the gate and passes it on.** The
+  controller helper keeps the exact 401 and returns the token
+  (`services/billing/src/main/java/com/hotel/billing/web/BillingController.java:120-130`);
+  every adapter binds the session before any body rule and passes it
+  beside the body actor (`:143`, `:150`, `:158`, `:166`, `:194`, `:203`,
+  `:211`); the three presence-only reads keep the check (`requireToken`
+  at `:134-136`; `GetDayClose` `:173`, `ProduceInvoice` `:180`,
+  `ProduceReceipt` `:187`). `BillingService`
+  validates the request actor and records the session
+  (`service/BillingService.java:163-164`, `:184-185`, `:219-220`,
+  `:242-243`, `:310-311`, `:372-373`, `:392-393`), and the four JSON
+  payloads pass through `payloadOf` (`:128-149`, sites `:205`, `:233`,
+  `:247`, `:324`). The repository records the session in
+  `created_by`/`updated_by` and the outbox `created_by`
+  (`repo/BillingRepository.java:65-71`, `:100-111`, `:135-137`,
+  `:143-145`, `:154-160`, `:176-191`, `:237-239`, `:269-286`).
+- **Admin records the resolved caller.** The session is resolved before
+  the body (`services/admin/src/server.ts:157-169`) and passed to
+  `updateConfig` (`:176`); the in-memory store records
+  `caller.signinIdentity` (`src/store.ts:560-571`) and the Postgres
+  store the same (`src/pgstore.ts:513-514`, `:525-535`), while the body
+  `updatedBy` keeps its `requiredString` refusal and is dropped (no JSON
+  payload). The boot seed records `boot` with no request
+  (`src/store.ts:262-281`; `src/pgstore.ts:90-100`).
+- **The write contracts keep their bytes.** `actor` is required in the
+  write requests (`contracts/http/CheckIn.json:13`, `UpsertGuest.json:13`,
+  `CheckOutReservation.json:19`) and `updatedBy` in
+  `UpdateHotelConfig.json:13`; the two description sentences corrected by
+  the spec set (`CheckOutReservation.json:22`, `UpdateHotelConfig.json:20`)
+  now state that the session is recorded and the field is validated but
+  not authoritative. Audit columns are `TEXT` and outbox payloads are
+  JSONB (`services/stay/migrations/001_boot.sql:9-16`,
+  `002_schema.sql:31-33`), so no migration was added.
+- **Rates and Reporting are outside this rule.** Rates' write operations
+  take no request actor and its outbox writer falls back to `system`
+  (`services/rates/internal/store/postgres.go:70-77`); Reporting is a
+  read model over other modules' events. Neither is a caller-choosable
+  attribution, so neither changed.
+
+### 34.1 The seam: the server that authenticates hands the session to the store
+
+One seam per service, at the transport that already checks the token. No
+store reads the body actor for the recorded value on any operation.
+
+**Node — Stay, Guests, Rooms.** The module-local `extractBearer` already
+returns the trimmed token (`services/stay/src/auth.ts:8-15`). Each server
+keeps the token instead of discarding it — `const sessionActor =
+extractBearer(req)` where the missing-token 401 stands today
+(`services/stay/src/server.ts:159-163`,
+`services/guests/src/server.ts:130-134`,
+`services/rooms/src/server.ts:130-134`) — and passes it as a second
+argument beside the body on every write call: Stay `:169`, `:186`,
+`:191`, `:199`; Guests `:140`; Rooms `:140`, `:151`, `:161`, `:198`,
+`:202`, `:206`, `:210`. Stay's `checkOut(input, callerToken)` already
+takes exactly this argument (`services/stay/src/store.ts:306`); the other
+operations gain the same parameter on the store interface and both stores
+implement it (`src/store.ts` and `src/pgstore.ts`). The store keeps
+today's body validation (`requireString(input.actor, "actor")` at
+`services/stay/src/store.ts:228` and its siblings) so every existing
+refusal keeps its code, status, and sentence, and uses the session value
+for the recorded actor.
+
+**Go — Reservations.** The authed wrapper already holds the caller's
+trimmed `Authorization` header in its `bearer` argument
+(`services/reservations/internal/handler/handler.go:148-166`, the
+`"Bearer "` prefix included). The recorded actor is that header with
+the prefix removed and the remainder trimmed — the same shape the
+pricing and capacity clients already forward. Each write handler passes
+that token, not `body["actor"]`, as the recorded actor, and the body
+value travels beside it for the annotation (34.2).
+`CheckOutReservation` keeps its required-actor `field_required` refusal
+(`:267-270`); the five writes that accept `actor` optionally (Create
+`:184`, CheckIn `:247`, Modify `:300`, Cancel `:334`, MarkNoShow `:355`)
+add no new refusal. The in-memory and Postgres stores take the session
+actor in `Actor` and the request value in `RequestActor`
+(`internal/store/store.go:80-84`, `:115-117`; the change rows at
+`internal/store/postgres.go:252-253`, `:373-374`, `:568-569`, `:696-697`,
+`:782-783`).
+
+**Billing.** One module-local helper (`sessionActor`) resolves the
+recorded actor; it keeps
+the exact 401 (`UNAUTHENTICATED`, `error.auth.missing_token`,
+`BillingController.java:120-130`, throw at `:127`) and returns the token
+after `Bearer `, trimmed. Every adapter binds that value before any body
+rule and passes it as the recorded actor beside the request actor; the
+three presence-only reads keep `requireToken`, which delegates to the
+same helper. `BillingService.actorOf`
+(`service/BillingService.java:110-115`) keeps refusing a missing, blank,
+or non-string request `actor` with its existing `VALIDATION_FAILED`
+naming `actor`, so the refusal survives even though the value is no
+longer recorded. The two presentation reads (`produceInvoice` at
+`BillingService.java:266`, `produceReceipt` at `:279`) record nothing and
+keep the request rule; `GetFolioBalance` creates the folio and records
+the token on `created_by`/`updated_by`
+(`repo/BillingRepository.java:65-71`).
+
+**Admin.** The caller is already resolved before the body is read
+(`services/admin/src/server.ts:164`) and passed to `updateConfig`
+(`:176`). The store records `caller.signinIdentity` on the config row
+instead of `input.updatedBy` (`src/store.ts:569-571`,
+`src/pgstore.ts:514`, `:525-535`), while `updatedBy` stays required with
+today's refusal (`src/store.ts:560`, `src/pgstore.ts:513`). The
+`config.updated`
+audit entries derive from those rows (`src/store.ts:510-519`), so the
+audit view changes with the row. The boot seed keeps `boot`
+(`src/store.ts:262-281`).
+
+### 34.2 The request value is demoted, never refused
+
+- **The recorded value is never the request value.** No store, service,
+  or repository reads `actor`/`updatedBy` from the body into an audit
+  column, an outbox `created_by`, or a payload `actor`.
+- **The body rules stay where they are.** A body that breaks a rule is
+  still refused with its existing code, status, `details`, and sentence
+  and still writes nothing (the no-change statement in
+  `docs/requirements/mvp-requirements.md` section 35.2). The demotion is
+  never a refusal path.
+- **One additive annotation, JSON outbox payloads only.** Where a write
+  emits a JSON outbox payload, that payload gains exactly one optional
+  key, `requestActor`, carrying the request value when the value is
+  present, non-blank, and differs from the recorded session actor (exact
+  string comparison; no new trimming is introduced). When the value
+  equals the session actor, is absent, or is blank, no key is added, so
+  an honest caller's payloads stay byte-identical. An existing payload
+  `actor` key, where one exists, carries the session actor. The payload
+  sites are Stay `store.ts:253`, `:341`, `:400`, `:439`; Guests
+  `store.ts:353`; Rooms `:249`, `:281`, `:316`, `:431`, `:468`, `:505`,
+  `:546`; Reservations
+  `postgres.go:259-263`, `:380`, `:619-623`, `:712`, `:789`
+  and `store.go:292-296`, `:354`, `:479-484`, `:521`, `:565`; Billing
+  `BillingService.java:205`, `:233`, `:247`, `:324`.
+- **Column-only rows drop it.** Change rows, state-history rows,
+  folio/folio-line/balance `created_by`/`updated_by`, and Admin config
+  rows gain no key and keep their shape: Rooms history
+  `recordHistory` at `store.ts:556-558` / `pgstore.ts:307-308`,
+  `:445-446`, `:544-545`, Reservations change rows
+  `changeEntry` at `store.go:162-164` / `postgres.go:252-253`,
+  `:373-374`, `:568-569`, `:696-697`, `:782-783`, Billing
+  columns `BillingRepository.java:101-102`, `:137`, `:145`,
+  Admin `store.ts:569-571` / `pgstore.ts:514`, `:525-535`.
+- **Nothing else moves.** The write's status, answer, stored business
+  effect, refusal set, and contract shape are unchanged; the annotation
+  is not read by any consumer.
+
+### 34.3 The recorded value: the resolved identity in Admin, the session token elsewhere
+
+- **Admin records `caller.signinIdentity`.** Its transport verifies the
+  token into an `AuthenticatedUser` before the body is read
+  (`services/admin/src/server.ts:162-168`), and that resolved value is
+  what the account writes already record (`src/store.ts:366-368`,
+  `:403`, `:425`, `:466`). The config write joins them.
+- **Stay, Guests, Rooms, Reservations, and Billing record the presented
+  session token**, the text after the `Bearer ` prefix trimmed — the
+  value `extractBearer` already returns
+  (`services/stay/src/auth.ts:8-15`), the header the Go wrapper holds
+  (`handler.go:148-166`) with the prefix removed and trimmed (`:110-112`),
+  and the value Billing's new helper returns. One session therefore
+  records one identical string in every service, and a Stay close and the
+  Reservations completion it forwards agree.
+- **No token resolution, no second check.** The recorded value is a
+  by-product of the presence check that already runs; it is not verified
+  here, grants nothing, and adds no lookup, round trip, or scan.
+  Resolving the token to a human identity on those five services is the
+  identity-hardening slice (section 0), which replaces the value at this
+  same seam; it is explicitly out of scope for this change.
+- **The forwarded completion carries both values.** Stay's
+  `completeBooking` (`services/stay/src/store.ts:211-220`) keeps sending
+  the caller Bearer token (`src/reservationsClient.ts:31-44`) and
+  forwards the request's actor as the body `actor`, so the response
+  shape and the required field hold; Reservations records its own
+  session token and treats the forwarded string as the annotation, so
+  both rows carry the same session string.
+
+### 34.4 Per-flow implementation diagrams
+
+Three views of the touched flows, as they land with the implementation
+PR. Edge traces follow each diagram.
+
+**(a) Happy path — a write with a session and an honest request actor.**
+
+```mermaid
+flowchart TD
+    A[POST /v1/... write  stay server.ts:150, guests/rooms server.ts:121] --> B{Authorization header present}
+    B -->|no| N1[401 UNAUTHENTICATED, error.auth.missing_token, no body read  stay server.ts:159-163; guests/rooms server.ts:130-134; handler.go:148-161; BillingController.java:124-130]
+    B -->|yes| C[Body read and today's field rules  requireString store.ts:47-52, actorOf BillingService.java:110-115, handler.go:267-270]
+    C -->|refused| N2[400 VALIDATION_FAILED, existing sentence, nothing written]
+    C -->|accepted| D{Service family}
+    D -->|Stay, Guests, Rooms| E[Server keeps the extracted token and hands it beside the body  stay server.ts:169-199; guests server.ts:140; rooms server.ts:140-210]
+    E --> F[Store records the token in the audit column and payload actor  stay store.ts:222-259; guests store.ts:324-353; rooms store.ts:255-281, 556-558]
+    D -->|Reservations| G[Handler derives the token from the bearer and passes it to the write  handler.go:148-166 into service and store]
+    G --> H[Change row created_by and outbox created_by = token  postgres.go:252-253, 259-263; store.go:162-164, 292-296]
+    D -->|Billing| I[Adapter passes the token as the recorded actor  BillingController.java:138-214]
+    I --> J[Repository created_by, updated_by, outbox created_by = token  BillingRepository.java:65-71, 100-111, 237-239]
+    D -->|Admin UpdateHotelConfig| K[Caller resolved before the body  server.ts:157-176]
+    K --> L[Config row updated_by = caller.signinIdentity  store.ts:569-571; pgstore.ts:514, 525-535]
+    F --> Z[200: today's status, answer, and business effect]
+    H --> Z
+    J --> Z
+    L --> Z
+```
+
+**(b) Spoof attempt — a request actor that disagrees with the session.**
+
+```mermaid
+flowchart TD
+    A[Write with Bearer token T and body actor mallory] --> B[Existing body rules accept mallory: non-blank text  requireString store.ts:47-52, actorOf BillingService.java:110-115, strField handler.go:114-117]
+    B --> C[Recorded actor = T, not mallory  stay store.ts:222-259; handler.go:184-355; BillingController.java:138-214; admin store.ts:569]
+    C --> D{Write emits a JSON outbox payload}
+    D -->|yes| E[payload actor, where present, = T; requestActor = mallory  stay store.ts:253; guests store.ts:353; rooms store.ts:281; postgres.go:619-623; BillingService.java:205]
+    D -->|no| F[No key added: change row, history row, or column only  store.go:162-164; pgstore.ts:307-308; BillingRepository.java:101-102]
+    E --> G[200: identical status, answer, and business effect, no refusal]
+    F --> G
+    B -->|blank, wrong type, or absent where required| R[400 VALIDATION_FAILED, existing actor sentence, nothing written  requireString store.ts:47-52; actorOf BillingService.java:110-115; handler.go:267-270]
+    R --> RF[rollback frame: no row, no outbox event, no history row]
+    G --> RF2[rollback frame: the single implementation PR reverts the seam and the annotation; the request-supplied actor returns; no migration or backfill]
+```
+
+**(c) No session, the boot seed, and the forwarded completion.**
+
+```mermaid
+flowchart TD
+    A[Write with no Authorization header] --> B[401 UNAUTHENTICATED, error.auth.missing_token  stay server.ts:159-163; guests/rooms server.ts:130-134; handler.go:148-161; BillingController.java:124-130; admin server.ts:157-161]
+    B --> C[No body read on the Node, Go, and Admin paths; no store, provider, or write call]
+    C --> RF[rollback frame: nothing written; the actor never falls back to the body]
+    D[Stay CheckOut with desk token T] --> E[Close row and stay.checked-out payload record T  store.ts:306-354; pgstore.ts:185-238]
+    E --> F[completeBooking forwards the request actor and the same Bearer T  store.ts:211-220; reservationsClient.ts:31-44]
+    F --> G[Reservations records T on its change row; the forwarded actor is an annotation only  handler.go:259-275; postgres.go:373-380]
+    G --> H[Both rows carry one session string; no refusal, no shape change]
+    I[Admin boot seed, no request] --> J[Records boot  store.ts:262-281; pgstore.ts:90-100]
+```
+
+Edge traces:
+
+- **(a) A–B:** the route match into the presence check; the token is
+  read from the header only. **B–N1:** today's 401 sentence, before any
+  body byte on the Node, Go, and Admin paths. **B–C:** the body read and
+  the unchanged field rules. **C–D:** the operation switch, unchanged.
+  **D–E–F:** the Node seam (34.1): the transport keeps the token and the
+  store records it; **D–G–H:** the Go seam: the handler derives the
+  token from the bearer and hands it into the write; **D–I–J:** the Billing seam: the
+  adapter hands the token, the repository records it; **D–K–L:** the
+  Admin seam: the already-resolved caller becomes the config actor.
+  **F/H/J/L–Z:** the write's status, answer, and stored effect are
+  today's.
+- **(b) A–B–C:** a non-blank string passes the existing rule and is
+  never consulted for the recorded value. **C–D–E:** the write emits a
+  payload, so the disagreeing value is preserved as `requestActor` and
+  the payload's `actor`, where present, is the session. **C–D–F:** a
+  column-only write drops the value and keeps its shape. **E/F–G:** no
+  refusal is introduced; the spoof cannot change the recorded actor.
+  **B–R–RF:** the pre-existing refusal path is unchanged, so a body
+  that breaks a rule still writes nothing.
+- **(c) A–B–C–RF:** no session means no write and no fallback to the
+  body. **D–E–F–G–H:** Stay and Reservations record the same session
+  string across the forwarded call; the forwarded body actor is an
+  annotation only. **I–J:** the one writer with no request session keeps
+  its server-side `boot` actor.
+
+### 34.5 Contract decision: no new token, no shape change, two description sentences
+
+- **No token, status, enum entry, envelope field, route, or operation.**
+  `UNAUTHENTICATED` (401) and `VALIDATION_FAILED` (400) already exist and
+  already map in every stack; the change adds no refusal and no code
+  (`contracts/errors/envelope.json` is untouched).
+- **Every request manifest keeps its bytes.** `actor` and `updatedBy`
+  keep their type, their required flag, and their existing refusals
+  (`contracts/http/CheckIn.json:13`, `UpsertGuest.json:13`,
+  `CheckOutReservation.json:19`, `UpdateHotelConfig.json:13`); the body
+  value is validated exactly as today and only its recording changes.
+  No request schema gains a `pattern`, `enum`, or `maxLength`: no
+  validator runs on these paths, so a keyword would be a promise
+  nothing reads (the rule the money and guest bounds follow, LLD
+  sections 30.5 and 32.6).
+- **Two description sentences are corrected.**
+  `contracts/http/CheckOutReservation.json:22` says the body actor is
+  recorded on the change history, and
+  `contracts/http/UpdateHotelConfig.json:20` says `updatedBy` is the
+  actor recorded on the config audit trail; after this change both
+  fields stay required but are not the recorded actor, and the recorded
+  actor is the authenticated session (the resolved caller's sign-in
+  identity in Admin). The CheckOut value is an annotation only (the
+  change row keeps no annotation column); the config write emits no JSON
+  payload, so `updatedBy` is dropped rather than annotated. Prose only:
+  no type, required list, error list, or version moves. The other
+  `actor` properties carry no description and need none.
+- **Outbox payloads stay additive.** `requestActor` is the only key any
+  payload gains, and only when the request value disagrees; outbox
+  tables and payload schemas are not contract files, so no manifest
+  changes for the annotation.
+- **No generated surface moves.** The curated desk-loop
+  `contracts/openapi.yaml` carries no Admin or outbox schema, so
+  `script/openapi-route-check.sh` and `script/contract-check.sh` stay
+  green without an edit.
+- **Documented instead:** `docs/technical/error-handling.md` section 1.6
+  (no new refusal; the request rules and the demotion), one
+  `docs/technical/api-spec.md` section 1 bullet,
+  `docs/technical/integration.md`'s transport rule and the C4
+  completion note, `docs/technical/schema.md` section 0 (the audit
+  columns keep their shape and now carry the session value), the threat
+  model's audit-coverage note, and the six service design pages'
+  planned deltas, with this section as the design source.
+
+### 34.6 Verification plan
+
+`qa-lead` owns the traceability rows
+(`docs/testing/traceability-matrix.md` section 27); this is the
+architecture-side check the implementation must satisfy.
+
+- **One spoofed-actor guard per write.** Every write listed in 34.1 is
+  sent with a session token and a body actor that differs from it, and
+  each asserts the recorded value equals the token: Stay's outbox
+  payload and Postgres columns (`src/store.ts:222-259`, `:306-354`,
+  `:361-406`, `:418-445`; `src/pgstore.ts:71-119`, `:185-238`, `:263-337`,
+  `:366-408`), Guests' payload and columns (`src/store.ts:324-353`;
+  `src/pgstore.ts:62-90`), Rooms' history and outbox (`src/store.ts:249`,
+  `:281`, `:316`, `:431`, `:468`, `:505`, `:546`, `:556-558`;
+  `src/pgstore.ts:307-308`, `:445-446`, `:544-545`), Reservations'
+  change rows and outbox (`internal/store/store.go:162-164`, `:292-296`,
+  `:354`, `:479-484`, `:521`, `:565`; `internal/store/postgres.go:252-253`,
+  `:259-263`, `:373-374`, `:380`, `:568-569`, `:619-623`, `:696-697`,
+  `:712`, `:782-783`, `:789`), Billing's repository calls and columns
+  (`BillingController.java:138-214`, `BillingService.java:110-115`,
+  `BillingRepository.java:65-71`, `:100-111`, `:135-137`, `:143-145`,
+  `:154-160`, `:176-191`), and Admin's config row and derived audit
+  entry (`src/store.ts:569-571`, `:510-519`; `src/pgstore.ts:514`,
+  `:525-535`).
+- **The annotation appears exactly when it should.** A differing,
+  non-blank value adds `requestActor` with that value; an equal value, an
+  absent value, and a blank value add no key; a column-only write never
+  gains a key. Assert the payload key set and the unchanged response.
+- **The existing refusals keep their place.** A missing or blank `actor`
+  still answers `VALIDATION_FAILED` naming `actor` in Stay, Guests,
+  Rooms, `CheckOutReservation`, and Billing, and writes nothing; a
+  missing token still answers 401 before the body on the Node, Go, and
+  Admin paths; `SignIn`'s ordering and lockout are untouched.
+- **Two existing assertions re-pinned, not drifted.**
+  `services/reservations/internal/store/store_test.go` now asserts the
+  change actor is the session token (`sessionToken`, `:11-17`), and the
+  request string appears only in the payload annotation where the write
+  emits one.
+- **The forwarded completion agrees.** A Stay `CheckOut` records the
+  desk token; the completion call carries the same Bearer token and the
+  request actor as the body annotation, and the Reservations change row
+  records the same token (`services/stay/src/reservationsClient.test.ts`,
+  the completion path in `services/stay/src/server.test.ts`).
+- **Admin keeps both rules.** An owner config save whose body
+  `updatedBy` names another person records the caller's
+  `signinIdentity` on every row and in the derived `config.updated`
+  entry, while a missing or blank `updatedBy` still refuses; both stores
+  agree (the `TEST_PG_URL` parity case).
+- **No shape drift.** `script/contract-check.sh` passes with the one
+  description edit and no enum, status, or schema change; a scan of the
+  outbox payload key sets shows only `requestActor` added; no migration
+  file appears; `script/markdown-link-check.sh` resolves every link
+  added here.
+- **Gate commands** (from each service design's Operations section):
+  `npm ci`, `npm run build`, `npm test`, and `npm run lint` in
+  `services/stay`, `services/guests`, `services/rooms`, and
+  `services/admin`; `go build ./...`, `go test ./...`, and
+  `go vet ./...` in `services/reservations`; `mvn -B verify` in
+  `services/billing`; plus `script/contract-check.sh` and
+  `script/catalogue-coverage-check.sh` from the repo root.
+
+### 34.7 The NFR disposition: no new NFR, and no existing NFR changes
+
+The `business-analyst` handoff states it explicitly
+(`docs/requirements/mvp-requirements.md` section 35.4): this change adds
+no NFR and changes no existing one. The binding citations are the
+existing ones and all hold:
+
+- `NFR-AUD-1` — the 100% target stands and now has a decided source; a
+  refused write records nothing and a committed write keeps its actor
+  and time.
+- `NFR-SEC-1`/`NFR-SEC-2` — no role, reach, session, token-validation,
+  lockout, or idle-sign-out rule changes; the recorded value is a
+  by-product of the check that already runs and grants nothing.
+- `NFR-PERF-1` — no desk action gains a round trip, scan, or poll.
+- `NFR-I18N-1` — no sentence is added or changed.
+- `NFR-AVL-1`, `NFR-TZ-1`, `NFR-CON-1`, `NFR-CON-2`, `NFR-BND-1`..`3`,
+  `NFR-RET-1` — no outbound wait, no timestamp form change, no new
+  concurrent path, no transport bound change, and the stored value stays
+  an attributable string in the same `TEXT` columns.
+
+The provenance rule is a fixed rule in code, never an owner setting,
+environment variable, deployment file, or per-hotel entry
+(`docs/requirements/business-rules.md` section 9). A new NFR would need
+a measurable target this change does not introduce.
+
+### 34.8 Residual risks and re-tier triggers
+
+- **The interim actor is a bearer token stored in the audit trail**
+  (R-20). Until the identity-hardening slice resolves tokens to people,
+  Stay, Guests, Rooms, Reservations, and Billing record the presented
+  token, so a reader of those schemas sees a value that the services
+  currently accept as a session. This is a real widening, not a
+  cosmetic one: those five services check presence only, so the stored
+  value is a replayable bearer string until the identity slice lands.
+  Mitigations: it is never rendered on a desk surface and never written
+  to a log line, the audit columns sit behind the per-module database
+  credentials on the on-premise host, its normal desk lifetime is the
+  15-minute idle window (the services do not verify expiry yet), and the
+  identity slice replaces the value at the same seam with a resolved,
+  non-replayable identity. A database backup that copies the audit
+  columns, or a future export snapshot over them, therefore carries the
+  token too; backups are already encrypted and treated as secret-bearing
+  (threat model section 5), no report renders an actor, and the identity
+  slice bounds the exposure window. This is the accepted cost of fixing
+  the source now instead of after the identity slice (D-39, R-20).
+- **The trail loses the human name until the identity slice.** The desk
+  sends its display name, and after this change that name is an
+  annotation, not the actor. An investigator reading only the actor
+  column sees a token with no human label; the payload `requestActor`
+  and the Admin audit view preserve what the caller claimed. Accepted in
+  R-20; resolving it is the identity slice, not a second source.
+- **An annotation could be mistaken for the authoritative value.** The
+  key is named `requestActor`, is absent for an honest caller, is never
+  read by a service, and is never rendered; a future consumer that wants
+  to display a name must read it as a claim, not as attribution.
+- **Equality is exact, so a differently-spaced duplicate is annotated.**
+  A request value that differs only by whitespace from the session token
+  is preserved as `requestActor`. No writer in the tree sends the token
+  in `actor`, and the annotation is additive, so the cost is a redundant
+  key, never a changed record.
+- **The admin config `updatedBy` is now an ignored required field.** Its
+  refusal and its contract shape stay, and a caller that sends a
+  different name still gets 200; the field is a compatibility remnant
+  until the identity slice removes or re-purposes it, which is a
+  contract change of its own.
+- **Rates and Reporting are not covered.** Rates' writes take no request
+  actor and record `system`; Reporting is a read model. If Rates later
+  accepts a caller actor, it joins this seam in its own change.
+- **Re-tier triggers.** Resolving a token to a human identity in the
+  five presence-only services is the identity-hardening slice (a T3
+  change with its own token/session tests). Making the provenance rule,
+  the annotation, or the recorded value configurable (environment,
+  deployment, per-hotel) is T4. Removing or making optional
+  `actor`/`updatedBy`, adding a refusal for a disagreement, or
+  publishing a request-schema bound is a contract change. Surfacing an
+  audit actor on a desk screen is a T2 UI change with its own UI
+  contract.
+
+### 34.9 Maintain-with-code
+
+As built, the change adds the session parameter at each server seam
+(34.1), the store/service/repository changes that record it, the
+`requestActor` annotation at the payload sites (34.2), the Billing token
+helper, and the Admin config-actor change; it also creates the guards of
+34.6 and re-pins the two Go assertions. This section's line pins and the
+six service design pages' deltas were refreshed to the as-built
+`file:line` at this head, and `docs/technical/error-handling.md`
+section 1.6 and `docs/technical/api-spec.md` section 1 keep their
+promises. `dev-peer-review` treats a store still reading the body actor
+for the recorded value, a payload missing `requestActor` when the value
+differs, a refusal introduced for a disagreement, a changed response or
+stored business effect, a new error token, a schema or migration change,
+a resolved identity invented locally, or a stale pin as review findings,
+the same as any drifted spec.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1175

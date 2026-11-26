@@ -5,6 +5,7 @@ import { msg } from "./messages.js";
 import {
   ALLOWED_TRANSITIONS,
   ROOM_STATES,
+  requestActorAnnotation,
   requireDate,
   requireString,
   type AssignRoomInput,
@@ -135,9 +136,11 @@ export class PostgresRoomStore implements RoomStoreAPI {
     return PostgresRoomStore.toRoom(rows[0]);
   }
 
-  async upsertRoomType(input: UpsertRoomTypeInput): Promise<RoomTypeRecord> {
+  async upsertRoomType(input: UpsertRoomTypeInput, sessionActor: string): Promise<RoomTypeRecord> {
     const name = requireString(input.name, "name");
-    const actor = requireString(input.actor, "actor");
+    requireString(input.actor, "actor");
+    const actor = sessionActor;
+    const requestActor = requestActorAnnotation(sessionActor, input.actor);
     const capacity = typeof input.capacity === "number" ? input.capacity : null;
     const bedType = typeof input.bedType === "string" ? input.bedType : null;
     const features =
@@ -167,7 +170,7 @@ export class PostgresRoomStore implements RoomStoreAPI {
           client,
           "room-type",
           "room-upserted",
-          { roomTypeId: updated.rows[0].id as string, name, actor },
+          { roomTypeId: updated.rows[0].id as string, name, actor, ...(requestActor === null ? {} : { requestActor }) },
           actor,
         );
         return PostgresRoomStore.toRoomType(updated.rows[0]);
@@ -183,7 +186,7 @@ export class PostgresRoomStore implements RoomStoreAPI {
         client,
         "room-type",
         "room-upserted",
-        { roomTypeId: created.rows[0].id as string, name, actor },
+        { roomTypeId: created.rows[0].id as string, name, actor, ...(requestActor === null ? {} : { requestActor }) },
         actor,
       );
       return PostgresRoomStore.toRoomType(created.rows[0]);
@@ -191,9 +194,11 @@ export class PostgresRoomStore implements RoomStoreAPI {
     return result;
   }
 
-  async upsertRoom(input: UpsertRoomInput): Promise<RoomRecord> {
+  async upsertRoom(input: UpsertRoomInput, sessionActor: string): Promise<RoomRecord> {
     const number = requireString(input.number, "number");
-    const actor = requireString(input.actor, "actor");
+    requireString(input.actor, "actor");
+    const actor = sessionActor;
+    const requestActor = requestActorAnnotation(sessionActor, input.actor);
     const roomType = await this.resolveRoomType(input.roomType);
     const floor = typeof input.floor === "string" ? input.floor : null;
     const bedType = typeof input.bedType === "string" ? input.bedType : null;
@@ -229,7 +234,7 @@ export class PostgresRoomStore implements RoomStoreAPI {
           client,
           "room",
           "room-upserted",
-          { roomNumber: number, roomTypeId: roomType.id },
+          { roomNumber: number, roomTypeId: roomType.id, ...(requestActor === null ? {} : { requestActor }) },
           actor,
         );
         return PostgresRoomStore.toRoom(updated.rows[0]);
@@ -254,19 +259,21 @@ export class PostgresRoomStore implements RoomStoreAPI {
         client,
         "room",
         "room-upserted",
-        { roomNumber: number, roomTypeId: roomType.id },
+        { roomNumber: number, roomTypeId: roomType.id, ...(requestActor === null ? {} : { requestActor }) },
         actor,
       );
       return PostgresRoomStore.toRoom(created.rows[0]);
     });
   }
 
-  async updateRoomState(input: UpdateRoomStateInput): Promise<{
+  async updateRoomState(input: UpdateRoomStateInput, sessionActor: string): Promise<{
     roomNumber: string;
     oldState: RoomState;
     newState: RoomState;
   }> {
-    const actor = requireString(input.actor, "actor");
+    requireString(input.actor, "actor");
+    const actor = sessionActor;
+    const requestActor = requestActorAnnotation(sessionActor, input.actor);
     if (typeof input.newState !== "string" || !ROOM_STATES.includes(input.newState as RoomState)) {
       throw new HttpError("VALIDATION_FAILED", msg("rooms.validation.unknown_state", {}), { newState: input.newState });
     }
@@ -305,7 +312,7 @@ export class PostgresRoomStore implements RoomStoreAPI {
         client,
         "room",
         "state-changed",
-        { roomNumber: room.number, oldState: room.state, newState, actor },
+        { roomNumber: room.number, oldState: room.state, newState, actor, ...(requestActor === null ? {} : { requestActor }) },
         actor,
       );
       return { roomNumber: room.number, oldState: room.state, newState };
@@ -403,7 +410,7 @@ export class PostgresRoomStore implements RoomStoreAPI {
     };
   }
 
-  async assignRoom(input: AssignRoomInput): Promise<{ roomId: string; roomNumber: string; stayLink: string; state: RoomState }> {
+  async assignRoom(input: AssignRoomInput, sessionActor: string): Promise<{ roomId: string; roomNumber: string; stayLink: string; state: RoomState }> {
     const roomNumber = requireString(input.roomNumber, "roomNumber");
     const idempotencyKey = typeof input.idempotencyKey === "string" ? input.idempotencyKey : "";
     const replay =
@@ -413,7 +420,9 @@ export class PostgresRoomStore implements RoomStoreAPI {
     }
     const businessDate = requireDate(input.businessDate, "businessDate");
     const stayLink = requireString(input.stayLink, "stayLink");
-    const actor = requireString(input.actor, "actor");
+    requireString(input.actor, "actor");
+    const actor = sessionActor;
+    const requestActor = requestActorAnnotation(sessionActor, input.actor);
     const receipt = await this.withTx(async (client) => {
       const updated = await client.query(
         `UPDATE rooms.rooms SET state = 'occupied', updated_by = $3, updated_at = now()
@@ -441,7 +450,7 @@ export class PostgresRoomStore implements RoomStoreAPI {
         client,
         "room",
         "state-changed",
-        { roomNumber: room.number, stayLink, actor },
+        { roomNumber: room.number, stayLink, actor, ...(requestActor === null ? {} : { requestActor }) },
         actor,
       );
       return { roomId: room.id, roomNumber: room.number, stayLink, state: room.state };
@@ -496,12 +505,14 @@ export class PostgresRoomStore implements RoomStoreAPI {
     return new HttpError("CONFLICT", msg("rooms.conflict.room_taken", { roomNumber: room.number }), { roomNumber: room.number });
   }
 
-  async releaseRoom(input: ReleaseRoomInput): Promise<{
+  async releaseRoom(input: ReleaseRoomInput, sessionActor: string): Promise<{
     roomNumber: string;
     oldState: RoomState;
     newState: RoomState;
   }> {
-    const actor = requireString(input.actor, "actor");
+    requireString(input.actor, "actor");
+    const actor = sessionActor;
+    const requestActor = requestActorAnnotation(sessionActor, input.actor);
     const toState: RoomState =
       typeof input.toState === "string" && ROOM_STATES.includes(input.toState as RoomState)
         ? (input.toState as RoomState)
@@ -538,14 +549,14 @@ export class PostgresRoomStore implements RoomStoreAPI {
         client,
         "room",
         "state-changed",
-        { roomNumber: room.number, newState: toState, actor },
+        { roomNumber: room.number, newState: toState, actor, ...(requestActor === null ? {} : { requestActor }) },
         actor,
       );
       return { roomNumber: room.number, oldState: "occupied" as RoomState, newState: toState };
     });
   }
 
-  async blockRoom(input: BlockRoomInput): Promise<{
+  async blockRoom(input: BlockRoomInput, sessionActor: string): Promise<{
     roomNumber: string;
     dateFrom: string;
     dateTo: string;
@@ -554,7 +565,9 @@ export class PostgresRoomStore implements RoomStoreAPI {
     const dateFrom = requireDate(input.dateFrom, "dateFrom");
     const dateTo = requireDate(input.dateTo, "dateTo");
     const reason = requireString(input.reason, "reason");
-    const actor = requireString(input.actor, "actor");
+    requireString(input.actor, "actor");
+    const actor = sessionActor;
+    const requestActor = requestActorAnnotation(sessionActor, input.actor);
     if (dateTo < dateFrom) {
       throw new HttpError("VALIDATION_FAILED", msg("error.validation.date_range_order", {}), { dateFrom, dateTo });
     }
@@ -593,14 +606,14 @@ export class PostgresRoomStore implements RoomStoreAPI {
         client,
         "room",
         "blocked",
-        { roomNumber: room.number, dateFrom, dateTo, reason, actor },
+        { roomNumber: room.number, dateFrom, dateTo, reason, actor, ...(requestActor === null ? {} : { requestActor }) },
         actor,
       );
       return { roomNumber: room.number, dateFrom, dateTo, reason };
     });
   }
 
-  async releaseBlock(input: ReleaseBlockInput): Promise<{
+  async releaseBlock(input: ReleaseBlockInput, sessionActor: string): Promise<{
     roomNumber: string;
     dateFrom: string;
     dateTo: string;
@@ -608,7 +621,9 @@ export class PostgresRoomStore implements RoomStoreAPI {
   }> {
     const dateFrom = requireDate(input.dateFrom, "dateFrom");
     const dateTo = requireDate(input.dateTo, "dateTo");
-    const actor = requireString(input.actor, "actor");
+    requireString(input.actor, "actor");
+    const actor = sessionActor;
+    const requestActor = requestActorAnnotation(sessionActor, input.actor);
     if (dateTo < dateFrom) {
       throw new HttpError("VALIDATION_FAILED", msg("error.validation.date_range_order", {}), { dateFrom, dateTo });
     }
@@ -639,7 +654,7 @@ export class PostgresRoomStore implements RoomStoreAPI {
         client,
         "room",
         "block-released",
-        { roomNumber: room.number, dateFrom, dateTo, reason, actor },
+        { roomNumber: room.number, dateFrom, dateTo, reason, actor, ...(requestActor === null ? {} : { requestActor }) },
         actor,
       );
       return { roomNumber: room.number, dateFrom, dateTo, reason };

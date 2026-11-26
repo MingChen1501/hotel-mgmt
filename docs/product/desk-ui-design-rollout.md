@@ -2758,6 +2758,108 @@ the view code that resolves them, and no schema migration, backfill, or
 data repair exists on the decided path — orphan folios already written
 stay, as the scope says.
 
+### 6.22 Ambiguous guest name on the Book guest find (Refs #640)
+
+Status: product-owner scope decision and UI contract delta for audit
+finding G1 (#640): the guest lookup by name returns the first match, so
+when two guests share a full name the desk opens one of them with no
+sign that a choice was made. Tier T2: one caller-visible refusal on
+`IdentifyGuest`, one reader-visible desk state, no new subsystem, data
+model, lifecycle state, or code token. The binding done-conditions are
+`AC-GID-1`..`AC-GID-7` in
+`docs/product/acceptance-criteria.md` [section 25](acceptance-criteria.md);
+the scope decision is D-37 in `docs/project/decision-log.md`. FR/NFR
+wording is owned by `business-analyst`, the LLD delta and the contract
+error-list line by `architect`, guard mapping and traceability by
+`qa-lead`, and the gate verdict by `spec-reviewer`.
+
+The change is mostly service-side, and the only desk-visible effect is
+what staff read when the name they typed matches more than one guest.
+Today the guest find maps `NOT_FOUND` to its own sentence and every
+other failure to the generic "That did not work. Try again; if it keeps
+failing, tell the manager." fallback
+(`app/src/views/BookView.vue:736-744`, `:480-485`), which would be wrong
+for an ambiguity: the name is the problem and a retry cannot help. No
+other screen calls `IdentifyGuest`; the Stay, Folio, and Print screens
+work from stay, reservation, and guest ids they already hold.
+
+Decision:
+
+1. **One honest sentence, no profile.** An ambiguity refusal reads as
+   its own plain sentence saying the name matches more than one guest
+   and that no profile was opened. No guest is resolved, no profile,
+   preferences, or notes are shown, and the sentence never implies a
+   retry of the same name can help.
+2. **Same card, same controls, no new step.** The guest card keeps its
+   name field, its Find button, its Register button, and its inline
+   status line; the entered name stays in the field after a refusal so
+   staff are not retyping it. Nothing about the rest of the Book flow
+   moves: quoting, confirming, and the confirmation still need a
+   resolved guest, and the existing "Find or register the guest first"
+   gate still reads the same.
+3. **The other two read outcomes do not move.** A name that matches one
+   guest still reads as "Guest found…", and a name that matches none
+   still reads as "No guest with that name. Check the name or register
+   a new guest." Both keep their current keys and wording.
+4. **Registering under an ambiguous name stays the desk's explicit
+   choice.** This change adds no uniqueness rule to `UpsertGuest`, so
+   the Register button keeps working as today; the ambiguity sentence
+   does not invite a new record and says the manager should check the
+   guest records. Telling two same-name guests apart (a merge or
+   distinguish flow) is a separate decision, not this change.
+
+UI contract delta (T2 reader-visible refusal state; the rest of the
+contract in sections 3–4 is unchanged):
+
+- **Layout and navigation scope.** Unchanged. No new screen, route, nav
+  entry, card, dialog, or control; the Book screen keeps the guest card
+  in its current place and order.
+- **Component mapping.** Unchanged. The sentence renders through the
+  guest card's existing inline status line, and the Find and Register
+  buttons keep the same PrimeVue logic-carrier mapping and shell
+  styling as the #517 restyle.
+- **Design-token scope.** Unchanged — no new colour, radius, spacing, or
+  target size, and no new state colour: a refusal is the existing
+  inline error ink, never a chip that reads as a guest status.
+- **States in plain words:**
+  - Found: one guest matches; the sentence names the guest and the past
+    stay count, as today.
+  - No match: no guest matches; the sentence tells staff to check the
+    name or register a new guest, as today.
+  - Ambiguous: more than one guest matches; the sentence says so and
+    says no profile was opened, and no profile, preference, or note is
+    shown.
+  - Other failure: the generic request-failed sentence, as today.
+  - Any refusal: the rest of the desk stays usable, the entered name
+    stays, and the booking cannot continue without a resolved guest.
+- **Catalogue keys.** One new `desk.book.*` key, both locales, no
+  `{param}` placeholders, with `script/catalogue-coverage-check.sh`
+  green on the implementation PR:
+
+  | Key | English | Vietnamese |
+  |---|---|---|
+  | `desk.book.guest_ambiguous` | That name matches more than one guest, so no profile was opened. Ask the manager to check the guest records. | Tên này khớp với nhiều hơn một khách nên chưa mở hồ sơ nào. Nhờ quản lý kiểm tra lại hồ sơ khách. |
+- **Print rules.** Unchanged. No confirmation is produced without a
+  resolved guest, so no print surface, route, or document is touched.
+
+Cross-references: the lookup is `IdentifyGuest`
+(`contracts/http/IdentifyGuest.json:11-16`), the stores' first-match
+behaviour is `services/guests/src/store.ts:308-326` and
+`services/guests/src/pgstore.ts:181-190`, and the desk's guest-find
+handler is `app/src/views/BookView.vue:710-745`. The per-flow diagram
+belongs to the LLD, and the reproduction record belongs in the
+implementation PR body or an issue comment.
+
+Out: implementation; any guest merge, edit, or distinguish flow; a
+uniqueness rule on `UpsertGuest`; changing `guestId` lookups; any other
+desk screen; and the service-side payload bounds and date check, which
+are section 25's subject.
+
+Rollback: revert the single implementation PR. The guest find falls
+back to today's generic sentence, the key goes with the view code that
+resolves it, and no schema migration, backfill, or data repair exists
+on the decided path.
+
 ## 7. Catalogue and locale rule
 
 - Single source of truth stays `messages/` (`messages/README.md`):
@@ -3168,6 +3270,9 @@ Section 4 stays the rollout-wide contract; for steps 2–4:
 | The T3 spec set exists and `spec-reviewer` posts `SPEC-GATE PASS` before implementation starts, and the owner accepts the capacity-seam ADR | This section, section 6.20, `docs/product/acceptance-criteria.md` section 19 (`AC-OVB-1`..`AC-OVB-3`, `AC-RES-1`/`AC-RES-2` pointers), decision log D-31; the architect ADR/HLD/LLD delta and the `business-analyst`, `qa-lead`, and `release-manager` deltas are the sibling handoffs |
 | Rollback is a single revert with no schema or data migration | Section 6.20 (rollback); `sellableUnits` stays in both contracts for the desk build, so no migration exists in either direction |
 
+<!-- ao-role: product-owner -->
+Role: product-owner · AO session hotel-mgmt-938
+
 ## 26. Acceptance mapping (issue #634)
 
 | Criterion | Evidence in this spec |
@@ -3188,3 +3293,19 @@ Role: product-owner · AO session hotel-mgmt-1045
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1057
+
+## 27. Acceptance mapping (issue #640)
+
+| Criterion | Evidence in this spec |
+|---|---|
+| A name that matches two guests is refused with `VALIDATION_FAILED` naming `fullName`, and no profile is returned | Section 6.22 decision 1 and the ambiguous state; `AC-GID-1`; the as-built first-match traces are in `docs/product/acceptance-criteria.md` section 25 (`services/guests/src/store.ts:308-326`, `services/guests/src/pgstore.ts:181-190`) |
+| A unique name and every `guestId` lookup still answer exactly as today | Section 6.22 decision 3; `AC-GID-2`; the found and no-match states keep their existing keys and wording |
+| Oversized or wrongly typed `contact`, `preferences`, and `notes` are refused naming the field and write nothing | `AC-GID-3`, `AC-GID-4`; the bounds and the constants are stated in `docs/product/acceptance-criteria.md` section 25 product rules 3 and 4 |
+| A calendar-invalid confirmation date such as `2026-13-45` is refused naming the field | `AC-GID-5`; section 25 product rule 6 keeps the existing `guests.validation.date_format` sentence |
+| The desk reads the ambiguity in plain words in both locales, with no technical code, and no profile is shown | Section 6.22 catalogue table (`desk.book.guest_ambiguous`, EN + VI) and the states; `AC-GID-6`; `script/catalogue-coverage-check.sh` green on the implementation PR |
+| The desk layout, controls, tokens, routes, and print rules are unchanged | Section 6.22 UI contract delta (layout, component mapping, design tokens, print all unchanged); `AC-GID-6`, `AC-GID-7` |
+| The T2 spec set exists and `spec-reviewer` posts `SPEC-GATE PASS` before implementation starts | This section, section 6.22, `docs/product/acceptance-criteria.md` section 25 (`AC-GID-1..7`), `docs/project/decision-log.md` D-37; FR/NFR wording, the LLD delta, and the contract error-list line are the sibling handoffs |
+| Rollback is a single revert with today's generic sentence returning | Section 6.22 (rollback); no schema migration, backfill, or data repair exists on the decided path |
+
+<!-- ao-role: product-owner -->
+Role: product-owner · AO session hotel-mgmt-1139
