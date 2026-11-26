@@ -76,7 +76,7 @@ Development table, which use a `../` prefix.
 | Non-functional requirements | `requirements/non-functional-requirements.md` | stub (not needed yet) | `business-analyst` | measurable NFRs (performance, reliability, usability) |
 | SRD | `requirements/srd.md` | stub (not needed yet) | `business-analyst` | stakeholder requirements definition |
 | SRS | `requirements/srs.md` | stub (not needed yet) | `business-analyst` | software requirements specification |
-| Business rules | `requirements/business-rules.md` | active | `business-analyst` | domain policies constraining behaviour (Closes #58; BR-50/BR-51 Refs #634; BR-59 Refs #627; BR-60 Refs #630; BR-61 Refs #635; BR-62 Refs #641; BR-63 Refs #640; BR-64 Refs #639; BR-65 Refs #643; BR-66 Refs #642) |
+| Business rules | `requirements/business-rules.md` | active | `business-analyst` | domain policies constraining behaviour (Closes #58; BR-50/BR-51 Refs #634; BR-52 Refs #632; BR-59 Refs #627; BR-60 Refs #630; BR-61 Refs #635; BR-62 Refs #641; BR-63 Refs #640; BR-64 Refs #639; BR-65 Refs #643; BR-66 Refs #642) |
 | Use cases | `requirements/use-cases.md` | active | `business-analyst` | actor-goal flows through the system (Closes #58; UC-8 Refs #646; UC-6/UC-7 Refs #647; UC-13 Refs #648) |
 | Data dictionary | `requirements/data-dictionary.md` | active | `business-analyst` | shared definitions of data entities and fields (Closes #58; sections 1-2 Refs #646; sections 2/8 Refs #647; section 1 Refs #648; section 16 Refs #630) |
 | Integration contract needs | `requirements/integration-contract-needs.md` | active | `business-analyst` | requirements-side input to module contracts: operations, payloads, sync/async, errors, config (Closes #96; section 3b Refs #634; section 9 Refs #627; sections 8/9 Refs #630) |
