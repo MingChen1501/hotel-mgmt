@@ -161,9 +161,9 @@ scan_checks() {
       ci_worst="none reported"
     elif [[ -z "${bad_checks}" ]]; then
       ci_worst="green (pass/skipping)"
-    elif [[ "$(printf '%s' "${checks_out}" | jq -r 'any(.[]; .bucket == "fail" or .bucket == "failed")')" == "true" ]]; then
+    elif [[ "$(printf '%s' "${checks_out}" | jq -r 'any(.[]; .bucket == "fail")')" == "true" ]]; then
       ci_worst="fail (${bad_checks})"
-    elif [[ "$(printf '%s' "${checks_out}" | jq -r 'any(.[]; .bucket == "cancelled")')" == "true" ]]; then
+    elif [[ "$(printf '%s' "${checks_out}" | jq -r 'any(.[]; .bucket == "cancel")')" == "true" ]]; then
       ci_worst="cancelled (${bad_checks})"
     elif [[ "$(printf '%s' "${checks_out}" | jq -r 'any(.[]; .bucket == "pending")')" == "true" ]]; then
       ci_worst="pending (${bad_checks})"
@@ -284,15 +284,17 @@ compute_stack_hint() {
 
 # --- One PR block plus its readiness verdict ---------------------------
 failures=()
+readiness_caveats=()
 heads_checked=()
 
 check_pr() {
   local num="$1"
-  local conflict_note="clean"
   local head_approved="no"
   local changes_note="no"
   local risk_note=""
   local reasons=()
+  local caveats=()
+  local caveat_text=""
 
   if ! load_pr "${num}"; then
     failures+=("#${num}: metadata unreadable (fail closed)")
@@ -300,10 +302,10 @@ check_pr() {
   fi
 
   case "${mergeable}" in
-    CONFLICTING) conflict_note="CONFLICTING"; reasons+=("mergeable CONFLICTING") ;;
+    CONFLICTING) reasons+=("mergeable CONFLICTING") ;;
   esac
   case "${merge_state}" in
-    DIRTY) conflict_note="${conflict_note} mergeStateStatus DIRTY"; reasons+=("mergeStateStatus DIRTY") ;;
+    DIRTY) reasons+=("mergeStateStatus DIRTY") ;;
   esac
 
   if ! scan_review; then
@@ -316,6 +318,20 @@ check_pr() {
     reasons+=("no head-quoting APPROVE/SPEC-GATE PASS verdict")
   fi
   [[ "${changes_count}" -gt 0 ]] && changes_note="yes (${changes_count}) — the merge gate will refuse"
+
+  # Non-gating caveats: the owner's #746 exit conditions are exactly
+  # conflict state + a head-quoting verdict, so these do not fail the
+  # run — but the block is pasted verbatim into the owner report, so a
+  # bare READY next to "the merge gate will refuse" would mislead.
+  if [[ "${changes_count}" -gt 0 ]]; then
+    caveats+=("the merge gate will refuse — CHANGES_REQUESTED on head")
+  fi
+  if [[ "${pr_state}" != "OPEN" ]]; then
+    caveats+=("the merge gate will refuse — state ${pr_state}, not open")
+  fi
+  if [[ "${mergeable}" == "UNKNOWN" || "${merge_state}" == "UNKNOWN" ]]; then
+    caveats+=("conflict state UNKNOWN, re-run before reporting")
+  fi
 
   scan_checks
   compute_stack_hint
@@ -354,7 +370,14 @@ check_pr() {
     echo "Note:      GitHub has not computed the conflict state yet (UNKNOWN) — re-run this preflight before reporting."
   fi
   if [[ "${#reasons[@]}" -eq 0 ]]; then
-    echo "Status:    READY"
+    if [[ "${#caveats[@]}" -eq 0 ]]; then
+      echo "Status:    READY"
+    else
+      caveat_text="$(printf '%s; ' "${caveats[@]}")"
+      caveat_text="${caveat_text%; }"
+      echo "Status:    READY (caveat: ${caveat_text})"
+      readiness_caveats+=("#${pr_number}: ${caveat_text}")
+    fi
   else
     echo "Status:    NOT READY ($(printf '%s; ' "${reasons[@]}" | sed 's/; $//'))"
     failures+=("#${num}: $(printf '%s; ' "${reasons[@]}" | sed 's/; $//')")
@@ -374,6 +397,11 @@ if [[ "${#failures[@]}" -gt 0 ]]; then
   printf '  - %s\n' "${failures[@]}"
   exit 1
 fi
-echo "Merge readiness: READY — ${#pr_numbers[@]} PR(s) clean (not CONFLICTING/DIRTY) and head-approved."
+if [[ "${#readiness_caveats[@]}" -gt 0 ]]; then
+  echo "Merge readiness: READY WITH CAVEATS — ${#pr_numbers[@]} PR(s) clean (not CONFLICTING/DIRTY) and head-approved, but the merge gate will refuse or the state is unproven:"
+  printf '  - %s\n' "${readiness_caveats[@]}"
+else
+  echo "Merge readiness: READY — ${#pr_numbers[@]} PR(s) clean (not CONFLICTING/DIRTY) and head-approved."
+fi
 echo "Paste this output into the owner report; re-run the preflight immediately before reporting (a stack drifts as ${DEFAULT_BRANCH} moves)."
 exit 0

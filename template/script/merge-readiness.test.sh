@@ -222,6 +222,8 @@ NO_REVIEWS='[]'
 APPROVE_SHORT='[{"body":"APPROVE — reviewed head abcdef1: diff scoped, checks green. Role: dev-peer-review"}]'
 FORMAL_APPROVE_STATE='[{"body":"Reviewed head abcdef1, looks good.","state":"APPROVED"}]'
 STALE_APPROVE='[{"body":"APPROVE — reviewed head deadbee9: diff scoped. Role: dev-peer-review"}]'
+APPROVE_PLUS_CHANGES='[{"body":"APPROVE — reviewed head abcdef1: one finding only. Role: dev-peer-review"},{"body":"CHANGES_REQUESTED — reviewed head abcdef1: fix the caveat. Role: dev-peer-review"}]'
+CANCELLED_CHECKS='[{"bucket":"pass","name":"ci","state":"SUCCESS"},{"bucket":"cancel","name":"e2e","state":"CANCELLED"}]'
 
 # -----------------------------------------------------------------------
 # Gate-mirror pin: the preflight copies the merge gate's classifier and
@@ -349,7 +351,8 @@ expect_contains "stale verdict leaves the head unapproved" "head-quoting verdict
 
 # -----------------------------------------------------------------------
 # 4. CI is reported, never gated: failing checks still exit 0.
-# -----------------------------------------------------------------------reset_fixtures
+# -----------------------------------------------------------------------
+reset_fixtures
 write_pr 674 "${TEST_DEFAULT_BRANCH}" "${MEDIUM_LABELS}" "${APPROVE_SHORT}" "${NO_REVIEWS}"
 write_checks 674 "${FAIL_CHECKS}"
 build_open_prs 674
@@ -358,6 +361,33 @@ expect_ok "failing CI does not add an exit condition (#746)"
 expect_contains "failing CI worst conclusion is reported" "CI:        worst conclusion: fail"
 expect_contains "failing CI names the failing job" "go-build (fail/FAILED)"
 expect_contains "failing CI still reports merge readiness" "Status:    READY"
+
+# A cancelled run is bucketed `cancel` by `gh pr checks` (not
+# `cancelled`), and the worst conclusion must name it rather than fall
+# through to "unknown bucket".
+reset_fixtures
+write_pr 674 "${TEST_DEFAULT_BRANCH}" "${MEDIUM_LABELS}" "${APPROVE_SHORT}" "${NO_REVIEWS}"
+write_checks 674 "${CANCELLED_CHECKS}"
+build_open_prs 674
+invoke 674
+expect_ok "a cancelled check does not add an exit condition (#746)"
+expect_contains "a cancelled check is reported as cancelled, not unknown" \
+  "CI:        worst conclusion: cancelled (e2e (cancel/CANCELLED))"
+
+# A CHANGES_REQUESTED verdict on the current head does not change the
+# owner's exit conditions (#746 fixes them at conflict state and a
+# head-quoting verdict), but READY must carry the merge-gate caveat: the
+# block is pasted verbatim into the owner report.
+reset_fixtures
+write_pr 674 "${TEST_DEFAULT_BRANCH}" "${MEDIUM_LABELS}" "${APPROVE_PLUS_CHANGES}" "${NO_REVIEWS}"
+write_checks 674 "${GREEN_CHECKS}"
+build_open_prs 674
+invoke 674
+expect_ok "CHANGES_REQUESTED on head does not add an exit condition (#746)"
+expect_contains "READY carries the merge-gate caveat" \
+  "Status:    READY (caveat: the merge gate will refuse — CHANGES_REQUESTED on head)"
+expect_contains "summary carries the caveat" "Merge readiness: READY WITH CAVEATS"
+expect_contains "summary names the caveat PR" "#674: the merge gate will refuse"
 
 # The risk gate is reported, not gated (the #746 exit conditions are
 # conflict state + head-quoting verdict), and a risk-high label names the
