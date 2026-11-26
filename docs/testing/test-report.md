@@ -347,6 +347,7 @@ consolidation of record for their own slices):
 | #635 money amount bounds (whole-number and ceiling refusals on Billing's money adapters) | implementation PR (merge pending) | `traceability-matrix.md` section 23 — guards `AMT1`–`AMT20` plus evidence rule `AMT-E1` (`docs/testing/evidence/635/README.md`); MVP count stands at 57/57 |
 | #641 report date-range cap (730-night span refusal on Reporting's occupancy and revenue reads) | PR #727 | `traceability-matrix.md` section 24 — guards `RPT1`–`RPT14` plus evidence rule `RPT-E1` (`docs/testing/evidence/641/README.md`); MVP count stands at 57/57 |
 | #640 guest identity ambiguity and payload bounds (counted name lookup, declared `contact`/`preferences` shape and `notes` length, calendar-valid confirmation dates) | implementation PR (merge pending) | `guest-identity-test-traceability.md` — guards `GID1`–`GID14` plus evidence rule `GID-E1` (`docs/testing/evidence/640/README.md`); MVP count stands at 57/57 |
+| #639 Admin authenticate-before-parse and config-shape refusal (the session check precedes the body read on every operation except `SignIn`; the BR-64 per-key table refuses a malformed `UpdateHotelConfig` value naming the key with nothing written) | implementation PR (merge pending) | `admin-auth-config-test-traceability.md` — guards `CFG1`–`CFG24` plus evidence rule `CFG-E1` (`docs/testing/evidence/639/README.md`); MVP count stands at 57/57 |
 
 ## 9. Open gaps and reproduce pointers
 

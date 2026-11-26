@@ -110,6 +110,81 @@ export function requiredString(value: unknown, field: string): string {
   return value.trim();
 }
 
+// Config write shapes (BR-64, #639). One per-key table is applied by
+// both stores before the first write, so the in-memory and Postgres
+// paths refuse the same values. The rules are derived from the keys
+// the tree already sends (the onboarding wizard, the deployment apply,
+// the existing config tests), so no legitimate hotel setting is
+// refused; a key outside the table keeps today's behaviour and is
+// written as sent. Trimming decides emptiness and duplicate equality
+// only — never a stored value.
+const TIME_OF_DAY = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
+
+interface ConfigShape {
+  sentence: string;
+  valid: (value: unknown) => boolean;
+}
+
+function isText(value: unknown): boolean {
+  return typeof value === "string";
+}
+
+function isNonBlankText(value: unknown): boolean {
+  return typeof value === "string" && value.trim() !== "";
+}
+
+function isTimeOfDay(value: unknown): boolean {
+  return typeof value === "string" && TIME_OF_DAY.test(value);
+}
+
+// everyEntryNonBlank admits the empty array: the seed serves
+// cancellationReasons: [] and a hotel may keep no reason list.
+function everyEntryNonBlank(value: unknown): boolean {
+  return Array.isArray(value) && value.every((entry: unknown) => typeof entry === "string" && entry.trim() !== "");
+}
+
+// guestFieldList is the stricter list: at least one entry, each
+// non-blank, and no two entries equal after trimming.
+function isGuestFieldList(value: unknown): boolean {
+  if (!everyEntryNonBlank(value)) {
+    return false;
+  }
+  const entries = (value as string[]).map((entry) => entry.trim());
+  return entries.length > 0 && new Set(entries).size === entries.length;
+}
+
+function isWholeNonNegative(value: unknown): boolean {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
+}
+
+export const CONFIG_SHAPES: Record<string, ConfigShape> = {
+  name: { sentence: "error.validation.field_required", valid: isNonBlankText },
+  timezone: { sentence: "error.validation.config_text", valid: isNonBlankText },
+  standardCheckinTime: { sentence: "error.validation.config_time", valid: isTimeOfDay },
+  standardCheckoutTime: { sentence: "error.validation.config_time", valid: isTimeOfDay },
+  requiredGuestFields: { sentence: "error.validation.config_required_fields", valid: isGuestFieldList },
+  cancellationReasons: { sentence: "error.validation.config_list", valid: everyEntryNonBlank },
+  retentionFloorDays: { sentence: "error.validation.retention_floor", valid: isWholeNonNegative },
+  cancellationWording: { sentence: "error.validation.config_optional_text", valid: isText },
+  address: { sentence: "error.validation.config_optional_text", valid: isText },
+  phone: { sentence: "error.validation.config_optional_text", valid: isText },
+  email: { sentence: "error.validation.config_optional_text", valid: isText },
+};
+
+// validateConfigValues inspects every present table key in the
+// request's own entry order before the first write runs; the first
+// offending key refuses the whole write with one envelope naming it
+// (BR-64). Keys outside the table are left to the caller untouched.
+export function validateConfigValues(values: Record<string, unknown>): void {
+  for (const [key, value] of Object.entries(values)) {
+    const shape = CONFIG_SHAPES[key];
+    if (shape === undefined || shape.valid(value)) {
+      continue;
+    }
+    throw new HttpError("VALIDATION_FAILED", msg(shape.sentence, { field: key }), { field: key });
+  }
+}
+
 // AdminStoreAPI is the contract both the in-memory store and the
 // Postgres store implement (issue #149).
 export interface AdminStoreAPI {
@@ -479,12 +554,13 @@ export class AdminStore implements AdminStoreAPI {
       throw new HttpError("VALIDATION_FAILED", msg("error.validation.values_object", {}), { field: "values" });
     }
     requiredString(input.updatedBy, "updatedBy");
-    const entries = Object.entries(input.values as Record<string, unknown>);
-    if ("name" in (input.values as Record<string, unknown>)) {
-      // The hotel's own name arrives via the deployment set
-      // (issue #158); never blank it through the API.
-      requiredString((input.values as Record<string, unknown>)["name"], "name");
-    }
+    const values = input.values as Record<string, unknown>;
+    // BR-64 (#639): the shared per-key table runs after today's
+    // values/updatedBy refusals and before the first write, so the
+    // first offending key refuses the whole request and a valid key
+    // sent beside it is not stored.
+    validateConfigValues(values);
+    const entries = Object.entries(values);
     const now = Date.now();
     const actor = input.updatedBy as string;
     for (const [key, value] of entries) {
