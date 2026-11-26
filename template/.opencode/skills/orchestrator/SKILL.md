@@ -44,9 +44,13 @@ placeholder — the stack is undecided).
 4. Spawn the next queued task **only when a slot is free** (see Pool). Never
    batch-spawn.
 5. Update issues (close done, comment progress, create follow-ups).
-6. Escalate only decisions (risk-high/very-high merges, missing labels,
+6. Before any owner-facing report that claims a PR is ready to merge,
+   run `script/merge-readiness.sh <pr...>` fresh (see "Merge readiness
+   report"); never quote an earlier run, and never report a `NOT READY`
+   run as ready.
+7. Escalate only decisions (risk-high/very-high merges, missing labels,
    conflicts requiring owner input).
-7. Stay terse. Report only state changes, blockers, and decisions needed.
+8. Stay terse. Report only state changes, blockers, and decisions needed.
 
 ## Pool
 
@@ -258,6 +262,37 @@ restate the list here — link it. Summary for orchestration use only.
 - risk-high / risk-very-high / missing label: explicit owner approval
   required, and then the owner merges manually — the merge script has
   no override path.
+
+## Merge readiness report
+
+Canonical reporting rules: `docs/ao-rules.md` ("Reporting contract");
+this section is the orchestration procedure.
+
+- Every "ready for owner merge" report MUST include the output of
+  `script/merge-readiness.sh <pr...>` (one block per PR: state, head
+  SHA, base, mergeable/mergeStateStatus, risk label, whether a
+  head-quoting APPROVE (or SPEC-GATE PASS) verdict exists, the CI worst
+  conclusion, and the stack order), plus its exit status. A report
+  without that output is incomplete.
+- Run the preflight immediately before writing the report; never quote
+  an earlier run. A readiness snapshot goes stale as the default branch
+  moves: a stack member's base is the member below it, so one
+  default-branch commit can turn a clean member `DIRTY`, and GitHub
+  retargets the surviving members after a stack merge.
+- Name the exact head SHAs the preflight checked (its final `Checked
+  heads` line), and reference every PR/issue in the report by its full
+  URL.
+- The preflight is read-only (it never pushes, merges, comments,
+  labels, or changes a branch): paste its block verbatim. The
+  orchestrator may record the block itself as a PR/issue comment when
+  an audit trail is wanted.
+- A `NOT READY` run (CONFLICTING, DIRTY, or no head-quoting verdict) is
+  never reported as ready; a `DIRTY`/`CONFLICTING` PR is routed to a
+  worker, never resolved in the orchestrator.
+- Stacked PR set: merge the default branch into the **bottom** member
+  before asking the owner to merge; re-verify the whole stack afterwards
+  (fresh preflight plus green CI), and only then ask. Never ask the
+  owner while any member's conflict state was read before the refresh.
 
 ## Risk labels
 

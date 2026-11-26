@@ -4826,8 +4826,8 @@ Stay and a new fail-closed dependency edge on the money path, with a new
 contract error set; no data-model change, no new operation, no schema,
 no migration, and no event change. ADR-0008
 (`docs/architecture/decisions/adr-0008-folio-write-stay-verification.md`,
-proposed) records the decision; the owner flips it `proposed` ->
-`accepted` before the implementation PR merges. Product done-conditions
+accepted 2026-11-26) records the decision; the implementation PR starts
+after the T3 `SPEC-GATE PASS` on #634. Product done-conditions
 are `docs/product/acceptance-criteria.md` section 20
 (`AC-FWV-1`..`AC-FWV-7`) with D-32 in
 `docs/project/decision-log.md`; FR/NFR wording is the
@@ -4854,10 +4854,10 @@ claim, then the writes:
 
 | Route | Shape checks first (unchanged) | Stay read | Writes that follow |
 |---|---|---|---|
-| `GetFolioBalance` (`web/BillingController.java:74`) | `stayId` UUID, `actor` (`service/BillingService.java:121`) | only when the stay carries no folio (`findFolioByStay` miss, `repo/BillingRepository.java:73-77`) | `ensureFolio` for a verified in-house stay |
-| `PostCharge` (`web/BillingController.java:81`) | `itemKind`, `itemName`, `amountMinor`, defined charge item (`service/BillingService.java:126-140`) | every request | key claim (`:146`), charge insert, balance movement, `folio.charge-posted` (`:158-162`) |
-| `RecordPayment` (`web/BillingController.java:89`) | `method`, positive `amountMinor` (`service/BillingService.java:166-175`) | every request | key claim (`:180`), payment insert, balance movement, `folio.payment-recorded` (`:185-188`) |
-| `RecordOpenBalanceApproval` (`web/BillingController.java:141`) | `approvedBy`, `role` (`service/BillingService.java:255-262`) | every request | key claim (`:267`), `recordApproval`, `folio.approval-recorded` (`:275-277`) |
+| `GetFolioBalance` (`web/BillingController.java:74`) | `stayId` UUID, `actor` (`service/BillingService.java:174-184`) | only when the stay carries no folio (`findFolioByStayOrNull` miss, `repo/BillingRepository.java:81-84`) | `ensureFolio` for a verified in-house stay |
+| `PostCharge` (`web/BillingController.java:81`) | `itemKind`, `itemName`, `amountMinor`, defined charge item (`service/BillingService.java:186-205`) | every request | key claim (`service/FolioWriter.java:64-70`), charge insert, balance movement, `folio.charge-posted` (`:71-83`) |
+| `RecordPayment` (`web/BillingController.java:89`) | `method`, positive `amountMinor` (`service/BillingService.java:208-219`) | every request | key claim (`service/FolioWriter.java:93-98`), payment insert, balance movement, `folio.payment-recorded` (`:99-104`) |
+| `RecordOpenBalanceApproval` (`web/BillingController.java:141`) | `approvedBy`, `role` (`service/BillingService.java:286-295`) | every request | key claim (`service/FolioWriter.java:118-125`), `recordApproval`, `folio.approval-recorded` (`:126-131`) |
 
 The verification call:
 
@@ -4939,25 +4939,25 @@ Edge trace:
 
 - A–B: Bearer presence at the transport
   (`web/BillingController.java:117-122`); UUID, actor, item, method, and
-  amount checks in the service (`service/BillingService.java:86-92`, `:111-116`,
-  `:126-140`, `:166-175`, `:255-262`).
+  amount checks in the service (`service/BillingService.java:86-92`, `:186-205`,
+  `:208-219`, `:286-295`).
 - B–C: an existing folio is served without a stay read, so a departed
   stay's invoice and receipts keep reading and printing (product
   `AC-FWV-5`; the print path is `app/src/views/PrintView.vue:1028`,
   `:1120`, `:1157`).
-- C–D: the verification read (target `client/StayClient.java`, patterned
+- C–D: the verification read (as built `client/StayClient.java`, patterned
   on `services/reservations/internal/pricing/client.go:43-75` — POST,
   Bearer forward, 2-second timeout).
 - D–E–G–S2: a verified in-house stay with no folio still gets its folio on
   the first balance read, exactly as today (product `AC-FWV-4`; the desk
   check-out review and the Folio screen both depend on it).
 - E–F–H: the claim precedes the insert today
-  (`service/BillingService.java:146-151`); the verification now precedes
+  (`service/FolioWriter.java:64-70`); the verification now precedes
   the claim, so a replay on a closed stay refuses instead of returning a
   line (27.9).
 - F–I–J: unchanged writes — insert, `addToBalance`, `outbox`, response
-  (`repo/BillingRepository.java:99-135`;
-  `service/BillingService.java:158-162`).
+  (`repo/BillingRepository.java:108-115`;
+  `service/FolioWriter.java:71-83`).
 
 Rollback: revert the single implementation PR. The previous
 ensure-on-first-use behaviour returns with the client that made the read,
@@ -8052,3 +8052,404 @@ the same as any drifted spec.
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1175
+
+## 35. A failed Reporting rebuild keeps the last good read model (Refs #642)
+
+Tier **T2 confirmed**: one internal lifecycle for one existing operation
+— a rebuild publishes its result all at once instead of in place — with
+no new subsystem, dependency edge, data model, endpoint, status field,
+reader-visible surface, or error-code token, so no ADR and no T3 record.
+Product done-conditions are `docs/product/acceptance-criteria.md` section
+28 (`AC-RPT-8`..`AC-RPT-10`) with D-40 in
+`docs/project/decision-log.md` and R-21 in
+`docs/project/risk-register.md`; FR/NFR wording and the all-or-nothing
+publication rule BR-66 are the `business-analyst` handoff
+(`docs/requirements/mvp-requirements.md` section 36,
+`docs/requirements/business-rules.md`); guard traceability is the
+`qa-lead` handoff (`docs/testing/traceability-matrix.md` section 28); the
+release note and rollback pointer are the `release-manager` handoff, and
+implementation is the `dev` handoff. This section records only the
+architect-owned delta: where the publication seam sits and why (35.1),
+what "publishes nothing" means per store (35.2), what a reader keeps
+seeing and how a failure stays observable (35.3), the per-flow diagram
+with the happy, mid-stream-refusal, and rollback edges (35.4), the
+contract decision (35.5), the verification plan (35.6), the residual
+risks with the re-tier trigger (35.7), and the maintain-with-code rule
+(35.8).
+
+As found (audit finding P2, at this spec head): `Rebuild` takes the
+mutex, replaces `seen`, `offsets`, `asOf`, and all six projection maps
+with empty values (`services/reporting/internal/store/store.go:225-235`),
+releases the mutex (`:236`), and only then replays the slice through
+`Apply` (`:237-241`), returning the first refused event unchanged
+(`:239`). Reads take the same mutex per call and never refuse
+(`services/reporting/internal/handler/handler.go:1-8`; `Occupancy` locks
+at `:479`, `Revenue` at `:534`, `Sheet` at `:560`, `Housekeeping` at
+`:633`), so a read issued between two replay steps sees the half-built
+model rather than the previous one: after an abort the desk reads an
+empty or partial set whose `asOf` is the newest event that did apply
+(`:215-217`). The consumer-offset record, which is the job's resume
+position, is cleared too (`:228`) and re-advanced only per applied event
+(`:212-214`), so the offsets of a failed rebuild name a set the model no
+longer holds.
+
+### 35.1 One publication seam: build the candidate aside, swap it in
+
+As built (Refs #642 implementation): the pins below were refreshed to the
+landed `file:line`, and the "as found" paragraph above keeps the
+pre-change head it cited.
+
+The published read model becomes one replaceable value: the seen record,
+the per-subscription offsets, the as-of stamp, and the six projection
+maps move into a private set (`snapshot`) that `Store` holds behind its
+mutex (`services/reporting/internal/store/store.go:143-153`, the shape
+`newSnapshot` builds at `:157-168`), and `Store` keeps only `mu` plus the
+current set (`:174-177`, published by `New` at `:180-182`). That is the
+whole shape of the change:
+
+- **The rebuild builds a fresh set, never the published one.**
+  `Rebuild` constructs an empty candidate and projects every event of the
+  slice into it (`:262-273`). The candidate is unreachable from every read
+  while it is being built, so the per-event work holds no lock and no read
+  can observe a half-built state; the projection code stays the existing
+  per-event `project` (`:275-472`), so a row the rebuild produces is the
+  row it produced before.
+- **One assignment publishes it.** After the last event projects, the
+  candidate is installed as the current set inside one critical section
+  (`:269-271`). The published set therefore changes exactly once per
+  rebuild, from one complete state to another, and no read can see the new
+  set's maps beside the old set's stamp.
+- **`Apply` keeps its in-place semantics.** `Apply` is the live ingest
+  path and its guards drive it directly; it keeps taking the mutex and
+  folding one event into the published set (`:218-222`, the one per-event
+  fold `fold` at `:230-248`). The rebuild drives that same fold against the
+  candidate rather than calling `Apply` — which would either re-enter the
+  mutex or need a second unlocked copy of the fold — so there is one
+  projection implementation, not two.
+- **A refused event leaves a discarded candidate, not state.** Every
+  `project` branch validates its fields before its first write (for
+  example `reservation.created` at `:281` and
+  `rate.availability-set` at `:369`), so a refusal cannot leave the
+  published set changed; the candidate is dropped whole and the refusal is
+  returned to the caller unchanged (`validation(field, message)`, `:30-32`).
+
+Rejected alternatives, and why the single seam is the answer:
+
+- **Snapshot, clear, replay, restore on error.** Copying the published set
+  before clearing keeps the fields where they are, but it needs a full
+  copy on every rebuild, a restore path that can itself fail, and it still
+  publishes an empty or partial set for the whole replay — exactly the
+  desk-visible defect.
+- **A "rebuilding" flag or generation counter read by every report.** That
+  puts a rebuild state into the read path: every report would have to
+  interpret a flag, and the flag becomes a second thing the publication
+  must move atomically. The one assignment needs neither.
+- **Staging tables or an out-of-process rebuild.** Both add a store, a
+  migration, and a failure surface for a projection set that lives in
+  memory today (`cmd/server/main.go:1-6` states that persistence lands in
+  a later slice); 35.2 records the rule the persisted store must meet.
+
+Two concurrency properties follow, and both are unchanged or improved:
+
+- **Reads still never refuse and still take the mutex per call** (the four
+  read locks at `:479`, `:534`, `:560`, `:633`, and the two accessors at
+  `Offsets` `:649-658` and `AsOf` `:661-666`). A read issued during a
+  rebuild answers the complete pre-rebuild set; a read issued after the
+  swap answers the complete post-rebuild set. No read waits for the
+  replay: the candidate build holds no lock, and the only rebuild-held
+  lock is the constant-time swap, which queues behind a read that is
+  already running exactly as any report read queues behind another today.
+- **The rebuild stays a single writer, and the swap does not order two
+  concurrent rebuilds.** Two calls at once each build their own candidate,
+  and the last swap to land wins. That is no weaker than today, where two
+  concurrent rebuilds interleave their `Apply` calls into one set; it
+  removes the interleaving but does not sequence the slices. Serialising
+  or bounding concurrent rebuild calls is named out of scope (35.7).
+
+### 35.2 What "publishes nothing" means per store
+
+The rule is stated store-independently — an aborted rebuild changes
+nothing a read can see — and this module has one store that implements
+it today plus one persisted shape it must keep when persistence lands.
+
+- **The in-memory Go store (`Store`, the only implementation at this
+  head).** "Publishes nothing" is literal: the current set is never
+  touched while the candidate is built, so an aborted rebuild leaves the
+  maps, the offsets, and the stamp exactly as they were and the candidate
+  becomes unreachable garbage. Nothing is written to a file, a table, a
+  queue, or a header, so there is no residual artefact to clean up and no
+  compensating action to take. `Offsets()` (`:683-692`) and `AsOf()`
+  (`:696-701`) answer the pre-rebuild values for the same reason: they
+  take the mutex and read the current set.
+- **The migrated read-model schema is not yet the store.** The read-model
+  tables and the consumer-offset table exist in
+  `services/reporting/migrations/000002_schema.up.sql:19-56`
+  (`reporting.rpt_occupancy_daily`, `rpt_revenue_daily`,
+  `rpt_daily_sheet`, `rpt_housekeeping_current`, `consumer_offsets`), but
+  nothing under `services/reporting/` imports a SQL driver and the package
+  doc says persistence hardens in a later slice
+  (`services/reporting/internal/store/store.go:1-8`,
+  `cmd/server/main.go:1-6`). There is therefore no `postgres.go` and no
+  `pgstore` in this module at this head — unlike the Node services, which
+  pair `src/store.ts` with `src/pgstore.ts` — so this change has one store
+  to guard, not two.
+- **The rule the persisted store must meet, recorded now so the delta is
+  not lost.** When the read model is persisted, "publishes nothing"
+  becomes "commits nothing": the candidate rows and the candidate offset
+  rows are staged and written in one transaction, and that transaction
+  commits only after every event in the slice projects. A refused event
+  rolls the transaction back, so the previously committed rows and offsets
+  stay readable and the resume record still names them. That is the same
+  all-or-nothing property expressed as one transaction instead of one
+  pointer assignment; it needs no new table, column, or migration, only
+  the commit boundary.
+- **No row, offset, or stamp is repaired on either path.** The read model
+  is derived from the event log, so a failed rebuild has nothing to
+  repair: the next successful rebuild replaces the set wholesale, and a
+  retry replays from the offset record the abort left untouched.
+
+### 35.3 Last-good retention, the as-of stamp, and the reads that never refuse
+
+The last good set is what the desk keeps reading, and its freshness stamp
+is the point of the change:
+
+- **The stamp belongs to the set.** `asOf` advances only when an event
+  projects (`:243-246`), and it moves with the set it belongs to, so a
+  failed rebuild leaves the desk reading the pre-rebuild rows with the
+  pre-rebuild `asOf` — an older stamp over rows that are internally
+  consistent, instead of a fresh-looking stamp over rows that are not.
+- **Zero means "never applied".** A store on which no rebuild has ever
+  succeeded keeps serving its empty pre-rebuild state — zero rows and a
+  zero `asOf` on all four reports — because that is the state it had. A
+  failed rebuild never invents a fresher stamp.
+- **A read is never refused, and never carries a rebuild state.** The four
+  reads keep answering 200 with their rows and their set's `asOf`
+  (`services/reporting/internal/handler/handler.go:1-8`, the routes at
+  `:136`, `:162`, `:188`, `:218`; the responses at `:160`, `:185`,
+  `:210-214`, `:228-231`); no response gains a field, no route appears,
+  and no read blocks for longer than the swap.
+- **The failure stays observable to the operator through the call
+  itself.** `Rebuild` returns today's `*OpError` unchanged — same code
+  `VALIDATION_FAILED`, same status 400, same message, same
+  `details.field` naming the offending field — and the unchanged
+  last-good `asOf` is the visible second signal: the slice's newest event
+  is later than the stamp the reports carry. That pair is the decided
+  observation channel; a read-endpoint status field is explicitly out of
+  the issue's scope and would be a T3 contract change (35.5).
+- **A successful rebuild is byte-identical to today's.** The candidate is
+  filled by the same `project` code in the same slice order, so `seen`,
+  the per-subscription offsets, and `asOf` match the clear-and-replay
+  result; and every report's row order comes from its own sort, not from
+  map iteration (`Occupancy` `:548-553`, `Sheet` `:629-640`,
+  `Housekeeping` `:676`), with `Revenue` walking the requested dates in
+  order (`:560-579`). The rows, row order, zero-filled dates, revenue
+  totals, daily-sheet groups, housekeeping list, and stamp are therefore
+  the values today's path produces for the same slice.
+- **Idempotency survives the swap.** Duplicate ids are still skipped
+  before projection (`:234-236`), so re-applying an event from the
+  replayed slice stays a no-op against the published set.
+
+### 35.4 Per-flow diagram — rebuild: happy path, mid-stream refusal, rollback
+
+```mermaid
+flowchart TD
+    A[Rebuild called by the rebuild job wiring, no HTTP route  main.go:30-32, service.go:25] --> B[Build a private candidate set with its own seen, offsets, asOf, and six projection maps  snapshot :143-153, newSnapshot :157-168]
+    B --> C{Event left in the slice}
+    C -->|yes| D[Project the event into the candidate  project :275-472]
+    D -->|refused| X[Return today's VALIDATION_FAILED naming the field and drop the candidate  validation :30-32]
+    D -->|projected| C
+    C -->|no| S[Swap the candidate in as the published set inside one critical section  Rebuild :269-271]
+    X --> X1[Published maps, seen, offsets, and asOf keep their pre-rebuild values  Rebuild :262-273]
+    X1 --> X2[All four reports answer the pre-rebuild rows with the older asOf, never a refusal  locks :509 / :565 / :592 / :666]
+    X2 --> X3[Rollback frame: nothing was published, so nothing is compensated; a retry replays from the same offsets  Offsets :683-692]
+    S --> G[Reports answer the complete new set with its own asOf  responses handler.go:160 / :185 / :210-214 / :228-231]
+    S --> H[Offsets and AsOf name the new last-applied ids and stamp  :683-701]
+    G --> G1[Rollback frame: the event log is the source, so the next successful rebuild replaces the set again; no migration or backfill exists in either direction]
+```
+
+Edge trace (every edge cites code as implemented at this head; the
+build-aside set and the swap are the one new mechanism the change adds,
+at the `Rebuild` seam):
+
+- A–B: `Rebuild` has no HTTP operation. `cmd/server/main.go:30-32` mounts
+  only `GET /healthz` and the read prefix, and the store is exposed to the
+  rebuild job through `service.Store()`
+  (`services/reporting/internal/service/service.go:25-27`). The candidate
+  carries the same nine members the published set carries
+  (`services/reporting/internal/store/store.go:143-153`, built by
+  `newSnapshot` at `:157-168`), so a swap can install it without changing
+  any read's field set.
+- B–C–D: the per-event fold is `project` (`:275-472`), which `Apply`
+  drives through `fold` at `:237`; the rebuild drives the same function
+  against the candidate.
+- D–X: a refusal is built by `validation(field, message)` (`:30-32`) and
+  names the field that stopped the replay, one branch per event family
+  (`:281`, `:313`, `:337`, `:369`, `:383`, `:411`, `:425`, `:435`, `:449`,
+  `:463`). The code, status, message, and `details` are today's, so the
+  operator's error channel does not change.
+- D–C: a projected event advances only the candidate — the seen record,
+  its subscription offset, and the stamp (`:240-246`) applied to the
+  candidate rather than to the published set.
+- C–S: the swap is one assignment of the current set under `s.mu`
+  (`:269-271`), after the loop ends. Because the build never held the
+  mutex, no read was blocked while it ran.
+- X–X1: the candidate is unreachable, so the published maps, seen record,
+  offsets, and stamp keep their values; nothing is restored because
+  nothing was changed.
+- X1–X2: the reads take the same mutex (`:509`, `:565`, `:592`, `:666`)
+  and render 200 with their rows and `asOf` (`handler.go:160`, `:185`,
+  `:210-214`, `:228-231`), which is the never-refuse rule the handler
+  package states at `:1-8`.
+- X2–X3: the resume record is untouched, so `Offsets()` (`:683-692`)
+  hands the retry the position it held before the failed rebuild.
+- S–G–H: after the swap the same read paths serve the new complete set,
+  and `Offsets()`/`AsOf()` (`:683-701`) name the new last-applied ids and
+  stamp.
+- G–G1 and X3: the rollback frame. The read model is rebuilt from the
+  event log, so neither path leaves a stored row, offset row, or stamp to
+  repair, and the whole change reverts with the single implementation
+  PR — the candidate build, the swap, and the guards disappear together
+  and the clear-and-replay path returns. No migration, backfill, or data
+  repair exists in either direction.
+
+### 35.5 Contract decision: no token, no field, no status surface, no schema change
+
+- **The refusal is today's, so no error vocabulary moves.**
+  `VALIDATION_FAILED` is already the code a bad event answers
+  (`:30-32`), and `contracts/errors/envelope.json` is untouched, so the
+  shared enum, the status mapping, and the handler's rendering
+  (`writeOpError`, `services/reporting/internal/handler/handler.go:38-45`)
+  keep what they serve today. `docs/technical/error-handling.md` is
+  therefore not touched — there is no new token, status, or field to
+  record.
+- **No operation, route, or response field changes.** `Rebuild` has no
+  HTTP operation (`cmd/server/main.go:30-32`), the four read responses
+  keep their shapes (`handler.go:160`, `:185`, `:210-214`, `:228-231`),
+  and `docs/technical/api-spec.md` keeps its `ReportingService` row
+  unchanged.
+- **No status field joins a read contract, by decision.** Surfacing a
+  rebuild failure or state through the read endpoints is out of the
+  issue's scope: it would add a field or a route to a versioned read
+  contract and become a T3 decision with an ADR, a diagram delta, and a
+  contract fixture. The observation channel this change keeps is the
+  rebuild call's returned error plus the unchanged last-good `asOf`
+  (35.3).
+- **No schema, migration, or catalogue change.** The read model keeps its
+  in-memory shape, the migrated tables in
+  `services/reporting/migrations/000002_schema.up.sql:19-56` are
+  unchanged, no catalogue key is added because the refusal reuses today's
+  per-field sentences, and `script/contract-check.sh`,
+  `script/openapi-route-check.sh`, and
+  `script/catalogue-coverage-check.sh` stay green without an edit.
+- **The rule is fixed in code, not configuration.** The publication
+  boundary is one behaviour of `Rebuild`; no environment variable,
+  deployment file, or per-hotel setting carries it (BR-66, the same
+  fixed-not-configurable rule the body ceiling and the report span cap
+  follow — sections 29.1, 31.1).
+
+### 35.6 Verification plan
+
+`qa-lead` owns the traceability rows (`docs/testing/traceability-matrix.md`
+section 28); this is the architecture-side check the implementation must
+satisfy.
+
+- **`R1` — an aborted rebuild keeps the pre-rebuild rows.** Rebuild
+  `seedEvents()` to completion, capture all four reports' rows, row
+  order, and `asOf` plus `Offsets()`, then call `Rebuild` on a slice whose
+  middle event is malformed. The returned `OpError` keeps
+  `Code == "VALIDATION_FAILED"`, `Status == 400`, the same field in
+  `Details`, and the same message, and every report and `Offsets()` still
+  answers the captured values. This is the issue's own acceptance test
+  and sits beside the existing rebuild guards
+  (`services/reporting/internal/store/store_test.go:63`, `:142`, `:192`,
+  `:273`).
+- **`R2` — a retry replays from the same offset record.** After `R1`'s
+  failure, `Offsets()` equals the pre-rebuild record per subscription, and
+  a clean rebuild afterwards names the same last-applied ids a
+  never-failed store would hold. The existing clean-slice offset guard is
+  `TestConsumerOffsetsAdvancePerSubscription` (`:192`).
+- **`R3` — a read answers one complete set.** A read issued while a
+  rebuild runs answers either the complete pre-rebuild or the complete
+  post-rebuild row set with that set's `asOf`, never a partial set, under
+  `go test -race` so the swap's critical section is exercised.
+- **`R4` — the whole-slice snapshot equality.** One guard asserts the four
+  report row sets, row order, zero-filled dates, and `Offsets()` equal
+  what the clear-and-replay path produced for the same fixture, so a row
+  or order change fails visibly (`TestRebuildMatchesSourceRows` `:63`
+  pins occupancy at `:69` and revenue at `:90`; `:273` pins housekeeping;
+  `services/reporting/internal/service/perf_test.go:97` drives the
+  two-year window).
+- **`R5` — no read reports rebuild state.** After `R1`'s failed rebuild
+  the four reads still answer 200 with their rows, and no route, response
+  field, or status field exists to report a rebuild (`cmd/server/main.go:30-32`;
+  the four read-envelope guards in
+  `services/reporting/internal/handler/handler_test.go`, for example
+  `:59`, `:108`, `:131`).
+- **`R6` — the rule is fixed, not configurable.** A diff gate asserts the
+  publication rule is one code behaviour with no environment variable,
+  `deploy/` file, compose file, or per-hotel setting, matching BR-66's
+  fixed-row entry in `docs/requirements/business-rules.md`.
+- **Existing guards unchanged.** The four rebuild guards
+  (`store_test.go:63`, `:142`, `:192`, `:273`), the range-cap guards
+  (`:365`, `:383`, `:413`, `:457`), the service guards
+  (`services/reporting/internal/service/service_test.go:18`, `:46`,
+  `:105`, `:127`, `:160`), and the perf guard (`perf_test.go:97`) stay
+  green with no assertion edit, because the successful path is
+  byte-identical (35.3).
+- **Gate commands** (from `docs/architecture/services/reporting.md`
+  section 7): `go build ./...`, `go test ./...`, `go vet ./...`, and
+  `gofmt -l .` in `services/reporting`, plus `script/contract-check.sh`
+  and `script/catalogue-coverage-check.sh` from the repo root.
+
+### 35.7 Residual risks and re-tier trigger
+
+- **A stale last-good set now reads confidently.** Keeping the previous
+  set is the point of the change, but it also means a read model that no
+  longer matches the event log keeps answering rows instead of failing
+  loudly. R-21 records this direction. The mitigations are the older
+  `asOf` the reports carry and the error the rebuild call returns; a
+  status surface that alerts on a stale stamp is the out-of-scope
+  follow-up (35.5), not a silent gap this change introduces.
+- **A wrong swap is the new failure mode.** Installing a partially built
+  or stale candidate would serve wrong rows confidently. The mitigation
+  is structural — one assignment, made only after the loop ends, of a
+  candidate no read can reach — plus `R1`, `R3`, and `R4`, which fail if
+  the build and the swap are ever separated.
+- **Two concurrent rebuilds are unordered.** Each builds privately and the
+  last swap wins, so the served set may be the earlier slice if the later
+  call swaps first. That is not a new class of error (today the two
+  interleave into one set) but it is not fixed either; serialising or
+  bounding rebuild calls is out of scope.
+- **Peak memory doubles while a rebuild builds.** The candidate is a
+  second complete projection set for the duration of the rebuild, bounded
+  by the data volume the two-year report window already drives
+  (`perf_test.go:97`). On the single on-premise host this is a new, if
+  modest, peak; it is the cost of not touching the published set.
+- **The future persisted store must keep the rule.** Persisting the read
+  model without the staging-plus-one-transaction shape of 35.2 would
+  reintroduce exactly this finding in the database. That is a
+  requirement on the persistence slice, recorded here so the delta is not
+  lost.
+- **Re-tier trigger.** Serialising or bounding concurrent rebuild calls,
+  publishing a rebuild status field on a read contract or a separate
+  status surface, changing the read model's persistence, or storing a
+  rebuild marker row are each a T3 change with an ADR, a diagram delta,
+  and (for a contract field) fixture and gate work. Changing the
+  projection logic itself is not re-tiered by this change.
+
+### 35.8 Maintain-with-code
+
+The implementation change moves the published members into the replaceable
+set, builds the candidate in `Rebuild`, swaps it once, and creates the
+guards of 35.6. It also refreshes this section's line pins and
+`docs/architecture/services/reporting.md` sections 3, 4, and 9 to the
+as-built `file:line` at the merged head (`AC-RPT-10`, `qa-lead`'s
+traceability section 28). `dev-peer-review` treats a rebuild that clears
+the published set before it replays, a read path that interprets a
+rebuild state, a new status field, route, or error token, a changed
+`OpError` on the failure path, a successful path whose rows or offsets
+differ from the clear-and-replay output, and a stale pin as review
+findings, the same as any drifted spec.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1207

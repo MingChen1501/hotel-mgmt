@@ -125,6 +125,10 @@ services:
       DATABASE_URL: postgresql://hotel:${DB_PASSWORD:-change-me-dev-only}@db:5432/hotel
       DB_USER: hotel
       DB_PASSWORD: ${DB_PASSWORD:-change-me-dev-only}
+      # Every folio write verifies the stay through Stay GetStayRef
+      # (ADR-0008, #634); the caller Bearer token travels on the call
+      # and an unreadable Stay fails the write closed.
+      STAY_BASE_URL: http://stay:8084
     depends_on:
       db:
         condition: service_healthy
