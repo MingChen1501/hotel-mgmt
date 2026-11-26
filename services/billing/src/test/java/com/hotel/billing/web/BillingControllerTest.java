@@ -677,10 +677,11 @@ class BillingControllerTest {
     verifyNoInteractions(service);
   }
 
-  // #634: the stay refusals reach the desk through the shared
-  // envelope, with the code, status, and details the contract names.
+  // FW9 (AC-FWV-7): the stay refusals reach the desk through the
+  // shared envelope, with the code, status, and details the contract
+  // names (guard IDs follow the active registry in docs/testing/).
   @Test
-  void aStayThatCannotBeReadAnswersUpstreamUnavailable() throws Exception {
+  void fw9UnreadableStayRendersUpstreamUnavailableThroughTheEnvelope() throws Exception {
     when(service.postCharge(anyString(), anyString(), anyString(), anyLong(), any(), anyString(), anyString()))
         .thenThrow(ApiException.upstreamUnavailable("The stay could not be checked.",
             Map.of("upstream", "stay", "operation", "GetStayRef")));
@@ -696,7 +697,7 @@ class BillingControllerTest {
   }
 
   @Test
-  void aClosedStayAnswersStateIllegalNamingTheState() throws Exception {
+  void fw9ClosedStayRendersStateIllegalNamingTheState() throws Exception {
     when(service.recordPayment(anyString(), anyString(), anyLong(), any(), anyString(), anyString()))
         .thenThrow(ApiException.stateIllegal("Stay is closed.",
             Map.of("upstream", "stay", "stayId", STAY, "state", "closed")));
@@ -709,7 +710,7 @@ class BillingControllerTest {
   }
 
   @Test
-  void anUnknownStayAnswersNotFoundNamingTheStay() throws Exception {
+  void fw9UnknownStayRendersNotFoundNamingTheStay() throws Exception {
     when(service.getFolioBalance(anyString(), anyString(), anyString()))
         .thenThrow(ApiException.notFound("No stay matches that ID.",
             Map.of("upstream", "stay", "stayId", STAY)));

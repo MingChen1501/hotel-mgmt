@@ -419,6 +419,36 @@ CHECKOUT_RESP="$(api stay CheckOut "$CHECKOUT_BODY" "$TOKEN")" || { teardown; ex
 [[ "$(field state "$CHECKOUT_RESP")" == "closed" ]] || { echo "$(msg "script.runbook.e2e_not_closed" "e2e: FAIL: stay not closed: {body}." body="$CHECKOUT_RESP")" >&2; teardown; exit 1; }
 [[ "$(field invoiceRef "$CHECKOUT_RESP")" == "$FOLIO_ID" ]] || { echo "$(msg "script.runbook.e2e_invoice_ref" "e2e: FAIL: invoice is not the folio: {body}." body="$CHECKOUT_RESP")" >&2; teardown; exit 1; }
 expect_refusal stay GetStayRef "{\"stayId\": \"$STAY_ID\"}" "$TOKEN" "STATE_ILLEGAL" || { teardown; exit 1; }
+
+# FW13 (AC-FWV-1..AC-FWV-3, Refs #634): after the close, a charge and a
+# payment on the same stay are refused and the folio row counts read
+# straight from the database stay unchanged; a write on an id no stay
+# names answers NOT_FOUND and leaves no billing.folios row. The HTTP
+# answer alone is not the proof — psql reads the rows.
+db_count() {
+  "${COMPOSE[@]}" exec -T db psql -U hotel -d hotel -tAc "$1" | tr -d '[:space:]'
+}
+step "script.runbook.e2e_step_folio_refusal" "e2e: === post-close and unknown-stay folio writes (FW13, ADR-0008) ==="
+CLOSED_FOLIOS_BEFORE="$(db_count "SELECT count(*) FROM billing.folios WHERE stay_id = '$STAY_ID';")"
+CLOSED_CHARGES_BEFORE="$(db_count "SELECT count(*) FROM billing.folio_charge_lines WHERE folio_id = '$FOLIO_ID';")"
+CLOSED_PAYMENTS_BEFORE="$(db_count "SELECT count(*) FROM billing.folio_payment_lines WHERE folio_id = '$FOLIO_ID';")"
+expect_refusal billing PostCharge "{\"stayId\": \"$STAY_ID\", \"itemKind\": \"nightly-room-charge\", \"itemName\": \"Room E2E-101\", \"amountMinor\": 120000, \"idempotencyKey\": \"$IDEM-postclose-charge\", \"actor\": \"front-desk\"}" "$TOKEN" "STATE_ILLEGAL" || { teardown; exit 1; }
+expect_refusal billing RecordPayment "{\"stayId\": \"$STAY_ID\", \"method\": \"cash\", \"amountMinor\": 60000, \"idempotencyKey\": \"$IDEM-postclose-payment\", \"actor\": \"front-desk\"}" "$TOKEN" "STATE_ILLEGAL" || { teardown; exit 1; }
+CLOSED_FOLIOS_AFTER="$(db_count "SELECT count(*) FROM billing.folios WHERE stay_id = '$STAY_ID';")"
+CLOSED_CHARGES_AFTER="$(db_count "SELECT count(*) FROM billing.folio_charge_lines WHERE folio_id = '$FOLIO_ID';")"
+CLOSED_PAYMENTS_AFTER="$(db_count "SELECT count(*) FROM billing.folio_payment_lines WHERE folio_id = '$FOLIO_ID';")"
+if [[ "$CLOSED_FOLIOS_AFTER" != "$CLOSED_FOLIOS_BEFORE" || "$CLOSED_CHARGES_AFTER" != "$CLOSED_CHARGES_BEFORE" || "$CLOSED_PAYMENTS_AFTER" != "$CLOSED_PAYMENTS_BEFORE" ]]; then
+  echo "$(msg "script.runbook.e2e_folio_counts_changed" "e2e: FAIL: a post-close folio write changed the rows: folios {foliosBefore}->{foliosAfter}, charges {chargesBefore}->{chargesAfter}, payments {paymentsBefore}->{paymentsAfter}." foliosBefore="$CLOSED_FOLIOS_BEFORE" foliosAfter="$CLOSED_FOLIOS_AFTER" chargesBefore="$CLOSED_CHARGES_BEFORE" chargesAfter="$CLOSED_CHARGES_AFTER" paymentsBefore="$CLOSED_PAYMENTS_BEFORE" paymentsAfter="$CLOSED_PAYMENTS_AFTER")" >&2
+  teardown; exit 1
+fi
+UNKNOWN_STAY_ID="$(python3 -c 'import uuid; print(uuid.uuid4())')"
+expect_refusal billing PostCharge "{\"stayId\": \"$UNKNOWN_STAY_ID\", \"itemKind\": \"nightly-room-charge\", \"itemName\": \"Room E2E-101\", \"amountMinor\": 120000, \"idempotencyKey\": \"$IDEM-unknown-charge\", \"actor\": \"front-desk\"}" "$TOKEN" "NOT_FOUND" || { teardown; exit 1; }
+UNKNOWN_FOLIOS="$(db_count "SELECT count(*) FROM billing.folios WHERE stay_id = '$UNKNOWN_STAY_ID';")"
+if [[ "$UNKNOWN_FOLIOS" != "0" ]]; then
+  echo "$(msg "script.runbook.e2e_unknown_folio_created" "e2e: FAIL: an unknown-stay write created {count} folio row(s)." count="$UNKNOWN_FOLIOS")" >&2
+  teardown; exit 1
+fi
+pass "script.runbook.e2e_folio_refusal_ok" "e2e: PASS: post-close charge and payment refused, folios={folios} charges={charges} payments={payments} unchanged; unknown stay refused with no folio." folios="$CLOSED_FOLIOS_AFTER" charges="$CLOSED_CHARGES_AFTER" payments="$CLOSED_PAYMENTS_AFTER"
 REL2_RESP="$(api rooms ReleaseRoom "{\"roomNumber\": \"E2E-102\", \"actor\": \"front-desk\"}" "$TOKEN")" || { teardown; exit 1; }
 [[ "$(field newState "$REL2_RESP")" == "vacant-dirty" ]] || { echo "$(msg "script.runbook.e2e_release2_failed" "e2e: FAIL: room not released vacant-dirty: {body}." body="$REL2_RESP")" >&2; teardown; exit 1; }
 pass "script.runbook.e2e_checkout_ok" "e2e: PASS: stay {stay} closed with invoice {folio}, E2E-102 vacant-dirty." stay="$STAY_ID" folio="$FOLIO_ID"

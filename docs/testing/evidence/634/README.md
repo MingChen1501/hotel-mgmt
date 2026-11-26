@@ -5,10 +5,13 @@ Before/after reproduction record for
 (audit finding B1; `AC-FWV-1`..`AC-FWV-7`, `FR-FWV-1`..`FR-FWV-5`,
 `BR-50`/`BR-51`, ADR-0008, LLD
 [section 27](../../../architecture/lld.md#27-folio-writes-verify-the-stay-refs-634)),
-guards `FW1`–`FW13` plus the client guards `FW501`–`FW511`. The left
-column is the pre-change build; the right column is this change. Every
-answer below was captured from a running service process and its
-database, not from a test assertion.
+guards `FW1`–`FW13` as the active registry
+(`docs/testing/folio-write-verification-test-traceability.md` section 3)
+defines them: `FW5` is the client classification, `FW9` the transport
+envelope, `FW10`–`FW12` the desk and contract suites, and `FW13` the
+live desk loop. The left column is the pre-change build; the right
+column is this change. Every answer below was captured from a running
+service process and its database, not from a test assertion.
 
 ## Finding
 
@@ -69,19 +72,26 @@ call, and the request body carried the caller's `stayId`.
 
 ## Guards
 
+Guard IDs are the registry obligations, not one ID per test method:
+every case under an ID proves part of that obligation.
+
 | Product condition | Guard | Pass evidence |
 |---|---|---|
-| `AC-FWV-1` unknown stay (with and without a key) | `BillingServiceTest` `fw1UnknownStayRefusesPostChargeAndWritesNothing` (`:451`), `fw2…KeyedPostChargeWithoutClaiming` (`:464`), `fw3…RecordPayment…` (`:474`), `fw4…RecordApproval…` (`:484`) | `NOT_FOUND`, `verifyNoInteractions(repo)`; lab `404` and zero rows |
-| `AC-FWV-2` closed stay, with or without a folio | `fw5…EvenWithAnExistingFolio` (`:495`), `fw6` (`:506`), `fw7` (`:517`) | `STATE_ILLEGAL` naming `closed`, no repository call |
-| `AC-FWV-3` unreadable Stay | `fw8` (`:527`), `fw9` (`:540`), `fw10…FolioLessBalanceRead` (`:551`); `StayClientTest` `fw501`–`fw510` (`:75`–`:163`); `StayClientWiringTest` `fw511` (`:16`) | `503` with `{upstream, operation}`, no `ensureFolio`; client covers `200`, correct-id `404`, wrong-id `404`, `422`, `401`, `5xx`, malformed body, timeout, connection refusal, unwired client |
-| `AC-FWV-4` fresh check-in regression | `fw11FreshCheckInStillCreatesItsFolioOnTheFirstRead` (`:563`) | folio created at zero on the first read; lab `200` |
-| `AC-FWV-5` departed-stay reads | `fw12ExistingFolioReadsInEveryStayStateWithoutCallingStay` (`:578`), `fw13ClosedStayWithNoFolioRefusesTheReadAndCreatesNothing` (`:591`) | existing folio served with no Stay call; lab second read made no stub call |
-| `AC-FWV-7` bounded close path | `fw13VerificationPrecedesTheWriteAndStaysOutsideTheTransaction` (`:604`) | `InOrder` pins verify → `ensureFolio` → `insertCharge`; reflection pins `BillingService` folio methods non-transactional and `FolioWriter` methods `@Transactional` |
+| `AC-FWV-1` unknown stay (with and without a key) | `BillingServiceTest` `fw2UnknownStayRefuses…` (`FW2`, `:539`–`:597`) and `fw1VerificationPrecedes…` (`FW1`, `:464`–`:537`); `BillingControllerTest` `fw9UnknownStayRendersNotFoundNamingTheStay` (`FW9`, `:713`) | `NOT_FOUND`, `verifyNoInteractions(repo)`; lab `404` and zero rows |
+| `AC-FWV-2` closed stay, with or without a folio, and the post-close retry | `fw3ClosedStayRefuses…` (`FW3`, `:599`–`:677`); `fw9ClosedStayRendersStateIllegalNamingTheState` (`FW9`, `:700`) | `STATE_ILLEGAL` naming `closed`, no repository call; the existing folio keeps its line and balance and the replay leaves it in place |
+| `AC-FWV-3` unreadable Stay on all four folio routes, and the retry after recovery | `fw4UnreadableStayRefuses…` (`FW4`, `:679`–`:750`); `fw5…` client classification against the `HttpServer` stub (`FW5`, `StayClientTest.java:76`–`:171`, `StayClientWiringTest.java:16`); `fw9UnreadableStayRendersUpstreamUnavailableThroughTheEnvelope` (`FW9`, `:684`) | `503` with `{upstream, operation}`, no `ensureFolio`; the retry commits once; the client covers `200`, correct-id `404`, wrong-id `404`, `422`, `401`, `5xx`, malformed body, timeout, connection refusal, unwired client |
+| `AC-FWV-4` fresh check-in regression | `fw6FreshCheckInStillCreatesItsFolioOnTheFirstRead` (`FW6`, `:752`), `fw6VerifiedStayWritesCommitWithTheirLineBalanceAndEvent` (`:767`) | folio created at zero on the first read; the three writes keep their line, balance movement, and `folio.*` event; lab `200` |
+| `AC-FWV-5` departed-stay reads and print parity | `fw7ExistingFolioReads…`, `fw7ClosedStayWithNoFolioRefuses…`, `fw7InvoiceAndReceiptStillMatchTheStoredRows` (`FW7`, `:796`–`:842`) | existing folio served with no Stay call; closed folio-less stay refused; invoice and receipt still match the stored rows; lab second read made no stub call |
+| `AC-FWV-7` bounded close path | `fw8VerificationRunsOutsideTheTransactionalWriter` (`FW8`, `:844`), plus the `FW1` ordering cases | `InOrder` pins verify → `ensureFolio` → the writes; reflection pins `BillingService` folio methods non-transactional, `FolioWriter` methods `@Transactional`, and the writer carries no client dependency |
+| `AC-FWV-1`–`AC-FWV-3` live desk loop | `script/e2e-desk-loop.sh` post-close and unknown-stay block (`FW13`) | after the close, `PostCharge` and `RecordPayment` are refused `STATE_ILLEGAL` with the `billing.folios` / `folio_charge_lines` / `folio_payment_lines` counts unchanged; an unknown id answers `NOT_FOUND` with `0` `billing.folios` rows |
 
 ## Gates
 
-- `cd services/billing && mvn verify`: 103 tests, 0 failures (39
-  existing plus `FW1`–`FW13`, `FW501`–`FW511`).
+- `cd services/billing && mvn verify`: 114 tests, 0 failures (51
+  service, 11 client, 1 wiring, 44 controller, plus the config,
+  messages, and health suites).
+- `script/e2e-desk-loop.sh`: the `FW13` post-close and unknown-stay
+  block reads the row counts with `psql`.
 - `script/contract-check.sh`, `script/openapi-route-check.sh`,
   `script/catalogue-coverage-check.sh`, `script/markdown-link-check.sh`:
   PASS.

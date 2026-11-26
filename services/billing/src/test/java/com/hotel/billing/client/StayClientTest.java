@@ -19,9 +19,10 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-// Stay client guards (ADR-0008 D3/D4, LLD section 27.8, Refs #634):
-// the answer classification is pinned against a JDK HttpServer stub,
-// so the suite stays database-free and needs no Stay build.
+// FW5 (AC-FWV-3, ADR-0008 D3/D4, LLD section 27.8, Refs #634): the
+// answer classification is pinned against a JDK HttpServer stub, so the
+// suite stays database-free and needs no Stay build. Guard IDs are the
+// active registry's obligations (section 3).
 class StayClientTest {
 
   private static final UUID STAY = UUID.fromString("11111111-1111-4111-8111-111111111111");
@@ -72,7 +73,7 @@ class StayClientTest {
   }
 
   @Test
-  void fw501InHouseStayPassesWithTheCallerTokenForwarded() {
+  void fw5InHouseStayPassesWithTheCallerTokenForwarded() {
     respond(200, "{\"stayId\":\"" + STAY + "\",\"guestId\":\"" + UUID.randomUUID()
         + "\",\"roomId\":\"" + UUID.randomUUID() + "\",\"state\":\"in-house\"}", 0);
     client(Duration.ofSeconds(2)).verify(STAY, "session-token");
@@ -81,7 +82,7 @@ class StayClientTest {
   }
 
   @Test
-  void fw501UnknownStayNamingTheRequestedIdIsNotFound() {
+  void fw5UnknownStayNamingTheRequestedIdIsNotFound() {
     respond(404, "{\"code\":\"NOT_FOUND\",\"message\":\"Unknown stay.\",\"details\":{\"stayId\":\"" + STAY
         + "\"},\"traceId\":\"t\"}", 0);
     ApiException err = thrown(() -> client(Duration.ofSeconds(2)).verify(STAY, "session-token"));
@@ -92,7 +93,7 @@ class StayClientTest {
   }
 
   @Test
-  void fw502NotFoundNamingAnotherStayIsAUnavailableWiringFault() {
+  void fw5NotFoundNamingAnotherStayIsAnUnavailableWiringFault() {
     respond(404, "{\"code\":\"NOT_FOUND\",\"message\":\"Unknown stay.\",\"details\":{\"stayId\":\"" + OTHER
         + "\"},\"traceId\":\"t\"}", 0);
     ApiException err = thrown(() -> client(Duration.ofSeconds(2)).verify(STAY, "session-token"));
@@ -102,14 +103,14 @@ class StayClientTest {
   }
 
   @Test
-  void fw503NotFoundWithNoStayIdIsAlsoUnavailable() {
+  void fw5NotFoundWithNoStayIdIsAlsoUnavailable() {
     respond(404, "{\"code\":\"NOT_FOUND\",\"message\":\"unknown path\",\"details\":{},\"traceId\":\"t\"}", 0);
     ApiException err = thrown(() -> client(Duration.ofSeconds(2)).verify(STAY, "session-token"));
     assertEquals("UPSTREAM_UNAVAILABLE", err.code());
   }
 
   @Test
-  void fw504ClosedStayIsStateIllegalNamingTheState() {
+  void fw5ClosedStayIsStateIllegalNamingTheState() {
     respond(422, "{\"code\":\"STATE_ILLEGAL\",\"message\":\"Stay is closed.\",\"details\":{\"stayId\":\"" + STAY
         + "\",\"state\":\"closed\"},\"traceId\":\"t\"}", 0);
     ApiException err = thrown(() -> client(Duration.ofSeconds(2)).verify(STAY, "session-token"));
@@ -120,7 +121,7 @@ class StayClientTest {
   }
 
   @Test
-  void fw505ARejectedSessionIsSurfacedUnchangedNotAsAnOutage() {
+  void fw5ARejectedSessionIsSurfacedUnchangedNotAsAnOutage() {
     respond(401, "{\"code\":\"UNAUTHENTICATED\",\"message\":\"Missing session token.\",\"details\":{},\"traceId\":\"t\"}",
         0);
     ApiException err = thrown(() -> client(Duration.ofSeconds(2)).verify(STAY, "session-token"));
@@ -129,7 +130,7 @@ class StayClientTest {
   }
 
   @Test
-  void fw506ServerErrorFailsClosed() {
+  void fw5ServerErrorFailsClosed() {
     respond(500, "{\"code\":\"INTERNAL_ERROR\",\"message\":\"Unexpected failure.\",\"details\":{},\"traceId\":\"t\"}",
         0);
     ApiException err = thrown(() -> client(Duration.ofSeconds(2)).verify(STAY, "session-token"));
@@ -138,14 +139,14 @@ class StayClientTest {
   }
 
   @Test
-  void fw507MalformedSuccessBodyFailsClosed() {
+  void fw5MalformedSuccessBodyFailsClosed() {
     respond(200, "not-json", 0);
     ApiException err = thrown(() -> client(Duration.ofSeconds(2)).verify(STAY, "session-token"));
     assertEquals("UPSTREAM_UNAVAILABLE", err.code());
   }
 
   @Test
-  void fw508TimeoutFailsClosed() {
+  void fw5TimeoutFailsClosed() {
     respond(200, "{\"stayId\":\"" + STAY + "\",\"guestId\":\"" + UUID.randomUUID()
         + "\",\"roomId\":\"" + UUID.randomUUID() + "\",\"state\":\"in-house\"}", 400);
     ApiException err = thrown(() -> client(Duration.ofMillis(120)).verify(STAY, "session-token"));
@@ -153,14 +154,14 @@ class StayClientTest {
   }
 
   @Test
-  void fw509AnUnwiredClientFailsClosedWithoutACall() {
+  void fw5AnUnwiredClientFailsClosedWithoutACall() {
     ApiException err = thrown(() -> new StayClient("", Duration.ofSeconds(2)).verify(STAY, "session-token"));
     assertEquals("UPSTREAM_UNAVAILABLE", err.code());
     assertEquals("GetStayRef", err.details().get("operation"));
   }
 
   @Test
-  void fw510ConnectionRefusedFailsClosed() throws IOException {
+  void fw5ConnectionRefusedFailsClosed() throws IOException {
     int closedPort;
     try (ServerSocket socket = new ServerSocket(0)) {
       closedPort = socket.getLocalPort();
