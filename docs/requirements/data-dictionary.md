@@ -194,6 +194,16 @@ on check-out or on a move — and back to `vacant-inspected` when the
 assignment never became a stay, because no guest was in it (`FR-REA-1`,
 `FR-REA-2`, `FR-REA-3`; `BR-19`).
 
+A room's `capacity` is the guest count the room sleeps, written under
+one rule shared with the room type (`BR-69`): a present value is an
+integer at or above `1` stored verbatim with no upper bound, any other
+present value — negative, zero, fractional, non-finite, or not a number
+— is refused `VALIDATION_FAILED` naming `capacity` with nothing written
+and no `room-upserted` event, and an omitted value leaves a create
+without one and an update with the stored one. A value already stored
+outside the rule is not rewritten or re-validated on read
+(`FR-CAP-1`..`FR-CAP-3`).
+
 Owning FRs: FR-RMS-1, FR-RMS-2, FR-RMS-3, FR-RMS-4, FR-ADM-3,
 FR-FDK-1, FR-FDK-3, FR-REA-1, FR-REA-2, FR-REA-3, FR-REA-4.
 
@@ -206,6 +216,15 @@ in. Individual rooms are assigned from the booked type at check-in.
 Key fields: name; capacity; bed type and features; nightly prices per
 season and day (rate plan); stay restrictions (minimum stay,
 closed-to-arrival days) per date range.
+
+A room type's `capacity` is the guest count the type is sold as
+sleeping, stored and refused under the same rule as a room's
+(`BR-69`): an integer at or above `1` is stored verbatim with no upper
+bound, any other present value is refused `VALIDATION_FAILED` naming
+`capacity` in both stores with nothing written, and an omitted value
+keeps today's meaning. The onboarding wizard and the manage screen
+both honour that floor, the wizard in plain words before sending
+(`FR-CAP-1`..`FR-CAP-4`).
 
 Availability for a room type and a date range is a derived fact from
 the room inventory: the rooms of the type less the rooms blocked for
@@ -361,6 +380,13 @@ state where a booking's capacity ceiling comes from — the recorded
 room inventory, never the request's `sellableUnits` (`BR-47`,
 `BR-48`, `FR-OVB-1`, `FR-OVB-3`) — and add no entry, field, or
 behaviour beyond those sources.
+The Room entry (section 8) and the Room type entry (section 9) state the
+write rule the `capacity` field carries — an integer at or above `1`
+stored verbatim with no upper bound, every other present value refused
+naming the field with nothing written, an omitted value keeping today's
+meaning, a stored value never rewritten or re-validated on read — and
+add no entry, field, or behaviour beyond `BR-69` and
+`FR-CAP-1`..`FR-CAP-4` (Refs #637).
 
 Counts: 15 dictionary entries covering the 7 entity terminology concepts (T-1..T-7); T-8 is a spelling convention with no entry.
 
@@ -369,3 +395,6 @@ Role: business-analyst · AO session hotel-mgmt-991
 
 <!-- ao-role: business-analyst -->
 Role: business-analyst · AO session hotel-mgmt-1079
+
+<!-- ao-role: business-analyst -->
+Role: business-analyst · AO session hotel-mgmt-1261
