@@ -676,4 +676,48 @@ class BillingControllerTest {
     }
     verifyNoInteractions(service);
   }
+
+  // #634: the stay refusals reach the desk through the shared
+  // envelope, with the code, status, and details the contract names.
+  @Test
+  void aStayThatCannotBeReadAnswersUpstreamUnavailable() throws Exception {
+    when(service.postCharge(anyString(), anyString(), anyString(), anyLong(), any(), anyString(), anyString()))
+        .thenThrow(ApiException.upstreamUnavailable("The stay could not be checked.",
+            Map.of("upstream", "stay", "operation", "GetStayRef")));
+    mvc.perform(post("/v1/billing/PostCharge").header("Authorization", "Bearer test-token")
+        .contentType(MediaType.APPLICATION_JSON)
+        .content("{\"stayId\":\"" + STAY + "\",\"itemKind\":\"nightly-room-charge\","
+            + "\"itemName\":\"Room 101\",\"amountMinor\":12000,\"actor\":\"front-desk\"}"))
+        .andExpect(status().isServiceUnavailable())
+        .andExpect(jsonPath("$.code").value("UPSTREAM_UNAVAILABLE"))
+        .andExpect(jsonPath("$.details.upstream").value("stay"))
+        .andExpect(jsonPath("$.details.operation").value("GetStayRef"))
+        .andExpect(jsonPath("$.traceId").exists());
+  }
+
+  @Test
+  void aClosedStayAnswersStateIllegalNamingTheState() throws Exception {
+    when(service.recordPayment(anyString(), anyString(), anyLong(), any(), anyString(), anyString()))
+        .thenThrow(ApiException.stateIllegal("Stay is closed.",
+            Map.of("upstream", "stay", "stayId", STAY, "state", "closed")));
+    mvc.perform(post("/v1/billing/RecordPayment").header("Authorization", "Bearer test-token")
+        .contentType(MediaType.APPLICATION_JSON)
+        .content("{\"stayId\":\"" + STAY + "\",\"method\":\"cash\",\"amountMinor\":6000,\"actor\":\"front-desk\"}"))
+        .andExpect(status().isUnprocessableEntity())
+        .andExpect(jsonPath("$.code").value("STATE_ILLEGAL"))
+        .andExpect(jsonPath("$.details.state").value("closed"));
+  }
+
+  @Test
+  void anUnknownStayAnswersNotFoundNamingTheStay() throws Exception {
+    when(service.getFolioBalance(anyString(), anyString(), anyString()))
+        .thenThrow(ApiException.notFound("No stay matches that ID.",
+            Map.of("upstream", "stay", "stayId", STAY)));
+    mvc.perform(post("/v1/billing/GetFolioBalance").header("Authorization", "Bearer test-token")
+        .contentType(MediaType.APPLICATION_JSON)
+        .content("{\"stayId\":\"" + STAY + "\",\"actor\":\"front-desk\"}"))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.code").value("NOT_FOUND"))
+        .andExpect(jsonPath("$.details.stayId").value(STAY));
+  }
 }
