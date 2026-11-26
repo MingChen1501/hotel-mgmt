@@ -1139,3 +1139,69 @@ direction; rollback is the single implementation PR.
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1207
+
+## 28. Room state counts in sellability (Refs #636)
+
+A room's recorded state is part of whether it can be sold, and Rooms
+owns that state. Until this change the sellability read counted only
+date-ranged blocks: `checkSellability` took every room of the type and
+subtracted the block-covered ones
+(`services/rooms/src/store.ts:370-385`, Postgres twin
+`services/rooms/src/pgstore.ts:382-410`), and the single-room branch
+answered `sellableCount: 1` for any block-free room
+(`services/rooms/src/store.ts:348-368`), so an `out-of-order` room taken
+out of service for maintenance — or an `occupied` one — was advertised
+as available to the desk and could be sold. From #636 on, a room reads
+as sellable only when no block covers the range and its state is neither
+`out-of-order` nor `occupied`, in both the aggregate reply and the
+single-room reply.
+
+Three properties define the change:
+
+- **The non-sellable set is explicit, not derived.** Exactly two states
+  are excluded — `out-of-order` and `occupied` — and every vacant state
+  (`vacant-dirty`, `vacant-clean`, `vacant-inspected`) stays sellable, so
+  a dirty room is still offered for a future stay and under-counting is
+  bounded by two names rather than an open-ended "any non-vacant" rule.
+  The list is a fixed rule in code, not per-hotel configuration, and no
+  room state or state transition is added, removed, renamed, or moved.
+- **Both replies answer the same predicate, without a new refusal.**
+  The aggregate `sellableCount` counts only block-free rooms in a
+  sellable state, subtracting each room once so the count never goes
+  below `0`, while `totalCount` keeps every room of the type and
+  `blockedRooms` keeps its content and order. The single-room path keeps
+  today's 200 envelope with `totalCount: 1` and answers
+  `sellableCount: 0` for a block-free non-sellable room, so the desk's
+  Book confirm refuses the booking with its existing sold-out sentence.
+  A block-covered room still refuses 422 `STATE_ILLEGAL` naming the
+  block: the block refusal keeps priority over the state answer, so the
+  desk's block note keeps its meaning.
+- **Nothing else moves.** `BlockRoom` and `ReleaseBlock` keep their
+  codes, statuses, details, and stored effect; the operation, route,
+  response shape, required fields, statuses, and error list of
+  `CheckRoomTypeSellability` stand, with only the `sellableCount`
+  description line naming room state; no reader-visible surface changes,
+  so no UI contract section applies. Above all, the merged #631
+  reservation ceiling is neither raised nor lowered: Reservations still
+  derives `totalCount - len(blockedRooms)` and reads neither
+  `sellableCount` nor room state (ADR-0006 D2), so an `out-of-order` room
+  stays inside that ceiling until the separate Reservations availability
+  decision owns it.
+
+The change adds no module, dependency edge, data model, lifecycle state,
+or endpoint: it is arithmetic inside one existing read, so the container
+and component views (sections 2 and 3) stand unchanged. Where the
+predicate sits in each store, the single-room reply, the priority and
+subtract-once rules, the per-flow diagram, the contract edit, and the
+verification plan:
+`docs/architecture/lld.md`
+[section 36](lld.md#36-room-state-counts-in-sellability-refs-636);
+per-service note: `docs/architecture/services/rooms.md` sections 3, 4, 5,
+and 9; product conditions `AC-SEL-1`..`AC-SEL-4` in
+`docs/product/acceptance-criteria.md` section 29; FR `FR-SEL-1`..`FR-SEL-4`
+in `docs/requirements/mvp-requirements.md` section 37; business rule
+BR-67. Risk R-22 records the under-counting and date-unaware directions;
+rollback is the single implementation PR.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1234
