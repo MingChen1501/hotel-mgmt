@@ -3562,7 +3562,7 @@ branch takes every room of the type (`services/rooms/src/store.ts:370`,
 `:382-392`'s count query for the aggregate). Because the aggregate count
 is the desk's availability figure and the single-room answer is what the
 Book confirm re-reads before it creates a reservation
-(`app/src/views/BookView.vue:919-940`), a room taken out of service is
+(`app/src/views/BookView.vue:977-1011`), a room taken out of service is
 offered to the desk and can be sold.
 
 Tier T2: the arithmetic behind one existing read operation changes, so
@@ -3593,7 +3593,7 @@ rollback note is `release-manager`'s; the gate verdict is
 `spec-reviewer`'s. No UI contract section: no screen, control, route,
 catalogue key, state, or copy is added or changed — the Book confirm
 already refuses a zero count with `desk.book.refused_soldout`
-(`app/src/views/BookView.vue:940-946`) and keeps that sentence. The scope
+(`app/src/views/BookView.vue:1004-1011`) and keeps that sentence. The scope
 decision is D-41 in `docs/project/decision-log.md`, and the
 under-counting risk the issue names is R-22 in
 `docs/project/risk-register.md`. `SEL` is the domain code for this
