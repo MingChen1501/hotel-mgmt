@@ -4219,7 +4219,7 @@ As-built validation (read-only code trace at this spec head):
   `CHECK` (`services/rooms/migrations/002_schema.sql:20`, `:38`), so a
   negative or zero is stored, a fractional value is rounded by the
   assignment cast, and `Infinity` fails the driver and surfaces as the
-  service's `INTERNAL_ERROR` 500 (`services/rooms/src/errors.ts:26`)
+  service's `INTERNAL_ERROR` 500 (`services/rooms/src/server.ts:91-100`)
   instead of a refusal. Two stores, two effects, and neither refuses.
 - **A present non-number is silently dropped.** `capacity: "2"`,
   `null`, `true`, or `[2]` fails the `typeof` test and falls through to
