@@ -4,10 +4,10 @@ Before/after lab record for
 [issue #636](https://github.com/MingChen1501/hotel-mgmt/issues/636)
 (`AC-SEL-1`..`AC-SEL-4`, `FR-SEL-1`..`FR-SEL-4`, `BR-67`, audit
 finding M1). This is the `SL-E1` evidence pair
-([room-state-sellability-test-traceability.md](../../room-state-sellability-test-traceability.md)
-section 3): an `out-of-order` room advertised as sellable on the
-pre-change build and excluded on this change, captured through the
-public `CheckRoomTypeSellability` contract on both halves.
+(`docs/testing/room-state-sellability-test-traceability.md` section 3):
+an `out-of-order` room advertised as sellable on the pre-change build
+and excluded on this change, captured through the public
+`CheckRoomTypeSellability` contract on both halves.
 
 ## Builds and lab
 
