@@ -55,7 +55,7 @@ Edge trace (every edge cites code):
 - C: `roomTypeId` required (`internal/service/service.go:204-206`), dates must be `YYYY-MM-DD` with departure after arrival (:207-217), `priceBasis.totalMinor` required and non-negative (:218-220), `guest.guestId` required (:221-224), hotel-mandatory fields (default `fullName`) required (:225-230); the optional `sellableUnits` is shape-checked only (`validateAdvisoryUnits` :191-196; handler :437-449) and `priceBasis` is advisory once it passes this gate — all in `internal/service/service.go`.
 - D: server-side `POST {RATES_BASE_URL}/v1/rates/CheckRestrictions` with the caller Bearer token forwarded (`internal/service/service.go:231-236`; `internal/pricing/client.go:48-90`, POST at :57, Bearer forward at :62-64); an unwired hook fails closed with 503 `UPSTREAM_UNAVAILABLE` (`restrictionsUnavailable` at `internal/service/service.go:117-124`); a rates refusal returns its `OpError` unchanged, so the violated restriction stays named in the 422 `STATE_ILLEGAL` envelope.
 - R: the replay pre-read (`internal/service/service.go:242-246` on Create, `:374-378` on Modify) returns a stored booking at its stored total (`internal/store/store.go:324-338`, Postgres `internal/store/postgres.go:311-330`) without asking Pricing, so a repeat never re-prices; the guarded write keeps its own replay check as the exactly-once guard (`internal/store/store.go:253-257`, `:442-446`, Postgres `internal/store/postgres.go:156-169`, `:515-525`) — the key is namespaced by operation and, for modify/cancel, by the reservation reference, so a key reused across operations or reservations runs the new operation instead of replaying another call's result (issue #644).
-- E: the ceiling (`internal/service/service.go:247-250`) is read by `internal/availability/client.go:56-86` for the effective type and dates (`service.go:379-382` on Modify); an unreadable ceiling fails closed 503 `UPSTREAM_UNAVAILABLE` naming rooms and `CheckRoomTypeSellability` (`availability/client.go:154-167`; nil hook `internal/service/service.go:141-146`), and a rooms 4xx envelope passes through unchanged (`availability/client.go:132-152`). The store's overbooking count over same-type active overlapping stays runs under one mutex (`internal/store/store.go:258-267`, Modify `:466-475`), tripping at `booked >= input.Ceiling` (`:267`, `:475`).
+- E: the ceiling (`internal/service/service.go:247-250`) is read by `internal/availability/client.go:56-86` for the effective type and dates (`service.go:379-382` on Modify); an unreadable ceiling fails closed 503 `UPSTREAM_UNAVAILABLE` naming rooms and `CheckRoomTypeSellability` (`availability/client.go:154-161`; nil hook `internal/service/service.go:141-146`), and a rooms 4xx envelope passes through unchanged (`availability/client.go:132-152`). The store's overbooking count over same-type active overlapping stays runs under one mutex (`internal/store/store.go:258-267`, Modify `:466-475`), tripping at `booked >= input.Ceiling` (`:267`, `:475`).
 - Q: the quote read (`internal/service/service.go:253-256` on Create, `:385-388` on Modify) posts the effective type, dates, and discount with the caller Bearer token to `POST {RATES_BASE_URL}/v1/rates/QuotePrice` (`internal/pricing/client.go:110-143`) on the same 5-second-bounded client as the restriction check (`:38`); unreadable shapes fail closed (`:206-213`), and a definitive Rates 4xx is returned unchanged (`:184-202`).
 - M: `quotedTotal != req.TotalMinor` → `PRICE_CHANGED` 409 naming both totals, the type, and the dates (`internal/service/service.go:257-259`, `:389-391`; `priceChanged` at `:164-177`); nothing is written, so the key stays free for the re-quoted attempt.
 - F: record stored `confirmed` at the quote's total and discount name with a unique ref, `created` event queued (`internal/store/store.go:250-305`, Modify `:439-515`); G: `reservationId`, `reservationRef`, `state`, `quotedTotal` returned (`internal/handler/handler.go:208-210`).
@@ -76,24 +76,24 @@ flowchart TD
 
 Edge trace:
 
-- V: any service/handler validation rejects before the store is touched (`internal/service/service.go:137-167`; handler required-field checks, e.g. `internal/handler/handler.go:205-207`).
-- O: `booked >= input.Ceiling` → `CONFLICT` "No sellable unit left" (`internal/store/store.go:228`, `:418`); an unreadable capacity is the separate 503 `UPSTREAM_UNAVAILABLE` path, never this 409.
-- K: create/modify/cancel replays return the stored record, each keyed by its operation and — for modify/cancel — the reservation reference (`internal/store/store.go:215,386,469`; Create/Modify/Cancel thread the key through `internal/service/service.go:179-189,293-303,313`).
+- V: any service/handler validation rejects before the store is touched (`internal/service/service.go:200-230,301-349`; handler field reads, e.g. `internal/handler/handler.go:169-171`).
+- O: `booked >= input.Ceiling` → `CONFLICT` "No sellable unit left" (`internal/store/store.go:267`, `:475`); an unreadable capacity is the separate 503 `UPSTREAM_UNAVAILABLE` path, never this 409.
+- K: create/modify/cancel replays return the stored record, each keyed by its operation and — for modify/cancel — the reservation reference (`internal/store/store.go:253-257,442-446,525-529`; Create/Modify/Cancel thread the key through `internal/service/service.go:271,404,427`).
 - S: `CheckIn` requires `confirmed`; Modify/Cancel/MarkNoShow on a non-`confirmed` record go through `stateRefusal` → `STATE_ILLEGAL` 422 (`internal/store/store.go`). `CheckOutReservation` requires `checked-in`, returns the already `closed` booking idempotently, and writes one `state` change row with the actor and time (no event, LLD D5).
-- N: unknown ref → `NOT_FOUND` 404 (`internal/store/store.go:270-276`); an unknown room type keeps Rooms' `NOT_FOUND` 404 unchanged (`internal/availability/client.go:132-150`); `no_rate_price` / `no_rate_plan` from the quote keep theirs (`internal/pricing/client.go:181-201`).
-- PC: the asserted `priceBasis.totalMinor` differs from the quote → `PRICE_CHANGED` 409 naming both totals, the type, and the dates (`internal/service/service.go:164-179,258-260,391-393`); nothing is written, so the key can be reused for the re-quoted attempt.
-- PQ: transport failure, timeout, 5xx, a non-envelope reply, or an unwired hook → 503 `UPSTREAM_UNAVAILABLE` `{upstream: rates, operation: QuotePrice}` (`internal/pricing/client.go:203-211`; nil hook `internal/service/service.go:181-185`).
-- PR: a definitive Rates 4xx (`no_rate_price`, `no_rate_plan`, unknown discount naming `discountName`, ambiguous plan set naming `ratePlanName`) is surfaced unchanged (`internal/pricing/client.go:181-201`).
+- N: unknown ref → `NOT_FOUND` 404 (`internal/store/store.go:313-315`); an unknown room type keeps Rooms' `NOT_FOUND` 404 unchanged (`internal/availability/client.go:132-152`); `no_rate_price` / `no_rate_plan` from the quote keep theirs (`internal/pricing/client.go:184-202`).
+- PC: the asserted `priceBasis.totalMinor` differs from the quote → `PRICE_CHANGED` 409 naming both totals, the type, and the dates (`internal/service/service.go:164-179,257-259,389-391`); nothing is written, so the key can be reused for the re-quoted attempt.
+- PQ: transport failure, timeout, 5xx, a non-envelope reply, or an unwired hook → 503 `UPSTREAM_UNAVAILABLE` `{upstream: rates, operation: QuotePrice}` (`internal/pricing/client.go:206-213`; nil hook `internal/service/service.go:181-186`).
+- PR: a definitive Rates 4xx (`no_rate_price`, `no_rate_plan`, unknown discount naming `discountName`, ambiguous plan set naming `ratePlanName`) is surfaced unchanged (`internal/pricing/client.go:184-202`).
 
-Rollback: there is none to run — every write is a single mutex-guarded step (`internal/store/store.go:212`); every refusal — an unreadable capacity read or quote, a disagreement, or a definitive rates refusal, all of which precede the store call — happens before any mutation, so no compensation path exists in code.
+Rollback: there is none to run — every write is a single mutex-guarded step (`internal/store/store.go:250-252`, `:439-441`); every refusal — an unreadable capacity read or quote, a disagreement, or a definitive rates refusal, all of which precede the store call — happens before any mutation, so no compensation path exists in code.
 
 ## 5. Outbound dependencies
 
 Rates stay-restriction check (`POST {RATES_BASE_URL}/v1/rates/CheckRestrictions`, `RATES_BASE_URL` default `http://rates:8082`, wired at boot in `cmd/server/main.go:45-51`): every `Create`/`Modify` consults Pricing `CheckRestrictions` with the caller Bearer token forwarded and fails closed (503 `UPSTREAM_UNAVAILABLE`) when rates is unreachable (`internal/pricing/client.go`).
 
-Rates price quote (`POST {RATES_BASE_URL}/v1/rates/QuotePrice`, same client instance and base URL, wired beside `Check` at boot in `cmd/server/main.go:50-51`): every `Create`/`Modify` that is not a replay reads the effective room type, dates, and discount once, with the caller Bearer token forwarded and a 5-second timeout, and freezes the returned `totalMinor` and applied `discountName` (`internal/pricing/client.go:107-152`; comparison and store hand-off at `internal/service/service.go:252-274`, `:372-405`). The read sits outside the guarded store step, so a Rates outage never holds the booking mutex (ADR-0007 D2). An unreadable answer fails the booking closed with 503 `UPSTREAM_UNAVAILABLE` naming rates and `QuotePrice`; a definitive 4xx passes through unchanged. The request's `priceBasis` is advisory and never stored.
+Rates price quote (`POST {RATES_BASE_URL}/v1/rates/QuotePrice`, same client instance and base URL, wired beside `Check` at boot in `cmd/server/main.go:50-51`): every `Create`/`Modify` that is not a replay reads the effective room type, dates, and discount once, with the caller Bearer token forwarded and a 5-second timeout, and freezes the returned `totalMinor` and applied `discountName` (`internal/pricing/client.go:110-143`; comparison and store hand-off at `internal/service/service.go:252-271`, `:372-404`). The read sits outside the guarded store step, so a Rates outage never holds the booking mutex (ADR-0007 D2). An unreadable answer fails the booking closed with 503 `UPSTREAM_UNAVAILABLE` naming rates and `QuotePrice`; a definitive 4xx passes through unchanged. The request's `priceBasis` is advisory and never stored.
 
-Rooms capacity read (`POST {ROOMS_BASE_URL}/v1/rooms/CheckRoomTypeSellability`, `ROOMS_BASE_URL` default `http://rooms:8085`, wired at boot beside the rates client in `cmd/server/main.go:50-54`, compose env `deploy/compose.yaml:50`): every `Create`/`Modify` reads the recorded inventory once per attempt, consumes `totalCount` and `blockedRooms`, and derives the guard's ceiling as `totalCount - len(blockedRooms)` (`internal/availability/client.go:56-95`). The reply's derived `sellableCount` is deliberately not consumed (ADR-0006 D2), and the request's `sellableUnits` is advisory only: a low or absent value refuses nothing and an inflated value buys nothing (`internal/service/service.go:125-140`). An unreadable capacity fails the booking closed with 503 `UPSTREAM_UNAVAILABLE` naming rooms and the operation; a rooms 4xx passes through unchanged; a readable zero capacity is the sold-out `CONFLICT`. Rooms has no outbound dependency, so the seam adds no runtime cycle. Consequence: a Rooms outage refuses new bookings and modifications (product risk R-14, residual risk R-OVB-1; runbook section 11). Hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (LLD [section 0](../lld.md)). Emits `reservation.created` / `reservation.checked-in` domain events (`internal/store/postgres.go:265,382,625,718,795` outbox INSERTs; in-memory `created` queued at `internal/store/store.go:258-266`, `checked-in` at :320-325).
+Rooms capacity read (`POST {ROOMS_BASE_URL}/v1/rooms/CheckRoomTypeSellability`, `ROOMS_BASE_URL` default `http://rooms:8085`, wired at boot beside the rates client in `cmd/server/main.go:50-54`, compose env `deploy/compose.yaml:50`): every `Create`/`Modify` reads the recorded inventory once per attempt, consumes `totalCount` and `blockedRooms`, and derives the guard's ceiling as `totalCount - len(blockedRooms)` (`internal/availability/client.go:56-86`). The reply's derived `sellableCount` is deliberately not consumed (ADR-0006 D2), and the request's `sellableUnits` is advisory only: a low or absent value refuses nothing and an inflated value buys nothing (`internal/service/service.go:191-196`). An unreadable capacity fails the booking closed with 503 `UPSTREAM_UNAVAILABLE` naming rooms and the operation; a rooms 4xx passes through unchanged; a readable zero capacity is the sold-out `CONFLICT`. Rooms has no outbound dependency, so the seam adds no runtime cycle. Consequence: a Rooms outage refuses new bookings and modifications (product risk R-14, residual risk R-OVB-1; runbook section 11). Hotel values come from `AdminService.GetHotelConfig` with a cached offline-first fallback (LLD [section 0](../lld.md)). Emits `reservation.created` / `reservation.checked-in` domain events (`internal/store/postgres.go:265,407,650,743,820` outbox INSERTs; in-memory `created` queued at `internal/store/store.go:297-304`, `checked-in` at :377-384).
 
 See also: [deployment](../system-architecture.md) (section 1), [C4 containers](../c4-containers.md), and [event flow](../event-flow.md) (this service's outbox emissions).
 
@@ -109,7 +109,7 @@ Envelope `{code, message, details, traceId}` (`internal/handler/handler.go:30-43
 | `NOT_FOUND` | 404 | unknown reservation ref (`internal/store/store.go:40-42,312-315,447-450`); on `Create` and `Modify` also an unknown room type, refused by Rooms `CheckRoomTypeSellability` and surfaced unchanged (`internal/availability/client.go:81-82,132-152`), and a type or date range with no rate price or no pricing rate plan, refused by the Rates quote with `reason: no_rate_price` / `reason: no_rate_plan` and surfaced unchanged (`internal/pricing/client.go:184-202`) |
 | `CONFLICT` | 409 | overbooking guard trips (`internal/store/store.go:36-38,267,475`); a readable zero capacity is the same sold-out answer |
 | `STATE_ILLEGAL` | 422 | step on a wrong-state reservation, or a stay restriction (`internal/store/store.go:425-434`; `internal/service/service.go:231-236,366-371`) |
-| `UPSTREAM_UNAVAILABLE` | 503 | rates stay-restriction check, rooms capacity read, or the Rates quote unreadable; nothing written (`internal/pricing/client.go:206-213`; `internal/availability/client.go:154-167`; nil hooks in `internal/service/service.go:117-124,141-146,181-186`) |
+| `UPSTREAM_UNAVAILABLE` | 503 | rates stay-restriction check, rooms capacity read, or the Rates quote unreadable; nothing written (`internal/pricing/client.go:206-213`; `internal/availability/client.go:154-161`; nil hooks in `internal/service/service.go:117-124,141-146,181-186`) |
 
 ## 7. Operations
 
@@ -226,13 +226,13 @@ Role: architect · AO session hotel-mgmt-946
 As-built. `priceBasis.totalMinor` is advisory: it is shape-checked as
 before, then compared with the Rates `QuotePrice` read taken in the same
 request, and the quote's total and applied discount name are what the
-store freezes (`internal/service/service.go:252-274` on Create,
-`:372-405` on Modify; `internal/store/store.go:274-275`, `:472-476`
+store freezes (`internal/service/service.go:252-271` on Create,
+`:372-404` on Modify; `internal/store/store.go:281-282`, `:497-501`
 unchanged). This section folds the delta into sections 2–6 above.
 
 - Section 2's layer table carries the two-operation pricing client and
   the quote-and-compare step; the store's `Repository` gains
-  `Replay(operation, ref, key)` (`internal/store/store.go:120-134`,
+  `Replay(operation, ref, key)` (`internal/store/store.go:120-140`,
   `(*Store).Replay` at `:324`, `(*Postgres).Replay` at
   `internal/store/postgres.go:311`).
 - Section 3's flowchart gains the replay pre-read, the quote branch, and
@@ -253,8 +253,8 @@ unchanged). This section folds the delta into sections 2–6 above.
   stay-restriction check, the replay pre-read, the capacity read, the
   quote read and comparison, then the unchanged guarded store step,
   which re-runs its own replay check so a concurrent double submit still
-  books once (`internal/service/service.go:200-274`, `:300-405`;
-  `internal/store/store.go:243-265`, `:382-444`). The quote is
+  books once (`internal/service/service.go:200-272`, `:300-405`;
+  `internal/store/store.go:250-305`, `:439-515`). The quote is
   deliberately outside the store mutex (ADR-0007 D2).
 - Unchanged by this delta: the stored `priceBasis` shape, the schema,
   the overbooking guard, `sellableUnits`, the response field names
@@ -279,10 +279,10 @@ CheckIn `:248`, CheckOutReservation `:271`, Modify `:313-314`, Cancel
 `actor` field and refusal (`:267-270`); the five writes that accept
 `actor` optionally add no refusal. The stores take `Actor` and
 `RequestActor` (`internal/store/store.go:80-84`, `:115-117`) and add the
-annotation through `actorPayload` (`:154-160`), used by the in-memory
-events (`:292-296`, `:354`, `:479-484`, `:521`, `:565`) and the Postgres
-outbox writes (`internal/store/postgres.go:259-263`, `:380`,
-`:619-623`, `:712`, `:789`); change rows and the reservation row's
+annotation through `actorPayload` (`:161-167`), used by the in-memory
+events (`:297-304`, `:377-384`, `:502-510`, `:544-551`, `:588-595`) and the Postgres
+outbox writes (`internal/store/postgres.go:265`, `:407`,
+`:650`, `:743`, `:820`); change rows and the reservation row's
 `created_by`/`updated_by` record the session. `CheckOutReservation`
 writes no outbox row, so its request value is dropped and its change-row
 shape is unchanged. Stay's forwarded completion carries the desk bearer
