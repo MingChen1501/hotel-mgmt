@@ -46,7 +46,9 @@ func main() {
 	if ratesBase == "" {
 		ratesBase = "http://rates:8082"
 	}
-	svc.CheckRestrictionsHook = pricing.NewClient(ratesBase).Check
+	rates := pricing.NewClient(ratesBase)
+	svc.CheckRestrictionsHook = rates.Check
+	svc.QuotePriceHook = rates.QuotePrice
 	roomsBase := strings.TrimSpace(os.Getenv("ROOMS_BASE_URL"))
 	if roomsBase == "" {
 		roomsBase = "http://rooms:8085"

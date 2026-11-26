@@ -21,13 +21,27 @@ const sessionActorValue = "skeleton-test-token"
 // newMuxWithAvailability builds the mux over one stubbed capacity
 // answer. The shared desk-loop paths below book without a stubbed rooms
 // server, so wire the pass-through explicitly: a nil hook fails closed
-// and would refuse every booking here.
+// and would refuse every booking here. The quote hook answers the same
+// way: the desk-loop fixtures book at the quoted total (24000 on
+// 2026-11-01, 26000 on the repriced 2026-11-02 window), so a nil hook
+// must never be what makes a booking look verified.
 func newMuxWithAvailability(hook service.AvailabilityCheck) (*http.ServeMux, *store.Store) {
 	st := store.New()
 	svc := service.New(st)
 	svc.CheckRestrictionsHook = func(_, _, _, _ string) *store.OpError { return nil }
 	svc.AvailabilityHook = hook
+	svc.QuotePriceHook = fixtureQuote
 	return NewMux(svc, st), st
+}
+
+// fixtureQuote is the quoted total the desk-loop fixtures were written
+// around: 24000 for the original stay and 26000 for the repriced
+// 2026-11-02..04 window. The values are the quote's, never the body's.
+func fixtureQuote(_, arrivalDate, _ string, _ *string, _ string) (int64, *string, *store.OpError) {
+	if arrivalDate == "2026-11-02" {
+		return 26000, nil, nil
+	}
+	return 24000, nil, nil
 }
 
 // newMux answers a derived ceiling of one sellable unit, which is the

@@ -8,7 +8,8 @@
     "NFR-CON-1",
     "FR-OVB-2",
     "FR-OVB-3",
-    "ADR-0006"
+    "ADR-0006",
+    "ADR-0007"
   ],
   "transport": {
     "method": "POST",
@@ -67,6 +68,7 @@
       },
       "priceBasis": {
         "type": "object",
+        "description": "Advisory (ADR-0007): the server re-derives the frozen total and the applied discount name from Rates QuotePrice for the effective (post-change) room type, dates, and discount. The asserted totalMinor never sets a stored value; a value that disagrees with the quote is refused PRICE_CHANGED (409). The field stays required for the deprecation window. An omitted or null discountName means the new quote carries no discount: the price basis asserts the whole new quote.",
         "required": [
           "totalMinor"
         ],
@@ -74,13 +76,14 @@
           "totalMinor": {
             "type": "integer",
             "minimum": 0,
-            "description": "Fresh QuotePrice total for the new dates, type, and discount (BR-2 reprice)."
+            "description": "The recalculated total the caller shows; compared with the Rates quote, never stored (ADR-0007 D3)."
           },
           "discountName": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Discount to quote with; omitted or null means no discount, and the stored name is the one the quote applied (ADR-0007 D2)."
           }
         }
       },
@@ -128,7 +131,12 @@
     {
       "code": "UPSTREAM_UNAVAILABLE",
       "status": 503,
-      "when": "The room inventory could not be read, so the change was refused; details name upstream rooms and CheckRoomTypeSellability (ADR-0006 D4)."
+      "when": "The room inventory could not be read, so the change was refused; details name upstream rooms and CheckRoomTypeSellability (ADR-0006 D4). The price could not be read either, so the change is refused rather than stored at an unverified total; details name upstream rates and QuotePrice (ADR-0007 D4)."
+    },
+    {
+      "code": "PRICE_CHANGED",
+      "status": 409,
+      "when": "The body's priceBasis.totalMinor differs from the Rates QuotePrice total for the effective room type, dates, and discount, so nothing was changed; details name roomTypeId, arrivalDate, departureDate, requestedTotalMinor, and quotedTotalMinor (ADR-0007 D3)."
     },
     {
       "code": "STATE_ILLEGAL",
@@ -138,12 +146,12 @@
     {
       "code": "VALIDATION_FAILED",
       "status": 400,
-      "when": "Missing field, bad date order, missing repriced total, or a hotel-mandatory guest field is missing."
+      "when": "Missing field, bad date order, missing repriced total, or a hotel-mandatory guest field is missing; the Rates quote may also refuse an unknown discount naming discountName or an ambiguous plan set naming ratePlanName, surfaced unchanged (ADR-0007 D4)."
     },
     {
       "code": "NOT_FOUND",
       "status": 404,
-      "when": "Unknown reservation reference, or an unknown new room type refused by Rooms and surfaced unchanged (ADR-0006 D4)."
+      "when": "Unknown reservation reference, or an unknown new room type refused by Rooms and surfaced unchanged (ADR-0006 D4). Rates may also answer no_rate_price or no_rate_plan and that refusal is surfaced unchanged too, changing nothing (ADR-0007 D4)."
     }
   ]
 }
