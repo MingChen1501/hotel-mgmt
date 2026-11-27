@@ -27,6 +27,7 @@ jobs:
     outputs:
       go-matrix: ${{ steps.gates.outputs.go-matrix }}
       node-matrix: ${{ steps.gates.outputs.node-matrix }}
+      postgres-matrix: ${{ steps.gates.outputs.postgres-matrix }}
       billing: ${{ steps.gates.outputs.billing }}
       contracts: ${{ steps.gates.outputs.contracts }}
       migrate: ${{ steps.gates.outputs.migrate }}
@@ -146,6 +147,24 @@ jobs:
               ('guests', 'NODE_GUESTS'),
               ('admin', 'NODE_ADMIN'),
           ) if full or changed(f)]
+          # Postgres parity (issue #769): the modules whose suites gate
+          # on TEST_PG_URL. A workflow change or a push to master runs
+          # every entry; otherwise only the module whose service
+          # changed, so a change that touches no service skips the job.
+          # `admin` is held out until its Postgres suite is green under
+          # TEST_PG_URL (issue #807); adding it here re-enables the
+          # gate for that module.
+          postgres = [
+              {'module': m, 'lang': lang}
+              for m, f, lang in (
+                  ('reservations', 'GO_RESERVATIONS', 'go'),
+                  ('rates', 'GO_RATES', 'go'),
+                  ('stay', 'NODE_STAY', 'node'),
+                  ('rooms', 'NODE_ROOMS', 'node'),
+                  ('guests', 'NODE_GUESTS', 'node'),
+              )
+              if full or changed(f)
+          ]
 
           services_changed = full or changed('SERVICES')
           billing = full or changed('BILLING')
@@ -179,6 +198,7 @@ jobs:
           with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
               fh.write(f"go-matrix={json.dumps(go)}\n")
               fh.write(f"node-matrix={json.dumps(node)}\n")
+              fh.write(f"postgres-matrix={json.dumps(postgres)}\n")
           boolean('billing', billing)
           boolean('contracts', contracts)
           boolean('migrate', migrate)
@@ -188,7 +208,7 @@ jobs:
           boolean('dom-diff', dom_diff)
 
           print(f'event={e["EVENT_NAME"]} full={full}')
-          print(f'go={go} node={node} billing={billing} '
+          print(f'go={go} node={node} postgres={postgres} billing={billing} '
                 f'contracts={contracts} migrate={migrate} e2e={e2e} '
                 f'shell={shell} browser_e2e={browser_e2e} '
                 f'dom_diff={dom_diff}')
@@ -487,6 +507,172 @@ jobs:
             psql -v ON_ERROR_STOP=1 -f "$f"
           done
           echo "All boot migrations applied."
+
+  postgres-parity:
+    # Postgres parity suites (issue #769): the covered modules run
+    # against a fresh postgres:16 service with that module's
+    # migrations applied and TEST_PG_URL exported. A workflow change
+    # or a push to master runs every covered module; otherwise only
+    # the modules whose service changed. The skip guard fails the job
+    # when a suite still reports skipped cases, so a green run proves
+    # the Postgres stores were exercised instead of skipped. `admin`
+    # joins the matrix once issue #807 makes its suite green.
+    needs: changes
+    if: needs.changes.outputs.postgres-matrix != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.changes.outputs.postgres-matrix) }}
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: hotel
+          POSTGRES_USER: hotel
+          POSTGRES_PASSWORD: hotel
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U hotel -d hotel"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGDATABASE: hotel
+      PGUSER: hotel
+      PGPASSWORD: hotel
+      TEST_PG_URL: postgresql://hotel:hotel@127.0.0.1:5432/hotel
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apply this module's migrations to the scratch database
+        working-directory: services/${{ matrix.module }}
+        run: |
+          set -euo pipefail
+          if [ "${{ matrix.lang }}" = "go" ]; then
+            files=$(ls migrations/*.up.sql)
+          else
+            files=$(ls migrations/*.sql)
+          fi
+          for f in $files; do
+            echo "Applying $f"
+            psql -v ON_ERROR_STOP=1 -q -f "$f"
+          done
+
+      - uses: actions/setup-go@v5
+        if: matrix.lang == 'go'
+        with:
+          go-version: '1.24'
+          cache: false
+
+      - uses: actions/setup-node@v4
+        if: matrix.lang == 'node'
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: services/${{ matrix.module }}/package-lock.json
+
+      - name: Install
+        if: matrix.lang == 'node'
+        working-directory: services/${{ matrix.module }}
+        run: npm ci
+
+      - name: Build
+        if: matrix.lang == 'node'
+        working-directory: services/${{ matrix.module }}
+        run: npm run build
+
+      - name: Test with TEST_PG_URL set
+        working-directory: services/${{ matrix.module }}
+        run: |
+          set -euo pipefail
+          test -n "${TEST_PG_URL:-}"
+          if [ "${{ matrix.lang }}" = "go" ]; then
+            go test -json ./... | tee "$RUNNER_TEMP/pg-parity.json"
+          else
+            node --test --test-concurrency=1 --test-reporter=tap "dist/**/*.test.js" \
+              | tee "$RUNNER_TEMP/pg-parity.tap"
+          fi
+
+      - name: Fail on a silently skipped Postgres suite
+        if: always()
+        run: |
+          python3 - "${{ matrix.lang }}" "$RUNNER_TEMP" <<'PY'
+          import json
+          import os
+          import re
+          import sys
+
+          lang, temp = sys.argv[1], sys.argv[2]
+          if lang == "go":
+              path = os.path.join(temp, "pg-parity.json")
+              if not os.path.exists(path):
+                  print("::error::the Go test step produced no JSON output")
+                  sys.exit(1)
+              passed = skipped = failed = 0
+              with open(path, encoding="utf-8", errors="replace") as fh:
+                  for line in fh:
+                      line = line.strip()
+                      if not line.startswith("{"):
+                          continue
+                      try:
+                          event = json.loads(line)
+                      except json.JSONDecodeError:
+                          continue
+                      if not event.get("Test"):
+                          continue
+                      action = event.get("Action")
+                      if action == "pass":
+                          passed += 1
+                      elif action == "skip":
+                          skipped += 1
+                      elif action == "fail":
+                          failed += 1
+              tests = passed + skipped + failed
+          else:
+              path = os.path.join(temp, "pg-parity.tap")
+              if not os.path.exists(path):
+                  print("::error::the Node test step produced no TAP output")
+                  sys.exit(1)
+              with open(path, encoding="utf-8", errors="replace") as fh:
+                  text = fh.read()
+
+              def count(name):
+                  found = re.findall(r"^# %s (\d+)$" % name, text, re.MULTILINE)
+                  return int(found[-1]) if found else 0
+
+              tests = count("tests")
+              passed = count("pass")
+              failed = count("fail")
+              skipped = count("skipped")
+
+          line = (
+              f"{lang}: tests={tests} passed={passed} "
+              f"failed={failed} skipped={skipped}"
+          )
+          print(line)
+          summary = os.environ.get("GITHUB_STEP_SUMMARY")
+          if summary:
+              with open(summary, "a", encoding="utf-8") as fh:
+                  fh.write(f"- {line}\n")
+
+          if failed:
+              print(f"::error::{lang} parity suite reported {failed} failing case(s)")
+              sys.exit(1)
+          if skipped:
+              print(
+                  f"::error::{lang} parity suite reported {skipped} skipped case(s) "
+                  "with TEST_PG_URL set; the Postgres path is not gated"
+              )
+              sys.exit(1)
+          if passed == 0:
+              print(f"::error::{lang} parity suite executed zero cases")
+              sys.exit(1)
+          PY
 
   e2e-single-host:
     needs: changes
