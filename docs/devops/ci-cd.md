@@ -55,8 +55,12 @@ Needed pipeline changes become issues.
   the repo contract gate (`script/contract-check.sh`), including the
   OpenAPI mirror gate (`script/openapi-route-check.sh`: the served
   `frontend/docs/openapi.yaml` mirror is byte-identical to
-  `contracts/openapi.yaml` and every spec route resolves to a
-  contract route).
+  `contracts/openapi.yaml`, neither copy carries a duplicate YAML
+  mapping key — a finding names the key, both `file:line` positions,
+  and the key path — and every spec route resolves to a contract
+  route) plus the duplicate-key detector's own self-test
+  (`script/openapi-route-check.test.sh`: a synthetic duplicate fails
+  the gate and a clean fixture passes).
 - **migrate-check.** When services or deploy changed: every module
   boot migration applies against a scratch PostgreSQL.
 - **e2e-single-host.** When services, deploy, scripts, or contracts
