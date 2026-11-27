@@ -446,7 +446,7 @@ export class PostgresAdminStore implements AdminStoreAPI {
         entries.push({
           at: (row["updatedAt"] as Date).toISOString(),
           actor: String(row["updatedBy"]),
-          action: "profile.updated",
+          action: "config.updated", // a profile-column write is config.updated, as in the in-memory store (#807)
           entity: "hotel_profile",
         });
       }

@@ -78,15 +78,13 @@ Needed pipeline changes become issues.
   boot migration applies against a scratch PostgreSQL.
 - **postgres-parity.** When a covered service or the workflow changed,
   or on a push to `master`: a matrix over the covered modules —
-  `reservations` and `rates` (Go), `stay`, `rooms`, and `guests`
-  (Node) — each against its own fresh `postgres:16-alpine` service
-  with that module's migrations applied and `TEST_PG_URL`
+  `reservations` and `rates` (Go), `stay`, `rooms`, `guests`, and
+  `admin` (Node) — each against its own fresh `postgres:16-alpine`
+  service with that module's migrations applied and `TEST_PG_URL`
   (`postgresql://hotel:hotel@127.0.0.1:5432/hotel`) exported. A guard
   fails the job on any failing, skipped, zero-case, or
   Postgres-nameless run, so a green run proves the Postgres stores
-  were exercised rather than skipped. `admin` joins the matrix once
-  #807 makes its suite green; a change that touches only
-  `services/admin/**` therefore runs no parity module.
+  were exercised rather than skipped.
 - **e2e-single-host.** When services, deploy, scripts, or contracts
   changed: per-hotel configuration prep, proxy configuration
   validation, pre-flight gate (fails closed on default secrets),
@@ -116,12 +114,12 @@ Needed pipeline changes become issues.
   green; docs-only PRs are gated on the same always-on jobs alone
   (`changes`, `ci`, `doc-pins`, and `perf-reporting-variant`).
 - A change to a covered service (`services/reservations/**`,
-  `services/rates/**`, `services/stay/**`, `services/rooms/**`, or
-  `services/guests/**`) requires `postgres-parity` green for that
-  module, so the Postgres-backed half of its suite cannot merge with
-  that half skipped. A PR that changes neither these services nor the
-  workflow skips the job; a workflow change or a `master` push runs
-  every module. `admin` is not a parity gate yet (see #807).
+  `services/rates/**`, `services/stay/**`, `services/rooms/**`,
+  `services/guests/**`, or `services/admin/**`) requires
+  `postgres-parity` green for that module, so the Postgres-backed half
+  of its suite cannot merge with that half skipped. A PR that changes
+  neither these services nor the workflow skips the job; a workflow
+  change or a `master` push runs every module.
 - Concurrency cancels in-progress runs per ref, so only the latest
   push per PR is gated.
 - Release bookkeeping (`docs/release/*`) stays stubbed until the
@@ -138,9 +136,9 @@ has to carry them. As built (`AC-BOOT-5`):
 - **The three container jobs.** `e2e-single-host`, `browser-e2e`, and
   `dom-diff` set `DB_PASSWORD`, `ADMIN_BOOT_SECRET`, and
   `ADMIN_TOKEN_KEY` to throwaway, non-default values
-  (`.github/workflows/ci.yml:720-722` <!-- pin: DB_PASSWORD -->,
-  `:796-798` <!-- pin: DB_PASSWORD -->,
-  `:898-900` <!-- pin: DB_PASSWORD -->). They never set
+  (`.github/workflows/ci.yml:717-719` <!-- pin: DB_PASSWORD -->,
+  `:793-795` <!-- pin: DB_PASSWORD -->,
+  `:895-897` <!-- pin: DB_PASSWORD -->). They never set
   `ADMIN_DEV_MODE`, so the bring-up proves the production boot contract,
   not the dev path: an unprovisioned variable stops the installer proof
   at the Admin boot instead of letting it sign with a published key.
@@ -148,7 +146,7 @@ has to carry them. As built (`AC-BOOT-5`):
   the same list, so the pre-flight step inside the installer proof fails
   closed and names the missing variable before any container starts.
 - **`node-build`.** The Admin matrix job exports no `ADMIN_*` variable at
-  all (`.github/workflows/ci.yml:367-398` <!-- pin: node-build -->), which
+  all (`.github/workflows/ci.yml:365-396` <!-- pin: node-build -->), which
   is itself the proof that `cd services/admin && npm test` passes without
   the two secrets (`AC-BOOT-4`). Do not "fix" a red Admin build by
   exporting a secret into that job: the suite must not need one, and

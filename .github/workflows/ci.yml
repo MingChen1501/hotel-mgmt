@@ -151,9 +151,6 @@ jobs:
           # on TEST_PG_URL. A workflow change or a push to master runs
           # every entry; otherwise only the module whose service
           # changed, so a change that touches no service skips the job.
-          # `admin` is held out until its Postgres suite is green under
-          # TEST_PG_URL (issue #807); adding it here re-enables the
-          # gate for that module.
           postgres = [
               {'module': m, 'lang': lang}
               for m, f, lang in (
@@ -162,6 +159,7 @@ jobs:
                   ('stay', 'NODE_STAY', 'node'),
                   ('rooms', 'NODE_ROOMS', 'node'),
                   ('guests', 'NODE_GUESTS', 'node'),
+                  ('admin', 'NODE_ADMIN', 'node'),
               )
               if full or changed(f)
           ]
@@ -515,8 +513,7 @@ jobs:
     # or a push to master runs every covered module; otherwise only
     # the modules whose service changed. The skip guard fails the job
     # when a suite still reports skipped cases, so a green run proves
-    # the Postgres stores were exercised instead of skipped. `admin`
-    # joins the matrix once issue #807 makes its suite green.
+    # the Postgres stores were exercised instead of skipped.
     needs: changes
     if: needs.changes.outputs.postgres-matrix != '[]'
     runs-on: ubuntu-latest
