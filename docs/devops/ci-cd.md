@@ -20,9 +20,10 @@ Needed pipeline changes become issues.
   workflow). Docs-only changes
   (`docs/**`, `template/**`, markdown, issue/PR templates) match no
   code filter, so every heavy job is skipped and the PR is gated on
-  the metadata `ci` job alone. A change to the workflow file itself
-  (or a push to `master`) runs the full matrix, so no PR goes green
-  without its required checks. The desk-shell filter (`app/**`,
+  the always-on jobs (`ci`, `doc-pins`, and
+  `perf-reporting-variant`) alone. A change to the workflow file
+  itself (or a push to `master`) runs the full matrix, so no PR goes
+  green without its required checks. The desk-shell filter (`app/**`,
   `deploy/nginx/nginx.conf`, `deploy/compose.yaml`,
   `frontend/*.html`, `script/shell-served-check.sh`) gates the
   `app-build` job; the `browser-e2e` job runs when the shell or any
@@ -38,6 +39,16 @@ Needed pipeline changes become issues.
   markdown link resolves, no bare section glyphs), and the harness
   conventions self-check plus its `--self-test` red proof
   (`script/harness-conventions-check.sh`).
+- **doc-pins.** Always runs: `script/doc-pin-check.sh` over
+  `docs/architecture`, `docs/testing`, and `docs/requirements` with
+  the shared keyword map and allow-list, checking each `path:line`
+  pin against the content its cited line must contain rather than
+  against the number alone; a pin with no supplied keyword is reported
+  UNVERIFIED, never a pass. A wrong line, a missing file, an ambiguous
+  suffix, a line past EOF, or an annotation with no pin is a finding,
+  and the job is blocking since #787: only a reviewed allow-list row
+  downgrades a finding, while a row that matches no finding is itself
+  a stale-allow finding.
 - **app-build.** When the desk shell changed: Node 22 install, build,
   lint, and test over `app/`, then the served-shell guard
   (`script/shell-served-check.sh`: placeholder, history-mode
@@ -63,6 +74,17 @@ Needed pipeline changes become issues.
   the gate and a clean fixture passes).
 - **migrate-check.** When services or deploy changed: every module
   boot migration applies against a scratch PostgreSQL.
+- **postgres-parity.** When a covered service or the workflow changed,
+  or on a push to `master`: a matrix over the covered modules —
+  `reservations` and `rates` (Go), `stay`, `rooms`, and `guests`
+  (Node) — each against its own fresh `postgres:16-alpine` service
+  with that module's migrations applied and `TEST_PG_URL`
+  (`postgresql://hotel:hotel@127.0.0.1:5432/hotel`) exported. A guard
+  fails the job on any failing, skipped, zero-case, or
+  Postgres-nameless run, so a green run proves the Postgres stores
+  were exercised rather than skipped. `admin` joins the matrix once
+  #807 makes its suite green; a change that touches only
+  `services/admin/**` therefore runs no parity module.
 - **e2e-single-host.** When services, deploy, scripts, or contracts
   changed: per-hotel configuration prep, proxy configuration
   validation, pre-flight gate (fails closed on default secrets),
@@ -89,7 +111,14 @@ Needed pipeline changes become issues.
 ## 3. Merge gates
 
 - A PR merges only when every job its changed areas require is
-  green; docs-only PRs are gated on the metadata `ci` job alone.
+  green; docs-only PRs are gated on the same always-on jobs alone
+  (`ci`, `doc-pins`, and `perf-reporting-variant`).
+- A change to a covered service (`services/reservations/**`,
+  `services/rates/**`, `services/stay/**`, `services/rooms/**`, or
+  `services/guests/**`) requires `postgres-parity` green for that
+  module, so the Postgres-backed half of its suite cannot merge
+  skipped; a change that touches no covered service skips the job.
+  `admin` is not a parity gate yet (see #807).
 - Concurrency cancels in-progress runs per ref, so only the latest
   push per PR is gated.
 - Release bookkeeping (`docs/release/*`) stays stubbed until the
@@ -107,20 +136,21 @@ with the implementation PR, `AC-BOOT-5`):
 - **The three container jobs.** `e2e-single-host`, `browser-e2e`, and
   `dom-diff` set `DB_PASSWORD`, `ADMIN_BOOT_SECRET`, and — new —
   `ADMIN_TOKEN_KEY` to throwaway, non-default values
-  (`.github/workflows/ci.yml:500`, `:575`, `:676` today carry the first
-  two). They never set `ADMIN_DEV_MODE`, so the bring-up proves the
-  production boot contract, not the dev path: an unprovisioned variable
-  stops the installer proof at the Admin boot instead of letting it sign
-  with a published key.
+  (`.github/workflows/ci.yml:720`, `:796`, `:898` <!-- pin: DB_PASSWORD -->
+  today carry the first two). They never set `ADMIN_DEV_MODE`, so the
+  bring-up proves the production boot contract, not the dev path: an
+  unprovisioned variable stops the installer proof at the Admin boot
+  instead of letting it sign with a published key.
 - **`script/e2e-desk-loop.sh` and `script/preflight.sh`** keep gating
   the same list, so the pre-flight step inside the installer proof fails
   closed and names the missing variable before any container starts.
 - **`node-build`.** The Admin matrix job exports no `ADMIN_*` variable at
-  all (`.github/workflows/ci.yml:343-375`), which is itself the proof
-  that `cd services/admin && npm test` passes without the two secrets
-  (`AC-BOOT-4`). Do not "fix" a red Admin build by exporting a secret
-  into that job: the suite must not need one, and the guards that spawn
-  the real boot set `ADMIN_DEV_MODE=1` for that child process only.
+  all (`.github/workflows/ci.yml:367-398` <!-- pin: node-build -->), which
+  is itself the proof that `cd services/admin && npm test` passes without
+  the two secrets (`AC-BOOT-4`). Do not "fix" a red Admin build by
+  exporting a secret into that job: the suite must not need one, and
+  the guards that spawn the real boot set `ADMIN_DEV_MODE=1` for that
+  child process only.
 - **Values are throwaway.** Nothing in the pipeline reads a real sale's
   secret, and no job prints one; the fail-closed gates name the variable,
   never the value. A docs-only PR still skips every heavy job (section 2),
