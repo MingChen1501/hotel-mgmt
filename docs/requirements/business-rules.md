@@ -123,6 +123,7 @@ front-desk staff, manager, or owner account acting within its access
 | BR-65 | The actor recorded on every audit trail is the authenticated session, never a value the request supplied. Every write that records an actor with its timestamp — Stay's `CheckIn`, `CheckOut`, `MoveRoom`, and `RecordActualTimes`; Guests' `UpsertGuest`; Rooms' `UpsertRoomType`, `UpsertRoom`, `UpdateRoomState`, `AssignRoom`, `ReleaseRoom`, `BlockRoom`, and `ReleaseBlock`; Reservations' `CreateReservation`, `CheckInReservation`, `CheckOutReservation`, `ModifyReservation`, `CancelReservation`, and `MarkNoShow`; Billing's `GetFolioBalance`, `PostCharge`, `RecordPayment`, `RecordOpenBalanceApproval`, `RunDayClose`, `ProduceInvoice`, `ProduceReceipt`, `UpsertChargeItem`, and `UpsertTaxFeeRule`; and Admin's `UpdateHotelConfig` — records the session the request authenticated: the resolved caller's `signinIdentity` where the service resolves a caller (Admin, including its config write), and otherwise the session token the request presented without the `Bearer ` prefix and trimmed, so one session records one identical string and a Stay close and the Reservations completion it forwards agree. The request's `actor` and `updatedBy` keep their contract shape, their required flag, and their existing refusals, and their value is never the recorded actor: where the write emits a JSON outbox payload a value that differs from the session actor is preserved additively as `requestActor`, a value that equals it or is absent where the service accepts its absence adds no key, and where the write records only a column the value is dropped with the row shape unchanged, so a disagreement is demoted rather than refused and every desk call keeps its status, stored effect, and answer. A missing, invalid, expired, revoked, or signed-out session is still refused 401 before any write, so the actor never falls back to the body; the Admin boot seed keeps its server-side `boot` actor; and a provider-to-provider call carries the caller's own session, so the forwarded `actor` is an annotation only. No error code, catalogue key, contract shape, schema, table, migration, backfill, or reader-visible desk change is added, historic rows keep the value they recorded, and token verification, HMAC, expiry, revocation, and role authorization are unchanged and out of scope; the rule is a fixed rule in code, never a per-hotel setting. | FR-SEC-1; FR-SEC-2; FR-SEC-3; FR-SEC-4; FR-ADM-1; FR-ADM-4; FR-DEP-1; FR-DEP-5; NFR-AUD-1; NFR-SEC-2; `AC-SEC-1`..`AC-SEC-5`; Refs #643 |
 
 | BR-66 | A Reporting rebuild publishes only a fully replayed read model, and an aborted rebuild changes nothing the desk can read. A rebuild builds its candidate projection set — its own applied-event record, per-subscription offsets, as-of stamp, and projection maps — apart from the published one and installs it in one swap only after every event in the slice projects, so the published set changes exactly once, from one complete state to another. On the first event it cannot project, the rebuild discards the candidate and returns the same refusal it returns today — `VALIDATION_FAILED` naming the field with today's sentence — while the published projections, offsets, and as-of stamp keep their pre-rebuild values, so every report keeps serving the rows it served and a retry replays from the same offset record. A report read answers one complete set — the pre-rebuild set until the swap, the post-rebuild set after it — with the as-of stamp belonging to that same set, and is never refused for staleness or blocked for longer than the swap; a successful rebuild produces exactly today's rows, row order, zero-filled dates, revenue totals, daily-sheet groups, housekeeping list, and as-of stamp, and re-applying a replayed event stays a no-op. The failure is observable through the rebuild call's returned error, never through a read endpoint or a status field, and the rule is a fixed code rule, never an environment variable, deployment file, or per-hotel setting. | FR-RPT-1; FR-RPT-2; FR-RPT-3; FR-RPT-4; FR-RPT-5; FR-RPT-6; FR-RPT-7; NFR-PERF-1; NFR-PERF-2; NFR-RPT-1; `AC-RPT-8`..`AC-RPT-10`; Refs #642 |
+| BR-70 | Admin refuses to boot without its per-sale secrets. Outside the one explicit dev switch `ADMIN_DEV_MODE=1`, the Admin service reads `ADMIN_TOKEN_KEY` and `ADMIN_BOOT_SECRET` from the deployment environment and exits non-zero before it builds a store, connects to Postgres, applies a migration, seeds a user, or opens its port when either is unset, empty, or on the deployment's denylist (`change-me`, `change-me-dev-only`, `password`, `hotel`, `hotel-dev-only`), printing one plain English operator line that names the unusable variable and never its value, so no published signing key and no published owner password can reach a running service, no request is signed or verified with a fallback key, no owner account is created from a default, and `/healthz` never answers; under `ADMIN_DEV_MODE=1` alone a missing key uses `dev-only-change-me` and a missing boot secret uses `change-me`, a provided value wins, and the boot logs one warning naming the switch and both fallbacks in use, while `NODE_ENV` and every other variable enable nothing; the signing key is provisioned as the third per-sale secret beside `DB_PASSWORD` and `ADMIN_BOOT_SECRET`, gated by the same pre-flight, and the switch is refused by the production gates; the local suite stays green with neither variable exported, and the first boot with a real key invalidates old-default session tokens once. | FR-BOOT-1; FR-BOOT-2; FR-BOOT-3; FR-BOOT-4; FR-BOOT-5; FR-ADM-2; NFR-SEC-1; NFR-SEC-2; NFR-DEP-1; `AC-BOOT-1`..`AC-BOOT-5`; Refs #638 |
 
 ### Config write shapes (BR-64)
 
@@ -186,6 +187,7 @@ section 3.3). Fixed items no hotel may change in the MVP.
 | Admin request ordering | — (none) | The session check precedes the body read on every operation except `SignIn`; an unauthenticated request is refused 401 before any parse refusal, and the role 403 follows a well-formed body (`BR-64`) |
 | Config write shapes | The values of the configurable parts above (`FR-ADM-1`, `FR-ADM-4`, `FR-CUS-1`, `FR-CUS-2`) | One per-key shape table applied before the first write; a value outside its key's shape is refused naming the key with nothing written, and a key outside the table is written as sent (`BR-64`) |
 | Audit actor provenance | — (none) | The recorded actor is the authenticated session — the resolved caller's `signinIdentity` where the service resolves one, otherwise the session token without the `Bearer ` prefix; the request's `actor`/`updatedBy` keeps its shape and refusals but is never the recorded value, appearing only as the additive `requestActor` annotation in a JSON outbox payload (`BR-65`) |
+| Admin boot secrets | — (none) | `ADMIN_TOKEN_KEY` and `ADMIN_BOOT_SECRET` are per-sale deployment environment inputs, not hotel settings: outside `ADMIN_DEV_MODE=1` no default value survives a boot, a missing, empty, or denylisted value refuses the boot before any side effect, and the switch is dev/test only and refused by the production gates (`BR-70`) |
 | Rebuild publication | — (none) | A Reporting rebuild publishes only a fully replayed read model in one swap; an aborted rebuild leaves the previously served projections, offsets, and as-of stamp intact and reports the failure through the rebuild call, never through a read, while a successful rebuild stays exactly today's output (`BR-66`) |
 | Roles and access | — (none) | Three fixed roles with fixed reach (`BR-35`) |
 | Automation | — (none) | No automatic status changes, reminders, or messages from lifecycle events |
@@ -342,14 +344,24 @@ the onboarding wizard refuses below `1` in both locales while the manage
 form's `1..20` stays a client bound — tracing `FR-RMS-4`, `FR-MGMT-3`,
 `FR-ADM-3`, `FR-CAP-1`..`FR-CAP-4`, `NFR-I18N-1`, and
 `AC-CAP-1`..`AC-CAP-4` plus `BR-30`, without adding behaviour beyond
-those sources.
+those sources, and BR-70 states the Admin boot obligation the sign-in
+service owes its operator — no published signing or owner secret
+survives a boot outside the one explicit dev switch, a missing, empty,
+or denylisted value exits non-zero before any side effect with one
+plain line naming the variable and never its value, the switch alone
+restores the dev fallbacks with a warning while `NODE_ENV` decides
+nothing, and the signing key is provisioned as the third per-sale
+secret gated with the other two while the production gates refuse the
+switch — tracing `FR-BOOT-1`..`FR-BOOT-5`, `FR-ADM-2`, `NFR-SEC-1`,
+`NFR-SEC-2`, `NFR-DEP-1`, and `AC-BOOT-1`..`AC-BOOT-5`, without adding
+behaviour beyond those sources.
 Policies with no decided source appear as open questions
 OQ-1..OQ-5. No rule introduces behaviour beyond the traced
 FRs/NFRs/stories. Later capabilities from requirements section 6
 (waitlist, split folios, integrated payments, automated workflow
 rules, multi-property operation, and the rest) carry no rule here.
 
-Counts: 63 business rules, 5 open questions.
+Counts: 64 business rules, 5 open questions.
 
 <!-- ao-role: business-analyst -->
 Role: business-analyst · AO session hotel-mgmt-1079
@@ -377,3 +389,6 @@ Role: business-analyst · AO session hotel-mgmt-1247
 
 <!-- ao-role: business-analyst -->
 Role: business-analyst · AO session hotel-mgmt-1261
+
+<!-- ao-role: business-analyst -->
+Role: business-analyst · AO session hotel-mgmt-1278
