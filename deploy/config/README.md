@@ -36,13 +36,15 @@ ${EDITOR:-vi} deploy/config/hotel.json   # hotel's own values; never commit real
 script/validate-hotel-config.sh --config deploy/config/hotel.json
 
 # 3. Pre-flight gates the install (secrets, sizing, backup target).
-DB_PASSWORD=<per-sale secret> ADMIN_BOOT_SECRET=<per-sale secret> \
+DB_PASSWORD=<per-sale secret> ADMIN_TOKEN_KEY=<per-sale secret> \
+  ADMIN_BOOT_SECRET=<per-sale secret> \
   script/preflight.sh --config deploy/config/hotel.json
 
 # 4. Install (Ansible validates again before copying, then applies
 # the set through Admin after the health check), or bring up the
 # container lab directly:
-DB_PASSWORD=<per-sale secret> ADMIN_BOOT_SECRET=<per-sale secret> \
+DB_PASSWORD=<per-sale secret> ADMIN_TOKEN_KEY=<per-sale secret> \
+  ADMIN_BOOT_SECRET=<per-sale secret> \
   ansible-playbook -i deploy/ansible/inventory.ini deploy/ansible/playbook.yaml \
   -e bundle_src=. -e hotel_config=deploy/config/hotel.json
 
@@ -50,7 +52,8 @@ DB_PASSWORD=<per-sale secret> ADMIN_BOOT_SECRET=<per-sale secret> \
 # Idempotent: the same set yields the same values, so upgrades
 # re-apply reproducibly. Verifies the hotel's identity and standard
 # times are in effect via GetHotelConfig.
-DB_PASSWORD=<per-sale secret> ADMIN_BOOT_SECRET=<per-sale secret> \
+DB_PASSWORD=<per-sale secret> ADMIN_TOKEN_KEY=<per-sale secret> \
+  ADMIN_BOOT_SECRET=<per-sale secret> \
   script/apply-hotel-config.sh --config deploy/config/hotel.json
 ```
 
