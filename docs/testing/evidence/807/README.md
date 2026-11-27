@@ -104,6 +104,29 @@ comments naming #807 are gone. Because this PR changes the workflow,
 the `changes` job runs the full matrix (including `admin`) on it; later
 Admin-only PRs select the Admin entry through `NODE_ADMIN`.
 
+## Observed on PR #814
+
+[PR #814](https://github.com/MingChen1501/hotel-mgmt/pull/814) at
+`b70c275` ran the full matrix (the workflow change selects every
+`postgres-parity` module) in CI run `46072273883`, with all 24 checks
+green:
+
+| Job | Result |
+|---|---|
+| `postgres-parity (admin, node)` (`140751832869`) | `# tests 93`, `# pass 93`, `# fail 0`, `# skipped 0`; the guard's own summary `node: tests=93 passed=93 failed=0 skipped=0 postgres_suites=2` |
+| `node-build (admin)` (`140751832789`) | `# tests 84`, `# pass 83`, `# fail 0`, `# skipped 1` (the Postgres suite's own skip guard, `TEST_PG_URL` unset) |
+
+The two configurations therefore stay distinct. With `TEST_PG_URL`
+exported — the parity job sets it in its `env` block — any skipped test
+or suite, a run that executes zero cases, or a run with no
+Postgres-named suite fails the job, so a green `admin` entry proves the
+Postgres store ran instead of being skipped. With `TEST_PG_URL` unset,
+the ordinary `npm test` path keeps the one suite-level skip and stays
+green, and the parity job does not run at all. A later Admin-only PR
+selects just the Admin entry through `NODE_ADMIN`.
+
+Takeover record: dev-takeover (AO session hotel-mgmt-1360).
+
 No migration, message, contract enum, or unrelated Admin behaviour
 changed.
 
