@@ -554,9 +554,9 @@ jobs:
         run: |
           set -euo pipefail
           if [ "${{ matrix.lang }}" = "go" ]; then
-            files=$(ls migrations/*.up.sql)
+            files=$(ls migrations/*.up.sql | sort -V)
           else
-            files=$(ls migrations/*.sql)
+            files=$(ls migrations/*.sql | sort -V)
           fi
           for f in $files; do
             echo "Applying $f"
@@ -598,7 +598,7 @@ jobs:
               | tee "$RUNNER_TEMP/pg-parity.tap"
           fi
 
-      - name: Fail on a silently skipped Postgres suite
+      - name: Fail on a silently skipped Postgres suite (suite or test level)
         if: always()
         run: |
           python3 - "${{ matrix.lang }}" "$RUNNER_TEMP" <<'PY'
@@ -614,6 +614,7 @@ jobs:
                   print("::error::the Go test step produced no JSON output")
                   sys.exit(1)
               passed = skipped = failed = 0
+              postgres_passed = 0
               with open(path, encoding="utf-8", errors="replace") as fh:
                   for line in fh:
                       line = line.strip()
@@ -628,6 +629,8 @@ jobs:
                       action = event.get("Action")
                       if action == "pass":
                           passed += 1
+                          if "postgres" in event["Test"].lower():
+                              postgres_passed += 1
                       elif action == "skip":
                           skipped += 1
                       elif action == "fail":
@@ -648,11 +651,33 @@ jobs:
               tests = count("tests")
               passed = count("pass")
               failed = count("fail")
-              skipped = count("skipped")
+              # A skipped `describe(..., { skip })` is reported as a
+              # suite line (`ok N - <name> # SKIP`), not as a test:
+              # Node's TAP summary leaves it out of `# skipped` and
+              # out of `# tests`. Count those directives directly so
+              # the whole Postgres block cannot silently disappear.
+              skip_directives = re.findall(
+                  r"^\s*(?:not )?ok \d+ - .*# SKIP\s*$",
+                  text,
+                  re.MULTILINE,
+              )
+              skipped = max(count("skipped"), len(skip_directives))
+              # The module also runs in-memory suites, so a non-zero
+              # total does not prove the Postgres half ran. Require at
+              # least one executed top-level suite whose name names
+              # Postgres (they all do, e.g. "rooms postgres store").
+              postgres_passed = len(
+                  re.findall(
+                      r"^(?:ok|not ok) \d+ - .*postgres.*$",
+                      text,
+                      re.MULTILINE | re.IGNORECASE,
+                  )
+              )
 
           line = (
               f"{lang}: tests={tests} passed={passed} "
-              f"failed={failed} skipped={skipped}"
+              f"failed={failed} skipped={skipped} "
+              f"postgres_suites={postgres_passed}"
           )
           print(line)
           summary = os.environ.get("GITHUB_STEP_SUMMARY")
@@ -671,6 +696,12 @@ jobs:
               sys.exit(1)
           if passed == 0:
               print(f"::error::{lang} parity suite executed zero cases")
+              sys.exit(1)
+          if postgres_passed == 0:
+              print(
+                  f"::error::{lang} parity suite executed no Postgres-named "
+                  "case; check that the Postgres suite still exists and ran"
+              )
               sys.exit(1)
           PY
 
