@@ -974,7 +974,10 @@ FR/NFR wording is owned by `business-analyst` and guard mapping by
   first write is refused as an unknown plan, then the screen says so
   and offers the create action, that action posts `UpsertRatePlan`
   with the name only and retries the pending nights, and no plan is
-  created or overwritten without it. Traces to: US-RTE-1, US-ADM-4;
+  created or overwritten without it; a create the store did not perform
+  is reported in the screen's existing failure sentence and retries
+  nothing, never read as a created plan (`AC-PLN-2`, section 33).
+  Traces to: US-RTE-1, US-ADM-4;
   FR-RTE-1, FR-ADM-4.
 - AC-MANAGE-8 — Given a multi-night save that fails at one night, when
   the failure is reported, then the nights already written stay
@@ -4131,7 +4134,9 @@ Decisions (five parts):
   request omits it) are unchanged, and the desk keeps its existing
   rendering: a plan name above the bound reads as the Manage panel's
   existing plain failure sentence, and no control, route, label, state,
-  catalogue key, or print rule changes.
+  catalogue key, or print rule changes; a failed plan write stores
+  nothing and a healthy one answers as today (`AC-PLN-1`, `AC-PLN-3`,
+  section 33).
   Traces to: US-RTE-1, US-ADM-4; FR-RTE-1, NFR-I18N-1.
 
 Pointers: `AC-RTE-2` gains the `AC-RTE-8` pointer (the availability
@@ -4370,6 +4375,180 @@ meaning; `features` stays unbounded, the state machine and the release
 path are untouched, no contract shape, schema, migration, or status set
 changes, and the existing Rooms guards and the #630 body-ceiling guards
 keep their behaviour.
+
+## 33. A failed rate-plan write is refused, never reported as success (Refs #767)
+
+Product-owner scope decision and acceptance conditions for the Rates
+plan-upsert fault that #633 recorded as a residual risk and explicitly
+left unfixed (LLD section 37.6, `docs/architecture/lld.md:9548-9554`):
+`Postgres.UpsertRatePlan` discards the driver error, returns the
+request-shaped plan, and the handler answers `200` with an empty `id`
+while nothing was stored and no `rate-plan-changed` event was emitted.
+The desk — or any integration script — then believes the plan exists,
+and the next `UpsertRatePrice` for that name answers `NOT_FOUND`.
+
+As-built validation (read-only code trace at this spec head):
+
+- **The Postgres plan upsert swallows its only write error.**
+  `UpsertRatePlan` builds the request-shaped plan
+  (`services/rates/internal/store/postgres.go:88`), runs the
+  insert/update with `RETURNING id, default_units` (`:95-103`), and on a
+  driver error returns that plan with a `nil` error (`:104-110`, the
+  `return plan, nil` at `:109`). `plan.ID` therefore stays the zero
+  string, the `rate-plan-changed` outbox write never runs (`:118`), and
+  the caller receives a record the database never accepted.
+- **The handler cannot tell the difference.** It answers `200` with the
+  returned record's `id`, `name`, and `description`
+  (`services/rates/internal/handler/handler.go:226-231`), so the success
+  envelope carries `id: ""` — a value the operation's own response
+  schema forbids, because it requires `id` as a UUID
+  (`contracts/http/UpsertRatePlan.json`, response
+  `required: ["id", "name"]`).
+- **Every sibling write already refuses.** `storeFailure()`
+  (`services/rates/internal/store/postgres.go:58-60`) is the service's
+  answer for a driver failure — HTTP 500, the plain
+  `rates.store.unavailable` sentence, empty `details` — and
+  `UpsertRatePrice` maps its failed plan lookup (`:135`) and its failed
+  insert (`:150`) to it. The plan upsert is the one write path that
+  answers a fabricated success instead.
+- **The in-memory store cannot show the fault, and already carries the
+  refused shape.** `Store.UpsertRatePlan`
+  (`services/rates/internal/store/store.go:270-287`) writes under its
+  mutex and emits the event only after the write, with no driver to
+  fail; both stores already return `(*RatePlan, *OpError)` (interface
+  at `services/rates/internal/store/store.go:243`), so the signature
+  #633 introduced is in place and only the Postgres error branch
+  disagrees.
+- **The desk follows whatever answer it is given.** The Manage screen's
+  two plan-create paths (`app/src/views/ManageView.vue:1816-1840` for
+  the read-path create, `:1852-1876` for the explicit one) treat a
+  resolved `UpsertRatePlan` as created — the read path stores the plan
+  name and re-reads prices (`:1838`) — and render the existing generic
+  failure sentence on a rejected write (`:1833`, `:1869`). A phantom
+  `200` therefore advances the desk to price writes that can only fail,
+  while a real failure lands in the failure sentence the screen already
+  carries.
+- **The store-failure token is a pre-existing Rates-wide question.**
+  `storeFailure()` answers `code: "VALIDATION_FAILED"` at status 500,
+  while `BR-59` (`docs/requirements/business-rules.md:119`) and
+  `docs/technical/error-handling.md` section 1 reserve
+  `INTERNAL_ERROR` for a store or driver failure; `FR-ERR-1` words that
+  rule for the four Node services only
+  (`docs/requirements/mvp-requirements.md:7683`), so the Go services'
+  store-failure token is outside #627's decided scope. Changing it would
+  move every Rates write's failure answer, not just this branch, so this
+  section keeps the existing envelope and records the alignment as a
+  separate change (the re-tier trigger below).
+
+Tier T2: one existing operation changes a caller-visible answer — a
+failure where a fabricated success was returned — while no operation,
+route, request or response field, status set, schema table, migration,
+lifecycle state, desk screen, control, catalogue key, or print rule is
+added or removed. The failure reuses the service's existing
+store-failure answer (HTTP 500, the `rates.store.unavailable` sentence,
+empty `details`, the code token that helper carries today), so no new
+code, field, or route is added. No UI contract section applies: the
+manage screen's plan-create paths already render their existing plain
+failure sentence on a rejected write and keep every control, state
+name, layout, and copy string; the only reader-visible change is that a
+plan the store did not write no longer appears to have been created.
+
+Decisions (three parts):
+
+1. **A driver failure is a failure, not a plan.** When the plan
+   insert/update or its `RETURNING` scan fails for any reason — a closed
+   pool, a cancelled context, a revoked privilege, a missing schema —
+   `Postgres.UpsertRatePlan` returns `(nil, storeFailure())`, exactly as
+   `UpsertRatePrice` answers the same class of failure, and never
+   returns a `RatePlan`. No request-shaped plan, empty `id`, or partial
+   record reaches the caller, and the error is never discarded.
+2. **The answer is the existing store-failure envelope, and it is never
+   a success.** The handler answers the operation's existing failure
+   answer — HTTP 500, the plain `rates.store.unavailable` sentence,
+   empty `details`, and a fresh `traceId` — and never a 2xx envelope.
+   The failure class is "the store could not perform the write", not a
+   refusal of the caller's input: the request is valid and a retry after
+   the database recovers creates the plan normally. Nothing is written
+   (no plan row, no outbox row), so no phantom plan can be read, priced,
+   or quoted between the failure and the retry. No new code token,
+   field, status mapping, route, or catalogue sentence is introduced,
+   and the token `storeFailure()` carries today does not move here: a
+   driver failure must not borrow `VALIDATION_FAILED`'s meaning per
+   `BR-59`, but aligning the Go services' store-failure token is one
+   change across every Rates `storeFailure()` call site, not this
+   branch, and is the section's re-tier trigger rather than a silent
+   widening.
+3. **The success path is untouched.** A healthy write stores the same
+   row — name as the key, the sent description, and on an update the
+   stored `defaultUnits` when the request omits it — emits the same one
+   `rate-plan-changed` event, and answers the same `200` body with the
+   stored `id`, `name`, and `description`. The in-memory store, the
+   `Repository` interface, and the handler's success branch do not
+   change.
+
+- AC-PLN-1 — Given a Rates Postgres store whose plan write cannot
+  succeed (a closed pool, a cancelled context, or a database where the
+  insert or its `RETURNING` scan fails), when `UpsertRatePlan` is
+  called with a valid name and description, then it returns a `nil`
+  plan and a non-nil `*OpError` carrying the service's existing
+  store-failure answer (the `rates.store.unavailable` sentence, empty
+  `details`, a fresh `traceId`) — the same answer `UpsertRatePrice`
+  gives on the same class of failure — and it never returns the
+  request-shaped plan or a record with an empty `id`; no
+  `rates.rate_plans` row is created or changed and no
+  `rate-plan-changed` row joins `rates.outbox`. Traces to: US-RTE-1,
+  US-ADM-4; FR-RTE-1; BR-59.
+- AC-PLN-2 — Given the same failing database, when
+  `POST /v1/rates/UpsertRatePlan` runs with a valid body, then the
+  handler answers the store-failure status (HTTP 500) with the shared
+  envelope — the `rates.store.unavailable` sentence, empty `details`,
+  and a `traceId` — and never `200` with an empty or fabricated `id`,
+  so no client is told a plan exists; the Manage screen's plan-create
+  action shows its existing plain failure sentence and does not advance
+  to the nightly-price write, and a retry against a healthy database
+  then creates the plan normally. Traces to: US-RTE-1, US-ADM-4;
+  FR-RTE-1, FR-ADM-4; BR-59.
+- AC-PLN-3 — Given a healthy database, when the same plan write runs as
+  a create and as an update, then the stored row's values, the single
+  `rate-plan-changed` outbox row, and the `200` response body (`id`,
+  `name`, `description`) are identical to today's, an update omitting
+  `defaultUnits` keeps the stored one, and the in-memory store answers
+  exactly as it does now; no contract, schema, migration, status set,
+  catalogue key, desk control, or print rule moves. Traces to:
+  US-RTE-1, US-ADM-4; FR-RTE-1, FR-RTE-10.
+- AC-PLN-4 — Given the Rates guard suite, when the plan write's driver
+  failure is exercised (a closed pool, a cancelled context, or a stubbed
+  `*sql.DB`), then the guard asserts the failure answer of AC-PLN-1, the
+  absence of a success body per AC-PLN-2, and the absence of an outbox
+  row, and it fails if the error is swallowed again; `go test ./...` in
+  `services/rates` stays green with and without `TEST_PG_URL`, and the
+  existing healthy-path plan guards keep passing. Traces to:
+  `AC-PLN-1`..`AC-PLN-3`; FR-RTE-1.
+
+Pointers: `AC-MANAGE-7` gains the `AC-PLN-2` pointer (the create
+action's failed plan write is a real failure the screen reports, never a
+phantom success); `AC-RTE-10` gains the `AC-PLN-1` and `AC-PLN-3`
+pointers (a failed plan write stores nothing and a healthy one answers
+as today); each condition stands as written otherwise.
+
+Rollout and rollback: one Postgres error branch in one existing
+operation, with no schema, migration, backfill, or stored-shape change.
+A plan the fault previously "created" was never stored, so there is no
+row to migrate or repair — the desk's remembered plan name is a browser
+value and stays local. The desk needs no coordinated change: its
+plan-create paths already report a failed write in the failure sentence
+they carry. Rollback is reverting the single implementation PR, which
+returns the discarded error, the fabricated success, and the skipped
+event.
+
+Done when: a failing Postgres plan write answers the store-failure
+envelope at HTTP 500 and never a `200` with an empty `id`, stores no
+row, and emits no `rate-plan-changed` event, in both stores' answers;
+a healthy create and update keep their stored values, event, and
+response body byte-identical; a guard pins the failure path and fails
+when the error is swallowed again; and `go test ./...` in
+`services/rates`, the existing guards, the contracts, and the desk's
+plan-create path keep their behaviour.
 
 ## Traceability summary
 
@@ -4949,3 +5128,48 @@ is the domain code for this family.
 
 <!-- ao-role: product-owner -->
 Role: product-owner · AO session hotel-mgmt-1259
+
+Plan-write failure addendum (Refs #767): four further conditions
+(AC-PLN-1..AC-PLN-4, section 33) cover the Rates plan-upsert fault that
+#633 recorded as a residual risk and deliberately left unfixed (LLD
+section 37.6): `Postgres.UpsertRatePlan` discards the driver error and
+returns the request-shaped plan
+(`services/rates/internal/store/postgres.go:104-110`), so the handler
+answers `200` with an empty `id`
+(`services/rates/internal/handler/handler.go:226-231`) while nothing was
+stored and no `rate-plan-changed` event was emitted — a success the
+operation's own response schema forbids, because it requires a UUID
+`id` (`contracts/http/UpsertRatePlan.json`). A failing plan write now
+returns `(nil, storeFailure())`, the same answer `UpsertRatePrice`
+already gives on a driver failure, so the handler answers the existing
+store-failure envelope at HTTP 500 and never a success envelope, nothing
+is written and no event is emitted, and a retry against a healthy
+database creates the plan normally; the healthy create and update paths
+keep their stored values, their one `rate-plan-changed` event, and their
+`200` body unchanged, and the in-memory store and the `Repository`
+interface do not move. The failure class is the store failure, not a
+caller refusal: the existing token `storeFailure()` carries today is
+kept, and aligning it with `INTERNAL_ERROR` (`BR-59`, whose `FR-ERR-1`
+wording covers the four Node services only) is a separate decision
+across every Rates `storeFailure()` call site, recorded in R-26 as the
+re-tier trigger rather than widened here. No operation, route, request
+or response field, status set, schema table, migration, desk screen,
+control, catalogue key, or print rule is added or removed, so the tier
+stays T2 and no UI contract section applies; the Manage screen's
+plan-create paths already report a failed write in their existing
+failure sentence. They trace to the existing `AC-MANAGE-7`,
+`AC-RTE-10`, `US-RTE-1`, `US-ADM-4`, `FR-RTE-1`, `FR-RTE-10`, and
+`BR-59`; no story, FR, or business rule is added or reworded here — the
+requirements-side FR/NFR sentence and the plan-write failure rule are
+the `business-analyst` handoff (`docs/requirements/mvp-requirements.md`
+section 41, BR-71) — the LLD delta, the per-flow failure diagram, the
+Rates service-design error-mapping row, and the contract error-list line
+are the `architect` handoff (HLD section 32, LLD section 40) — and the
+guard mapping is the `qa-lead` handoff
+(`docs/testing/traceability-matrix.md` section 33). The conditions
+written earlier hold as written, the 43-condition MVP count above stands
+unchanged, and every earlier section keeps its behaviour. `PLN` is the
+domain code for this family.
+
+<!-- ao-role: product-owner -->
+Role: product-owner · AO session hotel-mgmt-1286
