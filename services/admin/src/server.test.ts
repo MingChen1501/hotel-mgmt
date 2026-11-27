@@ -1,10 +1,20 @@
 import assert from "node:assert/strict";
+import { spawn, type ChildProcess } from "node:child_process";
 import { request as httpRequest } from "node:http";
+import { connect as netConnect, createServer as createNetServer } from "node:net";
+import { join } from "node:path";
 import { describe, it } from "node:test";
 import { createServiceServer, MAX_BODY_BYTES } from "./server.js";
 import { HttpError } from "./errors.js";
 import { msg } from "./messages.js";
-import { type AdminStoreAPI, AdminStore } from "./store.js";
+import { type AdminStoreAPI, AdminStore, verifySessionToken } from "./store.js";
+import {
+  BOOT_SECRET_VARIABLE,
+  DEV_TOKEN_KEY,
+  PUBLISHED_DEFAULTS,
+  TOKEN_KEY_VARIABLE,
+  bootRefusalLine,
+} from "./bootConfig.js";
 
 async function request(
   port: number,
@@ -1504,5 +1514,231 @@ describe("config write shapes (#639)", () => {
         "a request that omits timezone leaves it unchanged",
       );
     });
+  });
+});
+
+// BOOT1-BOOT3 (#638, BR-70): the real entry point in a child process.
+// A refused boot is asserted on the process outcome (exit code and the
+// single stderr line) and on what did not happen: no listen and no
+// /healthz answer. The controls prove a provisioned boot still serves.
+const BOOT_LINE_TIMEOUT_MS = 10000;
+
+function childEnv(overrides: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env };
+  for (const name of [
+    "ADMIN_TOKEN_KEY",
+    "ADMIN_BOOT_SECRET",
+    "ADMIN_BOOT_IDENTITY",
+    "ADMIN_DEV_MODE",
+    "DATABASE_URL",
+    "PORT",
+  ]) {
+    delete env[name];
+  }
+  return { ...env, ...overrides };
+}
+
+async function freePort(): Promise<number> {
+  const server = createNetServer();
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const port = (server.address() as { port: number }).port;
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+  return port;
+}
+
+interface BootProcess {
+  child: ChildProcess;
+  stdout: () => string;
+  stderr: () => string;
+  exited: Promise<number | null>;
+}
+
+function startBoot(env: NodeJS.ProcessEnv): BootProcess {
+  const child = spawn(process.execPath, [join(__dirname, "index.js")], {
+    env,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let out = "";
+  let err = "";
+  child.stdout?.on("data", (chunk: Buffer) => {
+    out += chunk.toString("utf8");
+  });
+  child.stderr?.on("data", (chunk: Buffer) => {
+    err += chunk.toString("utf8");
+  });
+  const exited = new Promise<number | null>((resolve) => {
+    child.once("exit", (code) => resolve(code));
+  });
+  return { child, stdout: () => out, stderr: () => err, exited };
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`timed out after ${ms} ms`)), ms);
+    timer.unref();
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err: unknown) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
+
+async function assertPortClosed(port: number): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const socket = netConnect({ host: "127.0.0.1", port });
+    socket.setTimeout(1000);
+    socket.once("connect", () => {
+      socket.destroy();
+      reject(new Error(`port ${port} accepted a connection on a refused boot`));
+    });
+    socket.once("error", () => resolve());
+    socket.once("timeout", () => {
+      socket.destroy();
+      resolve();
+    });
+  });
+}
+
+async function waitForHealth(port: number): Promise<unknown> {
+  const deadline = Date.now() + BOOT_LINE_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/healthz`);
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch {
+      // not listening yet
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error(`/healthz never answered on port ${port}`);
+}
+
+async function stopBoot(proc: BootProcess): Promise<void> {
+  proc.child.kill("SIGTERM");
+  await withTimeout(proc.exited, BOOT_LINE_TIMEOUT_MS);
+}
+
+async function assertRefusedBoot(env: NodeJS.ProcessEnv, variable: string, forbidden: string[] = []): Promise<void> {
+  const port = await freePort();
+  const proc = startBoot({ ...env, PORT: String(port) });
+  const code = await withTimeout(proc.exited, BOOT_LINE_TIMEOUT_MS);
+  assert.equal(code, 1, `${variable} refused with exit code 1`);
+  assert.equal(proc.stdout(), "", "a refused boot writes nothing to stdout");
+  const lines = proc.stderr().trimEnd().split("\n");
+  assert.equal(lines.length, 1, "a refused boot writes exactly one stderr line");
+  assert.equal(lines[0], bootRefusalLine(variable));
+  for (const value of forbidden) {
+    assert.ok(!proc.stderr().includes(value), `the refusal line never echoes ${value}`);
+  }
+  await assertPortClosed(port);
+}
+
+describe("fail-closed boot in the real entry point (BOOT1, BOOT2)", () => {
+  it("refuses an unset, empty, or denylisted ADMIN_TOKEN_KEY before the port opens (BOOT1)", async () => {
+    const bootSecret = "proc-boot-secret-7q2x";
+    await assertRefusedBoot(
+      childEnv({ ADMIN_BOOT_SECRET: bootSecret }),
+      TOKEN_KEY_VARIABLE,
+      [bootSecret],
+    );
+    await assertRefusedBoot(
+      childEnv({ ADMIN_BOOT_SECRET: bootSecret, ADMIN_TOKEN_KEY: "" }),
+      TOKEN_KEY_VARIABLE,
+      [bootSecret],
+    );
+    for (const value of PUBLISHED_DEFAULTS) {
+      await assertRefusedBoot(
+        childEnv({ ADMIN_BOOT_SECRET: bootSecret, ADMIN_TOKEN_KEY: value }),
+        TOKEN_KEY_VARIABLE,
+        [value],
+      );
+    }
+  });
+
+  it("refuses an unset, empty, or denylisted ADMIN_BOOT_SECRET and seeds no owner (BOOT2)", async () => {
+    const tokenKey = "proc-signing-key-3f8v";
+    await assertRefusedBoot(childEnv({ ADMIN_TOKEN_KEY: tokenKey }), BOOT_SECRET_VARIABLE);
+    await assertRefusedBoot(
+      childEnv({ ADMIN_TOKEN_KEY: tokenKey, ADMIN_BOOT_SECRET: "" }),
+      BOOT_SECRET_VARIABLE,
+    );
+    for (const value of PUBLISHED_DEFAULTS) {
+      await assertRefusedBoot(
+        childEnv({ ADMIN_TOKEN_KEY: tokenKey, ADMIN_BOOT_SECRET: value }),
+        BOOT_SECRET_VARIABLE,
+        [value],
+      );
+    }
+  });
+
+  it("checks ADMIN_TOKEN_KEY first when both are unusable", async () => {
+    await assertRefusedBoot(childEnv({}), TOKEN_KEY_VARIABLE);
+  });
+
+  it("boots the provisioned pair, answers /healthz, and signs with that key (control)", async () => {
+    const port = await freePort();
+    const tokenKey = "proc-control-signing-key";
+    const bootSecret = "proc-control-boot-secret";
+    const proc = startBoot(
+      childEnv({ PORT: String(port), ADMIN_TOKEN_KEY: tokenKey, ADMIN_BOOT_SECRET: bootSecret }),
+    );
+    try {
+      assert.deepEqual(await waitForHealth(port), { service: "admin", status: "ok" });
+      const signin = await request(port, "POST", "/v1/admin/SignIn", {
+        signinIdentity: "owner",
+        secret: bootSecret,
+      });
+      assert.equal(signin.status, 200);
+      const token = (signin.body as { token: string }).token;
+      assert.notEqual(verifySessionToken(tokenKey, token), null);
+      assert.equal(verifySessionToken(DEV_TOKEN_KEY, token), null, "the dev key does not verify the token");
+    } finally {
+      await stopBoot(proc);
+    }
+  });
+});
+
+describe("the dev switch in the real entry point (BOOT3)", () => {
+  it("boots on ADMIN_DEV_MODE=1, warns once, and uses both dev fallbacks", async () => {
+    const port = await freePort();
+    const proc = startBoot(childEnv({ PORT: String(port), ADMIN_DEV_MODE: "1" }));
+    try {
+      assert.deepEqual(await waitForHealth(port), { service: "admin", status: "ok" });
+      const stderr = proc.stderr();
+      const lines = stderr.trimEnd().split("\n");
+      assert.equal(lines.length, 1, "the dev path logs exactly one warning line");
+      assert.match(lines[0] ?? "", /ADMIN_DEV_MODE=1/);
+      assert.match(lines[0] ?? "", /dev session key/);
+      assert.match(lines[0] ?? "", /dev boot secret/);
+
+      const signin = await request(port, "POST", "/v1/admin/SignIn", {
+        signinIdentity: "owner",
+        secret: "change-me",
+      });
+      assert.equal(signin.status, 200);
+      const token = (signin.body as { token: string }).token;
+      assert.notEqual(verifySessionToken(DEV_TOKEN_KEY, token), null);
+    } finally {
+      await stopBoot(proc);
+    }
+  });
+
+  it("still refuses when the switch is absent, empty, or not exactly 1", async () => {
+    const bootSecret = "proc-switch-off-secret";
+    for (const value of [undefined, "", "0", "01", "true", "yes"]) {
+      const env = childEnv({ ADMIN_BOOT_SECRET: bootSecret });
+      if (value !== undefined) {
+        env["ADMIN_DEV_MODE"] = value;
+      }
+      await assertRefusedBoot(env, TOKEN_KEY_VARIABLE, [bootSecret]);
+    }
   });
 });

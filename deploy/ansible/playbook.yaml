@@ -34,13 +34,15 @@
           - "{{ hotel_config_src }}"
       changed_when: false
 
-    - name: Fail closed while database or boot secrets are still dev defaults
+    - name: Fail closed while database or Admin secrets are still dev defaults
       delegate_to: localhost
       ansible.builtin.fail:
-        msg: "Refusing install: DB_PASSWORD or ADMIN_BOOT_SECRET still holds a dev default. Provision the per-sale secrets first (docs/devops/deployment.md section 2; audit S3)."
+        msg: "Refusing install: DB_PASSWORD, ADMIN_BOOT_SECRET, or ADMIN_TOKEN_KEY is missing or still a dev default, or ADMIN_DEV_MODE is set. Provision the per-sale secrets and remove the dev switch first (docs/devops/deployment.md section 2; audit S3; Refs #638)."
       when: >-
-        lookup('env', 'DB_PASSWORD') in ['', 'change-me', 'change-me-dev-only']
-        or lookup('env', 'ADMIN_BOOT_SECRET') in ['', 'change-me', 'change-me-dev-only']
+        lookup('env', 'DB_PASSWORD') in ['', 'change-me', 'change-me-dev-only', 'password', 'hotel', 'hotel-dev-only']
+        or lookup('env', 'ADMIN_BOOT_SECRET') in ['', 'change-me', 'change-me-dev-only', 'password', 'hotel', 'hotel-dev-only']
+        or lookup('env', 'ADMIN_TOKEN_KEY') in ['', 'change-me', 'change-me-dev-only', 'password', 'hotel', 'hotel-dev-only']
+        or ((lookup('env', 'ADMIN_DEV_MODE') | default('', true)) | length > 0)
 
     - name: Create install directories
       ansible.builtin.file:

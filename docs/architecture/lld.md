@@ -9976,71 +9976,65 @@ section records only the architect-owned delta: where the check sits
 (39.4), the configuration and verification plan (39.5), the residual
 risks with the re-tier trigger (39.6), and maintain-with-code (39.7).
 
-As found at the pre-change head (`ff081e8`, read-only), with
-`.github/workflows/ci.yml` re-read at the landing base after #788
-(`1eab7cb`) inserted 35 lines:
+As built at this change (the pre-change fail-open expressions are kept
+as history in the release note and D-44, not cited as live pins here):
 
-- **Both store constructors carry the signing-key fallback.**
-  `new AdminStore()` computes `this.key = tokenKey ?? process.env["ADMIN_TOKEN_KEY"] ?? "dev-only-change-me"`
-  (`services/admin/src/store.ts:234`), and `PostgresAdminStore` repeats
-  the same expression (`services/admin/src/pgstore.ts:72`). The key is
-  load-bearing: `signSessionToken` and `verifySessionToken` HMAC with it
-  (`store.ts:79-98`), and every authenticated call verifies through them
-  (`store.ts:320-322`, `pgstore.ts:163-165`).
-- **A third keyless construction site exists.** `createServiceServer`
-  declares `store: AdminStoreAPI = new AdminStore()`
-  (`services/admin/src/server.ts:97`), so a caller that omits the store
-  builds one with no key at all. No current caller omits it, but the
-  default is a compiled-in path to the dev key that a future caller could
-  reach.
-- **The boot seed carries the owner-secret fallback.**
-  `bootStoreFromEnvironment` reads `ADMIN_BOOT_IDENTITY` (default
-  `owner`) and `ADMIN_BOOT_SECRET` (default `change-me`) and seeds that
-  account (`services/admin/src/server.ts:119-123`), storing only the
-  secret's hash (`store.ts:262-281`). A boot on the default therefore
-  creates a live owner whose password is printed in this repository.
-- **Nothing in the bundle provisions the signing key.**
-  `deploy/compose.yaml:141-149` passes `ADMIN_BOOT_IDENTITY` and
-  `ADMIN_BOOT_SECRET` with the fallback `change-me-dev-only` and never
-  `ADMIN_TOKEN_KEY`; the three CI e2e jobs set the boot secret only
-  (`.github/workflows/ci.yml:500`, `:575`, `:676`); no script, Ansible
-  task, or deployment document names the key.
-- **Both production gates check two secrets, not three.**
-  `script/preflight.sh:56-61` owns the five-value denylist
+- **Both store constructors take the signing key as a required
+  argument.** `new AdminStore(boot.tokenKey)` stores it at
+  `services/admin/src/store.ts:233-234`, and `PostgresAdminStore` at
+  `services/admin/src/pgstore.ts:68-73`; neither reads the environment
+  and neither carries a fallback literal. The key is load-bearing:
+  `signSessionToken` and `verifySessionToken` HMAC with it
+  (`services/admin/src/store.ts:79-98`), and every authenticated call verifies through them
+  (`services/admin/src/store.ts:320-322`, `services/admin/src/pgstore.ts:163-165`).
+- **One resolver owns both secrets.** `resolveBootConfig`
+  (`services/admin/src/bootConfig.ts:91`) reads the environment once and
+  either returns the whole boot configuration or throws
+  `BootConfigError` (`:46`) with the fixed one-line refusal (`:56`);
+  no other module reads `ADMIN_TOKEN_KEY` or `ADMIN_BOOT_SECRET`.
+- **The boot seed takes the resolved values.** `bootStoreFromEnvironment`
+  (`services/admin/src/server.ts:119-124`) receives the identity and
+  secret from the resolver and seeds that account, storing only the
+  secret's hash (`services/admin/src/store.ts:262-281`). No boot default exists on this
+  path.
+- **The bundle provisions the key and the gates refuse the switch.**
+  `deploy/compose.yaml` passes both Admin secrets with a required
+  `:?` interpolation and never sets `ADMIN_DEV_MODE`; the three CI e2e
+  jobs set an explicit non-default `ADMIN_TOKEN_KEY` beside the boot
+  secret; `script/preflight.sh` owns the five-value denylist
   (`change-me`, `change-me-dev-only`, `password`, `hotel`,
-  `hotel-dev-only`) and `:63-73` applies it to `DB_PASSWORD` and
-  `ADMIN_BOOT_SECRET`; the Ansible pre-check applies its three-value
-  subset (`deploy/ansible/playbook.yaml:37-43`). Neither looks at the
-  signing key, so an unprovisioned key passes install and upgrade
-  silently.
-- **The refusal can precede every side effect.** `main` builds the
-  store, connects and applies the migrations, seeds the owner, and only
-  then listens (`services/admin/src/index.ts:16-38`); `PORT` is read at
-  module load (`:7`) with no side effect. A check at the top of `main`
-  therefore has nothing to undo and no port to close.
+  `hotel-dev-only`) and applies it to `DB_PASSWORD`, `ADMIN_TOKEN_KEY`,
+  and `ADMIN_BOOT_SECRET`; the Ansible pre-check mirrors the same five
+  values and refuses the switch.
+- **The refusal precedes every side effect.** `main`
+  (`services/admin/src/index.ts:17`) calls the resolver at `:25`, before
+  the store (`:38`), the pool and migrations (`:41-50`), the boot seed
+  (`:52`), and the listen (`:54-60`); `PORT` is read at module load
+  (`:8`) with no side effect. A refusal at the top of `main` therefore
+  has nothing to undo and no port to close.
 - **The suites never depend on the fallbacks.** Every Admin suite passes
   an explicit key or seeds the owner directly
   (`services/admin/src/server.test.ts:28-32`, `auth.test.ts:44-47`,
   `pgstore.test.ts:33-38`, `bodyBound.test.ts:112`,
   `migrate.test.ts:38-39`), so removing the fallbacks breaks no existing
-  assertion and the no-environment test path survives behind the switch.
+  assertion and the no-environment test path survives without the
+  switch.
 - **`NODE_ENV` cannot be the switch.** The production image sets
   `NODE_ENV=production` (`services/admin/Dockerfile:13`) and a local run
   does not, so a gate on it would either re-open the hole for a host that
-  forgets it or break the local path.
+  forgets it or break the local path; the resolver never reads it.
 
 ### 39.1 Where the check sits: one resolver at the top of `main`, before the store, every side effect, and the port
 
-As specified (the implementation PR lands it; the pins below are the
-pre-change head this spec cites and are refreshed at the merged head):
+As built:
 
-- **One resolver, one call site.** A new module-level function
-  `resolveBootConfig` in `services/admin/src/bootConfig.ts` reads the
-  environment once and returns the whole boot configuration —
-  `{ tokenKey, bootIdentity, bootSecret, devFallbacks }` — or throws one
-  `BootConfigError` carrying the unusable variable name. `main` calls it
-  as its first statement (`services/admin/src/index.ts:16`), before
-  `new AdminStore()`, before the `DATABASE_URL` branch, before
+- **One resolver, one call site.** `resolveBootConfig` in
+  `services/admin/src/bootConfig.ts` reads the environment once and
+  returns the whole boot configuration —
+  `{ tokenKey, bootIdentity, bootSecret, devMode, devFallbacks }` — or
+  throws one `BootConfigError` carrying the unusable variable name.
+  `main` calls it as its first statement (`services/admin/src/index.ts:25`),
+  before `new AdminStore()`, before the `DATABASE_URL` branch, before
   `applyAdminMigrations`, before `bootStoreFromEnvironment`, and before
   `listen`. Because the resolver is a pure function over a passed-in
   `ProcessEnv`, the guards can call it directly with a constructed
@@ -10049,15 +10043,17 @@ pre-change head this spec cites and are refreshed at the merged head):
 - **The compiled-in defaults are deleted, not shadowed.** Both store
   constructors take the key as a required argument and no longer read
   `ADMIN_TOKEN_KEY` or contain the `dev-only-change-me` literal
-  (`store.ts:234`, `pgstore.ts:72`); `main` passes
+  (`services/admin/src/store.ts:233-234`,
+  `services/admin/src/pgstore.ts:68-73`); `main` passes
   `boot.tokenKey` to whichever store it builds. The
-  `createServiceServer` default parameter goes
-  (`server.ts:97`, store required), so the module holds no keyless
-  construction path. `bootStoreFromEnvironment` stops reading the
-  environment and takes the resolved `identity` and `secret`
-  (`server.ts:119-123`), so the dev fallback values can only enter from
-  the resolver's switch branch. After the change,
-  `grep -rn ADMIN_TOKEN_KEY services/admin/src` names the resolver only.
+  `createServiceServer` default parameter is gone
+  (`services/admin/src/server.ts:97`, store required), so the module
+  holds no keyless construction path. `bootStoreFromEnvironment` stops
+  reading the environment and takes the resolved `identity` and `secret`
+  (`services/admin/src/server.ts:119-124`), so the dev fallback values can
+  only enter from the resolver's switch branch. After the change,
+  `grep -rn ADMIN_TOKEN_KEY services/admin/src` names the resolver and its
+  guards only; no other production module reads either secret.
 - **The refusal is a boot outcome, not an HTTP answer.** No request
   exists at that point, so the failure is not an envelope, status, or
   catalogue sentence: `main` catches `BootConfigError`, writes one plain
@@ -10084,7 +10080,7 @@ pre-change head this spec cites and are refreshed at the merged head):
 Two rules make the check deterministic: unset and empty (`""`) are the
 same failure, and the denylist is an exact, case-sensitive string match
 on the value as received — the same comparison
-`script/preflight.sh:56-61` performs. There is no trimming and no
+`script/preflight.sh:58-63` performs. There is no trimming and no
 minimum length or strength rule: a short but unpublished value is
 accepted, because inventing a strength policy is its own decision
 (product section 32, requirements 40.6). `ADMIN_BOOT_IDENTITY` keeps
@@ -10121,7 +10117,7 @@ The exact failure, fixed by this section:
   explicitly the dev path; the production gates refuse the switch itself
   (39.5), so it cannot travel into a sale.
 - **One list, two homes, one parity guard.** The service needs the five
-  values in code; `script/preflight.sh:56-61` holds them in shell, and
+  values in code; `script/preflight.sh:58-63` holds them in shell, and
   the two are separate build units (ADR-0001) with no import edge. The
   list is therefore a fixed code constant in `bootConfig.ts` with the
   same five exact values, and the bundle guard `BOOT5` (requirements
@@ -10144,18 +10140,18 @@ Boot with the two per-sale secrets provisioned — the happy path:
 
 ```mermaid
 flowchart TD
-    A[Bundle or local run starts dist/index.js, main at index.ts:16] --> B[resolveBootConfig at the top of main  new, bootConfig.ts]
+    A[Bundle or local run starts dist/index.js, main at services/admin/src/index.ts:17] --> B[resolveBootConfig at the top of main  new, bootConfig.ts]
     B --> C{ADMIN_DEV_MODE is exactly 1}
     C -->|no| D{ADMIN_TOKEN_KEY present, non-empty, not on the five-value denylist}
     D -->|yes| E{ADMIN_BOOT_SECRET present, non-empty, not on the denylist}
     E -->|yes| F[DATABASE_URL set]
-    F -->|yes| G[Connect, apply the migrations, select PostgresAdminStore with the resolved key  index.ts:18-30, pgstore.ts:72]
-    F -->|no| H[Build AdminStore with the resolved key  index.ts:17, store.ts:234]
-    G --> I[Seed the owner with the resolved identity and secret, hash only  server.ts:119-123, store.ts:262-281]
+    F -->|yes| G[Connect, apply the migrations, select PostgresAdminStore with the resolved key  services/admin/src/index.ts:41-50, services/admin/src/pgstore.ts:68-73]
+    F -->|no| H[Build AdminStore with the resolved key  services/admin/src/index.ts:38, services/admin/src/store.ts:233-234]
+    G --> I[Seed the owner with the resolved identity and secret, hash only  services/admin/src/server.ts:119-124, services/admin/src/store.ts:262-281]
     H --> I
-    I --> J[Listen on PORT  index.ts:32-38]
-    J --> K[Answer /healthz and serve every operation  server.ts:131-134]
-    K --> L[Sign and verify with the resolved key  store.ts:79-98, :320-322, pgstore.ts:163-165]
+    I --> J[Listen on PORT  services/admin/src/index.ts:54-60]
+    J --> K[Answer /healthz and serve every operation  services/admin/src/server.ts:133-136]
+    K --> L[Sign and verify with the resolved key  services/admin/src/store.ts:79-98, services/admin/src/store.ts:320-322, services/admin/src/pgstore.ts:160, services/admin/src/pgstore.ts:163-165]
     C -->|yes| M[Dev profile, third diagram below]
 ```
 
@@ -10192,27 +10188,28 @@ flowchart TD
 
 Edge trace for the three diagrams:
 
-- **Happy path.** The resolver call is the new first statement of
-  `main` (`services/admin/src/index.ts:16`); the store is built at
-  `index.ts:17` (in memory) or `index.ts:29` (Postgres, after the
-  migration chain at `:27-28`, which itself follows the pool at `:20`
-  and only runs when `DATABASE_URL` is set at `:13-18`); the seed runs
-  at `:31` through `bootStoreFromEnvironment`
-  (`services/admin/src/server.ts:119-123`, `store.ts:262-281`); the
-  listen is `:32-38`; `/healthz` is `server.ts:131-134`; signing and
-  verification are `store.ts:79-98`, `:589-590`, `:320-322`, and
-  `pgstore.ts:160`, `:163-165`.
+- **Happy path.** The resolver call is the first statement of `main`
+  (`services/admin/src/index.ts:25`); the store is built at `services/admin/src/index.ts:38`
+  (in memory) or `services/admin/src/index.ts:50` (Postgres, after the migration chain at
+  `:48`, which itself follows the pool at `:41` and only runs when
+  `DATABASE_URL` is set at `:13-15`); the seed runs at `:52` through
+  `bootStoreFromEnvironment` (`services/admin/src/server.ts:119-124`,
+  `services/admin/src/store.ts:262-281`); the server is built at `services/admin/src/index.ts:53` and the listen
+  is `services/admin/src/index.ts:54-60`; `/healthz` is `services/admin/src/server.ts:133-136`; signing and verification
+  are `services/admin/src/store.ts:79-98`,
+  `services/admin/src/store.ts:589-590`, `services/admin/src/store.ts:320-322`,
+  and `services/admin/src/pgstore.ts:160`, `services/admin/src/pgstore.ts:163-165`.
 - **Fail-closed path.** `BootConfigError` is raised before any of those
   edges runs; `main` writes the one line to stderr and sets
   `process.exitCode = 1`. Because no server is constructed, the
-  `/healthz` edge (`server.ts:131-134`) is unreachable and the
+  `/healthz` edge (`services/admin/src/server.ts:133-136`) is unreachable and the
   container's health check fails, which is the intended unhealthy
   signal.
-- **Dev profile.** The switch branch returns the same
-  `{ tokenKey, bootIdentity, bootSecret }` shape the happy path uses, so
-  every later edge is byte-identical; the only additional output is the
-  one warning line. `NODE_ENV` is never read by the resolver, which is
-  why `services/admin/Dockerfile:13` cannot open the fallbacks.
+- **Dev profile.** The switch branch returns the same boot-configuration
+  shape the happy path uses, so every later edge is byte-identical; the
+  only additional output is the one warning line. `NODE_ENV` is never
+  read by the resolver, which is why `services/admin/Dockerfile:13`
+  cannot open the fallbacks.
 
 Failure/rollback path: every refusal is decided by the resolver at the
 top of `main`, before the store, the pool, the migration chain, the
@@ -10290,7 +10287,7 @@ section 7 and the repo root):
   `BOOT5` (bundle assertions: compose passes the key with no Admin-secret
   fallback, both gates refuse a missing/default key and the switch, the
   e2e jobs carry explicit values, and the code denylist equals
-  `script/preflight.sh:56-61`). Requirements 40.5 owns the guard names
+  `script/preflight.sh:58-63`). Requirements 40.5 owns the guard names
   and `qa-lead` re-pins them at the merged head.
 - Repo root: `script/contract-check.sh` (no contract file changed and
   every fixture still resolves), `script/markdown-link-check.sh`,
@@ -10341,26 +10338,28 @@ section 7 and the repo root):
 
 ### 39.7 Maintain-with-code
 
-The implementation adds `services/admin/src/bootConfig.ts` with
-`resolveBootConfig` and `BootConfigError`, calls the resolver as the first
-statement of `main`, deletes both `dev-only-change-me` expressions and the
-`createServiceServer` default store, changes
-`bootStoreFromEnvironment` to take the resolved identity and secret,
-passes the resolved key to whichever store boots, and lands the bundle
-and pre-flight deltas of 39.5; it creates the guards `BOOT1`..`BOOT5` and
-refreshes this section's line pins plus the #638 operations delta in
-`docs/architecture/services/admin.md` section 7 and the threat-model
-sections named above to the as-built `file:line` at the merged head
-(`qa-lead` re-pins its traceability rows). `dev-peer-review` treats these
-as findings the same as any drifted spec: a fallback literal or
-`process.env` read of either secret left outside the resolver, a store or
-`createServiceServer` construction path without a key, a check placed
-after the store, a migration, the seed, or the listen, a failure that
-prints a secret value or a stack trace, an `ADMIN_DEV_MODE` comparison
-other than the exact string `1`, a denylist that diverges from
-`script/preflight.sh:56-61`, `NODE_ENV` deciding anything, a catalogue
-key or envelope token invented for a boot failure, a contract fixture
-change, or a stale pin.
+As built, `services/admin/src/bootConfig.ts` carries
+`resolveBootConfig` and `BootConfigError`, the resolver is the first
+statement of `main`, both `dev-only-change-me` expressions and the
+`createServiceServer` default store are deleted,
+`bootStoreFromEnvironment` takes the resolved identity and secret, the
+resolved key reaches whichever store boots, and the bundle and
+pre-flight deltas of 39.5 are in place; the guards `BOOT1`..`BOOT5` are
+created and this section's line pins plus the #638 operations delta in
+`docs/architecture/services/admin.md` section 7 are refreshed to the
+as-built `file:line` (`qa-lead` re-pins its traceability rows).
+`dev-peer-review` treats these as findings the same as any drifted
+spec: a fallback literal or `process.env` read of either secret left
+outside the resolver, a store or `createServiceServer` construction path
+without a key, a check placed after the store, a migration, the seed, or
+the listen, a failure that prints a secret value or a stack trace, an
+`ADMIN_DEV_MODE` comparison other than the exact string `1`, a denylist
+that diverges from `script/preflight.sh:58-63`, `NODE_ENV` deciding
+anything, a catalogue key or envelope token invented for a boot failure,
+a contract fixture change, or a stale pin.
+
+<!-- ao-role: dev -->
+Role: dev · AO session hotel-mgmt-1312
 
 ## 40. A failed Rates rate-plan write is refused, never reported as success (Refs #767)
 

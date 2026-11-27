@@ -230,8 +230,8 @@ export class AdminStore implements AdminStoreAPI {
   private readonly key: string;
   readonly schemaVersion = 1;
 
-  constructor(tokenKey?: string) {
-    this.key = tokenKey ?? process.env["ADMIN_TOKEN_KEY"] ?? "dev-only-change-me";
+  constructor(tokenKey: string) {
+    this.key = tokenKey;
     const seed: Record<string, unknown> = {
       name: "Skeleton Hotel",
       timezone: "UTC",

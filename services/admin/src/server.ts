@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { randomUUID } from "node:crypto";
 import { extractBearer } from "./auth.js";
 import { HttpError, errorEnvelope } from "./errors.js";
-import { type AdminStoreAPI, type AuthenticatedUser, AdminStore } from "./store.js";
+import { type AdminStoreAPI, type AuthenticatedUser } from "./store.js";
 import { msg } from "./messages.js";
 
 type Body = Record<string, unknown>;
@@ -94,7 +94,7 @@ function closeWithoutBody(res: ServerResponse): void {
 // every other path with the shared error envelope. It also declares
 // the four finite server bounds the bundle runs with (LLD section
 // 29.3, AC-BND-3), before any caller can listen on it.
-export function createServiceServer(service: string, store: AdminStoreAPI = new AdminStore()): Server {
+export function createServiceServer(service: string, store: AdminStoreAPI): Server {
   const server = createServer((req, res) => {
     void handleRequest(req, res, service, store).catch((err: unknown) => {
       if (err instanceof HttpError) {
@@ -116,9 +116,11 @@ export function createServiceServer(service: string, store: AdminStoreAPI = new 
   return server;
 }
 
-export async function bootStoreFromEnvironment(store: AdminStoreAPI): Promise<void> {
-  const identity = process.env["ADMIN_BOOT_IDENTITY"] ?? "owner";
-  const secret = process.env["ADMIN_BOOT_SECRET"] ?? "change-me";
+export async function bootStoreFromEnvironment(
+  store: AdminStoreAPI,
+  identity: string,
+  secret: string,
+): Promise<void> {
   await store.ensureBootUser(identity, secret);
 }
 

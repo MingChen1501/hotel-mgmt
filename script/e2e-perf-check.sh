@@ -13,7 +13,7 @@
 # run is a ci-e2e-variant: timings are printed and recorded, never
 # compared against single-host bounds.
 #
-# Usage: DB_PASSWORD=... ADMIN_BOOT_SECRET=... \
+# Usage: DB_PASSWORD=... ADMIN_BOOT_SECRET=... ADMIN_TOKEN_KEY=... \
 #   script/e2e-perf-check.sh [--base-url URL] [--admin-identity ID]
 # never prints secret values.
 #
@@ -40,6 +40,24 @@ done
 ADMIN_SECRET="${ADMIN_SECRET:-${ADMIN_BOOT_SECRET:-}}"
 if [[ -z "$ADMIN_SECRET" ]]; then
   echo "perf: FAIL: ADMIN_SECRET (or ADMIN_BOOT_SECRET) is unset." >&2
+  exit 1
+fi
+
+# The stack under test booted with the per-sale Admin signing key and
+# no dev switch (Refs #638); the same denylist as script/preflight.sh
+# keeps a perf run from recording against the published defaults.
+is_default_secret() {
+  case "$1" in
+    ""|"change-me"|"change-me-dev-only"|"password"|"hotel"|"hotel-dev-only") return 0 ;;
+    *) return 1 ;;
+  esac
+}
+if is_default_secret "${ADMIN_TOKEN_KEY:-}"; then
+  echo "perf: FAIL: ADMIN_TOKEN_KEY is unset or still a dev default; provision the per-sale Admin signing key (script/preflight.sh gates the same list)." >&2
+  exit 1
+fi
+if [[ -n "${ADMIN_DEV_MODE:-}" ]]; then
+  echo "perf: FAIL: ADMIN_DEV_MODE is set; the dev switch restores published Admin defaults and must not reach a perf run." >&2
   exit 1
 fi
 

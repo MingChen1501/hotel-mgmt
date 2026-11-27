@@ -6,11 +6,13 @@
 # gate: run before every install and every upgrade, and stop on any
 # failure. Fails closed on default secrets (audit S3): the compose
 # baseline ships dev-only defaults so local bring-up works, but this
-# script refuses to proceed while DB_PASSWORD or ADMIN_BOOT_SECRET
-# still holds one.
+# script refuses to proceed while DB_PASSWORD, ADMIN_TOKEN_KEY, or
+# ADMIN_BOOT_SECRET still holds one, and refuses a host with the
+# ADMIN_DEV_MODE dev switch set (Refs #638).
 #
 # Usage (from the repo root):
 #   DB_PASSWORD=<per-sale secret> ADMIN_BOOT_SECRET=<per-sale secret> \
+#     ADMIN_TOKEN_KEY=<per-sale secret> \
 #     script/preflight.sh [--config deploy/config/hotel.json] \
 #     [--staging-dir ./backup-staging]
 #
@@ -66,10 +68,31 @@ else
   pass_msg "script.runbook.preflight_db_set" "DB_PASSWORD is set to a non-default value."
 fi
 
+# The Admin signing key is the third per-sale secret (Refs #638,
+# BR-70): outside the explicit dev switch a boot without it refuses,
+# so an install or upgrade that skips it is caught here instead of at
+# the Admin start-up. Plain echo, not a catalogue key: NFR-I18N-1
+# keeps the catalogue key set unchanged for this slice.
+if is_default_secret "${ADMIN_TOKEN_KEY:-}"; then
+  echo "preflight: FAIL: ADMIN_TOKEN_KEY is unset or still a dev default; provision the per-sale signing key (deployment.md section 2)." >&2
+  fail=1
+else
+  echo "preflight: OK: ADMIN_TOKEN_KEY is set to a non-default value."
+fi
+
 if is_default_secret "${ADMIN_BOOT_SECRET:-}"; then
   fail_msg "script.runbook.preflight_boot_default" "ADMIN_BOOT_SECRET is unset or still a dev default; provision the per-sale owner boot secret (deployment.md section 2)."
 else
   pass_msg "script.runbook.preflight_boot_set" "ADMIN_BOOT_SECRET is set to a non-default value."
+fi
+
+# The dev switch restores both published Admin defaults, so a production
+# install or upgrade must never carry it (Refs #638, BR-70).
+if [[ -n "${ADMIN_DEV_MODE:-}" ]]; then
+  echo "preflight: FAIL: ADMIN_DEV_MODE is set; the dev switch restores published Admin defaults and must not reach an install or upgrade (deployment.md section 5)." >&2
+  fail=1
+else
+  echo "preflight: OK: ADMIN_DEV_MODE is not set."
 fi
 
 # 2. The per-hotel configuration set validates against the release
