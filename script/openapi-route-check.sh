@@ -14,16 +14,41 @@
 #    deleted op fails the gate with a named cause.
 # 4. A served mirror without its contracts/openapi.yaml source
 #    fails instead of SKIP-passing (issue #241).
+# 5. Neither file may carry a duplicate mapping key (issue #768): a
+#    last-key-wins loader silently discards the earlier sibling, so
+#    every duplicate is reported with its key path and both
+#    file:line positions before the route assertions run.
 #
 # Static only (no docker): live reachability stays covered by
 # script/e2e-desk-loop.sh. Called from script/contract-check.sh and
-# therefore from the CI contract-check job.
+# therefore from the CI contract-check job. The duplicate-key
+# detector's own proof lives in script/openapi-route-check.test.sh.
 #
-# Usage: script/openapi-route-check.sh (run from anywhere; resolves repo root).
+# Usage: script/openapi-route-check.sh [--root <dir>]
+#   --root defaults to the repo root around this script; the self-test
+#   points it at a throwaway fixture tree.
 
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SCRIPT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$SCRIPT_ROOT"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --root)
+      [[ $# -ge 2 && -d "$2" ]] || { echo "openapi-route-check: --root needs an existing directory" >&2; exit 2; }
+      ROOT="$(cd "$2" && pwd)"
+      shift 2
+      ;;
+    -h|--help)
+      echo "Usage: script/openapi-route-check.sh [--root <dir>]"
+      exit 0
+      ;;
+    *)
+      echo "openapi-route-check: unknown argument: $1" >&2
+      exit 2
+      ;;
+  esac
+done
 SOURCE="$ROOT/contracts/openapi.yaml"
 MIRROR="$ROOT/frontend/docs/openapi.yaml"
 fail=0
@@ -60,6 +85,63 @@ if ! python3 -c 'import yaml' 2>/dev/null; then
     exit 1
   fi
 fi
+echo "openapi-route-check: asserting neither spec copy carries a duplicate mapping key..."
+if python3 - "$SOURCE" "$MIRROR" <<'PYEOF'
+import sys
+
+import yaml
+
+
+def walk(node, path, findings):
+    """Report duplicate mapping keys with both positions and the key path.
+
+    yaml.compose keeps every key/value pair from the source (unlike
+    yaml.safe_load, which silently keeps the last duplicate), so the
+    composed node tree is enough to find them without a custom loader.
+    """
+    if isinstance(node, yaml.MappingNode):
+        seen = {}
+        for key_node, value_node in node.value:
+            if isinstance(key_node, yaml.ScalarNode):
+                key = key_node.value
+                line = key_node.start_mark.line + 1
+                if key in seen:
+                    findings.append((key, line, seen[key], ".".join(path + [str(key)])))
+                else:
+                    seen[key] = line
+                child_path = path + [str(key)]
+            else:
+                child_path = path + ["<complex key>"]
+            walk(value_node, child_path, findings)
+    elif isinstance(node, yaml.SequenceNode):
+        for index, child in enumerate(node.value):
+            walk(child, path + [str(index)], findings)
+
+
+failures = []
+for filename in sys.argv[1:]:
+    with open(filename, encoding="utf-8") as fh:
+        root = yaml.compose(fh, Loader=yaml.SafeLoader)
+    findings = []
+    walk(root, [], findings)
+    for key, line, first_line, key_path in findings:
+        failures.append(
+            f"duplicate mapping key {key!r} at {filename}:{line} "
+            f"(first defined at {filename}:{first_line}); key path: {key_path}"
+        )
+
+if failures:
+    for finding in failures:
+        print(f"  FAIL {finding}")
+    sys.exit(1)
+print("  OK no duplicate mapping keys in either spec copy")
+PYEOF
+then
+  :
+else
+  fail=1
+fi
+
 if python3 - "$ROOT" <<'PYEOF'
 import json
 import sys

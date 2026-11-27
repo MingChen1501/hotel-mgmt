@@ -77,6 +77,10 @@ echo "contract-check: PASSED."
 # Curated desk-loop OpenAPI gate (issue #228): every spec route must
 # resolve to a contract route, and the served /docs mirror must be
 # byte-identical to the single source in contracts/.
+# The gate also fails on duplicate YAML mapping keys (issue #768); its
+# self-test runs here so the CI contract-check job proves the detector
+# fails on a synthetic duplicate and passes once it is removed.
 if [[ -f "$ROOT/contracts/openapi.yaml" || -f "$ROOT/frontend/docs/openapi.yaml" ]]; then
   "$ROOT/script/openapi-route-check.sh" || exit 1
+  "$ROOT/script/openapi-route-check.test.sh" || exit 1
 fi

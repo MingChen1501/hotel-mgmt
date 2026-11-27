@@ -113,6 +113,8 @@ checks with the orchestrator). Details live there, not here.
     message catalogue, the served shell bytes, the curated spec set):
     `script/catalogue-coverage-check.sh`,
     `script/shell-served-check.sh`, `script/openapi-route-check.sh`,
+    `script/openapi-route-check.test.sh` (duplicate-key detector
+    self-test for that gate),
     `script/messages.sh` (catalogue loader sourced by the project
     scripts, never executed).
   - The live `hotel-verify` skill ships as `project-verify` here by
