@@ -79,18 +79,29 @@ Release and block guards — the desk's turnover and out-of-order paths:
 
 ```mermaid
 flowchart TD
-    P[ReleaseRoom] --> Q[Room occupied?]
+    P[ReleaseRoom] --> Q[Room known and occupied?]
+    Q -->|unknown| R404[404 NOT_FOUND, no change]
     Q -->|no| R422a[422 STATE_ILLEGAL, no change]
-    Q -->|yes| S[Release to target state]
+    Q -->|yes| S{toState absent or in the accepted pair?}
+    S -->|no| R400a[400 VALIDATION_FAILED naming toState, no change]
+    S -->|yes| V[Release to the target, vacant-dirty by default]
     T[BlockRoom] --> U[Room free, no identical block?]
     U -->|occupied| R422b[422 STATE_ILLEGAL, no change]
     U -->|duplicate| R400[400 VALIDATION_FAILED, no change]
-    U -->|yes| V[Block recorded for range]
+    U -->|yes| W[Block recorded for range]
 ```
 
 Edge trace:
 
-- Q: releasing a non-occupied room → `STATE_ILLEGAL` (`src/store.ts:415`); releasing onto an occupied target state is refused (`src/store.ts:425`).
+- Q: releasing a non-occupied room → `STATE_ILLEGAL`
+  (`src/store.ts:489-494`; Postgres `src/pgstore.ts:538-543`); an unknown
+  room → `NOT_FOUND` (`src/pgstore.ts:533-536`); a present target
+  outside `{vacant-dirty, vacant-inspected}` → `VALIDATION_FAILED`
+  naming `toState`, before any write (the shared check replaces the
+  tolerant resolution at `src/store.ts:495-501`; the Postgres twin moves
+  inside the transaction, `src/pgstore.ts:522-528`; LLD
+  [section 41](../lld.md)). An absent target still releases to
+  `vacant-dirty` (`src/store.ts:498`).
 - U: blocking an occupied room → `STATE_ILLEGAL` (`src/store.ts:443`); an identical block already exists → `VALIDATION_FAILED` (:452).
 - Reversed ranges are refused up front: `dateTo` before `dateFrom` → `VALIDATION_FAILED` (`src/store.ts:319,440,479`); unknown state values → `VALIDATION_FAILED` (:270, :297).
 
@@ -147,7 +158,7 @@ Same shared Node envelope as Stay (`src/errors.ts`; `docs/technical/error-handli
 
 | Code | Status | Raised when |
 |---|---|---|
-| `VALIDATION_FAILED` | 400 | bad/unknown field, state, date range, duplicate block, or a capacity that is not a whole number of at least 1 (:100, :107, :123, :328, :355, :377, :500, :522, :534, :568) |
+| `VALIDATION_FAILED` | 400 | bad/unknown field, state, date range, duplicate block, a capacity that is not a whole number of at least 1, or a release target outside `{vacant-dirty, vacant-inspected}` (section 12; :100, :107, :123, :328, :355, :377, :500, :522, :534, :568) |
 | `NOT_FOUND` | 404 | unknown room type or room (:203, :212) |
 | `CONFLICT` | 409 | room just taken in a race (:389) |
 | `STATE_ILLEGAL` | 422 | blocked dates, wrong room state, occupied block target (:327, :381, :392, :415, :425, :443) |
@@ -225,13 +236,16 @@ self-compensating:
   `vacant-inspected` with no covering block, one synchronous section, an
   idempotent receipt, a history row, and a `state-changed` event
   (`src/store.ts:361-405`; Postgres `src/pgstore.ts` same semantics).
-- `releaseRoom` accepts an explicit `toState` and refuses a room that is
-  not occupied (`src/store.ts:407-436`; Postgres `src/pgstore.ts:499-544`).
-  The desk uses two targets by decision: `vacant-dirty` for a room a
-  committed stay left (check-out, move) and `vacant-inspected` for a
-  room an aborted desk action assigned and nobody used
-  (`docs/architecture/state-machine.md` section 2.1; `FR-REA-1`,
-  `FR-REA-3`).
+- `releaseRoom` accepts an explicit `toState` of `vacant-dirty` or
+  `vacant-inspected` and refuses a room that is not occupied
+  (`src/store.ts:480-511`; Postgres `src/pgstore.ts:514-563`); every
+  other present target is refused `VALIDATION_FAILED` with nothing
+  written (section 12, LLD [section 41](../lld.md)). An absent `toState`
+  still releases to `vacant-dirty`. The desk uses two targets by
+  decision: `vacant-dirty` for a room a committed stay left (check-out,
+  move) and `vacant-inspected` for a room an aborted desk action assigned
+  and nobody used (`docs/architecture/state-machine.md` section 2.1;
+  `FR-REA-1`, `FR-REA-3`).
 - Section 4's "the desk drives multi-step moves rather than the module
   compensating" is now the normative split: the desk owns the sequence
   assign, move, release and the compensating release of a target it
@@ -374,3 +388,76 @@ sellability flows of sections 3 and 4 (LLD section 38's rescope note).
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1262
+
+## 12. Planned delta — ReleaseRoom accepts only the two release targets (Refs #773)
+
+Planned by the #773 spec set (LLD [section 41](../lld.md)); the
+implementation PR makes this section as-built and refreshes its pins.
+
+As found: the contract admits four targets
+(`contracts/http/ReleaseRoom.json:16`), and both stores accept any
+`ROOM_STATES` string, defaulting an absent or unknown `toState` to
+`vacant-dirty` (`src/store.ts:495-501`; Postgres
+`src/pgstore.ts:522-528`), while the state machine specifies exactly two
+(`docs/architecture/state-machine.md` section 2.1). The Postgres store
+also resolves the target before it reads the room
+(`src/pgstore.ts:522-543`), so a free room sent the `occupied` target
+answers `VALIDATION_FAILED` on Postgres but `STATE_ILLEGAL` in memory.
+
+Planned: one shared `releaseTarget` check beside `requireCapacity`
+(`src/store.ts:118-128`), called by both stores. `vacant-dirty` and
+`vacant-inspected` are accepted; an absent `toState` still resolves to
+`vacant-dirty`; every other present value is refused
+`VALIDATION_FAILED` (400) with `details.toState` and one sentence naming
+the pair, writing nothing. The room's own `NOT_FOUND` / `STATE_ILLEGAL`
+answers run first in both stores; the Postgres check moves inside the
+existing transaction, after `src/pgstore.ts:538-543` and before the
+`UPDATE` at `:544-548`, so the stores agree on every request.
+
+```mermaid
+flowchart TD
+    A[POST /v1/rooms/ReleaseRoom  src/server.ts:201-202] --> B[Room known and occupied?  src/store.ts:485-494; Postgres src/pgstore.ts:530-543]
+    B -- unknown --> Z1[404 NOT_FOUND, nothing written  src/pgstore.ts:533-536]
+    B -- not occupied --> Z2[422 STATE_ILLEGAL, nothing written  src/store.ts:489-494, src/pgstore.ts:538-543]
+    B -- yes --> C{toState absent or in the accepted pair?}
+    C -- absent --> T1[vacant-dirty, the preserved default  src/store.ts:498]
+    C -- vacant-dirty or vacant-inspected --> T2[that target, including the compensating release  src/pgstore.test.ts:185]
+    C -- another string, non-string, or null --> R[400 VALIDATION_FAILED, details.toState, nothing written]
+    T1 --> W[state change, one history row, one room.state-changed event  src/store.ts:502-510; Postgres src/pgstore.ts:544-561]
+    T2 --> W
+    W --> OK[200 roomNumber, oldState occupied, newState target]
+```
+
+Edge trace (as-found; the implementation PR refreshes it):
+
+- A–B: one route answers the operation (`src/server.ts:201-202`); the
+  in-memory store reads the room and tests its occupancy at
+  `src/store.ts:485-494`, and the Postgres store does the same inside its
+  transaction at `src/pgstore.ts:530-543`.
+- B–Z1–Z2: the existing `NOT_FOUND` (`src/pgstore.ts:533-536`) and
+  `STATE_ILLEGAL` (`src/store.ts:489-494`; Postgres `:538-543`) answers
+  are untouched and run before the target check, whatever target was
+  sent.
+- B–C: the only edit. The tolerant resolution at `src/store.ts:495-501`
+  and `src/pgstore.ts:522-528` becomes the shared `releaseTarget` check,
+  and the Postgres call moves after `:538-543` so both stores judge the
+  target after the room answers.
+- C–R: every present value outside the pair is a caller mistake, not a
+  state conflict: `VALIDATION_FAILED` with `details.toState`, decided
+  before the first mutation (`src/store.ts:502`; Postgres before
+  `:544-548`), so no state, history row, or event is written.
+- C–T1–W and C–T2–W: the absent default (`src/store.ts:498`) and the two
+  accepted targets keep today's write, history, and event
+  (`src/store.ts:502-510`; Postgres `:544-561`), including the
+  compensating `vacant-inspected` release (`src/pgstore.test.ts:185`).
+
+Rollback: an out-of-set target is refused before any write, so a refused
+request changes nothing; the whole delta reverts with the single
+implementation PR, and no migration, backfill, or data repair exists in
+either direction. `ALLOWED_TRANSITIONS` (`src/store.ts:45-52`),
+`UpdateRoomState`, `assignRoom`, the check-out release, the desk helper,
+and the e2e default callers are unchanged; `ReleaseRoom` stays outside
+the transition table so the #647 compensating release keeps working.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1327

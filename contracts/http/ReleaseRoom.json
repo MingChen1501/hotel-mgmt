@@ -2,7 +2,7 @@
   "operation": "ReleaseRoom",
   "contract": "RoomInventoryService",
   "version": "1.0",
-  "traces": ["docs/architecture/lld.md section 3", "docs/technical/integration.md section 2 C5", "FR-FDK-2"],
+  "traces": ["docs/architecture/lld.md section 3", "docs/architecture/lld.md section 41", "docs/technical/integration.md section 2 C5", "FR-FDK-2", "FR-REL-1", "FR-REL-2", "BR-72"],
   "transport": {
     "method": "POST",
     "path": "/v1/rooms/ReleaseRoom",
@@ -13,7 +13,7 @@
     "required": ["roomNumber", "actor"],
     "properties": {
       "roomNumber": { "type": "string" },
-      "toState": { "type": "string", "enum": ["vacant-dirty", "vacant-clean", "vacant-inspected", "out-of-order"], "default": "vacant-dirty" },
+      "toState": { "type": "string", "enum": ["vacant-dirty", "vacant-inspected"], "default": "vacant-dirty" },
       "actor": { "type": "string" }
     }
   },
@@ -29,7 +29,7 @@
   "errors": [
     { "code": "UNAUTHENTICATED", "status": 401, "when": "Missing session token." },
     { "code": "NOT_FOUND", "status": 404, "when": "Unknown room number." },
-    { "code": "STATE_ILLEGAL", "status": 422, "when": "Room is not occupied." },
-    { "code": "VALIDATION_FAILED", "status": 400, "when": "Missing field or unknown toState value." }
+    { "code": "STATE_ILLEGAL", "status": 422, "when": "Room is not occupied (checked before the target check)." },
+    { "code": "VALIDATION_FAILED", "status": 400, "when": "Missing field, or a present toState other than vacant-dirty or vacant-inspected." }
   ]
 }

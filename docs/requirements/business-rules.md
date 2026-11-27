@@ -93,6 +93,7 @@ front-desk staff, manager, or owner account acting within its access
 | BR-29 | A manager-set block takes a room out of sale for a recorded reason and date range; the room shows out of order for that range. | FR-RMS-3; US-RMS-3 |
 | BR-30 | Floor, bed type, capacity, and features saved per room and room type appear in the room inventory and are available when assigning rooms at check-in. | FR-RMS-4; FR-ADM-3; US-RMS-4 |
 | BR-69 | A saved capacity is a whole number of guests of at least 1, or the write is refused by name. A present `capacity` on `UpsertRoom` or `UpsertRoomType` is a JSON number whose value is an integer at or above `1`; no upper bound is added, because the contract sets a minimum only and the manage form's `1..20` range stays a client sanity bound, so a value above `20` is stored as sent. An omitted `capacity` keeps today's meaning — a create stores none and an update keeps the stored one — while a present `null` is a caller's mistake, not an omission. A negative, zero, fractional, non-finite (`1e999` over HTTP, `Infinity` directly), `NaN`, or non-number (`"2"`, `null`, `true`, `[2]`) capacity is refused with the shared envelope and `VALIDATION_FAILED` (400), `details` naming `capacity`, and one plain catalogue sentence stating the whole-number-of-at-least-1 rule, in both operations and both stores, before any row is built or any transaction opens: nothing is created or overwritten, an existing room or type keeps every stored field and its state, no `room-upserted` event is emitted, the two stores answer identically, and a value the service can name never becomes an `INTERNAL_ERROR` 500. The rule is one shared check in code used by both stores, never a migration, `CHECK` constraint, backfill, truncation, or read-time re-validation, so a capacity already stored outside the rule keeps reading exactly as stored. The onboarding wizard refuses a capacity below `1` in plain words, before it sends anything, in English and Vietnamese, and the manage screen's own `1..20` rule and sentences are unchanged. The floor is one constant and one rule in code, never a per-hotel setting, an environment variable, or a deployment file. | FR-RMS-4; FR-MGMT-3; FR-ADM-3; NFR-I18N-1; BR-30; `AC-CAP-1`..`AC-CAP-4`; Refs #637 |
+| BR-72 | A room release accepts exactly the two specified targets, and every other explicit target is refused as a caller's mistake with nothing written. `ReleaseRoom` accepts an explicit `toState` of `vacant-dirty` — the room a stay really held on check-out or a move — or `vacant-inspected` — the room an aborted desk action assigned and nobody used — and an absent `toState` still releases `occupied -> vacant-dirty`. A present `toState` outside that pair — `vacant-clean`, `out-of-order`, another state name, any other string, a non-string value, or `null` — is refused with the shared envelope and `VALIDATION_FAILED` (400), `details.toState` carrying the received value, and one plain catalogue sentence naming the two accepted targets; a present value is never defaulted to `vacant-dirty`, and the room keeps its `occupied` state with no `room_status_history` row and no `room.state-changed` event written, in both stores. The room's own answers keep precedence: an unknown room stays `NOT_FOUND` and a room that is not `occupied` stays `STATE_ILLEGAL` (422) with today's sentence and details, whatever target was sent, so a room-state conflict is never re-reported as a validation failure, and the two stores answer the same for the same request. The two accepted releases are unchanged byte for byte, including the compensating `occupied -> vacant-inspected` release #647 shipped for `FR-REA-1`/`FR-REA-3` and the #588 check-out release; `ReleaseRoom` stays outside `ALLOWED_TRANSITIONS` because that table's `occupied` row admits only `vacant-dirty`, and no state, transition, operation, route, request or response field, status, schema, migration, backfill, stored value, or catalogue key is added or changed. The target pair is a fixed code rule, never a per-hotel setting. | FR-FDK-2; FR-FDK-3; FR-RMS-1; FR-REA-1; FR-REA-3; FR-REL-1..FR-REL-5; NFR-AUD-1; NFR-I18N-1; BR-18; BR-19; `AC-REL-1`..`AC-REL-5`; Refs #773 |
 
 ## 7. Guests
 
@@ -181,6 +182,7 @@ section 3.3). Fixed items no hotel may change in the MVP.
 | Plan write failure | — (none) | A failed Rates Postgres plan write returns the existing store-failure answer and no plan, stores no row for the named failure classes and emits no `rate-plan-changed` event, answers the handler's failure envelope and never a 2xx, stays retriable after recovery, and keeps the healthy create/update row, event, and response unchanged (`BR-71`) |
 | Out-of-order blocks | Reason and date range per block (`BR-29`) | Blocked dates take no reservation or check-in |
 | Capacity write rule | — (none) | A present capacity is a whole number of at least 1 stored verbatim, every other present value refused naming `capacity` with nothing written and no `room-upserted` event, an omitted value keeping today's create-none/update-keeps meaning, and the onboarding wizard obeying the same floor while the manage form's `1..20` stays a client bound (`BR-69`) |
+| Release targets | — (none) | `ReleaseRoom` accepts exactly `vacant-dirty` and `vacant-inspected`, an absent `toState` defaults to `vacant-dirty`, and every other present target is refused `VALIDATION_FAILED` naming `toState` with nothing written in both stores; an unknown room stays `NOT_FOUND` and a non-occupied room stays `STATE_ILLEGAL` ahead of the target check; the operation stays outside `ALLOWED_TRANSITIONS`, so the #647 compensating release and the #588 check-out release are unchanged (`BR-72`) |
 | Payment methods | — (none) | Cash and card only (`BR-23`) |
 | Folio structure | — (none) | One folio per stay; no split across payers (`BR-21`) |
 | Room-charge posting | — (none) | One room charge per stay, at the stay's frozen quoted total, posted by the desk check-out review (`BR-45`) |
@@ -367,14 +369,25 @@ recovery so the same request then creates the plan normally, and keeps
 the healthy create/update row, event, and `200` body unchanged, in both
 stores — tracing `FR-RTE-1`, `FR-RTE-10`, `FR-PLN-1`..`FR-PLN-5`,
 `NFR-AUD-1`, `NFR-I18N-1`, and `AC-PLN-1`..`AC-PLN-3` plus `BR-59`,
-without adding behaviour beyond those sources.
+without adding behaviour beyond those sources, and BR-72 states the
+release-target obligation the room release operation owes the desk —
+exactly `vacant-dirty` and `vacant-inspected` accepted with the absent
+default preserved, every other present target refused
+`VALIDATION_FAILED` naming `toState` with nothing written in both
+stores, the room's `NOT_FOUND`/`STATE_ILLEGAL` answers keeping
+precedence and agreeing across the stores, and the #647 compensating
+release and the #588 check-out release unchanged because the operation
+stays outside the transition table — tracing `FR-FDK-2`, `FR-FDK-3`,
+`FR-RMS-1`, `FR-REA-1`, `FR-REA-3`, `FR-REL-1`..`FR-REL-5`,
+`NFR-AUD-1`, `NFR-I18N-1`, and `AC-REL-1`..`AC-REL-5`, without adding
+behaviour beyond those sources.
 Policies with no decided source appear as open questions
 OQ-1..OQ-5. No rule introduces behaviour beyond the traced
 FRs/NFRs/stories. Later capabilities from requirements section 6
 (waitlist, split folios, integrated payments, automated workflow
 rules, multi-property operation, and the rest) carry no rule here.
 
-Counts: 65 business rules, 5 open questions.
+Counts: 66 business rules, 5 open questions.
 
 <!-- ao-role: business-analyst -->
 Role: business-analyst · AO session hotel-mgmt-1079
@@ -408,3 +421,6 @@ Role: business-analyst · AO session hotel-mgmt-1278
 
 <!-- ao-role: business-analyst -->
 Role: business-analyst · AO session hotel-mgmt-1287
+
+<!-- ao-role: business-analyst -->
+Role: business-analyst · AO session hotel-mgmt-1326
