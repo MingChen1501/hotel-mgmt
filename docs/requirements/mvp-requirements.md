@@ -13132,6 +13132,388 @@ previously "created" was never stored, so there is nothing to migrate.
   plan-create paths already render the existing failure sentence.
 - No implementation PR opens until `SPEC-GATE PASS` on #767.
 
+## 42. ReleaseRoom accepts only the two specified release targets (Refs #773)
+
+Requirements delta for the #773 fix: `ReleaseRoom`'s contract and both
+stores admit any room state as an explicit `toState`, while the state
+machine names exactly two release targets. The change narrows the
+accepted set to those two, refuses every other explicit target with
+`VALIDATION_FAILED`, and leaves the two specified paths — including the
+compensating `occupied -> vacant-inspected` release #647 shipped —
+exactly as they are. One rule: a release has the two targets a stay flow
+can produce, an absent target still means `vacant-dirty`, and any other
+explicit target is the caller's mistake, refused with nothing written.
+
+What #637 and #647 already settled, and what this section does not
+reopen:
+
+- **The two release targets are decided and shipped.** `occupied ->
+  vacant-dirty` is the room a stay really held (check-out or move) and
+  `occupied -> vacant-inspected` is the room an aborted desk action
+  assigned and nobody used (`FR-REA-1`, `FR-REA-3`; `BR-18`, `BR-19`;
+  `docs/architecture/state-machine.md` section 2.1). The release
+  operation stays the only way an occupied room reaches
+  `vacant-inspected`.
+- **No caller sends either extra target.** The desk's release helper is
+  typed to the two (`app/src/views/StayView.vue:1383`, used at `:1415`,
+  `:1738`, `:1786`, and `:2101`), and the e2e scripts omit `toState` and
+  take the `vacant-dirty` default (`script/e2e-desk-loop.sh:358`,
+  `:464`; `script/e2e-perf-check.sh:247`, `:258`). The change therefore
+  refuses no flow the desk or the lab actually runs.
+- **The compensating release must not be re-routed.** Routing
+  `ReleaseRoom` through `ALLOWED_TRANSITIONS`
+  (`services/rooms/src/store.ts:45-52`, whose `occupied` row admits only
+  `vacant-dirty`) would refuse the specified `occupied ->
+  vacant-inspected` release and regress `FR-REA-1`/`FR-REA-3`. This
+  section keeps the operation outside that table, exactly as the #647
+  change shipped it.
+- **The refusal vocabulary already exists.** The contract already words
+  an unknown `toState` as `VALIDATION_FAILED` (400)
+  (`contracts/http/ReleaseRoom.json:33`), and the operation already
+  refuses an explicit `occupied` target under that code
+  (`services/rooms/src/store.ts:499-501`). This change widens one
+  existing refusal to the whole out-of-set class; it adds no token.
+
+As-built trace at this spec head (pre-change), read-only. The pins below
+are the state this requirement was written against; the implementation
+PR refreshes them per maintain-with-code.
+
+- **The contract admits four targets.** `toState` is a string enum of
+  `vacant-dirty`, `vacant-clean`, `vacant-inspected`, and
+  `out-of-order`, defaulting to `vacant-dirty`
+  (`contracts/http/ReleaseRoom.json:16`).
+- **Both stores accept any state name.** `releaseRoom` takes the request
+  value when it is a string in `ROOM_STATES` and otherwise falls back to
+  `vacant-dirty`, refusing only `occupied`
+  (`services/rooms/src/store.ts:495-501`; Postgres parity
+  `services/rooms/src/pgstore.ts:522-527`). A `vacant-clean` or
+  `out-of-order` target therefore writes the room, a history row, and a
+  `room.state-changed` event (`services/rooms/src/store.ts:502-509`;
+  `services/rooms/src/pgstore.ts:544-561`).
+- **The state machine names two.** Section 2.1
+  (`docs/architecture/state-machine.md:129-166`) names the pair, and
+  out-of-order is a date-ranged block entered only from a vacant state,
+  never from `occupied` (`:119-122`; `docs/technical/schema.md:120-122`).
+- **The default and the pair are already guarded.**
+  `services/rooms/src/server.test.ts:741-751` releases without a
+  `toState` and asserts `occupied -> vacant-dirty`, the contract fixture
+  covers the explicit `vacant-dirty` happy path
+  (`services/rooms/contract-tests/ReleaseRoom.json`), and
+  `services/rooms/src/pgstore.test.ts:185` exercises the explicit
+  `vacant-inspected` compensating target.
+- **The two stores do not agree on the room-check order today.** The
+  in-memory store reads the room first and refuses a non-occupied room
+  with `STATE_ILLEGAL` before it looks at the target
+  (`services/rooms/src/store.ts:485-494`); the Postgres store resolves
+  and refuses the target before it opens its transaction and reads the
+  room (`services/rooms/src/pgstore.ts:522-529`, the not-occupied check
+  at `:538-542`). A free room sent `occupied` therefore answers
+  `STATE_ILLEGAL` in the in-memory store and `VALIDATION_FAILED` in the
+  Postgres store today. The requirement below decides the order they
+  must both serve.
+- **The LLD names only the transition refusal.** Its operation row lists
+  `STATE_ILLEGAL` (illegal transition) as `ReleaseRoom`'s only error
+  (`docs/architecture/lld.md:232`); the out-of-set target and its
+  `VALIDATION_FAILED` answer are the `architect` handoff.
+
+Tier T2, as `product-owner` recorded: one existing operation gains a
+caller-visible refusal while no state, transition, operation, request or
+response field, status set, schema table, migration, screen, control,
+catalogue key, or print rule is added or removed. The refusal reuses the
+operation's existing `VALIDATION_FAILED` answer, so the contract enum
+and its status mapping stay inside today's vocabulary. No UI contract
+section applies: no desk surface offers the refused targets, the desk's
+release helper is already typed to the two accepted ones, and no screen,
+state, copy, or layout changes.
+
+The scope decision, the accepted done-conditions, and the recorded risk
+are `product-owner` work: `docs/product/acceptance-criteria.md`
+[section 34](../product/acceptance-criteria.md) (`AC-REL-1`..`AC-REL-5`),
+D-46 in `docs/project/decision-log.md`
+[the decision log](../project/decision-log.md), and R-27 in
+`docs/project/risk-register.md`
+[the risk register](../project/risk-register.md). The architecture half
+is the contract enum, the LLD error row and its section 41 delta, the
+`docs/technical/api-spec.md` section 2 note, and the refreshed
+state-machine line pins — `architect` work. Guard mapping is the
+`qa-lead` handoff (`docs/testing/traceability-matrix.md`
+[section 34](../testing/traceability-matrix.md)); the release and
+rollback note is the `release-manager` handoff. This section words the
+requirements half: the decision (42.1), the explicit no-change
+statements (42.2), the behaviour-scoped FRs (42.3), the NFR no-change
+statement (42.4), the traceability handoff with its per-flow diagram
+(42.5), and the gate dependencies plus the out-of-scope list (42.6). No
+`docs/README.md` row flips: both requirements files this change touches
+are already `active`, and the index rows gain the section and rule
+references only.
+
+### 42.1 Decision: two targets, `VALIDATION_FAILED` outside them, nothing written on a refusal
+
+The decided behaviour, in three parts:
+
+1. **Two release targets, and only two.** `vacant-dirty` — the room a
+   stay really held, released by a check-out or a room move — and
+   `vacant-inspected` — the room an aborted desk action assigned and
+   nobody used — are the accepted explicit targets. An absent `toState`
+   still means `vacant-dirty`. `vacant-clean` and `out-of-order` are
+   refused, because no flow specifies them: housekeeping reaches clean
+   through `UpdateRoomState`, and out-of-order is entered only from a
+   vacant state through a date-ranged block, never from `occupied`.
+2. **An out-of-set target is `VALIDATION_FAILED` (400), not
+   `STATE_ILLEGAL` (422).** A present `toState` outside the pair —
+   another state name, any other string, a non-string value, or `null` —
+   answers the shared envelope with `code: "VALIDATION_FAILED"`,
+   `details.toState` carrying the received value, and one plain
+   catalogue sentence naming the two accepted targets. Absent means
+   missing or `undefined` only; a present `null` is refused rather than
+   defaulted, the same fail-closed rule #633, #637, and #640 apply
+   elsewhere.
+   The room's state is legal (`occupied`); the target is what is not, so
+   `STATE_ILLEGAL` keeps its meaning "the room is not occupied" and
+   moves nowhere.
+3. **A refusal writes nothing, and the two accepted paths do not
+   move.** The refusal changes no room state and writes no
+   `room_status_history` row and no `room.state-changed` event, in
+   either store. An explicit `vacant-dirty` or `vacant-inspected` keeps
+   today's behaviour byte for byte, including the compensating
+   `occupied -> vacant-inspected` release #647 shipped;
+   `ReleaseRoom` stays outside `ALLOWED_TRANSITIONS`, and no migration,
+   backfill, or stored-value change is involved.
+
+The room checks precede the target check in both stores. The in-memory
+store already reads the room first; the Postgres store resolves the
+target before it reads the room today, so the parity requirement below
+moves its unknown-room and not-occupied answers ahead of the target
+check. A free room then answers `STATE_ILLEGAL` and an unknown room
+`NOT_FOUND` for any target, and the two stores agree.
+
+### 42.2 Explicit no-change statements
+
+- `FR-FDK-2` and `FR-FDK-3` keep their capability wording. They already
+  promise the check-out release and the move release; this change
+  constrains that operation's accepted targets rather than widening
+  either FR, so the new obligations live in
+  `FR-REL-1`..`FR-REL-5` (`BR-72`).
+- `FR-REA-1` and `FR-REA-3` keep their wording and their compensating
+  `occupied -> vacant-inspected` release exactly as shipped. The target
+  it uses becomes one of the two accepted explicit targets; nothing
+  about when the desk calls it, or what it writes, moves.
+- `FR-RMS-1` and `FR-RMS-2` keep the room state set, the housekeeping
+  walk, and the "only inspected rooms are offered" rule. No state,
+  transition, `ALLOWED_TRANSITIONS` row, or `UpdateRoomState` behaviour
+  changes; `ReleaseRoom` stays outside the transition table.
+- `BR-18`, `BR-19`, `BR-28`, `BR-29`, and `BR-69` stand as written; the
+  new rule is `BR-72` (`docs/requirements/business-rules.md` section 6),
+  and section 9 records the target pair as a fixed code rule.
+- No data model change: the room state vocabulary, `room_status_history`
+  shape, `room_blocks`, tables, columns, migrations, backfills, and
+  data-dictionary entries are unchanged, and no stored row is rewritten.
+- No request, response, route, or status change: `toState` keeps its
+  string shape and its `vacant-dirty` default, the receipt keeps
+  `roomNumber`, `oldState`, and `newState`, and no code token joins the
+  shared enum — the refusal reuses `VALIDATION_FAILED`, and no catalogue
+  key is added or removed.
+- No desk surface change: the release helper is already typed to the two
+  targets and the e2e scripts already take the default, so no screen,
+  control, route, label, copy, state, or print rule moves and no UI
+  contract section applies.
+- No data repair: a room released to `vacant-clean` or `out-of-order`
+  before this change sits in a state both the housekeeping walk and the
+  block path can legitimately produce, so nothing is stranded and no
+  backfill is specified. The change refuses new calls only.
+- The capability rows are unchanged: this constrains one existing
+  operation rather than adding a capability, so the 40-capability count
+  in section 4 stands.
+
+### 42.3 Behaviour-scoped functional requirements
+
+Ids use the `REL` (release target) namespace, continuing the
+slice-scoped pattern of sections 10–41; `FDK` stays the lifecycle
+namespace and `REA` the reassignment namespace. Each FR maps to an
+accepted done-condition in `AC-REL-1`..`AC-REL-5`.
+
+FR-REL-1 — ReleaseRoom accepts exactly the two specified release
+targets, and an absent target still means `vacant-dirty`.
+Given an occupied room; when `ReleaseRoom` carries an explicit `toState`
+of `vacant-dirty` or `vacant-inspected`; then the call succeeds with
+`oldState: "occupied"` and `newState` that target, one
+`room_status_history` row records the `occupied -> <target>` step, one
+`room.state-changed` event carries it, and both stores answer the same.
+Given the request carries no `toState` (missing or `undefined`); then
+the call releases `occupied -> vacant-dirty` exactly as today, with the
+same receipt, history row, and event. Given a present `null`, a
+non-string value, or any string outside the pair; then a present value
+is never defaulted and the refusal in `FR-REL-2` applies. Traces to:
+`AC-REL-2`, `AC-REL-3`; `FR-FDK-2`, `FR-FDK-3`, `FR-REA-1`,
+`FR-REA-3`; `BR-72`.
+
+FR-REL-2 — An explicit target outside the pair is refused with
+`VALIDATION_FAILED` and writes nothing.
+Given an occupied room; when `ReleaseRoom` carries a present `toState`
+other than `vacant-dirty` or `vacant-inspected` — `vacant-clean`,
+`out-of-order`, another state name, any other string, a non-string
+value, or `null`; then the call is refused with HTTP 400 and the shared
+envelope, `code: "VALIDATION_FAILED"`, `details.toState` carrying the
+received value, and one plain catalogue sentence naming the two
+accepted targets; the room still reads `occupied`; and in both stores
+no room row changes, no `room_status_history` row is added, and no
+`room.state-changed` event is emitted. An explicit `occupied` target is
+one instance of this rule, never a separate path, and its existing
+refusal stays. Traces to: `AC-REL-1`; `FR-FDK-2`; `NFR-AUD-1`;
+`BR-72`.
+
+FR-REL-3 — The room's own answers keep precedence over the target
+check, and both stores agree.
+Given a room number that names no room; when `ReleaseRoom` is called
+with any target — accepted, out-of-set, a non-string, or `null`; then
+the answer stays `NOT_FOUND` (404) with today's details and nothing is
+written. Given a room that exists and is not `occupied`; then the
+answer stays `STATE_ILLEGAL` (422) with today's sentence and `details`,
+whatever target was sent, so a room-state conflict is never re-reported
+as `VALIDATION_FAILED`; and the in-memory and Postgres stores answer
+the same code, status, and details for the same request. Traces to:
+`AC-REL-4`; `FR-FDK-2`, `FR-RMS-1`; `BR-72`.
+
+FR-REL-4 — The check-out release and the #647 compensating release
+keep their behaviour.
+Given an occupied room an aborted check-in or reassignment assigned;
+when the desk releases it with an explicit `vacant-inspected`; then the
+call succeeds exactly as today — the room reaches `vacant-inspected`,
+one history row records `occupied -> vacant-inspected`, one
+`room.state-changed` event carries it — because `vacant-inspected` is
+one of the two accepted targets and `ReleaseRoom` stays outside
+`ALLOWED_TRANSITIONS`. Given the check-out release, with an explicit
+`vacant-dirty` or the absent default; then it succeeds exactly as
+today. The desk's two-target helper, the release ordering, and the
+refusal sentences around the check-out and reassignment flows do not
+change. Traces to: `AC-REL-3`; `FR-REA-1`, `FR-REA-3`, `FR-FDK-2`;
+`BR-18`, `BR-19`, `BR-72`.
+
+FR-REL-5 — The aligned artefacts and the guards ship together.
+Given the change ships; when verification runs; then the contract enum
+lists exactly `vacant-dirty` and `vacant-inspected`; the LLD row names
+the `VALIDATION_FAILED` out-of-set case beside `STATE_ILLEGAL`; the
+`docs/technical/api-spec.md` section 2 note states the pair and the
+default; the refreshed `docs/architecture/state-machine.md` line pins
+cite the current `releaseRoom` location; both stores carry guards for
+the refused values (`vacant-clean`, `out-of-order`, another string, a
+non-string, and `null`) and for the preserved absent default, and the
+guards prove the nothing-written half (no state change, no history row,
+no event); and the existing guards — the absent default, the explicit
+`vacant-inspected` release, the two-target desk helper, the #588
+check-out release, and the #647 reassignment guards — stay green in the
+Rooms suite with and without `TEST_PG_URL`. Traces to: `AC-REL-5`;
+`FR-FDK-2`, `FR-REA-1`, `FR-REA-3`; `BR-72`.
+
+### 42.4 Non-functional requirements delta: no-change statement
+
+No new NFR is added and no existing NFR changes. The NFRs above hold as
+written for this change:
+
+- Audit and time (`NFR-AUD-1`, `NFR-TZ-1` hold): a refused target
+  records nothing and emits no event; an accepted release records the
+  authenticated actor and its timestamp exactly as today; no date or
+  display form moves.
+- Concurrency (`NFR-CON-1` holds): no new concurrent write path appears
+  and no lock, transaction, or serialisation point is added — the
+  Postgres check reuses the transaction the operation already opens —
+  and a release stays one room's single state change.
+- Desk response (`NFR-PERF-1`, `NFR-PERF-2` hold): the check is one
+  in-process comparison (and, on the Postgres path, no extra query
+  beyond the room read the operation already performs), so neither the
+  desk target nor the report target moves.
+- Availability (`NFR-AVL-1` holds): the refusal is decided inside the
+  Rooms service on-premise, so no caller gains a dependency outside the
+  host.
+- Internationalisation (`NFR-I18N-1` holds): the refusal is one plain
+  catalogue sentence naming the two accepted targets, renders no
+  envelope code, status number, or driver/SQL/host/stack text, and
+  `script/catalogue-coverage-check.sh` stays green.
+- Transport bounds (`NFR-BND-1`..`NFR-BND-3` hold): no route, body
+  ceiling, parse refusal, header, body-read, response-write, or idle
+  bound moves.
+- Security (`NFR-SEC-1`, `NFR-SEC-2` hold): the operation keeps its
+  session guard and its recorded-actor rule; a refused request writes
+  nothing and reveals no more than the refusal already does.
+
+The target pair is fixed code behaviour, not per-hotel configuration:
+the fixed/configurable split in `docs/requirements/business-rules.md`
+section 9 records the rule as fixed, so no owner setting, deployment
+file, or environment variable can widen the accepted targets.
+
+### 42.5 Traceability handoff for `qa-lead`
+
+Each row traces to `AC-REL-1`..`AC-REL-5`, to this section's five FRs,
+and to `BR-72`. Guards that exist are cited `file:line` against the tree
+this requirement was written on; where no guard exists yet, the row
+names the missing guard explicitly and the implementation PR creates
+it, for `qa-lead` to re-pin at the merged head.
+
+| Item | Guard (on disk today; a row marked missing is created by the implementation PR) | Handoff note for `qa-lead` |
+|---|---|---|
+| FR-REL-1 accepted pair and absent default | `services/rooms/src/server.test.ts:741-751` (absent `toState` releases `occupied -> vacant-dirty`), `services/rooms/contract-tests/ReleaseRoom.json` (explicit `vacant-dirty` fixture), `services/rooms/src/pgstore.test.ts:185` (explicit `vacant-inspected`) | Missing guard `REL-1`: both stores, an occupied room, explicit `vacant-dirty` and explicit `vacant-inspected` answer 200 with `oldState`/`newState`, one history row, and one event; the absent default still answers `vacant-dirty`; the proof must fail if a present value is defaulted instead of refused |
+| FR-REL-2 refused targets write nothing | `services/rooms/src/store.ts:495-501` and `services/rooms/src/pgstore.ts:522-527` (the tolerant resolution the refusal replaces), `services/rooms/src/server.ts:201-202` (the dispatch the guards drive) | Missing guards `REL-2`: for each of `vacant-clean`, `out-of-order`, another string, a number, a boolean, an array, an object, and `null`, on an occupied room, assert HTTP 400, `code` `VALIDATION_FAILED`, `details.toState` the received value, the room still `occupied`, no new `room_status_history` row, and no `room.state-changed` event; the Postgres twin counts history rows and outbox rows before and after and asserts both unchanged |
+| FR-REL-3 precedence and store parity | `services/rooms/src/store.ts:489-494` (in-memory not-occupied refusal), `services/rooms/src/pgstore.ts:538-542` (Postgres not-occupied refusal inside the transaction) | Missing guards `REL-3`: a free room sent `vacant-clean`, `out-of-order`, or `null` answers `STATE_ILLEGAL` 422 with today's sentence and details in both stores, never `VALIDATION_FAILED`; an unknown room answers `NOT_FOUND` for an out-of-set target too; the in-memory and Postgres answers are compared field for field |
+| FR-REL-4 #647 compensating and check-out releases unchanged | `services/rooms/src/pgstore.test.ts:185`, `app/src/views/StayView.vue:1383`, `:1415`, `:1738`, `:1786`, `:2101`, `script/e2e-desk-loop.sh:358`, `:464`, `script/e2e-perf-check.sh:247`, `:258` | Covered by re-run plus one explicit guard: the `vacant-inspected` release succeeds and `ReleaseRoom` never consults `ALLOWED_TRANSITIONS`; the desk helper still sends only the two targets; the check-out release and the e2e scripts stay green |
+| FR-REL-5 artefacts and suite | `script/contract-check.sh` over `contracts/http/ReleaseRoom.json`, `docs/architecture/lld.md:232`, `docs/technical/api-spec.md` section 2, `docs/architecture/state-machine.md:129-166` | `architect` moves the contract enum to the pair, names the `VALIDATION_FAILED` row in the LLD, adds the API-spec section 2 note, and re-pins state-machine `:134`, `:137`, and `:166-167` to the current `releaseRoom`; `qa-lead` maps the section; the Rooms suite stays green with and without `TEST_PG_URL` |
+
+Per-flow implementation diagram (T2). The architecture-side view is the
+LLD section 41 delta and the refreshed state-machine section 2.1; this
+is the requirements-side view of the same flow, citing the code edges
+this section was written against. The in-memory edge is
+`services/rooms/src/store.ts:480-511`; the Postgres twin is
+`services/rooms/src/pgstore.ts:514-563`.
+
+```mermaid
+flowchart TD
+    A[POST /v1/rooms/ReleaseRoom  services/rooms/src/server.ts:201-202] --> B{Room known and occupied?  services/rooms/src/store.ts:485-494, services/rooms/src/pgstore.ts:530-543}
+    B -- unknown room --> Z1[NOT_FOUND 404, nothing written  services/rooms/src/pgstore.ts:530-535]
+    B -- not occupied --> Z2[STATE_ILLEGAL 422, nothing written  services/rooms/src/store.ts:489-494, services/rooms/src/pgstore.ts:538-542]
+    B -- yes --> C{toState present and in the accepted pair?  services/rooms/src/store.ts:495-500, services/rooms/src/pgstore.ts:522-527}
+    C -- absent or undefined --> T1[vacant-dirty, the default every e2e call takes  script/e2e-desk-loop.sh:358]
+    C -- vacant-dirty or vacant-inspected --> T2[that target, including the #647 compensating release  services/rooms/src/pgstore.test.ts:185]
+    C -- vacant-clean, out-of-order, another string, non-string, or null --> R[VALIDATION_FAILED 400, details.toState, sentence names the pair]
+    R --> N[Nothing written: no room row, no room_status_history row, no room.state-changed event]
+    T1 --> W[room.state = target, one history row, one room.state-changed event  services/rooms/src/store.ts:502-509, services/rooms/src/pgstore.ts:544-561]
+    T2 --> W
+    W --> OK[200 roomNumber, oldState occupied, newState target]
+```
+
+Failure/rollback path: an out-of-set target is refused before any write,
+so the room keeps its state, its history, and its events, and a retry
+with one of the two targets — or with no target at all — is an ordinary
+release. The whole change reverts with the single implementation PR:
+the contract enum, the refusal branch, the guards, and the doc alignment
+disappear together, and every request the service accepted before is
+accepted again. No migration, backfill, or data repair exists in either
+direction; a room released to `vacant-clean` or `out-of-order` before the
+change is in a state the housekeeping walk and the block path can both
+produce, so there is nothing to migrate.
+
+### 42.6 Explicitly not specified here (plus gate dependencies)
+
+- Implementation — the target check in both stores, the refusal wiring,
+  and the guards — is the downstream `dev` PR for #773, not this
+  section.
+- Acceptance criteria, the scope decision, and the recorded risk are
+  `product-owner` work (`AC-REL-1`..`AC-REL-5`, D-46, R-27); the
+  contract enum, the LLD error row and section 41 delta, the API-spec
+  section 2 note, and the state-machine line pins are `architect` work;
+  the guard mapping above is `qa-lead` work (traceability matrix section
+  34); the release and rollback note is `release-manager` work.
+  `spec-reviewer` gates the set.
+- Out of scope: routing `ReleaseRoom` through `ALLOWED_TRANSITIONS`;
+  changing the `occupied -> vacant-inspected` compensating path or the
+  #588 check-out release; adding a state, transition, operation, route,
+  request or response field, status, catalogue key, or print rule;
+  changing `UpdateRoomState`, the housekeeping walk, or the
+  block path; a schema, migration, backfill, or data-dictionary change;
+  and any desk layout, control, copy, or state change.
+- No UI contract gap applies: the desk's release helper already sends
+  only the two accepted targets and no screen, control, route, state,
+  catalogue value, or copy is added or changed.
+- No implementation PR opens until `SPEC-GATE PASS` on #773.
+
 <!-- ao-role: business-analyst -->
 Role: business-analyst · AO session hotel-mgmt-1215
 
@@ -13146,3 +13528,6 @@ Role: business-analyst · AO session hotel-mgmt-1278
 
 <!-- ao-role: business-analyst -->
 Role: business-analyst · AO session hotel-mgmt-1287
+
+<!-- ao-role: business-analyst -->
+Role: business-analyst · AO session hotel-mgmt-1326
