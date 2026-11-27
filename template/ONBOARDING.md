@@ -47,7 +47,7 @@ copied, and placeholder substitution is re-applied). The installer
 prints the next steps when it finishes.
 
 What you get: `AGENTS.md`, `config/ao-project.jsonc` (AO project
-config template), `cues/` (18 project-scoped rule cues),
+config template), `cues/` (20 project-scoped rule cues),
 `.opencode/` (12 role files, 8 skills, 2 commands, permission config,
 guard plugin), `.github/` (issue form, PR template), `docs/` (index,
 role rules, conventions, starter group), `script/` (footer, spawn,
@@ -292,7 +292,7 @@ Adoption is done when every box is ticked:
 
 - [ ] Template installed; `grep -rE "{{(PROJECT_NAME|REPO_SLUG|DEFAULT_BRANCH|DOMAIN)}}" AGENTS.md config cues .opencode docs script .github` finds no placeholders.
 - [ ] Risk + type labels exist; exactly one of each on every issue/PR.
-- [ ] Cues imported: `ao cue list --project [project-id] --json` shows the expected 18 cues, including the lineage (`worker-report-and-ping` supersedes `worker-report-contract` + `ping-orchestrator-done`; `publish-scope` supersedes `publish-and-review`), and no active cue tells workers to use `ao review trigger` as the normal path.
+- [ ] Cues imported: `ao cue list --project [project-id] --json` shows the expected 20 cues, including the lineage (`worker-report-and-ping` supersedes `worker-report-contract` + `ping-orchestrator-done`; `publish-scope` supersedes `publish-and-review`; `merge-state-freshness` supersedes `owner-report-links`), and no active cue tells workers to use `ao review trigger` as the normal path.
 - [ ] AO project registered with the full `--config-json` object from `config/ao-project.jsonc` (`ao project get [project-id] --json` confirms `agentRulesFile`, pool rules, harness/model, reviewers, `trackerIntake`, `autoReview: false`, `workersRequestReview: false`).
 - [ ] Reviewer mode recorded (separate reviewer session + manual fallback; native reviewer documented as disabled/legacy until the sandbox is fixed AO-side).
 - [ ] Branch protection + least-privilege CI live (require PRs, require green CI, no direct pushes).

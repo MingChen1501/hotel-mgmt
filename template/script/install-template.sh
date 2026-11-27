@@ -86,6 +86,8 @@ PAYLOAD=(
   "cues/harness-engineering.md"
   "cues/review-repo-verdict.md"
   "cues/stop-state-until-resume.md"
+  "cues/owner-report-links.md"
+  "cues/merge-state-freshness.md"
   ".opencode/agents/orchestrator.md"
   ".opencode/agents/product-owner.md"
   ".opencode/agents/business-analyst.md"

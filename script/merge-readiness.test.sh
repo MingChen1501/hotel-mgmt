@@ -18,6 +18,9 @@
 # is needed. Usage: bash script/merge-readiness.test.sh [--script <path>]
 #   --script defaults to the live script next to this test; point it at
 #   template/script/merge-readiness.sh to cover the template twin.
+#
+# It also covers the additive `--all`/`--since` freshness scan (issue
+# #797): one line per open PR, read-only, fail closed on an incomplete row.
 set -euo pipefail
 
 SCRIPT_UNDER_TEST="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/merge-readiness.sh"
@@ -466,6 +469,75 @@ if grep -qF 'read-only' "${SCRIPT_UNDER_TEST}"; then
   echo "ok: the script documents its read-only contract"; pass=$((pass + 1))
 else
   echo "FAIL: the script does not document its read-only contract"; fail=$((fail + 1))
+fi
+
+# -----------------------------------------------------------------------
+# 8. Freshness mode (--all / --since, issue #797): one line per open PR,
+#    read-only, never a readiness gate, fail closed on an incomplete row.
+# -----------------------------------------------------------------------
+reset_fixtures
+jq -n --arg head "${TEST_HEAD}" \
+  '[{number:674,state:"OPEN",mergeable:"MERGEABLE",mergeStateStatus:"CLEAN",headRefOid:$head,url:"https://example.invalid/pull/674",updatedAt:"2026-11-27T00:00:00Z"},
+    {number:675,state:"OPEN",mergeable:"CONFLICTING",mergeStateStatus:"DIRTY",headRefOid:"deadbee1234567890deadbee1234567890deadbe",url:"https://example.invalid/pull/675",updatedAt:"2026-11-27T00:00:00Z"}]' \
+  >"${work}/freshness.json"
+export TEST_OPEN_PRS="${work}/freshness.json"
+invoke --all
+expect_ok "--all exits 0 when the open list is readable"
+expect_contains "--all prints the PR number, head, state, mergeable and URL" \
+  "#674  head=${TEST_HEAD}  state=OPEN  mergeable=MERGEABLE/CLEAN  https://example.invalid/pull/674"
+expect_contains "--all prints every PR row" \
+  "#675  head=deadbee1234567890deadbee1234567890deadbe  state=OPEN  mergeable=CONFLICTING/DIRTY  https://example.invalid/pull/675"
+expect_contains "--all names the open-PR count" "2 open PR(s) read"
+expect_contains "--all explains that an absent PR is not open" "a PR absent from this list is not open"
+expect_absent "--all does not print a readiness verdict" "Merge readiness:"
+
+reset_fixtures
+export TEST_OPEN_PRS="${work}/freshness.json"
+invoke --since 2026-11-01
+expect_ok "--since exits 0 when the filtered list is readable"
+expect_contains "--since names the date scope" "open PRs updated since 2026-11-01"
+if grep -qF 'updated:>=2026-11-01' "${TEST_GH_LOG}"; then
+  echo "ok: --since passes the date filter to gh pr list"; pass=$((pass + 1))
+else
+  echo "FAIL: --since did not pass updated:>=2026-11-01 to gh pr list"; fail=$((fail + 1))
+fi
+
+reset_fixtures
+export TEST_OPEN_PRS="${work}/freshness.json"
+invoke --since=2026-11-01
+expect_ok "--since=<date> form works"
+expect_contains "--since=<date> names the date scope" "open PRs updated since 2026-11-01"
+
+reset_fixtures
+invoke --since 2026-13-40
+expect_not_ready "an invalid --since date is rejected"
+
+reset_fixtures
+invoke --all 674
+expect_not_ready "--all cannot be combined with PR numbers"
+
+reset_fixtures
+printf 'not-json\n' >"${work}/freshness-bad.json"
+export TEST_OPEN_PRS="${work}/freshness-bad.json"
+invoke --all
+expect_not_ready "an unreadable open list fails closed"
+
+reset_fixtures
+jq -n '[{number:674,state:"OPEN",mergeable:"MERGEABLE",mergeStateStatus:"CLEAN",headRefOid:"",url:"https://example.invalid/pull/674"}]' \
+  >"${work}/freshness-incomplete.json"
+export TEST_OPEN_PRS="${work}/freshness-incomplete.json"
+invoke --all
+expect_not_ready "a row without a head SHA fails closed"
+expect_contains "the incomplete row is still printed" "#674  head=MISSING"
+expect_contains "the incomplete row is named in the error" "without a number/head/URL"
+
+reset_fixtures
+export TEST_OPEN_PRS="${work}/freshness.json"
+invoke --all
+if grep -qE -- '(^| )(--method (-X )?(POST|PUT|PATCH|DELETE)|pr (merge|comment|edit|review|ready)|pr label|issue comment|push)' "${TEST_GH_LOG}"; then
+  echo "FAIL: freshness mode issued a mutating call:"; cat "${TEST_GH_LOG}"; fail=$((fail + 1))
+else
+  echo "ok: freshness mode issued no push/merge/comment/label/branch call"; pass=$((pass + 1))
 fi
 
 # Bad input is rejected, not guessed.
