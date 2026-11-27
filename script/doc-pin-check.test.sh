@@ -56,6 +56,12 @@ export const line10 = 10;
 export const runTx = (fn: () => void): void => { withTx(db, fn); };
 export const line12 = 12;
 EOF
+# Two lines that share a prefix: the one-annotation/two-pin case.
+cat >"${root}/services/demo/src/pairs.ts" <<'EOF'
+// fixture: sharedSymbol prefix on two lines
+sharedSymbolAlpha();
+sharedSymbolBeta();
+EOF
 # The #759 offset-sweep fixture: the claimed symbol is NOT at the cited line.
 cat >"${root}/src/view.ts" <<'EOF'
 export function render(): string {
@@ -239,6 +245,23 @@ EOF
 run_check --all docs/architecture
 expect_status "a table row without a path stays unresolved" 0
 expect_contains "the second table row does not inherit the first row's path" "UNRESOLVED	docs/architecture/services/demo.md	4"
+
+# ---------------------------------------------------------------------------
+# 8b. Annotation pairing: one annotation covers every pin on its line; N
+#     annotations pair with N pins in reading order.
+# ---------------------------------------------------------------------------
+write_doc <<'EOF'
+# Demo
+
+- Q: both (`src/pairs.ts:2`, :3) <!-- pin: sharedSymbol -->
+- R: first (`src/pairs.ts:2`) then (`src/pairs.ts:3`) <!-- pin: sharedSymbolAlpha --> <!-- pin: sharedSymbolBeta -->
+EOF
+run_check --all docs/architecture
+expect_status "one annotation covers both pins on its line" 0
+expect_contains "the first pin of the annotated line passes" "PASS	docs/architecture/services/demo.md	3	services/demo/src/pairs.ts:2	sharedSymbol"
+expect_contains "the second pin of the annotated line passes" "PASS	docs/architecture/services/demo.md	3	services/demo/src/pairs.ts:3	sharedSymbol"
+expect_contains "the first paired annotation applies to the first pin" "PASS	docs/architecture/services/demo.md	4	services/demo/src/pairs.ts:2	sharedSymbolAlpha"
+expect_contains "the second paired annotation applies to the second pin" "PASS	docs/architecture/services/demo.md	4	services/demo/src/pairs.ts:3	sharedSymbolBeta"
 
 # ---------------------------------------------------------------------------
 # 9. A pin with no keyword is UNVERIFIED and never PASS; warnings alone do

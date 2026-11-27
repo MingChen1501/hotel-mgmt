@@ -20,6 +20,8 @@
 #       * a keyword map passed with --keywords (TSV:
 #         `doc<TAB>resolved-target<TAB>keyword`), or
 #       * an inline `<!-- pin: keyword -->` annotation on the doc line.
+#         One annotation on a line applies to every pin on it; N
+#         annotations pair with N pins in reading order.
 #   - a pin with no keyword is reported UNVERIFIED, never PASS: a pin can
 #     never pass on existence alone.
 #   - a missing file, a line past EOF, or a line without the keyword is a

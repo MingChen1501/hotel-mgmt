@@ -20,6 +20,8 @@
 #       * a keyword map passed with --keywords (TSV:
 #         `doc<TAB>resolved-target<TAB>keyword`), or
 #       * an inline `<!-- pin: keyword -->` annotation on the doc line.
+#         One annotation on a line applies to every pin on it; N
+#         annotations pair with N pins in reading order.
 #       The project's seed map is its own file (it is project data, not
 #       template content).
 #   - a pin with no keyword is reported UNVERIFIED, never PASS: a pin can
