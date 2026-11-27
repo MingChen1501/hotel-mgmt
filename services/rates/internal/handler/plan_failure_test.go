@@ -25,6 +25,10 @@ func (r *failingPlanRepository) UpsertRatePlan(string, string, *int) (*store.Rat
 	return nil, r.failure
 }
 
+// storeFailureOpError mirrors the unexported storeFailure() contract
+// (code, status, sentence, empty details). Keep it in lockstep with
+// services/rates/internal/store/postgres.go: if that answer moves, this
+// stub must move with it.
 func storeFailureOpError() *store.OpError {
 	return &store.OpError{
 		Code:    "VALIDATION_FAILED",

@@ -142,9 +142,27 @@ ok  	github.com/MingChen1501/hotel-mgmt/services/rates/internal/store	0.299s
 ```
 
 The guards live in `services/rates/internal/store/plan_failure_test.go`
-(`PLN-1`, `PLN-2`, `PLN-4`, `PLN-5`) and
+(`PLN-1`, `PLN-2`, `PLN-4`, `PLN-5`),
 `services/rates/internal/handler/plan_failure_test.go` (`PLN-3`), and the
-results are recorded in `docs/testing/test-report.md` section 8.1.
+`PLN-8` desk cases in `app/src/views/ManageView.test.ts`; the results are
+recorded in `docs/testing/test-report.md` section 8.1.
 
-<!-- ao-role: dev -->
-Role: dev · AO session hotel-mgmt-1317
+## Desk guard (`PLN-8`)
+
+Both Manage screen create paths were driven against a `500`
+`VALIDATION_FAILED` answer for `UpsertRatePlan` (the mock backend in
+`app/src/views/ManageView.test.ts`; production code unchanged). Each case
+asserts the existing `desk.manage.error_generic` sentence, no
+`UpsertRatePrice` call, no remembered plan (`writeStoredPlan` not
+reached), and the pending nights / plan-missing state kept for a retry.
+
+```text
+$ cd app && npx vitest run src/views/ManageView.test.ts --maxWorkers=1
+ ✓ src/views/ManageView.test.ts (27 tests) 3776ms
+
+ Test Files  1 passed (1)
+      Tests  27 passed (27)
+```
+
+<!-- ao-role: dev-takeover -->
+Role: dev-takeover · AO session hotel-mgmt-1320

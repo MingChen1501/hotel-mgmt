@@ -10442,13 +10442,13 @@ As found (at this spec head, read-only):
   resolved write stores the plan name and re-reads prices (`:1838`) or
   retries the pending nights (`:1874-1875`)
   (`app/src/views/ManageView.vue:1816-1840`, `:1852-1876`).
-- **No guard drives the failure path.** `TestPostgresDeskLoop`
+- **The failure path now has guards.** `TestPostgresDeskLoop`
   (`services/rates/internal/store/postgres_test.go:58-98`) writes a plan
-  against the real schema and asserts its success; the suite has no
-  closed-pool or stubbed-`*sql.DB` plan-write guard, so it cannot tell a
-  refusal from a fabricated success today. The guards `PLN-1`..`PLN-4`
-  in requirements section 41.5 are the `dev` handoff and do not exist
-  yet.
+  against the real schema and asserts its success; the failure half is
+  the guard registry `PLN-1`..`PLN-9` (requirements section 41.5 and the
+  `qa-lead` traceability), created by this implementation PR, so a
+  refusal can no longer regress to a fabricated success. The closed-pool
+  and stubbed-driver halves run without a database.
 
 ### 40.1 Where the refusal sits, and exactly which answer it returns
 
@@ -10679,9 +10679,10 @@ because no stored value is rewritten and a plan the fault previously
   section 7 and the repo root):
   - `services/rates`: `go build ./...`, `go vet ./...`,
     `gofmt -l .`, and `go test ./...` both without and with
-    `TEST_PG_URL`; the new guards `PLN-1`..`PLN-4` (requirements section
-    41.5) run without the variable, and the existing healthy-path
-    guards — `TestPostgresDeskLoop`
+    `TEST_PG_URL`; the new guards `PLN-1`..`PLN-9` (requirements section
+    41.5 and the `qa-lead` registry — the store halves `PLN-1`..`PLN-5`,
+    the handler `PLN-3`, and the desk cases `PLN-8`) run without the
+    variable, and the existing healthy-path guards — `TestPostgresDeskLoop`
     (`services/rates/internal/store/postgres_test.go:58-98`) and the
     handler's plan-create guard
     (`services/rates/internal/handler/handler_test.go:34-45`) — pass
@@ -10743,11 +10744,11 @@ The implementation replaced `services/rates/internal/store/postgres.go:109`'s `r
 the success path (`:88`, `:95-103`, `:111-119`), the in-memory store,
 the `Repository` interface, the handler's success branch, and the
 best-effort outbox helper untouched, and created the guards of
-requirements section 41.5 (`PLN-1`..`PLN-5`); it refreshes this
-section's line pins plus the #767 edges of
-`docs/architecture/services/rates.md` sections 3, 4, and 6 to the
-as-built `file:line` at the merged head (`qa-lead` re-pins its
-traceability rows). `dev-peer-review` treats these as findings the same
+requirements section 41.5 (`PLN-1`..`PLN-9`); this section's line pins
+were refreshed to the as-built `file:line` here, while the #767 edges of
+`docs/architecture/services/rates.md` sections 3, 4, and 6 were
+refreshed by the spec PR #793 (`qa-lead` re-pins its traceability rows
+at the merged head). `dev-peer-review` treats these as findings the same
 as any drifted spec: the error still discarded or mapped to any answer
 other than `storeFailure()`; a new code, status mapping, catalogue key,
 detail field, manifest entry, or response change invented; an explicit
