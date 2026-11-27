@@ -56,6 +56,7 @@ front-desk staff, manager, or owner account acting within its access
 | BR-44 | A nightly price covers exactly one night. A room type is open for booking on a night only when a price exists for that room type, rate plan, and night; a missing night is never priced by inference from a neighbouring night, a plan or season default, or zero, and the desk states the type as not open for booking for that date until a manager sets the night's price. | FR-RTE-1; FR-RTE-5; FR-RES-1; US-RTE-1; `AC-MANAGE-9`; #589 |
 | BR-52 | The total and applied discount name a reservation freezes are the ones Pricing quotes for its effective room type, dates, and named discount when the booking is created or changed — never a total the caller supplies. A request's price basis is advisory input: a total that disagrees with that quote is refused and nothing is stored or repaired in place, and a quote that cannot be read refuses the booking rather than freezing an unverified total. A later rate change still does not alter a frozen total except by an explicit recalculation under `BR-2`/`BR-13`. | FR-RES-1; FR-RES-2; FR-RTE-5; FR-PRC-1..FR-PRC-5; `AC-PRC-1`..`AC-PRC-5`; #632 |
 | BR-68 | Rates refuses an input it cannot honour instead of coercing, trusting, or storing it. A present `closedToArrival` must be JSON `true` or `false`; any other value is refused `VALIDATION_FAILED` naming the field, never coerced to `false`, while an omitted field keeps the contract default `false` and a stored `true` window still refuses an arrival inside its dates. A restriction binds only to a room type Pricing can price: a malformed `roomTypeId` is refused `VALIDATION_FAILED`, a well-formed one no rate price row mentions is refused `NOT_FOUND`, and neither stores a row nor emits a `restriction-changed` event, in both stores, because a window that matches nothing is worse than a refusal and a plan `defaultUnits` is not a price. The availability read's `totalUnits` is advisory only: it is shape-checked when present and never sets the count, which is the first plan in name order that prices the type and carries a `defaultUnits`, else `0` for a priced type, while a type no price row mentions refuses `NOT_FOUND` whether or not the field is present — the booking ceiling stays the one `BR-47` derives from the room inventory. A quote whose nightly sum, percent multiplication, or amount subtraction would leave the `int64` range refuses `STATE_ILLEGAL` naming `roomTypeId` with `reason: "total_overflow"` and serves no total and no partial night list, because the served total is the money the guest is charged; every non-overflowing quote stays byte-identical and no stored-price ceiling is added. Rate-plan `name` is bounded at 64 characters and `description` at 2 000 on write, and a present value of either that is not a string is refused naming the field; the bounds are code constants with no migration, backfill, truncation, or read-time re-validation. All five rules are fixed code rules, never per-hotel settings. | FR-RTE-1; FR-RTE-2; FR-RTE-4; FR-RTE-5; FR-RTE-6..FR-RTE-10; NFR-I18N-1; NFR-BND-1; BR-9; BR-10; BR-44; BR-47; BR-52; `AC-RTE-6`..`AC-RTE-10`; Refs #631, #632, #633 |
+| BR-71 | A rate-plan write the store could not perform is a failure, never a stored plan. When the Rates Postgres store's plan insert/update or its `RETURNING` scan fails for any reason — a closed pool, a cancelled context, a revoked privilege, a missing schema — the write returns the service's existing store-failure answer (a non-nil `*OpError`; HTTP 500, the plain `rates.store.unavailable` sentence, empty `details`, a fresh `traceId`) and no plan, never the request-shaped plan, an empty `id`, or a partial record, and the handler answers that failure envelope and never a 2xx. Nothing is written: for the named failure classes the statement never commits, so no `rates.rate_plans` row is created or changed, and the failure branch returns before the outbox write, so no `rate-plan-changed` row joins `rates.outbox` — no phantom plan can be read, priced, or quoted, and the desk's plan-create action reports the failure in its existing sentence instead of advancing to a nightly-price write. The request is valid and the failure is retriable: the same request repeated after the database recovers creates or updates the plan exactly as a healthy write, with no replay or repair of the failed attempt. A healthy create or update keeps today's stored values (name as the key, the sent description, the stored `defaultUnits` when the request omits it), the same outbox event the store emits today, and the same `200` body with the stored `id`, `name`, and `description`, in both stores. No new code token, field, status mapping, route, catalogue sentence, or schema is added; the token `storeFailure()` carries today is deliberately not moved here, because aligning it with `INTERNAL_ERROR` (`BR-59`) changes every Rates write's failure answer and is a separate change. | FR-RTE-1; FR-RTE-10; FR-PLN-1..FR-PLN-5; NFR-AUD-1; NFR-I18N-1; BR-59; `AC-PLN-1`..`AC-PLN-3`; Refs #767 |
 
 ## 4. Check-in, stay, and check-out
 
@@ -176,6 +177,7 @@ section 3.3). Fixed items no hotel may change in the MVP.
 | Discounts | Named discounts the manager may apply (`BR-15`) | Applied discounts kept by name |
 | Rate plans | Sellable prices per room type, season, day (`BR-14`) | Quoted price basis unchanged unless recalculated (`BR-13`); the frozen total is the quote Pricing returns for the type, dates, and discount (`BR-52`) |
 | Rates input refusals | — (none) | `closedToArrival` must be a boolean; a restriction binds only to a room type Pricing prices; the availability read's `totalUnits` is advisory and the count is the plan default, else `0`; an overflowing quote refuses `details.reason` `total_overflow`; `name` is bounded at 64 and `description` at 2 000 characters on write (`BR-68`) |
+| Plan write failure | — (none) | A failed Rates Postgres plan write returns the existing store-failure answer and no plan, stores no row for the named failure classes and emits no `rate-plan-changed` event, answers the handler's failure envelope and never a 2xx, stays retriable after recovery, and keeps the healthy create/update row, event, and response unchanged (`BR-71`) |
 | Out-of-order blocks | Reason and date range per block (`BR-29`) | Blocked dates take no reservation or check-in |
 | Capacity write rule | — (none) | A present capacity is a whole number of at least 1 stored verbatim, every other present value refused naming `capacity` with nothing written and no `room-upserted` event, an omitted value keeping today's create-none/update-keeps meaning, and the onboarding wizard obeying the same floor while the manage form's `1..20` stays a client bound (`BR-69`) |
 | Payment methods | — (none) | Cash and card only (`BR-23`) |
@@ -342,14 +344,24 @@ the onboarding wizard refuses below `1` in both locales while the manage
 form's `1..20` stays a client bound — tracing `FR-RMS-4`, `FR-MGMT-3`,
 `FR-ADM-3`, `FR-CAP-1`..`FR-CAP-4`, `NFR-I18N-1`, and
 `AC-CAP-1`..`AC-CAP-4` plus `BR-30`, without adding behaviour beyond
-those sources.
+those sources, and BR-71 states the failure-reporting obligation the
+Rates plan write owes the desk — a driver failure on the Postgres plan
+insert/update or its `RETURNING` scan returns the service's existing
+store-failure answer and no plan, stores no row for the named failure
+classes and emits no `rate-plan-changed` event, answers the handler's
+failure envelope and never a fake success, stays retriable after
+recovery so the same request then creates the plan normally, and keeps
+the healthy create/update row, event, and `200` body unchanged, in both
+stores — tracing `FR-RTE-1`, `FR-RTE-10`, `FR-PLN-1`..`FR-PLN-5`,
+`NFR-AUD-1`, `NFR-I18N-1`, and `AC-PLN-1`..`AC-PLN-3` plus `BR-59`,
+without adding behaviour beyond those sources.
 Policies with no decided source appear as open questions
 OQ-1..OQ-5. No rule introduces behaviour beyond the traced
 FRs/NFRs/stories. Later capabilities from requirements section 6
 (waitlist, split folios, integrated payments, automated workflow
 rules, multi-property operation, and the rest) carry no rule here.
 
-Counts: 63 business rules, 5 open questions.
+Counts: 64 business rules, 5 open questions.
 
 <!-- ao-role: business-analyst -->
 Role: business-analyst · AO session hotel-mgmt-1079
@@ -377,3 +389,6 @@ Role: business-analyst · AO session hotel-mgmt-1247
 
 <!-- ao-role: business-analyst -->
 Role: business-analyst · AO session hotel-mgmt-1261
+
+<!-- ao-role: business-analyst -->
+Role: business-analyst · AO session hotel-mgmt-1287
