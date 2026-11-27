@@ -125,13 +125,26 @@ describe("admin postgres store", { skip: DATABASE_URL === undefined || DATABASE_
 
       const promoted = await store.updateUserRole(owner, { signinIdentity: "desk-1", role: "manager" });
       assert.equal(promoted.role, "manager");
+
+      // The own-role guard answers first when the caller is the target,
+      // so the last-owner path needs a second owner as the caller
+      // (mirroring the in-memory guard in server.test.ts).
+      await store.createUser(owner, {
+        displayName: "Second Owner",
+        signinIdentity: "owner-2",
+        secret: "owner-2-secret",
+        role: "owner",
+      });
+      const secondSession = await store.signIn("owner-2", "owner-2-secret");
+      const secondOwner = await store.authenticate(secondSession.token);
+      await store.updateUserRole(owner, { signinIdentity: "owner-2", role: "manager" });
       await assert.rejects(
-        store.updateUserRole(owner, { signinIdentity: "owner", role: "manager" }),
+        store.updateUserRole(secondOwner, { signinIdentity: "owner", role: "manager" }),
         /last remaining owner/,
       );
 
       const listed = await store.listUsers(owner);
-      assert.equal(listed.users.length, 2);
+      assert.equal(listed.users.length, 3);
       assert.ok(listed.users.every((user) => !("secretHash" in user)));
 
       await store.updateConfig(owner, { values: { timezone: "Asia/Ho_Chi_Minh" }, updatedBy: "owner" });
@@ -140,8 +153,15 @@ describe("admin postgres store", { skip: DATABASE_URL === undefined || DATABASE_
       assert.ok(actions.includes("user.created"));
       assert.ok(actions.includes("user.updated"));
       assert.ok(actions.includes("config.updated"));
+      assert.ok(!actions.includes("profile.updated"), "a profile-column write is a config.updated entry");
       const created = log.entries.find((entry) => entry.action === "user.created" && entry.entity === "desk-1");
       assert.equal(created?.actor, "owner");
+      // Both stores agree on the action and actor of a profile-column
+      // config write; the profile row has one audit stamp, so the
+      // Postgres entry names the profile aggregate as its entity.
+      const configEntry = log.entries.find((entry) => entry.action === "config.updated");
+      assert.equal(configEntry?.actor, "owner");
+      assert.equal(configEntry?.entity, "hotel_profile");
 
       for (let attempt = 0; attempt < 5; attempt++) {
         await assert.rejects(store.signIn("desk-1", "wrong"), /Unknown identity or wrong secret/);
