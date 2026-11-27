@@ -57,7 +57,7 @@
 #                     `script/doc-pin-allowlist.tsv` under the root, when
 #                     present; --allow overrides it.
 #   --no-allow        ignore the default allow-list, so a local run can
-#                     show the full pre-flip inventory.
+#                     show the full inventory.
 #   --report-only     always exit 0 (a local inspection mode); findings are
 #                     still printed and counted.
 #   --all             print one record per pin, including PASS/UNVERIFIED.

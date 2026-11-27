@@ -279,7 +279,7 @@ expect_contains "the unverified pin is counted" "unverified=1"
 expect_absent "the unverified pin is not reported as PASS" "pass=1"
 
 # ---------------------------------------------------------------------------
-# 10. --report-only: findings printed, exit 0 (the CI first iteration).
+# 10. --report-only: findings printed, exit 0 (local inspection mode).
 # ---------------------------------------------------------------------------
 write_doc <<'EOF'
 # Demo
