@@ -212,7 +212,13 @@ Given a room type and a date range; when the manager saves a nightly
 price for that combination; then new reservations for that room type
 and date quote that price. Desk surface (Refs #590): section 20
 specifies the range save that writes one row per night, with the
-capability statement unchanged.
+capability statement unchanged. Failure reporting (Refs #767): a plan
+write the store could not perform answers the service's existing
+store-failure envelope instead of a fabricated success, and the same
+request retried after the database recovers creates the plan, while a
+healthy create or update keeps today's stored values, event, and
+response; the capability statement above is unchanged (section 41;
+`BR-71`, `AC-PLN-1`..`AC-PLN-3`).
 
 FR-RTE-2 — Availability overview. Staff can see sellable rooms by
 room type and date at a glance.
@@ -912,6 +918,19 @@ handoff for those four requirements is section 39.5. The `Room setup
 and attributes` and `Room and room-type setup` rows above carry the
 matching pointers; their capability wording and their guards are
 unchanged.
+
+Amendment (Refs #767): the failed-plan-write rule is a requirement on
+one existing write, not a capability — `FR-PLN-1`..`FR-PLN-5`
+(section 41) make a failed Rates Postgres plan write return the
+service's existing store-failure answer and never a fabricated plan or
+empty `id`, store nothing and emit no `rate-plan-changed` event on the
+failure, answer the handler's existing failure envelope, let the same
+request retried after recovery create the plan normally, and keep the
+healthy create/update row, event, and `200` body unchanged — so this
+table gains no row, the 40-capability count stands, and the handoff for
+those five requirements is section 41.5. The `Rate plans per room type`
+row's guard and capability wording are unchanged; the failure case is
+traced in section 41.5.
 
 ## 5. Open questions (decided by `product-owner`, impact worded by `business-analyst`)
 
@@ -12271,6 +12290,423 @@ reading exactly as stored (R-24).
   surface changes.
 - No implementation PR opens until `SPEC-GATE PASS` on #637.
 
+## 41. A failed rate-plan write is refused, never reported as success (Refs #767)
+
+Requirements delta for the #767 fix: the Rates Postgres store reports a
+successful rate-plan write even when the driver write failed.
+`Postgres.UpsertRatePlan` discards the `Scan` error and returns the
+request-shaped plan
+(`services/rates/internal/store/postgres.go:104-110`), so the handler
+answers `200` with an empty `id`
+(`services/rates/internal/handler/handler.go:226-231`) while no
+`rates.rate_plans` row was stored and no `rate-plan-changed` outbox row
+was emitted; the next `UpsertRatePrice` for that name refuses
+`NOT_FOUND` (`services/rates/internal/store/postgres.go:135`). One
+rule: a write the store could not perform is a failure, and it is never
+reported as a stored plan.
+
+What #633 already settled, and what this section does not reopen:
+
+- **The refused shape is already in place.** `#633` changed the
+  `Repository` interface and both stores to `(*RatePlan, *OpError)`
+  (`services/rates/internal/store/store.go:242`), so the signature this
+  fix needs exists; the in-memory store has no driver to fail and
+  already writes under its mutex and emits only after the write
+  (`services/rates/internal/store/store.go:270-287`), so only the
+  Postgres error branch disagrees and this section must not duplicate
+  the signature change.
+- **The store-failure answer already exists.** `storeFailure()`
+  (`services/rates/internal/store/postgres.go:58-60`) is the service's
+  answer for a driver failure, and `UpsertRatePrice` maps its failed
+  plan lookup (`:135`) and its failed insert (`:150`) to it. The plan
+  upsert is the one write path that answers a fabricated success
+  instead.
+- **No contract, schema, code-token, or session change.** The refusal
+  reuses the existing envelope (HTTP 500, the plain
+  `rates.store.unavailable` sentence, empty `details`, a fresh
+  `traceId`), the request and response schemas keep their fields, and
+  no table, column, migration, route, or catalogue key is added.
+- **The store-failure token is a pre-existing Rates-wide question, not
+  moved here.** `storeFailure()` answers `code: "VALIDATION_FAILED"` at
+  status 500, while `BR-59`
+  (`docs/requirements/business-rules.md`) and
+  `docs/technical/error-handling.md` section 1 reserve `INTERNAL_ERROR`
+  for a store or driver failure; `FR-ERR-1` words that rule for the four
+  Node services only. Changing it moves every Rates write's failure
+  answer, so it is one separate change across all `storeFailure()` call
+  sites, recorded as R-26's re-tier trigger rather than widened
+  silently inside this fix.
+
+The scope decision, the accepted done-conditions, and the recorded risk
+are `product-owner` work: `docs/product/acceptance-criteria.md`
+[section 33](../product/acceptance-criteria.md)
+(`AC-PLN-1`..`AC-PLN-4`, with the `AC-MANAGE-7` and `AC-RTE-10`
+pointers), D-45 in `docs/project/decision-log.md`
+[the decision log](../project/decision-log.md), and R-26 in
+`docs/project/risk-register.md` [the risk register](../project/risk-register.md).
+The architecture half is the HLD delta (`docs/architecture/hld.md`
+[section 32](../architecture/hld.md)), the LLD delta
+(`docs/architecture/lld.md` [section 40](../architecture/lld.md)), and
+the refreshed Rates flowcharts and error-mapping row
+(`docs/architecture/services/rates.md` sections 3, 4, and 6, refreshed
+by the implementation PR per maintain-with-code) — the sibling sections
+this change set adds, `architect` work. The LLD delta carries the
+failure diagram, and the Rates service-design error-mapping row names
+the store-failure answer as-built; the LLD's own section 37.6 is where
+the fault was recorded as out of scope for #633
+(`docs/architecture/lld.md`). Guard traceability is the `qa-lead`
+handoff (`docs/testing/traceability-matrix.md`
+[section 33](../testing/traceability-matrix.md), the sibling section
+this change set adds); the release note and the rollback pointer are
+the `release-manager` handoff. This section words the requirements
+half: the decision (41.1), the explicit no-change statements (41.2),
+the behaviour-scoped FRs (41.3), the NFR no-change statement (41.4),
+the traceability handoff with its per-flow diagram (41.5), and the gate
+dependencies plus the out-of-scope list (41.6). No `docs/README.md` row
+flips: both requirements files this change touches are already
+`active`, and the index rows gain the section and rule references only.
+
+The change is tier T2 as `product-owner` recorded: one existing
+operation changes a caller-visible answer — a store failure where a
+fabricated success was returned — while no operation, route, request or
+response field, status set, schema table, migration, lifecycle state,
+desk screen, control, catalogue key, or print rule is added or removed.
+The refusal uses the service's existing store-failure answer, so no new
+code, field, or route is added; the Manage screen's plan-create paths
+already render their existing plain failure sentence on a rejected
+write, so no UI contract section applies.
+
+### 41.1 Decision: return the store-failure answer when the plan write fails, and leave the success path alone
+
+As-built trace at this spec head (pre-change), read-only. The pins
+below are the state this requirement was written against and are
+refreshed at the merged head by `qa-lead`.
+
+- **The Postgres plan upsert discards its only write error.**
+  `UpsertRatePlan` builds the request-shaped plan
+  (`services/rates/internal/store/postgres.go:88`), runs the
+  insert/update with `RETURNING id, default_units` (`:95-103`), and on a
+  driver error returns that plan with a `nil` error (`:104-110`, the
+  `return plan, nil` at `:109`). `plan.ID` therefore stays the zero
+  string, the `rate-plan-changed` outbox write never runs (`:118`), and
+  the caller receives a record the database never accepted.
+- **The handler cannot tell the difference.** It answers `200` with the
+  returned record's `id`, `name`, and `description`
+  (`services/rates/internal/handler/handler.go:226-231`), so the
+  success envelope carries `id: ""` — a value the operation's own
+  response schema forbids, because it requires `id` as a UUID
+  (`contracts/http/UpsertRatePlan.json`, response
+  `required: ["id", "name"]`).
+- **Every sibling write already refuses.** `storeFailure()`
+  (`services/rates/internal/store/postgres.go:58-60`) is the service's
+  answer for a driver failure — HTTP 500, the plain
+  `rates.store.unavailable` sentence
+  (`services/rates/internal/messages/en.json:166`), empty `details` —
+  and `UpsertRatePrice` maps its failed plan lookup
+  (`services/rates/internal/store/postgres.go:135`) and its failed
+  insert (`services/rates/internal/store/postgres.go:150`) to it. The
+  plan upsert is the one write path that answers a fabricated success
+  instead.
+- **The in-memory store cannot show the fault, and already carries the
+  refused shape.** `Store.UpsertRatePlan`
+  (`services/rates/internal/store/store.go:270-287`) writes under its
+  mutex and emits the event only after the write, with no driver to
+  fail; both stores already return `(*RatePlan, *OpError)` (interface
+  at `services/rates/internal/store/store.go:242`), so the signature
+  #633 introduced is in place and only the Postgres error branch
+  disagrees.
+- **The desk follows whatever answer it is given.** The Manage screen's
+  two plan-create paths (`app/src/views/ManageView.vue:1816-1840` for
+  the read-path create, `:1852-1876` for the explicit one) render the
+  existing generic failure sentence on a rejected write (`:1833`,
+  `:1869`) and stop, while a resolved write stores the plan name and
+  re-reads prices (`:1838`) or retries the pending nights (`:1874-1875`).
+  A phantom `200` therefore advances the desk to price writes that can
+  only fail, while a real failure lands in the sentence the screen
+  already carries.
+- **The Postgres outbox helper is best-effort and stays so.** It
+  ignores its `Exec` error (`services/rates/internal/store/postgres.go:70-79`),
+  so a committed plan write can still miss its event today. This fix
+  does not change that helper: it only stops the failure branch from
+  reaching the success path at all.
+
+The decided behaviour, in three parts:
+
+1. **A driver failure is a failure, not a plan.** When the plan
+   insert/update or its `RETURNING` scan fails for any reason — a closed
+   pool, a cancelled context, a revoked privilege, a missing schema —
+   `Postgres.UpsertRatePlan` returns `(nil, storeFailure())`, exactly as
+   `UpsertRatePrice` answers the same class of failure
+   (`services/rates/internal/store/postgres.go:135`, `:150`), and never
+   returns a `RatePlan`. No request-shaped plan, empty `id`, or partial
+   record reaches the caller, and the error is never discarded.
+2. **The answer is the existing store-failure envelope, and it is never
+   a success.** The handler answers the operation's existing failure
+   answer — HTTP 500, the plain `rates.store.unavailable` sentence,
+   empty `details`, and a fresh `traceId`
+   (`services/rates/internal/handler/handler.go:34-41`) — and never a
+   2xx envelope. The failure class is "the store could not perform the
+   write", not a refusal of the caller's input: the request is valid
+   and a retry after the database recovers creates the plan normally.
+   Nothing is written, so no phantom plan can be read, priced, or
+   quoted between the failure and the retry. No new code token, field,
+   status mapping, route, or catalogue sentence is introduced, and the
+   token `storeFailure()` carries today does not move here (BR-59
+   alignment is the separate change recorded in R-26).
+3. **The success path is untouched.** A healthy write stores the same
+   row — name as the key, the sent description, and on an update the
+   stored `defaultUnits` when the request omits it — emits the same
+   outbox event the store emits today (one `rate-plan-changed` row on
+   the Postgres path for every successful plan write; the in-memory
+   store's existing create-only emit), and answers the same `200` body
+   with the stored `id`, `name`, and `description`. The in-memory
+   store, the `Repository` interface, and the handler's success branch
+   do not change.
+
+Named consequences, not decided here: a plan the fault previously
+"created" was never stored, so there is no row to migrate, repair, or
+backfill; the plan name the Manage screen remembers after a create is a
+browser-local value and stays local; and the best-effort outbox helper
+(`services/rates/internal/store/postgres.go:70-79`) keeps its
+current behaviour for a committed write.
+
+### 41.2 Explicit no-change statements
+
+- `FR-RTE-1` and `FR-RTE-10` keep their capability wording. They
+  already promise that a saved nightly price is quoted and that a plan
+  write stores the values the service accepted; this change makes the
+  service report a write it could not perform as a failure rather than
+  widening either FR, so the new obligations live in
+  `FR-PLN-1`..`FR-PLN-5` (`BR-71`).
+- `BR-9`, `BR-10`, `BR-13`, `BR-14`, `BR-44`, `BR-47`, `BR-52`, and
+  `BR-68` stand as written; the new rule is `BR-71`
+  (`docs/requirements/business-rules.md` section 3), and section 9
+  records it as a fixed code rule.
+- `NFR-CON-1` holds: no new concurrent write path appears, no lock,
+  transaction, or serialisation point is added or moved, and the
+  Postgres plan write's single insert/update stays the same statement.
+- `NFR-PERF-1` and `NFR-PERF-2` hold: the only addition is one error
+  branch on the write the service already serves — no round trip, no
+  poll, no extra screen read, and no new blocking — so neither the desk
+  target nor the report target moves.
+- `NFR-AVL-1` holds: the failure is decided inside the service
+  on-premise, so no caller gains a dependency outside the host and a
+  retry goes to the same local database.
+- `NFR-I18N-1` holds: the answer reuses the existing
+  `rates.store.unavailable` catalogue sentence, no sentence renders an
+  envelope code, status number, or driver/SQL/host/stack text, and no
+  new key is added to the catalogue or its runtime mirrors.
+- `NFR-BND-1`..`NFR-BND-3` hold: no route, body ceiling, parse
+  refusal, header, body-read, response-write, or idle bound moves; the
+  failure is answered inside the request the service already bounds.
+- `NFR-AUD-1` and `NFR-TZ-1` hold: a failed write records nothing and
+  emits no event, a committed write records its actor exactly as today,
+  and no date or display form changes.
+- Response shapes and statuses are unchanged. A healthy create or
+  update still answers `200` with `id`, `name`, and `description`
+  (`services/rates/internal/handler/handler.go:231`); the failure uses
+  the shared envelope, and no response field is added, lost, or
+  renamed.
+- The error vocabulary is unchanged. No code token is added to the
+  shared contract enum, and `VALIDATION_FAILED` keeps its meaning; the
+  store-failure token stays exactly as `storeFailure()` carries today,
+  and the `INTERNAL_ERROR` alignment `BR-59` asks for is the separate
+  Rates-wide change recorded in R-26.
+- No data model change: no table, column, migration, backfill, stored
+  value, or data-dictionary entry is added or changed, and no stored
+  row is rewritten by this change.
+- No reader-visible surface changes: the Manage screen's plan-create
+  paths already report a rejected write in their existing failure
+  sentence and do not advance (`app/src/views/ManageView.vue:1833`,
+  `:1869`), so no layout, component, token, route, label, state, or
+  print rule moves and no UI contract section applies.
+- The capability rows are unchanged: this constrains one existing
+  write rather than adding a capability, so the 40-capability count in
+  section 4 stands.
+
+### 41.3 Behaviour-scoped functional requirements
+
+Ids use the `PLN` (plan write) namespace, continuing the slice-scoped
+pattern of sections 10–39; `RTE` stays the rates-and-availability
+capability family. Each FR maps to an accepted done-condition in
+`AC-PLN-1`..`AC-PLN-3`; `AC-PLN-4` is the guard done-condition and is
+carried by the traceability handoff in section 41.5.
+
+FR-PLN-1 — A failed plan write returns the store-failure answer and no
+plan.
+Given `Postgres.UpsertRatePlan` is called with a valid name and
+description; when the insert/update or its `RETURNING` scan fails for
+any reason — a closed pool, a cancelled context, a revoked privilege, a
+missing schema; then the call returns a `nil` plan and a non-nil
+`*OpError` carrying the service's existing store-failure answer (code
+`VALIDATION_FAILED`, status 500, the `rates.store.unavailable`
+sentence, empty `details`, a fresh `traceId`) — the same answer
+`UpsertRatePrice` gives on the same class of failure — and it never
+returns the request-shaped plan, a record with an empty `id`, or a
+partial record. Traces to: `AC-PLN-1`; FR-RTE-1; `BR-59`, `BR-71`.
+
+FR-PLN-2 — Nothing is stored and no `rate-plan-changed` event is
+emitted on a failed write.
+Given the failure in FR-PLN-1; then the refused write creates no
+`rates.rate_plans` row and changes no stored row for the named failure
+classes, because the statement never commits, and the failure branch
+returns before the outbox call (`services/rates/internal/store/postgres.go:118`),
+so no `rate-plan-changed` row joins `rates.outbox` in any case. No
+phantom plan can therefore be read, priced, or quoted between the
+failure and a retry, and the stored plan set is exactly what it was
+before the request. Traces to: `AC-PLN-1`; FR-RTE-1; `NFR-AUD-1`;
+`BR-71`.
+
+FR-PLN-3 — The handler answers the store-failure envelope, never a
+success with an empty `id`.
+Given the same failing database; when `POST /v1/rates/UpsertRatePlan`
+runs with a valid body; then the handler answers the store-failure
+status (HTTP 500) with the shared envelope — the
+`rates.store.unavailable` sentence, empty `details`, and a fresh
+`traceId` — and never `200` with an empty or fabricated `id`, so no
+client is told a plan exists. The Manage screen's plan-create action
+shows its existing plain failure sentence and does not advance to the
+nightly-price write. Traces to: `AC-PLN-2`; FR-RTE-1, FR-ADM-4;
+`BR-59`, `BR-71`.
+
+FR-PLN-4 — A retry after the database recovers creates the plan
+normally.
+Given the failed request in FR-PLN-3; when the database can write again
+and the same request is repeated; then the plan is created or updated
+exactly as a healthy write — the stored row, the same outbox event the
+store emits today, and a `200` body with the stored `id`, `name`, and
+`description` — with no replay, repair, or duplicate of the failed
+attempt, and no `rate-plan-changed` row from that attempt. Traces to:
+`AC-PLN-2`; FR-RTE-1; `BR-71`.
+
+FR-PLN-5 — The healthy create and update path is unchanged.
+Given a healthy database; when the plan write runs as a create and as
+an update; then the stored row's values are identical to today's — name
+as the key, the sent description, and an update omitting
+`defaultUnits` keeping the stored one — the same outbox event the
+store emits today is written, and the `200` response body carries the
+stored `id`, `name`, and `description`; the in-memory store answers
+exactly as it does now, and no contract shape, schema, migration,
+status set, catalogue key, desk control, or print rule moves. Traces
+to: `AC-PLN-3`; FR-RTE-1, FR-RTE-10; `BR-71`.
+
+### 41.4 Non-functional requirements delta: no-change statement
+
+No new NFR is added and no existing NFR changes. The NFRs above hold as
+written for this change:
+
+- Desk response (`NFR-PERF-1`, `NFR-PERF-2` hold): the only addition is
+  one error test on a write the service already performs — no round
+  trip, no poll, no extra screen read, and no new blocking — so
+  neither the desk target nor the report target moves.
+- Concurrency and safety (`NFR-CON-1` holds): no new concurrent write
+  path appears, no lock or transaction is added, and the single
+  insert/update keeps its shape.
+- Availability (`NFR-AVL-1` holds): the failure is decided inside the
+  service on-premise, so no caller gains a dependency outside the host.
+- Internationalisation (`NFR-I18N-1` holds): the answer reuses the
+  existing `rates.store.unavailable` sentence, renders no envelope
+  code, status number, or driver/SQL/host/stack text, and adds no
+  catalogue key, so `script/catalogue-coverage-check.sh` stays green.
+- Transport bounds (`NFR-BND-1`..`NFR-BND-3` hold): no route, body
+  ceiling, parse refusal, header, body-read, response-write, or idle
+  bound moves.
+- Audit and time (`NFR-AUD-1`, `NFR-TZ-1` hold): a refused write
+  records nothing and emits no event, a committed write keeps its actor
+  exactly as today, and no date or display form changes.
+
+The store-failure answer and the success path are fixed code behaviour,
+not per-hotel configuration: the fixed/configurable split in
+`docs/requirements/business-rules.md` section 9 records the rule as
+fixed, so no owner setting, deployment file, or environment variable
+can make a failed write report success or make a healthy write refuse.
+
+### 41.5 Traceability handoff for `qa-lead`
+
+Each row traces to `AC-PLN-1`..`AC-PLN-4`, to this section's five FRs,
+and to `BR-71`. Guards that exist are cited `file:line` against the tree
+this requirement was written on; where no guard exists yet, the row
+names the missing guard explicitly and the implementation PR creates it,
+for `qa-lead` to re-pin at the merged head.
+
+| Item | Guard (on disk today; a row marked missing is created by the implementation PR) | Handoff note for `qa-lead` |
+|---|---|---|
+| FR-PLN-1 the store refuses | `services/rates/internal/store/postgres_test.go:58-98` (the healthy plan write the refusal must not disturb, against the real schema), `services/rates/internal/store/store_test.go:21-48` (the in-memory plan write), `services/rates/internal/store/postgres.go:58-60` (the answer the refusal reuses) | Missing guard `PLN-1`: a `Postgres` store over a closed pool (or a scratch database where the insert cannot succeed: revoked `INSERT`, a dropped schema, or a cancelled context) is called with a valid name and description; the call returns a `nil` plan and a non-nil `*OpError` with code `VALIDATION_FAILED`, status 500, the `rates.store.unavailable` sentence, empty `details`, and a fresh `traceId`, never the request-shaped plan and never an empty `id`. It must fail if the error is swallowed again |
+| FR-PLN-2 nothing stored, no event | `services/rates/internal/store/postgres_test.go:58-98` (a healthy write's stored plan, prices, and restriction rows are asserted) | Missing guard `PLN-2`: count `rates.rate_plans` and `rates.outbox` before and after the failed call (a second connection or a reopened pool after the forced failure), and assert the plan count is unchanged and no `rate-plan-changed` row was added; the same check after the retry in `PLN-4` proves the event belongs to the successful write only |
+| FR-PLN-3 the handler envelope | `services/rates/internal/handler/handler_test.go:205-211` (the shared-envelope shape with `code` and a fresh `traceId`), `:36-37` (the healthy plan-create path) | Missing guard `PLN-3`: a repository stub (or a Postgres store over a closed pool) whose plan write returns the store failure answers one HTTP 500 envelope with `code` `VALIDATION_FAILED`, the `rates.store.unavailable` sentence, empty `details`, and a fresh `traceId`, never `200`; the desk guard adds a failed plan-write backend response and asserts the existing failure sentence renders and no `UpsertRatePrice` call follows (`app/src/views/ManageView.test.ts:633-662` is the success-path twin) |
+| FR-PLN-4 retry after recovery | `app/src/views/ManageView.test.ts:775-786` (the desk's plan-create retry path) | Missing guard `PLN-4`: after the forced failure, repeat the same request against a healthy database and assert `200` with a non-empty UUID `id`, the stored row, and exactly the outbox event a healthy write emits — with no row or event left by the failed attempt |
+| FR-PLN-5 healthy create and update unchanged | `services/rates/internal/store/postgres_test.go:58-98` (the Postgres plan write), `services/rates/internal/handler/handler_test.go:36-45` (plan create then price writes), `services/rates/internal/store/store_test.go:21-48` (the in-memory plan write), `app/src/views/ManageView.test.ts:633-662` and `:775-786` (both desk create paths) | Covered by re-run: the stored row, the outbox event, and the `200` body must stay byte-identical; an update omitting `defaultUnits` keeps the stored value; the in-memory store's create-only emit and today's Postgres behaviour stay. Add the update case if the existing guards only create |
+| Contract lines and no new code token | `script/contract-check.sh` over `contracts/http/UpsertRatePlan.json` (response requires `id` as a UUID; the error list gains no new token), fixtures `services/rates/contract-tests/UpsertRatePlan.json` | `architect` refreshes the Rates error-mapping row (`docs/architecture/services/rates.md` section 6) so the existing store-failure answer is documented; no request or response field, status set, or enum token moves. The contract's error list is not widened with a new code here |
+| No-change gates (data model, desk, e2e, suite) | no migration file under `services/rates/migrations/` for this change; `app/src/views/ManageView.test.ts`; `script/e2e-desk-loop.sh` | Covered by re-run: no schema, migration, desk control, route, label, state, or copy changes, and `go test ./...` in `services/rates` stays green with and without `TEST_PG_URL`. The failure guard must run without that variable (closed-pool/stub shape), so the suite cannot silently skip it |
+
+Per-flow implementation diagram (T2). The architecture-side view is the
+LLD section 40 delta and the refreshed Rates flowcharts
+(`docs/architecture/services/rates.md` sections 3-4). This is the
+requirements-side view of the same flows, citing the code edges this
+section was written against:
+
+```mermaid
+flowchart TD
+    A[POST /v1/rates/UpsertRatePlan  services/rates/internal/handler/handler.go:178-232] --> B[Repository.UpsertRatePlan  services/rates/internal/store/store.go:242]
+    B --> P[Postgres.UpsertRatePlan builds the request-shaped plan  services/rates/internal/store/postgres.go:84-88]
+    P --> W{Insert/update and RETURNING scan succeed  services/rates/internal/store/postgres.go:95-103}
+    W -- no: closed pool, cancelled context, revoked privilege, missing schema --> R1[storeFailure: 500 VALIDATION_FAILED, rates.store.unavailable, empty details  services/rates/internal/store/postgres.go:58-60, new return at services/rates/internal/store/postgres.go:104-110]
+    R1 --> H1[Handler writes the failure envelope, never 200  services/rates/internal/handler/handler.go:227-230]
+    H1 --> N1[Nothing stored; outbox never reached  services/rates/internal/store/postgres.go:118]
+    N1 --> D1[Desk shows its existing failure sentence and does not advance  app/src/views/ManageView.vue:1833, app/src/views/ManageView.vue:1869]
+    W -- yes --> S[Plan row written and rate-plan-changed emitted  services/rates/internal/store/postgres.go:111-118]
+    S --> OK[200 id, name, description  services/rates/internal/handler/handler.go:231]
+    OK --> D2[Desk stores the plan name and continues  app/src/views/ManageView.vue:1838, app/src/views/ManageView.vue:1874-1875]
+    D1 --> RT[Same request retried after the database recovers]
+    RT --> W
+```
+
+Failure/rollback path: every driver failure returns before the outbox
+write and before the success response, so a refused write leaves the
+stored plan set, its prices, and its events exactly as they were; no
+phantom plan can be read, priced, or quoted, and the desk stops on its
+existing failure sentence instead of advancing to price writes that
+cannot succeed. A retry after recovery is the ordinary healthy write,
+with no repair or replay of the failed attempt. The whole change reverts
+with the single implementation PR — the error branch, the refusal, and
+the guards disappear together, the discarded error and fabricated `200`
+return, and every request the service accepted before is accepted
+again. No migration, backfill, or data repair exists in either
+direction, because no stored value is rewritten; a plan the fault
+previously "created" was never stored, so there is nothing to migrate.
+
+### 41.6 Explicitly not specified here (plus gate dependencies)
+
+- Implementation — the error branch in `Postgres.UpsertRatePlan`, the
+  handler expectation, and the guards — is the downstream `dev` PR for
+  #767, not this section. It lands on the `(*RatePlan, *OpError)`
+  signature #633 introduced and does not duplicate that signature
+  change.
+- Acceptance criteria, the scope decision, and the recorded risk are
+  `product-owner` work (`AC-PLN-1`..`AC-PLN-4`, D-45, R-26); the HLD
+  section 32 and LLD section 40 deltas, the refreshed Rates flowcharts
+  and the error-mapping row, and the failure diagram are `architect`
+  work; the guard mapping above is `qa-lead` work (traceability matrix
+  section 33); the release and rollback note is `release-manager` work.
+  `spec-reviewer` gates the set.
+- Out of scope: aligning the store-failure token with `INTERNAL_ERROR`
+  as `BR-59` asks (a separate change across every Rates `storeFailure()`
+  call site, recorded as R-26's re-tier trigger, not this fix); the
+  other `storeFailure()` call sites; the `UpsertRatePrice` success path;
+  the best-effort outbox helper
+  (`services/rates/internal/store/postgres.go:70-79`), which stays
+  best-effort and unchanged; any success-path, contract, schema,
+  migration, backfill, or data-dictionary change; and the Manage desk
+  screen's layout, controls, copy, or states.
+- No refusal precedence is decided here: the existing plan-text
+  refusals (`FR-RTE-10`) keep their order and run before the store
+  write, and the new failure answer applies only after they pass; no
+  guard may depend on one refusal outranking another.
+- No UI contract gap applies: no desk screen, control, route, state,
+  catalogue key, or copy is added or changed, and the Manage screen's
+  plan-create paths already render the existing failure sentence.
+- No implementation PR opens until `SPEC-GATE PASS` on #767.
+
 <!-- ao-role: business-analyst -->
 Role: business-analyst · AO session hotel-mgmt-1215
 
@@ -12279,3 +12715,6 @@ Role: business-analyst · AO session hotel-mgmt-1247
 
 <!-- ao-role: business-analyst -->
 Role: business-analyst · AO session hotel-mgmt-1261
+
+<!-- ao-role: business-analyst -->
+Role: business-analyst · AO session hotel-mgmt-1287
