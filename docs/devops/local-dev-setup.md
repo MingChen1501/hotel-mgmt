@@ -7,7 +7,13 @@ working API/DB session. The pilot install path stays in
 `docs/devops/deployment.md`; the daily operating procedures stay in
 `docs/operations/runbook.md`. Nothing here changes any setup flow, secret
 scheme, or code — every step below is verified against the compose file,
-the seed, the admin store code, and the sign-in route.
+the seed, the admin store code, and the sign-in route. One delta is
+specified ahead of its implementation: the third per-sale secret
+`ADMIN_TOKEN_KEY` and the `ADMIN_DEV_MODE=1` dev switch of section 3 are
+the target state of Refs #638 (`AC-BOOT-1`..`AC-BOOT-5` in
+`../product/acceptance-criteria.md`, section 32, and the LLD section 39),
+and the Admin service boots on the current defaults until that
+implementation PR lands.
 
 ## 1. Prerequisites
 
@@ -44,31 +50,66 @@ Rules (enforced by `script/validate-hotel-config.sh` and
 
 ## 3. Secrets provisioning (env file only)
 
-Two per-sale secrets, never stored in the repo:
+Three per-sale secrets, never stored in the repo:
 
 | Secret | Consumed by |
 |---|---|
 | `DB_PASSWORD` | every service's `DATABASE_URL` and `POSTGRES_PASSWORD` (`deploy/compose.yaml`) |
 | `ADMIN_BOOT_SECRET` | the `admin` service at boot (`ADMIN_BOOT_IDENTITY` defaults to `owner`) |
+| `ADMIN_TOKEN_KEY` | the `admin` service at boot: the HMAC key for every issued and verified session token (Refs #638) |
 
 Recommended mechanism — one env file in the home directory, readable
 only by you, sourced in each terminal before any stack command:
 
 ```sh
 # One-time setup:
-printf 'DB_PASSWORD=<generate-a-strong-secret>\nADMIN_BOOT_SECRET=<generate-another-strong-secret>\n' > ~/hotel-mgmt.env
+printf 'DB_PASSWORD=<generate-a-strong-secret>\nADMIN_BOOT_SECRET=<generate-another-strong-secret>\nADMIN_TOKEN_KEY=<generate-a-third-strong-secret>\n' > ~/hotel-mgmt.env
 chmod 600 ~/hotel-mgmt.env
 
 # In every terminal before stack commands:
 set -a; source ~/hotel-mgmt.env; set +a
 ```
 
-Never put either secret in the repo, in an image, in `hotel.json`
+Never put a secret in the repo, in an image, in `hotel.json`
 (`deploy/config/hotel.example.json` states: secrets are NEVER stored
 there), or in a shared chat. Both `script/preflight.sh` and
-`script/e2e-desk-loop.sh` refuse to run while either secret is unset or
-still a dev default (`change-me`, `change-me-dev-only`, `password`,
-`hotel`, `hotel-dev-only`).
+`script/e2e-desk-loop.sh` refuse to run while any of the three is unset
+or still a dev default (`change-me`, `change-me-dev-only`, `password`,
+`hotel`, `hotel-dev-only`); from #638 `ADMIN_TOKEN_KEY` is on that list
+beside the other two.
+
+**The dev switch (Refs #638).** The `admin` service refuses to boot
+without `ADMIN_TOKEN_KEY` and `ADMIN_BOOT_SECRET`, exactly as a sale
+does — the lab has no hidden fallback. Two supported ways to satisfy it:
+
+- **Env file (preferred).** Export the three values as above; the
+  admin container boots with them and nothing is special-cased.
+- **`ADMIN_DEV_MODE=1` (throwaway lab only).** The one explicit switch
+  that restores the dev fallbacks: a missing `ADMIN_TOKEN_KEY` uses
+  `dev-only-change-me`, a missing `ADMIN_BOOT_SECRET` uses `change-me`, a
+  provided value still wins, and the boot logs one warning naming the
+  switch. Only the exact string `1` counts; `NODE_ENV` decides nothing.
+  Never set it on a hotel installation: both production gates refuse it
+  (`docs/devops/deployment.md`, section 5), and while it is on, a session
+  signature proves nothing to anyone who reads this repository and a
+  fresh database seeds the owner with the published `change-me`.
+
+A boot with neither the values nor the switch exits `1` and prints one
+line naming the missing variable, for example
+`admin: refusing to boot: ADMIN_TOKEN_KEY is unset, empty, or a published default; …`.
+The raw `docker compose up` in section 4 stops at the compose
+interpolation for the missing variable (the bundle supplies no fallback
+for either Admin secret), and a container started some other way exits
+the same way, so the desk cannot sign in
+(`docs/operations/runbook.md`, section 16). The Admin unit suite needs
+neither variable: `cd services/admin && npm test` passes with an empty
+environment, because every suite passes an explicit key or seeds the
+owner directly.
+
+One order-of-operations note: exporting a different `ADMIN_TOKEN_KEY`
+on a running lab signs out every open session. Routinely rotate
+`ADMIN_BOOT_SECRET` through `ChangeSecret` (section 7), not by editing
+the env file — and never edit `admin.users.secret_hash` by hand.
 
 ## 4. Stack up: canonical vs raw
 
@@ -111,7 +152,10 @@ only to inspect or debug the lab stack step by step.
   `services/admin/src/server.ts`; `ensureBootUser` in
   `services/admin/src/pgstore.ts` uses `INSERT … ON CONFLICT DO NOTHING`,
   so restarts never duplicate or overwrite the owner). No credential hash
-  lives in `deploy/seed/boot.sql` (stated in its header comment).
+  lives in `deploy/seed/boot.sql` (stated in its header comment). From
+  #638 the boot also resolves `ADMIN_TOKEN_KEY` first and refuses to
+  start when either secret is unusable (section 3), so a boot that seeds
+  the owner always signs its sessions with a provisioned key.
 - **Hash only, never plaintext.** Secrets are stored exclusively as a
   SHA-256 hex digest in `admin.users.secret_hash` (`hashSecret` in
   `services/admin/src/store.ts`; table comment in
@@ -246,3 +290,6 @@ A new developer following sections 1–9 reaches, with no outside help:
 3. Owner sign-in succeeds at `/app/admin` and `POST /v1/admin/SignIn` returns a token.
 4. An authenticated call (e.g. `GetHotelConfig`) and one desk-loop write succeed.
 5. `psql` through `compose exec db` reads `admin.users` and module tables.
+
+<!-- ao-role: release-manager -->
+Role: release-manager · AO session hotel-mgmt-1281
