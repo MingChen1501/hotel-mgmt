@@ -287,13 +287,17 @@ folios, and room states.
   confirmations, invoices, and receipts, and the local settings govern
   dates, times, and stay policies hotel-wide. Traces to: US-ADM-1;
   FR-ADM-1. Config writes are shape-checked and the session is checked
-  before the body is parsed (`AC-CFG-1`..`AC-CFG-3`).
+  before the body is parsed (`AC-CFG-1`..`AC-CFG-3`). The installed
+  bundle boots only with its per-sale secrets provisioned
+  (`AC-BOOT-5`).
 - AC-ADM-2 — Given a new user with a name, sign-in identity, and one
   of the three roles, when the owner saves the account, then the user
   can sign in and can reach exactly the functions its role permits:
   front-desk staff operate the desk, the manager additionally controls
   rates, rooms, and reports, and the owner additionally controls users
-  and hotel setup. Traces to: US-ADM-2; FR-ADM-2.
+  and hotel setup. Traces to: US-ADM-2; FR-ADM-2. The boot-seeded
+  owner account and the session token it signs in with exist only
+  with the per-sale secrets (`AC-BOOT-1`..`AC-BOOT-3`).
 - AC-ADM-3 — Given rooms with numbers, room types, floors, and
   capacity entered by the owner, when saved, then the rooms appear in
   the inventory, availability, and calendar with the defined capacity
@@ -4376,6 +4380,238 @@ path are untouched, no contract shape, schema, migration, or status set
 changes, and the existing Rooms guards and the #630 body-ceiling guards
 keep their behaviour.
 
+## 32. Admin refuses to boot without its per-sale secrets (Refs #638)
+
+Product-owner scope decision and acceptance conditions for audit
+finding A1 on the Admin side. Two secrets fall back to published
+constants when their environment variable is unset: the session
+signing key becomes `"dev-only-change-me"`
+(`services/admin/src/store.ts:234`,
+`services/admin/src/pgstore.ts:72`) and the boot owner secret becomes
+`"change-me"` (`services/admin/src/server.ts:120-122`). A deployment
+that forgets either variable boots instead of refusing, which is a
+fail-open default, not a dev convenience.
+
+As-built trace (read-only, at master `ff081e8`):
+
+- **The signing key is load-bearing today.** `signSessionToken` and
+  `verifySessionToken` HMAC the token with `this.key`
+  (`services/admin/src/store.ts:79-98`), and every authenticated call
+  verifies through them (`store.ts:320-322`,
+  `services/admin/src/pgstore.ts:163-165`). The signature covers only
+  the token id, and that id is a random UUID resolved against a live
+  session (`store.ts:311-318`, `pgstore.ts:169-176`), so a published
+  key does not by itself hand out a session — but it makes the
+  signature prove nothing and leaves the token id as the only gate,
+  which is exactly the value that leaks (a logged or pasted token, a
+  browser history entry). The fail-open key is therefore a latent
+  authentication bypass, not a cosmetic default.
+- **The boot secret is the direct hole.** `bootStoreFromEnvironment`
+  reads `ADMIN_BOOT_IDENTITY` (default `owner`) and `ADMIN_BOOT_SECRET`
+  (default `change-me`) and seeds that account
+  (`server.ts:120-125`), storing only the secret's hash
+  (`store.ts:257-275`). A boot on the default therefore creates a live
+  owner account whose password is published — a full takeover of the
+  booking, folio, and user-administration functions.
+- **Nothing in the bundle provisions the signing key.** `deploy/compose.yaml:141-149`
+  passes `ADMIN_BOOT_IDENTITY` and `ADMIN_BOOT_SECRET` (with the
+  fallback `change-me-dev-only`) and never `ADMIN_TOKEN_KEY`; the CI
+  e2e jobs set the boot secret only
+  (`.github/workflows/ci.yml:465`, `:540`, `:641`); no script under
+  `script/`, no Ansible task (`deploy/ansible/playbook.yaml:120-160`),
+  and no deployment doc names it. Every installation built from this
+  bundle therefore signs sessions with the published default today.
+- **Both production gates check two secrets, not three.**
+  `script/preflight.sh:63-73` and the Ansible pre-check
+  (`deploy/ansible/playbook.yaml:36-44`) refuse a default
+  `DB_PASSWORD` or `ADMIN_BOOT_SECRET` and never look at the signing
+  key, so an unprovisioned key passes the install and the upgrade
+  silently. The compose fallback value `change-me-dev-only` is on both
+  gates' denylist, so the boot-secret half of A1 is still stopped at
+  the gate — the signing-key half is not.
+- **The unit suites never touch the fallbacks.** Every Admin suite
+  passes a key explicitly (`server.test.ts:29`, `auth.test.ts:46`,
+  `pgstore.test.ts:37`, `bodyBound.test.ts:112`) and seeds the owner
+  through `ensureBootUser` directly, so a fail-closed boot breaks no
+  existing guard and the no-environment path stays available behind
+  the switch.
+- **Boot order is store, migrations, seed, listen.** `index.ts:16-38`
+  builds the store, applies the Postgres migrations, runs
+  `bootStoreFromEnvironment`, and only then listens, so a refusal
+  placed at the top of `main` has no side effect to undo.
+
+Scope note — what this section does not decide: secret rotation
+(`NFR-SEC-2` covers idle sign-out only), secret storage or a secret
+manager, a minimum key length or strength policy (no bound exists in
+the tree and inventing one is its own decision, so a short but
+unpublished value is accepted here), the planned identity-hardening
+slice that replaces the token with a resolved identity, and the
+database password default (`deploy/compose.yaml:143`), which the same
+pre-flight already refuses on a provisioned install and which this
+issue does not name.
+
+Tier T4: a boot-time behaviour change plus a deployment and
+environment contract change — one new per-sale secret, one removed
+bundle fallback, and the pre-flight/install/upgrade deltas that keep
+the gates honest. No new subsystem, data model, lifecycle state,
+operation, contract field, error code, schema, migration, desk screen,
+control, catalogue key, or print rule, so the applicable lower set is
+T2 (acceptance criteria here, FR/NFR delta `business-analyst`, test
+traceability `qa-lead`, per-flow diagram `architect`) carried with the
+T4 deployment, environment, runbook, release-note, and rollback
+deltas. No ADR: no architectural decision moves — the signing key is
+provisioned the way the two existing per-sale secrets already are, and
+no subsystem, boundary, or data model changes.
+
+Decisions (five parts):
+
+1. **Fail closed is the default, and one explicit switch re-opens the
+   dev defaults.** Outside that switch, Admin refuses to boot when
+   `ADMIN_TOKEN_KEY` or `ADMIN_BOOT_SECRET` is unset or empty, and no
+   fallback constant exists on that path. The only way to run on the
+   dev values is one explicit, deliberately set environment switch,
+   `ADMIN_DEV_MODE=1`, read by the Admin service alone. `NODE_ENV`
+   decides nothing in either direction: the production image sets
+   `services/admin/Dockerfile:13` and a local run does not, so a gate
+   on it would either re-open the hole for a host that forgets it or
+   break the local path.
+2. **A published default is not a secret.** A production boot also
+   refuses any value on the deployment's existing denylist
+   (`change-me`, `change-me-dev-only`, `password`, `hotel`,
+   `hotel-dev-only`), so the compose fallback
+   (`deploy/compose.yaml:149`) can no longer reach a running service
+   as an owner password. The deny check applies to both secrets, uses
+   the one list `script/preflight.sh:56-61` already owns, and never
+   prints the offending value.
+3. **Refuse before any side effect and before the port opens.** The
+   check runs at the top of the boot, before the store is built, a
+   migration is applied, a user is seeded, or the server listens, so a
+   refused boot writes nothing and never answers `/healthz` — a
+   container that cannot boot reads unhealthy instead of healthy with
+   published credentials. It exits non-zero and prints one plain
+   English operator line naming the missing variable and the two ways
+   forward (provision the per-sale secret, or set the switch), never a
+   secret value.
+4. **The signing key becomes the third per-sale secret in the same
+   release.** `ADMIN_TOKEN_KEY` is provisioned and gated exactly like
+   `DB_PASSWORD` and `ADMIN_BOOT_SECRET`: the bundle passes it,
+   `deploy/compose.yaml` stops supplying a fallback for either Admin
+   secret, `script/preflight.sh` and the Ansible pre-check add it to
+   the denylist, and the install, upgrade, demo, and e2e entry points
+   carry it. The two production gates also refuse a boot with
+   `ADMIN_DEV_MODE` set, so the switch cannot travel into a sale. The
+   first boot with a real key invalidates any session token minted
+   with the old default, so staff sign in again once — bounded by the
+   15-minute idle rule and expected, not a defect.
+5. **The test and local paths keep working without the variables.**
+   `cd services/admin && npm test` passes with neither
+   `ADMIN_TOKEN_KEY` nor `ADMIN_BOOT_SECRET` in the environment: a
+   suite passes an explicit key or seeds the owner directly (as every
+   suite already does), and any suite that exercises the real boot
+   sets `ADMIN_DEV_MODE=1` for that process. The deployment-shaped e2e
+   path proves the fail-closed contract is satisfiable by carrying an
+   explicit non-default value for both secrets and no switch.
+
+- AC-BOOT-1 — Given the Admin service started outside the explicit
+  dev switch, when `ADMIN_TOKEN_KEY` is unset or empty, then the
+  process exits non-zero before it opens its port, connects to
+  Postgres, applies a migration, seeds a user, or serves one request,
+  with one plain operator line naming `ADMIN_TOKEN_KEY`, and no
+  request is ever signed or verified with a fallback key. Traces to:
+  US-ADM-2; FR-ADM-2, NFR-SEC-1, NFR-SEC-2.
+- AC-BOOT-2 — Given the Admin service started outside the explicit
+  dev switch, when `ADMIN_BOOT_SECRET` is unset, empty, or holds a
+  value on the deployment's denylist (`change-me`,
+  `change-me-dev-only`, `password`, `hotel`, `hotel-dev-only`), then
+  the process exits non-zero on the same terms as `AC-BOOT-1` with
+  one plain line naming `ADMIN_BOOT_SECRET` and never the value, and
+  no owner account is created from a published default, so the
+  `change-me` seed and the `change-me-dev-only` compose fallback can
+  no longer reach a running service. Traces to: US-ADM-2; FR-ADM-2,
+  NFR-SEC-1, NFR-SEC-2, NFR-DEP-1.
+- AC-BOOT-3 — Given the Admin service with `ADMIN_DEV_MODE=1`, when
+  either variable is absent, then a missing `ADMIN_TOKEN_KEY` uses
+  `dev-only-change-me` and a missing `ADMIN_BOOT_SECRET` uses
+  `change-me`, a provided value still wins over the fallback, and the
+  boot logs one warning naming the switch and both fallbacks in use;
+  when the switch is absent, empty, `0`, or any other value, the
+  fail-closed rules of `AC-BOOT-1` and `AC-BOOT-2` apply unchanged;
+  no other environment variable, including `NODE_ENV`, enables the
+  fallbacks. Traces to: NFR-SEC-2.
+- AC-BOOT-4 — Given a checkout with neither `ADMIN_TOKEN_KEY` nor
+  `ADMIN_BOOT_SECRET` exported, when `npm test` runs in
+  `services/admin`, then the suite is green — explicit keys and direct
+  seeding cover the operation suites and `ADMIN_DEV_MODE=1` covers any
+  suite that exercises the real boot — and the existing Admin suites
+  (`server.test.ts`, `auth.test.ts`, `bodyBound.test.ts`,
+  `pgstore.test.ts`, `migrate.test.ts`, `messages.test.ts`) keep their
+  assertions. Traces to: NFR-SEC-2.
+- AC-BOOT-5 — Given the release bundle, when it is installed or
+  upgraded, then the deployment contract carries the change in the
+  same bundle: `deploy/compose.yaml` supplies no fallback for either
+  Admin secret and passes `ADMIN_TOKEN_KEY` through, the CI e2e jobs
+  set an explicit non-default `ADMIN_TOKEN_KEY` beside the existing
+  boot secret and boot with no dev switch, `script/preflight.sh` and
+  the Ansible pre-check refuse a missing or default `ADMIN_TOKEN_KEY`
+  and refuse `ADMIN_DEV_MODE`, the local-dev/env-file, deployment,
+  runbook, release-note, and rollback documents name the third secret
+  and the new failure mode, and the two fail-closed boots plus the
+  switch path are covered by tests. Nothing else moves: no envelope,
+  status, error code, catalogue key, contract file, schema, migration,
+  desk screen, control, route, print rule, or stored value changes.
+  Traces to: NFR-DEP-1, NFR-SEC-1, NFR-SEC-2.
+
+Pointers: `AC-ADM-2` gains the `AC-BOOT-1`..`AC-BOOT-3` pointer (the
+owner account whose initial secret the handover provisions is the one
+the boot seeds, and the session it signs in with is the one the key
+signs); `AC-ADM-1` gains the `AC-BOOT-5` pointer (the installed
+bundle's configuration path starts with a boot that has its secrets).
+Each condition stands as written otherwise.
+
+Deployment and operations contract (the T4 delta, `release-manager`
+owns the documents; the bundle files are `dev`'s implementation):
+
+- `ADMIN_TOKEN_KEY` joins `DB_PASSWORD` and `ADMIN_BOOT_SECRET` as a
+  per-sale secret in `docs/devops/deployment.md` (section 2) and in
+  the env-file procedure `docs/devops/local-dev-setup.md` (section 3),
+  generated per sale, unique per property, never committed, and
+  recorded at handover like the other two.
+- `deploy/compose.yaml` requires both Admin secrets instead of
+  defaulting one, so an unprovisioned bundle refuses to start at
+  interpolation as well as at the service boot.
+- `script/preflight.sh` and the Ansible pre-check add the third secret
+  to the same denylist and refuse `ADMIN_DEV_MODE`; `script/install.sh`,
+  `script/demo-poc.sh`, `script/e2e-desk-loop.sh`,
+  `script/e2e-perf-check.sh`, and `deploy/ansible/README.md` carry the
+  variable in their usage lines, and `script/test-preflight-fail-closed.sh`
+  gains the matching cases.
+- `docs/operations/runbook.md` gains the symptom "Admin refuses to
+  boot" with the two causes, the fix (provision the named variable in
+  the env file, re-run the pre-flight, restart the service), and the
+  warning that the switch is for dev/test only; the release note and
+  the owner-facing upgrade step name the new required variable and the
+  one-time re-sign-in, because Admin is the sign-in service and an
+  upgrade that skips the variable leaves the desk unable to sign in.
+- Rollback: revert the single implementation PR. The published
+  defaults return, no data migration or backfill exists, and a
+  deployment that keeps the extra `ADMIN_TOKEN_KEY` in its env file is
+  unaffected (the old code ignores it). The rollback note states the
+  cost plainly: reverting re-opens the fail-open boot for that
+  release, so it is an emergency measure until a corrected release
+  ships (R-25).
+
+Done when: a production boot without `ADMIN_TOKEN_KEY` and a
+production boot without a usable `ADMIN_BOOT_SECRET` both exit
+non-zero before any side effect with one plain line naming the
+variable, and the published defaults cannot reach a running service;
+`ADMIN_DEV_MODE=1` is the only way back to the dev fallbacks, logs
+its warning, and is never set by the bundle, the image, or the
+production gates; `cd services/admin && npm test` is green with
+neither secret in the environment; the bundle, pre-flight, Ansible,
+CI e2e, and the deployment/runbook/release/rollback documents carry
+`ADMIN_TOKEN_KEY`; two guards assert the fail-closed boots and one
+asserts the switch path; and no contract, envelope, status, catalogue,
+schema, migration, desk, or print surface changes.
 ## 33. A failed rate-plan write is refused, never reported as success (Refs #767)
 
 Product-owner scope decision and acceptance conditions for the Rates
@@ -5129,6 +5365,46 @@ is the domain code for this family.
 <!-- ao-role: product-owner -->
 Role: product-owner · AO session hotel-mgmt-1259
 
+Fail-closed-boot addendum (Refs #638): five further conditions
+(AC-BOOT-1..AC-BOOT-5, section 32) cover audit finding A1 on the Admin
+side — the session signing key falls back to the published
+`dev-only-change-me` (`services/admin/src/store.ts:234`,
+`services/admin/src/pgstore.ts:72`) and the boot owner secret to the
+published `change-me` (`services/admin/src/server.ts:120-122`), while
+nothing in the bundle provisions the key at all and both production
+gates check only the other two secrets, so every installation built
+from this bundle signs sessions with a published key and a deployment
+that forgets the boot secret seeds an owner account whose password is
+public. Outside one explicit `ADMIN_DEV_MODE=1` switch, Admin now
+refuses to boot when either secret is unset, empty, or still on the
+deployment's denylist, exiting non-zero with one plain line naming the
+variable before it opens its port, migrates, seeds, or serves one
+request; the switch is the only way back to the dev fallbacks, logs
+its warning, is set by no bundle, image, or production gate, and
+`NODE_ENV` decides nothing in either direction. `ADMIN_TOKEN_KEY`
+becomes the third per-sale secret in the same release, carried by the
+bundle, the pre-flight, the Ansible pre-check, the CI e2e jobs, and
+the local-dev/deployment/runbook/release documents, and the compose
+fallback for the boot secret is removed so an unprovisioned bundle
+refuses to start; the unit and integration suites stay green with
+neither variable exported. They trace to the existing `US-ADM-2` and
+`FR-ADM-2` and to the existing `NFR-SEC-1`, `NFR-SEC-2`, and
+`NFR-DEP-1`; no story, FR, or business rule is added or reworded here
+— the requirements-side FR/NFR delta and the fail-closed secret rule
+are the `business-analyst` handoff
+(`docs/requirements/mvp-requirements.md` section 40, BR-70) — the
+HLD/LLD delta with the boot refusal diagram and the refreshed Admin
+service-design operations section are the `architect` handoff (HLD
+section 31, LLD section 39), guard mapping and matrix section 32 are
+`qa-lead`'s, and the deployment, environment, runbook, release-note,
+and rollback deltas are `release-manager`'s. `AC-ADM-1` and `AC-ADM-2`
+gain only the pointers; the conditions written earlier hold as
+written, the 43-condition MVP count above stands unchanged, and the
+sections 1–31 done-conditions keep their behaviour. `BOOT`
+is the domain code for this family.
+
+<!-- ao-role: product-owner -->
+Role: product-owner · AO session hotel-mgmt-1277
 Plan-write failure addendum (Refs #767): four further conditions
 (AC-PLN-1..AC-PLN-4, section 33) cover the Rates plan-upsert fault that
 #633 recorded as a residual risk and deliberately left unfixed (LLD
