@@ -87,6 +87,19 @@ maintain-with-code, LLD
   (`handler.go:391-397`). The booking ceiling #631 derives is untouched
   (section 9, ADR-0006 D2).
 
+### Plan write — the accepted answers (Refs #767)
+
+`UpsertRatePlan` after the #633 text checks, on a healthy database: one
+upsert keyed by plan name, the stored row's `id` and `default_units`
+copied back onto the answer, one `rate-plan-changed` outbox row, and a
+`200` with the stored `id`, `name`, and `description`
+(`services/rates/internal/store/postgres.go:95-118`;
+`internal/handler/handler.go:226-231`). A create and an update answer
+exactly as today — the update keeps the stored `default_units` when the
+request omits the field (`postgres.go:96-101`) — and the in-memory
+store's create/update answers are untouched. The driver-failure and
+retry side of the same flow is the section 4 diagram below.
+
 ## 4. Failure/rollback flowchart
 
 Restriction and count guards — the stay-refusal side:
@@ -199,7 +212,7 @@ added: `NOT_FOUND` for `UpsertRestriction` (an unpriced room type) and
 `STATE_ILLEGAL` for `QuotePrice` with `details.reason` `total_overflow`
 beside the existing `no_rate_price` / `no_rate_plan` values.
 
-Rollback for both subsections: every refusal is decided before any write,
+Rollback for these subsections: every refusal is decided before any write,
 so a refused restriction, plan, or quote leaves no row, no event, and no
 served total. The whole delta reverts with the single implementation PR —
 the boolean check, the two store checks, the inert `totalUnits`, the
@@ -208,6 +221,64 @@ disappear together, with no migration, backfill, or data repair in either
 direction; a restriction already stored with a coerced `false` and a
 price already stored above the guard's range stay exactly as stored
 (R-23).
+
+### Plan-write driver failure and retry (Refs #767)
+
+One flow, three outcomes: the healthy write, the driver failure, and the
+same request retried after the database recovers.
+
+```mermaid
+flowchart TD
+    A[POST /v1/rates/UpsertRatePlan  handler.go:178-232] --> B{Handler checks: name, description, defaultUnits  handler.go:179-225}
+    B -- refused --> V[400 VALIDATION_FAILED naming the field  handler.go:180-198]
+    B -- pass --> C[Store: text bounds, then the upsert  postgres.go:85-103]
+    C --> D{Insert/update and RETURNING scan succeed  postgres.go:95-103}
+    D -- no --> R1[Store returns nil, storeFailure  postgres.go:104-110]
+    R1 --> R2[500 VALIDATION_FAILED, rates.store.unavailable, fresh traceId  postgres.go:58-60, handler.go:34-41]
+    R2 --> N[Nothing stored, no rate-plan-changed event: the branch returns before postgres.go:118]
+    N --> E1[Desk keeps its existing failure sentence, does not advance  app/src/views/ManageView.vue:1833, :1869]
+    D -- yes --> S[Copy id and default_units, emit rate-plan-changed  postgres.go:111-118]
+    S --> OK[200 id, name, description  handler.go:231]
+    OK --> E2[Desk stores the plan name or resumes the pending nights  app/src/views/ManageView.vue:1838, :1874-1875]
+    E1 --> RT[Same request retried after the database recovers]
+    RT --> C
+```
+
+Edge trace (as-built pins, refreshed with the implementation per
+maintain-with-code, LLD
+[section 40](../lld.md#40-a-failed-rates-rate-plan-write-is-refused-never-reported-as-success-refs-767)):
+
+- A–B–V: every handler refusal that exists keeps its place
+  (`handler.go:179-225`), so the store-failure answer applies only after
+  a request has passed the field checks.
+- B–C–D: the store re-checks the two plan-text bounds and then runs the
+  single upsert (`postgres.go:85-103`); there is no explicit
+  transaction, so the statement is its own.
+- D–R1–R2: the only edit. `storeFailure()` is the answer the sibling
+  writes already give (`postgres.go:135`, `:150`), and the handler
+  writes it with a fresh `traceId` (`handler.go:34-41`, `:227-230`)
+  instead of falling through to the `200` at `:231`.
+- R2–N–E1: the failure branch returns before `p.outbox`
+  (`postgres.go:111-118`), so no plan row and no `rate-plan-changed` row
+  exist for the request; the desk's catch block renders its existing
+  sentence and returns before `writeStoredPlan`/`readPrices`
+  (`app/src/views/ManageView.vue:1828-1839`) or keeps `planMissing` set
+  (`:1864-1875`).
+- D–S–OK–E2: the success path is byte-identical — returned row copied
+  (`postgres.go:111-117`), one event (`:118`), the same `200` body
+  (`handler.go:231`).
+- E1–RT–C: the retry is the ordinary upsert on the plan name
+  (`postgres.go:96-101`, `000002_schema.up.sql:19`), so it creates on the
+  first success and updates afterwards, with no replay of the failed
+  attempt.
+
+Failure/rollback path: a refused plan write leaves the stored plan set,
+its prices, and its events exactly as they were, because the branch
+returns before the outbox write and before the success response — no
+phantom plan can be read, priced, or quoted, and the desk stops on its
+existing failure sentence instead of advancing to price writes that
+cannot succeed. The whole change reverts with the single implementation
+PR, with no migration, backfill, or data repair in either direction.
 
 ## 5. Outbound dependencies
 
@@ -222,6 +293,7 @@ Envelope `{code, message, details, traceId}` (same shape as reservations) to `do
 | Code | Status | Raised when |
 |---|---|---|
 | `VALIDATION_FAILED` | 400 | bad dates, ranges, prices, discount kind/value, plan text, and `roomTypeId` shape (:31-33, :92-97, :156-162, :291-293, :318-323, :348-356, :384-386), plus the handler-side `closedToArrival` / `totalUnits` type checks (`internal/handler/handler.go:290-299`, `:379-387`) |
+| `VALIDATION_FAILED` | 500 | the store could not perform a write — `storeFailure()` (`internal/store/postgres.go:58-60`) answers the plain `rates.store.unavailable` sentence with empty `details`; used by `UpsertRatePrice` (`:135`, `:150`), `UpsertRestriction` (`:181`, `:196`), `UpsertDiscount` (`:222`), `Quote` (`:286`, `:309`, `:325`), `CheckRestrictions` (`:374`, `:382`, `:395`), `CheckSellableCount` (`:422`, `:430`), and since #767 by `UpsertRatePlan` (`:104-110`); aligning the token with `INTERNAL_ERROR` (`BR-59`) is the separate Rates-wide change recorded in R-26 |
 | `UNAUTHENTICATED` | 401 | missing session token (`internal/handler/handler.go:160-166`) |
 | `NOT_FOUND` | 404 | unknown plan, unpriced night, unknown room type, a restriction for an unpriced room type (:512, :401, :492, :326-328; `postgres.go:183-185`); quote refusals carry `details.reason` `no_rate_plan` / `no_rate_price` (Refs #589) |
 | `STATE_ILLEGAL` | 422 | closed-to-arrival, min-stay violation (:39-41, :462-464, :465-467); a quote total outside `int64` (`details.reason` `total_overflow`, :103-109, :403-431; `postgres.go:312-341`) |
@@ -279,3 +351,6 @@ Details: LLD
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-249
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1288
