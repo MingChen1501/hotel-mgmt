@@ -46,6 +46,7 @@ interface FakeBackend {
   calls: Array<{ url: string; body: Record<string, unknown> }>;
   failStates: Set<string>;
   failNights: Set<string>;
+  failPlanWrites: boolean;
   refuseWrites: boolean;
   hangWrites: boolean;
 }
@@ -72,6 +73,7 @@ function seedBackend(): FakeBackend {
     calls: [],
     failStates: new Set(),
     failNights: new Set(),
+    failPlanWrites: false,
     refuseWrites: false,
     hangWrites: false,
   };
@@ -162,6 +164,11 @@ function installFetch(backend: FakeBackend) {
     if (url === '/v1/rates/UpsertRatePlan') {
       if (backend.refuseWrites) {
         return Promise.resolve(forbidden());
+      }
+      if (backend.failPlanWrites) {
+        return Promise.resolve(
+          jsonResponse({ code: 'VALIDATION_FAILED', message: 'Pricing store unavailable.', details: {} }, 500),
+        );
       }
       const name = String(body['name']);
       backend.plans.add(name);
@@ -661,6 +668,44 @@ describe('rooms and rates management screen (Refs #590)', () => {
     });
   });
 
+  // PLN-8 - a rejected read-path plan create renders the existing
+  // failure sentence and does not advance (Refs #767).
+  it('reports a failed read-path plan creation and keeps the plan missing', async () => {
+    const backend = seedBackend();
+    backend.prices.set(priceKey('Chưa có', 'deluxe', '2026-12-01'), 90000000);
+    installFetch(backend);
+    const wrapper = mountView();
+    await vi.waitFor(() => {
+      expect(wrapper.findAll('[data-testid="manage-room-row"]')).toHaveLength(3);
+    });
+    await fillRange(wrapper, '12/01/2026', '12/02/2026', 'Chưa có');
+    await wrapper.find('[data-testid="manage-rate-read"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="manage-rate-plan-read-missing"]').exists()).toBe(true);
+    });
+    const quotesBefore = callsTo(backend, '/v1/rates/QuotePrice').length;
+
+    backend.failPlanWrites = true;
+    await wrapper.find('[data-testid="manage-rate-plan-read-create"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="manage-rates-error"]').exists()).toBe(true);
+    });
+    // The desk's existing generic failure sentence, never the envelope.
+    expect(wrapper.find('[data-testid="manage-rates-error"]').text()).toBe(
+      'That did not save. Check the values and try again.',
+    );
+    expect(wrapper.html()).not.toContain('VALIDATION_FAILED');
+    expect(wrapper.html()).not.toContain('500');
+    // Nothing advanced: the plan was not created or remembered, no price
+    // was written, and the grid was not re-read.
+    expect(backend.plans.has('Chưa có')).toBe(false);
+    expect(callsTo(backend, '/v1/rates/UpsertRatePrice')).toHaveLength(0);
+    expect(callsTo(backend, '/v1/rates/QuotePrice')).toHaveLength(quotesBefore);
+    expect(localStorage.getItem('hotel-mgmt.desk.manage.rate-plan')).toBeNull();
+    // The create action stays offered so the manager can retry.
+    expect(wrapper.find('[data-testid="manage-rate-plan-read-missing"]').exists()).toBe(true);
+  });
+
   // M7 - per-night range write.
   it('writes one price row per night in date order with integer minor units', async () => {
     const backend = seedBackend();
@@ -784,6 +829,49 @@ describe('rooms and rates management screen (Refs #590)', () => {
     // overwrites the description).
     expect(planWrites[0]).toEqual({ name: 'Giá chuẩn' });
     expect(backend.prices.size).toBe(7);
+  });
+
+  // PLN-8 - a rejected explicit plan create renders the existing failure
+  // sentence and keeps the pending nights pending (Refs #767).
+  it('reports a failed explicit plan creation and keeps the pending nights pending', async () => {
+    const backend = seedBackend();
+    backend.plans = new Set();
+    installFetch(backend);
+    const wrapper = mountView();
+    await vi.waitFor(() => {
+      expect(wrapper.findAll('[data-testid="manage-room-row"]')).toHaveLength(3);
+    });
+    await fillRange(wrapper);
+    await wrapper.find('[data-testid="manage-rate-amount"]').setValue('1200000');
+    await wrapper.find('[data-testid="manage-rate-form"]').trigger('submit');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="manage-rate-plan-missing"]').exists()).toBe(true);
+    });
+    expect(callsTo(backend, '/v1/rates/UpsertRatePrice')).toHaveLength(1);
+
+    backend.failPlanWrites = true;
+    await wrapper.find('[data-testid="manage-rate-plan-create"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="manage-rates-error"]').exists()).toBe(true);
+    });
+    expect(wrapper.find('[data-testid="manage-rates-error"]').text()).toBe(
+      'That did not save. Check the values and try again.',
+    );
+    expect(wrapper.html()).not.toContain('VALIDATION_FAILED');
+    // The failure stops before the pending-night retry and keeps the
+    // plan missing, so the same create action can be retried.
+    expect(callsTo(backend, '/v1/rates/UpsertRatePrice')).toHaveLength(1);
+    expect(backend.plans.size).toBe(0);
+    expect(wrapper.find('[data-testid="manage-rate-plan-missing"]').exists()).toBe(true);
+
+    // The retried create after recovery resumes the pending nights.
+    backend.failPlanWrites = false;
+    await wrapper.find('[data-testid="manage-rate-plan-create"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(backend.prices.size).toBe(7);
+    });
+    expect(callsTo(backend, '/v1/rates/UpsertRatePrice')).toHaveLength(8);
+    expect(wrapper.find('[data-testid="manage-rate-plan-missing"]').exists()).toBe(false);
   });
 
   it('stops at the first failed night, reports saved of total, and resumes from that night', async () => {
