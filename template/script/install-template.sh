@@ -128,6 +128,7 @@ PAYLOAD=(
   "script/harness-conventions-check.sh"
   "script/compose-lab-guard.sh"
   "script/markdown-link-check.sh"
+  "script/doc-pin-check.sh"
   "script/ao-spawn-worker.sh"
   "script/orchestrator-merge.sh"
   "script/orchestrator-review.sh"

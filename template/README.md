@@ -73,6 +73,7 @@ installed): labels, cue import, AO project registration with the full
 | `script/harness-conventions-check.sh` | same | Harness self-check: fails on phantom paths and unenforced rules |
 | `script/compose-lab-guard.sh` | same | Compose lab guard: refuses shared-project teardown, blesses isolated labs |
 | `script/markdown-link-check.sh` | same | Markdown link gate: fails on broken relative links and bare section glyphs |
+| `script/doc-pin-check.sh` | same | Content-verified doc-pin report: fails on a cited line that no longer holds the claimed keyword (report-only until the inventory is clean) |
 | `script/ao-spawn-worker.sh` | same | Only sanctioned spawn path |
 | `script/orchestrator-merge.sh` | same | Only sanctioned merge path (synchronous, or async for a native stack member incl. a post-stack-merge retarget) |
 | `script/orchestrator-review.sh` | same | Sanctioned review-trigger path (legacy while native review is disabled) |
