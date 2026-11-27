@@ -4786,6 +4786,185 @@ when the error is swallowed again; and `go test ./...` in
 `services/rates`, the existing guards, the contracts, and the desk's
 plan-create path keep their behaviour.
 
+## 34. ReleaseRoom accepts only the two specified release targets (Refs #773)
+
+Product-owner scope decision and acceptance conditions for the enum
+drift the #637 decision note recorded (issue comment 7203636486,
+sections 2 and 3): `ReleaseRoom`'s contract admits four targets and both
+stores accept any state name, while the state machine names exactly two
+release targets and no caller uses the other two. The change narrows the
+accepted target set and refuses every other explicit target, so contract,
+code, and state machine agree; it adds no state, transition, operation,
+screen, or migration.
+
+As-built validation (read-only code trace at this spec head):
+
+- **The contract admits four targets and already words the refusal.**
+  `contracts/http/ReleaseRoom.json:16` lists `vacant-dirty`,
+  `vacant-clean`, `vacant-inspected`, and `out-of-order`, defaulting to
+  `vacant-dirty`, and the operation's error list already carries
+  `VALIDATION_FAILED` (400) for an unknown `toState` value (`:33`). The
+  vocabulary exists; the accepted set and its enforcement are what
+  disagree with the state machine.
+- **Both stores accept any state name.** `releaseRoom` takes the request
+  `toState` when it is a string in `ROOM_STATES`, defaults everything
+  else to `vacant-dirty`, and refuses only `occupied`
+  (`services/rooms/src/store.ts:495-500`; Postgres parity
+  `services/rooms/src/pgstore.ts:522-527`). A `vacant-clean` or
+  `out-of-order` target therefore writes the room, a history row, and a
+  `room.state-changed` event (`services/rooms/src/store.ts:502-510`;
+  `services/rooms/src/pgstore.ts:544-561`),
+  although no flow specifies either target.
+- **The state machine names two.** Section 2.1
+  (`docs/architecture/state-machine.md:129-166`) names
+  `occupied -> vacant-dirty` (the room a stay really held: check-out or
+  move) and `occupied -> vacant-inspected` (the room an aborted desk
+  action assigned and nobody used, #647). Out-of-order is a date-ranged
+  block entered only from a vacant state, never from `occupied`
+  (`:119-122`; `docs/technical/schema.md:120-122`).
+- **No caller sends either extra target.** The desk's release helper is
+  typed `'vacant-inspected' | 'vacant-dirty'`
+  (`app/src/views/StayView.vue:1381-1383`, used at `:1415`, `:1738`,
+  `:1786`, and `:2101`), and the e2e scripts omit `toState` and take the
+  `vacant-dirty` default (`script/e2e-desk-loop.sh:358`, `:464`;
+  `script/e2e-perf-check.sh:247`, `:258`).
+- **The default is pinned and the pair must stay reachable.**
+  `services/rooms/src/server.test.ts:741-751` releases without a
+  `toState` and asserts `occupied -> vacant-dirty`, and
+  `services/rooms/src/pgstore.test.ts:185` calls the explicit
+  `vacant-inspected` compensating target. `ReleaseRoom` must not be
+  routed through `ALLOWED_TRANSITIONS`: that table admits only
+  `occupied -> vacant-dirty` (`services/rooms/src/store.ts:45-52`, the
+  `occupied` row at `:49`) and cannot express the compensating
+  `occupied -> vacant-inspected` release #647 shipped for `FR-REA-1`
+  and `FR-REA-3`.
+- **The LLD names only the transition refusal.** Its operation row lists
+  `STATE_ILLEGAL` (illegal transition) as `ReleaseRoom`'s only error
+  (`docs/architecture/lld.md:232`); the out-of-set target and its
+  `VALIDATION_FAILED` answer are missing there and are the `architect`
+  handoff.
+
+Tier T2: one existing operation gains a caller-visible refusal while no
+state, transition, operation, request or response field, status set,
+schema table, migration, screen, control, catalogue key, or print rule
+is added or removed; the refusal reuses the operation's existing
+`VALIDATION_FAILED` answer, so the contract enum and its status mapping
+stay inside today's vocabulary. Not T1 because a caller-visible answer
+moves, and not T3 because nothing architectural moves: the two specified
+targets, their flows, and the compensating-release path #647 shipped
+stay exactly as they are.
+
+No UI contract section applies: no desk surface offers the refused
+targets (the release helper is typed to the two accepted ones) and no
+screen, state, copy, or layout changes, so a refused target reaches no
+desk flow. The conditions below are the product half. FR/NFR wording and
+the business rule that states the accepted target pair are the
+`business-analyst` handoff (`docs/requirements/mvp-requirements.md`
+section 42, BR-72); the contract enum, the LLD error row, the API-spec
+note, and the refreshed state-machine line pins are the `architect`
+handoff (HLD section 33, LLD section 41); guard mapping and traceability
+are `qa-lead`'s (`docs/testing/traceability-matrix.md` section 34); the
+release and rollback note is `release-manager`'s; the gate verdict is
+`spec-reviewer`'s. The scope decision is D-46 in
+`docs/project/decision-log.md`, and the drift risk the issue names is
+R-27 in `docs/project/risk-register.md`. `REL` is the domain code for
+this family.
+
+Decisions (three parts):
+
+1. **Two release targets, and only two.** `vacant-dirty` — the room a
+   stay really held, released by a check-out or a room move — and
+   `vacant-inspected` — the room an aborted desk action assigned and
+   nobody used — are the accepted explicit targets. An absent `toState`
+   still means `vacant-dirty`. `vacant-clean` and `out-of-order` are
+   refused, because no flow specifies them: housekeeping reaches clean
+   through `UpdateRoomState`, and out-of-order is entered only from a
+   vacant state through a date-ranged block, never from `occupied`.
+2. **An out-of-set target is a caller mistake, so it is
+   `VALIDATION_FAILED` (400), not `STATE_ILLEGAL` (422).** A present
+   `toState` outside the pair — another state name, any other string, a
+   non-string value, or `null` — answers the shared envelope with
+   `code: "VALIDATION_FAILED"`, `details.toState` carrying the received
+   value, and one plain sentence naming the two accepted targets. Absent
+   means missing or `undefined` only; a present `null` is refused rather
+   than defaulted, the same fail-closed rule #633, #637, and #640 apply
+   to a present-but-unusable value. The room's state is legal
+   (`occupied`); the target is what is not, so `STATE_ILLEGAL` keeps its
+   meaning "the room is not occupied" and moves nowhere. The contract
+   already words this case under `VALIDATION_FAILED`
+   (`contracts/http/ReleaseRoom.json:33`), so one vocabulary covers it.
+   The not-occupied check keeps its place ahead of the target check, so a
+   free room still answers `STATE_ILLEGAL` whatever target it was sent —
+   today's order, preserved.
+3. **A refusal writes nothing, and the two accepted paths do not
+   move.** The refusal changes no room state and writes no
+   `room_status_history` row and no `room.state-changed` event, in
+   either store. An explicit `vacant-dirty` or `vacant-inspected` keeps
+   today's behaviour byte for byte, including the compensating
+   `occupied -> vacant-inspected` release #647 shipped; `ReleaseRoom`
+   stays outside `ALLOWED_TRANSITIONS`, and no migration, backfill, or
+   stored-value change is involved.
+
+- AC-REL-1 — Given an occupied room, when `ReleaseRoom` is called with
+  an explicit `toState` outside the accepted pair — `vacant-clean`,
+  `out-of-order`, any other string, a non-string value, or `null` — then
+  the call is refused with HTTP 400 and the shared envelope,
+  `code: "VALIDATION_FAILED"`, `details.toState` carrying the received
+  value, the room still reads `occupied`, and neither store writes a
+  state change, a `room_status_history` row, or a
+  `room.state-changed` event. Traces to: US-FDK-2, US-FDK-3;
+  FR-FDK-2, FR-FDK-3; FR-RMS-1.
+- AC-REL-2 — Given an occupied room, when `ReleaseRoom` is called with
+  no `toState` at all, then it succeeds exactly as today with
+  `occupied -> vacant-dirty`, the response carries
+  `oldState: "occupied"` and `newState: "vacant-dirty"`, and one history
+  row and one `room.state-changed` event record the release. Traces to:
+  US-FDK-2; FR-FDK-2.
+- AC-REL-3 — Given an occupied room, when `ReleaseRoom` is called with
+  an explicit `vacant-dirty` or `vacant-inspected`, then both succeed
+  unchanged in both stores — the room reaches that state, one history
+  row records `occupied -> <target>`, and one `room.state-changed` event
+  carries it — and the compensating `occupied -> vacant-inspected` path
+  #647 shipped (`AC-REA-1`, `AC-REA-3`) still works through that same
+  call without a detour through `ALLOWED_TRANSITIONS`. Traces to:
+  US-FDK-3; FR-FDK-2, FR-FDK-3, FR-REA-1, FR-REA-3.
+- AC-REL-4 — Given a room that is not `occupied`, when `ReleaseRoom` is
+  called — with an accepted target or an out-of-set one — then the
+  existing `STATE_ILLEGAL` (422) refusal is unchanged: the not-occupied
+  check keeps its place ahead of the target check, so a free room
+  answers the same status, sentence, and `details` it answers today for
+  either request, and a room-state conflict is never re-reported as
+  `VALIDATION_FAILED`. Traces to: US-FDK-2; FR-FDK-2, FR-RMS-1.
+- AC-REL-5 — Given the change ships, when verification runs, then both
+  stores carry guards for the refused targets (`vacant-clean`,
+  `out-of-order`, another string, a non-string, and `null`) and for the
+  preserved absent default, and those guards prove the nothing-written
+  half; the contract enum lists exactly the two targets; the LLD row
+  names the `VALIDATION_FAILED` case; the API-spec section-2 note states
+  the pair; the refreshed state-machine line pins cite the current
+  `releaseRoom` location; and the existing pins
+  (`services/rooms/src/server.test.ts:741-751`, the explicit
+  `vacant-inspected` guard, the desk's two-target release helper, the
+  #588 check-out release, and the #647 reassignment guards) stay green
+  in the Rooms suite (`cd services/rooms && npm test`) with and without
+  `TEST_PG_URL`. Traces to: `AC-REL-1`..`AC-REL-4`; FR-FDK-2, FR-FDK-3,
+  FR-REA-1, FR-REA-3.
+
+Pointer: `AC-FDK-2` gains the `AC-REL-1`/`AC-REL-2` pointer (its
+check-out release uses one of the two accepted targets, and an absent
+`toState` still means `vacant-dirty`); `AC-REA-1` and `AC-REA-3` gain the
+`AC-REL-1`/`AC-REL-3` pointer (the compensating release stays the
+`vacant-inspected` target and every other target is refused); each
+condition stands as written otherwise.
+
+Done when: `ReleaseRoom` accepts exactly `vacant-dirty` and
+`vacant-inspected`, an absent `toState` still defaults to
+`vacant-dirty`, every other explicit target answers `VALIDATION_FAILED`
+with the room unchanged and no history row or event written in either
+store, a not-occupied room still answers `STATE_ILLEGAL`, and the #647
+compensating release, the #588 check-out release, the desk helper, and
+the contract, LLD, API-spec, and state-machine pins all hold.
+
 ## Traceability summary
 
 43 done-conditions cover all 9 MVP slices from the roadmap
@@ -5449,3 +5628,32 @@ domain code for this family.
 
 <!-- ao-role: product-owner -->
 Role: product-owner · AO session hotel-mgmt-1286
+
+Release-target addendum (Refs #773): five further conditions
+(AC-REL-1..AC-REL-5, section 34) cover the target-set drift the #637
+decision note recorded — `ReleaseRoom`'s contract admits four targets and
+both stores accept any state name while the state machine names exactly
+two: `occupied -> vacant-dirty` (the room a stay really held) and
+`occupied -> vacant-inspected` (the room an aborted desk action assigned
+and nobody used). An explicit target outside that pair is refused with
+`VALIDATION_FAILED` (400) — not `STATE_ILLEGAL`, which keeps its
+not-occupied meaning — and writes no state change, history row, or event
+in either store; an absent `toState` still defaults to `vacant-dirty`;
+the two accepted targets and the #647 compensating-release path are
+unchanged, and `ReleaseRoom` stays outside `ALLOWED_TRANSITIONS`. They
+trace to the existing `AC-FDK-2`, `AC-REA-1`, and `AC-REA-3` and to the
+existing stories and FRs (US-FDK-2, US-FDK-3; FR-FDK-2, FR-FDK-3,
+FR-REA-1, FR-REA-3, FR-RMS-1); no story, FR, or business rule is added
+or reworded here — the requirements-side FR/NFR sentence and the
+release-target rule are the `business-analyst` handoff
+(`docs/requirements/mvp-requirements.md` section 42, BR-72) — the
+contract enum, LLD error row, API-spec note, and state-machine line pins
+are the `architect` handoff (HLD section 33, LLD section 41), and the
+guard mapping is the `qa-lead` handoff
+(`docs/testing/traceability-matrix.md` section 34). `AC-FDK-2`,
+`AC-REA-1`, and `AC-REA-3` gain only the pointers, the 43-condition MVP
+count above stands unchanged, and the sections 1–33 done-conditions keep
+their behaviour. `REL` is the domain code for this family.
+
+<!-- ao-role: product-owner -->
+Role: product-owner · AO session hotel-mgmt-1324
