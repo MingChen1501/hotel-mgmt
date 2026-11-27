@@ -295,7 +295,7 @@ jobs last ran, and the implementation PR runs both.
 | Level | What runs | Command (authoritative: LLD [section 32.7](../architecture/lld.md#327-verification-plan) and `docs/architecture/services/guests.md` [section 7](../architecture/services/guests.md#7-operations)) |
 |---|---|---|
 | L1 Guests store + server | `GID1`-`GID9`, `GID12`, and the `GID14` server half | `cd services/guests && npm test` (after `npm ci` and `npm run build`) |
-| L1 Guests Postgres | `GID2` and the `GID12` stored-row half | the same `npm test` with `TEST_PG_URL` set (the `:420-476` skip pattern); the lab `migrate-check` job applies the schema |
+| L1 Guests Postgres | `GID2` and the `GID12` stored-row half | the Guests suite in the `postgres-parity (guests)` matrix job, which applies the Guests migrations and exports `TEST_PG_URL` (the `:420-476` skip pattern); the `migrate-check` job only checks that the migrations apply |
 | L1 Guests catalogue | `GID10` | `cd services/guests && npm test` (the `messages.test.ts` half) |
 | L1 Desk Book | `GID11` and the `GID14` desk half | `cd app && npm test` (`vitest run`) |
 | LC contract | `GID13`: the manifests and fixtures byte-identical, both gates green | `script/contract-check.sh`, `script/openapi-route-check.sh` (CI `contract-check`) |

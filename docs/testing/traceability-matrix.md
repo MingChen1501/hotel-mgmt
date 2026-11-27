@@ -1659,8 +1659,9 @@ and the rest are **pending** the
 implementation PR — the rows whose guards are the registry
 `SL1`-`SL12`, the gates, and `SL-E1`. The slice is **not complete** at
 this spec head; it completes when the implementation PR merges with
-`SL1`-`SL12` green, `SL5`'s Postgres half recorded on a lab database,
-`SL-E1` recorded, and `qa-lead` re-pins the rows at the merged head.
+`SL1`-`SL12` green, `SL5`'s Postgres half recorded in the
+`postgres-parity (rooms)` job, `SL-E1` recorded, and `qa-lead` re-pins
+the rows at the merged head.
 The MVP Coverage line below stands unchanged at 57/57.
 
 ## 30. Rates fail-closed restriction and availability input slice (Refs #633)
@@ -1730,9 +1731,9 @@ inside `AC-RTE-6`, `AC-RTE-7`, `AC-RTE-9`, `FR-RTE-6`, `FR-RTE-7`, and
 `FR-RTE-9`); the other eleven are **pending** the implementation PR. The
 slice is **not complete** at this spec head; it completes when the
 implementation PR merges with `RTE1`-`RTE14` green, the Postgres halves
-recorded on a scratch database, `RTE-E1` recorded, and `qa-lead` re-pins
-the rows at the merged head. The MVP Coverage line below stands
-unchanged at 57/57.
+recorded in the `postgres-parity (rates)` job, `RTE-E1` recorded, and
+`qa-lead` re-pins the rows at the merged head. The MVP Coverage line
+below stands unchanged at 57/57.
 
 ## 31. Room capacity validation slice (Refs #637)
 
@@ -1814,9 +1815,9 @@ unchanged MVP row, the no-change NFR row, and the accepted-write half
 inside `AC-CAP-1`); the other fifteen are **pending** the implementation
 PR. The slice is **not complete** at this spec head; it completes when
 the implementation PR merges with `CAP1`-`CAP10` green, the Postgres
-halves recorded on a scratch database, `CAP-E1` recorded, and `qa-lead`
-re-pins the rows at the merged head. The MVP Coverage line below stands
-unchanged at 57/57.
+halves recorded in the `postgres-parity (rooms)` job, `CAP-E1` recorded,
+and `qa-lead` re-pins the rows at the merged head. The MVP Coverage line
+below stands unchanged at 57/57.
 
 ## 32. Admin fail-closed boot secrets slice (Refs #638)
 
@@ -1907,9 +1908,9 @@ and the no-change `NFR-BND`/`NFR-PERF`/retention/timezone row); the
 other sixteen are **pending** the implementation
 PR. The slice is **not complete** at this spec head; it completes when
 the implementation PR merges with `BOOT1`-`BOOT5` green, the Postgres
-halves recorded on a scratch database, `BOOT-E1` recorded, and `qa-lead`
-re-pins the rows at the merged head. The MVP Coverage line below stands
-unchanged at 57/57.
+halves recorded in the `postgres-parity (admin)` job, `BOOT-E1` recorded,
+and `qa-lead` re-pins the rows at the merged head. The MVP Coverage line
+below stands unchanged at 57/57.
 
 ## 33. Failed rate-plan write slice (Refs #767)
 
@@ -1994,9 +1995,10 @@ row, the no-change NFR row, `NFR-I18N-1`, and the accepted-write halves
 inside `AC-PLN-3`, `FR-PLN-2`, `FR-PLN-5`, and the both-stores row); the
 other seventeen are **pending** the implementation PR. The slice is
 **not complete** at this spec head; it completes when the implementation
-PR merges with `PLN-1`-`PLN-9` green, the Postgres halves recorded on a
-scratch database, `PLN-E1` recorded, and `qa-lead` re-pins the rows at
-the merged head. The MVP Coverage line below stands unchanged at 57/57.
+PR merges with `PLN-1`-`PLN-9` green, the Postgres halves recorded in
+the `postgres-parity (rates)` job, `PLN-E1` recorded, and `qa-lead`
+re-pins the rows at the merged head. The MVP Coverage line below stands
+unchanged at 57/57.
 
 ## 34. ReleaseRoom release-target slice (Refs #773)
 
@@ -2078,7 +2080,7 @@ capability, so the 57-row MVP count stands unchanged.
 | No-desk-regression gate | Real delta: none. The release helper is already typed to the two targets and the e2e scripts already take the default, so no desk screen, control, label, state, copy, or print rule moves | **Pending gate** — `REL-10`; the pins are `app/src/views/StayView.vue:1383`, `:1415`, `:1738`, `:1786`, `:2101` |
 | MVP no-change statement | No new MVP row, story, or FR; no `FR-*` or `NFR-*` capability wording moves; `FR-REL-1`..`FR-REL-5` are behaviour-scoped additions outside the counted capability set (requirements 42.2, 42.3) | **Pending gate** — the 57-row MVP coverage count stands unchanged and no MVP row cites this slice as its guard |
 | Residual risk `REL-R1` | A caller that sent an extra target now gets a 400; a room already in that state stays valid and readable; the in-memory nothing-written guarantee rests on the check position (not a transaction) while Postgres rolls back; the remaining field-order difference is out of scope | **Recorded, not guarded** — R-27, LLD 41.6, and this row; no guard may assert a repair or backfill |
-| Evidence cross-reference (`REL-E1`) | The before/after pairs, the both-stores nothing-written proof, the accepted pair and default, the precedence pair, and the `TEST_PG_URL` parity run | **Pending** — `docs/testing/evidence/773/README.md` and the `test-report.md` row are created by the implementation PR |
+| Evidence cross-reference (`REL-E1`) | The before/after pairs, the both-stores nothing-written proof, the accepted pair and default, the precedence pair, and the `postgres-parity (rooms)` run | **Pending** — `docs/testing/evidence/773/README.md` and the `test-report.md` row are created by the implementation PR |
 
 Slice coverage (Refs #773): 21 rows mapped to `AC-REL-1`..`AC-REL-5`,
 `FR-REL-1`..`FR-REL-5`, `BR-72`, the both-stores nothing-written row,
@@ -2092,9 +2094,10 @@ the accepted/refusal halves inside `AC-REL-1`..`AC-REL-4`,
 `FR-REL-4`, `BR-72`, and the both-stores row); the other twelve are
 **pending** the implementation PR. The slice is **not complete** at
 this spec head; it completes when the implementation PR merges with
-`REL-1`-`REL-14` green, the Postgres halves recorded on a scratch
-database, `REL-E1` recorded, and `qa-lead` re-pins the rows at the
-merged head. The MVP Coverage line below stands unchanged at 57/57.
+`REL-1`-`REL-14` green, the Postgres halves recorded in the
+`postgres-parity (rooms)` job, `REL-E1` recorded, and `qa-lead` re-pins
+the rows at the merged head. The MVP Coverage line below stands unchanged
+at 57/57.
 
 Coverage: 43 FRs mapped, 14 NFRs mapped, 57 rows total, 57 guards
 filled (PR #112 slice: FR-RES-1, FR-RMS-1..4, FR-RTE-1/2/4/5, FR-ADM-1/2, FR-CUS-1, NFR-CON-1/2; PR #149 slice: FR-FDK-1, FR-FDK-5, FR-BIL-1/2/3/6, FR-ADM-5, NFR-BKP-1/2, NFR-AUD-1, NFR-TZ-1, plus FR-RES-1 persistence; PR #150 slice: FR-FDK-2, FR-FDK-3, FR-FDK-4, FR-BIL-7, plus the NFR-CON-2 stay-side checkout guard; PR #151 slice: FR-BIL-4, FR-CUS-3; PR #156 slice: FR-RPT-1..3; PR #157 slice: FR-GST-1..3; PR #158 slice: NFR-DEP-1, FR-ADM-4 config level, plus the FR-ADM-1 deployment extension; PR #159 slice: FR-RES-2/3/5/6 plus the NFR-CON-1 modify-path extension; PR #160 slice: ReleaseBlock plus rooms-side move coordination (FR-RMS-3, FR-FDK-3); PR #161 slice: full rates handling (FR-RTE-3 filled, FR-RTE-4/5 extended — remaining TBD cells fill in later slices); count corrected to the live total 48 (later slices filled cells without updating this line); PR #153 slice: NFR-RET-1, NFR-AVL-1; PR #182 slice: FR-RES-4, FR-ADM-3, FR-CUS-2, NFR-PERF-1/2 filled (5 guards — count corrected to the live total 53); FR-GST-4, FR-BIL-5, FR-RPT-4 point at follow-ups #189, #190, #191 and fill with those issues; NFR-I18N-1 filled by the #192 slice (count corrected to the live total 54); #189/#190/#191/#192/#201 slices filled FR-GST-4, FR-BIL-5, FR-RPT-4, NFR-I18N-1 (plus the #201 extension) — count corrected to the live total 57 (Closes #214)). Section 10 (Refs #588) adds 10 slice rows mapped to the #588 acceptance and `FR-CKO-1`..`FR-CKO-5`; the MVP row count stands unchanged at 57/57 because the slice adds no MVP capability. Section 11 (Refs #590) adds 15 slice rows mapped to `AC-MANAGE-1..11` and `FR-MGMT-1..12`; the MVP row count stands unchanged at 57/57 for the same reason. Section 12 (Refs #600) adds 10 slice rows mapped to `AC-DSK-19` and `FR-CKP-1`..`FR-CKP-5`; the MVP row count stands unchanged at 57/57 for the same reason. Section 13 (Refs #601) adds 11 slice rows mapped to `AC-CKO-1`, `AC-CKO-2`, and `FR-CKS-1`..`FR-CKS-5`; the MVP row count stands unchanged at 57/57 for the same reason. Section 14 (Refs #646) adds 16 slice rows mapped to `AC-DEP-1`..`AC-DEP-5`, `FR-DEP-1`..`FR-DEP-5`, and the lifecycle `D5`/`D6` notes; the MVP row count stands unchanged at 57/57 for the same reason. Section 15 (Refs #647) adds 15 slice rows mapped to `AC-REA-1`..`AC-REA-5`, `FR-REA-1`..`FR-REA-5`, the `AC-REA-1` / `FR-REA-1` disposition (LLD 23.9 R14), and the gate boxes; the MVP row count stands unchanged at 57/57 for the same reason. Section 16 (Refs #648) adds 18 slice rows mapped to `AC-BMV-1`..`AC-BMV-7` and `FR-BMV-1`..`FR-BMV-7`; the MVP row count stands unchanged at 57/57 for the same reason. Section 17 (Refs #632) adds 15 slice rows mapped to `AC-PRC-1`..`AC-PRC-5`, the desk condition `AC-DSK-20`, `FR-PRC-1`..`FR-PRC-5`, and the gate boxes; the MVP row count stands unchanged at 57/57 for the same reason. Section 18 (Refs #631) adds 14 slice rows mapped to `AC-OVB-1..3`, `FR-OVB-1..4`, and `BR-47..49`; the MVP row count stands unchanged at 57/57 for the same reason. Section 20 (Refs #634) adds 17 slice rows mapped to `AC-FWV-1`..`AC-FWV-7` and `FR-FWV-1`..`FR-FWV-5`, the `AC-FWV-3` / `AC-FWV-5` disposition, and the gate boxes; the MVP row count stands unchanged at 57/57 for the same reason. Section 21 (Refs #627) adds 13 slice rows mapped to `AC-ERR-1`..`AC-ERR-5`, `FR-ERR-1`..`FR-ERR-3`, and `BR-59`; the MVP row count stands unchanged at 57/57 for the same reason. Section 22 (Refs #630) adds 13 slice rows mapped to `AC-BND-1`..`AC-BND-5`, `NFR-BND-1`..`NFR-BND-3`, and `BR-60`; the MVP row count stands unchanged at 57/57 for the same reason. Section 23 (Refs #635) adds 14 slice rows mapped to `AC-AMT-1`..`AC-AMT-5`, `NFR-AMT-1`..`NFR-AMT-4`, and `BR-61`; the MVP row count stands unchanged at 57/57 for the same reason. Section 24 (Refs #641) adds 14 slice rows mapped to `AC-RPT-5`..`AC-RPT-7`, `NFR-RPT-1`, and `BR-62`; the MVP row count stands unchanged at 57/57 for the same reason. Section 25 (Refs #640) adds 18 slice rows mapped to `AC-GID-1`..`AC-GID-7`, `FR-GID-1`..`FR-GID-3`, and `BR-63`; the MVP row count stands unchanged at 57/57 for the same reason. Section 26 (Refs #639) adds 20 slice rows mapped to `AC-CFG-1`..`AC-CFG-5`, `FR-CFG-1`..`FR-CFG-3`, and `BR-64`; the MVP row count stands unchanged at 57/57 for the same reason. Section 27 (Refs #643) adds 17 slice rows mapped to `AC-SEC-1`..`AC-SEC-5`, `FR-SEC-1`..`FR-SEC-4`, and `BR-65`; the MVP row count stands unchanged at 57/57 for the same reason. Section 28 (Refs #642) adds 16 slice rows mapped to `AC-RPT-8`..`AC-RPT-10`, `FR-RPT-5`..`FR-RPT-7`, and `BR-66`; the MVP row count stands unchanged at 57/57 for the same reason. Section 29 (Refs #636) adds 17 slice rows mapped to `AC-SEL-1`..`AC-SEL-4`, `FR-SEL-1`..`FR-SEL-4`, and `BR-67`; the MVP row count stands unchanged at 57/57 for the same reason. Section 30 (Refs #633) adds 19 slice rows mapped to `AC-RTE-6`..`AC-RTE-10`, `FR-RTE-6`..`FR-RTE-10`, and `BR-68`; the MVP row count stands unchanged at 57/57 for the same reason. Section 31 (Refs #637) adds 18 slice rows mapped to `AC-CAP-1`..`AC-CAP-4`, `FR-CAP-1`..`FR-CAP-4`, and `BR-69`; the MVP row count stands unchanged at 57/57 for the same reason. Section 32 (Refs #638) adds 22 slice rows mapped to `AC-BOOT-1`..`AC-BOOT-5`, `FR-BOOT-1`..`FR-BOOT-5`, and `BR-70`; the MVP row count stands unchanged at 57/57 for the same reason. Section 33 (Refs #767) adds 22 slice rows mapped to `AC-PLN-1`..`AC-PLN-4`, `FR-PLN-1`..`FR-PLN-5`, and `BR-71`; the MVP row count stands unchanged at 57/57 for the same reason. Section 34 (Refs #773) adds 21 slice rows mapped to `AC-REL-1`..`AC-REL-5`, `FR-REL-1`..`FR-REL-5`, and `BR-72`; the MVP row count stands unchanged at 57/57 for the same reason.

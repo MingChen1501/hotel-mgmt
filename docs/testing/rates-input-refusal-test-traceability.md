@@ -218,7 +218,7 @@ is exactly the fail-open shape this slice removes.
 | `RTE12` | The plan `name` bound is one code-point rule: 64 code points are accepted and stored as sent; 65 are refused with 400 `VALIDATION_FAILED`, `details.field` `name`, and the plain sentence carrying the bound; the 65-code-point fixture uses a multi-byte character (for example `ế` repeated) so a byte-length implementation fails, and the 64-code-point control fails an off-by-one | `services/rates/internal/handler/handler_test.go` (request level) and both stores (store level) |
 | `RTE13` | The plan `description` bound and the text types: 2 000 code points accepted and stored, 2 001 refused naming `description` (same multi-byte control); an absent `description` keeps today's empty value; a present `description` that is a number or an object is refused naming `description` instead of being stored empty; a present `name` that is not a string is refused naming `name`; a refused **update** leaves the stored row and text intact (no overwrite, no truncation, asserted on the store directly because no read operation returns a plan); a plan stored before the bound (seeded directly: the memory map, or SQL on the Postgres side) still quotes exactly as today, proving no read-time re-validation was added — in both stores | `services/rates/internal/handler/handler_test.go` (request level) and `services/rates/internal/store/store_test.go` / `postgres_test.go` (store level) |
 | `RTE14` | Nothing else moves: the catalogue carries one key per new sentence (the boolean, the overflow, and the bound sentence(s) — one `{field}`+`{max}` key or one per field, whichever the implementation lands), present in `messages/en.json`, byte-identical in all eight runtime mirrors, and at parity in `messages/vi.json` with matching placeholders, with the sampled assertions added to `messages_test.go`; the three contract files carry the prose/error-list delta with no new enum token and `UpsertRatePlan` gaining no `maxLength`; no migration file appears under `services/rates/migrations/`; no desk file, route, control, label, state, or copy changes and the browser restriction flow stays green; no `services/reservations/**` file is edited and its suite stays green; the two e2e scripts that send `totalUnits` keep answering 200 | Diff gate over `git diff --name-only` + `script/catalogue-coverage-check.sh`, `script/contract-check.sh`, `script/markdown-link-check.sh`, `script/harness-conventions-check.sh`, `services/rates/internal/messages/messages_test.go`, and the `browser-e2e` job |
-| `RTE-E1` | Evidence rule: the implementation PR records the before/after pairs for the coerced boolean, the unpriced room type, the caller-set count, the overflowing quote, and the unbounded plan name (`docs/testing/evidence/633/README.md`, created by that PR, same capture method as the `#631`, `#636`, and `#642` records), records the `TEST_PG_URL` parity run, and records the slice row in `docs/testing/test-report.md` (`test-strategy.md` [section 3](test-strategy.md) exit criterion 6). Stays pending until all three are recorded | evidence record + `test-report.md` |
+| `RTE-E1` | Evidence rule: the implementation PR records the before/after pairs for the coerced boolean, the unpriced room type, the caller-set count, the overflowing quote, and the unbounded plan name (`docs/testing/evidence/633/README.md`, created by that PR, same capture method as the `#631`, `#636`, and `#642` records), records the `postgres-parity (rates)` parity run, and records the slice row in `docs/testing/test-report.md` (`test-strategy.md` [section 3](test-strategy.md) exit criterion 6). Stays pending until all three are recorded | evidence record + `test-report.md` |
 
 ## 4. Traceability map
 
@@ -250,7 +250,7 @@ implementation PR merges, passes, and `qa-lead` re-pins every cell with
 | No-configuration and no-migration gate | Real delta: the five rules are fixed code constants carried by no environment variable, `deploy/` file, compose file, or per-hotel setting, and no migration, column, backfill, truncation, or stored-value rewrite is added | **Pending diff gate** — `RTE14`; the fixed side is `docs/requirements/business-rules.md` section 9 (BR-68) |
 | No-desk-change gate | Real delta: no desk screen sends the two operations whose refusals move, the Manage panel's plain failure sentence renders any new refusal, and the one browser flow that writes a restriction does so on a priced type | **Pending gate** — `RTE14`; the pins are `app/e2e/book.spec.ts:140-161`, `app/e2e/desk-flow.ts:154-167`, and the `browser-e2e` job |
 | MVP no-change statement | No new MVP row, story, or FR; no `FR-*` or `NFR-*` capability wording moves; `FR-RTE-6`..`FR-RTE-10` are behaviour-scoped additions outside the counted capability set (requirements 38.2, 38.3) | **Pending gate** — the 57-row MVP coverage count stands unchanged and no MVP row cites this slice as its guard |
-| Evidence cross-reference (`RTE-E1`) | The five before/after pairs, the `TEST_PG_URL` Postgres parity run, and the slice row in the test report | **Pending** — `docs/testing/evidence/633/README.md` and the `test-report.md` row are created by the implementation PR |
+| Evidence cross-reference (`RTE-E1`) | The five before/after pairs, the `postgres-parity (rates)` run, and the slice row in the test report | **Pending** — `docs/testing/evidence/633/README.md` and the `test-report.md` row are created by the implementation PR |
 
 Slice coverage (Refs #633): 19 rows mapped to `AC-RTE-6`..`AC-RTE-10`,
 `FR-RTE-6`..`FR-RTE-10`, `BR-68`, the unchanged MVP rows
@@ -264,9 +264,9 @@ inside `AC-RTE-6`, `AC-RTE-7`, `AC-RTE-9`, `FR-RTE-6`, `FR-RTE-7`, and
 the rows whose guards are `RTE1`–`RTE14`, the gates, and `RTE-E1`. The
 slice is **not complete** at this spec head; it completes when the
 implementation PR merges with `RTE1`–`RTE14` green, `RTE6`/`RTE8`/`RTE9`/
-`RTE10`/`RTE12`/`RTE13`'s Postgres halves recorded on a scratch
-database, `RTE-E1` recorded, and `qa-lead` re-pins the rows at the
-merged head.
+`RTE10`/`RTE12`/`RTE13`'s Postgres halves recorded in the
+`postgres-parity (rates)` job, `RTE-E1` recorded, and `qa-lead` re-pins
+the rows at the merged head.
 
 ## 5. Test plan
 
@@ -275,7 +275,7 @@ merged head.
 | Level | What runs | Command (authoritative: `docs/architecture/services/rates.md` section 7) |
 |---|---|---|
 | L1 service, Rates (memory store) | `RTE1`–`RTE13` memory halves, plus every existing rates pin | `cd services/rates && go build ./... && go test ./... && go vet ./... && gofmt -l .` (CI `go-build (rates)`; `gofmt -l .` must print nothing) |
-| L1 service, Rates (Postgres parity) | `RTE1`, `RTE3`, `RTE4`, `RTE6`, `RTE8`, `RTE9`, `RTE10`, `RTE12`, `RTE13` Postgres halves | `cd services/rates && TEST_PG_URL=postgres://… go test ./internal/store/` on a **scratch** database (the fixtures wipe `rates.*`, section 2); the cases skip without `TEST_PG_URL` |
+| L1 service, Rates (Postgres parity) | `RTE1`, `RTE3`, `RTE4`, `RTE6`, `RTE8`, `RTE9`, `RTE10`, `RTE12`, `RTE13` Postgres halves against the job's fresh `postgres:16-alpine` service (the fixtures wipe `rates.*`, section 2) | the Rates store suite in the `postgres-parity (rates)` matrix job, which applies the Rates migrations and exports `TEST_PG_URL`; the cases skip without it, and the job fails on any skipped case |
 | LC contract | `RTE14`: the three contract files, the untouched `UpsertRatePlan` manifest, the shape-only fixtures | `script/contract-check.sh` (CI `contract-check`, which runs only when `contracts/` or services change) |
 | Catalogue | `RTE14`: the new keys, the eight byte-identical mirrors, the Vietnamese parity, the sampled renderings | `script/catalogue-coverage-check.sh` (CI `ci`) |
 | Browser regression | `RTE14`: the restriction refusal on screen still reaches `closed-to-arrival` with no desk edit | CI `browser-e2e` (or `cd app && npx playwright test e2e/book.spec.ts` against a served stack) |
@@ -283,17 +283,16 @@ merged head.
 | Gates | Links, harness conventions, whitespace | `script/markdown-link-check.sh`, `script/harness-conventions-check.sh`, `git diff --check` |
 
 CI jobs that must be green on the implementation PR: `go-build (rates)`,
-`go-build (reservations)`, `contract-check`, `ci`, `browser-e2e`, and
-`e2e-single-host`. The Postgres half is not a CI job (the matrix sets no
-`TEST_PG_URL`), which is why `RTE-E1` records the parity run explicitly;
-adding a database-backed job would be a CI change outside this slice's
-scope.
+`go-build (reservations)`, `contract-check`, `ci`, `browser-e2e`,
+`e2e-single-host`, and `postgres-parity (rates)`. The Postgres half runs
+in the `postgres-parity (rates)` job, which is why `RTE-E1` records that
+job's parity run.
 
 ### Execution order
 
 1. Rates memory suite: the new `RTE*` cases first (a red case stops the
    run), then every existing rates pin unchanged.
-2. Rates Postgres suite with `TEST_PG_URL` on a scratch database: the
+2. Rates Postgres suite in the `postgres-parity (rates)` job: the
    parity cases, the four re-seeded fixtures, then the wiped fixture
    rows.
 3. `script/contract-check.sh` and the catalogue gate (`RTE14`): the three
@@ -325,7 +324,7 @@ scope.
    (`code`, `details`, `message`, `traceId`) **and** its stored effect,
    and every overflow case asserts the absence of `totalMinor` and
    `nights`.
-2. The Postgres halves ran with `TEST_PG_URL` on a scratch database and
+2. The Postgres halves ran in the `postgres-parity (rates)` job and
    answered the same codes, statuses, and payload shapes as the in-memory
    store.
 3. `RTE11` holds unchanged: every existing quote guard passes with no
@@ -424,10 +423,11 @@ capture method as the `#631`, `#636`, and `#642` records):
   stored. After: 400 naming `name` with the bound in the sentence, and
   the stored plan is unchanged.
 - **Parity run.** The Postgres halves of `RTE1`, `RTE3`, `RTE4`, `RTE6`,
-  `RTE9`, and `RTE12` executed with `TEST_PG_URL` on a scratch database,
-  with the identical payloads from both stores recorded and the command
-  pasted (the Go matrix sets no `TEST_PG_URL`, so a green
-  `go-build (rates)` job is not parity evidence on its own).
+  `RTE9`, and `RTE12` executed in the `postgres-parity (rates)` job,
+  which applies the Rates migrations, exports `TEST_PG_URL`, and fails
+  on any skipped case, with the identical payloads from both stores
+  recorded (a green `go-build (rates)` job alone is not parity
+  evidence).
 
 The slice's results also go to `docs/testing/test-report.md` (exit
 criterion 6 of the `test-strategy.md` [section 3](test-strategy.md)).

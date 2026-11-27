@@ -214,8 +214,9 @@ distinguish a refusal from a crash after a seed, and a refusal placed
 after the seed is the exact fail-open shape this slice removes. Second,
 the **no-secret-in-output rule**: no refusal or warning line may contain
 the value presented for either variable. The in-memory halves drive the
-real entry point in a child process; the Postgres halves run on a
-scratch database through `DATABASE_URL` and are skipped without it.
+real entry point in a child process; the Postgres halves run in the
+`postgres-parity (admin)` job (a fresh scratch database through
+`TEST_PG_URL`), which fails on a skipped case.
 
 | Guard | Obligation (case) | Lands in |
 |---|---|---|
@@ -225,7 +226,7 @@ scratch database through `DATABASE_URL` and are skipped without it.
 | `BOOT4` | The local suite is green with neither variable exported: `env -u ADMIN_TOKEN_KEY -u ADMIN_BOOT_SECRET npm test` in `services/admin` exits `0`, every existing Admin assertion keeps its wording (the seven suites, including `messages.test.ts`), any suite that exercises the real boot sets `ADMIN_DEV_MODE=1` for that child process only, and the `node-build (admin)` CI job still runs with no `ADMIN_*` variable exported (`ci.yml:343-375`) | `services/admin` suite run + CI `node-build (admin)` + diff gate (no assertion deleted or loosened) |
 | `BOOT5` | The bundle carries the third secret and never the switch, and the denylist cannot drift: `deploy/compose.yaml` passes `ADMIN_TOKEN_KEY` with no fallback for either Admin secret and never sets `ADMIN_DEV_MODE`; `script/preflight.sh` and the Ansible pre-check refuse a missing or denylisted `ADMIN_TOKEN_KEY`, keep refusing a missing or denylisted `ADMIN_BOOT_SECRET`, and refuse `ADMIN_DEV_MODE` set; `script/test-preflight-fail-closed.sh` proves each refusal; the three e2e jobs set an explicit non-default `ADMIN_TOKEN_KEY` beside the existing boot secret and boot with no switch; and the service's five-value code constant equals `script/preflight.sh:56-61` exactly — one assertion compares the two lists, because the shell and the Node build unit have no import edge. No-change half: no new catalogue key, contract token, route, request or response field, bound, migration, or stored value, proven by `script/contract-check.sh`, `script/catalogue-coverage-check.sh`, and a diff over `services/admin/migrations/` | `script/test-preflight-fail-closed.sh` (new key/switch cases) + a bundle assertion over `deploy/compose.yaml`, `script/preflight.sh`, `deploy/ansible/playbook.yaml`, and `.github/workflows/ci.yml` + the denylist-parity assertion beside the code constant |
 | `BOOT-R1` | **Residual-risk record, not a guard.** Three accepted residuals, each named by the sibling specs: (a) a fail-closed boot is an availability change — an upgrade that skips `ADMIN_TOKEN_KEY` stops Admin, the sign-in service, until the variable is provisioned (R-25, threat model R12; the mitigation is the same-release bundle/pre-flight/runbook delta, never a fallback); (b) a short but unpublished key is accepted because no length or strength policy exists in the tree (requirements 40.6 — inventing one is its own decision); (c) a gate-bypassed install that sets `ADMIN_DEV_MODE=1` restores both defaults, which no service-side guard can prevent (the gates refuse the switch; the service only logs the warning). `DB_PASSWORD`'s own compose default and `NODE_ENV` semantics are out of scope. **No guard in this slice may assert a fix for any of these** | Risk register R-25 + threat model R12 + this row; follow-up decisions required |
-| `BOOT-E1` | Evidence rule: the implementation PR records the before/after pairs for the two fail-closed boots, the denylist, the switch, and the bundle gate plus the scratch-database parity run and the no-environment suite run (`docs/testing/evidence/638/README.md`, created by that PR, same capture method as the `#631`, `#633`, `#636`, `#637`, and `#642` records), and records the slice row in `docs/testing/test-report.md` (`test-strategy.md` [section 3](test-strategy.md) exit criterion 6). Stays pending until all three are recorded | Evidence record + `test-report.md` |
+| `BOOT-E1` | Evidence rule: the implementation PR records the before/after pairs for the two fail-closed boots, the denylist, the switch, and the bundle gate plus the `postgres-parity (admin)` parity run and the no-environment suite run (`docs/testing/evidence/638/README.md`, created by that PR, same capture method as the `#631`, `#633`, `#636`, `#637`, and `#642` records), and records the slice row in `docs/testing/test-report.md` (`test-strategy.md` [section 3](test-strategy.md) exit criterion 6). Stays pending until all three are recorded | Evidence record + `test-report.md` |
 
 ## 4. Traceability map
 
@@ -259,7 +260,7 @@ head (section 8).
 | No-configuration and no-migration gate | Real delta: the denylist is one fixed code constant that equals `script/preflight.sh:56-61`, the switch is read only by the Admin service, and no `deploy/` setting, per-hotel config key, migration, column, `CHECK`, backfill, or stored-value rewrite is added | **Pending gate** — `BOOT5` (parity and bundle) + the diff gate; the fixed side is `docs/requirements/business-rules.md` section 9 (`BR-70`) |
 | Deployment and env gate (`release-manager`) | Real delta: `ADMIN_TOKEN_KEY` joins `DB_PASSWORD` and `ADMIN_BOOT_SECRET` in the env file, the install/upgrade entry points, the deployment and local-dev documents, the runbook symptom ("Admin refuses to boot"), the release note, and the rollback note; the one-time re-sign-in is named | **Pending** — owned outside this slice; `BOOT5` asserts the executable half (compose, pre-flight, Ansible, CI) and the document half is `release-manager`'s handoff |
 | Residual risk `BOOT-R1` | The fail-closed boot can stop a deployment that relied on the defaults; a short but unpublished key is accepted; a gate-bypassed switch restores the defaults; `DB_PASSWORD` and `NODE_ENV` are out of scope | **Recorded, not guarded** — R-25, threat model R12, LLD 39.6, and this row; no guard may assert a fix |
-| Evidence cross-reference (`BOOT-E1`) | The before/after pairs, the scratch-database parity run, the no-environment suite run, and the slice row in the test report | **Pending** — `docs/testing/evidence/638/README.md` and the `test-report.md` row are created by the implementation PR |
+| Evidence cross-reference (`BOOT-E1`) | The before/after pairs, the `postgres-parity (admin)` run, the no-environment suite run, and the slice row in the test report | **Pending** — `docs/testing/evidence/638/README.md` and the `test-report.md` row are created by the implementation PR |
 
 Slice coverage (Refs #638): 22 rows mapped to `AC-BOOT-1`..`AC-BOOT-5`,
 `FR-BOOT-1`..`FR-BOOT-5`, `BR-70`, the unchanged MVP rows
@@ -274,9 +275,9 @@ the unchanged `NFR-SEC` row, the `NFR-DEP`/`NFR-AVL` row, the
 `NFR-BND`/`NFR-PERF`/retention/timezone row); the other sixteen are
 **pending** the implementation PR. The slice is **not complete** at this
 spec head; it completes when the implementation PR merges with
-`BOOT1`–`BOOT5` green, the Postgres halves recorded on a scratch
-database, `BOOT-E1` recorded, and `qa-lead` re-pins the rows at the
-merged head. The MVP Coverage line in
+`BOOT1`–`BOOT5` green, the Postgres halves recorded in the
+`postgres-parity (admin)` job, `BOOT-E1` recorded, and `qa-lead` re-pins
+the rows at the merged head. The MVP Coverage line in
 [traceability-matrix.md](traceability-matrix.md) stands unchanged at
 57/57.
 
@@ -287,7 +288,7 @@ merged head. The MVP Coverage line in
 | Level | What runs | Command (authoritative: `docs/architecture/services/admin.md` section 7) |
 |---|---|---|
 | L1 service, Admin (memory store) | `BOOT1`–`BOOT3` child-process boots and resolver units, `BOOT4`, plus every existing Admin pin | `cd services/admin && npm ci && npm run build && npm test && npm run lint` (CI `node-build (admin)`; `npm test` builds first) |
-| L1 service, Admin (Postgres parity) | The `BOOT1`/`BOOT2` scratch-database halves: no migration applied, no `admin.users` row, the provisioned controls seed and sign in | `cd services/admin && DATABASE_URL=postgresql://… npm test`; the Postgres cases skip without `DATABASE_URL` |
+| L1 service, Admin (Postgres parity) | The `BOOT1`/`BOOT2` scratch-database halves: no migration applied, no `admin.users` row, the provisioned controls seed and sign in | the Admin suite in the `postgres-parity (admin)` matrix job, which applies the Admin migrations and exports `TEST_PG_URL`; the cases skip without it, and the job fails on any skipped case |
 | L1 service, Admin (no-environment path) | `BOOT4`: the suite from a shell with neither variable exported | `cd services/admin && env -u ADMIN_TOKEN_KEY -u ADMIN_BOOT_SECRET npm test` |
 | L4 bundle and gate | `BOOT5`: compose, pre-flight, Ansible, the denylist parity, and the new pre-flight refusal cases | `bash script/test-preflight-fail-closed.sh` (plus `docker compose -f deploy/compose.yaml config` on a machine with Compose) |
 | LC contract | The no-change half: no contract file moved and every fixture still resolves | `script/contract-check.sh` (CI `contract-check`) |
@@ -297,19 +298,19 @@ merged head. The MVP Coverage line in
 
 CI jobs that must be green on the implementation PR: `node-build
 (admin)`, `e2e-single-host`, `browser-e2e`, `dom-diff`,
-`contract-check`, `migrate-check`, and `ci`. The Postgres parity half is
-not a CI job (the Node matrix passes no `DATABASE_URL` to the suite),
-which is why `BOOT-E1` records it explicitly; adding a
-database-backed job would be a CI change outside this slice's scope.
+`contract-check`, `migrate-check`, `ci`, and `postgres-parity (admin)`.
+The Postgres parity half runs in the `postgres-parity (admin)` job, which
+applies the Admin migrations, exports `TEST_PG_URL`, and fails on any
+skipped case, so `BOOT-E1` records that job's run.
 
 ### Execution order
 
 1. Resolver units and the memory child-process boots: the new
    `BOOT1`–`BOOT3` cases first (a red case stops the run), then every
    existing Admin pin unchanged.
-2. The Admin Postgres suite with `DATABASE_URL` on a scratch database:
-   the refused-boot halves (zero migrations, zero `admin.users` rows)
-   and the provisioned controls.
+2. The Admin Postgres suite in the `postgres-parity (admin)` job
+   (`TEST_PG_URL` exported by the job): the refused-boot halves (zero
+   migrations, zero `admin.users` rows) and the provisioned controls.
 3. `BOOT4`: the suite again from a shell with neither variable
    exported, then `script/contract-check.sh` and the catalogue gate.
 4. `BOOT5`: the pre-flight refusal cases, the compose/Ansible/CI
@@ -341,9 +342,9 @@ database-backed job would be a CI change outside this slice's scope.
    outcome **and** its absence proofs (no store call, no migration, no
    owner row, no listen, no `/healthz`), and no secret value appears in
    any line.
-2. The Postgres halves ran on a scratch database and showed the same
-   refusals and absences as the memory halves, with the provisioned
-   controls booting on both.
+2. The Postgres halves ran in the `postgres-parity (admin)` job and
+   showed the same refusals and absences as the memory halves, with the
+   provisioned controls booting on both.
 3. `BOOT4` holds: the suite is green with neither variable exported,
    every existing Admin assertion keeps its wording, and the
    `node-build (admin)` job exports no `ADMIN_*` variable.
@@ -445,12 +446,11 @@ method as the `#631`, `#633`, `#636`, `#637`, and `#642` records):
   pass with no `ADMIN_TOKEN_KEY` and with `ADMIN_DEV_MODE` set. After:
   each refuses, and `script/test-preflight-fail-closed.sh` prints the
   new PASS lines for both.
-- **Parity run.** The `BOOT1`/`BOOT2` Postgres halves executed with
-  `DATABASE_URL` on a scratch database: the refused suite leaves
-  `admin.users` empty and no migration row applied, and the provisioned
-  control suite migrates, seeds, and signs in — with the commands pasted
-  (the Node matrix passes no `DATABASE_URL`, so a green `node-build
-  (admin)` job is not parity evidence on its own).
+- **Parity run.** The `BOOT1`/`BOOT2` Postgres halves executed in the
+  `postgres-parity (admin)` job: the refused suite leaves `admin.users`
+  empty and no migration row applied, and the provisioned control suite
+  migrates, seeds, and signs in — with the job's pass summary pasted (a
+  green `node-build (admin)` job alone is not parity evidence).
 - **No-environment run.** `env -u ADMIN_TOKEN_KEY -u
   ADMIN_BOOT_SECRET npm test` in `services/admin`, pasted with the pass
   summary, plus the `node-build (admin)` run id.

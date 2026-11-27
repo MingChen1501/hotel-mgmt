@@ -191,7 +191,7 @@ from today's block-only one.
 | `SL2` | Aggregate excludes an `occupied` room: an `AssignRoom`-driven occupied room plus one vacant room in the type — `totalCount: 2`, `sellableCount: 1`, `blockedRooms: []`; releasing the room to `vacant-dirty` restores `2`. The occupancy is produced through the public assign path, never by poking a private field | `services/rooms/src/server.test.ts` |
 | `SL3` | Subtract once, never twice: an `out-of-order` room that a block also covers — `sellableCount: N - 1` (never `N - 2`), `blockedRooms` names that room exactly once and in the store's order, and a type whose every room is non-sellable answers `0`, never negative | `services/rooms/src/server.test.ts` |
 | `SL4` | Vacant-state positive control: one room each in `vacant-dirty`, `vacant-clean`, and `vacant-inspected` — each counts as sellable in the aggregate and each answers `sellableCount: 1` on the single-room read, so the explicit list is not "vacant-inspected only" and not "any state but the sellable ones". A type with no rooms answers `0`/`0` | `services/rooms/src/server.test.ts` |
-| `SL5` | Both stores agree: the same recorded-state fixture — one `out-of-order`, one `occupied`, one block-covered (and also `out-of-order`), two vacant — through the in-memory store and the Postgres store answers identical `totalCount`, `sellableCount`, and `blockedRooms`. The Postgres half is skipped unless `TEST_PG_URL` is set (`services/rooms/src/pgstore.test.ts:7-10`), so the parity run is recorded on a lab database by `SL-E1`; the memory half alone is not evidence of parity | `services/rooms/src/server.test.ts` and `services/rooms/src/pgstore.test.ts` |
+| `SL5` | Both stores agree: the same recorded-state fixture — one `out-of-order`, one `occupied`, one block-covered (and also `out-of-order`), two vacant — through the in-memory store and the Postgres store answers identical `totalCount`, `sellableCount`, and `blockedRooms`. The Postgres half is skipped unless `TEST_PG_URL` is set (`services/rooms/src/pgstore.test.ts:7-10`), so the parity run is recorded in the `postgres-parity (rooms)` CI job by `SL-E1`; the memory half alone is not evidence of parity | `services/rooms/src/server.test.ts` and `services/rooms/src/pgstore.test.ts` |
 | `SL6` | Single-room non-sellable answer: a block-free `out-of-order` room and a block-free `occupied` room each answer 200 with `totalCount: 1`, `sellableCount: 0`, `blockedRooms: []` and never claim availability; the same read for a vacant room still answers `1`. The request level asserts the exact body, so a refusal (any 4xx) fails the case as well as a `sellableCount: 1` | `services/rooms/src/server.test.ts`; the Postgres twin rides `SL5`'s fixture |
 | `SL7` | Block refusal keeps priority: an `out-of-order` room that a block also covers, single-room read — 422 `STATE_ILLEGAL` naming the room and carrying the block's `dateFrom`, `dateTo`, and `reason`, never a 200 with `sellableCount: 0`, in both stores. The implementation must not hoist the state test above the block test | `services/rooms/src/server.test.ts` (memory) and `services/rooms/src/pgstore.test.ts` (Postgres) |
 | `SL8` | Release returns a room to sale only when its state is sellable: block an `out-of-order` room, release the block — 200, the room leaves `blockedRooms`, but `sellableCount` stays `0` until `UpdateRoomState` makes it vacant, and then it counts. `blockedRooms` membership and order, the `BlockRoom`/`ReleaseBlock` answers, and the stored block row are unchanged by state | `services/rooms/src/server.test.ts` |
@@ -228,7 +228,7 @@ head (section 8).
 | Contract and LC | Real delta: one prose line in `contracts/http/CheckRoomTypeSellability.json` (`sellableCount` description plus its `traces`); no operation, route, property, required list, status, or error code moves | **Pending gate** — `SL11`; the contract edit is `architect`'s (LLD 36.6) |
 | No-configuration and no-migration gate | Real delta: the non-sellable state list is one fixed code rule — no environment variable, `deploy/` file, compose file, or per-hotel setting carries it — and no migration, column, backfill, or stored value is added | **Pending diff gate** — `SL9`, `SL11`; the fixed side is `docs/requirements/business-rules.md` section 9 (BR-67) |
 | MVP no-change statement | No new MVP row, story, or FR; no `FR-*` or `NFR-*` wording moves; `FR-SEL-1`..`FR-SEL-4` are behaviour-scoped additions outside the counted capability set | **Pending gate** — the 57-row MVP coverage count stands unchanged and no MVP row cites this slice as its guard |
-| Evidence cross-reference (`SL-E1`) | The aggregate and single-room before/after pairs, the `TEST_PG_URL` parity run, and the slice row in the test report | **Pending** — `docs/testing/evidence/636/README.md` and the `test-report.md` row are created by the implementation PR |
+| Evidence cross-reference (`SL-E1`) | The aggregate and single-room before/after pairs, the `postgres-parity (rooms)` run, and the slice row in the test report | **Pending** — `docs/testing/evidence/636/README.md` and the `test-report.md` row are created by the implementation PR |
 
 Slice coverage (Refs #636): 17 rows mapped to `AC-SEL-1`..`AC-SEL-4`,
 `FR-SEL-1`..`FR-SEL-4`, `BR-67`, the unchanged MVP rows
@@ -242,8 +242,8 @@ three NFR rows, the block/vocabulary halves inside `AC-SEL-3` and
 whose guards are `SL1`-`SL12`, the gates, and `SL-E1`. The slice is
 **not complete** at this spec head; it completes when the
 implementation PR merges with `SL1`-`SL12` green, `SL5`'s Postgres half
-recorded on a lab database, `SL-E1` recorded, and `qa-lead` re-pins the
-rows at the merged head.
+recorded in the `postgres-parity (rooms)` job, `SL-E1` recorded, and
+`qa-lead` re-pins the rows at the merged head.
 
 ## 5. Test plan
 
@@ -252,7 +252,7 @@ rows at the merged head.
 | Level | What runs | Command (authoritative: `docs/architecture/services/rooms.md` section 7) |
 |---|---|---|
 | L1 service, Rooms (memory store) | `SL1`, `SL2`, `SL3`, `SL4`, `SL6`, `SL8`, and the existing pins | `cd services/rooms && npm ci && npm run build && npm test && npm run lint` (CI `node-build (rooms)`) |
-| L1 service, Rooms (Postgres parity) | `SL5`, `SL7`'s Postgres half | `cd services/rooms && TEST_PG_URL=postgres://… npm test` on a lab database; the cases skip without it (`services/rooms/src/pgstore.test.ts:7-10`) |
+| L1 service, Rooms (Postgres parity) | `SL5`, `SL7`'s Postgres half | the Rooms suite in the `postgres-parity (rooms)` matrix job, which applies the Rooms migrations and exports `TEST_PG_URL`; the cases skip without it (`services/rooms/src/pgstore.test.ts:7-10`), and the job fails on any skipped case |
 | LC contract | `SL11`: the one prose line, the unchanged shape, the fixtures | `script/contract-check.sh`, `script/openapi-route-check.sh` (CI `contract-check`) |
 | Desk regression (unit) | `SL10`: the Book, Rooms, and Desk pins stay green unchanged | `cd app && npm ci && npm run build && npm test` (CI `app-build`) |
 | Desk regression (browser) | `SL10`: the sold-out confirm on the served SPA | CI `browser-e2e` |
@@ -261,17 +261,17 @@ rows at the merged head.
 
 CI jobs that must be green on the implementation PR: `node-build
 (rooms)`, `app-build`, `browser-e2e`, `go-build (reservations)`,
-`contract-check`, `ci`, and `e2e-single-host`. The Postgres half of
-`SL5` is not a CI job today (the node matrix sets no `TEST_PG_URL`),
-which is why `SL-E1` records it explicitly; adding a database-backed
-node job would be a CI change outside this slice's scope.
+`contract-check`, `ci`, `e2e-single-host`, and `postgres-parity
+(rooms)`. The Postgres half of `SL5` runs in the `postgres-parity
+(rooms)` job, which applies the Rooms migrations, exports `TEST_PG_URL`,
+and fails on any skipped case, so `SL-E1` records that job's run.
 
 ### Execution order
 
 1. Rooms memory suite: the new `SL*` cases first (a red case stops the
    run), then the existing sellability and block pins unchanged.
-2. Rooms Postgres suite with `TEST_PG_URL` set on a lab database
-   (`SL5`, `SL7`), then clean the fixture rows.
+2. Rooms Postgres suite in the `postgres-parity (rooms)` job
+   (`TEST_PG_URL` exported by the job) for `SL5` and `SL7`.
 3. Reservations suite and `contract-check` (`SL9`, `SL11`): no
    Reservations diff and a green ceiling derivation.
 4. Desk unit suite, then the browser flow (`SL10`).
@@ -375,10 +375,11 @@ capture method as the `#588` and `#631` records):
   answers `sellableCount: 1` on today's build. After: the same read
   answers `sellableCount: 0`, and the Book confirm refuses with the
   existing sold-out sentence while creating no reservation.
-- **Parity run.** The `SL5` fixture executed with `TEST_PG_URL` on a
-  lab database, with the identical triple from both stores recorded
-  and the command pasted (the node matrix sets no `TEST_PG_URL`, so a
-  green `node-build (rooms)` job is not parity evidence on its own).
+- **Parity run.** The `SL5` fixture executed in the `postgres-parity
+  (rooms)` job, which applies the Rooms migrations, exports
+  `TEST_PG_URL`, and fails on any skipped case; the identical triple
+  from both stores is recorded (a green `node-build (rooms)` job alone
+  is not parity evidence).
 
 The slice's results also go to `docs/testing/test-report.md` (exit
 criterion 6 of the `test-strategy.md` [section 3](test-strategy.md)).
