@@ -211,8 +211,9 @@ a fresh `traceId`. Every refusal is also asserted on its **stored
 effect** — a following read answers as before and no `room-upserted`
 event is emitted — because a 400 followed by a stored row is exactly the
 fail-open shape this slice removes. The in-memory half runs through
-`createServiceServer` at request level; the Postgres half runs on a
-scratch database through `TEST_PG_URL` and is skipped without it.
+`createServiceServer` at request level; the Postgres half runs in the
+`postgres-parity (rooms)` job against its fresh `postgres:16-alpine`
+service and is skipped without `TEST_PG_URL`.
 
 | Guard | Obligation (case) | Lands in |
 |---|---|---|
@@ -269,9 +270,9 @@ unchanged MVP row, the no-change NFR row, and the accepted-write half
 inside `AC-CAP-1`); the other fifteen are **pending** the implementation
 PR. The slice is **not complete** at this spec head; it completes when
 the implementation PR merges with `CAP1`–`CAP10` green, the Postgres
-halves recorded on a scratch database, `CAP-E1` recorded, and `qa-lead`
-re-pins the rows at the merged head. The MVP Coverage line below stands
-unchanged at 57/57.
+halves recorded in the `postgres-parity (rooms)` job, `CAP-E1` recorded,
+and `qa-lead` re-pins the rows at the merged head. The MVP Coverage line
+below stands unchanged at 57/57.
 
 ## 5. Test plan
 
@@ -290,7 +291,7 @@ unchanged at 57/57.
 
 CI jobs that must be green on the implementation PR: `node-build
 (rooms)`, `app-build`, `contract-check`, `ci`, `e2e-single-host`, and
-`postgres-parity (rooms)`, with `browser-e2e` running when the desk path
+`postgres-parity (rooms, node)`, with `browser-e2e` running when the desk path
 is in the change set. The Postgres half runs in the `postgres-parity
 (rooms)` job, which applies the Rooms migrations, exports `TEST_PG_URL`,
 and fails on any skipped case, so `CAP-E1` records that job's run.

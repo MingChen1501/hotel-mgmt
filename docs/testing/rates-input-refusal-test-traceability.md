@@ -284,7 +284,7 @@ the rows at the merged head.
 
 CI jobs that must be green on the implementation PR: `go-build (rates)`,
 `go-build (reservations)`, `contract-check`, `ci`, `browser-e2e`,
-`e2e-single-host`, and `postgres-parity (rates)`. The Postgres half runs
+`e2e-single-host`, and `postgres-parity (rates, go)`. The Postgres half runs
 in the `postgres-parity (rates)` job, which is why `RTE-E1` records that
 job's parity run.
 

@@ -298,7 +298,7 @@ the rows at the merged head. The MVP Coverage line in
 
 CI jobs that must be green on the implementation PR: `node-build
 (admin)`, `e2e-single-host`, `browser-e2e`, `dom-diff`,
-`contract-check`, `migrate-check`, `ci`, and `postgres-parity (admin)`.
+`contract-check`, `migrate-check`, `ci`, and `postgres-parity (admin, node)`.
 The Postgres parity half runs in the `postgres-parity (admin)` job, which
 applies the Admin migrations, exports `TEST_PG_URL`, and fails on any
 skipped case, so `BOOT-E1` records that job's run.

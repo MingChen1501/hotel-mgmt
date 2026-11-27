@@ -234,7 +234,7 @@ unchanged at 57/57.
 | Level / suite | Guards | Command | Where |
 |---|---|---|---|
 | L1 in-memory route, Rooms | `REL-1`–`REL-4`, `REL-7` (memory half), `REL-9`, `REL-12` | `cd services/rooms && npm run build && npm run lint && npm test` | CI `node-build (rooms)`; `TEST_PG_URL` unset, the in-memory guards must not skip |
-| L1 Postgres parity, Rooms | `REL-5`–`REL-8` (Postgres half), `REL-9` | the Rooms suite run by the `postgres-parity (rooms)` job, which applies the Rooms migrations and exports `TEST_PG_URL`; the cases skip without it, and the job fails on any skipped case |
+| L1 Postgres parity, Rooms | `REL-5`–`REL-8` (Postgres half), `REL-9` | `cd services/rooms && npm run build && npm test` with `TEST_PG_URL` exported by the job; the cases skip without it | CI `postgres-parity (rooms, node)`, which applies the Rooms migrations to a fresh `postgres:16-alpine` service and fails on any skipped case |
 | L1 desk regression, app | `REL-10` | `cd app && npm run build && npm run lint && npm test` | CI `app-build` |
 | LC contract | `REL-11` | `script/contract-check.sh` | CI `contract-check` |
 | Catalogue | `REL-12` | `script/catalogue-coverage-check.sh` | CI `ci` |

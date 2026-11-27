@@ -317,7 +317,7 @@ unchanged at 57/57.
 
 CI jobs that must be green on the implementation PR:
 `go-build (rates)`, `app-build`, `contract-check`, `ci`,
-`e2e-single-host`, and `postgres-parity (rates)`, with `browser-e2e`
+`e2e-single-host`, and `postgres-parity (rates, go)`, with `browser-e2e`
 running when the desk test file is in the change set. The Postgres half
 runs in the `postgres-parity (rates)` job, which is why `PLN-E1` records
 that job's row-count/parity run, and why `PLN-1`/`PLN-3` must prove the
