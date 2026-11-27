@@ -236,6 +236,25 @@ restate the list here — link it. Summary for orchestration use only.
   targets it, and a failed deletion is a warning, never a failed merge.
   `--dry-run` prints the exact request (synchronous or async) without
   issuing it.
+- A native stack merge rewrites every surviving member above the merged
+  one, and GitHub records each rewrite in the PR timeline as
+  `head_ref_force_pushed` with `performed_via_github_app: null`,
+  performed by the account that submitted the stack merge 2-6 s after
+  a lower member's `merged` event. The rewritten commits keep their
+  session author name/email/date but carry that account's profile
+  identity (its name and email) as committer with the committer
+  timestamp equal to the rewrite instant; siblings are rewritten in
+  the same 1-3 second window, the new bottom commit's parent is the
+  squash-merge commit of the member just below it, and the content
+  stays patch-identical under `git range-diff`. Re-verify and re-gate
+  each rewritten head before trusting an earlier verdict; the event is
+  expected platform behaviour, not a policy violation (issue #687).
+  Locally it is never recorded as a push: the new head appears only in
+  the remote-tracking reflog as a `fetch ... forced-update` entry, the
+  local branch ref stays on the pre-rewrite commit, and there is never
+  an `update by push` entry for the new SHA. A real force-push instead
+  moves the local branch ref and logs `update by push`; never excuse
+  one with this note.
 - Merge only when CI is green: `pass` plus `skipping`/`SKIPPED` (jobs the
   path-aware CI marks as not applicable to the change) count as green.
   The script still refuses on `fail`/`failed`, `pending`, or `cancelled`
