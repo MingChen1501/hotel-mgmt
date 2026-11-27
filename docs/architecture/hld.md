@@ -1351,6 +1351,90 @@ no migration or data repair in either direction.
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1262
 
+## 31. Admin refuses to boot without its per-sale signing key and boot secret (Refs #638)
+
+Admin was booting on published credentials. The session signing key fell
+back to `"dev-only-change-me"` when `ADMIN_TOKEN_KEY` was unset
+(`services/admin/src/store.ts:234`, the same expression at
+`services/admin/src/pgstore.ts:72`), and the boot owner secret fell back
+to `"change-me"` when `ADMIN_BOOT_SECRET` was unset
+(`services/admin/src/server.ts:119-123`, seeded through `ensureBootUser`
+at `services/admin/src/store.ts:262-281`). Nothing in the bundle
+provisioned the signing key at all: `deploy/compose.yaml:141-149` passed
+only the boot identity and the boot secret — the secret itself with the
+fallback `change-me-dev-only` — the CI e2e jobs set the boot secret only
+(`.github/workflows/ci.yml:500`, `:575`, `:676`), and both production
+gates checked two secrets and never the key
+(`script/preflight.sh:56-73`, `deploy/ansible/playbook.yaml:37-43`). So
+every installation built from this bundle signed sessions with a key
+printed in this repository, and a deployment that skipped the boot secret
+created a live owner account whose password is public. The first matters
+because the signature is what keeps a leaked token id useless once it
+leaves the service (LLD
+[section 39](lld.md#39-admin-refuses-to-boot-without-its-per-sale-signing-key-and-boot-secret-refs-638));
+the second is a direct takeover of the booking, folio, and
+user-administration functions.
+
+Three properties define the change:
+
+- **Fail closed is the default, and the refusal precedes every side
+  effect and the port.** One resolver at the top of the boot decides both
+  secrets before the store is built, before a database connection or a
+  migration, before the owner seed, and before `listen`, so a refused
+  boot writes nothing, creates no owner, serves no request, and never
+  answers `/healthz` — a container that cannot boot reads unhealthy
+  instead of healthy with published credentials. It exits non-zero and
+  prints one plain operator line naming the variable and the two ways
+  forward, never a value.
+- **One explicit switch re-opens the dev fallbacks, and nothing else
+  does.** `ADMIN_DEV_MODE=1` alone restores `dev-only-change-me` and
+  `change-me` for a missing variable, a provided value still wins, and
+  the boot logs one warning naming the switch; any other value of the
+  switch fails closed. `NODE_ENV` decides nothing in either direction:
+  the production image sets it (`services/admin/Dockerfile:13`) and a
+  local run does not, so a gate on it would either re-open the hole for a
+  host that forgets it or break the local path.
+- **The signing key becomes the third per-sale secret in the same
+  release, and no compiled-in default survives.** `ADMIN_TOKEN_KEY` is
+  provisioned and gated like `DB_PASSWORD` and `ADMIN_BOOT_SECRET`; both
+  Admin bundle fallbacks go, both production gates refuse a missing or
+  published value and refuse the switch, and the five-value denylist the
+  pre-flight already owns (`script/preflight.sh:56-61`) applies inside
+  the service too — a published value is not a secret, so it is refused
+  on the same terms as a missing one.
+
+Tier **T4 confirmed** (recorded by `product-owner` in
+`docs/product/acceptance-criteria.md`
+[section 32](../product/acceptance-criteria.md)): a boot-time behaviour
+change plus a deployment and environment contract change. No subsystem,
+dependency edge, data model, lifecycle state, operation, contract field,
+error code, schema, migration, desk surface, control, catalogue key, or
+print rule moves, so **no ADR and no T3 record**: the signing key is
+provisioned the way the two existing per-sale secrets already are, the
+decision is recorded once in D-44
+(`docs/project/decision-log.md`), and a second record would duplicate and
+contradict it. The deployment topology (section 7) and the CI strategy
+(section 8) stand as written; only the per-sale secret set they carry
+grows by one.
+
+Where the resolver sits, the mandatory and optional variables, the exact
+failure, the switch and the denylist, the three boot diagrams, the
+verification plan, and the residual risks: `docs/architecture/lld.md`
+[section 39](lld.md#39-admin-refuses-to-boot-without-its-per-sale-signing-key-and-boot-secret-refs-638);
+per-service operations: `docs/architecture/services/admin.md` section 7;
+the security posture: `docs/technical/security-threat-model.md` sections
+4, 5, and 8 (the new R12); the service precondition in the contract
+outline: `docs/technical/api-spec.md` section 2. Product conditions
+`AC-BOOT-1`..`AC-BOOT-5`; FRs `FR-BOOT-1`..`FR-BOOT-5` and business rule
+`BR-70`; risk R-25. The deployment, environment, runbook, release-note,
+and rollback documents are the `release-manager` handoff; the bundle
+files, the resolver, and the boot guards are the `dev` handoff; guard
+traceability is the `qa-lead` handoff. Rollback is the single
+implementation PR: the two fallback expressions and the two boot defaults
+return, no migration or backfill exists in either direction, and the
+rollback note must state that reverting re-opens the fail-open boot for
+that release (R-25).
+
 ## 32. A failed Rates rate-plan write is refused, never reported as success (Refs #767)
 
 Rates was reporting a plan write it had not performed. Its Postgres store
@@ -1422,6 +1506,9 @@ section 41; business rule BR-71. Risk R-26 records the fault, both
 overshoot directions, and the mitigation; rollback is the single
 implementation PR, with no migration, backfill, or data repair in either
 direction.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1279
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1288

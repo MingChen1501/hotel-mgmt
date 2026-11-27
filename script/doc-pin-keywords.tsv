@@ -20,3 +20,53 @@
 docs/architecture/services/rooms.md	services/rooms/src/store.ts:203-212	NOT_FOUND
 docs/architecture/services/rooms.md	services/rooms/src/store.ts:327	STATE_ILLEGAL
 docs/architecture/services/rooms.md	services/rooms/src/store.ts:397-400	occupied
+
+# #638 Admin fail-closed boot testing spec (issue #638). The section-2
+# as-built pins, the bundle/pre-flight/Ansible/CI pins, and the guard
+# traceability re-pins all resolve to a line whose content is asserted
+# here, so a base move (the #788 ci.yml insert) is a finding, not a pass.
+docs/testing/admin-fail-closed-boot-test-traceability.md	deploy/ansible/playbook.yaml:37	Fail closed while database or boot secrets
+docs/testing/admin-fail-closed-boot-test-traceability.md	deploy/compose.yaml:138	admin:
+docs/testing/admin-fail-closed-boot-test-traceability.md	deploy/compose.yaml:143	DATABASE_URL
+docs/testing/admin-fail-closed-boot-test-traceability.md	deploy/compose.yaml:148	ADMIN_BOOT_IDENTITY
+docs/testing/admin-fail-closed-boot-test-traceability.md	deploy/compose.yaml:149	ADMIN_BOOT_SECRET
+docs/testing/admin-fail-closed-boot-test-traceability.md	docs/architecture/services/admin.md:175	## 7. Operations
+docs/testing/admin-fail-closed-boot-test-traceability.md	docs/devops/local-dev-setup.md:51	## 3. Secrets provisioning
+docs/testing/admin-fail-closed-boot-test-traceability.md	.github/workflows/ci.yml:343	node-build:
+docs/testing/admin-fail-closed-boot-test-traceability.md	.github/workflows/ci.yml:500	ADMIN_BOOT_SECRET
+docs/testing/admin-fail-closed-boot-test-traceability.md	.github/workflows/ci.yml:575	ADMIN_BOOT_SECRET
+docs/testing/admin-fail-closed-boot-test-traceability.md	.github/workflows/ci.yml:676	ADMIN_BOOT_SECRET
+docs/testing/admin-fail-closed-boot-test-traceability.md	script/apply-hotel-config.sh:51	ADMIN_SECRET
+docs/testing/admin-fail-closed-boot-test-traceability.md	script/demo-poc.sh:70	ADMIN_BOOT_SECRET
+docs/testing/admin-fail-closed-boot-test-traceability.md	script/e2e-desk-loop.sh:150	ADMIN_BOOT_SECRET_CHECK
+docs/testing/admin-fail-closed-boot-test-traceability.md	script/e2e-perf-check.sh:40	ADMIN_SECRET
+docs/testing/admin-fail-closed-boot-test-traceability.md	script/install.sh:60	ADMIN_BOOT_SECRET
+docs/testing/admin-fail-closed-boot-test-traceability.md	script/preflight.sh:56	is_default_secret
+docs/testing/admin-fail-closed-boot-test-traceability.md	script/preflight.sh:63	is_default_secret
+docs/testing/admin-fail-closed-boot-test-traceability.md	script/test-preflight-fail-closed.sh:28	expect_fail
+docs/testing/admin-fail-closed-boot-test-traceability.md	services/admin/src/auth.test.ts:44	module-local bearer helper
+docs/testing/admin-fail-closed-boot-test-traceability.md	services/admin/src/bodyBound.test.ts:112	AdminStore("test-key")
+docs/testing/admin-fail-closed-boot-test-traceability.md	services/admin/src/index.ts:7	PORT
+docs/testing/admin-fail-closed-boot-test-traceability.md	services/admin/src/index.ts:16	async function main
+docs/testing/admin-fail-closed-boot-test-traceability.md	services/admin/src/index.ts:17	AdminStoreAPI
+docs/testing/admin-fail-closed-boot-test-traceability.md	services/admin/src/index.ts:20	new Pool
+docs/testing/admin-fail-closed-boot-test-traceability.md	services/admin/src/index.ts:27	applyAdminMigrations
+docs/testing/admin-fail-closed-boot-test-traceability.md	services/admin/src/index.ts:29	PostgresAdminStore
+docs/testing/admin-fail-closed-boot-test-traceability.md	services/admin/src/index.ts:31	bootStoreFromEnvironment
+docs/testing/admin-fail-closed-boot-test-traceability.md	services/admin/src/index.ts:32	createServiceServer
+docs/testing/admin-fail-closed-boot-test-traceability.md	services/admin/src/index.ts:34	server.listen
+docs/testing/admin-fail-closed-boot-test-traceability.md	services/admin/src/migrate.test.ts:38	PostgresAdminStore
+docs/testing/admin-fail-closed-boot-test-traceability.md	services/admin/src/pgstore.test.ts:33	signs in the boot owner
+docs/testing/admin-fail-closed-boot-test-traceability.md	services/admin/src/pgstore.ts:72	dev-only-change-me
+docs/testing/admin-fail-closed-boot-test-traceability.md	services/admin/src/pgstore.ts:90	ensureBootUser
+docs/testing/admin-fail-closed-boot-test-traceability.md	services/admin/src/pgstore.ts:163	async authenticate
+docs/testing/admin-fail-closed-boot-test-traceability.md	services/admin/src/server.test.ts:28	async function bootStore
+docs/testing/admin-fail-closed-boot-test-traceability.md	services/admin/src/server.ts:97	createServiceServer
+docs/testing/admin-fail-closed-boot-test-traceability.md	services/admin/src/server.ts:119	bootStoreFromEnvironment
+docs/testing/admin-fail-closed-boot-test-traceability.md	services/admin/src/server.ts:131	/healthz
+docs/testing/admin-fail-closed-boot-test-traceability.md	services/admin/src/store.ts:79	signSessionToken
+docs/testing/admin-fail-closed-boot-test-traceability.md	services/admin/src/store.ts:234	dev-only-change-me
+docs/testing/admin-fail-closed-boot-test-traceability.md	services/admin/src/store.ts:262	ensureBootUser
+docs/testing/admin-fail-closed-boot-test-traceability.md	services/admin/src/store.ts:309	randomUUID
+docs/testing/admin-fail-closed-boot-test-traceability.md	services/admin/src/store.ts:320	async authenticate
+docs/testing/admin-fail-closed-boot-test-traceability.md	services/admin/src/store.ts:589	signToken

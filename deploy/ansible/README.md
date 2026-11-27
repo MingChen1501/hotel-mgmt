@@ -23,16 +23,21 @@ ${EDITOR:-vi} deploy/ansible/inventory.ini
 cp deploy/config/hotel.example.json deploy/config/hotel.json
 ${EDITOR:-vi} deploy/config/hotel.json   # hotel's own values; never commit real hotel data
 DB_PASSWORD=<per-sale secret> ADMIN_BOOT_SECRET=<per-sale secret> \
+  ADMIN_TOKEN_KEY=<per-sale secret> \
   script/preflight.sh --config deploy/config/hotel.json
 DB_PASSWORD=<per-sale secret> ADMIN_BOOT_SECRET=<per-sale secret> \
+  ADMIN_TOKEN_KEY=<per-sale secret> \
   ansible-playbook -i deploy/ansible/inventory.ini deploy/ansible/playbook.yaml \
   -e bundle_src=. -e hotel_config=deploy/config/hotel.json
 ```
 
 The playbook validates the set against the release schema
 (`script/validate-hotel-config.sh`) before copying it, fails closed
-while `DB_PASSWORD` or `ADMIN_BOOT_SECRET` still holds a dev default
-(audit S3), then copies the release bundle, applies the per-hotel
+while `DB_PASSWORD`, `ADMIN_BOOT_SECRET`, or `ADMIN_TOKEN_KEY` is unset
+or still holds a dev default, and refuses a run with `ADMIN_DEV_MODE`
+set (Refs #638 — the Admin service exits at boot without its two
+per-sale secrets, and the switch would restore the published defaults),
+then copies the release bundle, applies the per-hotel
 configuration set, starts database then modules then proxy
 (deployment.md start order), and runs the install health check (proxy
 reachable, each module answering through the proxy). After the health
@@ -40,8 +45,15 @@ check it applies the set through Admin
 (`script/apply-hotel-config.sh`), so the hotel's own identity and
 standard times are in effect before handover. Migrations, the boot
 seed, and the desk-loop proof run next via `script/e2e-desk-loop.sh`
-(see `deploy/README.md`).
+(see `deploy/README.md`). Without `ADMIN_TOKEN_KEY` the Admin container
+stops shortly after start and the desk cannot sign in: the operator
+procedure is `docs/operations/runbook.md` [section 16](../../docs/operations/runbook.md)
+and the per-sale secret set is `docs/devops/deployment.md`
+[section 2](../../docs/devops/deployment.md).
 
 Pre-flight (sizing 2 vCPU / 4 GB RAM / 50 GB disk, LAN reachability,
 backup target, schema validation of the config set, first-secret
 handover) and rollback stay procedural per deployment.md [sections 5-6](../../docs/devops/deployment.md).
+
+<!-- ao-role: release-manager -->
+Role: release-manager · AO session hotel-mgmt-1281

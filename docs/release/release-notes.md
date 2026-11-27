@@ -563,6 +563,131 @@ stays a stub until the first exporter lands (ADR-0001), so until then
 the desk's refused-write reports and the support check in
 `../operations/runbook.md` section 14.4 are the watch.
 
+### 2.7 Admin refuses to boot without its per-sale signing key and boot secret (Refs #638)
+
+**Change and trace.** Audit finding A1: two Admin secrets used to fall
+back to published constants. The session signing key became
+`dev-only-change-me`
+(`services/admin/src/store.ts:234`, the same expression in
+`services/admin/src/pgstore.ts:72`), and the boot owner secret became
+`change-me` (`services/admin/src/server.ts:119-123`). A deployment that
+forgot either variable booted instead of refusing: every session was
+signed with a key printed in this repository, so the signature proved
+nothing and only the token id stood between a leaked token and a
+session, and the boot seeded a live owner account whose password is
+public — a full takeover of booking, folio, and user administration.
+Nothing in the bundle provisioned the signing key at all
+(`deploy/compose.yaml:141-149`), and both production gates checked two
+secrets, not three (`script/preflight.sh:63-73`,
+`deploy/ansible/playbook.yaml:36-44`). From #638 one resolver runs as
+the first statement of `main` (`services/admin/src/bootConfig.ts`, called
+from `services/admin/src/index.ts:16`): outside the explicit
+`ADMIN_DEV_MODE=1` switch the service exits `1` before it builds a
+store, connects to Postgres, applies a migration, seeds the owner, or
+opens its port, printing one plain line that names the unusable variable
+(`admin: refusing to boot: <VARIABLE> is unset, empty, or a published
+default; …`). A value on the deployment's existing denylist
+(`change-me`, `change-me-dev-only`, `password`, `hotel`,
+`hotel-dev-only`) counts as unusable; `ADMIN_TOKEN_KEY` is checked
+before `ADMIN_BOOT_SECRET`; the compiled-in fallbacks and the keyless
+`createServiceServer` default store are deleted, and the bundle,
+pre-flight, Ansible pre-check, and the three CI e2e jobs carry the third
+per-sale secret. `NODE_ENV` decides nothing in either direction.
+Design: `../architecture/lld.md` section 39,
+`../architecture/hld.md` section 31, the Admin design's Operations
+delta (`../architecture/services/admin.md` section 7), threat model
+R12 (`../technical/security-threat-model.md` sections 4, 5, and 8);
+product conditions `AC-BOOT-1`..`AC-BOOT-5`
+(`../product/acceptance-criteria.md` section 32), decision D-44
+(`../project/decision-log.md`), risk R-25
+(`../project/risk-register.md`); requirements `FR-BOOT-1`..`FR-BOOT-5`
+and `BR-70` (`../requirements/mvp-requirements.md` section 40,
+`../requirements/business-rules.md`). Risk label: `risk-high`, tier T4
+— the change touches credentials and a fail-closed boot can stop a
+deployment that relied on the defaults, so it needs explicit owner
+approval and the owner merges it.
+
+**What staff see.** In normal operation, nothing new at the desk: with
+the secrets provisioned, sign-in, config, rooms, and users behave as
+today. The refusal is an operator event at startup, not a desk sentence
+— there is no request at that point, so no envelope, status, or
+catalogue key is added and no screen gains a new message. Three effects
+are visible and expected. First, an installation that had been signing
+sessions with the published default signs everyone out once on its first
+boot with a real key, and staff sign in again (bounded by the 15-minute
+idle rule) — normal, not a fault. Second, an installation whose compose
+fallback seeded the owner with `change-me-dev-only` now refuses to start
+until a real `ADMIN_BOOT_SECRET` is provisioned, which surfaces at the
+upgrade instead of leaving a publicly known owner password in service.
+Third, the stored owner password does not change by upgrading: the seed
+is `INSERT … ON CONFLICT DO NOTHING`
+(`services/admin/src/pgstore.ts:90-110`), so an installation that once
+booted on the default keeps that hash until the owner rotates it through
+`ChangeSecret` (`../devops/local-dev-setup.md` section 7). Rotate it at
+the upgrade if the install ever booted on a published default — this
+release stops new ones and rewrites none.
+
+**Install/upgrade delta.** One new required environment value, and no
+per-hotel configuration change. `ADMIN_TOKEN_KEY` joins `DB_PASSWORD`
+and `ADMIN_BOOT_SECRET` as a per-sale secret generated per property,
+handed over sealed and recorded at handover
+(`../devops/deployment.md` section 2); `deploy/compose.yaml` supplies no
+fallback for either Admin secret; `script/preflight.sh` and the Ansible
+pre-check refuse a missing, empty, or published value for all three and
+refuse a host that has `ADMIN_DEV_MODE` set. Provision the two Admin
+secrets **before** the upgrade starts — before the pre-flight and before
+any module container starts — because Admin is the sign-in service and a
+host that skips a variable leaves the desk unable to sign in until it is
+set (`../devops/deployment.md` section 4, `../operations/runbook.md`
+section 16). No schema migration, no data backfill, no restart-order
+change, and no desk rebuild: a refused boot writes nothing at all. The
+local and CI paths carry explicit values rather than the switch
+(`../devops/local-dev-setup.md` section 3,
+`../devops/ci-cd.md` section 4); the Admin suite still needs neither
+variable. One trap worth naming: the switch is dev/test only — setting
+`ADMIN_DEV_MODE=1` on a sale restores both published defaults and is
+refused by both production gates.
+
+**Rollback pointer.** `rollback.md` [section 5.7](rollback.md): revert
+the single implementation PR. The revert restores both published
+defaults — a boot without `ADMIN_TOKEN_KEY` signs sessions with
+`dev-only-change-me` and a boot without `ADMIN_BOOT_SECRET` seeds
+`change-me` — so it is a security regression, an emergency measure until
+a corrected release ships, never a routine rollback. It has no data
+effect: no table, column, migration, or backfill exists on this path in
+either direction, and a host that keeps `ADMIN_TOKEN_KEY` in its env
+file after the revert is unaffected because the old code ignores it.
+
+**Evidence state and follow-ups.** The spec set is this stack (#781
+product, #782 requirements, #783 architecture, #784 testing, and this
+release/ops delta) and the implementation PR merges only after
+`spec-reviewer` posts `SPEC-GATE PASS`; the owner approves the
+`risk-high` change and merges it manually. The guard registry
+`BOOT1`–`BOOT5` and the evidence rule `BOOT-E1`
+(`../testing/admin-fail-closed-boot-test-traceability.md`) are the
+`qa-lead` handoff, and every one of those guards is an obligation the
+implementation PR creates. Verification at merge: `cd services/admin &&
+npm ci && npm run build && npm test && npm run lint` with neither
+`ADMIN_TOKEN_KEY` nor `ADMIN_BOOT_SECRET` exported; the two fail-closed
+boots and the switch path exercised by `BOOT1`–`BOOT3`; `grep -rn
+ADMIN_TOKEN_KEY services/admin/src` naming the resolver only;
+`script/test-preflight-fail-closed.sh` with the key and switch cases;
+`script/contract-check.sh` (no contract or fixture change);
+`script/catalogue-coverage-check.sh` (no key added);
+`script/markdown-link-check.sh`; `script/harness-conventions-check.sh`;
+and the live desk loop `script/e2e-desk-loop.sh` booting with explicit
+non-default values and no switch. Deliberately open: rotating the owner
+secret on an installation that booted on a published default (an owner
+action through `ChangeSecret`, no release mechanism); a key length or
+strength policy (no bound exists and inventing one is its own decision);
+secret rotation, secret storage, or a secret manager; the identity
+hardening slice that replaces the token with a resolved identity; the
+`DB_PASSWORD` compose fallback, which the same pre-flight already
+refuses; and a monitoring alert on refused boots — no exporter ships
+with this bundle, so until `../operations/monitoring-alerting.md`
+leaves stub status the watch is the container state and the log line
+recorded in `../operations/runbook.md` section 16.
+
 <!-- ao-role: release-manager -->
 Role: release-manager · AO session hotel-mgmt-1041
 
@@ -582,3 +707,6 @@ Role: release-manager · AO session hotel-mgmt-1049
 Role: architect · AO session hotel-mgmt-1057
 <!-- ao-role: release-manager -->
 Role: release-manager · AO session hotel-mgmt-936
+
+<!-- ao-role: release-manager -->
+Role: release-manager · AO session hotel-mgmt-1281

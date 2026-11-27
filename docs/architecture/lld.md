@@ -9947,6 +9947,421 @@ row or emits `room-upserted`, a 500 for a value the rule names, a
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1262
 
+## 39. Admin refuses to boot without its per-sale signing key and boot secret (Refs #638)
+
+Tier **T4 confirmed** (recorded by `product-owner` in
+`docs/product/acceptance-criteria.md` section 32): a boot-time behaviour
+change plus a deployment and environment contract change — one new
+per-sale secret, one removed bundle fallback, one explicit dev switch, and
+the pre-flight/install/upgrade deltas that keep the gates honest. No new
+subsystem, dependency edge, data model, lifecycle state, operation,
+contract field, error code, schema, migration, desk surface, control,
+catalogue key, or print rule is added or removed, so **no ADR and no T3
+record**: the signing key is provisioned the way the two existing
+per-sale secrets (`DB_PASSWORD`, `ADMIN_BOOT_SECRET`) already are, the
+decision is recorded once in D-44 (`docs/project/decision-log.md`), and
+an ADR would duplicate and contradict that record. This section is the
+T4 deployment-shaped delta on top of the applicable T2 set. Product
+done-conditions are `AC-BOOT-1`..`AC-BOOT-5` with D-44 and R-25; FR
+wording, `BR-70`, and the requirements-side per-flow diagram are the
+`business-analyst` handoff (`docs/requirements/mvp-requirements.md`
+section 40); guard traceability is the `qa-lead` handoff
+(`docs/testing/traceability-matrix.md`, the #638 section added by the
+sibling QA spec); the deployment, environment, runbook, release-note, and
+rollback documents are the `release-manager` handoff; the bundle files,
+the boot resolver, and the boot guards are the `dev` handoff. This
+section records only the architect-owned delta: where the check sits
+(39.1), the mandatory and optional variables with the exact failure
+(39.2), the switch and the one denylist (39.3), the three boot diagrams
+(39.4), the configuration and verification plan (39.5), the residual
+risks with the re-tier trigger (39.6), and maintain-with-code (39.7).
+
+As found at the pre-change head (`ff081e8`, read-only), with
+`.github/workflows/ci.yml` re-read at the landing base after #788
+(`1eab7cb`) inserted 35 lines:
+
+- **Both store constructors carry the signing-key fallback.**
+  `new AdminStore()` computes `this.key = tokenKey ?? process.env["ADMIN_TOKEN_KEY"] ?? "dev-only-change-me"`
+  (`services/admin/src/store.ts:234`), and `PostgresAdminStore` repeats
+  the same expression (`services/admin/src/pgstore.ts:72`). The key is
+  load-bearing: `signSessionToken` and `verifySessionToken` HMAC with it
+  (`store.ts:79-98`), and every authenticated call verifies through them
+  (`store.ts:320-322`, `pgstore.ts:163-165`).
+- **A third keyless construction site exists.** `createServiceServer`
+  declares `store: AdminStoreAPI = new AdminStore()`
+  (`services/admin/src/server.ts:97`), so a caller that omits the store
+  builds one with no key at all. No current caller omits it, but the
+  default is a compiled-in path to the dev key that a future caller could
+  reach.
+- **The boot seed carries the owner-secret fallback.**
+  `bootStoreFromEnvironment` reads `ADMIN_BOOT_IDENTITY` (default
+  `owner`) and `ADMIN_BOOT_SECRET` (default `change-me`) and seeds that
+  account (`services/admin/src/server.ts:119-123`), storing only the
+  secret's hash (`store.ts:262-281`). A boot on the default therefore
+  creates a live owner whose password is printed in this repository.
+- **Nothing in the bundle provisions the signing key.**
+  `deploy/compose.yaml:141-149` passes `ADMIN_BOOT_IDENTITY` and
+  `ADMIN_BOOT_SECRET` with the fallback `change-me-dev-only` and never
+  `ADMIN_TOKEN_KEY`; the three CI e2e jobs set the boot secret only
+  (`.github/workflows/ci.yml:500`, `:575`, `:676`); no script, Ansible
+  task, or deployment document names the key.
+- **Both production gates check two secrets, not three.**
+  `script/preflight.sh:56-61` owns the five-value denylist
+  (`change-me`, `change-me-dev-only`, `password`, `hotel`,
+  `hotel-dev-only`) and `:63-73` applies it to `DB_PASSWORD` and
+  `ADMIN_BOOT_SECRET`; the Ansible pre-check applies its three-value
+  subset (`deploy/ansible/playbook.yaml:37-43`). Neither looks at the
+  signing key, so an unprovisioned key passes install and upgrade
+  silently.
+- **The refusal can precede every side effect.** `main` builds the
+  store, connects and applies the migrations, seeds the owner, and only
+  then listens (`services/admin/src/index.ts:16-38`); `PORT` is read at
+  module load (`:7`) with no side effect. A check at the top of `main`
+  therefore has nothing to undo and no port to close.
+- **The suites never depend on the fallbacks.** Every Admin suite passes
+  an explicit key or seeds the owner directly
+  (`services/admin/src/server.test.ts:28-32`, `auth.test.ts:44-47`,
+  `pgstore.test.ts:33-38`, `bodyBound.test.ts:112`,
+  `migrate.test.ts:38-39`), so removing the fallbacks breaks no existing
+  assertion and the no-environment test path survives behind the switch.
+- **`NODE_ENV` cannot be the switch.** The production image sets
+  `NODE_ENV=production` (`services/admin/Dockerfile:13`) and a local run
+  does not, so a gate on it would either re-open the hole for a host that
+  forgets it or break the local path.
+
+### 39.1 Where the check sits: one resolver at the top of `main`, before the store, every side effect, and the port
+
+As specified (the implementation PR lands it; the pins below are the
+pre-change head this spec cites and are refreshed at the merged head):
+
+- **One resolver, one call site.** A new module-level function
+  `resolveBootConfig` in `services/admin/src/bootConfig.ts` reads the
+  environment once and returns the whole boot configuration —
+  `{ tokenKey, bootIdentity, bootSecret, devFallbacks }` — or throws one
+  `BootConfigError` carrying the unusable variable name. `main` calls it
+  as its first statement (`services/admin/src/index.ts:16`), before
+  `new AdminStore()`, before the `DATABASE_URL` branch, before
+  `applyAdminMigrations`, before `bootStoreFromEnvironment`, and before
+  `listen`. Because the resolver is a pure function over a passed-in
+  `ProcessEnv`, the guards can call it directly with a constructed
+  environment and need no child process; the boot-order guards still
+  spawn the real entry point (`BOOT1`..`BOOT3`, requirements 40.5).
+- **The compiled-in defaults are deleted, not shadowed.** Both store
+  constructors take the key as a required argument and no longer read
+  `ADMIN_TOKEN_KEY` or contain the `dev-only-change-me` literal
+  (`store.ts:234`, `pgstore.ts:72`); `main` passes
+  `boot.tokenKey` to whichever store it builds. The
+  `createServiceServer` default parameter goes
+  (`server.ts:97`, store required), so the module holds no keyless
+  construction path. `bootStoreFromEnvironment` stops reading the
+  environment and takes the resolved `identity` and `secret`
+  (`server.ts:119-123`), so the dev fallback values can only enter from
+  the resolver's switch branch. After the change,
+  `grep -rn ADMIN_TOKEN_KEY services/admin/src` names the resolver only.
+- **The refusal is a boot outcome, not an HTTP answer.** No request
+  exists at that point, so the failure is not an envelope, status, or
+  catalogue sentence: `main` catches `BootConfigError`, writes one plain
+  line to stderr, sets `process.exitCode = 1`, and returns. Any other
+  error keeps today's behaviour. The process never constructs a server,
+  so `/healthz` never answers and a container reads unhealthy.
+- **The store stays store-agnostic.** The resolver returns the key, and
+  the same key reaches both `AdminStore` and `PostgresAdminStore`, so
+  sign-in and verification behave identically whichever store booted; no
+  migration, column, or stored value changes.
+
+### 39.2 The variables: two mandatory secrets, five optional settings, one exact failure
+
+| Variable | Required outside the switch | Default | Refused when | Effect |
+|---|---|---|---|---|
+| `ADMIN_TOKEN_KEY` | yes | none — the fallback is deleted | unset, empty, or exactly one of `change-me`, `change-me-dev-only`, `password`, `hotel`, `hotel-dev-only` | HMAC key for every issued and verified session token; the third per-sale secret |
+| `ADMIN_BOOT_SECRET` | yes | none — the fallback is deleted | the same test | the one-time owner secret the boot seeds, stored hash-only |
+| `ADMIN_BOOT_IDENTITY` | no | `owner` when undefined, exactly as today's `??` | never | the boot owner's sign-in identity |
+| `ADMIN_DEV_MODE` | no | off | — | the switch of 39.3; exact string `1` |
+| `PORT` | no | `8088` | never | listen port |
+| `DATABASE_URL` | no | in-memory store | never | selects the Postgres store and the startup migration chain |
+| `NODE_ENV` | inert | — | never read for this decision | set to `production` by the image; decides nothing |
+
+Two rules make the check deterministic: unset and empty (`""`) are the
+same failure, and the denylist is an exact, case-sensitive string match
+on the value as received — the same comparison
+`script/preflight.sh:56-61` performs. There is no trimming and no
+minimum length or strength rule: a short but unpublished value is
+accepted, because inventing a strength policy is its own decision
+(product section 32, requirements 40.6). `ADMIN_BOOT_IDENTITY` keeps
+today's semantics untouched — only `undefined` falls back to `owner`.
+
+The exact failure, fixed by this section:
+
+- **Order.** `ADMIN_TOKEN_KEY` is checked first, then `ADMIN_BOOT_SECRET`;
+  the first unusable one refuses, so a boot with both missing names the
+  key. The second failure surfaces on the next boot, after the first is
+  provisioned.
+- **One line, plain English, on stderr, never a value.**
+  `admin: refusing to boot: <VARIABLE> is unset, empty, or a published default; provision the per-sale secret or set ADMIN_DEV_MODE=1 for dev/test.`
+  The line names the variable and the two ways forward and cannot reveal
+  which failure class fired or what value was presented.
+- **Exit code `1`.** Non-zero is the operator contract; `1` rather than
+  `2`, because a boot is not a command-line usage error and the
+  supervisor only distinguishes zero from non-zero. No stack trace and no
+  envelope are printed.
+- **Nothing else happens.** No store, no pool, no migration, no owner
+  account, no session token, no listen, no `/healthz` — the guards prove
+  the absence, not only the exit code (`BOOT1`, `BOOT2`).
+
+### 39.3 The switch and the one denylist: one explicit dev path, no drift between service and gate
+
+- **Only `ADMIN_DEV_MODE`, only the exact value `1`.** `1` enables both
+  dev fallbacks; absent, empty, `0`, `01`, `true`, `yes`, or any other
+  value leaves the fail-closed rules of 39.2 unchanged. No other
+  variable — `NODE_ENV` included — enables a fallback. When the switch is
+  on, a provided value still wins over the fallback and the boot logs one
+  warning line naming the switch and each fallback in use, for example
+  `admin: warning: ADMIN_DEV_MODE=1 is set; using the dev session key and the dev boot secret where a per-sale secret is not provisioned.`
+  The denylist check is skipped under the switch, because that path is
+  explicitly the dev path; the production gates refuse the switch itself
+  (39.5), so it cannot travel into a sale.
+- **One list, two homes, one parity guard.** The service needs the five
+  values in code; `script/preflight.sh:56-61` holds them in shell, and
+  the two are separate build units (ADR-0001) with no import edge. The
+  list is therefore a fixed code constant in `bootConfig.ts` with the
+  same five exact values, and the bundle guard `BOOT5` (requirements
+  40.5) asserts the two lists are equal, so a future edit to one without
+  the other fails a gate rather than silently accepting a published
+  value in one place and refusing it in the other.
+- **The switch is refused where it would become production.**
+  `script/preflight.sh` and the Ansible pre-check refuse an install or
+  upgrade with `ADMIN_DEV_MODE` set, alongside refusing a missing or
+  published `ADMIN_TOKEN_KEY`; the Ansible pre-check extends its current
+  three-value subset to the same five values, so one list governs the
+  service, the pre-flight, and the install. That is the bundle half the
+  `dev` and `release-manager` handoffs carry (39.5). The service keeps
+  its own rule, so a hand-set switch still logs loudly rather than
+  silently restoring both defaults.
+
+### 39.4 Per-flow diagrams
+
+Boot with the two per-sale secrets provisioned — the happy path:
+
+```mermaid
+flowchart TD
+    A[Bundle or local run starts dist/index.js, main at index.ts:16] --> B[resolveBootConfig at the top of main  new, bootConfig.ts]
+    B --> C{ADMIN_DEV_MODE is exactly 1}
+    C -->|no| D{ADMIN_TOKEN_KEY present, non-empty, not on the five-value denylist}
+    D -->|yes| E{ADMIN_BOOT_SECRET present, non-empty, not on the denylist}
+    E -->|yes| F[DATABASE_URL set]
+    F -->|yes| G[Connect, apply the migrations, select PostgresAdminStore with the resolved key  index.ts:18-30, pgstore.ts:72]
+    F -->|no| H[Build AdminStore with the resolved key  index.ts:17, store.ts:234]
+    G --> I[Seed the owner with the resolved identity and secret, hash only  server.ts:119-123, store.ts:262-281]
+    H --> I
+    I --> J[Listen on PORT  index.ts:32-38]
+    J --> K[Answer /healthz and serve every operation  server.ts:131-134]
+    K --> L[Sign and verify with the resolved key  store.ts:79-98, :320-322, pgstore.ts:163-165]
+    C -->|yes| M[Dev profile, third diagram below]
+```
+
+Boot without a usable variable — the fail-closed path:
+
+```mermaid
+flowchart TD
+    A[Start with ADMIN_DEV_MODE absent, empty, 0, or any value other than 1] --> B{ADMIN_TOKEN_KEY unset, empty, or exactly a denylisted value}
+    B -->|yes| R1[BootConfigError names ADMIN_TOKEN_KEY  new]
+    B -->|no| C{ADMIN_BOOT_SECRET unset, empty, or exactly a denylisted value}
+    C -->|yes| R2[BootConfigError names ADMIN_BOOT_SECRET  new]
+    R1 --> E[main catches it and writes one stderr line naming the variable and the two ways forward, never a value  new]
+    R2 --> E
+    E --> X[Exit code 1; no store, no pool, no migration, no owner account, no session token, no listen, no healthz  new]
+```
+
+Dev profile — the only path back to the fallbacks:
+
+```mermaid
+flowchart TD
+    A[ADMIN_DEV_MODE is exactly 1  new] --> B{ADMIN_TOKEN_KEY provided}
+    B -->|yes| C[Use the provided key]
+    B -->|no| D[Use dev-only-change-me  new]
+    A --> E{ADMIN_BOOT_SECRET provided}
+    E -->|yes| F[Use the provided secret]
+    E -->|no| G[Use change-me  new]
+    C --> H[Log one warning naming the switch and each fallback in use  new]
+    D --> H
+    F --> H
+    G --> H
+    H --> I[Continue into the happy-path boot: same store, migration, seed, and listen order]
+    J[NODE_ENV, production or not] --> K[Decides nothing in either direction  new]
+```
+
+Edge trace for the three diagrams:
+
+- **Happy path.** The resolver call is the new first statement of
+  `main` (`services/admin/src/index.ts:16`); the store is built at
+  `index.ts:17` (in memory) or `index.ts:29` (Postgres, after the
+  migration chain at `:27-28`, which itself follows the pool at `:20`
+  and only runs when `DATABASE_URL` is set at `:13-18`); the seed runs
+  at `:31` through `bootStoreFromEnvironment`
+  (`services/admin/src/server.ts:119-123`, `store.ts:262-281`); the
+  listen is `:32-38`; `/healthz` is `server.ts:131-134`; signing and
+  verification are `store.ts:79-98`, `:589-590`, `:320-322`, and
+  `pgstore.ts:160`, `:163-165`.
+- **Fail-closed path.** `BootConfigError` is raised before any of those
+  edges runs; `main` writes the one line to stderr and sets
+  `process.exitCode = 1`. Because no server is constructed, the
+  `/healthz` edge (`server.ts:131-134`) is unreachable and the
+  container's health check fails, which is the intended unhealthy
+  signal.
+- **Dev profile.** The switch branch returns the same
+  `{ tokenKey, bootIdentity, bootSecret }` shape the happy path uses, so
+  every later edge is byte-identical; the only additional output is the
+  one warning line. `NODE_ENV` is never read by the resolver, which is
+  why `services/admin/Dockerfile:13` cannot open the fallbacks.
+
+Failure/rollback path: every refusal is decided by the resolver at the
+top of `main`, before the store, the pool, the migration chain, the
+owner seed, and the port, so a refused boot writes no row, seeds no
+owner, mints no token, serves no request, and never answers `/healthz` —
+a container that cannot boot reads unhealthy instead of healthy with
+published credentials. A deployment that skips `ADMIN_TOKEN_KEY` stops at
+start-up rather than signing sessions with a published key; one that
+skips `ADMIN_BOOT_SECRET` never creates an owner whose password is
+public. The whole change reverts with the single implementation PR: the
+two fallback expressions, the keyless `createServiceServer` default, and
+the two boot defaults return, no migration or backfill exists in either
+direction, and a deployment that keeps the extra `ADMIN_TOKEN_KEY` in its
+env file is unaffected because the old code ignores it. Reverting
+re-opens the fail-open boot for that release, so rollback is an emergency
+measure until a corrected release ships (R-25; threat model R12). The
+first boot with a real key invalidates session tokens minted with the old
+default, so staff sign in again once.
+
+### 39.5 Configuration and verification plan
+
+This change adds no HTTP contract surface, so no `contracts/` file moves:
+
+- **No `contracts/` edit, deliberately.** A boot refusal has no request,
+  response, status, envelope, or code token; it is a deployment
+  precondition of the service. `contracts/errors/envelope.json` gains no
+  token, every existing fixture keeps its answer, and
+  `script/contract-check.sh` stays green without a fixture change.
+- **`docs/technical/api-spec.md` section 2** gains one sentence on the
+  `AdminService` row: the service refuses to boot, before it opens its
+  port, when `ADMIN_TOKEN_KEY` or `ADMIN_BOOT_SECRET` is unset, empty, or
+  a published default outside the explicit `ADMIN_DEV_MODE=1` dev switch,
+  and no request, response, status, or envelope changes (Refs #638).
+- **`docs/technical/security-threat-model.md`**: section 4 records that
+  the HMAC key is resolved at boot with no compiled-in default; section 5
+  item 2 names `ADMIN_TOKEN_KEY` as the provisioned signing key and item
+  4 records that the boot seed itself refuses a missing or published
+  secret; section 8 adds R12 (fail-closed Admin boot availability); this
+  section is the design pointer.
+- **`docs/architecture/services/admin.md` section 7** gains the secret
+  table and the boot-refusal delta (39.1/39.2), so an operator reads the
+  failure and the variables in the service's own operations section.
+- **Bundle files (`dev` handoff).** `deploy/compose.yaml` passes
+  `ADMIN_TOKEN_KEY` and stops supplying a fallback for either Admin
+  secret (a required-variable interpolation), and never sets
+  `ADMIN_DEV_MODE`; the three CI e2e jobs set an explicit non-default
+  key beside the existing boot secret and boot with no switch, while the
+  Admin unit job exports neither variable; `script/preflight.sh`, the
+  Ansible pre-check, `script/test-preflight-fail-closed.sh`,
+  `script/install.sh`, `script/demo-poc.sh`, `script/e2e-desk-loop.sh`,
+  and `script/e2e-perf-check.sh` carry the key and refuse the switch.
+- **Documents (`release-manager` handoff).**
+  `docs/devops/deployment.md` section 2 and
+  `docs/devops/local-dev-setup.md` section 3 add the third per-sale
+  secret and the dev-switch usage; `docs/operations/runbook.md` gains the
+  "Admin refuses to boot" symptom with its two causes and fix;
+  `docs/release/release-notes.md` names the new required variable and the
+  one-time re-sign-in; `docs/release/rollback.md` states that reverting
+  re-opens the fail-open boot.
+
+Verification (commands from `docs/architecture/services/admin.md`
+section 7 and the repo root):
+
+- `services/admin`: `npm ci`, `npm run build`, `npm test`, `npm run lint`
+  — with neither `ADMIN_TOKEN_KEY` nor `ADMIN_BOOT_SECRET` exported, which
+  is itself `BOOT4`. The new guards: `BOOT1` (unset key, provisioned
+  secret, no switch → exit 1, one line naming the key, no store call, no
+  migration, no listen, no token signed), `BOOT2` (provisioned key,
+  absent/empty/denylisted boot secret → exit 1, one line naming the
+  secret and never the value, no owner in either store, `/healthz`
+  refused), `BOOT3` (switch with both absent → boot, dev key and dev
+  secret in use, one warning; switch absent/empty/`0` refuses;
+  `NODE_ENV=production` without the switch refuses; a provided value
+  wins), `BOOT4` (suite green with neither variable exported), and
+  `BOOT5` (bundle assertions: compose passes the key with no Admin-secret
+  fallback, both gates refuse a missing/default key and the switch, the
+  e2e jobs carry explicit values, and the code denylist equals
+  `script/preflight.sh:56-61`). Requirements 40.5 owns the guard names
+  and `qa-lead` re-pins them at the merged head.
+- Repo root: `script/contract-check.sh` (no contract file changed and
+  every fixture still resolves), `script/markdown-link-check.sh`,
+  `script/harness-conventions-check.sh`,
+  `script/catalogue-coverage-check.sh` (no catalogue key is added), and
+  `script/test-preflight-fail-closed.sh` with its new key and switch
+  cases.
+- Deployment shape: the e2e path boots with explicit non-default values
+  and no switch, proving the fail-closed contract is satisfiable.
+
+### 39.6 Residual risks and re-tier trigger
+
+- **The fail-closed boot is an availability change, not only a security
+  one.** An upgrade that does not provision `ADMIN_TOKEN_KEY` stops
+  Admin, the sign-in service, so the desk cannot sign in at all until the
+  variable is set (product R-25; threat model R12). Accepted: a boot that
+  would sign sessions with a published key is worse than a refused boot.
+  The mitigation is the same-release bundle, pre-flight, and Ansible
+  delta plus the release note and runbook entry, not a fallback.
+- **The denylist is duplicated between the service and the pre-flight.**
+  A shell script cannot be imported by the Node build unit, so the five
+  values live twice; `BOOT5` asserts equality, and a divergence is a
+  review finding. Moving either list to configuration would be a new
+  decision, not an edit.
+- **The switch can travel into a sale only by deliberate action.** A
+  bundle or operator that sets `ADMIN_DEV_MODE=1` restores both defaults;
+  the two production gates refuse the switch, and the service logs a
+  warning when it is on. The residual case is a gate-bypassed install,
+  which is outside the service's control.
+- **The first boot with a real key invalidates existing sessions.** No
+  token migration exists or is wanted; staff sign in again once, bounded
+  by the 15-minute idle rule. Expected, not a defect.
+- **A short but unpublished key is accepted.** No length or strength
+  policy exists in the tree; inventing one would refuse a value a hotel
+  already provisioned and is out of scope. The existing gates still
+  refuse the five published values.
+- **`DB_PASSWORD` keeps its compose fallback.** The same pre-flight
+  already refuses that default on a provisioned install, and the issue
+  does not name it; changing it is its own decision.
+- **Re-tier trigger.** Adding a key-length or strength policy, rotation,
+  a secret store or manager, changing what `NODE_ENV` means, moving the
+  denylist or the switch into configuration, or touching the identity
+  hardening slice that replaces the token with a resolved identity is a
+  new decision (a T3/ADR case, not this delta). No ADR is written here
+  for the reasons in the introduction; if the owner later wants the
+  posture recorded as an ADR, it supersedes D-44 rather than sitting
+  beside it.
+
+### 39.7 Maintain-with-code
+
+The implementation adds `services/admin/src/bootConfig.ts` with
+`resolveBootConfig` and `BootConfigError`, calls the resolver as the first
+statement of `main`, deletes both `dev-only-change-me` expressions and the
+`createServiceServer` default store, changes
+`bootStoreFromEnvironment` to take the resolved identity and secret,
+passes the resolved key to whichever store boots, and lands the bundle
+and pre-flight deltas of 39.5; it creates the guards `BOOT1`..`BOOT5` and
+refreshes this section's line pins plus the #638 operations delta in
+`docs/architecture/services/admin.md` section 7 and the threat-model
+sections named above to the as-built `file:line` at the merged head
+(`qa-lead` re-pins its traceability rows). `dev-peer-review` treats these
+as findings the same as any drifted spec: a fallback literal or
+`process.env` read of either secret left outside the resolver, a store or
+`createServiceServer` construction path without a key, a check placed
+after the store, a migration, the seed, or the listen, a failure that
+prints a secret value or a stack trace, an `ADMIN_DEV_MODE` comparison
+other than the exact string `1`, a denylist that diverges from
+`script/preflight.sh:56-61`, `NODE_ENV` deciding anything, a catalogue
+key or envelope token invented for a boot failure, a contract fixture
+change, or a stale pin.
+
 ## 40. A failed Rates rate-plan write is refused, never reported as success (Refs #767)
 
 Tier **T2 confirmed**: one existing operation changes a caller-visible
@@ -10343,6 +10758,9 @@ checked inside this change; a success-path value, event, or body that is
 not byte-identical; a guard that needs `TEST_PG_URL` to observe the
 failure; a plan-write answer that differs from its sibling writes; or a
 stale pin.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1279
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1288

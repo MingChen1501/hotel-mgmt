@@ -154,6 +154,17 @@ fact.
   above (idle sign-out, 5-minute revalidation, lockout) apply
   unchanged to shell sessions.
 
+Key provenance at boot (Refs #638): the HMAC key is a per-sale secret
+resolved once at the top of the Admin boot, with no compiled-in default
+on the production path. Outside the explicit dev switch the service
+refuses to start before it builds a store, connects, migrates, seeds an
+owner, or opens its port when `ADMIN_TOKEN_KEY` or `ADMIN_BOOT_SECRET` is
+unset, empty, or a published value, so a deployment can no longer sign
+sessions with a key printed in this repository or seed an owner whose
+password is public. Only `ADMIN_DEV_MODE=1` restores the dev values and
+logs a warning; `NODE_ENV` decides nothing; the two production gates
+refuse the switch. Design: `docs/architecture/lld.md` section 39.
+
 ## 5. Secrets and first-provisioning flow
 
 At install time (offline media, Ansible playbooks owned by
@@ -165,14 +176,19 @@ master):
 
 1. Database engine credentials: one random password per module
    schema plus an admin credential sealed for break-glass use.
-2. Session-signing key (HMAC) held by Admin; TLS key/certificate
+2. Session-signing key (HMAC) held by Admin, provisioned as
+   `ADMIN_TOKEN_KEY` and mandatory at boot from #638 on — no compiled-in
+   default survives a production boot, and the service refuses to start
+   without it (section 4, "Key provenance at boot"); TLS key/certificate
    for the LAN Nginx entry, installed on desk clients (planned —
    see B1; no TLS objects exist in `deploy/` as of master).
 3. Backup-encryption key, hotel-held; a copy sealed with the
    break-glass credentials.
-4. Bootstrap owner account: created with a one-time secret that
-   must be changed at first sign-in; the one-time secret expires
-   after first use. No default passwords survive provisioning.
+4. Bootstrap owner account: created with the one-time secret from
+   `ADMIN_BOOT_SECRET`, which must be changed at first sign-in and
+   expires after first use. No default passwords survive provisioning,
+   and from #638 the boot seed itself refuses an unset, empty, or
+   published boot secret before creating the account.
 5. Tailscale tailnet enrolment for the host (owner-approved
    devices only); enrolment tokens are single-use and expire.
 
@@ -307,6 +323,19 @@ the same seam (R-20). Design: `docs/architecture/lld.md` section 34.
   that booking. Bounded by reading immediately before the store call
   (the guarded count-and-insert itself stays atomic) and by single-desk,
   single-property scale; the same class as R5.
+- R12 — Fail-closed Admin boot availability (Refs #638): with both Admin
+  secrets mandatory, an install or upgrade that does not provision
+  `ADMIN_TOKEN_KEY` stops Admin, the sign-in service, so the desk cannot
+  sign in until the variable is set; a bad or rotated-without-redeploy
+  value does the same. Accepted: a boot that would sign sessions with a
+  published key, or seed an owner whose password is public, is worse than
+  a refused boot. The mitigation is the same-release bundle, pre-flight,
+  Ansible, release-note, and runbook delta that names the variable and
+  the one-time re-sign-in (product risk R-25), never a restored fallback
+  and never the dev switch — the two production gates refuse the switch.
+  The design is `docs/architecture/lld.md` section 39; the rollback is
+  the single implementation PR, which re-opens the fail-open boot for
+  that release and is therefore an emergency measure only.
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1046
