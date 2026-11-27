@@ -44,22 +44,36 @@
 #   --keywords FILE   keyword map (TSV: doc, target, keyword; `#` comment
 #                     lines allowed). `target` is the resolved repo-relative
 #                     `path:line`; a map row matches a range pin when the
-#                     path and first line match.
-#   --report-only     always exit 0 (the CI first-iteration mode); findings
-#                     are still printed and counted.
+#                     path and first line match. Default:
+#                     `script/doc-pin-keywords.tsv` under the root, when
+#                     present; --keywords overrides it.
+#   --allow FILE      allow-list of acknowledged findings (TSV: doc, target,
+#                     status, reason; `#` comment lines allowed). A finding
+#                     that matches a row is reported ALLOWED and does not
+#                     fail the run; a row that matches no finding is a
+#                     STALE-ALLOW finding, so the list is pruned as the
+#                     inventory is cleaned. Allow-listed pins are always
+#                     reported, never silently skipped. Default:
+#                     `script/doc-pin-allowlist.tsv` under the root, when
+#                     present; --allow overrides it.
+#   --no-allow        ignore the default allow-list, so a local run can
+#                     show the full inventory.
+#   --report-only     always exit 0 (a local inspection mode); findings are
+#                     still printed and counted.
 #   --all             print one record per pin, including PASS/UNVERIFIED.
 #   --quiet           print the summary only.
 #   --root DIR        repo root (default: this script's parent directory).
 #
-# Exit: 0 no findings (or --report-only), 1 findings, 2 usage error.
+# Exit: 0 no findings (or every finding allow-listed, or --report-only),
+#       1 findings, 2 usage error.
 #
 # Offline, no new dependency: bash + POSIX awk/grep/sed/sort. The file
 # inventory comes from `git ls-files` in a git checkout (a clean checkout
 # is the supported input) and from `find` under --root for fixtures.
 #
-# Blocking flip is a tracked follow-up: it waits for a clean inventory
-# (zero findings) or an explicit allow-list, because the first report is
-# the inventory itself.
+# Blocking: a finding fails the run unless it is an explicit allow-list
+# row. The allow-list is the reviewed baseline for pins whose target is
+# known-stale; cleanup removes rows, never adds a blanket skip.
 
 set -euo pipefail
 LC_ALL=C
@@ -67,6 +81,8 @@ LC_ALL=C
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 KEYWORDS=""
+ALLOW=""
+NO_ALLOW=0
 REPORT_ONLY=0
 SHOW_ALL=0
 QUIET=0
@@ -79,14 +95,24 @@ Usage:
   --keywords FILE   keyword map (TSV: doc, target, keyword; `#` comment
                     lines allowed). `target` is the resolved repo-relative
                     `path:line`; a map row matches a range pin when the
-                    path and first line match.
-  --report-only     always exit 0 (the CI first-iteration mode); findings
-                    are still printed and counted.
+                    path and first line match. Default:
+                    script/doc-pin-keywords.tsv under the root, when
+                    present; --keywords overrides it.
+  --allow FILE      allow-list of acknowledged findings (TSV: doc, target,
+                    status, reason). A matching finding is reported ALLOWED
+                    and does not fail the run; a row that matches no finding
+                    is a STALE-ALLOW finding. Default:
+                    script/doc-pin-allowlist.tsv under the root, when
+                    present; --allow overrides it.
+  --no-allow        ignore the default allow-list (show the full inventory).
+  --report-only     always exit 0 (a local inspection mode); findings are
+                    still printed and counted.
   --all             print one record per pin, including PASS/UNVERIFIED.
   --quiet           print the summary only.
   --root DIR        repo root (default: this script's parent directory).
 
-Exit: 0 no findings (or --report-only), 1 findings, 2 usage error.
+Exit: 0 no findings (or every finding allow-listed, or --report-only),
+      1 findings, 2 usage error.
 USAGE
 }
 
@@ -95,6 +121,8 @@ die() { echo "doc-pin-check: $*" >&2; exit 2; }
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --keywords) KEYWORDS="${2:-}"; shift 2 ;;
+    --allow) ALLOW="${2:-}"; shift 2 ;;
+    --no-allow) NO_ALLOW=1; shift ;;
     --report-only) REPORT_ONLY=1; shift ;;
     --all) SHOW_ALL=1; shift ;;
     --quiet) QUIET=1; shift ;;
@@ -113,6 +141,21 @@ ROOT="$(cd "${ROOT}" && pwd -P)"
 if [[ -n "${KEYWORDS}" ]]; then
   # Absolutize before cd: the map path is relative to the caller.
   KEYWORDS="$(cd "$(dirname "${KEYWORDS}")" && pwd -P)/$(basename "${KEYWORDS}")"
+fi
+# A project keeps its keyword map next to the scripts; a fixture root
+# without the file gets none, so --root stays hermetic.
+if [[ -z "${KEYWORDS}" && -f "${ROOT}/script/doc-pin-keywords.tsv" ]]; then
+  KEYWORDS="${ROOT}/script/doc-pin-keywords.tsv"
+fi
+[[ -z "${ALLOW}" || -f "${ALLOW}" ]] || die "allow-list not found: ${ALLOW}"
+if [[ -n "${ALLOW}" ]]; then
+  # Absolutize before cd: the allow-list path is relative to the caller.
+  ALLOW="$(cd "$(dirname "${ALLOW}")" && pwd -P)/$(basename "${ALLOW}")"
+fi
+# A project keeps its reviewed baseline next to the scripts; a fixture root
+# without the file gets no allow-list, so --root stays hermetic.
+if [[ "${NO_ALLOW}" -eq 0 && -z "${ALLOW}" && -f "${ROOT}/script/doc-pin-allowlist.tsv" ]]; then
+  ALLOW="${ROOT}/script/doc-pin-allowlist.tsv"
 fi
 
 TMP="$(mktemp -d)"
@@ -481,7 +524,14 @@ done <"${TMP}/targets.txt"
 # Load the quoted target lines first (an empty first file would break the
 # usual FNR == NR idiom), then stream the resolved-pin rows.
 : >"${TMP}/report.tsv"
-awk -F'\t' -v actualfile="${TMP}/actual.tsv" -v reportfile="${TMP}/report.tsv" '
+: >"${TMP}/allowdiag.tsv"
+awk -F'\t' -v actualfile="${TMP}/actual.tsv" -v reportfile="${TMP}/report.tsv" \
+    -v allowfile="${ALLOW}" -v allowdiagfile="${TMP}/allowdiag.tsv" \
+    -v doclistfile="${TMP}/docs.txt" '
+function allowdiag(kind, doc, target, status, reason, detail) {
+  gsub(/\t/, " ", target); gsub(/\t/, " ", reason)
+  print kind, doc, target, status, reason, detail > allowdiagfile
+}
 BEGIN {
   OFS = "\t"
   while ((getline l < actualfile) > 0) {
@@ -490,6 +540,38 @@ BEGIN {
     else content[f[1] SUBSEP f[2]] = f[3]
   }
   close(actualfile)
+  # scanned doc set: an allow row for an unscanned doc is not stale
+  while ((getline l < doclistfile) > 0) scanned[l] = 1
+  close(doclistfile)
+  nallow = 0
+  if (allowfile != "") {
+    while ((getline l < allowfile) > 0) {
+      sub(/\r$/, "", l)
+      if (l == "" || l ~ /^[ \t]*#/) continue
+      n = split(l, f, "\t")
+      if (n < 4) {
+        allowdiag("BAD-ALLOW", (n >= 1 ? f[1] : "-"), (n >= 2 ? f[2] : "-"), (n >= 3 ? f[3] : "-"), (n >= 4 ? f[4] : "-"), "malformed allow-list row (need doc, target, status, reason)")
+        continue
+      }
+      if (f[4] == "") {
+        allowdiag("BAD-ALLOW", f[1], f[2], f[3], f[4], "allow-list row needs a reason")
+        continue
+      }
+      if (f[3] !~ /^(MISSING|MISMATCH|EOF)$/) {
+        allowdiag("BAD-ALLOW", f[1], f[2], f[3], f[4], "allow-list status must be MISSING, MISMATCH, or EOF")
+        continue
+      }
+      k = f[1] SUBSEP f[2] SUBSEP f[3]
+      if (k in allowreason) {
+        allowdiag("BAD-ALLOW", f[1], f[2], f[3], f[4], "duplicate allow-list row")
+        continue
+      }
+      allowreason[k] = f[4]
+      allowdoc[k] = f[1]; allowtarget[k] = f[2]; allowstatus[k] = f[3]
+      aorder[++nallow] = k
+    }
+    close(allowfile)
+  }
 }
 {
   # resolved.tsv row: doc, line, idx, target, keyword, rstatus, lspec, first
@@ -511,6 +593,19 @@ BEGIN {
       actual = content[p SUBSEP first]
       if (index(actual, kw) > 0) status = "PASS"
       else status = "MISMATCH"
+    }
+  }
+  # An allow-list row acknowledges a specific doc/target/status claim. The
+  # pin is still reported (as ALLOWED, with its reason), never skipped.
+  if (status == "MISMATCH" || status == "MISSING" || status == "EOF") {
+    akey = doc SUBSEP target SUBSEP status
+    if (akey in allowreason) {
+      allowseen[akey]++
+      print "ALLOWED", doc, dline, target, expected, actual, allowreason[akey] > reportfile
+      pins++
+      allowed++
+      dpins[doc]++
+      next
     }
   }
   print status, doc, dline, target, expected, actual > reportfile
@@ -541,11 +636,19 @@ END {
   for (t in tfind) tlist[++nt] = t
   for (i = 2; i <= nt; i++) { v = tlist[i]; j = i - 1; while (j >= 1 && tlist[j] > v) { tlist[j+1] = tlist[j]; j-- } tlist[j+1] = v }
   for (i = 1; i <= nt; i++) print "# by-target", tlist[i], "findings=" tfind[tlist[i]]
+  for (i = 1; i <= nallow; i++) {
+    k = aorder[i]
+    if (!(k in allowseen) && (allowdoc[k] in scanned)) {
+      allowdiag("STALE-ALLOW", allowdoc[k], allowtarget[k], allowstatus[k], allowreason[k], "allow-list row matches no finding in the scanned set")
+    }
+  }
+  close(allowdiagfile)
   print "# summary", "pins=" (pins + 0), "pass=" (pass + 0), \
     "findings=" (findings + 0), "mismatch=" (mismatch + 0), \
     "missing=" (missing + 0), "eof=" (eof + 0), \
     "unverified=" (unverified + 0), "ambiguous=" (ambiguous + 0), \
-    "unresolved=" (unresolved + 0), "elided=" (elided + 0)
+    "unresolved=" (unresolved + 0), "elided=" (elided + 0), \
+    "allowed=" (allowed + 0)
 }
 ' "${TMP}/resolved.tsv" >"${TMP}/summary.tsv"
 
@@ -555,6 +658,9 @@ END {
 if [[ "${QUIET}" -eq 0 ]]; then
   echo "# doc-pin-check v1 (content-verified pins)"
   echo "# fields: status	doc	doc-line	target	expected	actual"
+  echo "# ALLOWED rows append a 7th field: reason"
+  [[ -z "${KEYWORDS}" ]] || echo "# keywords ${KEYWORDS#"${ROOT}"/}"
+  [[ -z "${ALLOW}" ]] || echo "# allow-list ${ALLOW#"${ROOT}"/}"
   # Findings first (everything not PASS / not the informational classes),
   # then the summary. UNVERIFIED/AMBIGUOUS/UNRESOLVED are counted, and
   # listed only with --all.
@@ -573,6 +679,8 @@ if [[ "${QUIET}" -eq 0 ]]; then
       printf "%s\t%s\t%s\t%s\t%s\t%s\n", $1, $2, $3, $4, $5, $6
     }
   ' "${TMP}/resolved.tsv"
+  # Allow-list diagnostics (BAD-ALLOW / STALE-ALLOW) are findings too.
+  cat "${TMP}/allowdiag.tsv"
   grep -E '^(# by-doc|# by-target|# summary)' "${TMP}/summary.tsv" || true
 fi
 
@@ -583,11 +691,13 @@ fi
 # ---------------------------------------------------------------------------
 findings="$(awk -F'\t' '$1 == "MISMATCH" || $1 == "MISSING" || $1 == "EOF" { n++ } END { print n + 0 }' "${TMP}/report.tsv")"
 bad="$(awk -F'\t' '$1 ~ /^(BAD-ANNOTATION|STALE-ANNOTATION|STALE-MAP|BAD-MAP)$/ { n++ } END { print n + 0 }' "${TMP}/resolved.tsv")"
-total_findings=$((findings + bad))
+# Every allow-list diagnostic (malformed, duplicate, stale) is a finding.
+badallow="$(awk -F'\t' 'NF { n++ } END { print n + 0 }' "${TMP}/allowdiag.tsv")"
+total_findings=$((findings + bad + badallow))
 
 if [[ "${total_findings}" -gt 0 ]]; then
   if [[ "${REPORT_ONLY}" -eq 1 ]]; then
-    echo "doc-pin-check: REPORT-ONLY — ${total_findings} finding(s); not failing the run (issue #786 first iteration)."
+    echo "doc-pin-check: REPORT-ONLY — ${total_findings} finding(s); exit 0 for local inspection (no CI gate)."
     exit 0
   fi
   echo "doc-pin-check: FAIL — ${total_findings} finding(s)." >&2

@@ -39,9 +39,9 @@ flowchart TD
 Edge trace (every edge cites code):
 
 - A–B: same transport contract as Stay (`src/server.ts:121-133`; body read per-operation from :136).
-- C: unknown room key → `NOT_FOUND` (`src/store.ts:203-212`).
-- D: block overlap for the dates → `STATE_ILLEGAL` (:327, :381); non-ready room → `STATE_ILLEGAL` (:392); a simultaneous last-room race refuses the loser with `CONFLICT` "was just taken" (:389).
-- E: state flips to `occupied` with the stay link kept (`src/store.ts:397-400`); F: `roomNumber`, `stayLink`, `state` returned to the desk, which pairs it with Stay `MoveRoom`.
+- C: unknown room key → `NOT_FOUND` (`src/store.ts:271-272`).
+- D: block overlap for the dates → `STATE_ILLEGAL` (:404, :468); non-ready room → `STATE_ILLEGAL` (:479); a simultaneous last-room race refuses the loser with `CONFLICT` "was just taken" (:476).
+- E: state flips to `occupied` with the stay link kept (`src/store.ts:484-492`); F: `roomNumber`, `stayLink`, `state` returned to the desk, which pairs it with Stay `MoveRoom`.
 
 ### Sellability read — aggregate happy path (Refs #636)
 

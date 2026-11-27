@@ -11061,7 +11061,7 @@ nothing is stranded.
     `script/markdown-link-check.sh`, `script/catalogue-coverage-check.sh`
     (the new sentence resolves in EN and VI),
     `script/harness-conventions-check.sh`, and
-    `script/doc-pin-check.sh --report-only` over the touched doc set,
+    `script/doc-pin-check.sh` over the touched doc set,
     with every new pin content-verified by reading the cited line.
   - Evidence: the before/after pair, the both-stores nothing-written
     proof, the accepted pair and default, the precedence pair, the
