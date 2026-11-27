@@ -398,9 +398,10 @@ now agree: `ReleaseRoom` accepts exactly `vacant-dirty` and
 
 As found: the contract admitted four targets, and both stores accepted
 any `ROOM_STATES` string, defaulting an absent or unknown `toState` to
-`vacant-dirty` (`src/store.ts` before this change; Postgres
-`src/pgstore.ts:522-528`), while the state machine specifies exactly two
-(`docs/architecture/state-machine.md` section 2.1). The Postgres store
+`vacant-dirty` (`src/store.ts` and Postgres `src/pgstore.ts` before this
+change, pre-change commit `0b602f3`), while the state machine specifies
+exactly two (`docs/architecture/state-machine.md` section 2.1). The
+Postgres store
 also resolved the target before it read the room, so a free room sent
 the `occupied` target answered `VALIDATION_FAILED` on Postgres but
 `STATE_ILLEGAL` in memory.
@@ -456,7 +457,7 @@ Edge trace (as-built):
   `src/pgstore.ts:543-560`), including the compensating
   `vacant-inspected` release (`src/pgstore.test.ts:187`).
 - Guards: `REL-1`–`REL-4`, `REL-7`, `REL-9`, `REL-12` in
-  `src/server.test.ts:1469-1623`; `REL-5`–`REL-8` in
+  `src/server.test.ts:1469-1627`; `REL-5`–`REL-8` in
   `src/pgstore.test.ts:536-734`; evidence in
   `docs/testing/evidence/773/README.md`.
 

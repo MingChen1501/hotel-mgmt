@@ -1541,7 +1541,10 @@ describe("ReleaseRoom release targets (#773, REL-1-REL-4, REL-7, REL-9, REL-12)"
     await store.upsertRoomType({ name: "Deluxe", actor: "manager" }, TOKEN);
     await seedOccupiedReleaseRoom(store, "101");
     const room = await store.findRoom("101");
-    const roomBefore = await store.findRoom("101");
+    // findRoom returns the live record, so snapshot a copy before the
+    // refusal loop; comparing the live record with itself would pass
+    // even if the refusal mutated the room.
+    const roomBefore = { ...(await store.findRoom("101")) };
     const historyBefore = await store.historyForRoomId(room.id);
     const outboxBefore = roomsInternals(store).outbox.length;
 
@@ -1560,6 +1563,7 @@ describe("ReleaseRoom release targets (#773, REL-1-REL-4, REL-7, REL-9, REL-12)"
         assert.equal(body.message, RELEASE_TARGET_MESSAGE, label);
         assert.match(body.message, /vacant-dirty/, label);
         assert.match(body.message, /vacant-inspected/, label);
+        assert.equal((await store.findRoom("101")).state, "occupied", label);
       }
     }, store);
 

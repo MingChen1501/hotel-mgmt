@@ -55,9 +55,13 @@ The in-memory after build answers the same refusals and keeps the room:
 ```
 
 The in-memory history and outbox counts are internal; guards `REL-3`
-and `REL-4` (`services/rooms/src/server.test.ts:1539-1569`) read
-`findRoom`, `historyForRoomId`, and `roomsInternals(store).outbox`
-before/after the same refusal table and assert all three unchanged.
+and `REL-4` (`services/rooms/src/server.test.ts:1539-1573`) snapshot a
+copy of `findRoom`, and read `historyForRoomId` and
+`roomsInternals(store).outbox` before the same refusal table, assert the
+room still reads `occupied` after every refusal, and assert all three
+unchanged after the loop. The snapshot is a copy because `findRoom`
+returns the live record; comparing the live record with itself would
+pass even if a refusal mutated the room.
 
 ## Pair 2 — the accepted pair and the preserved absent default
 

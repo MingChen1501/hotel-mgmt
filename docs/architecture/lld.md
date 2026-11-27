@@ -10987,7 +10987,7 @@ maintain-with-code, 41.7):
   `services/rooms/src/pgstore.ts:543-560`). The existing default
   guard is `services/rooms/src/server.test.ts:741-751`; the explicit
   `vacant-inspected` guard is `services/rooms/src/pgstore.test.ts:187`;
-  the #773 guards are `services/rooms/src/server.test.ts:1469-1623`
+  the #773 guards are `services/rooms/src/server.test.ts:1469-1627`
   (`REL-1`–`REL-4`, `REL-7`, `REL-9`, `REL-12`) and
   `services/rooms/src/pgstore.test.ts:536-734` (`REL-5`–`REL-8`).
 - W–OK: the receipt keeps `roomNumber`, `oldState: "occupied"`, and the
@@ -11043,7 +11043,7 @@ nothing is stranded.
   - `services/rooms`: `npm run build`, `npm run lint`, and `npm test`
     both without and with `TEST_PG_URL`. The shipped guards (`REL-1`-
     `REL-4`, `REL-7`, `REL-9`, `REL-12` in
-    `services/rooms/src/server.test.ts:1469-1623`; `REL-5`-`REL-8` in
+    `services/rooms/src/server.test.ts:1469-1627`; `REL-5`-`REL-8` in
     `services/rooms/src/pgstore.test.ts:536-734`) cover the refused
     targets (`vacant-clean`, `out-of-order`, another string, a number, a
     boolean, an array, an object, `null`) asserting 400 /

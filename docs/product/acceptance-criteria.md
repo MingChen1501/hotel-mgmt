@@ -4834,7 +4834,7 @@ As-built validation (read-only code trace at this spec head):
   `services/rooms/src/pgstore.test.ts:187` calls the explicit
   `vacant-inspected` compensating target. `ReleaseRoom` must not be
   routed through `ALLOWED_TRANSITIONS`: that table admits only
-  `occupied -> vacant-dirty` (`services/rooms/src/store.ts:45-52`, the
+  `occupied -> vacant-dirty` (`services/rooms/src/store.ts:45-51`, the
   `occupied` row at `:49`) and cannot express the compensating
   `occupied -> vacant-inspected` release #647 shipped for `FR-REA-1`
   and `FR-REA-3`.

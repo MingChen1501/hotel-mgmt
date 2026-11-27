@@ -36,8 +36,8 @@ requirements section 42 (the five FRs, the no-change statements 42.2 and
 nothing-written semantics, the `ALLOWED_TRANSITIONS` boundary, the
 per-flow diagram, the contract edits, and the residual risks); HLD
 [section 33](../architecture/hld.md#33-releaseroom-accepts-exactly-the-two-specified-release-targets-refs-773);
-the planned delta in the Rooms design note
-([section 12](../architecture/services/rooms.md#12-planned-delta--releaseroom-accepts-only-the-two-release-targets-refs-773))
+the as-built delta in the Rooms design note
+([section 12](../architecture/services/rooms.md#12-as-built-delta--releaseroom-accepts-only-the-two-release-targets-refs-773))
 with the release flowchart
 ([section 4](../architecture/services/rooms.md#4-failurerollback-flowchart));
 state-machine [section 2.1](../architecture/state-machine.md#21-the-two-release-targets-refs-647-773);

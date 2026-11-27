@@ -2039,7 +2039,7 @@ the residual risks are LLD
 [section 41](../architecture/lld.md#41-releaseroom-accepts-exactly-the-two-specified-release-targets-refs-773)
 (with HLD [section 33](../architecture/hld.md#33-releaseroom-accepts-exactly-the-two-specified-release-targets-refs-773)
 and the Rooms design note
-[section 12](../architecture/services/rooms.md#12-planned-delta--releaseroom-accepts-only-the-two-release-targets-refs-773)),
+[section 12](../architecture/services/rooms.md#12-as-built-delta--releaseroom-accepts-only-the-two-release-targets-refs-773)),
 and the guard registry `REL-1`-`REL-14`, the residual-risk record
 `REL-R1`, and the evidence rule `REL-E1` are
 `release-target-test-traceability.md`
