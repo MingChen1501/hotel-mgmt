@@ -102,11 +102,11 @@ func (p *Postgres) UpsertRatePlan(name, description string, defaultUnits *int) (
 		name, description, units,
 	).Scan(&id, &stored)
 	if err != nil {
-		// LLD 37.6: this branch already answered with the request-shaped
-		// plan and no refusal; turning it into storeFailure() is a
-		// behaviour change #633 does not name, so it stays and is tracked
-		// separately (#767).
-		return plan, nil
+		// A driver failure is a failure, not a plan: answer the same
+		// refusal the sibling writes give (LLD 40, #767). The branch
+		// returns before the row is copied and before the outbox write,
+		// so nothing is stored and no rate-plan-changed row is emitted.
+		return nil, storeFailure()
 	}
 	plan.ID = id
 	if stored.Valid {

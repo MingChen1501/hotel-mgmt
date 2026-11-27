@@ -9545,10 +9545,10 @@ section 7 and the repo root):
   a coerced `false` is not re-read or rewritten, so the manager must
   re-save it with a real boolean; a price above the guard's range stays
   as stored. Both are named in R-23 and neither is migrated here.
-- **An existing Postgres plan-write fault is unchanged.** Today's
-  Postgres plan upsert returns the request-shaped plan and no refusal
-  when the driver fails (`postgres.go:104-110`). Adding a store-side
-  return value makes that branch visible, but turning it into
+- **A Postgres plan-write fault was out of #633's scope.** At the #633
+  head the Postgres plan upsert returned the request-shaped plan and no
+  refusal when the driver failed (`postgres.go:104-110`). Adding a
+  store-side return value makes that branch visible, but turning it into
   `storeFailure()` is a behaviour change #633 does not name, so it stayed
   out of #633 and is a separate issue (#767), now decided in
   [section 40](#40-a-failed-rates-rate-plan-write-is-refused-never-reported-as-success-refs-767);
@@ -10396,13 +10396,13 @@ views stand unchanged.
 
 As found (at this spec head, read-only):
 
-- **The plan upsert discards its only write error.** `UpsertRatePlan`
-  builds the request-shaped plan
-  (`services/rates/internal/store/postgres.go:88`), runs the single
+- **The plan upsert used to discard its only write error.** Before this
+  fix, `UpsertRatePlan` built the request-shaped plan
+  (`services/rates/internal/store/postgres.go:88`), ran the single
   insert/update with `RETURNING id, default_units` (`:95-103`), and on a
-  driver error returns that plan with a `nil` error (`:104-110`, the
-  `return plan, nil` at `:109`). The branch's own comment names the
-  fault as #633's residual risk and #767's scope (`:105-108`).
+  driver error returned that plan with a `nil` error (`:104-110`). The
+  branch now returns `nil, storeFailure()` at `:109`, the answer the
+  sibling writes already give; the #633 residual-risk comment is gone.
 - **The returned record is the request, not the row.** On that branch
   `plan.ID` is still the zero string, the returned row's id and
   `default_units` are never read (`:111-117`), the `rate-plan-changed`
@@ -10420,12 +10420,12 @@ As found (at this spec head, read-only):
   `storeFailure()` (`services/rates/internal/store/postgres.go:58-60`) answers `VALIDATION_FAILED` at
   status 500 with the plain `rates.store.unavailable` sentence
   (`services/rates/internal/messages/en.json:166`) and empty `details`;
-  thirteen call sites across six methods use it — `UpsertRatePrice`
-  (`services/rates/internal/store/postgres.go:135`, `:150`), `UpsertRestriction` (`:181`, `:196`),
+  fourteen call sites across seven methods use it — `UpsertRatePlan`
+  (`services/rates/internal/store/postgres.go:109`), `UpsertRatePrice`
+  (`:135`, `:150`), `UpsertRestriction` (`:181`, `:196`),
   `UpsertDiscount` (`:222`), `Quote` (`:286`, `:309`, `:325`),
   `CheckRestrictions` (`:374`, `:382`, `:395`), and
-  `CheckSellableCount` (`:422`, `:430`). The plan upsert is the only
-  Postgres operation with none.
+  `CheckSellableCount` (`:422`, `:430`).
 - **The refused shape is already in the interface and the in-memory
   store, so no signature moves.** `UpsertRatePlan` is
   `(*RatePlan, *OpError)` in the `Repository` interface
@@ -10453,8 +10453,8 @@ As found (at this spec head, read-only):
 ### 40.1 Where the refusal sits, and exactly which answer it returns
 
 - **One branch becomes a return, where the driver error is already
-  read.** The implementation replaces `return plan, nil` at
-  `services/rates/internal/store/postgres.go:109` with `return nil, storeFailure()` inside the
+  read.** The branch at `services/rates/internal/store/postgres.go:104-110`
+  now answers `return nil, storeFailure()` at `:109` inside the
   existing `if err != nil` (`:104`). No new check, no re-ordered
   validation: the plan-text bounds keep their store-side precedence
   (`services/rates/internal/store/postgres.go:85-87`), and the handler's field checks keep theirs
@@ -10479,7 +10479,7 @@ As found (at this spec head, read-only):
   for the four Node services
   (`docs/requirements/mvp-requirements.md`), so the Go services' token
   is a pre-existing Rates-wide question. Moving it would change every
-  one of the thirteen call sites' wire answer, not this branch alone, so
+  one of the fourteen call sites' wire answer, not this branch alone, so
   the plan upsert answers exactly as its siblings and the alignment is
   R-26's re-tier trigger (40.6), never a silent widening here.
 - **Why the store, and not the handler.** The store is the only layer
@@ -10585,7 +10585,7 @@ flowchart TD
     C --> D[planText bounds re-checked in the store  services/rates/internal/store/postgres.go:85-87]
     D --> E[Build the request-shaped plan  services/rates/internal/store/postgres.go:88]
     E --> F{Insert/update and RETURNING scan succeed  services/rates/internal/store/postgres.go:95-103}
-    F -- no --> G[return nil, storeFailure  services/rates/internal/store/postgres.go:104-110, replacing the return at :109]
+    F -- no --> G[return nil, storeFailure  services/rates/internal/store/postgres.go:104-110, the return at :109]
     G --> H1[500 VALIDATION_FAILED, rates.store.unavailable, empty details  services/rates/internal/store/postgres.go:58-60]
     H1 --> H2[Failure envelope with a fresh traceId, never 200  services/rates/internal/handler/handler.go:34-41, :227-230]
     H2 --> N[Nothing stored, no event: the branch returns before the outbox write  services/rates/internal/store/postgres.go:118]
@@ -10704,7 +10704,7 @@ because no stored value is rewritten and a plan the fault previously
   `INTERNAL_ERROR` (500) for a store or driver failure. Keeping the
   token here means a 500 whose code says "validation", which is the
   answer every other Rates write already gives the desk. R-26 records
-  the direction; aligning all thirteen call sites and their manifests is
+  the direction; aligning all fourteen call sites and their manifests is
   its own change (the re-tier trigger below), not this fix.
 - **The plan row and its event cannot share a transaction in this
   change.** The outbox helper stays best-effort (`services/rates/internal/store/postgres.go:70-79`),
@@ -10738,12 +10738,12 @@ because no stored value is rewritten and a plan the fault previously
 
 ### 40.7 Maintain-with-code
 
-The implementation replaces `services/rates/internal/store/postgres.go:109`'s `return plan, nil` with
-`return nil, storeFailure()`, deletes the #767 comment above it, leaves
+The implementation replaced `services/rates/internal/store/postgres.go:109`'s `return plan, nil` with
+`return nil, storeFailure()`, deleted the #767 comment above it, left
 the success path (`:88`, `:95-103`, `:111-119`), the in-memory store,
 the `Repository` interface, the handler's success branch, and the
-best-effort outbox helper untouched, and creates the guards of
-requirements section 41.5 (`PLN-1`..`PLN-4`); it refreshes this
+best-effort outbox helper untouched, and created the guards of
+requirements section 41.5 (`PLN-1`..`PLN-5`); it refreshes this
 section's line pins plus the #767 edges of
 `docs/architecture/services/rates.md` sections 3, 4, and 6 to the
 as-built `file:line` at the merged head (`qa-lead` re-pins its
