@@ -4417,7 +4417,7 @@ As-built trace (read-only, at master `ff081e8`):
   passes `ADMIN_BOOT_IDENTITY` and `ADMIN_BOOT_SECRET` (with the
   fallback `change-me-dev-only`) and never `ADMIN_TOKEN_KEY`; the CI
   e2e jobs set the boot secret only
-  (`.github/workflows/ci.yml:465`, `:540`, `:641`); no script under
+  (`.github/workflows/ci.yml:500`, `:575`, `:676`); no script under
   `script/`, no Ansible task (`deploy/ansible/playbook.yaml:120-160`),
   and no deployment doc names it. Every installation built from this
   bundle therefore signs sessions with the published default today.

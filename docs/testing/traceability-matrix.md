@@ -1834,7 +1834,7 @@ this repository and an owner password anyone can read. Nothing in the
 bundle provisions the key at all (`deploy/compose.yaml:138-149` passes
 the boot secret only), and both production gates check two secrets and
 not three (`script/preflight.sh:56-73`,
-`deploy/ansible/playbook.yaml:36-44`). From this change on, one resolver
+`deploy/ansible/playbook.yaml:37-43`). From this change on, one resolver
 at the top of `main` (`services/admin/src/index.ts:16-38`) refuses the
 boot before the store, a migration, the seed, and the port when either
 secret is unset, empty, or one of the five published values, or when a
@@ -1865,8 +1865,9 @@ before-state — so the implementation PR creates every registry guard and
 `qa-lead` re-pins the row with `file:line` at the merged head. Rows
 marked covered by re-run rest on pins that exist and pass today (the
 code is byte-identical to `origin/master` `ff081e8`; this stack is
-docs-only) and must keep passing untouched. The slice adds no MVP
-capability, so the 57-row MVP count stands unchanged.
+docs-only, and the `.github/workflows/ci.yml` pins were re-read at the
+landing base after the #788 move) and must keep passing untouched. The
+slice adds no MVP capability, so the 57-row MVP count stands unchanged.
 
 | Item | Required guard type | Guard |
 |---|---|---|
@@ -1874,7 +1875,7 @@ capability, so the 57-row MVP count stands unchanged.
 | `AC-BOOT-2` — outside the switch, a boot without a usable `ADMIN_BOOT_SECRET` (unset, empty, or one of the five denylisted values) exits non-zero on the same terms, names the variable and never the value, and creates no owner, so neither the `change-me` seed nor the compose `change-me-dev-only` fallback reaches a running service (traces to US-ADM-2; `FR-ADM-2`, `NFR-SEC-1`, `NFR-SEC-2`, `NFR-DEP-1`, `FR-BOOT-2`; `BR-70`) | L1 acceptance: the unset, empty, and five denylist cases in both stores, the no-owner-row proof, the no-value-in-output proof, and the provisioned-secret control | **Pending** — `BOOT2`; today's seed is `services/admin/src/server.ts:119-123` and the denylist is `script/preflight.sh:56-61` |
 | `AC-BOOT-3` — with `ADMIN_DEV_MODE=1` a missing key uses `dev-only-change-me` and a missing boot secret uses `change-me`, a provided value wins, and the boot logs one warning naming the switch and both fallbacks; with the switch absent, empty, `0`, or any other value the fail-closed rules apply; no other variable, `NODE_ENV` included, enables the fallbacks (traces to `NFR-SEC-2`, `FR-BOOT-3`; `BR-70`) | L1 acceptance: the switch-on boot with the warning, the provided-value-wins pair, the switch-off matrix, and the `NODE_ENV=production` case | **Pending** — `BOOT3`; the boot order it joins is `services/admin/src/index.ts:16-38`, and `NODE_ENV` is set by `services/admin/Dockerfile:13` |
 | `AC-BOOT-4` — a checkout with neither variable exported runs `npm test` in `services/admin` green, the existing Admin suites keep their assertions, and any real-boot suite is covered by the switch for that process (traces to `NFR-SEC-2`, `FR-BOOT-4`; `BR-70`) | L1 suite run + diff gate: the no-environment command, the unchanged assertions, and the CI job's empty environment | **Pending** — `BOOT4`; the explicit-key pins that make it achievable are `services/admin/src/server.test.ts:28-32`, `auth.test.ts:44-47`, `bodyBound.test.ts:112`, `pgstore.test.ts:33-38`, `migrate.test.ts:38-39` |
-| `AC-BOOT-5` — the release bundle carries the change: compose supplies no Admin-secret fallback and passes `ADMIN_TOKEN_KEY`; the e2e jobs set an explicit non-default key beside the boot secret and boot with no switch; pre-flight and the Ansible pre-check refuse a missing or default key and refuse `ADMIN_DEV_MODE`; the local-dev/env-file, deployment, runbook, release-note, and rollback documents name the third secret and the new failure mode; the two fail-closed boots and the switch path are covered by tests; nothing else moves (traces to `NFR-DEP-1`, `NFR-SEC-1`, `NFR-SEC-2`, `FR-BOOT-5`; `BR-70`) | L4 install/upgrade drill + bundle gate + diff gate: the compose/pre-flight/Ansible/CI assertions, the denylist parity, the document deltas, and the no-change surface | **Pending** — `BOOT5`; today's bundle is `deploy/compose.yaml:138-149`, `deploy/ansible/playbook.yaml:36-44`, `.github/workflows/ci.yml:465`/`:540`/`:641`, and `script/preflight.sh:56-73` |
+| `AC-BOOT-5` — the release bundle carries the change: compose supplies no Admin-secret fallback and passes `ADMIN_TOKEN_KEY`; the e2e jobs set an explicit non-default key beside the boot secret and boot with no switch; pre-flight and the Ansible pre-check refuse a missing or default key and refuse `ADMIN_DEV_MODE`; the local-dev/env-file, deployment, runbook, release-note, and rollback documents name the third secret and the new failure mode; the two fail-closed boots and the switch path are covered by tests; nothing else moves (traces to `NFR-DEP-1`, `NFR-SEC-1`, `NFR-SEC-2`, `FR-BOOT-5`; `BR-70`) | L4 install/upgrade drill + bundle gate + diff gate: the compose/pre-flight/Ansible/CI assertions, the denylist parity, the document deltas, and the no-change surface | **Pending** — `BOOT5`; today's bundle is `deploy/compose.yaml:138-149`, `deploy/ansible/playbook.yaml:37-43`, `.github/workflows/ci.yml:500`/`:575`/`:676`, and `script/preflight.sh:56-73` |
 | `FR-BOOT-1` — a boot without a signing key is refused before any side effect (requirements 40.3) | L1 acceptance | **Pending** — `BOOT1` |
 | `FR-BOOT-2` — a boot without a usable boot secret is refused and no published default seeds an owner (requirements 40.3) | L1 acceptance | **Pending** — `BOOT2` |
 | `FR-BOOT-3` — the explicit dev switch is the only path back to the dev fallbacks (requirements 40.3) | L1 acceptance | **Pending** — `BOOT3` |

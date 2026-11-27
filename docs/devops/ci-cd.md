@@ -103,7 +103,7 @@ with the implementation PR, `AC-BOOT-5`):
 - **The three container jobs.** `e2e-single-host`, `browser-e2e`, and
   `dom-diff` set `DB_PASSWORD`, `ADMIN_BOOT_SECRET`, and — new —
   `ADMIN_TOKEN_KEY` to throwaway, non-default values
-  (`.github/workflows/ci.yml:465`, `:540`, `:641` today carry the first
+  (`.github/workflows/ci.yml:500`, `:575`, `:676` today carry the first
   two). They never set `ADMIN_DEV_MODE`, so the bring-up proves the
   production boot contract, not the dev path: an unprovisioned variable
   stops the installer proof at the Admin boot instead of letting it sign
@@ -112,7 +112,7 @@ with the implementation PR, `AC-BOOT-5`):
   the same list, so the pre-flight step inside the installer proof fails
   closed and names the missing variable before any container starts.
 - **`node-build`.** The Admin matrix job exports no `ADMIN_*` variable at
-  all (`.github/workflows/ci.yml:308-340`), which is itself the proof
+  all (`.github/workflows/ci.yml:343-375`), which is itself the proof
   that `cd services/admin && npm test` passes without the two secrets
   (`AC-BOOT-4`). Do not "fix" a red Admin build by exporting a secret
   into that job: the suite must not need one, and the guards that spawn

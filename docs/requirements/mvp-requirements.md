@@ -12309,7 +12309,7 @@ convenience. Boot order is store, migrations, seed, listen
 bundle provisions the signing key at all: `deploy/compose.yaml:141-149`
 passes only `ADMIN_BOOT_IDENTITY` and `ADMIN_BOOT_SECRET` (with the
 fallback `change-me-dev-only`), the CI e2e jobs set the boot secret only
-(`.github/workflows/ci.yml:465`, `:540`, `:641`), no script under
+(`.github/workflows/ci.yml:500`, `:575`, `:676`), no script under
 `script/` names `ADMIN_TOKEN_KEY`, and both production gates check two
 secrets and not three (`script/preflight.sh:63-73`,
 `deploy/ansible/playbook.yaml:37-43`). Meanwhile every Admin suite
@@ -12386,7 +12386,7 @@ refreshed at the merged head by `qa-lead`.
   `deploy/compose.yaml:141-149` passes `ADMIN_BOOT_IDENTITY` and
   `ADMIN_BOOT_SECRET` (with the fallback `change-me-dev-only`) and
   never `ADMIN_TOKEN_KEY`; the CI e2e jobs set the boot secret only
-  (`.github/workflows/ci.yml:465`, `:540`, `:641`); no script under
+  (`.github/workflows/ci.yml:500`, `:575`, `:676`); no script under
   `script/` names it. Every installation built from this bundle
   therefore signs sessions with the published default today.
 - **Both production gates check two secrets, not three.**
@@ -12638,7 +12638,7 @@ creates it, for `qa-lead` to re-pin at the merged head.
 | FR-BOOT-2 a production boot has no fallback owner secret and no denylisted value | `services/admin/src/server.ts:119-123`, `store.ts:262-280` (the `change-me` seed); `script/preflight.sh:56-61` (the one denylist the check reuses) | Missing guard `BOOT2`: with a provisioned key, boot with `ADMIN_BOOT_SECRET` absent, then once per denylist entry; assert non-zero exit, one line naming `ADMIN_BOOT_SECRET` and never the value, no owner record or row created in either store, and `/healthz` refused. Control: a non-default secret seeds the owner exactly as today (`server.test.ts:28-32`) |
 | FR-BOOT-3 the switch is the only way to the dev fallbacks | `services/admin/src/index.ts:16-38` (the boot order the switch joins) | Missing guard `BOOT3`: with `ADMIN_DEV_MODE=1` and both variables absent, the service boots, signs and verifies with `dev-only-change-me`, seeds `change-me`, and logs one warning naming the switch and both fallbacks; a provided value wins; with the switch absent, empty, and `0` each boot refuses; with `NODE_ENV=production` and no switch it still refuses |
 | FR-BOOT-4 the suite is green with neither variable exported | the suites themselves: `services/admin/src/server.test.ts:28-32`, `auth.test.ts:44-47`, `bodyBound.test.ts:112`, `pgstore.test.ts:33-38`, `migrate.test.ts:38-39` (explicit key and direct seed); `services/admin/src/messages.test.ts` (catalogue parity) | Missing guard `BOOT4`: `env -u ADMIN_TOKEN_KEY -u ADMIN_BOOT_SECRET npm test` in `services/admin` exits 0; any suite that exercises the real boot sets `ADMIN_DEV_MODE=1` for that process, and no existing assertion changes. The CI Admin job runs with neither variable exported |
-| FR-BOOT-5 the bundle carries the third secret and no switch | `deploy/compose.yaml:141-149`, `.github/workflows/ci.yml:465`/`:540`/`:641`, `script/preflight.sh:63-73`, `deploy/ansible/playbook.yaml:37-43`, `script/test-preflight-fail-closed.sh:29-56` | Missing guard `BOOT5`: a bundle-level assertion that compose supplies no fallback for either Admin secret and passes `ADMIN_TOKEN_KEY`, that `preflight.sh` and the Ansible pre-check refuse a missing or default key and refuse `ADMIN_DEV_MODE`, and that the e2e jobs boot with explicit non-default values and no switch. `release-manager` owns the document deltas; `qa-lead` pins the assertions at the merged head |
+| FR-BOOT-5 the bundle carries the third secret and no switch | `deploy/compose.yaml:141-149`, `.github/workflows/ci.yml:500`/`:575`/`:676`, `script/preflight.sh:63-73`, `deploy/ansible/playbook.yaml:37-43`, `script/test-preflight-fail-closed.sh:29-56` | Missing guard `BOOT5`: a bundle-level assertion that compose supplies no fallback for either Admin secret and passes `ADMIN_TOKEN_KEY`, that `preflight.sh` and the Ansible pre-check refuse a missing or default key and refuse `ADMIN_DEV_MODE`, and that the e2e jobs boot with explicit non-default values and no switch. `release-manager` owns the document deltas; `qa-lead` pins the assertions at the merged head |
 | No-change gates (contract, envelope, catalogue, schema, desk, e2e) | all seven Admin suites under `services/admin/src/`; `script/catalogue-coverage-check.sh`; `script/e2e-desk-loop.sh`; `app/e2e/*.spec.ts` | Covered by re-run: no route, envelope, status, catalogue key, contract, schema, migration, desk, or print change; `script/test-preflight-fail-closed.sh` keeps its existing two-secret cases and gains the key and switch cases. A new code token, catalogue key, contract field, schema, or desk assertion is a re-tier finding (section 40.6) |
 
 Per-flow implementation diagram (T4, requirements side). The

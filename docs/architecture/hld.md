@@ -1363,7 +1363,7 @@ at `services/admin/src/store.ts:262-281`). Nothing in the bundle
 provisioned the signing key at all: `deploy/compose.yaml:141-149` passed
 only the boot identity and the boot secret — the secret itself with the
 fallback `change-me-dev-only` — the CI e2e jobs set the boot secret only
-(`.github/workflows/ci.yml:465`, `:540`, `:641`), and both production
+(`.github/workflows/ci.yml:500`, `:575`, `:676`), and both production
 gates checked two secrets and never the key
 (`script/preflight.sh:56-73`, `deploy/ansible/playbook.yaml:37-43`). So
 every installation built from this bundle signed sessions with a key

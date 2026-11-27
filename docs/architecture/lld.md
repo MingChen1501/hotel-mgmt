@@ -9976,7 +9976,9 @@ section records only the architect-owned delta: where the check sits
 (39.4), the configuration and verification plan (39.5), the residual
 risks with the re-tier trigger (39.6), and maintain-with-code (39.7).
 
-As found at the pre-change head (`ff081e8`, read-only):
+As found at the pre-change head (`ff081e8`, read-only), with
+`.github/workflows/ci.yml` re-read at the landing base after #788
+(`1eab7cb`) inserted 35 lines:
 
 - **Both store constructors carry the signing-key fallback.**
   `new AdminStore()` computes `this.key = tokenKey ?? process.env["ADMIN_TOKEN_KEY"] ?? "dev-only-change-me"`
@@ -10001,7 +10003,7 @@ As found at the pre-change head (`ff081e8`, read-only):
   `deploy/compose.yaml:141-149` passes `ADMIN_BOOT_IDENTITY` and
   `ADMIN_BOOT_SECRET` with the fallback `change-me-dev-only` and never
   `ADMIN_TOKEN_KEY`; the three CI e2e jobs set the boot secret only
-  (`.github/workflows/ci.yml:465`, `:540`, `:641`); no script, Ansible
+  (`.github/workflows/ci.yml:500`, `:575`, `:676`); no script, Ansible
   task, or deployment document names the key.
 - **Both production gates check two secrets, not three.**
   `script/preflight.sh:56-61` owns the five-value denylist
