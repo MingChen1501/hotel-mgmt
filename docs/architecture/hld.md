@@ -1350,3 +1350,78 @@ no migration or data repair in either direction.
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1262
+
+## 32. A failed Rates rate-plan write is refused, never reported as success (Refs #767)
+
+Rates was reporting a plan write it had not performed. Its Postgres store
+built the request-shaped plan (`services/rates/internal/store/postgres.go:88`),
+ran the single insert/update with `RETURNING id, default_units`
+(`:95-103`), and on a driver error returned that plan with a `nil` error
+(`:104-110`, the `return plan, nil` at `:109`) — the branch even carried
+a comment naming the fault as #633's residual risk
+(LLD [section 37.6](lld.md#376-residual-risks-and-re-tier-trigger)). The
+handler then answered `200` with `id: ""`
+(`services/rates/internal/handler/handler.go:226-231`) while nothing was
+stored, no `rate-plan-changed` event was emitted, and the next
+`UpsertRatePrice` for that name refused `NOT_FOUND`. Every other Postgres
+operation in the module already answered a driver failure through
+`storeFailure()` (`services/rates/internal/store/postgres.go:58-60`); the plan upsert was the only one
+that answered fiction.
+
+From #767 on, a failed plan write is a failure, and it never looks like a
+stored plan. Three properties define the change:
+
+- **The store returns the answer its siblings already give.** A driver
+  failure on the plan insert/update or its `RETURNING` scan returns
+  `(nil, storeFailure())` — the existing `VALIDATION_FAILED` at status
+  500 with the plain `rates.store.unavailable` sentence and empty
+  `details`, the same class `UpsertRatePrice` answers for a failed plan
+  lookup or insert (`services/rates/internal/store/postgres.go:135`, `:150`) — and never a
+  request-shaped plan, an empty `id`, or a partial record. No new code,
+  status mapping, field, route, or catalogue sentence is added, and the
+  store-failure token does not move: aligning it with `INTERNAL_ERROR`
+  (`BR-59`, whose `FR-ERR-1` wording covers the four Node services) would
+  change every Rates write's failure answer and is a separate change
+  across all thirteen `storeFailure()` call sites, recorded as R-26's
+  re-tier trigger rather than widened here.
+- **Nothing is written and no event is emitted, so a retry is the whole
+  recovery.** The plan write is one statement with no explicit
+  transaction, and the `rate-plan-changed` outbox insert is a second,
+  later statement (`services/rates/internal/store/postgres.go:118`) the failure branch never reaches;
+  a refused request therefore leaves the stored plan set, its prices,
+  and its events exactly as they were. The operation is an upsert on the
+  plan name (`services/rates/internal/store/postgres.go:96-101`, `services/rates/migrations/000002_schema.up.sql:19`), so the
+  same request repeated after the database recovers creates or updates
+  the plan normally — no replay, repair, queue, or idempotency key — and
+  the Manage screen already stays on its existing failure sentence
+  instead of advancing to a nightly-price write
+  (`app/src/views/ManageView.vue:1833`, `:1869`).
+- **Nothing else moves.** No module, dependency edge, endpoint, request
+  or response field, status set, envelope token, schema table, migration,
+  lifecycle state, desk control, catalogue key, or print rule is added or
+  removed. The healthy create and update keep their stored values
+  (name as the key, the sent description, the stored `defaultUnits` when
+  the request omits it), their one `rate-plan-changed` event, and their
+  `200` body unchanged; the `Repository` interface, the in-memory store,
+  and the handler's success branch are untouched, and the best-effort
+  outbox helper (`services/rates/internal/store/postgres.go:70-79`) stays exactly as it is.
+
+The change adds no container or component edge: it is one error branch
+inside a write the service already serves, so the container and
+component views (sections 2 and 3) stand unchanged. Where the branch
+sits, exactly which `*OpError` it returns, the transaction and rollback
+semantics, retryability, the per-flow diagrams, the contract and
+verification plan, and the residual risks:
+`docs/architecture/lld.md`
+[section 40](lld.md#40-a-failed-rates-rate-plan-write-is-refused-never-reported-as-success-refs-767);
+per-service note: `docs/architecture/services/rates.md` sections 3, 4,
+and 6; product conditions `AC-PLN-1`..`AC-PLN-4` in
+`docs/product/acceptance-criteria.md` section 33; FRs
+`FR-PLN-1`..`FR-PLN-5` in `docs/requirements/mvp-requirements.md`
+section 41; business rule BR-71. Risk R-26 records the fault, both
+overshoot directions, and the mitigation; rollback is the single
+implementation PR, with no migration, backfill, or data repair in either
+direction.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1288
