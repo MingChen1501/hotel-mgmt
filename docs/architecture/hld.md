@@ -1512,3 +1512,78 @@ Role: architect · AO session hotel-mgmt-1279
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1288
+
+## 33. ReleaseRoom accepts exactly the two specified release targets (Refs #773)
+
+`ReleaseRoom` published four targets while the state machine specifies
+two. The manifest admitted `vacant-dirty`, `vacant-clean`,
+`vacant-inspected`, and `out-of-order`
+(`contracts/http/ReleaseRoom.json:16`), and both stores followed it
+tolerantly: any string in `ROOM_STATES` was accepted, an absent or
+unknown `toState` became `vacant-dirty`, and only the explicit
+`occupied` target was refused
+(`services/rooms/src/store.ts:495-501`; Postgres
+`services/rooms/src/pgstore.ts:522-528`). The specified state machine
+names exactly two release targets — `occupied -> vacant-dirty` (the
+room a stay really held on check-out or a move) and
+`occupied -> vacant-inspected` (the room an aborted desk action assigned
+and nobody used) — and out-of-order is entered only from a vacant state,
+never from `occupied` (`docs/architecture/state-machine.md:129-166`,
+`:119-122`; `docs/technical/schema.md:120-122`). The drift was
+caller-visible: a caller could send an occupied room straight to
+housekeeping-clean or out of order and skip the specified release flows.
+
+From #773 on, one operation accepts exactly the two specified release
+targets. Three properties define the change:
+
+- **Two explicit targets, and the absent default is preserved.** A
+  present `toState` of `vacant-dirty` or `vacant-inspected` is accepted;
+  a missing `toState` still means `vacant-dirty`. `vacant-clean` and
+  `out-of-order` are refused because no flow specifies them:
+  housekeeping reaches clean through `UpdateRoomState`, and out-of-order
+  is entered only from a vacant state through a date-ranged block.
+- **An out-of-set target is a caller mistake, refused
+  `VALIDATION_FAILED` with nothing written.** Every other present value —
+  another state name, any other string, a non-string value, or `null` —
+  answers the shared envelope with `VALIDATION_FAILED` (400),
+  `details.toState` carrying the received value, and one plain sentence
+  naming the two accepted targets. A present value is never defaulted.
+  The refusal writes no room state, no `room_status_history` row, and no
+  `room.state-changed` event in either store, because it is decided
+  before the first mutation. The room's own answers keep precedence: an
+  unknown room stays `NOT_FOUND` and a room that is not `occupied` stays
+  `STATE_ILLEGAL` (422) whatever target was sent, so a room-state
+  conflict is never re-reported as a validation failure.
+- **The accepted releases do not move, and the transition table is not
+  the guard.** `ReleaseRoom` stays outside `ALLOWED_TRANSITIONS`, so the
+  #647 compensating `occupied -> vacant-inspected` release
+  (`FR-REA-1`, `FR-REA-3`) and the #588 check-out release keep their
+  behaviour byte for byte. Routing the operation through the transition
+  table would refuse the compensating release, because its `occupied`
+  row admits only `vacant-dirty`
+  (`services/rooms/src/store.ts:45-52`).
+
+Nothing else moves: no module, dependency edge, container or component
+edge, endpoint, request or response field, status set, envelope token,
+schema table, migration, lifecycle state, desk control, catalogue token,
+or print rule is added or removed. The change is one shared input check
+inside a write the service already serves, so the container and
+component views (sections 2 and 3) stand unchanged, and the desk's
+two-target helper and the e2e default callers need no change
+(`app/src/views/StayView.vue:1383`; `script/e2e-desk-loop.sh:358`).
+Where the guard sits, the refusal shape and its nothing-written
+semantics, the transition-table boundary, the per-flow diagram, the
+contract and verification plan, and the residual risks:
+`docs/architecture/lld.md`
+[section 41](lld.md#41-releaseroom-accepts-exactly-the-two-specified-release-targets-refs-773);
+per-service note: `docs/architecture/services/rooms.md` sections 4, 6, 8,
+and 12; product conditions `AC-REL-1`..`AC-REL-5` in
+`docs/product/acceptance-criteria.md` section 34; FRs
+`FR-REL-1`..`FR-REL-5` in `docs/requirements/mvp-requirements.md`
+section 42; business rule BR-72. Risk R-27 records the drift, both
+overshoot directions, and the mitigation; rollback is the single
+implementation PR, with no migration, backfill, or data repair in either
+direction.
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1327

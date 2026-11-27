@@ -126,15 +126,19 @@ stateDiagram-v2
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-946
 
-### 2.1 The two release targets (Refs #647)
+### 2.1 The two release targets (Refs #647, #773)
 
 No state and no transition is added by the desk reassignment change; it
 makes one existing operation path normative. `ReleaseRoom` accepts an
-explicit `toState` (`vacant-dirty` by default, `vacant-inspected`
-allowed, `occupied` refused, `services/rooms/src/store.ts:407-436`), and
-that parameter is the only way an `occupied` room can reach
-`vacant-inspected` — `UpdateRoomState` cannot make that step
-(`ALLOWED_TRANSITIONS`, `:33-40`).
+explicit `toState` and exactly two targets: `vacant-dirty` (also the
+default when the field is absent) and `vacant-inspected`; every other
+present value is refused `VALIDATION_FAILED` before any write (the
+shared release-target check, LLD [section 41](lld.md); the call starts
+at `services/rooms/src/store.ts:480-511`; Postgres parity
+`services/rooms/src/pgstore.ts:514-563`). That parameter is the only way
+an `occupied` room can reach `vacant-inspected` —
+`UpdateRoomState` cannot make that step (`ALLOWED_TRANSITIONS`,
+`services/rooms/src/store.ts:45-52`).
 
 Which target belongs to which flow is decided, not incidental:
 
@@ -163,8 +167,14 @@ stateDiagram-v2
   `toState`; each records `room_status_history` and emits
   `room.state-changed`, so the pair an aborted action produces (occupied,
   then ready again) is visible in the room's own history
-  (`services/rooms/src/store.ts:398-402`, `:428-432`; Postgres parity
-  `services/rooms/src/pgstore.ts:499-544`).
+  (`services/rooms/src/store.ts:502-510`; Postgres parity
+  `services/rooms/src/pgstore.ts:544-561`).
+- A present target outside the pair — `vacant-clean`, `out-of-order`,
+  another state name, a non-string value, or `null` — is refused
+  `VALIDATION_FAILED` (400) with `details.toState` and writes no state
+  change, history row, or event; the room's own `NOT_FOUND` /
+  `STATE_ILLEGAL` answers keep precedence (LLD [section 41](lld.md);
+  `AC-REL-1`, `AC-REL-4`).
 - The move itself changes no stay state: the stay stays in house with
   its folio link and keeps the move row (`FR-FDK-3`, `BR-19`).
 - Sequence reference: the room states above are unchanged for
