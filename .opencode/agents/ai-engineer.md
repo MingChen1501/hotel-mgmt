@@ -119,9 +119,10 @@ Details live there, not here.
     `script/messages.sh` (catalogue loader sourced by the hotel
     scripts, never executed).
   - Live-only doc-pin inventory: `script/doc-pin-keywords.tsv` (the
-    hotel's seed keyword map for `script/doc-pin-check.sh`; the check
-    and its self-test ship to the template, the hotel's pin inventory
-    does not).
+    hotel's seed keyword map) and `script/doc-pin-allowlist.tsv` (the
+    hotel's reviewed baseline of acknowledged findings) for
+    `script/doc-pin-check.sh`; the check and its self-test ship to the
+    template, the hotel's pin inventory and allow-list do not.
   - The `hotel-verify` skill ships as `project-verify` in the
     template by design (new projects fill in their own stack): not
     drift.

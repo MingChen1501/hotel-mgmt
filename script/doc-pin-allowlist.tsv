@@ -1,0 +1,85 @@
+# Content-verified doc-pin allow-list (issue #787).
+#
+# Every row acknowledges ONE finding the blocking check would otherwise
+# fail: the pin at `doc` that resolves to `target` currently reports
+# `status` (MISSING, MISMATCH, or EOF). The check still reports every
+# allow-listed pin as ALLOWED, with its reason, and never silently skips
+# it. A row that matches no finding is a STALE-ALLOW finding, so this list
+# can only shrink: when a per-doc-set cleanup re-pins a claim, the row must
+# be deleted in the same change.
+#
+# Format (tab-separated, `#` starts a comment line):
+#   <doc path>	<target>	<status>	<reason>
+#
+# `target` is the resolved repo-relative `path:line` the check prints (a
+# module-relative or inherited pin is already resolved). A range pin is
+# keyed by its first line. The key is doc + target + status, so an
+# allow-listed claim never masks a different target or a different class.
+#
+# This baseline is the reviewed triage of the pre-existing inventory, not
+# a blanket waiver: the check was report-only until #787 and the inventory
+# drifted with later code moves. Each group names the cleanup that removes
+# its rows; no new pin may be added here without the same review.
+
+# Superseded ADR (docs/architecture cleanup): ADR-0003 describes the
+# pre-Vue shell files as they were when the decision was taken. The
+# frontend/*.html shell files were then removed by the Vue migration, so
+# the cited targets no longer exist. The ADR keeps its historical wording
+# (changing it is a spec decision, not a pin sweep); re-pinning or
+# annotating the claims belongs to the docs/architecture cleanup.
+docs/architecture/decisions/adr-0003-desk-ui-vue-vite.md	admin.html:69	MISSING	superseded ADR: pre-Vue shell file removed; docs/architecture cleanup
+docs/architecture/decisions/adr-0003-desk-ui-vue-vite.md	book.html:112	MISSING	superseded ADR: pre-Vue shell file removed; docs/architecture cleanup
+docs/architecture/decisions/adr-0003-desk-ui-vue-vite.md	desk.html:83	MISSING	superseded ADR: pre-Vue shell file removed; docs/architecture cleanup
+docs/architecture/decisions/adr-0003-desk-ui-vue-vite.md	frontend/admin.html:69	MISSING	superseded ADR: pre-Vue shell file removed; docs/architecture cleanup
+docs/architecture/decisions/adr-0003-desk-ui-vue-vite.md	frontend/desk.html:83	MISSING	superseded ADR: pre-Vue shell file removed; docs/architecture cleanup
+docs/architecture/decisions/adr-0003-desk-ui-vue-vite.md	frontend/print.html:8	MISSING	superseded ADR: pre-Vue shell file removed; docs/architecture cleanup
+docs/architecture/decisions/adr-0003-desk-ui-vue-vite.md	print.html:8	MISSING	superseded ADR: pre-Vue shell file removed; docs/architecture cleanup
+
+# Historical requirement pins (docs/requirements cleanup): the cited
+# service paths predate the services/<svc>/src/ layout, so the suffix no
+# longer resolves. The requirement text is unchanged; re-pinning to the
+# current file belongs to the docs/requirements cleanup.
+docs/requirements/mvp-requirements.md	rooms/server.ts:112-126	MISSING	stale pre-src service path; docs/requirements cleanup
+docs/requirements/mvp-requirements.md	stay/server.ts:157-165	MISSING	stale pre-src service path; docs/requirements cleanup
+
+# Admin fail-closed boot traceability (docs/testing cleanup): the
+# keyword-map seed for this spec was pinned before later code moves
+# (including the #788 ci.yml insertion and the admin boot refactor). The
+# assertions still describe the intended contract, but the cited lines
+# slid onto other constructs. Re-pinning every row by content is the
+# docs/testing cleanup; allow-listing keeps the drift visible until then.
+docs/testing/admin-fail-closed-boot-test-traceability.md	.github/workflows/ci.yml:343-375	MISMATCH	stale line after code moves; docs/testing cleanup
+docs/testing/admin-fail-closed-boot-test-traceability.md	.github/workflows/ci.yml:500	MISMATCH	stale line after code moves; docs/testing cleanup
+docs/testing/admin-fail-closed-boot-test-traceability.md	.github/workflows/ci.yml:575	MISMATCH	stale line after code moves; docs/testing cleanup
+docs/testing/admin-fail-closed-boot-test-traceability.md	.github/workflows/ci.yml:676	MISMATCH	stale line after code moves; docs/testing cleanup
+docs/testing/admin-fail-closed-boot-test-traceability.md	deploy/ansible/playbook.yaml:37-43	MISMATCH	stale line after code moves; docs/testing cleanup
+docs/testing/admin-fail-closed-boot-test-traceability.md	deploy/compose.yaml:148	MISMATCH	stale line after code moves; docs/testing cleanup
+docs/testing/admin-fail-closed-boot-test-traceability.md	deploy/compose.yaml:149	MISMATCH	stale line after code moves; docs/testing cleanup
+docs/testing/admin-fail-closed-boot-test-traceability.md	script/demo-poc.sh:70-81	MISMATCH	stale line after code moves; docs/testing cleanup
+docs/testing/admin-fail-closed-boot-test-traceability.md	script/e2e-desk-loop.sh:150-161	MISMATCH	stale line after code moves; docs/testing cleanup
+docs/testing/admin-fail-closed-boot-test-traceability.md	script/install.sh:60-64	MISMATCH	stale line after code moves; docs/testing cleanup
+docs/testing/admin-fail-closed-boot-test-traceability.md	script/preflight.sh:56-61	MISMATCH	stale line after code moves; docs/testing cleanup
+docs/testing/admin-fail-closed-boot-test-traceability.md	script/preflight.sh:56-73	MISMATCH	stale line after code moves; docs/testing cleanup
+docs/testing/admin-fail-closed-boot-test-traceability.md	script/preflight.sh:63-73	MISMATCH	stale line after code moves; docs/testing cleanup
+docs/testing/admin-fail-closed-boot-test-traceability.md	script/test-preflight-fail-closed.sh:28-48	MISMATCH	stale line after code moves; docs/testing cleanup
+docs/testing/admin-fail-closed-boot-test-traceability.md	services/admin/src/index.ts:7	MISMATCH	stale line after code moves; docs/testing cleanup
+docs/testing/admin-fail-closed-boot-test-traceability.md	services/admin/src/index.ts:16-38	MISMATCH	stale line after code moves; docs/testing cleanup
+docs/testing/admin-fail-closed-boot-test-traceability.md	services/admin/src/index.ts:17	MISMATCH	stale line after code moves; docs/testing cleanup
+docs/testing/admin-fail-closed-boot-test-traceability.md	services/admin/src/index.ts:20	MISMATCH	stale line after code moves; docs/testing cleanup
+docs/testing/admin-fail-closed-boot-test-traceability.md	services/admin/src/index.ts:27-28	MISMATCH	stale line after code moves; docs/testing cleanup
+docs/testing/admin-fail-closed-boot-test-traceability.md	services/admin/src/index.ts:29	MISMATCH	stale line after code moves; docs/testing cleanup
+docs/testing/admin-fail-closed-boot-test-traceability.md	services/admin/src/index.ts:31	MISMATCH	stale line after code moves; docs/testing cleanup
+docs/testing/admin-fail-closed-boot-test-traceability.md	services/admin/src/index.ts:32	MISMATCH	stale line after code moves; docs/testing cleanup
+docs/testing/admin-fail-closed-boot-test-traceability.md	services/admin/src/index.ts:34-38	MISMATCH	stale line after code moves; docs/testing cleanup
+docs/testing/admin-fail-closed-boot-test-traceability.md	services/admin/src/pgstore.test.ts:33-38	MISMATCH	stale line after code moves; docs/testing cleanup
+docs/testing/admin-fail-closed-boot-test-traceability.md	services/admin/src/pgstore.ts:72	MISMATCH	stale line after code moves; docs/testing cleanup
+docs/testing/admin-fail-closed-boot-test-traceability.md	services/admin/src/server.test.ts:28-32	MISMATCH	stale line after code moves; docs/testing cleanup
+docs/testing/admin-fail-closed-boot-test-traceability.md	services/admin/src/server.ts:131-134	MISMATCH	stale line after code moves; docs/testing cleanup
+docs/testing/admin-fail-closed-boot-test-traceability.md	services/admin/src/store.ts:234	MISMATCH	stale line after code moves; docs/testing cleanup
+
+# Historical run log (docs/testing cleanup): the log records a past run
+# against the pre-Vue shell files, which no longer exist. The run log is
+# evidence of what was observed then, so it is not rewritten; re-pinning
+# or annotating it belongs to the docs/testing cleanup.
+docs/testing/phase-6-qa-a3-vue-run-log.md	frontend/book.html:356	MISSING	historical run log: pre-Vue shell file removed; docs/testing cleanup
+docs/testing/phase-6-qa-a3-vue-run-log.md	print.html:8-25	MISSING	historical run log: pre-Vue shell file removed; docs/testing cleanup

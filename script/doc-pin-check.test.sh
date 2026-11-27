@@ -17,7 +17,9 @@
 #     same-line and paragraph bare-pin inheritance, a table row that
 #     stands alone;
 #   - a pin with no keyword is UNVERIFIED, never PASS;
-#   - broken annotation/map entries are findings of their own.
+#   - broken annotation/map entries are findings of their own;
+#   - the explicit allow-list reports acknowledged findings and still fails
+#     a new finding, a stale row, and a malformed row.
 #
 # Usage: bash script/doc-pin-check.test.sh [--script <path>]
 #   --script defaults to the live script next to this test; point it at
@@ -303,7 +305,132 @@ expect_status "an annotation with no pin fails the run" 1
 expect_contains "the orphan annotation is reported" "STALE-ANNOTATION	docs/architecture/services/demo.md"
 
 # ---------------------------------------------------------------------------
-# 12. Usage errors are rejected, not guessed.
+# 12. Allow-list (issue #787): an acknowledged finding is reported ALLOWED,
+#     never silently skipped; anything outside the list still fails.
+# ---------------------------------------------------------------------------
+write_doc <<'EOF'
+# Demo
+
+- S: shifted (`src/thing.ts:11`) <!-- pin: requireCapacity -->.
+EOF
+printf '%s\t%s\t%s\t%s\n' \
+  "docs/architecture/services/demo.md" "services/demo/src/thing.ts:11" "MISMATCH" "seed-map drift, cleanup tracked" \
+  >"${work}/allow.tsv"
+run_check --allow "${work}/allow.tsv" docs/architecture
+expect_status "an allow-listed finding does not fail the run" 0
+expect_contains "the allow-listed pin is still reported" "ALLOWED	docs/architecture/services/demo.md	3	services/demo/src/thing.ts:11	requireCapacity"
+expect_contains "the allow-list reason is reported" "cleanup tracked"
+expect_contains "allow-listed findings are counted" "allowed=1"
+
+# A finding outside the allow-list still fails the run.
+write_doc <<'EOF'
+# Demo
+
+- T: shifted (`src/thing.ts:11`) <!-- pin: requireCapacity -->.
+- U: existing line, wrong keyword (`src/thing.ts:7`) <!-- pin: STATE_ILLEGAL -->.
+EOF
+run_check --allow "${work}/allow.tsv" docs/architecture
+expect_status "a finding outside the allow-list still fails" 1
+expect_contains "the unallow-listed finding is reported" "MISMATCH	docs/architecture/services/demo.md	4	services/demo/src/thing.ts:7	STATE_ILLEGAL"
+expect_absent "the allow-listed neighbour is not reported as a finding" "MISMATCH	docs/architecture/services/demo.md	3	services/demo/src/thing.ts:11"
+
+# The allow-list keys on doc, target, and status: a different target is not
+# masked by an unrelated row.
+write_doc <<'EOF'
+# Demo
+
+- V: gone (`src/missing.ts:9`) <!-- pin: anything -->.
+EOF
+printf '%s\t%s\t%s\t%s\n' \
+  "docs/architecture/services/demo.md" "services/demo/src/thing.ts:11" "MISMATCH" "seed-map drift" \
+  >"${work}/allow.tsv"
+run_check --allow "${work}/allow.tsv" docs/architecture
+expect_status "an allow row does not mask a different target" 1
+expect_contains "the different target is a MISSING finding" "MISSING	docs/architecture/services/demo.md	3	src/missing.ts:9"
+
+# A row that matches no finding is STALE-ALLOW: the list cannot rot.
+write_doc <<'EOF'
+# Demo
+
+- W: capacity (`src/thing.ts:5`) <!-- pin: requireCapacity -->.
+EOF
+printf '%s\t%s\t%s\t%s\n' \
+  "docs/architecture/services/demo.md" "services/demo/src/thing.ts:999" "MISSING" "no longer needed" \
+  >"${work}/allow.tsv"
+run_check --allow "${work}/allow.tsv" docs/architecture
+expect_status "a stale allow-list row fails the run" 1
+expect_contains "a stale allow-list row is reported" "STALE-ALLOW	docs/architecture/services/demo.md	services/demo/src/thing.ts:999	MISSING"
+
+# A row for a doc outside the scanned set is not stale: the check can be
+# run over one doc set without failing on another set's baseline.
+write_doc <<'EOF'
+# Demo
+
+- Z: capacity (`src/thing.ts:5`) <!-- pin: requireCapacity -->.
+EOF
+printf '%s\t%s\t%s\t%s\n' \
+  "docs/testing/other.md" "docs/testing/other.md:5" "MISSING" "other doc set" \
+  >"${work}/allow.tsv"
+run_check --allow "${work}/allow.tsv" docs/architecture
+expect_status "an allow row for an unscanned doc does not fail the run" 0
+expect_absent "the unscanned doc's row is not reported stale" "STALE-ALLOW"
+
+# A malformed row and an unknown status are findings, not silent skips.
+printf '%s\n' "docs/architecture/services/demo.md only-two-columns" >"${work}/allow.tsv"
+run_check --allow "${work}/allow.tsv" docs/architecture
+expect_status "a malformed allow-list row fails the run" 1
+expect_contains "a malformed allow-list row is reported" "BAD-ALLOW"
+printf '%s\t%s\t%s\t%s\n' \
+  "docs/architecture/services/demo.md" "services/demo/src/thing.ts:5" "PASS" "wrong class" \
+  >"${work}/allow.tsv"
+run_check --allow "${work}/allow.tsv" docs/architecture
+expect_status "an allow-list row cannot waive an informational class" 1
+expect_contains "an unknown allow-list status is reported" "BAD-ALLOW"
+
+# A missing allow-list path is a usage error, never an empty allow-list.
+run_check --allow "${work}/no-such-allow.tsv" docs/architecture
+expect_status "a missing allow-list file is a usage error" 2
+
+# The default allow-list is <root>/script/doc-pin-allowlist.tsv when
+# --allow is omitted; an explicit --allow wins.
+write_doc <<'EOF'
+# Demo
+
+- X: shifted (`src/thing.ts:11`) <!-- pin: requireCapacity -->.
+EOF
+mkdir -p "${root}/script"
+printf '%s\t%s\t%s\t%s\n' \
+  "docs/architecture/services/demo.md" "services/demo/src/thing.ts:11" "MISMATCH" "root baseline" \
+  >"${root}/script/doc-pin-allowlist.tsv"
+run_check docs/architecture
+expect_status "the default root allow-list applies when --allow is omitted" 0
+expect_contains "the default allow-listed pin is reported" "ALLOWED	docs/architecture/services/demo.md	3	services/demo/src/thing.ts:11	requireCapacity"
+printf '%s\t%s\t%s\t%s\n' \
+  "docs/architecture/services/demo.md" "services/demo/src/thing.ts:11" "MISMATCH" "explicit baseline" \
+  >"${work}/allow.tsv"
+run_check --allow "${work}/allow.tsv" docs/architecture
+expect_contains "an explicit --allow overrides the root baseline" "explicit baseline"
+expect_absent "the root baseline is not read when --allow is given" "root baseline"
+rm -rf "${root}/script"
+
+# The default keyword map is <root>/script/doc-pin-keywords.tsv when
+# --keywords is omitted.
+mkdir -p "${root}/script"
+printf '%s\t%s\t%s\n' \
+  "docs/architecture/services/demo.md" "services/demo/src/thing.ts:5" "requireCapacity" \
+  >"${root}/script/doc-pin-keywords.tsv"
+write_doc <<'EOF'
+# Demo
+
+- Y: capacity (`src/thing.ts:5`).
+EOF
+run_check --all docs/architecture
+expect_status "the default root keyword map applies when --keywords is omitted" 0
+expect_contains "the default map verifies the pin" "PASS	docs/architecture/services/demo.md	3	services/demo/src/thing.ts:5	requireCapacity"
+rm -rf "${root}/script"
+
+# ---------------------------------------------------------------------------
+# 13. Usage errors are rejected, not guessed.
 # ---------------------------------------------------------------------------
 run_check
 expect_status "a missing doc set is a usage error" 2

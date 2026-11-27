@@ -13,13 +13,18 @@
 # the first line match, so re-ranging does not orphan the row.
 #
 # This is the seed inventory, not the whole corpus: the blocking flip
-# (issue #786 follow-up) waits until every doc set is covered. These three
-# rooms rows are the live drift the issue records on master; each cited
-# line has slid onto a different construct, and an existence-only check
-# would pass all three.
-docs/architecture/services/rooms.md	services/rooms/src/store.ts:203-212	NOT_FOUND
-docs/architecture/services/rooms.md	services/rooms/src/store.ts:327	STATE_ILLEGAL
-docs/architecture/services/rooms.md	services/rooms/src/store.ts:397-400	occupied
+# (issue #787) keeps every finding that is not explicitly allow-listed in
+# script/doc-pin-allowlist.tsv. These rooms rows are the live drift the
+# issue records on master; each cited line had slid onto a different
+# construct, and an existence-only check would pass all of them. They are
+# re-pinned by content (grep, never offset arithmetic) so they enforce the
+# symbol the doc sentence names.
+docs/architecture/services/rooms.md	services/rooms/src/store.ts:271-272	NOT_FOUND
+docs/architecture/services/rooms.md	services/rooms/src/store.ts:404	STATE_ILLEGAL
+docs/architecture/services/rooms.md	services/rooms/src/store.ts:468	STATE_ILLEGAL
+docs/architecture/services/rooms.md	services/rooms/src/store.ts:479	STATE_ILLEGAL
+docs/architecture/services/rooms.md	services/rooms/src/store.ts:476	CONFLICT
+docs/architecture/services/rooms.md	services/rooms/src/store.ts:484-485	occupied
 
 # #638 Admin fail-closed boot testing spec (issue #638). The section-2
 # as-built pins, the bundle/pre-flight/Ansible/CI pins, and the guard
