@@ -1,9 +1,14 @@
 import assert from "node:assert/strict";
+import { spawn, type ChildProcess } from "node:child_process";
+import { createServer as createNetServer } from "node:net";
+import { join } from "node:path";
 import { describe, it } from "node:test";
 import { Pool } from "pg";
 import { HttpError } from "./errors.js";
 import { msg } from "./messages.js";
 import { PostgresAdminStore } from "./pgstore.js";
+import { DEV_TOKEN_KEY, PUBLISHED_DEFAULTS } from "./bootConfig.js";
+import { verifySessionToken } from "./store.js";
 
 // Postgres round-trip for the admin schema (issue #149). Skipped
 // without TEST_PG_URL so `npm test` stays green without a database;
@@ -258,6 +263,161 @@ describe("admin postgres store", { skip: DATABASE_URL === undefined || DATABASE_
       const reread = await store.getConfig();
       for (const [key, value] of Object.entries(boundary)) {
         assert.deepEqual(reread.values[key], value, `${key} reads back unchanged`);
+      }
+    } finally {
+      await pool.end();
+    }
+  });
+});
+
+// BOOT1/BOOT2 Postgres half (#638, BR-70): the same real entry point,
+// with DATABASE_URL on a scratch database. Dropping the admin schema
+// before each refused boot makes the absence proof exact: a refusal
+// that ran a migration or seeded an owner would leave that schema
+// behind. The control proves the provisioned pair still migrates,
+// seeds, answers /healthz, and signs in.
+describe("fail-closed boot on Postgres (BOOT1, BOOT2)", { skip: DATABASE_URL === undefined || DATABASE_URL === "" }, () => {
+  const TIMEOUT_MS = 20000;
+
+  async function freePort(): Promise<number> {
+    const server = createNetServer();
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const port = (server.address() as { port: number }).port;
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    return port;
+  }
+
+  function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`timed out after ${ms} ms`)), ms);
+      timer.unref();
+      promise.then(
+        (value) => {
+          clearTimeout(timer);
+          resolve(value);
+        },
+        (err: unknown) => {
+          clearTimeout(timer);
+          reject(err);
+        },
+      );
+    });
+  }
+
+  function startBoot(env: NodeJS.ProcessEnv): {
+    child: ChildProcess;
+    stdout: () => string;
+    stderr: () => string;
+    exited: Promise<number | null>;
+  } {
+    const child = spawn(process.execPath, [join(__dirname, "index.js")], {
+      env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let out = "";
+    let err = "";
+    child.stdout?.on("data", (chunk: Buffer) => {
+      out += chunk.toString("utf8");
+    });
+    child.stderr?.on("data", (chunk: Buffer) => {
+      err += chunk.toString("utf8");
+    });
+    const exited = new Promise<number | null>((resolve) => child.once("exit", (code) => resolve(code)));
+    return { child, stdout: () => out, stderr: () => err, exited };
+  }
+
+  async function waitForHealth(port: number): Promise<void> {
+    const deadline = Date.now() + TIMEOUT_MS;
+    while (Date.now() < deadline) {
+      try {
+        const res = await fetch(`http://127.0.0.1:${port}/healthz`);
+        if (res.ok) {
+          return;
+        }
+      } catch {
+        // not listening yet
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    throw new Error(`/healthz never answered on port ${port}`);
+  }
+
+  async function dropAdminSchema(pool: Pool): Promise<void> {
+    await pool.query("DROP SCHEMA IF EXISTS admin CASCADE");
+  }
+
+  async function adminSchemaExists(pool: Pool): Promise<boolean> {
+    const { rows } = await pool.query(
+      `SELECT 1 FROM information_schema.schemata WHERE schema_name = 'admin'`,
+    );
+    return rows.length > 0;
+  }
+
+  async function expectRefused(env: NodeJS.ProcessEnv, reason: string): Promise<void> {
+    const pool = new Pool({ connectionString: DATABASE_URL });
+    try {
+      await dropAdminSchema(pool);
+      const port = await freePort();
+      const proc = startBoot({ ...env, PORT: String(port) });
+      const code = await withTimeout(proc.exited, TIMEOUT_MS);
+      assert.equal(code, 1);
+      assert.equal(proc.stderr().trimEnd(), `admin: refusing to boot: ${reason}`);
+      assert.equal(await adminSchemaExists(pool), false, "a refused boot applies no migration");
+    } finally {
+      await pool.end();
+    }
+  }
+
+  it("refuses a boot without ADMIN_TOKEN_KEY and leaves no admin schema behind (BOOT1)", async () => {
+    await expectRefused(
+      { DATABASE_URL, ADMIN_BOOT_SECRET: "pg-boot-secret-7q2x" },
+      "ADMIN_TOKEN_KEY is unset, empty, or a published default; provision the per-sale secret or set ADMIN_DEV_MODE=1 for dev/test.",
+    );
+  });
+
+  it("refuses a boot without a usable ADMIN_BOOT_SECRET and seeds no owner (BOOT2)", async () => {
+    const tokenKey = "pg-signing-key-3f8v";
+    await expectRefused(
+      { DATABASE_URL, ADMIN_TOKEN_KEY: tokenKey },
+      "ADMIN_BOOT_SECRET is unset, empty, or a published default; provision the per-sale secret or set ADMIN_DEV_MODE=1 for dev/test.",
+    );
+    for (const value of PUBLISHED_DEFAULTS) {
+      await expectRefused(
+        { DATABASE_URL, ADMIN_TOKEN_KEY: tokenKey, ADMIN_BOOT_SECRET: value },
+        "ADMIN_BOOT_SECRET is unset, empty, or a published default; provision the per-sale secret or set ADMIN_DEV_MODE=1 for dev/test.",
+      );
+    }
+  });
+
+  it("migrates, seeds, serves /healthz, and signs with the provisioned key (control)", async () => {
+    const pool = new Pool({ connectionString: DATABASE_URL });
+    try {
+      await dropAdminSchema(pool);
+      const port = await freePort();
+      const tokenKey = "pg-control-signing-key";
+      const bootSecret = "pg-control-boot-secret";
+      const proc = startBoot({
+        DATABASE_URL,
+        PORT: String(port),
+        ADMIN_TOKEN_KEY: tokenKey,
+        ADMIN_BOOT_SECRET: bootSecret,
+      });
+      try {
+        await waitForHealth(port);
+        const { rows } = await pool.query(`SELECT signin_identity AS "signinIdentity", role FROM admin.users`);
+        assert.deepEqual(rows, [{ signinIdentity: "owner", role: "owner" }]);
+        const res = await fetch(`http://127.0.0.1:${port}/v1/admin/SignIn`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ signinIdentity: "owner", secret: bootSecret }),
+        });
+        assert.equal(res.status, 200);
+        const body = (await res.json()) as { token: string };
+        assert.notEqual(verifySessionToken(tokenKey, body.token), null);
+        assert.equal(verifySessionToken(DEV_TOKEN_KEY, body.token), null);
+      } finally {
+        proc.child.kill("SIGTERM");
+        await withTimeout(proc.exited, TIMEOUT_MS);
       }
     } finally {
       await pool.end();

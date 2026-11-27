@@ -17,6 +17,7 @@
 #   cp deploy/config/hotel.example.json deploy/config/hotel.json
 #   ${EDITOR:-vi} deploy/config/hotel.json   # hotel's own values; never commit real hotel data
 #   DB_PASSWORD=<per-sale secret> ADMIN_BOOT_SECRET=<per-sale secret> \
+#     ADMIN_TOKEN_KEY=<per-sale secret> \
 #     script/demo-poc.sh [--config deploy/config/hotel.json] \
 #     [--staging-dir ./backup-staging] [--base-url http://127.0.0.1] \
 #     [--log-file ./backup-staging/demo-poc.log]
@@ -68,6 +69,7 @@ mkdir -p "$(dirname "$LOG_FILE")" "$STAGING_DIR" 2>/dev/null \
 
 echo "demo-poc: === step 1/3: pre-flight (fails closed) ===" | tee "$LOG_FILE"
 if DB_PASSWORD="${DB_PASSWORD:-}" ADMIN_BOOT_SECRET="${ADMIN_BOOT_SECRET:-}" \
+  ADMIN_TOKEN_KEY="${ADMIN_TOKEN_KEY:-}" \
   "$ROOT/script/preflight.sh" --config "$CONFIG" --staging-dir "$STAGING_DIR" 2>&1 | tee -a "$LOG_FILE"; then
   PREFLIGHT_RESULT="PASS"
   echo "demo-poc: PASS: pre-flight (fail-closed entry gate)." | tee -a "$LOG_FILE"
@@ -79,6 +81,7 @@ fi
 if [[ "$PREFLIGHT_RESULT" == "PASS" ]]; then
   echo "demo-poc: === step 2/3: desk loop proof (book -> check-in -> charges -> check-out -> backup -> restore drill -> re-verify, stack stays up) ===" | tee -a "$LOG_FILE"
   if DB_PASSWORD="${DB_PASSWORD:-}" ADMIN_BOOT_SECRET="${ADMIN_BOOT_SECRET:-}" \
+    ADMIN_TOKEN_KEY="${ADMIN_TOKEN_KEY:-}" \
     "$ROOT/script/e2e-desk-loop.sh" --base-url "$BASE_URL" \
     --staging-dir "$STAGING_DIR" --hotel-config "$CONFIG" --keep-up 2>&1 | tee -a "$LOG_FILE"; then
     DESKLOOP_RESULT="PASS"

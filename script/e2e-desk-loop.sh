@@ -17,7 +17,7 @@
 # expectation record) -> verify.
 #
 # Usage (from the repo root, after script/preflight.sh passes):
-#   DB_PASSWORD=<secret> ADMIN_BOOT_SECRET=<secret> \
+#   DB_PASSWORD=<secret> ADMIN_BOOT_SECRET=<secret> ADMIN_TOKEN_KEY=<secret> \
 #     script/e2e-desk-loop.sh [--base-url http://127.0.0.1] \
 #     [--staging-dir ./backup-staging] [--hotel-config deploy/config/hotel.json] [--keep-up]
 #
@@ -138,8 +138,9 @@ teardown() {
 
 step "script.runbook.e2e_step_bring_up" "e2e: === bring up the single-host stack ==="
 # Fail closed on default secrets (audit S3): the same denylist as
-# script/preflight.sh (canonical), so the loop can never run on dev
-# defaults even though compose ships lab-only fallbacks.
+# script/preflight.sh (canonical), so the loop can never run without
+# the three per-sale secrets even though the bundle now refuses a
+# missing Admin secret at boot (Refs #638).
 is_default_secret() {
   case "$1" in
     ""|"change-me"|"change-me-dev-only"|"password"|"hotel"|"hotel-dev-only") return 0 ;;
@@ -148,12 +149,23 @@ is_default_secret() {
 }
 DB_PASSWORD_CHECK="${DB_PASSWORD:-}"
 ADMIN_BOOT_SECRET_CHECK="${ADMIN_BOOT_SECRET:-}"
+ADMIN_TOKEN_KEY_CHECK="${ADMIN_TOKEN_KEY:-}"
 if is_default_secret "$DB_PASSWORD_CHECK"; then
   echo "$(msg "script.runbook.e2e_db_default" "e2e: FAIL: DB_PASSWORD is unset or still a dev default; set the per-sale database secret (script/preflight.sh gates the same list).")" >&2
   exit 1
 fi
+if is_default_secret "$ADMIN_TOKEN_KEY_CHECK"; then
+  echo "e2e: FAIL: ADMIN_TOKEN_KEY is unset or still a dev default; provision the per-sale Admin signing key (script/preflight.sh gates the same list)." >&2
+  exit 1
+fi
 if is_default_secret "$ADMIN_BOOT_SECRET_CHECK"; then
   echo "$(msg "script.runbook.e2e_boot_default" "e2e: FAIL: ADMIN_BOOT_SECRET is unset or still a dev default; provision the per-sale owner boot secret (script/preflight.sh gates the same list).")" >&2
+  exit 1
+fi
+# The dev switch restores both published Admin defaults, so the
+# production-shaped loop refuses it (Refs #638, BR-70).
+if [[ -n "${ADMIN_DEV_MODE:-}" ]]; then
+  echo "e2e: FAIL: ADMIN_DEV_MODE is set; the dev switch restores published Admin defaults and must not reach a production-shaped loop." >&2
   exit 1
 fi
 # The desk signs in with the provisioned per-sale boot secret unless

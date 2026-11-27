@@ -141,12 +141,15 @@ services:
     environment:
       PORT: "8088"
       DATABASE_URL: postgresql://hotel:${DB_PASSWORD:-change-me-dev-only}@db:5432/hotel
-      # Per-sale boot identity for the owner account (deployment.md
-      # section 2). The skeleton default keeps the container lab
-      # working; script/preflight.sh and the Ansible playbook fail
-      # closed while these defaults are unchanged (audit S3).
+      # Per-sale Admin secrets (deployment.md section 2, Refs #638).
+      # Both are required: Admin refuses to boot without them outside
+      # the ADMIN_DEV_MODE=1 dev switch, so the bundle supplies no
+      # fallback and the switch is never set here. script/preflight.sh
+      # and the Ansible playbook fail closed while a value is missing
+      # or still a published default (audit S3).
+      ADMIN_TOKEN_KEY: ${ADMIN_TOKEN_KEY:?ADMIN_TOKEN_KEY must be set to a per-sale signing key (deployment.md section 2)}
       ADMIN_BOOT_IDENTITY: ${ADMIN_BOOT_IDENTITY:-owner}
-      ADMIN_BOOT_SECRET: ${ADMIN_BOOT_SECRET:-change-me-dev-only}
+      ADMIN_BOOT_SECRET: ${ADMIN_BOOT_SECRET:?ADMIN_BOOT_SECRET must be set to a per-sale owner boot secret (deployment.md section 2)}
     depends_on:
       db:
         condition: service_healthy

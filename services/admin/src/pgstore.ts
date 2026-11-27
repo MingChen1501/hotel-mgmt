@@ -67,9 +67,9 @@ export class PostgresAdminStore implements AdminStoreAPI {
 
   constructor(
     private readonly pool: Pool,
-    tokenKey?: string,
+    tokenKey: string,
   ) {
-    this.key = tokenKey ?? process.env["ADMIN_TOKEN_KEY"] ?? "dev-only-change-me";
+    this.key = tokenKey;
   }
 
   private async withTx<T>(work: (client: PoolClient) => Promise<T>): Promise<T> {

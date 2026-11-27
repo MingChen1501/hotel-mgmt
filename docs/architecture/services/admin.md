@@ -236,14 +236,17 @@ Role: architect · AO session hotel-mgmt-249
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1164
 
-Secrets at boot (Refs #638), specified — the implementation PR lands it;
-the pins above are the pre-change head this delta was written against.
-Two secrets used to fall back to published constants: the signing key to
-`dev-only-change-me` (`src/store.ts:234`, `src/pgstore.ts:72`) and the
-boot owner secret to `change-me` (`src/server.ts:119-123`). From this
-change the service resolves both at the top of `main`, before the store,
-the migrations, the seed, and `listen`, and refuses to boot when either
-is unusable outside one explicit dev switch. The environment contract:
+Secrets at boot (Refs #638), as built. Two secrets used to fall back
+to published constants: the signing key to `dev-only-change-me` and the
+boot owner secret to `change-me`. From this change the service resolves
+both at the top of `main` (`src/index.ts:25`), before the store, the
+migrations, the seed, and `listen`, and refuses to boot when either is
+unusable outside one explicit dev switch. The resolver is
+`resolveBootConfig` (`src/bootConfig.ts:91`), the refusal is one
+`BootConfigError` line (`:46`, `:56`), both store constructors take the
+key as a required argument (`src/store.ts:233-234`,
+`src/pgstore.ts:68-73`), and the seed takes the resolved identity and
+secret (`src/server.ts:119-124`). The environment contract:
 
 | Variable | Required | Default | Refused when |
 |---|---|---|---|
@@ -269,6 +272,9 @@ deployment, env-file, runbook, release-note, and rollback documents that
 carry the third per-sale secret are `release-manager` work. Design: LLD
 [section 39](../lld.md#39-admin-refuses-to-boot-without-its-per-sale-signing-key-and-boot-secret-refs-638);
 threat model sections 4, 5, and 8 (R12).
+
+<!-- ao-role: dev -->
+Role: dev · AO session hotel-mgmt-1312
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1279

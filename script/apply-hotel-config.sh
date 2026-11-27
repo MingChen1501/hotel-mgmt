@@ -15,7 +15,7 @@
 # script/validate-hotel-config.sh first.
 #
 # Usage (from the repo root, with the stack up):
-#   DB_PASSWORD=<secret> ADMIN_BOOT_SECRET=<secret> \
+#   DB_PASSWORD=<secret> ADMIN_BOOT_SECRET=<secret> ADMIN_TOKEN_KEY=<secret> \
 #     script/apply-hotel-config.sh [--config deploy/config/hotel.json] \
 #     [--base-url http://127.0.0.1]
 #
@@ -51,6 +51,17 @@ ADMIN_IDENTITY="${ADMIN_IDENTITY:-owner}"
 ADMIN_SECRET="${ADMIN_SECRET:-${ADMIN_BOOT_SECRET:-}}"
 if is_default_secret "$ADMIN_SECRET"; then
   echo "apply-hotel-config: FAIL: ADMIN_SECRET (or ADMIN_BOOT_SECRET) is unset or still a dev default; provision the per-sale owner secret (deployment.md section 2)." >&2
+  exit 1
+fi
+# The stack this applies to booted with the per-sale Admin signing key
+# (Refs #638); refuse a shell that would run the production helper on
+# the dev fallbacks.
+if is_default_secret "${ADMIN_TOKEN_KEY:-}"; then
+  echo "apply-hotel-config: FAIL: ADMIN_TOKEN_KEY is unset or still a dev default; provision the per-sale Admin signing key (deployment.md section 2)." >&2
+  exit 1
+fi
+if [[ -n "${ADMIN_DEV_MODE:-}" ]]; then
+  echo "apply-hotel-config: FAIL: ADMIN_DEV_MODE is set; the dev switch restores published Admin defaults and must not reach a production helper." >&2
   exit 1
 fi
 

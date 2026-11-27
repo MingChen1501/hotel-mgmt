@@ -38,7 +38,8 @@ ${EDITOR:-vi} deploy/config/hotel.json   # hotel's own values; never commit real
 # invalid sets) then the install proof (desk loop end to end, first
 # backup, restore drill with desk-state verification), leaving the
 # stack up for handover:
-DB_PASSWORD=<per-sale secret> ADMIN_BOOT_SECRET=<per-sale secret> \
+DB_PASSWORD=<per-sale secret> ADMIN_TOKEN_KEY=<per-sale secret> \
+  ADMIN_BOOT_SECRET=<per-sale secret> \
   script/install.sh --config deploy/config/hotel.json
 # Evidence: the install log (pre-flight PASSED, desk-loop proof
 # SUCCEEDED), the first backup report in ./backup-staging, and the
@@ -50,7 +51,8 @@ DB_PASSWORD=<per-sale secret> ADMIN_BOOT_SECRET=<per-sale secret> \
 # docker compose CLI on the target):
 cp deploy/ansible/inventory.example.ini deploy/ansible/inventory.ini
 ${EDITOR:-vi} deploy/ansible/inventory.ini
-DB_PASSWORD=<per-sale secret> ADMIN_BOOT_SECRET=<per-sale secret> \
+DB_PASSWORD=<per-sale secret> ADMIN_TOKEN_KEY=<per-sale secret> \
+  ADMIN_BOOT_SECRET=<per-sale secret> \
   ansible-playbook -i deploy/ansible/inventory.ini deploy/ansible/playbook.yaml \
   -e bundle_src=. -e hotel_config=deploy/config/hotel.json
 # The playbook validates the set against the release schema before
@@ -58,12 +60,15 @@ DB_PASSWORD=<per-sale secret> ADMIN_BOOT_SECRET=<per-sale secret> \
 # check (see deploy/config/README.md).
 
 # 2b. Step by step with compose (container lab):
-DB_PASSWORD=<per-sale secret> ADMIN_BOOT_SECRET=<per-sale secret> \
+DB_PASSWORD=<per-sale secret> ADMIN_TOKEN_KEY=<per-sale secret> \
+  ADMIN_BOOT_SECRET=<per-sale secret> \
   script/preflight.sh --config deploy/config/hotel.json
-DB_PASSWORD=<per-sale secret> ADMIN_BOOT_SECRET=<per-sale secret> \
+DB_PASSWORD=<per-sale secret> ADMIN_TOKEN_KEY=<per-sale secret> \
+  ADMIN_BOOT_SECRET=<per-sale secret> \
   docker compose -f deploy/compose.yaml up -d --build
 # ...then apply the set, run the health check, and prove the desk:
-DB_PASSWORD=<per-sale secret> ADMIN_BOOT_SECRET=<per-sale secret> \
+DB_PASSWORD=<per-sale secret> ADMIN_TOKEN_KEY=<per-sale secret> \
+  ADMIN_BOOT_SECRET=<per-sale secret> \
   script/e2e-desk-loop.sh --keep-up
 ```
 
@@ -80,7 +85,8 @@ pre-flight and the desk loop both fail closed on dev defaults
 (audit S3), so even the lab sets its own values.
 
 ```sh
-export DB_PASSWORD=lab-db-secret-01 ADMIN_BOOT_SECRET=lab-owner-boot-02
+export DB_PASSWORD=lab-db-secret-01 ADMIN_BOOT_SECRET=lab-owner-boot-02 \
+  ADMIN_TOKEN_KEY=lab-token-key-03
 docker compose -f deploy/compose.yaml up -d --build
 curl http://127.0.0.1/v1/reservations/healthz
 script/e2e-desk-loop.sh --staging-dir ./backup-staging

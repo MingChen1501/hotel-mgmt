@@ -22,6 +22,7 @@
 #   cp deploy/config/hotel.example.json deploy/config/hotel.json
 #   ${EDITOR:-vi} deploy/config/hotel.json   # hotel's own values; never commit real hotel data
 #   DB_PASSWORD=<per-sale secret> ADMIN_BOOT_SECRET=<per-sale secret> \
+#     ADMIN_TOKEN_KEY=<per-sale secret> \
 #     script/install.sh [--config deploy/config/hotel.json] \
 #     [--staging-dir ./backup-staging] [--base-url http://127.0.0.1]
 #
@@ -58,10 +59,12 @@ fi
 
 echo "install: === step 1/3: pre-flight (fails closed) ==="
 DB_PASSWORD="${DB_PASSWORD:-}" ADMIN_BOOT_SECRET="${ADMIN_BOOT_SECRET:-}" \
+  ADMIN_TOKEN_KEY="${ADMIN_TOKEN_KEY:-}" \
   "$ROOT/script/preflight.sh" --config "$CONFIG" --staging-dir "$STAGING_DIR"
 
 echo "install: === step 2/3: install proof (desk loop + backup + restore drill, stack stays up) ==="
 DB_PASSWORD="${DB_PASSWORD:-}" ADMIN_BOOT_SECRET="${ADMIN_BOOT_SECRET:-}" \
+  ADMIN_TOKEN_KEY="${ADMIN_TOKEN_KEY:-}" \
   "$ROOT/script/e2e-desk-loop.sh" --base-url "$BASE_URL" \
   --staging-dir "$STAGING_DIR" --hotel-config "$CONFIG" --keep-up
 

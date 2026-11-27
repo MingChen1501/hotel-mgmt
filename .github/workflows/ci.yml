@@ -498,6 +498,7 @@ jobs:
     env:
       DB_PASSWORD: e2e-ci-db-secret-7q2x
       ADMIN_BOOT_SECRET: e2e-ci-owner-boot-9m4z
+      ADMIN_TOKEN_KEY: e2e-ci-token-key-3f8v
     steps:
       - uses: actions/checkout@v4
 
@@ -573,6 +574,7 @@ jobs:
     env:
       DB_PASSWORD: e2e-ci-db-secret-7q2x
       ADMIN_BOOT_SECRET: e2e-ci-owner-boot-9m4z
+      ADMIN_TOKEN_KEY: e2e-ci-token-key-3f8v
       DESIGN_FACTS_DIR: /tmp/design-facts
     steps:
       - uses: actions/checkout@v4
@@ -674,6 +676,7 @@ jobs:
     env:
       DB_PASSWORD: e2e-ci-db-secret-7q2x
       ADMIN_BOOT_SECRET: e2e-ci-owner-boot-9m4z
+      ADMIN_TOKEN_KEY: e2e-ci-token-key-3f8v
     steps:
       - uses: actions/checkout@v4
 
