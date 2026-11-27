@@ -119,9 +119,9 @@ Needed pipeline changes become issues.
   `services/rates/**`, `services/stay/**`, `services/rooms/**`, or
   `services/guests/**`) requires `postgres-parity` green for that
   module, so the Postgres-backed half of its suite cannot merge with
-  that half skipped. A PR that changes none of these services and not
-  the workflow skips the job; a workflow change or a `master` push
-  runs every module. `admin` is not a parity gate yet (see #807).
+  that half skipped. A PR that changes neither these services nor the
+  workflow skips the job; a workflow change or a `master` push runs
+  every module. `admin` is not a parity gate yet (see #807).
 - Concurrency cancels in-progress runs per ref, so only the latest
   push per PR is gated.
 - Release bookkeeping (`docs/release/*`) stays stubbed until the
