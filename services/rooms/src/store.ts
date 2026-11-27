@@ -127,6 +127,25 @@ export function requireCapacity(value: unknown): number | null {
   return value;
 }
 
+// Release targets (BR-72, #773; LLD section 41). ReleaseRoom accepts an
+// explicit target only from the two specified release paths: the room a
+// stay really held returns to vacant-dirty, and the room an aborted desk
+// action assigned and nobody used returns to vacant-inspected. Both
+// stores call this one helper, so a present value is never defaulted and
+// the pair cannot drift between the implementations. An absent target
+// (undefined) keeps the documented vacant-dirty default; every other
+// present value — another state, a non-string, or null — is refused by
+// name before any write.
+export function releaseTarget(value: unknown): RoomState {
+  if (value === undefined) {
+    return "vacant-dirty";
+  }
+  if (value === "vacant-dirty" || value === "vacant-inspected") {
+    return value;
+  }
+  throw new HttpError("VALIDATION_FAILED", msg("rooms.validation.release_target", {}), { toState: value });
+}
+
 // requestActorAnnotation returns the additive requestActor value for a
 // JSON outbox payload (BR-65, #643): the request's actor is preserved
 // only when it is a present, non-blank string that differs exactly from
@@ -492,13 +511,7 @@ export class RoomStore implements RoomStoreAPI {
         state: room.state,
       });
     }
-    const toState: RoomState =
-      typeof input.toState === "string" && ROOM_STATES.includes(input.toState as RoomState)
-        ? (input.toState as RoomState)
-        : "vacant-dirty";
-    if (toState === "occupied") {
-      throw new HttpError("VALIDATION_FAILED", msg("rooms.validation.release_occupied", {}), { toState });
-    }
+    const toState = releaseTarget(input.toState);
     room.state = toState;
     this.recordHistory(room.id, "occupied", toState, actor);
     this.emit(

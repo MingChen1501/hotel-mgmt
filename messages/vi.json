@@ -187,7 +187,7 @@
     "rooms.conflict.room_taken": "Phòng {roomNumber} vừa có khách.",
     "rooms.state.room_not_ready": "Phòng {roomNumber} đang ở trạng thái {state}, chưa sẵn sàng.",
     "rooms.state.room_not_occupied": "Phòng {roomNumber} đang ở trạng thái {state}, không phải đang có khách.",
-    "rooms.validation.release_occupied": "Không thể mở chặn phòng đang có khách.",
+    "rooms.validation.release_target": "Đích mở phòng phải là vacant-dirty hoặc vacant-inspected.",
     "rooms.state.room_occupied": "Phòng {roomNumber} đang có khách, không thể chặn.",
     "rooms.validation.duplicate_block": "Đã tồn tại chặn y hệt.",
     "rooms.state.illegal_transition": "Không thể chuyển phòng {roomNumber} từ {oldState} sang {newState}.",

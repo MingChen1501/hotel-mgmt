@@ -34,7 +34,7 @@ describe("message catalogue", () => {
       ["rooms.conflict.room_taken", { roomNumber: "101" }, "Room 101 was just taken."],
       ["rooms.state.room_not_ready", { roomNumber: "101", state: "dirty" }, "Room 101 is dirty, not ready."],
       ["rooms.state.room_not_occupied", { roomNumber: "101", state: "vacant-clean" }, "Room 101 is vacant-clean, not occupied."],
-      ["rooms.validation.release_occupied", {}, "Release target cannot be occupied."],
+      ["rooms.validation.release_target", {}, "Release target must be vacant-dirty or vacant-inspected."],
       ["rooms.state.room_occupied", { roomNumber: "101" }, "Room 101 is occupied and cannot be blocked."],
       ["rooms.validation.duplicate_block", {}, "Identical block already exists."],
       ["rooms.state.illegal_transition", { roomNumber: "101", oldState: "vacant-clean", newState: "occupied" }, "Cannot move room 101 from vacant-clean to occupied."],

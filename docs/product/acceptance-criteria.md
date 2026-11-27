@@ -4831,7 +4831,7 @@ As-built validation (read-only code trace at this spec head):
 - **The default is pinned and the pair must stay reachable.**
   `services/rooms/src/server.test.ts:741-751` releases without a
   `toState` and asserts `occupied -> vacant-dirty`, and
-  `services/rooms/src/pgstore.test.ts:185` calls the explicit
+  `services/rooms/src/pgstore.test.ts:187` calls the explicit
   `vacant-inspected` compensating target. `ReleaseRoom` must not be
   routed through `ALLOWED_TRANSITIONS`: that table admits only
   `occupied -> vacant-dirty` (`services/rooms/src/store.ts:45-52`, the

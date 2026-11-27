@@ -187,7 +187,7 @@
     "rooms.conflict.room_taken": "Room {roomNumber} was just taken.",
     "rooms.state.room_not_ready": "Room {roomNumber} is {state}, not ready.",
     "rooms.state.room_not_occupied": "Room {roomNumber} is {state}, not occupied.",
-    "rooms.validation.release_occupied": "Release target cannot be occupied.",
+    "rooms.validation.release_target": "Release target must be vacant-dirty or vacant-inspected.",
     "rooms.state.room_occupied": "Room {roomNumber} is occupied and cannot be blocked.",
     "rooms.validation.duplicate_block": "Identical block already exists.",
     "rooms.state.illegal_transition": "Cannot move room {roomNumber} from {oldState} to {newState}.",

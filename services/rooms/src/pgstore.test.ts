@@ -3,6 +3,8 @@ import { describe, it } from "node:test";
 import { Pool } from "pg";
 import { msg } from "./messages.js";
 import { PostgresRoomStore } from "./pgstore.js";
+import { HttpError } from "./errors.js";
+import { RoomStore } from "./store.js";
 
 // Postgres round-trip for the rooms schema (issue #149). Skipped
 // without TEST_PG_URL so `npm test` stays green without a database;
@@ -183,16 +185,22 @@ describe("rooms postgres store", { skip: DATABASE_URL === undefined || DATABASE_
       await store.upsertRoom({ number: "101", roomType: "Deluxe", actor: "mallory" }, TOKEN);
       await store.updateRoomState({ roomNumber: "101", newState: "occupied", actor: "mallory" }, TOKEN);
       await store.releaseRoom({ roomNumber: "101", toState: "vacant-inspected", actor: "mallory" }, TOKEN);
-      await store.assignRoom(
-        { roomNumber: "101", businessDate: "2026-11-01", stayLink: "stay-1", actor: "mallory" },
-        TOKEN,
-      );
+      // Blocking requires a vacant room, so the block pair runs before
+      // the assign that occupies 101 again (#773: this ordering is what
+      // the event/history counts below already assume).
       await store.blockRoom(
         { roomNumber: "101", dateFrom: "2026-11-01", dateTo: "2026-11-05", reason: "Plumbing repair", actor: "mallory" },
         TOKEN,
       );
+      // The block row is gone after releaseBlock, so its actor is read here.
+      const block = await pool.query(`SELECT created_by FROM rooms.room_blocks`);
+      assert.equal(block.rows[0]?.created_by, TOKEN);
       await store.releaseBlock(
         { roomNumber: "101", dateFrom: "2026-11-01", dateTo: "2026-11-05", actor: "mallory" },
+        TOKEN,
+      );
+      await store.assignRoom(
+        { roomNumber: "101", businessDate: "2026-11-01", stayLink: "stay-1", actor: "mallory" },
         TOKEN,
       );
 
@@ -207,8 +215,6 @@ describe("rooms postgres store", { skip: DATABASE_URL === undefined || DATABASE_
       for (const entry of history.rows as { created_by: string }[]) {
         assert.equal(entry.created_by, TOKEN);
       }
-      const block = await pool.query(`SELECT created_by FROM rooms.room_blocks`);
-      assert.equal(block.rows[0]?.created_by, TOKEN);
       const events = await pool.query(`SELECT event_type, payload, created_by FROM rooms.outbox`);
       assert.equal(events.rows.length, 7);
       for (const event of events.rows as { event_type: string; payload: Record<string, unknown>; created_by: string }[]) {
@@ -457,6 +463,270 @@ describe("rooms postgres capacity validation (#637, CAP1-CAP5)", {
       const legacy = await store.resolveRoomType("Legacy");
       assert.equal(legacy.capacity, 0);
       assert.equal((await store.listRoomTypes()).find((type) => type.name === "Legacy")?.capacity, 0);
+    } finally {
+      await pool.end();
+    }
+  });
+});
+
+// Postgres half of the #773 release-target guards (BR-72; REL-5-REL-8).
+// Every case runs against TEST_PG_URL on a fresh wiped schema, exactly
+// like the existing release guards above; the in-memory halves live in
+// server.test.ts.
+const REFUSED_RELEASE_TARGETS: unknown[] = [
+  "vacant-clean",
+  "out-of-order",
+  "occupied",
+  "Vacant-Dirty",
+  "clean",
+  42,
+  true,
+  ["vacant-dirty"],
+  { state: "vacant-dirty" },
+  null,
+];
+
+const RELEASE_TARGET_MESSAGE = "Release target must be vacant-dirty or vacant-inspected.";
+
+type ReleaseAnswer =
+  | { ok: true; receipt: { roomNumber: string; oldState: string; newState: string } }
+  | { ok: false; status: number; code: string; message: string; details: Record<string, unknown> };
+
+async function captureRelease(run: () => Promise<{ roomNumber: string; oldState: string; newState: string }>): Promise<ReleaseAnswer> {
+  try {
+    return { ok: true, receipt: await run() };
+  } catch (err) {
+    const http = err as HttpError;
+    assert.ok(http instanceof HttpError, String(err));
+    return {
+      ok: false,
+      status: http.status,
+      code: http.code,
+      message: http.message,
+      details: http.details,
+    };
+  }
+}
+
+async function seedReleaseRooms(
+  store: PostgresRoomStore | RoomStore,
+  numbers: string[],
+): Promise<void> {
+  await store.upsertRoomType({ name: "Deluxe", actor: "manager" }, TOKEN);
+  for (const number of numbers) {
+    await store.upsertRoom({ number, roomType: "Deluxe", actor: "manager" }, TOKEN);
+  }
+  for (const number of numbers) {
+    await store.assignRoom(
+      { roomNumber: number, businessDate: "2026-11-01", stayLink: `stay-${number}`, actor: "front-desk" },
+      TOKEN,
+    );
+  }
+}
+
+async function rowCounts(pool: Pool): Promise<{ rooms: number; history: number; outbox: number }> {
+  const counts = await pool.query(
+    `SELECT (SELECT count(*)::int FROM rooms.rooms) AS rooms,
+            (SELECT count(*)::int FROM rooms.room_status_history) AS history,
+            (SELECT count(*)::int FROM rooms.outbox) AS outbox`,
+  );
+  return counts.rows[0] as { rooms: number; history: number; outbox: number };
+}
+
+describe("rooms postgres release targets (#773, REL-5-REL-8)", { skip: DATABASE_URL === undefined || DATABASE_URL === "" }, () => {
+  it("accepts exactly the two targets and keeps the absent default (REL-5)", async () => {
+    const pool = new Pool({ connectionString: DATABASE_URL });
+    try {
+      await wipe(pool);
+      const store = new PostgresRoomStore(pool);
+      await seedReleaseRooms(store, ["101", "102", "103"]);
+
+      assert.deepEqual(
+        await store.releaseRoom({ roomNumber: "101", toState: "vacant-dirty", actor: "front-desk" }, TOKEN),
+        { roomNumber: "101", oldState: "occupied", newState: "vacant-dirty" },
+      );
+      assert.deepEqual(
+        await store.releaseRoom({ roomNumber: "102", toState: "vacant-inspected", actor: "front-desk" }, TOKEN),
+        { roomNumber: "102", oldState: "occupied", newState: "vacant-inspected" },
+      );
+      assert.deepEqual(
+        await store.releaseRoom({ roomNumber: "103", actor: "front-desk" }, TOKEN),
+        { roomNumber: "103", oldState: "occupied", newState: "vacant-dirty" },
+      );
+
+      const rooms = await pool.query(`SELECT number, state FROM rooms.rooms ORDER BY number`);
+      assert.deepEqual(rooms.rows, [
+        { number: "101", state: "vacant-dirty" },
+        { number: "102", state: "vacant-inspected" },
+        { number: "103", state: "vacant-dirty" },
+      ]);
+
+      // One assign row plus one release row per room, and the matching
+      // state-changed event carries the accepted target.
+      for (const [number, target] of [["101", "vacant-dirty"], ["102", "vacant-inspected"], ["103", "vacant-dirty"]] as const) {
+        const history = await pool.query(
+          `SELECT h.old_state, h.new_state, h.created_by
+             FROM rooms.room_status_history h
+             JOIN rooms.rooms r ON r.id = h.room_id
+            WHERE r.number = $1
+            ORDER BY h.created_at, h.id`,
+          [number],
+        );
+        assert.equal(history.rows.length, 2, number);
+        assert.deepEqual(history.rows[1], { old_state: "occupied", new_state: target, created_by: TOKEN });
+
+        const events = await pool.query(
+          `SELECT payload->>'newState' AS new_state, created_by
+             FROM rooms.outbox
+            WHERE event_type = 'state-changed' AND payload->>'roomNumber' = $1
+            ORDER BY id`,
+          [number],
+        );
+        assert.equal(events.rows.length, 2, number);
+        assert.deepEqual(events.rows[1], { new_state: target, created_by: TOKEN }, number);
+      }
+    } finally {
+      await pool.end();
+    }
+  });
+
+  it("refuses every present target outside the pair and writes nothing (REL-6)", async () => {
+    const pool = new Pool({ connectionString: DATABASE_URL });
+    try {
+      await wipe(pool);
+      const store = new PostgresRoomStore(pool);
+      await seedReleaseRooms(store, ["101"]);
+      const before = await rowCounts(pool);
+      const roomBefore = await pool.query(`SELECT id, number, state FROM rooms.rooms WHERE number = '101'`);
+
+      for (const target of REFUSED_RELEASE_TARGETS) {
+        await assert.rejects(
+          () => store.releaseRoom({ roomNumber: "101", toState: target, actor: "front-desk" }, TOKEN),
+          (err: unknown) => {
+            const http = err as HttpError;
+            const label = `toState=${JSON.stringify(target)}`;
+            assert.equal(http.code, "VALIDATION_FAILED", label);
+            assert.equal(http.status, 400, label);
+            assert.equal(http.message, RELEASE_TARGET_MESSAGE, label);
+            assert.deepEqual(http.details, { toState: target }, label);
+            return true;
+          },
+        );
+      }
+
+      assert.deepEqual(await rowCounts(pool), before);
+      assert.deepEqual(
+        (await pool.query(`SELECT id, number, state FROM rooms.rooms WHERE number = '101'`)).rows,
+        roomBefore.rows,
+      );
+    } finally {
+      await pool.end();
+    }
+  });
+
+  it("keeps the room's own answers ahead of the target check (REL-7)", async () => {
+    const pool = new Pool({ connectionString: DATABASE_URL });
+    try {
+      await wipe(pool);
+      const store = new PostgresRoomStore(pool);
+      await store.upsertRoomType({ name: "Deluxe", actor: "manager" }, TOKEN);
+      await store.upsertRoom({ number: "102", roomType: "Deluxe", actor: "manager" }, TOKEN);
+      const before = await rowCounts(pool);
+
+      for (const target of ["vacant-clean", "out-of-order", "occupied", null] as unknown[]) {
+        const free = await captureRelease(() =>
+          store.releaseRoom({ roomNumber: "102", toState: target, actor: "front-desk" }, TOKEN),
+        );
+        assert.equal(free.ok, false, `free room toState=${JSON.stringify(target)}`);
+        if (!free.ok) {
+          assert.equal(free.status, 422);
+          assert.equal(free.code, "STATE_ILLEGAL");
+          assert.deepEqual(free.details, { roomNumber: "102", state: "vacant-inspected" });
+        }
+
+        const unknown = await captureRelease(() =>
+          store.releaseRoom({ roomNumber: "999", toState: target, actor: "front-desk" }, TOKEN),
+        );
+        assert.equal(unknown.ok, false, `unknown room toState=${JSON.stringify(target)}`);
+        if (!unknown.ok) {
+          assert.equal(unknown.status, 404);
+          assert.equal(unknown.code, "NOT_FOUND");
+          assert.deepEqual(unknown.details, { roomNumber: "999" });
+        }
+      }
+
+      const unknownAccepted = await captureRelease(() =>
+        store.releaseRoom({ roomNumber: "999", toState: "vacant-dirty", actor: "front-desk" }, TOKEN),
+      );
+      assert.equal(unknownAccepted.ok, false);
+      if (!unknownAccepted.ok) {
+        assert.equal(unknownAccepted.status, 404);
+        assert.equal(unknownAccepted.code, "NOT_FOUND");
+      }
+
+      assert.deepEqual(await rowCounts(pool), before);
+      assert.equal((await store.findRoom("102")).state, "vacant-inspected");
+    } finally {
+      await pool.end();
+    }
+  });
+
+  it("answers the same request the same way as the in-memory store (REL-8)", async () => {
+    const pool = new Pool({ connectionString: DATABASE_URL });
+    try {
+      await wipe(pool);
+      const pg = new PostgresRoomStore(pool);
+      const memory = new RoomStore();
+      // 201/203/204 are occupied, 202 is free, 999 does not exist.
+      for (const store of [pg, memory] as const) {
+        await store.upsertRoomType({ name: "Deluxe", actor: "manager" }, TOKEN);
+        await store.upsertRoom({ number: "202", roomType: "Deluxe", actor: "manager" }, TOKEN);
+        await seedReleaseRooms(store, ["201", "203", "204"]);
+      }
+
+      const parity: Array<[string, () => Promise<ReleaseAnswer>, () => Promise<ReleaseAnswer>]> = [];
+      for (const target of REFUSED_RELEASE_TARGETS) {
+        parity.push([
+          `occupied 201 toState=${JSON.stringify(target)}`,
+          () => captureRelease(() => memory.releaseRoom({ roomNumber: "201", toState: target, actor: "front-desk" }, TOKEN)),
+          () => captureRelease(() => pg.releaseRoom({ roomNumber: "201", toState: target, actor: "front-desk" }, TOKEN)),
+        ]);
+      }
+      parity.push(
+        [
+          "accepted vacant-dirty",
+          () => captureRelease(() => memory.releaseRoom({ roomNumber: "201", toState: "vacant-dirty", actor: "front-desk" }, TOKEN)),
+          () => captureRelease(() => pg.releaseRoom({ roomNumber: "201", toState: "vacant-dirty", actor: "front-desk" }, TOKEN)),
+        ],
+        [
+          "accepted vacant-inspected",
+          () => captureRelease(() => memory.releaseRoom({ roomNumber: "203", toState: "vacant-inspected", actor: "front-desk" }, TOKEN)),
+          () => captureRelease(() => pg.releaseRoom({ roomNumber: "203", toState: "vacant-inspected", actor: "front-desk" }, TOKEN)),
+        ],
+        [
+          "accepted absent default",
+          () => captureRelease(() => memory.releaseRoom({ roomNumber: "204", actor: "front-desk" }, TOKEN)),
+          () => captureRelease(() => pg.releaseRoom({ roomNumber: "204", actor: "front-desk" }, TOKEN)),
+        ],
+      );
+      for (const target of ["vacant-clean", "out-of-order", "occupied", null] as unknown[]) {
+        parity.push(
+          [
+            `free room 202 toState=${JSON.stringify(target)}`,
+            () => captureRelease(() => memory.releaseRoom({ roomNumber: "202", toState: target, actor: "front-desk" }, TOKEN)),
+            () => captureRelease(() => pg.releaseRoom({ roomNumber: "202", toState: target, actor: "front-desk" }, TOKEN)),
+          ],
+          [
+            `unknown room 999 toState=${JSON.stringify(target)}`,
+            () => captureRelease(() => memory.releaseRoom({ roomNumber: "999", toState: target, actor: "front-desk" }, TOKEN)),
+            () => captureRelease(() => pg.releaseRoom({ roomNumber: "999", toState: target, actor: "front-desk" }, TOKEN)),
+          ],
+        );
+      }
+
+      for (const [label, memoryRun, pgRun] of parity) {
+        assert.deepEqual(await pgRun(), await memoryRun(), label);
+      }
     } finally {
       await pool.end();
     }

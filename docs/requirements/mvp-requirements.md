@@ -13199,7 +13199,7 @@ PR refreshes them per maintain-with-code.
   `toState` and asserts `occupied -> vacant-dirty`, the contract fixture
   covers the explicit `vacant-dirty` happy path
   (`services/rooms/contract-tests/ReleaseRoom.json`), and
-  `services/rooms/src/pgstore.test.ts:185` exercises the explicit
+  `services/rooms/src/pgstore.test.ts:187` exercises the explicit
   `vacant-inspected` compensating target.
 - **The two stores do not agree on the room-check order today.** The
   in-memory store reads the room first and refuses a non-occupied room
@@ -13451,10 +13451,10 @@ it, for `qa-lead` to re-pin at the merged head.
 
 | Item | Guard (on disk today; a row marked missing is created by the implementation PR) | Handoff note for `qa-lead` |
 |---|---|---|
-| FR-REL-1 accepted pair and absent default | `services/rooms/src/server.test.ts:741-751` (absent `toState` releases `occupied -> vacant-dirty`), `services/rooms/contract-tests/ReleaseRoom.json` (explicit `vacant-dirty` fixture), `services/rooms/src/pgstore.test.ts:185` (explicit `vacant-inspected`) | Missing guard `REL-1`: both stores, an occupied room, explicit `vacant-dirty` and explicit `vacant-inspected` answer 200 with `oldState`/`newState`, one history row, and one event; the absent default still answers `vacant-dirty`; the proof must fail if a present value is defaulted instead of refused |
+| FR-REL-1 accepted pair and absent default | `services/rooms/src/server.test.ts:741-751` (absent `toState` releases `occupied -> vacant-dirty`), `services/rooms/contract-tests/ReleaseRoom.json` (explicit `vacant-dirty` fixture), `services/rooms/src/pgstore.test.ts:187` (explicit `vacant-inspected`) | Missing guard `REL-1`: both stores, an occupied room, explicit `vacant-dirty` and explicit `vacant-inspected` answer 200 with `oldState`/`newState`, one history row, and one event; the absent default still answers `vacant-dirty`; the proof must fail if a present value is defaulted instead of refused |
 | FR-REL-2 refused targets write nothing | `services/rooms/src/store.ts:495-501` and `services/rooms/src/pgstore.ts:522-527` (the tolerant resolution the refusal replaces), `services/rooms/src/server.ts:201-202` (the dispatch the guards drive) | Missing guards `REL-2`: for each of `vacant-clean`, `out-of-order`, another string, a number, a boolean, an array, an object, and `null`, on an occupied room, assert HTTP 400, `code` `VALIDATION_FAILED`, `details.toState` the received value, the room still `occupied`, no new `room_status_history` row, and no `room.state-changed` event; the Postgres twin counts history rows and outbox rows before and after and asserts both unchanged |
 | FR-REL-3 precedence and store parity | `services/rooms/src/store.ts:489-494` (in-memory not-occupied refusal), `services/rooms/src/pgstore.ts:538-542` (Postgres not-occupied refusal inside the transaction) | Missing guards `REL-3`: a free room sent `vacant-clean`, `out-of-order`, or `null` answers `STATE_ILLEGAL` 422 with today's sentence and details in both stores, never `VALIDATION_FAILED`; an unknown room answers `NOT_FOUND` for an out-of-set target too; the in-memory and Postgres answers are compared field for field |
-| FR-REL-4 #647 compensating and check-out releases unchanged | `services/rooms/src/pgstore.test.ts:185`, `app/src/views/StayView.vue:1383`, `:1415`, `:1738`, `:1786`, `:2101`, `script/e2e-desk-loop.sh:358`, `:464`, `script/e2e-perf-check.sh:247`, `:258` | Covered by re-run plus one explicit guard: the `vacant-inspected` release succeeds and `ReleaseRoom` never consults `ALLOWED_TRANSITIONS`; the desk helper still sends only the two targets; the check-out release and the e2e scripts stay green |
+| FR-REL-4 #647 compensating and check-out releases unchanged | `services/rooms/src/pgstore.test.ts:187`, `app/src/views/StayView.vue:1383`, `:1415`, `:1738`, `:1786`, `:2101`, `script/e2e-desk-loop.sh:358`, `:464`, `script/e2e-perf-check.sh:247`, `:258` | Covered by re-run plus one explicit guard: the `vacant-inspected` release succeeds and `ReleaseRoom` never consults `ALLOWED_TRANSITIONS`; the desk helper still sends only the two targets; the check-out release and the e2e scripts stay green |
 | FR-REL-5 artefacts and suite | `script/contract-check.sh` over `contracts/http/ReleaseRoom.json`, `docs/architecture/lld.md:232`, `docs/technical/api-spec.md` section 2, `docs/architecture/state-machine.md:129-166` | `architect` moves the contract enum to the pair, names the `VALIDATION_FAILED` row in the LLD, adds the API-spec section 2 note, and re-pins state-machine `:134`, `:137`, and `:166-167` to the current `releaseRoom`; `qa-lead` maps the section; the Rooms suite stays green with and without `TEST_PG_URL` |
 
 Per-flow implementation diagram (T2). The architecture-side view is the
@@ -13471,7 +13471,7 @@ flowchart TD
     B -- not occupied --> Z2[STATE_ILLEGAL 422, nothing written  services/rooms/src/store.ts:489-494, services/rooms/src/pgstore.ts:538-542]
     B -- yes --> C{toState present and in the accepted pair?  services/rooms/src/store.ts:495-500, services/rooms/src/pgstore.ts:522-527}
     C -- absent or undefined --> T1[vacant-dirty, the default every e2e call takes  script/e2e-desk-loop.sh:358]
-    C -- vacant-dirty or vacant-inspected --> T2[that target, including the #647 compensating release  services/rooms/src/pgstore.test.ts:185]
+    C -- vacant-dirty or vacant-inspected --> T2[that target, including the #647 compensating release  services/rooms/src/pgstore.test.ts:187]
     C -- vacant-clean, out-of-order, another string, non-string, or null --> R[VALIDATION_FAILED 400, details.toState, sentence names the pair]
     R --> N[Nothing written: no room row, no room_status_history row, no room.state-changed event]
     T1 --> W[room.state = target, one history row, one room.state-changed event  services/rooms/src/store.ts:502-509, services/rooms/src/pgstore.ts:544-561]
