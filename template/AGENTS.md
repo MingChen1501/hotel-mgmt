@@ -128,6 +128,11 @@ doc group.
   (issues: `[type] Imperative summary`; PRs: `type(scope): Subject`; one type label + one `risk-*` label).
 - One worker = one small task = one PR; never review your own PR
   (reviewer role differs from implementer).
+- Never state a PR's merge state (open, merged, waiting, ready,
+  conflict) from memory or an earlier turn. Every mention needs a
+  same-turn query — `script/merge-readiness.sh <pr...>` for readiness,
+  `gh pr view <pr> --json state,mergedAt` for open/merged — and must
+  carry the full PR URL plus the head SHA read in that turn.
 
 ## When you need X, read Y
 

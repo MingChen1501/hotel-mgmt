@@ -268,6 +268,13 @@ restate the list here — link it. Summary for orchestration use only.
 Canonical reporting rules: `docs/ao-rules.md` ("Reporting contract");
 this section is the orchestration procedure.
 
+- A merge-state claim made from memory or an earlier turn is a
+  violation. Every mention of a PR's merge state (open, merged,
+  waiting, ready, conflict) needs a same-turn query —
+  `script/merge-readiness.sh <pr...>` for readiness (or its `--all` /
+  `--since <date>` freshness mode), `gh pr view <pr> --json
+  state,mergedAt` for open/merged — and must carry the full PR URL plus
+  the head SHA read in that turn.
 - Every "ready for owner merge" report MUST include the output of
   `script/merge-readiness.sh <pr...>` (one block per PR: state, head
   SHA, base, mergeable/mergeStateStatus, risk label, whether a

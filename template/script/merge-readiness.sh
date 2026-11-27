@@ -3,6 +3,8 @@
 # orchestrator's owner-facing "ready to merge" reports (issue #746).
 #
 # Usage: script/merge-readiness.sh <pr-number> [<pr-number>...]
+#        script/merge-readiness.sh --all [--since <YYYY-MM-DD>]
+#        script/merge-readiness.sh --since <YYYY-MM-DD>
 #
 # Prints one plain-text block per PR (no ANSI colour, no prompts, so the
 # output is pasteable straight into an owner report) with:
@@ -18,7 +20,17 @@
 # The final lines summarise every head SHA the run actually read, so a
 # report can name them.
 #
-# Exit status:
+# Freshness mode (issue #797; `--all` and/or `--since <YYYY-MM-DD>`):
+# prints one line per open PR — number, head SHA, state, mergeable +
+# mergeStateStatus, full URL — so a same-turn merge-state check costs one
+# command. `--since` filters to PRs updated on/after that date; a date
+# must be YYYY-MM-DD. It is read-only, never gates readiness, and a PR
+# absent from the list is not open (confirm with `gh pr view <pr> --json
+# state,mergedAt`). Freshness mode exits 0 when the list was read and
+# every row carries a number/head/URL; it exits 1 when the list is
+# unreadable or a row is incomplete (fail closed).
+#
+# Exit status (per-PR mode):
 #   0  every listed PR is clean (mergeable is neither CONFLICTING nor
 #      DIRTY) AND carries an APPROVE / SPEC-GATE PASS verdict quoting
 #      its current head.
@@ -57,21 +69,52 @@ MAX_CHAIN=20
 
 usage() {
   echo "Usage: $0 <pr-number> [<pr-number>...]" >&2
+  echo "       $0 --all [--since <YYYY-MM-DD>]" >&2
+  echo "       $0 --since <YYYY-MM-DD>" >&2
 }
 
 pr_numbers=()
-for arg in "$@"; do
-  case "${arg}" in
+freshness_mode=0
+since_date=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
     -h|--help) usage; exit 0 ;;
-    -*) echo "error: unknown argument: ${arg}" >&2; usage; exit 1 ;;
+    --all) freshness_mode=1; shift ;;
+    --since)
+      [[ $# -ge 2 ]] || { echo "error: --since requires a YYYY-MM-DD date" >&2; usage; exit 1; }
+      since_date="$2"; shift 2
+      ;;
+    --since=*)
+      since_date="${1#--since=}"; shift
+      ;;
+    -*)
+      echo "error: unknown argument: $1" >&2; usage; exit 1
+      ;;
     *)
-      [[ "${arg}" =~ ^[0-9]+$ ]] || { echo "error: PR number must be numeric, got '${arg}'" >&2; exit 1; }
-      pr_numbers+=("${arg}")
+      [[ "$1" =~ ^[0-9]+$ ]] || { echo "error: PR number must be numeric, got '$1'" >&2; exit 1; }
+      pr_numbers+=("$1")
+      shift
       ;;
   esac
 done
-if [[ "${#pr_numbers[@]}" -eq 0 ]]; then
-  echo "error: at least one PR number is required" >&2
+if [[ -n "${since_date}" ]]; then
+  [[ "${since_date}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || {
+    echo "error: --since must be YYYY-MM-DD, got '${since_date}'" >&2
+    exit 1
+  }
+  if ! parsed_since="$(date -d "${since_date}" +%Y-%m-%d 2>/dev/null)" || [[ "${parsed_since}" != "${since_date}" ]]; then
+    echo "error: --since must be a valid calendar date, got '${since_date}'" >&2
+    exit 1
+  fi
+  freshness_mode=1
+fi
+if [[ "${freshness_mode}" -eq 1 && "${#pr_numbers[@]}" -gt 0 ]]; then
+  echo "error: --all/--since is a freshness scan and cannot be combined with PR numbers" >&2
+  usage
+  exit 1
+fi
+if [[ "${freshness_mode}" -eq 0 && "${#pr_numbers[@]}" -eq 0 ]]; then
+  echo "error: at least one PR number (or --all/--since) is required" >&2
   usage
   exit 1
 fi
@@ -282,6 +325,47 @@ compute_stack_hint() {
   fi
 }
 
+# Freshness scan (issue #797): one line per open PR so a same-turn
+# merge-state check costs one command. Read-only; it never gates
+# readiness. A row without a number/head/URL fails closed, because it
+# cannot support a citable claim.
+freshness_scan() {
+  local list_json scope total bad
+  local -a list_args=(
+    pr list -R "${REPO}" --state open --limit 100
+    --json number,state,mergeable,mergeStateStatus,headRefOid,url,updatedAt
+  )
+  if [[ -n "${since_date}" ]]; then
+    list_args+=(--search "updated:>=${since_date}")
+    scope="open PRs updated since ${since_date}"
+  else
+    scope="all open PRs"
+  fi
+  if ! list_json="$(gh "${list_args[@]}" 2>&1)"; then
+    echo "error: cannot list open PRs, so merge state cannot be verified (fail closed): $(printf '%s' "${list_json}" | head -n 1)" >&2
+    return 1
+  fi
+  if ! printf '%s' "${list_json}" | jq -e 'type == "array"' >/dev/null 2>&1; then
+    echo "error: cannot parse the open-PR list (fail closed)" >&2
+    return 1
+  fi
+  total="$(printf '%s' "${list_json}" | jq 'length')"
+  echo "=== Open PR freshness (${scope}) ==="
+  if [[ "${total}" -eq 0 ]]; then
+    echo "(no open PRs matched)"
+  else
+    printf '%s' "${list_json}" | jq -r '.[] | "#\(.number)  head=\(.headRefOid // "" | if . == "" then "MISSING" else . end)  state=\(.state // "UNKNOWN")  mergeable=\(.mergeable // "UNKNOWN")/\(.mergeStateStatus // "UNKNOWN")  \(.url // "" | if . == "" then "MISSING" else . end)"'
+  fi
+  echo "Freshness: ${total} open PR(s) read; a PR absent from this list is not open (merged or closed) — confirm with gh pr view <pr> --json state,mergedAt."
+  echo "Cite the full URL and the head SHA above, from this same turn, in any report that mentions merge state."
+  bad="$(printf '%s' "${list_json}" | jq -r '[.[] | select((.number == null) or (.headRefOid == null) or (.headRefOid == "") or (.url == null) or (.url == "")) | "#\(.number // "?")"] | join(", ")')"
+  if [[ -n "${bad}" ]]; then
+    echo "error: open PR row(s) without a number/head/URL: ${bad} (fail closed)" >&2
+    return 1
+  fi
+  return 0
+}
+
 # --- One PR block plus its readiness verdict ---------------------------
 failures=()
 readiness_caveats=()
@@ -386,6 +470,13 @@ check_pr() {
 
   heads_checked+=("#${pr_number}=${head_oid}")
 }
+
+if [[ "${freshness_mode}" -eq 1 ]]; then
+  if ! freshness_scan; then
+    exit 1
+  fi
+  exit 0
+fi
 
 for pr in "${pr_numbers[@]}"; do
   check_pr "${pr}"
