@@ -1226,11 +1226,10 @@
       }
     },
     {
-      "key": "rooms.validation.release_occupied",
+      "key": "rooms.validation.release_target",
       "surface": "rooms envelope",
       "sources": [
-        "services/rooms/src/store.ts",
-        "services/rooms/src/pgstore.ts"
+        "services/rooms/src/store.ts"
       ],
       "params": {}
     },

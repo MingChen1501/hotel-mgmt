@@ -7,6 +7,7 @@ import {
   NON_SELLABLE_STATES,
   ROOM_STATES,
   isSellableState,
+  releaseTarget,
   requestActorAnnotation,
   requireCapacity,
   requireDate,
@@ -519,13 +520,6 @@ export class PostgresRoomStore implements RoomStoreAPI {
     requireString(input.actor, "actor");
     const actor = sessionActor;
     const requestActor = requestActorAnnotation(sessionActor, input.actor);
-    const toState: RoomState =
-      typeof input.toState === "string" && ROOM_STATES.includes(input.toState as RoomState)
-        ? (input.toState as RoomState)
-        : "vacant-dirty";
-    if (toState === "occupied") {
-      throw new HttpError("VALIDATION_FAILED", msg("rooms.validation.release_occupied", {}), { toState });
-    }
     return this.withTx(async (client) => {
       const found = await client.query(`SELECT id, number, state FROM rooms.rooms WHERE number = $1`, [
         requireString(input.roomNumber, "roomNumber"),
@@ -541,6 +535,11 @@ export class PostgresRoomStore implements RoomStoreAPI {
           state: room.state,
         });
       }
+      // The target is judged after the room's own answers, inside the
+      // transaction and before the first write (LLD section 41), so a
+      // free or unknown room never answers VALIDATION_FAILED and a
+      // refused target rolls back with nothing written.
+      const toState = releaseTarget(input.toState);
       await client.query(`UPDATE rooms.rooms SET state = $2, updated_by = $3, updated_at = now() WHERE id = $1`, [
         room.id,
         toState,

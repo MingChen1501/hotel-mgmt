@@ -10840,26 +10840,24 @@ As found (at this spec head, read-only):
   41.2. An absent `toState` (missing or `undefined`) still resolves to
   `vacant-dirty`. A present value is never defaulted, the fail-closed
   rule #633/#637/#640 already apply to a present-but-unusable value.
-- **One shared exported check beside the existing field checks.** Add
-  one function — `releaseTarget(value: unknown): RoomState` — beside
-  `requireCapacity` (`services/rooms/src/store.ts:118-128`) and call it
-  from both stores. It returns `"vacant-dirty"` for `undefined`, returns
-  the value for the pair, and throws `HttpError("VALIDATION_FAILED", …)`
-  with `details.toState` otherwise. The pair and the refusal sentence
+- **One shared exported check beside the existing field checks.** One
+  function — `releaseTarget(value: unknown): RoomState`
+  (`services/rooms/src/store.ts:139-147`) — sits beside `requireCapacity`
+  (`services/rooms/src/store.ts:118-128`) and both stores call it. It
+  returns `"vacant-dirty"` for `undefined`, returns the value for the
+  pair, and throws `HttpError("VALIDATION_FAILED", …)` with
+  `details.toState` otherwise. The pair and the refusal sentence
   therefore cannot drift between the two implementations, exactly as
   `requireCapacity` keeps the capacity rule in one place.
 - **The room's own answers precede the target check in both stores.**
-  The in-memory store already reads the room (`services/rooms/src/store.ts:485`)
-  and tests its occupancy (`:489-494`) before the target (`:495-501`),
-  so no order moves there. The Postgres store resolves the target
-  before `withTx` (`services/rooms/src/pgstore.ts:522-528`); the
-  implementation moves that call inside the existing transaction, after
-  the `NOT_FOUND` block (`:533-536`) and the `STATE_ILLEGAL` block
-  (`:538-543`), and immediately before the `UPDATE`
-  (`:544-548`). A free room then answers `STATE_ILLEGAL` for every target
-  and an unknown room answers `NOT_FOUND` for every target, in both
-  stores, and a room-state conflict is never re-reported as a validation
-  failure.
+  The in-memory store reads the room (`services/rooms/src/store.ts:504`)
+  and tests its occupancy (`:508-513`) before the target (`:514`). The
+  Postgres store judges the target after the `NOT_FOUND` block
+  (`services/rooms/src/pgstore.ts:527-530`) and the `STATE_ILLEGAL`
+  block (`:532-537`), immediately before the `UPDATE` (`:543-547`). A
+  free room then answers `STATE_ILLEGAL` for every target and an unknown
+  room answers `NOT_FOUND` for every target, in both stores, and a
+  room-state conflict is never re-reported as a validation failure.
 - **Why the store, not the handler.** The route is one dispatch line
   (`services/rooms/src/server.ts:201-202`), and the Postgres guards call
   the store directly, so a handler-side check would leave the store entry
@@ -10884,19 +10882,20 @@ As found (at this spec head, read-only):
   `VALIDATION_FAILED` (`contracts/http/ReleaseRoom.json:33`).
 - **An explicit `occupied` target is one instance, not a separate
   path.** It is outside the pair and takes the same refusal, so the
-  older single-purpose branch and its `rooms.validation.release_occupied`
-  sentence stop describing this answer; the new sentence names both
-  accepted targets for every out-of-set value. Catalogue-key retirement
-  or reuse is the implementation's call, with EN and VI parity and
+  older single-purpose branch and its retired
+  `rooms.validation.release_occupied` key no longer describe this
+  answer; the replacement `rooms.validation.release_target` sentence
+  names both accepted targets for every out-of-set value, in EN and VI
+  (`messages/en.json`, `messages/vi.json`), with
   `script/catalogue-coverage-check.sh` green.
 - **Nothing is written in either store.** In memory the throw precedes
-  the state assignment (`services/rooms/src/store.ts:502`), so no
-  `room_status_history` row (`:503`) and no `room.state-changed` event
-  (`:504-509`) exists for the request. In Postgres the throw precedes
-  the `UPDATE` (`services/rooms/src/pgstore.ts:544-548`) inside the
+  the state assignment (`services/rooms/src/store.ts:514-515`), so no
+  `room_status_history` row (`:516`) and no `room.state-changed` event
+  (`:517-522`) exists for the request. In Postgres the throw precedes
+  the `UPDATE` (`services/rooms/src/pgstore.ts:542-547`) inside the
   transaction, so the transaction commits no room row, no
-  `room_status_history` row (`:549-553`), and no outbox row
-  (`:554-560`). The room keeps its `occupied` state, its history, and
+  `room_status_history` row (`:548-552`), and no outbox row
+  (`:553-559`). The room keeps its `occupied` state, its history, and
   its events.
 - **A retry is an ordinary release.** The refusal is synchronous and
   records no attempt, so the same request with one of the two targets —
@@ -10912,13 +10911,13 @@ As found (at this spec head, read-only):
   so it passes the shared check and keeps today's write: the room
   reaches `vacant-inspected`, one history row records
   `occupied -> vacant-inspected`, and one `room.state-changed` event
-  carries it (`services/rooms/src/store.ts:502-510`; Postgres
-  `services/rooms/src/pgstore.ts:544-561`; the existing guard is
-  `services/rooms/src/pgstore.test.ts:185`).
+  carries it (`services/rooms/src/store.ts:515-522`; Postgres
+  `services/rooms/src/pgstore.ts:542-560`; the existing guard is
+  `services/rooms/src/pgstore.test.ts:187`).
 - **`ReleaseRoom` stays outside `ALLOWED_TRANSITIONS`, deliberately.**
   Do not route `releaseRoom` through the transition table. Its
   `occupied` row admits only `vacant-dirty`
-  (`services/rooms/src/store.ts:45-52`, the row at `:49`), so routing the
+  (`services/rooms/src/store.ts:45-51`, the row at `:49`), so routing the
   operation through it would refuse the compensating
   `occupied -> vacant-inspected` release and regress `FR-REA-1` /
   `FR-REA-3`. The transition table also keeps its role: `UpdateRoomState`
@@ -10941,52 +10940,56 @@ default.
 
 ```mermaid
 flowchart TD
-    A[POST /v1/rooms/ReleaseRoom  services/rooms/src/server.ts:201-202] --> B[Resolve the room and the actor  services/rooms/src/store.ts:485-486]
-    B --> C{Room known?  services/rooms/src/store.ts:485; Postgres services/rooms/src/pgstore.ts:530-536}
-    C -- no --> Z1[NOT_FOUND 404, nothing written  services/rooms/src/pgstore.ts:533-536]
-    C -- yes --> D{Room occupied?  services/rooms/src/store.ts:489-494; Postgres services/rooms/src/pgstore.ts:538-543}
-    D -- no --> Z2[STATE_ILLEGAL 422, nothing written  services/rooms/src/store.ts:489-494]
+    A[POST /v1/rooms/ReleaseRoom  services/rooms/src/server.ts:201-202] --> B[Resolve the room and the actor  services/rooms/src/store.ts:504-505]
+    B --> C{Room known?  services/rooms/src/store.ts:504; Postgres services/rooms/src/pgstore.ts:524-530}
+    C -- no --> Z1[NOT_FOUND 404, nothing written  services/rooms/src/pgstore.ts:527-530]
+    C -- yes --> D{Room occupied?  services/rooms/src/store.ts:508-513; Postgres services/rooms/src/pgstore.ts:532-537}
+    D -- no --> Z2[STATE_ILLEGAL 422, nothing written  services/rooms/src/store.ts:508-513]
     D -- yes --> E{toState absent, or one of the two targets?}
-    E -- absent or undefined --> T1[vacant-dirty, the preserved default  services/rooms/src/store.ts:498]
-    E -- vacant-dirty or vacant-inspected --> T2[that target, including the compensating release  services/rooms/src/pgstore.test.ts:185]
+    E -- absent or undefined --> T1[vacant-dirty, the preserved default  services/rooms/src/store.ts:514]
+    E -- vacant-dirty or vacant-inspected --> T2[that target, including the compensating release  services/rooms/src/pgstore.test.ts:187]
     E -- vacant-clean, out-of-order, another string, non-string, or null --> R[VALIDATION_FAILED 400, details.toState, one sentence naming the pair]
     R --> N[Nothing written: no room-state change, no room_status_history row, no room.state-changed event]
-    T1 --> W[room.state = target, one history row, one room.state-changed event  services/rooms/src/store.ts:502-510; Postgres services/rooms/src/pgstore.ts:544-561]
+    T1 --> W[room.state = target, one history row, one room.state-changed event  services/rooms/src/store.ts:515-522; Postgres services/rooms/src/pgstore.ts:543-560]
     T2 --> W
     W --> OK[200 roomNumber, oldState occupied, newState target]
 ```
 
-Edge trace (as-found pins; the implementation PR refreshes them per
+Edge trace (as-built pins; the implementation PR refreshed them per
 maintain-with-code, 41.7):
 
 - A–B–C: one route answers the operation (`services/rooms/src/server.ts:201-202`);
   the in-memory store resolves the room through `findRoom`
-  (`services/rooms/src/store.ts:485`) and the Postgres store through its
-  `SELECT` (`services/rooms/src/pgstore.ts:530-536`). An unknown room
+  (`services/rooms/src/store.ts:504`) and the Postgres store through its
+  `SELECT` (`services/rooms/src/pgstore.ts:524-530`). An unknown room
   keeps `NOT_FOUND` with the room number in `details`, whatever target
   was sent.
 - C–D–Z2: the existing not-occupied refusal is untouched — today's
-  sentence and `details` (`services/rooms/src/store.ts:489-494`; Postgres
-  `:538-543`). It runs before the target check, so a free room sent
-  `vacant-clean`, `out-of-order`, or `null` never becomes
-  `VALIDATION_FAILED`.
-- D–E: the only edit in the operation. The tolerant resolution at
-  `services/rooms/src/store.ts:495-501` and
-  `services/rooms/src/pgstore.ts:522-528` is replaced by the shared
-  `releaseTarget` check; the Postgres call moves from before `withTx`
-  into the transaction, after `:538-543` and before the `UPDATE` at
-  `:544-548`, so both stores judge the target after the room answers.
+  sentence and `details` (`services/rooms/src/store.ts:508-513`;
+  Postgres `services/rooms/src/pgstore.ts:532-537`). It runs before the
+  target check, so a free room sent `vacant-clean`, `out-of-order`, or
+  `null` never becomes `VALIDATION_FAILED`.
+- D–E: the one operation edit. The shared `releaseTarget` check
+  (`services/rooms/src/store.ts:139-147`) replaces the tolerant
+  resolution; it runs at `services/rooms/src/store.ts:514` after the
+  room answer, and at `services/rooms/src/pgstore.ts:542` after the room
+  checks (`:532-537`) and before the `UPDATE` (`:543-547`), so both
+  stores judge the target after the room answers.
 - E–R–N: the throw precedes every mutation; the in-memory store has
-  assigned nothing at `services/rooms/src/store.ts:502`, and the
+  assigned nothing at `services/rooms/src/store.ts:514-515`, and the
   Postgres transaction has written nothing before
-  `services/rooms/src/pgstore.ts:544-548`. The refusal therefore leaves
+  `services/rooms/src/pgstore.ts:543-547`. The refusal therefore leaves
   the room row, its history, and its outbox exactly as they were.
 - E–T1–W and E–T2–W: an absent target still resolves to `vacant-dirty`
-  exactly as today (`services/rooms/src/store.ts:498`), and both
-  accepted targets keep the current write, history row, and event
-  (`:502-510`; Postgres `:544-561`). The existing default guard is
-  `services/rooms/src/server.test.ts:741-751`; the explicit
-  `vacant-inspected` guard is `services/rooms/src/pgstore.test.ts:185`.
+  exactly as today (`services/rooms/src/store.ts:140-142`, called at
+  `:514`), and both accepted targets keep the current write, history
+  row, and event (`services/rooms/src/store.ts:515-522`; Postgres
+  `services/rooms/src/pgstore.ts:543-560`). The existing default
+  guard is `services/rooms/src/server.test.ts:741-751`; the explicit
+  `vacant-inspected` guard is `services/rooms/src/pgstore.test.ts:187`;
+  the #773 guards are `services/rooms/src/server.test.ts:1469-1627`
+  (`REL-1`–`REL-4`, `REL-7`, `REL-9`, `REL-12`) and
+  `services/rooms/src/pgstore.test.ts:536-734` (`REL-5`–`REL-8`).
 - W–OK: the receipt keeps `roomNumber`, `oldState: "occupied"`, and the
   target, with no field added or removed
   (`contracts/http/ReleaseRoom.json` response).
@@ -11013,9 +11016,9 @@ nothing is stranded.
   records that the not-occupied check precedes the target check. The
   response schema, required lists, transport, and version do not move,
   no new error entry or code token is added, and the `traces` list gains
-  LLD section 41, `FR-REL-1`, `FR-REL-2`, and `BR-72`. This spec PR
-  lands the contract edit; the implementation PR makes the stores answer
-  what it now advertises.
+  LLD section 41, `FR-REL-1`, `FR-REL-2`, and `BR-72`. The contract
+  edit landed with the spec set; the stores now answer exactly what it
+  advertises.
 - **No schema, migration, data-dictionary, or index change.** The room
   state vocabulary, `rooms.room_status_history`, `room_blocks`, the
   history columns, and the outbox shape stay exactly as they are, and no
@@ -11028,28 +11031,29 @@ nothing is stranded.
   table (Refs #773).
 - **`docs/architecture/state-machine.md` section 2.1** records the
   accepted explicit pair and refreshes its stale line pins to the current
-  `releaseRoom` (`services/rooms/src/store.ts:480-511`,
-  `services/rooms/src/pgstore.ts:514-563`) and the current
-  `ALLOWED_TRANSITIONS` (`:45-52`).
-- **`docs/architecture/services/rooms.md`** sections 4 and 6 gain the
+  `releaseRoom` (`services/rooms/src/store.ts:499-524`,
+  `services/rooms/src/pgstore.ts:515-562`) and the current
+  `ALLOWED_TRANSITIONS` (`services/rooms/src/store.ts:45-51`).
+- **`docs/architecture/services/rooms.md`** sections 4 and 6 record the
   target refusal in the release flow and the error map, section 8
   refreshes the release pin and names the pair, and section 12 records
-  the planned delta with the same diagrams.
+  the as-built delta with the same diagrams.
 - **Verification plan** (commands from
   `docs/architecture/services/rooms.md` section 7 and the repo root):
   - `services/rooms`: `npm run build`, `npm run lint`, and `npm test`
-    both without and with `TEST_PG_URL`. The new guards of requirements
-    section 42.5 — refused targets (`vacant-clean`, `out-of-order`,
-    another string, a number, a boolean, an array, an object, `null`)
-    asserting 400 / `code: "VALIDATION_FAILED"` / `details.toState`,
-    the room still `occupied`, no new history row, and no
-    `room.state-changed` event in both stores; the preserved absent
-    default; `occupied -> vacant-inspected` unchanged; and the
-    precedence cases — run without the database for the in-memory half
-    and with it for the Postgres twin.
+    both without and with `TEST_PG_URL`. The shipped guards (`REL-1`-
+    `REL-4`, `REL-7`, `REL-9`, `REL-12` in
+    `services/rooms/src/server.test.ts:1469-1627`; `REL-5`-`REL-8` in
+    `services/rooms/src/pgstore.test.ts:536-734`) cover the refused
+    targets (`vacant-clean`, `out-of-order`, another string, a number, a
+    boolean, an array, an object, `null`) asserting 400 /
+    `code: "VALIDATION_FAILED"` / `details.toState`, the room still
+    `occupied`, no new history row, and no `room.state-changed` event in
+    both stores; the preserved absent default; the unchanged
+    `occupied -> vacant-inspected` release; and the precedence cases.
   - Existing guards that must stay green: the absent default
     (`services/rooms/src/server.test.ts:741-751`), the explicit
-    `vacant-inspected` release (`services/rooms/src/pgstore.test.ts:185`),
+    `vacant-inspected` release (`services/rooms/src/pgstore.test.ts:187`),
     the contract fixture `services/rooms/contract-tests/ReleaseRoom.json`,
     and the desk/e2e callers named above.
   - Repo root: `script/contract-check.sh` (the narrowed enum parses and
@@ -11059,6 +11063,11 @@ nothing is stranded.
     `script/harness-conventions-check.sh`, and
     `script/doc-pin-check.sh --report-only` over the touched doc set,
     with every new pin content-verified by reading the cited line.
+  - Evidence: the before/after pair, the both-stores nothing-written
+    proof, the accepted pair and default, the precedence pair, the
+    `TEST_PG_URL` parity run, and the suite row are recorded in
+    `docs/testing/evidence/773/README.md` and
+    `docs/testing/test-report.md` (`REL-E1`).
   - Diff gate: no edit to `ALLOWED_TRANSITIONS`, `UpdateRoomState`,
     `assignRoom`, the state vocabulary, a migration, or the desk; no
     contract field, status, or code token added; no change to the
@@ -11097,16 +11106,16 @@ nothing is stranded.
 
 ### 41.7 Maintain-with-code
 
-The implementation replaces the tolerant resolution in
-`services/rooms/src/store.ts:495-501` and
-`services/rooms/src/pgstore.ts:522-528` with the shared `releaseTarget`
-check, moves the Postgres call inside the transaction after the room
-checks (`:538-543`) and before the `UPDATE` (`:544-548`), keeps the
-not-occupied refusals, `ALLOWED_TRANSITIONS`, `UpdateRoomState`, the
-accepted write paths, and the desk untouched, and creates the guards of
-requirements section 42.5; this section's line pins are refreshed to the
-as-built `file:line` in that PR, and `qa-lead` re-pins its traceability
-rows at the merged head. `dev-peer-review` treats these as findings the
+The implementation replaced the tolerant resolution with the shared
+`releaseTarget` check (`services/rooms/src/store.ts:139-147`), called
+after the room answer in memory (`:514`) and inside the Postgres
+transaction after the room checks (`services/rooms/src/pgstore.ts:532-537`)
+and before the `UPDATE` (`:543-547`), kept the not-occupied refusals,
+`ALLOWED_TRANSITIONS`, `UpdateRoomState`, the accepted write paths, and
+the desk untouched, and created the guards of requirements section
+42.5; this section's line pins are refreshed to the as-built
+`file:line`, and `qa-lead` re-pins its traceability rows at the merged
+head. `dev-peer-review` treats these as findings the
 same as any drifted spec: a present out-of-set target defaulted or
 accepted; a non-string or `null` defaulted to `vacant-dirty`; the target
 check judged before the room's own `NOT_FOUND`/`STATE_ILLEGAL` answers

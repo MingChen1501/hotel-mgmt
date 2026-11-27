@@ -134,11 +134,11 @@ explicit `toState` and exactly two targets: `vacant-dirty` (also the
 default when the field is absent) and `vacant-inspected`; every other
 present value is refused `VALIDATION_FAILED` before any write (the
 shared release-target check, LLD [section 41](lld.md); the call starts
-at `services/rooms/src/store.ts:480-511`; Postgres parity
-`services/rooms/src/pgstore.ts:514-563`). That parameter is the only way
+at `services/rooms/src/store.ts:499-524`; Postgres parity
+`services/rooms/src/pgstore.ts:515-562`). That parameter is the only way
 an `occupied` room can reach `vacant-inspected` —
 `UpdateRoomState` cannot make that step (`ALLOWED_TRANSITIONS`,
-`services/rooms/src/store.ts:45-52`).
+`services/rooms/src/store.ts:45-51`).
 
 Which target belongs to which flow is decided, not incidental:
 
@@ -167,8 +167,8 @@ stateDiagram-v2
   `toState`; each records `room_status_history` and emits
   `room.state-changed`, so the pair an aborted action produces (occupied,
   then ready again) is visible in the room's own history
-  (`services/rooms/src/store.ts:502-510`; Postgres parity
-  `services/rooms/src/pgstore.ts:544-561`).
+  (`services/rooms/src/store.ts:515-522`; Postgres parity
+  `services/rooms/src/pgstore.ts:542-560`).
 - A present target outside the pair — `vacant-clean`, `out-of-order`,
   another state name, a non-string value, or `null` — is refused
   `VALIDATION_FAILED` (400) with `details.toState` and writes no state

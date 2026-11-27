@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import { createServiceServer } from "./server.js";
 import { HttpError } from "./errors.js";
 import { msg } from "./messages.js";
-import { type RoomStoreAPI, RoomStore } from "./store.js";
+import { type RoomStoreAPI, ALLOWED_TRANSITIONS, RoomStore } from "./store.js";
 
 const TOKEN = "skeleton-test-token";
 
@@ -1429,5 +1429,199 @@ describe("room capacity validation (#637, CAP1-CAP5, CAP10)", () => {
       assert.equal(unknownType.status, 404);
       assert.equal((unknownType.body as CapacityErrorEnvelope).code, "NOT_FOUND");
     }, new RoomStore());
+  });
+});
+
+// ReleaseRoom accepts exactly the two specified release targets (#773,
+// BR-72; REL-1-REL-4, REL-7, REL-9, REL-12). These guards pin the
+// accepted pair, the preserved absent default, the out-of-set refusal
+// shape, and the nothing-written half; the Postgres twin lives in
+// pgstore.test.ts behind TEST_PG_URL.
+const REFUSED_RELEASE_TARGETS: unknown[] = [
+  "vacant-clean",
+  "out-of-order",
+  "occupied",
+  "Vacant-Dirty",
+  "clean",
+  42,
+  true,
+  ["vacant-dirty"],
+  { state: "vacant-dirty" },
+  null,
+];
+
+const RELEASE_TARGET_MESSAGE = "Release target must be vacant-dirty or vacant-inspected.";
+
+type ReleaseErrorEnvelope = {
+  code: string;
+  message: string;
+  details: { toState?: unknown; roomNumber?: string; state?: string };
+};
+
+async function seedOccupiedReleaseRoom(store: RoomStore, number: string): Promise<void> {
+  await store.upsertRoom({ number, roomType: "Deluxe", actor: "manager" }, TOKEN);
+  await store.assignRoom(
+    { roomNumber: number, businessDate: "2026-11-01", stayLink: `stay-${number}`, actor: "front-desk" },
+    TOKEN,
+  );
+}
+
+describe("ReleaseRoom release targets (#773, REL-1-REL-4, REL-7, REL-9, REL-12)", () => {
+  it("accepts exactly the two targets and keeps the absent default (REL-1)", async () => {
+    const store = new RoomStore();
+    await store.upsertRoomType({ name: "Deluxe", actor: "manager" }, TOKEN);
+    await seedOccupiedReleaseRoom(store, "101");
+    await seedOccupiedReleaseRoom(store, "102");
+    await seedOccupiedReleaseRoom(store, "103");
+    await withServer(async (port) => {
+      const dirty = await request(port, "POST", "/v1/rooms/ReleaseRoom", {
+        roomNumber: "101",
+        toState: "vacant-dirty",
+        actor: "front-desk",
+      });
+      assert.equal(dirty.status, 200);
+      assert.deepEqual(dirty.body, { roomNumber: "101", oldState: "occupied", newState: "vacant-dirty" });
+
+      const inspected = await request(port, "POST", "/v1/rooms/ReleaseRoom", {
+        roomNumber: "102",
+        toState: "vacant-inspected",
+        actor: "front-desk",
+      });
+      assert.equal(inspected.status, 200);
+      assert.deepEqual(inspected.body, { roomNumber: "102", oldState: "occupied", newState: "vacant-inspected" });
+
+      const absent = await request(port, "POST", "/v1/rooms/ReleaseRoom", {
+        roomNumber: "103",
+        actor: "front-desk",
+      });
+      assert.equal(absent.status, 200);
+      assert.deepEqual(absent.body, { roomNumber: "103", oldState: "occupied", newState: "vacant-dirty" });
+    }, store);
+  });
+
+  it("records one history row and one event per accepted release (REL-2, REL-9)", async () => {
+    const store = new RoomStore();
+    await store.upsertRoomType({ name: "Deluxe", actor: "manager" }, TOKEN);
+    await seedOccupiedReleaseRoom(store, "101");
+    const room = await store.findRoom("101");
+    const historyBefore = await store.historyForRoomId(room.id);
+    const outboxBefore = roomsInternals(store).outbox.length;
+
+    await withServer(async (port) => {
+      // The explicit vacant-inspected target is the #647 compensating
+      // release: it must keep succeeding outside ALLOWED_TRANSITIONS.
+      const released = await request(port, "POST", "/v1/rooms/ReleaseRoom", {
+        roomNumber: "101",
+        toState: "vacant-inspected",
+        actor: "front-desk",
+      });
+      assert.equal(released.status, 200);
+    }, store);
+
+    assert.equal((await store.findRoom("101")).state, "vacant-inspected");
+    const historyAfter = await store.historyForRoomId(room.id);
+    assert.equal(historyAfter.length, historyBefore.length + 1);
+    const entry = historyAfter.at(-1);
+    assert.equal(entry?.oldState, "occupied");
+    assert.equal(entry?.newState, "vacant-inspected");
+    assert.equal(entry?.createdBy, TOKEN);
+
+    const events = roomsInternals(store).outbox;
+    assert.equal(events.length, outboxBefore + 1);
+    const event = events.at(-1);
+    assert.equal(event?.eventType, "state-changed");
+    assert.equal(event?.payload["roomNumber"], "101");
+    assert.equal(event?.payload["newState"], "vacant-inspected");
+    assert.equal(event?.payload["actor"], TOKEN);
+    assert.equal(event?.createdBy, TOKEN);
+  });
+
+  it("refuses every present target outside the pair and writes nothing (REL-3, REL-4, REL-12)", async () => {
+    const store = new RoomStore();
+    await store.upsertRoomType({ name: "Deluxe", actor: "manager" }, TOKEN);
+    await seedOccupiedReleaseRoom(store, "101");
+    const room = await store.findRoom("101");
+    // findRoom returns the live record, so snapshot a copy before the
+    // refusal loop; comparing the live record with itself would pass
+    // even if the refusal mutated the room.
+    const roomBefore = { ...(await store.findRoom("101")) };
+    const historyBefore = await store.historyForRoomId(room.id);
+    const outboxBefore = roomsInternals(store).outbox.length;
+
+    await withServer(async (port) => {
+      for (const target of REFUSED_RELEASE_TARGETS) {
+        const refused = await request(port, "POST", "/v1/rooms/ReleaseRoom", {
+          roomNumber: "101",
+          toState: target,
+          actor: "front-desk",
+        });
+        const label = `toState=${JSON.stringify(target)}`;
+        assert.equal(refused.status, 400, label);
+        const body = refused.body as ReleaseErrorEnvelope;
+        assert.equal(body.code, "VALIDATION_FAILED", label);
+        assert.deepEqual(body.details, { toState: target }, label);
+        assert.equal(body.message, RELEASE_TARGET_MESSAGE, label);
+        assert.match(body.message, /vacant-dirty/, label);
+        assert.match(body.message, /vacant-inspected/, label);
+        assert.equal((await store.findRoom("101")).state, "occupied", label);
+      }
+    }, store);
+
+    assert.deepEqual(await store.findRoom("101"), roomBefore);
+    assert.deepEqual(await store.historyForRoomId(room.id), historyBefore);
+    assert.equal(roomsInternals(store).outbox.length, outboxBefore);
+  });
+
+  it("keeps the room's own answers ahead of the target check (REL-7)", async () => {
+    const store = new RoomStore();
+    await store.upsertRoomType({ name: "Deluxe", actor: "manager" }, TOKEN);
+    await store.upsertRoom({ number: "102", roomType: "Deluxe", actor: "manager" }, TOKEN);
+    const room = await store.findRoom("102");
+    const historyBefore = await store.historyForRoomId(room.id);
+    const outboxBefore = roomsInternals(store).outbox.length;
+
+    await withServer(async (port) => {
+      for (const target of ["vacant-clean", "out-of-order", "occupied", null] as unknown[]) {
+        const free = await request(port, "POST", "/v1/rooms/ReleaseRoom", {
+          roomNumber: "102",
+          toState: target,
+          actor: "front-desk",
+        });
+        assert.equal(free.status, 422, `free room toState=${JSON.stringify(target)}`);
+        assert.equal((free.body as ReleaseErrorEnvelope).code, "STATE_ILLEGAL");
+        assert.deepEqual((free.body as ReleaseErrorEnvelope).details, {
+          roomNumber: "102",
+          state: "vacant-inspected",
+        });
+
+        const unknown = await request(port, "POST", "/v1/rooms/ReleaseRoom", {
+          roomNumber: "999",
+          toState: target,
+          actor: "front-desk",
+        });
+        assert.equal(unknown.status, 404, `unknown room toState=${JSON.stringify(target)}`);
+        assert.equal((unknown.body as ReleaseErrorEnvelope).code, "NOT_FOUND");
+        assert.deepEqual((unknown.body as ReleaseErrorEnvelope).details, { roomNumber: "999" });
+      }
+
+      // An accepted target does not change the room's own answer either.
+      const unknownAccepted = await request(port, "POST", "/v1/rooms/ReleaseRoom", {
+        roomNumber: "999",
+        toState: "vacant-dirty",
+        actor: "front-desk",
+      });
+      assert.equal(unknownAccepted.status, 404);
+      assert.equal((unknownAccepted.body as ReleaseErrorEnvelope).code, "NOT_FOUND");
+    }, store);
+
+    assert.equal((await store.findRoom("102")).state, "vacant-inspected");
+    assert.deepEqual(await store.historyForRoomId(room.id), historyBefore);
+    assert.equal(roomsInternals(store).outbox.length, outboxBefore);
+  });
+
+  it("keeps ReleaseRoom outside the housekeeping transition table (REL-9)", () => {
+    // The occupied row admits only vacant-dirty, so routing releaseRoom
+    // through the table would refuse the #647 compensating release.
+    assert.deepEqual(ALLOWED_TRANSITIONS["occupied"], ["vacant-dirty"]);
   });
 });
