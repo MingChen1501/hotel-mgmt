@@ -1,0 +1,22 @@
+# Content-verified doc-pin keyword map (issue #786).
+#
+# Every row says: the pin at `doc` that resolves to `target` must have
+# `keyword` on the cited line. The check verifies the CONTENT, not the
+# number: a row whose cited line no longer holds the keyword is a finding
+# (that is the point), and a row that matches no pin is STALE-MAP.
+#
+# Format (tab-separated, `#` starts a comment line):
+#   <doc path>	<resolved target path:line>	<keyword>
+#
+# `target` is repo-relative and resolved (module-relative doc pins were
+# resolved by the check); a map row matches a range pin when the path and
+# the first line match, so re-ranging does not orphan the row.
+#
+# This is the seed inventory, not the whole corpus: the blocking flip
+# (issue #786 follow-up) waits until every doc set is covered. These three
+# rooms rows are the live drift the issue records on master; each cited
+# line has slid onto a different construct, and an existence-only check
+# would pass all three.
+docs/architecture/services/rooms.md	services/rooms/src/store.ts:203-212	NOT_FOUND
+docs/architecture/services/rooms.md	services/rooms/src/store.ts:327	STATE_ILLEGAL
+docs/architecture/services/rooms.md	services/rooms/src/store.ts:397-400	occupied

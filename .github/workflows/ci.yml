@@ -267,6 +267,41 @@ jobs:
       - name: Harness self-check proves red on a phantom fixture (issue #231)
         run: script/harness-conventions-check.sh --self-test
 
+      - name: Content-verified doc-pin self-test (issue #786)
+        run: script/doc-pin-check.test.sh
+
+  doc-pins:
+    # Content-verified doc pins (issue #786), iteration 1: REPORT-ONLY.
+    # Every as-built `path:line` pin must be verified by content, not by
+    # number; a pin whose line exists but no longer holds the claimed
+    # construct is drift that an existence-only sweep misses. The job runs
+    # on every PR so the inventory is visible, but it never fails while the
+    # pre-existing inventory is non-empty. The blocking flip is a tracked
+    # follow-up: it needs zero findings, or an explicit allow-list that the
+    # follow-up issue names.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Content-verified doc pins (report-only)
+        run: |
+          set -o pipefail
+          script/doc-pin-check.sh --report-only \
+            --keywords script/doc-pin-keywords.tsv \
+            docs/architecture docs/testing docs/requirements \
+            | tee doc-pin-report.txt
+          {
+            echo '### Content-verified doc pins (report-only, issue #786)'
+            echo ''
+            echo '```'
+            grep -E '^# (summary|by-target)' doc-pin-report.txt || true
+            echo '```'
+            echo ''
+            echo 'Report-only: the pre-existing pin inventory is non-empty.'
+            echo 'The blocking flip is a follow-up that needs zero findings or an explicit allow-list.'
+          } >>"$GITHUB_STEP_SUMMARY"
+
   go-build:
     needs: changes
     if: needs.changes.outputs.go-matrix != '[]'

@@ -72,6 +72,7 @@ RULES=(
   "script/compose-lab-guard.sh|compose-lab-guard"
   "script/orchestrator-review.sh|orchestrator-review"
   "script/ao-role-footer.sh|ao-role"
+  "script/doc-pin-check.sh|CONTENT-VERIFIED"
   "script/contract-check.sh|contract-check"
   ".github/PULL_REQUEST_TEMPLATE.md|Conventional Commits"
   ".opencode/agents/dev-peer-review.md|no nulls"

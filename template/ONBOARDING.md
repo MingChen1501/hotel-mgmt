@@ -52,7 +52,8 @@ config template), `cues/` (18 project-scoped rule cues),
 guard plugin), `.github/` (issue form, PR template), `docs/` (index,
 role rules, conventions, starter group), `script/` (footer, spawn,
 merge, review, merge-readiness wrappers, contract-check stub, harness
-self-check, markdown link gate, cue installer).
+self-check, markdown link gate, content-verified pin check, cue
+installer).
 
 Harness ownership: the `ai-engineer` role owns in-repo harness
 engineering (agent/skill/command/plugin/config files, cues, wrapper
