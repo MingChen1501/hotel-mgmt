@@ -24,3 +24,11 @@ Owner-facing readiness reports carry checkable evidence, not a summary assembled
 - The preflight is read-only (no push, merge, comment, label, or branch operation). Recording it for an audit trail is the orchestrator's action (for example a PR/issue comment), not the script's.
 - A `NOT READY` preflight (CONFLICTING, DIRTY, or no head-quoting APPROVE / SPEC-GATE PASS verdict) is never reported as ready; a `DIRTY`/`CONFLICTING` PR is routed to a worker, never resolved in the orchestrator.
 - A stacked PR set needs the default branch merged into the **bottom** member before the owner is asked to merge; re-verify the stack afterwards (fresh preflight plus green CI) and only then ask.
+
+## As-built pins (CONTENT-VERIFIED)
+
+A maintain-with-code edit keeps every `docs/` pin it touches **CONTENT-VERIFIED**: a re-pin names the symbol the doc sentence describes and cites the line where that symbol actually is.
+
+- Offset arithmetic (`old + N`) is never a valid re-pin: the line that moves is not guaranteed to keep the construct the sentence names.
+- A sweep that only proves a cited line exists is not a verification.
+- `script/doc-pin-check.sh` verifies content, not numbers. Give each touched pin a caller-supplied keyword (an inline `<!-- pin: <symbol> -->` annotation or a `--keywords` map row) and run the check over the doc set you touched. The report names every pin's doc file, doc line, target, expected keyword, and actual line content; a wrong line, a missing file, and a line past EOF all fail. Run it in report-only mode until the pre-existing inventory is clean.
