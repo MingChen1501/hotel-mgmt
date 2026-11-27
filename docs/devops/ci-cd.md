@@ -92,5 +92,38 @@ Needed pipeline changes become issues.
   first release ships; per-release notes and rollback entries begin
   then.
 
+## 4. Admin boot secrets in the pipeline (Refs #638)
+
+The Admin service refuses to boot without its two per-sale secrets
+(`ADMIN_TOKEN_KEY`, `ADMIN_BOOT_SECRET`) outside the explicit
+`ADMIN_DEV_MODE=1` dev switch, so every job that starts the real service
+has to carry them. Target state for this bundle (the workflow edit ships
+with the implementation PR, `AC-BOOT-5`):
+
+- **The three container jobs.** `e2e-single-host`, `browser-e2e`, and
+  `dom-diff` set `DB_PASSWORD`, `ADMIN_BOOT_SECRET`, and — new —
+  `ADMIN_TOKEN_KEY` to throwaway, non-default values
+  (`.github/workflows/ci.yml:465`, `:540`, `:641` today carry the first
+  two). They never set `ADMIN_DEV_MODE`, so the bring-up proves the
+  production boot contract, not the dev path: an unprovisioned variable
+  stops the installer proof at the Admin boot instead of letting it sign
+  with a published key.
+- **`script/e2e-desk-loop.sh` and `script/preflight.sh`** keep gating
+  the same list, so the pre-flight step inside the installer proof fails
+  closed and names the missing variable before any container starts.
+- **`node-build`.** The Admin matrix job exports no `ADMIN_*` variable at
+  all (`.github/workflows/ci.yml:308-340`), which is itself the proof
+  that `cd services/admin && npm test` passes without the two secrets
+  (`AC-BOOT-4`). Do not "fix" a red Admin build by exporting a secret
+  into that job: the suite must not need one, and the guards that spawn
+  the real boot set `ADMIN_DEV_MODE=1` for that child process only.
+- **Values are throwaway.** Nothing in the pipeline reads a real sale's
+  secret, and no job prints one; the fail-closed gates name the variable,
+  never the value. A docs-only PR still skips every heavy job (section 2),
+  so this delta adds no required check and no new gate.
+
 <!-- ao-role: release-manager -->
 Role: release-manager · AO session hotel-mgmt-190
+
+<!-- ao-role: release-manager -->
+Role: release-manager · AO session hotel-mgmt-1281

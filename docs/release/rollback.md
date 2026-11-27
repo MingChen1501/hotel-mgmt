@@ -387,6 +387,77 @@ two-second call re-tiers the change per
 re-authored, the migration is forward-only, and the rollback note moves
 into that implementation PR.
 
+### 5.7 Admin fail-closed boot secrets (Refs #638)
+
+**Decision.** This is the one change in this document that is **not
+rolled back for convenience**. Reverting it restores a fail-open boot:
+without `ADMIN_TOKEN_KEY` every session is signed with
+`dev-only-change-me`, a key printed in this repository, so the signature
+proves nothing and a leaked or logged token id is the only gate; without
+`ADMIN_BOOT_SECRET` the boot seeds an `owner` account whose password is
+`change-me`. Roll back only as an emergency, when a live installation
+cannot sign in and the secret cannot be provisioned inside the desk's
+tolerance (for example a host the delivery team cannot reach during
+opening hours), and only with the owner's explicit decision: the change
+is `risk-high` (issue #638 labels `security`, `risk-high`), the owner
+approves the forward change and merges it manually, and the owner decides
+this revert. Rolling back because the upgrade step was skipped is the
+wrong fix — provision the variable
+(`../devops/deployment.md` section 4, `../operations/runbook.md` section
+16) instead. The change is otherwise sound; a defect that only affects
+the dev switch or the operator line is fixed forward, not reverted.
+
+**Mechanics.** Revert the single implementation PR and redeploy the
+bundle per `../devops/deployment.md` section 4. Both published defaults
+come back with the code —
+`... ?? "dev-only-change-me"` in `services/admin/src/store.ts:234` and
+`services/admin/src/pgstore.ts:72`, and `ADMIN_BOOT_SECRET ?? "change-me"`
+in `services/admin/src/server.ts:119-123` — the keyless
+`createServiceServer` default store returns, and the compose fallback for
+`ADMIN_BOOT_SECRET` (`change-me-dev-only`) starts a container again. The
+bundle's pre-flight, Ansible pre-check, and CI e2e jobs return to their
+two-secret checks with the code, so an unprovisioned install passes them
+again. No schema migration and no data backfill exist on this path in
+either direction (`../architecture/lld.md` section 39.1: the refusal
+precedes the store, the connection, the migration, the seed, and the
+port, and writes nothing), so the revert keeps the database as it is and
+no restore is needed; a data restore is the bundle-failure path in
+`../devops/deployment.md` section 6, not this one. Two values are
+harmless after the revert: a host that keeps `ADMIN_TOKEN_KEY` in its env
+file is unaffected because the old code ignores it, and
+`ADMIN_DEV_MODE=1` is simply unread. Take the switch off the host anyway,
+so a later re-land does not boot on the dev defaults by accident.
+
+**Verification.** On the restored bundle: confirm sign-in with a real
+account succeeds and an authenticated read answers; then confirm the
+regression itself on the **lab or QA installation only, never against the
+hotel's own accounts or data** — boot with the variables unset and
+observe that the service starts, `/v1/admin/healthz` answers, and a
+`SignIn` for `owner` with `change-me` succeeds only when no owner row
+exists yet (`ensureBootUser` is `INSERT … ON CONFLICT DO NOTHING`, so an
+existing hash is untouched). Record whether that boot created an owner
+row with the published secret; if it did, rotate it through
+`ChangeSecret` before the fix re-lands (`../devops/local-dev-setup.md`
+section 7), and record the exposure window — the interval during which
+sessions were signed with the published key — in the rollback record.
+Run the health check and the end-to-end reservation check from
+`../devops/deployment.md` sections 3 and 4, and the stack gates the
+release entry names (`release-notes.md` section 2.7). When the corrected
+release re-lands, expect the same one-time effect in the other direction:
+every session minted under the reverted default ends, and staff sign in
+again once.
+
+**Record.** Add the rollback outcome here — date, commit range, the
+symptom that forced it, the revert reference, the verification result,
+the exposure window, and whether a reverted boot seeded or left an owner
+with a published secret — file the defect issue for whatever forced the
+revert, and re-file audit finding A1 as open for that window. This note
+assumes no migration and no stored-value change; a rework that rewrites
+stored hashes, adds a rotation mechanism, adds a secret store, or moves
+the denylist or the switch into configuration re-tiers the change per
+`../architecture/lld.md` section 39.6 and is re-authored with its own
+rollback note.
+
 <!-- ao-role: release-manager -->
 Role: release-manager · AO session hotel-mgmt-1041
 
@@ -403,3 +474,6 @@ Role: release-manager · AO session hotel-mgmt-1049
 Role: architect · AO session hotel-mgmt-1057
 <!-- ao-role: release-manager -->
 Role: release-manager · AO session hotel-mgmt-936
+
+<!-- ao-role: release-manager -->
+Role: release-manager · AO session hotel-mgmt-1281

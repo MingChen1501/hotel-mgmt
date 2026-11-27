@@ -82,6 +82,67 @@ or upgrade, the delivery team opens the desk and confirms the
 hotel's own name, times, charge items, and one rate plan are in
 effect before handing over.
 
+**Per-sale secrets in the host environment (Refs #638).** From this
+bundle the installation carries a third per-sale secret.
+`ADMIN_TOKEN_KEY` is the HMAC key that signs and verifies every Admin
+session token, and the admin module refuses to boot without it, exactly
+as it refuses without `ADMIN_BOOT_SECRET`. All three are
+environment inputs for the host — never per-hotel configuration values
+(`hotel.json`), never repository content, never image content:
+
+| Secret | Consumed by | Unusable when |
+|---|---|---|
+| `DB_PASSWORD` | every module's `DATABASE_URL` and `POSTGRES_PASSWORD` (`deploy/compose.yaml`) | unset or still a dev default (`script/preflight.sh`) |
+| `ADMIN_BOOT_SECRET` | the `admin` service at boot (`ADMIN_BOOT_IDENTITY` defaults to `owner`) | unset, empty, or exactly one of `change-me`, `change-me-dev-only`, `password`, `hotel`, `hotel-dev-only` |
+| `ADMIN_TOKEN_KEY` | the `admin` service at boot: the signing and verification key for every session token | the same test as `ADMIN_BOOT_SECRET` |
+
+The three are generated per sale, unique per property and unique per
+secret, handed over under the sealed one-to-one rule above, and recorded
+in the handover record like the initial account secrets. A value that a
+person can guess, that appears in this repository, or that a previous
+sale used is not a per-sale secret.
+
+**Admin refuses to boot without them (Refs #638).** Outside one explicit
+dev/test switch the admin module exits non-zero before it builds a
+store, connects to the database, applies a migration, seeds the owner
+account, or opens its port, as soon as either secret is unusable. The
+operator sees one plain line on stderr and nothing else:
+
+```text
+admin: refusing to boot: <VARIABLE> is unset, empty, or a published default; provision the per-sale secret or set ADMIN_DEV_MODE=1 for dev/test.
+```
+
+`ADMIN_TOKEN_KEY` is checked first and `ADMIN_BOOT_SECRET` second, so a
+host missing both names the key on the first boot and the secret on the
+next. The exit code is `1`, no secret value is printed, and nothing
+happens: no store, no database connection, no migration, no owner
+account, and no `/healthz` answer, so a container that cannot boot reads
+unhealthy instead of healthy with published credentials. The dev switch
+is `ADMIN_DEV_MODE` set to the exact string `1`; it restores the two dev
+fallbacks (`dev-only-change-me` for the key, `change-me` for the boot
+secret) only where a real value is absent, and the boot logs one warning
+naming the switch. It is dev/test only: `NODE_ENV` decides nothing in
+either direction, and both production gates (`script/preflight.sh` and
+the Ansible pre-check) refuse an install or upgrade that has the switch
+set — see section 5.
+
+**What each environment carries (Refs #638).**
+
+| Environment | `ADMIN_TOKEN_KEY` | `ADMIN_BOOT_SECRET` | `ADMIN_DEV_MODE` |
+|---|---|---|---|
+| A sale — install, upgrade, handover | required, generated per sale | required, generated per sale | never set; the pre-flight and the Ansible pre-check refuse it |
+| CI e2e jobs (`e2e-single-host`, `browser-e2e`, `dom-diff`) | required: a throwaway non-default value | required: the same | never set |
+| Local dev, env-file path (`../devops/local-dev-setup.md`, section 3) | required unless the switch is used | required unless the switch is used | optional, dev only |
+| A throwaway lab that deliberately runs on the dev defaults | optional | optional | the only place it may be set |
+
+Changing `ADMIN_TOKEN_KEY` on a running installation signs every staff
+session out: a token minted under the old key no longer verifies, and
+each person signs in again once. That is the expected effect of the
+first boot with a real key after an upgrade from a bundle that used the
+published default (section 4). Rotation as a procedure is not part of
+this change and is not performed by re-running the installer; the
+per-change note is in `../release/rollback.md`, section 5.7.
+
 **Bundle-level service addresses.** The module-to-module addresses
 are part of the bundle, not of the hotel's configuration set, because
 they describe the installation's own topology and never differ per
@@ -188,7 +249,11 @@ health check.
    and the billing module reaching the stay module on the hotel
    LAN (a folio write refuses while it cannot, so new charges and
    payments are blocked until it answers — section 5,
-   `../operations/runbook.md`, section 14).
+   `../operations/runbook.md`, section 14), and the admin module
+   answering `/healthz` at all — it only listens with both per-sale
+   Admin secrets provisioned, and exits at boot when one is missing,
+   empty, or a published default (section 2,
+   `../operations/runbook.md`, section 16).
 6. Sign in as the owner account, verify the hotel profile, rooms,
    rate plans, and charge items from step 3, and record one test
    reservation end to end (book, check in, post a charge, check
@@ -228,6 +293,39 @@ every inter-host endpoint over the hotel LAN before step 6.
    the end-to-end reservation check from section 3 step 6.
 7. Keep the pre-upgrade backup until the hotel has operated at
    least one full business day on the new version.
+
+**Admin needs its signing key before the bundle lands (upgrade only,
+Refs #638).** This bundle stops Admin falling back to published
+defaults, so an upgrade that forgets one of the two Admin secrets stops
+the sign-in service. Provision both in the host environment **before
+step 2** — before the pre-flight, before the old bundle is replaced, and
+before any module starts — because Admin applies no fallback and the
+desk cannot sign in while it is down:
+
+- `ADMIN_TOKEN_KEY`: generate one per sale. Without it Admin exits `1`
+  with `admin: refusing to boot: ADMIN_TOKEN_KEY is unset, empty, or a
+  published default; …` and never opens its port.
+- `ADMIN_BOOT_SECRET`: confirm the value the sale already uses is not a
+  published default (`change-me`, `change-me-dev-only`, `password`,
+  `hotel`, `hotel-dev-only`). A host that inherited the compose fallback
+  `change-me-dev-only` now refuses to boot where it used to start.
+- `ADMIN_DEV_MODE`: confirm it is not set on the target hosts. A bundle
+  or host that carries the switch restores the published defaults; the
+  pre-flight refuses it (section 5).
+
+The check order is fixed: `ADMIN_TOKEN_KEY` first, then
+`ADMIN_BOOT_SECRET`, so a host missing both names the key on the first
+attempt and the secret on the second — one restart per variable, never a
+silent start. What the desk sees and the operator does is
+`../operations/runbook.md`, section 16. Expect one one-time effect: the
+first boot with a real key invalidates the session tokens minted under
+the old default, so staff sign in again once. Nothing else changes — no
+schema migration, no data backfill, no restart-order change, and the
+owner account keeps the hash the earlier boot seeded (`ensureBootUser`
+never overwrites it). If the installation ever booted with a published
+default, that stored owner password is still live: rotate it through
+`ChangeSecret` (`../devops/local-dev-setup.md`, section 7) at the
+upgrade and record it in the upgrade record.
 
 **Rooms stranded by an older bundle (upgrade only, Refs #647).** An
 installation upgraded from a bundle that predates the desk room
@@ -301,6 +399,17 @@ Run before every install and every upgrade; stop on any failure:
 - First secrets are provisioned and handed over per the handover
   step in section 2 (initial secret per role account, changed on
   first sign-in).
+- All three per-sale secrets are present in the provisioning
+  environment and none is empty or a published default
+  (`change-me`, `change-me-dev-only`, `password`, `hotel`,
+  `hotel-dev-only`): `DB_PASSWORD`, `ADMIN_BOOT_SECRET`, and
+  `ADMIN_TOKEN_KEY` (Refs #638). `script/preflight.sh` and the Ansible
+  pre-check refuse the install or upgrade when one is missing or on that
+  list, so the failure is caught here rather than at the Admin boot.
+- `ADMIN_DEV_MODE` is **not** set on any target host (Refs #638): the
+  switch restores the published Admin defaults and both gates refuse it.
+  `NODE_ENV` is not a substitute in either direction and is never read
+  for this decision.
 - The database has no running backup or restore job in progress.
 - For upgrades only: the pre-upgrade backup from section 4 step 1
   exists and its success report is confirmed.
@@ -325,6 +434,16 @@ fixed within the working day, roll back:
    note lives there, and section 4 records the outcome of this
    restore-and-redeploy procedure) and file an issue for the failure.
 
+Reverting a bundle that carries the Admin boot secrets (Refs #638)
+restores the previous fail-open boot for as long as the reverted build is
+installed: sessions are signed with a key published in this repository
+and a forgetful host seeds an owner account whose password is
+`change-me`. That is a security regression, not a neutral revert — take
+it only as an emergency measure while a corrected bundle ships, record
+the exposure window, and follow `../release/rollback.md`, section 5.7.
+A host that keeps `ADMIN_TOKEN_KEY` in its environment after the revert
+is unaffected: the old code ignores the variable.
+
 <!-- ao-role: release-manager -->
 Role: release-manager · AO session hotel-mgmt-1041
 
@@ -339,3 +458,6 @@ Role: release-manager · AO session hotel-mgmt-1049
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1057
+
+<!-- ao-role: release-manager -->
+Role: release-manager · AO session hotel-mgmt-1281
