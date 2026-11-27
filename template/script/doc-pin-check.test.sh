@@ -412,6 +412,31 @@ expect_contains "an explicit --allow overrides the root baseline" "explicit base
 expect_absent "the root baseline is not read when --allow is given" "root baseline"
 rm -rf "${root}/script"
 
+# A row without a reason is a BAD-ALLOW finding: one reviewed reason per
+# entry is required.
+printf '%s\t%s\t%s\t\n' \
+  "docs/architecture/services/demo.md" "services/demo/src/thing.ts:11" "MISMATCH" \
+  >"${work}/allow.tsv"
+run_check --allow "${work}/allow.tsv" docs/architecture
+expect_status "an allow-list row without a reason fails the run" 1
+expect_contains "the reason-less row is reported as BAD-ALLOW" "BAD-ALLOW"
+
+# --no-allow ignores the default root allow-list when a local run must show
+# the full inventory.
+mkdir -p "${root}/script"
+printf '%s\t%s\t%s\t%s\n' \
+  "docs/architecture/services/demo.md" "services/demo/src/thing.ts:11" "MISMATCH" "root baseline" \
+  >"${root}/script/doc-pin-allowlist.tsv"
+write_doc <<'EOF'
+# Demo
+
+- X2: shifted (`src/thing.ts:11`) <!-- pin: requireCapacity -->.
+EOF
+run_check --no-allow docs/architecture
+expect_status "--no-allow fails on a finding in the default allow-list" 1
+expect_contains "--no-allow reports the finding" "MISMATCH	docs/architecture/services/demo.md	3	services/demo/src/thing.ts:11"
+rm -rf "${root}/script"
+
 # The default keyword map is <root>/script/doc-pin-keywords.tsv when
 # --keywords is omitted.
 mkdir -p "${root}/script"

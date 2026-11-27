@@ -56,6 +56,8 @@
 #                     reported, never silently skipped. Default:
 #                     `script/doc-pin-allowlist.tsv` under the root, when
 #                     present; --allow overrides it.
+#   --no-allow        ignore the default allow-list, so a local run can
+#                     show the full pre-flip inventory.
 #   --report-only     always exit 0 (a local inspection mode); findings are
 #                     still printed and counted.
 #   --all             print one record per pin, including PASS/UNVERIFIED.
@@ -69,10 +71,9 @@
 # inventory comes from `git ls-files` in a git checkout (a clean checkout
 # is the supported input) and from `find` under --root for fixtures.
 #
-# Blocking since issue #787: a finding fails the run unless it is an
-# explicit allow-list row. The allow-list is the reviewed baseline for
-# pins whose target is known-stale; cleanup removes rows, never adds a
-# blanket skip.
+# Blocking: a finding fails the run unless it is an explicit allow-list
+# row. The allow-list is the reviewed baseline for pins whose target is
+# known-stale; cleanup removes rows, never adds a blanket skip.
 
 set -euo pipefail
 LC_ALL=C
@@ -81,6 +82,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 KEYWORDS=""
 ALLOW=""
+NO_ALLOW=0
 REPORT_ONLY=0
 SHOW_ALL=0
 QUIET=0
@@ -102,6 +104,7 @@ Usage:
                     is a STALE-ALLOW finding. Default:
                     script/doc-pin-allowlist.tsv under the root, when
                     present; --allow overrides it.
+  --no-allow        ignore the default allow-list (show the full inventory).
   --report-only     always exit 0 (a local inspection mode); findings are
                     still printed and counted.
   --all             print one record per pin, including PASS/UNVERIFIED.
@@ -119,6 +122,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --keywords) KEYWORDS="${2:-}"; shift 2 ;;
     --allow) ALLOW="${2:-}"; shift 2 ;;
+    --no-allow) NO_ALLOW=1; shift ;;
     --report-only) REPORT_ONLY=1; shift ;;
     --all) SHOW_ALL=1; shift ;;
     --quiet) QUIET=1; shift ;;
@@ -150,7 +154,7 @@ if [[ -n "${ALLOW}" ]]; then
 fi
 # A project keeps its reviewed baseline next to the scripts; a fixture root
 # without the file gets no allow-list, so --root stays hermetic.
-if [[ -z "${ALLOW}" && -f "${ROOT}/script/doc-pin-allowlist.tsv" ]]; then
+if [[ "${NO_ALLOW}" -eq 0 && -z "${ALLOW}" && -f "${ROOT}/script/doc-pin-allowlist.tsv" ]]; then
   ALLOW="${ROOT}/script/doc-pin-allowlist.tsv"
 fi
 
@@ -549,6 +553,10 @@ BEGIN {
         allowdiag("BAD-ALLOW", (n >= 1 ? f[1] : "-"), (n >= 2 ? f[2] : "-"), (n >= 3 ? f[3] : "-"), (n >= 4 ? f[4] : "-"), "malformed allow-list row (need doc, target, status, reason)")
         continue
       }
+      if (f[4] == "") {
+        allowdiag("BAD-ALLOW", f[1], f[2], f[3], f[4], "allow-list row needs a reason")
+        continue
+      }
       if (f[3] !~ /^(MISSING|MISMATCH|EOF)$/) {
         allowdiag("BAD-ALLOW", f[1], f[2], f[3], f[4], "allow-list status must be MISSING, MISMATCH, or EOF")
         continue
@@ -650,6 +658,7 @@ END {
 if [[ "${QUIET}" -eq 0 ]]; then
   echo "# doc-pin-check v1 (content-verified pins)"
   echo "# fields: status	doc	doc-line	target	expected	actual"
+  echo "# ALLOWED rows append a 7th field: reason"
   [[ -z "${KEYWORDS}" ]] || echo "# keywords ${KEYWORDS#"${ROOT}"/}"
   [[ -z "${ALLOW}" ]] || echo "# allow-list ${ALLOW#"${ROOT}"/}"
   # Findings first (everything not PASS / not the informational classes),
@@ -688,7 +697,7 @@ total_findings=$((findings + bad + badallow))
 
 if [[ "${total_findings}" -gt 0 ]]; then
   if [[ "${REPORT_ONLY}" -eq 1 ]]; then
-    echo "doc-pin-check: REPORT-ONLY — ${total_findings} finding(s); not failing the run (issue #786 first iteration)."
+    echo "doc-pin-check: REPORT-ONLY — ${total_findings} finding(s); exit 0 for local inspection (no CI gate)."
     exit 0
   fi
   echo "doc-pin-check: FAIL — ${total_findings} finding(s)." >&2

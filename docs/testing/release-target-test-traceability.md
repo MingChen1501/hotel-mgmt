@@ -237,7 +237,7 @@ merged head. The MVP Coverage line below stands unchanged at 57/57.
 | L1 desk regression, app | `REL-10` | `cd app && npm run build && npm run lint && npm test` | CI `app-build` |
 | LC contract | `REL-11` | `script/contract-check.sh` | CI `contract-check` |
 | Catalogue | `REL-12` | `script/catalogue-coverage-check.sh` | CI `ci` |
-| Docs and harness | this spec | `script/markdown-link-check.sh`, `script/harness-conventions-check.sh`, `script/doc-pin-check.sh --report-only` | CI `doc-pins` / `ci` |
+| Docs and harness | this spec | `script/markdown-link-check.sh`, `script/harness-conventions-check.sh`, `script/doc-pin-check.sh` | CI `doc-pins` / `ci` |
 | Deployment-shaped e2e | `REL-10` | `script/e2e-perf-check.sh --base-url http://127.0.0.1`; the desk loop `script/e2e-desk-loop.sh` | CI `e2e-single-host` for the timed run; the desk loop on the lab |
 
 ### Execution order

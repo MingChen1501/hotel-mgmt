@@ -24,7 +24,7 @@ docs/architecture/services/rooms.md	services/rooms/src/store.ts:404	STATE_ILLEGA
 docs/architecture/services/rooms.md	services/rooms/src/store.ts:468	STATE_ILLEGAL
 docs/architecture/services/rooms.md	services/rooms/src/store.ts:479	STATE_ILLEGAL
 docs/architecture/services/rooms.md	services/rooms/src/store.ts:476	CONFLICT
-docs/architecture/services/rooms.md	services/rooms/src/store.ts:484-485	occupied
+docs/architecture/services/rooms.md	services/rooms/src/store.ts:484-492	occupied
 
 # #638 Admin fail-closed boot testing spec (issue #638). The section-2
 # as-built pins, the bundle/pre-flight/Ansible/CI pins, and the guard

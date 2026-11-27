@@ -11,10 +11,13 @@
 # Format (tab-separated, `#` starts a comment line):
 #   <doc path>	<target>	<status>	<reason>
 #
-# `target` is the resolved repo-relative `path:line` the check prints (a
-# module-relative or inherited pin is already resolved). A range pin is
-# keyed by its first line. The key is doc + target + status, so an
-# allow-listed claim never masks a different target or a different class.
+# `target` is the resolved repo-relative `path:line` exactly as the check
+# prints it (a module-relative or inherited pin is already resolved, and a
+# range keeps its full line spec, e.g. `:343-375`). Only the keyword map
+# matches a range by its first line; an allow row keys the full target.
+# The key is doc + target + status, so an allow-listed claim never masks a
+# different target, a re-ranged pin, or a different class. `--no-allow`
+# ignores this file when a local run must show the full inventory.
 #
 # This baseline is the reviewed triage of the pre-existing inventory, not
 # a blanket waiver: the check was report-only until #787 and the inventory
