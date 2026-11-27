@@ -19,10 +19,13 @@ Before the demo, the delivery team confirms all of these:
    (copied from `deploy/config/hotel.example.json` with the hotel's
    own values; never the EXAMPLE-001 placeholder, never real hotel
    data committed).
-3. Two per-sale secrets ready, neither left on a dev default: the
-   database secret (`DB_PASSWORD`) and the owner boot secret
-   (`ADMIN_BOOT_SECRET`). The owner types or pastes them; they are
-   never shown on screen or written down.
+3. Three per-sale secrets ready, none left on a dev default: the
+   database secret (`DB_PASSWORD`), the owner boot secret
+   (`ADMIN_BOOT_SECRET`), and the session signing key
+   (`ADMIN_TOKEN_KEY`, Refs #638 — the Admin service refuses to boot
+   without it, and a demo that skips it stops at the pre-flight). The
+   owner types or pastes them; they are never shown on screen or written
+   down.
 4. An empty (or existing) writable backup staging area
    (default `./backup-staging`).
 5. The owner (or manager) present to observe and sign off.
@@ -33,6 +36,7 @@ From the repo root, one command only:
 
 ```sh
 DB_PASSWORD=<per-sale secret> ADMIN_BOOT_SECRET=<per-sale secret> \
+  ADMIN_TOKEN_KEY=<per-sale secret> \
   script/demo-poc.sh
 ```
 
@@ -41,7 +45,12 @@ gates — `script/preflight.sh`, then `script/e2e-desk-loop.sh` with
 the stack left up — plus artefact collection. It takes about as
 long as the installer proof (tens of minutes on first build). There
 are no variants: any flags beyond `--config`, `--staging-dir`,
-`--base-url`, and `--log-file` are refused.
+`--base-url`, and `--log-file` are refused. From #638 the three
+secrets are the per-sale set: the pre-flight fails closed and names
+which one is missing or still a dev default, and a boot without
+`ADMIN_TOKEN_KEY` would otherwise stop the Admin (sign-in) service
+before the desk can sign in. Never set `ADMIN_DEV_MODE=1` for a demo:
+the gates refuse it and it restores the published defaults.
 
 ## 3. Per-step pass/fail table
 
@@ -101,3 +110,6 @@ filed as issues — never silently fixed.
 
 <!-- ao-role: release-manager -->
 Role: release-manager · AO session hotel-mgmt-269
+
+<!-- ao-role: release-manager -->
+Role: release-manager · AO session hotel-mgmt-1281

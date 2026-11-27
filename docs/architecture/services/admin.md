@@ -236,6 +236,43 @@ Role: architect · AO session hotel-mgmt-249
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1164
 
+Secrets at boot (Refs #638), specified — the implementation PR lands it;
+the pins above are the pre-change head this delta was written against.
+Two secrets used to fall back to published constants: the signing key to
+`dev-only-change-me` (`src/store.ts:234`, `src/pgstore.ts:72`) and the
+boot owner secret to `change-me` (`src/server.ts:119-123`). From this
+change the service resolves both at the top of `main`, before the store,
+the migrations, the seed, and `listen`, and refuses to boot when either
+is unusable outside one explicit dev switch. The environment contract:
+
+| Variable | Required | Default | Refused when |
+|---|---|---|---|
+| `ADMIN_TOKEN_KEY` | yes | none | unset, empty, or exactly `change-me`, `change-me-dev-only`, `password`, `hotel`, `hotel-dev-only` |
+| `ADMIN_BOOT_SECRET` | yes | none | the same test |
+| `ADMIN_BOOT_IDENTITY` | no | `owner` when undefined | never |
+| `ADMIN_DEV_MODE` | no | off | — the switch; only the exact value `1` enables the dev fallbacks |
+| `PORT` | no | `8088` | never |
+| `DATABASE_URL` | no | in-memory store | never |
+
+A refused boot writes nothing, creates no owner, opens no port, never
+answers `/healthz`, exits `1`, and prints one plain English line on
+stderr naming the variable and the two ways forward — provision the
+per-sale secret, or set `ADMIN_DEV_MODE=1` for dev/test — never a value.
+`NODE_ENV` decides nothing. With `ADMIN_DEV_MODE=1`, a missing key uses
+`dev-only-change-me`, a missing boot secret uses `change-me`, a provided
+value still wins, and the boot logs one warning naming the switch; the
+production pre-flight and Ansible pre-check refuse the switch, so it
+cannot travel into a sale. Local unit tests need neither variable (every
+suite passes an explicit key or seeds the owner directly); a local
+`npm run dev` either exports the two values or sets the switch. The
+deployment, env-file, runbook, release-note, and rollback documents that
+carry the third per-sale secret are `release-manager` work. Design: LLD
+[section 39](../lld.md#39-admin-refuses-to-boot-without-its-per-sale-signing-key-and-boot-secret-refs-638);
+threat model sections 4, 5, and 8 (R12).
+
+<!-- ao-role: architect -->
+Role: architect · AO session hotel-mgmt-1279
+
 ## 8. As-built delta — session-derived audit actor (Refs #643)
 
 The transport resolves the caller before reading the body

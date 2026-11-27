@@ -736,6 +736,105 @@ signal R9 records (`docs/release/release-notes.md` section 2.3); until a
 monitoring exporter lands it is read from these desk reports, so log
 every occurrence in the support ticket with its time.
 
+## 16. Admin refuses to boot: nobody can sign in
+
+This release stops the sign-in service (the admin module) from starting
+on a published default password or signing key. It starts only when the
+installation's two Admin secrets are set. A host that is missing one
+either stops at the stack's own startup check, or starts every other
+module and then stops the sign-in service — and while it is stopped
+nobody can sign in.
+
+### 16.1 What you see
+
+- The sign-in screen refuses every identity, the correct one included,
+  and the desk screens behind it never load.
+- The other modules look normal: a booking read, a room list, or a folio
+  already open in a signed-in session may keep working until it idles
+  out, because only the sign-in service is down.
+- The delivery team's or support's check shows either the stack refusing
+  to start with the missing variable named, or the admin container
+  stopped shortly after it started with one line in its log.
+
+### 16.2 What to do
+
+1. Do not keep trying the sign-in screen, and do not share or re-enter
+   passwords: this is not a wrong password and no identity is locked.
+2. Write down the exact sentence the log shows and the time, and call
+   support (section 7). Say that the sign-in service stopped at startup.
+3. Tell the front desk to work from the paper fallback for check-in and
+   checkout until support confirms the desk is back (section 4), and
+   keep the same rule as section 4: nothing is guessed and no figure is
+   written by hand.
+4. Support sets the named secret, restarts the service, and confirms the
+   desk signs in. Expect everyone to sign in again once — that is
+   normal after this release and not a fault.
+
+### 16.3 The two causes
+
+The startup line names one of two variables, and the second boot names
+the other if both are missing:
+
+- **`ADMIN_TOKEN_KEY`** — the key that signs a session. The installation
+  did not have it set before the upgrade.
+- **`ADMIN_BOOT_SECRET`** — the owner account's first password. It was
+  missing, empty, or still a published default (`change-me`,
+  `change-me-dev-only`, `password`, `hotel`, `hotel-dev-only`), which
+  this release refuses.
+
+Neither cause is a data problem: no booking, folio, payment, room, or
+account is affected, and no repair pass or restore is needed. There is
+one exception to record: once the real key is in place, every session
+signed under the old default ends and each person signs in again.
+
+### 16.4 Support note (technical)
+
+The refusal is a boot outcome, not an HTTP answer: the process writes one
+plain English line to stderr and exits `1`, before it builds a store,
+connects to the database, applies a migration, seeds the owner, or opens
+its port. `/healthz` therefore never answers and the container reads
+unhealthy; the proxy returns its generic 5xx for `/v1/admin/*` and the
+desk's sign-in call fails. The line is:
+
+```text
+admin: refusing to boot: <VARIABLE> is unset, empty, or a published default; provision the per-sale secret or set ADMIN_DEV_MODE=1 for dev/test.
+```
+
+Fix in this order:
+
+1. Provision the named variable on the host in the env file that
+   `docker compose`/Ansible reads (`docs/devops/deployment.md`, section
+   2; `docs/devops/local-dev-setup.md`, section 3). Generate
+   `ADMIN_TOKEN_KEY` per sale; never copy one from another property,
+   from this repository, or from an earlier sale.
+2. Re-run `script/preflight.sh` with the three secrets exported
+   (`DB_PASSWORD`, `ADMIN_BOOT_SECRET`, `ADMIN_TOKEN_KEY`). It refuses a
+   missing or published value and refuses a host that has
+   `ADMIN_DEV_MODE` set.
+3. Restart in the documented order (section 3): database, modules,
+   proxy — or only the admin container when nothing else moved — then
+   confirm `/v1/admin/healthz` answers through the proxy and one owner
+   sign-in succeeds.
+4. Repeat steps 1–3 once if the log then names `ADMIN_BOOT_SECRET`:
+   `ADMIN_TOKEN_KEY` is checked first, so a host missing both reports
+   them one boot at a time.
+
+Do not set `ADMIN_DEV_MODE=1` on a hotel installation to get the desk
+back. It restores both published defaults — a key anyone can read in
+this repository signs sessions, and the owner password is `change-me` —
+and both production gates refuse it (`docs/devops/deployment.md`,
+section 5). `NODE_ENV` does not open the fallbacks in either direction,
+and no other variable does.
+
+Diagnostics that are safe to collect: the exit code (`1`), the one log
+line, `docker compose ps` state for the `admin` service, and whether
+`/healthz` answers. Never paste a secret value, a session token, or the
+contents of the env file into a ticket. There is no migration, no
+backfill, and no session repair to run: a restart with the values in
+place is the whole fix, and the pre-upgrade backup is untouched. The
+per-change record is `docs/release/rollback.md`, section 5.7, and the
+bundle-level procedure is `docs/devops/deployment.md`, section 4.
+
 <!-- ao-role: release-manager -->
 Role: release-manager · AO session hotel-mgmt-1041
 
@@ -750,3 +849,6 @@ Role: release-manager · AO session hotel-mgmt-1049
 
 <!-- ao-role: architect -->
 Role: architect · AO session hotel-mgmt-1057
+
+<!-- ao-role: release-manager -->
+Role: release-manager · AO session hotel-mgmt-1281
