@@ -214,7 +214,8 @@ link checks).
 ### Execution order
 
 1. Reservations suite (memory store, then the Postgres parity cases
-   with `DATABASE_URL` set). A red `DR*` case stops the run.
+   with `TEST_PG_URL` set, in the `postgres-parity (reservations)` CI
+   job). A red `DR*` case stops the run.
 2. Stay suite (memory store, then the Postgres block).
 3. Contract and route checks (the additive operation and field must
    not break the existing desk fixtures).

@@ -190,10 +190,11 @@ explicit key and seeds the owner directly (the pins in the table), so
 none reads `ADMIN_TOKEN_KEY` or `ADMIN_BOOT_SECRET`. This spec PR is
 docs-only and runs the docs and `ci` jobs with the build matrices
 path-filtered out; the implementation PR supplies the `node-build
-(admin)`, `e2e-single-host`, `browser-e2e`, `dom-diff`,
-`contract-check`, and `ci` evidence, which is why its job list is stated
-in section 5 and `BOOT-E1` records the bundle and Postgres halves
-separately.
+(admin)`, `e2e-single-host`, `browser-e2e`, `contract-check`, and `ci`
+evidence (`dom-diff` is FE-only and SKIPPED for this Admin-only slice —
+`.github/workflows/ci.yml:87-91`, `:185-190`), which is why its job list
+is stated in section 5 and `BOOT-E1` records the bundle and Postgres
+halves separately.
 
 ## 3. Guard registry BOOT1-BOOT5, the residual-risk record BOOT-R1, and the evidence rule BOOT-E1
 
@@ -220,7 +221,7 @@ real entry point in a child process; the Postgres halves run in the
 
 | Guard | Obligation (case) | Lands in |
 |---|---|---|
-| `BOOT1` | A production boot without a signing key is refused before any side effect: with `ADMIN_BOOT_SECRET` provisioned, `ADMIN_TOKEN_KEY` unset — and again empty (`""`) — and no switch, the process exits `1` and writes exactly one stderr line naming `ADMIN_TOKEN_KEY`, the two ways forward, and never a value; no listen, no `/healthz` answer, no store method called, and no token signed or verified. The resolver-level half calls `resolveBootConfig` with a constructed environment and asserts the `BootConfigError` names the variable without a value; the Postgres half sets `DATABASE_URL` and proves no migration ran and `admin.users` stays empty, so the refusal precedes the connection. Control: with a provisioned non-default key the same command boots, answers `/healthz`, and signs and verifies a token. Code-reading half: no keyless construction path survives — `grep -rn ADMIN_TOKEN_KEY services/admin/src` names the resolver only, neither store constructor reads the environment, and `createServiceServer` has no default store (`services/admin/src/server.ts:97`) | `services/admin/src/bootConfig.test.ts` (resolver unit) + `services/admin/src/server.test.ts` (child-process boot, memory) + `services/admin/src/pgstore.test.ts` (child-process boot on a scratch database) |
+| `BOOT1` | A production boot without a signing key is refused before any side effect: with `ADMIN_BOOT_SECRET` provisioned, `ADMIN_TOKEN_KEY` unset — and again empty (`""`) — and no switch, the process exits `1` and writes exactly one stderr line naming `ADMIN_TOKEN_KEY`, the two ways forward, and never a value; no listen, no `/healthz` answer, no store method called, and no token signed or verified. The resolver-level half calls `resolveBootConfig` with a constructed environment and asserts the `BootConfigError` names the variable without a value; the Postgres half runs under the suite gate `TEST_PG_URL` (`services/admin/src/pgstore.test.ts:17`) and hands that same value to the spawned refused-boot child as `DATABASE_URL` (`:381`, `:393`), which the service reads at boot (`services/admin/src/index.ts:14`); it proves no migration ran and `admin.users` stays empty, so the refusal precedes the connection. Control: with a provisioned non-default key the same command boots, answers `/healthz`, and signs and verifies a token. Code-reading half: no keyless construction path survives — `grep -rn ADMIN_TOKEN_KEY services/admin/src` names the resolver only, neither store constructor reads the environment, and `createServiceServer` has no default store (`services/admin/src/server.ts:97`) | `services/admin/src/bootConfig.test.ts` (resolver unit) + `services/admin/src/server.test.ts` (child-process boot, memory) + `services/admin/src/pgstore.test.ts` (child-process boot on a scratch database) |
 | `BOOT2` | A production boot without a usable owner secret is refused, and no published default seeds an owner: with `ADMIN_TOKEN_KEY` provisioned, boot once with `ADMIN_BOOT_SECRET` unset, once empty, and once per denylist entry (`change-me`, `change-me-dev-only`, `password`, `hotel`, `hotel-dev-only`) and no switch; each exits `1` with one stderr line naming `ADMIN_BOOT_SECRET`, never the value, creates no owner in either store (`usersByIdentity` / `SELECT … FROM admin.users`), and `/healthz` refuses. Control: a provisioned non-default secret seeds the owner exactly as today — the same `boot` actor, `owner` role, and hash-only storage (`services/admin/src/server.test.ts:28-32`, `services/admin/src/pgstore.test.ts:33-38`) | `services/admin/src/bootConfig.test.ts` + `services/admin/src/server.test.ts` (memory) + `services/admin/src/pgstore.test.ts` (Postgres) |
 | `BOOT3` | The switch is the only way back to the dev fallbacks, and nothing else enables them: with `ADMIN_DEV_MODE=1` and both variables absent the service boots, signs and verifies with `dev-only-change-me`, seeds `change-me`, and logs exactly one warning naming the switch and each fallback in use; a provided value still wins in both slots; with the switch absent, empty, `0`, `01`, `true`, or `yes` each boot refuses per `BOOT1`/`BOOT2`; with `NODE_ENV=production` and no switch it still refuses, and with the switch on `NODE_ENV` changes nothing. The resolver unit asserts the same switch matrix directly | `services/admin/src/bootConfig.test.ts` + `services/admin/src/server.test.ts` |
 | `BOOT4` | The local suite is green with neither variable exported: `env -u ADMIN_TOKEN_KEY -u ADMIN_BOOT_SECRET npm test` in `services/admin` exits `0`, every existing Admin assertion keeps its wording (the seven suites, including `messages.test.ts`), any suite that exercises the real boot sets `ADMIN_DEV_MODE=1` for that child process only, and the `node-build (admin)` CI job still runs with no `ADMIN_*` variable exported (`ci.yml:343-375`) | `services/admin` suite run + CI `node-build (admin)` + diff gate (no assertion deleted or loosened) |
@@ -288,17 +289,21 @@ the rows at the merged head. The MVP Coverage line in
 | Level | What runs | Command (authoritative: `docs/architecture/services/admin.md` section 7) |
 |---|---|---|
 | L1 service, Admin (memory store) | `BOOT1`–`BOOT3` child-process boots and resolver units, `BOOT4`, plus every existing Admin pin | `cd services/admin && npm ci && npm run build && npm test && npm run lint` (CI `node-build (admin)`; `npm test` builds first) |
-| L1 service, Admin (Postgres parity) | The `BOOT1`/`BOOT2` scratch-database halves: no migration applied, no `admin.users` row, the provisioned controls seed and sign in | the Admin suite in the `postgres-parity (admin)` matrix job, which applies the Admin migrations and exports `TEST_PG_URL`; the cases skip without it, and the job fails on any skipped case |
+| L1 service, Admin (Postgres parity) | The `BOOT1`/`BOOT2` scratch-database halves: no migration applied by the refused boot, no `admin.users` row, the provisioned controls seed and sign in | the Admin suite in the `postgres-parity (admin)` matrix job, which applies the Admin migrations and exports `TEST_PG_URL`; the suite gate is `services/admin/src/pgstore.test.ts:17` (`const DATABASE_URL = process.env["TEST_PG_URL"]`), the cases skip without it, and the spawned refused-boot child receives that value as `DATABASE_URL` (`:381`, `:393`), which the service reads at boot (`services/admin/src/index.ts:14`); the job fails on any skipped case |
 | L1 service, Admin (no-environment path) | `BOOT4`: the suite from a shell with neither variable exported | `cd services/admin && env -u ADMIN_TOKEN_KEY -u ADMIN_BOOT_SECRET npm test` |
 | L4 bundle and gate | `BOOT5`: compose, pre-flight, Ansible, the denylist parity, and the new pre-flight refusal cases | `bash script/test-preflight-fail-closed.sh` (plus `docker compose -f deploy/compose.yaml config` on a machine with Compose) |
 | LC contract | The no-change half: no contract file moved and every fixture still resolves | `script/contract-check.sh` (CI `contract-check`) |
 | Catalogue | The no-change half: no new key, both locales at parity | `script/catalogue-coverage-check.sh` (CI `ci`) |
-| E2E regression | The three e2e jobs boot Admin with explicit non-default values and no switch, and the desk loop still signs in | CI `e2e-single-host`, `browser-e2e`, `dom-diff` |
+| E2E regression | The `e2e-single-host` and `browser-e2e` jobs boot Admin with explicit non-default values and no switch, and the desk loop still signs in; `dom-diff` is FE-only and SKIPPED for an Admin-only change | CI `e2e-single-host`, `browser-e2e`; `dom-diff` is path-filtered to `app/**`, `docs/design/**`, `tests/design-facts/**`, and `docs/technical/desk-ui-fact-schema.md` (`.github/workflows/ci.yml:87-91`) and reports SKIPPED otherwise (`.github/workflows/ci.yml:185-190`) |
 | Gates | Links, harness conventions, whitespace | `script/markdown-link-check.sh`, `script/harness-conventions-check.sh`, `git diff --check` |
 
 CI jobs that must be green on the implementation PR: `node-build
-(admin)`, `e2e-single-host`, `browser-e2e`, `dom-diff`,
-`contract-check`, `migrate-check`, `ci`, and `postgres-parity (admin, node)`.
+(admin)`, `e2e-single-host`, `browser-e2e`, `contract-check`,
+`migrate-check`, `ci`, and `postgres-parity (admin, node)`. `dom-diff` is
+FE-only — path-filtered to `app/**`, `docs/design/**`,
+`tests/design-facts/**`, and `docs/technical/desk-ui-fact-schema.md`
+(`.github/workflows/ci.yml:87-91`) and SKIPPED for this Admin-only slice
+(`.github/workflows/ci.yml:185-190`) — so it is not a required check here.
 The Postgres parity half runs in the `postgres-parity (admin)` job, which
 applies the Admin migrations, exports `TEST_PG_URL`, and fails on any
 skipped case, so `BOOT-E1` records that job's run.

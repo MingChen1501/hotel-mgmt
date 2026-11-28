@@ -174,7 +174,8 @@ the catalogue coverage and link checks).
 ### Execution order
 
 1. Stay service suite (memory store, then the Postgres parity block
-   with `DATABASE_URL` set). A red `S*` case stops the run.
+   with `TEST_PG_URL` set, in the `postgres-parity (stay)` CI job). A
+   red `S*` case stops the run.
 2. Billing suite (`S11`).
 3. Contract and route checks (the additive bump must not break the
    desk build's fixtures).
