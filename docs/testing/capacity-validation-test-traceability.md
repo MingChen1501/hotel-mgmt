@@ -211,8 +211,9 @@ a fresh `traceId`. Every refusal is also asserted on its **stored
 effect** — a following read answers as before and no `room-upserted`
 event is emitted — because a 400 followed by a stored row is exactly the
 fail-open shape this slice removes. The in-memory half runs through
-`createServiceServer` at request level; the Postgres half runs on a
-scratch database through `TEST_PG_URL` and is skipped without it.
+`createServiceServer` at request level; the Postgres half runs in the
+`postgres-parity (rooms)` job against its fresh `postgres:16-alpine`
+service and is skipped without `TEST_PG_URL`.
 
 | Guard | Obligation (case) | Lands in |
 |---|---|---|
@@ -269,9 +270,9 @@ unchanged MVP row, the no-change NFR row, and the accepted-write half
 inside `AC-CAP-1`); the other fifteen are **pending** the implementation
 PR. The slice is **not complete** at this spec head; it completes when
 the implementation PR merges with `CAP1`–`CAP10` green, the Postgres
-halves recorded on a scratch database, `CAP-E1` recorded, and `qa-lead`
-re-pins the rows at the merged head. The MVP Coverage line below stands
-unchanged at 57/57.
+halves recorded in the `postgres-parity (rooms)` job, `CAP-E1` recorded,
+and `qa-lead` re-pins the rows at the merged head. The MVP Coverage line
+below stands unchanged at 57/57.
 
 ## 5. Test plan
 
@@ -280,7 +281,7 @@ unchanged at 57/57.
 | Level | What runs | Command (authoritative: `docs/architecture/services/rooms.md` section 7) |
 |---|---|---|
 | L1 service, Rooms (memory store) | `CAP1`–`CAP5` memory halves, `CAP10`, plus every existing rooms pin | `cd services/rooms && npm ci && npm run build && npm test && npm run lint` (CI `node-build (rooms)`; `npm test` builds first) |
-| L1 service, Rooms (Postgres parity) | `CAP1`–`CAP5` Postgres halves on a **scratch** database (the fixtures wipe `rooms.*`) | `cd services/rooms && TEST_PG_URL=postgres://… npm test`; the Postgres cases skip without `TEST_PG_URL` |
+| L1 service, Rooms (Postgres parity) | `CAP1`–`CAP5` Postgres halves on the job's fresh `postgres:16-alpine` service (the fixtures wipe `rooms.*`) | the Rooms suite in the `postgres-parity (rooms)` matrix job, which applies the Rooms migrations and exports `TEST_PG_URL`; the cases skip without it, and the job fails on any skipped case |
 | L1 desk UI | `CAP6` wizard refusals and the accepted path in both locales, plus the unchanged manage pin | `cd app && npm ci && npm run build && npm test && npm run lint` (CI `app-build`) |
 | LC contract | `CAP8`: the two contracts, the untouched fixtures, the `RoomInventoryService` row | `script/contract-check.sh` (CI `contract-check`) |
 | Catalogue | `CAP7`: the new key, the updated wizard sentence, the eight byte-identical mirrors, the Vietnamese parity | `script/catalogue-coverage-check.sh` (CI `ci`) |
@@ -289,19 +290,19 @@ unchanged at 57/57.
 | Gates | Links, harness conventions, whitespace | `script/markdown-link-check.sh`, `script/harness-conventions-check.sh`, `git diff --check` |
 
 CI jobs that must be green on the implementation PR: `node-build
-(rooms)`, `app-build`, `contract-check`, `ci`, and `e2e-single-host`,
-with `browser-e2e` running when the desk path is in the change set. The
-Postgres half is not a CI job (the matrix sets no `TEST_PG_URL`), which
-is why `CAP-E1` records the parity run explicitly; adding a
-database-backed job would be a CI change outside this slice's scope.
+(rooms)`, `app-build`, `contract-check`, `ci`, `e2e-single-host`, and
+`postgres-parity (rooms, node)`, with `browser-e2e` running when the desk path
+is in the change set. The Postgres half runs in the `postgres-parity
+(rooms)` job, which applies the Rooms migrations, exports `TEST_PG_URL`,
+and fails on any skipped case, so `CAP-E1` records that job's run.
 
 ### Execution order
 
 1. Rooms memory suite: the new `CAP*` cases first (a red case stops the
    run), then every existing rooms pin unchanged.
-2. Rooms Postgres suite with `TEST_PG_URL` on a scratch database: the
-   parity cases, the pre-change stored-value seed, then the wiped
-   fixture rows.
+2. Rooms Postgres suite in the `postgres-parity (rooms)` job
+   (`TEST_PG_URL` exported by the job): the parity cases, the pre-change
+   stored-value seed, then the wiped fixture rows.
 3. `script/contract-check.sh` and the catalogue gate (`CAP7`, `CAP8`):
    the two contracts resolve and the new key renders in both locales.
 4. The app suite (`CAP6`): the wizard refusals in both locales, then the
@@ -332,7 +333,7 @@ database-backed job would be a CI change outside this slice's scope.
 1. `CAP1`–`CAP10` exist and pass; every refusal asserts the full
    payload (`code`, `details.field`, `message`, `traceId`) **and** its
    stored effect (row unchanged or absent, no new `room-upserted`).
-2. The Postgres halves ran with `TEST_PG_URL` on a scratch database and
+2. The Postgres halves ran in the `postgres-parity (rooms)` job and
    answered the same codes, statuses, and payload shapes as the
    in-memory store.
 3. `CAP9` holds unchanged: every existing Rooms, app, e2e, and
@@ -427,10 +428,10 @@ capture method as the `#631`, `#633`, `#636`, and `#642` records):
   English and Vietnamese, and the server refuses the same value if a
   caller sends it anyway.
 - **Parity run.** The Postgres halves of `CAP1`, `CAP3`, `CAP4`, and
-  `CAP5` executed with `TEST_PG_URL` on a scratch database, with the
-  identical payloads from both stores recorded and the command pasted
-  (the Node matrix sets no `TEST_PG_URL`, so a green `node-build
-  (rooms)` job is not parity evidence on its own).
+  `CAP5` executed in the `postgres-parity (rooms)` job, which applies
+  the Rooms migrations, exports `TEST_PG_URL`, and fails on any skipped
+  case, with the identical payloads from both stores recorded (a green
+  `node-build (rooms)` job alone is not parity evidence).
 
 The slice's results also go to `docs/testing/test-report.md` (exit
 criterion 6 of the `test-strategy.md` [section 3](test-strategy.md)).

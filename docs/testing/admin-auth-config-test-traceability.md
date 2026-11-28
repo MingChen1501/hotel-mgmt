@@ -305,7 +305,7 @@ last ran, and the implementation PR runs both.
 |---|---|---|
 | L1 Admin server | `CFG1`-`CFG21` | `cd services/admin && npm ci && npm run build && npm test` |
 | L1 Admin catalogue | `CFG19` and `CFG13`'s rendered-sentence half | the same `npm test` (the `messages.test.ts` half) |
-| L1 Admin Postgres | `CFG11`, `CFG14`, `CFG16`, `CFG18` | the same `npm test` with `TEST_PG_URL` set; the `migrate-check` CI job applies the schema |
+| L1 Admin Postgres | `CFG11`, `CFG14`, `CFG16`, `CFG18` | the Admin suite in the `postgres-parity (admin)` matrix job, which applies the Admin migrations and exports `TEST_PG_URL`; the `migrate-check` job only checks that the migrations apply |
 | L1 Desk client | `CFG22` | `cd app && npm test` (`vitest run`) |
 | LC contract | `CFG23`: the manifests and fixtures byte-identical, both gates green | `script/contract-check.sh`, `script/openapi-route-check.sh` (CI `contract-check`) |
 | Gates | Catalogue parity, links, harness conventions, whitespace | `script/catalogue-coverage-check.sh`, `script/markdown-link-check.sh`, `script/harness-conventions-check.sh`, `git diff --check` |

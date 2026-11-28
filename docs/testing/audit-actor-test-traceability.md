@@ -297,7 +297,7 @@ each one.
 | L1 + L2 Reservations | `SEC13`-`SEC18`, `SEC29`, `SEC30`, `SEC31`, `SEC32`, `SEC33` | `cd services/reservations && go build ./... && go test ./... && go vet ./...` |
 | L1 + L2 Billing | `SEC19`-`SEC27`, `SEC30`, `SEC31`, `SEC32` | `cd services/billing && mvn -B verify` |
 | L1 + L2 Admin | `SEC28`, `SEC31`, `SEC32`, `SEC34` | `cd services/admin && npm ci && npm run build && npm test` |
-| L1 Postgres parity | the Postgres halves of `SEC1`-`SEC5`, `SEC8`-`SEC12`, `SEC28` | the same Node suites with `TEST_PG_URL` / `DATABASE_URL` set; the `migrate-check` CI job applies the schema |
+| L1 Postgres parity | the Postgres halves of `SEC1`-`SEC5`, `SEC8`-`SEC12`, `SEC28` | the same Node suites in the `postgres-parity` matrix job (`postgres-parity (stay, node)`, `(guests, node)`, `(rooms, node)`, `(admin, node)`), which applies each module's migrations and exports `TEST_PG_URL`; the `migrate-check` job only checks that the migrations apply |
 | L1 Desk client | the desk-payload row of section 4 | `cd app && npm test` (`vitest run`) |
 | LC contract | `SEC35`: the manifests and fixtures unchanged, both gates green | `script/contract-check.sh`, `script/openapi-route-check.sh` (CI `contract-check`) |
 | Gates | Catalogue parity, links, harness conventions, whitespace | `script/catalogue-coverage-check.sh`, `script/markdown-link-check.sh`, `script/harness-conventions-check.sh`, `git diff --check` |

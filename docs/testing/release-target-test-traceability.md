@@ -86,10 +86,9 @@ catalogue key, and moves no MVP row.
   the retirement or reuse of `rooms.validation.release_occupied` to the
   implementation. `REL-12` asserts the sentence's content and EN/VI
   parity, never a specific key name.
-- The Postgres half is not a CI job: the `node-build` matrix sets no
-  `TEST_PG_URL`, so the database path runs on a scratch database and is
-  recorded by `REL-E1`, exactly as the `#631`/`#633`/`#636`/`#637`
-  slices record theirs.
+- The Postgres half runs in the `postgres-parity (rooms)` CI job, which
+  applies the Rooms migrations, exports `TEST_PG_URL`, and fails on any
+  skipped case; `REL-E1` records that job's run.
 
 ## 2. Pins on disk at this spec head
 
@@ -129,8 +128,8 @@ empty under `services/rooms/` and `app/` — so every code pin above is
 byte-identical to that green base. The architecture half narrows the
 contract enum only, which `script/contract-check.sh` re-validates. The
 implementation PR supplies the `node-build (rooms)` evidence for the new
-guards; the Postgres halves are not a CI job, which is why `REL-E1`
-records that run explicitly.
+guards; the Postgres halves run in the `postgres-parity (rooms)` job,
+which is why `REL-E1` records that job's run.
 
 ## 3. Guard registry REL-1–REL-14, the residual-risk record REL-R1, and the evidence rule REL-E1
 
@@ -154,8 +153,9 @@ must carry `code: "VALIDATION_FAILED"`, `details.toState` carrying the
 received value, the one plain sentence naming both accepted targets
 with no envelope code, status number, driver, SQL, host, or stack text,
 and a fresh `traceId`. The in-memory halves run with `TEST_PG_URL`
-unset and must never skip; the Postgres halves run on a scratch
-database through `TEST_PG_URL` and are skipped without it, and no key
+unset and must never skip; the Postgres halves run in the
+`postgres-parity (rooms)` job (a fresh scratch database through
+`TEST_PG_URL`), which fails on a skipped case, and no key
 claim of this slice rests on a skipped half alone.
 
 | Guard | Obligation (case) | Lands in |
@@ -175,7 +175,7 @@ claim of this slice rests on a skipped half alone.
 | `REL-13` | No movement beyond the one check, and no configuration or migration. The diff adds only: the shared `releaseTarget` check (beside `requireCapacity`), its two call sites, the refusal's catalogue sentence, and the guards. Unchanged: `ALLOWED_TRANSITIONS`, `ROOM_STATES`, `UpdateRoomState`, `assignRoom`, the accepted paths' body/history/event, the desk, the contract's response and status set, `services/rooms/migrations/`, any `CHECK`/column/index, any backfill or repair, any environment variable, `deploy/` file, compose key, or per-hotel setting; the pair is a fixed code rule (BR-72) | Diff gate; `git diff` review checklist |
 | `REL-14` | The no-change NFR group re-runs green. `NFR-AUD-1` (a refusal records no history row and no event; an accepted release keeps the authenticated actor and its timestamp), `NFR-I18N-1` (`REL-12`), `NFR-CON-1`/`NFR-CON-2` (no new concurrent write path, lock, or serialisation point; a release stays one room's single state change), `NFR-PERF-1`/`NFR-PERF-2` (one in-process comparison, no extra query beyond the room read; the timed desk run and the report timings unchanged), `NFR-AVL-1` (decided on-premise), `NFR-TZ-1`, `NFR-SEC-1`/`NFR-SEC-2` (the session guard and recorded-actor rule stay), and `NFR-BND-1`..`NFR-BND-3` (no route or body bound moves). Covered by re-run of the existing guards; a new route, migration, or bound fails `REL-13` | Existing suites and gates, re-run |
 | `REL-R1` | Residual-risk record, not a guard. A caller that sent `vacant-clean` or `out-of-order` now gets a 400 where it used to succeed — the intended direction, since no specified flow used either and no caller sends them; a room already released to either state stays valid and readable. The in-memory nothing-written guarantee rests on the check's position ahead of the first mutation (the store is not transactional), so the guard position is a `dev-peer-review` point; the Postgres half is guaranteed by the transaction. The stores' remaining field-order difference (room number and actor presence) is not narrowed by this change. No guard may assert a repair, backfill, or read-time re-validation | Recorded: R-27, LLD 41.6, this row |
-| `REL-E1` | Evidence rule: the implementation PR records, in `docs/testing/evidence/773/README.md` (created by that PR, same capture method as the `#631`, `#633`, `#636`, `#637`, `#642`, and `#767` records), the before/after pairs (an occupied room released to `vacant-clean` and to `out-of-order` answering `200` before and `400 VALIDATION_FAILED` after, with the room state and row counts before and after), the nothing-written proof in both stores, the accepted pair and the preserved absent default, the `REL-7` precedence pair, and the `TEST_PG_URL` parity run with the command pasted; and adds the slice row to `docs/testing/test-report.md` (`test-strategy.md` section 3 exit criterion 6). Stays pending until recorded | Evidence record + `test-report.md` |
+| `REL-E1` | Evidence rule: the implementation PR records, in `docs/testing/evidence/773/README.md` (created by that PR, same capture method as the `#631`, `#633`, `#636`, `#637`, `#642`, and `#767` records), the before/after pairs (an occupied room released to `vacant-clean` and to `out-of-order` answering `200` before and `400 VALIDATION_FAILED` after, with the room state and row counts before and after), the nothing-written proof in both stores, the accepted pair and the preserved absent default, the `REL-7` precedence pair, and the `postgres-parity (rooms)` run; and adds the slice row to `docs/testing/test-report.md` (`test-strategy.md` section 3 exit criterion 6). Stays pending until recorded | Evidence record + `test-report.md` |
 
 ## 4. Traceability map
 
@@ -208,7 +208,7 @@ adds no MVP capability, so the 57-row MVP count stands unchanged.
 | No-desk-regression gate | Real delta: none. The release helper is already typed to the two targets and the e2e scripts already take the default, so no desk screen, control, label, state, copy, or print rule moves | **Pending gate** — `REL-10`; the pins are `app/src/views/StayView.vue:1383`, `:1415`, `:1738`, `:1786`, `:2101` |
 | MVP no-change statement | No new MVP row, story, or FR; no `FR-*` or `NFR-*` capability wording moves; `FR-REL-1`..`FR-REL-5` are behaviour-scoped additions outside the counted capability set (requirements 42.2, 42.3) | **Pending gate** — the 57-row MVP coverage count stands unchanged and no MVP row cites this slice as its guard |
 | Residual risk `REL-R1` | A caller that sent an extra target now gets a 400; a room already in that state stays valid; the in-memory nothing-written guarantee rests on the check position (not a transaction), while Postgres rolls back; the remaining field-order difference is out of scope | **Recorded, not guarded** — R-27, LLD 41.6, and this row; no guard may assert a repair or backfill |
-| Evidence cross-reference (`REL-E1`) | The before/after pairs, the both-stores nothing-written proof, the accepted pair and default, the precedence pair, and the `TEST_PG_URL` parity run | **Pending** — `docs/testing/evidence/773/README.md` and the `test-report.md` row are created by the implementation PR |
+| Evidence cross-reference (`REL-E1`) | The before/after pairs, the both-stores nothing-written proof, the accepted pair and default, the precedence pair, and the `postgres-parity (rooms)` run | **Pending** — `docs/testing/evidence/773/README.md` and the `test-report.md` row are created by the implementation PR |
 
 Slice coverage (Refs #773): 21 rows mapped to `AC-REL-1`..`AC-REL-5`,
 `FR-REL-1`..`FR-REL-5`, `BR-72`, the both-stores nothing-written row,
@@ -222,9 +222,10 @@ the accepted/refusal halves inside `AC-REL-1`..`AC-REL-4`,
 `FR-REL-4`, `BR-72`, and the both-stores row); the remaining twelve are
 **pending** the implementation PR. The slice is **not complete** at
 this spec head; it completes when the implementation PR merges with
-`REL-1`–`REL-14` green, the Postgres halves recorded on a scratch
-database, `REL-E1` recorded, and `qa-lead` re-pins the rows at the
-merged head. The MVP Coverage line below stands unchanged at 57/57.
+`REL-1`–`REL-14` green, the Postgres halves recorded in the
+`postgres-parity (rooms)` job, `REL-E1` recorded, and `qa-lead` re-pins
+the rows at the merged head. The MVP Coverage line below stands
+unchanged at 57/57.
 
 ## 5. Test plan
 
@@ -233,7 +234,7 @@ merged head. The MVP Coverage line below stands unchanged at 57/57.
 | Level / suite | Guards | Command | Where |
 |---|---|---|---|
 | L1 in-memory route, Rooms | `REL-1`–`REL-4`, `REL-7` (memory half), `REL-9`, `REL-12` | `cd services/rooms && npm run build && npm run lint && npm test` | CI `node-build (rooms)`; `TEST_PG_URL` unset, the in-memory guards must not skip |
-| L1 Postgres parity, Rooms | `REL-5`–`REL-8` (Postgres half), `REL-9` | `cd services/rooms && TEST_PG_URL=postgres://… npm test` | Scratch database locally; not a CI job (the matrix sets no `TEST_PG_URL`) |
+| L1 Postgres parity, Rooms | `REL-5`–`REL-8` (Postgres half), `REL-9` | `cd services/rooms && npm run build && npm test` with `TEST_PG_URL` exported by the job; the cases skip without it | CI `postgres-parity (rooms, node)`, which applies the Rooms migrations to a fresh `postgres:16-alpine` service and fails on any skipped case |
 | L1 desk regression, app | `REL-10` | `cd app && npm run build && npm run lint && npm test` | CI `app-build` |
 | LC contract | `REL-11` | `script/contract-check.sh` | CI `contract-check` |
 | Catalogue | `REL-12` | `script/catalogue-coverage-check.sh` | CI `ci` |
@@ -245,9 +246,9 @@ merged head. The MVP Coverage line below stands unchanged at 57/57.
 1. In-memory guards first (`REL-1`–`REL-4`, `REL-9`, `REL-12`): they are
    hermetic and prove the refusal, the nothing-written half, and the
    accepted pair without a database.
-2. The Postgres halves (`REL-5`–`REL-8`) on a scratch database, in the
-   same run as the existing `pgstore.test.ts` suites (a fresh `wipe`
-   per case, `services/rooms/src/pgstore.test.ts:14-20`).
+2. The Postgres halves (`REL-5`–`REL-8`) in the `postgres-parity
+   (rooms)` job, in the same run as the existing `pgstore.test.ts`
+   suites (a fresh `wipe` per case, `services/rooms/src/pgstore.test.ts:14-20`).
 3. The parity comparator (`REL-8`) last among the store guards: it
    reads the same request tables as `REL-3`/`REL-6` and compares the
    two stores' answers.
@@ -326,9 +327,9 @@ The implementation PR records, in `docs/testing/evidence/773/README.md`:
 3. **The precedence pair.** A free room sent an out-of-set target
    answers `STATE_ILLEGAL` (never `VALIDATION_FAILED`) and an unknown
    room answers `NOT_FOUND`, on both stores.
-4. **The parity run.** The `TEST_PG_URL` command pasted, with the
-   scratch-database name and the row-count evidence, because no CI job
-   sets `TEST_PG_URL`.
+4. **The parity run.** The green `postgres-parity (rooms)` job recorded,
+   with the scratch-database name and the row-count evidence (the job
+   applies the Rooms migrations and exports `TEST_PG_URL`).
 5. **The suite row.** A slice row in `docs/testing/test-report.md`
    recording the commands, the green runs, and the evidence file
    (`test-strategy.md` section 3 exit criterion 6).

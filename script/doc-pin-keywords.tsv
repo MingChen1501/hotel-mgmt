@@ -75,3 +75,9 @@ docs/testing/admin-fail-closed-boot-test-traceability.md	services/admin/src/stor
 docs/testing/admin-fail-closed-boot-test-traceability.md	services/admin/src/store.ts:309	randomUUID
 docs/testing/admin-fail-closed-boot-test-traceability.md	services/admin/src/store.ts:320	async authenticate
 docs/testing/admin-fail-closed-boot-test-traceability.md	services/admin/src/store.ts:589	signToken
+
+# #809: the rooms Postgres suite's skip contract, re-pinned off the
+# import block (7-10) onto the line that reads TEST_PG_URL and the
+# describe skip that consumes it.
+docs/testing/room-state-sellability-test-traceability.md	services/rooms/src/pgstore.test.ts:13	TEST_PG_URL
+docs/testing/room-state-sellability-test-traceability.md	services/rooms/src/pgstore.test.ts:24	skip: DATABASE_URL === undefined

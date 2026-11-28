@@ -206,9 +206,9 @@ tree is `origin/master` `1eab7cb`, where every check-run reports
 stack is docs-only — its diff against `origin/master` is empty under
 `services/rates`, `contracts/`, and `app/` — so every code pin above is
 byte-identical to that green base. The implementation PR supplies the
-`go-build (rates)` evidence for the new guards; the Postgres halves are
-not a CI job (the matrix sets no `TEST_PG_URL`), which is why `PLN-E1`
-records that run explicitly.
+`go-build (rates)` evidence for the new guards; the Postgres halves run
+in the `postgres-parity (rates)` job, which is why `PLN-E1` records that
+job's run.
 
 ## 3. Guard registry PLN-1–PLN-9, the residual-risk record PLN-R1, and the evidence rule PLN-E1
 
@@ -229,8 +229,9 @@ one plain `rates.store.unavailable` sentence with no envelope code,
 status number, driver, SQL, host, or stack text, and a fresh `traceId`.
 The failure assertions use the store-failure answer the sibling write
 already gives, never a new one. The hermetic halves run with
-`TEST_PG_URL` unset and must never skip; the Postgres halves run on a
-scratch database through `TEST_PG_URL` and are skipped without it, and
+`TEST_PG_URL` unset and must never skip; the Postgres halves run in the
+`postgres-parity (rates)` job (a fresh scratch database through
+`TEST_PG_URL`), which fails on a skipped case, and
 no key claim of this slice rests on a skipped half alone.
 
 | Guard | Obligation (case) | Lands in |
@@ -245,7 +246,7 @@ no key claim of this slice rests on a skipped half alone.
 | `PLN-8` | The desk reports a failed plan write in its existing sentence and does not advance: with the backend answering the `500` store-failure envelope for `UpsertRatePlan`, both create paths (read-path `ManageView.vue:1816-1840` and explicit `:1852-1876`) render the existing `desk.manage.error_generic` sentence (`:1833`, `:1869`), make **no** `UpsertRatePrice` call, do not remember a plan (`writeStoredPlan` not reached, `:1838`), and keep the pending nights pending (`planMissing` stays set, `:1874-1875`); the two success twins (`ManageView.test.ts:633-662`, `:754-786`) keep passing with no edit; no desk control, label, state, or copy changes | `app/src/views/ManageView.test.ts` (new failure cases beside the two success twins) |
 | `PLN-9` | Nothing else moves at the no-change level: no route, body ceiling, server timeout, lock, transaction, round trip, outside dependency, event, actor, or date format moves. The #630 body-bound/timeout guards, the paired-attempt concurrency guards, the timed desk run, the audit-actor suite, and the timezone guards pass untouched; a refused write records nothing and emits no event; a committed Postgres write keeps its `system` actor exactly as today; `script/catalogue-coverage-check.sh` stays green with no new key | No-change re-run: the existing `go-build (rates)`, `app-build`, `e2e-single-host`, and `ci` jobs; a new route, body bound, migration, or catalogue key fails `PLN-7` |
 | `PLN-R1` | **Residual-risk record, not a guard.** Three pre-existing directions stay and are named, never fixed here: (1) `storeFailure()` answers `VALIDATION_FAILED` at 500 while `BR-59` reserves `INTERNAL_ERROR` for a store failure — the sibling writes already answer the same way, and aligning all thirteen call sites is the separate change in R-26; (2) the outbox helper stays best-effort, so a committed plan can still miss its event; (3) an ambiguous commit can leave a stored plan whose acknowledgement was lost, and a retry converges it while a never-retried plan stays outbox-less. **No guard in this slice may assert an `INTERNAL_ERROR` token, an outbox check, a retry loop, or an idempotency key** | Risk register R-26 + LLD 40.6 + this row; follow-up decision required |
-| `PLN-E1` | Evidence rule: the implementation PR records the before/after pairs (the phantom `200` with `id: ""` and no row/no event → the `500` envelope with an empty `id`-free body), the "nothing stored, nothing readable" proof, the retry-after-recovery proof, and the byte-identical healthy create/update pair in `docs/testing/evidence/767/README.md` (created by that PR, same capture method as the `#631`, `#633`, `#636`, `#637`, and `#642` records); records the `TEST_PG_URL` row-count/parity run with the command pasted; and records the slice row in `docs/testing/test-report.md` (`test-strategy.md` [section 3](test-strategy.md) exit criterion 6). Stays pending until all three are recorded | Evidence record + `test-report.md` |
+| `PLN-E1` | Evidence rule: the implementation PR records the before/after pairs (the phantom `200` with `id: ""` and no row/no event → the `500` envelope with an empty `id`-free body), the "nothing stored, nothing readable" proof, the retry-after-recovery proof, and the byte-identical healthy create/update pair in `docs/testing/evidence/767/README.md` (created by that PR, same capture method as the `#631`, `#633`, `#636`, `#637`, and `#642` records); records the `postgres-parity (rates)` row-count/parity run; and records the slice row in `docs/testing/test-report.md` (`test-strategy.md` [section 3](test-strategy.md) exit criterion 6). Stays pending until all three are recorded | Evidence record + `test-report.md` |
 
 ## 4. Traceability map
 
@@ -279,7 +280,7 @@ head. Rows marked pinned-today rest on pins that exist and pass today
 | No-desk-regression gate | Real delta: the Manage screen's two create paths are byte-identical; they already render the existing `desk.manage.error_generic` sentence on a rejected write, and only the backend answer changes from a phantom `200` to a `500`; no other desk control, label, state, or copy moves | **Pending gate** — `PLN-8`; the pins are `app/src/views/ManageView.vue:1816-1840`, `:1852-1876`, and `app/src/views/ManageView.test.ts:633-662`, `:754-786` |
 | MVP no-change statement | No new MVP row, story, or FR; no `FR-*` or `NFR-*` capability wording moves; `FR-PLN-1`..`FR-PLN-5` are behaviour-scoped additions outside the counted capability set (requirements 41.2, 41.3) | **Pending gate** — the 57-row MVP coverage count stands unchanged and no MVP row cites this slice as its guard |
 | Residual risk `PLN-R1` | The store-failure token (`VALIDATION_FAILED` at 500 versus `BR-59`'s `INTERNAL_ERROR`), the best-effort outbox helper, and the ambiguous-commit case stay exactly as they are; the slice neither aligns the token nor wraps the statements nor checks the outbox, and no guard may assert any of those | **Recorded, not guarded** — R-26, LLD 40.6, and this row; a fix is its own decision |
-| Evidence cross-reference (`PLN-E1`) | The before/after pairs, the retry and no-phantom proofs, the `TEST_PG_URL` row-count run, and the slice row in the test report | **Pending** — `docs/testing/evidence/767/README.md` and the `test-report.md` row are created by the implementation PR |
+| Evidence cross-reference (`PLN-E1`) | The before/after pairs, the retry and no-phantom proofs, the `postgres-parity (rates)` row-count run, and the slice row in the test report | **Pending** — `docs/testing/evidence/767/README.md` and the `test-report.md` row are created by the implementation PR |
 
 Slice coverage (Refs #767): 22 rows mapped to
 `AC-PLN-1`..`AC-PLN-4`, `FR-PLN-1`..`FR-PLN-5`, `BR-71`, the both-stores
@@ -294,9 +295,10 @@ row, `NFR-I18N-1`, and the accepted-write halves inside `AC-PLN-3`,
 `FR-PLN-2`, `FR-PLN-5`, and the both-stores row); the other seventeen
 are **pending** the implementation PR. The slice is **not complete** at
 this spec head; it completes when the implementation PR merges with
-`PLN-1`–`PLN-9` green, the Postgres halves recorded on a scratch
-database, `PLN-E1` recorded, and `qa-lead` re-pins the rows at the
-merged head. The MVP Coverage line below stands unchanged at 57/57.
+`PLN-1`–`PLN-9` green, the Postgres halves recorded in the
+`postgres-parity (rates)` job, `PLN-E1` recorded, and `qa-lead` re-pins
+the rows at the merged head. The MVP Coverage line below stands
+unchanged at 57/57.
 
 ## 5. Test plan
 
@@ -305,7 +307,7 @@ merged head. The MVP Coverage line below stands unchanged at 57/57.
 | Level | What runs | Command (authoritative: `docs/architecture/services/rates.md` section 7) |
 |---|---|---|
 | L1 store, Rates (hermetic) | `PLN-1`, `PLN-2` hermetic half, `PLN-4` hermetic half, `PLN-5` memory half — with `TEST_PG_URL` unset | `cd services/rates && go build ./... && go vet ./... && gofmt -l . && go test ./...` (CI `go-build (rates)`; `gofmt -l .` must print nothing) |
-| L1 store, Rates (Postgres parity) | `PLN-2` row counts, `PLN-4` retry, `PLN-5` update half on a **scratch** database (the fixtures wipe `rates.*`) | `cd services/rates && TEST_PG_URL=postgres://… go test ./...`; the Postgres halves skip without `TEST_PG_URL` |
+| L1 store, Rates (Postgres parity) | `PLN-2` row counts, `PLN-4` retry, `PLN-5` update half against the job's fresh `postgres:16-alpine` service (the fixtures wipe `rates.*`) | the Rates store suite in the `postgres-parity (rates)` matrix job, which applies the Rates migrations and exports `TEST_PG_URL`; the cases skip without it, and the job fails on any skipped case |
 | L1 handler | `PLN-3` over a stub `Repository` and a closed-pool `Postgres`; the existing create-then-price-then-quote guard | `cd services/rates && go test ./internal/handler/...` |
 | L1 desk UI | `PLN-8` failure cases beside the two success twins; the unchanged Manage pins | `cd app && npm ci && npm run build && npm test && npm run lint` (CI `app-build`) |
 | LC contract | `PLN-6`: the two contracts, the untouched fixture, `contract-check.sh` | `script/contract-check.sh` (CI `contract-check`) |
@@ -314,20 +316,19 @@ merged head. The MVP Coverage line below stands unchanged at 57/57.
 | Gates | Links, harness conventions, whitespace | `script/markdown-link-check.sh`, `script/harness-conventions-check.sh`, `git diff --check` |
 
 CI jobs that must be green on the implementation PR:
-`go-build (rates)`, `app-build`, `contract-check`, `ci`, and
-`e2e-single-host`, with `browser-e2e` running when the desk test file is
-in the change set. The Postgres half is not a CI job (the matrix sets no
-`TEST_PG_URL`), which is why `PLN-E1` records the row-count/parity run
-explicitly and why `PLN-1`/`PLN-3` must prove the failure without a
-database. Adding a database-backed job is a CI change outside this
-slice's scope.
+`go-build (rates)`, `app-build`, `contract-check`, `ci`,
+`e2e-single-host`, and `postgres-parity (rates, go)`, with `browser-e2e`
+running when the desk test file is in the change set. The Postgres half
+runs in the `postgres-parity (rates)` job, which is why `PLN-E1` records
+that job's row-count/parity run, and why `PLN-1`/`PLN-3` must prove the
+failure without a database.
 
 ### Execution order
 
 1. Rates hermetic store suite: `PLN-1`, the `PLN-2` driver-recording
    half, and the `PLN-4` switchable-stub half first (a red case stops
    the run), then every existing rates pin unchanged.
-2. Rates Postgres suite with `TEST_PG_URL` on a scratch database: the
+2. Rates Postgres suite in the `postgres-parity (rates)` job: the
    `PLN-2` before/after counts, `PLN-4` retry, and `PLN-5` update half,
    then the wiped fixture rows.
 3. Handler suite (`PLN-3`): the stub repository, then the closed-pool
@@ -363,8 +364,9 @@ slice's scope.
    `details`, plain `message`, fresh `traceId`) **and** its stored effect
    (no plan row, no outbox row).
 2. `PLN-1` and the `PLN-2`/`PLN-4` hermetic halves ran with
-   `TEST_PG_URL` unset and did not skip; the Postgres halves ran on a
-   scratch database and answered the same codes and payload shapes.
+   `TEST_PG_URL` unset and did not skip; the Postgres halves ran in the
+   `postgres-parity (rates)` job and answered the same codes and payload
+   shapes.
 3. `PLN-7` holds unchanged: no migration, no transaction, no retry
    loop, no outbox-error check, no success-path edit, no in-memory-store
    edit, no interface edit, and no new catalogue key in the diff.
@@ -473,11 +475,10 @@ records):
   event per successful write, and the same `200` body — byte-identical,
   so the fix changes only the failure branch.
 - **Parity run.** `PLN-2`'s row counts, `PLN-4`'s retry, and `PLN-5`'s
-  update half executed with `TEST_PG_URL` on a scratch database, with the
-  statement counts and row counts pasted (the Go matrix sets no
-  `TEST_PG_URL`, so a green `go-build (rates)` job is not parity evidence
-  on its own), alongside the hermetic `PLN-1`/`PLN-3` run with the
-  variable unset.
+  update half executed in the `postgres-parity (rates)` job, which
+  applies the Rates migrations, exports `TEST_PG_URL`, and fails on any
+  skipped case, with the statement counts and row counts pasted
+  alongside the hermetic `PLN-1`/`PLN-3` run with the variable unset.
 
 The slice's results also go to `docs/testing/test-report.md` (exit
 criterion 6 of the `test-strategy.md` [section 3](test-strategy.md)).
