@@ -81,3 +81,21 @@ docs/testing/admin-fail-closed-boot-test-traceability.md	services/admin/src/stor
 # describe skip that consumes it.
 docs/testing/room-state-sellability-test-traceability.md	services/rooms/src/pgstore.test.ts:13	TEST_PG_URL
 docs/testing/room-state-sellability-test-traceability.md	services/rooms/src/pgstore.test.ts:24	skip: DATABASE_URL === undefined
+
+# #816: re-pin the stale parity and skip citations. The guests and admin
+# rows name the suite gate (TEST_PG_URL) and the runtime/boot switch
+# (DATABASE_URL) at the line where each is read; the rooms row verifies the
+# gated describe and the sellableCount assertion; the admin dom-diff pins
+# cite the FE-only path filter and its SKIPPED behaviour.
+docs/testing/guest-identity-test-traceability.md	services/guests/src/server.test.ts:1011	process.env["TEST_PG_URL"]
+docs/testing/guest-identity-test-traceability.md	services/guests/src/server.test.ts:1013	guests postgres store
+docs/testing/guest-identity-test-traceability.md	services/guests/src/server.test.ts:1014	demotes the body actor
+docs/testing/guest-identity-test-traceability.md	services/guests/src/server.test.ts:1034	persists the guest profile row
+docs/testing/guest-identity-test-traceability.md	services/guests/src/server.test.ts:1051	links stays idempotently
+docs/testing/admin-fail-closed-boot-test-traceability.md	services/admin/src/pgstore.test.ts:17	process.env["TEST_PG_URL"]
+docs/testing/admin-fail-closed-boot-test-traceability.md	services/admin/src/pgstore.test.ts:381	startBoot
+docs/testing/admin-fail-closed-boot-test-traceability.md	services/admin/src/pgstore.test.ts:393	DATABASE_URL, ADMIN_BOOT_SECRET
+docs/testing/admin-fail-closed-boot-test-traceability.md	services/admin/src/index.ts:14	process.env["DATABASE_URL"]
+docs/testing/admin-fail-closed-boot-test-traceability.md	.github/workflows/ci.yml:87	dom-diff:
+docs/testing/admin-fail-closed-boot-test-traceability.md	.github/workflows/ci.yml:185	FE-only
+docs/testing/room-state-sellability-test-traceability.md	services/rooms/src/pgstore.test.ts:35	assert.equal(sell.sellableCount, 1);

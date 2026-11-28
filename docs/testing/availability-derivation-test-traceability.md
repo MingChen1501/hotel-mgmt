@@ -213,8 +213,8 @@ coverage and link checks).
 ### Execution order
 
 1. Reservations service suite (memory store first, then the Postgres
-   parity cases with `DATABASE_URL` set). A red `O*` case stops the
-   run.
+   parity cases with `TEST_PG_URL` set, in the `postgres-parity
+   (reservations)` CI job). A red `O*` case stops the run.
 2. Rooms suite, proving the consumed reply's meaning did not move.
 3. Contract and route checks (the additive bump must not break the
    desk build's fixtures, and the consumer fixture must resolve).
